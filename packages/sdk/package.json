@@ -1,0 +1,50 @@
+{
+  "name": "memax-sdk",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "0.4.1",
+  "description": "TypeScript SDK for the Memax API",
+  "homepage": "https://memax.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MemaxLabs/memax.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": {
+    "email": "support@memax.app"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "assets"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  },
+  "keywords": [
+    "memax",
+    "sdk",
+    "ai",
+    "memory",
+    "context"
+  ],
+  "license": "MIT"
+}

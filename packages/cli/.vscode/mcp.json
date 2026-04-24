@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "memax": {
+      "command": "memax",
+      "args": ["mcp", "serve"]
+    }
+  }
+}

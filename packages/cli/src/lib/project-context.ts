@@ -10,10 +10,10 @@ import type { Scope } from "memax-sdk";
 /**
  * Normalize a git remote URL to a canonical form for use as a project identifier.
  *
- * All of these produce the same result: `github.com/memaxlabs/memax`
- *   - https://github.com/MemaxLabs/memax.git
- *   - git@github.com:MemaxLabs/memax.git
- *   - ssh://git@github.com/MemaxLabs/memax
+ * All of these produce the same result: `github.com/acme/project`
+ *   - https://github.com/acme/project.git
+ *   - git@github.com:acme/project.git
+ *   - ssh://git@github.com/acme/project
  */
 export function normalizeRepoUrl(url: string): string {
   let s = url.trim();
@@ -187,7 +187,7 @@ export function resolveProjectRootPath(dir?: string): string | null {
  * Resolve a Claude Code mangled project folder name to a normalized repo URL.
  *
  * Claude Code names project folders by replacing "/" with "-" in the absolute path:
- *   "-workspaces-memax"           → /workspaces/memax
+ *   "-workspaces-project"         → /workspaces/project
  *   "-Users-ziyang-code-memax"    → /Users/ziyang/code/memax
  *
  * Returns the normalized repo URL if the path exists and is a git repo, null otherwise.

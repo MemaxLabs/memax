@@ -29,14 +29,14 @@ import {
 
 describe("normalizeRepoUrl", () => {
   it("normalizes common git remote forms", () => {
-    expect(normalizeRepoUrl("https://github.com/MemaxLabs/memax.git")).toBe(
-      "github.com/memaxlabs/memax",
+    expect(normalizeRepoUrl("https://github.com/acme/project.git")).toBe(
+      "github.com/acme/project",
     );
-    expect(normalizeRepoUrl("git@github.com:MemaxLabs/memax.git")).toBe(
-      "github.com/memaxlabs/memax",
+    expect(normalizeRepoUrl("git@github.com:acme/project.git")).toBe(
+      "github.com/acme/project",
     );
-    expect(normalizeRepoUrl("ssh://git@github.com/MemaxLabs/memax")).toBe(
-      "github.com/memaxlabs/memax",
+    expect(normalizeRepoUrl("ssh://git@github.com/acme/project")).toBe(
+      "github.com/acme/project",
     );
   });
 });
@@ -50,9 +50,9 @@ describe("getProjectScope", () => {
   });
 
   it("uses the normalized origin remote when present", () => {
-    execSync.mockReturnValueOnce("git@github.com:MemaxLabs/memax.git\n");
-    expect(getProjectScope("/workspaces/memax")).toBe(
-      "project:github.com/memaxlabs/memax",
+    execSync.mockReturnValueOnce("git@github.com:acme/project.git\n");
+    expect(getProjectScope("/workspaces/project")).toBe(
+      "project:github.com/acme/project",
     );
   });
 
@@ -60,7 +60,7 @@ describe("getProjectScope", () => {
     execSync.mockImplementation(() => {
       throw new Error("no remote");
     });
-    expect(getProjectScope("/workspaces/memax")).toBe("project");
+    expect(getProjectScope("/workspaces/project")).toBe("project");
   });
 
   it("uses .memax.yml project_id as an explicit override", () => {
@@ -69,7 +69,7 @@ describe("getProjectScope", () => {
     );
     readFileSync.mockReturnValue("project_id: Acme.Internal/Payments-API\n");
 
-    expect(getProjectScope("/workspaces/memax")).toBe(
+    expect(getProjectScope("/workspaces/project")).toBe(
       "project:acme.internal/payments-api",
     );
   });
@@ -79,13 +79,13 @@ describe("getProjectScope", () => {
       path.endsWith(".memax.yml"),
     );
     readFileSync.mockReturnValue("project_id: github.com/acme/override\n");
-    execSync.mockReturnValueOnce("git@github.com:MemaxLabs/memax.git\n");
+    execSync.mockReturnValueOnce("git@github.com:acme/project.git\n");
 
-    expect(resolveProjectScope("/workspaces/memax")).toEqual({
+    expect(resolveProjectScope("/workspaces/project")).toEqual({
       scope: "project:github.com/acme/override",
       source: "memax_yml",
       warning:
-        ".memax.yml project_id (github.com/acme/override) overrides git origin (github.com/memaxlabs/memax)",
+        ".memax.yml project_id (github.com/acme/override) overrides git origin (github.com/acme/project)",
     });
   });
 });
@@ -102,12 +102,12 @@ describe("readMemaxYmlConfig", () => {
       path.endsWith(".memax.yml"),
     );
     readFileSync.mockReturnValue(
-      "hub: team-backend\nproject_id: github.com/MemaxLabs/memax\n",
+      "hub: team-backend\nproject_id: github.com/acme/project\n",
     );
 
-    expect(readMemaxYmlConfig("/workspaces/memax")).toEqual({
+    expect(readMemaxYmlConfig("/workspaces/project")).toEqual({
       hub: "team-backend",
-      project_id: "github.com/memaxlabs/memax",
+      project_id: "github.com/acme/project",
     });
     expect(readMemaxYmlHub()).toBe("team-backend");
   });

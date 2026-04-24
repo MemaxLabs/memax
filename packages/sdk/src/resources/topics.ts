@@ -85,8 +85,7 @@ export class TopicsResource {
    * assignMemory is the AUTO-ASSIGNMENT primitive — confidence-gated on the
    * server (ingest + dreams workers only). User-initiated moves MUST go
    * through memories.batchMove, which is authoritative and replaces
-   * unconditionally. See docs/plans/10-dreams-and-knowledge.md for the
-   * contract rules.
+   * unconditionally.
    *
    * The HTTP route is unchanged (POST /v1/topics/{id}/memories) so external
    * API users are not broken — only the TypeScript method name changes to

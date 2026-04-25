@@ -1,3 +1,5 @@
+<br />
+
 <p align="center">
   <a href="https://memax.app">
     <img src="https://memax.app/images/memax-wordmark.svg" alt="Memax" width="200" />

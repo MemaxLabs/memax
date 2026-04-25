@@ -2,6 +2,8 @@ import type {
   DreamReport,
   DreamRunListOptions,
   DreamRunListResponse,
+  DreamUsage,
+  DreamUsageOptions,
 } from "../types.js";
 import type { RequestFn } from "../transport.js";
 
@@ -39,5 +41,25 @@ export class DreamsResource {
       body: {},
       hubId,
     });
+  }
+
+  /**
+   * Read-only quota snapshot for the dream-tier counters.
+   *
+   * Pass `hubId` to query a team hub's per-hub Lucid pool; omit it
+   * for the caller's personal quota. Hub-scoped credentials always
+   * resolve to their scoped hub regardless of `hubId` — querying a
+   * different hub silently returns the scoped one.
+   *
+   * Use this to render quota state in the UI ("X of Y dreams used
+   * this month") and gate the "Dream now" button on `allowed`.
+   *
+   * Returns 503 on dev/test environments where the plan resolver
+   * isn't wired (the SDK throws via the standard MemaxError path).
+   */
+  async usage(opts: DreamUsageOptions = {}): Promise<DreamUsage> {
+    const query: Record<string, string | undefined> = {};
+    if (opts.hubId !== undefined) query.hub_id = opts.hubId;
+    return this.req("GET", "/v1/usage/dreams", { query });
   }
 }

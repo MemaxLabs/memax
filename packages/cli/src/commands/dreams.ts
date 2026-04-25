@@ -456,7 +456,10 @@ export function registerDreamsCommands(program: Command): void {
   dreamsCmd
     .command("quota")
     .description("Show your dream quota for the current period")
-    .option("--hub <slug>", "Scope to a hub (otherwise personal)")
+    .option(
+      "--hub <slug>",
+      "Scope to a hub (defaults to active hub; personal if none)",
+    )
     .option("--format <format>", "Output format: text, json", "text")
     .action(dreamsQuotaCommand);
 }

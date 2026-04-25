@@ -25,3 +25,25 @@ jobs:
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm test
+
+  publish-sdk-alpha:
+    name: Publish SDK alpha to npm
+    needs: [packages]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    uses: ./.github/workflows/publish-npm.yml
+    with:
+      package: sdk
+      channel: alpha
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-cli-alpha:
+    name: Publish CLI alpha to npm
+    needs: [packages, publish-sdk-alpha]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    uses: ./.github/workflows/publish-npm.yml
+    with:
+      package: cli
+      channel: alpha
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

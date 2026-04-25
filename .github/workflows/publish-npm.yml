@@ -1,0 +1,159 @@
+# Reusable workflow: publish memax-sdk or memax-cli to npm.
+#
+# Called from:
+#   - .github/workflows/ci.yml           (channel=alpha, runs on main pushes)
+#   - .github/workflows/release-npm.yml  (channel=stable, manual release)
+#
+# Why a reusable workflow: keeps the channel logic (version rewriting,
+# skip-if-exists, SDK/CLI version mirroring for alpha) in one place.
+#
+# Auth: classic NPM_TOKEN. We tried npm trusted publishing (OIDC) but
+# npm validates the CALLER workflow filename, not the reusable one,
+# so centralising here wouldn't unify the trust config. One config per
+# caller (ci.yml + release-npm.yml) isn't supported per package,
+# so we use NPM_TOKEN for both channels.
+#
+# Channel semantics:
+#   - alpha: auto-suffix the bare package.json version with
+#     `-alpha.${github.run_number}`, publish with `--tag alpha`
+#     (only main should call this).
+#   - stable: use bare package.json version, publish with the default
+#     `@latest` dist-tag (only release-npm should call this). Skips silently
+#     if the version is already on the registry (re-runs on
+#     secrets-only redeploys).
+name: Publish npm package
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: "Which package: sdk or cli"
+        type: string
+        required: true
+      channel:
+        description: "alpha (main) or stable (prod)"
+        type: string
+        required: true
+      ref:
+        description: "Git ref to check out. Defaults to the caller's ref."
+        type: string
+        required: false
+        default: ""
+      environment:
+        description: "Optional GH environment to bind to (e.g. production)."
+        type: string
+        required: false
+        default: ""
+    secrets:
+      NPM_TOKEN:
+        description: "npm classic auth token (passed by caller via secrets: inherit)."
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Environment is optional — main-branch callers pass "" (no env),
+    # prod callers pass "production" to pick up that env's secrets /
+    # reviewer rules. GH Actions handles empty string as "no env".
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Upgrade npm (10.9.7 has OIDC bug, latest fixes registry quirks)
+        run: npm install -g npm@10.9.8 && npm install -g npm@latest
+
+      - run: pnpm install --frozen-lockfile
+
+      # Build only the package we're publishing (plus its deps for CLI).
+      # CLI needs the SDK built first because its workspace:^ dep is
+      # resolved at publish time; `memax-cli...` includes transitive.
+      - name: Build
+        run: |
+          if [ "${{ inputs.package }}" = "sdk" ]; then
+            pnpm --filter memax-sdk build
+          else
+            pnpm --filter memax-cli... build
+          fi
+
+      - name: Resolve version + registry state
+        id: version
+        env:
+          PACKAGE: ${{ inputs.package }}
+          CHANNEL: ${{ inputs.channel }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          pkg_name="memax-$PACKAGE"
+          pkg_dir="packages/$PACKAGE"
+
+          BASE=$(node -p "require('./$pkg_dir/package.json').version")
+          # Strip any leftover prerelease suffix so "-alpha.5" in
+          # package.json can't produce "-alpha.5-alpha.N".
+          CORE="${BASE%%-*}"
+
+          if [ "$CHANNEL" = "alpha" ]; then
+            TARGET="${CORE}-alpha.${RUN_NUMBER}"
+            TAG="alpha"
+          else
+            TARGET="$CORE"
+            TAG="latest"
+          fi
+
+          EXISTS=$(npm view "$pkg_name@$TARGET" version 2>/dev/null || echo "")
+          if [ -n "$EXISTS" ]; then
+            echo "$pkg_name@$TARGET already on registry, skipping"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "target_version=$TARGET" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "Will publish $pkg_name@$TARGET (tag=$TAG)"
+          fi
+
+      - name: Mirror SDK+CLI versions for CLI alpha publish
+        # CLI depends on SDK via `workspace:^`. pnpm resolves that at
+        # publish time against the LOCAL workspace version. If only
+        # CLI is mutated, a CLI alpha would declare `memax-sdk: ^0.4.0`
+        # but we just published `memax-sdk@0.4.0-alpha.N` — semver says
+        # prereleases are below stable, so the dep wouldn't resolve.
+        # Mirroring the version in both package.json files keeps CLI
+        # alphas pinned to SDK alphas of the same run.
+        if: steps.version.outputs.publish == 'true' && inputs.package == 'cli' && inputs.channel == 'alpha'
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          SDK_BASE=$(node -p "require('./packages/sdk/package.json').version")
+          SDK_CORE="${SDK_BASE%%-*}"
+          SDK_ALPHA="${SDK_CORE}-alpha.${RUN_NUMBER}"
+          (cd packages/sdk && npm version "$SDK_ALPHA" --no-git-tag-version --allow-same-version)
+
+      - name: Rewrite version
+        if: steps.version.outputs.publish == 'true'
+        working-directory: packages/${{ inputs.package }}
+        # --no-git-tag-version keeps the mutation CI-only; the committed
+        # package.json stays at the stable target. Stable channel still
+        # runs this to call `npm version "$CURRENT"` which is a no-op
+        # rewrite; keeps the branch logic uniform.
+        run: |
+          npm version "${{ steps.version.outputs.target_version }}" \
+            --no-git-tag-version --allow-same-version
+
+      - name: Publish
+        if: steps.version.outputs.publish == 'true'
+        working-directory: packages/${{ inputs.package }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm publish --access public --tag "${{ steps.version.outputs.tag }}" --no-git-checks

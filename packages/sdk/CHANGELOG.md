@@ -2,6 +2,10 @@
 
 All notable changes to `memax-sdk` are documented here.
 
+## 0.4.2 - 2026-04-24
+
+- Published the notification kind helper exports used by the internal web app.
+
 ## 0.4.1 - 2026-04-24
 
 - Added public npm README assets and MIT license packaging.

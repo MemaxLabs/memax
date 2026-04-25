@@ -1,0 +1,35 @@
+name: Release npm packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to publish from. Defaults to main."
+        required: false
+        default: "main"
+
+concurrency:
+  group: release-npm
+  cancel-in-progress: false
+
+jobs:
+  publish-sdk-stable:
+    name: Publish SDK stable to npm
+    uses: ./.github/workflows/publish-npm.yml
+    with:
+      package: sdk
+      channel: stable
+      ref: ${{ inputs.ref || 'main' }}
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-cli-stable:
+    name: Publish CLI stable to npm
+    needs: [publish-sdk-stable]
+    uses: ./.github/workflows/publish-npm.yml
+    with:
+      package: cli
+      channel: stable
+      ref: ${{ inputs.ref || 'main' }}
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

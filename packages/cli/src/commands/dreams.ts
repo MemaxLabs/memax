@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import type { DreamRun } from "memax-sdk";
+import type { DreamRun, DreamUsage } from "memax-sdk";
 import { getClient } from "../lib/client.js";
 import { getActiveHubID } from "../lib/config.js";
 import { resolveHubID } from "../lib/hubs.js";
@@ -17,6 +17,11 @@ interface DreamsReportOptions {
 }
 
 interface DreamsTriggerOptions {
+  hub?: string;
+  format?: string;
+}
+
+interface DreamsQuotaOptions {
   hub?: string;
   format?: string;
 }
@@ -274,6 +279,116 @@ export async function dreamsReportCommand(
   }
 }
 
+/**
+ * formatQuota turns a DreamUsage snapshot into a list of lines for
+ * terminal output. Pure for testing — printQuota wraps it with
+ * chalk + console.
+ *
+ * Branching matches the web indicator's renderDreamQuotaHint:
+ *
+ *   - limit === 0  → tier disabled; show upgrade hint
+ *   - limit === -1 → unlimited; show used count, no cap line
+ *   - !allowed at finite cap → exhausted; show used/limit + reset
+ *   - finite under cap → standard "X of Y" with remaining + reset
+ *
+ * Reset date is formatted in UTC (matches API contract; avoids
+ * the off-by-one bug that bites browser clients in non-UTC zones).
+ */
+export function formatQuota(usage: DreamUsage): string[] {
+  const lines: string[] = [];
+  const scopeLabel =
+    usage.scope === "hub" ? "this hub" : "your personal quota";
+  lines.push(`Dream quota — ${scopeLabel}`);
+
+  if (usage.limit === 0) {
+    lines.push(
+      `  This ${usage.scope === "hub" ? "hub" : "account"} doesn't have dreams included in its plan.`,
+    );
+    lines.push("  Upgrade: https://memax.app/settings/billing");
+    return lines;
+  }
+
+  const tierLabel = usage.tier === "lucid" ? "Lucid" : "Basic";
+  lines.push(`  tier:    ${tierLabel}`);
+
+  if (usage.limit === -1) {
+    lines.push(`  used:    ${usage.used} (unlimited)`);
+    return lines;
+  }
+
+  const remaining = usage.remaining ?? Math.max(usage.limit - usage.used, 0);
+  const exhausted = !usage.allowed && usage.used >= usage.limit;
+  const usedSuffix = exhausted ? " (exhausted)" : "";
+  lines.push(`  used:    ${usage.used} of ${usage.limit}${usedSuffix}`);
+  if (!exhausted) {
+    lines.push(`  remains: ${remaining}`);
+  }
+
+  // Reset = period_end + 1 day, formatted UTC. Same contract as
+  // server-side: period_end is the LAST day of the period at UTC
+  // midnight, so reset = next-day midnight = first day of next
+  // period.
+  const reset = new Date(usage.period_end);
+  reset.setUTCDate(reset.getUTCDate() + 1);
+  const resetLabel = reset.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+  lines.push(`  resets:  ${resetLabel}`);
+
+  return lines;
+}
+
+function printQuota(usage: DreamUsage): void {
+  const lines = formatQuota(usage);
+  // Headline gets the signature ✦. Disabled tier (line[1] starts
+  // with "  This") gets a yellow caution color; exhausted state
+  // (line ends with "(exhausted)") gets the same warn color the
+  // web indicator uses. Everything else is plain so the column
+  // alignment reads as a tidy block.
+  const exhausted = lines.some((l) => l.endsWith("(exhausted)"));
+  const disabled = usage.limit === 0;
+  const headline =
+    disabled || exhausted
+      ? chalk.yellow(`✦ ${lines[0]}`)
+      : chalk.cyan(`✦ ${lines[0]}`);
+  console.log(headline);
+  for (const line of lines.slice(1)) {
+    console.log(line);
+  }
+}
+
+export async function dreamsQuotaCommand(
+  options: DreamsQuotaOptions,
+): Promise<void> {
+  try {
+    const format = options.format ?? "text";
+    if (format !== "text" && format !== "json") {
+      throw new Error(`Unsupported --format value: ${format}`);
+    }
+
+    const hubId = options.hub
+      ? await resolveHubID(options.hub)
+      : getActiveHubID() || undefined;
+    if (options.hub && !hubId) {
+      throw new Error(
+        "Hub not found or not accessible. Run `memax hub list` to see available hubs.",
+      );
+    }
+
+    const usage = await getClient().dreams.usage(hubId ? { hubId } : undefined);
+    if (format === "json") {
+      process.stdout.write(`${JSON.stringify(usage, null, 2)}\n`);
+      return;
+    }
+    printQuota(usage);
+  } catch (err) {
+    console.error(chalk.red(`Dream quota failed: ${(err as Error).message}`));
+    process.exit(1);
+  }
+}
+
 export async function dreamsTriggerCommand(
   options: DreamsTriggerOptions,
 ): Promise<void> {
@@ -337,4 +452,11 @@ export function registerDreamsCommands(program: Command): void {
     .option("--hub <slug>", "Scope to a hub")
     .option("--format <format>", "Output format: text, json", "text")
     .action(dreamsTriggerCommand);
+
+  dreamsCmd
+    .command("quota")
+    .description("Show your dream quota for the current period")
+    .option("--hub <slug>", "Scope to a hub (otherwise personal)")
+    .option("--format <format>", "Output format: text, json", "text")
+    .action(dreamsQuotaCommand);
 }

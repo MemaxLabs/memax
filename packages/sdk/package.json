@@ -25,7 +25,8 @@
   },
   "files": [
     "dist",
-    "assets"
+    "assets",
+    "NOTICE"
   ],
   "scripts": {
     "build": "tsc",
@@ -46,5 +47,5 @@
     "memory",
     "context"
   ],
-  "license": "MIT"
+  "license": "Apache-2.0"
 }

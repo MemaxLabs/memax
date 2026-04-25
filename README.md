@@ -14,7 +14,7 @@
   <a href="https://www.npmjs.com/package/memax-sdk"><img src="https://img.shields.io/npm/v/memax-sdk.svg?label=memax-sdk" alt="memax-sdk npm version" /></a>
   <a href="https://www.npmjs.com/package/memax-cli"><img src="https://img.shields.io/npm/v/memax-cli.svg?label=memax-cli" alt="memax-cli npm version" /></a>
   <a href="https://github.com/MemaxLabs/memax/actions/workflows/ci.yml"><img src="https://github.com/MemaxLabs/memax/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg" alt="Apache 2.0 License" /></a>
 </p>
 
 <p align="center">
@@ -129,4 +129,4 @@ memax-cli-v0.1.2
 
 ## License
 
-MIT. See [LICENSE](./LICENSE).
+Apache 2.0. See [LICENSE](./LICENSE) and [NOTICE](./NOTICE).

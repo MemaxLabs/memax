@@ -54,7 +54,8 @@
   ],
   "files": [
     "dist",
-    "assets"
+    "assets",
+    "NOTICE"
   ],
-  "license": "MIT"
+  "license": "Apache-2.0"
 }

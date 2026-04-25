@@ -48,6 +48,19 @@ on:
       NPM_TOKEN:
         description: "npm classic auth token (passed by caller via secrets: inherit)."
         required: true
+    outputs:
+      package_name:
+        description: "npm package name, for example memax-sdk."
+        value: ${{ jobs.publish.outputs.package_name }}
+      version:
+        description: "Resolved package version for the requested channel."
+        value: ${{ jobs.publish.outputs.version }}
+      npm_tag:
+        description: "npm dist-tag used for publish."
+        value: ${{ jobs.publish.outputs.npm_tag }}
+      published:
+        description: "true when this run published the package; false when the version already existed."
+        value: ${{ jobs.publish.outputs.published }}
 
 jobs:
   publish:
@@ -58,6 +71,11 @@ jobs:
     environment: ${{ inputs.environment }}
     permissions:
       contents: read
+    outputs:
+      package_name: ${{ steps.version.outputs.package_name }}
+      version: ${{ steps.version.outputs.target_version }}
+      npm_tag: ${{ steps.version.outputs.npm_tag }}
+      published: ${{ steps.version.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -111,14 +129,16 @@ jobs:
             TAG="latest"
           fi
 
+          echo "package_name=$pkg_name" >> "$GITHUB_OUTPUT"
+          echo "target_version=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "npm_tag=$TAG" >> "$GITHUB_OUTPUT"
+
           EXISTS=$(npm view "$pkg_name@$TARGET" version 2>/dev/null || echo "")
           if [ -n "$EXISTS" ]; then
             echo "$pkg_name@$TARGET already on registry, skipping"
             echo "publish=false" >> "$GITHUB_OUTPUT"
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
-            echo "target_version=$TARGET" >> "$GITHUB_OUTPUT"
-            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
             echo "Will publish $pkg_name@$TARGET (tag=$TAG)"
           fi
 
@@ -156,4 +176,4 @@ jobs:
         working-directory: packages/${{ inputs.package }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: pnpm publish --access public --tag "${{ steps.version.outputs.tag }}" --no-git-checks
+        run: pnpm publish --access public --tag "${{ steps.version.outputs.npm_tag }}" --no-git-checks

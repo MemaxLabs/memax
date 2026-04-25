@@ -12,6 +12,9 @@ concurrency:
   group: release-npm
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   preflight:
     name: Check npm publish token
@@ -47,3 +50,87 @@ jobs:
       ref: ${{ inputs.ref || 'main' }}
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release-sdk:
+    name: Create SDK GitHub release
+    needs: [publish-sdk-stable]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Create package release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_NAME: ${{ needs.publish-sdk-stable.outputs.package_name }}
+          VERSION: ${{ needs.publish-sdk-stable.outputs.version }}
+          PUBLISHED: ${{ needs.publish-sdk-stable.outputs.published }}
+        run: |
+          set -euo pipefail
+          tag="$PACKAGE_NAME-v$VERSION"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag release already exists, skipping"
+            exit 0
+          fi
+
+          target="$(git rev-parse HEAD)"
+          status="published by this workflow"
+          if [ "$PUBLISHED" != "true" ]; then
+            status="already existed on npm; this workflow did not republish it"
+          fi
+
+          gh release create "$tag" \
+            --target "$target" \
+            --title "$PACKAGE_NAME v$VERSION" \
+            --notes "Released \`$PACKAGE_NAME@$VERSION\` to npm.
+
+- npm: https://www.npmjs.com/package/$PACKAGE_NAME/v/$VERSION
+- Source ref: \`${{ inputs.ref || 'main' }}\`
+- npm status: $status"
+
+  release-cli:
+    name: Create CLI GitHub release
+    needs: [publish-cli-stable]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Create package release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_NAME: ${{ needs.publish-cli-stable.outputs.package_name }}
+          VERSION: ${{ needs.publish-cli-stable.outputs.version }}
+          PUBLISHED: ${{ needs.publish-cli-stable.outputs.published }}
+        run: |
+          set -euo pipefail
+          tag="$PACKAGE_NAME-v$VERSION"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag release already exists, skipping"
+            exit 0
+          fi
+
+          target="$(git rev-parse HEAD)"
+          status="published by this workflow"
+          if [ "$PUBLISHED" != "true" ]; then
+            status="already existed on npm; this workflow did not republish it"
+          fi
+
+          gh release create "$tag" \
+            --target "$target" \
+            --title "$PACKAGE_NAME v$VERSION" \
+            --notes "Released \`$PACKAGE_NAME@$VERSION\` to npm.
+
+- npm: https://www.npmjs.com/package/$PACKAGE_NAME/v/$VERSION
+- Source ref: \`${{ inputs.ref || 'main' }}\`
+- npm status: $status"

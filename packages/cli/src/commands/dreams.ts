@@ -296,8 +296,7 @@ export async function dreamsReportCommand(
  */
 export function formatQuota(usage: DreamUsage): string[] {
   const lines: string[] = [];
-  const scopeLabel =
-    usage.scope === "hub" ? "this hub" : "your personal quota";
+  const scopeLabel = usage.scope === "hub" ? "this hub" : "your personal quota";
   lines.push(`Dream quota — ${scopeLabel}`);
 
   if (usage.limit === 0) {

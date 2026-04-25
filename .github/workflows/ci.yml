@@ -26,10 +26,27 @@ jobs:
       - run: pnpm build
       - run: pnpm test
 
+  npm-token:
+    name: Check npm publish token
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    steps:
+      - id: check
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::NPM_TOKEN is not configured; skipping npm alpha publish."
+          fi
+
   publish-sdk-alpha:
     name: Publish SDK alpha to npm
-    needs: [packages]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [packages, npm-token]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.npm-token.outputs.available == 'true'
     uses: ./.github/workflows/publish-npm.yml
     with:
       package: sdk
@@ -39,8 +56,8 @@ jobs:
 
   publish-cli-alpha:
     name: Publish CLI alpha to npm
-    needs: [packages, publish-sdk-alpha]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [packages, npm-token, publish-sdk-alpha]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.npm-token.outputs.available == 'true'
     uses: ./.github/workflows/publish-npm.yml
     with:
       package: cli

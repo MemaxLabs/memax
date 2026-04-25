@@ -2,9 +2,19 @@
 
 All notable changes to `memax-sdk` are documented here.
 
-## 0.4.2 - 2026-04-24
+## 0.4.2 - 2026-04-25
 
-- Published the notification kind helper exports used by the internal web app.
+- Relicensed from MIT to Apache 2.0. Apache 2.0 adds an explicit
+  patent grant and a defensive termination clause; existing
+  installs of older versions remain under MIT.
+- Added `dreams.usage({ hubId? })` — read-only quota snapshot
+  wrapping `GET /v1/usage/dreams`. Returns the new `DreamUsage`
+  shape (scope, tier, mode, limit/used/remaining, allowed,
+  period bounds, quota source).
+- Added `DreamUsage` and `DreamUsageOptions` to the public type
+  exports.
+- Published the notification kind helper exports used by the
+  internal web app.
 
 ## 0.4.1 - 2026-04-24
 

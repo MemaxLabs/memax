@@ -1572,6 +1572,53 @@ export interface DreamRunListResponse {
   next_cursor?: string;
 }
 
+/**
+ * DreamUsageOptions controls `dreams.usage`. Pass `hubId` to query
+ * the per-hub Lucid pool (team hubs); omit it to query the caller's
+ * personal dream quota.
+ *
+ * For credentials scoped to a single hub (allowlist OAuth grants),
+ * the server overrides the query param and always returns the
+ * credential's scoped hub — querying any other hub returns the
+ * scoped one. Defense against probing other hubs' state.
+ */
+export interface DreamUsageOptions {
+  hubId?: string;
+}
+
+/**
+ * DreamUsage is the read-only quota snapshot returned by
+ * `dreams.usage`. Reflects the same scope/tier/limit shape the
+ * trigger gate uses — clients can show "X of Y dreams used" and
+ * gate the "Dream now" button on `allowed`.
+ *
+ * - `scope` is `"personal"` (user-scoped quota) or `"hub"` (team
+ *   hub's fixed pool).
+ * - `tier` is `"basic"` (Free) or `"lucid"` (paid + team hubs).
+ *   Only one tier reported per scope — the active one.
+ * - `mode` reflects the rollout phase: `"soft"` allows triggers
+ *   even at cap (telemetry only); `"hard"` blocks at cap.
+ * - `limit` is `-1` for unlimited, `0` for tier disabled, `>0` for
+ *   a finite cap. `remaining` is omitted when unlimited; explicit
+ *   `0` when exhausted, so clients can distinguish "exhausted"
+ *   from "unlimited."
+ * - `allowed` reflects whether a manual trigger right now would
+ *   succeed. UI clients gate the "Dream now" button on this.
+ */
+export interface DreamUsage {
+  scope: "personal" | "hub";
+  hub_id?: string; // populated only when scope = "hub"
+  tier: "basic" | "lucid";
+  mode: "soft" | "hard";
+  limit: number;
+  used: number;
+  remaining?: number; // omitted when limit === -1 (unlimited)
+  allowed: boolean;
+  period_start: string; // RFC3339
+  period_end: string; // RFC3339
+  quota_source: string; // plan ID
+}
+
 // --- Notifications ---
 //
 // Wire types for the /v1/notifications surface. These mirror the public

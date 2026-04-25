@@ -154,6 +154,8 @@ export type {
   DreamReport,
   DreamRunListOptions,
   DreamRunListResponse,
+  DreamUsage,
+  DreamUsageOptions,
   ReviewTopicMergePayload,
   ReviewTopicRestructurePayload,
   ReviewTopicRef,

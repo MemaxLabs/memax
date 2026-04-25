@@ -13,8 +13,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Check npm publish token
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require NPM_TOKEN
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::NPM_TOKEN is not configured in MemaxLabs/memax. Add a classic npm token with publish access before running this workflow."
+            exit 1
+          fi
+
   publish-sdk-stable:
     name: Publish SDK stable to npm
+    needs: [preflight]
     uses: ./.github/workflows/publish-npm.yml
     with:
       package: sdk

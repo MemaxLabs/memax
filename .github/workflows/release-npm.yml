@@ -84,14 +84,22 @@ jobs:
             status="already existed on npm; this workflow did not republish it"
           fi
 
+          notes=$(cat <<NOTES
+          Released \`$PACKAGE_NAME@$VERSION\` to npm.
+
+          - npm: https://www.npmjs.com/package/$PACKAGE_NAME/v/$VERSION
+          - Source ref: \`${{ inputs.ref || 'main' }}\`
+          - npm status: $status
+          NOTES
+          )
+          # Strip the leading 10-space indent introduced by the YAML
+          # block-scalar so the rendered release body isn't all
+          # quoted-as-code on GitHub.
+          notes=$(echo "$notes" | sed 's/^          //')
           gh release create "$tag" \
             --target "$target" \
             --title "$PACKAGE_NAME v$VERSION" \
-            --notes "Released \`$PACKAGE_NAME@$VERSION\` to npm.
-
-- npm: https://www.npmjs.com/package/$PACKAGE_NAME/v/$VERSION
-- Source ref: \`${{ inputs.ref || 'main' }}\`
-- npm status: $status"
+            --notes "$notes"
 
   release-cli:
     name: Create CLI GitHub release
@@ -126,11 +134,16 @@ jobs:
             status="already existed on npm; this workflow did not republish it"
           fi
 
+          notes=$(cat <<NOTES
+          Released \`$PACKAGE_NAME@$VERSION\` to npm.
+
+          - npm: https://www.npmjs.com/package/$PACKAGE_NAME/v/$VERSION
+          - Source ref: \`${{ inputs.ref || 'main' }}\`
+          - npm status: $status
+          NOTES
+          )
+          notes=$(echo "$notes" | sed 's/^          //')
           gh release create "$tag" \
             --target "$target" \
             --title "$PACKAGE_NAME v$VERSION" \
-            --notes "Released \`$PACKAGE_NAME@$VERSION\` to npm.
-
-- npm: https://www.npmjs.com/package/$PACKAGE_NAME/v/$VERSION
-- Source ref: \`${{ inputs.ref || 'main' }}\`
-- npm status: $status"
+            --notes "$notes"

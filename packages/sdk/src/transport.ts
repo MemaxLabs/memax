@@ -42,6 +42,14 @@ export interface RequestOptions {
 export interface StreamOptions extends RequestOptions {
   onEvent: (event: string, data: unknown) => void;
   onClose?: () => void;
+  /**
+   * Per-call header overrides. Use cases:
+   *   - Chat stream resume sends `Last-Event-ID` so the server
+   *     replays only events past the last seq the client saw.
+   * Static `headers` on `MemaxConfig` are still merged; this map
+   * overrides per-request without mutating the transport singleton.
+   */
+  extraHeaders?: Record<string, string>;
 }
 
 export interface DownloadOptions {
@@ -449,6 +457,7 @@ export class ApiTransport {
         Accept: "text/event-stream",
         ...this.headers,
         ...authHeaders,
+        ...(options.extraHeaders ?? {}),
       };
       if (options.hubId) {
         headers["X-Hub-ID"] = options.hubId;

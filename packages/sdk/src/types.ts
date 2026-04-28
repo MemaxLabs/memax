@@ -2214,3 +2214,244 @@ export interface DisconnectAgentResult {
   configs_tombstoned: number;
   skipped: AgentDisconnectSkippedItem[];
 }
+
+// --- Chat (Phase 3.x agent chat surface) ---
+
+/**
+ * Operating boundary for a chat session. Mirrors the server's
+ * `chat_sessions.scope_type` CHECK + `internal/agent.ScopeType`.
+ *
+ * - `user_all_hubs`: the agent reads across every hub the caller
+ *   currently has access to. The per-turn snapshot is recomputed
+ *   on each send so a hub the caller has lost access to is
+ *   excluded from the next turn's reads — read-time redaction.
+ * - `single_hub`: pinned to one hub. `scope_hub_ids` carries
+ *   exactly that hub.
+ * - `hub_subset`: pinned to an explicit subset.
+ */
+export type ChatScopeType = "user_all_hubs" | "single_hub" | "hub_subset";
+
+/**
+ * Per-session lifecycle state. The lock primitive
+ * (status + active_message_id + locked_at) prevents concurrent
+ * turns from racing the same session.
+ */
+export type ChatSessionStatus =
+  | "idle"
+  | "running"
+  | "awaiting_approval"
+  | "canceling";
+
+/** User / assistant / system. System rows are engine-emitted. */
+export type ChatMessageRole = "user" | "assistant" | "system";
+
+/**
+ * Per-turn lifecycle. User rows go straight to `completed` at
+ * insert; assistant rows transition through queued → running →
+ * one of {completed, partial_failed, failed, canceled}, optionally
+ * via `canceling` (cancel landed mid-flight).
+ */
+export type ChatMessageStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "partial_failed"
+  | "failed"
+  | "canceled"
+  | "canceling";
+
+export interface ChatSession {
+  id: string;
+  owner_id: string;
+  scope_type: ChatScopeType;
+  scope_hub_ids: string[];
+  /** Pinned write hub for mutating tools (push_memory, etc.). Empty when not set. */
+  write_hub_id?: string;
+  title: string;
+  /** Allowlisted model name (e.g. "claude-sonnet-4-6"). */
+  model: string;
+  tools: string[];
+  toolset_version: number;
+  status: ChatSessionStatus;
+  /** Set while a turn is in flight; clears on terminal write. */
+  active_message_id?: string;
+  locked_at?: string;
+  message_count: number;
+  pinned_at?: string;
+  archived_at?: string;
+  last_message_at?: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+/**
+ * One turn in a conversation. `tool_calls` / `citations` / `usage`
+ * / `error` arrive as raw JSON (the server keeps them as JSONB so
+ * the list path doesn't pay decode cost).
+ */
+export interface ChatMessage {
+  id: string;
+  session_id: string;
+  sequence: number;
+  role: ChatMessageRole;
+  author_user_id: string;
+  status: ChatMessageStatus;
+  scope_hub_ids_used: string[];
+  content: string;
+  tool_calls?: unknown;
+  citations?: unknown;
+  usage?: unknown;
+  error?: unknown;
+  idempotency_key?: string;
+  /**
+   * Fresh send: parent points at the user message. Regenerate:
+   * parent points at the PRIOR ASSISTANT (supersession link). The
+   * list query hides superseded rows from conversation views via a
+   * NOT EXISTS filter.
+   */
+  parent_message_id?: string;
+  toolset_version_used: number;
+  started_at?: string;
+  finished_at?: string;
+  created_at: string;
+}
+
+export interface ChatToolDescriptor {
+  name: string;
+  description: string;
+  default_in_chat: boolean;
+  approval_required: boolean;
+  available: boolean;
+  notes?: string;
+}
+
+export interface CreateChatSessionInput {
+  title?: string;
+  scopeType: ChatScopeType;
+  scopeHubIds?: string[];
+  writeHubId?: string;
+  tools?: string[];
+  model?: string;
+}
+
+export interface PatchChatSessionInput {
+  title?: string;
+  pinned?: boolean;
+  archived?: boolean;
+  tools?: string[];
+  writeHubId?: string;
+}
+
+export interface ListChatSessionsOptions {
+  cursor?: string;
+  limit?: number;
+  archived?: boolean;
+  pinned?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface ListChatSessionsResult {
+  sessions: ChatSession[];
+  next_cursor: string;
+  has_more: boolean;
+}
+
+export interface ListChatMessagesOptions {
+  cursor?: string;
+  limit?: number;
+  signal?: AbortSignal;
+}
+
+export interface ListChatMessagesResult {
+  messages: ChatMessage[];
+  next_cursor: string;
+  has_more: boolean;
+}
+
+/**
+ * Outcome of POST /messages. Same shape regardless of whether
+ * this was a fresh send, an idempotency replay, or an in-flight
+ * collision — the HTTP status code disambiguates (202 fresh /
+ * in-flight, 200 replay).
+ */
+export type ChatTurnOutcome = "fresh" | "replay" | "in_flight";
+
+export interface SendChatMessageInput {
+  content: string;
+  /** Client-generated UUID — prevents double-send on retry. */
+  idempotencyKey: string;
+}
+
+export interface SendChatMessageResult {
+  outcome: ChatTurnOutcome;
+  user_message_id?: string;
+  assistant_message: ChatMessage;
+  active_message_id: string;
+  /** Path (relative to the API host) of the SSE stream for this turn. */
+  resume_url: string;
+}
+
+export interface CancelChatMessageResult {
+  assistant_message_id: string;
+  session_id: string;
+  /**
+   * The row's actual current status after the cancel call. May be
+   * `canceling` when this call registered the intent, or any
+   * terminal status when the row was already finalized — clients
+   * use this to render the post-cancel state without a refetch.
+   */
+  status: ChatMessageStatus;
+  /** True only when THIS call was the one that flipped the row to canceling. */
+  cancel_registered: boolean;
+}
+
+export interface RegenerateChatMessageResult {
+  outcome: ChatTurnOutcome;
+  prior_assistant_id: string;
+  prior_assistant_status: ChatMessageStatus;
+  assistant_message: ChatMessage;
+  active_message_id: string;
+  resume_url: string;
+}
+
+export interface DecideApprovalResult {
+  approval_id: string;
+  status: "approved" | "denied" | "timed_out";
+}
+
+/**
+ * Options for the chat SSE stream. The transport opens a GET
+ * with `Last-Event-ID` set so the server replays only events
+ * past the last seq the client received — the standard SSE resume
+ * mechanism, repurposed for chat replay.
+ */
+export interface ChatStreamOptions {
+  /**
+   * Last seq the client successfully consumed. Empty / zero
+   * means "stream from the beginning of the buffer." Server
+   * keeps the buffer for 24h.
+   */
+  lastEventId?: string | number;
+  hubId?: string;
+}
+
+/**
+ * Event-name discriminated payloads on the chat SSE stream.
+ * Parsed JSON arrives via `onEvent(event, data)` — clients
+ * branch on `event` and cast `data`. Names mirror the server's
+ * `event_type` column. The catalog below is non-exhaustive;
+ * forward compatibility means new events MUST not crash older
+ * clients that only handle the listed names.
+ */
+export type ChatStreamEventName =
+  | "message.text" // streaming token chunk on assistant content
+  | "message.tool_call" // tool invocation started
+  | "message.tool_result" // tool invocation finished
+  | "approval.required" // mutating tool needs user decision
+  | "approval.decided" // user (or sweeper) decided
+  | "cancel.requested" // soft-cancel registered
+  | "message.completed" // terminal: success
+  | "message.partial_failed" // terminal: budget/turn cap, partial content
+  | "message.failed" // terminal: error
+  | "message.canceled"; // terminal: user canceled

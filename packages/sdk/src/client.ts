@@ -15,6 +15,7 @@ import { InvitesResource } from "./resources/invites.js";
 import { AccountResource } from "./resources/account.js";
 import { EventsResource } from "./resources/events.js";
 import { BarResource } from "./resources/bar.js";
+import { ChatsResource } from "./resources/chats.js";
 
 export class Memax {
   readonly memories: MemoriesResource;
@@ -32,6 +33,7 @@ export class Memax {
   readonly agents: AgentsResource;
   readonly events: EventsResource;
   readonly bar: BarResource;
+  readonly chats: ChatsResource;
 
   constructor(config: MemaxConfig) {
     const transport = new ApiTransport(config);
@@ -59,6 +61,7 @@ export class Memax {
     this.agents = new AgentsResource(req);
     this.events = new EventsResource(stream);
     this.bar = new BarResource(req);
+    this.chats = new ChatsResource(req, stream);
   }
 
   async push(...args: Parameters<MemoriesResource["push"]>) {

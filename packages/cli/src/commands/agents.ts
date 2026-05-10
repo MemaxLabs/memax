@@ -5,57 +5,30 @@ import {
   registerAgentConfigCommands,
   syncAgentMemoryCommand,
 } from "./agent-configs.js";
-import {
-  doctorAgentSessionsCommand,
-  listAgentSessionsCommand,
-  registerAgentSessionCommands,
-  syncAgentSessionsCommand,
-} from "./agent-sessions.js";
-
-async function syncAgentsCommand(options: {
-  push?: boolean;
-  pull?: boolean;
-}): Promise<void> {
-  await syncAgentMemoryCommand(options);
-  await syncAgentSessionsCommand(options);
-}
-
-async function listAgentsCommand(): Promise<void> {
-  await listAgentConfigsCommand();
-  await listAgentSessionsCommand();
-}
-
-async function doctorAgentsCommand(): Promise<void> {
-  await doctorAgentConfigsCommand();
-  await doctorAgentSessionsCommand();
-}
 
 export function registerAgentsCommands(program: Command): void {
   const agentsCmd = program
     .command("agents")
-    .description("Manage synced agent configs and sessions");
+    .description("Manage synced agent configs");
 
   agentsCmd
     .command("sync")
-    .description(
-      "Sync agent configs and sessions bidirectionally with Memax cloud",
-    )
+    .description("Sync agent configs bidirectionally with Memax cloud")
     .option("--push", "Force push local configs to cloud (overwrite)")
     .option("--pull", "Force pull cloud data to local (overwrite)")
-    .action(syncAgentsCommand);
+    .action(syncAgentMemoryCommand);
 
   agentsCmd
     .command("list")
-    .description("List synced agent configs and sessions in the cloud")
-    .action(listAgentsCommand);
+    .description("List synced agent configs in the cloud")
+    .action(listAgentConfigsCommand);
 
   agentsCmd
     .command("doctor")
     .description(
       "Explain agent sync identity, discovery, and safe restore behavior on this machine",
     )
-    .action(doctorAgentsCommand);
+    .action(doctorAgentConfigsCommand);
 
   registerAgentConfigCommands(agentsCmd);
-  registerAgentSessionCommands(agentsCmd);
 }

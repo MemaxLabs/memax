@@ -387,8 +387,8 @@ export interface FileRef {
   sha256?: string;
 }
 
-/** Discriminates the two legitimate upload flows. */
-export type UploadPurpose = "memory_attachment" | "agent_session";
+/** Discriminates legitimate upload flows. */
+export type UploadPurpose = "memory_attachment";
 
 export interface UploadIntent {
   object_key: string;
@@ -619,135 +619,6 @@ export interface ConfigMergeRequest {
   cloud_content: string;
   file_path: string;
   agent: string;
-}
-
-// --- Agent Session Sync ---
-
-export interface AgentSession {
-  id: string;
-  owner_id: string;
-  agent: string;
-  file_path: string;
-  scope: Scope;
-  session_type: string;
-  filename: string;
-  content_type: string;
-  size_bytes: number;
-  content_hash: string;
-  version: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DeletedAgentSession {
-  agent: string;
-  file_path: string;
-  scope: Scope;
-  version: number;
-  deleted_at: string;
-  session_type?: string;
-  filename?: string;
-  content_type?: string;
-  size_bytes?: number;
-  content_hash?: string;
-  content_expires_at?: string;
-}
-
-export type SessionSyncAction =
-  | "unchanged"
-  | "push"
-  | "pull"
-  | "diverged" // both changed (live session) — use resolve-divergence RPC
-  | "tombstone_diverged" // cloud deleted but local changed — push to re-create or delete local
-  | "delete_local";
-
-export interface SessionSyncPlanAction {
-  action: SessionSyncAction;
-  agent: string;
-  file_path: string;
-  scope: Scope;
-  reason?: string;
-  session_id?: string;
-  cloud_hash?: string;
-  cloud_updated_at?: string;
-  cloud_version?: number;
-  version?: number;
-}
-
-/** Request to atomically resolve a diverged session. */
-export interface ResolveDivergenceRequest {
-  agent: string;
-  file_path: string;
-  scope: Scope;
-  device_id: string;
-  local_file_ref?: FileRef;
-  local_content_hash: string;
-  expected_cloud_version: number;
-  expected_cloud_hash: string;
-  resolution: "keep_local" | "keep_cloud";
-}
-
-/** Response from a successful divergence resolution. */
-export interface ResolveDivergenceResponse {
-  winner: "local" | "cloud";
-  snapshot_id: string;
-  snapshot_device: string;
-  new_version: number;
-}
-
-export interface SessionSyncManifestEntry {
-  agent: string;
-  file_path: string;
-  scope: Scope;
-  content_hash: string;
-  local_path?: string;
-}
-
-export interface AgentSessionSyncRequest {
-  device_id: string;
-  sessions: SessionSyncManifestEntry[];
-}
-
-export interface AgentSessionSyncAck {
-  agent: string;
-  file_path: string;
-  scope: Scope;
-  content_hash?: string;
-  version: number;
-  local_path?: string;
-  deleted?: boolean;
-}
-
-export interface AgentSessionSyncAckRequest {
-  device_id: string;
-  sessions: AgentSessionSyncAck[];
-}
-
-export interface AgentSessionLocalDeleteRequest {
-  device_id: string;
-  agent: string;
-  file_path: string;
-  scope: Scope;
-  local_path?: string;
-}
-
-export interface RestoreDeletedSessionRequest {
-  agent: string;
-  file_path: string;
-  scope?: Scope;
-  device_id?: string;
-  local_path?: string;
-}
-
-export interface AgentSessionUpsertRequest {
-  agent: string;
-  file_path: string;
-  scope: Scope;
-  session_type?: string;
-  content_hash?: string;
-  device_id?: string;
-  local_path?: string;
-  file_ref: FileRef;
 }
 
 // --- Auth & API Keys ---

@@ -203,7 +203,6 @@ function isAccountLevelGrant(grant: string): boolean {
   return (
     grant === "agent-sync" ||
     grant.startsWith("config:") ||
-    grant.startsWith("agent_session:") ||
     grant.startsWith("settings:") ||
     grant.startsWith("account:")
   );

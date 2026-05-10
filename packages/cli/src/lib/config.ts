@@ -14,16 +14,6 @@ export interface MemaxConfig {
   auto_categorize: boolean;
   device_id?: string;
   sync_sources?: SyncSourceState[];
-  agent_session_roots?: AgentSessionRoot[];
-}
-
-export interface AgentSessionRoot {
-  id?: string;
-  agent: string;
-  root_path: string;
-  scope: string;
-  session_type?: string;
-  include_extensions?: string[];
 }
 
 export interface SyncSourceState {

@@ -21,7 +21,7 @@ function makeTrashPath(kind: string, sourcePath: string): string {
 
 export function moveFileToTrash(
   sourcePath: string,
-  kind: "agent-configs" | "agent-sessions",
+  kind: "agent-configs",
 ): TrashMoveResult {
   if (!existsSync(sourcePath)) {
     return { moved: false };

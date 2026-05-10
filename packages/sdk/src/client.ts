@@ -2,7 +2,6 @@ import type { MemaxConfig } from "./types.js";
 import { ApiTransport } from "./transport.js";
 import { MemoriesResource } from "./resources/memories.js";
 import { ConfigsResource } from "./resources/configs.js";
-import { AgentSessionsResource } from "./resources/agent-sessions.js";
 import { AuthResource } from "./resources/auth.js";
 import { HubsResource } from "./resources/hubs.js";
 import { TopicsResource } from "./resources/topics.js";
@@ -20,7 +19,6 @@ import { ChatsResource } from "./resources/chats.js";
 export class Memax {
   readonly memories: MemoriesResource;
   readonly configs: ConfigsResource;
-  readonly agentSessions: AgentSessionsResource;
   readonly uploads: UploadsResource;
   readonly auth: AuthResource;
   readonly account: AccountResource;
@@ -48,7 +46,6 @@ export class Memax {
 
     this.memories = new MemoriesResource(req, stream, download);
     this.configs = new ConfigsResource(req);
-    this.agentSessions = new AgentSessionsResource(req, download);
     this.uploads = new UploadsResource(req);
     this.auth = new AuthResource(req, apiUrl);
     this.account = new AccountResource(req);

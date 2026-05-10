@@ -14,7 +14,6 @@ describe("Memax client resources", () => {
 
     expect(client.memories).toBeDefined();
     expect(client.configs).toBeDefined();
-    expect(client.agentSessions).toBeDefined();
     expect(client.uploads).toBeDefined();
     expect(client.account).toBeDefined();
     expect(client.dreams).toBeDefined();

@@ -8,7 +8,6 @@ export class UploadsResource {
    * Request a presigned upload target. `purpose` is required; the server uses
    * it to apply the right content-type allowlist and size cap:
    *  - `memory_attachment` — user-picked files (PDFs, images, text). Per-plan cap.
-   *  - `agent_session`     — CLI-synced agent-session artifacts. Flat 200 MiB cap.
    */
   async create(input: {
     filename: string;

@@ -694,10 +694,7 @@ export function registerSetupCommands(program: Command): void {
       "--allow-organize",
       "Allow remote MCP keys to organize topics and run dreams",
     )
-    .option(
-      "--agent-sync",
-      "Allow remote MCP keys to sync agent configs and sessions",
-    )
+    .option("--agent-sync", "Allow remote MCP keys to sync agent configs")
     .action(setupCommand);
 
   program

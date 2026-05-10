@@ -664,7 +664,7 @@ export interface PlanDefinition {
   recall_limit: number;
   ask_limit: number;
   max_attachment_bytes: number; // per-file cap for memory_attachment uploads; -1 unlimited
-  storage_bytes_limit: number; // total cumulative cap across attachments + sessions; -1 unlimited
+  storage_bytes_limit: number; // total cumulative cap across memory attachments; -1 unlimited
   ask_model: "haiku" | "sonnet";
   dreams_enabled: boolean;
   review_inbox: boolean;

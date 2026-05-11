@@ -133,6 +133,19 @@ export interface Memory {
   state: string;
   pinned: boolean;
   source: string;
+  /**
+   * Sub-classification under `source`. Onboarding seed memories
+   * (plan 23) set `source = "system"`, `source_kind = "onboarding-seed"`.
+   * Empty / absent on user-pushed and legacy memories.
+   */
+  source_kind?: string;
+  /**
+   * Structured per-memory facts that don't fit existing columns.
+   * Currently used by seeds (`metadata.seed_origin_id` references the
+   * source seed-template UUID for idempotency); future callers may
+   * attach other keys.
+   */
+  metadata?: Record<string, unknown>;
   source_agent?: string;
   assisted_by_agent?: string;
   provenance?: MemoryProvenance;
@@ -219,6 +232,22 @@ export interface DreamTopicRef {
 
 export interface MemoryUpdateInput {
   title?: string;
+  /**
+   * Replacement body for the memory. When set, the server re-chunks
+   * the memory and persists the effective `content_type` (or the
+   * stored content_type if `content_type` is omitted on this call).
+   * Pair with `content_type: "markdown"` for memax-canonical markdown
+   * bodies.
+   */
+  content?: string;
+  /**
+   * Content type label. Updates the row's stored content_type even
+   * without a `content` change (label-only updates trigger HTML
+   * sanitization if the new label is HTML — see server's Update
+   * handler). Most callers paired with `content` pass
+   * `"markdown"` to match the canonical body format.
+   */
+  content_type?: string;
   kind?: MemoryKind;
   stability?: MemoryStability;
   tags?: string[];
@@ -1536,6 +1565,11 @@ export type NotificationResolution =
   | "merged"
   | "kept_separate"
   | "applied"
+  // Plan 18 — server-driven auto-completion of a `checklist` super-notif
+  // (every required item complete → handler calls /resolve with action
+  // = complete_all → stamps applied_auto). Distinct from `applied` so
+  // the funnel slice can separate user-driven from server-driven.
+  | "applied_auto"
   | "kept"
   | "dismissed"
   | "accepted"
@@ -1566,6 +1600,12 @@ export type NotificationKind =
   | "hub_restored"
   | "system_notice"
   | "gift_invite_link"
+  // Plan 18 — super-notif kinds. `checklist` (decision) auto-resolves
+  // when every required_ids item completes; `digest` (receipt) carries
+  // viewed_at-only sub-items. Both share the Item shape exported from
+  // ./notifications/items.
+  | "checklist"
+  | "digest"
   // Open-ended: server may add new kinds before the SDK is regenerated.
   | (string & {});
 
@@ -1576,7 +1616,12 @@ export type NeedsActionNotificationKind =
   | "review_stale"
   | "review_low_confidence"
   | "hub_invite"
-  | "hub_ownership_transfer";
+  | "hub_ownership_transfer"
+  // Plan 18 — checklist is a decision kind (exits pending via /resolve
+  // with action=dismiss, or via server-driven auto-resolve when every
+  // required item completes). Belongs in the Needs-action bucket so
+  // the inbox surfaces it alongside other decisions.
+  | "checklist";
 
 export type UpdateNotificationKind =
   | "dream_run_completed"
@@ -1589,7 +1634,11 @@ export type UpdateNotificationKind =
   | "hub_frozen"
   | "hub_restored"
   | "system_notice"
-  | "gift_invite_link";
+  | "gift_invite_link"
+  // Plan 18 — digest is a receipt kind (exits pending via /dismiss
+  // or /expire, never auto-resolves). Belongs in the Updates bucket
+  // alongside other receipts.
+  | "digest";
 
 /**
  * Decision notification kinds that never fold into the Updates feed.
@@ -1604,6 +1653,7 @@ export const NEEDS_ACTION_KINDS: readonly NeedsActionNotificationKind[] = [
   "review_low_confidence",
   "hub_invite",
   "hub_ownership_transfer",
+  "checklist",
 ] as const;
 
 /**
@@ -1622,6 +1672,7 @@ export const UPDATES_KINDS: readonly UpdateNotificationKind[] = [
   "hub_restored",
   "system_notice",
   "gift_invite_link",
+  "digest",
 ] as const;
 
 /**

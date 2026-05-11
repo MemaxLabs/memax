@@ -9,6 +9,7 @@ import { SettingsResource } from "./resources/settings.js";
 import { UploadsResource } from "./resources/uploads.js";
 import { DreamsResource } from "./resources/dreams.js";
 import { NotificationsResource } from "./resources/notifications.js";
+import { OnboardingResource } from "./resources/onboarding.js";
 import { AgentsResource } from "./resources/agents.js";
 import { InvitesResource } from "./resources/invites.js";
 import { AccountResource } from "./resources/account.js";
@@ -28,6 +29,7 @@ export class Memax {
   readonly settings: SettingsResource;
   readonly dreams: DreamsResource;
   readonly notifications: NotificationsResource;
+  readonly onboarding: OnboardingResource;
   readonly agents: AgentsResource;
   readonly events: EventsResource;
   readonly bar: BarResource;
@@ -55,6 +57,7 @@ export class Memax {
     this.settings = new SettingsResource(req);
     this.dreams = new DreamsResource(req);
     this.notifications = new NotificationsResource(req);
+    this.onboarding = new OnboardingResource(req);
     this.agents = new AgentsResource(req);
     this.events = new EventsResource(stream);
     this.bar = new BarResource(req);

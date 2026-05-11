@@ -1,7 +1,4 @@
-import type {
-  Notification,
-  NotificationStatus,
-} from "../types.js";
+import type { Notification, NotificationStatus } from "../types.js";
 import type { RequestFn } from "../transport.js";
 
 /**

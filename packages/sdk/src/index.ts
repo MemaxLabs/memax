@@ -11,6 +11,26 @@ export {
   isNeedsActionKind,
 } from "./types.js";
 export type { EventsSubscribeOptions } from "./resources/events.js";
+export type { NotificationItemUpdateResult } from "./resources/notifications.js";
+
+// Plan 18 — super-notif primitives (shared Item shape + payload types
+// + the kind/action → resolution map). These are deliberately surfaced
+// from the public SDK so producers and renderers can both consume them
+// without re-encoding the wire shape.
+export type {
+  Item,
+  ChecklistItem,
+  DigestItem,
+  ItemProgress,
+  PinContext,
+  ChecklistPayload,
+  DigestPayload,
+} from "./notifications/items.js";
+export { SUPER_NOTIF_KINDS } from "./notifications/items.js";
+export {
+  actionToResolution,
+  resolveFromAction,
+} from "./notifications/action-to-resolution.js";
 // Admin APIs are an internal, web-only surface and are intentionally not
 // exported by this public SDK.
 export { MemaxError } from "./errors.js";

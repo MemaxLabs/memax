@@ -6,9 +6,32 @@ import type {
   NotificationListResponse,
   NotificationResolveAction,
   NotificationResolveResult,
+  NotificationResolution,
   NotificationSummary,
 } from "../types.js";
+import type { ItemProgress } from "../notifications/items.js";
 import type { RequestFn } from "../transport.js";
+
+/**
+ * Inline item snapshot returned by the /view + /complete endpoints.
+ * Mirrors the SSE `notification.updated` event with change=item_updated
+ * (plan 18 §4.5) so clients can patch their cached payload from either
+ * the HTTP response OR the realtime event without a follow-up GET.
+ *
+ * When `auto_resolved=true` the same call also flipped the parent row
+ * to status=resolved (resolution=applied_auto). Clients render the
+ * "✨ you're all set" celebration once for the `auto_resolved` HTTP
+ * response OR the SSE `notification.resolved` event, whichever lands
+ * first — they're equivalent signals.
+ */
+export interface NotificationItemUpdateResult {
+  item_id: string;
+  viewed_at?: string;
+  completed_at?: string;
+  progress?: ItemProgress;
+  auto_resolved?: boolean;
+  auto_resolved_as?: NotificationResolution;
+}
 
 /**
  * NotificationsResource is the SDK client for the /v1/notifications
@@ -123,6 +146,57 @@ export class NotificationsResource {
       hubId: query.hub,
       body: { kinds: query.kinds, since: query.since },
     });
+  }
+
+  /**
+   * POST /v1/notifications/{id}/items/{itemId}/view (plan 18 §4.3)
+   *
+   * Stamps viewed_at on the named sub-item if currently unset.
+   * Idempotent — a repeat call is a no-op and returns the existing
+   * snapshot. Works on both `checklist` and `digest` rows; calling on
+   * any other kind returns `400 kind_not_supported`.
+   *
+   * The server also emits a `notification.updated` SSE event with
+   * change=item_updated and the inline snapshot, so other tabs/devices
+   * see the same transition without polling.
+   */
+  async viewItem(
+    notificationId: string,
+    itemId: string,
+    hubId?: string,
+  ): Promise<NotificationItemUpdateResult> {
+    return this.req(
+      "POST",
+      `/v1/notifications/${notificationId}/items/${itemId}/view`,
+      { hubId },
+    );
+  }
+
+  /**
+   * POST /v1/notifications/{id}/items/{itemId}/complete (plan 18 §4.3)
+   *
+   * Stamps completed_at + viewed_at on the named checklist item.
+   * Refuses non-checklist kinds with `400 kind_not_supported`. Refuses
+   * items whose `locked_by` dependencies are still pending with `400
+   * item_locked`. Idempotent — repeat calls return the existing
+   * snapshot.
+   *
+   * When this call satisfies the last required_ids item the server
+   * also flips the parent row to status=resolved with
+   * resolution=applied_auto. The `auto_resolved` flag in the response
+   * advertises this; the caller does not need to issue a follow-up
+   * /resolve.
+   */
+  async completeItem(
+    notificationId: string,
+    itemId: string,
+    hubId?: string,
+  ): Promise<NotificationItemUpdateResult> {
+    return this.req(
+      "POST",
+      `/v1/notifications/${notificationId}/items/${itemId}/complete`,
+      { hubId },
+    );
   }
 }
 

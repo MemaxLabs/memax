@@ -78,6 +78,21 @@ export type DigestItem = Item;
 export type PinContext = "memories_hero" | "inbox_hero" | "";
 
 /**
+ * Narrows a pinned notification's render scope to a specific hub kind
+ * for the active hub view:
+ *
+ *   ""          — render in any hub view (default, back-compat).
+ *   "personal"  — render only when the viewer's active hub is personal.
+ *   "team"      — render only when the viewer's active hub is a team.
+ *
+ * Mirrors model.ChecklistPayload.PinScopeHubKind on the server.
+ * Onboarding (a user-axis getting-started journey) sets "personal"
+ * so the checklist + founder note don't follow the user into team
+ * hub views.
+ */
+export type PinScopeHubKind = "personal" | "team" | "";
+
+/**
  * Payload shape for `kind=checklist`. The server validator enforces:
  *   - title non-empty
  *   - 1 ≤ items.length ≤ 20
@@ -92,6 +107,7 @@ export interface ChecklistPayload {
   /** Compact-mode strip label. */
   collapse_hint?: string;
   pin_context?: PinContext;
+  pin_scope_hub_kind?: PinScopeHubKind;
 }
 
 /**
@@ -103,6 +119,7 @@ export interface DigestPayload {
   description?: string;
   items: DigestItem[];
   pin_context?: PinContext;
+  pin_scope_hub_kind?: PinScopeHubKind;
 }
 
 /**

@@ -9,10 +9,14 @@ import type {
   ImpersonationResult,
   MeResponse,
   OAuthConsentRequest,
+  RequestEmailOtpOptions,
+  RequestEmailOtpResponse,
   UnlinkProviderResult,
   UpdateApiKeyPayload,
   UpdateApiKeyResult,
   UpdateProfileResult,
+  VerifyEmailOtpOptions,
+  VerifyEmailOtpResponse,
 } from "../types.js";
 import type { RequestFn } from "../transport.js";
 
@@ -126,7 +130,56 @@ export class AuthResource {
         return this.githubLoginURL(redirectURI);
       case "google":
         return this.googleLoginURL(redirectURI);
+      case "email":
+        // Email OTP does not redirect to a third-party authorize page;
+        // the client posts to requestEmailOtp() instead. Returning the
+        // login page keeps the symmetry obvious if a caller does call
+        // providerLoginURL("email") by mistake.
+        return `${this.apiUrl}/login?provider=email`;
     }
+  }
+
+  /**
+   * Request a 6-digit email sign-in code. The server canonicalizes
+   * the email, stores a hashed code, and queues an email through the
+   * existing transactional pipeline. The response is uniform
+   * regardless of whether the email maps to an existing account —
+   * eligibility is enforced at {@link verifyEmailOtp}.
+   *
+   * Rate-limited per-email and per-IP; expect 429 with
+   * `code: "rate_limited"` if the caller crosses the budget.
+   */
+  async requestEmailOtp(
+    options: RequestEmailOtpOptions,
+  ): Promise<RequestEmailOtpResponse> {
+    return this.req("POST", "/v1/auth/email/request", {
+      body: {
+        email: options.email,
+        redirect_uri: options.redirect_uri,
+        invite_token: options.invite_token,
+      },
+    });
+  }
+
+  /**
+   * Verify a sign-in code and complete the login. Runs the same
+   * registration-gate + invite-consumption path the OAuth callbacks
+   * use, so behavior is consistent across all three sign-in surfaces.
+   *
+   * When the caller supplied a redirect_uri at request time, the
+   * response carries an exchange code (mirrors the OAuth callback
+   * dance) — bounce through `auth.exchangeCode()` to receive the
+   * token pair. Without a redirect, tokens are returned directly.
+   */
+  async verifyEmailOtp(
+    options: VerifyEmailOtpOptions,
+  ): Promise<VerifyEmailOtpResponse> {
+    return this.req("POST", "/v1/auth/email/verify", {
+      body: {
+        email: options.email,
+        code: options.code,
+      },
+    });
   }
 
   linkProviderURL(provider: AuthProviderName, redirectURI: string): string {

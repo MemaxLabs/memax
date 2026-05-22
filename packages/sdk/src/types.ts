@@ -652,7 +652,56 @@ export interface ConfigMergeRequest {
 
 // --- Auth & API Keys ---
 
-export type AuthProviderName = "github" | "google";
+export type AuthProviderName = "github" | "google" | "email";
+
+/**
+ * Request to mint an email OTP sign-in code. The server canonicalizes
+ * the email, stores a hashed code, and queues a transactional email.
+ *
+ * `redirect_uri` is the post-login URL the verify step should hand
+ * back to (matches the OAuth-callback redirect surface). It must be
+ * on the server's redirect allowlist.
+ *
+ * `invite_token` carries an invite the same way `?invite=` on the
+ * redirect query does for OAuth — useful when the client already
+ * has the token in hand.
+ */
+export interface RequestEmailOtpOptions {
+  email: string;
+  redirect_uri?: string;
+  invite_token?: string;
+}
+
+export interface RequestEmailOtpResponse {
+  status: "sent";
+  expires_in: number; // seconds before the code expires
+  email: string; // canonical (lowercased, trimmed) email
+  cooldown?: number; // suggested resend cooldown in seconds
+  /** Plaintext code returned only when the server runs with
+   *  MEMAX_EMAIL_OTP_DEV_RETURN=1 — strictly a local-dev convenience. */
+  dev_code?: string;
+}
+
+export interface VerifyEmailOtpOptions {
+  email: string;
+  code: string;
+}
+
+/**
+ * Verify response. When the server received a `redirect_uri` at
+ * request time, it mints a one-shot auth code (mirrors the OAuth
+ * callback) and returns `{code, redirect}` for the client to bounce
+ * through `/v1/auth/exchange`. Otherwise it returns the token pair
+ * directly. Discriminated by the presence of `access_token`.
+ */
+export type VerifyEmailOtpResponse =
+  | AuthTokenPair
+  | {
+      status: "ok";
+      code: string;
+      redirect: string;
+      user_id: string;
+    };
 
 export interface User {
   id: string;

@@ -1,0 +1,323 @@
+{
+  "memories": [
+    {
+      "id": "001-memax-system-architecture",
+      "title": "Memax System Architecture",
+      "file": "001-memax-system-architecture.md",
+      "kind": "semantic",
+      "stability": "evolving",
+      "tags": [
+        "memax",
+        "architecture",
+        "golang",
+        "postgresql",
+        "pgvector"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "cli",
+      "source_agent": "claude-code",
+      "source_path": "docs/plans/02-system-architecture.md",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-04-01T10:00:00Z",
+      "updated_at": "2026-04-01T10:00:00Z",
+      "accessed_at": "2026-04-05T10:00:00Z",
+      "access_count": 3,
+      "event_dates": [
+        "2026-04-01T00:00:00Z"
+      ],
+      "hint": "Retrieve when asked about Memax architecture, packages, backend stack, or storage."
+    },
+    {
+      "id": "002-authentication-system",
+      "title": "Authentication System",
+      "file": "002-authentication-system.md",
+      "kind": "semantic",
+      "stability": "evolving",
+      "tags": [
+        "auth",
+        "jwt",
+        "oauth",
+        "api-keys"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "mcp",
+      "source_agent": "claude-code",
+      "source_path": "packages/server/internal/handler/mcp_oauth.go",
+      "hub_reason": "Shared authentication architecture used by the Memax team.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "auth-grants"
+      },
+      "created_at": "2026-04-10T17:30:00Z",
+      "updated_at": "2026-04-10T18:00:00Z",
+      "accessed_at": "2026-04-11T09:00:00Z",
+      "access_count": 6,
+      "event_dates": [
+        "2026-04-10T00:00:00Z"
+      ],
+      "hint": "Retrieve when asked about OAuth, JWT, API keys, MCP auth, or who pushed auth work."
+    },
+    {
+      "id": "003-deployment-process",
+      "title": "Deployment Process",
+      "file": "003-deployment-process.md",
+      "kind": "procedural",
+      "stability": "evolving",
+      "tags": [
+        "deploy",
+        "fly-io",
+        "vercel",
+        "staging",
+        "ci-cd"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "cli",
+      "source_agent": "codex",
+      "source_path": "packages/server/fly.server.toml",
+      "hub_reason": "Deployment process belongs to the shared Memax staging hub.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-04-11T08:15:00Z",
+      "updated_at": "2026-04-11T08:15:00Z",
+      "accessed_at": "2026-04-11T10:00:00Z",
+      "access_count": 4,
+      "event_dates": [
+        "2026-04-11T00:00:00Z"
+      ],
+      "hint": "Retrieve for Fly deploys, Vercel deploys, staging URLs, and release process."
+    },
+    {
+      "id": "004-adr-chose-postgresql-over-mongodb",
+      "title": "ADR: Chose PostgreSQL over MongoDB",
+      "file": "004-adr-chose-postgresql-over-mongodb.md",
+      "kind": "rationale",
+      "stability": "stable",
+      "tags": [
+        "postgresql",
+        "mongodb",
+        "database",
+        "pgvector"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000097",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "docs/engineering/database-adr.md",
+      "hub_reason": "Database decision is shared engineering context.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-20T14:00:00Z",
+      "updated_at": "2026-03-20T14:00:00Z",
+      "accessed_at": "2026-04-06T12:00:00Z",
+      "access_count": 5,
+      "event_dates": [
+        "2026-03-20T00:00:00Z"
+      ],
+      "hint": "Retrieve when asked why PostgreSQL was chosen or why MongoDB was rejected."
+    },
+    {
+      "id": "005-debugging-login-redirect-loop",
+      "title": "Debugging: Login redirect loop",
+      "file": "005-debugging-login-redirect-loop.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "login",
+        "oauth",
+        "redirect",
+        "staging",
+        "bug-fix"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "cli",
+      "source_agent": "cursor",
+      "source_path": "packages/server/internal/handler/auth.go",
+      "hub_reason": "Staging login issue affected the shared team environment.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "staging-auth-fix"
+      },
+      "created_at": "2026-04-11T09:45:00Z",
+      "updated_at": "2026-04-11T09:55:00Z",
+      "accessed_at": "2026-04-11T11:00:00Z",
+      "access_count": 2,
+      "event_dates": [
+        "2026-04-11T00:00:00Z"
+      ],
+      "hint": "Retrieve for staging login redirect loops and OAuth redirect URL bugs."
+    },
+    {
+      "id": "006-kubernetes-deployment-guide",
+      "title": "Kubernetes Deployment Guide",
+      "file": "006-kubernetes-deployment-guide.md",
+      "kind": "procedural",
+      "stability": "evolving",
+      "tags": [
+        "kubernetes",
+        "k8s",
+        "helm",
+        "production",
+        "scaling"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000097",
+      "hub_id": "00000000-0000-0000-0000-000000000092",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "infra/k8s/README.md",
+      "project_context": {
+        "repo": "github.com/ExampleCorp/platform",
+        "project": "platform",
+        "branch": "main"
+      },
+      "created_at": "2026-02-15T12:00:00Z",
+      "updated_at": "2026-02-20T12:00:00Z",
+      "accessed_at": "2026-02-21T12:00:00Z",
+      "access_count": 1,
+      "event_dates": [
+        "2026-02-15T00:00:00Z"
+      ],
+      "hint": "Retrieve for Kubernetes deployment, Helm, HPA, PgBouncer, and Redis cluster guidance."
+    },
+    {
+      "id": "007-api-rate-limiting-design",
+      "title": "API Rate Limiting Design",
+      "file": "007-api-rate-limiting-design.md",
+      "kind": "semantic",
+      "stability": "evolving",
+      "tags": [
+        "rate-limiting",
+        "api",
+        "redis",
+        "pricing"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "capture",
+      "source_agent": "claude-code",
+      "source_path": "docs/plans/05-security.md",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-04-03T16:00:00Z",
+      "updated_at": "2026-04-03T16:30:00Z",
+      "accessed_at": "2026-04-07T10:00:00Z",
+      "access_count": 2,
+      "event_dates": [
+        "2026-04-03T00:00:00Z"
+      ],
+      "hint": "Retrieve for rate limits, Redis sliding windows, and API quota headers."
+    },
+    {
+      "id": "008-team-meeting-notes-sprint-review",
+      "title": "Team Meeting Notes - Sprint Review",
+      "file": "008-team-meeting-notes-sprint-review.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "sprint-review",
+        "hybrid-search",
+        "roadmap"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "mcp",
+      "source_agent": "claude-code",
+      "source_path": "meeting-notes/2026-03-28-sprint-review.md",
+      "hub_reason": "Team sprint notes should be available to all Memax teammates.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-28T18:30:00Z",
+      "updated_at": "2026-03-28T18:45:00Z",
+      "accessed_at": "2026-04-01T12:00:00Z",
+      "access_count": 1,
+      "event_dates": [
+        "2026-03-28T00:00:00Z"
+      ],
+      "hint": "Retrieve for sprint review discussions, hybrid search shipment, roadmap, and next sprint."
+    },
+    {
+      "id": "009-react-component-patterns",
+      "title": "React Component Patterns",
+      "file": "009-react-component-patterns.md",
+      "kind": "procedural",
+      "stability": "stable",
+      "tags": [
+        "react",
+        "patterns",
+        "nextjs",
+        "frontend"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "cli",
+      "source_agent": "codex",
+      "source_path": "packages/web/src/components",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "web-redesign"
+      },
+      "created_at": "2026-03-10T09:00:00Z",
+      "updated_at": "2026-03-12T10:00:00Z",
+      "accessed_at": "2026-03-20T10:00:00Z",
+      "access_count": 2,
+      "event_dates": [
+        "2026-03-10T00:00:00Z"
+      ],
+      "hint": "Retrieve for React component patterns, composition, memoization, hooks, and Next.js App Router."
+    },
+    {
+      "id": "010-client-acme-corp-requirements",
+      "title": "Client: Acme Corp Requirements",
+      "file": "010-client-acme-corp-requirements.md",
+      "kind": "semantic",
+      "stability": "evolving",
+      "tags": [
+        "acme-corp",
+        "sso",
+        "enterprise",
+        "on-premise"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000097",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "crm/acme-corp.md",
+      "hub_reason": "Enterprise customer requirements are shared GTM/product context.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "enterprise"
+      },
+      "created_at": "2026-04-08T15:00:00Z",
+      "updated_at": "2026-04-08T15:30:00Z",
+      "accessed_at": "2026-04-09T10:00:00Z",
+      "access_count": 3,
+      "event_dates": [
+        "2026-07-01T00:00:00Z"
+      ],
+      "hint": "Retrieve for Acme Corp requirements, SSO, retention, on-premise, and enterprise contract context."
+    }
+  ]
+}

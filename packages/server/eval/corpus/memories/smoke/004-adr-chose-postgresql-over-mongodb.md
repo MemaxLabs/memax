@@ -1,0 +1,1 @@
+We chose PostgreSQL over MongoDB because pgvector provides native vector similarity search, pg_trgm gives us language-agnostic trigram matching, and River uses Postgres for transactional job queues. Single database for everything.

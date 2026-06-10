@@ -1,0 +1,120 @@
+---
+title: Quickstart
+description: Install the CLI, sign in, push your first memory, and connect an agent.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+import { Steps, Step } from "fumadocs-ui/components/steps";
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
+Get from zero to a connected agent in a few minutes.
+
+<Steps>
+  <Step>
+    ### Install the CLI
+
+    <Tabs items={["npm", "pnpm", "yarn", "bun"]}>
+      <Tab value="npm">
+        ```bash
+        npm install -g memax-cli
+        ```
+      </Tab>
+      <Tab value="pnpm">
+        ```bash
+        pnpm add -g memax-cli
+        ```
+      </Tab>
+      <Tab value="yarn">
+        ```bash
+        yarn global add memax-cli
+        ```
+      </Tab>
+      <Tab value="bun">
+        ```bash
+        bun add -g memax-cli
+        ```
+      </Tab>
+    </Tabs>
+
+    Verify:
+
+    ```bash
+    memax --version
+    ```
+
+  </Step>
+
+  <Step>
+    ### Sign in
+
+    ```bash
+    memax login
+    ```
+
+    Opens your browser for OAuth (GitHub or Google). After approval the
+    CLI stores credentials under `~/.memax/`.
+
+    Confirm with:
+
+    ```bash
+    memax whoami
+    ```
+
+  </Step>
+
+  <Step>
+    ### Save your first memory
+
+    ```bash
+    memax push -f ./README.md
+    ```
+
+    Or from inline / stdin:
+
+    ```bash
+    memax push "We chose Postgres for strong consistency"
+    cat notes.md | memax push --stdin --title "Team standup notes"
+    ```
+
+    The server classifies, summarizes, and chunks the content for
+    retrieval. New memories start in `processing` state and become
+    `active` within a few seconds.
+
+  </Step>
+
+  <Step>
+    ### Connect an agent
+
+    `memax setup` configures MCP, hooks, and agent instructions on your
+    machine in one command:
+
+    ```bash
+    memax setup --all
+    ```
+
+    This detects installed agents (Claude Code, Cursor, Codex, etc.)
+    and configures MCP + hooks for each. Limit to specific agents with
+    `--only claude-code,cursor`.
+
+    For hand-rolled setups see the
+    [integrations guides](/integrations/index).
+
+  </Step>
+
+  <Step>
+    ### Try it
+
+    ```bash
+    memax recall "what did we decide about Postgres?"
+    ```
+
+    From inside your agent, ask a related question — the agent should
+    surface the relevant context via MCP or the hook.
+
+  </Step>
+</Steps>
+
+<Callout type="info" title="What's next?">
+  Browse [CLI reference](/cli), read the [REST API docs](/api), or set up [more
+  agents](/integrations/index).
+</Callout>

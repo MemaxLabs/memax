@@ -1,0 +1,137 @@
+{
+  "queries": [
+    {
+      "id": "biz-q1",
+      "query": "which vendor did we choose for payroll",
+      "query_type": "decision",
+      "slices": [
+        "domain:business",
+        "intent:decision"
+      ],
+      "relevance": {
+        "biz-vendor-payroll": 3
+      },
+      "expect_keywords_in_results": ["Deel"],
+      "min_results": 1,
+      "description": "Non-dev vendor decision query. Tests that the intent classifier recognizes 'vendor' as a decision pattern and the rationale kind boost applies to business decisions, not just tech ones.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000090"
+        ]
+      }
+    },
+    {
+      "id": "biz-q2",
+      "query": "what were the key numbers from the quarterly review",
+      "query_type": "topical",
+      "slices": [
+        "domain:business",
+        "intent:meeting_recall"
+      ],
+      "relevance": {
+        "biz-q1-review": 3,
+        "biz-marketing-budget-q2": 1
+      },
+      "expect_keywords_in_results": ["MRR", "churn"],
+      "min_results": 1,
+      "description": "Business meeting recall. Tests that episodic memories with 'meeting' tag get the kind boost, and the query finds the QBR among dev-heavy content.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000090"
+        ]
+      }
+    },
+    {
+      "id": "biz-q3",
+      "query": "how do we run engineering interviews",
+      "query_type": "topical",
+      "slices": [
+        "domain:business",
+        "intent:how_to"
+      ],
+      "relevance": {
+        "biz-hiring-process": 3
+      },
+      "expect_keywords_in_results": ["technical", "assessment"],
+      "min_results": 1,
+      "description": "Procedural query for a non-code process. Tests that HowTo intent works for business processes, and the 'guide' tag triggers the procedural kind hint.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000090"
+        ]
+      }
+    },
+    {
+      "id": "biz-q4",
+      "query": "what did the enterprise customer say about SSO",
+      "query_type": "topical",
+      "slices": [
+        "domain:business",
+        "intent:general"
+      ],
+      "relevance": {
+        "biz-customer-feedback-enterprise": 3
+      },
+      "expect_keywords_in_results": ["SSO", "compliance"],
+      "min_results": 1,
+      "description": "Customer feedback retrieval. Tests that business content with mixed technical terms (SSO, audit log) is retrievable via the business concern (enterprise customer), not just the tech term.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000090"
+        ]
+      }
+    },
+    {
+      "id": "biz-q5",
+      "query": "what's our data retention policy",
+      "query_type": "topical",
+      "slices": [
+        "domain:business",
+        "intent:reference"
+      ],
+      "relevance": {
+        "biz-retention-policy": 3
+      },
+      "expect_keywords_in_results": ["retention", "GDPR"],
+      "min_results": 1,
+      "description": "Policy/reference query. Tests that 'policy' and 'guideline' tags trigger semantic kind hints, and the reference intent pattern doesn't require dev-specific terms.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000090"
+        ]
+      }
+    },
+    {
+      "id": "biz-q6",
+      "query": "what did the Sequoia investor ask about our moat",
+      "query_type": "topical",
+      "slices": [
+        "domain:business",
+        "intent:general"
+      ],
+      "relevance": {
+        "biz-investor-meeting-sequoia": 3
+      },
+      "expect_keywords_in_results": ["moat", "Sequoia"],
+      "min_results": 1,
+      "description": "Investor meeting recall with specific detail ('moat'). Tests that episodic memories about business meetings are retrievable through topical keywords, not just temporal queries.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000090"
+        ]
+      }
+    }
+  ]
+}

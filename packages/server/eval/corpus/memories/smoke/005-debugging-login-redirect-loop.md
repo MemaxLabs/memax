@@ -1,0 +1,1 @@
+Fixed a login redirect loop on staging. The OAUTH_GITHUB_REDIRECT_URL was set to localhost:8080 instead of staging-api.memaxlabs.com. The server was reading the old GITHUB_REDIRECT_URL env var instead of OAUTH_GITHUB_REDIRECT_URL.

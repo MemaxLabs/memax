@@ -4,27 +4,57 @@ node_modules/
 
 # Build outputs
 dist/
+.next/
+out/
 *.tsbuildinfo
+packages/ui/src/**/*.d.ts.map
+packages/ui/src/**/*.js.map
+packages/ui/src/**/*.jsx.map
+packages/ui/app/**/*.d.ts.map
+packages/ui/app/**/*.js.map
+packages/ui/app/**/*.jsx.map
+
+# Next.js auto-generated (do not commit)
+**/next-env.d.ts
+
+# Go
+packages/server/memax-server
+packages/server/server
+packages/server/worker
+packages/server/migrate
+packages/server/longmemeval
+packages/server/tmp/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
 
 # Environment
 .env
 .env.local
 .env.*.local
 
-# IDE / local tooling
+# IDE / local tooling (commit shared settings, ignore personal files)
 .vscode/*
+!.vscode/settings.json
 !.vscode/mcp.json
 .idea/
 *.swp
 *.swo
 *~
+.claude/
+.tmp/
+.refs/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Turbo / coverage
+# Turbo
 .turbo/
+
+# Test
 coverage/
 *.snap
 

@@ -1,0 +1,1 @@
+Memax is a universal context and memory hub for AI agents. It uses a Go API server with PostgreSQL and pgvector for storage, Voyage AI for embeddings, and Claude for LLM operations. The monorepo contains packages for server, web (Next.js), CLI, SDK, and docs.

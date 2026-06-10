@@ -1,0 +1,358 @@
+{
+  "queries": [
+    {
+      "id": "dh-q1",
+      "query": "memax 用什么 email 选型？",
+      "query_type": "decision",
+      "slices": [
+        "failure:title_rescue",
+        "failure:hub_slug_collision",
+        "failure:dense_hub",
+        "lang:zh-mixed"
+      ],
+      "relevance": {
+        "dh-email-provider-selection": 3,
+        "dh-hard-distractor-email-notification": 1,
+        "dh-hard-distractor-email-onboarding": 0
+      },
+      "expect_keywords_in_results": ["email", "Resend"],
+      "min_results": 1,
+      "description": "Core staging failure: Chinese mixed-language query. Target memory has short body, distinctive title. 'memax' must NOT become a hub filter. Tests title rescue + hub filter safety + CJK tokenization.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000093"
+      }
+    },
+    {
+      "id": "dh-q2",
+      "query": "what do we use for email for memax?",
+      "query_type": "decision",
+      "slices": [
+        "failure:title_rescue",
+        "failure:hub_slug_collision",
+        "failure:dense_hub",
+        "lang:en"
+      ],
+      "relevance": {
+        "dh-email-provider-selection": 3,
+        "dh-hard-distractor-email-notification": 1,
+        "dh-hard-distractor-email-onboarding": 0
+      },
+      "expect_keywords_in_results": ["email", "Resend"],
+      "min_results": 1,
+      "description": "English equivalent of the staging failure. Same target memory, same dense hub. Proves the issue is not CJK-specific — it's a candidate pool problem.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000093"
+      }
+    },
+    {
+      "id": "dh-q3",
+      "query": "memax email 选型: Resend",
+      "query_type": "topical",
+      "slices": [
+        "failure:dense_hub",
+        "lang:zh-mixed",
+        "control"
+      ],
+      "relevance": {
+        "dh-email-provider-selection": 3
+      },
+      "expect_keywords_in_results": ["Resend"],
+      "min_results": 1,
+      "description": "Control query: exact title match. Should always succeed. If this fails, the memory isn't being ingested correctly.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000093"
+      }
+    },
+    {
+      "id": "dh-q4",
+      "query": "email provider in the memax hub",
+      "query_type": "decision",
+      "slices": [
+        "failure:hub_slug_collision",
+        "failure:dense_hub",
+        "lang:en"
+      ],
+      "relevance": {
+        "dh-email-provider-selection": 3,
+        "dh-hard-distractor-email-notification": 1
+      },
+      "expect_keywords_in_results": ["email", "Resend"],
+      "min_results": 1,
+      "description": "Explicit hub intent ('in the memax hub'). The deterministic guard SHOULD allow hub scoping here. Tests that legitimate hub filters still work.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000093"
+      }
+    },
+    {
+      "id": "dh-q5",
+      "query": "memax pricing",
+      "query_type": "topical",
+      "slices": [
+        "failure:title_rescue",
+        "failure:dense_hub",
+        "lang:en"
+      ],
+      "relevance": {
+        "dh-pricing-model-v2": 3,
+        "product-q2-pricing-decision": 1
+      },
+      "expect_keywords_in_results": ["pricing", "$9"],
+      "min_results": 1,
+      "description": "Short query for a short-body memory. Tests title rescue for non-email case. Should find pricing v2 in the dense hub.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000093"
+      }
+    },
+    {
+      "id": "dh-q6",
+      "query": "what decisions did we make about infrastructure",
+      "query_type": "topical",
+      "slices": [
+        "failure:dense_hub",
+        "lang:en",
+        "precision_guard"
+      ],
+      "relevance": {
+        "dh-email-provider-selection": 1,
+        "004-adr-chose-postgresql-over-mongodb": 2
+      },
+      "expect_not_in_results": ["batch", "forget inbox", "landing"],
+      "min_results": 1,
+      "description": "Precision guard: broad infrastructure query. Email provider selection is tangentially relevant (grade 1) but should NOT be top-1. PostgreSQL ADR from smoke corpus is more relevant (grade 2). Tests that title rescue doesn't over-promote narrow memories.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    },
+    {
+      "id": "dh-q7",
+      "query": "memax 的邮件方案",
+      "query_type": "decision",
+      "slices": [
+        "failure:cross_lingual_synonym",
+        "failure:dense_hub",
+        "lang:zh"
+      ],
+      "relevance": {
+        "dh-email-provider-selection": 3,
+        "dh-hard-distractor-email-notification": 1
+      },
+      "expect_keywords_in_results": ["Resend"],
+      "min_results": 1,
+      "description": "Cross-lingual synonym test: '邮件方案' (email solution) vs target using 'email'. Now target body contains '邮件' so CJK tokenization can match, but the query-to-title mapping still depends on embeddings bridging Chinese/English.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000093"
+      }
+    },
+    {
+      "id": "dh-q8",
+      "query": "in the memax hub what did Jiahao push about design",
+      "query_type": "author",
+      "slices": [
+        "failure:hub_slug_collision",
+        "lang:en"
+      ],
+      "relevance": {
+        "dh-distractor-batch-ops": 2,
+        "dh-distractor-landing-redesign": 2,
+        "dh-distractor-design-patterns": 2
+      },
+      "min_results": 1,
+      "description": "Explicit hub intent with author filter. 'in the memax hub' is explicit — should scope correctly. Tests that the deterministic guard recognizes explicit intent.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000093"
+      }
+    },
+    {
+      "id": "dh-q9",
+      "query": "memax auth architecture",
+      "query_type": "topical",
+      "slices": [
+        "failure:hub_slug_collision",
+        "failure:dense_hub",
+        "lang:en"
+      ],
+      "relevance": {
+        "dh-auth-architecture": 3,
+        "002-authentication-system": 1
+      },
+      "expect_keywords_in_results": ["auth", "OAuth"],
+      "min_results": 1,
+      "description": "Hub-slug collision: target memory is in memax-test hub (91), not the memax hub (93). If 'memax' is mistakenly used as hub filter, search scopes to hub 93 and the target is excluded entirely. The smoke corpus auth system doc is tangentially relevant (grade 1).",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    },
+    {
+      "id": "dh-q10",
+      "query": "memax 的定价方案",
+      "query_type": "topical",
+      "slices": [
+        "failure:cross_lingual_synonym",
+        "failure:dense_hub",
+        "lang:zh"
+      ],
+      "relevance": {
+        "dh-pricing-model-v2": 3
+      },
+      "expect_keywords_in_results": ["pricing", "$9"],
+      "min_results": 1,
+      "description": "Cross-lingual: Chinese query for English pricing content. '定价方案' (pricing plan) should bridge to 'pricing model v2' via dictionary expansion (定价→pricing, 方案→solution).",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000093"
+      }
+    },
+    {
+      "id": "dh-q11",
+      "query": "memax 认证架构",
+      "query_type": "topical",
+      "slices": [
+        "failure:cross_lingual_synonym",
+        "failure:dense_hub",
+        "lang:zh"
+      ],
+      "relevance": {
+        "dh-auth-architecture": 3,
+        "002-authentication-system": 1
+      },
+      "expect_keywords_in_results": ["auth", "OAuth"],
+      "min_results": 1,
+      "description": "Cross-lingual: Chinese query '认证架构' (auth architecture) for English-titled memory. Tests dictionary bridging (认证→auth, 架构→architecture).",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    },
+    {
+      "id": "dh-q12",
+      "query": "memax 数据库选型",
+      "query_type": "decision",
+      "slices": [
+        "failure:cross_lingual_synonym",
+        "failure:dense_hub",
+        "lang:zh"
+      ],
+      "relevance": {
+        "dh-040": 3,
+        "004-adr-chose-postgresql-over-mongodb": 2
+      },
+      "expect_keywords_in_results": ["Redis"],
+      "min_results": 1,
+      "description": "Cross-lingual: Chinese query '数据库选型' (database selection) should find the Redis selection decision via dictionary (数据库→database, 选型→selection) and the PostgreSQL ADR from smoke corpus.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000093"
+      }
+    },
+    {
+      "id": "dh-q13",
+      "query": "memax 缓存方案",
+      "query_type": "decision",
+      "slices": [
+        "failure:cross_lingual_synonym",
+        "failure:dense_hub",
+        "lang:zh"
+      ],
+      "relevance": {
+        "dh-040": 3
+      },
+      "expect_keywords_in_results": ["Redis"],
+      "min_results": 1,
+      "description": "Cross-lingual: Chinese query '缓存方案' (cache solution) for Redis selection memory. Tests dictionary bridging (缓存→cache, 方案→solution).",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000093"
+      }
+    },
+    {
+      "id": "dh-q14",
+      "query": "what deployment solution does memax use",
+      "query_type": "decision",
+      "slices": [
+        "failure:cross_lingual_synonym",
+        "failure:dense_hub",
+        "lang:en"
+      ],
+      "relevance": {
+        "dh-distractor-landing-redesign": 1
+      },
+      "expect_not_in_results": ["batch", "forget inbox"],
+      "min_results": 0,
+      "description": "English query where cross-lingual expansion adds Chinese terms. Tests that English→CJK bridging doesn't cause false positives when no strong CJK target exists. Precision guard.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000093",
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000093"
+      }
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+---
+title: Hubs
+description: Containers for memories. Every memory lives in exactly one hub.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+A **hub** is a workspace — every memory belongs to exactly one hub.
+Hubs define access scope: your personal hub is yours alone, team
+hubs are shared with invited members.
+
+## Hub types
+
+### Personal hub
+
+Created automatically on signup. Default target for pushes. Only
+you can see it; there's no membership to manage.
+
+### Team hub
+
+Shared workspace. Members have roles that determine what they can do
+(see below). Create one explicitly:
+
+```bash
+memax hub create "Platform Team"
+```
+
+Team hub features:
+
+- **Shared memories.** All members can see and recall what's pushed
+  to the hub (subject to role).
+- **Role-based access.** Owner, admin, contributor, viewer.
+- **Hub-scoped retrieval.** Agents can restrict search with
+  `hub_ids` / `--hub`.
+- **Push attribution.** Pushes from team members carry
+  `source_agent` / `author_name` so you can see who contributed.
+
+## Roles
+
+| Role          | Read | Push | Invite | Manage hub |
+| ------------- | :--: | :--: | :----: | :--------: |
+| `owner`       |  ✓   |  ✓   |   ✓    |    full    |
+| `admin`       |  ✓   |  ✓   |   ✓    |  partial   |
+| `contributor` |  ✓   |  ✓   |   —    |     —      |
+| `viewer`      |  ✓   |  —   |   —    |     —      |
+
+There is no `member` or `readonly` role — use `contributor` and
+`viewer` respectively.
+
+## Managing hubs
+
+```bash
+memax hub list                          # hubs you can access
+memax hub create "Platform Team"        # create a team hub
+memax hub switch platform-team          # set active hub (read-scoping only)
+memax hub members                       # show members of the active hub
+memax hub invite create --role viewer   # generate an invite link
+memax hub invite accept <token-or-url>  # accept an invite
+```
+
+### Where the active hub does and doesn't apply
+
+- **Reads / listing / recall** — the active hub scopes what you see
+  in `memax list`, recall results, and similar read commands, unless
+  you override with `--hub <slug>`.
+- **Writes (`memax push`, `memax import`)** — the active hub is
+  **not** the write target today. `memax push` writes to your
+  personal hub unless you pass `--hub <slug>` on the call, or set
+  `hub: <slug>` in a repo-local `.memax.yml`. `memax import` does
+  not accept a hub target at all — it always writes to your personal
+  hub.
+
+## Hub vs boundary
+
+Every memory has both a **hub** (where it lives) and a
+**[boundary](/concepts/boundaries)** (who inside / outside the hub
+can see it). The hub determines the population; the boundary
+determines visibility within that population.
+
+<Callout type="info">
+  To share a memory across hubs, use the share endpoint (`POST
+  /v1/memories/:id/share`) or the web app's share UI. You can't change a
+  memory's hub via the CLI today.
+</Callout>
+
+## Sync and switching
+
+The active hub setting is stored in `~/.memax/config.json`
+(the `active_hub_id` / `default_hub` fields). There is no
+`MEMAX_HUB` env override today. Per-call scoping is done with the
+`--hub <slug>` flag. Different machines can have different active
+hubs — the setting isn't synced across devices.

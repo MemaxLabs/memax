@@ -1,0 +1,1 @@
+Memax uses GitHub OAuth for user authentication. Access tokens are JWTs with 1-hour expiry. Refresh tokens last 30 days. API keys use the mxk_ prefix and are SHA-256 hashed in the database. The MCP OAuth 2.0 flow enables Claude Desktop integration.

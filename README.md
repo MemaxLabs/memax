@@ -14,7 +14,7 @@
   <a href="https://www.npmjs.com/package/memax-sdk"><img src="https://img.shields.io/npm/v/memax-sdk.svg?label=memax-sdk" alt="memax-sdk npm version" /></a>
   <a href="https://www.npmjs.com/package/memax-cli"><img src="https://img.shields.io/npm/v/memax-cli.svg?label=memax-cli" alt="memax-cli npm version" /></a>
   <a href="https://github.com/MemaxLabs/memax/actions/workflows/ci.yml"><img src="https://github.com/MemaxLabs/memax/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg" alt="Apache 2.0 License" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0_%26_AGPL_3.0-blue.svg" alt="Apache 2.0 and AGPL 3.0 License" /></a>
 </p>
 
 <p align="center">
@@ -31,14 +31,18 @@
 
 Memax is a shared memory layer for developers and AI agents. Push context once, then recall it from Claude Code, Codex, Cursor, CI jobs, local scripts, or your own application code.
 
-This repository contains the public TypeScript SDK and CLI packages for Memax. The hosted app, API server, worker, and internal product code are maintained separately.
+This repository is the full open-source Memax monorepo: the API server and worker, the web app, the design system, the developer hub, and the published TypeScript SDK and CLI. Packages are released under **multiple licenses** — see [Licensing](#licensing) below.
 
 ## Packages
 
-| Package                          | npm                                                    | Purpose                                        |
-| -------------------------------- | ------------------------------------------------------ | ---------------------------------------------- |
-| [`packages/sdk`](./packages/sdk) | [`memax-sdk`](https://www.npmjs.com/package/memax-sdk) | TypeScript client for the Memax API.           |
-| [`packages/cli`](./packages/cli) | [`memax-cli`](https://www.npmjs.com/package/memax-cli) | `memax` terminal command and local MCP server. |
+| Package                                      | npm                                                    | Purpose                                           | License    |
+| -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------- | ---------- |
+| [`packages/sdk`](./packages/sdk)             | [`memax-sdk`](https://www.npmjs.com/package/memax-sdk) | TypeScript client for the Memax API.              | Apache-2.0 |
+| [`packages/cli`](./packages/cli)             | [`memax-cli`](https://www.npmjs.com/package/memax-cli) | `memax` terminal command and local MCP server.    | Apache-2.0 |
+| [`packages/docs-site`](./packages/docs-site) | —                                                      | Developer hub (docs.memax.app), Fumadocs.         | Apache-2.0 |
+| [`packages/server`](./packages/server)       | —                                                      | Go API server + River worker (retrieval, dreams). | AGPL-3.0   |
+| [`packages/web`](./packages/web)             | —                                                      | Next.js web app (memax.app).                      | AGPL-3.0   |
+| [`packages/ui`](./packages/ui)               | —                                                      | `@memaxlabs/ui` shared design system.             | AGPL-3.0   |
 
 ## Install
 
@@ -127,6 +131,11 @@ memax-sdk-v0.4.2
 memax-cli-v0.1.2
 ```
 
-## License
+## Licensing
 
-Apache 2.0. See [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
+This monorepo contains packages under **two different licenses**. Each package is governed by the `LICENSE` file in its own directory:
+
+- **Apache-2.0** — `packages/sdk`, `packages/cli`, `packages/docs-site`
+- **AGPL-3.0** — `packages/server`, `packages/ui`, `packages/web`
+
+The Apache-2.0 packages do not depend on any AGPL-licensed package in this repo, so they may be used independently under Apache-2.0 terms. See the root [LICENSE](./LICENSE) for the full breakdown, [LICENSE-APACHE](./LICENSE-APACHE) / [LICENSE-AGPL](./LICENSE-AGPL) for the full texts, and [NOTICE](./NOTICE) for attribution.

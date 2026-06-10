@@ -1,0 +1,1 @@
+Rate limits per tier: Free users get 100 recalls/day, Pro gets 1000, Enterprise unlimited. Implemented via Redis sliding window counter. Rate limit headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset.

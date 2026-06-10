@@ -1,0 +1,42 @@
+# Memax Worker — background job processor (River queue)
+# Runs separately from the API server for fault isolation and independent scaling.
+# Shares the same Postgres database.
+app = "memax-worker-staging"
+primary_region = "sjc"
+
+[build]
+  # Dockerfile path is relative to THIS toml file (not cwd), so
+  # ../ navigates up from fly/ to the server package root where the
+  # Dockerfile lives.
+  dockerfile = "../Dockerfile.worker"
+
+[env]
+  HEALTH_PORT = "9090"
+
+[deploy]
+  # Migrations run via the API server's release_command (same database).
+  # The worker skips them to avoid concurrent DDL contention.
+  strategy = "rolling"
+
+# Internal health endpoint for monitoring (not exposed to internet).
+# The worker's main job is processing River queue — HTTP is only for health checks.
+[http_service]
+  internal_port = 9090
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[swap]
+  size_mb = 512

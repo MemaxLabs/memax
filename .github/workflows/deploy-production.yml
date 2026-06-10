@@ -1,0 +1,446 @@
+# Production deploy — API server + worker on Fly.io + semver tagging.
+#
+# # Model: prod branch IS the deploy source, merge IS the deploy
+#
+# The `prod` branch is the declaration of what's running in production.
+# Merging `main` → `prod` (via a PR carrying a `release:*` label —
+# see validate-release-label.yml) automatically triggers this
+# workflow, which deploys the new `prod` HEAD and tags it.
+#
+# The promote PR is the gate: it requires a validated release label
+# (branch protection via validate-release-label.yml), passes code
+# review, and can further require an environment reviewer on the
+# `production` GitHub Environment. The merge button is the commit to
+# deploy — no separate dispatch step needed.
+#
+# `workflow_dispatch` is retained as an override path for:
+#   - Rollbacks (force-push prod to an old SHA, then dispatch with
+#     `bump=none` — the old SHA is already tagged).
+#   - Secrets-only redeploys (no code change, dispatch with
+#     `bump=none`).
+#   - Fixing up after a bad label / failed auto-run.
+#
+# # Version bump resolution
+#
+# On dispatch, `bump` defaults to `auto`, which means:
+#   1. Find all PRs merged into `prod` since the last `v*` tag.
+#   2. Take the max release label across them (major > minor > patch).
+#   3. If none of the merged PRs carry a release label (shouldn't
+#      happen if the validate-release-label.yml branch protection is
+#      active, but belt-and-suspenders), fail with a clear error
+#      asking the dispatcher to override.
+#
+# Dispatcher can explicitly pass `patch|minor|major` to override, or
+# `none` to skip tagging entirely (for rollbacks re-deploying an
+# already-tagged SHA, or secrets-only redeploys where no code changed).
+#
+# # Rollback
+#
+# Reset the `prod` branch to an older known-good SHA, then re-run this
+# workflow with `bump=none` (the old SHA is already tagged; no new tag
+# needed). Two ways to reset:
+#   - `git push --force-with-lease origin <sha>:prod` (fastest, incident)
+#   - Open a revert PR from main into prod (cleaner git log)
+#
+# # Environment & secrets
+#
+# Deploy jobs target the `production` GitHub Environment, which
+# provides scoped `DOPPLER_TOKEN` and `FLY_API_TOKEN`. Operators can
+# layer required reviewers / deployment protection rules on the env
+# without touching this file.
+#
+# # Order of operations
+#
+# 1. resolve-version — computes bump + new version, fails fast if
+#    `auto` can't find a valid label.
+# 2. deploy-server — runs database + River migrations via
+#    `release_command` against the shared prod database.
+# 3. deploy-worker — runs after server is green so new worker code
+#    never starts against an old schema.
+# 4. tag-release — creates and pushes the annotated tag on the
+#    deployed SHA. Skipped when bump=none.
+
+name: Deploy to Production
+
+on:
+  # Primary trigger — merge to prod auto-deploys.
+  push:
+    branches: [prod]
+  # Manual override for rollbacks, secrets-only redeploys, and
+  # fixing up after a failed auto-run. `inputs.*` are null on push
+  # events; workflow steps use `|| 'default'` fallbacks below.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy. Defaults to the prod branch."
+        required: false
+        default: "prod"
+      bump:
+        description: "Version bump. 'auto' reads release:* labels from PRs merged into prod since the last tag. Explicit values override."
+        type: choice
+        options: [auto, patch, minor, major, none]
+        default: auto
+
+# Global concurrency group — never run two production deploys at once,
+# even if two operators click the button concurrently. cancel-in-progress
+# is false because we never want to kill a deploy mid-release: Fly's
+# release_command can leave database migration locks held briefly, and
+# a second deploy interrupting the first can leave the DB in an
+# indeterminate state.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  resolve-version:
+    name: Resolve version bump + new tag
+    runs-on: ubuntu-latest
+    # `gh pr list` reads merged PRs + their labels; that requires
+    # pull-requests:read on the GITHUB_TOKEN. contents:read is the
+    # default and lets the checkout step read git history. Without
+    # the explicit pull-requests permission, the GraphQL call fails
+    # with "Resource not accessible by integration".
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      bump: ${{ steps.compute.outputs.bump }}
+      new_version: ${{ steps.compute.outputs.new_version }}
+      deploy_sha: ${{ steps.compute.outputs.deploy_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'prod' }}
+          # Need full history + all tags so `git describe` finds the
+          # last v* tag and `git log $TAG..HEAD --merges` can list PRs
+          # merged since.
+          fetch-depth: 0
+
+      - name: Ensure tags are fetched
+        # actions/checkout v4 with fetch-depth: 0 usually pulls tags,
+        # but explicit fetch guards against edge cases (shallow
+        # defaults, tag updates after clone). Silent if no new tags.
+        run: git fetch --tags --force origin
+
+      - id: compute
+        name: Compute bump + new version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUMP_INPUT: ${{ inputs.bump || 'auto' }}
+        run: |
+          set -euo pipefail
+
+          DEPLOY_SHA=$(git rev-parse HEAD)
+          echo "deploy_sha=$DEPLOY_SHA" >> "$GITHUB_OUTPUT"
+          echo "Deploying SHA: $DEPLOY_SHA"
+
+          # Last SEMVER release tag on this branch's history. Empty
+          # if none exist yet (first-ever prod deploy) — we treat
+          # that as v0.0.0. `--match 'v[0-9]*.*.*'` filters out
+          # unrelated tags like nightly `eval/YYYY-MM-DD` markers so
+          # they don't hijack the bump base.
+          LAST_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)
+          if [ -z "$LAST_TAG" ]; then
+            LAST_TAG="v0.0.0"
+            TAG_EPOCH=0
+            echo "No prior semver tag found — starting from $LAST_TAG"
+          else
+            # %ct = committer date as Unix timestamp. We compare epoch
+            # seconds in jq to dodge the `-07:00` vs `Z` offset trap
+            # that broke bump resolution (every past PR matched as
+            # "merged since tag" because lexical string comparison
+            # on mixed-offset ISO timestamps sorts wrong).
+            TAG_EPOCH=$(git log -1 --format=%ct "$LAST_TAG")
+            echo "Last tag: $LAST_TAG (epoch $TAG_EPOCH)"
+          fi
+
+          # Resolve bump: explicit input wins, 'auto' reads PR labels.
+          if [ "$BUMP_INPUT" != "auto" ]; then
+            BUMP="$BUMP_INPUT"
+            echo "Bump: $BUMP (explicit override)"
+          else
+            # Find all PRs merged into prod with mergedAt > last tag.
+            # The --limit is generous; deploys landing 50+ PRs between
+            # tags should itself be a code smell, but won't break this.
+            PRS_JSON=$(gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state merged \
+              --base prod \
+              --limit 50 \
+              --json number,title,mergedAt,labels)
+
+            # Filter to PRs merged strictly after the tag commit.
+            # Compare epoch seconds in jq: mergedAt is parsed via
+            # fromdateiso8601 (Z-suffixed, accepted), and the tag
+            # side is already epoch from `git log %ct`. Lexical
+            # comparison on mixed-offset ISO strings doesn't work —
+            # prior to this, every past PR matched.
+            LABELS_PER_PR=$(echo "$PRS_JSON" | jq -r --argjson sinceEpoch "$TAG_EPOCH" '
+              .[]
+              | select((.mergedAt | fromdateiso8601) > $sinceEpoch)
+              | "PR #\(.number): " + (
+                  [.labels[].name | select(test("^release:(patch|minor|major)$"))]
+                  | if length == 0 then "<NO RELEASE LABEL>" else join(",") end
+                )
+            ')
+
+            if [ -z "$LABELS_PER_PR" ]; then
+              # No PRs merged to prod since the last tag. Happens when
+              # dispatching to redeploy an already-deployed SHA without
+              # code changes — dispatcher should explicitly pass
+              # bump=none in that case, rather than auto-resolving to
+              # something ambiguous.
+              echo "::error::No PRs merged into prod since $LAST_TAG. If you're redeploying the same code (secrets refresh, infra change), re-run with bump=none. Otherwise check that the promote PR was merged correctly."
+              exit 1
+            fi
+
+            echo "PRs merged since $LAST_TAG:"
+            echo "$LABELS_PER_PR"
+
+            # Check every PR has exactly one valid release label.
+            # validate-release-label.yml + branch protection should
+            # make this impossible to violate, but we re-check here
+            # as defense-in-depth for historical PRs or branch-
+            # protection-bypass edge cases.
+            if echo "$LABELS_PER_PR" | grep -q "<NO RELEASE LABEL>"; then
+              echo "::error::One or more PRs merged into prod are missing a release:* label. The validate-release-label.yml check should have blocked this. Fix the labels retroactively or re-run with an explicit bump= input."
+              exit 1
+            fi
+
+            # Max bump wins: any major → major, else any minor → minor,
+            # else patch. A mixed batch of patch+minor is a minor
+            # release overall, which matches semver's "max of merged
+            # changes" intuition.
+            ALL_LABELS=$(echo "$LABELS_PER_PR" | grep -oE 'release:(patch|minor|major)' | sort -u)
+            if echo "$ALL_LABELS" | grep -q '^release:major$'; then
+              BUMP="major"
+            elif echo "$ALL_LABELS" | grep -q '^release:minor$'; then
+              BUMP="minor"
+            elif echo "$ALL_LABELS" | grep -q '^release:patch$'; then
+              BUMP="patch"
+            else
+              # Should be unreachable given the <NO RELEASE LABEL>
+              # guard above, but fail loudly if somehow we get here.
+              echo "::error::Unexpected: no recognized release label found despite guard. Labels seen: $ALL_LABELS"
+              exit 1
+            fi
+            echo "Bump: $BUMP (resolved from PR labels)"
+          fi
+
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+
+          # Compute new version from last tag + bump.
+          if [ "$BUMP" = "none" ]; then
+            # No new tag — skip version computation.
+            echo "new_version=" >> "$GITHUB_OUTPUT"
+            echo "New version: (skipping tag, bump=none)"
+            exit 0
+          fi
+
+          # Strip leading 'v' and parse MAJOR.MINOR.PATCH. Reject
+          # anything weird so we fail loudly rather than producing
+          # garbage like "v1..0".
+          STRIPPED=$(echo "$LAST_TAG" | sed 's/^v//')
+          if ! [[ "$STRIPPED" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Last tag '$LAST_TAG' does not match vX.Y.Z format. Fix it manually before deploying."
+            exit 1
+          fi
+          MAJOR=$(echo "$STRIPPED" | cut -d. -f1)
+          MINOR=$(echo "$STRIPPED" | cut -d. -f2)
+          PATCH=$(echo "$STRIPPED" | cut -d. -f3)
+
+          case "$BUMP" in
+            major) NEW="v$((MAJOR + 1)).0.0" ;;
+            minor) NEW="v${MAJOR}.$((MINOR + 1)).0" ;;
+            patch) NEW="v${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+          esac
+
+          # Collision check — if the computed tag already exists
+          # (shouldn't, but race conditions between dispatches happen),
+          # fail rather than silently re-tag.
+          if git rev-parse "$NEW" >/dev/null 2>&1; then
+            echo "::error::Computed version $NEW already exists as a tag. Another deploy may have raced. Check 'git tag -l' and re-run."
+            exit 1
+          fi
+
+          echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "New version: $NEW"
+
+  deploy-server:
+    name: Deploy API to Fly.io (production)
+    needs: [resolve-version]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'prod' }}
+          # Full history + tags so the BUILD_VERSION rollback fallback
+          # (`git describe --exact-match "$DEPLOY_SHA"`) can actually
+          # find tags. Each GHA job has its own checkout — tags fetched
+          # in resolve-version don't flow through.
+          fetch-depth: 0
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Sync secrets to Fly.io (server)
+        working-directory: packages/server
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: doppler secrets download --no-file --format env-no-quotes | flyctl secrets import --stage -a memax-api-production
+
+      - name: Deploy to Fly.io
+        working-directory: packages/server
+        # Retry up to 3x with a short backoff — Fly's remote builder
+        # occasionally returns transient network errors that succeed
+        # on retry. release_command migrations are idempotent (migrate
+        # library skips already-applied versions) so a partial retry
+        # never double-applies.
+        #
+        # COMMIT_SHA comes from resolve-version.deploy_sha, which was
+        # taken after the rollback-aware checkout. Using GITHUB_SHA
+        # here instead would stamp the workflow trigger's SHA onto a
+        # rollback binary that actually builds a different commit —
+        # a rollback would advertise the "wrong" version in the admin
+        # Config panel.
+        run: |
+          # BUILD_VERSION falls back to the last tag when bump=none
+          # (rollback path) — resolve-version leaves new_version
+          # empty in that case and the admin UI would otherwise show
+          # the literal "dev" default. A rollback deploys an
+          # already-tagged commit, so its correct semver IS the
+          # last tag on that commit.
+          VERSION="${NEW_VERSION:-dev}"
+          if [ "$VERSION" = "dev" ]; then
+            VERSION=$(git describe --tags --exact-match "${DEPLOY_SHA}" --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || echo "dev")
+          fi
+          for attempt in 1 2 3; do
+            if flyctl deploy --remote-only -c fly/fly.server.production.toml --build-arg COMMIT_SHA="${DEPLOY_SHA}" --build-arg BUILD_VERSION="${VERSION}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "flyctl deploy failed on attempt $attempt/3; retrying in 15s..."
+            sleep 15
+          done
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          DEPLOY_SHA: ${{ needs.resolve-version.outputs.deploy_sha }}
+          NEW_VERSION: ${{ needs.resolve-version.outputs.new_version }}
+
+  deploy-worker:
+    name: Deploy Worker to Fly.io (production)
+    # deploy-server runs database + River migrations; worker deploy
+    # waits so new worker code never starts against an old schema.
+    needs: [resolve-version, deploy-server]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'prod' }}
+          # Same reason as deploy-server: BUILD_VERSION rollback
+          # fallback needs tags + enough history for `git describe`.
+          fetch-depth: 0
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Sync secrets to Fly.io (worker)
+        working-directory: packages/server
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: doppler secrets download --no-file --format env-no-quotes | flyctl secrets import --stage -a memax-worker-production
+
+      - name: Deploy to Fly.io
+        working-directory: packages/server
+        # Same rationale as deploy-server: use resolve-version's
+        # deploy_sha so a manual-dispatch rollback stamps the commit
+        # actually being built, not the workflow's trigger SHA.
+        # BUILD_VERSION mirrors deploy-server's resolution logic so
+        # the worker binary reports the same semver as the API.
+        run: |
+          VERSION="${NEW_VERSION:-dev}"
+          if [ "$VERSION" = "dev" ]; then
+            VERSION=$(git describe --tags --exact-match "${DEPLOY_SHA}" --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || echo "dev")
+          fi
+          for attempt in 1 2 3; do
+            if flyctl deploy --remote-only -c fly/fly.worker.production.toml --build-arg COMMIT_SHA="${DEPLOY_SHA}" --build-arg BUILD_VERSION="${VERSION}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "flyctl deploy failed on attempt $attempt/3; retrying in 15s..."
+            sleep 15
+          done
+        env:
+          DEPLOY_SHA: ${{ needs.resolve-version.outputs.deploy_sha }}
+          NEW_VERSION: ${{ needs.resolve-version.outputs.new_version }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  tag-release:
+    name: Tag deployed SHA with new version
+    # Only runs after BOTH server and worker deploys land green, AND
+    # bump != none. Tagging a failed deploy would pin a broken version
+    # into git history; skipping the tag when only one process deployed
+    # (e.g., worker failed) keeps the prod history truthful.
+    needs: [resolve-version, deploy-server, deploy-worker]
+    if: needs.resolve-version.outputs.bump != 'none'
+    runs-on: ubuntu-latest
+    permissions:
+      # Required to push the tag via GITHUB_TOKEN.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'prod' }}
+          fetch-depth: 0
+
+      - name: Create + push annotated tag
+        env:
+          NEW_VERSION: ${{ needs.resolve-version.outputs.new_version }}
+          DEPLOY_SHA: ${{ needs.resolve-version.outputs.deploy_sha }}
+          BUMP: ${{ needs.resolve-version.outputs.bump }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Annotated tag (not lightweight) so git log / git describe
+          # see tagger + date + message. Helpful when auditing which
+          # deploy shipped a given commit.
+          git tag -a "$NEW_VERSION" "$DEPLOY_SHA" -m "Release $NEW_VERSION
+
+          Bump: $BUMP
+          Deployed from ref: ${{ inputs.ref || 'prod' }}
+          Trigger: ${{ github.event_name }}
+          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          "
+
+          git push origin "$NEW_VERSION"
+          echo "::notice::Tagged $DEPLOY_SHA as $NEW_VERSION"
+
+      - name: Create GitHub Release with auto-generated notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION: ${{ needs.resolve-version.outputs.new_version }}
+          DEPLOY_SHA: ${{ needs.resolve-version.outputs.deploy_sha }}
+        # --generate-notes pulls PR titles + authors from every PR
+        # merged between the previous release and this commit, so the
+        # /releases page becomes the canonical changelog instead of a
+        # wall of bare version tags. --target pins the release to the
+        # deploy SHA even if `prod` moves while the workflow runs.
+        run: |
+          gh release create "$NEW_VERSION" \
+            --target "$DEPLOY_SHA" \
+            --title "$NEW_VERSION" \
+            --generate-notes

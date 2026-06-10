@@ -6,9 +6,300 @@ on:
   pull_request:
     branches: [main]
 
+# dorny/paths-filter uses the GitHub API to list changed files on
+# pull_request events, which requires `pull-requests: read`. The
+# default GITHUB_TOKEN scope on PRs (read-only contents) doesn't
+# include it, so without this block the changes job fails with
+# "Resource not accessible by integration" on every PR.
+# Push events are unaffected — the action falls back to local git
+# when no PR exists.
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
-  packages:
-    name: Packages
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            server:
+              - 'packages/server/**'
+
+  typescript:
+    name: TypeScript (lint, build, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm lint
+      - run: pnpm test
+
+  go:
+    name: Go (vet, build, test)
+    runs-on: ubuntu-latest
+    # Postgres with pgvector for DATABASE_URL-gated integration tests.
+    # Schema applied by the explicit `go run ./cmd/migrate` step
+    # before tests run — the same binary Fly uses as
+    # release_command, so CI and prod migrate the same way.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: memax
+          POSTGRES_PASSWORD: memax
+          POSTGRES_DB: memax_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U memax"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: packages/server
+    env:
+      DATABASE_URL: postgres://memax:memax@localhost:5432/memax_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: packages/server/go.sum
+
+      - run: go vet ./...
+      - run: go build ./cmd/server ./cmd/worker
+
+      # Apply schema before tests. cmd/migrate is the same binary
+      # Fly uses as release_command, so CI and prod migrate the
+      # same way.
+      - name: Apply migrations
+        env:
+          MIGRATIONS_DIR: ${{ github.workspace }}/packages/server/migrations
+        run: go run ./cmd/migrate
+
+      # Unit tests + DATABASE_URL-gated integration tests in the
+      # store / dreams / handler packages. The `-tags=integration`
+      # flag additionally pulls in the full 5-phase dream cycle
+      # test in internal/dreams/integration_test.go.
+      - run: go test -tags=integration ./...
+
+  eval:
+    name: Retrieval eval
+    needs: [changes]
+    runs-on: ubuntu-latest
+    environment: staging
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.changes.outputs.server == 'true'
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: memax
+          POSTGRES_PASSWORD: memax
+          POSTGRES_DB: memax_eval
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U memax"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: packages/server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: packages/server/go.sum
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Fetch API keys from Doppler
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          if [ -z "$DOPPLER_TOKEN" ]; then
+            echo "DOPPLER_TOKEN not set — retrieval eval cannot run"
+            exit 1
+          fi
+          VOYAGE=$(doppler secrets get VOYAGE_API_KEY --plain)
+          ANTHROPIC=$(doppler secrets get ANTHROPIC_API_KEY --plain)
+          BASE_URL=$(doppler secrets get ANTHROPIC_BASE_URL --plain 2>/dev/null || echo '')
+          # Mask values so they never appear in logs
+          echo "::add-mask::$VOYAGE"
+          echo "::add-mask::$ANTHROPIC"
+          if [ -n "$BASE_URL" ]; then echo "::add-mask::$BASE_URL"; fi
+          {
+            echo "VOYAGE_API_KEY=$VOYAGE"
+            echo "ANTHROPIC_API_KEY=$ANTHROPIC"
+            echo "ANTHROPIC_BASE_URL=$BASE_URL"
+          } >> "$GITHUB_ENV"
+
+      - name: Run eval smoke tests
+        env:
+          DATABASE_URL: postgres://memax:memax@localhost:5432/memax_eval?sslmode=disable
+          EVAL_REPORT_DIR: ${{ github.workspace }}/eval-reports
+        run: |
+          mkdir -p "$EVAL_REPORT_DIR"
+          # CI runs corpus validation + quality gate only (no Cohere rerank).
+          # Full eval with reranker runs in nightly-eval.yml.
+          go test ./eval/ -v -timeout 1200s
+
+      - name: Post eval summary
+        if: always()
+        run: |
+          REPORT="${{ github.workspace }}/eval-reports/eval_report.md"
+          if [ -f "$REPORT" ]; then
+            cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  deploy-server:
+    name: Deploy API to Fly.io (staging)
+    needs: [format, typescript, go, eval]
+    # Run on every push to main when no upstream job *failed* or was
+    # cancelled. `eval` / `go` are conditionally skipped when no
+    # server files changed, so the default GHA "all needs must be
+    # success" rule would cascade-skip the deploy on web-only
+    # commits — which means the latest web code never reaches
+    # staging. !failure() && !cancelled() allows skipped upstreams
+    # while still blocking real failures.
+    if: |
+      !failure() && !cancelled() &&
+      github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      # Do not cancel Fly deploys after release_command starts: Fly may keep the
+      # release machine alive briefly, which can leave later deploys waiting on
+      # database migration locks.
+      group: deploy-server
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history + tags so `git describe` can walk HEAD back
+          # to the nearest `v*.*.*` tag. `fetch-tags: true` alone
+          # leaves fetch-depth at the default of 1, which breaks
+          # `git describe` when HEAD is ahead of the last tag — it
+          # returns the bare SHA instead of the intended
+          # `v0.1.11-5-gabc` string.
+          fetch-depth: 0
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Sync secrets to Fly.io (server)
+        working-directory: packages/server
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: doppler secrets download --no-file --format env-no-quotes | flyctl secrets import --stage -a memax-api-staging
+
+      - name: Deploy to Fly.io
+        working-directory: packages/server
+        # BUILD_VERSION for staging uses `git describe --tags --always
+        # --match 'v*.*.*'`, which yields `v0.1.11-5-gabcdef` when
+        # main is ahead of the last tag, or just `v0.1.11` on the
+        # rare case staging deploys a tagged commit. `--always`
+        # degrades to the bare short SHA if no semver tags were
+        # fetched (shallow clone edge case); still a meaningful
+        # value to show in the admin UI.
+        run: |
+          VERSION=$(git describe --tags --always --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || echo "dev")
+          for attempt in 1 2 3; do
+            if flyctl deploy --remote-only -c fly/fly.server.staging.toml --build-arg COMMIT_SHA="${GITHUB_SHA}" --build-arg BUILD_VERSION="${VERSION}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "flyctl deploy failed on attempt $attempt/3; retrying in 15s..."
+            sleep 15
+          done
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-worker:
+    name: Deploy Worker to Fly.io (staging)
+    # API deploy runs database + River migrations; worker deploy waits so new
+    # worker code never starts before required schema changes are live.
+    needs: [format, typescript, go, eval, deploy-server]
+    # Same rationale as deploy-server: allow skipped upstreams
+    # (go/eval when server unchanged) but block real failures.
+    # deploy-server must also have succeeded — don't deploy a new
+    # worker against stale schema.
+    if: |
+      !failure() && !cancelled() &&
+      needs.deploy-server.result == 'success' &&
+      github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: deploy-worker
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # See deploy-server step for why full history is needed
+          # (git describe walking back to the nearest v*.*.* tag).
+          fetch-depth: 0
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Sync secrets to Fly.io (worker)
+        working-directory: packages/server
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: doppler secrets download --no-file --format env-no-quotes | flyctl secrets import --stage -a memax-worker-staging
+
+      - name: Deploy to Fly.io
+        working-directory: packages/server
+        # BUILD_VERSION mirrors deploy-server's describe-based value
+        # so the staging worker reports the same semver as the API.
+        run: |
+          VERSION=$(git describe --tags --always --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || echo "dev")
+          for attempt in 1 2 3; do
+            if flyctl deploy --remote-only -c fly/fly.worker.staging.toml --build-arg COMMIT_SHA="${GITHUB_SHA}" --build-arg BUILD_VERSION="${VERSION}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "flyctl deploy failed on attempt $attempt/3; retrying in 15s..."
+            sleep 15
+          done
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  format:
+    name: Format check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,31 +313,18 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
-      - run: pnpm lint
-      - run: pnpm build
-      - run: pnpm test
 
-  npm-token:
-    name: Check npm publish token
-    runs-on: ubuntu-latest
-    outputs:
-      available: ${{ steps.check.outputs.available }}
-    steps:
-      - id: check
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -n "$NPM_TOKEN" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::NPM_TOKEN is not configured; skipping npm alpha publish."
-          fi
-
-  publish-sdk-alpha:
+  # Main-branch publishes are PRERELEASES on the `@alpha` dist-tag.
+  # Stable `@latest` publishes happen from the prod branch via the
+  # release-npm.yml workflow. Both delegate to the reusable
+  # publish-npm.yml workflow so npm's trusted-publisher config only
+  # has to trust ONE workflow filename. Centralising also keeps the
+  # alpha/stable contract (version rewriting, SDK+CLI version
+  # mirroring, skip-if-already-published) in one place.
+  publish-sdk:
     name: Publish SDK alpha to npm
-    needs: [packages, npm-token]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.npm-token.outputs.available == 'true'
+    needs: [format, typescript, go]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     uses: ./.github/workflows/publish-npm.yml
     with:
       package: sdk
@@ -54,10 +332,10 @@ jobs:
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  publish-cli-alpha:
+  publish-cli:
     name: Publish CLI alpha to npm
-    needs: [packages, npm-token, publish-sdk-alpha]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.npm-token.outputs.available == 'true'
+    needs: [format, typescript, go, publish-sdk]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     uses: ./.github/workflows/publish-npm.yml
     with:
       package: cli

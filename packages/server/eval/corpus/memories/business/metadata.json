@@ -1,0 +1,217 @@
+{
+  "memories": [
+    {
+      "id": "biz-vendor-payroll",
+      "title": "Payroll vendor evaluation: Deel",
+      "file": "001-vendor-evaluation-payroll.md",
+      "kind": "rationale",
+      "stability": "stable",
+      "tags": [
+        "vendor",
+        "payroll",
+        "evaluation",
+        "deel",
+        "contractors"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000096",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "",
+      "project_context": {},
+      "created_at": "2026-03-15T10:00:00Z",
+      "updated_at": "2026-03-15T10:00:00Z",
+      "accessed_at": "2026-04-01T09:00:00Z",
+      "access_count": 4,
+      "event_dates": [],
+      "hint": ""
+    },
+    {
+      "id": "biz-q1-review",
+      "title": "Q1 2026 Quarterly Business Review",
+      "file": "002-q1-quarterly-review.md",
+      "kind": "episodic",
+      "stability": "stable",
+      "tags": [
+        "quarterly-review",
+        "revenue",
+        "churn",
+        "enterprise",
+        "meeting"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000096",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "",
+      "project_context": {},
+      "created_at": "2026-04-01T14:00:00Z",
+      "updated_at": "2026-04-01T15:00:00Z",
+      "accessed_at": "2026-04-10T09:00:00Z",
+      "access_count": 6,
+      "event_dates": [
+        "2026-04-01T00:00:00Z"
+      ],
+      "hint": ""
+    },
+    {
+      "id": "biz-hiring-process",
+      "title": "Engineering hiring process",
+      "file": "003-hiring-process.md",
+      "kind": "procedural",
+      "stability": "stable",
+      "tags": [
+        "hiring",
+        "process",
+        "guide",
+        "interviews",
+        "recruiting"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000095",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "",
+      "project_context": {},
+      "created_at": "2026-02-20T11:00:00Z",
+      "updated_at": "2026-03-10T14:00:00Z",
+      "accessed_at": "2026-04-08T16:00:00Z",
+      "access_count": 12,
+      "event_dates": [],
+      "hint": ""
+    },
+    {
+      "id": "biz-customer-feedback-enterprise",
+      "title": "Enterprise pilot feedback: Acme Corp",
+      "file": "004-customer-feedback-enterprise.md",
+      "kind": "semantic",
+      "stability": "evolving",
+      "tags": [
+        "feedback",
+        "enterprise",
+        "pilot",
+        "sso",
+        "compliance",
+        "customer"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000096",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "",
+      "project_context": {},
+      "created_at": "2026-03-28T16:00:00Z",
+      "updated_at": "2026-03-28T17:00:00Z",
+      "accessed_at": "2026-04-05T10:00:00Z",
+      "access_count": 5,
+      "event_dates": [
+        "2026-03-28T00:00:00Z"
+      ],
+      "hint": ""
+    },
+    {
+      "id": "biz-marketing-budget-q2",
+      "title": "Q2 2026 marketing budget",
+      "file": "005-marketing-budget-q2.md",
+      "kind": "rationale",
+      "stability": "stable",
+      "tags": [
+        "budget",
+        "marketing",
+        "strategy",
+        "spending"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000096",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "",
+      "project_context": {},
+      "created_at": "2026-04-02T09:00:00Z",
+      "updated_at": "2026-04-02T09:00:00Z",
+      "accessed_at": "2026-04-10T11:00:00Z",
+      "access_count": 3,
+      "event_dates": [],
+      "hint": ""
+    },
+    {
+      "id": "biz-partnership-cursor",
+      "title": "Partnership evaluation: Cursor vs Windsurf",
+      "file": "006-partnership-evaluation.md",
+      "kind": "rationale",
+      "stability": "evolving",
+      "tags": [
+        "partnership",
+        "evaluation",
+        "cursor",
+        "windsurf",
+        "strategy"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "",
+      "project_context": {},
+      "created_at": "2026-04-05T13:00:00Z",
+      "updated_at": "2026-04-05T14:00:00Z",
+      "accessed_at": "2026-04-12T09:00:00Z",
+      "access_count": 7,
+      "event_dates": [],
+      "hint": ""
+    },
+    {
+      "id": "biz-retention-policy",
+      "title": "Data retention policy (draft)",
+      "file": "007-data-retention-policy.md",
+      "kind": "semantic",
+      "stability": "evolving",
+      "tags": [
+        "policy",
+        "retention",
+        "compliance",
+        "gdpr",
+        "guideline"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000097",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "",
+      "project_context": {},
+      "created_at": "2026-04-08T11:00:00Z",
+      "updated_at": "2026-04-08T11:00:00Z",
+      "accessed_at": "2026-04-08T11:00:00Z",
+      "access_count": 2,
+      "event_dates": [],
+      "hint": ""
+    },
+    {
+      "id": "biz-investor-meeting-sequoia",
+      "title": "Investor meeting: Sequoia scout (Jenny Liu)",
+      "file": "008-investor-meeting-notes.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "investor",
+        "meeting",
+        "sequoia",
+        "fundraising"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "",
+      "project_context": {},
+      "created_at": "2026-04-03T18:00:00Z",
+      "updated_at": "2026-04-03T19:00:00Z",
+      "accessed_at": "2026-04-03T19:00:00Z",
+      "access_count": 3,
+      "event_dates": [
+        "2026-04-03T00:00:00Z"
+      ],
+      "hint": ""
+    }
+  ]
+}

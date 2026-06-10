@@ -1,0 +1,131 @@
+---
+title: Memories
+description: The atomic unit of knowledge in Memax. Structure, classification, lifecycle.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+A **memory** is the atomic unit of knowledge in Memax — one piece
+of content (a doc, a decision, a snippet, a link) that you push once
+and retrieve later.
+
+## Structure
+
+Each memory has the following fields (see the `memax-sdk` TypeScript
+definitions for the canonical SDK shape):
+
+| Field                                       | Description                                                                        |
+| ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `id`                                        | Unique identifier (e.g. `mem_a1b2c3d4`).                                           |
+| `hub_id`                                    | The hub this memory lives in.                                                      |
+| `owner_id`                                  | Who pushed it.                                                                     |
+| `title`                                     | Server-derived or user-provided title.                                             |
+| `summary`                                   | Short server-generated summary.                                                    |
+| `content_type`                              | `text`, `markdown`, `code`, `chat`, `transcript`, `file`, `structured`, or `link`. |
+| `content_hash`                              | Hash of the content; used for dedup.                                               |
+| `tags`                                      | User/AI-assigned labels.                                                           |
+| `kind`                                      | `episodic`, `semantic`, `procedural`, or `rationale` (see below).                  |
+| `stability`                                 | `volatile`, `evolving`, or `stable` (see below).                                   |
+| `boundary`                                  | `private`, `hub`, `team`, or `org` (see [Boundaries](/concepts/boundaries)).       |
+| `state`                                     | `processing`, `active`, `cooling`, or `archived`.                                  |
+| `source`                                    | Origin: `cli`, `import`, `hook`, `web`, `api`, `sdk`, `mcp`, `extraction`.         |
+| `source_agent`                              | Agent that pushed (e.g. `claude-code`, `cursor`), if any.                          |
+| `assisted_by_agent`                         | Collaborator agent, for human-authored pushes.                                     |
+| `access_count`                              | How many times the memory has been retrieved.                                      |
+| `version`                                   | Incremented on edits.                                                              |
+| `created_at` / `updated_at` / `accessed_at` | Timestamps.                                                                        |
+
+## Kind
+
+Memax classifies by **kind** — what the content is for — rather than
+a single "category" taxonomy.
+
+| Kind         | Description                                    | Examples                                  |
+| ------------ | ---------------------------------------------- | ----------------------------------------- |
+| `semantic`   | Durable factual information.                   | Architecture docs, API specs, glossaries. |
+| `episodic`   | Time-bounded events, conversations, decisions. | Meeting notes, standup summaries, chats.  |
+| `procedural` | How-to / step-by-step instructions.            | Deploy runbooks, onboarding checklists.   |
+| `rationale`  | Reasoning, trade-offs, "why we chose X."       | ADRs, design-review summaries.            |
+
+There is no `core`, `decisions`, `reference`, `daily`, or `research`
+category. The server picks `kind` automatically; you can pre-set it
+via the API's `kind` field on push.
+
+## Stability
+
+How fast the memory is expected to go stale:
+
+| Stability  | Description                                                        |
+| ---------- | ------------------------------------------------------------------ |
+| `stable`   | Rarely changes (glossaries, foundational design docs).             |
+| `evolving` | Changes over time but not frequently (runbooks, team conventions). |
+| `volatile` | Short-lived (meeting notes, daily standups, ephemeral context).    |
+
+Stability affects retrieval weighting — stable memories rank higher
+on unrelated searches, volatile ones need to be more relevant to
+surface.
+
+## Content types
+
+Memax accepts:
+
+- **Markdown** — `.md`, `.mdx`.
+- **Code files** — any of the allowlisted extensions (see
+  [`memax import`](/cli/import) for the list).
+- **Plain text** — notes, chat logs, transcripts.
+- **URLs** — stored as `content_type=link` (the URL itself, not a
+  fetched snapshot).
+- **Structured data** — JSON, YAML, TOML.
+- **File attachments** — PDFs and images reference an object in
+  storage; the server extracts text for search.
+
+## Deduplication
+
+The server dedupes in two ways:
+
+- **Source-path replace** — when a push carries a `source_path` and
+  a memory already exists at that path in the target hub, the
+  existing row is updated. Unchanged content = skip; changed content
+  = new version.
+- **Content-hash dedup** — within a hub, identical content does not
+  create a second row even without a source path. The existing row
+  is reused.
+
+## Chunking
+
+Long memories are split server-side into semantically coherent
+chunks for retrieval. Chunking respects:
+
+- Heading structure (splits at heading boundaries).
+- Code blocks (kept intact).
+- Paragraph coherence.
+
+Each chunk is embedded independently, so recall returns the most
+relevant section of a large document instead of the whole thing.
+Chunking happens in the async processing pipeline — you don't
+manage it.
+
+## Lifecycle
+
+```
+push → (processing →) active → cooling → archived
+```
+
+| State        | When you see it                                                                                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `processing` | File-attached or URL-as-link pushes only — waiting on the async pipeline (embed / extract / summarize). Text / markdown pushes skip this state and land at `active` immediately. |
+| `active`     | Ready for retrieval.                                                                                                                                                             |
+| `cooling`    | Aged memory with low recent access — deprioritized in ranking.                                                                                                                   |
+| `archived`   | Archived by lifecycle rules or explicit archive action — hidden from recall.                                                                                                     |
+
+`DELETE /v1/memories/{id}` is a **hard delete** (row + chunks
+removed); it does not produce an `archived` row. Archived state is
+produced by lifecycle rules (TTL, policy-based archive), not by
+the delete endpoint.
+
+<Callout type="info">
+  The SDK TypeScript types list the major content kinds — `text`, `markdown`,
+  `code`, `chat`, `transcript`, `file`, `structured`. Server-side, `link` is
+  used at runtime for URL-as-link memories. Treat the SDK union as the portable
+  subset and expect `link` to appear on URL memories.
+</Callout>

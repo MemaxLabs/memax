@@ -1,0 +1,215 @@
+{
+  "memories": [
+    {
+      "id": "personal-tokyo-trip-plan",
+      "title": "Tokyo Trip Plan — April 2026",
+      "file": "personal-tokyo-trip-plan.md",
+      "kind": "semantic",
+      "stability": "volatile",
+      "tags": [
+        "travel",
+        "tokyo",
+        "japan",
+        "flights",
+        "hotels",
+        "itinerary"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "web",
+      "source_agent": "",
+      "created_at": "2026-02-18T14:20:00Z",
+      "updated_at": "2026-03-25T09:10:00Z",
+      "accessed_at": "2026-04-08T11:30:00Z",
+      "access_count": 12,
+      "event_dates": [
+        "2026-04-18T00:00:00Z",
+        "2026-04-25T00:00:00Z"
+      ],
+      "hint": "Retrieve when asked about Tokyo trip, Japan travel, hotel bookings, flight details, or April vacation."
+    },
+    {
+      "id": "personal-standing-desk-decision",
+      "title": "Why I Switched to a Standing Desk",
+      "file": "personal-standing-desk-decision.md",
+      "kind": "rationale",
+      "stability": "stable",
+      "tags": [
+        "ergonomics",
+        "standing-desk",
+        "home-office",
+        "health",
+        "productivity"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "mcp",
+      "source_agent": "claude-code",
+      "created_at": "2026-02-05T10:45:00Z",
+      "updated_at": "2026-02-05T10:45:00Z",
+      "accessed_at": "2026-03-12T16:00:00Z",
+      "access_count": 4,
+      "event_dates": [
+        "2026-02-03T00:00:00Z"
+      ],
+      "hint": "Retrieve when asked about standing desk decision, ergonomic setup, or home office furniture choices."
+    },
+    {
+      "id": "personal-sourdough-starter-recipe",
+      "title": "Sourdough Starter and Bread Recipe",
+      "file": "personal-sourdough-starter-recipe.md",
+      "kind": "procedural",
+      "stability": "stable",
+      "tags": [
+        "recipe",
+        "sourdough",
+        "baking",
+        "bread",
+        "cooking"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "capture",
+      "source_agent": "claude-ai",
+      "created_at": "2026-03-02T19:30:00Z",
+      "updated_at": "2026-03-15T08:00:00Z",
+      "accessed_at": "2026-04-06T10:15:00Z",
+      "access_count": 7,
+      "event_dates": [
+        "2026-03-02T00:00:00Z"
+      ],
+      "hint": "Retrieve when asked about sourdough recipe, bread baking, starter maintenance, or baking instructions."
+    },
+    {
+      "id": "personal-restaurant-recommendations",
+      "title": "Restaurant Recommendations — Thai and Japanese",
+      "file": "personal-restaurant-recommendations.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "restaurants",
+        "thai-food",
+        "japanese-food",
+        "dining",
+        "recommendations"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "cli",
+      "source_agent": "chatgpt",
+      "created_at": "2026-03-20T21:15:00Z",
+      "updated_at": "2026-03-20T21:15:00Z",
+      "accessed_at": "2026-04-02T18:45:00Z",
+      "access_count": 3,
+      "event_dates": [
+        "2026-03-18T00:00:00Z",
+        "2026-03-20T00:00:00Z"
+      ],
+      "hint": "Retrieve when asked about restaurant recommendations, Thai food, Japanese food, or places to eat."
+    },
+    {
+      "id": "personal-laptop-comparison",
+      "title": "Laptop Comparison — M4 MacBook Pro vs ThinkPad X1 Carbon",
+      "file": "personal-laptop-comparison.md",
+      "kind": "semantic",
+      "stability": "volatile",
+      "tags": [
+        "laptop",
+        "macbook",
+        "thinkpad",
+        "comparison",
+        "hardware"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "mcp",
+      "source_agent": "claude-code",
+      "created_at": "2026-03-28T15:00:00Z",
+      "updated_at": "2026-04-01T10:30:00Z",
+      "accessed_at": "2026-04-10T14:00:00Z",
+      "access_count": 6,
+      "event_dates": [
+        "2026-03-28T00:00:00Z"
+      ],
+      "hint": "Retrieve when asked about laptop comparison, MacBook vs ThinkPad, or new laptop purchase decision."
+    },
+    {
+      "id": "personal-fitness-routine",
+      "title": "Weekly Fitness Routine and Progression",
+      "file": "personal-fitness-routine.md",
+      "kind": "procedural",
+      "stability": "evolving",
+      "tags": [
+        "fitness",
+        "gym",
+        "workout",
+        "exercise",
+        "strength-training"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "web",
+      "source_agent": "",
+      "created_at": "2026-02-10T07:00:00Z",
+      "updated_at": "2026-04-07T07:30:00Z",
+      "accessed_at": "2026-04-11T06:45:00Z",
+      "access_count": 22,
+      "event_dates": [
+        "2026-02-10T00:00:00Z"
+      ],
+      "hint": "Retrieve when asked about gym schedule, workout routine, exercises, fitness plan, or strength progression."
+    },
+    {
+      "id": "personal-book-thinking-fast-slow",
+      "title": "Book Notes: Thinking, Fast and Slow",
+      "file": "personal-book-thinking-fast-slow.md",
+      "kind": "semantic",
+      "stability": "evolving",
+      "tags": [
+        "book-notes",
+        "kahneman",
+        "psychology",
+        "cognitive-bias",
+        "decision-making"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "capture",
+      "source_agent": "claude-ai",
+      "created_at": "2026-03-10T22:00:00Z",
+      "updated_at": "2026-04-03T21:30:00Z",
+      "accessed_at": "2026-04-09T20:00:00Z",
+      "access_count": 5,
+      "event_dates": [
+        "2026-03-10T00:00:00Z"
+      ],
+      "hint": "Retrieve when asked about Thinking Fast and Slow, Kahneman, cognitive biases, System 1 vs System 2, or decision-making psychology."
+    },
+    {
+      "id": "personal-health-checkup-notes",
+      "title": "Annual Health Checkup Notes — March 2026",
+      "file": "personal-health-checkup-notes.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "health",
+        "doctor",
+        "checkup",
+        "medical",
+        "follow-up"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "cli",
+      "source_agent": "",
+      "created_at": "2026-03-14T16:30:00Z",
+      "updated_at": "2026-03-14T17:00:00Z",
+      "accessed_at": "2026-03-28T09:00:00Z",
+      "access_count": 3,
+      "event_dates": [
+        "2026-03-14T00:00:00Z"
+      ],
+      "hint": "Retrieve when asked about health checkup, doctor visit, medical results, knee issue, or follow-up appointments."
+    }
+  ]
+}

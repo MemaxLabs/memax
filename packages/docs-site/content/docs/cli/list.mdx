@@ -1,0 +1,60 @@
+---
+title: memax list
+description: List memories in your hub, with paging and filters.
+---
+
+Paginated listing of memories you can access. Used for browsing —
+for question-style retrieval, use [`memax recall`](/cli/recall).
+
+## Usage
+
+```bash
+memax list [options]
+```
+
+## Options
+
+| Flag                    | Short | Description                                        | Default  |
+| ----------------------- | :---: | -------------------------------------------------- | -------- |
+| `--sort <sort>`         | `-s`  | Sort order: `newest`, `relevant`.                  | `newest` |
+| `--limit <n>`           | `-l`  | Page size.                                         | `20`     |
+| `--cursor <cursor>`     |       | Continue from a pagination cursor (opaque string). | —        |
+| `--hub <slug>`          |       | List memories from a specific hub.                 | all hubs |
+| `--topic-id <id>`       |       | Restrict to memories in a given topic.             | —        |
+| `--format <text\|json>` |       | Output format.                                     | `text`   |
+| `--all`                 |       | Fetch every page (not just the first).             | off      |
+
+## Examples
+
+### List the most recent memories
+
+```bash
+memax list
+```
+
+### Paginate
+
+```bash
+memax list --limit 50 --cursor cur_abc123
+```
+
+### Memories inside a topic
+
+```bash
+memax list --topic-id top_def456
+```
+
+### Fetch everything (JSON)
+
+```bash
+memax list --all --format json > memories.json
+```
+
+## Behavior
+
+- `newest` sorts by creation timestamp descending.
+- `relevant` is a server-computed signal that blends recency with
+  access frequency and recall hits; useful for "what has been in use
+  lately."
+- Pagination uses opaque cursors — treat them as atomic strings, don't
+  parse them.

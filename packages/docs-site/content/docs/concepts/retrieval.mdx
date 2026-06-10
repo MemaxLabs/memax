@@ -1,0 +1,109 @@
+---
+title: Retrieval
+description: How Memax finds the right memories — semantic search, reranking, and the retrieval pipeline.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+Retrieval turns a natural-language question into a ranked set of
+relevant memory chunks. `memax recall` and `POST /v1/recall` both
+use this pipeline.
+
+## Pipeline
+
+```
+Query → Understand → Retrieve (hybrid) → Rerank → Access filter → Return
+```
+
+1. **Understand** — the query is normalized into retrieval signals
+   (semantic, lexical, and contextual) that feed the next stage.
+2. **Retrieve** — a hybrid retrieval layer combines dense semantic
+   matching with complementary signals for exact-phrase and
+   metadata hits, ranked together.
+3. **Rerank** — a rerank stage rescores the top candidates against
+   the _original_ query for precision. Pass `no_rerank: true` /
+   `--no-rerank` to skip this stage for lower latency.
+4. **Access filter** — results you can't access are dropped. This
+   happens at the data layer, not the handler (see
+   [Boundaries](/concepts/boundaries)).
+5. **Return** — ranked `RecalledMemory[]` with `relevance_score`,
+   source metadata, and the matched `chunk_content` (not the full
+   memory — use `memax show <id>` or `GET /v1/memories/{id}` for
+   that).
+
+The specific models and index backing each stage are implementation
+details and subject to change.
+
+## Semantic, not keyword
+
+Recall finds by meaning — paraphrases and synonymous queries hit the
+same memories.
+
+```bash
+# All three should find the same architecture memory:
+memax recall "how does the system architecture work?"
+memax recall "what's the tech stack?"
+memax recall "describe the infrastructure"
+```
+
+For metadata-based listing (tags, topic, recent), use
+[`memax list`](/cli/list) — there is no `memax search` command.
+
+## Filtering
+
+Recall accepts explicit filters that narrow the candidate set
+before scoring:
+
+| Filter           | CLI flag                        | API field                         |
+| ---------------- | ------------------------------- | --------------------------------- |
+| Limit            | `--limit`                       | `limit`                           |
+| Specific hubs    | `--hub <slug>` (boosts ranking) | `hub_ids[]`                       |
+| Tags             | `--tags foo,bar`                | `tags[]`                          |
+| A specific topic | `--topic-id <id>`               | `topic_id`                        |
+| A memory kind    | —                               | `kind`                            |
+| Include archived | `--include-archived`            | `include_archived`                |
+| Skip reranker    | `--no-rerank`                   | `no_rerank`                       |
+| Temporal window  | —                               | `created_after`, `created_before` |
+
+Recall does **not** take a `--hint` or `threshold` flag today.
+
+## Context passing
+
+MCP-based recall accepts a `project_context` object (repo / project /
+branch) that the server uses as a soft relevance boost. This is
+how hooks and the CLI pass the current project state without
+polluting the query text:
+
+```json
+{
+  "tool": "memax_recall",
+  "arguments": {
+    "query": "how does auth work?",
+    "project_context": {
+      "repo": "github.com/org/app",
+      "branch": "fix/auth-refresh"
+    }
+  }
+}
+```
+
+## Performance
+
+Recall is interactive — it's expected to complete in well under a
+second on normal corpora. Exact timing depends on:
+
+- Query understanding (may involve an external model call).
+- Corpus size + index state.
+- Whether the rerank stage ran (rerank is the dominant component
+  when on).
+- Cold vs. warm pools (first call per machine after deploy is
+  slower).
+
+The server returns `query_metadata.latency_ms` on every recall
+response so you can track end-to-end time directly.
+
+<Callout type="info">
+  If rerank latency is the bottleneck for your use case, pass `no_rerank: true`
+  — the result set is less precisely ordered but returns noticeably faster. For
+  hooks in the Claude Code prompt-submit path, you may want this tradeoff.
+</Callout>

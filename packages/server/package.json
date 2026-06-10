@@ -1,0 +1,17 @@
+{
+  "name": "@memaxlabs/server",
+  "version": "0.0.2",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "go build -o memax-server ./cmd/server",
+    "dev": "pnpm dev:migrate && (trap 'kill 0' EXIT; pnpm dev:server & pnpm dev:worker & wait)",
+    "dev:migrate": "MIGRATIONS_DIR=./migrations go run ./cmd/migrate",
+    "migrate:new": "./scripts/new-migration.sh",
+    "dev:server": "go run ./cmd/server",
+    "dev:worker": "go run ./cmd/worker",
+    "test": "go test ./...",
+    "lint": "go vet ./...",
+    "clean": "rm -f memax-server"
+  }
+}

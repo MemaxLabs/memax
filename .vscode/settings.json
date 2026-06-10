@@ -1,0 +1,36 @@
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[go]": {
+    "editor.defaultFormatter": "golang.go"
+  },
+  "cSpell.words": [
+    "Backpressure",
+    "chunker",
+    "dreamable",
+    "Ebbinghaus",
+    "Fumadocs",
+    "Keepalive",
+    "modelcontextprotocol",
+    "pgvector",
+    "pooler",
+    "POSTHOG",
+    "refetches",
+    "Rerank",
+    "Reranker",
+    "reranking",
+    "wordmark"
+  ],
+  "terminal.integrated.profiles.linux": {
+    "tmux": {
+      "path": "bash",
+      "args": ["-c", "tmux new -ADs ${PWD##*/}"],
+      "icon": "terminal-tmux"
+    }
+  },
+  "terminal.integrated.defaultProfile.linux": "tmux",
+  "terminal.integrated.rightClickBehavior": "nothing",
+  "devcontainersTerminalImagePaste.enabled": true,
+  "devcontainersTerminalImagePaste.saveDir": "./.tmp/terminal-pastes",
+  "devcontainersTerminalImagePaste.fileNamePattern": "clipboard-{timestamp}.png"
+}

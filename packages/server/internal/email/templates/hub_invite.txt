@@ -1,0 +1,8 @@
+Subject: {{.InviterName}} invited you to join {{.HubName}} on memax
+
+{{.InviterName}} invited you to join {{.HubName}} as a {{.Role}}.
+
+Join here:
+{{.InviteURL}}
+
+This invite expires on {{.ExpiresAt}}.

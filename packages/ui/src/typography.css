@@ -1,0 +1,83 @@
+/* Shared typography primitives (Geist single-family system).
+   Imported by both web and ui globals to avoid drift. */
+
+.font-sans,
+.font-heading,
+.font-display {
+  font-family:
+    var(--font-sans),
+    -apple-system,
+    "PingFang SC",
+    "PingFang TC",
+    "Microsoft YaHei",
+    "Noto Sans SC",
+    "Noto Sans TC",
+    system-ui,
+    sans-serif;
+}
+
+/* ─── Display scale (Geist Sans, tight tracking does the display work) ─── */
+.text-display-xl {
+  font-family:
+    var(--font-sans),
+    -apple-system,
+    "PingFang SC",
+    "PingFang TC",
+    "Microsoft YaHei",
+    "Noto Sans SC",
+    "Noto Sans TC",
+    system-ui,
+    sans-serif;
+  font-size: 3rem;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  font-weight: 700;
+}
+.text-display-lg {
+  font-family:
+    var(--font-sans),
+    -apple-system,
+    "PingFang SC",
+    "PingFang TC",
+    "Microsoft YaHei",
+    "Noto Sans SC",
+    "Noto Sans TC",
+    system-ui,
+    sans-serif;
+  font-size: 2.25rem;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  font-weight: 700;
+}
+.text-display-md {
+  font-family:
+    var(--font-sans),
+    -apple-system,
+    "PingFang SC",
+    "PingFang TC",
+    "Microsoft YaHei",
+    "Noto Sans SC",
+    "Noto Sans TC",
+    system-ui,
+    sans-serif;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+.text-display-sm {
+  font-family:
+    var(--font-sans),
+    -apple-system,
+    "PingFang SC",
+    "PingFang TC",
+    "Microsoft YaHei",
+    "Noto Sans SC",
+    "Noto Sans TC",
+    system-ui,
+    sans-serif;
+  font-size: 1.125rem;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+}

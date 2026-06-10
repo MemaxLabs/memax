@@ -1,0 +1,98 @@
+---
+title: Cursor
+description: Connect Cursor to Memax via MCP.
+---
+
+import { Steps, Step } from "fumadocs-ui/components/steps";
+
+Cursor supports MCP. Configure it once and Cursor can call Memax
+tools directly.
+
+## Quick setup
+
+```bash
+memax setup --only cursor --mcp
+```
+
+## Manual setup
+
+<Steps>
+  <Step>
+    ### Add Memax to Cursor's MCP config
+
+    Edit `~/.cursor/mcp.json` (global, recommended) or
+    `.cursor/mcp.json` in your project root:
+
+    ```json
+    {
+      "mcpServers": {
+        "memax": {
+          "command": "npx",
+          "args": ["-y", "memax-cli", "mcp", "serve", "--agent", "cursor"]
+        }
+      }
+    }
+    ```
+
+    For remote (hosted) MCP, use a URL-typed server entry with the
+    auth header under `headers`:
+
+    ```json
+    {
+      "mcpServers": {
+        "memax": {
+          "type": "url",
+          "url": "https://api.memax.app/mcp",
+          "headers": { "Authorization": "Bearer mxk_..." }
+        }
+      }
+    }
+    ```
+
+  </Step>
+  <Step>
+    ### Sign in with the CLI
+
+    ```bash
+    memax login
+    memax whoami
+    ```
+
+    (Skip if using remote MCP with an `mxk_` token.)
+
+  </Step>
+  <Step>
+    ### Restart Cursor
+
+    Cursor picks up MCP config changes on restart.
+
+  </Step>
+  <Step>
+    ### Verify
+
+    Ask Cursor: "what memax tools do you have?" — it should list the
+    9 tools (`memax_recall`, `memax_push`, `memax_list`, `memax_hubs`,
+    etc. — see [`memax mcp`](/cli/mcp)).
+
+    There is no `memax_search` tool — it was never exposed.
+
+  </Step>
+</Steps>
+
+## Usage
+
+Cursor can:
+
+- Call `memax_recall` to pull context before generating code.
+- Push decisions and discoveries with `memax_push` during a session.
+- Browse the topic tree with `memax_topics`.
+
+## CLI fallback
+
+If MCP isn't available (older Cursor versions, restricted
+environments):
+
+```bash
+memax recall "auth middleware" --format text | pbcopy
+# Paste into Cursor chat as context.
+```

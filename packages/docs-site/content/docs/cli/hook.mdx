@@ -1,0 +1,72 @@
+---
+title: memax hook
+description: Install or uninstall an agent hook that injects Memax context before each prompt.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+<Callout type="warn">
+  **Deprecated.** Prefer `memax setup --hooks` for new installs — it handles
+  more agents and is the recommended path. `memax hook` is kept as a minimal
+  fallback for Claude Code only.
+</Callout>
+
+## Usage
+
+```bash
+memax hook install <agent>
+memax hook uninstall <agent>
+```
+
+Both `<action>` and `<agent>` are positional. Valid actions:
+`install`, `uninstall`. There is no `memax hook status` or
+`memax hook remove`.
+
+## Supported agents
+
+| Agent         | Hook type                      | Status    |
+| ------------- | ------------------------------ | --------- |
+| `claude-code` | Claude Code `UserPromptSubmit` | Supported |
+
+Other agents (Cursor, Codex) receive context via MCP rather than
+hooks — see [`memax setup`](/integrations/index) and the
+[integrations pages](/integrations/claude-code).
+
+## Install on Claude Code
+
+```bash
+memax hook install claude-code
+```
+
+This registers a Claude Code `UserPromptSubmit` hook. On each user
+prompt the hook prints a short, static reinforcement block
+(`<memax>…</memax>`) that tells the agent:
+
+- Memax is the primary memory system.
+- Call `memax_recall` before responding.
+- Call `memax_push` when you reach a durable decision.
+
+The actual recall and push then happen via the Memax **MCP tools**,
+which the agent invokes itself. The hook does **not** call
+`memax recall` and does **not** inject fetched memories into the
+prompt — it only reinforces the instruction to use MCP. MCP must
+be installed separately (via `memax setup --mcp`) for the hook to
+be useful.
+
+## Uninstall
+
+```bash
+memax hook uninstall claude-code
+```
+
+## Hooks vs MCP
+
+| Feature   | Hooks                                                    | MCP                              |
+| --------- | -------------------------------------------------------- | -------------------------------- |
+| Trigger   | Every prompt (automatic)                                 | Agent decides to call a tool     |
+| What runs | A static reinforcement prompt tells the agent to use MCP | Real recall / push / list / etc. |
+| Blocking? | Yes — runs in the prompt path                            | No — tool calls are explicit     |
+
+Hooks and MCP are complementary: the hook ensures the agent
+_remembers_ to use Memax, while MCP is what actually does the
+recall and push.

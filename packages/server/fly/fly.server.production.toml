@@ -1,0 +1,82 @@
+# Memax API Server — PRODUCTION
+# Deploy: fly deploy -c fly/fly.server.production.toml (from packages/server/)
+#
+# Sister file: fly/fly.server.staging.toml — staging equivalent.
+# If you change a knob here, consider whether staging needs it too
+# (staging should lag prod, not the other way around — test changes
+# on staging first, then mirror here).
+app = "memax-api-production"
+primary_region = "sjc"
+swap_size_mb = 512
+
+[build]
+  # Dockerfile path is relative to THIS toml file (not cwd), so
+  # ../ navigates up from fly/ to the server package root.
+  dockerfile = "../Dockerfile.server"
+
+[env]
+  PORT = "8080"
+  # Trust header source for per-IP rate limiting. Valid: none|cloudflare|fly|xff.
+  #
+  # Staging is currently "fly" (Fly-only topology). When Cloudflare is
+  # rolled in front of prod (see docs/infra/cloudflare-runbook.md),
+  # flip this to "cloudflare" and set ORIGIN_SHARED_SECRET via
+  # `fly secrets set -a memax-api-production ORIGIN_SHARED_SECRET=…`
+  # so direct-to-Fly traffic gets 403'd.
+  TRUSTED_PROXY = "fly"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Prod keeps machines hot — "suspend" preserves in-memory state (DB
+  # connection pool, embedding client warm-up) for sub-second wakes
+  # when traffic returns, versus "stop" which does a cold boot. The
+  # cost is a few extra cents of held-memory billing; worth it for
+  # tail latency.
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  # 2 = HA floor. Single-machine prod means every Fly host incident
+  # or rolling deploy is 100% downtime. Two machines across the same
+  # region give us graceful rolling deploys and survive single-host
+  # failures without paging. Scale up (via `fly scale count`) once
+  # traffic justifies it.
+  min_machines_running = 2
+
+  # Concurrency limits are 2x staging because VM is 2x bigger
+  # (shared-cpu-2x + 1gb vs 1x + 256mb). These are starting points —
+  # tune after observing real prod load. Hard_limit is the scale-up
+  # trigger; above it Fly proxy refuses new connections and routes
+  # elsewhere or spawns a new machine.
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 500
+    hard_limit = 750
+
+[deploy]
+  release_command = "/memax-migrate"
+  release_command_timeout = "10m"
+  # Rolling deploy means old machines keep serving while new ones
+  # come up + pass health checks. With min_machines=2, there's
+  # always at least one healthy machine on the load balancer.
+  strategy = "rolling"
+
+[[http_service.checks]]
+  grace_period = "30s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  timeout = "5s"
+
+[[vm]]
+  # shared-cpu-2x + 1gb is a reasonable prod starting point for a Go
+  # service with pgvector-backed retrieval. Shared CPU is fine — the
+  # hot path is I/O-bound (DB, Redis, LLM). Upgrade to performance-*
+  # classes only if CPU profiling shows we're actually compute-bound.
+  size = "shared-cpu-2x"
+  memory = "1gb"
+
+[swap]
+  # 1gb swap for memory-pressure safety. Never relied on in normal
+  # operation; absorbs burst allocations (large embedding batches,
+  # occasional long markdown chunks) without OOM-killing the process.
+  size_mb = 1024

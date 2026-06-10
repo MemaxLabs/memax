@@ -1,0 +1,3 @@
+setup:
+  - project: memax
+    config: dev

@@ -1,0 +1,14 @@
+{
+  "title": "CLI Reference",
+  "pages": [
+    "index",
+    "push",
+    "recall",
+    "list",
+    "import",
+    "hub",
+    "agents",
+    "hook",
+    "mcp"
+  ]
+}

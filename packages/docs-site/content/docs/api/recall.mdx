@@ -1,0 +1,125 @@
+---
+title: Recall API
+description: Semantic search endpoint. Find the most relevant memories for a query.
+---
+
+Semantic retrieval. Returns chunks from the most relevant memories,
+already reranked (unless `no_rerank` is set).
+
+## Recall
+
+```
+POST /v1/recall
+```
+
+### Request body
+
+```json
+{
+  "query": "how does authentication work?",
+  "limit": 10,
+  "hub_ids": ["hub_abc123"],
+  "tags": ["auth"],
+  "topic_id": "top_xyz",
+  "kind": "semantic",
+  "no_rerank": false,
+  "include_archived": false,
+  "project_context": {
+    "repo": "github.com/org/app",
+    "branch": "fix/auth-refresh"
+  }
+}
+```
+
+| Field              | Type             | Required | Description                                                                                                                                 |
+| ------------------ | ---------------- | :------: | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query`            | string           | **yes**  | Natural-language search query.                                                                                                              |
+| `limit`            | number           |          | Max memories returned.                                                                                                                      |
+| `hub_ids`          | string[]         |          | Narrow to specific hubs. **Hub IDs only** — slugs are not accepted here. Omit for all.                                                      |
+| `kind`             | string           |          | Restrict to `episodic`, `semantic`, `procedural`, or `rationale`.                                                                           |
+| `tags`             | string[]         |          | Declared on the request struct but **not applied by the recall handler today** — treat as a no-op.                                          |
+| `topic_id`         | string           |          | Restrict to memories in this topic.                                                                                                         |
+| `no_rerank`        | boolean          |          | Skip the reranker stage (faster, lower quality).                                                                                            |
+| `include_archived` | boolean          |          | Declared on the request struct but **not honored today** — the recall pipeline unconditionally excludes archived and `processing` memories. |
+| `source`           | string           |          | Hint about where this recall came from (CLI, hook, MCP…).                                                                                   |
+| `working_dir`      | string           |          | Optional working directory hint.                                                                                                            |
+| `project_context`  | object           |          | `{ repo, project, branch }` for relevance boosting.                                                                                         |
+| `created_after`    | string (RFC3339) |          | Temporal lower bound.                                                                                                                       |
+| `created_before`   | string (RFC3339) |          | Temporal upper bound.                                                                                                                       |
+
+There is no `threshold` parameter. The docs previously claimed one;
+the server doesn't take a relevance-score floor.
+
+### Response
+
+```json
+{
+  "data": {
+    "memories": [
+      {
+        "id": "mem_a1b2c3d4",
+        "title": "Auth system design",
+        "summary": "JWT-based auth with token rotation",
+        "chunk_content": "The auth system uses JWT with short-lived access tokens...",
+        "heading_chain": "Auth > Tokens > Access",
+        "relevance_score": 0.94,
+        "kind": "semantic",
+        "stability": "evolving",
+        "source": "cli",
+        "age": "3 days ago",
+        "created_at": "2026-04-18T10:30:00Z",
+        "hub_id": "hub_abc123",
+        "hub_name": "Platform Team",
+        "topic_id": "top_xyz",
+        "topic_name": "Auth & identity"
+      }
+    ],
+    "query_metadata": {
+      "intent": "explanation",
+      "kinds_searched": ["semantic", "rationale"],
+      "total_candidates": 47,
+      "reranked": true,
+      "latency_ms": 284
+    }
+  }
+}
+```
+
+### Response fields
+
+Each entry in `memories`:
+
+| Field                    | Description                                                 |
+| ------------------------ | ----------------------------------------------------------- |
+| `id`                     | Memory ID (parent, not chunk).                              |
+| `title`                  | Memory title.                                               |
+| `summary`                | Server-generated summary.                                   |
+| `chunk_content`          | The matched chunk's content (not the full memory).          |
+| `heading_chain`          | Heading path within the source document.                    |
+| `relevance_score`        | 0–1, higher is better.                                      |
+| `kind`                   | `episodic` / `semantic` / `procedural` / `rationale`.       |
+| `stability`              | `volatile` / `evolving` / `stable`.                         |
+| `source`                 | Origin of the parent memory.                                |
+| `age`                    | Human-readable age (`"3 days ago"`).                        |
+| `hub_id`, `hub_name`     | Parent hub (present when hub search spanned multiple hubs). |
+| `topic_id`, `topic_name` | Topic assignment if any.                                    |
+
+`query_metadata`:
+
+| Field              | Description                                            |
+| ------------------ | ------------------------------------------------------ |
+| `intent`           | Classifier's guess at query intent.                    |
+| `kinds_searched`   | Which memory kinds were queried.                       |
+| `total_candidates` | Number of chunks considered before final ranking.      |
+| `reranked`         | Whether rerank ran (false if `no_rerank` or no model). |
+| `latency_ms`       | End-to-end server time.                                |
+
+## Related
+
+```
+GET /v1/memories/{id}/related
+```
+
+Returns memories related to a specific memory — used by the web app's
+memory detail "Related" section. Same `RecalledMemory[]` shape as the
+recall endpoint.

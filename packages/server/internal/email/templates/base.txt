@@ -1,0 +1,13 @@
+{{.Body}}
+
+---
+{{if .Brand.ReasonText}}{{.Brand.ReasonText}}
+{{end}}{{if .Brand.FooterText}}{{.Brand.FooterText}}
+{{end}}{{if .Brand.SupportEmail}}Questions? {{.Brand.SupportEmail}}
+{{end}}{{if .Brand.CompanyName}}{{.Brand.CompanyName}}
+{{end}}{{if .Brand.CompanyAddress}}{{.Brand.CompanyAddress}}
+{{end}}{{if .Brand.PrivacyURL}}Privacy: {{.Brand.PrivacyURL}}
+{{end}}{{if .Brand.TermsURL}}Terms: {{.Brand.TermsURL}}
+{{end}}{{if .Brand.IncludeUnsubscribe}}
+Unsubscribe: {{.Brand.UnsubscribePlaceholder}}
+{{end}}

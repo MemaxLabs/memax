@@ -1,0 +1,145 @@
+---
+title: CLI Reference
+description: Complete reference for the Memax CLI. Every command, subcommand, flag, and option.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+The Memax CLI (`memax-cli`) is the primary interface for power users.
+It's designed to feel like `git` — composable commands, Unix-friendly
+(pipes, redirection), fast startup, minimal output.
+
+```bash
+npm install -g memax-cli
+```
+
+The binary is `memax`.
+
+## Command overview
+
+### Memory operations
+
+| Command                  | Description                                        |
+| ------------------------ | -------------------------------------------------- |
+| [`push`](/cli/push)      | Save a single piece of content.                    |
+| `push` alias: `remember` | Same as `push`.                                    |
+| [`recall`](/cli/recall)  | Semantic search against your hub(s).               |
+| [`list`](/cli/list)      | Paginated listing of memories.                     |
+| [`import`](/cli/import)  | One-way import of a directory.                     |
+| `ask <question>`         | LLM-synthesized answer grounded in your memories.  |
+| `show <id>`              | Print a single memory in full.                     |
+| `delete <id>`            | Delete a memory (interactive confirm unless `-y`). |
+
+### Hub management
+
+| Command                               | Description                                           |
+| ------------------------------------- | ----------------------------------------------------- |
+| [`hub list`](/cli/hub)                | List hubs you can access.                             |
+| [`hub create <name>`](/cli/hub)       | Create a team hub.                                    |
+| [`hub switch <id-or-slug>`](/cli/hub) | Set the active hub.                                   |
+| [`hub members`](/cli/hub)             | List members of a hub.                                |
+| [`hub invite …`](/cli/hub)            | Create / list / revoke / regenerate / accept invites. |
+
+### Organization
+
+| Command        | Description                          |
+| -------------- | ------------------------------------ |
+| `topic list`   | List topics (the personal taxonomy). |
+| `topic create` | Create a topic.                      |
+| `topic set`    | Assign a memory to a topic.          |
+| `topic clear`  | Unassign a memory from a topic.      |
+| `topic delete` | Delete a topic.                      |
+
+### Agents
+
+| Command                                  | Description                                                        |
+| ---------------------------------------- | ------------------------------------------------------------------ |
+| [`agents sync`](/cli/agents)             | Bidirectional sync of configs + sessions.                          |
+| [`agents list`](/cli/agents)             | Combined listing of synced configs and sessions.                   |
+| [`agents configs …`](/cli/agents)        | Config-only sync, list, recovery, doctor.                          |
+| [`agents sessions …`](/cli/agents)       | Session-only sync, list, recovery, doctor.                         |
+| [`hook install \| uninstall`](/cli/hook) | Install the Claude Code hook (deprecated; prefer `setup --hooks`). |
+| [`mcp serve`](/cli/mcp)                  | Run the local stdio MCP server.                                    |
+
+### Setup
+
+| Command           | Description                                                 |
+| ----------------- | ----------------------------------------------------------- |
+| `setup`           | Configure MCP + hooks + instructions on this machine.       |
+| `teardown`        | Reverse `setup`.                                            |
+| `capture-session` | Persist an agent session (summary + decisions + learnings). |
+
+### Auth & account
+
+| Command                  | Description                        |
+| ------------------------ | ---------------------------------- |
+| `login`                  | Interactive OAuth sign-in.         |
+| `logout`                 | Clear stored credentials.          |
+| `whoami`                 | Show the currently signed-in user. |
+| `auth create-key <name>` | Generate an API key.               |
+| `auth list-keys`         | List your keys.                    |
+| `auth revoke-key <id>`   | Revoke a key.                      |
+
+### Dreams (knowledge organization)
+
+| Command          | Description                                          |
+| ---------------- | ---------------------------------------------------- |
+| `dreams list`    | List recent dream runs.                              |
+| `dreams report`  | Show the latest dream report (contradictions, etc.). |
+| `dreams trigger` | Manually trigger a dream run.                        |
+
+### Configuration
+
+| Command                    | Description                  |
+| -------------------------- | ---------------------------- |
+| `config get [key]`         | Read config (or all values). |
+| `config set <key> <value>` | Write a config value.        |
+
+## Environment variables
+
+The CLI reads these env vars:
+
+| Env var         | Purpose                                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `MEMAX_API_KEY` | Non-interactive auth. Takes precedence over stored OAuth credentials.                                              |
+| `MEMAX_API_URL` | Point the CLI at a non-default backend. Overrides the `api_url` in `~/.memax/config.json`. |
+
+`MEMAX_HUB`, `MEMAX_NO_COLOR`, and `MEMAX_DEBUG` are **not** read
+by the CLI today. To change the default hub, use `memax hub switch`
+(affects read scoping), pass `--hub <slug>` per call, or set
+`hub: <slug>` in a repo-local `.memax.yml` (affects `memax push`).
+Per-command flags like `--hub <slug>` and `--format json|text`
+override the defaults for the call they're passed to.
+
+## Output format
+
+Most commands accept `--format text|json`. JSON output is intended
+to be stable for scripting; human-readable output may change between
+versions.
+
+```bash
+memax list --format json | jq '.memories[] | {id, title}'
+memax recall "deploy process" --format json | jq '.memories[0].chunk_content'
+```
+
+## Composition
+
+The CLI follows Unix conventions:
+
+```bash
+# Pipe recall to the clipboard
+memax recall "auth design" --format text | pbcopy
+
+# Query from stdin
+cat question.txt | memax recall
+
+# Use in shell scripts
+if memax recall "deploy checklist" --format text | grep -q "migration"; then
+  echo "Don't forget to run migrations"
+fi
+```
+
+<Callout type="info">
+  `memax` exits 0 on success, non-zero on error, and writes human output to
+  stdout. Machine-readable output uses `--format json`.
+</Callout>

@@ -1,0 +1,15 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "---Getting Started---",
+    "quickstart",
+    "---Core Concepts---",
+    "concepts",
+    "---Developer Tools---",
+    "cli",
+    "integrations",
+    "sdk",
+    "api"
+  ]
+}

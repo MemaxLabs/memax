@@ -1,0 +1,8 @@
+Subject: You're in — memax early access
+
+Your early access to memax is ready! Connect your AI agents and they start knowing you across every tool.
+
+Create your account here:
+{{.RegisterURL}}
+
+This invite expires on {{.ExpiresAt}}. After that, you'll need to request a new one.

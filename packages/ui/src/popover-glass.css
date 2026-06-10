@@ -1,0 +1,58 @@
+/**
+ * Popover glass recipe — material for `<PopoverContent variant="glass">`.
+ *
+ * Owned by @memaxlabs/ui so the Popover primitive is self-contained:
+ * every consumer (web app, kitchen, future surfaces) gets the same
+ * glass material without having to replicate a per-app CSS recipe.
+ *
+ * Dependencies (all token-based):
+ *   - `--card` / `--glass-inset-highlight` — theme-aware, resolved from
+ *     each consumer's globals.css theme blocks.
+ *   - `--app-radius-surface` — root-only, exported from surface-radius.css.
+ *     Corner radius always resolves, even on portaled popovers.
+ *
+ * If a consumer needs a different glass character for a specific popup,
+ * pass a className override (tailwind-merge keeps the custom class); the
+ * recipe itself stays canonical.
+ */
+/*
+ * Material composed from shared glass tokens (defined in the consuming
+ * app's globals — see packages/web/src/app/globals.css `:root`):
+ *   --glass-fill-65          65% --card translucency
+ *   --glass-filter-md        popover-weight backdrop-blur (40px)
+ *   --glass-border-hairline  1px hairline used on every glass class
+ *   --glass-inset-highlight  theme-aware inner rim
+ *   --app-radius-surface     shared surface corner radius
+ *
+ * Siblings .glass-bar / .glass-toolbar use the same fill + border +
+ * inset tokens; only the backdrop-filter differs (lg 50px vs md 40px)
+ * because wide bars amortize heavier blur while popovers prioritize
+ * snappier composite performance.
+ */
+.glass-dropdown {
+  background: var(--glass-fill-65);
+  backdrop-filter: var(--glass-filter-md);
+  -webkit-backdrop-filter: var(--glass-filter-md);
+  border: 1px solid var(--glass-border-hairline);
+  border-radius: var(--app-radius-surface);
+  box-shadow:
+    inset 0 1px 0 var(--glass-inset-highlight),
+    0 8px 32px oklch(0 0 0 / 0.08),
+    0 2px 8px oklch(0 0 0 / 0.04);
+  contain: layout;
+}
+
+:is(.dark *).glass-dropdown,
+.dark .glass-dropdown {
+  border-color: var(--glass-border-hairline);
+  box-shadow:
+    inset 0 1px 0 var(--glass-inset-highlight),
+    0 8px 32px oklch(0 0 0 / 0.3),
+    0 2px 8px oklch(0 0 0 / 0.2);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-dropdown {
+    background: var(--card);
+  }
+}

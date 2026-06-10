@@ -1,0 +1,75 @@
+# Validates that PRs targeting `prod` carry exactly one release label
+# from the canonical set: release:patch, release:minor, release:major.
+#
+# # Why
+#
+# Production deploys derive the version bump from the release label on
+# the merged promote PR. A missing or ambiguous label would make the
+# deploy workflow either fail (annoying) or silently pick wrong
+# (dangerous). Running this validation at PR time means the bump
+# decision has to be made + reviewed BEFORE merge — same gate the code
+# review already is.
+#
+# # Wiring
+#
+# Once this workflow has run successfully at least once, add it as a
+# required status check on the `prod` branch: Settings → Branches →
+# Branch protection rules → Add rule for `prod` → Require status
+# checks → add "Exactly one release:* label". Without that branch
+# protection, typos can still merge (the check is advisory only).
+#
+# # Canonical labels (must exist in the repo)
+#
+# Create once via `gh label create`:
+#
+#   gh label create release:patch --description "Bug fix / backwards-compatible" --color EFEFEF
+#   gh label create release:minor --description "New backwards-compatible capability" --color C5DEF5
+#   gh label create release:major --description "Breaking change" --color FBCA04
+#
+# Contributors pick from GitHub's label dropdown — no free-typing,
+# which makes typos ("release:patche") impossible within the canonical
+# picker. A contributor CAN create a malformed new label, but this
+# workflow will fail the PR check because the new label doesn't match
+# the regex below.
+
+name: Validate Release Label
+
+on:
+  pull_request:
+    branches: [prod]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  check:
+    name: Exactly one release:* label
+    runs-on: ubuntu-latest
+    permissions:
+      # Read-only access to PR metadata (labels). No write needed —
+      # this is a gate, not an automation.
+      pull-requests: read
+    steps:
+      - name: Require exactly one release:* label from canonical set
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        # Canonical set is hardcoded in the regex so a misspelled label
+        # ("relase:minor", "release:patches") fails even if it was
+        # somehow added to the repo. The only valid bump words are
+        # patch | minor | major — no aliases, no typos accepted.
+        run: |
+          set -euo pipefail
+          LABELS=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json labels --jq '.labels[].name')
+          # grep returns exit 1 on no match; || true prevents set -e trip.
+          RELEASE_LABELS=$(echo "$LABELS" | grep -E '^release:(patch|minor|major)$' || true)
+          COUNT=$(echo -n "$RELEASE_LABELS" | grep -c . || true)
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::PR must carry exactly one release:* label (release:patch, release:minor, or release:major). Pick the right one based on the change — see docs/infra/production-setup.md for the rubric."
+            exit 1
+          fi
+          if [ "$COUNT" -gt 1 ]; then
+            echo "::error::PR carries multiple release:* labels: $(echo "$RELEASE_LABELS" | tr '\n' ' '). Pick exactly one."
+            exit 1
+          fi
+          echo "OK: $RELEASE_LABELS"

@@ -1,0 +1,86 @@
+{
+  "name": "Memax",
+  "dockerComposeFile": ["docker-compose.yml"],
+  "service": "app",
+  "workspaceFolder": "/workspaces/memax",
+
+  "features": {},
+
+  "forwardPorts": [
+    8080,
+    3000,
+    3001,
+    3003,
+    "postgres:5432",
+    "redis:6379",
+    "minio:9000",
+    "minio:9001"
+  ],
+  "portsAttributes": {
+    "8080": { "label": "API Server (Go)", "onAutoForward": "silent" },
+    "3000": { "label": "Web App (memax.app)", "onAutoForward": "notify" },
+    "3001": {
+      "label": "Docs Site (docs.memax.app)",
+      "onAutoForward": "notify"
+    },
+    "3003": {
+      "label": "UI Design (ui.memaxlabs.com)",
+      "onAutoForward": "notify"
+    },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "silent" },
+    "6379": { "label": "Redis", "onAutoForward": "silent" },
+    "9000": { "label": "MinIO S3 API", "onAutoForward": "silent" },
+    "9001": { "label": "MinIO Console", "onAutoForward": "silent" }
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postStartCommand": "crontab /workspaces/memax/.devcontainer/crontab && sudo service cron start",
+
+  "containerEnv": {
+    "DATABASE_URL": "postgres://memax:memax@postgres:5432/memax?sslmode=disable",
+    "REDIS_URL": "redis://redis:6379",
+    "NEXT_PUBLIC_API_URL": "http://localhost:8080",
+    "NEXT_PUBLIC_APP_URL": "http://localhost:3000",
+    "NEXT_PUBLIC_DOCS_URL": "http://localhost:3001",
+    "JWT_SECRET": "devcontainer-local-dev-secret",
+    "MIGRATIONS_DIR": "/workspaces/memax/packages/server/migrations",
+    "S3_ENDPOINT": "http://minio:9000",
+    "S3_PUBLIC_ENDPOINT": "http://localhost:9000",
+    "S3_ACCESS_KEY": "memax",
+    "S3_SECRET_KEY": "memaxdevpass",
+    "S3_BUCKET": "memax-storage",
+    "DOPPLER_TOKEN": "${localEnv:DOPPLER_TOKEN}",
+    "FLY_API_TOKEN": "${localEnv:FLY_API_TOKEN}"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "rust-lang.rust-analyzer",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "ms-azuretools.vscode-docker",
+        "github.copilot",
+        "github.copilot-chat",
+        "eamodio.gitlens",
+        "usernamehw.errorlens",
+        "anthropic.claude-code",
+        "streetsidesoftware.code-spell-checker",
+        "github.vscode-github-actions",
+        "github.vscode-pull-request-github",
+        "openai.chatgpt",
+        "touyu.devcontainers-terminal-image-paste"
+      ],
+      "settings": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "go.toolsManagement.autoUpdate": true,
+        "[go]": {
+          "editor.defaultFormatter": "golang.go"
+        }
+      }
+    }
+  }
+}

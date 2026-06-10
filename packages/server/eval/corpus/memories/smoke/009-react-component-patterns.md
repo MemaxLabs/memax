@@ -1,0 +1,1 @@
+Use compound components for complex UI. Prefer composition over prop drilling. Use React.memo only for expensive renders. Custom hooks for shared logic. Server components for data fetching in Next.js App Router.

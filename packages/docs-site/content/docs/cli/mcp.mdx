@@ -1,0 +1,152 @@
+---
+title: memax mcp
+description: Run the local (stdio) Memax MCP server. Gives tool-calling agents direct access to your hub.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+Start a local MCP (Model Context Protocol) server over stdio. Any
+MCP-compatible client can connect to it and get access to Memax
+tools.
+
+For most setups, you don't run this command directly — agents invoke
+it via their MCP config (see [Integrations](/integrations/index)).
+
+## Usage
+
+```bash
+memax mcp serve [--agent <name>]
+```
+
+| Flag             | Description                                                             |
+| ---------------- | ----------------------------------------------------------------------- |
+| `--agent <name>` | Tag the agent's identity in audit logs (`claude-code`, `cursor`, etc.). |
+
+## Configuration
+
+An agent configures the MCP server in its JSON config:
+
+```json
+{
+  "mcpServers": {
+    "memax": {
+      "command": "npx",
+      "args": ["-y", "memax-cli", "mcp", "serve"]
+    }
+  }
+}
+```
+
+For agent-specific setup, see the [Integrations guides](/integrations/index).
+
+<Callout type="info">
+  The CLI's local MCP server and the remote MCP server (at
+  `https://api.memax.app/mcp`) expose the **same tools**. Use whichever fits
+  your setup; remote is lower-friction for cloud deployments, local is better
+  for offline / stdio-only agents.
+</Callout>
+
+## Exposed tools
+
+The MCP server exposes **9 tools**. All parameter names and types
+below come directly from the server's `inputSchema`.
+
+### `memax_recall`
+
+Semantic search across the user's hubs. Use it for project context,
+team processes, or past decisions.
+
+| Parameter         | Type   | Required | Description                                           |
+| ----------------- | ------ | :------: | ----------------------------------------------------- |
+| `query`           | string | **yes**  | Natural language search query.                        |
+| `limit`           | number |          | Max results (default 10).                             |
+| `topic_id`        | string |          | Restrict to memories in this topic (UUID).            |
+| `hub_id`          | string |          | Boost ranking for this hub (ID, slug, or `personal`). |
+| `project_context` | object |          | `{ repo, project }` for relevance boosting.           |
+
+### `memax_push`
+
+Save new knowledge. The server classifies it automatically.
+
+| Parameter         | Type     | Required | Description                                                                                            |
+| ----------------- | -------- | :------: | ------------------------------------------------------------------------------------------------------ |
+| `content`         | string   | **yes**  | The content to save.                                                                                   |
+| `title`           | string   |          | Auto-generated if omitted.                                                                             |
+| `hint`            | string   |          | Context hint (e.g. `"my resume"`) — improves classification.                                           |
+| `tags`            | string[] |          | Tags.                                                                                                  |
+| `initiation_type` | string   |          | `human_direct`, `human_requested_agent`, `agent_proactive`, `agent_automatic`, `import`, or `unknown`. |
+| `project_context` | object   |          | `{ repo, project, branch }`. Auto-detected by the CLI.                                                 |
+| `hub_id`          | string   |          | Target hub (required for team hubs).                                                                   |
+| `hub_reason`      | string   |          | Why it belongs in the shared hub — **required** when `hub_id` is a team hub.                           |
+
+### `memax_get`
+
+Read the full content of a memory by ID — use this after `memax_recall`
+to read a result in full.
+
+| Parameter | Type   | Required |
+| --------- | ------ | :------: |
+| `id`      | string | **yes**  |
+
+### `memax_list`
+
+List memories with pagination. Returns `cursor` for the next page.
+
+Same input schema as the CLI's `memax list`: `sort`, `limit`,
+`cursor`, `hub_id`, `topic_id`.
+
+### `memax_hubs`
+
+List hubs the current user can access. Returns hub IDs, slugs, roles,
+and memory counts. No input parameters.
+
+### `memax_hub_members`
+
+List members of a hub.
+
+| Parameter | Type   | Required | Description                    |
+| --------- | ------ | :------: | ------------------------------ |
+| `hub_id`  | string | **yes**  | Hub ID, slug, or `"personal"`. |
+
+### `memax_forget`
+
+Delete a memory by ID.
+
+| Parameter | Type   | Required |
+| --------- | ------ | :------: |
+| `id`      | string | **yes**  |
+
+### `memax_capture`
+
+Save structured **session context** — summary, decisions, and
+learnings from a work session. Each decision / learning is extracted
+into its own searchable memory.
+
+This is **not** a URL capture — it's for end-of-session context
+persistence from the agent's perspective.
+
+| Parameter   | Type     | Required | Description                                  |
+| ----------- | -------- | :------: | -------------------------------------------- |
+| `summary`   | string   | **yes**  | Short summary of what was accomplished.      |
+| `decisions` | string[] |          | Key decisions made (one entry per decision). |
+| `learnings` | string[] |          | Things learned during the session.           |
+
+### `memax_topics`
+
+Browse the user's topic tree. Without `topic_id`: full tree with
+memory counts. With `topic_id`: memories in that topic.
+
+| Parameter  | Type   | Required | Description                       |
+| ---------- | ------ | :------: | --------------------------------- |
+| `topic_id` | string |          | Topic ID. Omit for the full tree. |
+| `hub_id`   | string |          | Scope topics to a specific hub.   |
+
+## Tool parity
+
+The tools listed above are identical between:
+
+- **Local (stdio) MCP** — `memax mcp serve` (this command).
+- **Remote MCP** — `https://api.memax.app/mcp` (hosted).
+
+If you add or change tools in one, update the other — this is
+enforced as a contract in the repo.

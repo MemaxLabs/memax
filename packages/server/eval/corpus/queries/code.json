@@ -1,0 +1,256 @@
+{
+  "queries": [
+    {
+      "id": "cq1",
+      "query": "river worker panic nil pointer",
+      "query_type": "debug",
+      "slices": [
+        "type:debug",
+        "lang:en",
+        "hub:multi",
+        "domain:code"
+      ],
+      "relevance": {
+        "code-river-worker-panic": 3,
+        "code-chunk-metadata-propagation-review": 1
+      },
+      "min_results": 1,
+      "description": "Stack trace lookup - should find the River worker panic as top result. Chunk metadata review tangentially mentions the same worker file.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cq2",
+      "query": "how to handle postgresql upsert conflicts",
+      "query_type": "topical",
+      "slices": [
+        "type:topical",
+        "lang:en",
+        "hub:multi",
+        "domain:code"
+      ],
+      "relevance": {
+        "code-postgresql-upsert-pattern": 3,
+        "code-migration-021-dirty-state": 1,
+        "004-adr-chose-postgresql-over-mongodb": 1
+      },
+      "min_results": 1,
+      "description": "Code pattern lookup - should find the upsert pattern as top result. Migration dirty state and PostgreSQL ADR are tangentially related.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cq3",
+      "query": "voyage api rate limit error",
+      "query_type": "debug",
+      "slices": [
+        "type:debug",
+        "lang:en",
+        "hub:personal",
+        "domain:code"
+      ],
+      "relevance": {
+        "code-voyage-api-429-rate-limit": 3,
+        "007-api-rate-limiting-design": 1
+      },
+      "min_results": 1,
+      "description": "Error log lookup - should find the Voyage 429 error as top result. General rate limiting design note is tangentially related.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cq4",
+      "query": "fly.io deployment configuration",
+      "query_type": "topical",
+      "slices": [
+        "type:topical",
+        "lang:en",
+        "hub:multi",
+        "domain:code"
+      ],
+      "relevance": {
+        "code-flyio-server-toml": 3,
+        "003-deployment-process": 2,
+        "code-github-actions-ci-workflow": 1
+      },
+      "min_results": 1,
+      "description": "Config lookup - should find the Fly TOML as top result. Existing deployment process note is a strong secondary hit. CI workflow mentions fly deploy as tangential.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cq5",
+      "query": "oauth redirect loop debug",
+      "query_type": "debug",
+      "slices": [
+        "type:debug",
+        "lang:en",
+        "hub:multi",
+        "domain:code"
+      ],
+      "relevance": {
+        "code-oauth-redirect-loop-debug": 3,
+        "005-debugging-login-redirect-loop": 2,
+        "002-authentication-system": 1
+      },
+      "min_results": 1,
+      "description": "Debug query - should find the detailed OAuth debug session as top result. The existing smoke debug note about login redirect (005) is a strong secondary hit. Auth system note is tangential.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cq6",
+      "query": "react hooks patterns typescript",
+      "query_type": "topical",
+      "slices": [
+        "type:topical",
+        "lang:en",
+        "hub:multi",
+        "domain:code"
+      ],
+      "relevance": {
+        "code-react-hook-composition": 3,
+        "009-react-component-patterns": 2,
+        "code-nextjs-hydration-mismatch": 1
+      },
+      "min_results": 1,
+      "description": "Code pattern query - should find the hook composition note as top result. Existing React component patterns (009) is a strong secondary. Hydration mismatch note mentions React/hooks tangentially.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cq7",
+      "query": "how does RRF fusion work",
+      "query_type": "topical",
+      "slices": [
+        "type:topical",
+        "lang:en",
+        "hub:personal",
+        "domain:code"
+      ],
+      "relevance": {
+        "code-rrf-fusion-implementation": 3,
+        "code-redis-cache-stampede": 1
+      },
+      "min_results": 1,
+      "description": "Algorithm lookup - should find the RRF implementation as top result. Cache stampede note tangentially mentions recall performance which uses RRF.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cq8",
+      "query": "migration dirty state recovery",
+      "query_type": "debug",
+      "slices": [
+        "type:debug",
+        "lang:en",
+        "hub:personal",
+        "domain:code"
+      ],
+      "relevance": {
+        "code-migration-021-dirty-state": 3,
+        "code-postgresql-upsert-pattern": 1
+      },
+      "min_results": 1,
+      "description": "Recovery procedure lookup - should find the migration dirty state fix as top result. Upsert pattern tangentially mentions migrations.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    }
+  ]
+}

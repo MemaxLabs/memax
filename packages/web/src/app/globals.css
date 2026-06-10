@@ -1,0 +1,2176 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@memaxlabs/ui/typography.css";
+@import "@memaxlabs/ui/notification-glass.css";
+@import "@memaxlabs/ui/surface-radius.css";
+@import "@memaxlabs/ui/popover-glass.css";
+
+/* Scan @memaxlabs/ui source for Tailwind classes (components live outside web/) */
+@source "../../../ui/src/**/*.tsx";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* ═══ Semantic text + surface colors (Tailwind utilities) ═══ */
+  /* Usage: text-fg-1 (primary), text-fg-2 (secondary), bg-surface-1 (subtle) */
+  --color-fg-1: var(--fg-1);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-fg-4: var(--fg-4);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  /* --font-sans and --font-mono are loaded via next/font/google in
+     app/layout.tsx (Inter + JetBrains Mono) and injected as CSS variables
+     on <html>. The values below are the last-resort fallbacks if
+     next/font fails to provide them. font-heading and font-display both
+     alias to font-sans — semantic intent in markup, one family at runtime.
+     See kitchen §12 Typography. */
+  --font-sans:
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui,
+    sans-serif;
+  --font-heading: var(--font-sans);
+  --font-display: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  /* Semantic 20px radius for cards, dropdowns, contained-hover affordances.
+     Aliased to `--app-radius-surface` (defined at :root in
+     surface-radius.css) so the value lives at :root and resolves
+     correctly inside `var(--radius-card)` references. Tailwind 4's
+     `@theme inline` INLINES values into auto-generated utilities but
+     does NOT expose them as :root CSS vars, so a literal here would
+     break consumers like `.glass-card` and the `@utility rounded-card`
+     block that read `var(--radius-card)` directly. Same pattern as
+     `--radius-chrome` / `--radius-surface`. */
+  --radius-card: var(--app-radius-surface);
+}
+
+/* ═══ Z-index scale (semantic tiers) ═══
+   Single source of truth for layering across the app. Ordered from
+   back to front; gaps exist so consumers can slot in between when
+   truly necessary (rare).
+
+   Invariants:
+     - popover > modal: a popover opened from inside a Settings dialog
+       must render above the dialog. Swapping would reintroduce a
+       historical bug (see popover.tsx).
+     - takeover > popover: full-screen takeovers (lightbox, hub-create,
+       mobile compose) deliberately paint above stray popovers.
+
+   Tailwind 4 does NOT auto-generate z-* utilities from @theme entries
+   (z-index is not a tracked namespace like color or spacing). Custom
+   utilities are defined via `@utility` below. CSS vars live on :root
+   so inline styles and arbitrary values can reference them too.
+
+   Keep in sync with packages/ui/app/globals.css. */
+@utility z-page {
+  z-index: var(--z-page);
+}
+@utility z-bar-notif {
+  z-index: var(--z-bar-notif);
+}
+@utility z-bar {
+  z-index: var(--z-bar);
+}
+@utility z-topic-tree {
+  z-index: var(--z-topic-tree);
+}
+@utility z-modal {
+  z-index: var(--z-modal);
+}
+@utility z-popover {
+  z-index: var(--z-popover);
+}
+@utility z-shell-rail {
+  z-index: var(--z-shell-rail);
+}
+@utility z-shell-secondary {
+  z-index: var(--z-shell-secondary);
+}
+@utility z-shell-bar {
+  z-index: var(--z-shell-bar);
+}
+@utility z-takeover {
+  z-index: var(--z-takeover);
+}
+@utility z-toast {
+  z-index: var(--z-toast);
+}
+
+/* Semantic 20px radius for cards, dropdowns, contained-hover affordances.
+   Use this instead of arbitrary `rounded-[20px]` so a future global tweak
+   to the card radius lands in one place. References `--app-radius-surface`
+   directly (defined at :root in surface-radius.css) — NOT `--radius-card`,
+   because `--radius-card` is `@theme inline` and Tailwind 4 doesn't expose
+   inline-mode tokens as :root CSS vars. Reading `var(--radius-card)` here
+   would resolve to undefined → 0 (the rectangular-card bug). */
+@utility rounded-card {
+  border-radius: var(--app-radius-surface);
+}
+
+:root {
+  /* ═══ Universal Design Tokens (single source of truth) ═══ */
+  /* Change ONE value here → updates entire app via @theme → Tailwind utilities. */
+
+  /* Z-index scale values (consumed by the @utility blocks above). */
+  --z-page: 0;
+  /* Notif sits BELOW the bar so the bar's glass paints on top of
+     the notification's tuck overlap region. Same z as shell-rail
+     (51); they never overlap geographically (notif at top center,
+     rail on left). Plan 26 follow-up after codex flagged the
+     53-above-52 inversion. */
+  --z-bar-notif: 51;
+  /* Bar sits ABOVE shell-secondary (50), shell-rail (51), and
+     bar-notif (51) so it never gets covered by floating chrome AND
+     the notification's tuck overlap paints behind the bar glass.
+     Plan 26 follow-up: user spec "the bar should have the highest
+     z-index" within the chrome family. Modal/popover/takeover/toast
+     still win above this so dialogs etc. are unaffected. */
+  --z-bar: 52;
+  --z-topic-tree: 50;
+  --z-modal: 60;
+  --z-popover: 70;
+  --z-takeover: 80;
+
+  /* Shell-v2 chrome layering (plan 19). Rail clips the secondary panel
+     during slide-in/out for the "push from underneath" reading — rail
+     z is one tick above the secondary so the panel visibly emerges from
+     underneath. Bar stays at the existing --z-bar tier so the bar
+     surface paints above shell chrome regardless of which shell is
+     active. */
+  --z-shell-secondary: 50;
+  --z-shell-rail: 51;
+  --z-shell-bar: 40;
+
+  /* Page-background aurora — set by useAuroraOnRoot in shell-v2 to
+     mirror the active hub's header gradient. Defaults to none so v1
+     and routes outside shell-v2 render the solid background. */
+  --page-aurora-gradient: none;
+  --z-toast: 90;
+
+  /* Opacity scale */
+  --op-primary: 0.9;
+  --op-secondary: 0.65;
+  --op-tertiary: 0.4;
+  --op-muted: 0.2;
+  --op-bg-subtle: 0.03;
+  --op-bg-hover: 0.05;
+  --op-bg-active: 0.08;
+
+  /* Computed semantic colors (from opacity × foreground) */
+  --fg-1: oklch(from var(--foreground) l c h / var(--op-primary));
+  --fg-2: oklch(from var(--foreground) l c h / var(--op-secondary));
+  --fg-3: oklch(from var(--foreground) l c h / var(--op-tertiary));
+  --fg-4: oklch(from var(--foreground) l c h / var(--op-muted));
+  --surface-1: oklch(from var(--foreground) l c h / var(--op-bg-subtle));
+  --surface-2: oklch(from var(--foreground) l c h / var(--op-bg-hover));
+  --surface-3: oklch(from var(--foreground) l c h / var(--op-bg-active));
+
+  /* Safe area insets for notched devices */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  --background: #fafafa;
+  --foreground: #1c1c1e;
+  --card: #ffffff;
+  --card-foreground: #1c1c1e;
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1e;
+  --primary: #000000;
+  --primary-foreground: #ffffff;
+  --secondary: #e8e8e8;
+  --secondary-foreground: #1c1c1e;
+  --muted: #f2f2f2;
+  --muted-foreground: #8e8e8e;
+  --accent: #f2f2f2;
+  --accent-foreground: #000000;
+  --destructive: #ff3b30;
+  --border: #e5e5e5;
+  --input: #ffffff;
+  --ring: #000000;
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.62 0.18 264);
+  --chart-3: oklch(0.55 0.14 300);
+  --chart-4: oklch(0.65 0.16 200);
+  --chart-5: oklch(0.58 0.12 150);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.16 0 0);
+  --sidebar-foreground: oklch(0.85 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.22 0 0);
+  --sidebar-accent-foreground: oklch(0.92 0 0);
+  --sidebar-border: oklch(0.25 0 0);
+  --sidebar-ring: oklch(0.205 0 0);
+  /* Glass + grid tokens */
+  --glass-start: rgba(255, 255, 255, 0.55);
+  --glass-end: rgba(250, 250, 252, 0.45);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.06), 0 24px 48px rgba(0, 0, 0, 0.04);
+  --grid-line: oklch(0.5 0 0 / 0.07);
+  --logo-color: var(--foreground);
+  /* memax signature — dream violet (global, available on all routes) */
+  --signature: oklch(0.62 0.16 290);
+  --signature-muted: oklch(0.62 0.16 290 / 0.12);
+  /* iOS inner-rim highlight token shared by .glass-bar, .glass-panel,
+     and the bar's inline box-shadow overrides in layout.tsx. Light mode
+     shows a crisp white slash; dark mode softens to avoid banding. */
+  --glass-inset-highlight: oklch(1 0 0 / 0.3);
+
+  /* ═══ Shared glass material tokens ═══
+     Kept here (theme-root) so every glass recipe composes the same
+     base atoms: fill opacity, backdrop-filter character, and hairline
+     border. Class-level recipes (.glass-dropdown, .glass-bar,
+     .glass-toolbar, .glass-panel) own their own geometry (radius,
+     shadow, contain) and pick which fill/filter combination they use.
+     Consumers that referenced raw "65% fill" / "40px blur" values now
+     get them via tokens; no API surface change, same visual output.
+
+     Design intent:
+     - fill-65 for popovers / toolbars (translucent enough that
+       backdrop-blur actually reads over page content)
+     - fill-72 for large floating panels that host scrollable content
+       (tree panel, detail-page card stacks)
+     - filter-md for popovers (fast to composite, ~40px blur dissolves
+       text behind into color noise)
+     - filter-lg for command-bar-family surfaces (50px blur gives iOS
+       Liquid Glass character; heavier but wider surfaces amortize it)
+  */
+  --glass-fill-65: color-mix(in srgb, var(--card) 65%, transparent);
+  --glass-fill-72: color-mix(in srgb, var(--card) 72%, transparent);
+  /* Plan 26 follow-up — bumped to "high blur" tier across the board
+     per user spec ("for all the blurry, let's use high instead of
+     medium"). Was: md=40px, lg=50px. Now: md=50px, lg=60px so any
+     surface that consumed --glass-filter-md (popovers, dropdowns,
+     bottom sheets, mobile drawer) inherits the punchier blur, and
+     surfaces that wanted lg get an even bigger lift. */
+  --glass-filter-md: blur(50px) saturate(190%) contrast(1.07);
+  --glass-filter-lg: blur(60px) saturate(210%) contrast(1.12);
+  --glass-border-hairline: oklch(1 0 0 / 0.1);
+}
+.dark {
+  --glass-inset-highlight: oklch(1 0 0 / 0.08);
+  /* Dark-mode fills compose onto a darker --card, so the token names
+     stay the same but the resolved color shifts automatically. */
+}
+
+/* Default UI theme */
+.theme-warm {
+  --background: #fafafa;
+  --foreground: #1c1c1e;
+  --card: #ffffff;
+  --card-foreground: #1c1c1e;
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1e;
+  --secondary: #e8e8e8;
+  --secondary-foreground: #1c1c1e;
+  --muted: #f2f2f2;
+  --muted-foreground: #8e8e8e;
+  --accent: #f2f2f2;
+  --accent-foreground: #000000;
+  --border: #e5e5e5;
+  --input: #ffffff;
+  /* Solid bar — white surface, neutral shadow like AI Assist */
+  --bar-bg: #ffffff;
+  --bar-border: rgba(0, 0, 0, 0.12);
+  --bar-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.03);
+  /* Keep glass vars pointing to solid values so components don't break */
+  --glass-start: #ffffff;
+  --glass-end: #ffffff;
+  --glass-border: var(--bar-border);
+  --glass-shadow: var(--bar-shadow);
+  --glass-fg: var(--foreground);
+  --glass-fg-muted: var(--muted-foreground);
+  --glass-fg-faint: oklch(0.4 0 0 / 0.25);
+  --glass-edge: rgba(245, 245, 245, 0.72);
+  --grid-line: oklch(0.5 0 0 / 0.07);
+  /* memax signature — dream violet, appears only for memax intelligence */
+  --signature: oklch(0.62 0.16 290);
+  --signature-muted: oklch(0.62 0.16 290 / 0.12);
+
+  /* ═══ Bar + notification geometry ═══
+     Invariant: --notif-outer = --notif-content + --notif-tuck.
+     The radius itself lives on :root as --app-radius-surface (see
+     @memaxlabs/ui/surface-radius.css). It is NOT redefined here —
+     theme-scoped tokens caused portal bugs where popovers rendered
+     outside .theme-warm resolved the var as undefined. */
+  --notif-outer: 44px;
+  --notif-content: 30px;
+  --notif-tuck: 14px;
+
+  /* ═══ Notification glass tokens (theme-aware) ═══
+     Derive from --card/--border/--foreground so a theme change propagates.
+     Override individual tokens to customize without forking .notif-glass.
+     Opacities are tuned to Apple's "thick material" spec (see
+     notification-glass.css): high enough to occlude background text under
+     a 40px blur + 180% saturate. Dream variant is only ~7pp thinner than
+     base — the aurora overlay is a separate layer on TOP of the glass, so
+     its character does not depend on the glass being see-through. */
+  --notif-bg: oklch(from var(--card) l c h / 0.88);
+  --notif-bg-dream: oklch(from var(--card) l c h / 0.81);
+  /* Border alpha is intentionally low — glass surfaces should NOT read
+     as outlined cards. The inset top highlight in --notif-shadow does
+     most of the edge work; this is just a barely-there hint. */
+  --notif-border: oklch(from var(--border) l c h / 0.25);
+  --notif-shadow:
+    0 10px 40px -12px oklch(0 0 0 / 0.22), 0 4px 12px -4px oklch(0 0 0 / 0.06),
+    inset 0 1px 0 oklch(1 0 0 / 0.6);
+}
+
+.dark {
+  --background: oklch(0.155 0.01 260);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.2 0.008 260);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.25 0.008 260);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.371 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(0.275 0 0);
+  --input: oklch(0.325 0 0);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.81 0.1 252);
+  --chart-2: oklch(0.62 0.19 260);
+  --chart-3: oklch(0.55 0.22 263);
+  --chart-4: oklch(0.49 0.22 264);
+  --chart-5: oklch(0.42 0.18 266);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.275 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
+  /* Glass + grid dark tokens */
+  --glass-start: oklch(0.205 0 0);
+  --glass-end: oklch(0.205 0 0);
+  --glass-border: oklch(0.275 0 0);
+  --glass-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.03), 0 2px 8px oklch(0 0 0 / 0.2),
+    0 8px 24px oklch(0 0 0 / 0.15);
+  --grid-line: oklch(1 0 0 / 0.04);
+  /* memax signature — dream violet (lighter in dark for contrast) */
+  --signature: oklch(0.68 0.16 290);
+  --signature-muted: oklch(0.68 0.16 290 / 0.12);
+
+  /* Notification glass — dark mode overrides.
+     Background + shadow darken; border switches to a subtle white
+     inner-highlight for the "lit edge" that dark glass panels need. */
+  --notif-bg: oklch(from var(--card) l c h / 0.82);
+  --notif-bg-dream: oklch(from var(--card) l c h / 0.74);
+  --notif-border: oklch(from var(--foreground) l c h / 0.14);
+  --notif-shadow:
+    0 10px 40px -12px oklch(0 0 0 / 0.5), 0 4px 12px -4px oklch(0 0 0 / 0.3),
+    inset 0 1px 0 oklch(1 0 0 / 0.08);
+}
+
+/* New UI dark — pure neutral oklch (user-provided palette) */
+.dark .theme-warm {
+  --background: oklch(0.155 0.01 260);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.2 0.008 260);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.25 0.008 260);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.371 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(0.275 0 0);
+  --input: oklch(0.325 0 0);
+  --ring: oklch(0.556 0 0);
+  --bar-bg: oklch(0.205 0 0);
+  --bar-border: oklch(0.3 0 0);
+  --bar-shadow: 0 0 0 1px oklch(1 0 0 / 0.03), 0 2px 8px oklch(0 0 0 / 0.15);
+  --glass-start: var(--bar-bg);
+  --glass-end: var(--bar-bg);
+  --glass-border: var(--bar-border);
+  --glass-shadow: var(--bar-shadow);
+  --glass-fg: var(--foreground);
+  --glass-fg-muted: var(--muted-foreground);
+  --glass-fg-faint: oklch(0.708 0 0 / 0.3);
+  --glass-edge: rgba(20, 20, 22, 0.75);
+  --grid-line: oklch(1 0 0 / 0.04);
+  --logo-color: var(--foreground);
+  /* memax signature — dream violet (lighter in dark mode for contrast) */
+  --signature: oklch(0.68 0.16 290);
+  --signature-muted: oklch(0.68 0.16 290 / 0.12);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: none;
+  }
+  html {
+    @apply font-sans;
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+  @media (min-width: 768px) {
+    html {
+      overflow-y: scroll;
+    }
+  }
+  /* Smooth theme transition */
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition:
+      background-color 0.4s ease,
+      color 0.3s ease,
+      border-color 0.3s ease,
+      box-shadow 0.3s ease,
+      opacity 0.3s ease,
+      filter 0.3s ease !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MEMAX DESIGN TOKENS — Semantic Component Layer
+
+   Use these instead of raw Tailwind opacity values.
+   Changing a token here updates every component that uses it.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════
+   UNIVERSAL DESIGN TOKENS — single source of truth
+
+   Everything uses foreground + opacity. 7 values total:
+   Text:  /90 (primary)  /65 (secondary)  /40 (tertiary)  /20 (muted)
+   Bg:    /3  (subtle)    /5  (hover)      /8  (active)
+
+   CSS classes below = Tailwind text-foreground/XX equivalents.
+   Use EITHER approach — they produce identical colors.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Legacy aliases (use Tailwind text-fg-1..4 / bg-surface-1..3 instead) ─── */
+.text-primary-label {
+  color: var(--fg-1);
+}
+.text-secondary-label {
+  color: var(--fg-2);
+}
+.text-tertiary-label {
+  color: var(--fg-3);
+}
+.text-hint {
+  color: var(--fg-4);
+}
+
+/* ─── Surface Backgrounds ─── */
+/* var(--background): page (#FAFAFA light / oklch(0.155) dark) */
+/* var(--card): card surface (#FFFFFF light / oklch(0.2) dark) */
+/* var(--muted): muted surface (#F2F2F2 light / oklch(0.269) dark) */
+
+/* ─── Border (2 levels) ─── */
+/* var(--border): card/section borders (#E5E5E5) — use border-border */
+/* var(--bar-border): bar-specific (12% light, oklch(0.30) dark) */
+/* border-border/30: dividers within cards */
+
+/* ─── Interactive States (compound) ─── */
+.state-selected {
+  background: oklch(from var(--primary) l c h / 0.1);
+  box-shadow: inset 0 0 0 1px oklch(from var(--primary) l c h / 0.12);
+}
+.state-cited {
+  background: oklch(from var(--primary) l c h / 0.14);
+  box-shadow: 0 0 0 1px oklch(from var(--primary) l c h / 0.15);
+}
+
+/* ─── Badge / Tag / Chip Components ─── */
+
+/* ─── Icon Backgrounds ─── */
+.icon-bg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: oklch(from var(--primary) l c h / 0.1);
+  color: var(--primary);
+}
+.icon-bg-sm {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.icon-bg-md {
+  width: 2rem;
+  height: 2rem;
+}
+.icon-bg-lg {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+/* ─── Dropdown / Picker ─── */
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.8125rem;
+  text-align: left;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+  color: var(--foreground);
+}
+.dropdown-item:hover {
+  background: oklch(from var(--muted) l c h / 0.4);
+}
+.dropdown-item-active {
+  background: oklch(from var(--muted) l c h / 0.55);
+  font-weight: 500;
+}
+
+/* ─── Memax Prose (Markdown Rendering) ─── */
+.memax-prose {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  letter-spacing: -0.006em;
+  color: var(--foreground);
+}
+.memax-prose > * + * {
+  margin-top: 1em;
+}
+.memax-prose h1 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  margin-top: 1.5em;
+}
+.memax-prose h2 {
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+  margin-top: 1.5em;
+}
+.memax-prose h3 {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+  margin-top: 1.25em;
+}
+.memax-prose h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-top: 1.25em;
+}
+.memax-prose h1:first-child,
+.memax-prose h2:first-child,
+.memax-prose h3:first-child {
+  margin-top: 0;
+}
+.memax-prose ul,
+.memax-prose ol {
+  padding-left: 1.5em;
+}
+.memax-prose ul {
+  list-style-type: disc;
+}
+.memax-prose ol {
+  list-style-type: decimal;
+}
+.memax-prose li + li {
+  margin-top: 0.35em;
+}
+.memax-prose strong {
+  font-weight: 600;
+}
+.memax-prose em {
+  font-style: italic;
+}
+.memax-prose a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: oklch(from var(--foreground) l c h / 0.25);
+}
+.memax-prose a:hover {
+  text-decoration-color: oklch(from var(--foreground) l c h / 0.5);
+}
+.memax-prose code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.85em;
+  background: oklch(from var(--muted) l c h / 0.6);
+  padding: 0.15em 0.35em;
+  border-radius: 0.25rem;
+}
+.memax-prose pre {
+  background: oklch(from var(--muted) l c h / 0.5);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+.memax-prose pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.8125rem;
+}
+.memax-prose blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 1rem;
+  color: oklch(from var(--foreground) l c h / 0.65);
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+.memax-prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+.memax-prose img {
+  border-radius: 0.75rem;
+  margin-top: 1em;
+  margin-bottom: 1em;
+  max-width: 100%;
+  height: auto;
+}
+.memax-prose > *:first-child {
+  margin-top: 0;
+}
+
+/* Compact variant for AI answers and summaries */
+
+/* ─── Memax Design System: Liquid Glass + Depth ─── */
+
+/* Glass surfaces — translucent with backdrop blur */
+.glass {
+  background: oklch(1 0 0 / 0.6);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid oklch(1 0 0 / 0.2);
+}
+:is(.dark *).glass,
+.dark .glass {
+  background: oklch(1 0 0 / 0.04);
+  border-color: oklch(1 0 0 / 0.08);
+}
+
+.glass-subtle {
+  background: oklch(1 0 0 / 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid oklch(1 0 0 / 0.15);
+}
+:is(.dark *).glass-subtle,
+.dark .glass-subtle {
+  background: oklch(1 0 0 / 0.03);
+  border-color: oklch(1 0 0 / 0.06);
+}
+
+.glass-strong {
+  background: oklch(1 0 0 / 0.8);
+  /* Plan 26: high-blur tier across the board (was 40px). */
+  backdrop-filter: blur(60px) saturate(200%);
+  -webkit-backdrop-filter: blur(60px) saturate(200%);
+  border: 1px solid oklch(1 0 0 / 0.3);
+}
+:is(.dark *).glass-strong,
+.dark .glass-strong {
+  background: oklch(1 0 0 / 0.06);
+  border-color: oklch(1 0 0 / 0.1);
+}
+
+/* Glass surface variant used by the floating tree panel and mobile tree
+   modal. Composes the existing .glass-strong recipe with a layered
+   shadow + rounded corners so the surface reads as a premium floating
+   card (macOS Tahoe / Claude Desktop vibe). Keep in sync with
+   GLASS_ENTER_DURATION / GLASS_ENTER_EASE in @memaxlabs/ui/tokens/motion. */
+.glass-panel {
+  /* Unified glass surface — SAME recipe for pinned and drag-session
+     auto-open so the two states read as one material, differing only
+     in behaviour (pinned is persistent + shifts content; drag-session
+     is transient + overlays). Surface stays pure neutral; industry
+     principle (Apple HIG, Material 3, Linear, Notion, Claude.ai):
+     containers are chrome, brand colour lives on affordances inside,
+     never on the surface.
+
+     Recipe matches iOS Liquid Glass / YouTube Music widget convention
+     (Refero sample: semi-transparent fill at ~45-70% over a heavy
+     Gaussian blur of the content below). The trick for text-bearing
+     surfaces is NOT high opacity — it's STRONG blur so text behind
+     becomes indistinct color, not recognizable characters that
+     compete with bar text. 72% fill + blur(36px) saturate(180%) +
+     contrast(1.05) gives the vibrancy-like separation Apple's
+     UIBlurEffect uses in native code.
+
+     Desktop-only — mobile-bar-surface.tsx enforces no backdrop-filter
+     for scroll perf.
+
+     Tokenized atoms: fill (--glass-fill-72) and border
+     (--glass-border-hairline). The 36px blur radius stays literal
+     because it's distinct from the .glass-bar / .glass-toolbar
+     (50px lg) and .glass-dropdown (40px md) family — this recipe
+     is its own "panel" weight that sits between them. The shadow
+     stack stays literal too (unique depth curve for a floating
+     tree sidebar vs a popover vs a command bar). */
+  background: var(--glass-fill-72);
+  /* Plan 26: high-blur tier (was 36px). Matches --glass-filter-md
+     bump so glass-panel and glass-dropdown share the same blur
+     character. */
+  backdrop-filter: blur(50px) saturate(190%) contrast(1.07);
+  -webkit-backdrop-filter: blur(50px) saturate(190%) contrast(1.07);
+  border: 1px solid var(--glass-border-hairline);
+  border-radius: var(--app-radius-surface);
+  box-shadow:
+    inset 0 1px 0 var(--glass-inset-highlight),
+    0 0 0 1px oklch(0 0 0 / 0.05),
+    0 20px 40px -10px oklch(0 0 0 / 0.08),
+    0 6px 16px -4px oklch(0 0 0 / 0.06),
+    0 2px 6px -2px oklch(0 0 0 / 0.04);
+  contain: layout paint;
+}
+:is(.dark *).glass-panel,
+.dark .glass-panel {
+  border-color: var(--glass-border-hairline);
+  /* Dark mode reuses --glass-inset-highlight (defined above) which
+     softens to 0.08 on .dark so the rim doesn't slash on low-luminance
+     backgrounds. Outer shadows get heavier to compensate for the darker
+     backdrop. */
+  box-shadow:
+    inset 0 1px 0 var(--glass-inset-highlight),
+    0 0 0 1px oklch(1 0 0 / 0.06),
+    0 20px 40px -10px oklch(0 0 0 / 0.45),
+    0 6px 16px -4px oklch(0 0 0 / 0.3),
+    0 2px 6px -2px oklch(0 0 0 / 0.2);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-panel {
+    background: var(--card);
+  }
+}
+
+/* Overlay variant — near-solid fill for glass surfaces that sit
+   directly over live content. Applied in two places:
+     1. Mobile tree modal — floats centred over the page, content is
+        directly underneath.
+     2. Desktop tree panel during drag-session auto-open — content is
+        NOT shifted during a drag (reflowing under an active cursor
+        would invalidate the drag rect), so the panel temporarily
+        overlays live memory rows / topic cards. Pushing opacity to
+        ~97% keeps the page from bleeding through the glass.
+   Blur + rim + shadow still carry the material family; only
+   translucency changes. */
+.glass-panel-opaque {
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+}
+
+/* Pill variant — small interactive glass surfaces (toggle buttons,
+   capsules, floating controls). Tuned for a button-sized footprint:
+   slightly more translucent so the blur actually registers at small
+   size, shadow is a single tight drop so the control doesn't float
+   heavier than its footprint. Use on anything ≤44px where
+   .glass-panel's 20px ambient shadow would overwhelm the element. */
+.glass-pill {
+  background: color-mix(in srgb, var(--background) 52%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid oklch(1 0 0 / 0.1);
+  box-shadow: 0 0 0 1px oklch(0 0 0 / 0.05);
+}
+:is(.dark *).glass-pill,
+.dark .glass-pill {
+  border-color: oklch(1 0 0 / 0.1);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-pill {
+    background: var(--card);
+  }
+}
+
+/* Content-card glass — applied to:
+     - memory detail page cards (related, siblings, etc.)
+     - top-right chrome capsule (hub chip + inbox + avatar wrapper)
+     - hub transition overlay pill
+   Shares the chrome family with .glass-pill but a touch denser so
+   content reads cleanly over memory text/cards. No drop shadow — these
+   are content/chrome, not floating modals; hierarchy stays intact.
+   Tuned opacity (75%) keeps text behind blurred but not see-through.
+   Lighter than .glass-panel (90%) so the panel still visually leads
+   the hierarchy when both are on screen.
+
+   Intentionally NOT tokenized. `.glass-card` is the quietest glass
+   in the system — 75% fill + 12px blur — and shares no atoms with
+   the .glass-bar / .glass-toolbar / .glass-dropdown / .glass-panel
+   family (65%/72% fills, 36-50px blurs). Adding single-consumer
+   tokens just to match "everything is tokenized" would pollute the
+   shared palette. If a second near-solid content surface emerges,
+   introduce --glass-fill-75 / --glass-filter-sm at that point. */
+.glass-card {
+  background: color-mix(in srgb, var(--card) 75%, transparent);
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  border: 1px solid oklch(0 0 0 / 0.06);
+  box-shadow: 0 0 0 1px oklch(0 0 0 / 0.03);
+}
+/* Hover recipe layered on the glass material — does NOT replace it.
+   Plan 26 phase 2: callers used `hover:bg-surface-1` (Tailwind) which
+   beat the .glass-card recipe's specificity and replaced the glass fill
+   with a thin 3% foreground tint, weakening the material on hover.
+   The hover recipe color-mixes a small foreground tint INTO the existing
+   card fill so the glass stays glass + reads warmer on hover. */
+.glass-card:hover {
+  /* Layer ~4% foreground tint on top of the existing 75% card fill.
+     EXPLICIT weights — `A 100%, B` would resolve B to 0% per the
+     color-mix spec, so the previous version was border-color-only.
+     96/4 split keeps the glass fill dominant while the tint actually
+     registers (codex Phase 26 final review). */
+  background: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--card) 75%, transparent) 96%,
+    color-mix(in srgb, var(--foreground) 100%, transparent) 4%
+  );
+  border-color: oklch(0 0 0 / 0.1);
+}
+:is(.dark *).glass-card,
+.dark .glass-card {
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+  border-color: oklch(1 0 0 / 0.06);
+  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.04);
+}
+:is(.dark *).glass-card:hover,
+.dark .glass-card:hover {
+  /* Same 94/6 explicit-weight split for dark mode — codex review. */
+  background: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--card) 70%, transparent) 94%,
+    color-mix(in srgb, var(--foreground) 100%, transparent) 6%
+  );
+  border-color: oklch(1 0 0 / 0.12);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-card {
+    background: var(--card);
+  }
+}
+
+/* Desktop command bar surface — same material family as .glass-panel
+   (floating tree sidebar) so the two surfaces read as one chrome system.
+   Differences from .glass-panel: no built-in border-radius (the bar sets
+   20px locally) and a lighter ambient shadow so the bar doesn't feel
+   heavier than the content below it. Focus/drag shadow overrides in
+   layout.tsx layer on top of this base. Mobile intentionally does not
+   use this — mobile-bar-surface.tsx enforces a no-backdrop-filter rule
+   for scroll performance. */
+.glass-bar {
+  /* iOS Liquid Glass, sibling to .glass-panel. 72% fill + blur(36px)
+     saturate(180%) contrast(1.05) — content behind remains visibly
+     blurred (not erased) which is the signature Apple Liquid Glass
+     look, and the strong blur means on-bar text stays legible
+     because content behind is dissolved into color noise rather than
+     readable characters. Bar provides its own radius/shadow via
+     layout.tsx; this class only owns the material + inset highlight.
+     Inset uses --glass-inset-highlight so dark mode inherits a softer
+     rim without redefining here.
+
+     `contain: layout` only — NOT `paint`. With `.glass-bar` on the
+     outer fixed div, paint containment would clip the notification
+     card that tucks ABOVE the bar via `absolute bottom-full`
+     (outside the outer div's box). Layout containment still wins
+     the scroll/reflow perf gains without the clipping side-effect.
+
+     Material composed from shared tokens (--glass-fill-65 +
+     --glass-filter-lg + --glass-border-hairline) so siblings like
+     .glass-toolbar read as kin without redefining values. */
+  background: var(--glass-fill-65);
+  backdrop-filter: var(--glass-filter-lg);
+  -webkit-backdrop-filter: var(--glass-filter-lg);
+  border: 1px solid var(--glass-border-hairline);
+  box-shadow: inset 0 1px 0 var(--glass-inset-highlight);
+  contain: layout;
+}
+:is(.dark *).glass-bar,
+.dark .glass-bar {
+  border-color: var(--glass-border-hairline);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-bar {
+    background: var(--card);
+  }
+}
+
+/* Batch operations toolbar — bottom-anchored wide chrome that stacks
+   above the muted command bar during selection mode. Same material
+   family as .glass-bar (65% fill + lg blur) so the two surfaces read
+   as kin stacked vertically. Difference from .glass-bar: .glass-toolbar
+   owns its own rounded-surface geometry and adds a soft ambient drop
+   shadow so it reads as a distinct layer above the bar instead of
+   merging into it visually.
+
+   Not .glass-dropdown (40px blur, popover-shaped) because a bar-shape
+   chrome with popover-character blur reads wrong on wide surfaces.
+   Not .glass-panel (72% fill, 36px blur) because the toolbar isn't
+   a scrollable host — it's an action strip. */
+.glass-toolbar {
+  background: var(--glass-fill-65);
+  backdrop-filter: var(--glass-filter-lg);
+  -webkit-backdrop-filter: var(--glass-filter-lg);
+  border: 1px solid var(--glass-border-hairline);
+  box-shadow:
+    inset 0 1px 0 var(--glass-inset-highlight),
+    0 4px 24px oklch(0 0 0 / 0.08),
+    0 1px 4px oklch(0 0 0 / 0.04);
+  contain: layout;
+}
+:is(.dark *).glass-toolbar,
+.dark .glass-toolbar {
+  border-color: var(--glass-border-hairline);
+  box-shadow:
+    inset 0 1px 0 var(--glass-inset-highlight),
+    0 4px 24px oklch(0 0 0 / 0.3),
+    0 1px 4px oklch(0 0 0 / 0.2);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-toolbar {
+    background: var(--card);
+  }
+}
+
+/* .glass-dropdown recipe moved to @memaxlabs/ui/popover-glass.css so the
+   shared Popover primitive can own its material. Consumes the same
+   --glass-fill-65 / --glass-filter-md / --glass-border-hairline tokens
+   defined at :root above. */
+
+/* Transparent backdrop with blur. For overlays that should separate the
+   modal from the page without darkening (mobile tree modal backdrop).
+   Pure blur — no bg tint, no color overlay. Applied to fullscreen
+   tap-catcher divs whose job is: (a) catch clicks to dismiss, (b) push
+   content behind through a glass layer so the foreground modal reads
+   as floating. */
+.glass-backdrop {
+  background: transparent;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-backdrop {
+    background: oklch(0 0 0 / 0.06);
+  }
+}
+
+/* Touch devices don't have a real hover state; suppress desktop-style
+   ghost hover chrome on row surfaces so taps don't leave rows looking
+   artificially highlighted. */
+@media (hover: none), (pointer: coarse) {
+  .touch-no-hover:hover {
+    background: inherit !important;
+    color: inherit !important;
+    border-color: inherit !important;
+    opacity: inherit !important;
+  }
+}
+
+/* Notification glass is defined in @memaxlabs/ui/notification-glass.css
+   (imported at the top of this file). Tokens are declared in :root / .dark
+   above. Update one, get both web and kitchen at once. */
+
+/* Branded shadows — colored, layered, NOT generic gray */
+.shadow-glow {
+  box-shadow:
+    0 0 0 1px oklch(0.488 0.243 264.376 / 0.04),
+    0 1px 2px oklch(0.488 0.243 264.376 / 0.04),
+    0 4px 16px oklch(0.488 0.243 264.376 / 0.06);
+}
+.shadow-glow-lg {
+  box-shadow:
+    0 0 0 1px oklch(0.488 0.243 264.376 / 0.05),
+    0 2px 4px oklch(0.488 0.243 264.376 / 0.05),
+    0 8px 32px oklch(0.488 0.243 264.376 / 0.08),
+    0 24px 48px oklch(0.488 0.243 264.376 / 0.04);
+}
+:is(.dark *).shadow-glow,
+.dark .shadow-glow {
+  box-shadow:
+    0 0 0 1px oklch(0.62 0.22 264.376 / 0.08),
+    0 1px 2px oklch(0 0 0 / 0.3),
+    0 4px 16px oklch(0.62 0.22 264.376 / 0.06);
+}
+:is(.dark *).shadow-glow-lg,
+.dark .shadow-glow-lg {
+  box-shadow:
+    0 0 0 1px oklch(0.62 0.22 264.376 / 0.1),
+    0 2px 4px oklch(0 0 0 / 0.4),
+    0 8px 32px oklch(0.62 0.22 264.376 / 0.08),
+    0 24px 48px oklch(0 0 0 / 0.3);
+}
+
+/* Soft elevation — subtle depth without harsh edges */
+.shadow-soft {
+  box-shadow:
+    0 0 0 1px oklch(0 0 0 / 0.03),
+    0 1px 3px oklch(0 0 0 / 0.04),
+    0 4px 12px oklch(0 0 0 / 0.03);
+}
+.shadow-soft-lg {
+  box-shadow:
+    0 0 0 1px oklch(0 0 0 / 0.04),
+    0 2px 6px oklch(0 0 0 / 0.05),
+    0 12px 24px oklch(0 0 0 / 0.06);
+}
+:is(.dark *).shadow-soft,
+.dark .shadow-soft {
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.04),
+    0 1px 3px oklch(0 0 0 / 0.3),
+    0 4px 12px oklch(0 0 0 / 0.2);
+}
+:is(.dark *).shadow-soft-lg,
+.dark .shadow-soft-lg {
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.05),
+    0 2px 6px oklch(0 0 0 / 0.4),
+    0 12px 24px oklch(0 0 0 / 0.3);
+}
+
+/* Gradient border — the liquid glass edge effect */
+.border-gradient {
+  position: relative;
+  border: none;
+}
+.border-gradient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    oklch(1 0 0 / 0.2),
+    oklch(1 0 0 / 0.05),
+    oklch(0.488 0.243 264.376 / 0.1)
+  );
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Gradient text for premium feel */
+.text-gradient {
+  background: linear-gradient(
+    135deg,
+    oklch(0.488 0.243 264.376),
+    oklch(0.62 0.2 290)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+:is(.dark *).text-gradient,
+.dark .text-gradient {
+  background: linear-gradient(
+    135deg,
+    oklch(0.62 0.22 264.376),
+    oklch(0.72 0.18 290)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Surface levels — subtle background hierarchy */
+.surface-1 {
+  background: oklch(0.99 0 0);
+}
+:is(.dark *).surface-1,
+.dark .surface-1 {
+  background: oklch(0.18 0 0);
+}
+.surface-2 {
+  background: oklch(0.975 0 0);
+}
+:is(.dark *).surface-2,
+.dark .surface-2 {
+  background: oklch(0.22 0 0);
+}
+
+/* Shimmer animation for loading */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    oklch(0.95 0 0) 25%,
+    oklch(0.98 0 0) 50%,
+    oklch(0.95 0 0) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+:is(.dark *).shimmer,
+.dark .shimmer {
+  background: linear-gradient(
+    90deg,
+    oklch(0.22 0 0) 25%,
+    oklch(0.27 0 0) 50%,
+    oklch(0.22 0 0) 75%
+  );
+  background-size: 200% 100%;
+}
+
+/* ─── Motion Tokens ─── */
+:root {
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-instant: 0.1s; /* UI state changes: intent label, right slot */
+  --duration-fast: 0.15s; /* Modal open/close, expand slot, view switch */
+  --duration-normal: 0.2s; /* Dissolve, dropdown appear */
+  --duration-loading: 0.5s; /* Breathing dots, loading pulses */
+  --duration-signature: 3.5s; /* Placeholder cycling, ghost breathing period */
+}
+
+/* ─── Typography Tokens ─── */
+:root {
+  --text-input: 15px; /* Bar input, placeholders (sm: 16px) */
+  --text-title: 21px; /* Memory detail title, page headers */
+  --text-body: 14px; /* Card titles, answers, confirmation */
+  --text-secondary: 13px; /* Snippets, citations, intent label, buttons */
+  --text-caption: 12px; /* Source, timestamps, meta */
+  --text-micro: 11px; /* Group headers, keyboard hints */
+  --text-nano: 10px; /* Citation numbers, content type badges */
+}
+
+/* ─── Animated Mesh Gradient Background ─── */
+@keyframes mesh-drift {
+  0%,
+  100% {
+    background-position:
+      0% 50%,
+      50% 50%,
+      50% 50%;
+  }
+  25% {
+    background-position:
+      100% 0%,
+      0% 100%,
+      80% 20%;
+  }
+  50% {
+    background-position:
+      50% 100%,
+      100% 0%,
+      20% 80%;
+  }
+  75% {
+    background-position:
+      0% 100%,
+      50% 0%,
+      60% 60%;
+  }
+}
+.mesh-bg {
+  background:
+    radial-gradient(
+      ellipse at 20% 50%,
+      oklch(0.488 0.243 264.376 / 0.07) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      oklch(0.62 0.2 290 / 0.05) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 50% 80%,
+      oklch(0.55 0.15 200 / 0.04) 0%,
+      transparent 50%
+    );
+  background-size:
+    200% 200%,
+    200% 200%,
+    200% 200%;
+  animation: mesh-drift 20s ease-in-out infinite;
+}
+:is(.dark *).mesh-bg,
+.dark .mesh-bg {
+  background:
+    radial-gradient(
+      ellipse at 20% 50%,
+      oklch(0.62 0.22 264.376 / 0.08) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      oklch(0.72 0.18 290 / 0.06) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 50% 80%,
+      oklch(0.65 0.12 200 / 0.05) 0%,
+      transparent 50%
+    );
+  background-size:
+    200% 200%,
+    200% 200%,
+    200% 200%;
+  animation: mesh-drift 20s ease-in-out infinite;
+}
+
+/* ─── Tiptap Editor — inline markdown rendering ─── */
+
+/* Browser default `[contenteditable]:focus` paints a 2px black outline
+   on .ProseMirror — reads as a jarring "black line" around the editor.
+   Plan 26 phase 5: kill it system-wide. The editor's parent surface
+   (compose modal popup, memory-detail body) already provides whatever
+   focus indication the design wants (modal chrome, save chip, etc.). */
+.ProseMirror,
+.ProseMirror:focus,
+.ProseMirror-focused {
+  outline: none !important;
+}
+
+.tiptap-editor .tiptap {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--foreground);
+}
+.tiptap-editor .tiptap > * + * {
+  margin-top: 0.5em;
+}
+.tiptap-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: oklch(from var(--muted-foreground) l c h / 0.4);
+  pointer-events: none;
+  height: 0;
+}
+.tiptap-editor .tiptap h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.tiptap-editor .tiptap h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.tiptap-editor .tiptap h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.tiptap-editor .tiptap strong {
+  font-weight: 600;
+}
+.tiptap-editor .tiptap em {
+  font-style: italic;
+}
+.tiptap-editor .tiptap ul {
+  list-style: disc;
+  padding-left: 1.5em;
+}
+.tiptap-editor .tiptap ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+}
+.tiptap-editor .tiptap li + li {
+  margin-top: 0.25em;
+}
+.tiptap-editor .tiptap code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.85em;
+  background: oklch(from var(--muted) l c h / 0.5);
+  padding: 0.125em 0.25em;
+  border-radius: 0.25rem;
+}
+.tiptap-editor .tiptap pre {
+  background: oklch(from var(--muted) l c h / 0.4);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+}
+.tiptap-editor .tiptap pre code {
+  background: none;
+  padding: 0;
+}
+.tiptap-editor .tiptap blockquote {
+  border-left: 3px solid oklch(from var(--border) l c h / 0.5);
+  padding-left: 1rem;
+  color: oklch(from var(--foreground) l c h / 0.65);
+}
+.tiptap-editor .tiptap hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1em 0;
+}
+
+/* ─── Sheen / Light-Sweep Hover ─── */
+.sheen {
+  position: relative;
+  overflow: hidden;
+}
+.sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    oklch(1 0 0 / 0.06) 45%,
+    oklch(1 0 0 / 0.13) 50%,
+    oklch(1 0 0 / 0.06) 55%,
+    transparent 60%
+  );
+  transform: translateX(-100%);
+  transition: transform 0.6s var(--ease-spring);
+  pointer-events: none;
+  border-radius: inherit;
+}
+.sheen:hover::after {
+  transform: translateX(100%);
+}
+:is(.dark *).sheen::after,
+.dark .sheen::after {
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    oklch(1 0 0 / 0.03) 45%,
+    oklch(1 0 0 / 0.06) 50%,
+    oklch(1 0 0 / 0.03) 55%,
+    transparent 60%
+  );
+}
+
+/* ─── Noise Texture Overlay ─── */
+/* Rendered as a standalone div, NOT a pseudo-element on a parent,
+   to avoid creating stacking contexts that break backdrop-filter. */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  opacity: 0.022;
+  pointer-events: none;
+  z-index: 1;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+/* ─── Content Ready Transition ─── */
+/* Applied when loading→loaded. Subtle opacity+lift, 0.15s.
+   Design system: "Loading → Loaded: skeleton fades out (0.15s), content appears." */
+@keyframes content-ready {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-content-ready {
+  animation: content-ready 0.15s ease-out both;
+}
+
+/* ─── MemaxLoader keyframes ─── */
+/* All loader keyframes live here (not inline <style>) to avoid hydration
+   mismatches. Used by packages/ui/src/components/memax-loader.tsx. */
+@keyframes memax-dot-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.85);
+  }
+  40% {
+    opacity: 0.9;
+    transform: scale(1.1);
+  }
+}
+@keyframes memax-orb-breathe {
+  0%,
+  100% {
+    transform: scale(0.85);
+    opacity: 0.4;
+    box-shadow: 0 0 0px 0px oklch(from var(--signature) l c h / 0);
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 28px 8px oklch(from var(--signature) l c h / 0.15);
+  }
+}
+@keyframes memax-orb-flare {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 28px 8px oklch(from var(--signature) l c h / 0.15);
+  }
+  30% {
+    transform: scale(2.8);
+    opacity: 1;
+    box-shadow: 0 0 48px 16px oklch(from var(--signature) l c h / 0.3);
+  }
+  100% {
+    transform: scale(0.5);
+    opacity: 0;
+    box-shadow: 0 0 0px 0px oklch(from var(--signature) l c h / 0);
+  }
+}
+
+/* ─── Drill-Down Navigation ─── */
+/* Keep drill pickers stable: blur + transform stacks jitter in Chromium/Firefox.
+   Used by DrillDownTree (topic tree + move picker). */
+@keyframes drill-forward {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes drill-back {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-drill-forward {
+  animation: drill-forward 0.12s ease-out both;
+}
+.animate-drill-back {
+  animation: drill-back 0.12s ease-out both;
+}
+
+/* ─── Spotlight sweep ─── */
+/* Used by the bar's recall loading state — the Spotlight icon
+   swings back and forth like a stage beam actively scanning,
+   instead of the generic Loader2 spin. Subtle ±12° range so the
+   icon doesn't look frenetic; 1.4s duration matches the rhythm
+   of "pulse" while feeling directional instead of opacity-fade. */
+@keyframes spotlight-sweep {
+  0%,
+  100% {
+    transform: rotate(-12deg);
+  }
+  50% {
+    transform: rotate(12deg);
+  }
+}
+.animate-spotlight-sweep {
+  animation: spotlight-sweep 1.4s ease-in-out infinite;
+  transform-origin: 50% 50%;
+}
+
+/* ─── Reduced Motion ─── */
+/* Respect user preference: disable all custom animations.
+   Composited properties (opacity, transform) are still fine but
+   users who set this prefer no motion at all. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-content-ready,
+  .memax-orb,
+  .animate-drill-forward,
+  .animate-drill-back,
+  .animate-fade-up,
+  .animate-spotlight-sweep,
+  .state-fast-pulse,
+  .state-slow-breathe {
+    animation: none !important;
+  }
+}
+
+/* ─── Staggered Entrance Animations ─── */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out both;
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(30%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(30%);
+    opacity: 0;
+  }
+}
+.animate-slide-out-right {
+  animation: slide-out-right 0.25s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-up {
+  animation: fade-up 0.6s var(--ease-spring) both;
+}
+.stagger-1 {
+  animation-delay: 0.06s;
+}
+.stagger-2 {
+  animation-delay: 0.12s;
+}
+.stagger-3 {
+  animation-delay: 0.18s;
+}
+.stagger-4 {
+  animation-delay: 0.24s;
+}
+.stagger-5 {
+  animation-delay: 0.3s;
+}
+
+/* ─── Float Animation (for empty states) ─── */
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ─── Glow Pulse (for branding elements) ─── */
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 oklch(0.488 0.243 264.376 / 0),
+      0 0 16px oklch(0.488 0.243 264.376 / 0.06);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px oklch(0.488 0.243 264.376 / 0.04),
+      0 0 24px oklch(0.488 0.243 264.376 / 0.1);
+  }
+}
+.glow-pulse {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+:is(.dark *).glow-pulse,
+.dark .glow-pulse {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+/* ─── Dream banner aurora (bar notification card) ───
+   Moved here from per-render <style> injection in bar-notification-card.tsx
+   so the keyframes are parsed once by the browser instead of on every render.
+   The two animations run together on the same background layer. */
+@keyframes bar-notif-aurora {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+@keyframes bar-dreaming-glow {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.animate-dream-banner {
+  background-size: 300% 300%;
+  animation:
+    bar-notif-aurora 4s ease infinite,
+    bar-dreaming-glow 3s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-dream-banner {
+    animation: none !important;
+    background-size: auto !important;
+  }
+}
+
+/* ─── Gradient Button (for primary CTAs) ─── */
+.btn-gradient {
+  background: linear-gradient(
+    135deg,
+    oklch(0.488 0.243 264.376),
+    oklch(0.52 0.22 280)
+  );
+  color: white;
+  transition: all 0.3s var(--ease-spring);
+}
+.btn-gradient:hover {
+  background: linear-gradient(
+    135deg,
+    oklch(0.52 0.22 280),
+    oklch(0.488 0.243 264.376)
+  );
+  box-shadow:
+    0 0 0 1px oklch(0.488 0.243 264.376 / 0.2),
+    0 4px 16px oklch(0.488 0.243 264.376 / 0.15);
+}
+:is(.dark *).btn-gradient,
+.dark .btn-gradient {
+  background: linear-gradient(
+    135deg,
+    oklch(0.55 0.22 264.376),
+    oklch(0.6 0.2 280)
+  );
+}
+:is(.dark *).btn-gradient:hover,
+.dark .btn-gradient:hover {
+  background: linear-gradient(
+    135deg,
+    oklch(0.6 0.2 280),
+    oklch(0.55 0.22 264.376)
+  );
+}
+
+/* ─── Typography Scale (Geist Sans, tight tracking does the display work) ─── */
+.text-body {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  letter-spacing: -0.006em;
+}
+.text-caption {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  font-weight: 450;
+}
+.text-micro {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-weight: 550;
+}
+
+/* ─── Ambient Orbs (atmosphere behind glass) ─── */
+/* Uses box-shadow instead of filter:blur() to avoid creating a
+   backdrop root that breaks backdrop-filter on sibling elements. */
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.ambient-bg::before,
+.ambient-bg::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  /* NO filter:blur() — that creates a backdrop root.
+     Use massive box-shadow spread for the soft glow effect instead. */
+}
+.ambient-bg::before {
+  width: 1px;
+  height: 1px;
+  top: 15%;
+  left: 20%;
+  box-shadow: 0 0 200px 200px oklch(0.488 0.243 264.376 / 0.03);
+  animation: ambient-drift-1 25s ease-in-out infinite;
+}
+.ambient-bg::after {
+  width: 1px;
+  height: 1px;
+  bottom: 20%;
+  right: 20%;
+  box-shadow: 0 0 180px 180px oklch(0.55 0.15 310 / 0.025);
+  animation: ambient-drift-2 30s ease-in-out infinite;
+}
+:is(.dark *) .ambient-bg::before,
+.dark .ambient-bg::before {
+  box-shadow: 0 0 200px 200px oklch(0.4 0.2 264.376 / 0.07);
+}
+:is(.dark *) .ambient-bg::after,
+.dark .ambient-bg::after {
+  box-shadow: 0 0 180px 180px oklch(0.35 0.15 310 / 0.05);
+}
+@keyframes ambient-drift-1 {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  33% {
+    transform: translate(4vw, 2vh);
+  }
+  66% {
+    transform: translate(-2vw, -1vh);
+  }
+}
+@keyframes ambient-drift-2 {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-3vw, 1.5vh);
+  }
+}
+
+/* ─── Premium Card Shadow (with inner highlight) ─── */
+.shadow-premium {
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 0.06),
+    0 0 0 1px oklch(0 0 0 / 0.03),
+    0 1px 2px oklch(0 0 0 / 0.04),
+    0 2px 4px oklch(0 0 0 / 0.04),
+    0 4px 8px oklch(0 0 0 / 0.03),
+    0 8px 16px oklch(0 0 0 / 0.03);
+}
+:is(.dark *).shadow-premium,
+.dark .shadow-premium {
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 0.04),
+    0 0 0 1px oklch(1 0 0 / 0.05),
+    0 1px 2px oklch(0 0 0 / 0.3),
+    0 4px 8px oklch(0 0 0 / 0.2),
+    0 8px 16px oklch(0 0 0 / 0.15);
+}
+
+/* ─── Cursor Spotlight (radial gradient follows mouse) ─── */
+.card-spotlight {
+  --mouse-x: 50%;
+  --mouse-y: 50%;
+}
+.card-spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    350px circle at var(--mouse-x) var(--mouse-y),
+    oklch(0.488 0.243 264.376 / 0.06),
+    transparent 40%
+  );
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s var(--ease-spring);
+  z-index: 1;
+}
+.card-spotlight:hover::before {
+  opacity: 1;
+}
+:is(.dark *).card-spotlight::before,
+.dark .card-spotlight::before {
+  background: radial-gradient(
+    350px circle at var(--mouse-x) var(--mouse-y),
+    oklch(0.62 0.22 264.376 / 0.08),
+    transparent 40%
+  );
+}
+
+/* ─── Floating Dock ─── */
+/* Dock backdrop-filter: the dock element must NOT have any ancestor
+   with overflow:hidden, filter, or will-change that creates a new
+   backdrop root. The noise and ambient-bg are siblings, not ancestors. */
+.dock {
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  background-color: oklch(0.97 0.003 264 / 0.6);
+  border: 1px solid oklch(0 0 0 / 0.08);
+  box-shadow:
+    0 8px 32px oklch(0.488 0.243 264.376 / 0.08),
+    0 2px 8px oklch(0 0 0 / 0.04),
+    inset 0 1px 0 oklch(1 0 0 / 0.4);
+}
+:is(.dark *).dock,
+.dark .dock {
+  background-color: oklch(0.12 0.02 264 / 0.5);
+  border-color: oklch(1 0 0 / 0.1);
+  box-shadow:
+    0 8px 32px oklch(0 0 0 / 0.4),
+    0 2px 8px oklch(0 0 0 / 0.2),
+    inset 0 1px 0 oklch(1 0 0 / 0.05);
+}
+
+/* ─── Interactive Elements (spring micro-interactions) ─── */
+.interactive {
+  transition:
+    transform 0.2s var(--ease-spring),
+    box-shadow 0.2s var(--ease-spring);
+}
+.interactive:hover {
+  transform: translateY(-1px);
+}
+.interactive:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Bar ring animations removed — bar uses static 1px border in all states.
+   See kitchen section 04 (Bar States) and SKILL.md "Bar State Design". */
+
+/* Memory surfacing — text deblurs into clarity */
+@keyframes memory-surface {
+  0% {
+    filter: blur(12px);
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  40% {
+    filter: blur(6px);
+    opacity: 0.5;
+  }
+  100% {
+    filter: blur(0px);
+    opacity: 1;
+    transform: translateY(0px);
+  }
+}
+@keyframes memory-surface-delay {
+  0%,
+  30% {
+    filter: blur(8px);
+    opacity: 0;
+  }
+  100% {
+    filter: blur(0px);
+    opacity: 1;
+  }
+}
+.animate-memory-surface {
+  animation: memory-surface 0.7s cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+.animate-memory-surface-delay {
+  animation: memory-surface-delay 0.8s cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+
+/* Ghost card breathing — visible pulse without vanishing */
+@keyframes ghost-breathe-0 {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@keyframes ghost-breathe-1 {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+@keyframes ghost-breathe-2 {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes ghost-breathe-3 {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
+/* Note detail enter/exit within collection container */
+@keyframes note-detail-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── Content State Indicators ── */
+@keyframes state-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@keyframes state-fade {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes state-flash {
+  0% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
+.state-fast-pulse {
+  animation: state-pulse 0.8s ease-in-out infinite;
+}
+.state-slow-breathe {
+  animation: state-pulse 2.5s ease-in-out infinite;
+}
+
+.state-fade {
+  animation: state-fade 0.3s ease-out forwards;
+}
+.state-flash {
+  animation: state-flash 0.15s ease-out forwards;
+}
+
+/* Mobile scroll refinement */
+@media (max-width: 767px) {
+  .overflow-y-auto,
+  .overflow-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+}
+
+@keyframes memaxMemoryArrive {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+    box-shadow:
+      inset 1.5px 0 0 oklch(from var(--signature) l c h / 0.12),
+      0 10px 24px color-mix(in oklch, var(--foreground) 6%, transparent);
+  }
+  18% {
+    opacity: 1;
+    transform: translateY(0);
+    box-shadow:
+      inset 1.5px 0 0 oklch(from var(--signature) l c h / 0.1),
+      0 6px 16px color-mix(in oklch, var(--foreground) 4%, transparent);
+  }
+  60% {
+    box-shadow:
+      inset 1px 0 0 oklch(from var(--signature) l c h / 0.05),
+      0 2px 8px color-mix(in oklch, var(--foreground) 2%, transparent);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    /* No box-shadow here — the .state-memory-arrive class uses
+       `animation-fill-mode: backwards` so post-animation styling reverts
+       to the element's own rules (e.g., .glass-card's hairline shadow).
+       Plan 26 phase 2 codex review: the prior `forwards` + transparent
+       100% box-shadow killed the glass-card's resting shadow on every
+       freshly-arrived card. */
+  }
+}
+
+.state-memory-arrive {
+  animation: memaxMemoryArrive 820ms var(--ease-spring) backwards;
+}
+
+.memory-row {
+  transition:
+    background-color 180ms var(--ease-spring),
+    box-shadow 180ms var(--ease-spring),
+    opacity 180ms var(--ease-spring);
+}
+
+.memory-row:hover {
+  background: color-mix(in oklch, var(--foreground) 2.8%, transparent);
+}
+
+/* Focus-visible parity with hover — keyboard users get the same legible
+   affordance that pointer users get. Needed on borderless list shells
+   where the outer card no longer frames the focused row. */
+.memory-row:focus-visible {
+  background: color-mix(in oklch, var(--foreground) 2.8%, transparent);
+  outline: none;
+}
+
+.memory-row--selected {
+  background: color-mix(in oklch, var(--foreground) 4.8%, transparent);
+}
+
+.state-indicator-morph {
+  position: relative;
+  display: inline-flex;
+  height: 1.25rem;
+  width: 1.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.state-indicator-morph__glow {
+  position: absolute;
+  inset: -2px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle at 35% 35%,
+    oklch(from var(--signature) l c h / 0.12) 0%,
+    color-mix(in oklch, var(--foreground) 4%, transparent) 45%,
+    transparent 78%
+  );
+  animation: memaxIndicatorResolve 320ms var(--ease-spring) both;
+  pointer-events: none;
+}
+
+.state-indicator-morph__star,
+.state-indicator-morph__icon {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center;
+  pointer-events: none;
+}
+
+.state-indicator-morph__star {
+  animation: memaxIndicatorStarOut 320ms var(--ease-spring) both;
+}
+
+.state-indicator-morph__icon {
+  animation: memaxIndicatorIconIn 320ms var(--ease-spring) both;
+}
+
+@keyframes memaxIndicatorResolve {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes memaxIndicatorStarOut {
+  0% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8) rotate(-10deg);
+    filter: blur(1px);
+  }
+}
+
+@keyframes memaxIndicatorIconIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.84) translateY(1px);
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}

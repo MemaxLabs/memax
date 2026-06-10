@@ -1,0 +1,325 @@
+{
+  "queries": [
+    {
+      "id": "q1",
+      "query": "what is memax?",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:multi"],
+      "relevance": {
+        "001-memax-system-architecture": 3,
+        "002-authentication-system": 1,
+        "007-api-rate-limiting-design": 1
+      },
+      "expect_keywords_in_results": ["memax", "memory hub", "AI agents"],
+      "expect_not_in_results": ["kubernetes", "acme"],
+      "min_results": 1,
+      "description": "Basic identity query - should return architecture note",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "q2",
+      "query": "how does auth work?",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:multi"],
+      "relevance": {
+        "002-authentication-system": 3,
+        "005-debugging-login-redirect-loop": 1
+      },
+      "expect_keywords_in_results": ["jwt", "oauth", "api key"],
+      "min_results": 1,
+      "description": "How-to query - should return auth note",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "q3",
+      "query": "deploy",
+      "query_type": "single_word",
+      "slices": ["type:single_word", "lang:en", "hub:multi"],
+      "relevance": {
+        "003-deployment-process": 3,
+        "006-kubernetes-deployment-guide": 1
+      },
+      "expect_keywords_in_results": ["fly.io", "vercel", "deploy"],
+      "min_results": 1,
+      "description": "Single-word query - tests hybrid search",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "q4",
+      "query": "why postgresql?",
+      "query_type": "decision",
+      "slices": ["type:decision", "lang:en", "hub:multi"],
+      "relevance": {
+        "004-adr-chose-postgresql-over-mongodb": 3,
+        "001-memax-system-architecture": 1
+      },
+      "expect_keywords_in_results": ["postgresql", "pgvector"],
+      "min_results": 1,
+      "description": "Why query - should return ADR",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "q5",
+      "query": "kubernetes",
+      "query_type": "single_word",
+      "slices": ["type:single_word", "lang:en", "hub:multi"],
+      "relevance": {
+        "006-kubernetes-deployment-guide": 3
+      },
+      "expect_keywords_in_results": ["kubernetes", "k8s", "helm"],
+      "expect_not_in_results": ["memax architecture"],
+      "min_results": 1,
+      "description": "Single-word tech query - tests tag boosting",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "q6",
+      "query": "login bug on staging",
+      "query_type": "debug",
+      "slices": ["type:debug", "lang:en", "hub:multi"],
+      "relevance": {
+        "005-debugging-login-redirect-loop": 3,
+        "002-authentication-system": 1
+      },
+      "expect_keywords_in_results": ["redirect", "login", "staging"],
+      "min_results": 1,
+      "description": "Debug query - should return debug note with recency boost",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "q7",
+      "query": "what did we discuss in the sprint review?",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:multi", "kind:episodic"],
+      "relevance": {
+        "008-team-meeting-notes-sprint-review": 3
+      },
+      "expect_keywords_in_results": ["sprint", "hybrid search"],
+      "min_results": 1,
+      "description": "Meeting query - tests episodic retrieval",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "q8",
+      "query": "acme requirements",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:multi"],
+      "relevance": {
+        "010-client-acme-corp-requirements": 3
+      },
+      "expect_keywords_in_results": ["acme", "sso", "enterprise"],
+      "min_results": 1,
+      "description": "Client query - tests cross-domain semantic retrieval",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "q9",
+      "query": "rate limiting",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:personal"],
+      "relevance": {
+        "007-api-rate-limiting-design": 3
+      },
+      "expect_keywords_in_results": ["rate limit", "redis"],
+      "min_results": 1,
+      "description": "Reference query - tests exact keyword matching",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "q10",
+      "query": "react patterns nextjs",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:personal"],
+      "relevance": {
+        "009-react-component-patterns": 3
+      },
+      "expect_keywords_in_results": ["react", "component", "nextjs"],
+      "min_results": 1,
+      "description": "Learning query - tests multi-word query",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "q11",
+      "query": "what did Jiahao push about staging login?",
+      "query_type": "author",
+      "slices": ["type:author", "lang:en", "hub:multi"],
+      "relevance": {
+        "005-debugging-login-redirect-loop": 3,
+        "002-authentication-system": 1
+      },
+      "expect_keywords_in_results": ["jiahao", "redirect", "staging"],
+      "min_results": 1,
+      "description": "Author-scoped shared-hub query - tests pushed-by metadata and shared hub retrieval",
+      "source": "eval",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    },
+    {
+      "id": "q12",
+      "query": "memax-test sprint review roadmap",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:multi"],
+      "relevance": {
+        "008-team-meeting-notes-sprint-review": 3
+      },
+      "expect_keywords_in_results": [],
+      "min_results": 1,
+      "description": "Shared hub query - tests hub metadata and source surface variation",
+      "source": "mcp",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    }
+  ]
+}

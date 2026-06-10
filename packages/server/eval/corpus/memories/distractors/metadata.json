@@ -1,0 +1,389 @@
+{
+  "memories": [
+    {
+      "id": "distractor-stale-deploy-process",
+      "title": "Deployment Process (January — OUTDATED)",
+      "file": "distractor-stale-deploy-process.md",
+      "kind": "procedural",
+      "stability": "volatile",
+      "tags": [
+        "deploy",
+        "fly-io",
+        "staging",
+        "ci-cd"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "cli",
+      "source_agent": "claude-code",
+      "source_path": "docs/deploy-guide.md",
+      "hub_reason": "Team deployment process for shared staging environment.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-01-15T10:00:00Z",
+      "updated_at": "2026-01-15T10:00:00Z",
+      "accessed_at": "2026-02-01T09:00:00Z",
+      "access_count": 8,
+      "event_dates": [
+        "2026-01-15T00:00:00Z"
+      ],
+      "hint": "Old deployment process from January. Superseded by 003-deployment-process.",
+      "superseded_by": "003-deployment-process"
+    },
+    {
+      "id": "distractor-wrong-hub-auth",
+      "title": "Authentication Architecture — Token Lifecycle",
+      "file": "distractor-wrong-hub-auth.md",
+      "kind": "semantic",
+      "stability": "evolving",
+      "tags": [
+        "auth",
+        "jwt",
+        "oauth",
+        "tokens",
+        "api-keys"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000095",
+      "hub_id": "00000000-0000-0000-0000-000000000088",
+      "source": "mcp",
+      "source_agent": "claude-code",
+      "source_path": "packages/server/internal/handler/auth.go",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "auth-refactor"
+      },
+      "created_at": "2026-04-05T14:00:00Z",
+      "updated_at": "2026-04-05T14:30:00Z",
+      "accessed_at": "2026-04-10T09:00:00Z",
+      "access_count": 4,
+      "event_dates": [
+        "2026-04-05T00:00:00Z"
+      ],
+      "hint": "Retrieve for token lifecycle, JWT claims, refresh flow, and auth middleware details."
+    },
+    {
+      "id": "distractor-lexical-api-rate",
+      "title": "API Design — Managing Rate of Change",
+      "file": "distractor-lexical-api-rate.md",
+      "kind": "semantic",
+      "stability": "stable",
+      "tags": [
+        "api",
+        "versioning",
+        "rate-of-change",
+        "sdk",
+        "deprecation"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "capture",
+      "source_agent": "claude-code",
+      "source_path": "docs/engineering/api-versioning.md",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-25T11:00:00Z",
+      "updated_at": "2026-03-25T11:00:00Z",
+      "accessed_at": "2026-04-02T10:00:00Z",
+      "access_count": 2,
+      "event_dates": [
+        "2026-03-25T00:00:00Z"
+      ],
+      "hint": "Retrieve for API versioning policy, breaking changes, deprecation strategy, and SDK compatibility."
+    },
+    {
+      "id": "distractor-wrong-project-k8s",
+      "title": "Kubernetes Deployment — ExampleCorp Billing",
+      "file": "distractor-wrong-project-k8s.md",
+      "kind": "procedural",
+      "stability": "evolving",
+      "tags": [
+        "kubernetes",
+        "k8s",
+        "helm",
+        "gke",
+        "billing"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000097",
+      "hub_id": "00000000-0000-0000-0000-000000000092",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "infra/k8s/billing/README.md",
+      "project_context": {
+        "repo": "github.com/ExampleCorp/billing",
+        "project": "billing",
+        "branch": "main"
+      },
+      "created_at": "2026-02-20T16:00:00Z",
+      "updated_at": "2026-03-05T10:00:00Z",
+      "accessed_at": "2026-03-10T14:00:00Z",
+      "access_count": 3,
+      "event_dates": [
+        "2026-02-20T00:00:00Z"
+      ],
+      "hint": "Retrieve for ExampleCorp billing Kubernetes deployment, GKE, Helm charts, and PgBouncer sidecar."
+    },
+    {
+      "id": "distractor-wrong-author-debug",
+      "title": "Debugging: Login Session Expiry Issue",
+      "file": "distractor-wrong-author-debug.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "login",
+        "session",
+        "staging",
+        "bug-fix",
+        "auth"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000097",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "cli",
+      "source_agent": "cursor",
+      "source_path": "packages/server/internal/handler/auth.go",
+      "hub_reason": "Staging login bug affected the shared team environment.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "fix-session-expiry"
+      },
+      "created_at": "2026-04-02T11:30:00Z",
+      "updated_at": "2026-04-02T11:45:00Z",
+      "accessed_at": "2026-04-03T09:00:00Z",
+      "access_count": 1,
+      "event_dates": [
+        "2026-04-02T00:00:00Z"
+      ],
+      "hint": "Retrieve for session cookie expiry, max-age typo, and SameSite attribute fix."
+    },
+    {
+      "id": "distractor-semantic-neighbor-db",
+      "title": "MongoDB Atlas Setup Guide",
+      "file": "distractor-semantic-neighbor-db.md",
+      "kind": "procedural",
+      "stability": "evolving",
+      "tags": [
+        "mongodb",
+        "atlas",
+        "database",
+        "nosql",
+        "document-store"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "docs/infra/mongodb-setup.md",
+      "hub_reason": "Database infrastructure guide shared with the team.",
+      "project_context": {
+        "repo": "github.com/ExampleCorp/platform",
+        "project": "platform",
+        "branch": "main"
+      },
+      "created_at": "2026-01-28T09:00:00Z",
+      "updated_at": "2026-02-10T14:00:00Z",
+      "accessed_at": "2026-02-15T10:00:00Z",
+      "access_count": 2,
+      "event_dates": [
+        "2026-01-28T00:00:00Z"
+      ],
+      "hint": "Retrieve for MongoDB Atlas setup, cluster config, indexing, and document store architecture."
+    },
+    {
+      "id": "distractor-near-duplicate-arch",
+      "title": "Memax System Architecture Overview",
+      "file": "distractor-near-duplicate-arch.md",
+      "kind": "semantic",
+      "stability": "evolving",
+      "tags": [
+        "memax",
+        "architecture",
+        "python",
+        "mongodb",
+        "openai"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "cli",
+      "source_agent": "claude-code",
+      "source_path": "docs/plans/02-system-architecture.md",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-01-10T08:00:00Z",
+      "updated_at": "2026-01-10T08:00:00Z",
+      "accessed_at": "2026-01-20T10:00:00Z",
+      "access_count": 1,
+      "event_dates": [
+        "2026-01-10T00:00:00Z"
+      ],
+      "hint": "OUTDATED draft architecture. Contains incorrect tech stack claims. See 001-memax-system-architecture for current.",
+      "superseded_by": "001-memax-system-architecture"
+    },
+    {
+      "id": "distractor-source-noise-deploy",
+      "title": "Team Offsite Planning — May 2026",
+      "file": "distractor-source-noise-deploy.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "offsite",
+        "team",
+        "planning",
+        "portland",
+        "deploy"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "team/offsite-may-2026.md",
+      "hub_reason": "Team offsite planning shared with all team members.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-04-08T13:00:00Z",
+      "updated_at": "2026-04-10T09:00:00Z",
+      "accessed_at": "2026-04-10T15:00:00Z",
+      "access_count": 4,
+      "event_dates": [
+        "2026-05-15T00:00:00Z",
+        "2026-05-17T00:00:00Z"
+      ],
+      "hint": "Retrieve for team offsite logistics, Portland venue, hackathon day, and budget."
+    },
+    {
+      "id": "distractor-stale-pricing",
+      "title": "Pricing Analysis — February Draft (SUPERSEDED)",
+      "file": "distractor-stale-pricing.md",
+      "kind": "semantic",
+      "stability": "volatile",
+      "tags": [
+        "pricing",
+        "tiers",
+        "free",
+        "pro",
+        "team"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "docs/business/pricing-draft-feb.md",
+      "hub_reason": "Pricing analysis shared with the team for review.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-02-12T15:00:00Z",
+      "updated_at": "2026-02-12T15:00:00Z",
+      "accessed_at": "2026-03-01T10:00:00Z",
+      "access_count": 5,
+      "event_dates": [
+        "2026-02-12T00:00:00Z"
+      ],
+      "hint": "OUTDATED February pricing draft. Superseded by Q2 pricing decision ($9/$19)."
+    },
+    {
+      "id": "distractor-language-trap-zh",
+      "title": "部署流程 — DataPipe 数据管道",
+      "file": "distractor-language-trap-zh.md",
+      "kind": "procedural",
+      "stability": "evolving",
+      "tags": [
+        "deploy",
+        "datapipe",
+        "aliyun",
+        "部署",
+        "运维"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "cli",
+      "source_agent": "claude-code",
+      "source_path": "docs/datapipe-deploy.md",
+      "project_context": {
+        "repo": "github.com/DataPipeLabs/datapipe",
+        "project": "datapipe",
+        "branch": "main"
+      },
+      "created_at": "2026-03-15T16:00:00Z",
+      "updated_at": "2026-03-15T16:00:00Z",
+      "accessed_at": "2026-03-20T10:00:00Z",
+      "access_count": 2,
+      "event_dates": [
+        "2026-03-15T00:00:00Z"
+      ],
+      "hint": "Retrieve for DataPipe deployment process on Aliyun ECS. Chinese language content."
+    },
+    {
+      "id": "distractor-temporal-wrong-meeting",
+      "title": "Sprint Review — February 28, 2026",
+      "file": "distractor-temporal-wrong-meeting.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "sprint-review",
+        "roadmap",
+        "pgvector",
+        "voyage-ai"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "mcp",
+      "source_agent": "claude-code",
+      "source_path": "meeting-notes/2026-02-28-sprint-review.md",
+      "hub_reason": "Team sprint notes for shared reference.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-02-28T18:00:00Z",
+      "updated_at": "2026-02-28T18:15:00Z",
+      "accessed_at": "2026-03-05T10:00:00Z",
+      "access_count": 2,
+      "event_dates": [
+        "2026-02-28T00:00:00Z"
+      ],
+      "hint": "Retrieve for February sprint review, early CRUD demo, Voyage AI integration, and initial pgvector tuning."
+    },
+    {
+      "id": "distractor-personal-recipe-similar",
+      "title": "Sourdough Bread Recipe — No-Knead Method",
+      "file": "distractor-personal-recipe-similar.md",
+      "kind": "procedural",
+      "stability": "stable",
+      "tags": [
+        "recipe",
+        "sourdough",
+        "bread",
+        "baking",
+        "no-knead"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "capture",
+      "source_agent": "claude-ai",
+      "created_at": "2026-03-18T20:00:00Z",
+      "updated_at": "2026-03-18T20:00:00Z",
+      "accessed_at": "2026-04-01T10:00:00Z",
+      "access_count": 3,
+      "event_dates": [
+        "2026-03-18T00:00:00Z"
+      ],
+      "hint": "Retrieve for no-knead sourdough bread recipe, lazy method, and weekday baking approach."
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+---
+title: Core Concepts
+description: Understand the fundamental building blocks of Memax — memories, hubs, boundaries, retrieval, and dreams.
+---
+
+import { Cards, Card } from "fumadocs-ui/components/card";
+
+Memax is built on a small set of concepts that compose together. Understanding these concepts helps you get the most out of the platform.
+
+<Cards>
+  <Card
+    title="Memories"
+    href="/concepts/memories"
+    description="The atomic unit of knowledge — what gets stored, how it's structured"
+  />
+  <Card
+    title="Hubs"
+    href="/concepts/hubs"
+    description="Containers for memories — personal, team, and shared knowledge spaces"
+  />
+  <Card
+    title="Boundaries"
+    href="/concepts/boundaries"
+    description="Access control — who can see what, privacy by default"
+  />
+  <Card
+    title="Retrieval"
+    href="/concepts/retrieval"
+    description="How agents find the right context — semantic search, ranking, relevance"
+  />
+  <Card
+    title="Dreams"
+    href="/concepts/dreams"
+    description="AI-powered knowledge synthesis — connections, summaries, insights"
+  />
+</Cards>
+
+## Architecture at a glance
+
+```
+┌──────────────────────────────────────────────┐
+│                 Push Sources                  │
+│  CLI · Web App · MCP · Hooks · Import        │
+└──────────────────┬───────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────┐
+│              Memax Cloud                      │
+│                                               │
+│  ┌─────────┐  ┌──────────┐  ┌────────────┐  │
+│  │ Ingest  │→ │ Classify │→ │  Chunk +   │  │
+│  │         │  │ + Route  │  │  Embed     │  │
+│  └─────────┘  └──────────┘  └────────────┘  │
+│                                               │
+│  ┌─────────┐  ┌──────────┐  ┌────────────┐  │
+│  │ Dreams  │  │  Topics  │  │ Retrieval  │  │
+│  │ Engine  │  │  Engine  │  │  Pipeline  │  │
+│  └─────────┘  └──────────┘  └────────────┘  │
+└──────────────────┬───────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────┐
+│              Recall Surfaces                  │
+│  MCP · Hooks · CLI · Web App · SDK           │
+└──────────────────────────────────────────────┘
+```

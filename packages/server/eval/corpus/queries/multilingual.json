@@ -1,0 +1,229 @@
+{
+  "queries": [
+    {
+      "id": "ml-q1",
+      "query": "上周团队会议讨论了什么",
+      "query_type": "temporal",
+      "slices": [
+        "type:temporal",
+        "lang:zh",
+        "hub:team",
+        "kind:episodic"
+      ],
+      "relevance": {
+        "ml-001-team-weekly-april-w1": 3,
+        "ml-003-user-feedback-march": 1
+      },
+      "min_results": 1,
+      "description": "Chinese temporal query - should return April W1 team meeting notes as top result. User feedback compilation is tangentially relevant since it was discussed in the meeting.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    },
+    {
+      "id": "ml-q2",
+      "query": "为什么选择 pgvector",
+      "query_type": "decision",
+      "slices": [
+        "type:decision",
+        "lang:zh",
+        "hub:personal",
+        "kind:rationale"
+      ],
+      "relevance": {
+        "ml-002-vector-db-comparison": 3,
+        "004-adr-chose-postgresql-over-mongodb": 2,
+        "ml-001-team-weekly-april-w1": 1
+      },
+      "min_results": 1,
+      "description": "Chinese rationale query - should return the vector DB comparison as top result. The PostgreSQL ADR from smoke corpus is also relevant (grade 2) since it discusses pgvector. Weekly meeting tangentially mentions pgvector.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      }
+    },
+    {
+      "id": "ml-q3",
+      "query": "用户反馈关于搜索功能",
+      "query_type": "topical",
+      "slices": [
+        "type:topical",
+        "lang:zh",
+        "hub:team",
+        "kind:episodic"
+      ],
+      "relevance": {
+        "ml-003-user-feedback-march": 3,
+        "ml-005-debug-api-timeout": 1,
+        "product-user-feedback-compilation": 1
+      },
+      "min_results": 1,
+      "description": "Chinese topical query about search feedback - should return the March user feedback compilation (which heavily covers search accuracy). API timeout debug notes tangentially relevant since they address search performance issues users reported.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    },
+    {
+      "id": "ml-q4",
+      "query": "定价策略",
+      "query_type": "topical",
+      "slices": [
+        "type:topical",
+        "lang:zh",
+        "hub:personal",
+        "domain:product"
+      ],
+      "relevance": {
+        "ml-004-pricing-strategy-cn-market": 3,
+        "product-q2-pricing-decision": 1
+      },
+      "min_results": 1,
+      "description": "Short Chinese phrase query about pricing strategy - should find the Chinese pricing discussion (grade 3) as primary result. The English Q2 pricing decision from product shard should surface as secondary (grade 1) since it covers the same topic in English.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      }
+    },
+    {
+      "id": "ml-q5",
+      "query": "API timeout debugging",
+      "query_type": "topical",
+      "slices": [
+        "type:topical",
+        "lang:mixed",
+        "hub:team",
+        "kind:episodic"
+      ],
+      "relevance": {
+        "ml-005-debug-api-timeout": 3,
+        "ml-001-team-weekly-april-w1": 1,
+        "005-debugging-login-redirect-loop": 1
+      },
+      "min_results": 1,
+      "description": "English query against mixed-language content - should find the mixed EN/ZH debug notes (which has English code and Chinese explanations). Weekly meeting tangentially mentions the timeout issue. Login redirect debug from smoke corpus is a false-positive check (different bug, grade 1).",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "ml-q6",
+      "query": "how to set up dev environment",
+      "query_type": "procedural",
+      "slices": [
+        "type:procedural",
+        "lang:mixed",
+        "hub:team",
+        "kind:procedural"
+      ],
+      "relevance": {
+        "ml-006-onboarding-dev-setup": 3,
+        "003-deployment-process": 1
+      },
+      "min_results": 1,
+      "description": "English query that should find Chinese onboarding doc - tests cross-language retrieval. The doc is written in Chinese with English CLI commands. Deployment process from smoke corpus is tangentially relevant (also covers setup, but for production not dev).",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "ml-q7",
+      "query": "what did we discuss about the auth refactor?",
+      "query_type": "decision",
+      "slices": [
+        "type:decision",
+        "lang:en",
+        "hub:personal",
+        "kind:episodic"
+      ],
+      "relevance": {
+        "ml-007-session-auth-refactor": 3,
+        "mtg-002-design-review-consent-screen": 2,
+        "002-authentication-system": 1
+      },
+      "min_results": 1,
+      "description": "English query targeting a session transcript - should find the Claude Code auth refactor session as top result. The consent screen design review from meetings shard is closely related (grade 2). Authentication system from smoke corpus is tangential (grade 1).",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "consent-redesign"
+      }
+    },
+    {
+      "id": "ml-q8",
+      "query": "search ranking scoring bug",
+      "query_type": "topical",
+      "slices": [
+        "type:topical",
+        "lang:en",
+        "hub:personal",
+        "kind:episodic"
+      ],
+      "relevance": {
+        "ml-008-session-search-ranking-bug": 3,
+        "ml-003-user-feedback-march": 1,
+        "ml-005-debug-api-timeout": 1
+      },
+      "min_results": 1,
+      "description": "English query targeting the Cursor debug session - should find the search ranking bug fix session. User feedback tangentially relevant (users reported search accuracy issues). API timeout debug tangentially relevant (also touches recall pipeline).",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    }
+  ]
+}

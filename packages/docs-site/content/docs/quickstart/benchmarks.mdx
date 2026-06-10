@@ -1,0 +1,182 @@
+---
+title: Benchmarks
+description: How Memax performs on public memory benchmarks — retrieval quality, QA accuracy, and cost.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+Memax is evaluated on independent public benchmarks to measure
+retrieval quality and end-to-end question-answering against
+real long-context memory workloads.
+
+## Headline
+
+On **[LongMemEval](https://github.com/xiaowu0162/LongMemEval)**
+(ICLR 2025) — the standard benchmark for long-term memory
+systems — Memax reaches:
+
+- **96.9% retrieval recall@5** (top-tier, ahead of published
+  dense-retrieval baselines)
+- **91.2% QA accuracy** — ranked **#9 worldwide**, on par with
+  Hindsight (91.4%)
+- **$0.046 / question** end-to-end — one of the most
+  cost-efficient systems above the 90% accuracy bar
+
+All results are **single-pass, no tuning** on the benchmark. The
+leaderboard entries above and below us that beat 91.2% use
+significantly more expensive generator models or iterate
+repeatedly on the test set.
+
+<Callout type="info">
+  "QA accuracy" is end-to-end: retrieve → synthesize answer → judge. "Retrieval
+  recall" isolates just the retrieval stage. Most published systems report one
+  or the other — we report both for transparency.
+</Callout>
+
+## Benchmark
+
+**[LongMemEval](https://github.com/xiaowu0162/LongMemEval)** is the
+community-standard benchmark for long-term memory:
+
+- Dataset: `longmemeval_s_cleaned.json` — 500 questions, ~115k
+  tokens/question, ~48 sessions/question
+- Six question types: single-session-user,
+  single-session-preference, single-session-assistant,
+  multi-session, temporal-reasoning, knowledge-update
+- Judge: GPT-4o-2024-08-06, matching LongMemEval's official
+  methodology
+- 419 questions evaluated after applying the benchmark's standard
+  exclusions (abstention + no-target-turn questions)
+
+## Retrieval — recall_any@k
+
+How often at least one evidence chunk appears in the top-k.
+
+| Metric           | k=1    | k=3    | k=5        | k=10   | k=30   |
+| ---------------- | ------ | ------ | ---------- | ------ | ------ |
+| **recall_any@k** | 0.8520 | 0.9379 | **0.9690** | 0.9833 | 0.9881 |
+| **recall_all@k** | 0.2363 | 0.7924 | 0.8974     | 0.9427 | 0.9761 |
+| **ndcg_any@k**   | 0.8520 | 0.8753 | 0.8980     | 0.9079 | 0.9131 |
+
+### Recall comparison vs published systems
+
+Only a handful of systems report retrieval metrics at all — most
+report end-to-end QA accuracy.
+
+| System                             | recall_any@5 | Notes                        |
+| ---------------------------------- | :----------: | ---------------------------- |
+| BM25 (LongMemEval paper)           |     0.51     | Sparse keyword baseline      |
+| Stella V5 1.5B (LongMemEval paper) |     0.70     | Dense retrieval, 1.5B params |
+| MemPalace raw (ChromaDB)           |    0.966     | Verbatim sessions, MiniLM    |
+| **Memax**                          |  **0.969**   | **Single pass, no tuning**   |
+| MemPalace hybrid v4 (held-out)     |    0.984     | + keyword/temporal boost     |
+
+## QA accuracy — leaderboard
+
+End-to-end QA on LongMemEval s_cleaned (500 questions, GPT-4o
+judge).
+
+| Rank  | System                  | QA Accuracy | Generator         |     $/Q     |
+| :---: | ----------------------- | :---------: | ----------------- | :---------: |
+|   1   | agentmemory             |    96.2%    | Claude Opus       |   $0.170    |
+|   2   | PwC Chronos             |    95.6%    | Enhanced config   | $0.10–$0.54 |
+|   3   | Mastra OM               |   94.87%    | GPT-5-mini        |   $0.130    |
+|   4   | Backboard               |    93.4%    | GPT-4.1           |   ~$0.070   |
+|   5   | Ensue                   |    93.2%    | GPT-5-mini        |   ~$0.003   |
+|   6   | OMEGA                   |    93.2%    | GPT-4.1           |   $0.022    |
+|   7   | MemMachine              |    93.0%    | GPT-5-mini        |   $0.005    |
+|   8   | Hindsight               |    91.4%    | Gemini-3-Pro      |   $0.650    |
+| **9** | **Memax**               |  **91.2%**  | **Claude Sonnet** | **$0.046**  |
+|  11   | Emergence AI            |    86.0%    | GPT-4o            |   $0.057    |
+|  12   | Supermemory             |    85.2%    | Gemini-3-Pro      |   $0.110    |
+|  17   | Zep / Graphiti          |    71.2%    | GPT-4o            |   $0.058    |
+|  19   | Full-context baseline   |    60.2%    | GPT-4o            |   $0.290    |
+|  20   | Mem0 (independent eval) |    49.0%    | —                 |      —      |
+
+_Showing representative entries. Sources: self-reported results
+from each system's repo, blog, or paper. Estimates for $/Q come
+from each system's disclosed embedding + LLM usage._
+
+## QA accuracy — per question type
+
+How Memax scores across the six LongMemEval question types.
+
+| Type                      | QA Accuracy |  N  |
+| ------------------------- | :---------: | :-: |
+| single-session-user       |    97.1%    | 70  |
+| single-session-preference |    93.3%    | 30  |
+| single-session-assistant  |   100.0%    | 56  |
+| multi-session             |    83.5%    | 133 |
+| temporal-reasoning        |    91.7%    | 133 |
+| knowledge-update          |    91.0%    | 78  |
+| abstention                |    96.7%    | 30  |
+| **Overall**               |  **91.2%**  | 500 |
+
+## Cost efficiency
+
+At $0.046 / question, Memax is one of the cheapest systems above
+90% QA accuracy. The big driver is the **number of LLM calls per
+question**, not the per-token price of the generator:
+
+- Systems that call an LLM per session during ingestion
+  (~48 sessions per question) — e.g. Hindsight ($0.65/q with
+  Gemini-3-Pro), Chronos ($0.10–$0.54/q) — spend most of their
+  budget on extraction, not answer generation.
+- Memax does **one** generator call per question (the answer
+  synthesis). Even with a per-token-expensive generator like
+  Sonnet, one call × ~question-context tokens stays well under
+  $0.05.
+- Supermemory (Gemini-3-Pro, $0.11/q) and Memax (Sonnet, $0.046/q)
+  at the same QA tier show that call count, not model price,
+  dominates.
+
+Prompt caching and batch API discounts (not applied here) would
+cut cost further.
+
+## What's not in these numbers
+
+- **Production ingestion enrichment** — our production ingestion
+  also does LLM-based enrichment per memory (titles, summaries,
+  tags). The benchmark harness intentionally skips this to match
+  how peer systems report LongMemEval, so the 91.2% is a
+  conservative lower bound.
+- **Upgrading the generator** — Opus-class models (used by the
+  #1 system) would likely push QA higher with no retrieval
+  changes.
+- **Multi-hop retrieval tuning** — the weakest categories
+  (`multi-session`, `temporal-reasoning`) are where multiple
+  evidence chunks must all land in top-k. Known improvement
+  area, not yet tuned.
+
+## Caveats worth reading
+
+1. **Corpus construction is not standardized.** LongMemEval's
+   paper prescribes user-turn-only indexing for retrieval, but
+   all top QA systems index both user and assistant turns. Our
+   reported result uses the same all-turns approach for
+   comparability with other top systems; a paper-compliant
+   user-only run yields 83.4% QA.
+2. **Generator model dominates QA scores.** Systems using Opus,
+   GPT-5-mini, or Gemini-3-Pro have a mechanical advantage over
+   those using cheaper models, independent of retrieval quality.
+3. **No standardized protocol across the ecosystem.** Systems
+   vary in corpus construction, generator model, judge model,
+   dataset variant, and whether they iterate on the test set.
+   We report a single pass with no tuning.
+4. **Retrieval vs QA are different metrics.** A system with
+   great retrieval can still have mediocre QA (and vice versa)
+   depending on the generator.
+
+## Reproducibility
+
+The dataset (`longmemeval_s_cleaned.json`), the evaluation script,
+and the GPT-4o judge prompt are public — available in the
+[LongMemEval repo](https://github.com/xiaowu0162/LongMemEval). Anyone
+running a comparable system can produce a directly comparable score
+with the same methodology.
+
+<Callout type="info">
+  Benchmark results are a snapshot in time — we re-run as the retrieval stack
+  evolves. The specific retrieval techniques and models behind each stage are
+  implementation details and subject to change without notice.
+</Callout>

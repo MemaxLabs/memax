@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "description": "Retrieval eval corpus. Memory bodies live in Markdown files; labels and queries are sharded so the corpus can grow without a giant fixtures JSON file.",
+  "memory_sets": [
+    {
+      "path": "memories/smoke/metadata.json"
+    },
+    {
+      "path": "memories/product/metadata.json"
+    },
+    {
+      "path": "memories/meetings/metadata.json"
+    },
+    {
+      "path": "memories/personal/metadata.json"
+    },
+    {
+      "path": "memories/distractors/metadata.json"
+    },
+    {
+      "path": "memories/code/metadata.json"
+    },
+    {
+      "path": "memories/multilingual/metadata.json"
+    },
+    {
+      "path": "memories/depth/metadata.json"
+    },
+    {
+      "path": "memories/dense-hub/metadata.json"
+    },
+    {
+      "path": "memories/business/metadata.json"
+    }
+  ],
+  "query_sets": [
+    {
+      "path": "queries/smoke.json"
+    },
+    {
+      "path": "queries/product.json"
+    },
+    {
+      "path": "queries/meetings.json"
+    },
+    {
+      "path": "queries/personal.json"
+    },
+    {
+      "path": "queries/negative.json"
+    },
+    {
+      "path": "queries/code.json"
+    },
+    {
+      "path": "queries/multilingual.json"
+    },
+    {
+      "path": "queries/compound.json"
+    },
+    {
+      "path": "queries/dense-hub.json"
+    },
+    {
+      "path": "queries/business.json"
+    }
+  ],
+  "scope_sets": [
+    {
+      "path": "scopes/core.json"
+    }
+  ]
+}

@@ -1,6 +1,34 @@
+# Dependencies
 node_modules/
 .pnpm-store/
+
+# Build outputs
 dist/
+.next/
+out/
+*.tsbuildinfo
+
+# Go (prettier doesn't understand Go)
+packages/server/
+
+# Lock files (managed by package managers)
+pnpm-lock.yaml
+package-lock.json
+
+# Generated / vendored
 .turbo/
-coverage/
+.vercel/
+.fly/
+
+# Binary / media
 *.png
+*.jpg
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf
+*.pdf
+
+# Changelog / auto-generated
+CHANGELOG.md

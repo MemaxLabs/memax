@@ -1,0 +1,119 @@
+{
+  "queries": [
+    {
+      "id": "p1",
+      "query": "my hotel in Tokyo",
+      "query_type": "factual",
+      "slices": ["type:factual", "lang:en", "hub:personal", "domain:travel"],
+      "relevance": {
+        "personal-tokyo-trip-plan": 3
+      },
+      "expect_keywords_in_results": ["hotel", "gracery", "shinjuku"],
+      "min_results": 1,
+      "description": "Personal factual recall — hotel details from trip plan",
+      "source": "mcp",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      }
+    },
+    {
+      "id": "p2",
+      "query": "why did I switch to a standing desk?",
+      "query_type": "decision",
+      "slices": ["type:decision", "lang:en", "hub:personal", "domain:lifestyle"],
+      "relevance": {
+        "personal-standing-desk-decision": 3
+      },
+      "expect_keywords_in_results": ["standing desk", "back pain", "flexispot"],
+      "min_results": 1,
+      "description": "Personal rationale recall — standing desk decision reasoning",
+      "source": "mcp",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      }
+    },
+    {
+      "id": "p3",
+      "query": "that Thai restaurant Sarah recommended",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:personal", "domain:food"],
+      "relevance": {
+        "personal-restaurant-recommendations": 3
+      },
+      "expect_keywords_in_results": ["thai", "sarah", "kin khao"],
+      "min_results": 1,
+      "description": "Fuzzy personal recall — person mention with topic (Thai restaurant with Sarah)",
+      "source": "cli",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      }
+    },
+    {
+      "id": "p4",
+      "query": "sourdough recipe",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:personal", "domain:cooking"],
+      "relevance": {
+        "personal-sourdough-starter-recipe": 3
+      },
+      "expect_keywords_in_results": ["sourdough", "starter", "bread"],
+      "min_results": 1,
+      "description": "Procedural recall — sourdough baking recipe and starter maintenance",
+      "source": "mcp",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      }
+    },
+    {
+      "id": "p5",
+      "query": "laptop comparison MacBook vs ThinkPad",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:personal", "domain:hardware"],
+      "relevance": {
+        "personal-laptop-comparison": 3
+      },
+      "expect_keywords_in_results": ["macbook", "thinkpad", "m4"],
+      "min_results": 1,
+      "description": "Semantic recall — laptop purchase comparison notes",
+      "source": "mcp",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      }
+    },
+    {
+      "id": "p6",
+      "query": "what did the doctor say about my knee",
+      "query_type": "factual",
+      "slices": ["type:factual", "lang:en", "hub:personal", "domain:health"],
+      "relevance": {
+        "personal-health-checkup-notes": 3,
+        "personal-fitness-routine": 1
+      },
+      "expect_keywords_in_results": ["knee", "patellofemoral", "squat"],
+      "min_results": 1,
+      "description": "Personal health recall — doctor's knee diagnosis and recommendations",
+      "source": "cli",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      }
+    }
+  ]
+}

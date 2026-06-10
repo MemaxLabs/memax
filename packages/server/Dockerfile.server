@@ -1,0 +1,39 @@
+FROM golang:1.25-alpine AS build
+WORKDIR /app
+COPY go.mod go.sum ./
+# Declared AFTER `go mod download` so a new COMMIT_SHA on every
+# deploy doesn't bust the module cache — ARG value changes
+# invalidate the cache from first-use onward, and "first use" is
+# any RUN after the declaration (whether the var is referenced or
+# not). Keeping module fetch above the ARG keeps ~30s of `go mod
+# download` warm between deploys.
+RUN go mod download
+COPY . .
+# COMMIT_SHA is injected at build time so the binary can report
+# which commit it was built from in the admin Config panel. Fly's
+# build context is packages/server/, which excludes the repo-root
+# .git — Go's auto-VCS stamping therefore sees no git tree and
+# leaves vcs.revision empty. We override handler.buildCommit via
+# -ldflags instead. A default of "unknown" keeps local
+# `docker build` working without the arg; the admin UI then falls
+# through to the auto-VCS path or renders "unknown".
+ARG COMMIT_SHA=unknown
+# BUILD_VERSION carries the semver (prod: the exact tag about to be
+# pushed; staging: `git describe --tags --always`; local: "dev").
+# Rendered in the admin UI alongside the commit SHA for quick
+# "what's running?" identification and to unblock a future
+# latest-release comparison check.
+ARG BUILD_VERSION=dev
+RUN CGO_ENABLED=0 go build \
+	-ldflags="-X 'github.com/MemaxLabs/memax/packages/server/internal/handler.buildCommit=${COMMIT_SHA}' -X 'github.com/MemaxLabs/memax/packages/server/internal/handler.buildVersion=${BUILD_VERSION}'" \
+	-o /memax-server ./cmd/server/
+RUN CGO_ENABLED=0 go build -o /memax-migrate ./cmd/migrate/
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates
+COPY --from=build /memax-server /memax-server
+COPY --from=build /memax-migrate /memax-migrate
+COPY migrations /migrations
+ENV MIGRATIONS_DIR=/migrations
+EXPOSE 8080
+CMD ["/memax-server"]

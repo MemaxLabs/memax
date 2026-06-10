@@ -3,9 +3,13 @@
   "private": true,
   "packageManager": "pnpm@10.33.0",
   "scripts": {
+    "dev": "doppler run -- turbo dev",
     "build": "turbo build",
-    "lint": "turbo lint",
+    "lint": "node scripts/check-sdk-boundary.mjs && go run scripts/check-tool-store-calls.go && turbo lint",
     "test": "turbo test",
+    "check:sdk-boundary": "node scripts/check-sdk-boundary.mjs",
+    "check:tool-store": "go run scripts/check-tool-store-calls.go",
+    "check:tool-store:selftest": "go run scripts/check-tool-store-calls.go --self-test",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "clean": "turbo clean"
@@ -13,5 +17,10 @@
   "devDependencies": {
     "prettier": "^3.5.0",
     "turbo": "^2.4.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@tiptap/core": "3.22.4"
+    }
   }
 }

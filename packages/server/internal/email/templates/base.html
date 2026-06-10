@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Subject}}</title>
+  <!--
+    Font stack is INTENTIONAL. Gmail strips <link> webfonts; Outlook
+    (Windows) ignores @font-face entirely; Apple Mail + GMail mobile
+    render system-UI well. The web app uses Inter via next/font but
+    emails do not — do NOT "fix" this by wiring Inter here without
+    verifying the target client actually loads it.
+  -->
+  <style>
+    body { margin: 0; padding: 0; background: {{.Brand.BackgroundColor}}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: {{.Brand.BodyColor}}; }
+    .container { max-width: 560px; margin: 40px auto; background: {{.Brand.SurfaceColor}}; border-radius: 12px; border: 1px solid {{.Brand.BorderColor}}; overflow: hidden; }
+    .header { padding: 32px 32px 24px; }
+    .logo-text { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; color: {{.Brand.PrimaryColor}}; }
+    .logo-image { display: block; height: 28px; width: auto; max-width: 200px; border: 0; outline: none; }
+    .content { padding: 0 32px 32px; color: {{.Brand.BodyColor}}; }
+    .content h1 { font-size: 22px; font-weight: 600; color: {{.Brand.PrimaryColor}}; margin: 0 0 12px; }
+    .content p { font-size: 15px; line-height: 1.6; color: {{.Brand.BodyColor}}; margin: 0 0 16px; }
+    .content a { color: {{.Brand.PrimaryColor}}; }
+    .cta { display: inline-block; padding: 12px 28px; background: {{.Brand.PrimaryColor}}; color: {{.Brand.SurfaceColor}} !important; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 500; margin: 8px 0 16px; }
+    .role { display: inline-block; padding: 2px 8px; background: {{.Brand.BackgroundColor}}; border-radius: 4px; font-size: 13px; color: {{.Brand.MutedColor}}; }
+    .expiry { font-size: 13px; color: {{.Brand.MutedColor}}; }
+    .expiry-urgent { font-size: 13px; color: #c44; font-weight: 500; }
+    .footer { padding: 24px 32px; border-top: 1px solid {{.Brand.BorderColor}}; }
+    .footer p { font-size: 12px; line-height: 1.55; color: {{.Brand.MutedColor}}; margin: 0 0 8px; }
+    .footer p:last-child { margin-bottom: 0; }
+    .footer a { color: {{.Brand.MutedColor}}; }
+    .footer-reason { font-style: italic; }
+    .footer-identity { color: {{.Brand.MutedColor}}; }
+    .footer-legal a { margin: 0 4px; }
+    .footer-unsub { margin-top: 12px; padding-top: 12px; border-top: 1px solid {{.Brand.BorderColor}}; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      {{if .Brand.LogoURL}}<img src="{{.Brand.LogoURL}}" alt="{{.Brand.LogoAlt}}" class="logo-image">{{else}}<div class="logo-text">{{.Brand.ProductName}}</div>{{end}}
+    </div>
+    <div class="content">
+{{.Body}}
+    </div>
+    <div class="footer">
+      {{if .Brand.ReasonHTML}}<p class="footer-reason">{{.Brand.ReasonHTML}}</p>{{end}}
+      {{if .Brand.FooterHTML}}{{.Brand.FooterHTML}}{{end}}
+      {{if .Brand.SupportEmail}}<p class="footer-support">Questions? <a href="mailto:{{.Brand.SupportEmail}}">{{.Brand.SupportEmail}}</a></p>{{end}}
+      {{if or .Brand.CompanyName .Brand.CompanyAddress}}<p class="footer-identity">{{if .Brand.CompanyName}}{{.Brand.CompanyName}}{{end}}{{if and .Brand.CompanyName .Brand.CompanyAddress}}<br>{{end}}{{if .Brand.CompanyAddress}}{{.Brand.CompanyAddress}}{{end}}</p>{{end}}
+      {{if or .Brand.PrivacyURL .Brand.TermsURL}}<p class="footer-legal">{{if .Brand.PrivacyURL}}<a href="{{.Brand.PrivacyURL}}">Privacy</a>{{end}}{{if and .Brand.PrivacyURL .Brand.TermsURL}} · {{end}}{{if .Brand.TermsURL}}<a href="{{.Brand.TermsURL}}">Terms</a>{{end}}</p>{{end}}
+      {{if .Brand.IncludeUnsubscribe}}<p class="footer-unsub"><a href="{{.Brand.UnsubscribePlaceholder}}">Unsubscribe</a></p>{{end}}
+    </div>
+  </div>
+</body>
+</html>

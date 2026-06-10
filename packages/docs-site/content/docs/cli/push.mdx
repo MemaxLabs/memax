@@ -1,0 +1,107 @@
+---
+title: memax push
+description: Save a single piece of content to your Memax hub — file, stdin, URL, or inline string.
+---
+
+Push one piece of content into your active Memax hub. For multi-file
+directory imports, use [`memax import`](/cli/import) instead.
+
+`memax remember` is an alias for this command.
+
+## Usage
+
+```bash
+memax push [content] [options]
+memax push -f <path> [options]
+memax push --stdin [options]
+```
+
+`content` is a positional string (quote it if it has spaces). A
+single-line string starting with `http://` or `https://` is detected
+automatically and stored with `content_type=link`.
+
+## Options
+
+| Flag                   | Short | Description                                                                         |
+| ---------------------- | :---: | ----------------------------------------------------------------------------------- |
+| `--file <path>`        | `-f`  | Read content from a file.                                                           |
+| `--stdin`              |       | Read content from stdin (piped input).                                              |
+| `--title <title>`      |       | Memory title (auto-derived from filename / first line if unset).                    |
+| `--tags <tags>`        | `-t`  | Comma-separated tags.                                                               |
+| `--hint <hint>`        | `-H`  | Context hint for AI processing (e.g. `"my resume"`).                                |
+| `--hub <slug>`         |       | Push to a specific hub (overrides the active hub for this call).                    |
+| `--agent <name>`       |       | Tag this push as originating from a specific agent (`claude-code`, `cursor`, etc.). |
+| `--assisted-by <slug>` |       | Credit a known agent collaborator for a human-authored push.                        |
+
+There is no `--category`, `--boundary`, `--snapshot`, `--mode`,
+`--dry-run`, `--ttl`, or `--force` flag today (`--ttl` is declared
+in the CLI but not sent to the server and has no effect).
+
+## Examples
+
+### Inline string
+
+```bash
+memax push "We chose JWT for stateless auth"
+```
+
+### From a file
+
+```bash
+memax push -f ./ARCHITECTURE.md
+memax push -f ./ARCHITECTURE.md --title "Architecture overview"
+```
+
+### From stdin
+
+```bash
+cat meeting-notes.txt | memax push --stdin --title "Team standup 2026-04-21"
+```
+
+### With tags and hint
+
+```bash
+memax push -f ./runbook.md \
+  --tags "ops,incidents" \
+  --hint "on-call runbook for production incidents"
+```
+
+### Push a URL (auto-detected)
+
+```bash
+memax push https://example.com/pricing
+```
+
+The URL is stored with `content_type=link`. When the link processor
+is enabled server-side, the URL is fetched in the background,
+metadata is extracted, and a summary is generated; otherwise the
+memory stays as a bare link record. There is no `--snapshot` flag
+— the behavior depends on the server configuration, not a client
+option.
+
+### Push to a specific hub
+
+```bash
+memax push "Team decision: use Postgres" --hub team-alpha
+```
+
+## Behavior
+
+- **Classification and title generation are server-side.** The server
+  infers `kind` (episodic / semantic / procedural / rationale),
+  `stability`, and a title from the content. Override the title with
+  `--title`.
+- **Content-type detection.** `.md` / `.txt` → markdown; `.json` /
+  `.yaml` / `.yml` → structured; everything else in the supported
+  extension list → code. URLs → link.
+- **Deduplication.** The server dedupes in two ways: (1) if the
+  push includes a `source_path` and a memory already exists at that
+  path in the target hub, the existing row is updated (unchanged
+  content = skip), and (2) in-hub content-hash dedup prevents
+  identical content from creating a second row.
+- **Initial state.** Inline text / markdown content goes straight
+  to `active`. File attachments (PDFs, images) and URL-as-link
+  pushes go through async processing (`processing` state) before
+  landing at `active`.
+- **No built-in secret scanning** today — don't push raw `.env` files
+  expecting them to be redacted.

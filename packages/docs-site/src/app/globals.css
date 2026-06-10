@@ -1,0 +1,11 @@
+@import "tailwindcss";
+@import "fumadocs-ui/style.css";
+@import "fumadocs-ui/css/neutral.css";
+
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --color-fd-primary: oklch(0.62 0.16 290);
+  --color-fd-muted-foreground: oklch(from var(--color-fd-foreground) l c h / 0.55);
+}

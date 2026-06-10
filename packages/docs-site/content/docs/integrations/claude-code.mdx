@@ -1,0 +1,146 @@
+---
+title: Claude Code
+description: Connect Claude Code to Memax via MCP + hooks.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+import { Steps, Step } from "fumadocs-ui/components/steps";
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
+Claude Code has the fullest Memax integration — both MCP
+(on-demand tools) and hooks (prompt-level reinforcement that
+nudges the agent to use MCP).
+
+## Quick setup
+
+```bash
+memax setup --only claude-code --all
+```
+
+`--all` configures MCP + hooks + agent instructions in one pass.
+Use `--mcp` or `--hooks` individually to narrow.
+
+## Manual setup
+
+### MCP (local stdio)
+
+Claude Code manages MCP servers through its own CLI — don't try
+to hand-edit `~/.claude/settings.json` to add `mcpServers`
+(Claude Code's settings file does not use that key).
+
+```bash
+claude mcp add memax --scope user -- npx -y memax-cli mcp serve --agent claude-code
+```
+
+`--scope user` makes Memax available across every project. Drop
+the flag to scope to the current project only.
+
+### MCP (remote)
+
+For cloud or managed setups, use the remote MCP endpoint. With
+OAuth (recommended — the browser auth flow triggers on first
+connect):
+
+```bash
+claude mcp add memax --transport http https://api.memax.app/mcp --scope user
+```
+
+With an API key (non-interactive / CI setups):
+
+```bash
+claude mcp add memax --transport http https://api.memax.app/mcp \
+  --header "Authorization: Bearer mxk_..." \
+  --scope user
+```
+
+Generate the `mxk_` token with `memax auth create-key` or via the
+web app's Agents settings.
+
+### Hooks (prompt reinforcement)
+
+```bash
+memax setup --only claude-code --hooks
+```
+
+Or the deprecated single-agent fallback:
+
+```bash
+memax hook install claude-code
+```
+
+The hook intercepts `UserPromptSubmit` and prints a short, static
+reinforcement block into the prompt:
+
+```text
+<memax>
+MEMORY PRIORITY: Memax is your primary memory system …
+→ memax_recall BEFORE your first response
+→ memax_push when you reach a durable decision …
+</memax>
+```
+
+The hook does **not** call recall and does **not** inject fetched
+memories. Real recall and push happen via the MCP tools the agent
+invokes itself — so MCP must also be installed for the hook to be
+useful.
+
+## Exposed MCP tools
+
+9 tools — see [`memax mcp`](/cli/mcp) for the full schema. Notable:
+`memax_recall`, `memax_push`, `memax_get`, `memax_list`,
+`memax_hubs`, `memax_hub_members`, `memax_forget`, `memax_capture`,
+`memax_topics`.
+
+There is **no** `memax_search` tool.
+
+<Callout type="info">
+  Claude Code uses deferred tool loading — Memax tools may not appear until the
+  agent searches for them by name or MCP is invoked at least once. Asking "what
+  memax tools do you have?" triggers discovery.
+</Callout>
+
+## What it looks like in practice
+
+With both MCP and hooks configured:
+
+```
+You: "Fix the token refresh bug in auth"
+
+[Hook fires on UserPromptSubmit, prepending the <memax> block
+ that tells the agent to use Memax first.]
+
+Claude Code: [calls memax_recall("token refresh bug auth") via MCP]
+             [reads back: "Auth uses JWT with short-lived access
+              tokens … known refresh race condition …"]
+             "Based on what's in your knowledge base, the known
+              race condition in the refresh flow …"
+```
+
+The model fetches context via `memax_recall` because the hook told
+it to, and can save decisions back with `memax_push` during the
+session.
+
+## Troubleshooting
+
+### Tools don't appear
+
+1. `memax whoami` — confirm you're signed in.
+2. `claude mcp list` — confirm `memax` is registered.
+3. Fully restart Claude Code (not just reload the window).
+4. Ask "search for memax tools" to trigger deferred discovery.
+
+### Hook fires but the agent ignores Memax
+
+The hook only prints reinforcement text. If the agent doesn't then
+call `memax_recall`, verify MCP is actually configured
+(`claude mcp list`) and restart Claude Code — the MCP connection
+is established on startup.
+
+### Hook never fires
+
+1. Check `~/.claude/settings.json` has a `hooks.UserPromptSubmit`
+   entry pointing at `~/.memax/hooks/context-inject-claude-code.sh`.
+2. Confirm that script is executable
+   (`ls -l ~/.memax/hooks/context-inject-claude-code.sh`).
+3. Reinstall:
+   `memax setup --only claude-code --hooks`.

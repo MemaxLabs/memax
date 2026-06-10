@@ -1,0 +1,7 @@
+Subject: You're on the list — memax early access
+
+Thanks for signing up for early access to memax.
+
+We're rolling out access in small waves to ensure everyone gets a great experience. When your invite is ready, we'll email this address. Nothing for you to do until then — your AI agents just get smarter the day you open the box.
+
+Curious how other people use memax while you wait? The docs are at {{ .DocsURL }}

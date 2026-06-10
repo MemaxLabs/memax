@@ -1,0 +1,154 @@
+{
+  "queries": [
+    {
+      "id": "mtg-q1",
+      "query": "what were the blockers from last standup?",
+      "query_type": "temporal",
+      "slices": [
+        "type:temporal",
+        "lang:en",
+        "hub:team",
+        "kind:episodic"
+      ],
+      "relevance": {
+        "mtg-001-weekly-standup-march-25": 3,
+        "mtg-006-retrospective-q1-action-items": 1
+      },
+      "min_results": 1,
+      "description": "Temporal episodic query - should return standup notes with blockers, retro tangentially relevant for process issues",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "mtg-q2",
+      "query": "embedding model comparison",
+      "query_type": "topical",
+      "slices": [
+        "type:topical",
+        "lang:en",
+        "hub:personal",
+        "kind:semantic"
+      ],
+      "relevance": {
+        "mtg-005-research-embedding-comparison": 3,
+        "mtg-004-research-rag-evaluation": 1
+      },
+      "min_results": 1,
+      "description": "Research query in personal hub - should return embedding comparison, RAG eval tangentially relevant for shared metrics",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "mtg-q3",
+      "query": "what did we decide about the consent screen design?",
+      "query_type": "decision",
+      "slices": [
+        "type:decision",
+        "lang:en",
+        "hub:team",
+        "kind:episodic"
+      ],
+      "relevance": {
+        "mtg-002-design-review-consent-screen": 3,
+        "mtg-001-weekly-standup-march-25": 1
+      },
+      "min_results": 1,
+      "description": "Decision query - should return design review with decisions, standup tangentially mentions consent screen ship",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "mtg-q4",
+      "query": "retro action items",
+      "query_type": "topical",
+      "slices": [
+        "type:topical",
+        "lang:en",
+        "hub:team",
+        "kind:episodic"
+      ],
+      "relevance": {
+        "mtg-006-retrospective-q1-action-items": 3,
+        "mtg-001-weekly-standup-march-25": 1
+      },
+      "min_results": 1,
+      "description": "Episodic query - should return retro with action items, standup has its own action items so tangentially relevant",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "mtg-q5",
+      "query": "RAG evaluation methodology nDCG",
+      "query_type": "topical",
+      "slices": [
+        "type:topical",
+        "lang:en",
+        "hub:personal",
+        "kind:semantic"
+      ],
+      "relevance": {
+        "mtg-004-research-rag-evaluation": 3,
+        "mtg-005-research-embedding-comparison": 2
+      },
+      "min_results": 1,
+      "description": "Technical research query - should return RAG eval methodology, embedding comparison also uses nDCG metrics",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    }
+  ]
+}

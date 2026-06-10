@@ -1,0 +1,200 @@
+{
+  "memories": [
+    {
+      "id": "mtg-001-weekly-standup-march-25",
+      "title": "Weekly Standup March 25",
+      "file": "001-weekly-standup-march-25.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "standup",
+        "blockers",
+        "weekly-sync",
+        "team"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "mcp",
+      "source_agent": "claude-code",
+      "source_path": "meeting-notes/2026-03-25-standup.md",
+      "hub_reason": "Weekly team standup notes shared with the whole Memax team.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-25T18:00:00Z",
+      "updated_at": "2026-03-25T18:15:00Z",
+      "accessed_at": "2026-03-27T09:00:00Z",
+      "access_count": 4,
+      "event_dates": [
+        "2026-03-25T00:00:00Z"
+      ],
+      "hint": "Retrieve for weekly standup updates, individual status reports, blockers, and action items from March 25."
+    },
+    {
+      "id": "mtg-002-design-review-consent-screen",
+      "title": "Design Review: Consent Screen UX",
+      "file": "002-design-review-consent-screen.md",
+      "kind": "episodic",
+      "stability": "evolving",
+      "tags": [
+        "design-review",
+        "oauth",
+        "consent-screen",
+        "ux",
+        "decisions"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000096",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "design/consent-screen-review-2026-03-22.md",
+      "hub_reason": "Design decisions affecting the shared OAuth consent flow used by the whole team.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "consent-redesign"
+      },
+      "created_at": "2026-03-22T17:00:00Z",
+      "updated_at": "2026-03-22T17:45:00Z",
+      "accessed_at": "2026-03-26T10:00:00Z",
+      "access_count": 7,
+      "event_dates": [
+        "2026-03-22T00:00:00Z"
+      ],
+      "hint": "Retrieve for consent screen design decisions, OAuth UX, scope display, trust indicators, and mobile responsiveness."
+    },
+    {
+      "id": "mtg-003-one-on-one-ziyang-jiahao",
+      "title": "1:1 Notes: Ziyang and Jiahao",
+      "file": "003-one-on-one-ziyang-jiahao.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "1-on-1",
+        "career-growth",
+        "priorities",
+        "process"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "capture",
+      "source_agent": "claude-ai",
+      "source_path": "",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-20T19:00:00Z",
+      "updated_at": "2026-03-20T19:30:00Z",
+      "accessed_at": "2026-03-25T14:00:00Z",
+      "access_count": 2,
+      "event_dates": [
+        "2026-03-20T00:00:00Z"
+      ],
+      "hint": "Retrieve for 1:1 discussion topics, career growth, project priorities, process decisions, and YC application plans."
+    },
+    {
+      "id": "mtg-004-research-rag-evaluation",
+      "title": "Research: RAG Evaluation Approaches",
+      "file": "004-research-rag-evaluation.md",
+      "kind": "semantic",
+      "stability": "evolving",
+      "tags": [
+        "research",
+        "rag",
+        "evaluation",
+        "ndcg",
+        "beir",
+        "mteb",
+        "metrics"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "cli",
+      "source_agent": "chatgpt",
+      "source_path": "docs/research/rag-eval-survey.md",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "eval-framework"
+      },
+      "created_at": "2026-03-18T14:00:00Z",
+      "updated_at": "2026-03-19T10:00:00Z",
+      "accessed_at": "2026-04-02T16:00:00Z",
+      "access_count": 8,
+      "event_dates": [
+        "2026-03-18T00:00:00Z"
+      ],
+      "hint": "Retrieve for RAG evaluation methodology, BEIR, MTEB, nDCG, MRR, recall, precision metrics, and benchmark design."
+    },
+    {
+      "id": "mtg-005-research-embedding-comparison",
+      "title": "Research: Embedding Model Comparison",
+      "file": "005-research-embedding-comparison.md",
+      "kind": "semantic",
+      "stability": "evolving",
+      "tags": [
+        "research",
+        "embeddings",
+        "voyage-ai",
+        "openai",
+        "cohere",
+        "benchmark"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "cli",
+      "source_agent": "claude-code",
+      "source_path": "docs/research/embedding-comparison.md",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "eval-framework"
+      },
+      "created_at": "2026-03-19T11:00:00Z",
+      "updated_at": "2026-03-21T09:00:00Z",
+      "accessed_at": "2026-04-05T14:00:00Z",
+      "access_count": 6,
+      "event_dates": [
+        "2026-03-19T00:00:00Z"
+      ],
+      "hint": "Retrieve for embedding model comparisons, Voyage vs OpenAI vs Cohere benchmarks, nDCG scores, latency, and model selection rationale."
+    },
+    {
+      "id": "mtg-006-retrospective-q1-action-items",
+      "title": "Retrospective Q1 Action Items",
+      "file": "006-retrospective-q1-action-items.md",
+      "kind": "episodic",
+      "stability": "evolving",
+      "tags": [
+        "retrospective",
+        "q1",
+        "action-items",
+        "process",
+        "improvements"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "capture",
+      "source_agent": "claude-ai",
+      "source_path": "",
+      "hub_reason": "Q1 retrospective outcomes and action items are shared team context.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-28T20:00:00Z",
+      "updated_at": "2026-03-28T20:30:00Z",
+      "accessed_at": "2026-04-02T09:00:00Z",
+      "access_count": 5,
+      "event_dates": [
+        "2026-03-28T00:00:00Z"
+      ],
+      "hint": "Retrieve for Q1 retro outcomes, what went well, what to improve, action items with owners, and process changes."
+    }
+  ]
+}

@@ -1,0 +1,180 @@
+---
+title: Agent Setup
+description: Connect an agent to Memax using MCP, hooks, or CLI piping.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
+## Three integration methods
+
+| Method         | Setup                            | Best for                                                                                        |
+| -------------- | -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| **MCP server** | One command (`memax setup`)      | Tool-calling agents, on-demand recall + push (recommended)                                      |
+| **Hooks**      | Bundled in `memax setup --hooks` | Prepend a static reinforcement block to every prompt telling the agent to use MCP (Claude Code) |
+| **CLI piping** | Shell scripting                  | One-offs, CI, scripts                                                                           |
+
+## MCP server (recommended)
+
+### `memax setup` (auto-config)
+
+The easiest path — detects installed agents and configures MCP +
+hooks for each.
+
+```bash
+memax setup --all                    # MCP + hooks + agent instructions
+memax setup --only claude-code       # restrict to specific agents
+memax setup --mcp                    # just MCP
+memax setup --hooks                  # just hooks
+memax setup --print                  # print the MCP config instead of writing
+```
+
+There is no positional agent argument — `memax setup claude-code`
+does not work. Use `--only claude-code` to restrict instead.
+
+### Manual config
+
+<Tabs items={["Claude Code", "Cursor", "Codex", "Any MCP client"]}>
+  <Tab value="Claude Code">
+    Claude Code registers MCP servers through its own CLI (not by
+    editing `settings.json` directly). Use:
+
+    ```bash
+    claude mcp add memax --scope user -- npx -y memax-cli mcp serve --agent claude-code
+    ```
+
+    Or the remote MCP server with OAuth:
+
+    ```bash
+    claude mcp add memax --transport http https://api.memax.app/mcp --scope user
+    ```
+
+    With an API key (non-interactive setups):
+
+    ```bash
+    claude mcp add memax --transport http https://api.memax.app/mcp \
+      --header "Authorization: Bearer mxk_..." \
+      --scope user
+    ```
+
+  </Tab>
+  <Tab value="Cursor">
+    Add to `~/.cursor/mcp.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "memax": {
+          "command": "npx",
+          "args": ["-y", "memax-cli", "mcp", "serve", "--agent", "cursor"]
+        }
+      }
+    }
+    ```
+
+    Or the remote MCP server:
+
+    ```json
+    {
+      "mcpServers": {
+        "memax": {
+          "type": "url",
+          "url": "https://api.memax.app/mcp",
+          "headers": { "Authorization": "Bearer mxk_..." }
+        }
+      }
+    }
+    ```
+
+  </Tab>
+  <Tab value="Codex">
+    Codex uses TOML, not JSON. Add to `~/.codex/config.toml`:
+
+    ```toml
+    [mcp_servers.memax]
+    command = "npx"
+    args = ["-y", "memax-cli", "mcp", "serve", "--agent", "codex"]
+    ```
+
+    Or the remote MCP server with an API key:
+
+    ```toml
+    [mcp_servers.memax]
+    type = "url"
+    url = "https://api.memax.app/mcp"
+
+    [mcp_servers.memax.headers]
+    Authorization = "Bearer mxk_..."
+    ```
+
+  </Tab>
+  <Tab value="Any MCP client">
+    Any MCP-compatible client can start the local stdio server:
+
+    ```bash
+    npx memax-cli mcp serve
+    ```
+
+  </Tab>
+</Tabs>
+
+### Exposed MCP tools
+
+9 tools total — see [`memax mcp`](/cli/mcp) for each tool's full
+schema. In summary:
+
+| Tool                | Purpose                                                  |
+| ------------------- | -------------------------------------------------------- |
+| `memax_recall`      | Semantic search against your hubs.                       |
+| `memax_push`        | Save new knowledge.                                      |
+| `memax_get`         | Read a memory by ID.                                     |
+| `memax_list`        | Paginated memory listing.                                |
+| `memax_hubs`        | List hubs the token can access.                          |
+| `memax_hub_members` | List members of a hub.                                   |
+| `memax_forget`      | Delete a memory by ID.                                   |
+| `memax_capture`     | Persist session context (summary, decisions, learnings). |
+| `memax_topics`      | Browse the topic tree.                                   |
+
+There is no `memax_search` tool.
+
+## Hooks (Claude Code only)
+
+Hooks prepend a short, static reinforcement block to every user
+prompt that tells the agent to use Memax via MCP. They do **not**
+call recall or fetch any memories themselves. Run once:
+
+```bash
+memax setup --hooks
+```
+
+Or the minimal fallback command (deprecated but still works):
+
+```bash
+memax hook install claude-code
+```
+
+The hook prints a short, static reinforcement block
+(`<memax>…</memax>`) that instructs the agent to call
+`memax_recall` before responding and `memax_push` when it reaches a
+durable decision. The hook itself does **not** call recall or
+inject memories — the real recall/push happen via the MCP tools,
+which must be installed separately (`memax setup --mcp`).
+
+<Callout type="info">
+  MCP and hooks stack: hooks remind the agent to use Memax on every turn; MCP is
+  how the agent actually recalls and pushes. Install both for the best
+  experience.
+</Callout>
+
+## CLI piping (universal fallback)
+
+```bash
+# Inject recall into any agent via clipboard
+memax recall "how does deployment work?" | pbcopy
+
+# Use inside scripts
+CONTEXT=$(memax recall "auth system design" --format text)
+```
+
+For detailed integration guides, see the
+[Integrations section](/integrations/index).

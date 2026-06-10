@@ -1,0 +1,1 @@
+Pricing model v2: Free tier keeps 100 memories, Pro ($9/mo) gets 5000 memories + 50 asks/day, Team ($15/seat/mo) adds hub sharing + role management. Dropped the $19 tier — too close to $15 team and confused users in interviews.

@@ -1,0 +1,181 @@
+{
+  "queries": [
+    {
+      "id": "neg-k8s-autoscaling",
+      "query": "our Kubernetes autoscaling policy for the memax API server",
+      "query_type": "negative",
+      "slices": [
+        "type:negative",
+        "trap:wrong-infra",
+        "lang:en"
+      ],
+      "negative": true,
+      "relevance": {
+        "006-kubernetes-deployment-guide": -1,
+        "distractor-wrong-project-k8s": -1
+      },
+      "min_results": 0,
+      "description": "Memax uses Fly.io, not Kubernetes. K8s memories exist but are for other projects (ExampleCorp). Should return zero relevant results for the memax API server context.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "neg-graphql-schema",
+      "query": "what is our GraphQL schema for the public API",
+      "query_type": "negative",
+      "slices": [
+        "type:negative",
+        "trap:nonexistent-tech",
+        "lang:en"
+      ],
+      "negative": true,
+      "relevance": {},
+      "min_results": 0,
+      "description": "Memax uses REST (net/http), not GraphQL. No memory in the corpus mentions GraphQL. System should return empty or near-empty results.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "neg-terraform-infra",
+      "query": "how to configure Terraform for our infrastructure",
+      "query_type": "negative",
+      "slices": [
+        "type:negative",
+        "trap:nonexistent-tech",
+        "lang:en"
+      ],
+      "negative": true,
+      "relevance": {},
+      "min_results": 0,
+      "description": "Memax deploys via Fly.io CLI and Vercel, not Terraform. No IaC memories exist. Should return empty results rather than surfacing loosely related deployment memories.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "neg-board-meeting",
+      "query": "meeting notes from the board meeting last Friday",
+      "query_type": "negative",
+      "slices": [
+        "type:negative",
+        "trap:nonexistent-event",
+        "lang:en"
+      ],
+      "negative": true,
+      "relevance": {
+        "008-team-meeting-notes-sprint-review": 0,
+        "distractor-temporal-wrong-meeting": 0
+      },
+      "min_results": 0,
+      "description": "No board meeting exists in the corpus. Sprint review meetings exist but are not board meetings. Tests that the system distinguishes meeting types rather than matching on 'meeting notes' keywords.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "neg-mobile-app",
+      "query": "what did we decide about the mobile app architecture",
+      "query_type": "negative",
+      "slices": [
+        "type:negative",
+        "trap:nonexistent-product",
+        "lang:en"
+      ],
+      "negative": true,
+      "relevance": {
+        "001-memax-system-architecture": 0,
+        "distractor-near-duplicate-arch": 0
+      },
+      "min_results": 0,
+      "description": "Memax has no mobile app — only web, CLI, and SDK. Architecture memories exist but are for the server/web stack. Tests that the system does not conflate 'architecture' queries across unrelated product surfaces.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "neg-performance-review",
+      "query": "Sarah's performance review feedback",
+      "query_type": "negative",
+      "slices": [
+        "type:negative",
+        "trap:sensitive-content",
+        "lang:en"
+      ],
+      "negative": true,
+      "relevance": {},
+      "min_results": 0,
+      "description": "Performance reviews are sensitive HR content that should never be stored as retrievable memories. No such memory exists in the corpus. Tests that the system returns nothing rather than surfacing tangentially related mentions of 'Sarah' or 'feedback'.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091",
+          "00000000-0000-0000-0000-000000000092"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    }
+  ]
+}

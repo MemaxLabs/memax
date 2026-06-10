@@ -1,0 +1,69 @@
+# Memax API Server — HTTP API for all clients (web, CLI, SDK, MCP)
+# Runs separately from the worker for fault isolation and independent scaling.
+app = "memax-api-staging"
+primary_region = "sjc"
+
+[build]
+  # Dockerfile path is relative to THIS toml file (not cwd), so
+  # ../ navigates up from fly/ to the server package root where the
+  # Dockerfile lives.
+  dockerfile = "../Dockerfile.server"
+
+[env]
+  PORT = "8080"
+  # Trust header source for per-IP rate limiting (see
+  # ratelimit/iplimiter.go). Valid: none|cloudflare|fly|xff.
+  #
+  # Current value "fly" is correct for the Fly-only topology. When
+  # Cloudflare is rolled in front (see docs/infra/cloudflare-runbook.md),
+  # flip this to "cloudflare" so the limiter reads CF-Connecting-IP
+  # instead — leaving "fly" would point at Cloudflare's edge IP and
+  # collapse every real client into one bucket.
+  #
+  # ORIGIN_SHARED_SECRET (set via `fly secrets set …`, not here)
+  # activates origin lockdown; when set, any request reaching this
+  # app without the matching X-Origin-Secret header gets 403. Keeps
+  # direct-to-Fly traffic blocked once Cloudflare is the only
+  # sanctioned entry point.
+  TRUSTED_PROXY = "fly"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  # Per-machine request concurrency cap. Fly's proxy stops sending
+  # new requests once hard_limit is hit, triggering auto-scale-up
+  # rather than letting a single machine grind under load. soft_limit
+  # is the preferred comfort zone — above it Fly prefers to route to
+  # less-loaded machines first.
+  #
+  # Pick point: 256MB machines + single goroutine-per-request Go app
+  # → 250 concurrent reqs is ~1MB each, well under memory; 200 soft
+  # gives 20% burst headroom before the hard wall. Crank these up
+  # after bumping the VM class.
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+[deploy]
+  release_command = "/memax-migrate"
+  release_command_timeout = "10m"
+  strategy = "rolling"
+
+[[http_service.checks]]
+  grace_period = "30s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[swap]
+  size_mb = 512

@@ -1,0 +1,23 @@
+FROM golang:1.25-alpine AS build
+# See Dockerfile.server for the full rationale on COMMIT_SHA +
+# ldflags. Same ARG placement here: below `go mod download` so a
+# new SHA on every deploy doesn't bust the module cache.
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG COMMIT_SHA=unknown
+# BUILD_VERSION mirrors the server's semver; see Dockerfile.server.
+ARG BUILD_VERSION=dev
+RUN CGO_ENABLED=0 go build \
+	-ldflags="-X 'github.com/MemaxLabs/memax/packages/server/internal/handler.buildCommit=${COMMIT_SHA}' -X 'github.com/MemaxLabs/memax/packages/server/internal/handler.buildVersion=${BUILD_VERSION}'" \
+	-o /memax-worker ./cmd/worker/
+RUN CGO_ENABLED=0 go build -o /memax-migrate ./cmd/migrate/
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates
+COPY --from=build /memax-worker /memax-worker
+COPY --from=build /memax-migrate /memax-migrate
+COPY migrations /migrations
+ENV MIGRATIONS_DIR=/migrations
+CMD ["/memax-worker"]

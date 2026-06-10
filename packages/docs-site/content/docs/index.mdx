@@ -1,0 +1,136 @@
+---
+title: Introduction
+description: Memax is the universal context and memory hub for AI coding agents. Push knowledge from anywhere, recall it from any agent.
+---
+
+import { Cards, Card } from "fumadocs-ui/components/card";
+import { Callout } from "fumadocs-ui/components/callout";
+import { Steps, Step } from "fumadocs-ui/components/steps";
+import { APP_URL } from "@/lib/urls";
+
+Memax is a **cloud-hosted memory layer** that sits between you and your AI coding agents. It gives every agent — Claude Code, Cursor, Codex, Copilot, Windsurf — persistent, shared access to your knowledge.
+
+<Callout type="info" title="Think of it like this">
+  One persistent memory for every AI agent you use. Push docs, decisions, and
+  context once — every agent recalls exactly what it needs.
+</Callout>
+
+## The Problem
+
+AI coding agents are powerful, but they forget everything between sessions. Each agent has its own isolated memory. Your Claude Code doesn't know what you told Cursor. Your Codex doesn't know the architecture decisions you explained to Copilot.
+
+You end up repeating context, re-explaining decisions, and copy-pasting docs — across agents, devices, and teammates.
+
+## The Solution
+
+Memax is a single hub where all your knowledge lives. Push from anywhere. Recall from any agent. Share with your team when ready.
+
+```
+You → push knowledge → Memax → agents recall it automatically
+```
+
+Three product surfaces:
+
+- **CLI** (`memax-cli`) — for power users and CI/CD pipelines
+- **Web App** (<a href={APP_URL}>memax.app</a>) — for all users, including non-technical
+- **Developer Hub** ([docs.memax.app](https://docs.memax.app)) — docs, API reference, integration guides
+
+## How It Works
+
+<Steps>
+  <Step>
+    ### Push knowledge from anywhere
+
+    Push markdown, code, chat transcripts, URLs, meeting notes — from CLI, web app, MCP, or the API. Memax auto-classifies (kind + stability) and chunks everything for retrieval.
+
+    ```bash
+    memax push -f ./ARCHITECTURE.md
+    memax push https://docs.example.com/abc123         # URL auto-detected
+    echo "We chose JWT for auth because..." | memax push --stdin
+    memax import ./docs                                  # whole directory
+    ```
+
+  </Step>
+  <Step>
+    ### Agents recall what they need
+
+    Every agent gets direct access to your knowledge. MCP server for tool-calling agents to call `memax_recall` / `memax_push` themselves. Claude Code hooks prepend a static reinforcement block on every prompt that tells the agent to use MCP. CLI piping as the universal fallback for everything else.
+
+    ```bash
+    # Configure MCP + hooks on this machine
+    memax setup --all
+
+    # MCP: agents call memax_recall / memax_push directly
+    # Hook: prepends a static reinforcement block telling the
+    #       agent to use MCP (does not call recall itself)
+    # Pipe: universal fallback
+    memax recall "how does auth work?" --format text | pbcopy
+    ```
+
+  </Step>
+  <Step>
+    ### Teams share context instantly
+
+    Private by default. Share to your team hub when ready. New teammates get full project context on day one — architecture decisions, deploy runbooks, coding conventions.
+
+    ```bash
+    memax hub create "Platform Team"
+    memax push -f ./runbook.md --hub platform-team   # route this push to the team hub
+    memax hub invite create --role contributor       # generates an invite link
+    ```
+
+    Pushes write to your personal hub by default. Target a team hub per-call with `--hub <slug>`, or set `hub: <slug>` in a repo-local `.memax.yml` so every push from that repo lands in the team hub.
+
+  </Step>
+</Steps>
+
+## Quick Start
+
+Get set up in under two minutes:
+
+```bash
+# Install the CLI
+npm install -g memax-cli
+
+# Authenticate
+memax login
+
+# Push your first document
+memax push -f ./ARCHITECTURE.md
+
+# Set up agent integrations on this machine
+memax setup --all
+```
+
+<Cards>
+  <Card
+    title="Quickstart Guide"
+    href="/quickstart"
+    description="Full installation and setup walkthrough"
+  />
+  <Card
+    title="CLI Reference"
+    href="/cli"
+    description="Every command, flag, and option"
+  />
+  <Card
+    title="Agent Integrations"
+    href="/integrations"
+    description="Claude Code, Cursor, Codex, MCP setup"
+  />
+  <Card
+    title="Core Concepts"
+    href="/concepts"
+    description="Memories, hubs, boundaries, and dreams"
+  />
+  <Card
+    title="REST API"
+    href="/api"
+    description="HTTP endpoints with request/response examples"
+  />
+  <Card
+    title="TypeScript SDK"
+    href="/sdk"
+    description="memax-sdk client library reference"
+  />
+</Cards>

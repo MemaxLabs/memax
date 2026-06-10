@@ -1,0 +1,147 @@
+name: Nightly Retrieval Eval
+
+on:
+  schedule:
+    # Run at 3:00 AM UTC every day
+    - cron: "0 3 * * *"
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  eval:
+    name: Run retrieval eval and publish report
+    runs-on: ubuntu-latest
+    environment: staging
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: memax
+          POSTGRES_PASSWORD: memax
+          POSTGRES_DB: memax_eval
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U memax"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: packages/server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: packages/server/go.sum
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Fetch API keys from Doppler
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          if [ -z "$DOPPLER_TOKEN" ]; then
+            echo "DOPPLER_TOKEN not set — retrieval eval cannot run"
+            exit 1
+          fi
+          VOYAGE=$(doppler secrets get VOYAGE_API_KEY --plain)
+          ANTHROPIC=$(doppler secrets get ANTHROPIC_API_KEY --plain)
+          BASE_URL=$(doppler secrets get ANTHROPIC_BASE_URL --plain 2>/dev/null || echo '')
+          COHERE=$(doppler secrets get COHERE_API_KEY --plain 2>/dev/null || echo '')
+          # Mask values so they never appear in logs
+          echo "::add-mask::$VOYAGE"
+          echo "::add-mask::$ANTHROPIC"
+          if [ -n "$BASE_URL" ]; then echo "::add-mask::$BASE_URL"; fi
+          {
+            echo "VOYAGE_API_KEY=$VOYAGE"
+            echo "ANTHROPIC_API_KEY=$ANTHROPIC"
+            echo "ANTHROPIC_BASE_URL=$BASE_URL"
+          } >> "$GITHUB_ENV"
+
+      - name: Run retrieval eval
+        env:
+          DATABASE_URL: postgres://memax:memax@localhost:5432/memax_eval?sslmode=disable
+          EVAL_REPORT_DIR: ${{ github.workspace }}/eval-reports
+        run: |
+          mkdir -p "$EVAL_REPORT_DIR"
+          go test ./eval/ -run TestRetrievalQuality -v -timeout 1200s
+
+      - name: Build release body
+        if: always()
+        id: release
+        run: |
+          REPORT_DIR="${{ github.workspace }}/eval-reports"
+          DATE=$(date -u +%Y-%m-%d)
+          SHA=$(git rev-parse --short HEAD)
+
+          # Build the release tag and title
+          echo "tag=eval/${DATE}" >> "$GITHUB_OUTPUT"
+          echo "title=Retrieval Eval — ${DATE} (${SHA})" >> "$GITHUB_OUTPUT"
+          echo "date=${DATE}" >> "$GITHUB_OUTPUT"
+
+          # Build the release body from the markdown report
+          if [ -f "${REPORT_DIR}/eval_report.md" ]; then
+            {
+              echo "## Retrieval Eval — ${DATE}"
+              echo ""
+              echo "**Commit:** \`${SHA}\` on \`main\`"
+              echo "**Run:** [Actions](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+              echo ""
+              cat "${REPORT_DIR}/eval_report.md"
+            } > "${REPORT_DIR}/release_body.md"
+          else
+            {
+              echo "## Retrieval Eval — ${DATE}"
+              echo ""
+              echo "**Commit:** \`${SHA}\` on \`main\`"
+              echo "**Status:** Eval report not generated (test may have failed)"
+              echo ""
+              echo "Check the [Actions run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+            } > "${REPORT_DIR}/release_body.md"
+          fi
+
+      - name: Post to job summary
+        if: always()
+        run: |
+          REPORT_DIR="${{ github.workspace }}/eval-reports"
+          if [ -f "${REPORT_DIR}/eval_report.md" ]; then
+            cat "${REPORT_DIR}/eval_report.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Eval report not generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Create GitHub release
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPORT_DIR="${{ github.workspace }}/eval-reports"
+          TAG="${{ steps.release.outputs.tag }}"
+          TITLE="${{ steps.release.outputs.title }}"
+
+          # Delete existing release with same tag (re-runs on same day)
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          git tag -d "$TAG" 2>/dev/null || true
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+
+          # Collect release assets
+          ASSETS=""
+          if [ -f "${REPORT_DIR}/eval_report.json" ]; then
+            ASSETS="$ASSETS ${REPORT_DIR}/eval_report.json"
+          fi
+          if [ -f "${REPORT_DIR}/eval_report.md" ]; then
+            ASSETS="$ASSETS ${REPORT_DIR}/eval_report.md"
+          fi
+
+          # Create the release
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes-file "${REPORT_DIR}/release_body.md" \
+            --prerelease \
+            $ASSETS

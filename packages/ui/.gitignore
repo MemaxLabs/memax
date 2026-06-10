@@ -1,0 +1,8 @@
+.next
+node_modules
+dist
+*.d.ts
+*.js
+*.jsx
+!next.config.ts
+!postcss.config.mjs

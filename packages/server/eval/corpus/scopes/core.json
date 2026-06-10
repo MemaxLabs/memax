@@ -1,0 +1,143 @@
+{
+  "users": [
+    {
+      "id": "00000000-0000-0000-0000-000000000099",
+      "email": "ziyang.eval@memax.local",
+      "name": "Ziyang",
+      "display_name": "Ziyang",
+      "avatar_url": ""
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000098",
+      "email": "jiahao.eval@memax.local",
+      "name": "Jiahao Ye",
+      "display_name": "Jiahao Ye",
+      "avatar_url": ""
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000097",
+      "email": "mira.eval@memax.local",
+      "name": "Mira Chen",
+      "display_name": "Mira Chen",
+      "avatar_url": ""
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000096",
+      "email": "sarah.eval@memax.local",
+      "name": "Sarah Kim",
+      "display_name": "Sarah Kim",
+      "avatar_url": ""
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000095",
+      "email": "david.eval@memax.local",
+      "name": "David Li",
+      "display_name": "David Li",
+      "avatar_url": ""
+    }
+  ],
+  "hubs": [
+    {
+      "id": "00000000-0000-0000-0000-000000000090",
+      "name": "Ziyang Personal",
+      "slug": "ziyang-personal",
+      "hub_type": "personal",
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "members": [
+        {
+          "user_id": "00000000-0000-0000-0000-000000000099",
+          "role": "owner"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000091",
+      "name": "memax-test",
+      "slug": "memax-test",
+      "hub_type": "team",
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "members": [
+        {
+          "user_id": "00000000-0000-0000-0000-000000000098",
+          "role": "owner"
+        },
+        {
+          "user_id": "00000000-0000-0000-0000-000000000099",
+          "role": "admin"
+        },
+        {
+          "user_id": "00000000-0000-0000-0000-000000000097",
+          "role": "contributor"
+        },
+        {
+          "user_id": "00000000-0000-0000-0000-000000000096",
+          "role": "contributor"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000092",
+      "name": "platform-private",
+      "slug": "platform-private",
+      "hub_type": "team",
+      "owner_id": "00000000-0000-0000-0000-000000000097",
+      "members": [
+        {
+          "user_id": "00000000-0000-0000-0000-000000000097",
+          "role": "owner"
+        },
+        {
+          "user_id": "00000000-0000-0000-0000-000000000099",
+          "role": "viewer"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000089",
+      "name": "Sarah Personal",
+      "slug": "sarah-personal",
+      "hub_type": "personal",
+      "owner_id": "00000000-0000-0000-0000-000000000096",
+      "members": [
+        {
+          "user_id": "00000000-0000-0000-0000-000000000096",
+          "role": "owner"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000088",
+      "name": "David Personal",
+      "slug": "david-personal",
+      "hub_type": "personal",
+      "owner_id": "00000000-0000-0000-0000-000000000095",
+      "members": [
+        {
+          "user_id": "00000000-0000-0000-0000-000000000095",
+          "role": "owner"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000093",
+      "name": "memax",
+      "slug": "memax",
+      "hub_type": "team",
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "members": [
+        {
+          "user_id": "00000000-0000-0000-0000-000000000098",
+          "role": "owner"
+        },
+        {
+          "user_id": "00000000-0000-0000-0000-000000000099",
+          "role": "admin"
+        },
+        {
+          "user_id": "00000000-0000-0000-0000-000000000097",
+          "role": "viewer"
+        }
+      ]
+    }
+  ]
+}

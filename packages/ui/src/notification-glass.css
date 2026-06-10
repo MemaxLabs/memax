@@ -1,0 +1,50 @@
+/**
+ * Bar notification glass — single source of truth.
+ *
+ * Imported by both packages/web/src/app/globals.css and packages/ui/app/globals.css
+ * via the @memaxlabs/ui package exports (./notification-glass.css).
+ * Never duplicate these rules inline — update this file instead.
+ *
+ * All colors, dimensions, and shadows are driven by CSS variables declared in
+ * each consumer's globals.css. The invariant is:
+ *
+ *     --notif-outer = --notif-content + --notif-tuck
+ *
+ * where the tuck is the empty bottom strip that disappears behind the bar.
+ * If you change one of the three, change all three together.
+ *
+ * The dream variant is a compound selector (.notif-glass.is-dream) rather
+ * than a second class so it does not depend on CSS source order. Specificity
+ * (0,2,0) > (0,1,0) regardless of where this file is loaded.
+ */
+
+/**
+ * Blur + saturate are tuned to Apple's "thick material" spec, not the
+ * Dribbble glassmorphism look. Thin material (20px blur, ~40% opacity)
+ * only reads as "glass" on gradient/image backdrops. Over text-heavy
+ * content, a thin material turns background words into legible smudges
+ * that compete with the surface's own copy. Thick material (40px blur,
+ * 180% saturate, high opacity) is what iOS/macOS popovers actually use
+ * when they sit on content.
+ */
+.notif-glass {
+  position: relative;
+  background: var(--notif-bg);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid var(--notif-border);
+  border-radius: var(--app-radius-surface);
+  box-shadow: var(--notif-shadow);
+}
+
+/**
+ * Dream variant — the aurora overlay is rendered as a sibling inset-0
+ * div in the component, ON TOP of the glass. Its color character does
+ * not come from the glass being translucent; it comes from its own
+ * gradient at its own alpha. Keep the base opacity high enough to
+ * occlude background text, and let the 180% saturate on the blur
+ * amplify the overlay's chroma so the aurora still reads as magical.
+ */
+.notif-glass.is-dream {
+  background: var(--notif-bg-dream);
+}

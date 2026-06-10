@@ -1,0 +1,339 @@
+{
+  "memories": [
+    {
+      "id": "ml-001-team-weekly-april-w1",
+      "title": "团队周会笔记 — 4月第一周",
+      "file": "001-team-weekly-april-w1.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "周会",
+        "团队",
+        "进度",
+        "blockers",
+        "weekly-sync"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "mcp",
+      "source_agent": "claude-code",
+      "source_path": "meeting-notes/2026-04-07-weekly.md",
+      "hub_reason": "团队周会笔记供全组参考。",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-04-07T18:00:00Z",
+      "updated_at": "2026-04-07T18:30:00Z",
+      "accessed_at": "2026-04-09T09:00:00Z",
+      "access_count": 5,
+      "event_dates": [
+        "2026-04-07T00:00:00Z"
+      ],
+      "hint": "检索团队周会内容、本周进度、阻塞问题、产品讨论。Retrieve for weekly team meeting notes, progress updates, and blockers from April first week."
+    },
+    {
+      "id": "ml-002-vector-db-comparison",
+      "title": "技术选型：向量数据库对比",
+      "file": "002-vector-db-comparison.md",
+      "kind": "rationale",
+      "stability": "evolving",
+      "tags": [
+        "技术选型",
+        "pgvector",
+        "pinecone",
+        "milvus",
+        "向量数据库",
+        "vector-database"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-15T14:00:00Z",
+      "updated_at": "2026-03-18T10:00:00Z",
+      "accessed_at": "2026-04-05T16:00:00Z",
+      "access_count": 8,
+      "event_dates": [
+        "2026-03-15T00:00:00Z"
+      ],
+      "hint": "检索向量数据库选型理由、pgvector 与 Pinecone/Milvus 对比。Retrieve for vector database selection rationale, pgvector vs Pinecone vs Milvus comparison."
+    },
+    {
+      "id": "ml-003-user-feedback-march",
+      "title": "用户反馈整理 — 3月",
+      "file": "003-user-feedback-march.md",
+      "kind": "episodic",
+      "stability": "evolving",
+      "tags": [
+        "用户反馈",
+        "微信",
+        "discord",
+        "搜索",
+        "user-feedback",
+        "search"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "capture",
+      "source_agent": "",
+      "source_path": "",
+      "hub_reason": "用户反馈整理供产品和工程团队参考。",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-31T10:00:00Z",
+      "updated_at": "2026-03-31T11:30:00Z",
+      "accessed_at": "2026-04-06T14:00:00Z",
+      "access_count": 4,
+      "event_dates": [
+        "2026-03-31T00:00:00Z"
+      ],
+      "hint": "检索用户反馈、搜索功能、微信社区、Discord 中文频道反馈。Retrieve for user feedback, search feature feedback, WeChat community, Discord Chinese channel."
+    },
+    {
+      "id": "ml-004-pricing-strategy-cn-market",
+      "title": "产品定价策略讨论",
+      "file": "004-pricing-strategy-cn-market.md",
+      "kind": "rationale",
+      "stability": "evolving",
+      "tags": [
+        "定价",
+        "pricing",
+        "中国市场",
+        "开发者工具",
+        "developer-tools"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "chatgpt",
+      "source_agent": "chatgpt",
+      "source_path": "",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-04-03T20:00:00Z",
+      "updated_at": "2026-04-03T21:30:00Z",
+      "accessed_at": "2026-04-08T10:00:00Z",
+      "access_count": 3,
+      "event_dates": [
+        "2026-04-03T00:00:00Z"
+      ],
+      "hint": "检索定价策略、中国开发者工具市场分析、价格对比。Retrieve for pricing strategy, Chinese developer tools market analysis, pricing comparison."
+    },
+    {
+      "id": "ml-005-debug-api-timeout",
+      "title": "混合语言 Debug Notes: API 超时问题",
+      "file": "005-debug-api-timeout.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "debug",
+        "timeout",
+        "API",
+        "超时",
+        "性能",
+        "performance"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "cli",
+      "source_agent": "claude-code",
+      "source_path": "packages/server/internal/handler/recall.go",
+      "hub_reason": "API 超时问题影响全团队的开发环境。",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "fix-recall-timeout"
+      },
+      "created_at": "2026-04-09T15:00:00Z",
+      "updated_at": "2026-04-09T16:30:00Z",
+      "accessed_at": "2026-04-10T09:00:00Z",
+      "access_count": 3,
+      "event_dates": [
+        "2026-04-09T00:00:00Z"
+      ],
+      "hint": "检索 API 超时、timeout debugging、recall 性能问题。Retrieve for API timeout debugging, recall performance issues, Cohere rerank latency."
+    },
+    {
+      "id": "ml-006-onboarding-dev-setup",
+      "title": "Onboarding 新人文档 — 开发环境搭建",
+      "file": "006-onboarding-dev-setup.md",
+      "kind": "procedural",
+      "stability": "evolving",
+      "tags": [
+        "onboarding",
+        "开发环境",
+        "搭建",
+        "新人",
+        "dev-setup",
+        "docker"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "",
+      "source_path": "",
+      "hub_reason": "新人 onboarding 文档供全团队参考和更新。",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-20T09:00:00Z",
+      "updated_at": "2026-04-05T11:00:00Z",
+      "accessed_at": "2026-04-10T15:00:00Z",
+      "access_count": 12,
+      "event_dates": [
+        "2026-03-20T00:00:00Z"
+      ],
+      "hint": "检索开发环境搭建、Docker、pnpm、新人上手。Retrieve for dev environment setup, Docker, pnpm, onboarding guide, new developer setup."
+    },
+    {
+      "id": "ml-007-session-auth-refactor",
+      "title": "Claude Code session: Auth refactor planning",
+      "file": "007-session-auth-refactor.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "session",
+        "auth",
+        "oauth",
+        "consent-screen",
+        "refactor",
+        "claude-code"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "capture",
+      "source_agent": "claude-code",
+      "source_path": "",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "consent-redesign"
+      },
+      "created_at": "2026-04-06T14:00:00Z",
+      "updated_at": "2026-04-06T15:45:00Z",
+      "accessed_at": "2026-04-08T10:00:00Z",
+      "access_count": 4,
+      "event_dates": [
+        "2026-04-06T00:00:00Z"
+      ],
+      "hint": "Retrieve for auth refactor planning, OAuth consent screen implementation, session transcript with Claude Code about auth changes."
+    },
+    {
+      "id": "ml-008-session-search-ranking-bug",
+      "title": "Cursor session: Fix search ranking bug",
+      "file": "008-session-search-ranking-bug.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "session",
+        "search",
+        "ranking",
+        "scoring",
+        "bug",
+        "cursor",
+        "recall"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "capture",
+      "source_agent": "cursor",
+      "source_path": "packages/server/internal/retrieval/recall.go",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "fix-scoring"
+      },
+      "created_at": "2026-04-08T16:00:00Z",
+      "updated_at": "2026-04-08T17:30:00Z",
+      "accessed_at": "2026-04-09T09:00:00Z",
+      "access_count": 2,
+      "event_dates": [
+        "2026-04-08T00:00:00Z"
+      ],
+      "hint": "Retrieve for search ranking bug, scoring issue in recall.go, Cursor debugging session, BM25 weight fix."
+    },
+    {
+      "id": "ml-009-session-competitive-analysis",
+      "title": "ChatGPT conversation: Competitive analysis brainstorm",
+      "file": "009-session-competitive-analysis.md",
+      "kind": "episodic",
+      "stability": "evolving",
+      "tags": [
+        "session",
+        "competitive-analysis",
+        "mem0",
+        "positioning",
+        "chatgpt",
+        "brainstorm"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "capture",
+      "source_agent": "chatgpt",
+      "source_path": "",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-04-04T21:00:00Z",
+      "updated_at": "2026-04-04T22:15:00Z",
+      "accessed_at": "2026-04-07T10:00:00Z",
+      "access_count": 3,
+      "event_dates": [
+        "2026-04-04T00:00:00Z"
+      ],
+      "hint": "Retrieve for competitive analysis brainstorm, positioning vs Mem0, memory tool landscape, ChatGPT conversation about competitors."
+    },
+    {
+      "id": "ml-010-session-db-migration-strategy",
+      "title": "Claude session: Database migration strategy",
+      "file": "010-session-db-migration-strategy.md",
+      "kind": "episodic",
+      "stability": "evolving",
+      "tags": [
+        "session",
+        "migration",
+        "database",
+        "kind",
+        "stability",
+        "category",
+        "claude-ai"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "capture",
+      "source_agent": "claude-ai",
+      "source_path": "",
+      "hub_reason": "Database migration strategy affects the entire team's development workflow.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "kind-stability-migration"
+      },
+      "created_at": "2026-04-05T19:00:00Z",
+      "updated_at": "2026-04-05T20:30:00Z",
+      "accessed_at": "2026-04-09T11:00:00Z",
+      "access_count": 6,
+      "event_dates": [
+        "2026-04-05T00:00:00Z"
+      ],
+      "hint": "Retrieve for database migration strategy, category to kind/stability migration, Claude session about schema changes, migration trade-offs."
+    }
+  ]
+}

@@ -1,0 +1,407 @@
+{
+  "memories": [
+    {
+      "id": "code-river-worker-panic",
+      "title": "Stack Trace: River Worker Panic — Nil Pointer in Memory Processing",
+      "file": "001-river-worker-panic.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "river",
+        "worker",
+        "panic",
+        "nil-pointer",
+        "golang",
+        "stack-trace"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "mcp",
+      "source_agent": "claude-code",
+      "source_path": "packages/server/internal/worker/memory_process.go",
+      "hub_reason": "Production crash investigation shared with the team for awareness.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "fix-worker-nil"
+      },
+      "created_at": "2026-04-09T03:30:00Z",
+      "updated_at": "2026-04-09T04:15:00Z",
+      "accessed_at": "2026-04-10T09:00:00Z",
+      "access_count": 5,
+      "event_dates": [
+        "2026-04-09T00:00:00Z"
+      ],
+      "hint": "Retrieve for River worker panics, nil pointer crashes, memory processing failures, or goroutine stack traces."
+    },
+    {
+      "id": "code-voyage-api-429-rate-limit",
+      "title": "Error Log: Voyage AI 429 Rate Limit During Bulk Ingest",
+      "file": "002-voyage-api-429-rate-limit.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "voyage-ai",
+        "rate-limit",
+        "429",
+        "embeddings",
+        "bulk-sync"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "cli",
+      "source_agent": "claude-code",
+      "source_path": "packages/server/internal/ingest/embed.go",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "fix-embed-batch"
+      },
+      "created_at": "2026-04-05T16:00:00Z",
+      "updated_at": "2026-04-05T17:30:00Z",
+      "accessed_at": "2026-04-08T10:00:00Z",
+      "access_count": 3,
+      "event_dates": [
+        "2026-04-05T00:00:00Z"
+      ],
+      "hint": "Retrieve for Voyage API rate limits, 429 errors, embedding batch size, or bulk sync failures."
+    },
+    {
+      "id": "code-postgresql-upsert-pattern",
+      "title": "Code Pattern: PostgreSQL Upsert with pgx in Go",
+      "file": "003-postgresql-upsert-pattern.md",
+      "kind": "semantic",
+      "stability": "stable",
+      "tags": [
+        "postgresql",
+        "upsert",
+        "pgx",
+        "golang",
+        "insert-on-conflict",
+        "idempotent"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000097",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "cursor",
+      "source_path": "packages/server/internal/store/memory.go",
+      "hub_reason": "Shared Go code pattern used across multiple store methods.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-25T11:00:00Z",
+      "updated_at": "2026-03-25T12:30:00Z",
+      "accessed_at": "2026-04-07T14:00:00Z",
+      "access_count": 8,
+      "event_dates": [
+        "2026-03-25T00:00:00Z"
+      ],
+      "hint": "Retrieve for PostgreSQL upsert patterns, INSERT ON CONFLICT, pgx batch operations, or idempotent writes."
+    },
+    {
+      "id": "code-flyio-server-toml",
+      "title": "Config Reference: Fly.io Server TOML (fly.server.toml)",
+      "file": "004-flyio-server-toml.md",
+      "kind": "reference",
+      "stability": "stable",
+      "tags": [
+        "fly-io",
+        "deployment",
+        "toml",
+        "config",
+        "server",
+        "production"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "cli",
+      "source_agent": "codex",
+      "source_path": "packages/server/fly.server.toml",
+      "hub_reason": "Deployment config is shared infrastructure knowledge for the team.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-04-01T14:00:00Z",
+      "updated_at": "2026-04-08T09:00:00Z",
+      "accessed_at": "2026-04-11T08:30:00Z",
+      "access_count": 12,
+      "event_dates": [
+        "2026-04-01T00:00:00Z"
+      ],
+      "hint": "Retrieve for Fly.io TOML config, server deployment settings, machine sizing, auto-scale, or health checks."
+    },
+    {
+      "id": "code-oauth-redirect-loop-debug",
+      "title": "Debug Session: OAuth Redirect Loop on Staging",
+      "file": "005-oauth-redirect-loop-debug.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "oauth",
+        "redirect-loop",
+        "staging",
+        "debugging",
+        "trailing-slash",
+        "github-oauth"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "cli",
+      "source_agent": "cursor",
+      "source_path": "packages/server/internal/handler/auth.go",
+      "hub_reason": "OAuth redirect bug investigation shared with team for post-mortem.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "fix-oauth-redirect"
+      },
+      "created_at": "2026-04-10T14:00:00Z",
+      "updated_at": "2026-04-10T16:30:00Z",
+      "accessed_at": "2026-04-11T10:00:00Z",
+      "access_count": 4,
+      "event_dates": [
+        "2026-04-10T00:00:00Z"
+      ],
+      "hint": "Retrieve for OAuth redirect loops, trailing slash URL mismatches, staging auth bugs, or 302 redirect chains."
+    },
+    {
+      "id": "code-chunk-metadata-propagation-review",
+      "title": "Code Review: Chunk Metadata Propagation Through Queue Jobs",
+      "file": "006-chunk-metadata-propagation-review.md",
+      "kind": "episodic",
+      "stability": "evolving",
+      "tags": [
+        "code-review",
+        "chunks",
+        "metadata",
+        "tags",
+        "river-queue",
+        "retrieval"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "capture",
+      "source_agent": "claude-code",
+      "source_path": "packages/server/internal/worker/memory_process.go",
+      "hub_reason": "PR review comments on shared ingest pipeline code.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "ingest-metadata-tags"
+      },
+      "created_at": "2026-04-07T10:00:00Z",
+      "updated_at": "2026-04-07T15:00:00Z",
+      "accessed_at": "2026-04-09T11:00:00Z",
+      "access_count": 3,
+      "event_dates": [
+        "2026-04-07T00:00:00Z"
+      ],
+      "hint": "Retrieve for chunk metadata propagation, tags_text, metadata_text, PR review on ingest pipeline, or queue job args."
+    },
+    {
+      "id": "code-migration-021-dirty-state",
+      "title": "Error: Migration 021 Dirty State — Recovery Steps",
+      "file": "007-migration-021-dirty-state.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "migration",
+        "dirty-state",
+        "postgresql",
+        "recovery",
+        "golang-migrate",
+        "local-dev"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "cli",
+      "source_agent": "claude-code",
+      "source_path": "packages/server/migrations/021_add_hub_role_enum.up.sql",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "hub-roles"
+      },
+      "created_at": "2026-04-07T09:15:00Z",
+      "updated_at": "2026-04-07T09:30:00Z",
+      "accessed_at": "2026-04-07T16:00:00Z",
+      "access_count": 2,
+      "event_dates": [
+        "2026-04-07T00:00:00Z"
+      ],
+      "hint": "Retrieve for dirty migration errors, schema_migrations table, force version recovery, or golang-migrate dirty state."
+    },
+    {
+      "id": "code-react-hook-composition",
+      "title": "Code Pattern: React Hook Composition in Memax Web App",
+      "file": "008-react-hook-composition.md",
+      "kind": "procedural",
+      "stability": "stable",
+      "tags": [
+        "react",
+        "hooks",
+        "typescript",
+        "useAuth",
+        "useLocale",
+        "useQuery",
+        "tanstack-query"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "mcp",
+      "source_agent": "codex",
+      "source_path": "packages/web/src/hooks",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-15T10:00:00Z",
+      "updated_at": "2026-03-20T14:00:00Z",
+      "accessed_at": "2026-04-10T08:00:00Z",
+      "access_count": 11,
+      "event_dates": [
+        "2026-03-15T00:00:00Z"
+      ],
+      "hint": "Retrieve for React hook composition, useAuth, useLocale, useQuery patterns, TanStack Query, or TypeScript hook conventions."
+    },
+    {
+      "id": "code-nextjs-hydration-mismatch",
+      "title": "Stack Trace: Next.js Hydration Mismatch — Date Formatting",
+      "file": "009-nextjs-hydration-mismatch.md",
+      "kind": "episodic",
+      "stability": "volatile",
+      "tags": [
+        "nextjs",
+        "hydration",
+        "ssr",
+        "date-formatting",
+        "react",
+        "vercel"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "cli",
+      "source_agent": "cursor",
+      "source_path": "packages/web/src/components/memory-meta.tsx",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "fix-hydration"
+      },
+      "created_at": "2026-04-04T11:00:00Z",
+      "updated_at": "2026-04-04T12:30:00Z",
+      "accessed_at": "2026-04-06T09:00:00Z",
+      "access_count": 2,
+      "event_dates": [
+        "2026-04-04T00:00:00Z"
+      ],
+      "hint": "Retrieve for Next.js hydration errors, SSR/CSR mismatch, date formatting issues, or toLocaleDateString problems."
+    },
+    {
+      "id": "code-github-actions-ci-workflow",
+      "title": "Config: GitHub Actions CI/CD Workflow",
+      "file": "010-github-actions-ci-workflow.md",
+      "kind": "semantic",
+      "stability": "evolving",
+      "tags": [
+        "github-actions",
+        "ci-cd",
+        "workflow",
+        "testing",
+        "deployment",
+        "turborepo"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000098",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "web",
+      "source_agent": "claude-code",
+      "source_path": ".github/workflows/ci.yml",
+      "hub_reason": "CI/CD pipeline config is shared team infrastructure knowledge.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-28T16:00:00Z",
+      "updated_at": "2026-04-06T10:00:00Z",
+      "accessed_at": "2026-04-11T07:00:00Z",
+      "access_count": 6,
+      "event_dates": [
+        "2026-03-28T00:00:00Z"
+      ],
+      "hint": "Retrieve for GitHub Actions CI, CI/CD pipeline config, test jobs, deployment gates, or workflow YAML."
+    },
+    {
+      "id": "code-redis-cache-stampede",
+      "title": "Debug: Redis Cache Stampede on Recall Endpoint",
+      "file": "011-redis-cache-stampede.md",
+      "kind": "episodic",
+      "stability": "evolving",
+      "tags": [
+        "redis",
+        "cache-stampede",
+        "thundering-herd",
+        "singleflight",
+        "performance",
+        "recall"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000097",
+      "hub_id": "00000000-0000-0000-0000-000000000091",
+      "source": "cli",
+      "source_agent": "claude-code",
+      "source_path": "packages/server/internal/cache/redis.go",
+      "hub_reason": "Performance investigation and fix shared with the infrastructure team.",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "fix-cache-stampede"
+      },
+      "created_at": "2026-04-06T08:00:00Z",
+      "updated_at": "2026-04-06T12:00:00Z",
+      "accessed_at": "2026-04-09T15:00:00Z",
+      "access_count": 5,
+      "event_dates": [
+        "2026-04-06T00:00:00Z"
+      ],
+      "hint": "Retrieve for Redis cache stampede, thundering herd, jittered TTL, singleflight, or recall latency spikes."
+    },
+    {
+      "id": "code-rrf-fusion-implementation",
+      "title": "Code: Reciprocal Rank Fusion (RRF) Implementation",
+      "file": "012-rrf-fusion-implementation.md",
+      "kind": "semantic",
+      "stability": "stable",
+      "tags": [
+        "rrf",
+        "reciprocal-rank-fusion",
+        "retrieval",
+        "ranking",
+        "hybrid-search",
+        "golang"
+      ],
+      "owner_id": "00000000-0000-0000-0000-000000000099",
+      "hub_id": "00000000-0000-0000-0000-000000000090",
+      "source": "cli",
+      "source_agent": "claude-code",
+      "source_path": "packages/server/internal/retrieval/rrf.go",
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      },
+      "created_at": "2026-03-30T09:00:00Z",
+      "updated_at": "2026-03-30T10:30:00Z",
+      "accessed_at": "2026-04-08T11:00:00Z",
+      "access_count": 7,
+      "event_dates": [
+        "2026-03-30T00:00:00Z"
+      ],
+      "hint": "Retrieve for RRF, reciprocal rank fusion, hybrid search fusion, ranking algorithm, or k=60 parameter."
+    }
+  ]
+}

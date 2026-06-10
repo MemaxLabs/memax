@@ -1,0 +1,213 @@
+---
+title: Hubs API
+description: Create and manage hubs, memberships, invites, ownership transfer, and hub lifecycle actions.
+---
+
+## List hubs
+
+```http
+GET /v1/hubs
+```
+
+Returns all hubs the authenticated user has access to.
+
+## Get hub detail
+
+```http
+GET /v1/hubs/:id
+```
+
+Returns hub metadata, members, the caller's role, and any active ownership transfer.
+
+## Get hub summary
+
+```http
+GET /v1/hubs/:id/summary
+```
+
+Lightweight read that returns only hub counts + caller's role — cheaper
+than the full detail view. Used by the web app for badge rendering.
+
+## Check slug availability
+
+```http
+GET /v1/hubs/check-slug?slug=my-team
+```
+
+Returns whether a slug is available for new hub creation.
+
+## Record a hub visit
+
+```http
+POST /v1/hubs/:id/visit
+```
+
+Records that the caller looked at the hub. Used for read-receipt
+signals on hub notifications.
+
+## Create a hub
+
+```http
+POST /v1/hubs
+```
+
+```json
+{
+  "name": "Platform Team"
+}
+```
+
+## Update a hub
+
+```http
+PATCH /v1/hubs/:id
+```
+
+Owner/admin can update name, slug, and contributor permissions.
+
+## Delete a hub
+
+```http
+DELETE /v1/hubs/:id
+```
+
+Owner only. Deletes the team hub and all hub-scoped memories, topics, invites, and dream data.
+
+## Membership
+
+### Add a member directly
+
+```http
+POST /v1/hubs/:id/members
+```
+
+```json
+{
+  "user_id": "user_123",
+  "role": "contributor"
+}
+```
+
+### Update member role
+
+```http
+PATCH /v1/hubs/:id/members/:user_id
+```
+
+```json
+{
+  "role": "admin"
+}
+```
+
+Valid managed roles: `admin`, `contributor`, `viewer`.
+
+### Remove a member
+
+```http
+DELETE /v1/hubs/:id/members/:user_id
+```
+
+### Leave a hub
+
+```http
+POST /v1/hubs/:id/leave
+```
+
+Non-owners can leave directly. Owners must transfer ownership first, or delete the hub if they are the last member.
+
+## Ownership transfer
+
+### Create transfer
+
+```http
+POST /v1/hubs/:id/ownership-transfer
+```
+
+```json
+{
+  "target_user_id": "user_456"
+}
+```
+
+Owner only. The target must already be a member.
+
+### Accept transfer
+
+```http
+POST /v1/hubs/:id/ownership-transfer/:transfer_id/accept
+```
+
+Target member only. Accepting makes the target the new owner and demotes the previous owner to `admin`.
+
+### Cancel transfer
+
+```http
+POST /v1/hubs/:id/ownership-transfer/:transfer_id/cancel
+```
+
+Can be canceled by the current owner or the transfer target while still pending.
+
+## Invites
+
+### Create invite
+
+```http
+POST /v1/hubs/:id/invites
+```
+
+```json
+{
+  "role": "viewer"
+}
+```
+
+### List active invites
+
+```http
+GET /v1/hubs/:id/invites
+```
+
+### Revoke invite
+
+```http
+DELETE /v1/hubs/:id/invites/:invite_id
+```
+
+### Regenerate invite
+
+```http
+POST /v1/hubs/:id/invites/:invite_id/regenerate
+```
+
+### Resend invite
+
+```http
+POST /v1/hubs/:id/invites/:invite_id/resend
+```
+
+Re-sends the invite email (same token). Useful when the original email
+was lost.
+
+### Get invite by token
+
+```http
+GET /v1/invites/:token
+```
+
+Public endpoint. Returns invite details used by the join page.
+
+### Accept invite
+
+```http
+POST /v1/invites/:token/accept
+```
+
+## Roles
+
+| Role          | Description                                                  |
+| ------------- | ------------------------------------------------------------ |
+| `owner`       | Full control, including ownership transfer and deletion      |
+| `admin`       | Manage members, roles, invites, settings, and shared content |
+| `contributor` | Push, recall, and contribute content                         |
+| `viewer`      | Read-only access                                             |

@@ -1,0 +1,1 @@
+For production Kubernetes deployment, use the Helm chart in infra/k8s/. Set replicas to 3 for the API server. Use HPA with CPU target 70%. Database connection pooling via PgBouncer. Redis cluster for caching.

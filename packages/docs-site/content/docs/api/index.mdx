@@ -1,0 +1,126 @@
+---
+title: REST API
+description: Memax REST API overview — base URL, auth, response envelope, pagination, rate limits.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+The Memax REST API lives at `https://api.memax.app`. All endpoints
+are under the `/v1/` prefix.
+
+## Base URL
+
+```
+https://api.memax.app/v1
+```
+
+## Authentication
+
+Every request needs a Bearer token — either an API key you generated
+via `memax auth create-key`, or a short-lived access token from the
+OAuth flow.
+
+```bash
+curl -H "Authorization: Bearer mxk_your_api_key" \
+  https://api.memax.app/v1/memories
+```
+
+See [Authentication](/api/authentication) for how to obtain and
+manage keys.
+
+## Response envelope
+
+Every REST endpoint returns the same JSON shape. Success:
+
+```json
+{ "data": { ... } }
+```
+
+Error:
+
+```json
+{
+  "error": {
+    "code": "not_found",
+    "message": "Memory not found",
+    "details": {}
+  }
+}
+```
+
+`details` is optional and endpoint-specific.
+
+## Endpoint categories
+
+| Category       | Examples                                                                                        |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| Memories       | `GET/POST/PATCH/DELETE /v1/memories[/{id}]`                                                     |
+| Retrieval      | `POST /v1/recall`, `POST /v1/ask`                                                               |
+| Hubs           | `GET/POST /v1/hubs`, `GET/PATCH /v1/hubs/{id}`                                                  |
+| Topics         | `GET/POST/PATCH/DELETE /v1/topics[/{id}]`                                                       |
+| Configs        | `GET/PUT /v1/configs`, `POST /v1/configs/sync`                                                  |
+| Agent sessions | `GET/PUT /v1/agent-sessions`                                                                    |
+| Dreams         | `GET /v1/dreams`, `POST /v1/dreams/trigger`                                                     |
+| Notifications  | `GET /v1/notifications[/summary]`                                                               |
+| Account        | `GET/PATCH /v1/auth/me`, `GET /v1/settings`, `GET /v1/usage`                                    |
+| Uploads        | `POST /v1/uploads` (returns presigned URL)                                                      |
+| Events         | `GET /v1/events/stream` (SSE)                                                                   |
+| MCP            | `/mcp` (standard MCP) and `/mcp/chatgpt` (ChatGPT-compatible) — JSON-RPC, documented separately |
+
+See [Memories](/api/memories), [Recall](/api/recall), and
+[Hubs](/api/hubs) for the common endpoints. For the full list, the
+authoritative source is
+`packages/server/internal/serverapp/routes.go`.
+
+## Pagination
+
+List endpoints use cursor-based pagination:
+
+```
+GET /v1/memories?limit=20&cursor=<opaque>
+```
+
+Responses include:
+
+```json
+{
+  "data": {
+    "memories": [ ... ],
+    "next_cursor": "<opaque string or empty>",
+    "has_more": true
+  }
+}
+```
+
+Treat cursors as opaque — don't parse them. An empty `next_cursor`
+with `has_more: false` indicates the last page.
+
+## Rate limits
+
+Every response from a rate-limited endpoint includes:
+
+```
+X-RateLimit-Limit:     <per-minute cap for this endpoint class>
+X-RateLimit-Remaining: <remaining in the current window>
+X-RateLimit-Reset:     <unix timestamp when the window resets>
+```
+
+When the window is exhausted, the API returns `429 Too Many Requests`
+with a `Retry-After` header (in seconds).
+
+The actual per-minute caps are **plan-defined** and split into three
+buckets:
+
+- Regular endpoints (reads, metadata).
+- Heavy endpoints (`/v1/recall`, `/v1/ask`, `/v1/dreams/trigger` —
+  anything that calls the LLM or embedding models).
+- Light endpoints (health, whoami, etc.).
+
+See [Usage](/api/memories#usage) or `GET /v1/usage` for your
+current plan's limits.
+
+<Callout type="info">
+  For TypeScript projects, use the [memax-sdk](/sdk) client library instead of
+  raw HTTP calls. The SDK handles Bearer auth, Retry-After respect, pagination,
+  and typed error classes for you.
+</Callout>

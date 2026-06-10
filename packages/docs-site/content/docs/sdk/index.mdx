@@ -1,0 +1,214 @@
+---
+title: TypeScript SDK
+description: The memax-sdk client library. Typed access to the Memax REST API for Node, edge, and browser runtimes.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
+`memax-sdk` is the canonical TypeScript client for the Memax REST
+API. It works in Node, edge runtimes (Cloudflare Workers, Vercel
+Edge), and browsers — anywhere `fetch` is available.
+
+## Installation
+
+{/* prettier-ignore */}
+<Tabs items={["npm", "pnpm", "yarn", "bun"]}>
+<Tab value="npm">
+
+```bash
+npm install memax-sdk
+```
+
+</Tab>
+<Tab value="pnpm">
+
+```bash
+pnpm add memax-sdk
+```
+
+</Tab>
+<Tab value="yarn">
+
+```bash
+yarn add memax-sdk
+```
+
+</Tab>
+<Tab value="bun">
+
+```bash
+bun add memax-sdk
+```
+
+</Tab>
+</Tabs>
+
+## Quick start
+
+```typescript
+import { Memax } from "memax-sdk";
+
+const memax = new Memax({
+  apiKey: process.env.MEMAX_API_KEY!,
+});
+
+// Recall
+const result = await memax.recall("how does auth work?");
+for (const memory of result.memories) {
+  console.log(memory.title, memory.relevance_score);
+}
+
+// Push (convenience top-level — equivalent to memax.memories.push)
+await memax.push("We chose Postgres for strong consistency", {
+  title: "Database decision",
+  tags: ["decisions", "infrastructure"],
+  hubId: "hub_abc123",
+  hubReason: "team decision, needs visibility",
+});
+```
+
+The exported class is `Memax`, not `MemaxClient`. The `push`
+method takes `(content, options)` — there is **no** `category` or
+`boundary` option (server classification is automatic; boundary is
+derived from the target hub).
+
+## Configuration
+
+```typescript
+const memax = new Memax({
+  apiKey: "mxk_...", // static key auth
+  // auth: async () => ({ Authorization: "Bearer …" }), // dynamic auth
+  apiUrl: "https://api.memax.app", // default
+  maxRetries: 2, // retries on transient errors
+  fetch: customFetch, // custom fetch (Node, tests, edge)
+  onWarning: (w) => console.warn(w), // API-returned warnings
+});
+```
+
+Pass **one** of `apiKey` or `auth`. `apiKey` is the static-key
+path; `auth` is an async function returning headers — use it for
+OAuth flows where the token rotates.
+
+## Top-level methods
+
+The `Memax` class exposes three convenience shortcuts:
+
+| Method     | Equivalent to             |
+| ---------- | ------------------------- |
+| `push()`   | `memax.memories.push()`   |
+| `recall()` | `memax.memories.recall()` |
+| `ask()`    | `memax.memories.ask()`    |
+
+Everything else is on resource sub-objects (`memax.memories`,
+`memax.hubs`, `memax.topics`, `memax.configs`, …).
+
+## `memax.recall(query, options?)`
+
+```typescript
+const result = await memax.recall("deployment process", {
+  limit: 5,
+  topicId: "top_xyz",
+  kind: "procedural",
+  hubId: "hub_abc123", // hub ID — boosts ranking for this hub
+  projectContext: { repo: "github.com/org/app" },
+  noRerank: false,
+});
+```
+
+`hubId` is sent as the `X-Hub-ID` request header — it must be a
+hub **ID** (`hub_…`), not a slug. If you only know the slug,
+resolve it to an ID first via `memax.hubs.list()` and match on
+`hub.slug` (SDK `memax.hubs.get(id)` expects a hub ID). No `hint`
+or `threshold` options. See
+[retrieval concepts](/concepts/retrieval) for available knobs.
+
+The `tags` option is declared on the recall request type but the
+server currently ignores it on recall — treat it as a no-op for
+now. Use `kind`, `topicId`, or `hubId` for filtering.
+
+## `memax.push(content, options?)`
+
+```typescript
+const memory = await memax.push("Meeting notes from sprint planning…", {
+  title: "Sprint 42 planning",
+  tags: ["sprint", "planning"],
+  hint: "ephemeral context, safe to let cool quickly",
+  hubId: "hub_abc123", // hub ID, not a slug
+  hubReason: "team visibility into sprint decisions",
+  sourceAgent: "claude-code",
+  initiationType: "human_requested_agent",
+  projectContext: { repo: "github.com/org/app", branch: "main" },
+});
+// returns Memory
+```
+
+## Other resources
+
+```typescript
+// Memories
+await memax.memories.list({ limit: 50, sort: "newest", hubId: "hub_abc" });
+await memax.memories.get("mem_a1b2c3d4");
+await memax.memories.update("mem_a1b2c3d4", { title: "New title" });
+await memax.memories.delete("mem_a1b2c3d4");
+await memax.memories.batchMove(["mem_a"], {
+  hubId: "hub_b",
+  topicId: "top_x",
+});
+
+// Hubs
+await memax.hubs.list();
+await memax.hubs.get("hub_abc");
+await memax.hubs.createInvite("hub_abc", { role: "contributor" });
+
+// Topics
+await memax.topics.list("hub_abc");
+await memax.topics.create({ name: "Auth & identity" }, "hub_abc");
+await memax.topics.assignMemory("top_xyz", "mem_abc");
+
+// Ask (LLM-synthesized answer grounded in your memories)
+const answer = await memax.ask("How do we deploy to production?", {
+  model: "auto",
+  limit: 10,
+});
+```
+
+See the SDK source in
+[`MemaxLabs/memax`](https://github.com/MemaxLabs/memax/tree/main/packages/sdk/src)
+for every resource's full method list and option types.
+
+## Error handling
+
+```typescript
+import { Memax, MemaxError } from "memax-sdk";
+
+try {
+  await memax.recall("query");
+} catch (err) {
+  if (err instanceof MemaxError) {
+    console.error(err.code, err.status, err.message);
+
+    // Typed status-class helpers
+    if (err.isRateLimited) {
+      console.log(`Retry after ${err.retryAfterSeconds}s`);
+    }
+    if (err.isForbidden) console.log("Permission denied");
+    if (err.isNetwork) console.log("Offline / connectivity");
+  }
+}
+```
+
+`MemaxError` exposes `code`, `status`, `retryAfterSeconds`, and
+boolean predicates: `isRateLimited`, `isQuotaExceeded`,
+`isForbidden`, `isNotFound`, `isConflict`, `isBadRequest`,
+`isServerError`, `isNetwork`, `isUnauthorized`. Prefer the
+predicates over matching status numbers directly.
+
+<Callout type="info">
+  The SDK's `maxRetries` only retries the application-level `not_ready` error
+  code (used for async operations that weren't ready yet), with a fixed
+  `retryDelayMs` between attempts. It does **not** auto-retry HTTP 429s on
+  `Retry-After`. The `Retry-After` header is parsed and surfaced on the thrown
+  `MemaxError` (`err.retryAfterSeconds`) so your code can decide when to retry
+  rate-limited calls.
+</Callout>

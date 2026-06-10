@@ -1,0 +1,6 @@
+Subject: Reminder: Your invite to {{.HubName}} expires soon
+
+{{.InviterName}} invited you to join {{.HubName}}. This invite expires on {{.ExpiresAt}}.
+
+Join here before it expires:
+{{.InviteURL}}

@@ -1,0 +1,1 @@
+Onboarding flow ideas: after GitHub login, send welcome email with quick start guide. Include link to install CLI, connect first agent, and push first memory. Email subject: "Your agents will remember you now."

@@ -1,0 +1,32 @@
+{
+  "name": "Memax",
+  "short_name": "Memax",
+  "description": "Shared memory for humans and AI. Remember, recall, and forget.",
+  "start_url": "/home",
+  "display": "standalone",
+  "theme_color": "#F5F5F5",
+  "background_color": "#F5F5F5",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/images/memax-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}

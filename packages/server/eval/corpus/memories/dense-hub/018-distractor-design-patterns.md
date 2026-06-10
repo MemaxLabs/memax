@@ -1,0 +1,1 @@
+memax design pattern feedback: never use border-top dividers (use spacing), always lerp-smooth animations, glassmorphism with light tints, memax 永远小写。Brand voice for success messages, technical tone for errors.

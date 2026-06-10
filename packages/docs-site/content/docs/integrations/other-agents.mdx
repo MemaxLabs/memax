@@ -1,0 +1,97 @@
+---
+title: Other Agents
+description: Connect Windsurf, Copilot, or any custom agent using MCP, CLI piping, or the SDK.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+Memax is agent-agnostic. Any agent that supports MCP or can read
+from stdin/stdout can work with Memax.
+
+## MCP-compatible agents
+
+Any agent that speaks the Model Context Protocol can connect via
+the local stdio server:
+
+```bash
+npx memax-cli mcp serve
+```
+
+Configure your agent to launch that command as an MCP server. See
+[Claude Code](/integrations/claude-code) or
+[Cursor](/integrations/cursor) for working examples.
+
+### Windsurf
+
+```json
+{
+  "mcpServers": {
+    "memax": {
+      "command": "npx",
+      "args": ["-y", "memax-cli", "mcp", "serve"]
+    }
+  }
+}
+```
+
+### Remote MCP
+
+For clients that support HTTP MCP endpoints:
+
+```json
+{
+  "mcpServers": {
+    "memax": {
+      "url": "https://api.memax.app/mcp",
+      "authorization_token": "mxk_..."
+    }
+  }
+}
+```
+
+## CLI piping (universal)
+
+For agents that don't speak MCP (Copilot, REPL-based tools, custom
+shell agents):
+
+```bash
+# Recall and paste into your workflow
+memax recall "how does deployment work?" --format text
+
+# Use in scripts
+CONTEXT=$(memax recall "coding conventions" --format text)
+
+# Copy to clipboard
+memax recall "auth design" --format text | pbcopy
+```
+
+There is no `--quiet` flag. Use `--format text` (human-readable) or
+`--format json` (machine-readable).
+
+## SDK (custom builds)
+
+For custom TypeScript or Node.js agents:
+
+```typescript
+import { Memax } from "memax-sdk";
+
+const memax = new Memax({ apiKey: process.env.MEMAX_API_KEY! });
+
+// Recall
+const result = await memax.recall("how does auth work?");
+
+// Push
+await memax.push("We chose JWT for stateless auth", {
+  tags: ["auth", "decisions"],
+  hint: "architecture decision from Q1 review",
+});
+```
+
+The exported class is `Memax` (not `MemaxClient`). The `push`
+signature is `(content, options)` — there is no `category` field;
+classification happens server-side.
+
+<Callout type="info">
+  Memax works with any agent that can read text. MCP is the native integration
+  where available; CLI piping is the universal fallback.
+</Callout>

@@ -1,0 +1,138 @@
+---
+title: memax hub
+description: Manage hubs — create, list, switch, view members, and manage invites.
+---
+
+import { APP_URL } from "@/lib/urls";
+
+Hubs are workspaces. Every account has a personal hub; team hubs are
+created for groups and have per-hub membership and roles.
+
+## Commands
+
+```bash
+memax hub list
+memax hub create <name>
+memax hub switch <id-or-slug>
+memax hub members [id-or-slug]
+memax hub invite create
+memax hub invite list
+memax hub invite revoke <invite-id-or-prefix>
+memax hub invite regenerate <invite-id-or-prefix>
+memax hub invite accept <token-or-url>
+```
+
+All commands accept `--format text|json` (default `text`) unless
+noted otherwise below.
+
+### `memax hub list`
+
+List hubs you have access to. Shows name, role, and the active hub
+marker.
+
+```bash
+memax hub list
+memax hub list --format json
+```
+
+### `memax hub create <name>`
+
+Create a new **team hub** (this command only makes team hubs; a
+personal hub is created for you automatically at signup).
+
+```bash
+memax hub create "Platform Team"
+```
+
+### `memax hub switch <id-or-slug>`
+
+Set your active hub. Use the hub slug, its id, or the literal
+`personal` keyword.
+
+```bash
+memax hub switch platform-team
+memax hub switch personal
+```
+
+The active hub scopes **reads** — it's the default hub for
+`memax list` and `memax recall` (until overridden by `--hub`).
+It does **not** route writes: `memax push` writes to your
+personal hub unless you pass `--hub <slug>` or set
+`hub: <slug>` in a repo-local `.memax.yml`, and `memax import`
+ignores the active hub entirely (imports go to your personal
+hub).
+
+### `memax hub members [id-or-slug]`
+
+List members of a hub (defaults to the active one).
+
+```bash
+memax hub members
+memax hub members platform-team --format json
+```
+
+## Invites
+
+Team hubs are shared via invite links. Invites are managed under
+`memax hub invite`.
+
+### `memax hub invite create`
+
+Generate a shareable invite link.
+
+| Flag            | Description                                    | Default       |
+| --------------- | ---------------------------------------------- | ------------- |
+| `--hub <slug>`  | Scope to a specific hub (else active hub)      | active hub    |
+| `--role <role>` | Role on join: `admin`, `contributor`, `viewer` | `contributor` |
+
+```bash
+memax hub invite create --hub platform-team --role admin
+```
+
+### `memax hub invite list`
+
+Show outstanding invites for the current (or selected) hub.
+
+```bash
+memax hub invite list
+memax hub invite list --verbose         # show full invite IDs
+```
+
+### `memax hub invite revoke <invite-id-or-prefix>`
+
+Revoke an outstanding invite. Accepts either the full invite ID or a
+unique prefix.
+
+```bash
+memax hub invite revoke inv_ab12
+```
+
+### `memax hub invite regenerate <invite-id-or-prefix>`
+
+Revoke the old invite and issue a replacement with a fresh token
+(same role).
+
+```bash
+memax hub invite regenerate inv_ab12
+```
+
+### `memax hub invite accept <token-or-url>`
+
+Accept an invite. Accepts either the raw token or a full
+invite URL from your Memax web app (the `/invite/<token>` path).
+
+<pre>
+  <code>{`memax hub invite accept ${APP_URL}/invite/abcdef`}</code>
+</pre>
+
+## Roles
+
+| Role          | Can read | Can push | Can invite | Can manage hub |
+| ------------- | :------: | :------: | :--------: | :------------: |
+| `owner`       |    ✓     |    ✓     |     ✓      |       ✓        |
+| `admin`       |    ✓     |    ✓     |     ✓      |    partial     |
+| `contributor` |    ✓     |    ✓     |     —      |       —        |
+| `viewer`      |    ✓     |    —     |     —      |       —        |
+
+There is no `member` or `readonly` role — use `contributor` or
+`viewer` respectively.

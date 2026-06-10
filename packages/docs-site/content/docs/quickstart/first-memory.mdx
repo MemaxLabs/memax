@@ -1,0 +1,86 @@
+---
+title: Your First Memory
+description: Push a piece of knowledge to Memax and recall it back.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Push a file
+
+```bash
+memax push -f ./ARCHITECTURE.md
+```
+
+The server:
+
+1. Stores the content (marked `processing` at first).
+2. Classifies it — picks a `kind` (`semantic`, `episodic`,
+   `procedural`, or `rationale`) and a `stability` level.
+3. Generates a title + summary.
+4. Chunks the content semantically.
+5. Embeds each chunk for similarity search.
+
+Within a few seconds the memory transitions to `active` and is
+retrievable.
+
+## Other ways to push
+
+### Inline
+
+```bash
+memax push "We chose Postgres over Mongo — we need strong consistency"
+```
+
+### From stdin
+
+```bash
+cat meeting-notes.md | memax push --stdin --title "Team standup 2026-04-21"
+```
+
+### With metadata
+
+```bash
+memax push -f ./runbook.md \
+  --tags "ops,incidents,runbook" \
+  --hint "on-call runbook for production incidents"
+```
+
+There is no `--category` flag — the server picks `kind`/`stability`
+automatically (override with `--title` if the auto-derived title is
+wrong; classification overrides exist via the REST API only).
+
+### URLs (auto-detected)
+
+```bash
+memax push https://example.com/pricing
+```
+
+Memax stores the URL itself with `content_type=link`. It does **not**
+fetch or summarize the page; for full-page capture use the web app's
+capture flow.
+
+### Import a directory
+
+See [`memax import`](/cli/import).
+
+## Recall it
+
+```bash
+memax recall "how does the architecture work?"
+```
+
+Recall performs semantic retrieval — it finds content by meaning,
+not keyword matching. Pass `--format json` for machine-readable
+output.
+
+## Browse your memories
+
+```bash
+memax list               # recent memories, paginated
+memax show mem_a1b2c3d4  # one memory in full
+```
+
+<Callout type="info">
+  The real value lands when an agent recalls context automatically. Set up an
+  [agent integration](/integrations/index) next.
+</Callout>

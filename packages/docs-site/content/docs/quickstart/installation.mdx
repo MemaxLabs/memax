@@ -1,0 +1,137 @@
+---
+title: Installation
+description: Install the Memax CLI and authenticate. Covers npm + environment setup.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+import { APP_URL } from "@/lib/urls";
+
+## Requirements
+
+- **Node.js** 18 or later.
+- A package manager (npm, pnpm, yarn, or bun).
+- A Memax account (<a href={APP_URL}>memax.app</a>).
+
+## Install the CLI
+
+{/* prettier-ignore */}
+<Tabs items={["npm", "pnpm", "yarn", "bun"]}>
+<Tab value="npm">
+
+```bash
+npm install -g memax-cli
+```
+
+</Tab>
+<Tab value="pnpm">
+
+```bash
+pnpm add -g memax-cli
+```
+
+</Tab>
+<Tab value="yarn">
+
+```bash
+yarn global add memax-cli
+```
+
+</Tab>
+<Tab value="bun">
+
+```bash
+bun add -g memax-cli
+```
+
+</Tab>
+</Tabs>
+
+The package installs a `memax` binary on your `PATH`.
+
+```bash
+memax --version
+```
+
+## Authenticate
+
+Interactive OAuth (GitHub or Google):
+
+```bash
+memax login
+```
+
+OAuth credentials (access token, refresh token) are stored in
+`~/.memax/credentials.json`. Other CLI settings (`api_url`,
+`default_hub`, etc.) live in `~/.memax/config.json`. Confirm sign-in
+with `memax whoami`.
+
+### API keys (non-interactive / CI)
+
+For headless environments, generate an API key:
+
+```bash
+memax auth create-key "ci-token"
+```
+
+The printed key starts with `mxk_` and is shown **once** — save it
+somewhere safe. Then export it:
+
+```bash
+export MEMAX_API_KEY=mxk_...
+```
+
+The CLI automatically uses `MEMAX_API_KEY` when set. There is no
+`--api-key` CLI flag.
+
+<Callout type="warn" title="Keep keys safe">
+  API keys carry whatever scopes they were created with. Never commit them to
+  version control; use env vars or a secret manager.
+</Callout>
+
+## Configuration
+
+Global config lives at `~/.memax/config.json`. Manage it with:
+
+```bash
+memax config get            # show all values
+memax config get <key>      # show one
+memax config set <key> <value>
+```
+
+Per-project overrides go in a `.memax.yml` file at your repo root
+(the CLI walks up from the current directory to find it). It can set
+`project_id` (override git-origin-based project scope) and `hub`
+(default hub for this project).
+
+```yaml
+# .memax.yml
+project_id: github.com/my-org/my-repo
+hub: platform-team
+```
+
+### Environment variables
+
+Only two env vars are read by the CLI today:
+
+| Variable        | Purpose                                                                                                                                                                                                                                                                             |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MEMAX_API_KEY` | Use this key instead of stored OAuth credentials.                                                                                                                                                                                                                                   |
+| `MEMAX_API_URL` | Point the CLI at a non-default backend. Overrides `api_url` in `~/.memax/config.json`. The default `api_url` stored by a fresh install is `http://localhost:8080`; set `MEMAX_API_URL=https://api.memax.app` (or configure via `memax config set api_url …`) to talk to production. |
+
+`MEMAX_HUB`, `MEMAX_NO_COLOR`, and `MEMAX_DEBUG` are **not**
+honored by the CLI today. Use `memax hub switch`, `--hub`, or
+`.memax.yml hub:` to control the default hub.
+
+## Updating
+
+```bash
+npm update -g memax-cli
+```
+
+## Uninstalling
+
+```bash
+npm uninstall -g memax-cli
+rm -rf ~/.memax/      # optional: also remove stored creds + config
+```

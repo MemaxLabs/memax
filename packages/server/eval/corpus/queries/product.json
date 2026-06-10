@@ -1,0 +1,155 @@
+{
+  "queries": [
+    {
+      "id": "pq1",
+      "query": "what did we decide about pricing?",
+      "query_type": "decision",
+      "slices": ["type:decision", "lang:en", "hub:multi", "domain:product"],
+      "relevance": {
+        "product-q2-pricing-decision": 3,
+        "product-competitive-analysis-mem0": 1,
+        "product-user-interview-summary": 1
+      },
+      "expect_keywords_in_results": ["pricing", "$9", "$19", "tier"],
+      "min_results": 1,
+      "description": "Pricing decision query - should return the Q2 pricing rationale as top result, with competitive analysis and user interviews as supporting context",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000089",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    },
+    {
+      "id": "pq2",
+      "query": "how does memax compare to mem0?",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:personal", "domain:product"],
+      "relevance": {
+        "product-competitive-analysis-mem0": 3,
+        "product-stakeholder-meeting-enterprise": 1
+      },
+      "expect_keywords_in_results": ["mem0", "competitive", "team", "retrieval"],
+      "expect_not_in_results": ["kubernetes"],
+      "min_results": 1,
+      "description": "Competitive comparison query - should return the Mem0 analysis. Enterprise meeting mentions Mem0 rejection as secondary hit.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000089",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000089"
+      }
+    },
+    {
+      "id": "pq2b",
+      "query": "Memax vs Mem0?",
+      "query_type": "topical",
+      "slices": ["type:comparison", "lang:en", "hub:personal", "domain:product"],
+      "relevance": {
+        "product-competitive-analysis-mem0": 3,
+        "product-stakeholder-meeting-enterprise": 1
+      },
+      "expect_keywords_in_results": ["mem0", "competitive", "team", "retrieval"],
+      "expect_not_in_results": ["kubernetes"],
+      "min_results": 1,
+      "description": "Competitive comparison shorthand — should return the Mem0 analysis. Enterprise meeting mentions Mem0 rejection as secondary hit.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000089",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000089"
+      }
+    },
+    {
+      "id": "pq3",
+      "query": "user interview findings",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:multi", "domain:product", "kind:episodic"],
+      "relevance": {
+        "product-user-interview-summary": 3,
+        "product-user-feedback-compilation": 1
+      },
+      "expect_keywords_in_results": ["interview", "findings"],
+      "min_results": 1,
+      "description": "User research query - should return the interview summary as primary hit, with feedback compilation as tangential match",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000089",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    },
+    {
+      "id": "pq4",
+      "query": "what are our Q3 priorities?",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:multi", "domain:product"],
+      "relevance": {
+        "product-roadmap-q3-priorities": 3,
+        "product-feature-spec-ask-bar-redesign": 1
+      },
+      "expect_keywords_in_results": ["Q3", "roadmap"],
+      "min_results": 1,
+      "description": "Roadmap query - should return Q3 priorities as top result. Ask bar spec is a P0 item so it may surface as related.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000089",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    },
+    {
+      "id": "pq5",
+      "query": "what did Sarah present about onboarding?",
+      "query_type": "author",
+      "slices": ["type:author", "lang:en", "hub:personal", "domain:product"],
+      "relevance": {
+        "product-onboarding-funnel-analysis": 3,
+        "product-roadmap-q3-priorities": 1
+      },
+      "expect_keywords_in_results": ["onboarding", "funnel", "conversion", "Sarah"],
+      "min_results": 1,
+      "description": "Author-scoped onboarding query - should return funnel analysis (authored by Sarah, in her personal hub). Roadmap mentions onboarding as P1.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000089",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000089"
+      }
+    },
+    {
+      "id": "pq6",
+      "query": "enterprise customer requirements",
+      "query_type": "topical",
+      "slices": ["type:topical", "lang:en", "hub:multi", "domain:product"],
+      "relevance": {
+        "product-stakeholder-meeting-enterprise": 2,
+        "010-client-acme-corp-requirements": 1,
+        "product-roadmap-q3-priorities": 1
+      },
+      "expect_keywords_in_results": ["enterprise", "SSO", "SAML"],
+      "min_results": 1,
+      "description": "Enterprise requirements query - should find NovaTech meeting notes (grade 2) and Acme Corp requirements from smoke corpus (grade 1). Roadmap mentions SSO as P1.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000089",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    }
+  ]
+}

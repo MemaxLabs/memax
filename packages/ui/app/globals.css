@@ -1,0 +1,1730 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "../src/typography.css";
+@import "../src/notification-glass.css";
+@import "../src/surface-radius.css";
+@import "../src/popover-glass.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* ═══ Semantic text + surface colors (Tailwind utilities) ═══ */
+  /* Usage: text-fg-1 (primary), text-fg-2 (secondary), bg-surface-1 (subtle) */
+  --color-fg-1: var(--fg-1);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-fg-4: var(--fg-4);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  /* Native system sans. font-heading and font-display both alias to font-sans
+     — semantic intent in markup, one native family at runtime. Mono pulls
+     from next/font via var(--font-mono). See kitchen §12 Typography.
+     BlinkMacSystemFont was dropped 2026-04-14 — Chrome has supported
+     -apple-system directly since 2018, the shim is obsolete. */
+  --font-sans:
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui,
+    sans-serif;
+  --font-heading: var(--font-sans);
+  --font-display: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* ═══ Z-index scale (semantic tiers) ═══
+   Keep in sync with packages/web/src/app/globals.css. Tailwind 4 does
+   not auto-generate z-* utilities from theme entries, so classes like
+   z-bar are defined as named custom utilities below. */
+@utility z-page {
+  z-index: var(--z-page);
+}
+@utility z-bar-notif {
+  z-index: var(--z-bar-notif);
+}
+@utility z-bar {
+  z-index: var(--z-bar);
+}
+@utility z-topic-tree {
+  z-index: var(--z-topic-tree);
+}
+@utility z-modal {
+  z-index: var(--z-modal);
+}
+@utility z-popover {
+  z-index: var(--z-popover);
+}
+@utility z-takeover {
+  z-index: var(--z-takeover);
+}
+@utility z-toast {
+  z-index: var(--z-toast);
+}
+
+:root {
+  /* ═══ Universal Design Tokens (single source of truth) ═══ */
+  /* Change ONE value here → updates entire app via @theme → Tailwind utilities. */
+
+  /* Z-index scale values (consumed by the @utility blocks above). */
+  --z-page: 0;
+  --z-bar-notif: 30;
+  --z-bar: 40;
+  --z-topic-tree: 50;
+  --z-modal: 60;
+  --z-popover: 70;
+  --z-takeover: 80;
+  --z-toast: 90;
+
+  /* Opacity scale */
+  --op-primary: 0.9;
+  --op-secondary: 0.65;
+  --op-tertiary: 0.4;
+  --op-muted: 0.2;
+  --op-bg-subtle: 0.03;
+  --op-bg-hover: 0.05;
+  --op-bg-active: 0.08;
+
+  /* Computed semantic colors (from opacity × foreground) */
+  --fg-1: oklch(from var(--foreground) l c h / var(--op-primary));
+  --fg-2: oklch(from var(--foreground) l c h / var(--op-secondary));
+  --fg-3: oklch(from var(--foreground) l c h / var(--op-tertiary));
+  --fg-4: oklch(from var(--foreground) l c h / var(--op-muted));
+  --surface-1: oklch(from var(--foreground) l c h / var(--op-bg-subtle));
+  --surface-2: oklch(from var(--foreground) l c h / var(--op-bg-hover));
+  --surface-3: oklch(from var(--foreground) l c h / var(--op-bg-active));
+
+  /* Safe area insets for notched devices */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  --background: #fafafa;
+  --foreground: #1c1c1e;
+  --card: #ffffff;
+  --card-foreground: #1c1c1e;
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1e;
+  --primary: #000000;
+  --primary-foreground: #ffffff;
+  --secondary: #e8e8e8;
+  --secondary-foreground: #1c1c1e;
+  --muted: #f2f2f2;
+  --muted-foreground: #8e8e8e;
+  --accent: #f2f2f2;
+  --accent-foreground: #000000;
+  --destructive: #ff3b30;
+  --border: #e5e5e5;
+  --input: #ffffff;
+  --ring: #000000;
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.62 0.18 264);
+  --chart-3: oklch(0.55 0.14 300);
+  --chart-4: oklch(0.65 0.16 200);
+  --chart-5: oklch(0.58 0.12 150);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.16 0 0);
+  --sidebar-foreground: oklch(0.85 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.22 0 0);
+  --sidebar-accent-foreground: oklch(0.92 0 0);
+  --sidebar-border: oklch(0.25 0 0);
+  --sidebar-ring: oklch(0.205 0 0);
+  /* Glass + grid tokens */
+  --glass-start: rgba(255, 255, 255, 0.55);
+  --glass-end: rgba(250, 250, 252, 0.45);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.06), 0 24px 48px rgba(0, 0, 0, 0.04);
+  --grid-line: oklch(0.5 0 0 / 0.07);
+  --logo-color: var(--foreground);
+  /* memax signature — dream violet (global, available on all routes) */
+  --signature: oklch(0.62 0.16 290);
+  --signature-muted: oklch(0.62 0.16 290 / 0.12);
+}
+
+/* Default UI theme */
+.theme-warm {
+  --background: #fafafa;
+  --foreground: #1c1c1e;
+  --card: #ffffff;
+  --card-foreground: #1c1c1e;
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1e;
+  --secondary: #e8e8e8;
+  --secondary-foreground: #1c1c1e;
+  --muted: #f2f2f2;
+  --muted-foreground: #8e8e8e;
+  --accent: #f2f2f2;
+  --accent-foreground: #000000;
+  --border: #e5e5e5;
+  --input: #ffffff;
+  /* Solid bar — white surface, neutral shadow like AI Assist */
+  --bar-bg: #ffffff;
+  --bar-border: rgba(0, 0, 0, 0.12);
+  --bar-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.03);
+  /* Keep glass vars pointing to solid values so components don't break */
+  --glass-start: #ffffff;
+  --glass-end: #ffffff;
+  --glass-border: var(--bar-border);
+  --glass-shadow: var(--bar-shadow);
+  --glass-fg: var(--foreground);
+  --glass-fg-muted: var(--muted-foreground);
+  --glass-fg-faint: oklch(0.4 0 0 / 0.25);
+  --glass-edge: rgba(245, 245, 245, 0.72);
+  --grid-line: oklch(0.5 0 0 / 0.07);
+  /* memax signature — dream violet, appears only for memax intelligence */
+  --signature: oklch(0.62 0.16 290);
+  --signature-muted: oklch(0.62 0.16 290 / 0.12);
+
+  /* ═══ Bar + notification geometry ═══
+     Invariant: --notif-outer = --notif-content + --notif-tuck.
+     The radius lives on :root via surface-radius.css (--app-radius-surface).
+     Intentionally NOT defined on .theme-warm — keep theme-scoped tokens
+     for colors only; shape/geometry stays global. */
+  --notif-outer: 44px;
+  --notif-content: 30px;
+  --notif-tuck: 14px;
+
+  /* ═══ Notification glass tokens (theme-aware) ═══
+     Derive from --card/--border/--foreground so a theme change propagates.
+     Override individual tokens to customize without forking .notif-glass.
+     Opacities are tuned to Apple's "thick material" spec (see
+     notification-glass.css): high enough to occlude background text under
+     a 40px blur + 180% saturate. Dream variant is only ~7pp thinner than
+     base — the aurora overlay is a separate layer on TOP of the glass, so
+     its character does not depend on the glass being see-through. */
+  --notif-bg: oklch(from var(--card) l c h / 0.88);
+  --notif-bg-dream: oklch(from var(--card) l c h / 0.81);
+  /* Border alpha is intentionally low — glass surfaces should NOT read
+     as outlined cards. The inset top highlight in --notif-shadow does
+     most of the edge work; this is just a barely-there hint. */
+  --notif-border: oklch(from var(--border) l c h / 0.25);
+  --notif-shadow:
+    0 10px 40px -12px oklch(0 0 0 / 0.22), 0 4px 12px -4px oklch(0 0 0 / 0.06),
+    inset 0 1px 0 oklch(1 0 0 / 0.6);
+}
+
+.dark {
+  --background: oklch(0.155 0.01 260);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.2 0.008 260);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.25 0.008 260);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.371 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(0.275 0 0);
+  --input: oklch(0.325 0 0);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.81 0.1 252);
+  --chart-2: oklch(0.62 0.19 260);
+  --chart-3: oklch(0.55 0.22 263);
+  --chart-4: oklch(0.49 0.22 264);
+  --chart-5: oklch(0.42 0.18 266);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.275 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
+  /* Glass + grid dark tokens */
+  --glass-start: oklch(0.205 0 0);
+  --glass-end: oklch(0.205 0 0);
+  --glass-border: oklch(0.275 0 0);
+  --glass-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.03), 0 2px 8px oklch(0 0 0 / 0.2),
+    0 8px 24px oklch(0 0 0 / 0.15);
+  --grid-line: oklch(1 0 0 / 0.04);
+  /* memax signature — dream violet (lighter in dark for contrast) */
+  --signature: oklch(0.68 0.16 290);
+  --signature-muted: oklch(0.68 0.16 290 / 0.12);
+
+  /* Notification glass — dark mode overrides.
+     Background + shadow darken; border switches to a subtle white
+     inner-highlight for the "lit edge" that dark glass panels need. */
+  --notif-bg: oklch(from var(--card) l c h / 0.82);
+  --notif-bg-dream: oklch(from var(--card) l c h / 0.74);
+  --notif-border: oklch(from var(--foreground) l c h / 0.14);
+  --notif-shadow:
+    0 10px 40px -12px oklch(0 0 0 / 0.5), 0 4px 12px -4px oklch(0 0 0 / 0.3),
+    inset 0 1px 0 oklch(1 0 0 / 0.08);
+}
+
+/* New UI dark — pure neutral oklch (user-provided palette) */
+.dark .theme-warm {
+  --background: oklch(0.155 0.01 260);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.2 0.008 260);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.25 0.008 260);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.371 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(0.275 0 0);
+  --input: oklch(0.325 0 0);
+  --ring: oklch(0.556 0 0);
+  --bar-bg: oklch(0.205 0 0);
+  --bar-border: oklch(0.3 0 0);
+  --bar-shadow: 0 0 0 1px oklch(1 0 0 / 0.03), 0 2px 8px oklch(0 0 0 / 0.15);
+  --glass-start: var(--bar-bg);
+  --glass-end: var(--bar-bg);
+  --glass-border: var(--bar-border);
+  --glass-shadow: var(--bar-shadow);
+  --glass-fg: var(--foreground);
+  --glass-fg-muted: var(--muted-foreground);
+  --glass-fg-faint: oklch(0.708 0 0 / 0.3);
+  --glass-edge: rgba(20, 20, 22, 0.75);
+  --grid-line: oklch(1 0 0 / 0.04);
+  --logo-color: var(--foreground);
+  /* memax signature — dream violet (lighter in dark mode for contrast) */
+  --signature: oklch(0.68 0.16 290);
+  --signature-muted: oklch(0.68 0.16 290 / 0.12);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: none;
+  }
+  html {
+    @apply font-sans;
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+  @media (min-width: 768px) {
+    html {
+      overflow-y: scroll;
+    }
+  }
+  /* Smooth theme transition */
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition:
+      background-color 0.4s ease,
+      color 0.3s ease,
+      border-color 0.3s ease,
+      box-shadow 0.3s ease,
+      opacity 0.3s ease,
+      filter 0.3s ease !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MEMAX DESIGN TOKENS — Semantic Component Layer
+
+   Use these instead of raw Tailwind opacity values.
+   Changing a token here updates every component that uses it.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════
+   UNIVERSAL DESIGN TOKENS — single source of truth
+
+   Everything uses foreground + opacity. 7 values total:
+   Text:  /90 (primary)  /65 (secondary)  /40 (tertiary)  /20 (muted)
+   Bg:    /3  (subtle)    /5  (hover)      /8  (active)
+
+   CSS classes below = Tailwind text-foreground/XX equivalents.
+   Use EITHER approach — they produce identical colors.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Legacy aliases (use Tailwind text-fg-1..4 / bg-surface-1..3 instead) ─── */
+.text-primary-label {
+  color: var(--fg-1);
+}
+.text-secondary-label {
+  color: var(--fg-2);
+}
+.text-tertiary-label {
+  color: var(--fg-3);
+}
+.text-hint {
+  color: var(--fg-4);
+}
+
+/* ─── Surface Backgrounds ─── */
+/* var(--background): page (#FAFAFA light / oklch(0.155) dark) */
+/* var(--card): card surface (#FFFFFF light / oklch(0.2) dark) */
+/* var(--muted): muted surface (#F2F2F2 light / oklch(0.269) dark) */
+
+/* ─── Border (2 levels) ─── */
+/* var(--border): card/section borders (#E5E5E5) — use border-border */
+/* var(--bar-border): bar-specific (12% light, oklch(0.30) dark) */
+/* border-border/30: dividers within cards */
+
+/* ─── Interactive States (compound) ─── */
+.state-selected {
+  background: oklch(from var(--primary) l c h / 0.1);
+  box-shadow: inset 0 0 0 1px oklch(from var(--primary) l c h / 0.12);
+}
+.state-cited {
+  background: oklch(from var(--primary) l c h / 0.14);
+  box-shadow: 0 0 0 1px oklch(from var(--primary) l c h / 0.15);
+}
+
+/* ─── Badge / Tag / Chip Components ─── */
+
+/* ─── Icon Backgrounds ─── */
+.icon-bg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: oklch(from var(--primary) l c h / 0.1);
+  color: var(--primary);
+}
+.icon-bg-sm {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.icon-bg-md {
+  width: 2rem;
+  height: 2rem;
+}
+.icon-bg-lg {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+/* ─── Dropdown / Picker ─── */
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.8125rem;
+  text-align: left;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+  color: var(--foreground);
+}
+.dropdown-item:hover {
+  background: oklch(from var(--muted) l c h / 0.4);
+}
+.dropdown-item-active {
+  background: oklch(from var(--muted) l c h / 0.55);
+  font-weight: 500;
+}
+
+/* ─── Memax Prose (Markdown Rendering) ─── */
+.memax-prose {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  letter-spacing: -0.006em;
+  color: var(--foreground);
+}
+.memax-prose > * + * {
+  margin-top: 1em;
+}
+.memax-prose h1 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  margin-top: 1.5em;
+}
+.memax-prose h2 {
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+  margin-top: 1.5em;
+}
+.memax-prose h3 {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+  margin-top: 1.25em;
+}
+.memax-prose h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-top: 1.25em;
+}
+.memax-prose h1:first-child,
+.memax-prose h2:first-child,
+.memax-prose h3:first-child {
+  margin-top: 0;
+}
+.memax-prose ul,
+.memax-prose ol {
+  padding-left: 1.5em;
+}
+.memax-prose ul {
+  list-style-type: disc;
+}
+.memax-prose ol {
+  list-style-type: decimal;
+}
+.memax-prose li + li {
+  margin-top: 0.35em;
+}
+.memax-prose strong {
+  font-weight: 600;
+}
+.memax-prose em {
+  font-style: italic;
+}
+.memax-prose a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: oklch(from var(--foreground) l c h / 0.25);
+}
+.memax-prose a:hover {
+  text-decoration-color: oklch(from var(--foreground) l c h / 0.5);
+}
+.memax-prose code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.85em;
+  background: oklch(from var(--muted) l c h / 0.6);
+  padding: 0.15em 0.35em;
+  border-radius: 0.25rem;
+}
+.memax-prose pre {
+  background: oklch(from var(--muted) l c h / 0.5);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+.memax-prose pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.8125rem;
+}
+.memax-prose blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 1rem;
+  color: oklch(from var(--foreground) l c h / 0.65);
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+.memax-prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+.memax-prose img {
+  border-radius: 0.75rem;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+.memax-prose > *:first-child {
+  margin-top: 0;
+}
+
+/* Compact variant for AI answers and summaries */
+
+/* ─── Memax Design System: Liquid Glass + Depth ─── */
+
+/* Glass surfaces — translucent with backdrop blur */
+.glass {
+  background: oklch(1 0 0 / 0.6);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid oklch(1 0 0 / 0.2);
+}
+:is(.dark *).glass,
+.dark .glass {
+  background: oklch(1 0 0 / 0.04);
+  border-color: oklch(1 0 0 / 0.08);
+}
+
+.glass-subtle {
+  background: oklch(1 0 0 / 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid oklch(1 0 0 / 0.15);
+}
+:is(.dark *).glass-subtle,
+.dark .glass-subtle {
+  background: oklch(1 0 0 / 0.03);
+  border-color: oklch(1 0 0 / 0.06);
+}
+
+.glass-strong {
+  background: oklch(1 0 0 / 0.8);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid oklch(1 0 0 / 0.3);
+}
+:is(.dark *).glass-strong,
+.dark .glass-strong {
+  background: oklch(1 0 0 / 0.06);
+  border-color: oklch(1 0 0 / 0.1);
+}
+
+/* Notification glass is defined in ../src/notification-glass.css, imported
+   at the top of this file. Tokens are declared in :root / .dark above.
+   The shared file is also consumed by packages/web via the @memaxlabs/ui
+   package export, so there is one source of truth for the rule itself. */
+
+/* Branded shadows — colored, layered, NOT generic gray */
+.shadow-glow {
+  box-shadow:
+    0 0 0 1px oklch(0.488 0.243 264.376 / 0.04),
+    0 1px 2px oklch(0.488 0.243 264.376 / 0.04),
+    0 4px 16px oklch(0.488 0.243 264.376 / 0.06);
+}
+.shadow-glow-lg {
+  box-shadow:
+    0 0 0 1px oklch(0.488 0.243 264.376 / 0.05),
+    0 2px 4px oklch(0.488 0.243 264.376 / 0.05),
+    0 8px 32px oklch(0.488 0.243 264.376 / 0.08),
+    0 24px 48px oklch(0.488 0.243 264.376 / 0.04);
+}
+:is(.dark *).shadow-glow,
+.dark .shadow-glow {
+  box-shadow:
+    0 0 0 1px oklch(0.62 0.22 264.376 / 0.08),
+    0 1px 2px oklch(0 0 0 / 0.3),
+    0 4px 16px oklch(0.62 0.22 264.376 / 0.06);
+}
+:is(.dark *).shadow-glow-lg,
+.dark .shadow-glow-lg {
+  box-shadow:
+    0 0 0 1px oklch(0.62 0.22 264.376 / 0.1),
+    0 2px 4px oklch(0 0 0 / 0.4),
+    0 8px 32px oklch(0.62 0.22 264.376 / 0.08),
+    0 24px 48px oklch(0 0 0 / 0.3);
+}
+
+/* Soft elevation — subtle depth without harsh edges */
+.shadow-soft {
+  box-shadow:
+    0 0 0 1px oklch(0 0 0 / 0.03),
+    0 1px 3px oklch(0 0 0 / 0.04),
+    0 4px 12px oklch(0 0 0 / 0.03);
+}
+.shadow-soft-lg {
+  box-shadow:
+    0 0 0 1px oklch(0 0 0 / 0.04),
+    0 2px 6px oklch(0 0 0 / 0.05),
+    0 12px 24px oklch(0 0 0 / 0.06);
+}
+:is(.dark *).shadow-soft,
+.dark .shadow-soft {
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.04),
+    0 1px 3px oklch(0 0 0 / 0.3),
+    0 4px 12px oklch(0 0 0 / 0.2);
+}
+:is(.dark *).shadow-soft-lg,
+.dark .shadow-soft-lg {
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.05),
+    0 2px 6px oklch(0 0 0 / 0.4),
+    0 12px 24px oklch(0 0 0 / 0.3);
+}
+
+/* Gradient border — the liquid glass edge effect */
+.border-gradient {
+  position: relative;
+  border: none;
+}
+.border-gradient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    oklch(1 0 0 / 0.2),
+    oklch(1 0 0 / 0.05),
+    oklch(0.488 0.243 264.376 / 0.1)
+  );
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Gradient text for premium feel */
+.text-gradient {
+  background: linear-gradient(
+    135deg,
+    oklch(0.488 0.243 264.376),
+    oklch(0.62 0.2 290)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+:is(.dark *).text-gradient,
+.dark .text-gradient {
+  background: linear-gradient(
+    135deg,
+    oklch(0.62 0.22 264.376),
+    oklch(0.72 0.18 290)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Surface levels — subtle background hierarchy */
+.surface-1 {
+  background: oklch(0.99 0 0);
+}
+:is(.dark *).surface-1,
+.dark .surface-1 {
+  background: oklch(0.18 0 0);
+}
+.surface-2 {
+  background: oklch(0.975 0 0);
+}
+:is(.dark *).surface-2,
+.dark .surface-2 {
+  background: oklch(0.22 0 0);
+}
+
+/* Shimmer animation for loading */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    oklch(0.95 0 0) 25%,
+    oklch(0.98 0 0) 50%,
+    oklch(0.95 0 0) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+:is(.dark *).shimmer,
+.dark .shimmer {
+  background: linear-gradient(
+    90deg,
+    oklch(0.22 0 0) 25%,
+    oklch(0.27 0 0) 50%,
+    oklch(0.22 0 0) 75%
+  );
+  background-size: 200% 100%;
+}
+
+/* ─── Motion Tokens ─── */
+:root {
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-instant: 0.1s; /* UI state changes: intent label, right slot */
+  --duration-fast: 0.15s; /* Modal open/close, expand slot, view switch */
+  --duration-normal: 0.2s; /* Dissolve, dropdown appear */
+  --duration-loading: 0.5s; /* Breathing dots, loading pulses */
+  --duration-signature: 3.5s; /* Placeholder cycling, ghost breathing period */
+}
+
+/* ─── Typography Tokens ─── */
+:root {
+  --text-input: 15px; /* Bar input, placeholders (sm: 16px) */
+  --text-title: 21px; /* Memory detail title, page headers */
+  --text-body: 14px; /* Card titles, answers, confirmation */
+  --text-secondary: 13px; /* Snippets, citations, intent label, buttons */
+  --text-caption: 12px; /* Source, kind, timestamps, meta */
+  --text-micro: 11px; /* Group headers, keyboard hints */
+  --text-nano: 10px; /* Citation numbers, content type badges */
+}
+
+/* ─── Animated Mesh Gradient Background ─── */
+@keyframes mesh-drift {
+  0%,
+  100% {
+    background-position:
+      0% 50%,
+      50% 50%,
+      50% 50%;
+  }
+  25% {
+    background-position:
+      100% 0%,
+      0% 100%,
+      80% 20%;
+  }
+  50% {
+    background-position:
+      50% 100%,
+      100% 0%,
+      20% 80%;
+  }
+  75% {
+    background-position:
+      0% 100%,
+      50% 0%,
+      60% 60%;
+  }
+}
+.mesh-bg {
+  background:
+    radial-gradient(
+      ellipse at 20% 50%,
+      oklch(0.488 0.243 264.376 / 0.07) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      oklch(0.62 0.2 290 / 0.05) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 50% 80%,
+      oklch(0.55 0.15 200 / 0.04) 0%,
+      transparent 50%
+    );
+  background-size:
+    200% 200%,
+    200% 200%,
+    200% 200%;
+  animation: mesh-drift 20s ease-in-out infinite;
+}
+:is(.dark *).mesh-bg,
+.dark .mesh-bg {
+  background:
+    radial-gradient(
+      ellipse at 20% 50%,
+      oklch(0.62 0.22 264.376 / 0.08) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      oklch(0.72 0.18 290 / 0.06) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 50% 80%,
+      oklch(0.65 0.12 200 / 0.05) 0%,
+      transparent 50%
+    );
+  background-size:
+    200% 200%,
+    200% 200%,
+    200% 200%;
+  animation: mesh-drift 20s ease-in-out infinite;
+}
+
+/* ─── Tiptap Editor — inline markdown rendering ─── */
+.tiptap-editor .tiptap {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--foreground);
+}
+.tiptap-editor .tiptap > * + * {
+  margin-top: 0.5em;
+}
+.tiptap-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: oklch(from var(--muted-foreground) l c h / 0.4);
+  pointer-events: none;
+  height: 0;
+}
+.tiptap-editor .tiptap h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.tiptap-editor .tiptap h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.tiptap-editor .tiptap h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.tiptap-editor .tiptap strong {
+  font-weight: 600;
+}
+.tiptap-editor .tiptap em {
+  font-style: italic;
+}
+.tiptap-editor .tiptap ul {
+  list-style: disc;
+  padding-left: 1.5em;
+}
+.tiptap-editor .tiptap ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+}
+.tiptap-editor .tiptap li + li {
+  margin-top: 0.25em;
+}
+.tiptap-editor .tiptap code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.85em;
+  background: oklch(from var(--muted) l c h / 0.5);
+  padding: 0.125em 0.25em;
+  border-radius: 0.25rem;
+}
+.tiptap-editor .tiptap pre {
+  background: oklch(from var(--muted) l c h / 0.4);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+}
+.tiptap-editor .tiptap pre code {
+  background: none;
+  padding: 0;
+}
+.tiptap-editor .tiptap blockquote {
+  border-left: 3px solid oklch(from var(--border) l c h / 0.5);
+  padding-left: 1rem;
+  color: oklch(from var(--foreground) l c h / 0.65);
+}
+.tiptap-editor .tiptap hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1em 0;
+}
+
+/* ─── Sheen / Light-Sweep Hover ─── */
+.sheen {
+  position: relative;
+  overflow: hidden;
+}
+.sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    oklch(1 0 0 / 0.06) 45%,
+    oklch(1 0 0 / 0.13) 50%,
+    oklch(1 0 0 / 0.06) 55%,
+    transparent 60%
+  );
+  transform: translateX(-100%);
+  transition: transform 0.6s var(--ease-spring);
+  pointer-events: none;
+  border-radius: inherit;
+}
+.sheen:hover::after {
+  transform: translateX(100%);
+}
+:is(.dark *).sheen::after,
+.dark .sheen::after {
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    oklch(1 0 0 / 0.03) 45%,
+    oklch(1 0 0 / 0.06) 50%,
+    oklch(1 0 0 / 0.03) 55%,
+    transparent 60%
+  );
+}
+
+/* ─── Noise Texture Overlay ─── */
+/* Rendered as a standalone div, NOT a pseudo-element on a parent,
+   to avoid creating stacking contexts that break backdrop-filter. */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  opacity: 0.022;
+  pointer-events: none;
+  z-index: 1;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+/* ─── Content Ready Transition ─── */
+/* Applied when loading→loaded. Subtle opacity+lift, 0.15s.
+   Design system: "Loading → Loaded: skeleton fades out (0.15s), content appears." */
+@keyframes content-ready {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-content-ready {
+  animation: content-ready 0.15s ease-out both;
+}
+
+/* ─── Drill-Down Navigation ─── */
+@keyframes drill-forward {
+  from {
+    transform: translateX(30%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes drill-back {
+  from {
+    transform: translateX(-30%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.animate-drill-forward {
+  animation: drill-forward 0.25s var(--ease-spring) both;
+}
+.animate-drill-back {
+  animation: drill-back 0.25s var(--ease-spring) both;
+}
+
+/* ─── Reduced Motion ─── */
+/* Respect user preference: disable all custom animations.
+   Composited properties (opacity, transform) are still fine but
+   users who set this prefer no motion at all. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-content-ready,
+  .animate-fade-up,
+  .animate-drill-forward,
+  .animate-drill-back,
+  .state-fast-pulse,
+  .state-slow-breathe {
+    animation: none !important;
+  }
+}
+
+/* ─── Staggered Entrance Animations ─── */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out both;
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(30%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(30%);
+    opacity: 0;
+  }
+}
+.animate-slide-out-right {
+  animation: slide-out-right 0.25s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-up {
+  animation: fade-up 0.6s var(--ease-spring) both;
+}
+.stagger-1 {
+  animation-delay: 0.06s;
+}
+.stagger-2 {
+  animation-delay: 0.12s;
+}
+.stagger-3 {
+  animation-delay: 0.18s;
+}
+.stagger-4 {
+  animation-delay: 0.24s;
+}
+.stagger-5 {
+  animation-delay: 0.3s;
+}
+
+/* ─── Float Animation (for empty states) ─── */
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ─── Glow Pulse (for branding elements) ─── */
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 oklch(0.488 0.243 264.376 / 0),
+      0 0 16px oklch(0.488 0.243 264.376 / 0.06);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px oklch(0.488 0.243 264.376 / 0.04),
+      0 0 24px oklch(0.488 0.243 264.376 / 0.1);
+  }
+}
+.glow-pulse {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+:is(.dark *).glow-pulse,
+.dark .glow-pulse {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+/* ─── Gradient Button (for primary CTAs) ─── */
+.btn-gradient {
+  background: linear-gradient(
+    135deg,
+    oklch(0.488 0.243 264.376),
+    oklch(0.52 0.22 280)
+  );
+  color: white;
+  transition: all 0.3s var(--ease-spring);
+}
+.btn-gradient:hover {
+  background: linear-gradient(
+    135deg,
+    oklch(0.52 0.22 280),
+    oklch(0.488 0.243 264.376)
+  );
+  box-shadow:
+    0 0 0 1px oklch(0.488 0.243 264.376 / 0.2),
+    0 4px 16px oklch(0.488 0.243 264.376 / 0.15);
+}
+:is(.dark *).btn-gradient,
+.dark .btn-gradient {
+  background: linear-gradient(
+    135deg,
+    oklch(0.55 0.22 264.376),
+    oklch(0.6 0.2 280)
+  );
+}
+:is(.dark *).btn-gradient:hover,
+.dark .btn-gradient:hover {
+  background: linear-gradient(
+    135deg,
+    oklch(0.6 0.2 280),
+    oklch(0.55 0.22 264.376)
+  );
+}
+
+/* ─── Typography Scale (Geist Sans, tight tracking does the display work) ─── */
+.text-body {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  letter-spacing: -0.006em;
+}
+.text-caption {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  font-weight: 450;
+}
+.text-micro {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-weight: 550;
+}
+
+/* ─── Ambient Orbs (atmosphere behind glass) ─── */
+/* Uses box-shadow instead of filter:blur() to avoid creating a
+   backdrop root that breaks backdrop-filter on sibling elements. */
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.ambient-bg::before,
+.ambient-bg::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  /* NO filter:blur() — that creates a backdrop root.
+     Use massive box-shadow spread for the soft glow effect instead. */
+}
+.ambient-bg::before {
+  width: 1px;
+  height: 1px;
+  top: 15%;
+  left: 20%;
+  box-shadow: 0 0 200px 200px oklch(0.488 0.243 264.376 / 0.03);
+  animation: ambient-drift-1 25s ease-in-out infinite;
+}
+.ambient-bg::after {
+  width: 1px;
+  height: 1px;
+  bottom: 20%;
+  right: 20%;
+  box-shadow: 0 0 180px 180px oklch(0.55 0.15 310 / 0.025);
+  animation: ambient-drift-2 30s ease-in-out infinite;
+}
+:is(.dark *) .ambient-bg::before,
+.dark .ambient-bg::before {
+  box-shadow: 0 0 200px 200px oklch(0.4 0.2 264.376 / 0.07);
+}
+:is(.dark *) .ambient-bg::after,
+.dark .ambient-bg::after {
+  box-shadow: 0 0 180px 180px oklch(0.35 0.15 310 / 0.05);
+}
+@keyframes ambient-drift-1 {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  33% {
+    transform: translate(4vw, 2vh);
+  }
+  66% {
+    transform: translate(-2vw, -1vh);
+  }
+}
+@keyframes ambient-drift-2 {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-3vw, 1.5vh);
+  }
+}
+
+/* ─── Premium Card Shadow (with inner highlight) ─── */
+.shadow-premium {
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 0.06),
+    0 0 0 1px oklch(0 0 0 / 0.03),
+    0 1px 2px oklch(0 0 0 / 0.04),
+    0 2px 4px oklch(0 0 0 / 0.04),
+    0 4px 8px oklch(0 0 0 / 0.03),
+    0 8px 16px oklch(0 0 0 / 0.03);
+}
+:is(.dark *).shadow-premium,
+.dark .shadow-premium {
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 0.04),
+    0 0 0 1px oklch(1 0 0 / 0.05),
+    0 1px 2px oklch(0 0 0 / 0.3),
+    0 4px 8px oklch(0 0 0 / 0.2),
+    0 8px 16px oklch(0 0 0 / 0.15);
+}
+
+/* ─── Cursor Spotlight (radial gradient follows mouse) ─── */
+.card-spotlight {
+  --mouse-x: 50%;
+  --mouse-y: 50%;
+}
+.card-spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    350px circle at var(--mouse-x) var(--mouse-y),
+    oklch(0.488 0.243 264.376 / 0.06),
+    transparent 40%
+  );
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s var(--ease-spring);
+  z-index: 1;
+}
+.card-spotlight:hover::before {
+  opacity: 1;
+}
+:is(.dark *).card-spotlight::before,
+.dark .card-spotlight::before {
+  background: radial-gradient(
+    350px circle at var(--mouse-x) var(--mouse-y),
+    oklch(0.62 0.22 264.376 / 0.08),
+    transparent 40%
+  );
+}
+
+/* ─── Floating Dock ─── */
+/* Dock backdrop-filter: the dock element must NOT have any ancestor
+   with overflow:hidden, filter, or will-change that creates a new
+   backdrop root. The noise and ambient-bg are siblings, not ancestors. */
+.dock {
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  background-color: oklch(0.97 0.003 264 / 0.6);
+  border: 1px solid oklch(0 0 0 / 0.08);
+  box-shadow:
+    0 8px 32px oklch(0.488 0.243 264.376 / 0.08),
+    0 2px 8px oklch(0 0 0 / 0.04),
+    inset 0 1px 0 oklch(1 0 0 / 0.4);
+}
+:is(.dark *).dock,
+.dark .dock {
+  background-color: oklch(0.12 0.02 264 / 0.5);
+  border-color: oklch(1 0 0 / 0.1);
+  box-shadow:
+    0 8px 32px oklch(0 0 0 / 0.4),
+    0 2px 8px oklch(0 0 0 / 0.2),
+    inset 0 1px 0 oklch(1 0 0 / 0.05);
+}
+
+/* ─── Interactive Elements (spring micro-interactions) ─── */
+.interactive {
+  transition:
+    transform 0.2s var(--ease-spring),
+    box-shadow 0.2s var(--ease-spring);
+}
+.interactive:hover {
+  transform: translateY(-1px);
+}
+.interactive:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LANDING PAGE — Scoped variables and styles
+   These use different var names (--bg, --text-primary, etc.)
+   than the app (--background, --foreground) so they coexist.
+   ═══════════════════════════════════════════════════════════════ */
+
+.landing {
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.13);
+  --text-primary: #0a0a0a;
+  --text-secondary: #555555;
+  --text-tertiary: #7a7a7a;
+  --text-muted: #a8a8a8;
+  --accent: #5a7d9a;
+  --accent-dim: rgba(90, 125, 154, 0.08);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.02);
+  --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.02);
+  --glass-start: rgba(255, 255, 255, 0.55);
+  --glass-end: rgba(248, 249, 252, 0.45);
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --glass-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.04),
+    0 8px 20px rgba(0, 0, 0, 0.05), 0 20px 44px rgba(0, 0, 0, 0.04);
+  --backdrop-bg: rgba(245, 245, 245, 0.55);
+  --hero-bg: rgba(248, 248, 248, 0.96);
+  --input-border: rgba(0, 0, 0, 0.1);
+  --input-border-focus: rgba(0, 0, 0, 0.18);
+  --input-bg: rgba(255, 255, 255, 0.65);
+  --btn-bg: #0a0a0a;
+  --btn-bg-hover: #000000;
+  --btn-text: #ffffff;
+  --grid-color: rgba(0, 0, 0, 0.08);
+  --grid-opacity: 0.22;
+  --orb-1: rgba(148, 163, 184, 0.12);
+  --orb-2: rgba(129, 140, 160, 0.08);
+  --orb-3: rgba(165, 180, 200, 0.07);
+  --divider: rgba(0, 0, 0, 0.06);
+  --bubble-bg: rgba(0, 0, 0, 0.04);
+  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --glow-color: rgba(148, 163, 184, 0.1);
+  --glow-color-mid: rgba(129, 140, 160, 0.04);
+  --glow-active-border: rgba(255, 255, 255, 0.35);
+  --grain-opacity: 0.012;
+
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family:
+    "Geist",
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+:is(.dark *).landing,
+.dark .landing {
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.1);
+  --text-primary: #fafafa;
+  --text-secondary: #a3a3a3;
+  --text-tertiary: #636363;
+  --text-muted: #3a3a3a;
+  --accent: #7da3c4;
+  --accent-dim: rgba(125, 163, 196, 0.1);
+  --glass-start: rgba(20, 20, 22, 0.6);
+  --glass-end: rgba(18, 18, 20, 0.5);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.03), 0 1px 3px rgba(0, 0, 0, 0.15),
+    0 8px 20px rgba(0, 0, 0, 0.2), 0 20px 44px rgba(0, 0, 0, 0.18);
+  --backdrop-bg: rgba(0, 0, 0, 0.55);
+  --hero-bg: rgba(14, 14, 14, 0.95);
+  --input-border: rgba(255, 255, 255, 0.08);
+  --input-bg: rgba(255, 255, 255, 0.05);
+  --btn-bg: #fafafa;
+  --btn-text: #0a0a0a;
+  --grid-color: rgba(255, 255, 255, 0.08);
+  --grid-opacity: 0.25;
+  --orb-1: rgba(148, 163, 184, 0.06);
+  --orb-2: rgba(129, 140, 160, 0.04);
+  --orb-3: rgba(165, 180, 200, 0.03);
+  --divider: rgba(255, 255, 255, 0.05);
+  --bubble-bg: rgba(255, 255, 255, 0.06);
+  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --glow-color: rgba(125, 163, 196, 0.12);
+  --glow-color-mid: rgba(100, 130, 160, 0.06);
+  --glow-active-border: rgba(255, 255, 255, 0.12);
+  --grain-opacity: 0.03;
+
+  background: var(--bg);
+}
+
+/* Landing bar glow */
+.landing .bar-glow {
+  position: relative;
+}
+.landing .bar-glow::before {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border-radius: inherit;
+  background: radial-gradient(
+    ellipse 100% 100% at 50% 50%,
+    var(--glow-color) 0%,
+    var(--glow-color-mid) 50%,
+    transparent 80%
+  );
+  opacity: 0;
+  transition: opacity 1.2s ease;
+  pointer-events: none;
+  filter: blur(16px);
+}
+.landing .bar-glow::after {
+  display: none;
+}
+.landing .bar-glow.active::before {
+  opacity: 1;
+}
+.landing .bar-glow.active > div:first-child {
+  border-color: var(--glow-active-border) !important;
+  transition: border-color 1.2s ease;
+}
+
+/* Landing grain overlay */
+.landing-grain {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px;
+}
+
+/* Landing ambient orbs */
+.landing-ambient {
+  position: fixed;
+  top: -80px;
+  left: 0;
+  right: 0;
+  height: 300px;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 50% 70% at 25% 35%,
+      var(--orb-1) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 45% 60% at 75% 25%,
+      var(--orb-2) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 40% 55% at 50% 55%,
+      var(--orb-3) 0%,
+      transparent 70%
+    );
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* Bar intent pulses — different frequencies for different states */
+@keyframes intent-fast {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+@keyframes intent-slow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+@keyframes intent-urgent {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@keyframes intent-double {
+  0%,
+  25% {
+    opacity: 1;
+  }
+  35% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 0.3;
+  }
+  75%,
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Bar ring animations removed — bar uses static 1px border in all states.
+   See kitchen section 04 (Bar States) and SKILL.md "Bar State Design". */
+
+/* Memory surfacing — text deblurs into clarity */
+@keyframes memory-surface {
+  0% {
+    filter: blur(12px);
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  40% {
+    filter: blur(6px);
+    opacity: 0.5;
+  }
+  100% {
+    filter: blur(0px);
+    opacity: 1;
+    transform: translateY(0px);
+  }
+}
+@keyframes memory-surface-delay {
+  0%,
+  30% {
+    filter: blur(8px);
+    opacity: 0;
+  }
+  100% {
+    filter: blur(0px);
+    opacity: 1;
+  }
+}
+.animate-memory-surface {
+  animation: memory-surface 0.7s cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+.animate-memory-surface-delay {
+  animation: memory-surface-delay 0.8s cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+
+/* Ghost card breathing — visible pulse without vanishing */
+@keyframes ghost-breathe-0 {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@keyframes ghost-breathe-1 {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+@keyframes ghost-breathe-2 {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes ghost-breathe-3 {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
+/* Note detail enter/exit within collection container */
+@keyframes note-detail-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── Content State Indicators ── */
+@keyframes state-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@keyframes state-fade {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes state-flash {
+  0% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
+.state-fast-pulse {
+  animation: state-pulse 0.8s ease-in-out infinite;
+}
+.state-slow-breathe {
+  animation: state-pulse 2.5s ease-in-out infinite;
+}
+.state-fade {
+  animation: state-fade 0.3s ease-out forwards;
+}
+.state-flash {
+  animation: state-flash 0.15s ease-out forwards;
+}
+
+/* Mobile scroll refinement */
+@media (max-width: 767px) {
+  .overflow-y-auto,
+  .overflow-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+}

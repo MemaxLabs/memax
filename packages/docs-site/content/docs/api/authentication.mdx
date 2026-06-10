@@ -1,0 +1,101 @@
+---
+title: Authentication
+description: How to authenticate API requests — API keys, OAuth tokens, agent grants.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+Every request to `/v1/*` requires a Bearer token in the `Authorization`
+header. There are three ways to get one.
+
+## API keys (non-interactive / CI / scripts)
+
+Generate a key with the CLI or from the web app's Settings surface.
+
+```bash
+memax auth create-key "my-script"
+```
+
+The command prints the raw key **once** — save it. It starts with
+`mxk_`. The server only stores a hash; you can't recover a lost key.
+
+Use it:
+
+```bash
+curl -H "Authorization: Bearer mxk_..." \
+  https://api.memax.app/v1/memories
+```
+
+Manage keys:
+
+```bash
+memax auth list-keys
+memax auth revoke-key <key-id>
+```
+
+<Callout type="warn">
+  API keys grant whatever scopes they were created with. Treat them like
+  passwords — read from env vars, never commit to version control.
+</Callout>
+
+## OAuth (interactive users)
+
+The CLI (`memax login`) and web app use OAuth (GitHub or Google). The
+flow returns a short-lived access token and a longer-lived refresh
+token.
+
+| Token kind    | Expires in (approx) | Use                     |
+| ------------- | ------------------- | ----------------------- |
+| Access token  | 1 hour              | `Authorization: Bearer` |
+| Refresh token | Longer; rotates     | Get a new access token  |
+
+The CLI auto-refreshes on expiry; you don't normally handle these
+tokens yourself.
+
+## Agent grants (MCP, hooks)
+
+`memax setup --mcp` and related commands mint scoped keys tied to a
+specific device and agent name. They use the same `mxk_` key format
+but with scopes restricted to the subset the agent needs (e.g. read
+
+- push, no delete). Revoke them like any other key from
+  `memax auth list-keys` or the web app's Agents surface.
+
+## Using the SDK
+
+The published TypeScript SDK (`memax-sdk`) wraps Bearer auth for you.
+The class is named `Memax`:
+
+```typescript
+import { Memax } from "memax-sdk";
+
+const memax = new Memax({
+  apiKey: process.env.MEMAX_API_KEY!,
+  // apiUrl defaults to https://api.memax.app
+});
+
+const result = await memax.recall("how does auth work?");
+```
+
+## Environment variables the CLI reads
+
+| Variable        | Purpose                                                 |
+| --------------- | ------------------------------------------------------- |
+| `MEMAX_API_KEY` | Use this key instead of stored OAuth credentials.       |
+| `MEMAX_API_URL` | Point at a non-default backend. |
+
+## Error responses
+
+A missing, invalid, or expired token returns:
+
+```json
+{
+  "error": {
+    "code": "unauthorized",
+    "message": "..."
+  }
+}
+```
+
+with HTTP 401. Handle this by refreshing the token (OAuth) or
+rotating the key (API key).

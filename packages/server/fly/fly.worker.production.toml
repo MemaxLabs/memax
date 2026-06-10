@@ -1,0 +1,59 @@
+# Memax Worker — PRODUCTION
+# Deploy: fly deploy -c fly/fly.worker.production.toml (from packages/server/)
+#
+# Sister file: fly/fly.worker.staging.toml — staging equivalent.
+# Workers process the River queue (memory processing, embeddings,
+# dreams engine, email sends). Sized bigger than staging because
+# real traffic means real batch sizes.
+app = "memax-worker-production"
+primary_region = "sjc"
+swap_size_mb = 512
+
+[build]
+  # Dockerfile path is relative to THIS toml file (not cwd), so
+  # ../ navigates up from fly/ to the server package root.
+  dockerfile = "../Dockerfile.worker"
+
+[env]
+  HEALTH_PORT = "9090"
+
+[deploy]
+  # Migrations run via the API server's release_command on the shared
+  # database. Worker skips them to avoid concurrent DDL contention —
+  # if two processes try to acquire the migrate lock simultaneously
+  # one will fail, and that's the one we don't want to be the server.
+  strategy = "rolling"
+
+# Internal health endpoint for Fly's machine supervisor. Not exposed
+# to the public internet — the worker's real job is River queue
+# processing, HTTP is check-only.
+[http_service]
+  internal_port = 9090
+  force_https = true
+  # Workers never auto-stop. Queue backlogs would accumulate silently
+  # while every machine was stopped, then wake up to a thundering
+  # herd. Keep them running.
+  auto_stop_machines = false
+  auto_start_machines = true
+  # 1 = baseline. River queue persists jobs in Postgres, so a single
+  # worker going down briefly just delays processing — no data loss.
+  # Scale to 2+ with `fly scale count -a memax-worker-production N`
+  # once queue depth starts trending up or we need faster recovery.
+  min_machines_running = 1
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  timeout = "5s"
+
+[[vm]]
+  # Workers do the heavy lifting — embedding batches, LLM processing,
+  # attachment processing (PDFs, images). 1gb + 2x CPU gives enough
+  # headroom for concurrent job processing without contention.
+  size = "shared-cpu-2x"
+  memory = "1gb"
+
+[swap]
+  size_mb = 1024

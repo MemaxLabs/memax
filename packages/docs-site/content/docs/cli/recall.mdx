@@ -1,0 +1,104 @@
+---
+title: memax recall
+description: Semantic search across your memories. Returns the most relevant pieces of knowledge for a given query.
+---
+
+Semantic search against your hub's memories. Used by agents (via MCP
+and hooks) and by humans directly.
+
+## Usage
+
+```bash
+memax recall <query> [options]
+memax recall --hook [options]       # agent-injectable output
+echo "your query" | memax recall    # query via stdin
+```
+
+If no query argument is given and stdin is piped, the piped text is
+used as the query.
+
+## Options
+
+| Flag                    | Short | Description                                                                                                                                                                                                          | Default |
+| ----------------------- | :---: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `--limit <n>`           | `-l`  | Maximum number of memories returned.                                                                                                                                                                                 | `10`    |
+| `--topic-id <id>`       |       | Restrict results to memories in this topic.                                                                                                                                                                          | —       |
+| `--hub <slug>`          |       | Boost a hub in ranking (defaults to the active hub).                                                                                                                                                                 | —       |
+| `--no-rerank`           |       | Skip the rerank stage (faster; uses local scoring only).                                                                                                                                                             | off     |
+| `--max-tokens <n>`      |       | Cap the approximate total output length in tokens.                                                                                                                                                                   | —       |
+| `--hook`                |       | Output in a compact, agent-injectable format. Intended for custom scripts or agents that want to inject recall results into a prompt themselves — the hooks installed by `memax setup --hooks` do **not** call this. | off     |
+| `--format <text\|json>` |       | Output format.                                                                                                                                                                                                       | `text`  |
+
+There is no `--hint`, `--threshold`, or `--quiet` flag today.
+
+`--tags` and `--include-archived` are declared on the CLI but are
+**not currently honored end-to-end**. `--tags` is the one the CLI
+doesn't forward — it never reaches the server. `--include-archived`
+is sent to the server, but the recall pipeline ignores
+`include_archived` and unconditionally excludes archived/processing
+memories. Treat both as no-ops for now.
+
+## Examples
+
+### Basic recall
+
+```bash
+memax recall "how does authentication work?"
+```
+
+### Limit
+
+```bash
+memax recall "deploy process" --limit 5
+```
+
+### Within a topic
+
+```bash
+memax recall "API versioning" --topic-id top_abc123
+```
+
+### Hub boost
+
+```bash
+memax recall "billing model" --hub team-alpha
+```
+
+### Agent-injectable format (for custom scripts)
+
+```bash
+memax recall "$USER_PROMPT" --hook --max-tokens 2000
+```
+
+### JSON output for scripting
+
+```bash
+memax recall "deploy process" --format json | jq '.memories[0].chunk_content'
+```
+
+### Query via stdin
+
+```bash
+cat question.txt | memax recall --limit 3
+```
+
+## Behavior
+
+- **Semantic retrieval** is the default: the query is embedded and
+  the closest chunks are returned, then re-scored by a reranker
+  (unless `--no-rerank`). Boundary and archived-state filters are
+  applied server-side.
+- **Archived memories are always excluded** from recall today —
+  the recall pipeline filters them out unconditionally. The
+  `--include-archived` flag is accepted on the CLI and the CLI
+  does forward `include_archived` to the server, but the server
+  currently ignores it.
+- **Rerank is on by default** and materially improves relevance;
+  `--no-rerank` is a latency knob for cases that don't need it.
+- **The `--hook` format** is a compact, agent-injectable output
+  format. Note: the hook script installed by
+  `memax setup --hooks` / `memax hook install claude-code` does
+  **not** call `memax recall --hook` itself today — it only
+  prints a static reinforcement block. `--hook` remains available
+  for custom scripts or agents that want to call recall and
+  inject the result into a prompt themselves.

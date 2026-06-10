@@ -1,0 +1,136 @@
+---
+title: memax agents
+description: Sync agent configs + session artifacts across devices. Manage the cloud-backed copy, recover deletions, diagnose device state.
+---
+
+The `agents` command group has two sub-surfaces:
+
+- **`agents configs`** — device-aware sync of agent config files
+  (`CLAUDE.md`, `.cursorrules`, `instructions.md`, etc.).
+- **`agents sessions`** — cloud backup of agent session artifacts
+  (conversation transcripts, tool outputs).
+
+Plus top-level orchestration commands that cover both in one call.
+
+## Top-level
+
+### `memax agents sync`
+
+Run both config and session sync bidirectionally. Equivalent to
+running `memax agents configs sync` then `memax agents sessions sync`.
+
+| Flag     | Description                                 |
+| -------- | ------------------------------------------- |
+| `--push` | Force-push local → cloud (overwrite cloud). |
+| `--pull` | Force-pull cloud → local (overwrite local). |
+
+```bash
+memax agents sync
+memax agents sync --push
+```
+
+### `memax agents list`
+
+List cloud-backed configs AND sessions in a combined view.
+
+```bash
+memax agents list
+```
+
+### `memax agents doctor`
+
+Print what this machine sees vs what's in the cloud for both configs
+and sessions — identity, discovery paths, safe restore behavior.
+Useful for diagnosing "why didn't my config sync?" questions.
+
+```bash
+memax agents doctor
+```
+
+## `memax agents configs …`
+
+### `configs sync`
+
+Bidirectional sync of agent config files. Resolves local vs cloud
+conflicts by hash + mtime (conflicts are prompted unless `--push` /
+`--pull` forces a direction).
+
+| Flag     | Description               |
+| -------- | ------------------------- |
+| `--push` | Force-push local → cloud. |
+| `--pull` | Force-pull cloud → local. |
+
+### `configs list`
+
+List agent configs currently backed up in the cloud, grouped by
+agent (claude-code, cursor, gemini, etc.).
+
+### `configs deleted`
+
+Show configs that have been deleted from the cloud but are still
+within the retention window (recoverable).
+
+### `configs restore`
+
+**Interactive.** Lists recoverable deleted configs, you pick which
+ones to restore by index. Not parameterized with a config ID.
+
+### `configs delete`
+
+**Interactive.** Lists synced configs, you pick which ones to delete.
+Removes the cloud copy; the local file is moved to trash.
+
+### `configs doctor`
+
+Config-specific version of `memax agents doctor` — identity,
+discovery paths, safe restore behavior scoped to configs only.
+
+## `memax agents sessions …`
+
+### `sessions sync`
+
+Bidirectional sync of session artifacts (stored in object storage,
+not Postgres). Same `--push` / `--pull` forcing flags as configs.
+
+### `sessions list`
+
+List session artifacts currently backed up.
+
+### `sessions deleted`
+
+Recoverable deleted sessions within the retention window.
+
+### `sessions restore`
+
+**Interactive.** Pick recoverable deleted sessions to restore.
+
+### `sessions delete`
+
+**Interactive.** Pick synced sessions to delete.
+
+### `sessions cleanup`
+
+Remove safe legacy global session duplicates from the cloud. Intended
+for one-time cleanup after the per-project session scoping migration.
+
+| Flag        | Description            |
+| ----------- | ---------------------- |
+| `-y, --yes` | Skip the confirmation. |
+
+### `sessions doctor`
+
+Session-specific version of `memax agents doctor`.
+
+## Behavior
+
+- **Device identity.** Each machine registers a stable device ID on
+  first sync. The ID determines ownership of pull targets on shared
+  accounts — a pull to `~/.claude/CLAUDE.md` on your laptop doesn't
+  overwrite your desktop's file, and vice versa.
+- **Retention.** Deleted configs and sessions stay in the cloud for
+  a retention window (see the hub's plan entitlements) before being
+  permanently removed. Use `deleted` / `restore` to recover within
+  that window.
+- **Conflicts.** When local and cloud diverge on the same file, the
+  default `sync` prompts for resolution. `--push` and `--pull` bypass
+  the prompt by forcing a direction.

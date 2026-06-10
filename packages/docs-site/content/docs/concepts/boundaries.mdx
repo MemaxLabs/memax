@@ -1,0 +1,76 @@
+---
+title: Access & visibility
+description: How Memax decides who can see what — the current model is hub membership, not a classic per-memory boundary.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+<Callout type="warn">
+  The `boundary` field on a memory is defined in the type system (`private | hub
+  | team | org`) but **is not currently used for access control**. On create the
+  server always writes `boundary = "private"`, and read queries filter by
+  `owner_id` / `hub_id` directly. Treat this page as the real access model;
+  treat the `boundary` enum as reserved for future use.
+</Callout>
+
+## What actually gates access
+
+Every memory row has:
+
+- `owner_id` — the user who pushed it.
+- `hub_id` — the hub it lives in.
+
+Read access is granted if:
+
+- The caller is the `owner_id` (personal access), **or**
+- The caller is a member of the memory's `hub_id` with a role
+  that allows reads (all four team roles — owner, admin,
+  contributor, viewer — can read).
+
+Filtering is SQL-level in
+`packages/server/internal/store/postgres_memories.go`. Every list /
+get / recall query narrows by `owner_id` or `hub_id IN (<caller's hubs>)`.
+A handler bug can't bypass that — the store refuses to return rows
+you can't access.
+
+## What the `boundary` field is for today
+
+- Present on every memory, always set to `"private"` on create.
+- REST / SDK callers can send a `boundary` value, but the server
+  overrides it on write.
+- Doesn't participate in recall filters or list filters.
+
+The field exists so future access-control refinements can land
+without a schema change (e.g. a dedicated "hub-wide readable
+regardless of membership" tier or an org-wide public tier).
+Nothing depends on it right now.
+
+## Hub-level visibility
+
+Because access is hub-scoped, the practical controls are:
+
+- **Personal hub** — private to you. Nothing else can read it.
+- **Team hubs** — readable by every member. Pushes are visible to
+  all members automatically.
+- **Role controls writes + admin actions**, not reads. Viewers can
+  see everything in the hub but can't push.
+
+To share a memory from personal to team (or vice versa), use the
+share endpoint: `POST /v1/memories/:id/share` — see
+[API > Memories](/api/memories).
+
+## Recall and access
+
+When recall runs:
+
+1. The query is embedded; the vector index returns candidate chunks
+   across the corpus.
+2. The store filters candidates by the caller's accessible hubs
+   (personal hub plus every team hub they belong to).
+3. Remaining candidates are ranked (and reranked unless
+   `no_rerank`).
+
+You never see a chunk from a hub you don't belong to, regardless
+of the query. Archived memories are always excluded from recall
+today — there's no `include_archived` knob that re-includes them
+(see [Retrieval](/concepts/retrieval)).

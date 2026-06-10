@@ -1,0 +1,8 @@
+Subject: Your memax invite expires soon
+
+Your memax early access invite is still open. It expires {{.ExpiresAt}} if you haven't claimed it yet.
+
+Create your account any time before then:
+{{.RegisterURL}}
+
+After {{.ExpiresAt}}, you'll need to request a new invite.

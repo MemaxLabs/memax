@@ -1,0 +1,1 @@
+Evaluated Gusto, Rippling, and Deel for payroll. Gusto is the simplest for US-only, but we need international contractor support. Rippling handles both but costs 2x. Went with Deel — best contractor coverage for 12 countries, API for automated onboarding, and their compliance team handles local tax registration. $49/contractor/month.

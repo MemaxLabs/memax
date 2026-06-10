@@ -1,0 +1,108 @@
+---
+title: memax import
+description: One-way import of a directory's files into your Memax hub.
+---
+
+One-way push of supported files from a local directory into Memax.
+`memax import` does not choose a hub — there's no `--hub` flag, it
+doesn't read the active hub, and it doesn't read `.memax.yml`. With
+normal user credentials imports land in your personal hub; with
+hub-scoped API keys they land in whichever hub the key is bound to.
+Re-runs are idempotent (dedup by content hash).
+
+## Usage
+
+```bash
+memax import [directory]
+memax import status
+```
+
+`directory` defaults to `.` (the current directory).
+
+## Options
+
+| Flag                     | Description                                                                                                                                                                                  | Default   |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `-w, --watch`            | Watch for changes after initial import (experimental)                                                                                                                                        | off       |
+| `-b, --boundary <level>` | Accepted for forward compatibility; **recorded locally** in the sync-source status only. Does not currently change server-side visibility (the server writes `boundary=private` regardless). | `private` |
+| `--ignore <patterns>`    | Additional comma-separated **directory names** to skip                                                                                                                                       | —         |
+| `-y, --yes`              | Skip the confirmation prompt when importing more than 10 files                                                                                                                               | off       |
+
+Anything not listed above is not a recognized flag. There is no
+`--include`, `--exclude`, `--hub`, or `--dry-run` today.
+
+## Which files are imported
+
+Only files whose extension matches the allowlist below are imported.
+Everything else (binaries, images, unknown extensions) is skipped
+silently without a warning.
+
+```
+.md  .txt  .ts  .tsx  .js  .jsx  .go  .py  .rs
+.yaml  .yml  .json  .toml  .sh  .bash  .zsh
+.css  .html  .sql  .graphql  .proto  .dockerfile
+```
+
+The following directory names are **always** skipped, even without
+`--ignore`:
+
+```
+node_modules  .git  .next  dist  __pycache__  .env  .env.local  .DS_Store
+```
+
+Any directory whose name starts with `.` is also skipped. `.gitignore`
+is **not** parsed — we don't read it. Use `--ignore` to add directory
+names of your own.
+
+## Examples
+
+### Import the current directory
+
+```bash
+memax import
+```
+
+### Import a docs directory
+
+```bash
+memax import ./docs
+```
+
+### Import with extra ignores
+
+```bash
+memax import ./repo --ignore "vendor,tmp,build"
+```
+
+### Skip the "many files" confirmation
+
+```bash
+memax import ./large-dir --yes
+```
+
+## `memax import status`
+
+Prints the directories you've previously imported, when they last ran,
+and their last-run counts (scanned / pushed / skipped / errors).
+
+```bash
+memax import status
+```
+
+## Behavior
+
+- **Idempotent.** Files are deduplicated server-side by content hash,
+  so re-running `memax import` on an unchanged tree is a no-op.
+- **Deletions are not propagated.** Removing a file locally does **not**
+  remove the corresponding memory from your hub — use `memax delete`
+  for that.
+- **Hub target.** `memax import` does **not** pass a hub to the
+  server — there's no `--hub` flag, `.memax.yml hub:` is not read
+  by import, and `memax hub switch` does not route import writes.
+  Imports land in whichever hub the server treats as the caller's
+  default write target (normally the personal hub). To route
+  specific content into a team hub, use [`memax push`](/cli/push)
+  with `--hub <slug>` per file.
+- **Watch mode is experimental.** `--watch` is plumbed but the
+  `--help` text flags it as "coming soon" while the UX is being
+  validated.

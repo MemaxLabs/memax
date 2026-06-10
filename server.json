@@ -1,0 +1,26 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.MemaxLabs/memax",
+  "title": "Memax",
+  "description": "Universal memory hub for AI agents. Push knowledge from any agent, recall it from any other. 7 tools: recall, push, search, get, forget, capture. Cloud-hosted with cross-agent memory sharing.",
+  "version": "1.0.0",
+  "websiteUrl": "https://memax.app",
+  "repository": {
+    "url": "https://github.com/MemaxLabs/memax",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.memax.app/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer token with your Memax API key (create one at memax.app or via `memax setup`)",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

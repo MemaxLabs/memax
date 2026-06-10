@@ -3,3 +3,9 @@ Copyright 2026 MemaxLabs, Inc.
 
 This product includes software developed at MemaxLabs, Inc.
 (https://memax.app).
+
+This repository contains packages under multiple licenses. See LICENSE for the
+per-package breakdown:
+
+  - packages/cli, packages/sdk, packages/docs-site  — Apache License 2.0
+  - packages/server, packages/ui, packages/web      — GNU Affero GPL v3.0

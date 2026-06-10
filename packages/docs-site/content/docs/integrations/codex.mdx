@@ -1,0 +1,77 @@
+---
+title: Codex
+description: Connect OpenAI's Codex to Memax via MCP.
+---
+
+import { Steps, Step } from "fumadocs-ui/components/steps";
+
+OpenAI Codex supports MCP servers.
+
+## Quick setup
+
+```bash
+memax setup --only codex --mcp
+```
+
+## Manual setup
+
+<Steps>
+  <Step>
+    ### Add Memax to Codex's MCP config
+
+    Codex's config is **TOML**, not JSON, at `~/.codex/config.toml`:
+
+    ```toml
+    [mcp_servers.memax]
+    command = "npx"
+    args = ["-y", "memax-cli", "mcp", "serve", "--agent", "codex"]
+    ```
+
+    For remote MCP (hosted), use a `url` block and put the auth
+    header under a nested `[mcp_servers.memax.headers]` table:
+
+    ```toml
+    [mcp_servers.memax]
+    type = "url"
+    url = "https://api.memax.app/mcp"
+
+    [mcp_servers.memax.headers]
+    Authorization = "Bearer mxk_..."
+    ```
+
+  </Step>
+  <Step>
+    ### Sign in
+
+    ```bash
+    memax login
+    ```
+
+    (Skip if using remote MCP with an `mxk_` token.)
+
+  </Step>
+  <Step>
+    ### Verify
+
+    Start a Codex session and ask which tools it has. You should see
+    the 9 Memax tools listed in [`memax mcp`](/cli/mcp).
+
+  </Step>
+</Steps>
+
+## Usage
+
+Codex can use Memax to:
+
+- Pull project conventions, architecture decisions, and context
+  before generating code (`memax_recall`).
+- Store decisions and learnings made during a session
+  (`memax_push`, `memax_capture`).
+- Browse hub / topic structure (`memax_hubs`, `memax_topics`).
+
+## CLI fallback
+
+```bash
+CONTEXT=$(memax recall "deployment checklist" --format text)
+# Include in your Codex prompt manually.
+```

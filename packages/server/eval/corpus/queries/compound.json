@@ -1,0 +1,393 @@
+{
+  "queries": [
+    {
+      "id": "cpd-q1",
+      "query": "what did Jiahao push about auth last week?",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:author+topic+temporal",
+        "lang:en",
+        "hub:multi"
+      ],
+      "relevance": {
+        "depth-002-api-key-rotation-design": 3,
+        "002-authentication-system": 2,
+        "005-debugging-login-redirect-loop": 2,
+        "depth-003-auth-middleware-audit": 1,
+        "depth-001-oauth-consent-implementation": 0
+      },
+      "min_results": 1,
+      "description": "Author + topic + temporal compound query. API key rotation design is the best match (Jiahao authored, auth topic, recent). Existing auth memories by Jiahao rank next. Auth audit is by Mira so it ranks lower despite topic match. Consent implementation is by Ziyang so it should not appear.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cpd-q2",
+      "query": "deploy incidents in April in the team hub",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:temporal+topic+hub",
+        "lang:en",
+        "hub:team"
+      ],
+      "relevance": {
+        "depth-004-staging-deploy-incident": 3,
+        "003-deployment-process": 2,
+        "depth-005-worker-deployment-checklist": 1,
+        "depth-006-vercel-deployment-config": 0,
+        "distractor-stale-deploy-process": 0
+      },
+      "min_results": 1,
+      "description": "Temporal + topic + hub compound query. Staging incident is the best match (April, deploy incident, team hub). Existing deploy process is procedural context (grade 2). Worker checklist is tangentially relevant. Vercel config is in personal hub (grade 0). Stale deploy process is outdated (grade 0).",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cpd-q3",
+      "query": "search tuning notes from my personal hub",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:topic+hub",
+        "lang:en",
+        "hub:personal"
+      ],
+      "relevance": {
+        "depth-007-hybrid-search-tuning": 3,
+        "depth-009-query-distillation-prompts": 2,
+        "mtg-005-research-embedding-comparison": 1,
+        "mtg-004-research-rag-evaluation": 1,
+        "depth-008-embedding-migration-plan": 0
+      },
+      "min_results": 1,
+      "description": "Topic + hub scope compound query. Hybrid search tuning is the best match (search topic, personal hub, Ziyang's). Query distillation is related retrieval work (personal hub). Embedding comparison and RAG eval are tangentially relevant research in personal hub. Embedding migration plan is in team hub, not personal (grade 0).",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cpd-q4",
+      "query": "what fitness progress did I make in March?",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:personal+temporal",
+        "lang:en",
+        "hub:personal",
+        "domain:health"
+      ],
+      "relevance": {
+        "depth-010-fitness-progress-march": 3,
+        "personal-fitness-routine": 2,
+        "personal-health-checkup-notes": 1
+      },
+      "min_results": 1,
+      "description": "Personal + temporal compound query. March fitness progress is a direct match (March, fitness, personal). Existing fitness routine provides workout context (grade 2). Health checkup is tangentially health-related (grade 1).",
+      "source": "mcp",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      }
+    },
+    {
+      "id": "cpd-q5",
+      "query": "books I've been reading",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:personal+topical",
+        "lang:en",
+        "hub:personal",
+        "domain:reading"
+      ],
+      "relevance": {
+        "depth-011-book-pragmatic-programmer": 3,
+        "personal-book-thinking-fast-slow": 3,
+        "personal-laptop-comparison": 0
+      },
+      "min_results": 2,
+      "description": "Personal + topical compound query. Both book notes should rank equally high (grade 3) — this tests whether the ranker can surface multiple equally-relevant results. Laptop comparison should not appear despite both being 'comparison' content.",
+      "source": "mcp",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      }
+    },
+    {
+      "id": "cpd-q6",
+      "query": "all the auth related work we've done",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:broad-topic",
+        "lang:en",
+        "hub:multi"
+      ],
+      "relevance": {
+        "002-authentication-system": 3,
+        "depth-003-auth-middleware-audit": 3,
+        "depth-002-api-key-rotation-design": 2,
+        "depth-001-oauth-consent-implementation": 2,
+        "005-debugging-login-redirect-loop": 2,
+        "mtg-002-design-review-consent-screen": 1,
+        "distractor-wrong-hub-auth": 0,
+        "distractor-wrong-author-debug": 1
+      },
+      "min_results": 3,
+      "description": "Broad topic compound query that should return many competing auth memories. Tests ranking quality across 6+ relevant results. The auth system overview and audit are the most comprehensive (grade 3). Implementation-specific memories rank next (grade 2). The consent screen design review is tangential (grade 1). The wrong-hub distractor should be excluded by hub scope (grade 0).",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cpd-q7",
+      "query": "Ziyang's notes about retrieval and search",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:author+topic",
+        "lang:en",
+        "hub:multi"
+      ],
+      "relevance": {
+        "depth-007-hybrid-search-tuning": 3,
+        "depth-009-query-distillation-prompts": 2,
+        "mtg-004-research-rag-evaluation": 1,
+        "mtg-005-research-embedding-comparison": 1,
+        "depth-008-embedding-migration-plan": 1
+      },
+      "min_results": 2,
+      "description": "Author + topic compound query. Hybrid search tuning is the top match (Ziyang authored, directly about search tuning). Query distillation is also Ziyang's and about retrieval. RAG eval and embedding comparison are Ziyang's but more about research methodology than practical search work. Embedding migration is Jiahao's (wrong author) but retrieval-related, so grade 1.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000090"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cpd-q8",
+      "query": "what did we discuss in the latest design review?",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:temporal+topic",
+        "lang:en",
+        "hub:team",
+        "kind:episodic"
+      ],
+      "relevance": {
+        "depth-013-design-review-memory-detail": 3,
+        "mtg-002-design-review-consent-screen": 2,
+        "product-feature-spec-ask-bar-redesign": 1,
+        "depth-014-sprint-planning-april-14": 1
+      },
+      "min_results": 1,
+      "description": "Temporal + topic compound query. Memory detail page design review is the latest (April 10) and should rank first. Consent screen design review is older (March 22) but still a design review (grade 2). Ask bar redesign is a feature spec, not a design review, but design-adjacent (grade 1). Sprint planning mentions the memory detail page task (grade 1).",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cpd-q9",
+      "query": "Mira审计了哪些auth安全问题",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:author+topic",
+        "lang:zh",
+        "hub:team"
+      ],
+      "relevance": {
+        "depth-003-auth-middleware-audit": 3,
+        "002-authentication-system": 0,
+        "depth-002-api-key-rotation-design": 0,
+        "distractor-wrong-author-debug": 0
+      },
+      "min_results": 1,
+      "description": "Cross-author + cross-language: Chinese query asking about Mira's English-language auth audit. Tests author filter with romanized name in Chinese sentence. Auth system doc (Jiahao) and API key rotation (Jiahao) should NOT rank high despite topic match — they are by the wrong author. The wrong-author debug distractor is also by Mira but about login expiry, not auth audit.",
+      "source": "mcp",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    },
+    {
+      "id": "cpd-q10",
+      "query": "what did Jiahao push about deploying the worker",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:author+topic",
+        "lang:en",
+        "hub:team"
+      ],
+      "relevance": {
+        "depth-005-worker-deployment-checklist": 3,
+        "003-deployment-process": 0,
+        "distractor-stale-deploy-process": 0
+      },
+      "min_results": 1,
+      "description": "Cross-author retrieval: asks specifically for Jiahao's worker deployment notes. The general deployment process (Ziyang) and the stale deploy doc should NOT rank high despite strong topic match — they are by the wrong author.",
+      "source": "eval",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    },
+    {
+      "id": "cpd-q11",
+      "query": "Sarah做了什么pricing的决定",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:author+topic",
+        "lang:zh",
+        "hub:team"
+      ],
+      "relevance": {
+        "product-q2-pricing-decision": 3,
+        "distractor-stale-pricing": 0,
+        "product-stakeholder-meeting-enterprise": 1
+      },
+      "min_results": 1,
+      "description": "Cross-author + cross-language: Chinese query for Sarah's pricing decision. The stale pricing draft (Jiahao) should NOT rank high despite exact topic match — it's by the wrong author AND superseded. Enterprise pitch (Sarah) tangentially mentions pricing as context.",
+      "source": "mcp",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    },
+    {
+      "id": "cpd-q12",
+      "query": "Mira Chen写的PostgreSQL选型文档",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:author+topic",
+        "lang:zh",
+        "hub:team"
+      ],
+      "relevance": {
+        "004-adr-chose-postgresql-over-mongodb": 3,
+        "distractor-semantic-neighbor-db": 0
+      },
+      "min_results": 1,
+      "description": "Cross-author with full name: Chinese query using Mira Chen's full name to find her PostgreSQL ADR. The MongoDB distractor (Jiahao) should NOT rank high despite database topic overlap — wrong author.",
+      "source": "cli",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000090",
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      }
+    },
+    {
+      "id": "cpd-q13",
+      "query": "Jiahao在team hub最近推送了什么和OAuth相关的",
+      "query_type": "compound",
+      "slices": [
+        "type:compound",
+        "filter:author+topic+hub",
+        "lang:zh",
+        "hub:team"
+      ],
+      "relevance": {
+        "code-oauth-redirect-loop-debug": 3,
+        "005-debugging-login-redirect-loop": 2,
+        "depth-001-oauth-consent-implementation": 0,
+        "distractor-wrong-author-debug": 0
+      },
+      "min_results": 1,
+      "description": "Mirrors the real production bug: Chinese query for teammate's OAuth work in the team hub. Jiahao's OAuth debug and login redirect fix should rank high. Ziyang's OAuth consent implementation should NOT (wrong author). Tests the exact pattern that failed in production — cross-author hub-scoped retrieval.",
+      "source": "mcp",
+      "scope": {
+        "read_hub_ids": [
+          "00000000-0000-0000-0000-000000000091"
+        ],
+        "active_boost_hub_id": "00000000-0000-0000-0000-000000000091"
+      },
+      "project_context": {
+        "repo": "github.com/MemaxLabs/memax-internal",
+        "project": "memax",
+        "branch": "main"
+      }
+    }
+  ]
+}

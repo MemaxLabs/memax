@@ -1,0 +1,9 @@
+Subject: Your memax sign-in code: {{.Code}}
+
+Your memax sign-in code: {{.Code}}
+
+This code expires in {{.ExpiresInMinutes}} minutes.
+
+If you didn't request this code, you can safely ignore this email — someone may have typed your address by mistake.
+
+Requested from {{.RequestContext}}. For your security, never share this code with anyone.

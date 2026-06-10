@@ -1,0 +1,1 @@
+Q1 2026 quarterly review summary. Revenue grew 34% QoQ to $42K MRR. Churn dropped from 8.2% to 5.1% after the onboarding flow rework. Main concern: enterprise pipeline is thin — only 2 qualified leads. Sarah is hiring a BDR to fix top-of-funnel. Budget approved for $8K/month marketing spend starting April. Next quarter target: $60K MRR, 3 enterprise deals closed.

@@ -1,0 +1,1 @@
+Sprint review March 28. Shipped hybrid search (pg_trgm + pgvector + RRF). Retrieval accuracy improved for short queries. Next sprint: auto-capture from agent sessions, PostHog analytics integration, web app UX improvements.

@@ -1,0 +1,60 @@
+---
+title: Agent Integrations
+description: Connect Memax to Claude Code, Cursor, Codex, and other MCP-compatible agents.
+---
+
+import { Cards, Card } from "fumadocs-ui/components/card";
+
+Memax is agent-agnostic. The primary integration method is **MCP**
+(Model Context Protocol) — any MCP-compatible client gets direct
+tool access to your hub.
+
+## Integration methods
+
+| Method         | Setup                         | Best for                                 |
+| -------------- | ----------------------------- | ---------------------------------------- |
+| **MCP server** | `memax setup --mcp` or config | Tool-calling agents (recommended)        |
+| **Hooks**      | `memax setup --hooks`         | Claude Code ambient recall               |
+| **CLI piping** | Shell scripting               | Any agent, universal fallback            |
+| **SDK**        | `npm i memax-sdk`             | Custom agent builds in TypeScript / Node |
+
+## Supported agents
+
+<Cards>
+  <Card
+    title="Claude Code"
+    href="/integrations/claude-code"
+    description="MCP + hooks. Deepest integration, includes ambient context."
+  />
+  <Card
+    title="Cursor"
+    href="/integrations/cursor"
+    description="MCP via .cursor/mcp.json."
+  />
+  <Card
+    title="Codex"
+    href="/integrations/codex"
+    description="MCP via Codex's tool config."
+  />
+  <Card
+    title="Other agents"
+    href="/integrations/other-agents"
+    description="Windsurf, Copilot, and any MCP-compatible client."
+  />
+</Cards>
+
+## Quick reference
+
+| Agent       | MCP | Hooks | Setup                                  |
+| ----------- | :-: | :---: | -------------------------------------- |
+| Claude Code |  ✓  |   ✓   | `memax setup --only claude-code --all` |
+| Cursor      |  ✓  |   —   | `memax setup --only cursor --mcp`      |
+| Codex       |  ✓  |   —   | `memax setup --only codex --mcp`       |
+| Windsurf    |  ✓  |   —   | `memax setup --only windsurf --mcp`    |
+| Gemini CLI  |  ✓  |   ✓   | `memax setup --only gemini --all`      |
+| Copilot CLI |  ✓  |   —   | `memax setup --only copilot --mcp`     |
+| VS Code     |  ✓  |   —   | `memax setup --only vscode --mcp`      |
+| Custom      |  ✓  |   —   | Manual MCP config or SDK               |
+
+There is **no** `memax setup <agent>` positional syntax. Use
+`--only <agent>` and feature flags (`--mcp`, `--hooks`, `--all`).

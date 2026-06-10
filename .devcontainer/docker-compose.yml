@@ -1,0 +1,119 @@
+services:
+  app:
+    hostname: memax-devcontainer
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/workspaces/memax:cached
+      - pnpm-home:/home/node/.local/share/pnpm
+      - claude-config:/home/node/.claude
+      - codex-config:/home/node/.codex
+      - gemini-config:/home/node/.gemini
+      - copilot-config:/home/node/.copilot
+      - config-home:/home/node/.config
+    command: sleep infinity
+    environment:
+      DATABASE_URL: postgres://memax:memax@postgres:5432/memax?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_DOCS_URL: http://localhost:3001
+      JWT_SECRET: devcontainer-local-dev-secret
+      MIGRATIONS_DIR: /workspaces/memax/packages/server/migrations
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: memax
+      S3_SECRET_KEY: memaxdevpass
+      S3_BUCKET: memax-storage
+      S3_REGION: us-east-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: memax
+      POSTGRES_PASSWORD: memax
+      POSTGRES_DB: memax
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memax"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: memax
+      MINIO_ROOT_PASSWORD: memaxdevpass
+    command: server /data --console-address ":9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        mc alias set local http://minio:9000 memax memaxdevpass
+        mc mb --ignore-existing local/memax-storage
+        cat >/tmp/cors.json <<'EOF'
+        {
+          "CORSRules": [
+            {
+              "AllowedOrigins": [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000"
+              ],
+              "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+              "AllowedHeaders": ["*"],
+              "ExposeHeaders": ["ETag"],
+              "MaxAgeSeconds": 3000
+            }
+          ]
+        }
+        EOF
+        mc cors set local/memax-storage /tmp/cors.json
+        exit 0
+
+volumes:
+  pnpm-home:
+  claude-config:
+  codex-config:
+  gemini-config:
+  copilot-config:
+  config-home:
+  pgdata:
+  miniodata:

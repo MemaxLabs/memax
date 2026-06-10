@@ -1,0 +1,44 @@
+/**
+ * Surface radius — single source of truth for memax container curves.
+ *
+ * Two tiers, one root-scoped token each. Small interactive chrome
+ * (tiles ≤40px) uses `--app-radius-chrome` (14px); large container
+ * surfaces (cards, dialogs, popovers, bar) use `--app-radius-surface`
+ * (20px). Single values read too blunt on one scale or the other —
+ * 14px is subtle on a wide dialog, 20px is near-circular on a 40px
+ * squircle — so the tier split keeps proportional curvature across
+ * the visual range.
+ *
+ * Why these tokens live at `:root` (never theme-scoped): a prior
+ * iteration put `--radius-bar` under `.theme-warm`, which meant
+ * portaled popovers/dialogs rendered OUTSIDE that class resolved
+ * the var as undefined and fell back to `border-radius: 0` (the
+ * "rectangular" bug). Shape/geometry is global; only colors are
+ * theme-scoped.
+ *
+ * Architecture:
+ *   1. `:root` owns the values. Never theme-scoped, never
+ *      route-scoped. Portaled elements always inherit from `:root`,
+ *      so the value always resolves.
+ *   2. `@theme inline` exposes each value as a Tailwind utility.
+ *      - `rounded-chrome`  + `rounded-t-chrome`  / `rounded-b-chrome`
+ *      - `rounded-surface` + `rounded-t-surface` / `rounded-b-surface`
+ *      Pick by element size: ≤40px chrome, >40px surface.
+ *   3. Raw CSS recipes (.glass-panel, .glass-dropdown, .notif-glass,
+ *      etc.) consume `var(--app-radius-surface)` directly — they're
+ *      all large-surface containers.
+ *
+ * Import from both `packages/web/src/app/globals.css` and
+ * `packages/ui/app/globals.css` so the web app and ui-isolated
+ * contexts (kitchen) share the tokens.
+ */
+
+@theme inline {
+  --radius-chrome: var(--app-radius-chrome);
+  --radius-surface: var(--app-radius-surface);
+}
+
+:root {
+  --app-radius-chrome: 14px;
+  --app-radius-surface: 20px;
+}

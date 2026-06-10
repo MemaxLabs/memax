@@ -1,0 +1,1 @@
+The API server deploys to Fly.io via GitHub Actions on push to main. The web app deploys to Vercel. Staging URLs: staging-api.memaxlabs.com and staging-app.memaxlabs.com. Use fly secrets set for environment variables.

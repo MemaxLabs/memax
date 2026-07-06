@@ -11,22 +11,34 @@ import {
 import { useRouter, usePathname } from "next/navigation";
 import { useQueries } from "@tanstack/react-query";
 import {
+  buildMemoriesPath,
   buildMemoryDetailPath,
   buildTopicPath,
   getHubSlugForPath,
 } from "@/lib/route-helpers";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowUpRight, ChevronRight, Pin } from "lucide-react";
+import {
+  Archive,
+  ArrowUpRight,
+  ChevronRight,
+  Pencil,
+  Pin,
+  Trash2,
+} from "lucide-react";
 import {
   getTopicMemoriesQueryOptions,
   getTopicQueryOptions,
+  useArchiveTopic,
+  useDeleteTopic,
   useMarkTopicVisit,
+  useRestoreTopic,
   useTopic,
   useTopics,
   useTopicMemories,
   useUpdateTopic,
   type TopicTree,
 } from "@/hooks/use-topics";
+import { ActionMenu, actionMenuEntries } from "../action-menu";
 import { pluralize, useLocale, useInterpolate } from "@/i18n";
 import { TopicBreadcrumb } from "./topic-breadcrumb";
 import { TopicIcon } from "./topic-icon";
@@ -568,7 +580,13 @@ export function TopicDetail({
   // would redirect to `/h/personal/...`.
   const currentHubSlug = getHubSlugForPath(pathname);
   const updateTopic = useUpdateTopic();
+  const archiveTopic = useArchiveTopic();
+  const restoreTopic = useRestoreTopic();
+  const deleteTopic = useDeleteTopic();
   const [pendingPin, setPendingPin] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const selection = useSelection();
   const forget = useMemoryForget();
@@ -746,6 +764,71 @@ export function TopicDetail({
     setExpanded((current) => ({ ...current, [id]: !current[id] }));
   }, []);
 
+  // Exit route after this topic leaves the tree (archive/delete): the
+  // parent topic when one exists, otherwise the hub's topics overview.
+  const exitAfterRemoval = useCallback(() => {
+    const parent =
+      ancestors && ancestors.length > 1
+        ? ancestors[ancestors.length - 2]
+        : null;
+    router.push(
+      parent
+        ? buildTopicPath(currentHubSlug, parent.id)
+        : buildMemoriesPath(currentHubSlug),
+      { scroll: false },
+    );
+  }, [ancestors, currentHubSlug, router]);
+
+  const handleStartRename = useCallback(() => {
+    if (!displayTopic) return;
+    setRenameValue(displayTopic.name);
+    setRenaming(true);
+    requestAnimationFrame(() => renameInputRef.current?.select());
+  }, [displayTopic]);
+
+  const handleSubmitRename = useCallback(() => {
+    if (!displayTopic) return;
+    const trimmed = renameValue.trim();
+    setRenaming(false);
+    if (!trimmed || trimmed === displayTopic.name) return;
+    updateTopic.mutate({ id: displayTopic.id, name: trimmed });
+  }, [displayTopic, renameValue, updateTopic]);
+
+  const handleArchive = useCallback(() => {
+    if (!displayTopic) return;
+    const topicId = displayTopic.id;
+    archiveTopic.mutate(topicId, {
+      onSuccess: () => {
+        exitAfterRemoval();
+        toast.success(t.topics.archiveToast, {
+          detail: t.topics.archiveToastDetail,
+          actionLabel: t.common.undo,
+          onAction: () => {
+            restoreTopic.mutate(topicId, {
+              onSuccess: () => toast.success(t.topics.restoreToast),
+            });
+            toast.dismiss();
+          },
+        });
+      },
+    });
+  }, [archiveTopic, displayTopic, exitAfterRemoval, restoreTopic, t, toast]);
+
+  // Destructive-confirm contract: resolve true to close the popover,
+  // false to keep the confirm sub-panel mounted for retry. The global
+  // mutation meta handles the error toast.
+  const handleDelete = useCallback(async () => {
+    if (!displayTopic) return false;
+    try {
+      await deleteTopic.mutateAsync(displayTopic.id);
+    } catch {
+      return false;
+    }
+    exitAfterRemoval();
+    toast.success(t.topics.deleted);
+    return true;
+  }, [deleteTopic, displayTopic, exitAfterRemoval, t, toast]);
+
   const navigateTopic = useCallback(
     (nextTopicId: string, nextDirection: 1 | -1) => {
       if (nextTopicId === activeTopicId) return;
@@ -857,12 +940,29 @@ export function TopicDetail({
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-start gap-2">
-                  <h2
-                    className="text-[21px] font-bold text-foreground"
-                    style={{ letterSpacing: "-0.02em" }}
-                  >
-                    {displayTopic.name}
-                  </h2>
+                  {renaming ? (
+                    <input
+                      ref={renameInputRef}
+                      value={renameValue}
+                      onChange={(event) => setRenameValue(event.target.value)}
+                      onBlur={handleSubmitRename}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") handleSubmitRename();
+                        if (event.key === "Escape") setRenaming(false);
+                      }}
+                      maxLength={100}
+                      aria-label={t.topics.rename}
+                      className="min-w-0 flex-1 rounded-chrome border border-border/60 bg-transparent px-1.5 py-0.5 text-[21px] font-bold text-foreground outline-none focus-visible:border-ring"
+                      style={{ letterSpacing: "-0.02em" }}
+                    />
+                  ) : (
+                    <h2
+                      className="text-[21px] font-bold text-foreground"
+                      style={{ letterSpacing: "-0.02em" }}
+                    >
+                      {displayTopic.name}
+                    </h2>
+                  )}
                   <div className="ml-auto flex items-center gap-2">
                     {memories.length > 0 && (
                       <button
@@ -880,6 +980,35 @@ export function TopicDetail({
                       pinned={displayTopic.pinned}
                       disabled={pendingPin}
                       onToggle={handleTogglePin}
+                    />
+                    <ActionMenu
+                      triggerAriaLabel={t.topics.moreActions}
+                      items={actionMenuEntries(
+                        {
+                          id: "rename",
+                          label: t.topics.rename,
+                          icon: Pencil,
+                          onSelect: handleStartRename,
+                        },
+                        {
+                          id: "archive",
+                          label: t.topics.archive,
+                          icon: Archive,
+                          onSelect: handleArchive,
+                        },
+                        "divider",
+                        {
+                          id: "delete",
+                          label: t.topics.delete,
+                          icon: Trash2,
+                          destructive: true,
+                          onConfirm: handleDelete,
+                          confirmPrompt: t.topics.deleteConfirmShort,
+                          confirmLabel: t.topics.delete,
+                          cancelLabel: t.topics.deleteKeep,
+                          pendingLabel: t.topics.deletePending,
+                        },
+                      )}
                     />
                   </div>
                 </div>

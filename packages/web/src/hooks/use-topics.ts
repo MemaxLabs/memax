@@ -136,6 +136,53 @@ export function useUpdateTopic() {
   });
 }
 
+export function useArchivedTopics(enabled = true) {
+  const { activeHubId } = useAuth();
+  const hubId = activeHubId || undefined;
+  return useQuery({
+    queryKey: ["topics", "archived", hubId ?? "all"] as const,
+    queryFn: () => getMemaxClient().topics.listArchived(hubId),
+    staleTime: 30 * 1000,
+    enabled,
+  });
+}
+
+export function useArchiveTopic() {
+  const { t } = useLocale();
+  const { activeHubId } = useAuth();
+  return useMutation({
+    meta: {
+      errorMessage: t.toast.topicFailed,
+      errorAction: t.errors.action.archiveTopic,
+    },
+    mutationFn: (id: string) =>
+      getMemaxClient().topics.archive(id, activeHubId || undefined),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+      queryClient.invalidateQueries({ queryKey: ["hub-summary"] });
+      queryClient.invalidateQueries({ queryKey: hubListQueryKey });
+    },
+  });
+}
+
+export function useRestoreTopic() {
+  const { t } = useLocale();
+  const { activeHubId } = useAuth();
+  return useMutation({
+    meta: {
+      errorMessage: t.toast.topicFailed,
+      errorAction: t.errors.action.restoreTopic,
+    },
+    mutationFn: (id: string) =>
+      getMemaxClient().topics.restore(id, activeHubId || undefined),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+      queryClient.invalidateQueries({ queryKey: ["hub-summary"] });
+      queryClient.invalidateQueries({ queryKey: hubListQueryKey });
+    },
+  });
+}
+
 export function useDeleteTopic() {
   const { t } = useLocale();
   const { activeHubId } = useAuth();

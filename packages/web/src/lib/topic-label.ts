@@ -45,6 +45,20 @@ export function buildTopicPathLookup(
   return lookup;
 }
 
+/** Depth-first name lookup in a topic tree. Undefined when absent. */
+export function findTopicName(
+  trees: TopicTree[] | undefined,
+  id: string,
+): string | undefined {
+  if (!trees) return undefined;
+  for (const node of trees) {
+    if (node.id === id) return node.name;
+    const inChildren = findTopicName(node.children, id);
+    if (inChildren !== undefined) return inChildren;
+  }
+  return undefined;
+}
+
 export function getCollapsedTopicLabel(
   path: TopicLabelPathSegment[],
 ): CollapsedTopicLabel {

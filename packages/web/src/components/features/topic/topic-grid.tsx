@@ -21,6 +21,12 @@ import {
 } from "@/hooks/use-recent-memories";
 import { pluralize, useLocale, useInterpolate } from "@/i18n";
 import { TopicMainView } from "./topic-card";
+import {
+  TopicCreateDialog,
+  type TopicCreateTarget,
+} from "./topic-create-dialog";
+import { TopicArchivedSection } from "./topic-archived-section";
+import { findTopicName } from "@/lib/topic-label";
 import type { TopicTree } from "@/hooks/use-topics";
 import { DraggableMemoryRow } from "../memory-card/memory-row-draggable";
 import { MemoryRowSkeletonList } from "../memory-card/memory-row-skeleton";
@@ -410,6 +416,7 @@ export function TopicGrid() {
                 }
               />
             )}
+            <TopicArchivedSection />
           </div>
         </div>
       </div>
@@ -433,12 +440,37 @@ export function TopicGrid() {
 function MobileInlineTree() {
   const { visibleExpandedIds, onToggleExpand, activeTopic } =
     useTopicTreeController();
+  const { data: topicsData } = useTopics();
+  const router = useRouter();
+  const pathname = usePathname();
+  const currentHubSlug = getHubSlugForPath(pathname);
+  const [createTarget, setCreateTarget] = useState<TopicCreateTarget | null>(
+    null,
+  );
   return (
     <div className="rounded-2xl border border-border/40 bg-surface-1/40">
       <TopicTreeContent
         expandedIds={visibleExpandedIds}
         onToggleExpand={onToggleExpand}
         activeTopic={activeTopic}
+        onCreateTopic={() => setCreateTarget({})}
+        onCreateSubtopic={(parentId) =>
+          setCreateTarget({
+            parent: {
+              id: parentId,
+              name: findTopicName(topicsData?.topics, parentId) ?? "",
+            },
+          })
+        }
+      />
+      <TopicCreateDialog
+        target={createTarget}
+        onClose={() => setCreateTarget(null)}
+        onCreated={(topicId) =>
+          router.push(buildTopicPath(currentHubSlug, topicId), {
+            scroll: false,
+          })
+        }
       />
     </div>
   );

@@ -50,6 +50,9 @@ func TestTopicsList_EmptyHub(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/topics?hub_id="+hubID, nil)
 	req = handler.InjectUserIDForTest(req, ownerID)
+	// A raw ?hub_id= that differs from the middleware-resolved hub is
+	// validated against the accessible set — mirror the middleware here.
+	req = handler.InjectAccessibleHubIDsForTest(req, []string{hubID})
 	rec := httptest.NewRecorder()
 
 	h.List(rec, req)

@@ -611,3 +611,255 @@ func TestGetSubtreeMaxDepthInMemoryStore(t *testing.T) {
 		}
 	}
 }
+
+// --- Archive lifecycle ---
+
+func (f *reparentFixture) archiveRequest(t *testing.T, topicID string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/v1/topics/"+topicID+"/archive", nil)
+	req.SetPathValue("id", topicID)
+	req = withTestIdentity(req, f.ownerID)
+	rec := httptest.NewRecorder()
+	f.handler.Archive(rec, req)
+	return rec
+}
+
+func (f *reparentFixture) restoreRequest(t *testing.T, topicID string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/v1/topics/"+topicID+"/restore", nil)
+	req.SetPathValue("id", topicID)
+	req = withTestIdentity(req, f.ownerID)
+	rec := httptest.NewRecorder()
+	f.handler.Restore(rec, req)
+	return rec
+}
+
+func decodeArchiveResult(t *testing.T, body []byte) model.TopicArchiveResult {
+	t.Helper()
+	var env struct {
+		Data model.TopicArchiveResult `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		t.Fatalf("decode archive result: %v (body=%s)", err, string(body))
+	}
+	return env.Data
+}
+
+func TestArchiveCascadesToSubtree(t *testing.T) {
+	f := newReparentFixture(t)
+
+	rec := f.archiveRequest(t, f.parent.ID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("archive: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	result := decodeArchiveResult(t, rec.Body.Bytes())
+	if result.ArchivedCount != 3 { // parent + child + grandchild
+		t.Fatalf("expected 3 archived, got %d", result.ArchivedCount)
+	}
+
+	// Active list no longer contains the subtree.
+	active, err := f.store.ListTopics(f.hubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, topic := range active {
+		if topic.ID == f.parent.ID || topic.ID == f.child.ID || topic.ID == f.grandchild.ID {
+			t.Fatalf("archived topic %s still in active list", topic.Name)
+		}
+	}
+
+	// Archived list contains exactly the subtree.
+	archived, err := f.store.ListArchivedTopics(f.hubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archived) != 3 {
+		t.Fatalf("expected 3 archived topics, got %d", len(archived))
+	}
+
+	// Idempotent: archiving again is a no-op success.
+	rec = f.archiveRequest(t, f.parent.ID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("re-archive: expected 200, got %d", rec.Code)
+	}
+	if got := decodeArchiveResult(t, rec.Body.Bytes()).ArchivedCount; got != 0 {
+		t.Fatalf("re-archive: expected 0 newly archived, got %d", got)
+	}
+}
+
+func TestRestoreCascadesAndRestoresInPlace(t *testing.T) {
+	f := newReparentFixture(t)
+
+	f.archiveRequest(t, f.parent.ID)
+	rec := f.restoreRequest(t, f.parent.ID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("restore: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := decodeArchiveResult(t, rec.Body.Bytes()).RestoredCount; got != 3 {
+		t.Fatalf("expected 3 restored, got %d", got)
+	}
+
+	// Parent is back under root (its parent was never archived).
+	restored, err := f.store.GetTopic(f.parent.ID, f.hubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.ArchivedAt != nil {
+		t.Fatal("expected parent to be active after restore")
+	}
+	if restored.ParentID == nil || *restored.ParentID != f.root.ID {
+		t.Fatalf("expected parent to stay under root, got parent_id=%v", restored.ParentID)
+	}
+}
+
+func TestRestoreBranchReplantsAtRootWhenParentStillArchived(t *testing.T) {
+	f := newReparentFixture(t)
+
+	// Archive the whole branch from parent down, then restore only child.
+	f.archiveRequest(t, f.parent.ID)
+	rec := f.restoreRequest(t, f.child.ID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("restore child: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := decodeArchiveResult(t, rec.Body.Bytes()).RestoredCount; got != 2 { // child + grandchild
+		t.Fatalf("expected 2 restored, got %d", got)
+	}
+
+	child, err := f.store.GetTopic(f.child.ID, f.hubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.ParentID != nil {
+		t.Fatalf("expected child re-planted at root (parent still archived), got parent_id=%v", child.ParentID)
+	}
+	// Grandchild keeps its place under child.
+	grandchild, err := f.store.GetTopic(f.grandchild.ID, f.hubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if grandchild.ParentID == nil || *grandchild.ParentID != f.child.ID {
+		t.Fatalf("expected grandchild to stay under child, got parent_id=%v", grandchild.ParentID)
+	}
+	// Parent stays archived.
+	parent, err := f.store.GetTopic(f.parent.ID, f.hubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parent.ArchivedAt == nil {
+		t.Fatal("expected parent to remain archived after branch restore")
+	}
+}
+
+func TestArchivedTopicsAreReadOnly(t *testing.T) {
+	f := newReparentFixture(t)
+	f.archiveRequest(t, f.parent.ID)
+
+	// Rename on an archived topic → topic_archived.
+	rec := f.updateRequest(t, f.parent.ID, map[string]any{"name": "Renamed"})
+	if rec.Code != http.StatusConflict || decodeErrorCode(t, rec.Body.Bytes()) != "topic_archived" {
+		t.Fatalf("update archived: expected 409 topic_archived, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Reparent an active topic under an archived parent → parent_archived.
+	rec = f.updateRequest(t, f.other.ID, map[string]any{"parent_id": f.parent.ID})
+	if rec.Code != http.StatusConflict || decodeErrorCode(t, rec.Body.Bytes()) != "parent_archived" {
+		t.Fatalf("reparent to archived: expected 409 parent_archived, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Create under an archived parent → parent_archived.
+	body, _ := json.Marshal(map[string]any{
+		"name":      "New Child",
+		"hub_id":    f.hubID,
+		"parent_id": f.parent.ID,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/topics", bytes.NewReader(body))
+	req = withTestIdentity(req, f.ownerID)
+	rec2 := httptest.NewRecorder()
+	f.handler.Create(rec2, req)
+	if rec2.Code != http.StatusConflict || decodeErrorCode(t, rec2.Body.Bytes()) != "parent_archived" {
+		t.Fatalf("create under archived: expected 409 parent_archived, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	// Auto-assign a memory into an archived topic → topic_archived.
+	now := time.Now()
+	memory := &model.Memory{
+		ID: "99999999-9999-9999-9999-999999999999", HubID: f.hubID, OwnerID: f.ownerID,
+		Title: "note", Content: "content", ContentType: "markdown", ContentHash: "h",
+		Kind: model.MemoryKindSemantic, Stability: model.MemoryStabilityEvolving,
+		RetrievalWeight: 1.0, Source: "test", State: "active",
+		CreatedAt: now, UpdatedAt: now, AccessedAt: now,
+	}
+	if err := f.store.CreateMemory(memory); err != nil {
+		t.Fatal(err)
+	}
+	assignBody, _ := json.Marshal(map[string]any{"memory_id": memory.ID})
+	req3 := httptest.NewRequest(http.MethodPost, "/v1/topics/"+f.parent.ID+"/memories", bytes.NewReader(assignBody))
+	req3.SetPathValue("id", f.parent.ID)
+	req3 = withTestIdentity(req3, f.ownerID)
+	rec3 := httptest.NewRecorder()
+	f.handler.AddMemory(rec3, req3)
+	if rec3.Code != http.StatusConflict || decodeErrorCode(t, rec3.Body.Bytes()) != "topic_archived" {
+		t.Fatalf("assign to archived: expected 409 topic_archived, got %d: %s", rec3.Code, rec3.Body.String())
+	}
+}
+
+func TestArchiveKeepsMemoryAssignmentsForLosslessRestore(t *testing.T) {
+	f := newReparentFixture(t)
+
+	now := time.Now()
+	memory := &model.Memory{
+		ID: "88888888-8888-8888-8888-888888888888", HubID: f.hubID, OwnerID: f.ownerID,
+		Title: "note", Content: "content", ContentType: "markdown", ContentHash: "h2",
+		Kind: model.MemoryKindSemantic, Stability: model.MemoryStabilityEvolving,
+		RetrievalWeight: 1.0, Source: "test", State: "active",
+		CreatedAt: now, UpdatedAt: now, AccessedAt: now,
+	}
+	if err := f.store.CreateMemory(memory); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.AssignMemoryToTopic(memory.ID, f.parent.ID, f.hubID, model.ConfidenceUserMove); err != nil {
+		t.Fatal(err)
+	}
+
+	f.archiveRequest(t, f.parent.ID)
+
+	// Assignment survives archive (IDs map), but the topic-name map used by
+	// recall boost and ask synthesis no longer exposes the archived topic.
+	scope := store.VisibilityScope{OwnerID: f.ownerID}
+	ids, err := f.store.GetMemoryTopicIDMap(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids[memory.ID] != f.parent.ID {
+		t.Fatalf("expected assignment to survive archive, got %q", ids[memory.ID])
+	}
+	names, err := f.store.GetMemoryTopicNameMap(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := names[memory.ID]; ok {
+		t.Fatal("expected archived topic to be excluded from the name map (recall boost)")
+	}
+
+	f.restoreRequest(t, f.parent.ID)
+	names, err = f.store.GetMemoryTopicNameMap(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names[memory.ID] != f.parent.Name {
+		t.Fatalf("expected name map back after restore, got %q", names[memory.ID])
+	}
+}
+
+func TestSearchAccessibleTopicsExcludesArchived(t *testing.T) {
+	f := newReparentFixture(t)
+	f.archiveRequest(t, f.parent.ID)
+
+	got, err := f.store.SearchAccessibleTopics(context.Background(), "parent", []string{f.hubID}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected archived topic to be excluded from bar quick-match, got %d rows", len(got))
+	}
+}

@@ -1482,6 +1482,8 @@ func mapTopicMergeError(err error) (status int, code, msg string, ok bool) {
 		return http.StatusConflict, "merge_source_missing", "At least one source topic is no longer in this hub", true
 	case errors.Is(err, store.ErrTopicMergeCycle):
 		return http.StatusConflict, "merge_cycle", "Topic merge would create a cycle in the topic tree", true
+	case errors.Is(err, store.ErrTopicMergeArchived):
+		return http.StatusConflict, "merge_topic_archived", "Topic merge involves an archived topic — restore it first", true
 	}
 	return 0, "", "", false
 }
@@ -1498,6 +1500,8 @@ func mapTopicRestructureError(err error) (status int, code, msg string, ok bool)
 		return http.StatusConflict, "restructure_parent_missing", "Topic restructure parent is no longer in this hub", true
 	case errors.Is(err, store.ErrTopicRestructureCycle):
 		return http.StatusConflict, "restructure_cycle", "Topic restructure would create a cycle in the topic tree", true
+	case errors.Is(err, store.ErrTopicRestructureArchived):
+		return http.StatusConflict, "restructure_topic_archived", "Topic restructure involves an archived topic — restore it first", true
 	}
 	return 0, "", "", false
 }

@@ -15,18 +15,18 @@ import (
 func (s *PostgresStore) CreateTopic(topic *model.Topic) error {
 	ctx := context.Background()
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO topics (id, owner_id, hub_id, parent_id, name, description, icon, position, pinned, user_modified, created_at, updated_at)
-		VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		`INSERT INTO topics (id, owner_id, hub_id, parent_id, name, description, icon, position, pinned, user_modified, created_at, updated_at, archived_at)
+		VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 		topic.ID, topic.OwnerID, topic.HubID, topic.ParentID, topic.Name,
 		topic.Description, topic.Icon, topic.Position, topic.Pinned, topic.UserModified,
-		topic.CreatedAt, topic.UpdatedAt)
+		topic.CreatedAt, topic.UpdatedAt, topic.ArchivedAt)
 	return err
 }
 
 func (s *PostgresStore) GetTopic(id string, hubID string) (*model.Topic, error) {
 	ctx := context.Background()
 	row := s.pool.QueryRow(ctx,
-		`SELECT id, owner_id, hub_id, parent_id, name, description, icon, position, pinned, user_modified, created_at, updated_at
+		`SELECT id, owner_id, hub_id, parent_id, name, description, icon, position, pinned, user_modified, created_at, updated_at, archived_at
 		FROM topics WHERE id = $1::uuid AND hub_id = $2::uuid`, id, hubID)
 	return scanTopic(row)
 }
@@ -40,7 +40,7 @@ func (s *PostgresStore) GetTopicAccessible(id string, scope VisibilityScope) (*m
 	scopeFilter, scopeArgs := scope.SQLFilter("t", 2)
 	args := []any{id}
 	args = append(args, scopeArgs...)
-	query := `SELECT t.id, t.owner_id, t.hub_id, t.parent_id, t.name, t.description, t.icon, t.position, t.pinned, t.user_modified, t.created_at, t.updated_at
+	query := `SELECT t.id, t.owner_id, t.hub_id, t.parent_id, t.name, t.description, t.icon, t.position, t.pinned, t.user_modified, t.created_at, t.updated_at, t.archived_at
 		FROM topics t WHERE t.id = $1::uuid AND ` + scopeFilter
 	row := s.pool.QueryRow(ctx, query, args...)
 	return scanTopic(row)
@@ -49,39 +49,133 @@ func (s *PostgresStore) GetTopicAccessible(id string, scope VisibilityScope) (*m
 func scanTopic(row pgx.Row) (*model.Topic, error) {
 	var t model.Topic
 	err := row.Scan(&t.ID, &t.OwnerID, &t.HubID, &t.ParentID, &t.Name,
-		&t.Description, &t.Icon, &t.Position, &t.Pinned, &t.UserModified, &t.CreatedAt, &t.UpdatedAt)
+		&t.Description, &t.Icon, &t.Position, &t.Pinned, &t.UserModified, &t.CreatedAt, &t.UpdatedAt, &t.ArchivedAt)
 	if err != nil {
 		return nil, fmt.Errorf("topic not found: %w", err)
 	}
 	return &t, nil
 }
 
+// ListTopics returns the hub's ACTIVE topics only. Archived topics are
+// invisible to every tree consumer (handlers, dreams, inline classification,
+// agent tools, MCP) by construction — use ListArchivedTopics for the
+// explicit archived browse surface.
 func (s *PostgresStore) ListTopics(hubID string) ([]model.Topic, error) {
 	ctx := context.Background()
-	query := `SELECT id, owner_id, hub_id, parent_id, name, description, icon, position, pinned, user_modified, created_at, updated_at
-		FROM topics WHERE hub_id = $1::uuid`
+	query := `SELECT id, owner_id, hub_id, parent_id, name, description, icon, position, pinned, user_modified, created_at, updated_at, archived_at
+		FROM topics WHERE hub_id = $1::uuid AND archived_at IS NULL`
 	args := []any{hubID}
 	query += " ORDER BY position ASC, created_at ASC"
 
+	return s.queryTopics(ctx, query, args...)
+}
+
+// ListArchivedTopics returns the hub's archived topics, most recently
+// archived first. Flat list — the web archived section renders rows, not a
+// tree (subtrees are archived atomically so hierarchy adds no information).
+func (s *PostgresStore) ListArchivedTopics(hubID string) ([]model.Topic, error) {
+	ctx := context.Background()
+	query := `SELECT id, owner_id, hub_id, parent_id, name, description, icon, position, pinned, user_modified, created_at, updated_at, archived_at
+		FROM topics WHERE hub_id = $1::uuid AND archived_at IS NOT NULL
+		ORDER BY archived_at DESC, created_at ASC`
+	return s.queryTopics(ctx, query, hubID)
+}
+
+func (s *PostgresStore) queryTopics(ctx context.Context, query string, args ...any) ([]model.Topic, error) {
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var topics []model.Topic
+	topics := make([]model.Topic, 0)
 	for rows.Next() {
 		var t model.Topic
 		if err := rows.Scan(&t.ID, &t.OwnerID, &t.HubID, &t.ParentID, &t.Name,
-			&t.Description, &t.Icon, &t.Position, &t.Pinned, &t.UserModified, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.Description, &t.Icon, &t.Position, &t.Pinned, &t.UserModified, &t.CreatedAt, &t.UpdatedAt, &t.ArchivedAt); err != nil {
 			return nil, err
 		}
 		topics = append(topics, t)
 	}
-	if topics == nil {
-		topics = make([]model.Topic, 0)
-	}
 	return topics, rows.Err()
+}
+
+// ArchiveTopicSubtree archives a topic and all of its descendants in one
+// statement. Already-archived rows keep their original archived_at so
+// restore ordering stays truthful. Returns the number of rows newly archived.
+//
+// Memory assignments are deliberately untouched: memories whose only topic
+// is archived are PARKED with it — they do not resurface as unassigned
+// (inbox) and dreams will not reorganize them, because either would make
+// restore lossy. Archive means "out of the way, intact", not "dissolve".
+func (s *PostgresStore) ArchiveTopicSubtree(id, hubID string, archivedAt time.Time) (int, error) {
+	ctx := context.Background()
+	tag, err := s.pool.Exec(ctx, `
+		WITH RECURSIVE subtree AS (
+			SELECT id FROM topics WHERE id = $1::uuid AND hub_id = $2::uuid
+			UNION ALL
+			SELECT t.id FROM topics t
+			JOIN subtree st ON t.parent_id = st.id
+			WHERE t.hub_id = $2::uuid
+		)
+		UPDATE topics SET archived_at = $3, updated_at = $3
+		WHERE id IN (SELECT id FROM subtree) AND archived_at IS NULL`,
+		id, hubID, archivedAt)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+// RestoreTopicSubtree clears archived_at on a topic and all of its
+// descendants. If the restored topic's parent is still archived (it was
+// archived as part of a larger subtree and only this branch is being
+// restored), the topic is re-planted at the root with the next free
+// position so it never dangles under an invisible parent.
+// Returns the number of rows restored.
+func (s *PostgresStore) RestoreTopicSubtree(id, hubID string, restoredAt time.Time) (int, error) {
+	ctx := context.Background()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx, `
+		WITH RECURSIVE subtree AS (
+			SELECT id FROM topics WHERE id = $1::uuid AND hub_id = $2::uuid
+			UNION ALL
+			SELECT t.id FROM topics t
+			JOIN subtree st ON t.parent_id = st.id
+			WHERE t.hub_id = $2::uuid
+		)
+		UPDATE topics SET archived_at = NULL, updated_at = $3
+		WHERE id IN (SELECT id FROM subtree) AND archived_at IS NOT NULL`,
+		id, hubID, restoredAt)
+	if err != nil {
+		return 0, err
+	}
+
+	// Re-plant at root if the parent is still archived: the restored branch
+	// must not hang under a hidden node.
+	_, err = tx.Exec(ctx, `
+		UPDATE topics SET
+			parent_id = NULL,
+			position = COALESCE((SELECT MAX(position) + 1 FROM topics
+				WHERE hub_id = $2::uuid AND parent_id IS NULL AND archived_at IS NULL AND id != $1::uuid), 0),
+			updated_at = $3
+		WHERE id = $1::uuid AND hub_id = $2::uuid
+		AND parent_id IS NOT NULL
+		AND EXISTS (SELECT 1 FROM topics p WHERE p.id = topics.parent_id AND p.archived_at IS NOT NULL)`,
+		id, hubID, restoredAt)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 // SearchAccessibleTopics returns up to `limit` topics whose hub is in
@@ -109,9 +203,9 @@ func (s *PostgresStore) SearchAccessibleTopics(ctx context.Context, query string
 	}
 	args = append(args, limit)
 
-	sqlQuery := fmt.Sprintf(`SELECT id, owner_id, hub_id, parent_id, name, description, icon, position, pinned, user_modified, created_at, updated_at
+	sqlQuery := fmt.Sprintf(`SELECT id, owner_id, hub_id, parent_id, name, description, icon, position, pinned, user_modified, created_at, updated_at, archived_at
 		FROM topics
-		WHERE hub_id = ANY($1::uuid[]) AND %s
+		WHERE hub_id = ANY($1::uuid[]) AND archived_at IS NULL AND %s
 		ORDER BY position ASC, created_at DESC
 		LIMIT $%d`, strings.Join(clauses, " AND "), len(args))
 
@@ -125,7 +219,7 @@ func (s *PostgresStore) SearchAccessibleTopics(ctx context.Context, query string
 	for rows.Next() {
 		var t model.Topic
 		if err := rows.Scan(&t.ID, &t.OwnerID, &t.HubID, &t.ParentID, &t.Name,
-			&t.Description, &t.Icon, &t.Position, &t.Pinned, &t.UserModified, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.Description, &t.Icon, &t.Position, &t.Pinned, &t.UserModified, &t.CreatedAt, &t.UpdatedAt, &t.ArchivedAt); err != nil {
 			return nil, fmt.Errorf("scan topic: %w", err)
 		}
 		topics = append(topics, t)
@@ -603,7 +697,7 @@ func (s *PostgresStore) GetMemoryTopicNameMap(scope VisibilityScope) (map[string
 	rows, err := s.pool.Query(ctx,
 		`SELECT mt.memory_id, t.name FROM memory_topics mt
 		JOIN topics t ON mt.topic_id = t.id
-		WHERE `+visPred, visArgs...)
+		WHERE t.archived_at IS NULL AND `+visPred, visArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -631,7 +725,7 @@ func (s *PostgresStore) GetMemoryTopicNameMapForMemories(scope VisibilityScope, 
 	rows, err := s.pool.Query(ctx,
 		`SELECT mt.memory_id, t.name FROM memory_topics mt
 		JOIN topics t ON mt.topic_id = t.id
-		WHERE `+visPred+` AND mt.memory_id = ANY($`+fmt.Sprintf("%d", memoryParam)+`::uuid[])`, args...)
+		WHERE t.archived_at IS NULL AND `+visPred+` AND mt.memory_id = ANY($`+fmt.Sprintf("%d", memoryParam)+`::uuid[])`, args...)
 	if err != nil {
 		return nil, err
 	}

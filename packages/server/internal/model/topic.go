@@ -22,6 +22,10 @@ type Topic struct {
 	UserModified    bool                  `json:"user_modified"`
 	CreatedAt       time.Time             `json:"created_at"`
 	UpdatedAt       time.Time             `json:"updated_at"`
+	// ArchivedAt is set when the topic is archived (soft lifecycle state).
+	// Archived topics keep their memory assignments but are hidden from the
+	// active tree and excluded from AI organization; nil means active.
+	ArchivedAt      *time.Time            `json:"archived_at,omitempty"`
 	ActivitySummary *TopicActivitySummary `json:"activity_summary,omitempty"`
 	// Lifecycle carries server-resolved dream-activity aggregate scoped
 	// to the viewer's last visit of this topic. Populated on topic reads;
@@ -86,6 +90,20 @@ type TopicTree struct {
 type TopicListResponse struct {
 	Topics          []TopicTree `json:"topics"`
 	UnassignedCount int         `json:"unassigned_count"`
+}
+
+// TopicArchivedListResponse is the envelope for GET /v1/topics/archived —
+// a flat list (subtrees archive atomically, so hierarchy adds nothing here).
+type TopicArchivedListResponse struct {
+	Topics []Topic `json:"topics"`
+}
+
+// TopicArchiveResult is the envelope for POST /v1/topics/{id}/archive and
+// /restore. Counts include the topic itself plus affected descendants.
+type TopicArchiveResult struct {
+	TopicID       string `json:"topic_id"`
+	ArchivedCount int    `json:"archived_count,omitempty"`
+	RestoredCount int    `json:"restored_count,omitempty"`
 }
 
 // MemoryTopic represents the single active topic assignment for a memory.

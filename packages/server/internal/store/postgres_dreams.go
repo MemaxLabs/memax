@@ -153,6 +153,7 @@ func (s *PostgresStore) FindRelevantTopicIDsByHub(hubID string, memoryIDs []stri
 				LIMIT 5
 			) c2
 			JOIN memory_topics mt ON c2.memory_id = mt.memory_id
+			JOIN topics t ON mt.topic_id = t.id AND t.archived_at IS NULL
 			GROUP BY mt.topic_id
 		)
 		SELECT topic_id

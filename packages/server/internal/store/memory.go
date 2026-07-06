@@ -1923,6 +1923,9 @@ func (s *InMemoryStore) ListTopics(hubID string) ([]model.Topic, error) {
 		if hubID != "" && topic.HubID != hubID {
 			continue
 		}
+		if topic.ArchivedAt != nil {
+			continue
+		}
 		topics = append(topics, *topic)
 	}
 	sort.Slice(topics, func(i, j int) bool {
@@ -1932,6 +1935,109 @@ func (s *InMemoryStore) ListTopics(hubID string) ([]model.Topic, error) {
 		return topics[i].CreatedAt.Before(topics[j].CreatedAt)
 	})
 	return topics, nil
+}
+
+// ListArchivedTopics mirrors the Postgres implementation: the hub's archived
+// topics as a flat list, most recently archived first.
+func (s *InMemoryStore) ListArchivedTopics(hubID string) ([]model.Topic, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	topics := make([]model.Topic, 0)
+	for _, topic := range s.topics {
+		if hubID != "" && topic.HubID != hubID {
+			continue
+		}
+		if topic.ArchivedAt == nil {
+			continue
+		}
+		topics = append(topics, *topic)
+	}
+	sort.Slice(topics, func(i, j int) bool {
+		if !topics[i].ArchivedAt.Equal(*topics[j].ArchivedAt) {
+			return topics[i].ArchivedAt.After(*topics[j].ArchivedAt)
+		}
+		return topics[i].CreatedAt.Before(topics[j].CreatedAt)
+	})
+	return topics, nil
+}
+
+// subtreeTopicIDs collects id and every descendant within the hub.
+// Callers must hold the lock.
+func (s *InMemoryStore) subtreeTopicIDs(id, hubID string) map[string]struct{} {
+	ids := map[string]struct{}{id: {}}
+	for changed := true; changed; {
+		changed = false
+		for _, topic := range s.topics {
+			if hubID != "" && topic.HubID != hubID {
+				continue
+			}
+			if _, seen := ids[topic.ID]; seen || topic.ParentID == nil {
+				continue
+			}
+			if _, ok := ids[*topic.ParentID]; ok {
+				ids[topic.ID] = struct{}{}
+				changed = true
+			}
+		}
+	}
+	return ids
+}
+
+// ArchiveTopicSubtree mirrors the Postgres implementation: archives the
+// topic and all descendants; already-archived rows keep their archived_at.
+func (s *InMemoryStore) ArchiveTopicSubtree(id, hubID string, archivedAt time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, ok := s.topics[id]
+	if !ok || (hubID != "" && root.HubID != hubID) {
+		return 0, fmt.Errorf("not found")
+	}
+	count := 0
+	for tid := range s.subtreeTopicIDs(id, hubID) {
+		topic := s.topics[tid]
+		if topic.ArchivedAt == nil {
+			at := archivedAt
+			topic.ArchivedAt = &at
+			topic.UpdatedAt = archivedAt
+			count++
+		}
+	}
+	return count, nil
+}
+
+// RestoreTopicSubtree mirrors the Postgres implementation: clears
+// archived_at on the topic and all descendants, re-planting the topic at
+// root when its parent is still archived.
+func (s *InMemoryStore) RestoreTopicSubtree(id, hubID string, restoredAt time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, ok := s.topics[id]
+	if !ok || (hubID != "" && root.HubID != hubID) {
+		return 0, fmt.Errorf("not found")
+	}
+	count := 0
+	for tid := range s.subtreeTopicIDs(id, hubID) {
+		topic := s.topics[tid]
+		if topic.ArchivedAt != nil {
+			topic.ArchivedAt = nil
+			topic.UpdatedAt = restoredAt
+			count++
+		}
+	}
+	if root.ParentID != nil {
+		if parent, ok := s.topics[*root.ParentID]; ok && parent.ArchivedAt != nil {
+			maxPos := -1
+			for _, topic := range s.topics {
+				if topic.HubID == root.HubID && topic.ParentID == nil && topic.ArchivedAt == nil && topic.ID != root.ID && topic.Position > maxPos {
+					maxPos = topic.Position
+				}
+			}
+			root.ParentID = nil
+			root.Position = maxPos + 1
+			root.UpdatedAt = restoredAt
+		}
+	}
+	return count, nil
 }
 
 // SearchAccessibleTopics mirrors the Postgres implementation: returns topics
@@ -1955,6 +2061,9 @@ func (s *InMemoryStore) SearchAccessibleTopics(_ context.Context, query string, 
 	out := make([]model.Topic, 0)
 	for _, topic := range s.topics {
 		if _, ok := allowed[topic.HubID]; !ok {
+			continue
+		}
+		if topic.ArchivedAt != nil {
 			continue
 		}
 		haystack := strings.ToLower(topic.Name + " " + topic.Description)
@@ -2327,7 +2436,7 @@ func (s *InMemoryStore) GetMemoryTopicNameMap(_ VisibilityScope) (map[string]str
 	defer s.mu.RUnlock()
 	result := make(map[string]string)
 	for memoryID, mt := range s.memoryTopics {
-		if topic, ok := s.topics[mt.TopicID]; ok {
+		if topic, ok := s.topics[mt.TopicID]; ok && topic.ArchivedAt == nil {
 			result[memoryID] = topic.Name
 		}
 	}
@@ -2343,7 +2452,7 @@ func (s *InMemoryStore) GetMemoryTopicNameMapForMemories(_ VisibilityScope, memo
 		if !ok {
 			continue
 		}
-		if topic, ok := s.topics[mt.TopicID]; ok {
+		if topic, ok := s.topics[mt.TopicID]; ok && topic.ArchivedAt == nil {
 			result[memoryID] = topic.Name
 		}
 	}

@@ -14,6 +14,7 @@ var (
 	ErrTopicRestructureParentNotInHub = errors.New("restructure parent topic is not in the requested hub")
 	ErrTopicRestructureSelfParent     = errors.New("a topic cannot be its own parent")
 	ErrTopicRestructureCycle          = errors.New("restructure would create a topic-tree cycle: new parent is a descendant of child")
+	ErrTopicRestructureArchived       = errors.New("restructure cannot involve archived topics — restore them first")
 )
 
 // ApplyTopicRestructure is the auto-commit entry point for the
@@ -53,29 +54,40 @@ func (s *PostgresStore) ApplyTopicRestructureTx(ctx context.Context, tx pgx.Tx, 
 		return ErrTopicRestructureSelfParent
 	}
 
-	// Lock and verify the child.
-	var childExists bool
+	// Lock and verify the child. Archived children are refused — a
+	// stale dream/review proposal must not silently move a topic the
+	// user has parked in the archive.
+	var childExists, childArchived bool
 	if err := tx.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM topics WHERE id = $1::uuid AND hub_id = $2::uuid FOR UPDATE)`,
+		`SELECT EXISTS(SELECT 1 FROM topics WHERE id = $1::uuid AND hub_id = $2::uuid FOR UPDATE),
+			COALESCE((SELECT archived_at IS NOT NULL FROM topics WHERE id = $1::uuid AND hub_id = $2::uuid), false)`,
 		childID, hubID,
-	).Scan(&childExists); err != nil {
+	).Scan(&childExists, &childArchived); err != nil {
 		return fmt.Errorf("lock restructure child: %w", err)
 	}
 	if !childExists {
 		return ErrTopicRestructureChildNotInHub
 	}
+	if childArchived {
+		return ErrTopicRestructureArchived
+	}
 
 	if newParentID != "" {
-		// Lock and verify the new parent.
-		var parentExists bool
+		// Lock and verify the new parent. Archived parents are refused
+		// so an active topic can never be re-planted under a hidden node.
+		var parentExists, parentArchived bool
 		if err := tx.QueryRow(ctx,
-			`SELECT EXISTS(SELECT 1 FROM topics WHERE id = $1::uuid AND hub_id = $2::uuid FOR UPDATE)`,
+			`SELECT EXISTS(SELECT 1 FROM topics WHERE id = $1::uuid AND hub_id = $2::uuid FOR UPDATE),
+				COALESCE((SELECT archived_at IS NOT NULL FROM topics WHERE id = $1::uuid AND hub_id = $2::uuid), false)`,
 			newParentID, hubID,
-		).Scan(&parentExists); err != nil {
+		).Scan(&parentExists, &parentArchived); err != nil {
 			return fmt.Errorf("lock restructure parent: %w", err)
 		}
 		if !parentExists {
 			return ErrTopicRestructureParentNotInHub
+		}
+		if parentArchived {
+			return ErrTopicRestructureArchived
 		}
 
 		// Cycle prevention. The new parent must not live inside the

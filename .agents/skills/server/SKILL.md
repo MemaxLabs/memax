@@ -413,17 +413,26 @@ Both the Go server MCP handler (`handler/mcp.go`) and the CLI MCP server (`cli/s
 
 ## Topics Endpoints
 
-9 REST endpoints for topic management:
+13 REST endpoints for topic management:
 
-- `GET /v1/topics` — list as tree with memory counts
-- `POST /v1/topics` — create (validates depth ≤ 5, unique names)
-- `GET /v1/topics/{id}` — single topic
-- `PATCH /v1/topics/{id}` — update (sets user_modified on name/desc/icon change)
+- `GET /v1/topics` — list ACTIVE topics as tree with memory counts (archived excluded)
+- `POST /v1/topics` — create (validates depth ≤ 5, unique names, rejects archived parent)
+- `GET /v1/topics/archived` — flat archived list, most recently archived first
+- `GET /v1/topics/{id}` — single topic (works for archived too)
+- `PATCH /v1/topics/{id}` — update (sets user_modified on name/desc/icon change; 409 `topic_archived` on archived topics)
 - `DELETE /v1/topics/{id}` — delete (re-parents children)
 - `GET /v1/topics/{id}/memories` — paginated memory list
-- `POST /v1/topics/{id}/memories` — assign with confidence (0.0-1.0)
+- `POST /v1/topics/{id}/memories` — assign with confidence (0.0-1.0); 409 on archived target
 - `DELETE /v1/topics/{id}/memories/{mid}` — unassign
+- `POST /v1/topics/{id}/visit` — record visit (clears dream-delta signals)
+- `POST /v1/topics/{id}/archive` — archive subtree (idempotent; memory assignments survive)
+- `POST /v1/topics/{id}/restore` — restore subtree (re-plants at root if parent still archived)
 - `POST /v1/topics/reorder` — batch reorder
+
+Archive invariant: `store.ListTopics` returns active-only rows, so every
+tree consumer (handlers, dreams organize/restructure, inline classification,
+agent browse tools, MCP) excludes archived topics by construction. The
+recall topic-name boost and ask synthesis maps filter `archived_at IS NULL`.
 
 ## Error Handling
 

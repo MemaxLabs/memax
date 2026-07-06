@@ -16,6 +16,7 @@ var (
 	ErrTopicMergeTargetNotInHub = errors.New("merge target topic is not in the requested hub")
 	ErrTopicMergeSourceNotInHub = errors.New("at least one source topic is not in the requested hub")
 	ErrTopicMergeCycle          = errors.New("merge would create a topic-tree cycle: target is a descendant of a source")
+	ErrTopicMergeArchived       = errors.New("merge cannot involve archived topics — restore them first")
 )
 
 // MergeTopics is the auto-commit entry point for the topic-merge domain
@@ -83,30 +84,42 @@ func (s *PostgresStore) MergeTopicsTx(ctx context.Context, tx pgx.Tx, hubID, tar
 
 	// Lock target. FOR UPDATE pins the row for the duration of the tx
 	// so a concurrent rename / reparent / delete on the target cannot
-	// race with the merge.
-	var targetExists bool
+	// race with the merge. Archived targets are refused — a merge into
+	// a hidden topic would silently rehome active memories out of view
+	// (dream/agent proposals can be stale by the time they resolve).
+	var targetExists, targetArchived bool
 	if err := tx.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM topics WHERE id = $1::uuid AND hub_id = $2::uuid FOR UPDATE)`,
+		`SELECT EXISTS(SELECT 1 FROM topics WHERE id = $1::uuid AND hub_id = $2::uuid FOR UPDATE),
+			COALESCE((SELECT archived_at IS NOT NULL FROM topics WHERE id = $1::uuid AND hub_id = $2::uuid), false)`,
 		targetID, hubID,
-	).Scan(&targetExists); err != nil {
+	).Scan(&targetExists, &targetArchived); err != nil {
 		return 0, fmt.Errorf("lock merge target: %w", err)
 	}
 	if !targetExists {
 		return 0, ErrTopicMergeTargetNotInHub
 	}
+	if targetArchived {
+		return 0, ErrTopicMergeArchived
+	}
 
 	// Lock and count sources. If the count differs from the deduped
 	// input length, at least one source is not in the hub — refuse.
-	var sourceCount int
+	// Archived sources are refused for the same staleness reason as
+	// the target: consuming (deleting) an archived topic via a merge
+	// would break the archive → restore round-trip.
+	var sourceCount, archivedSourceCount int
 	if err := tx.QueryRow(ctx,
-		`SELECT COUNT(*) FROM (
-			SELECT id FROM topics
+		`SELECT COUNT(*), COUNT(*) FILTER (WHERE archived_at IS NOT NULL) FROM (
+			SELECT id, archived_at FROM topics
 			WHERE id = ANY($1::uuid[]) AND hub_id = $2::uuid
 			FOR UPDATE
 		) t`,
 		dedupedSources, hubID,
-	).Scan(&sourceCount); err != nil {
+	).Scan(&sourceCount, &archivedSourceCount); err != nil {
 		return 0, fmt.Errorf("lock merge sources: %w", err)
+	}
+	if archivedSourceCount > 0 {
+		return 0, ErrTopicMergeArchived
 	}
 	if sourceCount != len(dedupedSources) {
 		return 0, ErrTopicMergeSourceNotInHub

@@ -21,6 +21,25 @@ func NewTopicsHandler(s store.Store, publisher events.Publisher) *TopicsHandler 
 	return &TopicsHandler{store: s, events: publisher}
 }
 
+// resolveRequestedHub resolves the effective hub for topic list surfaces.
+// The middleware validates only the hub it resolves into GetHubID — a raw
+// ?hub_id= query param bypasses that, so any param that differs from the
+// validated hub must be checked against the viewer's accessible set.
+// Returns "" when the requested hub is outside the viewer's reach.
+func resolveRequestedHub(r *http.Request) string {
+	requested := r.URL.Query().Get("hub_id")
+	validated := GetHubID(r)
+	if requested == "" || requested == validated {
+		return validated
+	}
+	for _, id := range GetAccessibleHubIDs(r) {
+		if id == requested {
+			return requested
+		}
+	}
+	return ""
+}
+
 func (h *TopicsHandler) requireTopicWriteAccess(userID, hubID string) error {
 	if hubID == "" {
 		return fmt.Errorf("missing hub")
@@ -42,12 +61,9 @@ func (h *TopicsHandler) requireTopicWriteAccess(userID, hubID string) error {
 // List returns all topics as a tree with memory counts.
 func (h *TopicsHandler) List(w http.ResponseWriter, r *http.Request) {
 	ownerID := GetUserID(r)
-	hubID := r.URL.Query().Get("hub_id")
+	hubID := resolveRequestedHub(r)
 	if hubID == "" {
-		hubID = GetHubID(r)
-	}
-	if hubID == "" {
-		writeError(w, http.StatusBadRequest, "missing_hub", "Topics require an explicit or resolved hub")
+		writeError(w, http.StatusBadRequest, "missing_hub", "Topics require an explicit or resolved hub you can access")
 		return
 	}
 
@@ -227,6 +243,98 @@ func (h *TopicsHandler) RecordVisit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListArchived returns the hub's archived topics as a flat list, most
+// recently archived first. Flat because subtrees archive atomically —
+// hierarchy adds no information on this surface.
+// GET /v1/topics/archived
+func (h *TopicsHandler) ListArchived(w http.ResponseWriter, r *http.Request) {
+	hubID := resolveRequestedHub(r)
+	if hubID == "" {
+		writeError(w, http.StatusBadRequest, "missing_hub", "Archived topics require an explicit or resolved hub you can access")
+		return
+	}
+
+	topics, err := h.store.ListArchivedTopics(hubID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, model.ApiResponse{Data: model.TopicArchivedListResponse{
+		Topics: topics,
+	}})
+}
+
+// Archive soft-archives a topic and its entire subtree. Memory assignments
+// are kept so restore is lossless; archived topics disappear from the
+// active tree and from AI organization (dreams, inline classification).
+// Idempotent: archiving an already-archived topic is a no-op success.
+// POST /v1/topics/{id}/archive
+func (h *TopicsHandler) Archive(w http.ResponseWriter, r *http.Request) {
+	ownerID := GetUserID(r)
+	id := r.PathValue("id")
+	hubID := GetHubID(r)
+	if hubID == "" {
+		writeError(w, http.StatusBadRequest, "missing_hub", "Topic archive requires an explicit or resolved hub")
+		return
+	}
+	if err := h.requireTopicWriteAccess(ownerID, hubID); err != nil {
+		writeError(w, http.StatusForbidden, "forbidden", "Write access to this hub is required")
+		return
+	}
+	if _, err := h.store.GetTopic(id, hubID); err != nil {
+		writeError(w, http.StatusNotFound, "not_found", "Topic not found")
+		return
+	}
+
+	archived, err := h.store.ArchiveTopicSubtree(id, hubID, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+
+	events.PublishTopicsChanged(r.Context(), h.events, hubID, ownerID, id)
+	writeJSON(w, http.StatusOK, model.ApiResponse{Data: model.TopicArchiveResult{
+		TopicID:       id,
+		ArchivedCount: archived,
+	}})
+}
+
+// Restore un-archives a topic and its subtree. If the topic's parent is
+// still archived, the topic is re-planted at the root so it never hangs
+// under an invisible node. Idempotent: restoring an active topic is a
+// no-op success.
+// POST /v1/topics/{id}/restore
+func (h *TopicsHandler) Restore(w http.ResponseWriter, r *http.Request) {
+	ownerID := GetUserID(r)
+	id := r.PathValue("id")
+	hubID := GetHubID(r)
+	if hubID == "" {
+		writeError(w, http.StatusBadRequest, "missing_hub", "Topic restore requires an explicit or resolved hub")
+		return
+	}
+	if err := h.requireTopicWriteAccess(ownerID, hubID); err != nil {
+		writeError(w, http.StatusForbidden, "forbidden", "Write access to this hub is required")
+		return
+	}
+	if _, err := h.store.GetTopic(id, hubID); err != nil {
+		writeError(w, http.StatusNotFound, "not_found", "Topic not found")
+		return
+	}
+
+	restored, err := h.store.RestoreTopicSubtree(id, hubID, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+
+	events.PublishTopicsChanged(r.Context(), h.events, hubID, ownerID, id)
+	writeJSON(w, http.StatusOK, model.ApiResponse{Data: model.TopicArchiveResult{
+		TopicID:       id,
+		RestoredCount: restored,
+	}})
+}
+
 // Create creates a new topic.
 func (h *TopicsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ownerID := GetUserID(r)
@@ -268,6 +376,10 @@ func (h *TopicsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		parent, err := h.store.GetTopic(*req.ParentID, hubID)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_parent", "Parent topic not found")
+			return
+		}
+		if parent.ArchivedAt != nil {
+			writeError(w, http.StatusConflict, "parent_archived", "Parent topic is archived — restore it first")
 			return
 		}
 		depth, _ := h.store.GetTopicDepth(parent.ID, hubID)
@@ -358,6 +470,13 @@ func (h *TopicsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "Topic not found")
 		return
 	}
+	// Archived topics are read-only: restore first, then edit. This keeps
+	// the archived surface a faithful snapshot and avoids edits landing in
+	// a tree the user cannot see.
+	if existing.ArchivedAt != nil {
+		writeError(w, http.StatusConflict, "topic_archived", "This topic is archived — restore it to make changes")
+		return
+	}
 
 	var req struct {
 		Name        *string `json:"name"`
@@ -436,6 +555,10 @@ func (h *TopicsHandler) Update(w http.ResponseWriter, r *http.Request) {
 			parent, err := h.store.GetTopic(newParentID, existing.HubID)
 			if err != nil || parent == nil {
 				writeError(w, http.StatusBadRequest, "invalid_parent", "Parent topic not found in this hub")
+				return
+			}
+			if parent.ArchivedAt != nil {
+				writeError(w, http.StatusConflict, "parent_archived", "Parent topic is archived — restore it first")
 				return
 			}
 			// Trivial cycle: self-parent.
@@ -533,8 +656,13 @@ func (h *TopicsHandler) AddMemory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.store.GetTopic(topicID, hubID); err != nil {
+	topic, err := h.store.GetTopic(topicID, hubID)
+	if err != nil {
 		writeError(w, http.StatusNotFound, "not_found", "Topic not found")
+		return
+	}
+	if topic.ArchivedAt != nil {
+		writeError(w, http.StatusConflict, "topic_archived", "This topic is archived — restore it before assigning memories")
 		return
 	}
 
@@ -685,6 +813,32 @@ func (h *TopicsHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 	if len(req.Operations) == 0 {
 		writeError(w, http.StatusBadRequest, "empty_operations", "At least one operation is required")
 		return
+	}
+
+	// Archive guards: reorder must not touch archived topics nor plant an
+	// active topic under an archived parent — the tree UI only offers
+	// active nodes, so any such op is a stale or hostile client.
+	for _, op := range req.Operations {
+		topic, err := h.store.GetTopic(op.TopicID, hubID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_topic", "Reorder target topic not found in this hub")
+			return
+		}
+		if topic.ArchivedAt != nil {
+			writeError(w, http.StatusConflict, "topic_archived", "Cannot reorder an archived topic — restore it first")
+			return
+		}
+		if op.ParentID != nil && *op.ParentID != "" {
+			parent, err := h.store.GetTopic(*op.ParentID, hubID)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_parent", "Parent topic not found in this hub")
+				return
+			}
+			if parent.ArchivedAt != nil {
+				writeError(w, http.StatusConflict, "parent_archived", "Parent topic is archived — restore it first")
+				return
+			}
+		}
 	}
 
 	if err := h.store.ReorderTopics(hubID, req.Operations); err != nil {

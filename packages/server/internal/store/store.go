@@ -577,7 +577,22 @@ type Store interface {
 	// into a hub-qualified topic row without requiring the caller to
 	// pre-resolve the hub.
 	GetTopicAccessible(id string, scope VisibilityScope) (*model.Topic, error)
+	// ListTopics returns ACTIVE topics only — archived topics are invisible
+	// to every tree consumer (handlers, dreams, classification, agent tools,
+	// MCP) by construction. Use ListArchivedTopics for the archived surface.
 	ListTopics(hubID string) ([]model.Topic, error)
+	// ListArchivedTopics returns the hub's archived topics as a flat list,
+	// most recently archived first.
+	ListArchivedTopics(hubID string) ([]model.Topic, error)
+	// ArchiveTopicSubtree archives the topic and all descendants atomically;
+	// already-archived rows keep their original archived_at. Memory
+	// assignments are untouched so restore is lossless. Returns the number
+	// of rows newly archived.
+	ArchiveTopicSubtree(id, hubID string, archivedAt time.Time) (int, error)
+	// RestoreTopicSubtree clears archived_at on the topic and all
+	// descendants, re-planting the topic at root when its parent is still
+	// archived. Returns the number of rows restored.
+	RestoreTopicSubtree(id, hubID string, restoredAt time.Time) (int, error)
 	// SearchAccessibleTopics returns topics whose hub is in `hubIDs` and whose
 	// name or description matches every whitespace-separated token in `query`
 	// (case-insensitive AND). Used by the bar's quick-match endpoint to

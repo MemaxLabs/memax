@@ -177,3 +177,120 @@ func TestPostgresTopicMemoryAssignment(t *testing.T) {
 	}
 	_ = ctx
 }
+
+// TestPostgresTopicArchiveRestoreSubtree exercises the recursive-CTE
+// archive/restore primitives against real Postgres: cascade down the
+// subtree, idempotency, partial-branch restore with root re-planting,
+// and the archived-list ordering contract.
+func TestPostgresTopicArchiveRestoreSubtree(t *testing.T) {
+	t.Parallel()
+	s, hubID, userID := setupTopicFixture(t)
+
+	now := time.Now().Truncate(time.Microsecond)
+	mk := func(name string, parentID *string, position int) *model.Topic {
+		topic := &model.Topic{
+			ID: uuid.NewString(), OwnerID: userID, HubID: hubID,
+			ParentID: parentID, Name: name, Icon: "folder",
+			Position: position, CreatedAt: now, UpdatedAt: now,
+		}
+		if err := s.CreateTopic(topic); err != nil {
+			t.Fatalf("CreateTopic(%s): %v", name, err)
+		}
+		return topic
+	}
+
+	root := mk("Root", nil, 0)
+	child := mk("Child", &root.ID, 0)
+	grandchild := mk("Grandchild", &child.ID, 0)
+	sibling := mk("Sibling", nil, 1)
+
+	// Archive root: whole subtree goes, sibling stays.
+	archived, err := s.ArchiveTopicSubtree(root.ID, hubID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("ArchiveTopicSubtree: %v", err)
+	}
+	if archived != 3 {
+		t.Fatalf("expected 3 archived, got %d", archived)
+	}
+	active, err := s.ListTopics(hubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 || active[0].ID != sibling.ID {
+		t.Fatalf("expected only sibling active, got %d topics", len(active))
+	}
+	archivedList, err := s.ListArchivedTopics(hubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archivedList) != 3 {
+		t.Fatalf("expected 3 archived topics, got %d", len(archivedList))
+	}
+	for _, topic := range archivedList {
+		if topic.ArchivedAt == nil {
+			t.Fatalf("archived topic %s missing archived_at", topic.Name)
+		}
+	}
+
+	// Idempotent: nothing left to archive.
+	archived, err = s.ArchiveTopicSubtree(root.ID, hubID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("re-archive: %v", err)
+	}
+	if archived != 0 {
+		t.Fatalf("expected 0 newly archived, got %d", archived)
+	}
+
+	// Partial restore: child branch only → child re-planted at root,
+	// grandchild follows, root stays archived.
+	restored, err := s.RestoreTopicSubtree(child.ID, hubID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("RestoreTopicSubtree: %v", err)
+	}
+	if restored != 2 {
+		t.Fatalf("expected 2 restored, got %d", restored)
+	}
+	gotChild, err := s.GetTopic(child.ID, hubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotChild.ArchivedAt != nil {
+		t.Fatal("child should be active after restore")
+	}
+	if gotChild.ParentID != nil {
+		t.Fatalf("child should be re-planted at root, got parent_id=%v", gotChild.ParentID)
+	}
+	if gotChild.Position <= sibling.Position {
+		t.Fatalf("re-planted child should take next root position after sibling, got %d", gotChild.Position)
+	}
+	gotGrandchild, err := s.GetTopic(grandchild.ID, hubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotGrandchild.ParentID == nil || *gotGrandchild.ParentID != child.ID {
+		t.Fatalf("grandchild should stay under child, got parent_id=%v", gotGrandchild.ParentID)
+	}
+	gotRoot, err := s.GetTopic(root.ID, hubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRoot.ArchivedAt == nil {
+		t.Fatal("root should remain archived after branch restore")
+	}
+
+	// Full restore of the remaining root: restores in place (no parent).
+	restored, err = s.RestoreTopicSubtree(root.ID, hubID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("restore root: %v", err)
+	}
+	if restored != 1 {
+		t.Fatalf("expected 1 restored, got %d", restored)
+	}
+	active, err = s.ListTopics(hubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 4 {
+		t.Fatalf("expected all 4 topics active after full restore, got %d", len(active))
+	}
+}

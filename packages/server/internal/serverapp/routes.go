@@ -158,6 +158,9 @@ func registerMemoryRoutes(mux *http.ServeMux, deps routeDeps) {
 func registerKnowledgeRoutes(mux *http.ServeMux, deps routeDeps) {
 	mux.HandleFunc("GET /v1/topics", deps.topics.List)
 	mux.HandleFunc("POST /v1/topics", deps.topics.Create)
+	// Literal segment wins over {id} in the 1.22 mux, so /archived is safe
+	// alongside /v1/topics/{id}.
+	mux.HandleFunc("GET /v1/topics/archived", deps.topics.ListArchived)
 	mux.HandleFunc("GET /v1/topics/{id}", deps.topics.Get)
 	mux.HandleFunc("PATCH /v1/topics/{id}", deps.topics.Update)
 	mux.HandleFunc("DELETE /v1/topics/{id}", deps.topics.Delete)
@@ -165,6 +168,8 @@ func registerKnowledgeRoutes(mux *http.ServeMux, deps routeDeps) {
 	mux.HandleFunc("POST /v1/topics/{id}/memories", deps.topics.AddMemory)
 	mux.HandleFunc("DELETE /v1/topics/{id}/memories/{mid}", deps.topics.RemoveMemory)
 	mux.HandleFunc("POST /v1/topics/{id}/visit", deps.topics.RecordVisit)
+	mux.HandleFunc("POST /v1/topics/{id}/archive", deps.topics.Archive)
+	mux.HandleFunc("POST /v1/topics/{id}/restore", deps.topics.Restore)
 	mux.HandleFunc("POST /v1/topics/reorder", deps.topics.Reorder)
 
 	mux.HandleFunc("POST /v1/recall", deps.recall.Recall)

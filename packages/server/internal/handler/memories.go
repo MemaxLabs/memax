@@ -1924,8 +1924,13 @@ func (h *MemoriesHandler) BatchMove(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusForbidden, "forbidden", "Write access to this hub is required")
 			return
 		}
-		if _, err := h.store.GetTopic(req.TopicID, targetHubID); err != nil {
+		targetTopic, err := h.store.GetTopic(req.TopicID, targetHubID)
+		if err != nil {
 			writeError(w, http.StatusNotFound, "topic_not_found", "Target topic not found")
+			return
+		}
+		if targetTopic.ArchivedAt != nil {
+			writeError(w, http.StatusConflict, "topic_archived", "Target topic is archived — restore it before moving memories into it")
 			return
 		}
 	} else if !canWriteMemories(role) {

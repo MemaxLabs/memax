@@ -4,78 +4,34 @@ import { getClient } from "../lib/client.js";
 import { getActiveHubID } from "../lib/config.js";
 import { resolveHubID } from "../lib/hubs.js";
 import type { TopicTree } from "memax-sdk";
+import {
+  buildTopicPathMap,
+  flattenTopics,
+  resolveTopicReference,
+  topicDisplayCount,
+  topicDisplayID,
+} from "./topic-shared.js";
+import {
+  topicArchiveCommand,
+  topicArchivedListCommand,
+  topicRestoreCommand,
+} from "./topic-archive.js";
+
+// Re-export shared helpers so existing importers (recall.ts, list.ts,
+// ask.ts, show.ts, tests) keep working; the implementations moved to
+// topic-shared.ts to keep this file under the command-file size cap.
+export {
+  buildTopicPathMap,
+  flattenTopics,
+  resolveTopicReference,
+  topicDisplayCount,
+  topicDisplayID,
+};
 
 interface TopicListOptions {
   hub?: string;
   verbose?: boolean;
   format?: string;
-}
-
-export function topicDisplayCount(
-  topic: Pick<TopicTree, "total_memory_count" | "memory_count">,
-): number {
-  return topic.total_memory_count ?? topic.memory_count ?? 0;
-}
-
-export function buildTopicPathMap(
-  topics: TopicTree[],
-  parentPath = "",
-  map = new Map<string, string>(),
-): Map<string, string> {
-  for (const topic of topics) {
-    const path = parentPath ? `${parentPath} / ${topic.name}` : topic.name;
-    map.set(topic.id, path);
-    if (topic.children?.length) {
-      buildTopicPathMap(topic.children, path, map);
-    }
-  }
-  return map;
-}
-
-export function flattenTopics(
-  topics: TopicTree[],
-  output: TopicTree[] = [],
-): TopicTree[] {
-  for (const topic of topics) {
-    output.push(topic);
-    if (topic.children?.length) {
-      flattenTopics(topic.children, output);
-    }
-  }
-  return output;
-}
-
-export function topicDisplayID(id: string, verbose = false): string {
-  return verbose ? id : id.slice(0, 8);
-}
-
-export function resolveTopicReference(
-  topics: TopicTree[],
-  ref: string,
-): string {
-  const normalized = ref.trim().toLowerCase();
-  const flat = flattenTopics(topics);
-
-  const exact = flat.find((topic) => topic.id.toLowerCase() === normalized);
-  if (exact) {
-    return exact.id;
-  }
-
-  const prefixMatches = flat.filter((topic) =>
-    topic.id.toLowerCase().startsWith(normalized),
-  );
-  if (prefixMatches.length === 1) {
-    return prefixMatches[0].id;
-  }
-  if (prefixMatches.length > 1) {
-    throw new Error(
-      `Topic ID prefix is ambiguous. Matches: ${prefixMatches.map((topic) => `${topic.name} (${topic.id.slice(0, 8)})`).join(", ")}`,
-    );
-  }
-
-  throw new Error(
-    "Topic not found. Run `memax topic list` to see available topic IDs.",
-  );
 }
 
 export async function topicListCommand(
@@ -371,4 +327,24 @@ export function registerTopicCommands(program: Command): void {
     .description("Delete a topic")
     .option("--hub <slug>", "Scope topic prefix resolution to a hub")
     .action(topicDeleteCommand);
+
+  topicCmd
+    .command("archive <topic-id>")
+    .description("Archive a topic and its subtopics (restorable)")
+    .option("--hub <slug>", "Scope topic prefix resolution to a hub")
+    .action(topicArchiveCommand);
+
+  topicCmd
+    .command("restore <topic-id>")
+    .description("Restore an archived topic and its subtopics")
+    .option("--hub <slug>", "Scope topic prefix resolution to a hub")
+    .action(topicRestoreCommand);
+
+  topicCmd
+    .command("archived")
+    .description("List archived topics")
+    .option("--hub <slug>", "Scope to a hub")
+    .option("--verbose", "Show full topic IDs")
+    .option("--format <format>", "Output format: text, json", "text")
+    .action(topicArchivedListCommand);
 }

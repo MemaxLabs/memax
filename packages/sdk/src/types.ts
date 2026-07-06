@@ -1262,6 +1262,10 @@ export interface Topic {
   user_modified: boolean;
   created_at: string;
   updated_at: string;
+  /** Set when the topic is archived (soft lifecycle state). Archived topics
+   *  keep their memory assignments but are hidden from the active tree and
+   *  excluded from AI organization. Absent means active. */
+  archived_at?: string;
   activity_summary?: TopicActivitySummary;
   /** Server-resolved dream-activity aggregate scoped to viewer's last
    *  visit of this topic. Clears when viewer calls topics.markVisit. */
@@ -1308,6 +1312,20 @@ export interface TopicTree extends Topic {
 export interface TopicListResponse {
   topics: TopicTree[];
   unassigned_count: number;
+}
+
+/** Envelope for GET /v1/topics/archived — flat list, most recently
+ *  archived first (subtrees archive atomically, so no hierarchy here). */
+export interface TopicArchivedListResponse {
+  topics: Topic[];
+}
+
+/** Result of POST /v1/topics/{id}/archive or /restore. Counts include the
+ *  topic itself plus affected descendants. */
+export interface TopicArchiveResult {
+  topic_id: string;
+  archived_count?: number;
+  restored_count?: number;
 }
 
 export interface TopicCreateParams {

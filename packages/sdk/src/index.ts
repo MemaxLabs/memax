@@ -151,6 +151,8 @@ export type {
   TopicDeltaSummary,
   TopicTree,
   TopicListResponse,
+  TopicArchivedListResponse,
+  TopicArchiveResult,
   TopicCreateParams,
   TopicUpdateParams,
   TopicUpdateErrorCode,

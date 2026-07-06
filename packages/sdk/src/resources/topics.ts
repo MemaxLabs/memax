@@ -1,5 +1,7 @@
 import type {
   Topic,
+  TopicArchiveResult,
+  TopicArchivedListResponse,
   TopicCreateParams,
   TopicListResponse,
   TopicMemoriesResponse,
@@ -62,6 +64,47 @@ export class TopicsResource {
 
   async delete(id: string, hubId?: string): Promise<void> {
     await this.req<void>("DELETE", `/v1/topics/${id}`, { hubId });
+  }
+
+  /**
+   * listArchived returns the hub's archived topics as a flat list, most
+   * recently archived first. Archived topics keep their memory assignments
+   * (restore is lossless) but are hidden from the active tree and excluded
+   * from AI organization (dreams, inline classification, recall boost).
+   */
+  async listArchived(hubId?: string): Promise<TopicArchivedListResponse> {
+    return this.req<TopicArchivedListResponse>("GET", "/v1/topics/archived", {
+      query: { hub_id: hubId },
+      hubId,
+    });
+  }
+
+  /**
+   * archive soft-archives a topic and its entire subtree. Idempotent —
+   * archiving an already-archived topic returns archived_count 0.
+   *
+   * While archived, the topic is read-only: update, memory assignment, and
+   * creating children all return 409 (`topic_archived` / `parent_archived`)
+   * until the topic is restored.
+   */
+  async archive(id: string, hubId?: string): Promise<TopicArchiveResult> {
+    return this.req<TopicArchiveResult>("POST", `/v1/topics/${id}/archive`, {
+      body: {},
+      hubId,
+    });
+  }
+
+  /**
+   * restore un-archives a topic and its subtree. If the topic's parent is
+   * still archived (partial branch restore), the topic is re-planted at the
+   * root so it never hangs under an invisible node. Idempotent — restoring
+   * an active topic returns restored_count 0.
+   */
+  async restore(id: string, hubId?: string): Promise<TopicArchiveResult> {
+    return this.req<TopicArchiveResult>("POST", `/v1/topics/${id}/restore`, {
+      body: {},
+      hubId,
+    });
   }
 
   async listMemories(

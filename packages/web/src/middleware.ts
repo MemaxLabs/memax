@@ -37,6 +37,13 @@ import { NextRequest, NextResponse } from "next/server";
 const V1_MEMORIES_OVERVIEW_RE = /^\/memories\/?$/;
 const V1_MEMORIES_TOPIC_RE = /^\/memories\/topics\/([^/]+)\/?$/;
 
+// Session-presence fast path (see lib/session-presence.ts). Name is
+// duplicated here rather than imported to keep the middleware
+// self-contained for the Edge runtime; lib/session-presence.ts and
+// middleware.test.ts both pin it.
+const SESSION_PRESENCE_COOKIE = "memax_session_presence";
+const SIGNED_OUT_ENTRY_PATHS = new Set(["/", "/login", "/register"]);
+
 function v1ToV2Path(pathname: string): string | null {
   // /memories or /memories/ — the overview
   if (V1_MEMORIES_OVERVIEW_RE.test(pathname)) {
@@ -52,7 +59,24 @@ function v1ToV2Path(pathname: string): string | null {
 }
 
 export function middleware(request: NextRequest) {
-  const target = v1ToV2Path(request.nextUrl.pathname);
+  const { pathname } = request.nextUrl;
+
+  // Silent session restore. When the session-presence cookie says this
+  // browser already has a session (see lib/session-presence.ts), the
+  // signed-out entry surfaces redirect straight to the `/home` entry
+  // resolver: a previously-signed-in user who lands on `/` or taps
+  // "Sign in" never sees the marketing page or login form — they land
+  // in the app in one hop with zero credential re-entry. The cookie
+  // carries no secret; if it is ever stale, the app shell's auth init
+  // fails, clears it, and bounces to /login exactly once (no loop).
+  if (
+    SIGNED_OUT_ENTRY_PATHS.has(pathname) &&
+    request.cookies.get(SESSION_PRESENCE_COOKIE)?.value === "1"
+  ) {
+    return NextResponse.redirect(new URL("/home", request.nextUrl.origin));
+  }
+
+  const target = v1ToV2Path(pathname);
   if (!target) return NextResponse.next();
 
   // Build a fresh URL with the target pathname instead of cloning +
@@ -66,9 +90,10 @@ export function middleware(request: NextRequest) {
   return NextResponse.redirect(redirectUrl);
 }
 
-// Match ONLY the legacy /memories tree. Other paths (/h/*, /brain,
-// /agents, /inbox, /api/*, _next, etc.) skip the middleware entirely
-// so it stays cheap.
+// Match the legacy /memories tree plus the signed-out entry surfaces
+// (/, /login, /register) for the session-presence fast path. Other
+// paths (/h/*, /brain, /agents, /inbox, /api/*, _next, etc.) skip the
+// middleware entirely so it stays cheap.
 export const config = {
-  matcher: ["/memories", "/memories/:path*"],
+  matcher: ["/", "/login", "/register", "/memories", "/memories/:path*"],
 };

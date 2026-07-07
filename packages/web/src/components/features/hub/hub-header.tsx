@@ -137,19 +137,25 @@ export function HubHeader({
     displayName: viewerDisplayName,
   });
 
-  const greeting = useMemo(
-    () =>
-      interpolate(
-        t.hubHeader.greeting[summary.header.greeting_key],
-        summary.header.greeting_params,
-      ),
-    [
-      interpolate,
-      summary.header.greeting_key,
-      summary.header.greeting_params,
-      t,
-    ],
-  );
+  const greeting = useMemo(() => {
+    const params = summary.header.greeting_params;
+    // The server sends name="" for accounts without a display name —
+    // the fallback is a client concern so each locale can pick a word
+    // that works inside its own greeting templates (the old
+    // server-side "there" leaked English into every locale).
+    const withNameFallback = params?.name
+      ? params
+      : { ...params, name: t.hubHeader.greetingNameFallback };
+    return interpolate(
+      t.hubHeader.greeting[summary.header.greeting_key],
+      withNameFallback,
+    );
+  }, [
+    interpolate,
+    summary.header.greeting_key,
+    summary.header.greeting_params,
+    t,
+  ]);
 
   const statsLine = useMemo(
     () =>

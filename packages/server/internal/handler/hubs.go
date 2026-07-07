@@ -594,7 +594,11 @@ func (h *HubsHandler) buildHubSummary(r *http.Request, userID, hubID, role strin
 		lastVisit = visit
 	}
 
-	userName := "there"
+	// No hardcoded fallback here: greeting_params.name stays empty when
+	// the account has no name, and the web client substitutes a
+	// locale-appropriate fallback. The old server-side "there" leaked
+	// English into non-English greeting templates.
+	userName := ""
 	if user, err := h.store.GetUser(userID); err == nil && user != nil {
 		if display := strings.TrimSpace(user.DisplayName); display != "" {
 			userName = display

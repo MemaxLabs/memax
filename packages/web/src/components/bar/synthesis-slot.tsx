@@ -82,7 +82,12 @@ export function SynthesisSlot({
         >
           ⚠
         </span>
-        <span className="flex-1">{t.bar.ai.error}</span>
+        {/* "sources below are still available" is only true when there
+            ARE sources — with zero results that line sat directly above
+            the "No memories match" empty state, contradicting it. */}
+        <span className="flex-1">
+          {sources.length ? t.bar.ai.error : t.bar.ai.errorNoSources}
+        </span>
         <button
           type="button"
           onClick={onRetry}

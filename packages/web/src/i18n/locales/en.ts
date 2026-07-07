@@ -68,6 +68,7 @@ export const en = {
       thinking: 'Thinking about "{query}"…',
       freeStub: "AI answers are a Pro feature — recall stays free.",
       error: "AI answer failed — sources below are still available.",
+      errorNoSources: "AI answer failed.",
       quotaExhausted:
         "You've used all your asks this month — sources below are still available.",
     },

@@ -926,6 +926,30 @@ function GlobalBar() {
         );
       })()}
       {/*
+       * Scrim under the engaged bar (desktop only — mobile surfaces own
+       * their own takeover treatments). Without it the expanded bar
+       * floats over full-contrast page content and both layers fight
+       * for legibility (audit D4: onboarding copy bleeding through the
+       * translucent pill). Spotlight/Raycast pattern: results panel
+       * always sits on a dimmed page. Same z tier as the bar, earlier
+       * in DOM order, so the bar paints above it. Clicks land on the
+       * scrim (not the content beneath) and the document-level
+       * click-outside handler dismisses the bar — one click to close,
+       * zero accidental content activations.
+       */}
+      {!isMobile && (
+        <div
+          aria-hidden
+          className="fixed inset-0 z-bar transition-opacity duration-200"
+          style={{
+            background: "oklch(from var(--background) l c h / 0.55)",
+            opacity: shouldShow && hasExpandSurface && barVisible ? 1 : 0,
+            pointerEvents:
+              shouldShow && hasExpandSurface && barVisible ? "auto" : "none",
+          }}
+        />
+      )}
+      {/*
        * Bar container — ALWAYS MOUNTED.
        *
        * Architecture (industry standard: Spotlight / Raycast / Linear):

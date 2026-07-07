@@ -1100,6 +1100,9 @@ export const en = {
       unavailableHint:
         "The page can still load, but the header needs the new summary endpoint.",
     },
+    // Substituted for {name} when the account has no display name —
+    // must read naturally inside every greeting template below.
+    greetingNameFallback: "there",
     greeting: {
       reviewNeededA:
         "Good evening, {name}. {n} merge conflicts need your call.",

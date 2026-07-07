@@ -31,9 +31,11 @@
  * the resolver.
  */
 
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useOnboardingActivation } from "@/hooks/use-onboarding-activation";
+import { useAuth, useActiveHub } from "@/lib/auth";
+import { hubRouteSlug } from "@/lib/hub-from-slug";
 import {
   getLandingSurfaceHint,
   landingPathFor,
@@ -42,25 +44,44 @@ import {
 
 export default function HomePage() {
   const router = useRouter();
-  const { isActivated, isLoading } = useOnboardingActivation();
+  const { user } = useAuth();
+  const { activeHub } = useActiveHub();
+  const { isActivated, isLoading, isUnknown } = useOnboardingActivation();
   const resolvedRef = useRef(false);
+
+  // Memories landings resolve against the ACTIVE hub so a /home entry
+  // (brand link, error-page home button) never silently reverts a
+  // team-hub selection to personal.
+  const activeSlug = useMemo(
+    () =>
+      activeHub?.hub && user ? hubRouteSlug(activeHub.hub, user.id) : null,
+    [activeHub, user],
+  );
 
   useLayoutEffect(() => {
     if (resolvedRef.current) return;
     const hint = getLandingSurfaceHint();
     if (hint) {
       resolvedRef.current = true;
-      router.replace(landingPathFor(hint));
+      router.replace(landingPathFor(hint, activeSlug));
       return;
     }
     if (isLoading) return;
     resolvedRef.current = true;
+    if (isUnknown) {
+      // Activation signal unavailable (query error): land on the safe,
+      // honest surface WITHOUT persisting a hint — a persisted guess
+      // would misroute every subsequent cold entry until a successful
+      // fetch overwrote it.
+      router.replace(landingPathFor("memories", activeSlug));
+      return;
+    }
     const surface = isActivated ? "brain" : "memories";
     // Persist here as well as in the hook: the redirect unmounts this
     // page before the hook's passive effect gets a chance to run.
     setLandingSurfaceHint(surface);
-    router.replace(landingPathFor(surface));
-  }, [isActivated, isLoading, router]);
+    router.replace(landingPathFor(surface, activeSlug));
+  }, [isActivated, isLoading, isUnknown, activeSlug, router]);
 
   // Neutral by design: the app shell around this page shows the rail
   // with no active tab and no bar. Painting a destination skeleton

@@ -47,7 +47,19 @@ export function clearLandingSurfaceHint() {
   } catch {}
 }
 
-/** Path for a landing surface. Memories always lands on the personal hub. */
-export function landingPathFor(surface: LandingSurface): string {
-  return surface === "brain" ? "/brain" : "/h/personal/memories";
+/**
+ * Path for a landing surface. Memories lands on the ACTIVE hub when
+ * the caller can resolve its slug — hard-coding personal here would
+ * silently revert a team-hub selection on every /home entry (brand
+ * link, error-page home buttons), the same revert-to-personal bug the
+ * hub switcher fixes elsewhere. `null`/absent slug falls back to
+ * personal (every user has one).
+ */
+export function landingPathFor(
+  surface: LandingSurface,
+  hubSlug?: string | null,
+): string {
+  return surface === "brain"
+    ? "/brain"
+    : `/h/${hubSlug || "personal"}/memories`;
 }

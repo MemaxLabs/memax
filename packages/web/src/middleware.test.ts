@@ -72,7 +72,7 @@ describe("middleware legacy path normalization", () => {
 });
 
 describe("middleware silent session restore", () => {
-  it.each(["/", "/login", "/register"])(
+  it.each(["/", "/login"])(
     "redirects %s to /home when the session-presence cookie is set",
     (path) => {
       const res = middleware(makeRequest(path, { sessionPresence: true }));
@@ -81,13 +81,26 @@ describe("middleware silent session restore", () => {
     },
   );
 
-  it.each(["/", "/login", "/register"])(
-    "leaves %s alone without the cookie",
-    (path) => {
-      const res = middleware(makeRequest(path));
-      expect(res.status).toBe(200);
-    },
-  );
+  it.each(["/", "/login"])("leaves %s alone without the cookie", (path) => {
+    const res = middleware(makeRequest(path));
+    expect(res.status).toBe(200);
+  });
+
+  it("never redirects /register — invite links carry ?invite=TOKEN", () => {
+    const res = middleware(
+      makeRequest("/register?invite=tok_123", { sessionPresence: true }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("skips the fast path when the request carries a query string", () => {
+    // /login?returnTo=… and OAuth error params encode flow state the
+    // /home resolver knows nothing about — redirecting would drop it.
+    const res = middleware(
+      makeRequest("/login?returnTo=%2Fagents", { sessionPresence: true }),
+    );
+    expect(res.status).toBe(200);
+  });
 
   it("does not let the cookie affect legacy path normalization", () => {
     const res = middleware(makeRequest("/memories", { sessionPresence: true }));

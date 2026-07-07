@@ -37,7 +37,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   MemaxLogo,
@@ -73,6 +73,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   const { secondaryHidden, toggleSecondary, setSecondaryHidden, isHydrated } =
     useShellState();
   const router = useRouter();
+  const pathname = usePathname();
   const reduceMotion = useReducedMotion();
   const { t } = useLocale();
   const { data: notificationSummary } = useNotificationSummary();
@@ -100,7 +101,14 @@ export function LeftRail({ activeTab }: LeftRailProps) {
     activeTab !== null &&
     !secondaryHidden[activeTab],
   );
-  const expanded = !secondaryOpenOnActive;
+  // `/home` is the neutral entry resolver (see app/(app)/home/page.tsx):
+  // it exists for a few frames while the landing surface resolves, and
+  // every destination it routes to opens a secondary panel — i.e. the
+  // rail lands collapsed. Starting expanded there would play a
+  // full-width rail that immediately collapses on arrival: a layout
+  // shift on every cold entry with no information payoff.
+  const isEntryResolver = pathname === "/home";
+  const expanded = !secondaryOpenOnActive && !isEntryResolver;
   const visualWidth = expanded ? RAIL_WIDTH_EXPANDED : RAIL_WIDTH_COLLAPSED;
 
   // Resolve the memories path against the user's active hub. Static-path

@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import { Check, Plus } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { MenuItem } from "@memaxlabs/ui";
 import { useAuth } from "@/lib/auth";
-import { useBar } from "@/contexts/bar-context";
 import { useLocale } from "@/i18n";
 import { useHubs } from "@/hooks/use-hubs";
 import { HubBadge } from "@/components/features/hub/hub-badge";
@@ -13,7 +12,7 @@ import { startLiveSurfaceTransition } from "@/lib/recent-navigation";
 import { warmHubLandingRoute } from "@/lib/hub-route-readiness";
 import { getHubDisplayInitial, getHubDisplayName } from "@/lib/hub-display";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
-import { buildMemoriesPath, getHubSlugForPath } from "@/lib/route-helpers";
+import { buildMemoriesPath } from "@/lib/route-helpers";
 
 interface HubSwitcherMenuProps {
   onSelect?: () => void;
@@ -37,8 +36,6 @@ export function HubSwitcherMenu({
 }: HubSwitcherMenuProps) {
   const { user, hubs, activeHubId, switchHub } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
-  const { setBarNotification } = useBar();
   const { t } = useLocale();
   const { data: liveHubs } = useHubs();
   const [pendingHubId, setPendingHubId] = useState<string | null>(null);
@@ -63,9 +60,6 @@ export function HubSwitcherMenu({
             ? { name: user.name, displayName: user.display_name }
             : undefined,
         );
-        const hint = !isActive
-          ? t.hubs.showRecentHint?.replace("{name}", label)
-          : null;
         const kind = hub.hub_type === "team" ? "team" : "personal";
         const showPersonalTag = kind === "personal";
         return (
@@ -91,25 +85,19 @@ export function HubSwitcherMenu({
                 waitFor: warmPromise,
               });
               switchHub(hub.id);
-              // On v2 hub-scoped routes (`/h/<slug>/...`) navigate to the
-              // target hub's slug so the URL matches the new active hub.
-              // On v1 routes the legacy /memories overview reads the
-              // active hub from auth context, so the bare path still
-              // works.
-              const onV2Route = getHubSlugForPath(pathname) !== null;
-              const destination =
-                onV2Route && user
-                  ? buildMemoriesPath(hubRouteSlug(hub, user.id))
-                  : "/memories";
+              // Always navigate to the TARGET hub's v2 slug. The old
+              // "/memories" fallback for non-v2 routes bounced through
+              // the middleware rewrite to /h/personal/..., which made
+              // useV2RouteHubSync silently revert a team-hub selection
+              // back to personal.
+              const destination = user
+                ? buildMemoriesPath(hubRouteSlug(hub, user.id))
+                : "/memories";
               router.push(destination);
-              setBarNotification({
-                type: "success",
-                message:
-                  t.hubs.switchedTo?.replace("{name}", label) ??
-                  `Switched to ${label}`,
-                autoDismissMs: 2000,
-                onDismiss: () => setBarNotification(null),
-              });
+              // No success toast: the transition overlay already names
+              // the destination hub, and the hub header IS the
+              // confirmation. Firing a "Switched" toast here raced the
+              // "Switching…" overlay — both were visible at once.
               setPendingHubId(null);
               onSelect?.();
             }}
@@ -123,17 +111,17 @@ export function HubSwitcherMenu({
               <HubBadge kind={kind} label={badgeLabel} accent={hub.accent} />
             </div>
             <div className="min-w-0 flex-1 text-left">
+              {/* Every row shows its memory count — same metadata for
+                  active and inactive hubs (the old "Show X's recent"
+                  hint line read as mystery-meat and hid the count). */}
               <div className="flex items-center gap-2">
                 <span className="flex-1 truncate">{label}</span>
                 {showPersonalTag && <PersonalTag />}
-                {!hint && (
-                  <span className="shrink-0 text-[12px] tabular-nums text-fg-4">
-                    {memory_count ?? 0}
-                  </span>
-                )}
+                <span className="shrink-0 text-[12px] tabular-nums text-fg-4">
+                  {memory_count ?? 0}
+                </span>
                 {isActive && <Check className="h-3 w-3 text-fg-3" />}
               </div>
-              {hint && <p className="mt-0.5 text-[11px] text-fg-4">{hint}</p>}
             </div>
           </button>
         );

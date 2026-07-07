@@ -5,12 +5,15 @@ import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
-import { buildMemoriesPath, getHubSlugForPath } from "@/lib/route-helpers";
+import { buildMemoriesPath } from "@/lib/route-helpers";
 import {
   pillClass,
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from "@memaxlabs/ui";
 import { HubSwitcherMenu } from "@/components/features/hub/hub-switcher-menu";
 import { HubBadge } from "@/components/features/hub/hub-badge";
@@ -29,7 +32,16 @@ interface HubIdentityChipProps {
   icon?: string;
   accent?: string;
   role?: string;
-  variant?: "standalone" | "embedded";
+  /**
+   * - `standalone` — glass pill with badge + name (panel headers).
+   * - `embedded`   — inline text-weight trigger.
+   * - `rail`       — badge-only square for the LeftRail: the global,
+   *   always-present hub anchor (Slack/Linear pattern: workspace
+   *   identity lives in the nav rail on every surface, not inside one
+   *   tab's panel). Popover opens to the right; hub name surfaces via
+   *   tooltip like the rail's other icon-only affordances.
+   */
+  variant?: "standalone" | "embedded" | "rail";
   viewerName?: string;
   viewerDisplayName?: string;
 }
@@ -124,22 +136,47 @@ export function HubIdentityChip({
         className: "max-w-full glass-pill rounded-full",
       });
 
+  const isRail = variant === "rail";
+  const trigger = isRail ? (
+    <PopoverTrigger
+      aria-label={`${t.hubs.switchTitle}: ${label}`}
+      className="flex h-9 w-9 items-center justify-center rounded-card cursor-pointer transition-colors hover:bg-surface-2"
+    >
+      <HubBadge kind={kind} label={badgeLabel} accent={accent} size="md" />
+    </PopoverTrigger>
+  ) : (
+    <PopoverTrigger className={triggerClass}>
+      <HubBadge
+        kind={kind}
+        label={badgeLabel}
+        accent={accent}
+        size={isEmbedded ? "md" : "lg"}
+      />
+      <span className="truncate">{label}</span>
+      {role && <HubRoleTag role={role} />}
+      <ChevronDown
+        className={`shrink-0 text-fg-4 ${isEmbedded ? "h-3 w-3" : "h-4 w-4"}`}
+      />
+    </PopoverTrigger>
+  );
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className={triggerClass}>
-        <HubBadge
-          kind={kind}
-          label={badgeLabel}
-          accent={accent}
-          size={isEmbedded ? "md" : "lg"}
-        />
-        <span className="truncate">{label}</span>
-        {role && <HubRoleTag role={role} />}
-        <ChevronDown
-          className={`shrink-0 text-fg-4 ${isEmbedded ? "h-3 w-3" : "h-4 w-4"}`}
-        />
-      </PopoverTrigger>
-      <PopoverContent side="bottom" align="start" sideOffset={6}>
+      {isRail ? (
+        <Tooltip>
+          <TooltipTrigger render={trigger} />
+          <TooltipContent side="right" sideOffset={12}>
+            {label}
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        trigger
+      )}
+      <PopoverContent
+        side={isRail ? "right" : "bottom"}
+        align="start"
+        sideOffset={isRail ? 12 : 6}
+      >
         <div className="w-60 p-1">
           <HubSwitcherMenu
             onSelect={() => setOpen(false)}
@@ -203,13 +240,13 @@ export function HubIdentityChip({
                       waitFor: warmPromise,
                     });
                     switchHub(createdHub.id);
-                    // Match the new hub's URL when on a v2 hub-scoped
-                    // route. Falls through to the v1 overview otherwise.
-                    const onV2Route = getHubSlugForPath(pathname) !== null;
-                    const destination =
-                      onV2Route && user
-                        ? buildMemoriesPath(hubRouteSlug(createdHub, user.id))
-                        : "/memories";
+                    // Always navigate to the created hub's v2 slug —
+                    // the "/memories" fallback bounced through the
+                    // middleware rewrite to /h/personal/... and
+                    // silently reverted the switch to personal.
+                    const destination = user
+                      ? buildMemoriesPath(hubRouteSlug(createdHub, user.id))
+                      : "/memories";
                     router.push(destination);
                     setBarNotification({
                       type: "success",

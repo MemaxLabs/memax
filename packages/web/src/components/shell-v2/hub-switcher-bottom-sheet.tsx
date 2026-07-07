@@ -29,7 +29,7 @@ import { acquireBodyScrollLock } from "@/lib/scroll-lock";
 import { startLiveSurfaceTransition } from "@/lib/recent-navigation";
 import { warmHubLandingRoute } from "@/lib/hub-route-readiness";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
-import { buildMemoriesPath, getHubSlugForPath } from "@/lib/route-helpers";
+import { buildMemoriesPath } from "@/lib/route-helpers";
 import { getHubDisplayInitial, getHubDisplayName } from "@/lib/hub-display";
 
 interface HubSwitcherBottomSheetProps {
@@ -136,11 +136,13 @@ export function HubSwitcherBottomSheet({
                       waitFor: warmPromise,
                     });
                     switchHub(createdHub.id);
-                    const onV2Route = getHubSlugForPath(pathname) !== null;
-                    const destination =
-                      onV2Route && user
-                        ? buildMemoriesPath(hubRouteSlug(createdHub, user.id))
-                        : "/memories";
+                    // Always navigate to the created hub's v2 slug —
+                    // the "/memories" fallback bounced through the
+                    // middleware rewrite to /h/personal/... and
+                    // silently reverted the switch to personal.
+                    const destination = user
+                      ? buildMemoriesPath(hubRouteSlug(createdHub, user.id))
+                      : "/memories";
                     router.push(destination);
                     setBarNotification({
                       type: "success",

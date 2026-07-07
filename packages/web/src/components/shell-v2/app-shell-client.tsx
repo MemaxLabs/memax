@@ -191,13 +191,22 @@ function AppShell({ children }: { children: React.ReactNode }) {
     const holdMs = liveTransition.minDurationMs ?? 420;
     const fadeMs = 200;
     const maxMs = liveTransition.maxDurationMs ?? 2000;
+    // When the destination data settles almost immediately (cache-warm
+    // hub switch), the overlay would otherwise sit dimmed for the full
+    // min-hold announcing a wait that isn't happening — perceived
+    // latency added by the loading UI itself. Under this threshold we
+    // drop the hold and let the 200ms opacity fade be the entire
+    // transition. The min-hold only applies when there is a real wait,
+    // where it keeps the pill legible instead of flash-blinking.
+    const instantThresholdMs = 120;
     let settled = false;
 
     const finish = () => {
       if (settled) return;
       settled = true;
       const elapsed = performance.now() - startedAt;
-      const remaining = Math.max(0, holdMs - elapsed);
+      const remaining =
+        elapsed < instantThresholdMs ? 0 : Math.max(0, holdMs - elapsed);
       const hideTimeout = window.setTimeout(() => {
         setLiveTransitionVisible(false);
       }, remaining);

@@ -48,6 +48,7 @@ import {
 } from "@memaxlabs/ui";
 import { NORMAL, EASE } from "@memaxlabs/ui/tokens/motion";
 import { useAuth, useActiveHub } from "@/lib/auth";
+import { HubIdentityChip } from "@/components/features/hub/hub-identity-chip";
 import { useShellState } from "@/contexts/shell-state-context";
 import { useNotificationSummary } from "@/hooks/use-notifications";
 import { useSettingsPanel } from "@/contexts/settings-panel-context";
@@ -77,7 +78,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   const reduceMotion = useReducedMotion();
   const { t } = useLocale();
   const { data: notificationSummary } = useNotificationSummary();
-  const { user } = useAuth();
+  const { user, hubs } = useAuth();
   const { activeHub } = useActiveHub();
   const settingsPanel = useSettingsPanel();
   const inboxBadgeTone =
@@ -217,6 +218,27 @@ export function LeftRail({ activeTab }: LeftRailProps) {
           <MemaxTextLogo height={18} className="text-foreground shrink-0" />
         )}
       </button>
+
+      {/* Hub anchor — the global hub identity + switcher, present on
+          every surface (Slack/Linear pattern: workspace identity lives
+          in the nav rail, not inside one tab's panel). Gated on 2+
+          hubs like every other switcher trigger; single-hub users have
+          nothing to switch. */}
+      {hubs.length >= 2 && activeHub && (
+        <div
+          className={`mt-1 flex shrink-0 ${expanded ? "px-3" : "justify-center px-0"}`}
+        >
+          <HubIdentityChip
+            variant="rail"
+            kind={activeHub.hub.hub_type === "team" ? "team" : "personal"}
+            name={activeHub.hub.name}
+            icon={activeHub.hub.icon}
+            accent={activeHub.hub.accent}
+            viewerName={user?.name}
+            viewerDisplayName={user?.display_name}
+          />
+        </div>
+      )}
 
       {/* Tabs */}
       <nav className="flex flex-col gap-0.5 px-2 mt-2 flex-1">

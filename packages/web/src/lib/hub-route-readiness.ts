@@ -6,7 +6,10 @@ import { getMemoriesInfiniteQueryOptions } from "@/hooks/use-memories";
 import { getRecentMemoriesInfiniteQueryOptions } from "@/hooks/use-recent-memories";
 import { getTopicsQueryOptions } from "@/hooks/use-topics";
 
-export type HubLandingRoute = "/home" | "/memories";
+// `/home` used to have its own warm contract when it rendered the v1
+// brain landing; it is now the neutral entry resolver (renders no hub
+// data), so `/memories` is the only hub landing left to warm.
+export type HubLandingRoute = "/memories";
 
 type HubRouteWarmTask = (hubId: string) => Promise<unknown>;
 
@@ -14,25 +17,6 @@ const HUB_ROUTE_READINESS_CONTRACTS: Record<
   HubLandingRoute,
   HubRouteWarmTask[]
 > = {
-  "/home": [
-    (hubId) => queryClient.ensureQueryData(getHubSummaryQueryOptions(hubId)),
-    (hubId) =>
-      queryClient.fetchInfiniteQuery(
-        getMemoriesInfiniteQueryOptions({
-          hubId,
-          sort: "recent",
-        }),
-      ),
-    (hubId) =>
-      queryClient.fetchInfiniteQuery(
-        getRecentMemoriesInfiniteQueryOptions({
-          hubId,
-          window: "7d",
-          actor: "all",
-          expanded: false,
-        }),
-      ),
-  ],
   "/memories": [
     (hubId) => queryClient.ensureQueryData(getHubSummaryQueryOptions(hubId)),
     (hubId) => queryClient.ensureQueryData(getTopicsQueryOptions(hubId)),

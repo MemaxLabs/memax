@@ -291,15 +291,25 @@ export async function hydrateMemoryFromEvent(
     });
 
     if (payload.topic_id) {
-      qc.setQueryData(
-        topicMemoriesQueryKey(payload.topic_id),
-        (
-          current: {
-            memories: Memory[];
-            next_cursor: string;
-            has_more: boolean;
-          } | null,
-        ) => updateTopicMemoriesData(current, memory, payload.state),
+      // topicMemoriesQueryKey is a prefix — entries carry a trailing
+      // hub-scope segment (see use-topics.ts). Patch every cached
+      // scope; the boundary filter already ran server-side before
+      // this event reached us.
+      qc.getQueriesData<{
+        memories: Memory[];
+        next_cursor: string;
+        has_more: boolean;
+      } | null>({ queryKey: topicMemoriesQueryKey(payload.topic_id) }).forEach(
+        ([queryKey, current]) => {
+          const next = updateTopicMemoriesData(
+            current ?? null,
+            memory,
+            payload.state,
+          );
+          if (next !== current) {
+            qc.setQueryData(queryKey, next);
+          }
+        },
       );
       qc.invalidateQueries({
         queryKey: topicQueryKey(payload.topic_id),

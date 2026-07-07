@@ -19,6 +19,13 @@ import {
 
 export type { Topic, TopicTree, TopicListResponse };
 
+// Topic cache keys are PREFIXES: the query options append the hub
+// scope (`hubId ?? "any"`) as a trailing segment because the fetch is
+// hub-scoped (authorization + boundary), so a cache entry fetched
+// under one hub must never satisfy a read under another. Writers that
+// don't know the hub (optimistic patches, SSE hydration) address the
+// cache by prefix via getQueriesData/invalidateQueries — both are
+// prefix-matching — so they keep working without threading hub ids.
 export const topicQueryKey = (
   id: string,
 ): readonly ["topics", "detail", string] => ["topics", "detail", id];
@@ -39,7 +46,7 @@ export function getTopicsQueryOptions(hubId?: string) {
 
 export function getTopicQueryOptions(id: string, hubId?: string) {
   return {
-    queryKey: topicQueryKey(id),
+    queryKey: [...topicQueryKey(id), hubId ?? "any"] as const,
     queryFn: () => getMemaxClient().topics.get(id, hubId),
     enabled: !!id,
     staleTime: 30 * 1000,
@@ -52,7 +59,7 @@ export function getTopicMemoriesQueryOptions(
   hubId?: string,
 ) {
   return {
-    queryKey: topicMemoriesQueryKey(topicId),
+    queryKey: [...topicMemoriesQueryKey(topicId), hubId ?? "any"] as const,
     queryFn: () =>
       getMemaxClient().topics.listMemories(topicId, {
         limit,

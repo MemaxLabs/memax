@@ -137,19 +137,28 @@ export function HubHeader({
     displayName: viewerDisplayName,
   });
 
-  const greeting = useMemo(
-    () =>
-      interpolate(
-        t.hubHeader.greeting[summary.header.greeting_key],
-        summary.header.greeting_params,
-      ),
-    [
-      interpolate,
-      summary.header.greeting_key,
-      summary.header.greeting_params,
-      t,
-    ],
-  );
+  const greeting = useMemo(() => {
+    const params = summary.header.greeting_params;
+    // The server sends the English sentinel "there" (legacy) or ""
+    // when the account has no display name — either way the fallback
+    // is a client concern so each locale can pick a word that works
+    // inside its own greeting templates (the raw server "there"
+    // leaked English into every locale). The server keeps sending
+    // "there" for back-compat with pre-fallback bundles; see hubs.go.
+    const hasRealName = Boolean(params?.name) && params.name !== "there";
+    const withNameFallback = hasRealName
+      ? params
+      : { ...params, name: t.hubHeader.greetingNameFallback };
+    return interpolate(
+      t.hubHeader.greeting[summary.header.greeting_key],
+      withNameFallback,
+    );
+  }, [
+    interpolate,
+    summary.header.greeting_key,
+    summary.header.greeting_params,
+    t,
+  ]);
 
   const statsLine = useMemo(
     () =>

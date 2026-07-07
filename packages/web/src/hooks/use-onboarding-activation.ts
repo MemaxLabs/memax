@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import type { ChecklistPayload } from "memax-sdk";
 import { useNotifications } from "@/hooks/use-notifications";
+import { setLandingSurfaceHint } from "@/lib/landing-surface";
 
 /**
  * useOnboardingActivation — shared "is this user past onboarding?" hook.
@@ -35,13 +36,24 @@ import { useNotifications } from "@/hooks/use-notifications";
 export function useOnboardingActivation(): {
   isActivated: boolean;
   isLoading: boolean;
+  /**
+   * True when the checklist query errored — the activation signal is
+   * UNKNOWN, not "activated". Without this distinction a transient
+   * 500/offline made "no onboarding row found" indistinguishable from
+   * "past onboarding", flipping isActivated to true and persisting a
+   * wrong "brain" landing hint for a brand-new user.
+   */
+  isUnknown: boolean;
 } {
   const notifications = useNotifications({
     kind: ["checklist"],
     status: "pending",
   });
 
+  const isUnknown = notifications.isError && !notifications.data;
+
   const isActivated = useMemo(() => {
+    if (isUnknown) return false;
     const rows = notifications.data?.notifications ?? [];
     const onboarding = rows.find(
       (n) =>
@@ -61,10 +73,29 @@ export function useOnboardingActivation(): {
       (it) => it.id === "connect_agent" && Boolean(it.completed_at),
     );
     return fiveMemoriesDone && connectAgentDone;
-  }, [notifications.data, notifications.isLoading, notifications.isPending]);
+  }, [
+    isUnknown,
+    notifications.data,
+    notifications.isLoading,
+    notifications.isPending,
+  ]);
+
+  const isLoading = notifications.isLoading || notifications.isPending;
+
+  // Keep the landing-surface hint fresh wherever this hook is mounted
+  // (brain page, chat empty state, /home resolver, app shell). The
+  // hint lets the /home entry resolver route in a single hop on the
+  // next cold entry without waiting for this query. Idempotent write —
+  // and NEVER on an errored query: persisting a guess would poison
+  // every subsequent cold entry until a successful fetch overwrote it.
+  useEffect(() => {
+    if (isLoading || isUnknown) return;
+    setLandingSurfaceHint(isActivated ? "brain" : "memories");
+  }, [isActivated, isLoading, isUnknown]);
 
   return {
     isActivated,
-    isLoading: notifications.isLoading || notifications.isPending,
+    isLoading,
+    isUnknown,
   };
 }

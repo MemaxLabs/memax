@@ -15,7 +15,22 @@ import {
   buildTopicPath,
   buildMemoryDetailPath,
   getShellTabForPath,
+  isBrainViewRoute,
 } from "./route-helpers";
+
+describe("isBrainViewRoute", () => {
+  it("matches /brain and descendants", () => {
+    expect(isBrainViewRoute("/brain")).toBe(true);
+    expect(isBrainViewRoute("/brain/sessions/x")).toBe(true);
+  });
+  it("does NOT match /home — the neutral entry resolver", () => {
+    // /home renders no bar and no brain chrome while it resolves the
+    // landing surface; classifying it as brain-view reintroduces the
+    // wrong-surface flash on cold entry.
+    expect(isBrainViewRoute("/home")).toBe(false);
+    expect(isBrainViewRoute("/home/anything")).toBe(false);
+  });
+});
 
 describe("isMemoriesRoute", () => {
   it("matches v1 shapes", () => {
@@ -238,6 +253,9 @@ describe("getShellTabForPath", () => {
   it("returns null for routes not under a tab", () => {
     expect(getShellTabForPath("/")).toBeNull();
     expect(getShellTabForPath("/login")).toBeNull();
+    // /home is the neutral entry resolver — no rail tab may light up
+    // while it decides between /brain and the memories overview.
+    expect(getShellTabForPath("/home")).toBeNull();
     expect(getShellTabForPath("/h/personal")).toBeNull(); // hub root, not a memories route
     expect(getShellTabForPath("/settings")).toBeNull();
   });

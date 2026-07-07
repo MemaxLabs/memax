@@ -70,6 +70,7 @@ export const zh: Translations = {
       thinking: "正在想“{query}”…",
       freeStub: "AI 答案是 Pro 功能，不过召回还是免费的。",
       error: "AI 答案没能生成，不过下面的来源还在。",
+      errorNoSources: "AI 答案没能生成。",
       quotaExhausted: "本月的问答次数已用完——下面的来源还在。",
     },
     section: {
@@ -1013,6 +1014,8 @@ export const zh: Translations = {
       unavailableHint:
         "页面还能正常显示，但顶部 header 需要新的 summary 接口。",
     },
+    // 账号没有昵称时代入 {name} 的称呼——要能自然放进下面所有问候语。
+    greetingNameFallback: "朋友",
     greeting: {
       reviewNeededA: "晚上好，{name}。有 {n} 条合并冲突等你决定。",
       reviewNeededB: "晚上好，{name}。有 {n} 条合并冲突还等着你。",

@@ -11,6 +11,11 @@ import {
 } from "react";
 import { getPublicMemaxClient } from "@/lib/memax-client";
 import { isImpersonating, restoreOriginalSession } from "@/lib/impersonation";
+import { clearLandingSurfaceHint } from "@/lib/landing-surface";
+import {
+  clearSessionPresence,
+  markSessionPresence,
+} from "@/lib/session-presence";
 import { queryClient } from "@/lib/query-client";
 import { hubListQueryKey } from "@/hooks/use-hubs";
 import type { AuthProviderName } from "memax-sdk";
@@ -159,6 +164,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(ACTIVE_HUB_KEY);
+    clearLandingSurfaceHint();
+    clearSessionPresence();
     setUser(null);
     setHubs([]);
     setActiveHubId("");
@@ -184,6 +191,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (accessToken: string, refreshToken: string) => {
       localStorage.setItem(TOKEN_KEY, accessToken);
       localStorage.setItem(REFRESH_KEY, refreshToken);
+      // Server-visible session marker — lets the Edge middleware route
+      // signed-in users straight into the app from / and /login.
+      markSessionPresence();
     },
     [],
   );
@@ -208,6 +218,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (requestID !== sessionVersionRef.current) {
         return false;
       }
+      // Session verified — (re)plant the presence cookie. Covers
+      // browsers whose tokens predate the cookie (set only at
+      // store/refresh time) so they pick up middleware fast-routing.
+      markSessionPresence();
       if ("user" in data) {
         setUser({
           ...data.user,
@@ -286,6 +300,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!tokens?.access_token || !tokens.refresh_token) {
         return false;
       }
+      // Torn-down-session guard: if logout cleared the stored tokens
+      // while this refresh was in flight, storing the late response
+      // would resurrect the session (and replant the presence cookie
+      // that the middleware fast path trusts). A refresh only extends
+      // an existing session — drop the response if the slot is empty.
+      if (localStorage.getItem(REFRESH_KEY) === null) {
+        return false;
+      }
       storeTokens(tokens.access_token, tokens.refresh_token);
       return fetchUser(tokens.access_token);
     } catch {
@@ -328,6 +350,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             handleAuthFailure();
           }
         }
+      } else {
+        // No tokens at all: make sure the session-presence cookie is
+        // gone too. If it survived a localStorage wipe (privacy tools,
+        // storage eviction, devtools), the middleware fast path would
+        // bounce /login → /home while this shell bounces /home →
+        // /login — an infinite loader loop with the login form
+        // unreachable. handleAuthFailure never runs on this branch
+        // (there is nothing to fail), so the cookie must be cleared
+        // here explicitly.
+        clearSessionPresence();
       }
       setLoading(false);
     };

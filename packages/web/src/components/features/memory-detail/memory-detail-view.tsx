@@ -166,6 +166,38 @@ export function MemoryDetailView({
     setBodySaveError(null);
   }, []);
 
+  // `e` enters body edit (Linear/GitHub convention for "edit the thing
+  // I'm looking at"). Plain keypress only — no modifiers — and never
+  // while typing in an input/textarea/contenteditable or while an
+  // overlay owns focus. Registered unconditionally (keyboard guards
+  // are capability-based, not isMobile-based).
+  useEffect(() => {
+    if (!canEditBody || editingBody) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "e" || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey)
+        return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable ||
+          // Overlay guard: when a dialog / menu / popover / listbox owns
+          // focus, `e` belongs to that surface — flipping the body into
+          // edit mode underneath it would leave a surprise editor when
+          // the overlay closes.
+          target.closest(
+            '[role="dialog"], [aria-modal="true"], [role="menu"], [role="listbox"], [data-slot="popover"], [popover]',
+          ))
+      )
+        return;
+      e.preventDefault();
+      handleEditBody();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [canEditBody, editingBody, handleEditBody]);
+
   const handleSaveBody = useCallback(
     (markdown: string) => {
       if (!memory) return;
@@ -536,7 +568,29 @@ export function MemoryDetailView({
                 saving={updateMemory.isPending}
               />
             ) : (
-              <>
+              // group/body scopes the hover-reveal edit affordance to
+              // the body block. Discoverability fix (audit D1): edit
+              // used to live ONLY behind the ⋯ menu — content looked
+              // inert. The pencil surfaces on hover (always visible on
+              // touch, where there is no hover to discover it with);
+              // the ⋯ menu item and the `e` shortcut remain as
+              // parallel paths.
+              <div className="group/body relative">
+                {canEditBody && (
+                  <button
+                    type="button"
+                    onClick={handleEditBody}
+                    aria-label={t.note.actions.editBody}
+                    className={`absolute -top-1 right-0 z-10 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] text-fg-3 cursor-pointer transition-opacity hover:bg-surface-2 hover:text-fg-2 ${
+                      isMobile
+                        ? "opacity-100"
+                        : "opacity-0 group-hover/body:opacity-100 focus-visible:opacity-100"
+                    }`}
+                  >
+                    <Pencil className="h-3 w-3" />
+                    {t.note.actions.editBody}
+                  </button>
+                )}
                 {hasSummary && (
                   <div className="flex items-center gap-1.5 mb-3">
                     <span
@@ -555,7 +609,7 @@ export function MemoryDetailView({
                     {hasSummary ? cleanSummary : cleanSummary || memory.content}
                   </ReactMarkdown>
                 </div>
-              </>
+              </div>
             )}
             {bodySaveError && editingBody ? (
               <div

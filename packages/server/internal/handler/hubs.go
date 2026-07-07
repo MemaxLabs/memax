@@ -594,6 +594,14 @@ func (h *HubsHandler) buildHubSummary(r *http.Request, userID, hubID, role strin
 		lastVisit = visit
 	}
 
+	// "there" is kept as the no-name value for BACK-COMPAT with already
+	// deployed web bundles: old clients interpolate greeting_params.name
+	// verbatim, and an empty string would render "Good evening, ."
+	// during any server-first deploy window. New clients treat "there"
+	// (and "") as the no-name sentinel and substitute a
+	// locale-appropriate fallback (hub-header.tsx), which fixes the
+	// English leak into non-English locales. Safe to switch this to ""
+	// once no pre-fallback web bundle is expected in the wild.
 	userName := "there"
 	if user, err := h.store.GetUser(userID); err == nil && user != nil {
 		if display := strings.TrimSpace(user.DisplayName); display != "" {

@@ -66,22 +66,17 @@ export function isMemoriesOverviewRoute(pathname: string): boolean {
 }
 
 /**
- * Brain (a.k.a. Home) surface predicate. Both routes mount the same
- * `<BrainView>` component:
- *   - v1 chrome's "Home" tab → `/home`
- *   - v2 chrome's "Brain" tab → `/brain`
+ * Brain surface predicate — `/brain[/...]` only.
  *
- * The bar's view derivation + brain-surface autofocus need to recognize
- * BOTH; without this, opening the v2 Brain tab leaves the bar in
- * `view="none"` mode and the brain-surface ergonomics break.
+ * `/home` is deliberately NOT a brain-view route: it is the neutral
+ * entry resolver (see app/(app)/home/page.tsx). While it decides
+ * between `/brain` and the memories overview, the shell must render
+ * neutral chrome — no bar, no active rail tab — so classifying it as
+ * brain here would repaint the exact wrong-surface flash the resolver
+ * exists to remove.
  */
 export function isBrainViewRoute(pathname: string): boolean {
-  return (
-    pathname === "/home" ||
-    pathname.startsWith("/home/") ||
-    pathname === "/brain" ||
-    pathname.startsWith("/brain/")
-  );
+  return pathname === "/brain" || pathname.startsWith("/brain/");
 }
 
 /**
@@ -238,11 +233,9 @@ import type { ShellTabId } from "@/components/shell-v2/shell-tabs";
  * `/h/<slug>/memories` route.
  */
 export function getShellTabForPath(pathname: string): ShellTabId | null {
-  // /home (v1) and /brain (v2) plus any descendants — both render
-  // BrainView; v2 chrome's Brain tab lights up on either path. v2
-  // routes that intentionally fall through to /home (the /agents stub
-  // redirect, ⌘M jump, brand link, default landing) all show the
-  // Brain tab as active under v2 chrome.
+  // /brain plus descendants. `/home` intentionally returns null — it
+  // is the neutral entry resolver and the rail must show no active
+  // tab while it decides between /brain and the memories overview.
   if (isBrainViewRoute(pathname)) return "brain";
   // /agents and any descendant
   if (pathname === "/agents" || pathname.startsWith("/agents/"))

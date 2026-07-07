@@ -69,6 +69,7 @@ export const en = {
       thinking: 'Thinking about "{query}"…',
       freeStub: "AI answers are a Pro feature — recall stays free.",
       error: "AI answer failed — sources below are still available.",
+      errorNoSources: "AI answer failed.",
       quotaExhausted:
         "You've used all your asks this month — sources below are still available.",
     },
@@ -1100,6 +1101,9 @@ export const en = {
       unavailableHint:
         "The page can still load, but the header needs the new summary endpoint.",
     },
+    // Substituted for {name} when the account has no display name —
+    // must read naturally inside every greeting template below.
+    greetingNameFallback: "there",
     greeting: {
       reviewNeededA:
         "Good evening, {name}. {n} merge conflicts need your call.",

@@ -24,6 +24,7 @@ import { SettingsDialog } from "@/components/features/settings/settings-dialog";
 import { MemaxDebugger } from "@/components/features/memax-debugger";
 import { ImpersonationBar } from "@/components/features/impersonation-bar";
 import { MemaxEventBridge } from "@/components/features/memax-event-bridge";
+import { LandingSurfaceSync } from "@/components/shell-v2/landing-surface-sync";
 import {
   SettingsDialogProvider,
   useSettingsDialog,
@@ -191,13 +192,22 @@ function AppShell({ children }: { children: React.ReactNode }) {
     const holdMs = liveTransition.minDurationMs ?? 420;
     const fadeMs = 200;
     const maxMs = liveTransition.maxDurationMs ?? 2000;
+    // When the destination data settles almost immediately (cache-warm
+    // hub switch), the overlay would otherwise sit dimmed for the full
+    // min-hold announcing a wait that isn't happening — perceived
+    // latency added by the loading UI itself. Under this threshold we
+    // drop the hold and let the 200ms opacity fade be the entire
+    // transition. The min-hold only applies when there is a real wait,
+    // where it keeps the pill legible instead of flash-blinking.
+    const instantThresholdMs = 120;
     let settled = false;
 
     const finish = () => {
       if (settled) return;
       settled = true;
       const elapsed = performance.now() - startedAt;
-      const remaining = Math.max(0, holdMs - elapsed);
+      const remaining =
+        elapsed < instantThresholdMs ? 0 : Math.max(0, holdMs - elapsed);
       const hideTimeout = window.setTimeout(() => {
         setLiveTransitionVisible(false);
       }, remaining);
@@ -301,6 +311,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   <SettingsDialog />
                   <MemaxDebugger />
                   <MemaxEventBridge />
+                  <LandingSurfaceSync />
 
                   {/* Global bar + portals + backdrop. */}
                   <GlobalBar />
@@ -916,6 +927,35 @@ function GlobalBar() {
           </div>
         );
       })()}
+      {/*
+       * Scrim under the engaged bar (desktop only — mobile surfaces own
+       * their own takeover treatments). Without it the expanded bar
+       * floats over full-contrast page content and both layers fight
+       * for legibility (audit D4: onboarding copy bleeding through the
+       * translucent pill). Spotlight/Raycast pattern: results panel
+       * always sits on a dimmed page. Same z tier as the bar, earlier
+       * in DOM order, so the bar paints above it. Clicks land on the
+       * scrim (not the content beneath) and the document-level
+       * click-outside handler dismisses the bar — one click to close,
+       * zero accidental content activations.
+       */}
+      {!isMobile && (
+        <div
+          aria-hidden
+          className="fixed inset-0 transition-opacity duration-200"
+          style={{
+            // One tier BELOW --z-bar-notif (51): bar notifications carry
+            // actionable buttons (undo, retry) and must stay clickable
+            // above the scrim while the bar is engaged. The bar itself
+            // (z-bar: 52) still paints above both.
+            zIndex: 50,
+            background: "oklch(from var(--background) l c h / 0.55)",
+            opacity: shouldShow && hasExpandSurface && barVisible ? 1 : 0,
+            pointerEvents:
+              shouldShow && hasExpandSurface && barVisible ? "auto" : "none",
+          }}
+        />
+      )}
       {/*
        * Bar container — ALWAYS MOUNTED.
        *

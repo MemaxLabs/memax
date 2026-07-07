@@ -54,34 +54,23 @@ describe("hub route readiness", () => {
     fetchInfiniteQuery.mockResolvedValue(undefined);
   });
 
-  it("warms the /home contract with summary, memories, and recent data", async () => {
-    const { warmHubLandingRoute } = await import("@/lib/hub-route-readiness");
-
-    await warmHubLandingRoute("/home", "hub-1");
-
-    expect(getHubSummaryQueryOptions).toHaveBeenCalledWith("hub-1");
-    expect(getTopicsQueryOptions).not.toHaveBeenCalled();
-    expect(getMemoriesInfiniteQueryOptions).toHaveBeenCalledWith({
-      hubId: "hub-1",
-      sort: "recent",
-    });
-    expect(getRecentMemoriesInfiniteQueryOptions).toHaveBeenCalledWith({
-      hubId: "hub-1",
-      window: "7d",
-      actor: "all",
-      expanded: false,
-    });
-    expect(ensureQueryData).toHaveBeenCalledTimes(1);
-    expect(fetchInfiniteQuery).toHaveBeenCalledTimes(2);
-  });
-
-  it("warms the /memories contract with topics as well", async () => {
+  it("warms the /memories contract with summary, topics, memories, and recent data", async () => {
     const { warmHubLandingRoute } = await import("@/lib/hub-route-readiness");
 
     await warmHubLandingRoute("/memories", "hub-2");
 
     expect(getHubSummaryQueryOptions).toHaveBeenCalledWith("hub-2");
     expect(getTopicsQueryOptions).toHaveBeenCalledWith("hub-2");
+    expect(getMemoriesInfiniteQueryOptions).toHaveBeenCalledWith({
+      hubId: "hub-2",
+      sort: "recent",
+    });
+    expect(getRecentMemoriesInfiniteQueryOptions).toHaveBeenCalledWith({
+      hubId: "hub-2",
+      window: "7d",
+      actor: "all",
+      expanded: false,
+    });
     expect(ensureQueryData).toHaveBeenCalledTimes(2);
     expect(fetchInfiniteQuery).toHaveBeenCalledTimes(2);
   });
@@ -91,7 +80,7 @@ describe("hub route readiness", () => {
     fetchInfiniteQuery.mockRejectedValueOnce(new Error("network"));
 
     await expect(
-      warmHubLandingRoute("/home", "hub-3"),
+      warmHubLandingRoute("/memories", "hub-3"),
     ).resolves.toBeUndefined();
   });
 });

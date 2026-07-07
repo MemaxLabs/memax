@@ -189,6 +189,28 @@ export function MobileTopBar({
           {tabLabel[tab]}
         </span>
       ) : null}
+
+      {/* Hub anchor on non-memories tabs — hub context is not a
+          memories-only concern (brain chat scope, inbox, agents all
+          read the active hub). Memories keeps the full title-position
+          chip; other tabs get a compact badge in the trailing corner
+          so the anchor is present on every surface at a consistent
+          spot. Same 2+ hubs gating as every switcher trigger. */}
+      {!showHubChip && !inChatSession && canSwitchHub && activeHub ? (
+        <button
+          type="button"
+          onClick={onHubSwitchClick}
+          aria-label={t.composeModal.targetHubAria.replace("{hub}", hubName)}
+          className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-md cursor-pointer transition-colors hover:bg-foreground/6"
+        >
+          <HubBadge
+            kind={isTeamHub ? "team" : "personal"}
+            label={hubInitial}
+            accent={activeHub.hub.accent}
+            size="md"
+          />
+        </button>
+      ) : null}
     </header>
   );
 }

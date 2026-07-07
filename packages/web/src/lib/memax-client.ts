@@ -2,6 +2,10 @@
 
 import { Memax } from "memax-sdk";
 import { getAccessToken } from "@/lib/auth";
+import {
+  clearSessionPresence,
+  markSessionPresence,
+} from "@/lib/session-presence";
 import { API_URL } from "@/lib/urls";
 
 const BROWSER_API_PROXY_URL = "/api/proxy";
@@ -43,11 +47,13 @@ function getRefreshToken(): string | null {
 function setStoredTokens(accessToken: string, refreshToken: string) {
   localStorage.setItem(TOKEN_KEY, accessToken);
   localStorage.setItem(REFRESH_KEY, refreshToken);
+  markSessionPresence();
 }
 
 function clearStoredTokens() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_KEY);
+  clearSessionPresence();
 }
 
 async function refreshAccessToken(): Promise<string | null> {
@@ -88,6 +94,16 @@ async function refreshAccessToken(): Promise<string | null> {
         return null;
       }
 
+      // Torn-down-session guard: if logout (or auth failure) cleared
+      // the stored tokens while this refresh was in flight, writing
+      // the late response would resurrect the session — and with the
+      // middleware's presence-cookie fast path, silently sign the
+      // browser back in on the next visit. A refresh only extends an
+      // EXISTING session; if the refresh token slot is empty now, the
+      // session is gone and this response must be dropped.
+      if (getRefreshToken() === null) {
+        return null;
+      }
       setStoredTokens(nextAccessToken, nextRefreshToken);
       return nextAccessToken;
     } catch {

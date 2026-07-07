@@ -57,13 +57,14 @@ export interface TopicMoveTarget {
 
 interface TopicMoveCacheContext {
   /**
-   * Query key for the moving topic's detail cache. Stored alongside the
-   * snapshot so restoreTopicCaches can write the captured value back to
-   * the exact same key on rollback — a missing detailKey would make
-   * rollback detail-blind (bug caught by Codex review).
+   * All cached detail entries for the moving topic, captured with their
+   * exact keys so restoreTopicCaches can write each value back on
+   * rollback — a missing detail restore would make rollback
+   * detail-blind (bug caught by Codex review). Plural because
+   * topicQueryKey is a prefix: entries carry a trailing hub-scope
+   * segment (see use-topics.ts).
    */
-  topicDetailKey: readonly unknown[];
-  topicDetail: Topic | undefined;
+  topicDetails: Array<[readonly unknown[], Topic | undefined]>;
   topicLists: Array<[readonly unknown[], TopicListResponse | undefined]>;
 }
 
@@ -223,10 +224,10 @@ export function patchTopicListForMove(
 // ── Snapshot / restore helpers ─────────────────────────────────────────────
 
 function snapshotTopicCaches(topicId: string): TopicMoveCacheContext {
-  const detailKey = topicQueryKey(topicId);
   return {
-    topicDetailKey: detailKey,
-    topicDetail: queryClient.getQueryData<Topic>(detailKey),
+    topicDetails: queryClient.getQueriesData<Topic>({
+      queryKey: topicQueryKey(topicId),
+    }),
     topicLists: queryClient
       .getQueriesData<TopicListResponse>({ queryKey: TOPIC_QUERY_PREFIX })
       .filter(([queryKey]) => isTopicListQueryKey(queryKey)),
@@ -242,9 +243,14 @@ function restoreTopicCaches(context: TopicMoveCacheContext | undefined) {
   // the detail cache was empty at snapshot time, applyOptimisticTopicMove
   // did not touch it either, and writing `undefined` would create a
   // spurious cache entry.
-  if (context.topicDetail !== undefined) {
-    queryClient.setQueryData(context.topicDetailKey, context.topicDetail);
-  }
+  context.topicDetails.forEach(([queryKey, data]) => {
+    // Only write captured values — a key snapshotted as `undefined`
+    // was not touched by applyOptimisticTopicMove either, and writing
+    // `undefined` would create a spurious cache entry.
+    if (data !== undefined) {
+      queryClient.setQueryData(queryKey, data);
+    }
+  });
   context.topicLists.forEach(([queryKey, data]) => {
     queryClient.setQueryData(queryKey, data);
   });
@@ -265,18 +271,21 @@ function applyOptimisticTopicMove(
       }
     });
 
-  // Topic detail cache: patch parent_id + position + user_modified if we
-  // already have a cached detail for the moving topic. Don't seed the cache
+  // Topic detail cache: patch parent_id + position + user_modified on
+  // every cached detail entry for the moving topic (topicQueryKey is a
+  // prefix — entries carry a hub-scope segment). Don't seed the cache
   // from here — if there's nothing to patch, leave it for the refetch.
-  const detail = queryClient.getQueryData<Topic>(topicQueryKey(snapshot.id));
-  if (detail) {
-    queryClient.setQueryData(topicQueryKey(snapshot.id), {
-      ...detail,
-      parent_id: target.parentId,
-      position: target.position ?? detail.position,
-      user_modified: true,
+  queryClient
+    .getQueriesData<Topic>({ queryKey: topicQueryKey(snapshot.id) })
+    .forEach(([queryKey, detail]) => {
+      if (!detail) return;
+      queryClient.setQueryData(queryKey, {
+        ...detail,
+        parent_id: target.parentId,
+        position: target.position ?? detail.position,
+        user_modified: true,
+      });
     });
-  }
 }
 
 function invalidateTopicCaches() {

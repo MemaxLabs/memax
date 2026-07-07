@@ -2035,17 +2035,24 @@ function InboxPanelContent({
             }
       }
     >
-      <SectionHeader
-        icon={Inbox}
-        label={t.inbox.title}
-        trailing={
-          pendingItems.length > 0 ? (
-            <span className="text-[12px] text-fg-3 tabular-nums">
-              {pendingItems.length}
-            </span>
-          ) : undefined
-        }
-      />
+      {/* Panel surface only: the popover has no other title. On the
+          /inbox page the PageHeader above already says "Inbox" (and
+          mobile adds the top-bar tab title) — a third label inside the
+          card was pure repetition (audit E6). The pending count moves
+          into the PageHeader subtitle territory via the rows below. */}
+      {surface === "panel" && (
+        <SectionHeader
+          icon={Inbox}
+          label={t.inbox.title}
+          trailing={
+            pendingItems.length > 0 ? (
+              <span className="text-[12px] text-fg-3 tabular-nums">
+                {pendingItems.length}
+              </span>
+            ) : undefined
+          }
+        />
+      )}
 
       {showQueryError ? (
         <div className="p-3">

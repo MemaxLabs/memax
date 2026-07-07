@@ -2,6 +2,10 @@
 
 import { Memax } from "memax-sdk";
 import { getAccessToken } from "@/lib/auth";
+import {
+  clearSessionPresence,
+  markSessionPresence,
+} from "@/lib/session-presence";
 import { API_URL } from "@/lib/urls";
 
 const BROWSER_API_PROXY_URL = "/api/proxy";
@@ -43,11 +47,13 @@ function getRefreshToken(): string | null {
 function setStoredTokens(accessToken: string, refreshToken: string) {
   localStorage.setItem(TOKEN_KEY, accessToken);
   localStorage.setItem(REFRESH_KEY, refreshToken);
+  markSessionPresence();
 }
 
 function clearStoredTokens() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_KEY);
+  clearSessionPresence();
 }
 
 async function refreshAccessToken(): Promise<string | null> {

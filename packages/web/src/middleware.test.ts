@@ -2,9 +2,16 @@ import { describe, it, expect } from "vitest";
 import { NextRequest } from "next/server";
 import { middleware } from "./middleware";
 
-function makeRequest(pathname: string): NextRequest {
+function makeRequest(
+  pathname: string,
+  opts: { sessionPresence?: boolean } = {},
+): NextRequest {
   const url = `https://memax.app${pathname}`;
-  return new NextRequest(url);
+  return new NextRequest(url, {
+    headers: opts.sessionPresence
+      ? { cookie: "memax_session_presence=1" }
+      : undefined,
+  });
 }
 
 /**
@@ -61,5 +68,31 @@ describe("middleware legacy path normalization", () => {
   it("does NOT redirect /memories/new (reserved segment)", () => {
     const res = middleware(makeRequest("/memories/new"));
     expect(res.status).toBe(200);
+  });
+});
+
+describe("middleware silent session restore", () => {
+  it.each(["/", "/login", "/register"])(
+    "redirects %s to /home when the session-presence cookie is set",
+    (path) => {
+      const res = middleware(makeRequest(path, { sessionPresence: true }));
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toBe("https://memax.app/home");
+    },
+  );
+
+  it.each(["/", "/login", "/register"])(
+    "leaves %s alone without the cookie",
+    (path) => {
+      const res = middleware(makeRequest(path));
+      expect(res.status).toBe(200);
+    },
+  );
+
+  it("does not let the cookie affect legacy path normalization", () => {
+    const res = middleware(makeRequest("/memories", { sessionPresence: true }));
+    expect(res.headers.get("location")).toBe(
+      "https://memax.app/h/personal/memories",
+    );
   });
 });

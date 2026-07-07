@@ -12,6 +12,10 @@ import {
 import { getPublicMemaxClient } from "@/lib/memax-client";
 import { isImpersonating, restoreOriginalSession } from "@/lib/impersonation";
 import { clearLandingSurfaceHint } from "@/lib/landing-surface";
+import {
+  clearSessionPresence,
+  markSessionPresence,
+} from "@/lib/session-presence";
 import { queryClient } from "@/lib/query-client";
 import { hubListQueryKey } from "@/hooks/use-hubs";
 import type { AuthProviderName } from "memax-sdk";
@@ -161,6 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(ACTIVE_HUB_KEY);
     clearLandingSurfaceHint();
+    clearSessionPresence();
     setUser(null);
     setHubs([]);
     setActiveHubId("");
@@ -186,6 +191,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (accessToken: string, refreshToken: string) => {
       localStorage.setItem(TOKEN_KEY, accessToken);
       localStorage.setItem(REFRESH_KEY, refreshToken);
+      // Server-visible session marker — lets the Edge middleware route
+      // signed-in users straight into the app from / and /login.
+      markSessionPresence();
     },
     [],
   );
@@ -210,6 +218,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (requestID !== sessionVersionRef.current) {
         return false;
       }
+      // Session verified — (re)plant the presence cookie. Covers
+      // browsers whose tokens predate the cookie (set only at
+      // store/refresh time) so they pick up middleware fast-routing.
+      markSessionPresence();
       if ("user" in data) {
         setUser({
           ...data.user,

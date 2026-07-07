@@ -11,6 +11,7 @@ import {
 } from "react";
 import { getPublicMemaxClient } from "@/lib/memax-client";
 import { isImpersonating, restoreOriginalSession } from "@/lib/impersonation";
+import { clearLandingSurfaceHint } from "@/lib/landing-surface";
 import { queryClient } from "@/lib/query-client";
 import { hubListQueryKey } from "@/hooks/use-hubs";
 import type { AuthProviderName } from "memax-sdk";
@@ -159,6 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(ACTIVE_HUB_KEY);
+    clearLandingSurfaceHint();
     setUser(null);
     setHubs([]);
     setActiveHubId("");

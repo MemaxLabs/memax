@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import type { ChecklistPayload } from "memax-sdk";
 import { useNotifications } from "@/hooks/use-notifications";
+import { setLandingSurfaceHint } from "@/lib/landing-surface";
 
 /**
  * useOnboardingActivation — shared "is this user past onboarding?" hook.
@@ -63,8 +64,19 @@ export function useOnboardingActivation(): {
     return fiveMemoriesDone && connectAgentDone;
   }, [notifications.data, notifications.isLoading, notifications.isPending]);
 
+  const isLoading = notifications.isLoading || notifications.isPending;
+
+  // Keep the landing-surface hint fresh wherever this hook is mounted
+  // (brain page, chat empty state, /home resolver, app shell). The
+  // hint lets the /home entry resolver route in a single hop on the
+  // next cold entry without waiting for this query. Idempotent write.
+  useEffect(() => {
+    if (isLoading) return;
+    setLandingSurfaceHint(isActivated ? "brain" : "memories");
+  }, [isActivated, isLoading]);
+
   return {
     isActivated,
-    isLoading: notifications.isLoading || notifications.isPending,
+    isLoading,
   };
 }

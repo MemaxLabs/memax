@@ -83,15 +83,26 @@ describe("recent navigation", () => {
   });
 
   it("requests a brain-to-memory transition only for surface changes", () => {
-    requestSurfaceTransitionForNavigation("/home", "/memories");
+    requestSurfaceTransitionForNavigation("/brain", "/memories");
     expect(consumeSurfaceTransition()).toEqual({ kind: "brain-to-memory" });
 
     requestSurfaceTransitionForNavigation("/memories", "/memories/123");
     expect(consumeSurfaceTransition()).toBeNull();
   });
 
-  it("requests a memory-to-brain transition when returning home", () => {
-    requestSurfaceTransitionForNavigation("/memories/topics/topic-1", "/home");
+  it("requests a memory-to-brain transition when entering the brain surface", () => {
+    requestSurfaceTransitionForNavigation("/memories/topics/topic-1", "/brain");
     expect(consumeSurfaceTransition()).toEqual({ kind: "memory-to-brain" });
+  });
+
+  it("treats /home (the neutral entry resolver) as no surface — no morph", () => {
+    // /home resolves to a destination via router.replace; playing a
+    // cross-surface morph into or out of it would repaint the exact
+    // wrong-surface flash the resolver exists to remove.
+    requestSurfaceTransitionForNavigation("/home", "/memories");
+    expect(consumeSurfaceTransition()).toBeNull();
+
+    requestSurfaceTransitionForNavigation("/memories/topics/topic-1", "/home");
+    expect(consumeSurfaceTransition()).toBeNull();
   });
 });

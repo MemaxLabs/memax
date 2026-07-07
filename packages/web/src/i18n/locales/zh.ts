@@ -69,6 +69,7 @@ export const zh: Translations = {
       thinking: "正在想“{query}”…",
       freeStub: "AI 答案是 Pro 功能，不过召回还是免费的。",
       error: "AI 答案没能生成，不过下面的来源还在。",
+      errorNoSources: "AI 答案没能生成。",
       quotaExhausted: "本月的问答次数已用完——下面的来源还在。",
     },
     section: {

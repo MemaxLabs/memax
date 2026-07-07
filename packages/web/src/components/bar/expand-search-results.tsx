@@ -132,6 +132,14 @@ export function ExpandSearchResults() {
   const { copied: answerCopied, copy: copyAnswer } = useCopy();
   const { copied: contextCopied, copy: copyContext } = useCopy();
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  // "Save it above to start remembering" is onboarding copy — right
+  // for an empty corpus, wrong for a user with hundreds of memories
+  // whose query simply missed. Pick the hint by whether any
+  // accessible hub holds memories.
+  const corpusIsEmpty = hubs.every(({ memory_count }) => !memory_count);
+  const noResultsHint = corpusIsEmpty
+    ? t.bar.noResultsHint
+    : t.recall.noResultsHint;
 
   const allMemories = useMemo(
     () => flattenMemories(memoriesPages),
@@ -946,9 +954,7 @@ export function ExpandSearchResults() {
             {!jumpToRows.length && !visibleRows.length && value.trim() ? (
               <div className="px-5 py-4 sm:px-6">
                 <p className="text-[15px] text-fg-3">{t.bar.noResults}</p>
-                <p className="mt-1 text-[13px] text-fg-3">
-                  {t.bar.noResultsHint}
-                </p>
+                <p className="mt-1 text-[13px] text-fg-3">{noResultsHint}</p>
               </div>
             ) : null}
           </>
@@ -993,9 +999,7 @@ export function ExpandSearchResults() {
             !recallFetching ? (
               <div className="px-5 py-4 sm:px-6">
                 <p className="text-[15px] text-fg-3">{t.bar.noResults}</p>
-                <p className="mt-1 text-[13px] text-fg-3">
-                  {t.bar.noResultsHint}
-                </p>
+                <p className="mt-1 text-[13px] text-fg-3">{noResultsHint}</p>
               </div>
             ) : null}
           </>

@@ -300,6 +300,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!tokens?.access_token || !tokens.refresh_token) {
         return false;
       }
+      // Torn-down-session guard: if logout cleared the stored tokens
+      // while this refresh was in flight, storing the late response
+      // would resurrect the session (and replant the presence cookie
+      // that the middleware fast path trusts). A refresh only extends
+      // an existing session — drop the response if the slot is empty.
+      if (localStorage.getItem(REFRESH_KEY) === null) {
+        return false;
+      }
       storeTokens(tokens.access_token, tokens.refresh_token);
       return fetchUser(tokens.access_token);
     } catch {
@@ -342,6 +350,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             handleAuthFailure();
           }
         }
+      } else {
+        // No tokens at all: make sure the session-presence cookie is
+        // gone too. If it survived a localStorage wipe (privacy tools,
+        // storage eviction, devtools), the middleware fast path would
+        // bounce /login → /home while this shell bounces /home →
+        // /login — an infinite loader loop with the login form
+        // unreachable. handleAuthFailure never runs on this branch
+        // (there is nothing to fail), so the cookie must be cleared
+        // here explicitly.
+        clearSessionPresence();
       }
       setLoading(false);
     };

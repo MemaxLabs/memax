@@ -665,7 +665,17 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
       if (fresh.hub_id && fresh.hub_id !== activeHubId) {
         switchHub(fresh.hub_id);
       }
-      router.push("/home");
+      // Navigate straight to the target hub's memories overview.
+      // Pushing "/home" here sent the flow through the entry resolver,
+      // which (a) could land before the switchHub state propagated and
+      // (b) fired the #recent-section scroll below before the resolver
+      // settled — so the scroll never happened.
+      const targetEntry = hubs.find(({ hub }) => hub.id === targetHubId);
+      const targetPath =
+        targetEntry && user
+          ? buildMemoriesPath(hubRouteSlug(targetEntry.hub, user.id))
+          : "/h/personal/memories";
+      router.push(targetPath);
       setTimeout(() => {
         document
           .getElementById("recent-section")
@@ -743,6 +753,8 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
     t,
     unseenDreamReceipts,
     switchHub,
+    hubs,
+    user,
   ]);
 
   // Effect C — mark-seen visibility gate for completed-run receipts.
@@ -2753,8 +2765,11 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
           requestSurfaceTransitionForNavigation(pathname, "/memories");
           router.push("/memories");
         } else if (view === "memory") {
-          requestSurfaceTransitionForNavigation(pathname, "/home");
-          router.push("/home");
+          // Direct to /brain — /home is the neutral entry resolver now
+          // and is NOT a brain surface: routing through it would drop
+          // the memory→brain morph and add a resolver hop.
+          requestSurfaceTransitionForNavigation(pathname, "/brain");
+          router.push("/brain");
         }
         return;
       }
@@ -2808,8 +2823,10 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
   const goBack = useCallback(() => {
     inputRef.current?.blur();
     resetForNavigation();
-    requestSurfaceTransitionForNavigation(pathname, "/home");
-    router.push("/home");
+    // Direct to /brain (see Cmd+M above) — /home is the neutral entry
+    // resolver, not a brain surface.
+    requestSurfaceTransitionForNavigation(pathname, "/brain");
+    router.push("/brain");
   }, [pathname, resetForNavigation, router]);
 
   return (

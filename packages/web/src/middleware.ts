@@ -41,8 +41,14 @@ const V1_MEMORIES_TOPIC_RE = /^\/memories\/topics\/([^/]+)\/?$/;
 // duplicated here rather than imported to keep the middleware
 // self-contained for the Edge runtime; lib/session-presence.ts and
 // middleware.test.ts both pin it.
+//
+// /register is deliberately NOT in this set: invite links arrive as
+// /register?invite=TOKEN and a redirect would swallow the token
+// before the page can capture it — a stale presence cookie must never
+// cost someone their invite. The register page itself forwards
+// already-signed-in users onward.
 const SESSION_PRESENCE_COOKIE = "memax_session_presence";
-const SIGNED_OUT_ENTRY_PATHS = new Set(["/", "/login", "/register"]);
+const SIGNED_OUT_ENTRY_PATHS = new Set(["/", "/login"]);
 
 function v1ToV2Path(pathname: string): string | null {
   // /memories or /memories/ — the overview
@@ -69,8 +75,12 @@ export function middleware(request: NextRequest) {
   // in the app in one hop with zero credential re-entry. The cookie
   // carries no secret; if it is ever stale, the app shell's auth init
   // fails, clears it, and bounces to /login exactly once (no loop).
+  // Requests carrying a query string skip the fast path entirely —
+  // /login?returnTo=…, OAuth error params, etc. encode flow state the
+  // /home resolver knows nothing about; redirecting would discard it.
   if (
     SIGNED_OUT_ENTRY_PATHS.has(pathname) &&
+    request.nextUrl.search === "" &&
     request.cookies.get(SESSION_PRESENCE_COOKIE)?.value === "1"
   ) {
     return NextResponse.redirect(new URL("/home", request.nextUrl.origin));
@@ -91,9 +101,9 @@ export function middleware(request: NextRequest) {
 }
 
 // Match the legacy /memories tree plus the signed-out entry surfaces
-// (/, /login, /register) for the session-presence fast path. Other
-// paths (/h/*, /brain, /agents, /inbox, /api/*, _next, etc.) skip the
+// (/, /login) for the session-presence fast path. Other paths (/h/*,
+// /brain, /agents, /inbox, /register, /api/*, _next, etc.) skip the
 // middleware entirely so it stays cheap.
 export const config = {
-  matcher: ["/", "/login", "/register", "/memories", "/memories/:path*"],
+  matcher: ["/", "/login", "/memories", "/memories/:path*"],
 };

@@ -24,6 +24,7 @@ import { SettingsDialog } from "@/components/features/settings/settings-dialog";
 import { MemaxDebugger } from "@/components/features/memax-debugger";
 import { ImpersonationBar } from "@/components/features/impersonation-bar";
 import { MemaxEventBridge } from "@/components/features/memax-event-bridge";
+import { LandingSurfaceSync } from "@/components/shell-v2/landing-surface-sync";
 import {
   SettingsDialogProvider,
   useSettingsDialog,
@@ -310,6 +311,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   <SettingsDialog />
                   <MemaxDebugger />
                   <MemaxEventBridge />
+                  <LandingSurfaceSync />
 
                   {/* Global bar + portals + backdrop. */}
                   <GlobalBar />
@@ -940,8 +942,13 @@ function GlobalBar() {
       {!isMobile && (
         <div
           aria-hidden
-          className="fixed inset-0 z-bar transition-opacity duration-200"
+          className="fixed inset-0 transition-opacity duration-200"
           style={{
+            // One tier BELOW --z-bar-notif (51): bar notifications carry
+            // actionable buttons (undo, retry) and must stay clickable
+            // above the scrim while the bar is engaged. The bar itself
+            // (z-bar: 52) still paints above both.
+            zIndex: 50,
             background: "oklch(from var(--background) l c h / 0.55)",
             opacity: shouldShow && hasExpandSurface && barVisible ? 1 : 0,
             pointerEvents:

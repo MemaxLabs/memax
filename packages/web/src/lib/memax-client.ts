@@ -94,6 +94,16 @@ async function refreshAccessToken(): Promise<string | null> {
         return null;
       }
 
+      // Torn-down-session guard: if logout (or auth failure) cleared
+      // the stored tokens while this refresh was in flight, writing
+      // the late response would resurrect the session — and with the
+      // middleware's presence-cookie fast path, silently sign the
+      // browser back in on the next visit. A refresh only extends an
+      // EXISTING session; if the refresh token slot is empty now, the
+      // session is gone and this response must be dropped.
+      if (getRefreshToken() === null) {
+        return null;
+      }
       setStoredTokens(nextAccessToken, nextRefreshToken);
       return nextAccessToken;
     } catch {

@@ -181,7 +181,14 @@ export function MemoryDetailView({
         target &&
         (target.tagName === "INPUT" ||
           target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
+          target.isContentEditable ||
+          // Overlay guard: when a dialog / menu / popover / listbox owns
+          // focus, `e` belongs to that surface — flipping the body into
+          // edit mode underneath it would leave a surprise editor when
+          // the overlay closes.
+          target.closest(
+            '[role="dialog"], [aria-modal="true"], [role="menu"], [role="listbox"], [data-slot="popover"], [popover]',
+          ))
       )
         return;
       e.preventDefault();

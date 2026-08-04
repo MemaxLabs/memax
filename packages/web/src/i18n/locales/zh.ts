@@ -1908,8 +1908,11 @@ export const zh: Translations = {
     // Claude Code 场景 —— agent 在会话中通过 MCP 回忆团队上下文
     ccWindowTitle: "~/work/api — Claude Code",
     ccPrompt: "当时为什么把 access token 改成 1 小时过期？",
-    ccToolCall: 'memax_recall("auth token 过期 决策")',
-    ccToolResult: "3 条记忆 · 团队 hub",
+    // Claude Code 对 MCP 工具的真实渲染格式是 `server - tool (MCP)(args)`；
+    // ⎿ 行复刻真实的折叠结果样式。TUI 界面文字保持英文——真实工具不做本地化。
+    ccIntro: "我查一下团队 hub 里的这个决策。",
+    ccToolCall: 'memax - recall (MCP)(query: "auth token 过期 决策")',
+    ccToolResult: "Found 3 memories (ctrl+r to expand)",
     ccAnswer:
       "四月的安全审查发现长效 token 有风险——access token 缩到 1 小时，refresh token 保持 30 天。完整的取舍分析在团队 hub 里。",
     ccCaption: "Claude Code 在会话里直接从你的记忆中找回答案。",
@@ -1935,9 +1938,16 @@ export const zh: Translations = {
     benchQaLabel: "问答准确率 · 全球第 9",
     benchCostLabel: "每题端到端成本",
     benchLink: "查看完整 benchmark",
-    // CLI 终端 demo 文案（终端场景使用）
+    // CLI 终端 demo 文案（终端场景使用）。输出行严格复刻 packages/cli 的
+    // push/recall 真实输出；输出标签保持英文，和真实 CLI 一致。
     termPush: "Acme 会议改到周四下午 2 点。只做 Dashboard 演示，不用完整方案。",
-    termRemembered: "已记住。",
+    cliSaved: "Saved",
+    cliSavedTitle: "Acme 会议 → 周四下午 2 点",
+    cliSavedMeta:
+      "id: mem_9f2e41  classification: episodic/evolving  source: cli",
+    cliResultClass: "[episodic/evolving]",
+    cliResultScore: "94%",
+    cliResultAge: "· 3d ago",
     termComment: "# 周四早上，新会话",
     termRecall: "Acme 会议",
     termAnswer: "今天下午 2 点。只做 Dashboard 演示——跳过完整方案。",

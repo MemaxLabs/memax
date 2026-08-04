@@ -65,7 +65,7 @@ export function LandingFull() {
         {/* Logo + early-access badge row — brand-status framing (Linear /
             Arc / Framer pattern: product mark carries its rollout phase as
             a sibling pill). */}
-        <div className="flex items-center gap-2.5 sm:gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3 animate-fade-up">
           <MemaxWordmark height={24} className="text-fg-1 sm:h-7" />
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-surface-1 px-2.5 py-0.5 text-[11px] font-medium text-fg-3">
             <span
@@ -80,7 +80,7 @@ export function LandingFull() {
         {/* Hero — audience pivot above the rotating headline. Headline and
             subline switch instantly with the pivot; the rotating word cycle
             restarts via the key remount. */}
-        <div className="flex flex-col items-center gap-6 sm:gap-7 text-center">
+        <div className="flex flex-col items-center gap-6 sm:gap-7 text-center animate-fade-up stagger-1">
           <PivotToggle pivot={pivot} onChange={setPivot} />
           <div className="space-y-3 sm:space-y-4">
             <RotatingHeadline
@@ -102,11 +102,13 @@ export function LandingFull() {
 
         {/* High-level overview — surfaces (MCP/CLI/Web) + agent brand marks.
             Audience-agnostic, so it doesn't switch with the pivot. */}
-        <OverviewStrip />
+        <div className="w-full animate-fade-up stagger-2">
+          <OverviewStrip />
+        </div>
 
         {/* Primary CTA — hero-anchored waitlist (morphs inline). Team pivot
             adds a direct sales-touch line under the self-serve CTA. */}
-        <div className="w-full flex flex-col items-center gap-3.5">
+        <div className="w-full flex flex-col items-center gap-3.5 animate-fade-up stagger-3">
           <HeroWaitlist />
           {isTeam && (
             <p className="text-[13px] text-fg-4 text-center">
@@ -123,11 +125,15 @@ export function LandingFull() {
 
         {/* Scenario showcase — coded recreations of the four real surfaces
             (Claude Code, terminal, memax.app, third-party agent). */}
-        <ScenarioShowcase />
+        <div className="w-full animate-fade-up stagger-4">
+          <ScenarioShowcase />
+        </div>
 
         {/* Benchmark proof — the showcase shows what memax looks like,
             this shows how well it works. */}
-        <BenchmarkStrip />
+        <div className="w-full animate-fade-up stagger-5">
+          <BenchmarkStrip />
+        </div>
       </div>
 
       {/* Footer — 12px */}

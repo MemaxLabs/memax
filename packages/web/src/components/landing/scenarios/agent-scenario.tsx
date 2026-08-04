@@ -43,11 +43,12 @@ export function AgentScenario() {
             {agent?.displayName ?? "OpenClaw"}
           </p>
 
-          {/* memax MCP tool call — quiet mono chip, signature marker on the
-              memax-AI moment */}
+          {/* memax MCP tool run — collapsed-row treatment (dim chevron +
+              mono call + result count), like real agent chat UIs render
+              finished tool use */}
           <p className="mt-1.5 inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-chrome bg-surface-1 border border-border/40 px-2.5 py-1 font-mono text-[11px] sm:text-[12px] text-fg-3">
-            <span aria-hidden style={{ color: "var(--signature)" }}>
-              {"⏺"}
+            <span aria-hidden className="text-fg-4">
+              {"▸"}
             </span>
             <span>{t.landing.agentToolCall}</span>
             <span className="text-fg-4">· {t.landing.agentToolResult}</span>

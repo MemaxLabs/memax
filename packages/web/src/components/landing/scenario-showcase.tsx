@@ -117,10 +117,12 @@ export function ScenarioShowcase() {
           same persistent container (no dual-container flash). */}
       <div className="w-full rounded-surface overflow-hidden border border-[oklch(from_var(--foreground)_l_c_h/0.08)] bg-[oklch(from_var(--foreground)_l_c_h/0.02)]">
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[oklch(from_var(--foreground)_l_c_h/0.06)]">
-          <span aria-hidden className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-surface-3" />
-            <span className="w-2.5 h-2.5 rounded-full bg-surface-3" />
-            <span className="w-2.5 h-2.5 rounded-full bg-surface-3" />
+          {/* Real macOS traffic lights — the authentic colors are what make
+              the frame read as a genuine window capture, not a mockup. */}
+          <span aria-hidden className="flex items-center gap-1.5 opacity-90">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
           </span>
           <span className="flex-1 text-center font-mono text-[11px] text-fg-4 truncate pr-10">
             {windowTitle[active]}

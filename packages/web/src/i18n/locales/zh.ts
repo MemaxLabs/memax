@@ -1863,8 +1863,23 @@ export const zh: Translations = {
 
   // Landing page
   landing: {
-    headline: "你的记忆。\n每一个 AI。",
+    // ── 受众切换 —— hero 分成个人 / 团队两套表达 ──
+    pivotPersonal: "个人",
+    pivotTeam: "团队",
+    // 轮换主标题。第一行是固定的所属前缀，第二行整行轮换 hero*Words，
+    // 套进 heroWordLine 模板（{word} 槽位带各语言标点）。整行轮换保证
+    // 大字号下不会因折行而跳动；"每一个 AI" 的信息由副标题承担。
+    heroPersonalPrefix: "你的",
+    heroPersonalWords: ["记忆", "第二大脑", "AI 性格", "闪念", "知识库"],
+    heroTeamPrefix: "团队的",
+    heroTeamWords: ["共享大脑", "上下文", "决策", "项目进展"],
+    heroWordLine: "{word}。",
     sublineFull: "随手丢进来。memax 自动整理。你用的每一个 AI 都记得。",
+    sublineTeam:
+      "队友的 AI 也知道你知道的。上下文、决策、进展——每个 agent 都同步。",
+    // 团队联系入口 —— 候补名单之外的直接沟通渠道
+    teamContactPrompt: "想给团队搭一个 memax？",
+    teamContactCta: "找我们聊聊",
     sublineSafe: "跨 Claude Code、Cursor 和所有 AI 助手的共享记忆。",
     openMemax: "让你的 AI 记得你",
     // Hero 候补名单 CTA \u2014\u2014 原地变形：邮箱 \u2192 完整表单 \u2192 成功
@@ -1886,6 +1901,34 @@ export const zh: Translations = {
     copyright: "\u00a9 2026 memaxlabs",
     you: "你",
     yourTeam: "你的团队",
+    // 场景展示 —— 四个真实使用界面的代码复刻
+    scenarioLabel: "你在哪儿工作，memax 就在哪儿",
+    scenarioTabCli: "终端",
+    scenarioTabWeb: "Web",
+    // Claude Code 场景 —— agent 在会话中通过 MCP 回忆团队上下文
+    ccWindowTitle: "~/work/api — Claude Code",
+    ccPrompt: "当时为什么把 access token 改成 1 小时过期？",
+    ccToolCall: 'memax_recall("auth token 过期 决策")',
+    ccToolResult: "3 条记忆 · 团队 hub",
+    ccAnswer:
+      "四月的安全审查发现长效 token 有风险——access token 缩到 1 小时，refresh token 保持 30 天。完整的取舍分析在团队 hub 里。",
+    ccCaption: "Claude Code 在会话里直接从你的记忆中找回答案。",
+    // 终端场景 —— 内容行复用下面的 term* 文案
+    cliWindowTitle: "~ — zsh",
+    cliCaption: "周一存进去，周四随手捞——任何终端都行。",
+    // Web 场景 —— 记忆流 + 提问 demo，套上 memax.app 的窗口
+    webWindowTitle: "memax.app",
+    webCaption: "在 memax.app 里浏览、提问、整理。",
+    // 第三方 agent 场景 —— 任何 MCP agent 都连着同一个大脑
+    agentWindowTitle: "OpenClaw",
+    agentUserMsg: "帮新来的工程师写一份入职文档",
+    agentToolCall: 'memax_recall("工程入职 onboarding")',
+    agentToolResult: "5 条记忆 · 团队 hub",
+    agentAnswer:
+      "从 memax 拉到了你们团队的环境配置清单、代码规范和上线流程——草稿在下面。",
+    agentCaption:
+      "任何 MCP agent——OpenClaw、Hermes、你自己写的——共用同一个大脑。",
+    // CLI 终端 demo 文案（终端场景使用）
     termPush: "Acme 会议改到周四下午 2 点。只做 Dashboard 演示，不用完整方案。",
     termRemembered: "已记住。",
     termComment: "# 周四早上，新会话",

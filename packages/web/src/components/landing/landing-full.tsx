@@ -1,17 +1,28 @@
 "use client";
 
+import { useState } from "react";
 import { MemaxWordmark } from "@memaxlabs/ui";
-import { Globe, Moon, Sparkles, Sun } from "lucide-react";
-import { AGENT_IDENTITIES } from "@memaxlabs/ui/tokens/agents";
+import { Globe, Moon, Sun } from "lucide-react";
 import { useLocale } from "@/i18n";
 import { useTheme } from "next-themes";
 import { DOCS_URL } from "@/lib/urls";
 import { HeroWaitlist } from "./hero-waitlist";
 import { OverviewStrip } from "./overview-strip";
+import { PivotToggle, type LandingPivot } from "./pivot-toggle";
+import { RotatingHeadline } from "./rotating-headline";
+import { ScenarioShowcase } from "./scenario-showcase";
+
+// Canonical outward contact — same address privacy/terms already publish.
+const TEAM_CONTACT_EMAIL = "team@memaxlabs.com";
 
 export function LandingFull() {
   const { t, locale, setLocale } = useLocale();
   const { theme, setTheme } = useTheme();
+  // Audience pivot: personal = self-serve waitlist story, team = shared-brain
+  // story plus a direct contact channel. Hero copy and CTA extras switch;
+  // the overview strip and scenario showcase are audience-agnostic proof.
+  const [pivot, setPivot] = useState<LandingPivot>("personal");
+  const isTeam = pivot === "team";
 
   const cycleTheme = () => {
     document.documentElement.classList.add("theme-transition");
@@ -23,30 +34,6 @@ export function LandingFull() {
       500,
     );
   };
-
-  // Riley dog-foods memax while brainstorming memax itself — dumping scrappy
-  // notes across Claude Code and Codex. Jordan (via Cursor) later asks "what's
-  // riley cooking in our team hub?" and memax synthesizes the scattered notes
-  // into the product's own elevator pitch. The test-test-test stray note stays
-  // in sources but never pollutes the answer — the signal-from-noise claim is
-  // demonstrated, not stated. The demo is the pitch.
-  const demoEntries = [
-    {
-      agentSlug: "claude-code",
-      time: t.landing.demoNote1Time,
-      content: t.landing.demoNote1Content,
-    },
-    {
-      agentSlug: "codex",
-      time: t.landing.demoNote2Time,
-      content: t.landing.demoNote2Content,
-    },
-    {
-      agentSlug: "claude-code",
-      time: t.landing.demoNote3Time,
-      content: t.landing.demoNote3Content,
-    },
-  ];
 
   return (
     <div className="min-h-dvh flex flex-col items-center sm:justify-center px-6 sm:px-8 py-12 sm:py-16 bg-background">
@@ -76,9 +63,7 @@ export function LandingFull() {
       <div className="w-full max-w-170 flex flex-col items-center gap-8 sm:gap-10 lg:gap-12">
         {/* Logo + early-access badge row — brand-status framing (Linear /
             Arc / Framer pattern: product mark carries its rollout phase as
-            a sibling pill). Previously the badge sat below the CTA as fine
-            print; surfacing it at the brand level reads as "real product in
-            controlled rollout" rather than "heads up, this is gated". */}
+            a sibling pill). */}
         <div className="flex items-center gap-2.5 sm:gap-3">
           <MemaxWordmark height={24} className="text-fg-1 sm:h-7" />
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-surface-1 px-2.5 py-0.5 text-[11px] font-medium text-fg-3">
@@ -91,165 +76,53 @@ export function LandingFull() {
           </span>
         </div>
 
-        {/* Headline — display-sized, 48/60/80px. Mobile scale bumped so the
-            hero keeps 视觉冲击力 on phone widths where the desktop scale
-            alone wasn't carrying; tighter tracking + bold weight match the
-            2026 devtool display hero pattern (Linear/Vercel/Framer). */}
-        <div className="text-center space-y-3 sm:space-y-4">
-          <h1
-            className="font-bold text-fg-1 text-[3rem] sm:text-[3.75rem] lg:text-[5rem] leading-[1.02] whitespace-pre-line"
-            style={{ letterSpacing: "-0.045em" }}
-          >
-            {t.landing.headline}
-          </h1>
-          {/* Subtitle — 16/18/20px */}
-          <p className="text-fg-3 text-base sm:text-lg lg:text-xl max-w-120 mx-auto">
-            {t.landing.sublineFull}
-          </p>
+        {/* Hero — audience pivot above the rotating headline. Headline and
+            subline switch instantly with the pivot; the rotating word cycle
+            restarts via the key remount. */}
+        <div className="flex flex-col items-center gap-6 sm:gap-7 text-center">
+          <PivotToggle pivot={pivot} onChange={setPivot} />
+          <div className="space-y-3 sm:space-y-4">
+            <RotatingHeadline
+              key={`${pivot}-${locale}`}
+              prefix={
+                isTeam ? t.landing.heroTeamPrefix : t.landing.heroPersonalPrefix
+              }
+              words={
+                isTeam ? t.landing.heroTeamWords : t.landing.heroPersonalWords
+              }
+              wordLine={t.landing.heroWordLine}
+            />
+            {/* Subtitle — 16/18/20px */}
+            <p className="text-fg-3 text-base sm:text-lg lg:text-xl max-w-120 mx-auto">
+              {isTeam ? t.landing.sublineTeam : t.landing.sublineFull}
+            </p>
+          </div>
         </div>
 
         {/* High-level overview — surfaces (MCP/CLI/Web) + agent brand marks.
-            Answers "what does this work with?" above the fold, before the
-            CTA. See overview-strip.tsx for the rationale on placement. */}
+            Audience-agnostic, so it doesn't switch with the pivot. */}
         <OverviewStrip />
 
-        {/* Primary CTA — hero-anchored waitlist (morphs inline) */}
-        <HeroWaitlist />
-
-        {/* Demo card */}
-        <div className="w-full rounded-surface overflow-hidden border border-[oklch(from_var(--foreground)_l_c_h/0.08)] bg-[oklch(from_var(--foreground)_l_c_h/0.02)]">
-          <div className="divide-y divide-[oklch(from_var(--foreground)_l_c_h/0.06)]">
-            {demoEntries.map((entry, idx) => {
-              const agent = AGENT_IDENTITIES[entry.agentSlug];
-              const Icon = agent?.icon ?? Sparkles;
-              const color = agent?.color ?? "oklch(0.65 0.12 220)";
-              return (
-                <div
-                  key={idx}
-                  className="flex items-start gap-3 px-4 py-3 sm:px-5 sm:py-3.5"
-                >
-                  {/* Agent icon — 28/32px, real AGENT_IDENTITIES shape + color */}
-                  <div
-                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-chrome flex items-center justify-center shrink-0 mt-0.5"
-                    style={{
-                      backgroundColor: `oklch(from ${color} l c h / 0.12)`,
-                    }}
-                  >
-                    <Icon
-                      className="w-3.5 h-3.5 sm:w-4 sm:h-4"
-                      style={{ color }}
-                      strokeWidth={1.8}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    {/* Attribution row — "Jordan · saved via Claude Code" on
-                        the left, timestamp right-aligned. Matches production
-                        MemoryRow provenance layout. */}
-                    <div className="flex items-baseline gap-1.5 text-[13px] sm:text-sm">
-                      <span className="font-medium text-fg-1">
-                        {t.landing.demoActor}
-                      </span>
-                      <span className="text-fg-4">{t.landing.savedVia}</span>
-                      <span className="text-fg-3">
-                        {agent?.displayName ?? entry.agentSlug}
-                      </span>
-                      <span className="text-fg-4 ml-auto text-[12px]">
-                        {entry.time}
-                      </span>
-                    </div>
-                    <p className="text-fg-2 text-sm sm:text-[15px] mt-0.5 leading-snug">
-                      {entry.content}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Recall — Jordan (via OpenClaw) asks a teammate question; memax
-              synthesizes Riley's scattered notes into the product pitch.
-              Asker row mirrors the save-row two-line provenance pattern:
-              attribution on line 1, ✦ query on line 2 under the same icon.
-              The synthesis answer and source chips live in a separate block
-              below so the "ask" and the "response" read as distinct beats.
-              Source chips match production SourceRefItem. */}
-          <div className="border-t-2 border-[oklch(from_var(--foreground)_l_c_h/0.08)] px-4 py-3.5 sm:px-5 sm:py-4 bg-[oklch(from_var(--foreground)_l_c_h/0.03)]">
-            {(() => {
-              const askerAgent =
-                AGENT_IDENTITIES[t.landing.demoAskerAgent] ?? null;
-              const AskerIcon = askerAgent?.icon ?? Sparkles;
-              const askerColor = askerAgent?.color ?? "oklch(0.65 0.12 220)";
-              return (
-                <div className="flex items-start gap-3 mb-3.5">
-                  <div
-                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-chrome flex items-center justify-center shrink-0 mt-0.5"
-                    style={{
-                      backgroundColor: `oklch(from ${askerColor} l c h / 0.12)`,
-                    }}
-                  >
-                    <AskerIcon
-                      className="w-3.5 h-3.5 sm:w-4 sm:h-4"
-                      style={{ color: askerColor }}
-                      strokeWidth={1.8}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-1.5 text-[13px] sm:text-sm">
-                      <span className="font-medium text-fg-1">
-                        {t.landing.demoAsker}
-                      </span>
-                      <span className="text-fg-4">{t.landing.askedVia}</span>
-                      <span className="text-fg-3">
-                        {askerAgent?.displayName ?? t.landing.demoAskerAgent}
-                      </span>
-                      <span className="text-fg-4 ml-auto text-[12px]">
-                        {t.landing.demoAskerTime}
-                      </span>
-                    </div>
-                    {/* Query sits on line 2 under the same icon — mirrors the
-                        save rows' "attribution + content" stack. */}
-                    <p className="mt-1 text-fg-2 text-sm sm:text-[15px] leading-snug">
-                      {t.landing.recallQuery}
-                    </p>
-                  </div>
-                </div>
-              );
-            })()}
-            {/* Memax's synthesized answer. The breathing ✦ is the memax voice
-                marker — horizontally aligned inline with the first word so the
-                star belongs to the response, not the question. Matches the
-                production AI-answer pattern from the recall flow. */}
-            <p className="text-fg-1 text-sm sm:text-[15px] leading-relaxed">
-              <span
-                className="state-slow-breathe mr-1.5 inline-block leading-none"
-                style={{
-                  color: "var(--signature)",
-                  verticalAlign: "0.08em",
-                }}
+        {/* Primary CTA — hero-anchored waitlist (morphs inline). Team pivot
+            adds a direct sales-touch line under the self-serve CTA. */}
+        <div className="w-full flex flex-col items-center gap-3.5">
+          <HeroWaitlist />
+          {isTeam && (
+            <p className="text-[13px] text-fg-4 text-center">
+              {t.landing.teamContactPrompt}{" "}
+              <a
+                href={`mailto:${TEAM_CONTACT_EMAIL}`}
+                className="text-fg-2 underline underline-offset-2 hover:text-fg-1 transition-colors"
               >
-                {"\u2726"}
-              </span>
-              {t.landing.recallAnswer}
+                {t.landing.teamContactCta} {"→"}
+              </a>
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-fg-4">
-              <span>{t.landing.sourcesLabel}:</span>
-              {demoEntries.map((entry, idx) => {
-                const agent = AGENT_IDENTITIES[entry.agentSlug];
-                return (
-                  <span key={idx} className="inline-flex items-center gap-1">
-                    <span className="text-fg-3">
-                      {agent?.displayName ?? entry.agentSlug}
-                    </span>
-                    <span>{entry.time}</span>
-                    {idx < demoEntries.length - 1 && (
-                      <span className="text-fg-4/50">·</span>
-                    )}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
+          )}
         </div>
+
+        {/* Scenario showcase — coded recreations of the four real surfaces
+            (Claude Code, terminal, memax.app, third-party agent). */}
+        <ScenarioShowcase />
       </div>
 
       {/* Footer — 12px */}

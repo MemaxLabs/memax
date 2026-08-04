@@ -52,7 +52,10 @@ import {
   Clock,
   Key,
   Shield,
+  UserRound,
+  Fingerprint,
 } from "lucide-react";
+import { classifyAgentConfigFile } from "memax-sdk";
 import type {
   AgentConfig,
   ApiKeyListItem,
@@ -75,6 +78,7 @@ type DestructiveKey = string;
 
 function formatScope(scope: string): string {
   if (scope === "global") return "Global";
+  if (scope.startsWith("profile:")) return scope.replace("profile:", "");
   const match = scope.match(/\/([^/]+)$/);
   return match?.[1] ?? scope.replace("project:", "");
 }
@@ -102,10 +106,30 @@ function fileGroup(path: string): string | null {
   return null;
 }
 
-function FileIcon({ path }: { path: string }) {
-  if (path.startsWith("memory/"))
-    return <Brain className="h-3 w-3 text-fg-3 shrink-0" />;
+function FileIcon({ agent, path }: { agent: string; path: string }) {
+  const cls = classifyAgentConfigFile(agent, path);
+  if (cls === "identity")
+    return <Fingerprint className="h-3 w-3 text-fg-3 shrink-0" />;
+  if (cls === "memory") return <Brain className="h-3 w-3 text-fg-3 shrink-0" />;
   return <Settings2 className="h-3 w-3 text-fg-3 shrink-0" />;
+}
+
+/** Sort order inside a scope group: who the agent is, what it knows, how it
+ * behaves. Mirrors the identity → memory → rules classing in memax-sdk. */
+const CLASS_ORDER: Record<string, number> = {
+  identity: 0,
+  memory: 1,
+  rules: 2,
+  settings: 3,
+};
+
+function sortByConfigClass(configs: AgentConfig[]): AgentConfig[] {
+  return [...configs].sort((a, b) => {
+    const ca = CLASS_ORDER[classifyAgentConfigFile(a.agent, a.file_path)] ?? 9;
+    const cb = CLASS_ORDER[classifyAgentConfigFile(b.agent, b.file_path)] ?? 9;
+    if (ca !== cb) return ca - cb;
+    return a.file_path.localeCompare(b.file_path);
+  });
 }
 
 function groupByScope(configs: AgentConfig[]): [string, AgentConfig[]][] {
@@ -383,7 +407,8 @@ function ScopeGroup({
   const [open, setOpen] = useState(true);
   const project = formatScope(scope);
   const isGlobal = scope === "global";
-  const ScopeIcon = isGlobal ? Globe : FolderGit2;
+  const isProfile = scope.startsWith("profile:");
+  const ScopeIcon = isGlobal ? Globe : isProfile ? UserRound : FolderGit2;
   const scopeExtracted = configs.reduce(
     (s, c) => s + (extractionCounts[c.id] ?? 0),
     0,
@@ -399,6 +424,11 @@ function ScopeGroup({
         <span className="text-[13px] font-medium text-fg-1 flex-1 text-left truncate min-w-0">
           {project}
         </span>
+        {isProfile && (
+          <span className="hidden sm:inline text-[10px] text-fg-3 bg-surface-2 px-1.5 py-0.5 rounded shrink-0">
+            {t.agentConfigs.profileTag}
+          </span>
+        )}
         <span className="text-[11px] text-fg-3 tabular-nums shrink-0">
           {configs.length}
         </span>
@@ -419,13 +449,17 @@ function ScopeGroup({
 
       {open && (
         <div className="ml-5 border-l border-border/20">
-          {configs.map((c) => {
+          {sortByConfigClass(configs).map((c) => {
             const deleteKey = `delete-config:${c.id}`;
             const isDeleting = destructiveAction.isConfirming(deleteKey);
             const isDeletePending = destructiveAction.isRunning(deleteKey);
             const isPreviewing = previewId === c.id;
             const label = fileLabel(c.file_path);
-            const group = fileGroup(c.file_path);
+            const configClass = classifyAgentConfigFile(c.agent, c.file_path);
+            const group =
+              configClass === "identity"
+                ? t.agentConfigs.classIdentity
+                : fileGroup(c.file_path);
             const extracted = extractionCounts[c.id] ?? 0;
 
             if (isDeleting) {
@@ -473,7 +507,7 @@ function ScopeGroup({
                   className="flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-r-lg text-[13px] hover:bg-surface-1 touch-no-hover cursor-pointer transition-colors"
                   onClick={() => setPreviewId(isPreviewing ? null : c.id)}
                 >
-                  <FileIcon path={c.file_path} />
+                  <FileIcon agent={c.agent} path={c.file_path} />
                   <span className="text-fg-2 flex-1 truncate">{label}</span>
                   {/* group pill: hidden on mobile — scope is already
                       shown in the parent ScopeGroup header, and it eats

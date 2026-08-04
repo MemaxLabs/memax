@@ -27,6 +27,9 @@ type InMemoryStore struct {
 	hubs                         map[string]*model.Hub
 	hubVisits                    map[string]*model.HubVisit
 	agentConfigs                 map[string]*model.AgentConfig
+	personas                     map[string]*model.Persona
+	userPreferences              map[string]map[string]any
+	personaRevisions             map[string][]*model.PersonaRevision // personaID -> revisions
 	configStates                 map[string]*model.AgentConfigSyncState
 	tombstones                   map[string]*model.AgentConfigTombstone
 	emailTemplateOverrides       map[string]*model.EmailTemplateOverride
@@ -1525,11 +1528,29 @@ func (s *InMemoryStore) SearchChunksInHubs(ctx context.Context, query string, _ 
 
 // --- User Preferences (in-memory) ---
 
-func (s *InMemoryStore) GetUserPreferences(_ string) (*model.UserPreferences, error) {
-	return &model.UserPreferences{Settings: map[string]any{}}, nil
+func (s *InMemoryStore) GetUserPreferences(userID string) (*model.UserPreferences, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	settings := map[string]any{}
+	for k, v := range s.userPreferences[userID] {
+		settings[k] = v
+	}
+	return &model.UserPreferences{UserID: userID, Settings: settings}, nil
 }
 
-func (s *InMemoryStore) UpsertUserPreferences(_ string, _ map[string]any) error { return nil }
+func (s *InMemoryStore) UpsertUserPreferences(userID string, settings map[string]any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.userPreferences == nil {
+		s.userPreferences = make(map[string]map[string]any)
+	}
+	stored := map[string]any{}
+	for k, v := range settings {
+		stored[k] = v
+	}
+	s.userPreferences[userID] = stored
+	return nil
+}
 
 func (s *InMemoryStore) ListDreamableHubs() ([]model.Hub, error) { return nil, nil }
 
@@ -3125,4 +3146,125 @@ func (s *InMemoryStore) ListPendingChatToolApprovals(_ context.Context, _, _ str
 }
 func (s *InMemoryStore) ExpirePendingChatToolApprovals(_ context.Context) ([]ExpiredChatToolApproval, error) {
 	return nil, errChatRequiresPostgres
+}
+
+// --- Personas (in-memory) ---
+
+func (s *InMemoryStore) UpsertPersona(p *model.Persona) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.personas == nil {
+		s.personas = make(map[string]*model.Persona)
+	}
+	if s.personaRevisions == nil {
+		s.personaRevisions = make(map[string][]*model.PersonaRevision)
+	}
+	record := func(id string, version int) {
+		s.personaRevisions[id] = append(s.personaRevisions[id], &model.PersonaRevision{
+			ID:          id + "-v" + fmt.Sprint(version),
+			PersonaID:   id,
+			OwnerID:     p.OwnerID,
+			Version:     version,
+			Content:     p.Content,
+			ContentHash: p.ContentHash,
+			CreatedAt:   p.UpdatedAt,
+		})
+	}
+	for _, existing := range s.personas {
+		if existing.OwnerID == p.OwnerID && existing.SourceAgent == p.SourceAgent &&
+			existing.SourceScope == p.SourceScope && existing.SourceFilePath == p.SourceFilePath {
+			if existing.ContentHash == p.ContentHash {
+				return nil // unchanged content — no-op
+			}
+			existing.Name = p.Name
+			existing.Content = p.Content
+			existing.ContentHash = p.ContentHash
+			existing.Version++
+			existing.UpdatedAt = p.UpdatedAt
+			record(existing.ID, existing.Version)
+			return nil
+		}
+	}
+	s.personas[p.ID] = p
+	record(p.ID, p.Version)
+	return nil
+}
+
+func (s *InMemoryStore) ListPersonas(ownerID string) ([]model.Persona, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var personas []model.Persona
+	for _, p := range s.personas {
+		if ownerID == "local" || p.OwnerID == ownerID {
+			personas = append(personas, *p)
+		}
+	}
+	sort.Slice(personas, func(i, j int) bool {
+		return personas[i].UpdatedAt.After(personas[j].UpdatedAt)
+	})
+	return personas, nil
+}
+
+func (s *InMemoryStore) GetPersona(id string, ownerID string) (*model.Persona, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.personas[id]
+	if !ok || (ownerID != "local" && p.OwnerID != ownerID) {
+		return nil, fmt.Errorf("persona not found: %s", id)
+	}
+	return p, nil
+}
+
+func (s *InMemoryStore) DeletePersona(id string, ownerID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.personas[id]
+	if !ok || (ownerID != "local" && p.OwnerID != ownerID) {
+		return nil
+	}
+	delete(s.personas, id)
+	delete(s.personaRevisions, id)
+	return nil
+}
+
+func (s *InMemoryStore) DeletePersonaBySource(agent, filePath, scope, ownerID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, p := range s.personas {
+		if p.SourceAgent == agent && p.SourceFilePath == filePath && p.SourceScope == scope &&
+			(ownerID == "local" || p.OwnerID == ownerID) {
+			delete(s.personas, id)
+			delete(s.personaRevisions, id)
+		}
+	}
+	return nil
+}
+
+func (s *InMemoryStore) ListPersonaRevisions(personaID, ownerID string) ([]model.PersonaRevision, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var revisions []model.PersonaRevision
+	for _, rev := range s.personaRevisions[personaID] {
+		if ownerID == "local" || rev.OwnerID == ownerID {
+			// List omits content — matches the Postgres implementation.
+			meta := *rev
+			meta.Content = ""
+			revisions = append(revisions, meta)
+		}
+	}
+	sort.Slice(revisions, func(i, j int) bool {
+		return revisions[i].Version > revisions[j].Version
+	})
+	return revisions, nil
+}
+
+func (s *InMemoryStore) GetPersonaRevision(personaID string, version int, ownerID string) (*model.PersonaRevision, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, rev := range s.personaRevisions[personaID] {
+		if rev.Version == version && (ownerID == "local" || rev.OwnerID == ownerID) {
+			return rev, nil
+		}
+	}
+	return nil, fmt.Errorf("persona revision not found: %s v%d", personaID, version)
 }

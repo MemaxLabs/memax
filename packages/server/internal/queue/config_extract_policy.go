@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	ingesttitle "github.com/MemaxLabs/memax/packages/server/internal/ingest/title"
+	"github.com/MemaxLabs/memax/packages/server/internal/model"
 )
 
 // knowledgeItem is a discrete piece of knowledge extracted from a config file.
@@ -132,6 +133,13 @@ func decideConfigExtraction(content, agent, filePath string) extractionDecision 
 func classifyConfigExtractionMode(agent, filePath string) configExtractionMode {
 	path := strings.ToLower(strings.ReplaceAll(filePath, "\\", "/"))
 	switch {
+	case model.IsIdentityConfigPath(path):
+		// Identity files (SOUL.md, persona files) define who the agent IS —
+		// personality, tone, values — not durable project knowledge. Knowledge
+		// extraction skips them entirely; they still sync verbatim, and the
+		// persona pipeline (personal-agent sync, phase 2) will own extracting
+		// them into first-class personas.
+		return configExtractNever
 	case agent == "claude-code" && path == "memory.md":
 		return configExtractAlways
 	case agent == "claude-code" && strings.HasPrefix(path, "memory/") && strings.HasSuffix(path, ".md"):

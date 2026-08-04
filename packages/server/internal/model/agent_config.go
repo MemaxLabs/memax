@@ -9,7 +9,7 @@ type AgentConfig struct {
 	OwnerID     string    `json:"owner_id"`
 	Agent       string    `json:"agent"`     // "claude-code", "cursor", "gemini", etc.
 	FilePath    string    `json:"file_path"` // relative: "CLAUDE.md", "projects/memax/memory/feedback.md"
-	Scope       string    `json:"scope"`     // Scope: "global" | "project:<repo-url>"
+	Scope       string    `json:"scope"`     // Scope: "global" | "project:<repo-url>" | "profile:<name>"
 	Content     string    `json:"content"`
 	ContentHash string    `json:"content_hash"` // SHA256 for change detection
 	Version     int       `json:"version"`

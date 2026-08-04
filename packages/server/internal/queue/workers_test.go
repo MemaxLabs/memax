@@ -33,6 +33,58 @@ func TestClassifyConfigExtractionMode(t *testing.T) {
 			filePath: "instructions.md",
 			want:     configExtractSelective,
 		},
+		// Identity surfaces are never knowledge-extracted — synced verbatim,
+		// owned by the persona pipeline (personal-agent sync, phase 2).
+		{
+			name:     "openclaw soul never extracts",
+			agent:    "openclaw",
+			filePath: "SOUL.md",
+			want:     configExtractNever,
+		},
+		{
+			name:     "openclaw workspace soul never extracts",
+			agent:    "openclaw",
+			filePath: "workspace/SOUL.md",
+			want:     configExtractNever,
+		},
+		{
+			name:     "hermes identity never extracts",
+			agent:    "hermes",
+			filePath: "IDENTITY.md",
+			want:     configExtractNever,
+		},
+		{
+			name:     "persona files never extract",
+			agent:    "hermes",
+			filePath: "personas/writer.md",
+			want:     configExtractNever,
+		},
+		{
+			name:     "openclaw memory still selective",
+			agent:    "openclaw",
+			filePath: "workspace/memory/2026-08-01.md",
+			want:     configExtractSelective,
+		},
+		{
+			name:     "hermes memory still selective",
+			agent:    "hermes",
+			filePath: "memory/notes.md",
+			want:     configExtractSelective,
+		},
+		// Regression: memory-dir files named like identity files must keep
+		// their extraction mode — they are knowledge, not identity.
+		{
+			name:     "claude memory user.md keeps always-extract",
+			agent:    "claude-code",
+			filePath: "memory/user.md",
+			want:     configExtractAlways,
+		},
+		{
+			name:     "openclaw memory identity-named file stays selective",
+			agent:    "openclaw",
+			filePath: "workspace/memory/identity.md",
+			want:     configExtractSelective,
+		},
 	}
 
 	for _, tt := range tests {

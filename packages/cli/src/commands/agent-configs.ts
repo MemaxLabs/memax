@@ -25,6 +25,20 @@ import { getOrCreateDeviceID } from "../lib/config.js";
 import { confirm, ask, confirmDefault } from "../lib/prompt.js";
 import { moveFileToTrash } from "../lib/trash.js";
 import type { AgentConfig, Scope, SyncPlanAction } from "memax-sdk";
+import { classifyAgentConfigFile } from "memax-sdk";
+import {
+  MAX_AGENT_CONFIG_BYTES,
+  discoverAgentConfigs,
+  findClaudeProjectDir,
+  formatAgentName,
+  resolveAgentConfigWritePath,
+  type AgentConfigLocation,
+  type ResolveAgentConfigWritePathOptions,
+} from "./agent-configs-discovery.js";
+
+// Re-exported so existing imports (tests, other commands) keep working
+// after the discovery/write-path registry moved to its own module.
+export { resolveAgentConfigWritePath } from "./agent-configs-discovery.js";
 
 export async function syncAgentMemoryCommand(
   options: SyncAgentOptions = {},
@@ -71,13 +85,13 @@ export async function listAgentConfigsCommand(): Promise<void> {
   for (const [agent, files] of byAgent) {
     console.log(`  ${chalk.cyan(agent)}`);
     for (const f of files) {
-      const scopeTag =
-        f.scope === "global"
-          ? chalk.dim("global")
-          : chalk.dim(f.scope.replace("project:", ""));
+      const scopeTag = chalk.dim(
+        f.scope === "global" ? "global" : f.scope.replace("project:", ""),
+      );
+      const classTag = chalk.dim(classifyAgentConfigFile(agent, f.filePath));
       const age = formatAge(f.updatedAt);
       console.log(
-        `    ${f.filePath}  ${scopeTag}  ${chalk.dim(age)}  ${chalk.dim(f.id.slice(0, 8))}`,
+        `    ${f.filePath}  ${scopeTag}  ${classTag}  ${chalk.dim(age)}  ${chalk.dim(f.id.slice(0, 8))}`,
       );
     }
     console.log();
@@ -754,38 +768,6 @@ function formatAge(dateStr: string): string {
 
 // --- Agent config sync ---
 
-interface AgentConfigLocation {
-  agent: string; // "claude-code", "cursor", "gemini", etc.
-  label: string; // display label (e.g. "~/.claude/CLAUDE.md")
-  path: string; // absolute path on disk
-  filePath: string; // relative path for storage (e.g. "CLAUDE.md", "projects/memax/memory/feedback.md")
-  scope: Scope; // "global" or "project:<repo-url>"
-}
-
-interface ResolveAgentConfigWritePathOptions {
-  cwd?: string;
-  home?: string;
-  currentProjectScope?: ProjectScope;
-  findClaudeProjectDir?: (scope: Scope) => string | null;
-}
-
-function findClaudeProjectDir(scope: Scope): string | null {
-  const home = homedir();
-  const claudeProjectsDir = join(home, ".claude", "projects");
-  if (!existsSync(claudeProjectsDir)) return null;
-  try {
-    for (const project of readdirSync(claudeProjectsDir)) {
-      const repoUrl = resolveClaudeProjectFolder(project);
-      if (repoUrl && scope === `project:${repoUrl}`) {
-        return join(claudeProjectsDir, project);
-      }
-    }
-  } catch {
-    // Permission denied — skip
-  }
-  return null;
-}
-
 function printPlacementSection(
   title: string,
   color: (text: string) => string,
@@ -814,377 +796,6 @@ function printPlacementSection(
     console.log(`      ${chalk.gray(detail)}`);
   }
   console.log();
-}
-
-export function resolveAgentConfigWritePath(
-  agent: string,
-  filePath: string,
-  scope: Scope,
-  options: ResolveAgentConfigWritePathOptions = {},
-): string | null {
-  const cwd = options.cwd ?? process.cwd();
-  const home = options.home ?? homedir();
-  const currentProjectScope =
-    options.currentProjectScope ?? getProjectScope(cwd);
-  const normalizedFilePath = normalizeFilePath(filePath);
-
-  if (scope === "global") {
-    switch (agent) {
-      case "claude-code":
-        return join(home, ".claude", normalizedFilePath);
-      case "codex":
-        return join(home, ".codex", normalizedFilePath);
-      case "gemini":
-        return join(home, ".gemini", normalizedFilePath);
-      case "openclaw":
-        return join(home, ".openclaw", normalizedFilePath);
-      case "opencode":
-        return join(home, ".opencode", normalizedFilePath);
-      default:
-        return null;
-    }
-  }
-
-  if (!scope.startsWith("project:") || scope !== currentProjectScope) {
-    return null;
-  }
-
-  switch (agent) {
-    case "claude-code":
-      if (
-        normalizedFilePath === "CLAUDE.md" ||
-        normalizedFilePath === "MEMORY.md"
-      ) {
-        return join(cwd, ".claude", normalizedFilePath);
-      }
-      if (normalizedFilePath.startsWith(".claude/")) {
-        return join(cwd, normalizedFilePath);
-      }
-      if (normalizedFilePath.startsWith("memory/")) {
-        const projectDir = options.findClaudeProjectDir?.(scope);
-        if (projectDir) {
-          return join(projectDir, normalizedFilePath);
-        }
-        const mangledCwd = cwd.replace(/\//g, "-");
-        return join(
-          home,
-          ".claude",
-          "projects",
-          mangledCwd,
-          normalizedFilePath,
-        );
-      }
-      return null;
-    case "cursor":
-      if (
-        normalizedFilePath === ".cursorrules" ||
-        normalizedFilePath.startsWith(".cursor/")
-      ) {
-        return join(cwd, normalizedFilePath);
-      }
-      return null;
-    case "codex":
-      if (normalizedFilePath === "instructions.md") {
-        return join(cwd, ".codex", "instructions.md");
-      }
-      if (normalizedFilePath.startsWith(".codex/")) {
-        return join(cwd, normalizedFilePath);
-      }
-      return null;
-    case "gemini":
-      if (normalizedFilePath === "GEMINI.md") {
-        return join(cwd, "GEMINI.md");
-      }
-      return null;
-    case "copilot":
-      if (normalizedFilePath === "copilot-instructions.md") {
-        return join(cwd, ".github", "copilot-instructions.md");
-      }
-      if (normalizedFilePath.startsWith(".github/")) {
-        return join(cwd, normalizedFilePath);
-      }
-      return null;
-    case "windsurf":
-      if (
-        normalizedFilePath === ".windsurfrules" ||
-        normalizedFilePath.startsWith(".windsurf/")
-      ) {
-        return join(cwd, normalizedFilePath);
-      }
-      return null;
-    case "opencode":
-      if (normalizedFilePath.startsWith(".opencode/")) {
-        return join(cwd, normalizedFilePath);
-      }
-      return join(cwd, ".opencode", normalizedFilePath);
-    case "generic":
-      if (
-        normalizedFilePath === "AGENTS.md" ||
-        normalizedFilePath === "CLAUDE.md" ||
-        normalizedFilePath === "GEMINI.md"
-      ) {
-        return join(cwd, normalizedFilePath);
-      }
-      return null;
-    default:
-      return null;
-  }
-}
-
-function discoverAgentConfigs(): AgentConfigLocation[] {
-  const home = homedir();
-  const cwd = process.cwd();
-  const projectScope = getProjectScope(cwd);
-  const canonicalProjectScope = isCanonicalProjectScope(projectScope)
-    ? projectScope
-    : null;
-  const locations: AgentConfigLocation[] = [];
-
-  const add = (
-    agent: string,
-    label: string,
-    path: string,
-    filePath: string,
-    scope: Scope = "global",
-  ) =>
-    locations.push({
-      agent,
-      label,
-      path,
-      filePath: normalizeFilePath(filePath),
-      scope,
-    });
-
-  // Claude Code — global
-  add(
-    "claude-code",
-    "~/.claude/CLAUDE.md",
-    join(home, ".claude", "CLAUDE.md"),
-    "CLAUDE.md",
-  );
-  add(
-    "claude-code",
-    "~/.claude/MEMORY.md",
-    join(home, ".claude", "MEMORY.md"),
-    "MEMORY.md",
-  );
-
-  // Claude Code — per-project memories: ~/.claude/projects/*/memory/*.md
-  // The folder name is the absolute project path with "/" replaced by "-"
-  // (e.g., "-workspaces-memax"). We resolve it to a git repo URL so the
-  // same project's memories match across machines regardless of clone path.
-  const claudeProjectsDir = join(home, ".claude", "projects");
-  if (existsSync(claudeProjectsDir)) {
-    try {
-      for (const project of readdirSync(claudeProjectsDir)) {
-        const memoryDir = join(claudeProjectsDir, project, "memory");
-        if (!existsSync(memoryDir)) continue;
-
-        // Try to resolve mangled folder → git repo → canonical scope
-        const repoUrl = resolveClaudeProjectFolder(project);
-        const memoryScope: Scope | undefined = repoUrl
-          ? `project:${repoUrl}`
-          : undefined;
-
-        try {
-          for (const file of readdirSync(memoryDir)) {
-            if (!file.endsWith(".md")) continue;
-            if (memoryScope) {
-              // Canonical: filePath is just "memory/<file>", scope identifies the project
-              add(
-                "claude-code",
-                `~/.claude/projects/${project}/memory/${file}`,
-                join(memoryDir, file),
-                `memory/${file}`,
-                memoryScope,
-              );
-            } else {
-              // Fallback: can't resolve project → keep legacy format with folder name
-              add(
-                "claude-code",
-                `~/.claude/projects/${project}/memory/${file}`,
-                join(memoryDir, file),
-                `projects/${project}/memory/${file}`,
-              );
-            }
-          }
-        } catch {
-          // Permission denied — skip
-        }
-      }
-    } catch {
-      // Permission denied — skip
-    }
-  }
-
-  // --- Project-scoped configs (only when inside a git repo) ---
-  if (canonicalProjectScope) {
-    // Claude Code — project-level
-    add(
-      "claude-code",
-      "./.claude/CLAUDE.md",
-      join(cwd, ".claude", "CLAUDE.md"),
-      "CLAUDE.md",
-      canonicalProjectScope,
-    );
-
-    // Cursor (project-level)
-    add(
-      "cursor",
-      "./.cursorrules",
-      join(cwd, ".cursorrules"),
-      ".cursorrules",
-      canonicalProjectScope,
-    );
-    const cursorRulesDir = join(cwd, ".cursor", "rules");
-    if (existsSync(cursorRulesDir)) {
-      try {
-        for (const file of readdirSync(cursorRulesDir)) {
-          if (file.endsWith(".mdc")) {
-            add(
-              "cursor",
-              `./.cursor/rules/${file}`,
-              join(cursorRulesDir, file),
-              `.cursor/rules/${file}`,
-              canonicalProjectScope,
-            );
-          }
-        }
-      } catch {
-        /* skip */
-      }
-    }
-
-    // Codex (project-level)
-    add(
-      "codex",
-      "./.codex/instructions.md",
-      join(cwd, ".codex", "instructions.md"),
-      "instructions.md",
-      canonicalProjectScope,
-    );
-  }
-
-  add(
-    "codex",
-    "~/.codex/AGENTS.md",
-    join(home, ".codex", "AGENTS.md"),
-    "AGENTS.md",
-  );
-
-  // Gemini CLI — global
-  add(
-    "gemini",
-    "~/.gemini/GEMINI.md",
-    join(home, ".gemini", "GEMINI.md"),
-    "GEMINI.md",
-  );
-
-  if (canonicalProjectScope) {
-    // Gemini CLI — project-level
-    add(
-      "gemini",
-      "./GEMINI.md",
-      join(cwd, "GEMINI.md"),
-      "GEMINI.md",
-      canonicalProjectScope,
-    );
-
-    // GitHub Copilot
-    add(
-      "copilot",
-      "./.github/copilot-instructions.md",
-      join(cwd, ".github", "copilot-instructions.md"),
-      "copilot-instructions.md",
-      canonicalProjectScope,
-    );
-
-    // Windsurf
-    add(
-      "windsurf",
-      "./.windsurfrules",
-      join(cwd, ".windsurfrules"),
-      ".windsurfrules",
-      canonicalProjectScope,
-    );
-    const windsurfRulesDir = join(cwd, ".windsurf", "rules");
-    if (existsSync(windsurfRulesDir)) {
-      try {
-        for (const file of readdirSync(windsurfRulesDir)) {
-          if (file.endsWith(".md")) {
-            add(
-              "windsurf",
-              `./.windsurf/rules/${file}`,
-              join(windsurfRulesDir, file),
-              `.windsurf/rules/${file}`,
-              canonicalProjectScope,
-            );
-          }
-        }
-      } catch {
-        /* skip */
-      }
-    }
-  }
-
-  // OpenClaw
-  const openclawMemoryDir = join(home, ".openclaw", "memory");
-  if (existsSync(openclawMemoryDir)) {
-    try {
-      for (const file of readdirSync(openclawMemoryDir)) {
-        if (file.endsWith(".md") || file.endsWith(".json")) {
-          add(
-            "openclaw",
-            `~/.openclaw/memory/${file}`,
-            join(openclawMemoryDir, file),
-            `memory/${file}`,
-          );
-        }
-      }
-    } catch {
-      /* skip */
-    }
-  }
-
-  if (canonicalProjectScope) {
-    // OpenCode (project-level)
-    const opencodePath = join(cwd, ".opencode");
-    if (existsSync(opencodePath)) {
-      try {
-        for (const file of readdirSync(opencodePath)) {
-          if (file.endsWith(".md")) {
-            add(
-              "opencode",
-              `./.opencode/${file}`,
-              join(opencodePath, file),
-              file,
-              canonicalProjectScope,
-            );
-          }
-        }
-      } catch {
-        /* skip */
-      }
-    }
-
-    // Generic project-level agent files
-    add(
-      "generic",
-      "./AGENTS.md",
-      join(cwd, "AGENTS.md"),
-      "AGENTS.md",
-      canonicalProjectScope,
-    );
-    add(
-      "generic",
-      "./CLAUDE.md",
-      join(cwd, "CLAUDE.md"),
-      "CLAUDE.md",
-      canonicalProjectScope,
-    );
-  }
-
-  return locations;
 }
 
 interface SyncAgentOptions {
@@ -1220,6 +831,14 @@ async function syncAgentMemory(options: SyncAgentOptions = {}): Promise<void> {
     try {
       const stat = statSync(loc.path);
       if (!stat.isFile() || stat.size === 0) continue;
+      if (stat.size > MAX_AGENT_CONFIG_BYTES) {
+        console.log(
+          chalk.yellow(
+            `  Skipping ${loc.label} (${Math.round(stat.size / 1024)}KB > ${MAX_AGENT_CONFIG_BYTES / 1024}KB limit)`,
+          ),
+        );
+        continue;
+      }
       const content = readFileSync(loc.path, "utf-8");
       if (!content.trim()) continue;
       const hash = createHash("sha256").update(content).digest("hex");
@@ -1780,21 +1399,6 @@ async function syncAgentMemory(options: SyncAgentOptions = {}): Promise<void> {
     );
   }
   console.log();
-}
-
-function formatAgentName(id: string): string {
-  const names: Record<string, string> = {
-    "claude-code": "Claude Code",
-    cursor: "Cursor",
-    codex: "Codex",
-    gemini: "Gemini CLI",
-    copilot: "GitHub Copilot",
-    windsurf: "Windsurf",
-    openclaw: "OpenClaw",
-    opencode: "OpenCode",
-    generic: "Generic",
-  };
-  return names[id] ?? id;
 }
 
 async function promptConflict(

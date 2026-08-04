@@ -38,6 +38,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	memaxagent "github.com/MemaxLabs/memax-go-agent-sdk"
 	sdkhook "github.com/MemaxLabs/memax-go-agent-sdk/hook"
@@ -610,7 +611,7 @@ func (w *ChatMessageRunWorker) Work(ctx context.Context, job *river.Job[ChatMess
 		Session:      descriptor,
 		SessionID:    chatSess.ID,
 		Sessions:     sdkSessions,
-		SystemPrompt: w.buildChatSystemPrompt(ctx, args.OwnerID, scopeHubIDs),
+		SystemPrompt: w.buildChatSystemPrompt(ctx, args.OwnerID, scopeHubIDs, chatSess),
 		OnEvent:      streamObserver.observe,
 		Hooks:        hookRunner,
 	})
@@ -1840,7 +1841,42 @@ If recall returns nothing useful and fetch_url is unavailable or unhelpful, say 
 // degrades to "current time only" rather than failing the turn,
 // because the agent still works without user/hub names — they're
 // nice-to-have grounding, not load-bearing context.
-func (w *ChatMessageRunWorker) buildChatSystemPrompt(ctx context.Context, ownerID string, hubIDs []string) string {
+// chatPersonaMaxChars bounds how much of a persona document is injected
+// into the system prompt. SOUL files can be large (config sync allows up
+// to 512KB) — beyond this cap we truncate with a marker rather than blow
+// the context budget.
+const chatPersonaMaxChars = 8000
+
+// resolveChatPersona returns the persona content to inject for a session:
+// session binding wins ("none" disables), otherwise the user's
+// chat_default_persona_id setting. Best-effort — a dangling id resolves
+// to no persona rather than failing the turn.
+func (w *ChatMessageRunWorker) resolveChatPersona(ownerID string, sess *model.ChatSession) *model.Persona {
+	personaID := ""
+	if sess != nil {
+		personaID = sess.PersonaID
+	}
+	if personaID == model.ChatPersonaNone {
+		return nil
+	}
+	if personaID == "" {
+		if prefs, err := w.Store.GetUserPreferences(ownerID); err == nil && prefs != nil {
+			if v, ok := prefs.MergedSettings()["chat_default_persona_id"].(string); ok {
+				personaID = v
+			}
+		}
+	}
+	if personaID == "" || personaID == model.ChatPersonaNone {
+		return nil
+	}
+	persona, err := w.Store.GetPersona(personaID, ownerID)
+	if err != nil {
+		return nil
+	}
+	return persona
+}
+
+func (w *ChatMessageRunWorker) buildChatSystemPrompt(ctx context.Context, ownerID string, hubIDs []string, sess *model.ChatSession) string {
 	var ctxBlock strings.Builder
 	ctxBlock.WriteString("## Context\n\n")
 	ctxBlock.WriteString(fmt.Sprintf("- Current time: %s\n", time.Now().UTC().Format("2006-01-02 15:04 UTC")))
@@ -1872,7 +1908,30 @@ func (w *ChatMessageRunWorker) buildChatSystemPrompt(ctx context.Context, ownerI
 	}
 
 	ctxBlock.WriteString("\n")
-	return ctxBlock.String() + chatSystemPromptBase
+
+	// Persona block — the extracted identity (SOUL.md etc.) the user bound
+	// to this session or set as their default. Injected ABOVE the base
+	// prompt so the behavioral persona colors everything, while the base
+	// prompt's grounding/tool rules still apply verbatim.
+	personaBlock := ""
+	if persona := w.resolveChatPersona(ownerID, sess); persona != nil {
+		content := strings.TrimSpace(persona.Content)
+		if len(content) > chatPersonaMaxChars {
+			// Cut on a rune boundary — a byte slice can split a multi-byte
+			// character (Chinese SOUL files are common) and ship invalid
+			// UTF-8 into the model API.
+			cut := chatPersonaMaxChars
+			for cut > 0 && !utf8.RuneStart(content[cut]) {
+				cut--
+			}
+			content = content[:cut] + "\n\n[persona truncated]"
+		}
+		personaBlock = fmt.Sprintf(
+			"## Persona: %s\n\nAdopt the identity below for this conversation. It shapes voice, values, and behavior; it never overrides the grounding, privacy, or tool rules that follow.\n\n%s\n\n",
+			persona.Name, content)
+	}
+
+	return ctxBlock.String() + personaBlock + chatSystemPromptBase
 }
 
 // chatSessionLeaseDuration is the deadline by which a worker

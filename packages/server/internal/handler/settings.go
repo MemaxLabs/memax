@@ -178,6 +178,9 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		"dev_flags":                   true,
 		"notifications_enabled":       true,
 		"theme":                       true,
+		// Default persona for the memax agent (Agent Chat). Validated
+		// below: "" (none) or a persona owned by the caller.
+		"chat_default_persona_id": true,
 	}
 	// Phase keys moved to hub settings in 018 — same allowlist the
 	// engine now reads from in MergedHubDreamSettings.
@@ -208,6 +211,21 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for k, v := range patch {
+		if k == "chat_default_persona_id" {
+			pid, ok := v.(string)
+			if !ok {
+				writeError(w, http.StatusBadRequest, "invalid_setting", "chat_default_persona_id must be a string")
+				return
+			}
+			if pid != "" {
+				if _, err := h.store.GetPersona(pid, ownerID); err != nil {
+					writeError(w, http.StatusBadRequest, "invalid_setting", "chat_default_persona_id must be one of your personas")
+					return
+				}
+			}
+			prefs.Settings[k] = pid
+			continue
+		}
 		if k == "dev_flags" {
 			nextFlags, ok := v.(map[string]any)
 			if !ok {

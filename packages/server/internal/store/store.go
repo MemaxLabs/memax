@@ -541,6 +541,15 @@ type Store interface {
 	PurgeExpiredAgentConfigTombstoneContent(now time.Time) error
 	CountExtractedMemories(ownerID string) (map[string]int, error) // configID -> count
 
+	// Personas — identity objects derived from identity-class configs
+	UpsertPersona(p *model.Persona) error
+	ListPersonas(ownerID string) ([]model.Persona, error)
+	GetPersona(id string, ownerID string) (*model.Persona, error)
+	DeletePersona(id string, ownerID string) error
+	DeletePersonaBySource(agent, filePath, scope, ownerID string) error
+	ListPersonaRevisions(personaID, ownerID string) ([]model.PersonaRevision, error)
+	GetPersonaRevision(personaID string, version int, ownerID string) (*model.PersonaRevision, error)
+
 	// Connected Agents — first-class agent registry
 	UpsertConnectedAgent(agent *model.ConnectedAgent) error
 	GetConnectedAgent(ownerID string, agentName string) (*model.ConnectedAgent, error)
@@ -1597,6 +1606,7 @@ type ChatSessionMetaPatch struct {
 	Tools          *[]string // a non-nil empty slice empties the tools list
 	ToolsetVersion *int
 	WriteHubID     *string // empty string clears (NULL); nil leaves alone
+	PersonaID      *string // "" clears (inherit default); "none" disables; else persona id
 }
 
 // ChatMessageListOpts controls transcript reads. Cursor is the

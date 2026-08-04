@@ -50,6 +50,13 @@ export function setupMcpOAuth(agent: AgentDef): void {
     return;
   }
 
+  // Hermes YAML — remote schema undocumented, write the stdio form
+  // (memax CLI is on PATH: the user is running it right now).
+  if (agent.format === "yaml-mcp-servers") {
+    writeHermesYamlMcp(agent, { command: "memax", args: [], shell: "" });
+    return;
+  }
+
   // Codex TOML
   if (agent.format === "toml") {
     mkdirSync(dirname(agent.configPath), { recursive: true });
@@ -157,6 +164,13 @@ export function setupMcpRemote(agent: AgentDef, apiKey: string): void {
     return;
   }
 
+  // Hermes YAML — remote schema undocumented, write the stdio form
+  // (memax CLI is on PATH: the user is running it right now).
+  if (agent.format === "yaml-mcp-servers") {
+    writeHermesYamlMcp(agent, { command: "memax", args: [], shell: "" });
+    return;
+  }
+
   // Codex TOML
   if (agent.format === "toml") {
     mkdirSync(dirname(agent.configPath), { recursive: true });
@@ -207,6 +221,137 @@ function writeRemoteJsonConfig(
   writeFileSync(agent.configPath, JSON.stringify(config, null, 2) + "\n");
 }
 
+/**
+ * Upsert the memax entry under a root-level `mcp_servers:` block in a YAML
+ * config, editing line-wise instead of pulling in a YAML dependency for one
+ * agent (Hermes). Preserves everything else in the file — other servers,
+ * comments, unrelated top-level keys — and adapts to the file's existing
+ * child indentation (2 spaces, 4 spaces, tabs).
+ *
+ * Returns null when the file cannot be edited safely (flow-style
+ * `mcp_servers: {...}`) — callers must fall back to manual instructions
+ * rather than corrupt the config.
+ */
+export function upsertYamlMcpServersBlock(
+  content: string,
+  entry: { command: string; args: string[] },
+): string | null {
+  const renderEntry = (childIndent: string): string[] => {
+    const grandchildIndent = childIndent + childIndent;
+    return [
+      `${childIndent}memax:`,
+      `${grandchildIndent}command: "${entry.command}"`,
+      `${grandchildIndent}args: [${entry.args.map((a) => `"${a}"`).join(", ")}]`,
+    ];
+  };
+
+  const lines = content.length > 0 ? content.split("\n") : [];
+  const isRootKey = (line: string) => /^\S/.test(line);
+
+  // Flow-style `mcp_servers: {...}` (or any inline value) — bail out.
+  if (
+    lines.some(
+      (l) => /^mcp_servers:\s*\S/.test(l) && !/^mcp_servers:\s*#/.test(l),
+    )
+  ) {
+    return null;
+  }
+
+  const rootIdx = lines.findIndex((l) => /^mcp_servers:\s*(#.*)?$/.test(l));
+  if (rootIdx === -1) {
+    const out = [...lines];
+    while (out.length > 0 && out[out.length - 1].trim() === "") out.pop();
+    if (out.length > 0) out.push("");
+    out.push("mcp_servers:", ...renderEntry("  "), "");
+    return out.join("\n");
+  }
+
+  // Bounds of the mcp_servers block: up to the next root-level key.
+  let blockEnd = lines.length;
+  for (let i = rootIdx + 1; i < lines.length; i++) {
+    if (lines[i].trim() !== "" && isRootKey(lines[i])) {
+      blockEnd = i;
+      break;
+    }
+  }
+
+  // Adopt the block's existing child indentation so we never mix widths.
+  // Comment lines are skipped — a `  # note` above 4-space children would
+  // otherwise poison the detected width and duplicate the memax entry.
+  let childIndent = "  ";
+  for (let i = rootIdx + 1; i < blockEnd; i++) {
+    const trimmed = lines[i].trim();
+    if (trimmed === "" || trimmed.startsWith("#")) continue;
+    childIndent = lines[i].match(/^\s*/)?.[0] ?? "  ";
+    break;
+  }
+
+  // Remove an existing memax sub-block (its line + all deeper-indented
+  // or blank lines that follow it).
+  const kept: string[] = [];
+  let skipping = false;
+  for (let i = rootIdx + 1; i < blockEnd; i++) {
+    const line = lines[i];
+    const rest = line.startsWith(`${childIndent}memax:`)
+      ? line.slice(childIndent.length + "memax:".length).trim()
+      : null;
+    if (rest !== null && (rest === "" || rest.startsWith("#"))) {
+      skipping = true;
+      continue;
+    }
+    if (skipping) {
+      const indent = line.match(/^\s*/)?.[0] ?? "";
+      if (line.trim() === "" || indent.length > childIndent.length) continue;
+      skipping = false;
+    }
+    kept.push(line);
+  }
+
+  return [
+    ...lines.slice(0, rootIdx + 1),
+    ...renderEntry(childIndent),
+    ...kept,
+    ...lines.slice(blockEnd),
+  ].join("\n");
+}
+
+/**
+ * Hermes MCP config (~/.hermes/config.yaml). Hermes documents stdio server
+ * entries (command/args) under `mcp_servers`; its remote/SSE YAML schema is
+ * not documented, so BOTH setup modes write the stdio form — the local CLI
+ * (`memax mcp serve`) reaches the same data once the user is logged in.
+ */
+function writeHermesYamlMcp(agent: AgentDef, bin: MemaxBin): void {
+  mkdirSync(dirname(agent.configPath), { recursive: true });
+  const entry = {
+    command: bin.command,
+    args: [...bin.args, "mcp", "serve", "--agent", agent.id],
+  };
+  let content = "";
+  if (existsSync(agent.configPath)) {
+    content = readFileSync(agent.configPath, "utf-8");
+  }
+  const updated = upsertYamlMcpServersBlock(content, entry);
+  if (updated === null) {
+    // Flow-style mcp_servers — editing would corrupt the file. Tell the
+    // user exactly what to add instead of guessing.
+    console.log(
+      chalk.yellow(
+        `  ${agent.configPath} uses an inline mcp_servers mapping — add this entry manually:`,
+      ),
+    );
+    console.log(
+      chalk.gray(
+        `    memax: { command: "${entry.command}", args: [${entry.args
+          .map((a) => `"${a}"`)
+          .join(", ")}] }\n`,
+      ),
+    );
+    return;
+  }
+  writeFileSync(agent.configPath, updated);
+}
+
 // --- Local MCP setup per agent ---
 
 export function setupMcp(agent: AgentDef, bin: MemaxBin): void {
@@ -220,6 +365,11 @@ export function setupMcp(agent: AgentDef, bin: MemaxBin): void {
 
   if (agent.format === "toml") {
     setupMcpToml(agent, bin);
+    return;
+  }
+
+  if (agent.format === "yaml-mcp-servers") {
+    writeHermesYamlMcp(agent, bin);
     return;
   }
 

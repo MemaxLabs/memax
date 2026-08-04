@@ -246,6 +246,11 @@ func registerAgentSyncRoutes(mux *http.ServeMux, deps routeDeps) {
 	mux.HandleFunc("POST /v1/configs/ack", deps.configs.Ack)
 	mux.HandleFunc("POST /v1/configs/local-delete", deps.configs.LocalDelete)
 	mux.HandleFunc("POST /v1/configs/merge", deps.configs.Merge)
+	mux.HandleFunc("GET /v1/personas", deps.configs.ListPersonas)
+	mux.HandleFunc("DELETE /v1/personas/{id}", deps.configs.DeletePersona)
+	mux.HandleFunc("GET /v1/personas/{id}/revisions", deps.configs.ListPersonaRevisions)
+	mux.HandleFunc("GET /v1/personas/{id}/revisions/{version}", deps.configs.GetPersonaRevision)
+	mux.HandleFunc("POST /v1/personas/{id}/revisions/{version}/restore", deps.configs.RestorePersonaRevision)
 
 	mux.HandleFunc("POST /v1/uploads", deps.uploads.Create)
 }
@@ -307,6 +312,8 @@ func registerProtectedMounts(root *http.ServeMux, protected *http.ServeMux, with
 	root.Handle("/v1/usage/", withAuth(protected))
 	root.Handle("/v1/configs", withAuth(protected))
 	root.Handle("/v1/configs/", withAuth(protected))
+	root.Handle("/v1/personas", withAuth(protected))
+	root.Handle("/v1/personas/", withAuth(protected))
 	root.Handle("/v1/hubs", withAuth(protected))
 	root.Handle("/v1/hubs/", withAuth(protected))
 	root.Handle("/v1/invites/", withAuth(protected))

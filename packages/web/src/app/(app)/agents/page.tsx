@@ -24,6 +24,7 @@
 
 import { useLocale } from "@/i18n";
 import { AgentGrid } from "@/components/features/agent-list/agent-grid";
+import { PersonaShelf } from "@/components/features/personas/persona-shelf";
 import { PageShell, PageHeader } from "@/components/layout";
 
 export default function AgentsPage() {
@@ -34,6 +35,7 @@ export default function AgentsPage() {
         title={t.agentConfigs.title}
         subtitle={t.agentConfigs.subtitle}
       />
+      <PersonaShelf />
       <AgentGrid />
     </PageShell>
   );

@@ -176,3 +176,81 @@ describe("classifyAgentConfigPlacement", () => {
     });
   });
 });
+
+describe("personal agent write paths", () => {
+  const cwd = "/workspaces/memax";
+  const home = "/home/tester";
+
+  it("resolves Hermes global configs into ~/.hermes", () => {
+    expect(
+      resolveAgentConfigWritePath("hermes", "SOUL.md", "global", {
+        cwd,
+        home,
+      }),
+    ).toBe(join(home, ".hermes", "SOUL.md"));
+  });
+
+  it("resolves Hermes profile configs into the profile directory", () => {
+    expect(
+      resolveAgentConfigWritePath("hermes", "memory/notes.md", "profile:work", {
+        cwd,
+        home,
+      }),
+    ).toBe(join(home, ".hermes", "profiles", "work", "memory", "notes.md"));
+  });
+
+  it("rejects profile scopes for agents without profile support", () => {
+    expect(
+      resolveAgentConfigWritePath("claude-code", "SOUL.md", "profile:work", {
+        cwd,
+        home,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects unsafe profile names", () => {
+    expect(
+      resolveAgentConfigWritePath("hermes", "SOUL.md", "profile:../../etc", {
+        cwd,
+        home,
+      }),
+    ).toBeNull();
+    expect(
+      resolveAgentConfigWritePath("hermes", "SOUL.md", "profile:", {
+        cwd,
+        home,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects file paths that traverse out of the agent root", () => {
+    expect(
+      resolveAgentConfigWritePath(
+        "openclaw",
+        "../.ssh/authorized_keys",
+        "global",
+        {
+          cwd,
+          home,
+        },
+      ),
+    ).toBeNull();
+    expect(
+      resolveAgentConfigWritePath(
+        "hermes",
+        "memory/../../escape.md",
+        "profile:work",
+        { cwd, home },
+      ),
+    ).toBeNull();
+  });
+
+  it("resolves OpenClaw workspace identity files under ~/.openclaw", () => {
+    expect(
+      resolveAgentConfigWritePath("openclaw", "workspace/SOUL.md", "global", {
+        cwd,
+        home,
+      }),
+    ).toBe(join(home, ".openclaw", "workspace", "SOUL.md"));
+  });
+});

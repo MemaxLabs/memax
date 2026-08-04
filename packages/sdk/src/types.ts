@@ -540,7 +540,52 @@ export interface ListMemoriesResult {
 
 // --- Agent Config Sync ---
 
-export type Scope = "global" | `project:${string}`;
+/**
+ * Config scope:
+ * - "global" — user-level config (e.g. ~/.claude/CLAUDE.md)
+ * - "project:<repo-url>" — tied to a git repository, synced only inside it
+ * - "profile:<name>" — tied to a named agent profile (e.g. Hermes
+ *   ~/.hermes/profiles/<name>/), synced on every device like global
+ */
+export type Scope = "global" | `project:${string}` | `profile:${string}`;
+
+/**
+ * Role of a config file in an agent's setup. Drives sync UX grouping and
+ * server-side extraction policy:
+ * - "identity" — who the agent is (SOUL.md, IDENTITY.md, persona files).
+ *   Synced verbatim; knowledge extraction skips these (persona pipeline owns them).
+ * - "memory" — accumulated knowledge (MEMORY.md, memory/*.md). Extracted eagerly.
+ * - "rules" — project/agent instructions (.cursorrules, CLAUDE.md). Extracted selectively.
+ * - "settings" — machine config (json/yaml). Never synced (secrets risk).
+ *
+ * The Go extraction policy mirrors the identity patterns in
+ * config_extract_policy.go — keep both in sync.
+ */
+export type AgentConfigClass = "identity" | "memory" | "rules" | "settings";
+
+const IDENTITY_BASENAMES = new Set([
+  "soul.md",
+  "identity.md",
+  "user.md",
+  "persona.md",
+]);
+
+/** Classify a config file's role from its agent + storage file path. */
+export function classifyAgentConfigFile(
+  agent: string,
+  filePath: string,
+): AgentConfigClass {
+  const path = filePath.replace(/\\/g, "/").toLowerCase();
+  const base = path.split("/").pop() ?? path;
+  if (path.includes("personas/")) return "identity";
+  // Memory-dir files are accumulated knowledge even when named like
+  // identity files (claude-code project memory contains user.md etc.) —
+  // mirror of the Go rule in model.IsIdentityConfigPath.
+  if (base === "memory.md" || /(^|\/)memory\//.test(path)) return "memory";
+  if (/\.(json|ya?ml|toml)$/.test(base)) return "settings";
+  if (IDENTITY_BASENAMES.has(base)) return "identity";
+  return "rules";
+}
 
 export interface AgentConfig {
   id: string;
@@ -558,6 +603,40 @@ export interface AgentConfig {
 export interface AgentConfigListResult {
   configs: AgentConfig[];
   extraction_counts?: Record<string, number>;
+}
+
+// --- Personas ---
+
+/** Identity object derived from a synced identity config (SOUL.md etc.). */
+export interface Persona {
+  id: string;
+  owner_id: string;
+  source_agent: string;
+  source_scope: Scope;
+  source_file_path: string;
+  name: string;
+  content: string;
+  content_hash: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One immutable persona version. List responses omit `content`. */
+export interface PersonaRevision {
+  id: string;
+  persona_id: string;
+  owner_id: string;
+  version: number;
+  content?: string;
+  content_hash: string;
+  created_at: string;
+}
+
+export interface PersonaRestoreResult {
+  persona_id: string;
+  restored_version: number;
+  head_version: number;
 }
 
 export interface DeletedAgentConfig {
@@ -1205,6 +1284,8 @@ export interface DevFlagsSettings {
 }
 
 export interface Settings {
+  /** Default persona for the memax agent (Agent Chat). "" = none. */
+  chat_default_persona_id?: string;
   dreams_enabled: boolean;
   dreams_merge_enabled: boolean;
   dreams_archive_enabled: boolean;
@@ -1245,6 +1326,8 @@ export interface SettingsUpdateInput {
   dev_flags?: Partial<DevFlagsSettings>;
   notifications_enabled?: boolean;
   theme?: string;
+  /** Default persona for the memax agent (Agent Chat). "" = none. */
+  chat_default_persona_id?: string;
 }
 
 // --- Topics ---
@@ -2264,6 +2347,9 @@ export interface ChatSession {
   status: ChatSessionStatus;
   /** Set while a turn is in flight; clears on terminal write. */
   active_message_id?: string;
+  /** Persona binding: absent/"" inherits chat_default_persona_id, "none"
+   *  explicitly disables the persona, else a persona id. */
+  persona_id?: string;
   locked_at?: string;
   message_count: number;
   pinned_at?: string;
@@ -2322,6 +2408,8 @@ export interface CreateChatSessionInput {
   writeHubId?: string;
   tools?: string[];
   model?: string;
+  /** "" inherit default · "none" disable · persona id */
+  personaId?: string;
 }
 
 export interface PatchChatSessionInput {
@@ -2330,6 +2418,8 @@ export interface PatchChatSessionInput {
   archived?: boolean;
   tools?: string[];
   writeHubId?: string;
+  /** "" revert to inherit · "none" disable · persona id */
+  personaId?: string;
 }
 
 export interface ListChatSessionsOptions {

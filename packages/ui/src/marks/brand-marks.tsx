@@ -135,6 +135,15 @@ export function OpenClawMark(props: MarkProps) {
   );
 }
 
+export function HermesMark(props: MarkProps) {
+  // Stylized swept wing — Hermes' winged sandal reduced to three feathers
+  return (
+    <svg {...base} {...props}>
+      <path d="M22 3.5c-6.9 0-12.9 2.8-17.1 7.2L2 13.9l5.5-1-3.6 4.1 5.2-.9-3.1 3.7c4.9-.8 9.8-2.4 12.6-5.9C21 11 22 7.4 22 3.5z" />
+    </svg>
+  );
+}
+
 export function OpenCodeMark(props: MarkProps) {
   // lobe-icons: opencode.svg
   return (

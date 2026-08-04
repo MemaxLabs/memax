@@ -9,7 +9,7 @@ export interface AgentDef {
   name: string;
   id: string;
   configPath: string; // global MCP config file
-  format: "json-mcpServers" | "json-servers" | "toml";
+  format: "json-mcpServers" | "json-servers" | "toml" | "yaml-mcp-servers";
   /** Key under which MCP servers live */
   mcpKey: string;
   hasHooks: boolean;

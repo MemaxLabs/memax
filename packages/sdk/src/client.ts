@@ -11,6 +11,7 @@ import { DreamsResource } from "./resources/dreams.js";
 import { NotificationsResource } from "./resources/notifications.js";
 import { OnboardingResource } from "./resources/onboarding.js";
 import { AgentsResource } from "./resources/agents.js";
+import { PersonasResource } from "./resources/personas.js";
 import { InvitesResource } from "./resources/invites.js";
 import { AccountResource } from "./resources/account.js";
 import { EventsResource } from "./resources/events.js";
@@ -31,6 +32,7 @@ export class Memax {
   readonly notifications: NotificationsResource;
   readonly onboarding: OnboardingResource;
   readonly agents: AgentsResource;
+  readonly personas: PersonasResource;
   readonly events: EventsResource;
   readonly bar: BarResource;
   readonly chats: ChatsResource;
@@ -59,6 +61,7 @@ export class Memax {
     this.notifications = new NotificationsResource(req);
     this.onboarding = new OnboardingResource(req);
     this.agents = new AgentsResource(req);
+    this.personas = new PersonasResource(req);
     this.events = new EventsResource(stream);
     this.bar = new BarResource(req);
     this.chats = new ChatsResource(req, stream);

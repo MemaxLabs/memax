@@ -176,6 +176,9 @@ type CreateChatSessionRequest struct {
 	WriteHubID  string   `json:"write_hub_id,omitempty"`
 	Tools       []string `json:"tools,omitempty"`
 	Model       string   `json:"model,omitempty"`
+	// PersonaID: "" inherits the chat_default_persona_id setting,
+	// "none" explicitly disables the persona, else a personas.id.
+	PersonaID string `json:"persona_id,omitempty"`
 }
 
 // PatchChatSessionRequest is the wire shape of PATCH /v1/chat/sessions/{id}.
@@ -194,6 +197,22 @@ type PatchChatSessionRequest struct {
 	Archived   *bool     `json:"archived,omitempty"`
 	Tools      *[]string `json:"tools,omitempty"`
 	WriteHubID *string   `json:"write_hub_id,omitempty"`
+	// PersonaID: "" reverts to inheriting the default, "none" disables,
+	// else a personas.id owned by the caller. Unlike tools, persona is
+	// patchable mid-session — it only affects FUTURE turns' system
+	// prompts (each turn snapshots the prompt at send time).
+	PersonaID *string `json:"persona_id,omitempty"`
+}
+
+// validateChatPersonaID checks a session persona binding: "" (inherit
+// default) and "none" (explicitly disabled) are always valid; anything
+// else must be a persona owned by the caller.
+func (h *ChatHandler) validateChatPersonaID(r *http.Request, ownerID, personaID string) (ok bool) {
+	if personaID == "" || personaID == model.ChatPersonaNone {
+		return true
+	}
+	_, err := h.store.GetPersona(personaID, ownerID)
+	return err == nil
 }
 
 // Create handles POST /v1/chat/sessions. Validates the request
@@ -321,6 +340,13 @@ func (h *ChatHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
+	personaID := strings.TrimSpace(req.PersonaID)
+	if !h.validateChatPersonaID(r, ownerID, personaID) {
+		writeError(w, http.StatusBadRequest, "invalid_persona",
+			"persona_id must be \"\", \"none\", or one of your personas")
+		return
+	}
+
 	sess := &model.ChatSession{
 		ID:             uuid.NewString(),
 		OwnerID:        ownerID,
@@ -332,6 +358,7 @@ func (h *ChatHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Tools:          tools,
 		ToolsetVersion: 1,
 		Status:         model.ChatSessionStatusIdle,
+		PersonaID:      personaID,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -491,6 +518,16 @@ func (h *ChatHandler) Patch(w http.ResponseWriter, r *http.Request) {
 			zero := time.Time{}
 			patch.ArchivedAt = &zero
 		}
+	}
+
+	if req.PersonaID != nil {
+		pid := strings.TrimSpace(*req.PersonaID)
+		if !h.validateChatPersonaID(r, ownerID, pid) {
+			writeError(w, http.StatusBadRequest, "invalid_persona",
+				"persona_id must be \"\", \"none\", or one of your personas")
+			return
+		}
+		patch.PersonaID = &pid
 	}
 
 	if req.Tools != nil {

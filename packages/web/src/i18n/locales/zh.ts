@@ -561,6 +561,9 @@ export const zh: Translations = {
     reissueCreating: "正在创建...",
     reissueFailed: "没能创建智能体密钥",
     reissueUpdateNote: "把你的 agent 更新成使用这个新密钥后，再撤销旧密钥。",
+    // 配置文件角色 + profile scope（personal agent）
+    classIdentity: "身份",
+    profileTag: "profile",
     credentialClassApiKey: "通过 API 密钥",
     credentialClassOAuth: "通过 OAuth",
     credentialClassSession: "通过会话",
@@ -2006,6 +2009,30 @@ export const zh: Translations = {
     terms: "服务条款",
   },
 
+  // Persona（Beta）—— 从同步的 SOUL/身份文件里提取的身份对象，在 /agents 页展示
+  personas: {
+    title: "Persona",
+    beta: "Beta",
+    subtitle:
+      "从 agent 的 SOUL 文件里提取的身份。选一个应用，就能换掉 agent 的人格。",
+    sourceLabel: "来自",
+    setDefaultCta: "设为 memax 默认",
+    clearDefaultCta: "取消默认",
+    defaultBadge: "默认",
+    defaultSet: "memax 现在以 {name} 的人格说话——新对话即刻生效",
+    defaultCleared: "已取消默认 persona——memax 回到本来的声音",
+    pickerLabel: "Persona",
+    pickerInherit: "默认",
+    pickerNone: "不用 persona",
+    historyCta: "历史",
+    historyTitle: "版本",
+    versionRow: "v{n}",
+    restoreCta: "恢复",
+    restored: "已恢复 v{n}——正在同步回源文件",
+    forgetConfirm: "忘记这个 persona？源文件不受影响。",
+    close: "收起",
+  },
+
   errors: {
     title: "出了点问题",
     description: "页面渲染时遇到意外错误。该错误已记录。",
@@ -2048,6 +2075,8 @@ export const zh: Translations = {
       shareMemory: "分享该记忆",
       forgetMemory: "忘记该记忆",
       forgetMemories: "忘记这些记忆",
+      deletePersona: "忘记那个 persona",
+      restorePersona: "恢复那个 persona",
       createHub: "创建该 hub",
       updateHub: "更新 hub",
       deleteHub: "删除 hub",

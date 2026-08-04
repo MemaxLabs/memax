@@ -173,6 +173,21 @@ function getAgents(): AgentDef[] {
       remoteEntry: stdUrlEntry,
     },
     {
+      name: "Hermes",
+      id: "hermes",
+      configPath: join(home, ".hermes", "config.yaml"),
+      format: "yaml-mcp-servers",
+      mcpKey: "mcp_servers",
+      hasHooks: false,
+      globalInstructionFile: null,
+      detect: () =>
+        existsSync(join(home, ".hermes")) || commandExists("hermes"),
+      // Hermes documents stdio entries (command/args) under mcp_servers in
+      // ~/.hermes/config.yaml. Remote/SSE YAML schema is not documented, so
+      // both setup modes write the stdio form — see setup-mcp.ts.
+      remoteEntry: stdUrlEntry,
+    },
+    {
       name: "OpenCode",
       id: "opencode",
       configPath: join(cwd, ".opencode", "opencode.jsonc"),

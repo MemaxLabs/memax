@@ -617,6 +617,9 @@ export const en = {
     reissueFailed: "Couldn't create agent key",
     reissueUpdateNote:
       "Update your agent to use this key, then revoke the old one.",
+    // Config file classes + profile scopes (personal agents)
+    classIdentity: "identity",
+    profileTag: "profile",
     credentialClassApiKey: "via API key",
     credentialClassOAuth: "via OAuth",
     credentialClassSession: "via session",
@@ -2202,6 +2205,31 @@ export const en = {
     terms: "Terms",
   },
 
+  // Personas (Beta) — identity objects derived from synced SOUL/identity
+  // files, surfaced on the /agents page.
+  personas: {
+    title: "Personas",
+    beta: "Beta",
+    subtitle:
+      "Identities extracted from your agents' SOUL files. Set one as default — or switch per chat — and the memax agent speaks as it.",
+    sourceLabel: "from",
+    setDefaultCta: "Set as memax default",
+    clearDefaultCta: "Remove default",
+    defaultBadge: "default",
+    defaultSet: "memax now speaks as {name} — new chats pick it up instantly",
+    defaultCleared: "Default persona removed — memax is back to its own voice",
+    pickerLabel: "Persona",
+    pickerInherit: "Default",
+    pickerNone: "No persona",
+    historyCta: "History",
+    historyTitle: "Versions",
+    versionRow: "v{n}",
+    restoreCta: "Restore",
+    restored: "Restored v{n} — syncing back to the source file",
+    forgetConfirm: "Forget this persona? The source file stays untouched.",
+    close: "Close",
+  },
+
   errors: {
     title: "Something went wrong",
     description:
@@ -2259,6 +2287,9 @@ export const en = {
       shareMemory: "share that memory",
       forgetMemory: "forget that memory",
       forgetMemories: "forget those memories",
+      // Personas
+      deletePersona: "forget that persona",
+      restorePersona: "restore that persona",
       // Hubs
       createHub: "create that hub",
       updateHub: "update the hub",

@@ -541,6 +541,13 @@ type Store interface {
 	PurgeExpiredAgentConfigTombstoneContent(now time.Time) error
 	CountExtractedMemories(ownerID string) (map[string]int, error) // configID -> count
 
+	// Personas — identity objects derived from identity-class configs
+	UpsertPersona(p *model.Persona) error
+	ListPersonas(ownerID string) ([]model.Persona, error)
+	GetPersona(id string, ownerID string) (*model.Persona, error)
+	DeletePersona(id string, ownerID string) error
+	DeletePersonaBySource(agent, filePath, scope, ownerID string) error
+
 	// Connected Agents — first-class agent registry
 	UpsertConnectedAgent(agent *model.ConnectedAgent) error
 	GetConnectedAgent(ownerID string, agentName string) (*model.ConnectedAgent, error)

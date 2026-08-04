@@ -1949,6 +1949,18 @@ export const zh: Translations = {
     terms: "服务条款",
   },
 
+  // Persona（Beta）—— 从同步的 SOUL/身份文件里提取的身份对象，在 /agents 页展示
+  personas: {
+    title: "Persona",
+    beta: "Beta",
+    subtitle:
+      "从 agent 的 SOUL 文件里提取的身份。选一个应用，就能换掉 agent 的人格。",
+    sourceLabel: "来自",
+    applyCta: "应用到…",
+    applyTargetsTitle: "写入",
+    applied: "已排队写入 {target}——下次 memax agents sync 生效",
+  },
+
   errors: {
     title: "出了点问题",
     description: "页面渲染时遇到意外错误。该错误已记录。",
@@ -1991,6 +2003,7 @@ export const zh: Translations = {
       shareMemory: "分享该记忆",
       forgetMemory: "忘记该记忆",
       forgetMemories: "忘记这些记忆",
+      applyPersona: "应用那个 persona",
       createHub: "创建该 hub",
       updateHub: "更新 hub",
       deleteHub: "删除 hub",

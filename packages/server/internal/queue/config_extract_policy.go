@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	ingesttitle "github.com/MemaxLabs/memax/packages/server/internal/ingest/title"
+	"github.com/MemaxLabs/memax/packages/server/internal/model"
 )
 
 // knowledgeItem is a discrete piece of knowledge extracted from a config file.
@@ -132,7 +133,7 @@ func decideConfigExtraction(content, agent, filePath string) extractionDecision 
 func classifyConfigExtractionMode(agent, filePath string) configExtractionMode {
 	path := strings.ToLower(strings.ReplaceAll(filePath, "\\", "/"))
 	switch {
-	case isIdentityConfigFile(path):
+	case model.IsIdentityConfigPath(path):
 		// Identity files (SOUL.md, persona files) define who the agent IS —
 		// personality, tone, values — not durable project knowledge. Knowledge
 		// extraction skips them entirely; they still sync verbatim, and the
@@ -150,21 +151,6 @@ func classifyConfigExtractionMode(agent, filePath string) configExtractionMode {
 	}
 }
 
-// isIdentityConfigFile reports whether a (lowercased, slash-normalized)
-// config path is an agent identity surface. Mirrors the identity patterns
-// in memax-sdk's classifyAgentConfigFile — keep both in sync (see AGENTS.md
-// "agent config sync" notes).
-func isIdentityConfigFile(path string) bool {
-	base := path
-	if i := strings.LastIndex(base, "/"); i >= 0 {
-		base = base[i+1:]
-	}
-	switch base {
-	case "soul.md", "identity.md", "user.md", "persona.md":
-		return true
-	}
-	return strings.Contains(path, "personas/")
-}
 
 func shouldKeepKnowledgeCandidate(text, heading string, mode configExtractionMode) bool {
 	trimmed := strings.TrimSpace(text)

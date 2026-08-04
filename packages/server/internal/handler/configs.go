@@ -146,6 +146,7 @@ func (h *ConfigsHandler) Upsert(w http.ResponseWriter, r *http.Request) {
 		if h.enqueue != nil {
 			h.enqueue(config.ID, ownerID)
 		}
+		h.syncPersonaFromConfig(ownerID, config)
 		writeJSON(w, http.StatusCreated, model.ApiResponse{Data: config})
 		return
 	}
@@ -155,6 +156,7 @@ func (h *ConfigsHandler) Upsert(w http.ResponseWriter, r *http.Request) {
 	if h.enqueue != nil {
 		h.enqueue(updated.ID, ownerID)
 	}
+	h.syncPersonaFromConfig(ownerID, updated)
 	writeJSON(w, http.StatusCreated, model.ApiResponse{Data: updated})
 }
 
@@ -245,6 +247,7 @@ func (h *ConfigsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	h.removePersonaForConfig(ownerID, config)
 	if err := h.store.DeleteAgentConfig(id, ownerID); err != nil {
 		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
 		return

@@ -2135,6 +2135,19 @@ export const en = {
     terms: "Terms",
   },
 
+  // Personas (Beta) — identity objects derived from synced SOUL/identity
+  // files, surfaced on the /agents page.
+  personas: {
+    title: "Personas",
+    beta: "Beta",
+    subtitle:
+      "Identities extracted from your agents' SOUL files. Apply one to switch who an agent is.",
+    sourceLabel: "from",
+    applyCta: "Apply to…",
+    applyTargetsTitle: "Write into",
+    applied: "Staged for {target} — lands on the next memax agents sync",
+  },
+
   errors: {
     title: "Something went wrong",
     description:
@@ -2192,6 +2205,8 @@ export const en = {
       shareMemory: "share that memory",
       forgetMemory: "forget that memory",
       forgetMemories: "forget those memories",
+      // Personas
+      applyPersona: "apply that persona",
       // Hubs
       createHub: "create that hub",
       updateHub: "update the hub",

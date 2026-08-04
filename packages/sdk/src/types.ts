@@ -603,6 +603,38 @@ export interface AgentConfigListResult {
   extraction_counts?: Record<string, number>;
 }
 
+// --- Personas ---
+
+/** Identity object derived from a synced identity config (SOUL.md etc.). */
+export interface Persona {
+  id: string;
+  owner_id: string;
+  source_agent: string;
+  source_scope: Scope;
+  source_file_path: string;
+  name: string;
+  content: string;
+  content_hash: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PersonaApplyRequest {
+  target_agent: string;
+  /** "global" (default) or "profile:<name>". Project scopes are rejected. */
+  target_scope?: Scope;
+}
+
+export interface PersonaApplyResult {
+  persona_id: string;
+  target_agent: string;
+  target_scope: Scope;
+  target_file_path: string;
+  config_id: string;
+  config_version: number;
+}
+
 export interface DeletedAgentConfig {
   agent: string;
   file_path: string;

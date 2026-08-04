@@ -27,6 +27,7 @@ type InMemoryStore struct {
 	hubs                         map[string]*model.Hub
 	hubVisits                    map[string]*model.HubVisit
 	agentConfigs                 map[string]*model.AgentConfig
+	personas     map[string]*model.Persona
 	configStates                 map[string]*model.AgentConfigSyncState
 	tombstones                   map[string]*model.AgentConfigTombstone
 	emailTemplateOverrides       map[string]*model.EmailTemplateOverride
@@ -3125,4 +3126,75 @@ func (s *InMemoryStore) ListPendingChatToolApprovals(_ context.Context, _, _ str
 }
 func (s *InMemoryStore) ExpirePendingChatToolApprovals(_ context.Context) ([]ExpiredChatToolApproval, error) {
 	return nil, errChatRequiresPostgres
+}
+
+// --- Personas (in-memory) ---
+
+func (s *InMemoryStore) UpsertPersona(p *model.Persona) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.personas == nil {
+		s.personas = make(map[string]*model.Persona)
+	}
+	for _, existing := range s.personas {
+		if existing.OwnerID == p.OwnerID && existing.SourceAgent == p.SourceAgent &&
+			existing.SourceScope == p.SourceScope && existing.SourceFilePath == p.SourceFilePath {
+			existing.Name = p.Name
+			existing.Content = p.Content
+			existing.ContentHash = p.ContentHash
+			existing.Version++
+			existing.UpdatedAt = p.UpdatedAt
+			return nil
+		}
+	}
+	s.personas[p.ID] = p
+	return nil
+}
+
+func (s *InMemoryStore) ListPersonas(ownerID string) ([]model.Persona, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var personas []model.Persona
+	for _, p := range s.personas {
+		if ownerID == "local" || p.OwnerID == ownerID {
+			personas = append(personas, *p)
+		}
+	}
+	sort.Slice(personas, func(i, j int) bool {
+		return personas[i].UpdatedAt.After(personas[j].UpdatedAt)
+	})
+	return personas, nil
+}
+
+func (s *InMemoryStore) GetPersona(id string, ownerID string) (*model.Persona, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.personas[id]
+	if !ok || (ownerID != "local" && p.OwnerID != ownerID) {
+		return nil, fmt.Errorf("persona not found: %s", id)
+	}
+	return p, nil
+}
+
+func (s *InMemoryStore) DeletePersona(id string, ownerID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.personas[id]
+	if !ok || (ownerID != "local" && p.OwnerID != ownerID) {
+		return nil
+	}
+	delete(s.personas, id)
+	return nil
+}
+
+func (s *InMemoryStore) DeletePersonaBySource(agent, filePath, scope, ownerID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, p := range s.personas {
+		if p.SourceAgent == agent && p.SourceFilePath == filePath && p.SourceScope == scope &&
+			(ownerID == "local" || p.OwnerID == ownerID) {
+			delete(s.personas, id)
+		}
+	}
+	return nil
 }

@@ -23,14 +23,21 @@ import (
 // Mirrors SAFE_PROFILE_NAME in the CLI's agent-configs-discovery.ts.
 var safeProfileName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
-// validPersonaTargetScope allows "global" or a safe "profile:<name>".
+// profileScopeAgents lists agents with a per-profile config directory on
+// disk. Mirrors the profile write paths in the CLI's
+// agent-configs-discovery.ts (resolveAgentConfigWritePath) — keep in sync,
+// or applies will succeed server-side and never land on any device.
+var profileScopeAgents = map[string]bool{"hermes": true}
+
+// validPersonaTargetScope allows "global" for any agent, or a safe
+// "profile:<name>" for agents that actually have profile directories.
 // Project scopes are rejected — identity doesn't belong to a repository.
-func validPersonaTargetScope(scope string) bool {
+func validPersonaTargetScope(agent, scope string) bool {
 	if scope == "global" {
 		return true
 	}
 	if name, ok := strings.CutPrefix(scope, "profile:"); ok {
-		return safeProfileName.MatchString(name)
+		return profileScopeAgents[agent] && safeProfileName.MatchString(name)
 	}
 	return false
 }
@@ -121,9 +128,9 @@ func (h *ConfigsHandler) ApplyPersona(w http.ResponseWriter, r *http.Request) {
 	if req.TargetScope == "" {
 		req.TargetScope = "global"
 	}
-	if !validPersonaTargetScope(req.TargetScope) {
+	if !validPersonaTargetScope(req.TargetAgent, req.TargetScope) {
 		writeError(w, http.StatusBadRequest, "invalid_target_scope",
-			`target_scope must be "global" or "profile:<name>"`)
+			`target_scope must be "global", or "profile:<name>" for an agent with profiles (hermes)`)
 		return
 	}
 

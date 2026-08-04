@@ -43,6 +43,15 @@ type PersonaRevision struct {
 // classifyAgentConfigFile — keep both in sync (see AGENTS.md).
 func IsIdentityConfigPath(filePath string) bool {
 	path := strings.ToLower(strings.ReplaceAll(filePath, "\\", "/"))
+	if strings.Contains(path, "personas/") {
+		return true
+	}
+	// Files under a memory/ directory are accumulated knowledge, never
+	// identity — claude-code project memory legitimately contains files
+	// named user.md/identity.md and must keep its always-extract guarantee.
+	if strings.HasPrefix(path, "memory/") || strings.Contains(path, "/memory/") {
+		return false
+	}
 	base := path
 	if i := strings.LastIndex(base, "/"); i >= 0 {
 		base = base[i+1:]
@@ -51,7 +60,7 @@ func IsIdentityConfigPath(filePath string) bool {
 	case "soul.md", "identity.md", "user.md", "persona.md":
 		return true
 	}
-	return strings.Contains(path, "personas/")
+	return false
 }
 
 // DerivePersonaName picks a human name for a persona from its source:

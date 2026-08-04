@@ -27,8 +27,8 @@ type InMemoryStore struct {
 	hubs                         map[string]*model.Hub
 	hubVisits                    map[string]*model.HubVisit
 	agentConfigs                 map[string]*model.AgentConfig
-	personas     map[string]*model.Persona
-	personaRevisions map[string][]*model.PersonaRevision // personaID -> revisions
+	personas                     map[string]*model.Persona
+	personaRevisions             map[string][]*model.PersonaRevision // personaID -> revisions
 	configStates                 map[string]*model.AgentConfigSyncState
 	tombstones                   map[string]*model.AgentConfigTombstone
 	emailTemplateOverrides       map[string]*model.EmailTemplateOverride

@@ -53,7 +53,11 @@ const SAFE_PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 function profileNameFromScope(scope: string): string | null {
   if (!scope.startsWith("profile:")) return null;
   const name = scope.slice("profile:".length);
-  if (!SAFE_PROFILE_NAME.test(name) || name.includes("..")) return null;
+  // SAFE_PROFILE_NAME forbids "/" and a leading dot, so traversal is
+  // impossible; keep this the single rule (mirrored in discovery below
+  // and in the server's safeProfileName) rather than layering ad-hoc
+  // extra checks that drift apart.
+  if (!SAFE_PROFILE_NAME.test(name)) return null;
   return name;
 }
 

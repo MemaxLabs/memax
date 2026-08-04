@@ -224,25 +224,45 @@ function writeRemoteJsonConfig(
 /**
  * Upsert the memax entry under a root-level `mcp_servers:` block in a YAML
  * config, editing line-wise instead of pulling in a YAML dependency for one
- * agent (Hermes). Preserves everything else in the file: other servers,
- * comments, unrelated top-level keys.
+ * agent (Hermes). Preserves everything else in the file — other servers,
+ * comments, unrelated top-level keys — and adapts to the file's existing
+ * child indentation (2 spaces, 4 spaces, tabs).
  *
- * `entryLines` are the fully-indented lines of the memax entry
- * (e.g. ["  memax:", '    command: "memax"', ...]).
+ * Returns null when the file cannot be edited safely (flow-style
+ * `mcp_servers: {...}`) — callers must fall back to manual instructions
+ * rather than corrupt the config.
  */
 export function upsertYamlMcpServersBlock(
   content: string,
-  entryLines: string[],
-): string {
+  entry: { command: string; args: string[] },
+): string | null {
+  const renderEntry = (childIndent: string): string[] => {
+    const grandchildIndent = childIndent + childIndent;
+    return [
+      `${childIndent}memax:`,
+      `${grandchildIndent}command: "${entry.command}"`,
+      `${grandchildIndent}args: [${entry.args.map((a) => `"${a}"`).join(", ")}]`,
+    ];
+  };
+
   const lines = content.length > 0 ? content.split("\n") : [];
   const isRootKey = (line: string) => /^\S/.test(line);
+
+  // Flow-style `mcp_servers: {...}` (or any inline value) — bail out.
+  if (
+    lines.some(
+      (l) => /^mcp_servers:\s*\S/.test(l) && !/^mcp_servers:\s*#/.test(l),
+    )
+  ) {
+    return null;
+  }
 
   const rootIdx = lines.findIndex((l) => /^mcp_servers:\s*(#.*)?$/.test(l));
   if (rootIdx === -1) {
     const out = [...lines];
     while (out.length > 0 && out[out.length - 1].trim() === "") out.pop();
     if (out.length > 0) out.push("");
-    out.push("mcp_servers:", ...entryLines, "");
+    out.push("mcp_servers:", ...renderEntry("  "), "");
     return out.join("\n");
   }
 
@@ -255,17 +275,30 @@ export function upsertYamlMcpServersBlock(
     }
   }
 
-  // Remove an existing memax sub-block (its line + all deeper-indented lines).
+  // Adopt the block's existing child indentation so we never mix widths.
+  let childIndent = "  ";
+  for (let i = rootIdx + 1; i < blockEnd; i++) {
+    if (lines[i].trim() === "") continue;
+    childIndent = lines[i].match(/^\s*/)?.[0] ?? "  ";
+    break;
+  }
+
+  // Remove an existing memax sub-block (its line + all deeper-indented
+  // or blank lines that follow it).
   const kept: string[] = [];
   let skipping = false;
   for (let i = rootIdx + 1; i < blockEnd; i++) {
     const line = lines[i];
-    if (/^ {2}memax:\s*(#.*)?$/.test(line)) {
+    const rest = line.startsWith(`${childIndent}memax:`)
+      ? line.slice(childIndent.length + "memax:".length).trim()
+      : null;
+    if (rest !== null && (rest === "" || rest.startsWith("#"))) {
       skipping = true;
       continue;
     }
     if (skipping) {
-      if (line.trim() === "" || /^ {3,}/.test(line)) continue;
+      const indent = line.match(/^\s*/)?.[0] ?? "";
+      if (line.trim() === "" || indent.length > childIndent.length) continue;
       skipping = false;
     }
     kept.push(line);
@@ -273,7 +306,7 @@ export function upsertYamlMcpServersBlock(
 
   return [
     ...lines.slice(0, rootIdx + 1),
-    ...entryLines,
+    ...renderEntry(childIndent),
     ...kept,
     ...lines.slice(blockEnd),
   ].join("\n");
@@ -287,20 +320,33 @@ export function upsertYamlMcpServersBlock(
  */
 function writeHermesYamlMcp(agent: AgentDef, bin: MemaxBin): void {
   mkdirSync(dirname(agent.configPath), { recursive: true });
-  const allArgs = [...bin.args, "mcp", "serve", "--agent", agent.id];
-  const entryLines = [
-    "  memax:",
-    `    command: "${bin.command}"`,
-    `    args: [${allArgs.map((a) => `"${a}"`).join(", ")}]`,
-  ];
+  const entry = {
+    command: bin.command,
+    args: [...bin.args, "mcp", "serve", "--agent", agent.id],
+  };
   let content = "";
   if (existsSync(agent.configPath)) {
     content = readFileSync(agent.configPath, "utf-8");
   }
-  writeFileSync(
-    agent.configPath,
-    upsertYamlMcpServersBlock(content, entryLines),
-  );
+  const updated = upsertYamlMcpServersBlock(content, entry);
+  if (updated === null) {
+    // Flow-style mcp_servers — editing would corrupt the file. Tell the
+    // user exactly what to add instead of guessing.
+    console.log(
+      chalk.yellow(
+        `  ${agent.configPath} uses an inline mcp_servers mapping — add this entry manually:`,
+      ),
+    );
+    console.log(
+      chalk.gray(
+        `    memax: { command: "${entry.command}", args: [${entry.args
+          .map((a) => `"${a}"`)
+          .join(", ")}] }\n`,
+      ),
+    );
+    return;
+  }
+  writeFileSync(agent.configPath, updated);
 }
 
 // --- Local MCP setup per agent ---

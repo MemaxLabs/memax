@@ -577,11 +577,13 @@ export function classifyAgentConfigFile(
 ): AgentConfigClass {
   const path = filePath.replace(/\\/g, "/").toLowerCase();
   const base = path.split("/").pop() ?? path;
-  if (/\.(json|ya?ml|toml)$/.test(base)) return "settings";
-  if (IDENTITY_BASENAMES.has(base) || path.includes("personas/")) {
-    return "identity";
-  }
+  if (path.includes("personas/")) return "identity";
+  // Memory-dir files are accumulated knowledge even when named like
+  // identity files (claude-code project memory contains user.md etc.) —
+  // mirror of the Go rule in model.IsIdentityConfigPath.
   if (base === "memory.md" || /(^|\/)memory\//.test(path)) return "memory";
+  if (/\.(json|ya?ml|toml)$/.test(base)) return "settings";
+  if (IDENTITY_BASENAMES.has(base)) return "identity";
   return "rules";
 }
 

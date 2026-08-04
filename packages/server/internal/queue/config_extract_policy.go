@@ -151,7 +151,6 @@ func classifyConfigExtractionMode(agent, filePath string) configExtractionMode {
 	}
 }
 
-
 func shouldKeepKnowledgeCandidate(text, heading string, mode configExtractionMode) bool {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {

@@ -71,6 +71,20 @@ func TestClassifyConfigExtractionMode(t *testing.T) {
 			filePath: "memory/notes.md",
 			want:     configExtractSelective,
 		},
+		// Regression: memory-dir files named like identity files must keep
+		// their extraction mode — they are knowledge, not identity.
+		{
+			name:     "claude memory user.md keeps always-extract",
+			agent:    "claude-code",
+			filePath: "memory/user.md",
+			want:     configExtractAlways,
+		},
+		{
+			name:     "openclaw memory identity-named file stays selective",
+			agent:    "openclaw",
+			filePath: "workspace/memory/identity.md",
+			want:     configExtractSelective,
+		},
 	}
 
 	for _, tt := range tests {

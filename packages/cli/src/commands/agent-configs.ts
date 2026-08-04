@@ -820,17 +820,30 @@ interface SyncAgentOptions {
  * `memax agents sync`.
  */
 async function watchAgentSync(options: SyncAgentOptions): Promise<void> {
-  const unattended: SyncAgentOptions = {
-    push: options.push,
-    pull: options.pull,
-    skipConflicts: true,
-  };
-  await syncAgentMemory(unattended);
+  // --push/--pull apply ONCE to the initial sync (the user's explicit,
+  // attended intent). Every event-driven re-sync runs without force flags —
+  // forwarding --push would silently overwrite each cloud edit (including a
+  // freshly applied persona) whenever it conflicted with local state.
+  const unattended: SyncAgentOptions = { skipConflicts: true };
+  try {
+    await syncAgentMemory({
+      push: options.push,
+      pull: options.pull,
+      skipConflicts: true,
+    });
+  } catch (err) {
+    // A transient failure at startup (offline boot script, cold API) must
+    // not kill the daemon — watch retries on the next event/reconnect.
+    console.error(
+      chalk.yellow(`  Initial sync failed: ${(err as Error).message}`),
+    );
+  }
   console.log(chalk.gray("  Watching for cloud changes — Ctrl+C to stop.\n"));
 
   let syncing = false;
   let pending = false;
   let debounce: ReturnType<typeof setTimeout> | null = null;
+  let controller: AbortController | null = null;
 
   const run = async () => {
     if (syncing) {
@@ -861,18 +874,34 @@ async function watchAgentSync(options: SyncAgentOptions): Promise<void> {
   };
 
   const connect = () => {
-    getClient().events.subscribe({
-      onEvent: (event) => {
-        if (event === "agent.changed") trigger();
+    // One reconnect per connection, whichever signal arrives first: the
+    // SDK stream reports fetch/HTTP failures via onEvent("error") WITHOUT
+    // calling onClose, so reconnecting only from onClose would let a single
+    // failed reconnect kill the watch permanently.
+    let reconnectScheduled = false;
+    const scheduleReconnect = () => {
+      if (reconnectScheduled) return;
+      reconnectScheduled = true;
+      controller?.abort();
+      setTimeout(() => {
+        trigger(); // catch up on anything missed while disconnected
+        connect();
+      }, 3000);
+    };
+    controller = getClient().events.subscribe({
+      onEvent: (event, data) => {
+        if (event === "error") {
+          scheduleReconnect();
+          return;
+        }
+        if (event !== "agent.changed") return;
+        // MCP-usage heartbeats (state="activity") fire on every recall/ask —
+        // only real config mutations warrant a re-sync.
+        const state = (data as { state?: string } | null)?.state;
+        if (state === "activity") return;
+        trigger();
       },
-      onClose: () => {
-        // Stream dropped — reconnect after a short pause and re-sync to
-        // cover anything missed while disconnected.
-        setTimeout(() => {
-          trigger();
-          connect();
-        }, 3000);
-      },
+      onClose: scheduleReconnect,
     });
   };
   connect();

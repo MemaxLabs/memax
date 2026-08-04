@@ -45,6 +45,14 @@ export function PersonaCard({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [openVersion, setOpenVersion] = useState<number | null>(null);
 
+  // Every mode transition clears stale success feedback — the feedback
+  // branch renders in place of the action rows, so a lingering message
+  // would otherwise lock the card out of apply/history/delete forever.
+  const enterMode = (next: CardMode) => {
+    setFeedback(null);
+    setMode(next);
+  };
+
   const revisionsQuery = usePersonaRevisions(persona.id, mode === "history");
   const revisionQuery = usePersonaRevision(persona.id, openVersion);
 
@@ -94,7 +102,7 @@ export function PersonaCard({
         </div>
         {!isConfirmingDelete && (
           <button
-            onClick={() => setMode("confirmDelete")}
+            onClick={() => enterMode("confirmDelete")}
             className="text-fg-4 hover:text-destructive/70 transition-colors cursor-pointer shrink-0 p-0.5"
             aria-label={t.forget.button}
           >
@@ -103,15 +111,7 @@ export function PersonaCard({
         )}
       </div>
 
-      {feedback ? (
-        <p className="mt-3 flex items-start gap-1.5 text-[12px] text-fg-2">
-          <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" strokeWidth={2} />
-          <span>
-            {feedback}
-            <span className="block text-fg-4">{t.personas.watchHint}</span>
-          </span>
-        </p>
-      ) : isConfirmingDelete ? (
+      {isConfirmingDelete ? (
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-[12px] text-fg-2">
             {t.personas.forgetConfirm}
@@ -133,7 +133,7 @@ export function PersonaCard({
               {t.forget.button}
             </button>
             <button
-              onClick={() => setMode("idle")}
+              onClick={() => enterMode("idle")}
               disabled={deletePersona.isPending}
               className="text-[12px] text-fg-2 hover:text-foreground font-medium cursor-pointer"
             >
@@ -141,6 +141,14 @@ export function PersonaCard({
             </button>
           </div>
         </div>
+      ) : feedback ? (
+        <p className="mt-3 flex items-start gap-1.5 text-[12px] text-fg-2">
+          <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" strokeWidth={2} />
+          <span>
+            {feedback}
+            <span className="block text-fg-4">{t.personas.watchHint}</span>
+          </span>
+        </p>
       ) : mode === "apply" ? (
         <div className="mt-3">
           <p className="text-[11px] uppercase tracking-wide text-fg-4 mb-1.5">
@@ -183,7 +191,7 @@ export function PersonaCard({
             ))}
           </div>
           <button
-            onClick={() => setMode("idle")}
+            onClick={() => enterMode("idle")}
             className="mt-1.5 text-[12px] text-fg-4 hover:text-fg-2 transition-colors cursor-pointer"
           >
             {t.personas.close}
@@ -199,43 +207,44 @@ export function PersonaCard({
               const open = openVersion === rev.version;
               return (
                 <div key={rev.version}>
-                  <button
-                    onClick={() => setOpenVersion(open ? null : rev.version)}
-                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-fg-2 hover:bg-surface-2 transition-colors cursor-pointer"
-                  >
-                    <ChevronRight
-                      className={`w-3 h-3 text-fg-4 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
-                    />
-                    {interpolate(t.personas.versionRow, { n: rev.version })}
-                    <span className="ml-auto flex items-center gap-3">
-                      {rev.version !== persona.version && (
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              const res = await restoreRevision.mutateAsync({
-                                id: persona.id,
-                                version: rev.version,
-                              });
-                              setFeedback(
-                                interpolate(t.personas.restored, {
-                                  n: res.restored_version,
-                                }),
-                              );
-                              setMode("idle");
-                            } catch {
-                              // Error toast handled by the mutation cache.
-                            }
-                          }}
-                          className="text-[12px] text-fg-3 hover:text-fg-1 font-medium cursor-pointer"
-                        >
-                          {t.personas.restoreCta}
-                        </span>
-                      )}
-                    </span>
-                  </button>
+                  {/* Toggle and Restore are SIBLING buttons — interactive
+                      content nested in a button is invalid HTML and locks
+                      keyboard users out of Restore. */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setOpenVersion(open ? null : rev.version)}
+                      className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-fg-2 hover:bg-surface-2 transition-colors cursor-pointer"
+                    >
+                      <ChevronRight
+                        className={`w-3 h-3 text-fg-4 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+                      />
+                      {interpolate(t.personas.versionRow, { n: rev.version })}
+                    </button>
+                    {rev.version !== persona.version && (
+                      <button
+                        disabled={restoreRevision.isPending}
+                        onClick={async () => {
+                          try {
+                            const res = await restoreRevision.mutateAsync({
+                              id: persona.id,
+                              version: rev.version,
+                            });
+                            setFeedback(
+                              interpolate(t.personas.restored, {
+                                n: res.restored_version,
+                              }),
+                            );
+                            setMode("idle");
+                          } catch {
+                            // Error toast handled by the mutation cache.
+                          }
+                        }}
+                        className="px-2 py-1.5 rounded-lg text-[12px] text-fg-3 hover:text-fg-1 hover:bg-surface-2 font-medium cursor-pointer transition-colors shrink-0 disabled:opacity-50 disabled:cursor-wait"
+                      >
+                        {t.personas.restoreCta}
+                      </button>
+                    )}
+                  </div>
                   {open && revisionQuery.data?.version === rev.version && (
                     <pre className="mx-2.5 mb-1 rounded-lg bg-surface-2 text-[12px] text-fg-2 font-mono leading-relaxed p-2.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words animate-content-ready">
                       {revisionQuery.data.content}
@@ -247,7 +256,7 @@ export function PersonaCard({
           </div>
           <button
             onClick={() => {
-              setMode("idle");
+              enterMode("idle");
               setOpenVersion(null);
             }}
             className="mt-1.5 text-[12px] text-fg-4 hover:text-fg-2 transition-colors cursor-pointer"
@@ -258,13 +267,13 @@ export function PersonaCard({
       ) : (
         <div className="mt-3 flex items-center gap-4">
           <button
-            onClick={() => setMode("apply")}
+            onClick={() => enterMode("apply")}
             className="text-[13px] font-medium text-fg-2 hover:text-fg-1 transition-colors cursor-pointer"
           >
             {t.personas.applyCta}
           </button>
           <button
-            onClick={() => setMode("history")}
+            onClick={() => enterMode("history")}
             className="text-[13px] text-fg-3 hover:text-fg-1 transition-colors cursor-pointer"
           >
             {t.personas.historyCta}

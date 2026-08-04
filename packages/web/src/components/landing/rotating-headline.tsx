@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { interpolate } from "@/i18n";
 
 // Slow enough to read, fast enough to feel alive. Swap is two-phase:
-// fade out → change word → fade in, so a single element carries the cycle.
+// whole-line blur-out → change word → per-character blur-up entrance.
 const ROTATE_MS = 1800;
-const SWAP_MS = 240;
+const OUT_MS = 180;
+const CHAR_STAGGER_MS = 28;
 
 /**
  * Display headline with a rotating completion line:
@@ -14,10 +15,13 @@ const SWAP_MS = 240;
  *   Your                ← fixed possessive prefix
  *   second brain.       ← whole line cycles through `words`
  *
- * Whole-line rotation (vs an inline {word} slot) keeps the layout stable at
- * display sizes — no mid-line wrap jumps when a long word rotates in.
- * Respects prefers-reduced-motion by pinning the first word. Remount with a
- * `key` when the word set changes (pivot/locale switch) to reset the cycle.
+ * The incoming word enters per-character — each char rises with an 8px
+ * deblur (`.landing-char-in` in globals.css), staggered left-to-right —
+ * while the outgoing word exits as one line (rise + blur). Whole-line
+ * rotation (vs an inline {word} slot) keeps the layout stable at display
+ * sizes. Respects prefers-reduced-motion by pinning the first word.
+ * Remount with a `key` when the word set changes (pivot/locale switch)
+ * to reset the cycle.
  */
 export function RotatingHeadline({
   prefix,
@@ -49,7 +53,7 @@ export function RotatingHeadline({
       swapTimeout.current = setTimeout(() => {
         setIndex((i) => (i + 1) % words.length);
         setVisible(true);
-      }, SWAP_MS);
+      }, OUT_MS);
     }, ROTATE_MS);
     return () => {
       clearInterval(interval);
@@ -58,6 +62,9 @@ export function RotatingHeadline({
   }, [reduced, words.length]);
 
   const currentLine = interpolate(wordLine, { word: words[index] ?? "" });
+  // Code-point split handles CJK; spaces become NBSP so they keep width as
+  // inline-block spans.
+  const chars = Array.from(currentLine);
 
   return (
     <h1
@@ -73,13 +80,31 @@ export function RotatingHeadline({
       <span
         aria-hidden
         className="block"
-        style={{
-          opacity: visible ? 1 : 0,
-          transform: visible ? "translateY(0)" : "translateY(0.18em)",
-          transition: `opacity ${SWAP_MS}ms var(--ease-spring), transform ${SWAP_MS}ms var(--ease-spring)`,
-        }}
+        style={
+          visible
+            ? undefined
+            : {
+                // Whole-line exit: rise + deblur-in-reverse. Reset is
+                // instant on re-entry (no style → no transition) so the
+                // per-char entrance owns the comeback.
+                opacity: 0,
+                transform: "translateY(-0.12em)",
+                filter: "blur(6px)",
+                transition: `opacity ${OUT_MS}ms var(--ease-spring), transform ${OUT_MS}ms var(--ease-spring), filter ${OUT_MS}ms var(--ease-spring)`,
+              }
+        }
       >
-        {currentLine}
+        {reduced
+          ? currentLine
+          : chars.map((ch, i) => (
+              <span
+                key={`${index}-${i}`}
+                className="landing-char-in"
+                style={{ animationDelay: `${i * CHAR_STAGGER_MS}ms` }}
+              >
+                {ch === " " ? "\u00A0" : ch}
+              </span>
+            ))}
       </span>
     </h1>
   );

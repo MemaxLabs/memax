@@ -36,6 +36,7 @@ const SUPPORTED_AGENT_SLUGS = [
   "windsurf",
   "gemini",
   "openclaw",
+  "hermes",
   "opencode",
 ] as const;
 

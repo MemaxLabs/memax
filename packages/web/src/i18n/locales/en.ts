@@ -617,6 +617,9 @@ export const en = {
     reissueFailed: "Couldn't create agent key",
     reissueUpdateNote:
       "Update your agent to use this key, then revoke the old one.",
+    // Config file classes + profile scopes (personal agents)
+    classIdentity: "identity",
+    profileTag: "profile",
     credentialClassApiKey: "via API key",
     credentialClassOAuth: "via OAuth",
     credentialClassSession: "via session",

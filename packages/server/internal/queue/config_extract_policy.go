@@ -132,6 +132,13 @@ func decideConfigExtraction(content, agent, filePath string) extractionDecision 
 func classifyConfigExtractionMode(agent, filePath string) configExtractionMode {
 	path := strings.ToLower(strings.ReplaceAll(filePath, "\\", "/"))
 	switch {
+	case isIdentityConfigFile(path):
+		// Identity files (SOUL.md, persona files) define who the agent IS —
+		// personality, tone, values — not durable project knowledge. Knowledge
+		// extraction skips them entirely; they still sync verbatim, and the
+		// persona pipeline (personal-agent sync, phase 2) will own extracting
+		// them into first-class personas.
+		return configExtractNever
 	case agent == "claude-code" && path == "memory.md":
 		return configExtractAlways
 	case agent == "claude-code" && strings.HasPrefix(path, "memory/") && strings.HasSuffix(path, ".md"):
@@ -141,6 +148,22 @@ func classifyConfigExtractionMode(agent, filePath string) configExtractionMode {
 	default:
 		return configExtractSelective
 	}
+}
+
+// isIdentityConfigFile reports whether a (lowercased, slash-normalized)
+// config path is an agent identity surface. Mirrors the identity patterns
+// in memax-sdk's classifyAgentConfigFile — keep both in sync (see AGENTS.md
+// "agent config sync" notes).
+func isIdentityConfigFile(path string) bool {
+	base := path
+	if i := strings.LastIndex(base, "/"); i >= 0 {
+		base = base[i+1:]
+	}
+	switch base {
+	case "soul.md", "identity.md", "user.md", "persona.md":
+		return true
+	}
+	return strings.Contains(path, "personas/")
 }
 
 func shouldKeepKnowledgeCandidate(text, heading string, mode configExtractionMode) bool {

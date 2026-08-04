@@ -9,6 +9,7 @@ export {
   NOTIFICATION_KINDS,
   UPDATES_KINDS,
   isNeedsActionKind,
+  classifyAgentConfigFile,
 } from "./types.js";
 export type { EventsSubscribeOptions } from "./resources/events.js";
 export type { NotificationItemUpdateResult } from "./resources/notifications.js";
@@ -75,6 +76,7 @@ export type {
   ListMemoriesResult,
   // Agent configs
   Scope,
+  AgentConfigClass,
   AgentConfig,
   AgentConfigListResult,
   DeletedAgentConfig,

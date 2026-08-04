@@ -540,7 +540,50 @@ export interface ListMemoriesResult {
 
 // --- Agent Config Sync ---
 
-export type Scope = "global" | `project:${string}`;
+/**
+ * Config scope:
+ * - "global" — user-level config (e.g. ~/.claude/CLAUDE.md)
+ * - "project:<repo-url>" — tied to a git repository, synced only inside it
+ * - "profile:<name>" — tied to a named agent profile (e.g. Hermes
+ *   ~/.hermes/profiles/<name>/), synced on every device like global
+ */
+export type Scope = "global" | `project:${string}` | `profile:${string}`;
+
+/**
+ * Role of a config file in an agent's setup. Drives sync UX grouping and
+ * server-side extraction policy:
+ * - "identity" — who the agent is (SOUL.md, IDENTITY.md, persona files).
+ *   Synced verbatim; knowledge extraction skips these (persona pipeline owns them).
+ * - "memory" — accumulated knowledge (MEMORY.md, memory/*.md). Extracted eagerly.
+ * - "rules" — project/agent instructions (.cursorrules, CLAUDE.md). Extracted selectively.
+ * - "settings" — machine config (json/yaml). Never synced (secrets risk).
+ *
+ * The Go extraction policy mirrors the identity patterns in
+ * config_extract_policy.go — keep both in sync.
+ */
+export type AgentConfigClass = "identity" | "memory" | "rules" | "settings";
+
+const IDENTITY_BASENAMES = new Set([
+  "soul.md",
+  "identity.md",
+  "user.md",
+  "persona.md",
+]);
+
+/** Classify a config file's role from its agent + storage file path. */
+export function classifyAgentConfigFile(
+  agent: string,
+  filePath: string,
+): AgentConfigClass {
+  const path = filePath.replace(/\\/g, "/").toLowerCase();
+  const base = path.split("/").pop() ?? path;
+  if (/\.(json|ya?ml|toml)$/.test(base)) return "settings";
+  if (IDENTITY_BASENAMES.has(base) || path.includes("personas/")) {
+    return "identity";
+  }
+  if (base === "memory.md" || /(^|\/)memory\//.test(path)) return "memory";
+  return "rules";
+}
 
 export interface AgentConfig {
   id: string;

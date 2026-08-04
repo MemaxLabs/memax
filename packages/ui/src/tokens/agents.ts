@@ -17,6 +17,7 @@ import {
   CircleDot,
   Wind,
   Bot,
+  Feather,
 } from "lucide-react";
 
 export interface AgentIdentity {
@@ -82,6 +83,12 @@ export const AGENT_IDENTITIES: Record<string, AgentIdentity> = {
     displayName: "OpenClaw",
     icon: Bot,
     color: "oklch(0.65 0.12 300)", // purple
+  },
+  hermes: {
+    slug: "hermes",
+    displayName: "Hermes",
+    icon: Feather,
+    color: "oklch(0.70 0.13 85)", // gold
   },
   opencode: {
     slug: "opencode",

@@ -561,6 +561,9 @@ export const zh: Translations = {
     reissueCreating: "正在创建...",
     reissueFailed: "没能创建智能体密钥",
     reissueUpdateNote: "把你的 agent 更新成使用这个新密钥后，再撤销旧密钥。",
+    // 配置文件角色 + profile scope（personal agent）
+    classIdentity: "身份",
+    profileTag: "profile",
     credentialClassApiKey: "通过 API 密钥",
     credentialClassOAuth: "通过 OAuth",
     credentialClassSession: "通过会话",

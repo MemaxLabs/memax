@@ -152,10 +152,10 @@ When responding with project-specific claims, annotate source:
 - **Licensing is per-package** (this repo mixes licenses — see root `LICENSE`): `cli`, `sdk`, `docs-site` are Apache-2.0; `server`, `ui`, `web` are AGPL-3.0. Do not introduce a dependency from an Apache-2.0 package onto an AGPL-3.0 package.
 - The public CLI has two distinct ingest surfaces:
   - `memax import <dir>` — one-way directory → memory ingest (with `memax import status` for source/history)
-  - `memax agents ...` — agent-specific sync (configs + sessions):
-    - `memax agents sync` — combined agent config + session sync (canonical)
-    - `memax agents configs ...` — device-aware config sync (recovery helpers: `configs deleted`, `configs restore`)
-    - `memax agents sessions ...` — object-backed agent session artifact sync (recovery helpers: `sessions deleted`, `sessions restore`)
+  - `memax agents ...` — agent config sync (configs only — session sync was removed in migration 008; agent CLIs change session formats too often):
+    - `memax agents sync` — device-aware config sync (canonical; `memax agents configs sync` is the same command)
+    - `memax agents configs ...` — recovery helpers: `configs deleted`, `configs restore`, plus `list`/`doctor`
+    - Config files are classified by role — `identity` (SOUL.md, persona files), `memory` (MEMORY.md, memory/\*.md), `rules` (.cursorrules, CLAUDE.md), `settings` (json/yaml, never synced: secrets risk). The classifier lives in `memax-sdk` (`classifyAgentConfigFile`) for TS surfaces; the Go extraction policy mirrors the identity patterns in `config_extract_policy.go` — keep both in sync.
 
 ## Claude Code Hook Integration
 

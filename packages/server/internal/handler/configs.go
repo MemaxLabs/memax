@@ -57,6 +57,11 @@ func (h *ConfigsHandler) SetEnqueue(fn func(configID, ownerID string)) {
 
 // Upsert creates or updates an agent config.
 // PUT /v1/configs
+// maxAgentConfigBytes caps synced config file size — configs are stored
+// inline in Postgres, not object storage. Mirrors MAX_AGENT_CONFIG_BYTES
+// in the CLI's agent-configs-discovery.ts.
+const maxAgentConfigBytes = 512 << 10
+
 func (h *ConfigsHandler) Upsert(w http.ResponseWriter, r *http.Request) {
 	ownerID := GetUserID(r)
 
@@ -88,6 +93,11 @@ func (h *ConfigsHandler) Upsert(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Content == "" {
 		writeError(w, http.StatusBadRequest, "missing_content", "Content is required")
+		return
+	}
+	if len(req.Content) > maxAgentConfigBytes {
+		writeError(w, http.StatusRequestEntityTooLarge, "config_too_large",
+			"Config file exceeds the 512KB sync limit — trim it or exclude it from sync")
 		return
 	}
 	if req.Scope == "" {

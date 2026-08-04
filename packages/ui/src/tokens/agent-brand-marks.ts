@@ -7,6 +7,7 @@ import {
   CursorMark,
   GeminiMark,
   OpenClawMark,
+  HermesMark,
   OpenCodeMark,
   WindsurfMark,
 } from "../marks/brand-marks";
@@ -32,5 +33,6 @@ export const AGENT_BRAND_MARKS: Record<string, BrandMarkComponent> = {
   windsurf: WindsurfMark,
   gemini: GeminiMark,
   openclaw: OpenClawMark,
+  hermes: HermesMark,
   opencode: OpenCodeMark,
 };

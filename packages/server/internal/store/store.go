@@ -547,6 +547,8 @@ type Store interface {
 	GetPersona(id string, ownerID string) (*model.Persona, error)
 	DeletePersona(id string, ownerID string) error
 	DeletePersonaBySource(agent, filePath, scope, ownerID string) error
+	ListPersonaRevisions(personaID, ownerID string) ([]model.PersonaRevision, error)
+	GetPersonaRevision(personaID string, version int, ownerID string) (*model.PersonaRevision, error)
 
 	// Connected Agents — first-class agent registry
 	UpsertConnectedAgent(agent *model.ConnectedAgent) error

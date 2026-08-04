@@ -28,6 +28,7 @@ type InMemoryStore struct {
 	hubVisits                    map[string]*model.HubVisit
 	agentConfigs                 map[string]*model.AgentConfig
 	personas     map[string]*model.Persona
+	personaRevisions map[string][]*model.PersonaRevision // personaID -> revisions
 	configStates                 map[string]*model.AgentConfigSyncState
 	tombstones                   map[string]*model.AgentConfigTombstone
 	emailTemplateOverrides       map[string]*model.EmailTemplateOverride
@@ -3136,18 +3137,37 @@ func (s *InMemoryStore) UpsertPersona(p *model.Persona) error {
 	if s.personas == nil {
 		s.personas = make(map[string]*model.Persona)
 	}
+	if s.personaRevisions == nil {
+		s.personaRevisions = make(map[string][]*model.PersonaRevision)
+	}
+	record := func(id string, version int) {
+		s.personaRevisions[id] = append(s.personaRevisions[id], &model.PersonaRevision{
+			ID:          id + "-v" + fmt.Sprint(version),
+			PersonaID:   id,
+			OwnerID:     p.OwnerID,
+			Version:     version,
+			Content:     p.Content,
+			ContentHash: p.ContentHash,
+			CreatedAt:   p.UpdatedAt,
+		})
+	}
 	for _, existing := range s.personas {
 		if existing.OwnerID == p.OwnerID && existing.SourceAgent == p.SourceAgent &&
 			existing.SourceScope == p.SourceScope && existing.SourceFilePath == p.SourceFilePath {
+			if existing.ContentHash == p.ContentHash {
+				return nil // unchanged content — no-op
+			}
 			existing.Name = p.Name
 			existing.Content = p.Content
 			existing.ContentHash = p.ContentHash
 			existing.Version++
 			existing.UpdatedAt = p.UpdatedAt
+			record(existing.ID, existing.Version)
 			return nil
 		}
 	}
 	s.personas[p.ID] = p
+	record(p.ID, p.Version)
 	return nil
 }
 
@@ -3184,6 +3204,7 @@ func (s *InMemoryStore) DeletePersona(id string, ownerID string) error {
 		return nil
 	}
 	delete(s.personas, id)
+	delete(s.personaRevisions, id)
 	return nil
 }
 
@@ -3194,7 +3215,37 @@ func (s *InMemoryStore) DeletePersonaBySource(agent, filePath, scope, ownerID st
 		if p.SourceAgent == agent && p.SourceFilePath == filePath && p.SourceScope == scope &&
 			(ownerID == "local" || p.OwnerID == ownerID) {
 			delete(s.personas, id)
+			delete(s.personaRevisions, id)
 		}
 	}
 	return nil
+}
+
+func (s *InMemoryStore) ListPersonaRevisions(personaID, ownerID string) ([]model.PersonaRevision, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var revisions []model.PersonaRevision
+	for _, rev := range s.personaRevisions[personaID] {
+		if ownerID == "local" || rev.OwnerID == ownerID {
+			// List omits content — matches the Postgres implementation.
+			meta := *rev
+			meta.Content = ""
+			revisions = append(revisions, meta)
+		}
+	}
+	sort.Slice(revisions, func(i, j int) bool {
+		return revisions[i].Version > revisions[j].Version
+	})
+	return revisions, nil
+}
+
+func (s *InMemoryStore) GetPersonaRevision(personaID string, version int, ownerID string) (*model.PersonaRevision, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, rev := range s.personaRevisions[personaID] {
+		if rev.Version == version && (ownerID == "local" || rev.OwnerID == ownerID) {
+			return rev, nil
+		}
+	}
+	return nil, fmt.Errorf("persona revision not found: %s v%d", personaID, version)
 }

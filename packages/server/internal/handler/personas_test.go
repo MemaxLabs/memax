@@ -130,3 +130,62 @@ func TestApplyPersonaWritesTargetIdentityConfig(t *testing.T) {
 		t.Fatalf("expected 2 personas after apply, got %d", len(personas))
 	}
 }
+
+func TestPersonaRevisionsLifecycle(t *testing.T) {
+	s := store.NewInMemoryStore()
+	h := NewConfigsHandler(s, nil)
+
+	upsertConfigAs(t, h, "owner-a", `{
+		"agent":"openclaw","file_path":"SOUL.md","scope":"global",
+		"content":"# Soul v1"
+	}`)
+	// Same content again — must NOT bump the persona or add a revision.
+	upsertConfigAs(t, h, "owner-a", `{
+		"agent":"openclaw","file_path":"SOUL.md","scope":"global",
+		"content":"# Soul v1"
+	}`)
+	upsertConfigAs(t, h, "owner-a", `{
+		"agent":"openclaw","file_path":"SOUL.md","scope":"global",
+		"content":"# Soul v2"
+	}`)
+
+	personas, _ := s.ListPersonas("owner-a")
+	if len(personas) != 1 || personas[0].Version != 2 {
+		t.Fatalf("expected persona at v2, got %#v", personas)
+	}
+	revs, err := s.ListPersonaRevisions(personas[0].ID, "owner-a")
+	if err != nil {
+		t.Fatalf("ListPersonaRevisions: %v", err)
+	}
+	if len(revs) != 2 {
+		t.Fatalf("expected 2 revisions, got %d", len(revs))
+	}
+	if revs[0].Content != "" {
+		t.Fatalf("list must omit content, got %q", revs[0].Content)
+	}
+
+	// Restore v1 → source config rewritten → persona re-derived at v3.
+	req := httptest.NewRequest(http.MethodPost,
+		"/v1/personas/"+personas[0].ID+"/revisions/1/restore", bytes.NewBufferString(`{}`))
+	req.SetPathValue("id", personas[0].ID)
+	req.SetPathValue("version", "1")
+	req = req.WithContext(context.WithValue(req.Context(), userIDKey, "owner-a"))
+	rec := httptest.NewRecorder()
+	h.RestorePersonaRevision(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("restore failed: %d: %s", rec.Code, rec.Body.String())
+	}
+
+	cfg, err := s.GetAgentConfigByPath("openclaw", "SOUL.md", "global", "owner-a")
+	if err != nil || cfg.Content != "# Soul v1" {
+		t.Fatalf("source config not restored: %v %#v", err, cfg)
+	}
+	personas, _ = s.ListPersonas("owner-a")
+	if personas[0].Version != 3 {
+		t.Fatalf("restore must create a new head version, got v%d", personas[0].Version)
+	}
+	// Foreign owner cannot read revisions.
+	if _, err := s.GetPersonaRevision(personas[0].ID, 1, "owner-b"); err == nil {
+		t.Fatalf("expected owner isolation on revisions")
+	}
+}

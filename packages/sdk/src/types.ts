@@ -626,6 +626,23 @@ export interface PersonaApplyRequest {
   target_scope?: Scope;
 }
 
+/** One immutable persona version. List responses omit `content`. */
+export interface PersonaRevision {
+  id: string;
+  persona_id: string;
+  owner_id: string;
+  version: number;
+  content?: string;
+  content_hash: string;
+  created_at: string;
+}
+
+export interface PersonaRestoreResult {
+  persona_id: string;
+  restored_version: number;
+  head_version: number;
+}
+
 export interface PersonaApplyResult {
   persona_id: string;
   target_agent: string;

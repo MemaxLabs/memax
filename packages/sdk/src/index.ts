@@ -81,6 +81,8 @@ export type {
   Persona,
   PersonaApplyRequest,
   PersonaApplyResult,
+  PersonaRevision,
+  PersonaRestoreResult,
   AgentConfigListResult,
   DeletedAgentConfig,
   SyncAction,

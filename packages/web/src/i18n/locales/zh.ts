@@ -1959,6 +1959,14 @@ export const zh: Translations = {
     applyCta: "应用到…",
     applyTargetsTitle: "写入",
     applied: "已排队写入 {target}——下次 memax agents sync 生效",
+    watchHint: "设备上开着 `memax agents sync --watch` 就能秒级生效。",
+    historyCta: "历史",
+    historyTitle: "版本",
+    versionRow: "v{n}",
+    restoreCta: "恢复",
+    restored: "已恢复 v{n}——正在同步回源文件",
+    forgetConfirm: "忘记这个 persona？源文件不受影响。",
+    close: "收起",
   },
 
   errors: {
@@ -2004,6 +2012,8 @@ export const zh: Translations = {
       forgetMemory: "忘记该记忆",
       forgetMemories: "忘记这些记忆",
       applyPersona: "应用那个 persona",
+      deletePersona: "忘记那个 persona",
+      restorePersona: "恢复那个 persona",
       createHub: "创建该 hub",
       updateHub: "更新 hub",
       deleteHub: "删除 hub",

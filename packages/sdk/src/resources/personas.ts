@@ -2,6 +2,8 @@ import type {
   Persona,
   PersonaApplyRequest,
   PersonaApplyResult,
+  PersonaRestoreResult,
+  PersonaRevision,
 } from "../types.js";
 import type { RequestFn } from "../transport.js";
 
@@ -28,6 +30,27 @@ export class PersonasResource {
         target_scope: input.target_scope,
       },
     });
+  }
+
+  /** Version history, newest first. Content omitted — use getRevision. */
+  async listRevisions(id: string): Promise<{ revisions: PersonaRevision[] }> {
+    return this.req("GET", `/v1/personas/${id}/revisions`);
+  }
+
+  /** One revision including its full content. */
+  async getRevision(id: string, version: number): Promise<PersonaRevision> {
+    return this.req("GET", `/v1/personas/${id}/revisions/${version}`);
+  }
+
+  /**
+   * Write an old revision back into the persona's source config. History
+   * is append-only: a restore creates a new head version.
+   */
+  async restoreRevision(
+    id: string,
+    version: number,
+  ): Promise<PersonaRestoreResult> {
+    return this.req("POST", `/v1/personas/${id}/revisions/${version}/restore`);
   }
 
   /** Remove the derived persona row. The source config file is untouched. */

@@ -24,6 +24,18 @@ type Persona struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
+// PersonaRevision is one immutable version of a persona. List responses
+// omit Content (potentially large); the single-revision endpoint includes it.
+type PersonaRevision struct {
+	ID          string    `json:"id"`
+	PersonaID   string    `json:"persona_id"`
+	OwnerID     string    `json:"owner_id"`
+	Version     int       `json:"version"`
+	Content     string    `json:"content,omitempty"`
+	ContentHash string    `json:"content_hash"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 // IsIdentityConfigPath reports whether a config file path is an agent
 // identity surface (personality, tone, values — who the agent IS).
 // Identity files sync verbatim, are never knowledge-extracted, and feed

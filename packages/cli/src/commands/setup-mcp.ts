@@ -50,6 +50,13 @@ export function setupMcpOAuth(agent: AgentDef): void {
     return;
   }
 
+  // Hermes YAML — remote schema undocumented, write the stdio form
+  // (memax CLI is on PATH: the user is running it right now).
+  if (agent.format === "yaml-mcp-servers") {
+    writeHermesYamlMcp(agent, { command: "memax", args: [], shell: "" });
+    return;
+  }
+
   // Codex TOML
   if (agent.format === "toml") {
     mkdirSync(dirname(agent.configPath), { recursive: true });
@@ -157,6 +164,13 @@ export function setupMcpRemote(agent: AgentDef, apiKey: string): void {
     return;
   }
 
+  // Hermes YAML — remote schema undocumented, write the stdio form
+  // (memax CLI is on PATH: the user is running it right now).
+  if (agent.format === "yaml-mcp-servers") {
+    writeHermesYamlMcp(agent, { command: "memax", args: [], shell: "" });
+    return;
+  }
+
   // Codex TOML
   if (agent.format === "toml") {
     mkdirSync(dirname(agent.configPath), { recursive: true });
@@ -207,6 +221,88 @@ function writeRemoteJsonConfig(
   writeFileSync(agent.configPath, JSON.stringify(config, null, 2) + "\n");
 }
 
+/**
+ * Upsert the memax entry under a root-level `mcp_servers:` block in a YAML
+ * config, editing line-wise instead of pulling in a YAML dependency for one
+ * agent (Hermes). Preserves everything else in the file: other servers,
+ * comments, unrelated top-level keys.
+ *
+ * `entryLines` are the fully-indented lines of the memax entry
+ * (e.g. ["  memax:", '    command: "memax"', ...]).
+ */
+export function upsertYamlMcpServersBlock(
+  content: string,
+  entryLines: string[],
+): string {
+  const lines = content.length > 0 ? content.split("\n") : [];
+  const isRootKey = (line: string) => /^\S/.test(line);
+
+  const rootIdx = lines.findIndex((l) => /^mcp_servers:\s*(#.*)?$/.test(l));
+  if (rootIdx === -1) {
+    const out = [...lines];
+    while (out.length > 0 && out[out.length - 1].trim() === "") out.pop();
+    if (out.length > 0) out.push("");
+    out.push("mcp_servers:", ...entryLines, "");
+    return out.join("\n");
+  }
+
+  // Bounds of the mcp_servers block: up to the next root-level key.
+  let blockEnd = lines.length;
+  for (let i = rootIdx + 1; i < lines.length; i++) {
+    if (lines[i].trim() !== "" && isRootKey(lines[i])) {
+      blockEnd = i;
+      break;
+    }
+  }
+
+  // Remove an existing memax sub-block (its line + all deeper-indented lines).
+  const kept: string[] = [];
+  let skipping = false;
+  for (let i = rootIdx + 1; i < blockEnd; i++) {
+    const line = lines[i];
+    if (/^ {2}memax:\s*(#.*)?$/.test(line)) {
+      skipping = true;
+      continue;
+    }
+    if (skipping) {
+      if (line.trim() === "" || /^ {3,}/.test(line)) continue;
+      skipping = false;
+    }
+    kept.push(line);
+  }
+
+  return [
+    ...lines.slice(0, rootIdx + 1),
+    ...entryLines,
+    ...kept,
+    ...lines.slice(blockEnd),
+  ].join("\n");
+}
+
+/**
+ * Hermes MCP config (~/.hermes/config.yaml). Hermes documents stdio server
+ * entries (command/args) under `mcp_servers`; its remote/SSE YAML schema is
+ * not documented, so BOTH setup modes write the stdio form — the local CLI
+ * (`memax mcp serve`) reaches the same data once the user is logged in.
+ */
+function writeHermesYamlMcp(agent: AgentDef, bin: MemaxBin): void {
+  mkdirSync(dirname(agent.configPath), { recursive: true });
+  const allArgs = [...bin.args, "mcp", "serve", "--agent", agent.id];
+  const entryLines = [
+    "  memax:",
+    `    command: "${bin.command}"`,
+    `    args: [${allArgs.map((a) => `"${a}"`).join(", ")}]`,
+  ];
+  let content = "";
+  if (existsSync(agent.configPath)) {
+    content = readFileSync(agent.configPath, "utf-8");
+  }
+  writeFileSync(
+    agent.configPath,
+    upsertYamlMcpServersBlock(content, entryLines),
+  );
+}
+
 // --- Local MCP setup per agent ---
 
 export function setupMcp(agent: AgentDef, bin: MemaxBin): void {
@@ -220,6 +316,11 @@ export function setupMcp(agent: AgentDef, bin: MemaxBin): void {
 
   if (agent.format === "toml") {
     setupMcpToml(agent, bin);
+    return;
+  }
+
+  if (agent.format === "yaml-mcp-servers") {
+    writeHermesYamlMcp(agent, bin);
     return;
   }
 

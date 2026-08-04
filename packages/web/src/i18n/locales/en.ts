@@ -2146,6 +2146,15 @@ export const en = {
     applyCta: "Apply to…",
     applyTargetsTitle: "Write into",
     applied: "Staged for {target} — lands on the next memax agents sync",
+    watchHint:
+      "Instant with `memax agents sync --watch` running on the device.",
+    historyCta: "History",
+    historyTitle: "Versions",
+    versionRow: "v{n}",
+    restoreCta: "Restore",
+    restored: "Restored v{n} — syncing back to the source file",
+    forgetConfirm: "Forget this persona? The source file stays untouched.",
+    close: "Close",
   },
 
   errors: {
@@ -2207,6 +2216,8 @@ export const en = {
       forgetMemories: "forget those memories",
       // Personas
       applyPersona: "apply that persona",
+      deletePersona: "forget that persona",
+      restorePersona: "restore that persona",
       // Hubs
       createHub: "create that hub",
       updateHub: "update the hub",

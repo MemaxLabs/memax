@@ -79,8 +79,6 @@ export type {
   AgentConfigClass,
   AgentConfig,
   Persona,
-  PersonaApplyRequest,
-  PersonaApplyResult,
   PersonaRevision,
   PersonaRestoreResult,
   AgentConfigListResult,

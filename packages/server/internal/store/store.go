@@ -1606,6 +1606,7 @@ type ChatSessionMetaPatch struct {
 	Tools          *[]string // a non-nil empty slice empties the tools list
 	ToolsetVersion *int
 	WriteHubID     *string // empty string clears (NULL); nil leaves alone
+	PersonaID      *string // "" clears (inherit default); "none" disables; else persona id
 }
 
 // ChatMessageListOpts controls transcript reads. Cursor is the

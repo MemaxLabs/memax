@@ -2141,13 +2141,16 @@ export const en = {
     title: "Personas",
     beta: "Beta",
     subtitle:
-      "Identities extracted from your agents' SOUL files. Apply one to switch who an agent is.",
+      "Identities extracted from your agents' SOUL files. Set one as default — or switch per chat — and the memax agent speaks as it.",
     sourceLabel: "from",
-    applyCta: "Apply to…",
-    applyTargetsTitle: "Write into",
-    applied: "Staged for {target} — lands on the next memax agents sync",
-    watchHint:
-      "Instant with `memax agents sync --watch` running on the device.",
+    setDefaultCta: "Set as memax default",
+    clearDefaultCta: "Remove default",
+    defaultBadge: "default",
+    defaultSet: "memax now speaks as {name} — new chats pick it up instantly",
+    defaultCleared: "Default persona removed — memax is back to its own voice",
+    pickerLabel: "Persona",
+    pickerInherit: "Default",
+    pickerNone: "No persona",
     historyCta: "History",
     historyTitle: "Versions",
     versionRow: "v{n}",
@@ -2215,7 +2218,6 @@ export const en = {
       forgetMemory: "forget that memory",
       forgetMemories: "forget those memories",
       // Personas
-      applyPersona: "apply that persona",
       deletePersona: "forget that persona",
       restorePersona: "restore that persona",
       // Hubs

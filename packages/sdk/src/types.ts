@@ -622,12 +622,6 @@ export interface Persona {
   updated_at: string;
 }
 
-export interface PersonaApplyRequest {
-  target_agent: string;
-  /** "global" (default) or "profile:<name>". Project scopes are rejected. */
-  target_scope?: Scope;
-}
-
 /** One immutable persona version. List responses omit `content`. */
 export interface PersonaRevision {
   id: string;
@@ -643,15 +637,6 @@ export interface PersonaRestoreResult {
   persona_id: string;
   restored_version: number;
   head_version: number;
-}
-
-export interface PersonaApplyResult {
-  persona_id: string;
-  target_agent: string;
-  target_scope: Scope;
-  target_file_path: string;
-  config_id: string;
-  config_version: number;
 }
 
 export interface DeletedAgentConfig {
@@ -1299,6 +1284,8 @@ export interface DevFlagsSettings {
 }
 
 export interface Settings {
+  /** Default persona for the memax agent (Agent Chat). "" = none. */
+  chat_default_persona_id?: string;
   dreams_enabled: boolean;
   dreams_merge_enabled: boolean;
   dreams_archive_enabled: boolean;
@@ -1339,6 +1326,8 @@ export interface SettingsUpdateInput {
   dev_flags?: Partial<DevFlagsSettings>;
   notifications_enabled?: boolean;
   theme?: string;
+  /** Default persona for the memax agent (Agent Chat). "" = none. */
+  chat_default_persona_id?: string;
 }
 
 // --- Topics ---
@@ -2358,6 +2347,9 @@ export interface ChatSession {
   status: ChatSessionStatus;
   /** Set while a turn is in flight; clears on terminal write. */
   active_message_id?: string;
+  /** Persona binding: absent/"" inherits chat_default_persona_id, "none"
+   *  explicitly disables the persona, else a persona id. */
+  persona_id?: string;
   locked_at?: string;
   message_count: number;
   pinned_at?: string;
@@ -2416,6 +2408,8 @@ export interface CreateChatSessionInput {
   writeHubId?: string;
   tools?: string[];
   model?: string;
+  /** "" inherit default · "none" disable · persona id */
+  personaId?: string;
 }
 
 export interface PatchChatSessionInput {
@@ -2424,6 +2418,8 @@ export interface PatchChatSessionInput {
   archived?: boolean;
   tools?: string[];
   writeHubId?: string;
+  /** "" revert to inherit · "none" disable · persona id */
+  personaId?: string;
 }
 
 export interface ListChatSessionsOptions {

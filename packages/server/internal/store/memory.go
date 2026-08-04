@@ -28,6 +28,7 @@ type InMemoryStore struct {
 	hubVisits                    map[string]*model.HubVisit
 	agentConfigs                 map[string]*model.AgentConfig
 	personas                     map[string]*model.Persona
+	userPreferences              map[string]map[string]any
 	personaRevisions             map[string][]*model.PersonaRevision // personaID -> revisions
 	configStates                 map[string]*model.AgentConfigSyncState
 	tombstones                   map[string]*model.AgentConfigTombstone
@@ -1527,11 +1528,29 @@ func (s *InMemoryStore) SearchChunksInHubs(ctx context.Context, query string, _ 
 
 // --- User Preferences (in-memory) ---
 
-func (s *InMemoryStore) GetUserPreferences(_ string) (*model.UserPreferences, error) {
-	return &model.UserPreferences{Settings: map[string]any{}}, nil
+func (s *InMemoryStore) GetUserPreferences(userID string) (*model.UserPreferences, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	settings := map[string]any{}
+	for k, v := range s.userPreferences[userID] {
+		settings[k] = v
+	}
+	return &model.UserPreferences{UserID: userID, Settings: settings}, nil
 }
 
-func (s *InMemoryStore) UpsertUserPreferences(_ string, _ map[string]any) error { return nil }
+func (s *InMemoryStore) UpsertUserPreferences(userID string, settings map[string]any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.userPreferences == nil {
+		s.userPreferences = make(map[string]map[string]any)
+	}
+	stored := map[string]any{}
+	for k, v := range settings {
+		stored[k] = v
+	}
+	s.userPreferences[userID] = stored
+	return nil
+}
 
 func (s *InMemoryStore) ListDreamableHubs() ([]model.Hub, error) { return nil, nil }
 

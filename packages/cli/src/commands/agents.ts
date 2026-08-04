@@ -16,10 +16,6 @@ export function registerAgentsCommands(program: Command): void {
     .description("Sync agent configs bidirectionally with Memax cloud")
     .option("--push", "Force push local configs to cloud (overwrite)")
     .option("--pull", "Force pull cloud data to local (overwrite)")
-    .option(
-      "--watch",
-      "Stay running and re-sync when the cloud changes (instant persona apply)",
-    )
     .action(syncAgentMemoryCommand);
 
   agentsCmd

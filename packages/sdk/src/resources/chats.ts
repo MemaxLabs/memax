@@ -58,6 +58,7 @@ export class ChatsResource {
         write_hub_id: input.writeHubId,
         tools: input.tools,
         model: input.model,
+        persona_id: input.personaId,
       },
       hubId: options?.hubId,
       signal: options?.signal,
@@ -105,6 +106,7 @@ export class ChatsResource {
         archived: patch.archived,
         tools: patch.tools,
         write_hub_id: patch.writeHubId,
+        persona_id: patch.personaId,
       },
     });
   }

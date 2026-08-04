@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Persona, PersonaApplyRequest, PersonaRevision } from "memax-sdk";
+import type { Persona, PersonaRevision } from "memax-sdk";
 import { getMemaxClient } from "@/lib/memax-client";
 import { useLocale } from "@/i18n";
 
@@ -9,9 +9,9 @@ const PERSONAS_QUERY_KEY = ["personas"] as const;
 
 /**
  * Personas (Beta) — identity objects derived server-side from synced
- * identity configs (SOUL.md etc.). Read-only list; `useApplyPersona`
- * writes a persona into a target agent's identity config through the
- * config-sync machinery.
+ * identity configs (SOUL.md etc.). Personas bind to the memax agent:
+ * per-session via `usePatchChatSession({ personaId })`, account default
+ * via `useUpdateSettings({ chat_default_persona_id })`.
  */
 export function usePersonas() {
   return useQuery<Persona[]>({
@@ -22,26 +22,6 @@ export function usePersonas() {
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
-  });
-}
-
-export function useApplyPersona() {
-  const qc = useQueryClient();
-  const { t } = useLocale();
-  return useMutation({
-    meta: {
-      errorMessage: t.states.error.unexpected,
-      errorAction: t.errors.action.applyPersona,
-      // No successMessage: success feedback is inline in the persona card
-      // (staged-for-sync message) — a global toast would double-announce it.
-    },
-    mutationFn: ({ id, input }: { id: string; input: PersonaApplyRequest }) =>
-      getMemaxClient().personas.apply(id, input),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: PERSONAS_QUERY_KEY });
-      qc.invalidateQueries({ queryKey: ["agent-configs"] });
-      qc.invalidateQueries({ queryKey: ["connected-agents"] });
-    },
   });
 }
 

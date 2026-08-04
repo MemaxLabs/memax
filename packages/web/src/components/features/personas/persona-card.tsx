@@ -6,40 +6,30 @@ import type { Persona } from "memax-sdk";
 import { resolveAgentIdentity } from "@memaxlabs/ui/tokens/agents";
 import { useLocale, useInterpolate } from "@/i18n";
 import {
-  useApplyPersona,
   useDeletePersona,
   usePersonaRevision,
   usePersonaRevisions,
   useRestorePersonaRevision,
 } from "@/hooks/use-personas";
+import { useUpdateSettings } from "@/hooks/use-settings";
 
-export interface ApplyTarget {
-  agent: string;
-  scope: string; // "global" | "profile:<name>"
-}
-
-// One expandable body at a time — apply targets, history, or delete confirm.
-// The card morphs in place per the container-morphing rule; no modals.
-type CardMode = "idle" | "apply" | "history" | "confirmDelete";
-
-export function targetLabel(target: ApplyTarget): string {
-  const name = resolveAgentIdentity(target.agent).displayName;
-  if (target.scope === "global") return name;
-  return `${name} · ${target.scope.replace("profile:", "")}`;
-}
+// One expandable body at a time — history or delete confirm. The card
+// morphs in place per the container-morphing rule; no modals.
+type CardMode = "idle" | "history" | "confirmDelete";
 
 export function PersonaCard({
   persona,
-  targets,
+  isDefault,
 }: {
   persona: Persona;
-  targets: ApplyTarget[];
+  /** Whether this persona is the account's chat_default_persona_id. */
+  isDefault: boolean;
 }) {
   const { t } = useLocale();
   const interpolate = useInterpolate();
-  const applyPersona = useApplyPersona();
   const deletePersona = useDeletePersona();
   const restoreRevision = useRestorePersonaRevision();
+  const updateSettings = useUpdateSettings();
 
   const [mode, setMode] = useState<CardMode>("idle");
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -47,7 +37,7 @@ export function PersonaCard({
 
   // Every mode transition clears stale success feedback — the feedback
   // branch renders in place of the action rows, so a lingering message
-  // would otherwise lock the card out of apply/history/delete forever.
+  // would otherwise lock the card out of its actions.
   const enterMode = (next: CardMode) => {
     setFeedback(null);
     setMode(next);
@@ -68,6 +58,20 @@ export function PersonaCard({
   })();
 
   const isConfirmingDelete = mode === "confirmDelete";
+
+  const setAsDefault = async (nextID: string) => {
+    try {
+      await updateSettings.mutateAsync({ chat_default_persona_id: nextID });
+      setFeedback(
+        nextID === ""
+          ? t.personas.defaultCleared
+          : interpolate(t.personas.defaultSet, { name: persona.name }),
+      );
+      setMode("idle");
+    } catch {
+      // Error toast handled by the global mutation cache.
+    }
+  };
 
   return (
     <div
@@ -94,6 +98,11 @@ export function PersonaCard({
         <div className="min-w-0 flex-1">
           <p className="text-[14px] font-medium text-fg-1 truncate">
             {persona.name}
+            {isDefault && (
+              <span className="ml-1.5 text-[10px] font-medium uppercase tracking-wide text-fg-3 bg-surface-2 px-1.5 py-0.5 rounded align-middle">
+                {t.personas.defaultBadge}
+              </span>
+            )}
           </p>
           <p className="text-[12px] text-fg-3 truncate">
             {t.personas.sourceLabel} {sourceLabel}
@@ -144,59 +153,8 @@ export function PersonaCard({
       ) : feedback ? (
         <p className="mt-3 flex items-start gap-1.5 text-[12px] text-fg-2">
           <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" strokeWidth={2} />
-          <span>
-            {feedback}
-            <span className="block text-fg-4">{t.personas.watchHint}</span>
-          </span>
+          <span>{feedback}</span>
         </p>
-      ) : mode === "apply" ? (
-        <div className="mt-3">
-          <p className="text-[11px] uppercase tracking-wide text-fg-4 mb-1.5">
-            {t.personas.applyTargetsTitle}
-          </p>
-          <div className="space-y-0.5">
-            {targets.map((target) => (
-              <button
-                key={`${target.agent}|${target.scope}`}
-                disabled={applyPersona.isPending}
-                onClick={async () => {
-                  try {
-                    const res = await applyPersona.mutateAsync({
-                      id: persona.id,
-                      input: {
-                        target_agent: target.agent,
-                        target_scope: target.scope as
-                          | "global"
-                          | `profile:${string}`,
-                      },
-                    });
-                    setFeedback(
-                      interpolate(t.personas.applied, {
-                        target: targetLabel({
-                          agent: res.target_agent,
-                          scope: res.target_scope,
-                        }),
-                      }),
-                    );
-                    setMode("idle");
-                  } catch {
-                    // Error toast handled by the global mutation cache.
-                  }
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-fg-2 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
-              >
-                <ChevronRight className="w-3 h-3 text-fg-4 shrink-0" />
-                {targetLabel(target)}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => enterMode("idle")}
-            className="mt-1.5 text-[12px] text-fg-4 hover:text-fg-2 transition-colors cursor-pointer"
-          >
-            {t.personas.close}
-          </button>
-        </div>
       ) : mode === "history" ? (
         <div className="mt-3">
           <p className="text-[11px] uppercase tracking-wide text-fg-4 mb-1.5">
@@ -267,10 +225,11 @@ export function PersonaCard({
       ) : (
         <div className="mt-3 flex items-center gap-4">
           <button
-            onClick={() => enterMode("apply")}
-            className="text-[13px] font-medium text-fg-2 hover:text-fg-1 transition-colors cursor-pointer"
+            onClick={() => setAsDefault(isDefault ? "" : persona.id)}
+            disabled={updateSettings.isPending}
+            className="text-[13px] font-medium text-fg-2 hover:text-fg-1 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
           >
-            {t.personas.applyCta}
+            {isDefault ? t.personas.clearDefaultCta : t.personas.setDefaultCta}
           </button>
           <button
             onClick={() => enterMode("history")}

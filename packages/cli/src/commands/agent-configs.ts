@@ -43,10 +43,6 @@ export { resolveAgentConfigWritePath } from "./agent-configs-discovery.js";
 export async function syncAgentMemoryCommand(
   options: SyncAgentOptions = {},
 ): Promise<void> {
-  if (options.watch) {
-    await watchAgentSync(options);
-    return;
-  }
   await syncAgentMemory(options);
 }
 
@@ -807,107 +803,6 @@ interface SyncAgentOptions {
   pull?: boolean;
   /** Skip conflicts silently (used by setup — conflicts can be resolved later via `memax agents sync`). */
   skipConflicts?: boolean;
-  /** Stay running and re-sync whenever the cloud reports a config change. */
-  watch?: boolean;
-}
-
-/**
- * Watch mode — subscribes to the server's `agent.changed` SSE stream and
- * re-runs an unattended sync on every event. This is what makes a persona
- * applied from the web land on this machine within seconds instead of on
- * the next manual sync. Unattended runs use skipConflicts so watch can
- * never prompt or destroy local work; conflicts wait for an interactive
- * `memax agents sync`.
- */
-async function watchAgentSync(options: SyncAgentOptions): Promise<void> {
-  // --push/--pull apply ONCE to the initial sync (the user's explicit,
-  // attended intent). Every event-driven re-sync runs without force flags —
-  // forwarding --push would silently overwrite each cloud edit (including a
-  // freshly applied persona) whenever it conflicted with local state.
-  const unattended: SyncAgentOptions = { skipConflicts: true };
-  try {
-    await syncAgentMemory({
-      push: options.push,
-      pull: options.pull,
-      skipConflicts: true,
-    });
-  } catch (err) {
-    // A transient failure at startup (offline boot script, cold API) must
-    // not kill the daemon — watch retries on the next event/reconnect.
-    console.error(
-      chalk.yellow(`  Initial sync failed: ${(err as Error).message}`),
-    );
-  }
-  console.log(chalk.gray("  Watching for cloud changes — Ctrl+C to stop.\n"));
-
-  let syncing = false;
-  let pending = false;
-  let debounce: ReturnType<typeof setTimeout> | null = null;
-  let controller: AbortController | null = null;
-
-  const run = async () => {
-    if (syncing) {
-      pending = true;
-      return;
-    }
-    syncing = true;
-    try {
-      await syncAgentMemory(unattended);
-    } catch (err) {
-      console.error(
-        chalk.red(`  Watch sync failed: ${(err as Error).message}`),
-      );
-    } finally {
-      syncing = false;
-      if (pending) {
-        pending = false;
-        void run();
-      }
-    }
-  };
-
-  // Debounce: a burst of config events (e.g. multi-file apply) triggers
-  // one sync, not one per event.
-  const trigger = () => {
-    if (debounce) clearTimeout(debounce);
-    debounce = setTimeout(() => void run(), 800);
-  };
-
-  const connect = () => {
-    // One reconnect per connection, whichever signal arrives first: the
-    // SDK stream reports fetch/HTTP failures via onEvent("error") WITHOUT
-    // calling onClose, so reconnecting only from onClose would let a single
-    // failed reconnect kill the watch permanently.
-    let reconnectScheduled = false;
-    const scheduleReconnect = () => {
-      if (reconnectScheduled) return;
-      reconnectScheduled = true;
-      controller?.abort();
-      setTimeout(() => {
-        trigger(); // catch up on anything missed while disconnected
-        connect();
-      }, 3000);
-    };
-    controller = getClient().events.subscribe({
-      onEvent: (event, data) => {
-        if (event === "error") {
-          scheduleReconnect();
-          return;
-        }
-        if (event !== "agent.changed") return;
-        // MCP-usage heartbeats (state="activity") fire on every recall/ask —
-        // only real config mutations warrant a re-sync.
-        const state = (data as { state?: string } | null)?.state;
-        if (state === "activity") return;
-        trigger();
-      },
-      onClose: scheduleReconnect,
-    });
-  };
-  connect();
-
-  // Run until interrupted.
-  await new Promise(() => {});
 }
 
 async function syncAgentMemory(options: SyncAgentOptions = {}): Promise<void> {

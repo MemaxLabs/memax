@@ -24,7 +24,7 @@ import (
 // Kept as a const so list/detail queries stay in lockstep with
 // the scan helper. Never mix with hand-rolled column lists.
 const chatSessionCols = `id, owner_id, scope_type, scope_hub_ids, write_hub_id, title, model, tools,
-	toolset_version, status, active_message_id, locked_at, message_count, pinned_at, archived_at,
+	toolset_version, status, active_message_id, persona_id, locked_at, message_count, pinned_at, archived_at,
 	last_message_at, created_at, updated_at, deleted_at`
 
 // chatMessageCols is the canonical SELECT list for chat_messages.
@@ -61,13 +61,14 @@ func (s *PostgresStore) CreateChatSession(ctx context.Context, sess *model.ChatS
 	_, err = s.pool.Exec(ctx,
 		`INSERT INTO chat_sessions (
 			id, owner_id, scope_type, scope_hub_ids, write_hub_id, title, model, tools,
-			toolset_version, status, active_message_id, locked_at, message_count, pinned_at,
+			toolset_version, status, active_message_id, persona_id, locked_at, message_count, pinned_at,
 			archived_at, last_message_at, created_at, updated_at)
 		VALUES ($1::uuid, $2::uuid, $3, $4::uuid[], $5, $6, $7, $8::jsonb,
-			$9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+			$9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
 		sess.ID, sess.OwnerID, sess.ScopeType, scopeHubs, nullableString(sess.WriteHubID),
 		sess.Title, sess.Model, toolsJSON,
-		sess.ToolsetVersion, sess.Status, nullableString(sess.ActiveMessageID), sess.LockedAt,
+		sess.ToolsetVersion, sess.Status, nullableString(sess.ActiveMessageID),
+		nullableString(sess.PersonaID), sess.LockedAt,
 		sess.MessageCount, sess.PinnedAt, sess.ArchivedAt, sess.LastMessageAt,
 		sess.CreatedAt, sess.UpdatedAt,
 	)
@@ -223,6 +224,13 @@ func (s *PostgresStore) UpdateChatSessionMeta(ctx context.Context, sessionID, ow
 			add("write_hub_id", nil)
 		} else {
 			add("write_hub_id", *patch.WriteHubID)
+		}
+	}
+	if patch.PersonaID != nil {
+		if *patch.PersonaID == "" {
+			add("persona_id", nil) // inherit the user's default again
+		} else {
+			add("persona_id", *patch.PersonaID)
 		}
 	}
 	if len(sets) == 0 {
@@ -1846,17 +1854,21 @@ func scanChatSession(r interface{ Scan(...any) error }) (*model.ChatSession, err
 		s              model.ChatSession
 		writeHubID     *string
 		activeMsgID    *string
+		personaID      *string
 		toolsJSON      []byte
 		hubIDsScanText []string
 	)
 	if err := r.Scan(
 		&s.ID, &s.OwnerID, &s.ScopeType, &hubIDsScanText, &writeHubID,
 		&s.Title, &s.Model, &toolsJSON,
-		&s.ToolsetVersion, &s.Status, &activeMsgID, &s.LockedAt,
+		&s.ToolsetVersion, &s.Status, &activeMsgID, &personaID, &s.LockedAt,
 		&s.MessageCount, &s.PinnedAt, &s.ArchivedAt, &s.LastMessageAt,
 		&s.CreatedAt, &s.UpdatedAt, &s.DeletedAt,
 	); err != nil {
 		return nil, err
+	}
+	if personaID != nil {
+		s.PersonaID = *personaID
 	}
 	s.ScopeHubIDs = append([]string(nil), hubIDsScanText...)
 	if writeHubID != nil {

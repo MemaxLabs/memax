@@ -897,6 +897,9 @@ func DefaultSettings() map[string]any {
 		},
 		"notifications_enabled": true,
 		"theme":                 "auto",
+		// Default persona for the memax agent (Agent Chat). "" = none;
+		// otherwise a personas.id. Sessions may override via persona_id.
+		"chat_default_persona_id": "",
 	}
 }
 

@@ -81,6 +81,10 @@ const ChatToolApprovalTTL = 10 * time.Minute
 // the chat_sessions table; a few are derived for the wire shape
 // (Tools is JSON-decoded; ScopeHubIDs comes back as a []string
 // from pgx).
+// ChatPersonaNone is the session persona sentinel for "explicitly no
+// persona" — distinct from "" which inherits chat_default_persona_id.
+const ChatPersonaNone = "none"
+
 type ChatSession struct {
 	ID              string    `json:"id"`
 	OwnerID         string    `json:"owner_id"`
@@ -93,6 +97,10 @@ type ChatSession struct {
 	ToolsetVersion  int       `json:"toolset_version"`
 	Status          string    `json:"status"`
 	ActiveMessageID string    `json:"active_message_id,omitempty"`
+	// PersonaID binds the memax agent's identity for this session:
+	// "" inherits the chat_default_persona_id setting, "none" explicitly
+	// disables the persona, anything else is a personas.id owned by the user.
+	PersonaID string `json:"persona_id,omitempty"`
 	LockedAt        *time.Time `json:"locked_at,omitempty"`
 	MessageCount    int       `json:"message_count"`
 	PinnedAt        *time.Time `json:"pinned_at,omitempty"`

@@ -62,6 +62,7 @@ import { ChatEmptyState } from "./chat-empty-state";
 import { ChatSessionsList } from "./chat-sessions-list";
 import { ChatThread, PendingThinkingRow } from "./chat-thread";
 import { ChatComposer, type ChatComposerHandle } from "./chat-composer";
+import { ChatPersonaPicker } from "./chat-persona-picker";
 
 function newIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -478,6 +479,7 @@ export function ChatBrainView({ routeSessionId }: ChatBrainViewProps = {}) {
                 tools={toolsQuery.data ?? []}
                 enabledToolNames={activeSession?.tools}
               />
+              {activeSession && <ChatPersonaPicker session={activeSession} />}
               <ChatComposer
                 value={composerValue}
                 onChange={setComposerValue}

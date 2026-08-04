@@ -285,3 +285,50 @@ func jsonValString(v any) string {
 		return string(b)
 	}
 }
+
+// Thinking artifacts with readable text persist as provider_artifact rows
+// with the text payload; redacted/unreadable artifacts are skipped without
+// consuming a seq.
+func TestChatStreamObserver_ThinkingArtifacts(t *testing.T) {
+	t.Parallel()
+	rec := &recordingChatStore{}
+	o := newChatStreamObserver(rec, "owner-x", "msg-x", nil)
+
+	readable := &sdkmodel.ProviderArtifact{
+		Provider: "anthropic",
+		Type:     "thinking",
+		Data:     json.RawMessage(`{"type":"thinking","thinking":"weigh the options"}`),
+	}
+	redacted := &sdkmodel.ProviderArtifact{
+		Provider: "anthropic",
+		Type:     "redacted_thinking",
+		Data:     json.RawMessage(`{"type":"redacted_thinking","data":"opaque"}`),
+	}
+	events := []memaxagent.Event{
+		{Kind: memaxagent.EventProviderArtifact, ProviderArtifact: redacted},
+		{Kind: memaxagent.EventProviderArtifact, ProviderArtifact: readable},
+		{Kind: memaxagent.EventProviderArtifact, ProviderArtifact: nil},
+	}
+	for _, ev := range events {
+		if err := o.observe(context.Background(), ev); err != nil {
+			t.Fatalf("observe: %v", err)
+		}
+	}
+
+	if len(rec.appended) != 1 {
+		t.Fatalf("got %d rows, want 1 (only the readable artifact persists)", len(rec.appended))
+	}
+	row := rec.appended[0]
+	if row.EventType != "provider_artifact" || row.Seq != 1 {
+		t.Fatalf("row = %+v, want provider_artifact seq=1", row)
+	}
+	var payload struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(row.Payload, &payload); err != nil {
+		t.Fatalf("payload: %v", err)
+	}
+	if payload.Text != "weigh the options" {
+		t.Fatalf("payload text = %q", payload.Text)
+	}
+}

@@ -64,6 +64,13 @@ type AnthropicConfig struct {
 	// Timeout is the per-stream request ceiling. Zero falls through
 	// to defaultStreamTimeout.
 	Timeout time.Duration
+
+	// Thinking optionally enables Anthropic's thinking mode for this
+	// client. Nil omits the thinking object entirely (provider default).
+	// Chat passes adaptive+summarized so the UI can surface readable
+	// reasoning; dream/batch paths leave it nil — reasoning tokens cost
+	// money and nothing renders them there.
+	Thinking *sdkanthropic.ThinkingConfig
 }
 
 // NewAnthropicFromEnv builds a model.Client backed by the SDK's
@@ -108,6 +115,26 @@ func NewAnthropicFromEnv(modelName string) *sdkanthropic.Client {
 // We deliberately keep this helper minimal — it's a pure constructor.
 // Per-tenant overrides (different keys per workspace, etc.) go above
 // this layer where the deployment knows the policy.
+// NewAnthropicChatFromEnv is NewAnthropicFromEnv plus thinking enabled
+// (adaptive + summarized display) — the chat surface renders the model's
+// readable reasoning as a first-class stream layer.
+func NewAnthropicChatFromEnv(modelName string) *sdkanthropic.Client {
+	key := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnv))
+	if key == "" {
+		return nil
+	}
+	return NewAnthropic(AnthropicConfig{
+		APIKey:  key,
+		Model:   modelName,
+		BaseURL: strings.TrimSpace(os.Getenv(anthropicBaseURLEnv)),
+		Timeout: defaultStreamTimeout,
+		Thinking: &sdkanthropic.ThinkingConfig{
+			Type:    sdkanthropic.ThinkingAdaptive,
+			Display: sdkanthropic.ThinkingDisplaySummarized,
+		},
+	})
+}
+
 func NewAnthropic(cfg AnthropicConfig) *sdkanthropic.Client {
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	if apiKey == "" {
@@ -129,6 +156,9 @@ func NewAnthropic(cfg AnthropicConfig) *sdkanthropic.Client {
 	}
 	if cfg.HTTPClient != nil {
 		opts = append(opts, sdkanthropic.WithHTTPClient(cfg.HTTPClient))
+	}
+	if cfg.Thinking != nil {
+		opts = append(opts, sdkanthropic.WithThinking(*cfg.Thinking))
 	}
 	return sdkanthropic.New(apiKey, cfg.Model, opts...)
 }

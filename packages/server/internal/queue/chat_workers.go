@@ -1207,6 +1207,13 @@ func (o *chatStreamObserver) withSignaler(s *chatstream.Signaler) *chatStreamObs
 }
 
 func (o *chatStreamObserver) observe(ctx context.Context, ev memaxagent.Event) error {
+	// Provider artifacts without readable reasoning (redacted/encrypted
+	// blocks, non-thinking artifact types) have nothing to render — skip
+	// the row entirely rather than persist empty payloads in the replay
+	// buffer.
+	if ev.Kind == memaxagent.EventProviderArtifact && readableThinking(ev.ProviderArtifact) == "" {
+		return nil
+	}
 	payload, err := marshalChatStreamPayload(ev)
 	if err != nil {
 		// Pathological — every relevant Event field is a JSON-
@@ -1259,6 +1266,23 @@ func (o *chatStreamObserver) observe(ctx context.Context, ev memaxagent.Event) e
 	return nil
 }
 
+// readableThinking extracts human-readable reasoning text from a provider
+// artifact. Anthropic thinking blocks carry it under "thinking" in the
+// artifact JSON; redacted_thinking and other providers' encrypted blocks
+// return "" (nothing to render).
+func readableThinking(artifact *sdkmodel.ProviderArtifact) string {
+	if artifact == nil || artifact.Type != "thinking" || len(artifact.Data) == 0 {
+		return ""
+	}
+	var fields struct {
+		Thinking string `json:"thinking"`
+	}
+	if err := json.Unmarshal(artifact.Data, &fields); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(fields.Thinking)
+}
+
 // marshalChatStreamPayload condenses an SDK event into a
 // stable JSON shape for chat_message_events.payload. Per-kind
 // fields are serialized only when non-nil so the payload stays
@@ -1292,6 +1316,10 @@ func marshalChatStreamPayload(ev memaxagent.Event) ([]byte, error) {
 				out["text"] = text
 			}
 		}
+	case memaxagent.EventProviderArtifact:
+		// Readable model reasoning (Anthropic thinking block). observe()
+		// already filtered unreadable artifacts, so text is non-empty here.
+		out["text"] = readableThinking(ev.ProviderArtifact)
 	case memaxagent.EventToolUse:
 		if ev.ToolUse != nil {
 			out["id"] = ev.ToolUse.ID

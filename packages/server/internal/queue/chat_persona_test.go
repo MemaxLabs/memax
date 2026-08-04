@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
@@ -98,5 +99,28 @@ func TestBuildChatSystemPromptInjectsPersona(t *testing.T) {
 		&model.ChatSession{PersonaID: bigID})
 	if !strings.Contains(prompt, "[persona truncated]") {
 		t.Fatalf("expected truncation marker for oversized persona")
+	}
+
+	// Multibyte content crossing the cap must truncate on a rune boundary.
+	cjk := strings.Repeat("\u6c49", chatPersonaMaxChars) // 3 bytes each
+	if err := s.UpsertPersona(&model.Persona{
+		ID: "33333333-3333-3333-3333-333333333333", OwnerID: "owner-a",
+		SourceAgent: "openclaw", SourceScope: "profile:cjk", SourceFilePath: "SOUL.md",
+		Name: "cjk", Content: cjk, ContentHash: "h3", Version: 1,
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed cjk persona: %v", err)
+	}
+	personas, _ = s.ListPersonas("owner-a")
+	var cjkID string
+	for _, p := range personas {
+		if p.Name == "cjk" {
+			cjkID = p.ID
+		}
+	}
+	prompt = w.buildChatSystemPrompt(t.Context(), "owner-a", nil,
+		&model.ChatSession{PersonaID: cjkID})
+	if !utf8.ValidString(prompt) {
+		t.Fatalf("truncation produced invalid UTF-8")
 	}
 }

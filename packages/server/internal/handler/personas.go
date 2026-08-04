@@ -11,8 +11,9 @@ import (
 )
 
 // Personas ride on ConfigsHandler: they are derived views over identity-class
-// agent configs (SOUL.md etc.) and applying one is just another config
-// upsert — same store, same events, same sync machinery.
+// agent configs (SOUL.md etc.). They bind to the memax agent (Agent Chat)
+// via chat_sessions.persona_id / the chat_default_persona_id setting;
+// restoring a revision writes back into the SOURCE config slot only.
 
 // syncPersonaFromConfig upserts the persona row derived from an
 // identity-class config. Best-effort: persona rows are derived state, so

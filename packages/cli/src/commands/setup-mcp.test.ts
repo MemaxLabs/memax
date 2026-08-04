@@ -88,4 +88,19 @@ describe("upsertYamlMcpServersBlock", () => {
     );
     expect(out).toBeNull();
   });
+
+  it("ignores comment lines when adopting child indentation", () => {
+    const existing = [
+      "mcp_servers:",
+      "  # local tools",
+      "    filesystem:",
+      '        command: "npx"',
+      "    memax:",
+      '        command: "old-memax"',
+    ].join("\n");
+    const out = upsertYamlMcpServersBlock(existing, ENTRY)!;
+    expect(out.match(/^ {4}memax:/gm)).toHaveLength(1);
+    expect(out).not.toContain("old-memax");
+    expect(out).toContain("  # local tools");
+  });
 });

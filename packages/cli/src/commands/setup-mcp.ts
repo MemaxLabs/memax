@@ -276,9 +276,12 @@ export function upsertYamlMcpServersBlock(
   }
 
   // Adopt the block's existing child indentation so we never mix widths.
+  // Comment lines are skipped — a `  # note` above 4-space children would
+  // otherwise poison the detected width and duplicate the memax entry.
   let childIndent = "  ";
   for (let i = rootIdx + 1; i < blockEnd; i++) {
-    if (lines[i].trim() === "") continue;
+    const trimmed = lines[i].trim();
+    if (trimmed === "" || trimmed.startsWith("#")) continue;
     childIndent = lines[i].match(/^\s*/)?.[0] ?? "  ";
     break;
   }

@@ -36,8 +36,16 @@ export function ChatPersonaPicker({ session }: { session: ChatSession }) {
     ? `${t.personas.pickerInherit} (${defaultPersona.name})`
     : `${t.personas.pickerInherit} (${t.personas.pickerNone})`;
 
+  // UI sentinel for the inherit state — an empty-string item value reads
+  // as "no selection" to select primitives, so the wire value "" maps to
+  // INHERIT_VALUE at this layer only.
+  const INHERIT_VALUE = "inherit";
+  const toWire = (v: string) => (v === INHERIT_VALUE ? "" : v);
+  const fromWire = (v: string | undefined) =>
+    !v || v === "" ? INHERIT_VALUE : v;
+
   const items: Record<string, string> = {
-    "": inheritLabel,
+    [INHERIT_VALUE]: inheritLabel,
     none: t.personas.pickerNone,
   };
   for (const p of personas) {
@@ -52,8 +60,10 @@ export function ChatPersonaPicker({ session }: { session: ChatSession }) {
         {t.personas.beta}
       </span>
       <Select
-        value={session.persona_id ?? ""}
-        onValueChange={(v: string) => patchSession.mutate({ personaId: v })}
+        value={fromWire(session.persona_id)}
+        onValueChange={(v: string) =>
+          patchSession.mutate({ personaId: toWire(v) })
+        }
         items={items}
       >
         <SelectTrigger
@@ -61,7 +71,7 @@ export function ChatPersonaPicker({ session }: { session: ChatSession }) {
           className="h-6 rounded-chrome bg-transparent border-none px-1.5 text-[12px] text-fg-3 hover:text-fg-1"
         />
         <SelectContent>
-          <SelectItem value="">{inheritLabel}</SelectItem>
+          <SelectItem value={INHERIT_VALUE}>{inheritLabel}</SelectItem>
           <SelectItem value="none">{t.personas.pickerNone}</SelectItem>
           {personas.map((p) => (
             <SelectItem key={p.id} value={p.id}>

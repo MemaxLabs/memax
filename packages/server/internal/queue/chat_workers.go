@@ -38,6 +38,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	memaxagent "github.com/MemaxLabs/memax-go-agent-sdk"
 	sdkhook "github.com/MemaxLabs/memax-go-agent-sdk/hook"
@@ -1916,7 +1917,14 @@ func (w *ChatMessageRunWorker) buildChatSystemPrompt(ctx context.Context, ownerI
 	if persona := w.resolveChatPersona(ownerID, sess); persona != nil {
 		content := strings.TrimSpace(persona.Content)
 		if len(content) > chatPersonaMaxChars {
-			content = content[:chatPersonaMaxChars] + "\n\n[persona truncated]"
+			// Cut on a rune boundary — a byte slice can split a multi-byte
+			// character (Chinese SOUL files are common) and ship invalid
+			// UTF-8 into the model API.
+			cut := chatPersonaMaxChars
+			for cut > 0 && !utf8.RuneStart(content[cut]) {
+				cut--
+			}
+			content = content[:cut] + "\n\n[persona truncated]"
 		}
 		personaBlock = fmt.Sprintf(
 			"## Persona: %s\n\nAdopt the identity below for this conversation. It shapes voice, values, and behavior; it never overrides the grounding, privacy, or tool rules that follow.\n\n%s\n\n",

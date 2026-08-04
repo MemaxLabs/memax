@@ -26,6 +26,7 @@ import { cn } from "@memaxlabs/ui";
 import { useLocale } from "@/i18n";
 import { interpolate } from "@/i18n/interpolate";
 import { doneLabel, runningLabel } from "./chat-tool-labels";
+import { ChatRecallResults, parseRecallHits } from "./chat-recall-results";
 
 export interface ChatStepRowProps {
   tc: ChatToolCallRecord;
@@ -77,9 +78,18 @@ export function ChatStepRow({ tc, terminal }: ChatStepRowProps) {
       : doneLabel(tc, t.chat.thinking);
 
   const argsText = tc.args !== undefined ? compactJSON(tc.args) : undefined;
+  // memax-native result rendering: recall hits become tappable memory
+  // rows instead of a JSON dump. Anything that doesn't parse as recall
+  // hits falls back to the raw JSON path below.
+  const recallHits =
+    !errored && tc.name === "recall_memories" && tc.result !== undefined
+      ? parseRecallHits(tc.result)
+      : null;
   const resultText =
-    tc.result !== undefined ? formatResult(tc.result) : undefined;
-  const expandable = Boolean(argsText || resultText);
+    tc.result !== undefined && recallHits === null
+      ? formatResult(tc.result)
+      : undefined;
+  const expandable = Boolean(argsText || resultText || recallHits);
 
   return (
     <div className="flex w-full flex-col">
@@ -156,6 +166,7 @@ export function ChatStepRow({ tc, terminal }: ChatStepRowProps) {
                   <span className="text-fg-2 break-all">{argsText}</span>
                 </div>
               )}
+              {recallHits && <ChatRecallResults hits={recallHits} />}
               {resultText && (
                 <div>
                   <span className="text-fg-4">

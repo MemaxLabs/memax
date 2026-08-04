@@ -2525,6 +2525,7 @@ export interface ChatStreamOptions {
  */
 export type ChatStreamEventName =
   | "message.text" // streaming token chunk on assistant content
+  | "model.thinking" // completed readable reasoning block (Anthropic thinking)
   | "message.tool_call" // tool invocation started
   | "message.tool_result" // tool invocation finished
   | "approval.required" // mutating tool needs user decision

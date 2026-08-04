@@ -5,6 +5,8 @@ github.com/Masterminds/semver/v3 v3.1.1 h1:hLg3sBzpNErnxhQtUy/mmLR2I9foDujNK030I
 github.com/Masterminds/semver/v3 v3.1.1/go.mod h1:VPu/7SZ7ePZ3QOrcuXROw5FAcLl4a0cBrbBpGY/8hQs=
 github.com/MemaxLabs/memax-go-agent-sdk v0.0.0-20260427223816-b9ed75236032 h1:0OQ5Nh6OWCF2cH7MWpbMRUSvanoU+t/PbJurNnaTFN0=
 github.com/MemaxLabs/memax-go-agent-sdk v0.0.0-20260427223816-b9ed75236032/go.mod h1:3gwC28HU+igj2X3xDc7GEsYPU1iLqRW2y5WlecO5Oo8=
+github.com/MemaxLabs/memax-go-agent-sdk v0.0.0-20260804225645-11eadf177eb9 h1:v++MMO0NzjXGxph2BpMmuSHXI3EGhH/Rncsy90OZi4s=
+github.com/MemaxLabs/memax-go-agent-sdk v0.0.0-20260804225645-11eadf177eb9/go.mod h1:3gwC28HU+igj2X3xDc7GEsYPU1iLqRW2y5WlecO5Oo8=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/abadojack/whatlanggo v1.0.1 h1:19N6YogDnf71CTHm3Mp2qhYfkRdyvbgwWdd2EPxJRG4=

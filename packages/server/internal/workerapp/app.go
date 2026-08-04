@@ -492,7 +492,8 @@ func buildChatAgentRuntime(s *store.PostgresStore, embedder embed.Embedder, brok
 	// at startup so the per-turn hot path does no allocation.
 	models := make(map[string]sdkmodel.Client, len(chatModelAllowlist))
 	for _, name := range chatModelAllowlist {
-		c := providers.NewAnthropicFromEnv(name)
+		// Thinking-enabled: chat renders readable reasoning as a stream layer.
+		c := providers.NewAnthropicChatFromEnv(name)
 		if c == nil {
 			// No ANTHROPIC_API_KEY — every entry will be nil,
 			// runtime stays unconfigured. Drop out clean.

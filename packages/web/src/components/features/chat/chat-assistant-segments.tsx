@@ -27,8 +27,10 @@ import type {
   ChatToolCallRecord,
 } from "@/hooks/use-chat-stream";
 import { useSmoothStream } from "@/hooks/use-smooth-stream";
+import { stabilizeStreamingMarkdown } from "@/lib/streaming-markdown";
 import { Markdown } from "@/components/features/markdown";
 import { ChatStepRow } from "./chat-step-row";
+import { ChatThinkingSegment } from "./chat-thinking-segment";
 import { AUTO_FOLD_THRESHOLD, FoldedToolSummary } from "./chat-thinking-pill";
 
 export interface ChatAssistantSegmentsProps {
@@ -49,6 +51,7 @@ export interface ChatAssistantSegmentsProps {
 // decide per-group whether to fold or render row-by-row.
 type RenderGroup =
   | { kind: "text"; segIdx: number; text: string }
+  | { kind: "thinking"; segIdx: number; text: string }
   | { kind: "tools"; segIdxStart: number; toolCalls: ChatToolCallRecord[] };
 
 export function ChatAssistantSegments({
@@ -70,6 +73,25 @@ export function ChatAssistantSegments({
   return (
     <div className="flex w-full flex-col gap-2">
       {groups.map((group) => {
+        if (group.kind === "thinking") {
+          // LIVE only while it's the newest activity of an in-flight
+          // turn — the moment text/tools follow (or the turn ends) it
+          // settles into the quiet collapsed row.
+          const isLatest = group.segIdx === segments.length - 1;
+          return (
+            <motion.div
+              key={`thinking-${group.segIdx}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.18 }}
+            >
+              <ChatThinkingSegment
+                text={group.text}
+                live={!terminal && isLatest}
+              />
+            </motion.div>
+          );
+        }
         if (group.kind === "text") {
           const isTrailing = group.segIdx === lastTextIndex;
           return (
@@ -135,9 +157,14 @@ export function ChatAssistantSegments({
 function TextSegment({ text, terminal }: { text: string; terminal: boolean }) {
   const display = useSmoothStream(text, { terminal });
   if (!display) return null;
+  // Mid-stream, the visible text routinely ends inside an unclosed
+  // fence/inline-code span; appending the minimal closers keeps the
+  // partial document parsing the way the final one will (no tail-of-
+  // message flash reflow). Terminal text renders verbatim.
+  const stable = terminal ? display : stabilizeStreamingMarkdown(display);
   return (
     <Markdown
-      content={display}
+      content={stable}
       className="chat-markdown text-[15px] leading-[24px] text-fg-1"
     />
   );
@@ -165,6 +192,10 @@ function groupSegments(
       });
       toolBuf = [];
       toolStartIdx = -1;
+    }
+    if (seg.kind === "thinking") {
+      out.push({ kind: "thinking", segIdx: i, text: seg.text });
+      return;
     }
     out.push({ kind: "text", segIdx: i, text: seg.text });
   });

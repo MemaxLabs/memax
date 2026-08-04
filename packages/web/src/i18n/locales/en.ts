@@ -240,6 +240,10 @@ export const en = {
       error: "{name} failed",
     },
     thinking: {
+      // Readable reasoning blocks (model.thinking wire events).
+      reasoningLive: "Thinking…",
+      reasoningLabel: "Thought",
+      recallNoHits: "No memories matched",
       // Per-tool in-flight labels (running…).
       recallMemoriesRunning: "Searching memories…",
       listMemoriesRunning: "Listing memories…",

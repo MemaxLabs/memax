@@ -68,7 +68,14 @@ export type ChatApprovalRecord = {
  */
 export type ChatStreamSegment =
   | { kind: "text"; text: string }
-  | { kind: "tool"; toolIdx: number };
+  | { kind: "tool"; toolIdx: number }
+  /**
+   * A completed readable reasoning block (wire: model.thinking).
+   * Blocks arrive whole at their chronological position — between
+   * the text/tool activity they preceded — so the UI renders a
+   * collapsible "thought" layer exactly where the model reasoned.
+   */
+  | { kind: "thinking"; text: string };
 
 export interface ChatStreamState {
   /** Aggregated assistant text. Empty while the model is still tooling. */
@@ -357,6 +364,19 @@ export function useChatStream({
             }
 
             switch (event) {
+              case "model.thinking": {
+                const thinking = firstString(payload, ["text"]);
+                if (!thinking) return;
+                setState((s) => ({
+                  ...s,
+                  segments: [
+                    ...s.segments,
+                    { kind: "thinking", text: thinking },
+                  ],
+                  lastEventId: seq ?? s.lastEventId,
+                }));
+                return;
+              }
               case "model.delta":
               case "message.text": {
                 const delta = firstString(payload, [

@@ -47,6 +47,7 @@ func TestTranslateChatStreamEvent_AllStoredTypes(t *testing.T) {
 		want   string
 	}{
 		{"assistant", "model.delta"},
+		{"provider_artifact", "model.thinking"},
 		{"tool_use", "tool.call"},
 		{"tool_result", "tool.result"},
 		{"approval_requested", "approval.required"},

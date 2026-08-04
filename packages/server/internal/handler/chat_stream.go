@@ -349,6 +349,10 @@ func translateChatStreamEvent(ev model.ChatMessageEvent) (chatStreamWireEvent, b
 		// SDK emits ev.Message.PlainText() in our payload
 		// under "text". The wire event is model.delta.
 		return chatStreamWireEvent{event: "model.delta", payload: ev.Payload}, true
+	case "provider_artifact":
+		// Readable model reasoning — the observer only persists artifacts
+		// with renderable thinking text (payload: {"text": ...}).
+		return chatStreamWireEvent{event: "model.thinking", payload: ev.Payload}, true
 	case "tool_use":
 		return chatStreamWireEvent{event: "tool.call", payload: ev.Payload}, true
 	case "tool_result":

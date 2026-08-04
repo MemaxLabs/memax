@@ -3,7 +3,7 @@ module github.com/MemaxLabs/memax/packages/server
 go 1.25.0
 
 require (
-	github.com/MemaxLabs/memax-go-agent-sdk v0.0.0-20260427223816-b9ed75236032
+	github.com/MemaxLabs/memax-go-agent-sdk v0.0.0-20260804225645-11eadf177eb9
 	github.com/abadojack/whatlanggo v1.0.1
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/aws/aws-sdk-go-v2 v1.41.5

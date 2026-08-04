@@ -218,6 +218,9 @@ export const zh: Translations = {
       error: "{name} 失败",
     },
     thinking: {
+      reasoningLive: "想一想…",
+      reasoningLabel: "思考过程",
+      recallNoHits: "没有找到相关记忆",
       recallMemoriesRunning: "正在搜索记忆…",
       listMemoriesRunning: "正在列出记忆…",
       getMemoryRunning: "正在读取记忆…",

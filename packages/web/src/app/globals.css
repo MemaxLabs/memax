@@ -1614,6 +1614,27 @@
   animation-delay: 0.3s;
 }
 
+/* Landing rotating headline — per-character blur-up entrance. Each char
+   rises from 0.35em with an 8px deblur, staggered at the callsite via
+   animation-delay. Pairs with a whole-line blur-out on the outgoing word
+   (inline transition in rotating-headline.tsx). */
+@keyframes landing-char-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.35em);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+.landing-char-in {
+  display: inline-block;
+  animation: landing-char-in 0.5s var(--ease-spring) both;
+}
+
 /* ─── Float Animation (for empty states) ─── */
 @keyframes float {
   0%,

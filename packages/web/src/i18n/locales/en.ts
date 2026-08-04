@@ -2045,8 +2045,31 @@ export const en = {
 
   // Landing page
   landing: {
-    headline: "Your memory.\nEvery AI.",
+    // ── Audience pivot — hero splits into personal / team branding ──
+    pivotPersonal: "For you",
+    pivotTeam: "For teams",
+    // Rotating headline. Line 1 is a fixed possessive prefix; line 2 cycles
+    // through hero*Words rendered into heroWordLine ({word} slot carries
+    // per-locale punctuation). Whole-line rotation keeps the layout stable —
+    // no mid-line wrap jumps at display sizes. "Every AI" lives in the
+    // subline, so the headline stays two short lines.
+    heroPersonalPrefix: "Your",
+    heroPersonalWords: [
+      "memory",
+      "second brain",
+      "AI persona",
+      "fleeting ideas",
+      "knowledge base",
+    ],
+    heroTeamPrefix: "Your team's",
+    heroTeamWords: ["shared brain", "context", "decisions", "project pulse"],
+    heroWordLine: "{word}.",
     sublineFull: "Dump anything. memax organizes. Every AI you use remembers.",
+    sublineTeam:
+      "Your teammate's AI knows what yours knows. Context, decisions, progress — shared across every agent.",
+    // Team pivot contact — sales-touch alongside the self-serve waitlist.
+    teamContactPrompt: "Setting up memax for your team?",
+    teamContactCta: "Talk to us",
     sublineSafe:
       "Shared memory across Claude Code, Cursor, and every AI agent.",
     openMemax: "Give your AI a memory",
@@ -2070,10 +2093,57 @@ export const en = {
     copyright: "\u00a9 2026 memaxlabs",
     you: "You",
     yourTeam: "Your Team",
-    // Safe version — terminal demo
+    // Scenario showcase — 4 coded recreations of real usage surfaces.
+    scenarioLabel: "memax, everywhere you work",
+    scenarioTabCli: "Terminal",
+    scenarioTabWeb: "Web",
+    // Claude Code scenario — agent recalls team context mid-session via MCP.
+    ccWindowTitle: "~/work/api — Claude Code",
+    ccPrompt: "why did we move access tokens to 1h expiry?",
+    // Claude Code renders MCP tools as `server - tool (MCP)(args)`; the
+    // ⎿ line matches the real collapsed-result chrome. TUI chrome strings
+    // stay English in every locale — the real tool isn't localized.
+    ccIntro: "I'll check the team hub for that decision.",
+    ccToolCall: 'memax - recall (MCP)(query: "auth token expiry decision")',
+    ccToolResult: "Found 3 memories (ctrl+r to expand)",
+    ccAnswer:
+      "April's security review flagged long-lived tokens — access tokens dropped to 1h, refresh stays 30 days. The full tradeoff analysis is in your team hub.",
+    ccCaption: "Claude Code pulls the answer from your memory, mid-session.",
+    // CLI scenario — content lines reuse the term* keys below.
+    cliWindowTitle: "~ — zsh",
+    cliCaption: "Push on Monday, recall on Thursday — from any shell.",
+    // Web scenario — the memory feed + ask demo, framed as memax.app.
+    webWindowTitle: "memax.app",
+    webCaption: "Browse, ask, and organize at memax.app.",
+    // Third-party agent scenario — any MCP agent taps the same brain.
+    agentWindowTitle: "OpenClaw",
+    agentUserMsg: "draft the onboarding doc for the new engineer",
+    agentToolCall: 'memax_recall("engineering onboarding")',
+    agentToolResult: "5 memories · team hub",
+    agentAnswer:
+      "Pulled your team's setup checklist, coding conventions, and deploy flow from memax — here's the draft.",
+    agentCaption:
+      "Any MCP agent — OpenClaw, Hermes, yours — taps the same brain.",
+    // Benchmark proof strip — numbers live in benchmark-strip.tsx, synced
+    // with docs.memax.app/quickstart/benchmarks.
+    benchLabel: "LongMemEval — the standard long-term memory benchmark",
+    benchRecallLabel: "retrieval recall@5",
+    benchQaLabel: "QA accuracy · #9 worldwide",
+    benchCostLabel: "per question, end-to-end",
+    benchLink: "See the full benchmarks",
+    // CLI terminal demo lines (used by the Terminal scenario). Output rows
+    // mirror packages/cli push/recall exactly — green "Saved" + bold title +
+    // gray meta, recall header with classification + score. Output labels
+    // stay English in every locale, like the real CLI.
     termPush:
       "Acme meeting moved to Thursday 2pm. Dashboard demo only, not the full pitch.",
-    termRemembered: "Remembered.",
+    cliSaved: "Saved",
+    cliSavedTitle: "Acme meeting → Thursday 2pm",
+    cliSavedMeta:
+      "id: mem_9f2e41  classification: episodic/evolving  source: cli",
+    cliResultClass: "[episodic/evolving]",
+    cliResultScore: "94%",
+    cliResultAge: "· 3d ago",
     termComment: "# Thursday morning, new session",
     termRecall: "Acme meeting",
     termAnswer: "Today 2pm. Dashboard demo only \u2014 skip the full pitch.",

@@ -1928,6 +1928,13 @@ export const zh: Translations = {
       "从 memax 拉到了你们团队的环境配置清单、代码规范和上线流程——草稿在下面。",
     agentCaption:
       "任何 MCP agent——OpenClaw、Hermes、你自己写的——共用同一个大脑。",
+    // Benchmark 数据条 —— 数字在 benchmark-strip.tsx 里，
+    // 与 docs.memax.app/quickstart/benchmarks 保持同步
+    benchLabel: "LongMemEval——长期记忆系统的公认基准",
+    benchRecallLabel: "检索 recall@5",
+    benchQaLabel: "问答准确率 · 全球第 9",
+    benchCostLabel: "每题端到端成本",
+    benchLink: "查看完整 benchmark",
     // CLI 终端 demo 文案（终端场景使用）
     termPush: "Acme 会议改到周四下午 2 点。只做 Dashboard 演示，不用完整方案。",
     termRemembered: "已记住。",

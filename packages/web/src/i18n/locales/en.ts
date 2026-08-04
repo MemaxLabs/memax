@@ -2120,6 +2120,13 @@ export const en = {
       "Pulled your team's setup checklist, coding conventions, and deploy flow from memax — here's the draft.",
     agentCaption:
       "Any MCP agent — OpenClaw, Hermes, yours — taps the same brain.",
+    // Benchmark proof strip — numbers live in benchmark-strip.tsx, synced
+    // with docs.memax.app/quickstart/benchmarks.
+    benchLabel: "LongMemEval — the standard long-term memory benchmark",
+    benchRecallLabel: "retrieval recall@5",
+    benchQaLabel: "QA accuracy · #9 worldwide",
+    benchCostLabel: "per question, end-to-end",
+    benchLink: "See the full benchmarks",
     // CLI terminal demo lines (used by the Terminal scenario)
     termPush:
       "Acme meeting moved to Thursday 2pm. Dashboard demo only, not the full pitch.",

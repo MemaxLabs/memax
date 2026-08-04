@@ -6,6 +6,7 @@ import { Globe, Moon, Sun } from "lucide-react";
 import { useLocale } from "@/i18n";
 import { useTheme } from "next-themes";
 import { DOCS_URL } from "@/lib/urls";
+import { BenchmarkStrip } from "./benchmark-strip";
 import { HeroWaitlist } from "./hero-waitlist";
 import { OverviewStrip } from "./overview-strip";
 import { PivotToggle, type LandingPivot } from "./pivot-toggle";
@@ -123,6 +124,10 @@ export function LandingFull() {
         {/* Scenario showcase — coded recreations of the four real surfaces
             (Claude Code, terminal, memax.app, third-party agent). */}
         <ScenarioShowcase />
+
+        {/* Benchmark proof — the showcase shows what memax looks like,
+            this shows how well it works. */}
+        <BenchmarkStrip />
       </div>
 
       {/* Footer — 12px */}

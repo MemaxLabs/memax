@@ -5,7 +5,7 @@ import { interpolate } from "@/i18n";
 
 // Slow enough to read, fast enough to feel alive. Swap is two-phase:
 // fade out → change word → fade in, so a single element carries the cycle.
-const ROTATE_MS = 2600;
+const ROTATE_MS = 1800;
 const SWAP_MS = 240;
 
 /**

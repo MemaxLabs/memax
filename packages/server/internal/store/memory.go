@@ -3397,3 +3397,133 @@ func (s *InMemoryStore) CreateBoardFeedback(f *model.BoardFeedback) error {
 	s.boardFeedback = append(s.boardFeedback, &stored)
 	return nil
 }
+
+func (s *InMemoryStore) DeleteBoardSlot(boardID, slotKey string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.boardSlots[boardID], slotKey)
+	return nil
+}
+
+// boardMemoryEligible mirrors the Postgres boardMemoryFilter: hub
+// content only, no archived rows, no onboarding seeds.
+func boardMemoryEligible(m *model.Memory, hubID string) bool {
+	return m.HubID == hubID && m.State != "archived" && m.SourceKind != "onboarding-seed"
+}
+
+func (s *InMemoryStore) ListRecentAgentActivityByHub(hubID string, since time.Time) ([]model.BoardAgentActivity, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	type agg struct {
+		activity model.BoardAgentActivity
+		latest   time.Time
+	}
+	groups := make(map[string]*agg)
+	for _, m := range s.memories {
+		if !boardMemoryEligible(m, hubID) || !m.CreatedAt.After(since) {
+			continue
+		}
+		slug := model.EffectiveMemoryAgentSlug(m)
+		g, ok := groups[slug]
+		if !ok {
+			g = &agg{activity: model.BoardAgentActivity{Slug: slug}}
+			groups[slug] = g
+		}
+		g.activity.Count++
+		if m.CreatedAt.After(g.latest) {
+			g.latest = m.CreatedAt
+			g.activity.LatestTitle = m.Title
+		}
+	}
+	var out []model.BoardAgentActivity
+	for _, g := range groups {
+		out = append(out, g.activity)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Slug < out[j].Slug
+	})
+	return out, nil
+}
+
+func (s *InMemoryStore) ListTopicActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardTopicActivity, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	counts := make(map[string]*model.BoardTopicActivity)
+	contributors := make(map[string]map[string]bool)
+	for _, mt := range s.memoryTopics {
+		m, ok := s.memories[mt.MemoryID]
+		if !ok || !boardMemoryEligible(m, hubID) || !m.CreatedAt.After(since) {
+			continue
+		}
+		topic, ok := s.topics[mt.TopicID]
+		if !ok {
+			continue
+		}
+		entry, ok := counts[topic.ID]
+		if !ok {
+			entry = &model.BoardTopicActivity{TopicID: topic.ID, Name: topic.Name, Icon: topic.Icon}
+			counts[topic.ID] = entry
+			contributors[topic.ID] = make(map[string]bool)
+		}
+		entry.RecentCount++
+		contributors[topic.ID][m.OwnerID] = true
+	}
+	var out []model.BoardTopicActivity
+	for id, entry := range counts {
+		entry.Contributors = len(contributors[id])
+		out = append(out, *entry)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].RecentCount != out[j].RecentCount {
+			return out[i].RecentCount > out[j].RecentCount
+		}
+		return out[i].Name < out[j].Name
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (s *InMemoryStore) CountMemoriesInHubSince(hubID string, since time.Time) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	count := 0
+	for _, m := range s.memories {
+		if boardMemoryEligible(m, hubID) && m.CreatedAt.After(since) {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (s *InMemoryStore) GetMemoryNear(hubID string, target time.Time, tolerance time.Duration) (*model.Memory, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var best *model.Memory
+	var bestDiff time.Duration
+	for _, m := range s.memories {
+		if !boardMemoryEligible(m, hubID) {
+			continue
+		}
+		diff := m.CreatedAt.Sub(target)
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > tolerance {
+			continue
+		}
+		if best == nil || diff < bestDiff {
+			best = m
+			bestDiff = diff
+		}
+	}
+	if best == nil {
+		return nil, nil
+	}
+	out := *best
+	return &out, nil
+}

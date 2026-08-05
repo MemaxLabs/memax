@@ -274,6 +274,8 @@ func InsertClient(pool *pgxpool.Pool) (*Client, error) {
 	river.AddWorker(workers, &stubChatEventPurgeWorker{})
 	river.AddWorker(workers, &stubChatApprovalSweepWorker{})
 	river.AddWorker(workers, &stubCopySeedMemoriesWorker{})
+	river.AddWorker(workers, &stubBoardSweepWorker{})
+	river.AddWorker(workers, &stubBoardRefreshWorker{})
 
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Logger:  slog.Default(),
@@ -319,6 +321,22 @@ type stubMemoryProcessWorker struct {
 }
 
 func (w *stubMemoryProcessWorker) Work(_ context.Context, _ *river.Job[MemoryProcessArgs]) error {
+	return fmt.Errorf("stub: should not be called in insert-only mode")
+}
+
+type stubBoardSweepWorker struct {
+	river.WorkerDefaults[BoardSweepArgs]
+}
+
+func (w *stubBoardSweepWorker) Work(_ context.Context, _ *river.Job[BoardSweepArgs]) error {
+	return fmt.Errorf("stub: should not be called in insert-only mode")
+}
+
+type stubBoardRefreshWorker struct {
+	river.WorkerDefaults[BoardRefreshArgs]
+}
+
+func (w *stubBoardRefreshWorker) Work(_ context.Context, _ *river.Job[BoardRefreshArgs]) error {
 	return fmt.Errorf("stub: should not be called in insert-only mode")
 }
 

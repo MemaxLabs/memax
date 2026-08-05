@@ -3,14 +3,11 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import type { BoardSlot } from "memax-sdk";
-import type { Translations } from "@/i18n/locales/en";
 import {
   hasBoardKindRenderer,
   registerBoardKind,
   renderBoardSlotBody,
 } from "./board-kind-registry";
-
-const t = {} as unknown as Translations;
 
 function slot(overrides: Partial<BoardSlot>): BoardSlot {
   return {
@@ -36,7 +33,6 @@ describe("board kind registry", () => {
           slot({
             payload: { description: "Plain text survives old clients." },
           }),
-          t,
         )}
       </div>,
     );
@@ -49,22 +45,22 @@ describe("board kind registry", () => {
 
   it("ignores non-string payload description in the fallback", () => {
     render(
-      <div>
-        {renderBoardSlotBody(slot({ payload: { description: 42 } }), t)}
-      </div>,
+      <div>{renderBoardSlotBody(slot({ payload: { description: 42 } }))}</div>,
     );
     expect(screen.getByText("A card from the future")).toBeTruthy();
     expect(screen.queryByText("42")).toBeNull();
   });
 
   it("prefers a registered renderer over the fallback", () => {
-    expect(hasBoardKindRenderer("trace")).toBe(false);
-    registerBoardKind("trace", {
-      body: (s) => <p>custom renderer for {s.kind}</p>,
-    });
-    expect(hasBoardKindRenderer("trace")).toBe(true);
+    // "custom_kind", not "trace": the Lane A renderers own the real
+    // kind names via the board-kinds side-effect module.
+    expect(hasBoardKindRenderer("custom_kind")).toBe(false);
+    registerBoardKind("custom_kind", ({ slot: s }) => (
+      <p>custom renderer for {s.kind}</p>
+    ));
+    expect(hasBoardKindRenderer("custom_kind")).toBe(true);
 
-    render(<div>{renderBoardSlotBody(slot({ kind: "trace" }), t)}</div>);
-    expect(screen.getByText("custom renderer for trace")).toBeTruthy();
+    render(<div>{renderBoardSlotBody(slot({ kind: "custom_kind" }))}</div>);
+    expect(screen.getByText("custom renderer for custom_kind")).toBeTruthy();
   });
 });

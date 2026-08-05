@@ -17,6 +17,11 @@ import (
 type DreamCycleWorker struct {
 	river.WorkerDefaults[DreamCycleArgs]
 	Engine *dreams.Engine
+	// RiverClient chains a board refresh after each successful dream so
+	// the board is fresh the moment the dream_run_completed receipt
+	// lands — the onboarding "first dream" reveal opens onto a board
+	// that already has cards. Nil-safe (insert-only stubs don't set it).
+	RiverClient *Client
 }
 
 func (w *DreamCycleWorker) Timeout(*river.Job[DreamCycleArgs]) time.Duration {
@@ -28,8 +33,16 @@ func (w *DreamCycleWorker) Work(ctx context.Context, job *river.Job[DreamCycleAr
 		return river.JobCancel(fmt.Errorf("dream engine not configured"))
 	}
 	slog.InfoContext(ctx, "dream cycle started", "hub_id", job.Args.HubID)
-	_, err := w.Engine.RunForActor(ctx, job.Args.HubID, job.Args.TriggeredBy)
-	return err
+	if _, err := w.Engine.RunForActor(ctx, job.Args.HubID, job.Args.TriggeredBy); err != nil {
+		return err
+	}
+	if w.RiverClient != nil {
+		if err := w.RiverClient.Insert(ctx, BoardRefreshArgs{HubID: job.Args.HubID}, nil); err != nil {
+			// The nightly sweep will catch up — don't fail the dream.
+			slog.WarnContext(ctx, "failed to chain board refresh", "hub_id", job.Args.HubID, "error", err)
+		}
+	}
+	return nil
 }
 
 // --- Nightly Dream Sweep Worker ---

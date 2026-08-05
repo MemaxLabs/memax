@@ -1,32 +1,32 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { BoardSlot } from "memax-sdk";
 import { BoardCardFallbackBody, BoardKindLabel } from "@memaxlabs/ui";
-import type { Translations } from "@/i18n/locales/en";
 
 /**
- * L3 kind registry (plan 25). Each board kind registers how its
- * payload composes the L1 atoms into a card body. Adding a kind is
- * additive: one renderer entry here + a producer server-side; nothing
- * else in the pipeline changes.
+ * L3 kind registry (plan 25). Each board kind registers the component
+ * that composes its payload from the L1 atoms. Adding a kind is
+ * additive: one component entry here + a producer server-side; nothing
+ * else in the pipeline changes. Renderers are React components so they
+ * can use hooks (useLocale, useRouter) — the registry itself stays a
+ * plain map.
  *
- * P0 ships the registry mechanism and the unknown-kind fallback only —
- * concrete kinds (行迹, 回声, 等你…) land with their Lane A/B
- * producers in P1/P2, each with a kitchen specimen.
+ * Lane A kinds (trace/pulse/capsule/week) register from
+ * board-kinds.tsx; BoardView side-effect-imports that module so
+ * registration precedes first render.
  */
-export interface BoardKindRenderer {
-  /**
-   * The persistent card body (kind label + atoms). Live actions are
-   * composed by BoardView from the shared action row, not here.
-   */
-  body: (slot: BoardSlot, t: Translations) => ReactNode;
+export interface BoardKindBodyProps {
+  slot: BoardSlot;
 }
 
-const REGISTRY = new Map<string, BoardKindRenderer>();
+const REGISTRY = new Map<string, ComponentType<BoardKindBodyProps>>();
 
-export function registerBoardKind(kind: string, renderer: BoardKindRenderer) {
-  REGISTRY.set(kind, renderer);
+export function registerBoardKind(
+  kind: string,
+  Body: ComponentType<BoardKindBodyProps>,
+) {
+  REGISTRY.set(kind, Body);
 }
 
 /**
@@ -35,7 +35,7 @@ export function registerBoardKind(kind: string, renderer: BoardKindRenderer) {
  * still shows its title + description literally instead of dropping
  * the card.
  */
-function fallbackBody(slot: BoardSlot): ReactNode {
+function FallbackBody({ slot }: BoardKindBodyProps) {
   const description =
     typeof slot.payload?.description === "string"
       ? slot.payload.description
@@ -48,13 +48,9 @@ function fallbackBody(slot: BoardSlot): ReactNode {
   );
 }
 
-export function renderBoardSlotBody(
-  slot: BoardSlot,
-  t: Translations,
-): ReactNode {
-  const renderer = REGISTRY.get(slot.kind);
-  if (renderer) return renderer.body(slot, t);
-  return fallbackBody(slot);
+export function renderBoardSlotBody(slot: BoardSlot): ReactNode {
+  const Body = REGISTRY.get(slot.kind) ?? FallbackBody;
+  return <Body key={slot.slot_key} slot={slot} />;
 }
 
 /** True when the slot's kind has a dedicated renderer (vs the fallback). */

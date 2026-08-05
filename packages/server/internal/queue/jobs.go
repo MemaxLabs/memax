@@ -418,3 +418,38 @@ func (ChatEventPurgeArgs) InsertOpts() river.InsertOpts {
 		UniqueOpts:  river.UniqueOpts{ByPeriod: 30 * time.Minute},
 	}
 }
+
+// --- Board Refresh Jobs (plan 25, Lane A) ---
+// BoardSweepArgs fans out BoardRefreshArgs for every dreamable hub
+// once a day; BoardRefreshArgs recomputes one hub's Lane A cards.
+// Deterministic and cheap (pure SQL), so failures just wait for the
+// next sweep. Rides the dreams queue: board refreshes are part of the
+// same nightly intelligence cycle and don't need their own capacity.
+
+type BoardSweepArgs struct{}
+
+func (BoardSweepArgs) Kind() string { return "board_sweep" }
+
+func (BoardSweepArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue:       "dreams",
+		MaxAttempts: 1,
+	}
+}
+
+type BoardRefreshArgs struct {
+	HubID string `json:"hub_id" river:"unique"`
+}
+
+func (BoardRefreshArgs) Kind() string { return "board_refresh" }
+
+func (BoardRefreshArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue:       "dreams",
+		MaxAttempts: 2,
+		UniqueOpts: river.UniqueOpts{
+			ByArgs:   true,
+			ByPeriod: 10 * time.Minute, // dedupe sweep vs dream-chain triggers
+		},
+	}
+}

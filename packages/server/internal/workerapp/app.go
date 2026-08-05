@@ -214,9 +214,15 @@ func New(ctx context.Context) (*App, error) {
 		ObjectStore:   blobStore,
 	})
 	river.AddWorker(workers, &queue.DreamCycleWorker{
-		Engine: dreamEngine,
+		Engine:      dreamEngine,
+		RiverClient: insertClient,
 	})
 	river.AddWorker(workers, &queue.NightlyDreamSweepWorker{
+		Store:       s,
+		RiverClient: insertClient,
+	})
+	river.AddWorker(workers, &queue.BoardRefreshWorker{Store: s})
+	river.AddWorker(workers, &queue.BoardSweepWorker{
 		Store:       s,
 		RiverClient: insertClient,
 	})
@@ -1916,6 +1922,17 @@ func configurePeriodicJobs(dreamsEnabled bool) []*river.PeriodicJob {
 		))
 		slog.Info("nightly dream sweep scheduled (every 24h)")
 	}
+
+	// Lane A board refresh (plan 25) — deterministic, no LLM, so it
+	// runs for every hub regardless of the dreams engine being up.
+	periodicJobs = append(periodicJobs, river.NewPeriodicJob(
+		river.PeriodicInterval(24*time.Hour),
+		func() (river.JobArgs, *river.InsertOpts) {
+			return queue.BoardSweepArgs{}, nil
+		},
+		&river.PeriodicJobOpts{RunOnStart: true},
+	))
+	slog.Info("board sweep scheduled (every 24h, run on start)")
 
 	// Send invite reminders for invites expiring within 48h (every 12 hours)
 	periodicJobs = append(periodicJobs, river.NewPeriodicJob(

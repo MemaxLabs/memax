@@ -21,7 +21,7 @@ export const en = {
     topicTreeRegion: "Topics",
     overview: "Overview",
     tabs: {
-      brain: "Brain",
+      brain: "Ask memax",
       memories: "Memories",
       agents: "Agents",
       inbox: "Inbox",
@@ -743,7 +743,7 @@ export const en = {
 
   // Mobile dock navigation
   dock: {
-    brain: "Brain",
+    brain: "Ask",
     topics: "Topics",
     inbox: "Inbox",
     recentTitle: "Recent",

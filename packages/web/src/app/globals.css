@@ -1614,6 +1614,17 @@
   animation-delay: 0.3s;
 }
 
+/* Page-level horizontal pan kill (design rule: wide content scrolls in
+   its own container, the page never scrolls sideways). overflow-x: clip
+   (not hidden) so no phantom horizontal scroll context is created and
+   vertical scrolling/position: sticky are unaffected. Belt-and-braces
+   over the per-surface min-w-0 / overflow-x-auto fixes — one escaped
+   wide element must not put the whole app on a horizontal axis. */
+html,
+body {
+  overflow-x: clip;
+}
+
 /* Landing rotating headline — per-character blur-up entrance. Each char
    rises from 0.35em with an 8px deblur, staggered at the callsite via
    animation-delay. Pairs with a whole-line blur-out on the outgoing word

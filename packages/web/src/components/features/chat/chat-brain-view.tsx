@@ -63,6 +63,7 @@ import { ChatSessionsList } from "./chat-sessions-list";
 import { ChatThread, PendingThinkingRow } from "./chat-thread";
 import { ChatComposer, type ChatComposerHandle } from "./chat-composer";
 import { ChatPersonaPicker } from "./chat-persona-picker";
+import { useChatDraft } from "@/hooks/use-chat-draft";
 
 function newIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -179,7 +180,9 @@ export function ChatBrainView({ routeSessionId }: ChatBrainViewProps = {}) {
   // navigation events update the URL and the prop flows back in.
   const activeSessionId = routeSessionId ?? null;
 
-  const [composerValue, setComposerValue] = useState("");
+  // Draft persists per session (sessionStorage) — half-typed text
+  // survives navigating away and back. Cleared on send below.
+  const [composerValue, setComposerValue] = useChatDraft(activeSessionId);
   const [inflightAssistantId, setInflightAssistantId] = useState<string | null>(
     null,
   );
@@ -339,7 +342,15 @@ export function ChatBrainView({ routeSessionId }: ChatBrainViewProps = {}) {
         setPendingSendText(null);
       }
     },
-    [activeSessionId, createSession, router, sendInSession, sendMessage, user],
+    [
+      activeSessionId,
+      createSession,
+      router,
+      sendInSession,
+      sendMessage,
+      setComposerValue,
+      user,
+    ],
   );
 
   const onSendFromComposer = useCallback(() => {
@@ -438,20 +449,26 @@ export function ChatBrainView({ routeSessionId }: ChatBrainViewProps = {}) {
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-4 py-8">
             <div className="mx-auto flex w-full max-w-[640px] flex-col items-center gap-6">
               <ChatEmptyState onPrompt={onPromptSuggestion} />
-              <div className="w-full">
-                <ChatCapabilitiesStrip
-                  tools={toolsQuery.data ?? []}
-                  enabledToolNames={undefined}
-                />
-                <ChatComposer
-                  value={composerValue}
-                  onChange={setComposerValue}
-                  onSend={onSendFromComposer}
-                  inflightAssistantId={inflightAssistantId}
-                  onCancel={onCancel}
-                  composerRef={composerRef}
-                />
-              </div>
+              {/* Desktop keeps the intro + composer as one centered
+                  block. Mobile pins the composer in the shared bottom
+                  slot below — matching the global bar's bottom-anchored
+                  grammar so the two input surfaces read consistent. */}
+              {!isMobile && (
+                <div className="w-full">
+                  <ChatCapabilitiesStrip
+                    tools={toolsQuery.data ?? []}
+                    enabledToolNames={undefined}
+                  />
+                  <ChatComposer
+                    value={composerValue}
+                    onChange={setComposerValue}
+                    onSend={onSendFromComposer}
+                    inflightAssistantId={inflightAssistantId}
+                    onCancel={onCancel}
+                    composerRef={composerRef}
+                  />
+                </div>
+              )}
             </div>
           </div>
         ) : showEmpty && pendingSendText ? (
@@ -472,7 +489,7 @@ export function ChatBrainView({ routeSessionId }: ChatBrainViewProps = {}) {
             onInflightAssistantChange={setInflightAssistantId}
           />
         )}
-        {(!showEmpty || pendingSendText) && (
+        {(!showEmpty || pendingSendText || isMobile) && (
           <div className="shrink-0 px-3 pb-4 pt-2 sm:px-6 sm:pb-6">
             <div className="mx-auto max-w-[640px]">
               <ChatCapabilitiesStrip

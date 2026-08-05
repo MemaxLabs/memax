@@ -23,7 +23,7 @@ export const zh: Translations = {
     topicTreeRegion: "话题",
     overview: "概览",
     tabs: {
-      brain: "大脑",
+      brain: "问问 memax",
       memories: "记忆",
       agents: "AI 助手",
       inbox: "收件箱",
@@ -679,7 +679,7 @@ export const zh: Translations = {
   },
 
   dock: {
-    brain: "Brain",
+    brain: "问问",
     topics: "主题",
     inbox: "收件箱",
     recentTitle: "最近",

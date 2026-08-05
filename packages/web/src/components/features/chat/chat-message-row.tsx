@@ -146,7 +146,7 @@ export function ChatMessageRow({
           // The thinking pill is suppressed (showPill is false in
           // this branch) so step rows appear at their actual
           // arrival positions instead of being stacked above.
-          <div className="w-full px-1">
+          <div className="w-full min-w-0 px-1">
             <ChatAssistantSegments
               segments={segments}
               toolCalls={toolCalls}
@@ -164,7 +164,7 @@ export function ChatMessageRow({
                   // matches the avatar icon's center to the pixel.
                   // px-1 stays so the answer doesn't bleed to the
                   // very edge of the message column.
-                  "w-full px-1 text-fg-1 leading-[24px]",
+                  "w-full min-w-0 px-1 text-fg-1 leading-[24px]",
             )}
           >
             {content ? (

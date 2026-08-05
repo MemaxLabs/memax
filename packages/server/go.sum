@@ -9,6 +9,8 @@ github.com/MemaxLabs/memax-go-agent-sdk v0.0.0-20260804225645-11eadf177eb9 h1:v+
 github.com/MemaxLabs/memax-go-agent-sdk v0.0.0-20260804225645-11eadf177eb9/go.mod h1:3gwC28HU+igj2X3xDc7GEsYPU1iLqRW2y5WlecO5Oo8=
 github.com/MemaxLabs/memax-go-agent-sdk v0.0.0-20260805020045-5276d35b948d h1:sDs3TrGscJl5nMYTN6FP+7xX5jlvCTZkvtLM4ZM5mgQ=
 github.com/MemaxLabs/memax-go-agent-sdk v0.0.0-20260805020045-5276d35b948d/go.mod h1:3gwC28HU+igj2X3xDc7GEsYPU1iLqRW2y5WlecO5Oo8=
+github.com/MemaxLabs/memax-go-agent-sdk v0.0.0-20260805020937-a31b0f19719e h1:cQKotb9F9jS0gA8NytnshUrFDmO7JxNhGgBWO17b/LQ=
+github.com/MemaxLabs/memax-go-agent-sdk v0.0.0-20260805020937-a31b0f19719e/go.mod h1:3gwC28HU+igj2X3xDc7GEsYPU1iLqRW2y5WlecO5Oo8=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/abadojack/whatlanggo v1.0.1 h1:19N6YogDnf71CTHm3Mp2qhYfkRdyvbgwWdd2EPxJRG4=

@@ -1182,7 +1182,27 @@ type chatStreamObserver struct {
 	messageID string
 	seq       *chatTurnSeq
 	signaler  *chatstream.Signaler // optional; nil-safe
+
+	// Thinking-delta coalescing. Deltas stream in at token cadence;
+	// persisting each one as a replay row would bloat the buffer, so
+	// the observer accumulates and flushes a partial row at most every
+	// thinkingFlushInterval / thinkingFlushChars. Each partial carries
+	// the FULL text so far (idempotent — the client replaces, never
+	// appends), and the completed artifact row carries the final text
+	// plus duration_ms. OnEvent is invoked sequentially per run, so
+	// these fields need no locking.
+	thinkingBuf        strings.Builder
+	thinkingStart      time.Time
+	thinkingLastFlush  time.Time
+	thinkingFlushedLen int
 }
+
+// Coalescing tuning: flush at most ~1.4×/sec or every 400 new chars —
+// live enough to read as streaming, cheap enough for the replay buffer.
+const (
+	thinkingFlushInterval = 700 * time.Millisecond
+	thinkingFlushChars    = 400
+)
 
 func newChatStreamObserver(s store.Store, ownerID, messageID string, seq *chatTurnSeq) *chatStreamObserver {
 	if seq == nil {
@@ -1207,12 +1227,48 @@ func (o *chatStreamObserver) withSignaler(s *chatstream.Signaler) *chatStreamObs
 }
 
 func (o *chatStreamObserver) observe(ctx context.Context, ev memaxagent.Event) error {
+	// Thinking deltas coalesce in memory and flush partial rows on a
+	// time/size budget — see the struct comment.
+	if ev.Kind == memaxagent.EventThinkingDelta {
+		if ev.ThinkingDelta == "" {
+			return nil
+		}
+		now := time.Now()
+		if o.thinkingBuf.Len() == 0 {
+			o.thinkingStart = now
+			o.thinkingLastFlush = now
+		}
+		o.thinkingBuf.WriteString(ev.ThinkingDelta)
+		grown := o.thinkingBuf.Len() - o.thinkingFlushedLen
+		if grown < thinkingFlushChars && now.Sub(o.thinkingLastFlush) < thinkingFlushInterval {
+			return nil
+		}
+		o.thinkingLastFlush = now
+		o.thinkingFlushedLen = o.thinkingBuf.Len()
+		return o.appendRow(ctx, "thinking_delta", map[string]any{
+			"text":    o.thinkingBuf.String(),
+			"partial": true,
+		})
+	}
 	// Provider artifacts without readable reasoning (redacted/encrypted
 	// blocks, non-thinking artifact types) have nothing to render — skip
 	// the row entirely rather than persist empty payloads in the replay
 	// buffer.
-	if ev.Kind == memaxagent.EventProviderArtifact && readableThinking(ev.ProviderArtifact) == "" {
-		return nil
+	if ev.Kind == memaxagent.EventProviderArtifact {
+		text := readableThinking(ev.ProviderArtifact)
+		if text == "" {
+			return nil
+		}
+		payload := map[string]any{"text": text}
+		if !o.thinkingStart.IsZero() {
+			payload["duration_ms"] = time.Since(o.thinkingStart).Milliseconds()
+		}
+		// Reset the accumulator — interleaved thinking can produce
+		// multiple blocks per turn, each with its own duration.
+		o.thinkingBuf.Reset()
+		o.thinkingFlushedLen = 0
+		o.thinkingStart = time.Time{}
+		return o.appendRow(ctx, "provider_artifact", payload)
 	}
 	payload, err := marshalChatStreamPayload(ev)
 	if err != nil {
@@ -1262,6 +1318,33 @@ func (o *chatStreamObserver) observe(ctx context.Context, ev memaxagent.Event) e
 	// 250ms poll fallback. We publish AFTER the DB write
 	// commits so a wake-up never arrives before the row is
 	// readable.
+	o.signaler.Notify(ctx, o.messageID)
+	return nil
+}
+
+// appendRow allocates the next seq, persists one replay row, and wakes
+// SSE subscribers — the single write path every observer event uses.
+func (o *chatStreamObserver) appendRow(ctx context.Context, eventType string, payload map[string]any) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		slog.WarnContext(ctx, "chat stream observe: marshal payload failed",
+			"message_id", o.messageID, "kind", eventType, "err", err)
+		return nil
+	}
+	seq, release := o.seq.LockedNext()
+	defer release()
+	row := &model.ChatMessageEvent{
+		MessageID: o.messageID,
+		Seq:       seq,
+		EventType: eventType,
+		Payload:   body,
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := o.store.AppendChatMessageEvent(ctx, o.ownerID, row); err != nil {
+		slog.ErrorContext(ctx, "chat stream observe: AppendChatMessageEvent failed",
+			"message_id", o.messageID, "seq", seq, "kind", eventType, "err", err)
+		return nil
+	}
 	o.signaler.Notify(ctx, o.messageID)
 	return nil
 }
@@ -1316,10 +1399,6 @@ func marshalChatStreamPayload(ev memaxagent.Event) ([]byte, error) {
 				out["text"] = text
 			}
 		}
-	case memaxagent.EventProviderArtifact:
-		// Readable model reasoning (Anthropic thinking block). observe()
-		// already filtered unreadable artifacts, so text is non-empty here.
-		out["text"] = readableThinking(ev.ProviderArtifact)
 	case memaxagent.EventToolUse:
 		if ev.ToolUse != nil {
 			out["id"] = ev.ToolUse.ID

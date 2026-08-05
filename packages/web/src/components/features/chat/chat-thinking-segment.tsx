@@ -17,18 +17,22 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@memaxlabs/ui";
-import { useLocale } from "@/i18n";
+import { useLocale, useInterpolate } from "@/i18n";
 import { Markdown } from "@/components/features/markdown";
 
 export function ChatThinkingSegment({
   text,
   live,
+  durationMs,
 }: {
   text: string;
-  /** True while this block is the latest activity of an in-flight turn. */
+  /** True while this block is streaming as the newest in-flight activity. */
   live: boolean;
+  /** Set once the block completes; drives the "Thought for Xs" label. */
+  durationMs?: number;
 }) {
   const { t } = useLocale();
+  const interpolate = useInterpolate();
   const [expanded, setExpanded] = useState(false);
 
   if (live) {
@@ -65,7 +69,11 @@ export function ChatThinkingSegment({
             expanded && "rotate-90",
           )}
         />
-        {t.chat.thinking.reasoningLabel}
+        {durationMs !== undefined
+          ? interpolate(t.chat.thinking.reasoningFor, {
+              s: Math.max(1, Math.round(durationMs / 1000)),
+            })
+          : t.chat.thinking.reasoningLabel}
       </button>
       {expanded && (
         <div className="ml-4 mt-1 border-l border-border/30 pl-3 animate-content-ready">

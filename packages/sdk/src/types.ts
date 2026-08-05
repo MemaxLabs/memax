@@ -657,7 +657,7 @@ export type BoardStatus = "active" | "cooking" | "paused";
 export type BoardSlotState = "fresh" | "seen" | "resolved" | "dismissed";
 
 /** Actions accepted by the slot resolve endpoint. Mirrors the Go handler's allow-list. */
-export type BoardSlotAction = "ack" | "dismiss" | "feedback";
+export type BoardSlotAction = "ack" | "dismiss" | "feedback" | "choose";
 
 export type BoardFeedbackVerdict = "accurate" | "inaccurate";
 

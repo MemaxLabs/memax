@@ -172,7 +172,14 @@ const (
 	// pending via /dismiss or /expire and is scaffolded here for the
 	// first digest producer (weekly dream digest, release notes, etc.).
 	NotificationKindChecklist = "checklist"
-	NotificationKindDigest    = "digest"
+
+	// NotificationKindDecisionGate — an agent called
+	// memax_request_decision and is waiting on the user. Decision
+	// kind; the ping companion of the board's 等你 card. Resolving
+	// either surface resolves both (linked via source_kind +
+	// source_id = the board slot key).
+	NotificationKindDecisionGate = "decision_gate"
+	NotificationKindDigest       = "digest"
 )
 
 // NotificationSourceKind is the producer identity a notification row
@@ -191,7 +198,12 @@ const (
 	// the Phase 1 reviews table used for its partial unique index.
 	NotificationSourceTopicReview = "topic_review"
 	NotificationSourceDreamRun    = "dream_run"
-	NotificationSourceHubInvite   = "hub_invite"
+
+	// NotificationSourceDecisionGate keys decision_gate rows on the
+	// board slot they mirror (source_id = slot key), making creation
+	// idempotent per gate and resolution linkable from the board side.
+	NotificationSourceDecisionGate = "decision_gate"
+	NotificationSourceHubInvite    = "hub_invite"
 	// NotificationSourceHubInviteAccepted keys the invitee's
 	// self-receipt for a successful accept. source_id is the
 	// invite id, so retries are idempotent against
@@ -545,13 +557,13 @@ type DigestItem struct {
 // Future team-hub onboarding sets "team". Cross-hub receipts
 // (dream_run_completed, etc.) leave it empty.
 type ChecklistPayload struct {
-	Title            string          `json:"title"` // required
-	Description      string          `json:"description,omitempty"`
-	Items            []ChecklistItem `json:"items"`                   // cap 20
-	RequiredIDs      []string        `json:"required_ids,omitempty"`  // subset of items[].id
-	CollapseHint     string          `json:"collapse_hint,omitempty"` // strip label when compact
-	PinContext       string          `json:"pin_context,omitempty"`   // "memories_hero" | "inbox_hero" | ""
-	PinScopeHubKind  string          `json:"pin_scope_hub_kind,omitempty"`
+	Title           string          `json:"title"` // required
+	Description     string          `json:"description,omitempty"`
+	Items           []ChecklistItem `json:"items"`                   // cap 20
+	RequiredIDs     []string        `json:"required_ids,omitempty"`  // subset of items[].id
+	CollapseHint    string          `json:"collapse_hint,omitempty"` // strip label when compact
+	PinContext      string          `json:"pin_context,omitempty"`   // "memories_hero" | "inbox_hero" | ""
+	PinScopeHubKind string          `json:"pin_scope_hub_kind,omitempty"`
 }
 
 // DigestPayload is the wire shape for kind=digest. Same validation as

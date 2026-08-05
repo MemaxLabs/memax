@@ -79,6 +79,11 @@ var notificationDecisionKinds = map[string]bool{
 	// (every required item complete) bypasses the allow-list entirely
 	// and writes ResolutionAppliedAuto directly from CompleteItem.
 	model.NotificationKindChecklist: true,
+	// Plan 25 P2 — decision gates. The real choice happens on the
+	// board card (which records the option + writes the decision
+	// memory); the notification accepts only dismiss, plus "resolved"
+	// applied server-side when the board slot resolves.
+	model.NotificationKindDecisionGate: true,
 }
 
 // notificationResolveAllowList maps each decision kind to the resolve
@@ -87,6 +92,9 @@ var notificationDecisionKinds = map[string]bool{
 // actionToResolutionByKind map. When a new decision kind lands, all
 // three sources must be updated in the same PR.
 var notificationResolveAllowList = map[string]map[string]string{
+	model.NotificationKindDecisionGate: {
+		"dismiss": "dismissed",
+	},
 	model.NotificationKindReviewContradiction: {
 		"keep_a":    "kept_a",
 		"keep_b":    "kept_b",

@@ -72,11 +72,11 @@ type emailOTPRequest struct {
 // intentionally do not include whether the email is registered — the
 // response shape is the same for all inputs.
 type emailOTPRequestResponse struct {
-	Status    string `json:"status"`               // "sent"
-	ExpiresIn int    `json:"expires_in"`           // seconds, == emailOTPTTL
-	Email     string `json:"email"`                // echoed canonical email, useful for the UI
-	Cooldown  int    `json:"cooldown,omitempty"`   // suggested seconds before resend; advisory
-	DevCode   string `json:"dev_code,omitempty"`   // present ONLY when MEMAX_EMAIL_OTP_DEV_RETURN=1 — local dev convenience
+	Status    string `json:"status"`             // "sent"
+	ExpiresIn int    `json:"expires_in"`         // seconds, == emailOTPTTL
+	Email     string `json:"email"`              // echoed canonical email, useful for the UI
+	Cooldown  int    `json:"cooldown,omitempty"` // suggested seconds before resend; advisory
+	DevCode   string `json:"dev_code,omitempty"` // present ONLY when MEMAX_EMAIL_OTP_DEV_RETURN=1 — local dev convenience
 }
 
 // emailOTPVerifyRequest is the public request body for POST /v1/auth/email/verify.

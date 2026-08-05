@@ -203,16 +203,16 @@ type FetchResult struct {
 //
 // Errors fall into three buckets:
 //
-//   1. URL-level rejection — bad scheme, userinfo, blocked
-//      host, blocked literal IP. Returns one of the Err*
-//      sentinels from validate.go.
-//   2. Network rejection — dial-time IP block, DNS failure,
-//      TCP/TLS error, redirect-loop, timeout. Wrapped with
-//      "safefetch:" prefix.
-//   3. Response-read error — body read fails, server
-//      disconnects mid-stream. Wrapped with "safefetch:" prefix.
-//      The partial body collected before the failure is NOT
-//      returned (the caller can't trust an incomplete read).
+//  1. URL-level rejection — bad scheme, userinfo, blocked
+//     host, blocked literal IP. Returns one of the Err*
+//     sentinels from validate.go.
+//  2. Network rejection — dial-time IP block, DNS failure,
+//     TCP/TLS error, redirect-loop, timeout. Wrapped with
+//     "safefetch:" prefix.
+//  3. Response-read error — body read fails, server
+//     disconnects mid-stream. Wrapped with "safefetch:" prefix.
+//     The partial body collected before the failure is NOT
+//     returned (the caller can't trust an incomplete read).
 func (c *Client) Fetch(ctx context.Context, rawURL string) (*FetchResult, error) {
 	if c == nil {
 		return nil, errors.New("safefetch: nil Client")

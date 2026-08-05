@@ -29,7 +29,7 @@ type InMemoryStore struct {
 	agentConfigs                 map[string]*model.AgentConfig
 	personas                     map[string]*model.Persona
 	userPreferences              map[string]map[string]any
-	personaRevisions             map[string][]*model.PersonaRevision // personaID -> revisions
+	personaRevisions             map[string][]*model.PersonaRevision    // personaID -> revisions
 	boards                       map[string]*model.Board                // boardID -> board
 	boardSlots                   map[string]map[string]*model.BoardSlot // boardID -> slotKey -> slot
 	boardFeedback                []*model.BoardFeedback
@@ -3526,4 +3526,10 @@ func (s *InMemoryStore) GetMemoryNear(hubID string, target time.Time, tolerance 
 	}
 	out := *best
 	return &out, nil
+}
+
+// GetNotificationBySource mirrors the notification stubs above: the
+// in-memory store doesn't persist notifications, so lookups miss.
+func (s *InMemoryStore) GetNotificationBySource(_ context.Context, _, _ string) (*model.Notification, error) {
+	return nil, ErrNotificationNotFound
 }

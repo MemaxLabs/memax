@@ -72,11 +72,11 @@ func workerClientID() string {
 // diagnostics for "which VM is this?".
 func workerClientMetadata() []byte {
 	m := map[string]string{
-		"service":       "memax-worker",
-		"fly_region":    os.Getenv("FLY_REGION"),
-		"fly_machine":   os.Getenv("FLY_MACHINE_ID"),
-		"fly_app":       os.Getenv("FLY_APP_NAME"),
-		"memax_env":     os.Getenv("MEMAX_ENV"),
+		"service":     "memax-worker",
+		"fly_region":  os.Getenv("FLY_REGION"),
+		"fly_machine": os.Getenv("FLY_MACHINE_ID"),
+		"fly_app":     os.Getenv("FLY_APP_NAME"),
+		"memax_env":   os.Getenv("MEMAX_ENV"),
 	}
 	// Strip empty values so the rendered metadata isn't cluttered
 	// with blanks in dev environments.

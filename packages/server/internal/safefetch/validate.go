@@ -14,14 +14,14 @@ import (
 // a generic "blocked" error for the agent — no need to leak
 // the exact reason to a potentially-hostile prompt-author.
 var (
-	ErrEmptyURL        = errors.New("safefetch: url is empty")
-	ErrParseURL        = errors.New("safefetch: url could not be parsed")
-	ErrURLTooLong      = errors.New("safefetch: url exceeds the maximum allowed length")
-	ErrUnsupportedScheme = errors.New("safefetch: only http and https schemes are allowed")
+	ErrEmptyURL           = errors.New("safefetch: url is empty")
+	ErrParseURL           = errors.New("safefetch: url could not be parsed")
+	ErrURLTooLong         = errors.New("safefetch: url exceeds the maximum allowed length")
+	ErrUnsupportedScheme  = errors.New("safefetch: only http and https schemes are allowed")
 	ErrUserinfoNotAllowed = errors.New("safefetch: url userinfo (user:password@host) is not allowed")
-	ErrEmptyHost       = errors.New("safefetch: url has no host")
-	ErrBlockedHost     = errors.New("safefetch: host is blocked (memax-owned or operator-blocked)")
-	ErrBlockedIP       = errors.New("safefetch: literal IP host is in a blocked range (private / loopback / link-local / multicast / metadata / etc.)")
+	ErrEmptyHost          = errors.New("safefetch: url has no host")
+	ErrBlockedHost        = errors.New("safefetch: host is blocked (memax-owned or operator-blocked)")
+	ErrBlockedIP          = errors.New("safefetch: literal IP host is in a blocked range (private / loopback / link-local / multicast / metadata / etc.)")
 )
 
 // MaxURLLength caps the byte-length of a URL we'll dispatch.

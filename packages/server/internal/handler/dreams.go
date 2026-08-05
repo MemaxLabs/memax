@@ -22,8 +22,8 @@ type DreamsHandler struct {
 	store    store.Store
 	events   events.Publisher
 	enqueue  func(ctx context.Context, hubID string, triggeredBy string) error // set via SetEnqueue
-	resolver quota.DreamResolver                                                // set via SetQuotaResolver; nil = quota gate skipped (legacy)
-	mode     quota.Mode                                                         // soft (Phase 1 default) or hard (Phase 3)
+	resolver quota.DreamResolver                                               // set via SetQuotaResolver; nil = quota gate skipped (legacy)
+	mode     quota.Mode                                                        // soft (Phase 1 default) or hard (Phase 3)
 }
 
 func NewDreamsHandler(s store.Store, publisher events.Publisher) *DreamsHandler {

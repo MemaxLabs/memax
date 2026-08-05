@@ -126,14 +126,14 @@ type DreamConsumeResult struct {
 // plain int with omitempty would erase that distinction — exhausted
 // would look identical to unlimited to clients.
 type DreamUsage struct {
-	Scope       string    `json:"scope"`            // "personal" | "hub"
-	HubID       string    `json:"hub_id,omitempty"` // populated only when Scope="hub"
-	Tier        string    `json:"tier"`             // "basic" | "lucid"
-	Mode        string    `json:"mode"`             // "soft" | "hard"
-	Limit       int       `json:"limit"`            // -1 unlimited, 0 disabled, >0 finite
-	Used        int       `json:"used"`             // count consumed in current period
+	Scope       string    `json:"scope"`               // "personal" | "hub"
+	HubID       string    `json:"hub_id,omitempty"`    // populated only when Scope="hub"
+	Tier        string    `json:"tier"`                // "basic" | "lucid"
+	Mode        string    `json:"mode"`                // "soft" | "hard"
+	Limit       int       `json:"limit"`               // -1 unlimited, 0 disabled, >0 finite
+	Used        int       `json:"used"`                // count consumed in current period
 	Remaining   *int      `json:"remaining,omitempty"` // nil ONLY when Limit=-1 (omitted from JSON); explicit 0 when exhausted
-	Allowed     bool      `json:"allowed"`          // whether a trigger right now would succeed
+	Allowed     bool      `json:"allowed"`             // whether a trigger right now would succeed
 	PeriodStart time.Time `json:"period_start"`
 	PeriodEnd   time.Time `json:"period_end"`
 	QuotaSource string    `json:"quota_source"` // plan ID that contributed the limit

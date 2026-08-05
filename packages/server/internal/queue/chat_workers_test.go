@@ -499,10 +499,10 @@ func TestBuildSessionDescriptor_WriteHubIDPropagation(t *testing.T) {
 	t.Parallel()
 	owner := "owner-x"
 	cases := []struct {
-		name          string
-		scopeHubIDs   []string
-		sessionWrite  string
-		wantWriteHub  string
+		name         string
+		scopeHubIDs  []string
+		sessionWrite string
+		wantWriteHub string
 	}{
 		{
 			name:         "WriteHubID in snapshot → propagates",

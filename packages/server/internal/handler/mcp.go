@@ -235,7 +235,7 @@ func (h *MCPHandler) instructions() string {
 	if h.mode == mcpModeChatGPT {
 		return "Memax gives ChatGPT access to the user's personal and shared team knowledge. Use search_memories for retrieval, cite returned memory IDs and source metadata, use get_memory only when the full memory is needed, and only call save_memory or forget_memory when the user explicitly asks to change their Memax knowledge base."
 	}
-	return "memax is a personal knowledge brain — shared memory for humans and AI. Use memax_recall to ask questions and surface memories, memax_push to remember new knowledge, memax_get to read a full memory, memax_list to browse memories, and memax_hubs to inspect available hubs."
+	return "memax is a personal knowledge brain — shared memory for humans and AI. Use memax_recall to ask questions and surface memories, memax_push to remember new knowledge, memax_get to read a full memory, memax_list to browse memories, memax_hubs to inspect available hubs, and memax_request_decision to put a decision you should not make alone in front of the user."
 }
 
 func (h *MCPHandler) agentTools() []mcpTool {
@@ -279,6 +279,11 @@ func (h *MCPHandler) agentTools() []mcpTool {
 			Name:        "memax_capture",
 			Description: "Capture key decisions, learnings, and context from this session. Call at the end of a significant work session to save what was accomplished and what should be remembered. Each fact is extracted and stored as a separate searchable memory.",
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"summary":{"type":"string","description":"Brief summary of what was accomplished"},"decisions":{"type":"array","items":{"type":"string"},"description":"Key decisions made"},"learnings":{"type":"array","items":{"type":"string"},"description":"Things learned"}},"required":["summary"]}`),
+		},
+		{
+			Name:        "memax_request_decision",
+			Description: "Ask the user to make a decision you should not make alone (architecture choices, irreversible actions, tradeoffs with no clear winner). Creates a decision card on the user's memax board and pings them. The user's choice is written back into memory — call memax_recall later with keywords from your question to read their decision. Do NOT block waiting; continue with other work or end your turn.",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"question":{"type":"string","description":"The decision question, one sentence, user-facing"},"options":{"type":"array","items":{"type":"string"},"description":"2-4 mutually exclusive choices, short labels"},"context":{"type":"string","description":"Why this decision matters — tradeoffs, constraints, your recommendation if any"}},"required":["question","options"]}`),
 		},
 		{
 			Name:        "memax_topics",
@@ -373,6 +378,8 @@ func (h *MCPHandler) handleToolsCall(w http.ResponseWriter, r *http.Request, req
 		h.toolForget(w, r, req.ID, params.Arguments, ownerID)
 	case "memax_capture":
 		h.toolCapture(w, r, req.ID, params.Arguments, ownerID)
+	case "memax_request_decision":
+		h.toolRequestDecision(w, r, req.ID, params.Arguments, ownerID)
 	case "memax_topics", "list_topics":
 		h.toolTopics(w, r, req.ID, params.Arguments, ownerID)
 	default:

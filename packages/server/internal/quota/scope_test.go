@@ -42,28 +42,28 @@ func TestSelectScope(t *testing.T) {
 		wantError bool
 	}{
 		{
-			name:   "no hub, user set — API-key style",
-			hubID:  "", userID: "u-caller",
+			name:  "no hub, user set — API-key style",
+			hubID: "", userID: "u-caller",
 			want: Scope{Type: ScopeUser, UserID: "u-caller"},
 		},
 		{
-			name:   "personal hub — charges hub owner not caller",
-			hubID:  "h-personal", userID: "u-caller",
+			name:  "personal hub — charges hub owner not caller",
+			hubID: "h-personal", userID: "u-caller",
 			want: Scope{Type: ScopeUser, UserID: "u-owner"},
 		},
 		{
-			name:   "team hub — hub-scope regardless of who triggered",
-			hubID:  "h-team", userID: "u-caller",
+			name:  "team hub — hub-scope regardless of who triggered",
+			hubID: "h-team", userID: "u-caller",
 			want: Scope{Type: ScopeHub, HubID: "h-team"},
 		},
 		{
-			name:      "neither hub nor user — error",
-			hubID:     "", userID: "",
+			name:  "neither hub nor user — error",
+			hubID: "", userID: "",
 			wantError: true,
 		},
 		{
-			name:      "missing hub — error",
-			hubID:     "h-missing", userID: "u-caller",
+			name:  "missing hub — error",
+			hubID: "h-missing", userID: "u-caller",
 			wantError: true,
 		},
 	}

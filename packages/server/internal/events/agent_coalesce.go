@@ -1,8 +1,8 @@
 package events
 
 import (
-	"context"
 	"container/list"
+	"context"
 	"sync"
 	"time"
 )

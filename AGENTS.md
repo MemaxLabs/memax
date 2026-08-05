@@ -294,7 +294,7 @@ If you find yourself tempted to put admin code in the SDK, stop and ask why. The
 
 **The two files:** `packages/server/internal/handler/mcp.go` (Go, remote) and `packages/cli/src/commands/mcp.ts` (TypeScript, local) — both now in this repo.
 
-**The rule:** When adding or modifying an MCP tool (name, description, parameters), update BOTH files in the same commit. Current tools (9): `memax_recall`, `memax_push`, `memax_get`, `memax_list`, `memax_hubs`, `memax_hub_members`, `memax_forget`, `memax_capture`, `memax_topics`.
+**The rule:** When adding or modifying an MCP tool (name, description, parameters), update BOTH files in the same commit. Current tools (10): `memax_recall`, `memax_push`, `memax_get`, `memax_list`, `memax_hubs`, `memax_hub_members`, `memax_forget`, `memax_capture`, `memax_topics`, `memax_request_decision`.
 
 **Why this exists:** We added `memax_topics` and `hint`/`project_context` params to the Go server MCP but forgot the CLI MCP. Agents connecting locally via `memax mcp serve` got different (fewer) capabilities than agents connecting to the remote server.
 

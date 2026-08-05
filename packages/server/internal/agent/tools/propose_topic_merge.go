@@ -137,35 +137,48 @@ type ProposeTopicMergeOutcome struct {
 // Wire status values for ProposeTopicMergeResult.Status.
 //
 // "proposed"            — fresh row written; the user will see a
-//                         new notification in their inbox.
+//
+//	new notification in their inbox.
+//
 // "already_pending"     — an existing PENDING row keyed on the
-//                         same (source_kind, source_id) was
-//                         found; the proposal is already in the
-//                         user's inbox waiting on them.
+//
+//	same (source_kind, source_id) was
+//	found; the proposal is already in the
+//	user's inbox waiting on them.
+//
 // "already_merged"      — the user previously RESOLVED this
-//                         exact merge by applying it (the topic
-//                         graph already reflects it).
+//
+//	exact merge by applying it (the topic
+//	graph already reflects it).
+//
 // "already_kept_separate"
-//                       — the user previously RESOLVED this
-//                         merge by keeping the topics separate.
-//                         Respect the prior decision; the agent
-//                         can offer to revisit with different
-//                         framing.
+//
+//	— the user previously RESOLVED this
+//	  merge by keeping the topics separate.
+//	  Respect the prior decision; the agent
+//	  can offer to revisit with different
+//	  framing.
+//
 // "already_dismissed"   — the user previously dismissed this
-//                         proposal. Covers both
-//                         (status=resolved + resolution=dismissed)
-//                         AND the rare receipt-style
-//                         status=dismissed path.
+//
+//	proposal. Covers both
+//	(status=resolved + resolution=dismissed)
+//	AND the rare receipt-style
+//	status=dismissed path.
+//
 // "already_expired"     — the prior proposal hit its expires_at
-//                         without resolution.
+//
+//	without resolution.
+//
 // "already_resolved"    — fall-through for an existing resolved
-//                         row whose resolution doesn't match any
-//                         of the topic-merge resolutions above.
-//                         Defensive: if the resolution enum
-//                         grows without an update here, the
-//                         agent still gets a meaningful answer
-//                         instead of "already_pending" (which
-//                         would lie).
+//
+//	row whose resolution doesn't match any
+//	of the topic-merge resolutions above.
+//	Defensive: if the resolution enum
+//	grows without an update here, the
+//	agent still gets a meaningful answer
+//	instead of "already_pending" (which
+//	would lie).
 //
 // Codex Phase 3.6b3f v2 [Medium] flagged that the v1 mapping
 // flattened all resolved rows into "already_resolved"

@@ -37,11 +37,33 @@ export class BoardsResource {
     slotKey: string,
     action: BoardSlotAction,
     verdict?: BoardFeedbackVerdict,
+    /** For action "choose" (decision gates): the chosen option id. */
+    choice?: string,
   ): Promise<{ slot: BoardSlot }> {
     return this.req(
       "POST",
       `/v1/hubs/${hubId}/board/slots/${encodeURIComponent(slotKey)}/resolve`,
-      { body: { action, verdict } },
+      { body: { action, verdict, choice } },
     );
+  }
+
+  /**
+   * Create a decision gate (等你 card): the user gets a board card +
+   * needs-action ping; their choice is written back into hub memory
+   * so the requesting agent can recall it. 409 gate_limit when the
+   * board already has 3 open gates.
+   */
+  async requestDecision(
+    hubId: string,
+    input: {
+      question: string;
+      options: string[];
+      context?: string;
+      source_agent?: string;
+    },
+  ): Promise<{ slot: BoardSlot }> {
+    return this.req("POST", `/v1/hubs/${hubId}/board/decision-gate`, {
+      body: input,
+    });
   }
 }

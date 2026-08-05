@@ -75,6 +75,7 @@ import { BorderlessRedesignSection } from "./_sections/40-borderless-redesign";
 import { LifecycleFlowSection } from "./_sections/41-lifecycle-flow";
 import { TopicIconsSection } from "./_sections/42-topic-icons";
 import { ShellV2Section } from "./_sections/43-shell-v2";
+import { PulseBoardSection } from "./_sections/44-pulse-board";
 // Utilities & Archive
 import { PaletteExplorerSection } from "./_sections/15-palette-explorer";
 import { ExplorationsSection } from "./_sections/21-explorations";
@@ -223,6 +224,7 @@ const NAV_TREE: NavGroup[] = [
       { id: "40-borderless-redesign-proposal", label: "Borderless Redesign" },
       { id: "41-lifecycle-dream-delta-e2e-flow", label: "Lifecycle Flow" },
       { id: "36-inbox", label: "Inbox" },
+      { id: "44-pulse-board", label: "Pulse Board" },
       { id: "34-landing-onboarding", label: "Landing + Onboarding" },
       { id: "39-oauth-consent", label: "OAuth Consent" },
     ],
@@ -478,6 +480,7 @@ const SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   "34-landing-onboarding": LandingAndOnboardingSection,
   "35-data-section-card": DataSectionCardSection,
   "36-inbox": InboxSection,
+  "44-pulse-board": PulseBoardSection,
   "38-bar-north-star-alt": BarNorthStarAltSection,
   "39-oauth-consent": OAuthConsentSection,
   "40-borderless-redesign-proposal": BorderlessRedesignSection,
@@ -885,6 +888,7 @@ function DesktopKitchen() {
         <BorderlessRedesignSection />
         <LifecycleFlowSection />
         <InboxSection />
+        <PulseBoardSection />
         <MemoryMetadataSection />
         <LandingAndOnboardingSection />
         <OAuthConsentSection />

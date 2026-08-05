@@ -550,6 +550,22 @@ type Store interface {
 	ListPersonaRevisions(personaID, ownerID string) ([]model.PersonaRevision, error)
 	GetPersonaRevision(personaID string, version int, ownerID string) (*model.PersonaRevision, error)
 
+	// Boards — pulse boards (plan 25): per-hub slot surfaces.
+	// Boards are hub-scoped, not owner-scoped: access control is hub
+	// membership, checked by the handler before any board call (same
+	// contract as the /v1/hubs/{id} routes). ResolveBoardSlot only
+	// transitions slots still in fresh/seen; terminal slots return
+	// ErrBoardSlotAlreadyResolved.
+	GetOrCreateSystemBoard(hubID, createdBy string) (*model.Board, error)
+	GetBoardSlot(boardID, slotKey string) (*model.BoardSlot, error)
+	ListBoardSlots(boardID string) ([]model.BoardSlot, error)
+	UpsertBoardSlot(slot *model.BoardSlot) error
+	ResolveBoardSlot(boardID, slotKey, newState string, resolution model.BoardSlotResolution) (*model.BoardSlot, error)
+	// CreateBoardFeedback upserts on (board, slot, member): latest
+	// verdict wins, so repeat submissions and post-resolve retries are
+	// idempotent per member.
+	CreateBoardFeedback(f *model.BoardFeedback) error
+
 	// Connected Agents — first-class agent registry
 	UpsertConnectedAgent(agent *model.ConnectedAgent) error
 	GetConnectedAgent(ownerID string, agentName string) (*model.ConnectedAgent, error)

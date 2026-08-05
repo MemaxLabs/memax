@@ -866,6 +866,12 @@ export const en = {
     },
   },
 
+  board: {
+    actionAck: "Got it",
+    actionDismiss: "Not interested",
+    receiptAcked: "Noted",
+    receiptDismissed: "Dismissed",
+  },
   inbox: {
     title: "Inbox",
     open: "Open Inbox",
@@ -2295,6 +2301,8 @@ export const en = {
       // Personas
       deletePersona: "forget that persona",
       restorePersona: "restore that persona",
+      // Board
+      resolveBoardCard: "resolve that card",
       // Hubs
       createHub: "create that hub",
       updateHub: "update the hub",

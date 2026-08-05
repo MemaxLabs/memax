@@ -702,9 +702,16 @@ function GlobalBar() {
   const hasFiles = interaction.hasFiles;
   const sendState = interaction.sendState;
   const desktopRestDockTop = `calc(100vh - ${DESKTOP_DOCK_BOTTOM_GAP_PX}px)`;
+  // Mirror compose state covers the dock, so reserving the dock gap
+  // there strands the bar mid-air with a dead strip under it (user
+  // report, 2026-08-05 mobile screenshots). When the dock isn't
+  // visible under the bar, hug the safe-area bottom instead.
+  const mobileDockCovered = mobileComposeState === "mirror";
   const mobileRestTop = keyboardOpen
     ? "calc(100dvh - 8px)"
-    : `calc(100dvh - ${MOBILE_DOCK_BOTTOM_GAP_PX}px - var(--safe-bottom, 0px))`;
+    : mobileDockCovered
+      ? "calc(100dvh - 12px - var(--safe-bottom, 0px))"
+      : `calc(100dvh - ${MOBILE_DOCK_BOTTOM_GAP_PX}px - var(--safe-bottom, 0px))`;
   const barTop = isMobile
     ? mobileRestTop
     : isBrainView && !shouldUseLiftedPosition

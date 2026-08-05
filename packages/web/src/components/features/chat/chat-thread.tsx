@@ -224,7 +224,12 @@ export function ChatThread({
       ref={scrollRef}
       onScroll={onScroll}
       className={cn(
-        "min-h-0 flex-1 overflow-y-auto",
+        // overflow-x-hidden is the hard stop for the "page pans
+        // sideways on mobile" class of bugs: wide content (tables,
+        // code, tool JSON) must scroll inside its own container,
+        // never widen the thread. Pairs with min-w-0 on the message
+        // row's content column.
+        "min-h-0 flex-1 overflow-y-auto overflow-x-hidden",
         "[scrollbar-gutter:stable]",
       )}
     >

@@ -157,7 +157,7 @@ export function ChatStepRow({ tc, terminal }: ChatStepRowProps) {
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
-            <div className="ml-[22px] mt-1 mb-1 rounded-md border border-border/40 bg-surface-1 px-2.5 py-1.5 font-mono text-[11px] text-fg-3 space-y-1.5">
+            <div className="ml-[22px] mt-1 mb-1 max-w-full overflow-x-auto rounded-md border border-border/40 bg-surface-1 px-2.5 py-1.5 font-mono text-[11px] text-fg-3 space-y-1.5">
               {argsText && (
                 <div>
                   <span className="text-fg-4">

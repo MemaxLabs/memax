@@ -3414,9 +3414,14 @@ func boardMemoryEligible(m *model.Memory, hubID string) bool {
 func (s *InMemoryStore) ListRecentAgentActivityByHub(hubID string, since time.Time) ([]model.BoardAgentActivity, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	type memRef struct {
+		id, title string
+		createdAt time.Time
+	}
 	type agg struct {
 		activity model.BoardAgentActivity
 		latest   time.Time
+		mems     []memRef
 	}
 	groups := make(map[string]*agg)
 	for _, m := range s.memories {
@@ -3430,6 +3435,7 @@ func (s *InMemoryStore) ListRecentAgentActivityByHub(hubID string, since time.Ti
 			groups[slug] = g
 		}
 		g.activity.Count++
+		g.mems = append(g.mems, memRef{id: m.ID, title: m.Title, createdAt: m.CreatedAt})
 		if m.CreatedAt.After(g.latest) {
 			g.latest = m.CreatedAt
 			g.activity.LatestTitle = m.Title
@@ -3437,6 +3443,15 @@ func (s *InMemoryStore) ListRecentAgentActivityByHub(hubID string, since time.Ti
 	}
 	var out []model.BoardAgentActivity
 	for _, g := range groups {
+		sort.Slice(g.mems, func(i, j int) bool { return g.mems[i].createdAt.After(g.mems[j].createdAt) })
+		for i, ref := range g.mems {
+			if i >= 3 {
+				break
+			}
+			if ref.title != "" {
+				g.activity.Items = append(g.activity.Items, model.BoardAgentItem{MemoryID: ref.id, Title: ref.title})
+			}
+		}
 		out = append(out, g.activity)
 	}
 	sort.Slice(out, func(i, j int) bool {

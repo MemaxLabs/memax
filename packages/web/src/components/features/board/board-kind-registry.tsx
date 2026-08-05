@@ -39,9 +39,26 @@ type TranslationsLike = {
   board: Record<string, string>;
 };
 
-interface BoardKindEntry {
-  Body: ComponentType<BoardKindBodyProps>;
+/** One-line collapsed-band representation of a slot. */
+export interface BoardStripSummary {
+  label: string;
+  detail?: string;
+}
+
+export interface BoardKindOptions {
   actions?: BoardKindActionLabels;
+  /**
+   * Why this card exists, in one user-facing sentence — surfaced via
+   * the card's info popover so the board explains itself instead of
+   * assuming the user reverse-engineers its purpose from numbers.
+   */
+  purpose?: (t: TranslationsLike) => string;
+  /** Collapsed one-line summary; falls back to the slot title. */
+  strip?: (slot: BoardSlot, t: TranslationsLike) => BoardStripSummary;
+}
+
+interface BoardKindEntry extends BoardKindOptions {
+  Body: ComponentType<BoardKindBodyProps>;
 }
 
 const REGISTRY = new Map<string, BoardKindEntry>();
@@ -49,15 +66,33 @@ const REGISTRY = new Map<string, BoardKindEntry>();
 export function registerBoardKind(
   kind: string,
   Body: ComponentType<BoardKindBodyProps>,
-  actions?: BoardKindActionLabels,
+  options?: BoardKindOptions,
 ) {
-  REGISTRY.set(kind, { Body, actions });
+  REGISTRY.set(kind, { Body, ...options });
 }
 
 export function boardKindActionLabels(
   kind: string,
 ): BoardKindActionLabels | undefined {
   return REGISTRY.get(kind)?.actions;
+}
+
+export function boardKindPurpose(
+  kind: string,
+  t: TranslationsLike,
+): string | undefined {
+  return REGISTRY.get(kind)?.purpose?.(t);
+}
+
+export function boardKindStripSummary(
+  slot: BoardSlot,
+  t: TranslationsLike,
+): BoardStripSummary {
+  const strip = REGISTRY.get(slot.kind)?.strip;
+  if (strip) return strip(slot, t);
+  // Fallback: the slot's plain-text title (the same literal-text
+  // contract the unknown-kind card body relies on).
+  return { label: slot.title };
 }
 
 /**

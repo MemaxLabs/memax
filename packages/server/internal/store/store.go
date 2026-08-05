@@ -573,9 +573,11 @@ type Store interface {
 	// endpoint. All exclude archived memories and onboarding seeds.
 	ListRecentAgentActivityByHub(hubID string, since time.Time) ([]model.BoardAgentActivity, error)
 	ListTopicActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardTopicActivity, error)
-	CountMemoriesInHubSince(hubID string, since time.Time) (int, error)
-	// GetMemoryNear returns the hub memory whose created_at is closest
-	// to target within ±tolerance, or nil (no error) when none exists.
+	// CountMemoriesInHubRange counts memories with from < created_at <= to.
+	CountMemoriesInHubRange(hubID string, from, to time.Time) (int, error)
+	// GetMemoryNear returns the quotable hub memory (non-empty title or
+	// summary) whose created_at is closest to target within ±tolerance,
+	// or nil (no error) when none exists.
 	GetMemoryNear(hubID string, target time.Time, tolerance time.Duration) (*model.Memory, error)
 
 	// Connected Agents — first-class agent registry

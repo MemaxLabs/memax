@@ -1,41 +1,48 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { BoardSlot } from "memax-sdk";
-import {
-  BoardAction,
-  BoardActionRow,
-  BoardCard,
-  Skeleton,
-} from "@memaxlabs/ui";
+import { BoardAction, BoardActionRow, BoardCard } from "@memaxlabs/ui";
 import { useLocale } from "@/i18n";
+import { useActiveHub } from "@/lib/auth";
+import { trackEvent } from "@/lib/posthog";
 import { useHubBoard, useResolveBoardSlot } from "@/hooks/use-board";
 import { renderBoardSlotBody } from "./board-kind-registry";
+// Side-effect import: registers the Lane A kind renderers before the
+// first render so no card flashes through the fallback.
+import "./board-kinds";
 
 /**
  * BoardView — the pulse board host (plan 25). Fetches the hub's board,
  * renders each occupied slot through the kind registry inside the
  * BoardCard lifecycle molecule, and wires the shared resolve verbs.
- *
- * P0: mechanism only — the board is empty until Lane A producers land
- * (P1), so this component renders nothing when there are no slots and
- * is not yet mounted on the hub home. Kitchen section 44 is the visual
- * reference for everything it composes.
+ * Renders nothing while the board is empty — the surface only earns
+ * screen space once it has cards.
  */
 export function BoardView({ hubId }: { hubId: string }) {
   const { data, isPending, isError } = useHubBoard(hubId);
   const resolve = useResolveBoardSlot(hubId);
 
-  if (isPending) {
-    return (
-      <div className="flex flex-col gap-2.5" data-testid="board-loading">
-        <Skeleton className="h-24 w-full rounded-[18px]" />
-        <Skeleton className="h-24 w-full rounded-[18px]" />
-      </div>
-    );
-  }
-  // Board errors and empty boards are silent in P0: the surface only
-  // earns screen space once it has cards to show.
-  if (isError || !data || data.slots.length === 0) return null;
+  // One impression event per board load (not per re-render).
+  const trackedFor = useRef<string | null>(null);
+  const slotCount = data?.slots.length ?? 0;
+  useEffect(() => {
+    if (!data || slotCount === 0 || trackedFor.current === data.board.id) {
+      return;
+    }
+    trackedFor.current = data.board.id;
+    trackEvent("board_viewed", {
+      hub_id: hubId,
+      slot_count: slotCount,
+      kinds: data.slots.map((s) => s.kind),
+    });
+  }, [data, hubId, slotCount]);
+
+  // No skeleton: most hubs have no cards yet (dreams haven't run), and
+  // a flash-of-skeleton on every hub home load would make the board
+  // feel like a broken feature instead of a quiet surface that appears
+  // when it has something to say.
+  if (isPending || isError || !data || data.slots.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -43,11 +50,31 @@ export function BoardView({ hubId }: { hubId: string }) {
         <BoardSlotCard
           key={slot.slot_key}
           slot={slot}
-          onResolve={(action) =>
-            resolve.mutate({ slotKey: slot.slot_key, action })
-          }
+          onResolve={(action) => {
+            trackEvent("board_card_action", {
+              hub_id: hubId,
+              kind: slot.kind,
+              slot_key: slot.slot_key,
+              action,
+            });
+            resolve.mutate({ slotKey: slot.slot_key, action });
+          }}
         />
       ))}
+    </div>
+  );
+}
+
+/**
+ * BoardSection — the hub-home mount: resolves the active hub and lays
+ * the board out in the same content column as the grid below it.
+ */
+export function BoardSection() {
+  const { hubFilter } = useActiveHub();
+  if (!hubFilter) return null;
+  return (
+    <div className="mx-auto max-w-4xl px-5 pt-4 sm:px-8">
+      <BoardView hubId={hubFilter} />
     </div>
   );
 }
@@ -79,7 +106,7 @@ function BoardSlotCard({
           : t.board.receiptAcked
       }
     >
-      {renderBoardSlotBody(slot, t)}
+      {renderBoardSlotBody(slot)}
     </BoardCard>
   );
 }

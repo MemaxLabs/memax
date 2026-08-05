@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -199,4 +200,110 @@ func (s *PostgresStore) CreateBoardFeedback(f *model.BoardFeedback) error {
 		RETURNING id, created_at`,
 		f.BoardID, f.SlotKey, f.CardKind, f.CardTitle, f.Verdict, f.UserID, cites)
 	return row.Scan(&f.ID, &f.CreatedAt)
+}
+
+func (s *PostgresStore) DeleteBoardSlot(boardID, slotKey string) error {
+	ctx := context.Background()
+	_, err := s.pool.Exec(ctx,
+		`DELETE FROM board_slots WHERE board_id = $1::uuid AND slot_key = $2`, boardID, slotKey)
+	return err
+}
+
+// boardMemoryFilter is the shared predicate for Lane A queries: hub
+// content only, no archived rows, no onboarding seeds (counting seeded
+// demo memories as "activity" would make every fresh board lie).
+const boardMemoryFilter = `m.hub_id = $1::uuid AND m.state != 'archived'
+	AND COALESCE(m.source_kind, '') != 'onboarding-seed'`
+
+// ListRecentAgentActivityByHub groups the window's memories by
+// effective agent slug (created_by_slug else source_agent), newest
+// title per group, busiest first. Rows with no agent attribution
+// (manual web captures) come back with slug "" — the producer decides
+// how to label them.
+func (s *PostgresStore) ListRecentAgentActivityByHub(hubID string, since time.Time) ([]model.BoardAgentActivity, error) {
+	ctx := context.Background()
+	rows, err := s.pool.Query(ctx,
+		`SELECT COALESCE(`+memoryAgentSlugExpr+`, '') AS slug,
+			COALESCE(MAX(ca.display_name), '') AS display_name,
+			COALESCE(MAX(ca.icon), '') AS icon,
+			COUNT(*) AS cnt,
+			(array_agg(m.title ORDER BY m.created_at DESC))[1] AS latest_title
+		FROM memories m
+		LEFT JOIN connected_agents ca ON m.owner_id = ca.owner_id AND `+memoryAgentSlugExpr+` = ca.agent_name
+		WHERE `+boardMemoryFilter+` AND m.created_at > $2
+		GROUP BY 1
+		ORDER BY cnt DESC, slug ASC`,
+		hubID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var activity []model.BoardAgentActivity
+	for rows.Next() {
+		var a model.BoardAgentActivity
+		if err := rows.Scan(&a.Slug, &a.DisplayName, &a.Icon, &a.Count, &a.LatestTitle); err != nil {
+			return nil, err
+		}
+		activity = append(activity, a)
+	}
+	return activity, rows.Err()
+}
+
+func (s *PostgresStore) ListTopicActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardTopicActivity, error) {
+	ctx := context.Background()
+	rows, err := s.pool.Query(ctx,
+		`SELECT t.id, t.name, COALESCE(t.icon, ''),
+			COUNT(*) AS recent, COUNT(DISTINCT m.owner_id) AS contributors
+		FROM memory_topics mt
+		JOIN memories m ON m.id = mt.memory_id
+		JOIN topics t ON t.id = mt.topic_id
+		WHERE `+boardMemoryFilter+` AND m.created_at > $2
+		GROUP BY t.id, t.name, t.icon
+		ORDER BY recent DESC, t.name ASC
+		LIMIT $3`,
+		hubID, since, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var topics []model.BoardTopicActivity
+	for rows.Next() {
+		var t model.BoardTopicActivity
+		if err := rows.Scan(&t.TopicID, &t.Name, &t.Icon, &t.RecentCount, &t.Contributors); err != nil {
+			return nil, err
+		}
+		topics = append(topics, t)
+	}
+	return topics, rows.Err()
+}
+
+func (s *PostgresStore) CountMemoriesInHubSince(hubID string, since time.Time) (int, error) {
+	ctx := context.Background()
+	var count int
+	err := s.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM memories m WHERE `+boardMemoryFilter+` AND m.created_at > $2`,
+		hubID, since).Scan(&count)
+	return count, err
+}
+
+func (s *PostgresStore) GetMemoryNear(hubID string, target time.Time, tolerance time.Duration) (*model.Memory, error) {
+	ctx := context.Background()
+	row := s.pool.QueryRow(ctx,
+		`SELECT m.id, m.title, COALESCE(m.summary, ''), m.created_at
+		FROM memories m
+		WHERE `+boardMemoryFilter+` AND m.created_at BETWEEN $2 AND $3
+		ORDER BY ABS(EXTRACT(EPOCH FROM (m.created_at - $4::timestamptz))) ASC
+		LIMIT 1`,
+		hubID, target.Add(-tolerance), target.Add(tolerance), target)
+	var m model.Memory
+	if err := row.Scan(&m.ID, &m.Title, &m.Summary, &m.CreatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	m.HubID = hubID
+	return &m, nil
 }

@@ -112,6 +112,68 @@ type BoardFeedback struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
+// --- Lane A payloads (P1) ---
+//
+// Deterministic producers write structured data, not prose: the web
+// renderer composes localized copy from these fields, and slot.title
+// carries a plain-English summary only for the unknown-kind fallback.
+// Board kind constants double as slot-key prefixes ("a-trace" …) so
+// ListBoardSlots' slot_key ordering fixes the board layout.
+
+const (
+	BoardKindTrace   = "trace"   // 行迹 — agent activity in the window
+	BoardKindPulse   = "pulse"   // 项目脉搏 — most active topics
+	BoardKindCapsule = "capsule" // 时间胶囊 — a memory from ~1 year ago
+	BoardKindWeek    = "week"    // 周对比 — this week vs last week
+)
+
+// BoardAgentActivity is one agent's line in the trace card. LatestTitle
+// is the newest memory title from that agent — plain user content,
+// quoted verbatim by the renderer.
+type BoardAgentActivity struct {
+	Slug        string `json:"slug"`
+	DisplayName string `json:"display_name,omitempty"`
+	Icon        string `json:"icon,omitempty"`
+	Count       int    `json:"count"`
+	LatestTitle string `json:"latest_title,omitempty"`
+}
+
+type BoardTracePayload struct {
+	Description string               `json:"description,omitempty"`
+	WindowHours int                  `json:"window_hours"`
+	Agents      []BoardAgentActivity `json:"agents"`
+}
+
+// BoardTopicActivity is one topic's line in the pulse card.
+type BoardTopicActivity struct {
+	TopicID      string `json:"topic_id"`
+	Name         string `json:"name"`
+	Icon         string `json:"icon,omitempty"`
+	RecentCount  int    `json:"recent_count"`
+	Contributors int    `json:"contributors,omitempty"`
+}
+
+type BoardPulsePayload struct {
+	Description string               `json:"description,omitempty"`
+	WindowDays  int                  `json:"window_days"`
+	Topics      []BoardTopicActivity `json:"topics"`
+}
+
+// BoardCapsulePayload quotes one memory from roughly a year ago. When
+// is the memory's created_at in RFC3339; the renderer formats it.
+type BoardCapsulePayload struct {
+	Description string `json:"description,omitempty"`
+	MemoryID    string `json:"memory_id"`
+	When        string `json:"when"`
+	Quote       string `json:"quote"`
+}
+
+type BoardWeekPayload struct {
+	Description string `json:"description,omitempty"`
+	ThisWeek    int    `json:"this_week"`
+	LastWeek    int    `json:"last_week"`
+}
+
 // Producer-side guardrails. Slot writes go through ValidateBoardSlot
 // before hitting the store so a buggy producer can't ship an
 // unrenderable or oversized card. The caps mirror the plan-18

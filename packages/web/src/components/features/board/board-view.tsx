@@ -1,19 +1,25 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import type { BoardSlot } from "memax-sdk";
-import { BoardAction, BoardActionRow, BoardCard } from "@memaxlabs/ui";
+import { useEffect, useRef, useState } from "react";
+import type { BoardFeedbackVerdict, BoardSlot } from "memax-sdk";
+import {
+  BoardAction,
+  BoardActionRow,
+  BoardCard,
+  BoardSlotStrip,
+  InfoPopover,
+} from "@memaxlabs/ui";
 import { useLocale } from "@/i18n";
 import { useActiveHub } from "@/lib/auth";
 import { trackEvent } from "@/lib/posthog";
 import { useHubBoard, useResolveBoardSlot } from "@/hooks/use-board";
-import {
-  boardKindActionLabels,
-  renderBoardSlotBody,
-} from "./board-kind-registry";
-// Side-effect import: registers the Lane A kind renderers before the
-// first render so no card flashes through the fallback.
+import { boardKindOptions, renderBoardSlotBody } from "./board-kind-registry";
+// Side-effect import: registers the Lane A + Lane B kind renderers
+// before the first render so no card flashes through the fallback.
 import "./board-kinds";
+
+/** Resolve verbs the host fires; "choose" is fired by the gate body itself. */
+type BoardResolveAction = "ack" | "dismiss" | "feedback";
 
 /**
  * BoardView — the pulse board host (plan 25). Fetches the hub's board,
@@ -55,14 +61,14 @@ export function BoardView({ hubId }: { hubId: string }) {
           key={slot.slot_key}
           slot={slot}
           entranceIndex={index}
-          onResolve={(action) => {
+          onResolve={(action, verdict) => {
             trackEvent("board_card_action", {
               hub_id: hubId,
               kind: slot.kind,
               slot_key: slot.slot_key,
               action,
             });
-            resolve.mutate({ slotKey: slot.slot_key, action });
+            resolve.mutate({ slotKey: slot.slot_key, action, verdict });
           }}
         />
       ))}
@@ -90,26 +96,83 @@ function BoardSlotCard({
 }: {
   slot: BoardSlot;
   entranceIndex: number;
-  onResolve: (action: "ack" | "dismiss") => void;
+  onResolve: (
+    action: BoardResolveAction,
+    verdict?: BoardFeedbackVerdict,
+  ) => void;
 }) {
   const { t } = useLocale();
-  // Per-kind resolve verbs: "都对 · 收下" on a trace reads differently
-  // from "收下" on an observation. Kinds without registered labels get
-  // the generic pair.
-  const labels = boardKindActionLabels(slot.kind);
+  // Per-kind options: resolve verbs ("都对 · 收下" on a trace reads
+  // differently from "收下" on an observation), the purpose popover,
+  // the collapsed strip, feedback verbs, and whether the kind renders
+  // its own actions (decision gates). Kinds without options get the
+  // generic defaults.
+  const options = boardKindOptions(slot.kind);
+  const labels = options?.actions;
+  const strip = options?.strip?.(t, slot);
+  const purpose = options?.purpose?.(t);
+  // Strip-registered kinds can be tucked away into their one-line
+  // form. Cards start expanded — a fresh card earns its space — and
+  // the strip is a per-session presentation choice, not persisted.
+  const [collapsed, setCollapsed] = useState(false);
+
+  if (collapsed && strip) {
+    return (
+      <BoardSlotStrip
+        label={strip.label}
+        detail={strip.detail}
+        open={false}
+        onToggle={() => setCollapsed(false)}
+        className="animate-fade-up"
+      />
+    );
+  }
+
   return (
     <BoardCard
       state={slot.state}
-      className="animate-fade-up"
+      className="relative animate-fade-up"
       style={{ animationDelay: `${Math.min(entranceIndex, 4) * 60}ms` }}
       live={
         <BoardActionRow>
-          <BoardAction emphasis="primary" onClick={() => onResolve("ack")}>
-            {labels?.ack?.(t) ?? t.board.actionAck}
-          </BoardAction>
-          <BoardAction emphasis="quiet" onClick={() => onResolve("dismiss")}>
-            {labels?.dismiss?.(t) ?? t.board.actionDismiss}
-          </BoardAction>
+          {!options?.hideDefaultActions ? (
+            <>
+              <BoardAction emphasis="primary" onClick={() => onResolve("ack")}>
+                {labels?.ack?.(t) ?? t.board.actionAck}
+              </BoardAction>
+              <BoardAction
+                emphasis="quiet"
+                onClick={() => onResolve("dismiss")}
+              >
+                {labels?.dismiss?.(t) ?? t.board.actionDismiss}
+              </BoardAction>
+            </>
+          ) : null}
+          {options?.feedback ? (
+            <>
+              <BoardAction
+                emphasis="quiet"
+                onClick={() => onResolve("feedback", "accurate")}
+              >
+                {t.board.feedbackAccurate}
+              </BoardAction>
+              <BoardAction
+                emphasis="quiet"
+                onClick={() => onResolve("feedback", "inaccurate")}
+              >
+                {t.board.feedbackInaccurate}
+              </BoardAction>
+            </>
+          ) : null}
+          {strip ? (
+            <BoardAction
+              emphasis="quiet"
+              className="ml-auto"
+              onClick={() => setCollapsed(true)}
+            >
+              {t.board.actionCollapse}
+            </BoardAction>
+          ) : null}
         </BoardActionRow>
       }
       receipt={
@@ -118,6 +181,16 @@ function BoardSlotCard({
           : t.board.receiptAcked
       }
     >
+      {purpose ? (
+        <div className="absolute right-2.5 top-2.5">
+          <InfoPopover
+            ariaLabel={strip?.label ?? slot.kind}
+            title={strip?.label ?? slot.kind}
+            body={purpose}
+            align="end"
+          />
+        </div>
+      ) : null}
       {renderBoardSlotBody(slot)}
     </BoardCard>
   );

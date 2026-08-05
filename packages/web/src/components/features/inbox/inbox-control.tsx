@@ -9,7 +9,11 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { buildMemoryDetailPath, getHubSlugForPath } from "@/lib/route-helpers";
+import {
+  buildMemoriesPath,
+  buildMemoryDetailPath,
+  getHubSlugForPath,
+} from "@/lib/route-helpers";
 import {
   AlertCircle,
   ArrowUpRight,
@@ -136,6 +140,10 @@ const DECISION_INBOX_KINDS = new Set<string>([
   "topic_restructure",
   "hub_invite",
   "hub_ownership_transfer",
+  // Plan 25 P2 — the ping for a board decision gate. The notification
+  // itself only accepts dismiss; the real choice happens on the board
+  // card (kind has no review_ prefix, so it lands here unchanged).
+  "decision_gate",
 ]);
 
 // Receipt kinds that render without an action bar. The dismiss affordance
@@ -456,6 +464,14 @@ function InboxActions({
       buttons = [
         { action: "accept", label: t.reviews.accept, tone: "dream" },
         { action: "decline", label: t.reviews.decline, tone: "ghost" },
+      ];
+      break;
+    case "decision_gate":
+      // The notification is only the ping — the real choice happens on
+      // the board card (see DecisionGateInboxBody's board link), so the
+      // only resolve action here is acknowledging the ping.
+      buttons = [
+        { action: "dismiss", label: t.inbox.gateDismiss, tone: "ghost" },
       ];
       break;
     default:
@@ -947,6 +963,46 @@ function GiftInviteLinkBody({ item }: { item: InboxItem }) {
   );
 }
 
+// DecisionGateInboxBody — the ping for a board decision gate (plan 25
+// P2). The collapsed row already shows the gate's question as the
+// title; the body adds the context paragraph plus a link to the hub's
+// board, where the actual choice happens. Navigation is a link-styled
+// button (same visual as the gift-invite / system-notice links) rather
+// than hijacking the row's primary click, which every other kind uses
+// for expand/collapse.
+function DecisionGateInboxBody({ item }: { item: InboxItem }) {
+  const { t } = useLocale();
+  const router = useRouter();
+  const payload = isRecord(item.payload) ? item.payload : undefined;
+  const hubSlug = typeof payload?.hub_slug === "string" ? payload.hub_slug : "";
+  if (!item.description && !hubSlug) return null;
+  return (
+    <div className="space-y-2 px-3 pb-3 pt-3">
+      {item.description && (
+        <p className="text-[12px] leading-relaxed text-fg-2">
+          {item.description}
+        </p>
+      )}
+      {hubSlug && (
+        <button
+          type="button"
+          onClick={() => {
+            // Same rationale as ContradictionBody: let the pathname
+            // change drive the popover close instead of calling
+            // closeInbox() here.
+            router.push(buildMemoriesPath(hubSlug));
+          }}
+          className="inline-flex cursor-pointer items-center gap-1 text-[12px] font-medium"
+          style={{ color: "var(--signature)" }}
+        >
+          {t.inbox.gateGoToBoard}
+          <ArrowUpRight className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ReviewScaffoldBody({ item }: { item: InboxItem }) {
   const { t } = useLocale();
   const note =
@@ -1152,6 +1208,14 @@ export function notificationToInboxItem(
       title = `${hubName} is back under capacity`;
       description = "The hub is no longer frozen.";
     }
+  } else if (kind === "decision_gate") {
+    // Payload written by the Go createDecisionGate ping: title is the
+    // gate's question, description its context (both plain text).
+    const payload = notification.payload as
+      | { title?: string; description?: string }
+      | undefined;
+    title = payload?.title ?? "";
+    description = payload?.description ?? "";
   } else if (kind === "stale" || kind === "low_confidence") {
     // Scaffold kinds — no producer yet. Title stays blank so the row
     // renders the fallback "kind unsupported yet" note.
@@ -1299,6 +1363,8 @@ function inboxKindLabel(
       return t.inbox.kindHubFrozen;
     case "hub_restored":
       return t.inbox.kindHubRestored;
+    case "decision_gate":
+      return t.inbox.kindDecisionGate;
     default:
       return t.reviews.title;
   }
@@ -1334,6 +1400,10 @@ const INBOX_KIND_VISUALS: Record<string, InboxKindVisual> = {
   topic_restructure: { icon: GitBranch, color: INBOX_TONE_SIGNATURE },
   stale: { icon: AlertCircle, color: INBOX_TONE_MUTED },
   low_confidence: { icon: HelpCircle, color: INBOX_TONE_MUTED },
+  // Board decision gate ping — an agent is waiting on the user's call.
+  // HelpCircle reads as "a question for you"; signature tone because
+  // it's a needs-action row, not an archival one.
+  decision_gate: { icon: HelpCircle, color: INBOX_TONE_SIGNATURE },
 
   // Hub social kinds — invites and membership changes.
   hub_invite: { icon: Mail, color: INBOX_TONE_SIGNATURE },
@@ -1393,6 +1463,7 @@ const KIND_DETAIL_COMPONENTS: Record<
   topic_restructure: TopicRestructureBody,
   hub_invite: HubInviteBody,
   hub_ownership_transfer: HubOwnershipTransferBody,
+  decision_gate: DecisionGateInboxBody,
 
   // Receipt kinds that carry payload.role — the title only says
   // "X joined Y" / "You joined Y", so the detail slot is where

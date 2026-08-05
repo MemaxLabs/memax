@@ -42,11 +42,21 @@ export function useResolveBoardSlot(hubId: string | undefined) {
       slotKey,
       action,
       verdict,
+      choice,
     }: {
       slotKey: string;
       action: BoardSlotAction;
       verdict?: BoardFeedbackVerdict;
-    }) => getMemaxClient().boards.resolveSlot(hubId!, slotKey, action, verdict),
+      /** For action "choose" (decision gates): the chosen option id. */
+      choice?: string;
+    }) =>
+      getMemaxClient().boards.resolveSlot(
+        hubId!,
+        slotKey,
+        action,
+        verdict,
+        choice,
+      ),
     onMutate: async ({ slotKey, action, verdict }) => {
       if (!hubId) return;
       const key = boardQueryKey(hubId);
@@ -60,6 +70,8 @@ export function useResolveBoardSlot(hubId: string | undefined) {
                 if (slot.slot_key !== slotKey) return slot;
                 return {
                   ...slot,
+                  // ack / feedback / choose all land the slot in
+                  // "resolved"; only dismiss greys it out.
                   state: action === "dismiss" ? "dismissed" : "resolved",
                   resolution: {
                     action,

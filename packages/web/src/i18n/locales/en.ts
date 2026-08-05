@@ -887,6 +887,32 @@ export const en = {
     weekLineOne: "1 memory this week",
     weekLine: "{n} memories this week",
     weekCompare: "Last week: {n}",
+    kindDreamlog: "Last night's dream",
+    kindEcho: "Echo",
+    kindThread: "Hidden thread",
+    kindOpenq: "Forgotten question",
+    kindPattern: "Unobserved pattern",
+    kindMusing: "memax musing",
+    kindGate: "Waiting on you",
+    echoThen: "you asked yourself",
+    echoNow: "your answer",
+    gateFrom: "From {agent}",
+    dreamlogPurpose:
+      "memax's first-person notes from organizing your memories overnight.",
+    echoPurpose:
+      "An old question just met a new answer — only memory that carries time can do this.",
+    threadPurpose:
+      "Two memories you never connected that might be the same idea.",
+    openqPurpose: "A question you asked in your memories but never answered.",
+    patternPurpose:
+      "A habit hiding in your memory data that you may not have noticed yourself.",
+    musingPurpose:
+      "memax thinking out loud about the shape of this hub's knowledge.",
+    gatePurpose:
+      "An agent stopped to wait for your call. Your choice is written back into memory so the agent can read it later.",
+    feedbackAccurate: "Spot on",
+    feedbackInaccurate: "Off the mark",
+    actionCollapse: "Tuck away",
   },
   inbox: {
     title: "Inbox",
@@ -913,6 +939,9 @@ export const en = {
     kindHubOverLimit: "HUB OVER LIMIT",
     kindHubFrozen: "HUB FROZEN",
     kindHubRestored: "HUB RESTORED",
+    kindDecisionGate: "DECISION NEEDED",
+    gateDismiss: "Got it",
+    gateGoToBoard: "Decide on the board",
     topicMergeOneTitle: "Merge {source} into {target}?",
     topicMergeManyTitle: "Merge {sources} into {target}?",
     topicMergeFallbackTitle: "Merge topics into {target}?",

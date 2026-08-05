@@ -17,6 +17,11 @@ import {
   registerBoardKind,
   type BoardKindBodyProps,
 } from "./board-kind-registry";
+// Side-effect chain: importing the Lane A module also registers the
+// Lane B synthesized kinds (dreamlog/echo/thread/openq/pattern/musing/
+// decision_gate), so BoardView's single `import "./board-kinds"` brings
+// the whole registry up before first render.
+import "./board-kinds-lane-b";
 
 interface TraceAgent {
   slug?: string;
@@ -180,10 +185,10 @@ function WeekBody({ slot }: BoardKindBodyProps) {
 }
 
 registerBoardKind("trace", TraceBody, {
-  ack: (t) => t.board.traceAck,
+  actions: { ack: (t) => t.board.traceAck },
 });
 registerBoardKind("pulse", PulseBody);
 registerBoardKind("capsule", CapsuleBody, {
-  ack: (t) => t.board.capsuleAck,
+  actions: { ack: (t) => t.board.capsuleAck },
 });
 registerBoardKind("week", WeekBody);

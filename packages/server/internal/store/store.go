@@ -557,9 +557,13 @@ type Store interface {
 	// transitions slots still in fresh/seen; terminal slots return
 	// ErrBoardSlotAlreadyResolved.
 	GetOrCreateSystemBoard(hubID, createdBy string) (*model.Board, error)
+	GetBoardSlot(boardID, slotKey string) (*model.BoardSlot, error)
 	ListBoardSlots(boardID string) ([]model.BoardSlot, error)
 	UpsertBoardSlot(slot *model.BoardSlot) error
 	ResolveBoardSlot(boardID, slotKey, newState string, resolution model.BoardSlotResolution) (*model.BoardSlot, error)
+	// CreateBoardFeedback upserts on (board, slot, member): latest
+	// verdict wins, so repeat submissions and post-resolve retries are
+	// idempotent per member.
 	CreateBoardFeedback(f *model.BoardFeedback) error
 
 	// Connected Agents — first-class agent registry

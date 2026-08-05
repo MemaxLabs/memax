@@ -114,6 +114,52 @@ func TestInMemoryBoardsResolveTransitions(t *testing.T) {
 	}
 }
 
+func TestInMemoryBoardsGetSlotAndFeedbackUpsert(t *testing.T) {
+	t.Parallel()
+	s := NewInMemoryStore()
+	board, _ := s.GetOrCreateSystemBoard("hub-a", "u1")
+	if err := s.UpsertBoardSlot(testBoardSlot(board.ID, "hero")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.GetBoardSlot(board.ID, "missing"); !errors.Is(err, ErrBoardSlotNotFound) {
+		t.Fatalf("expected ErrBoardSlotNotFound, got %v", err)
+	}
+	slot, err := s.GetBoardSlot(board.ID, "hero")
+	if err != nil || slot.SlotKey != "hero" {
+		t.Fatalf("GetBoardSlot: %v, %#v", err, slot)
+	}
+
+	// Feedback upserts per (board, slot, member): same member's repeat
+	// verdict replaces, another member's verdict adds a row.
+	mk := func(user, verdict string) *model.BoardFeedback {
+		return &model.BoardFeedback{
+			BoardID: board.ID, SlotKey: "hero", CardKind: "trace",
+			CardTitle: "test card", Verdict: verdict, UserID: user,
+		}
+	}
+	if err := s.CreateBoardFeedback(mk("u1", "accurate")); err != nil {
+		t.Fatal(err)
+	}
+	f2 := mk("u1", "inaccurate")
+	if err := s.CreateBoardFeedback(f2); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateBoardFeedback(mk("u2", "accurate")); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.boardFeedback) != 2 {
+		t.Fatalf("expected 2 rows (u1 upserted, u2 added), got %d", len(s.boardFeedback))
+	}
+	for _, row := range s.boardFeedback {
+		if row.UserID == "u1" && row.Verdict != "inaccurate" {
+			t.Fatalf("u1 repeat verdict must win: %#v", row)
+		}
+	}
+}
+
 func TestInMemoryBoardsSlotValidation(t *testing.T) {
 	t.Parallel()
 	s := NewInMemoryStore()

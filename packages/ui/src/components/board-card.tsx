@@ -52,11 +52,13 @@ export function BoardCard({
     <div
       data-state={state}
       className={cn(
-        "rounded-[18px] border bg-card px-4 py-3.5 transition-opacity",
-        terminal ? "border-dashed border-border/60" : "border-border/40",
+        "glass-card rounded-[18px] px-4 py-3.5 transition-opacity",
         state === "dismissed" && "opacity-60",
         className,
       )}
+      // Inline so the dashed receipt border wins over the .glass-card
+      // recipe's border shorthand regardless of stylesheet order.
+      style={terminal ? { borderStyle: "dashed" } : undefined}
     >
       {children}
       {!terminal ? live : null}

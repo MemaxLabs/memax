@@ -2300,8 +2300,9 @@ export const en = {
       forgetMemories: "forget those memories",
       // Personas
       deletePersona: "forget that persona",
-      resolveBoardCard: "resolve that card",
       restorePersona: "restore that persona",
+      // Board
+      resolveBoardCard: "resolve that card",
       // Hubs
       createHub: "create that hub",
       updateHub: "update the hub",

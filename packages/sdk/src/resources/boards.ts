@@ -27,8 +27,10 @@ export class BoardsResource {
   /**
    * Transition a card out of its live state. `ack` keeps it as a
    * resolved receipt, `dismiss` greys it out, `feedback` records a
-   * 准/不准 verdict (required) then resolves. Terminal cards reject
-   * with 409 already_resolved.
+   * per-member 准/不准 verdict (required; latest wins) then resolves.
+   * Idempotent: resolving a card another member already settled
+   * returns 200 with the current slot — and feedback verdicts still
+   * record on settled cards.
    */
   async resolveSlot(
     hubId: string,

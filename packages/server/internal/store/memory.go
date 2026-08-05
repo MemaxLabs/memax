@@ -3283,7 +3283,8 @@ func (s *InMemoryStore) GetOrCreateSystemBoard(hubID, createdBy string) (*model.
 	}
 	for _, b := range s.boards {
 		if b.HubID == hubID && b.Kind == model.BoardKindSystem {
-			return b, nil
+			out := *b
+			return &out, nil
 		}
 	}
 	s.boardSeq++
@@ -3298,7 +3299,19 @@ func (s *InMemoryStore) GetOrCreateSystemBoard(hubID, createdBy string) (*model.
 		UpdatedAt: now,
 	}
 	s.boards[board.ID] = board
-	return board, nil
+	out := *board
+	return &out, nil
+}
+
+func (s *InMemoryStore) GetBoardSlot(boardID, slotKey string) (*model.BoardSlot, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	slot, ok := s.boardSlots[boardID][slotKey]
+	if !ok {
+		return nil, ErrBoardSlotNotFound
+	}
+	out := *slot
+	return &out, nil
 }
 
 func (s *InMemoryStore) ListBoardSlots(boardID string) ([]model.BoardSlot, error) {
@@ -3362,9 +3375,24 @@ func (s *InMemoryStore) ResolveBoardSlot(boardID, slotKey, newState string, reso
 func (s *InMemoryStore) CreateBoardFeedback(f *model.BoardFeedback) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	// Latest verdict wins per (board, slot, member) — mirrors the
+	// Postgres ON CONFLICT DO UPDATE upsert.
+	for _, existing := range s.boardFeedback {
+		if existing.BoardID == f.BoardID && existing.SlotKey == f.SlotKey && existing.UserID == f.UserID {
+			existing.CardKind = f.CardKind
+			existing.CardTitle = f.CardTitle
+			existing.Verdict = f.Verdict
+			existing.CiteMemoryIDs = f.CiteMemoryIDs
+			existing.CreatedAt = now
+			f.ID = existing.ID
+			f.CreatedAt = now
+			return nil
+		}
+	}
 	s.boardSeq++
 	f.ID = fmt.Sprintf("bf_%d", s.boardSeq)
-	f.CreatedAt = time.Now().UTC()
+	f.CreatedAt = now
 	stored := *f
 	s.boardFeedback = append(s.boardFeedback, &stored)
 	return nil

@@ -37,7 +37,13 @@ func (h *BoardsHandler) requireHubMember(w http.ResponseWriter, r *http.Request)
 	userID = GetUserID(r)
 	hubID = r.PathValue("id")
 
-	role, _ := h.store.GetHubMemberRole(hubID, userID)
+	role, err := h.store.GetHubMemberRole(hubID, userID)
+	if err != nil {
+		// A store failure must not masquerade as a membership denial —
+		// 403 would mislead real members and defeat client retries.
+		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+		return "", "", false
+	}
 	if role == "" {
 		writeError(w, http.StatusForbidden, "not_member", "You are not a member of this hub")
 		return "", "", false
@@ -77,8 +83,15 @@ func (h *BoardsHandler) Get(w http.ResponseWriter, r *http.Request) {
 //
 //	ack      — 收下了, card becomes a receipt (resolved)
 //	dismiss  — not useful, card greys out (dismissed)
-//	feedback — 准/不准 verdict; records an append-only board_feedback
-//	           row (survives slot replacement) then resolves the card
+//	feedback — 准/不准 verdict; records a per-member board_feedback row
+//	           (latest verdict wins, survives slot replacement) then
+//	           resolves the card
+//
+// Resolution is idempotent: a slot another member (or a retry) already
+// settled returns 200 with the current slot instead of an error — a
+// benign race on a shared board must not surface as a failure. Feedback
+// verdicts are still recorded on already-terminal slots so every hub
+// member can weigh in, not just whoever resolved the card first.
 func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 	hubID, userID, ok := h.requireHubMember(w, r)
 	if !ok {
@@ -125,16 +138,23 @@ func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, store.ErrBoardSlotAlreadyResolved) {
-		writeError(w, http.StatusConflict, "already_resolved", "This card was already resolved")
-		return
+		// Idempotent path: someone (or a retry) settled the card first.
+		// Return the current slot; feedback below still records.
+		slot, err = h.store.GetBoardSlot(board.ID, slotKey)
+		if errors.Is(err, store.ErrBoardSlotNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", "No card in that slot")
+			return
+		}
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
 
-	// Feedback is recorded after the transition succeeds so a replayed
-	// or already-resolved request can't double-count a verdict.
+	// Feedback is recorded after the transition (or the idempotent
+	// read) succeeds. The store upserts per (board, slot, member), so a
+	// retry after a failed sequence — including one where the resolve
+	// already committed — still lands the verdict instead of losing it.
 	if req.Action == model.BoardSlotActionFeedback {
 		if err := h.store.CreateBoardFeedback(&model.BoardFeedback{
 			BoardID:       board.ID,

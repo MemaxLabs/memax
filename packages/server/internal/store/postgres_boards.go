@@ -27,10 +27,21 @@ func scanBoard(row pgx.Row) (*model.Board, error) {
 }
 
 // GetOrCreateSystemBoard returns the hub's system board, creating it on
-// first access. The no-op DO UPDATE makes the insert race-safe against
-// the partial unique index while still RETURNING the surviving row.
+// first access. Reads take the SELECT fast path — the board GET is a
+// hot read and must not write a row version per view. Only a miss
+// falls through to the insert, where the no-op DO UPDATE keeps the
+// create race-safe against the partial unique index while still
+// RETURNING the surviving row.
 func (s *PostgresStore) GetOrCreateSystemBoard(hubID, createdBy string) (*model.Board, error) {
 	ctx := context.Background()
+	board, err := scanBoard(s.pool.QueryRow(ctx,
+		`SELECT `+boardColumns+` FROM boards WHERE hub_id = $1::uuid AND kind = 'system'`, hubID))
+	if err == nil {
+		return board, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
 	row := s.pool.QueryRow(ctx,
 		`INSERT INTO boards (hub_id, created_by, kind, status)
 		VALUES ($1::uuid, $2::uuid, 'system', 'active')
@@ -63,6 +74,20 @@ func scanBoardSlot(row pgx.Row) (*model.BoardSlot, error) {
 		slot.DreamRunID = *dreamRunID
 	}
 	return &slot, nil
+}
+
+// GetBoardSlot returns one slot or ErrBoardSlotNotFound. Used by the
+// handler's idempotent resolve path to report the current state of a
+// slot that is already terminal.
+func (s *PostgresStore) GetBoardSlot(boardID, slotKey string) (*model.BoardSlot, error) {
+	ctx := context.Background()
+	slot, err := scanBoardSlot(s.pool.QueryRow(ctx,
+		`SELECT `+boardSlotColumns+` FROM board_slots
+		WHERE board_id = $1::uuid AND slot_key = $2`, boardID, slotKey))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrBoardSlotNotFound
+	}
+	return slot, err
 }
 
 // ListBoardSlots returns every occupied slot ordered by slot_key so the
@@ -155,6 +180,11 @@ func (s *PostgresStore) ResolveBoardSlot(boardID, slotKey, newState string, reso
 	return nil, ErrBoardSlotNotFound
 }
 
+// CreateBoardFeedback records a member's 准/不准 verdict. One row per
+// member per slot — a repeat verdict (retry, changed mind, or the slot
+// now holding a new card) replaces the previous one, so every hub
+// member can weigh in on a shared card and retries after a failed
+// resolve+feedback sequence stay safe.
 func (s *PostgresStore) CreateBoardFeedback(f *model.BoardFeedback) error {
 	ctx := context.Background()
 	cites := f.CiteMemoryIDs
@@ -164,6 +194,8 @@ func (s *PostgresStore) CreateBoardFeedback(f *model.BoardFeedback) error {
 	row := s.pool.QueryRow(ctx,
 		`INSERT INTO board_feedback (board_id, slot_key, card_kind, card_title, verdict, user_id, cite_memory_ids)
 		VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7::uuid[])
+		ON CONFLICT (board_id, slot_key, user_id)
+		DO UPDATE SET card_kind = $3, card_title = $4, verdict = $5, cite_memory_ids = $7::uuid[], created_at = now()
 		RETURNING id, created_at`,
 		f.BoardID, f.SlotKey, f.CardKind, f.CardTitle, f.Verdict, f.UserID, cites)
 	return row.Scan(&f.ID, &f.CreatedAt)

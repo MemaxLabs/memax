@@ -15,7 +15,7 @@
 -- run (酝酿中); 'paused' — excluded from producer runs.
 CREATE TABLE boards (
     id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
-    hub_id uuid NOT NULL,
+    hub_id uuid NOT NULL REFERENCES hubs(id) ON DELETE CASCADE,
     created_by uuid NOT NULL,
     kind text DEFAULT 'system' NOT NULL,
     title text DEFAULT '' NOT NULL,
@@ -57,7 +57,9 @@ CREATE INDEX board_slots_board_id_idx ON board_slots (board_id);
 
 -- 准/不准 feedback is a first-class signal consumed by later synthesis
 -- runs, so it outlives the slot content it judged (slots are replaced
--- in place; feedback rows are append-only snapshots).
+-- in place). One row per member per slot — repeat verdicts update in
+-- place ("latest opinion wins"), which both allows every hub member to
+-- weigh in on a shared card and caps table growth per board.
 CREATE TABLE board_feedback (
     id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     board_id uuid NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
@@ -67,7 +69,8 @@ CREATE TABLE board_feedback (
     verdict text NOT NULL,
     user_id uuid NOT NULL,
     cite_memory_ids uuid[] DEFAULT '{}' NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    UNIQUE (board_id, slot_key, user_id)
 );
 
 CREATE INDEX board_feedback_board_id_idx ON board_feedback (board_id);

@@ -15,12 +15,14 @@ import {
   BoardVoiceStar,
   type BoardCardState,
 } from "../../../../src";
+import { AGENT_IDENTITIES } from "@/tokens/agents";
 import { Section, DemoCard } from "../_shared";
 
-// Source-agent dot colors used by 行迹-style rows. P1 will move these
-// into a proper token map; for the kitchen the literals are enough.
-const DOT_CLAUDE = "#d97757";
-const DOT_CODEX = "#10a37f";
+// Agent dots come from the canonical identity tokens — the same colors
+// the product uses for memory-row attribution. Only the idea-category
+// dot is board-specific.
+const DOT_CLAUDE = AGENT_IDENTITIES["claude-code"].color;
+const DOT_CODEX = AGENT_IDENTITIES["codex"].color;
 const DOT_IDEA = "#8b5cf6";
 
 /**

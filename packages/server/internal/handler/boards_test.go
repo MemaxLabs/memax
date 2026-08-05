@@ -175,17 +175,29 @@ func TestBoardsResolveSlotLifecycle(t *testing.T) {
 		t.Fatalf("expected resolution receipt by u1, got %#v", resp.Data.Slot.Resolution)
 	}
 
-	// Terminal slots are not re-resolvable.
+	// Re-resolving a settled card is idempotent: 200 with the current
+	// slot, original receipt untouched — a benign race between hub
+	// members must never surface as an error.
 	rec = httptest.NewRecorder()
 	h.ResolveSlot(rec, boardsResolveRequest(boardsTestHubID, "hero", "u1", `{"action":"dismiss"}`))
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("double resolve: expected 409, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("idempotent resolve: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Data.Slot.State != model.BoardSlotStateResolved {
+		t.Fatalf("idempotent resolve must not change state, got %s", resp.Data.Slot.State)
+	}
+	if resp.Data.Slot.Resolution == nil || resp.Data.Slot.Resolution.Action != "ack" {
+		t.Fatalf("idempotent resolve must keep the original receipt, got %#v", resp.Data.Slot.Resolution)
 	}
 }
 
 func TestBoardsFeedbackRecordsVerdictSnapshot(t *testing.T) {
 	s := newBoardsTestStore()
 	s.roles[boardsTestHubID+":u1"] = "member"
+	s.roles[boardsTestHubID+":u2"] = "member"
 	h := NewBoardsHandler(s)
 	seedBoardSlot(t, s, boardsTestHubID, "wow")
 
@@ -203,6 +215,17 @@ func TestBoardsFeedbackRecordsVerdictSnapshot(t *testing.T) {
 	}
 	if len(f.CiteMemoryIDs) != 1 {
 		t.Fatalf("feedback must snapshot citations, got %#v", f.CiteMemoryIDs)
+	}
+
+	// A second member's verdict on the (now terminal) card must still
+	// record — feedback is a per-member signal, not first-click-wins.
+	rec = httptest.NewRecorder()
+	h.ResolveSlot(rec, boardsResolveRequest(boardsTestHubID, "wow", "u2", `{"action":"feedback","verdict":"inaccurate"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second member feedback: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(s.feedback) != 2 {
+		t.Fatalf("expected 2 feedback rows (one per member), got %d", len(s.feedback))
 	}
 }
 

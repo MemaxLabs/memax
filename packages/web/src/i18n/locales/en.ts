@@ -419,7 +419,7 @@ export const en = {
     allForgetting: "Forgetting {n} memories...",
     allForgettingOne: "Forgetting 1 memory...",
     thisMemory: "Forget this memory?",
-    forgettingQuote: "Forgetting \u201c{title}\u201d",
+    forgettingQuote: "Forgetting “{title}”",
   },
 
   // Note detail
@@ -878,6 +878,9 @@ export const en = {
     traceCountOne: "1 memory",
     traceCount: "{n} memories",
     traceManual: "Captured by hand",
+    traceLatest: "Latest: “{title}”",
+    traceAck: "All correct · got it",
+    capsuleAck: "I remember",
     pulseRecentOne: "1 new memory",
     pulseRecent: "{n} new memories",
     pulseContributors: "{n} people",
@@ -1990,7 +1993,7 @@ export const en = {
     streamConnectCountTooltip:
       "Number of connect() invocations since this session started. Healthy steady-state is 1. Higher numbers indicate server/network hang-ups forcing reconnects, or a bug re-mounting the bridge. Reset on logout.",
     debuggerEngaged: "Debugger engaged",
-    streamConnectedWithHubs: "Stream connected \u00b7 watching {count} hub(s)",
+    streamConnectedWithHubs: "Stream connected · watching {count} hub(s)",
     streamIsState: "Stream is {state}",
     eventStreamReady: "Event stream ready",
     eventStreamUnknownError: "Unknown stream error",

@@ -127,10 +127,11 @@ export function ChatComposer({
         // desktop / flat fill on mobile, focus shadow on --signature.
         "rounded-[var(--app-radius-surface)] px-3 py-2.5",
         isMobile
-          ? // Token-identical to the global bar's mobile shell
-            // (--bar-border/--bar-shadow) so the two input surfaces
-            // read as one grammar, not siblings.
-            "border bg-background [border-color:var(--bar-border)] [box-shadow:var(--bar-shadow)]"
+          ? // EXACTLY the mobile bar shell's classes
+            // (MobileThumbBarShell: rounded-surface + border-border/50)
+            // so the two input surfaces are the same silhouette — one
+            // pill grammar, not near-identical siblings.
+            "rounded-surface border border-border/50 bg-background"
           : "glass-bar backdrop-blur-sm border border-border/40",
       )}
       style={

@@ -799,6 +799,9 @@ export const zh: Translations = {
     traceCountOne: "1 条记忆",
     traceCount: "{n} 条记忆",
     traceManual: "手动记下",
+    traceLatest: "最新：“{title}”",
+    traceAck: "都对 · 收下",
+    capsuleAck: "记得",
     pulseRecentOne: "1 条新动态",
     pulseRecent: "{n} 条新动态",
     pulseContributors: "{n} 人参与",
@@ -1811,7 +1814,7 @@ export const zh: Translations = {
     streamConnectCountTooltip:
       "当前 session 内 connect() 被调用的次数。健康稳态应该是 1。数字增长说明 server/网络 hang-up 导致重连,或者 bridge 被重复 mount 的 bug。注销时重置。",
     debuggerEngaged: "调试器已开启",
-    streamConnectedWithHubs: "已连接 \u00b7 监听 {count} 个 hub",
+    streamConnectedWithHubs: "已连接 · 监听 {count} 个 hub",
     streamIsState: "流状态：{state}",
     eventStreamReady: "事件流已就绪",
     eventStreamUnknownError: "未知流错误",

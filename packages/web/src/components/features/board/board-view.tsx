@@ -7,7 +7,10 @@ import { useLocale } from "@/i18n";
 import { useActiveHub } from "@/lib/auth";
 import { trackEvent } from "@/lib/posthog";
 import { useHubBoard, useResolveBoardSlot } from "@/hooks/use-board";
-import { renderBoardSlotBody } from "./board-kind-registry";
+import {
+  boardKindActionLabels,
+  renderBoardSlotBody,
+} from "./board-kind-registry";
 // Side-effect import: registers the Lane A kind renderers before the
 // first render so no card flashes through the fallback.
 import "./board-kinds";
@@ -46,11 +49,12 @@ export function BoardView({ hubId }: { hubId: string }) {
   if (isPending || isError || !data || data.slots.length === 0) return null;
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-2.5 px-5 pt-4 sm:px-8">
-      {data.slots.map((slot) => (
+    <div className="mb-3 flex flex-col gap-2.5">
+      {data.slots.map((slot, index) => (
         <BoardSlotCard
           key={slot.slot_key}
           slot={slot}
+          entranceIndex={index}
           onResolve={(action) => {
             trackEvent("board_card_action", {
               hub_id: hubId,
@@ -67,9 +71,11 @@ export function BoardView({ hubId }: { hubId: string }) {
 }
 
 /**
- * BoardSection — the hub-home mount: resolves the active hub. All
- * layout (content column, padding) lives inside BoardView's non-empty
- * branch so an empty board contributes zero height to the page.
+ * BoardSection — mounts inside TopicGrid's content column, below the
+ * hub header and pinned notifications (the parent provides the
+ * max-width column and horizontal padding). Renders nothing — zero
+ * height — until the hub has cards, so card-less hubs keep the exact
+ * pre-board layout.
  */
 export function BoardSection() {
   const { hubFilter } = useActiveHub();
@@ -79,22 +85,30 @@ export function BoardSection() {
 
 function BoardSlotCard({
   slot,
+  entranceIndex,
   onResolve,
 }: {
   slot: BoardSlot;
+  entranceIndex: number;
   onResolve: (action: "ack" | "dismiss") => void;
 }) {
   const { t } = useLocale();
+  // Per-kind resolve verbs: "都对 · 收下" on a trace reads differently
+  // from "收下" on an observation. Kinds without registered labels get
+  // the generic pair.
+  const labels = boardKindActionLabels(slot.kind);
   return (
     <BoardCard
       state={slot.state}
+      className="animate-fade-up"
+      style={{ animationDelay: `${Math.min(entranceIndex, 4) * 60}ms` }}
       live={
         <BoardActionRow>
-          <BoardAction emphasis="quiet" onClick={() => onResolve("ack")}>
-            {t.board.actionAck}
+          <BoardAction emphasis="primary" onClick={() => onResolve("ack")}>
+            {labels?.ack?.(t) ?? t.board.actionAck}
           </BoardAction>
           <BoardAction emphasis="quiet" onClick={() => onResolve("dismiss")}>
-            {t.board.actionDismiss}
+            {labels?.dismiss?.(t) ?? t.board.actionDismiss}
           </BoardAction>
         </BoardActionRow>
       }

@@ -64,7 +64,13 @@ function TraceBody({ slot }: BoardKindBodyProps) {
               t.board.traceCount,
               asNumber(agent.count),
             )}
-            meta={asString(agent.latest_title)}
+            meta={
+              asString(agent.latest_title)
+                ? interpolate(t.board.traceLatest, {
+                    title: asString(agent.latest_title),
+                  })
+                : undefined
+            }
             who={name}
           />
         );
@@ -173,7 +179,11 @@ function WeekBody({ slot }: BoardKindBodyProps) {
   );
 }
 
-registerBoardKind("trace", TraceBody);
+registerBoardKind("trace", TraceBody, {
+  ack: (t) => t.board.traceAck,
+});
 registerBoardKind("pulse", PulseBody);
-registerBoardKind("capsule", CapsuleBody);
+registerBoardKind("capsule", CapsuleBody, {
+  ack: (t) => t.board.capsuleAck,
+});
 registerBoardKind("week", WeekBody);

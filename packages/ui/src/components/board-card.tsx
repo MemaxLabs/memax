@@ -37,6 +37,7 @@ export function BoardCard({
   live,
   receipt,
   className,
+  style,
 }: {
   state?: BoardCardState;
   /** Persistent card body — kind label, quotes, rows. */
@@ -46,24 +47,32 @@ export function BoardCard({
   /** Receipt line content shown once terminal. */
   receipt?: React.ReactNode;
   className?: string;
+  /** Merged with the card's own style (e.g. entrance animationDelay). */
+  style?: React.CSSProperties;
 }) {
   const terminal = TERMINAL_STATES.has(state);
   return (
     <div
       data-state={state}
       className={cn(
-        "glass-card rounded-[18px] px-4 py-3.5 transition-opacity",
+        "glass-card rounded-[18px] px-4 py-3.5",
+        // Spring, not ease-in-out: the resolve swap (border → dashed,
+        // dismissed dim) should read as the card settling, per the
+        // design language.
+        "transition-[opacity,border-color] duration-300 [transition-timing-function:var(--ease-spring)]",
         state === "dismissed" && "opacity-60",
         className,
       )}
       // Inline so the dashed receipt border wins over the .glass-card
       // recipe's border shorthand regardless of stylesheet order.
-      style={terminal ? { borderStyle: "dashed" } : undefined}
+      style={{ ...style, ...(terminal ? { borderStyle: "dashed" } : null) }}
     >
       {children}
       {!terminal ? live : null}
       {terminal && receipt ? (
-        <BoardReceipt className="mt-3">{receipt}</BoardReceipt>
+        // The receipt fades up into the space the action row vacated —
+        // resolution reads as the card exhaling, not content popping.
+        <BoardReceipt className="animate-fade-up mt-3">{receipt}</BoardReceipt>
       ) : null}
     </div>
   );

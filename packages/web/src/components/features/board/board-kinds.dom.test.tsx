@@ -55,7 +55,7 @@ describe("lane A board kind renderers", () => {
     );
     expect(screen.getByText("Claude Code")).toBeTruthy();
     expect(screen.getByText("3 memories")).toBeTruthy();
-    expect(screen.getByText("Chose River over Redis")).toBeTruthy();
+    expect(screen.getByText("Latest: “Chose River over Redis”")).toBeTruthy();
     // Unattributed rows get the manual-capture label, and the slot's
     // fallback title never leaks into a dedicated renderer.
     expect(screen.getByText("Captured by hand")).toBeTruthy();

@@ -13,6 +13,22 @@ export * from "./tokens/hubs";
 export { Avatar, AvatarImage, AvatarFallback } from "./components/avatar";
 export { Badge, badgeVariants } from "./components/badge";
 export {
+  BoardAction,
+  BoardActionRow,
+  BoardAgentRow,
+  BoardCiteChip,
+  BoardKindLabel,
+  BoardMemQuote,
+  BoardReceipt,
+  BoardSlotStrip,
+  BoardVoiceStar,
+} from "./components/board-atoms";
+export {
+  BoardCard,
+  BoardCardFallbackBody,
+  type BoardCardState,
+} from "./components/board-card";
+export {
   BottomSheet,
   type BottomSheetSnapPoint,
 } from "./components/bottom-sheet";

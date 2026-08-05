@@ -30,6 +30,10 @@ type InMemoryStore struct {
 	personas                     map[string]*model.Persona
 	userPreferences              map[string]map[string]any
 	personaRevisions             map[string][]*model.PersonaRevision // personaID -> revisions
+	boards                       map[string]*model.Board                // boardID -> board
+	boardSlots                   map[string]map[string]*model.BoardSlot // boardID -> slotKey -> slot
+	boardFeedback                []*model.BoardFeedback
+	boardSeq                     int // auto-increment for board/slot/feedback IDs
 	configStates                 map[string]*model.AgentConfigSyncState
 	tombstones                   map[string]*model.AgentConfigTombstone
 	emailTemplateOverrides       map[string]*model.EmailTemplateOverride
@@ -3267,4 +3271,101 @@ func (s *InMemoryStore) GetPersonaRevision(personaID string, version int, ownerI
 		}
 	}
 	return nil, fmt.Errorf("persona revision not found: %s v%d", personaID, version)
+}
+
+// --- Boards (in-memory) ---
+
+func (s *InMemoryStore) GetOrCreateSystemBoard(hubID, createdBy string) (*model.Board, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.boards == nil {
+		s.boards = make(map[string]*model.Board)
+	}
+	for _, b := range s.boards {
+		if b.HubID == hubID && b.Kind == model.BoardKindSystem {
+			return b, nil
+		}
+	}
+	s.boardSeq++
+	now := time.Now().UTC()
+	board := &model.Board{
+		ID:        fmt.Sprintf("board_%d", s.boardSeq),
+		HubID:     hubID,
+		CreatedBy: createdBy,
+		Kind:      model.BoardKindSystem,
+		Status:    model.BoardStatusActive,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	s.boards[board.ID] = board
+	return board, nil
+}
+
+func (s *InMemoryStore) ListBoardSlots(boardID string) ([]model.BoardSlot, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var slots []model.BoardSlot
+	for _, slot := range s.boardSlots[boardID] {
+		slots = append(slots, *slot)
+	}
+	sort.Slice(slots, func(i, j int) bool { return slots[i].SlotKey < slots[j].SlotKey })
+	return slots, nil
+}
+
+func (s *InMemoryStore) UpsertBoardSlot(slot *model.BoardSlot) error {
+	if err := model.ValidateBoardSlot(slot); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.boardSlots == nil {
+		s.boardSlots = make(map[string]map[string]*model.BoardSlot)
+	}
+	if s.boardSlots[slot.BoardID] == nil {
+		s.boardSlots[slot.BoardID] = make(map[string]*model.BoardSlot)
+	}
+	now := time.Now().UTC()
+	if existing, ok := s.boardSlots[slot.BoardID][slot.SlotKey]; ok {
+		slot.ID = existing.ID
+		slot.CreatedAt = existing.CreatedAt
+	} else {
+		s.boardSeq++
+		slot.ID = fmt.Sprintf("slot_%d", s.boardSeq)
+		slot.CreatedAt = now
+	}
+	slot.State = model.BoardSlotStateFresh
+	slot.Resolution = nil
+	slot.UpdatedAt = now
+	stored := *slot
+	s.boardSlots[slot.BoardID][slot.SlotKey] = &stored
+	return nil
+}
+
+func (s *InMemoryStore) ResolveBoardSlot(boardID, slotKey, newState string, resolution model.BoardSlotResolution) (*model.BoardSlot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	slot, ok := s.boardSlots[boardID][slotKey]
+	if !ok {
+		return nil, ErrBoardSlotNotFound
+	}
+	if slot.State != model.BoardSlotStateFresh && slot.State != model.BoardSlotStateSeen {
+		return nil, ErrBoardSlotAlreadyResolved
+	}
+	slot.State = newState
+	r := resolution
+	slot.Resolution = &r
+	slot.UpdatedAt = time.Now().UTC()
+	out := *slot
+	return &out, nil
+}
+
+func (s *InMemoryStore) CreateBoardFeedback(f *model.BoardFeedback) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.boardSeq++
+	f.ID = fmt.Sprintf("bf_%d", s.boardSeq)
+	f.CreatedAt = time.Now().UTC()
+	stored := *f
+	s.boardFeedback = append(s.boardFeedback, &stored)
+	return nil
 }

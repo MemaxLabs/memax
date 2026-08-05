@@ -787,6 +787,12 @@ export const zh: Translations = {
     },
   },
 
+  board: {
+    actionAck: "收下",
+    actionDismiss: "不关心",
+    receiptAcked: "已收下",
+    receiptDismissed: "已略过",
+  },
   inbox: {
     title: "收件箱",
     open: "打开收件箱",
@@ -2080,6 +2086,7 @@ export const zh: Translations = {
       forgetMemory: "忘记该记忆",
       forgetMemories: "忘记这些记忆",
       deletePersona: "忘记那个 persona",
+      resolveBoardCard: "处理那张卡片",
       restorePersona: "恢复那个 persona",
       createHub: "创建该 hub",
       updateHub: "更新 hub",

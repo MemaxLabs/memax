@@ -41,11 +41,12 @@ export function BoardView({ hubId }: { hubId: string }) {
   // No skeleton: most hubs have no cards yet (dreams haven't run), and
   // a flash-of-skeleton on every hub home load would make the board
   // feel like a broken feature instead of a quiet surface that appears
-  // when it has something to say.
+  // when it has something to say. The layout wrapper (padding included)
+  // renders only here, so the empty state contributes zero height.
   if (isPending || isError || !data || data.slots.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="mx-auto flex max-w-4xl flex-col gap-2.5 px-5 pt-4 sm:px-8">
       {data.slots.map((slot) => (
         <BoardSlotCard
           key={slot.slot_key}
@@ -66,17 +67,14 @@ export function BoardView({ hubId }: { hubId: string }) {
 }
 
 /**
- * BoardSection — the hub-home mount: resolves the active hub and lays
- * the board out in the same content column as the grid below it.
+ * BoardSection — the hub-home mount: resolves the active hub. All
+ * layout (content column, padding) lives inside BoardView's non-empty
+ * branch so an empty board contributes zero height to the page.
  */
 export function BoardSection() {
   const { hubFilter } = useActiveHub();
   if (!hubFilter) return null;
-  return (
-    <div className="mx-auto max-w-4xl px-5 pt-4 sm:px-8">
-      <BoardView hubId={hubFilter} />
-    </div>
-  );
+  return <BoardView hubId={hubFilter} />;
 }
 
 function BoardSlotCard({

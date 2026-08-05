@@ -3459,7 +3459,7 @@ func (s *InMemoryStore) ListTopicActivityByHub(hubID string, since time.Time, li
 			continue
 		}
 		topic, ok := s.topics[mt.TopicID]
-		if !ok {
+		if !ok || topic.HubID != hubID || topic.ArchivedAt != nil {
 			continue
 		}
 		entry, ok := counts[topic.ID]
@@ -3488,12 +3488,12 @@ func (s *InMemoryStore) ListTopicActivityByHub(hubID string, since time.Time, li
 	return out, nil
 }
 
-func (s *InMemoryStore) CountMemoriesInHubSince(hubID string, since time.Time) (int, error) {
+func (s *InMemoryStore) CountMemoriesInHubRange(hubID string, from, to time.Time) (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	count := 0
 	for _, m := range s.memories {
-		if boardMemoryEligible(m, hubID) && m.CreatedAt.After(since) {
+		if boardMemoryEligible(m, hubID) && m.CreatedAt.After(from) && !m.CreatedAt.After(to) {
 			count++
 		}
 	}
@@ -3506,7 +3506,7 @@ func (s *InMemoryStore) GetMemoryNear(hubID string, target time.Time, tolerance 
 	var best *model.Memory
 	var bestDiff time.Duration
 	for _, m := range s.memories {
-		if !boardMemoryEligible(m, hubID) {
+		if !boardMemoryEligible(m, hubID) || (m.Title == "" && m.Summary == "") {
 			continue
 		}
 		diff := m.CreatedAt.Sub(target)

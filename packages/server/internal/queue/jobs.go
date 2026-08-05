@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 )
@@ -434,6 +435,12 @@ func (BoardSweepArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{
 		Queue:       "dreams",
 		MaxAttempts: 1,
+		// Dedupe restart storms: the periodic job runs on start, so a
+		// crash-looping or rolling-deployed worker would otherwise
+		// re-fan-out the whole fleet on every boot.
+		UniqueOpts: river.UniqueOpts{
+			ByPeriod: 6 * time.Hour,
+		},
 	}
 }
 
@@ -447,9 +454,21 @@ func (BoardRefreshArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{
 		Queue:       "dreams",
 		MaxAttempts: 2,
+		// Dedupe only against jobs that haven't run yet. The default
+		// unique states include `completed`, which would silently drop
+		// a dream-chained refresh landing in the same period bucket as
+		// an already-finished sweep refresh — the dream just changed
+		// the data, so that refresh must run.
 		UniqueOpts: river.UniqueOpts{
 			ByArgs:   true,
-			ByPeriod: 10 * time.Minute, // dedupe sweep vs dream-chain triggers
+			ByPeriod: 10 * time.Minute,
+			ByState: []rivertype.JobState{
+				rivertype.JobStateAvailable,
+				rivertype.JobStatePending,
+				rivertype.JobStateRunning,
+				rivertype.JobStateRetryable,
+				rivertype.JobStateScheduled,
+			},
 		},
 	}
 }

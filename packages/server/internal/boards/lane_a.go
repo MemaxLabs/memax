@@ -5,10 +5,11 @@
 package boards
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
@@ -145,15 +146,17 @@ func (p *Producer) refreshCapsule(boardID, hubID string, now time.Time) error {
 }
 
 func (p *Producer) refreshWeek(boardID, hubID string, now time.Time) error {
-	thisWeek, err := p.store.CountMemoriesInHubSince(hubID, now.Add(-weekWindow))
+	// Two disjoint ranges, no subtraction: deriving last week as
+	// (14d count − 7d count) could go negative when a memory is
+	// archived between the two scans.
+	thisWeek, err := p.store.CountMemoriesInHubRange(hubID, now.Add(-weekWindow), now)
 	if err != nil {
 		return fmt.Errorf("boards: week count: %w", err)
 	}
-	twoWeeks, err := p.store.CountMemoriesInHubSince(hubID, now.Add(-2*weekWindow))
+	lastWeek, err := p.store.CountMemoriesInHubRange(hubID, now.Add(-2*weekWindow), now.Add(-weekWindow))
 	if err != nil {
-		return fmt.Errorf("boards: two-week count: %w", err)
+		return fmt.Errorf("boards: last-week count: %w", err)
 	}
-	lastWeek := twoWeeks - thisWeek
 	if thisWeek == 0 && lastWeek == 0 {
 		return p.store.DeleteBoardSlot(boardID, slotKeyWeek)
 	}
@@ -170,16 +173,40 @@ func (p *Producer) refreshWeek(boardID, hubID string, now time.Time) error {
 }
 
 // writeSlotIfChanged upserts only when kind, title, payload, or
-// citations differ from the stored slot. A byte-identical refresh is a
-// no-op so it doesn't reset a resolved card back to fresh.
+// citations differ from the stored slot. An unchanged refresh is a
+// no-op so it doesn't reset a resolved card back to fresh. Payloads
+// compare semantically, not byte-wise: Postgres jsonb normalizes key
+// order and whitespace, so bytes read back never equal json.Marshal
+// output even for identical content.
 func (p *Producer) writeSlotIfChanged(slot *model.BoardSlot) error {
 	existing, err := p.store.GetBoardSlot(slot.BoardID, slot.SlotKey)
-	if err == nil && existing.Kind == slot.Kind && existing.Title == slot.Title &&
-		bytes.Equal(existing.Payload, slot.Payload) &&
-		equalStringSlices(existing.CiteMemoryIDs, slot.CiteMemoryIDs) {
-		return nil
+	switch {
+	case err == nil:
+		if existing.Kind == slot.Kind && existing.Title == slot.Title &&
+			jsonEqual(existing.Payload, slot.Payload) &&
+			equalStringSlices(existing.CiteMemoryIDs, slot.CiteMemoryIDs) {
+			return nil
+		}
+	case errors.Is(err, store.ErrBoardSlotNotFound):
+		// First write for this slot — proceed to insert.
+	default:
+		// Fail closed: a transient read error must not fall through to
+		// an upsert that would wipe a member's resolution receipt.
+		return fmt.Errorf("boards: read slot %s/%s: %w", slot.BoardID, slot.SlotKey, err)
 	}
 	return p.store.UpsertBoardSlot(slot)
+}
+
+// jsonEqual compares two JSON documents structurally.
+func jsonEqual(a, b json.RawMessage) bool {
+	var av, bv any
+	if err := json.Unmarshal(a, &av); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(b, &bv); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(av, bv)
 }
 
 func equalStringSlices(a, b []string) bool {

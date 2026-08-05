@@ -259,6 +259,7 @@ func (s *PostgresStore) ListTopicActivityByHub(hubID string, since time.Time, li
 		JOIN memories m ON m.id = mt.memory_id
 		JOIN topics t ON t.id = mt.topic_id
 		WHERE `+boardMemoryFilter+` AND m.created_at > $2
+			AND t.hub_id = $1::uuid AND t.archived_at IS NULL
 		GROUP BY t.id, t.name, t.icon
 		ORDER BY recent DESC, t.name ASC
 		LIMIT $3`,
@@ -279,12 +280,13 @@ func (s *PostgresStore) ListTopicActivityByHub(hubID string, since time.Time, li
 	return topics, rows.Err()
 }
 
-func (s *PostgresStore) CountMemoriesInHubSince(hubID string, since time.Time) (int, error) {
+func (s *PostgresStore) CountMemoriesInHubRange(hubID string, from, to time.Time) (int, error) {
 	ctx := context.Background()
 	var count int
 	err := s.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM memories m WHERE `+boardMemoryFilter+` AND m.created_at > $2`,
-		hubID, since).Scan(&count)
+		`SELECT COUNT(*) FROM memories m
+		WHERE `+boardMemoryFilter+` AND m.created_at > $2 AND m.created_at <= $3`,
+		hubID, from, to).Scan(&count)
 	return count, err
 }
 
@@ -294,6 +296,7 @@ func (s *PostgresStore) GetMemoryNear(hubID string, target time.Time, tolerance 
 		`SELECT m.id, m.title, COALESCE(m.summary, ''), m.created_at
 		FROM memories m
 		WHERE `+boardMemoryFilter+` AND m.created_at BETWEEN $2 AND $3
+			AND (m.title != '' OR COALESCE(m.summary, '') != '')
 		ORDER BY ABS(EXTRACT(EPOCH FROM (m.created_at - $4::timestamptz))) ASC
 		LIMIT 1`,
 		hubID, target.Add(-tolerance), target.Add(tolerance), target)

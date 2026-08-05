@@ -124,13 +124,17 @@ function CapsuleBody({ slot }: BoardKindBodyProps) {
   const memoryId =
     asString(slot.payload?.memory_id) || slot.cite_memory_ids?.[0] || "";
   const when = asString(slot.payload?.when);
-  const whenLabel = when
-    ? new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      }).format(new Date(when))
-    : "";
+  // Validity-guarded: Intl.format throws RangeError on an Invalid
+  // Date, which would take down the whole page for one bad payload.
+  const whenDate = when ? new Date(when) : null;
+  const whenLabel =
+    whenDate && !Number.isNaN(whenDate.getTime())
+      ? new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }).format(whenDate)
+      : "";
   return (
     <>
       <BoardKindLabel star>{t.board.kindCapsule}</BoardKindLabel>

@@ -164,6 +164,25 @@ func TestRefreshHubBoardUnchangedContentKeepsReceipt(t *testing.T) {
 	}
 }
 
+func TestJSONEqualSurvivesJSONBNormalization(t *testing.T) {
+	t.Parallel()
+	// Postgres jsonb reorders object keys and inserts whitespace, so
+	// the no-op guard must compare structurally — a byte comparison
+	// would reset every resolved card on every nightly refresh.
+	marshaled := json.RawMessage(`{"window_hours":24,"agents":[{"slug":"claude-code","count":2}]}`)
+	normalized := json.RawMessage(`{"agents": [{"slug": "claude-code", "count": 2}], "window_hours": 24}`)
+	if !jsonEqual(marshaled, normalized) {
+		t.Fatal("jsonb-normalized payload must compare equal to marshal output")
+	}
+	changed := json.RawMessage(`{"agents": [{"slug": "claude-code", "count": 3}], "window_hours": 24}`)
+	if jsonEqual(marshaled, changed) {
+		t.Fatal("different content must not compare equal")
+	}
+	if jsonEqual(json.RawMessage(`{invalid`), marshaled) {
+		t.Fatal("invalid JSON must not compare equal")
+	}
+}
+
 func TestRefreshHubBoardRemovesStaleSlots(t *testing.T) {
 	t.Parallel()
 	p, s, hubID := newTestProducer(t)

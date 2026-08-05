@@ -342,7 +342,15 @@ export function ChatBrainView({ routeSessionId }: ChatBrainViewProps = {}) {
         setPendingSendText(null);
       }
     },
-    [activeSessionId, createSession, router, sendInSession, sendMessage, user],
+    [
+      activeSessionId,
+      createSession,
+      router,
+      sendInSession,
+      sendMessage,
+      setComposerValue,
+      user,
+    ],
   );
 
   const onSendFromComposer = useCallback(() => {

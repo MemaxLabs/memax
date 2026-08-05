@@ -51,7 +51,7 @@ export interface ChatAssistantSegmentsProps {
 // decide per-group whether to fold or render row-by-row.
 type RenderGroup =
   | { kind: "text"; segIdx: number; text: string }
-  | { kind: "thinking"; segIdx: number; text: string }
+  | { kind: "thinking"; segIdx: number; text: string; durationMs?: number }
   | { kind: "tools"; segIdxStart: number; toolCalls: ChatToolCallRecord[] };
 
 export function ChatAssistantSegments({
@@ -87,7 +87,8 @@ export function ChatAssistantSegments({
             >
               <ChatThinkingSegment
                 text={group.text}
-                live={!terminal && isLatest}
+                live={!terminal && isLatest && group.durationMs === undefined}
+                durationMs={group.durationMs}
               />
             </motion.div>
           );
@@ -194,7 +195,12 @@ function groupSegments(
       toolStartIdx = -1;
     }
     if (seg.kind === "thinking") {
-      out.push({ kind: "thinking", segIdx: i, text: seg.text });
+      out.push({
+        kind: "thinking",
+        segIdx: i,
+        text: seg.text,
+        durationMs: seg.durationMs,
+      });
       return;
     }
     out.push({ kind: "text", segIdx: i, text: seg.text });

@@ -48,6 +48,7 @@ func TestTranslateChatStreamEvent_AllStoredTypes(t *testing.T) {
 	}{
 		{"assistant", "model.delta"},
 		{"provider_artifact", "model.thinking"},
+		{"thinking_delta", "model.thinking"},
 		{"tool_use", "tool.call"},
 		{"tool_result", "tool.result"},
 		{"approval_requested", "approval.required"},

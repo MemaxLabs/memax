@@ -220,6 +220,7 @@ export const zh: Translations = {
     thinking: {
       reasoningLive: "想一想…",
       reasoningLabel: "思考过程",
+      reasoningFor: "思考了 {s} 秒",
       recallNoHits: "没有找到相关记忆",
       recallMemoriesRunning: "正在搜索记忆…",
       listMemoriesRunning: "正在列出记忆…",

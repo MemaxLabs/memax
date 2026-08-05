@@ -70,12 +70,12 @@ export type ChatStreamSegment =
   | { kind: "text"; text: string }
   | { kind: "tool"; toolIdx: number }
   /**
-   * A completed readable reasoning block (wire: model.thinking).
-   * Blocks arrive whole at their chronological position — between
-   * the text/tool activity they preceded — so the UI renders a
-   * collapsible "thought" layer exactly where the model reasoned.
+   * A readable reasoning block (wire: model.thinking). Coalesced
+   * partials stream in first ({text: full-so-far, partial: true} —
+   * REPLACE the trailing thinking segment, never append); the
+   * completed block carries duration_ms and finalizes the segment.
    */
-  | { kind: "thinking"; text: string };
+  | { kind: "thinking"; text: string; durationMs?: number };
 
 export interface ChatStreamState {
   /** Aggregated assistant text. Empty while the model is still tooling. */
@@ -367,14 +367,34 @@ export function useChatStream({
               case "model.thinking": {
                 const thinking = firstString(payload, ["text"]);
                 if (!thinking) return;
-                setState((s) => ({
-                  ...s,
-                  segments: [
-                    ...s.segments,
-                    { kind: "thinking", text: thinking },
-                  ],
-                  lastEventId: seq ?? s.lastEventId,
-                }));
+                const durationMs =
+                  typeof payload.duration_ms === "number"
+                    ? payload.duration_ms
+                    : undefined;
+                setState((s) => {
+                  const last = s.segments[s.segments.length - 1];
+                  // Partials carry the FULL text so far — replace the
+                  // trailing un-finalized thinking segment in place. A
+                  // finalized segment (durationMs set) means a NEW block
+                  // started; append instead.
+                  const nextSegments: ChatStreamSegment[] =
+                    last &&
+                    last.kind === "thinking" &&
+                    last.durationMs === undefined
+                      ? [
+                          ...s.segments.slice(0, -1),
+                          { kind: "thinking", text: thinking, durationMs },
+                        ]
+                      : [
+                          ...s.segments,
+                          { kind: "thinking", text: thinking, durationMs },
+                        ];
+                  return {
+                    ...s,
+                    segments: nextSegments,
+                    lastEventId: seq ?? s.lastEventId,
+                  };
+                });
                 return;
               }
               case "model.delta":

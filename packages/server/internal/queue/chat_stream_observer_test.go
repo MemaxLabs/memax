@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -330,5 +331,82 @@ func TestChatStreamObserver_ThinkingArtifacts(t *testing.T) {
 	}
 	if payload.Text != "weigh the options" {
 		t.Fatalf("payload text = %q", payload.Text)
+	}
+}
+
+// Thinking deltas coalesce: small rapid chunks buffer in memory until the
+// char budget trips, each flush carries the FULL text so far, and the
+// completed artifact resets the accumulator and reports duration_ms.
+func TestChatStreamObserver_ThinkingDeltaCoalescing(t *testing.T) {
+	t.Parallel()
+	rec := &recordingChatStore{}
+	o := newChatStreamObserver(rec, "owner-x", "msg-x", nil)
+
+	// Two small deltas — under both budgets, nothing persists yet.
+	for _, d := range []string{"step one ", "step two "} {
+		if err := o.observe(context.Background(), memaxagent.Event{
+			Kind: memaxagent.EventThinkingDelta, ThinkingDelta: d,
+		}); err != nil {
+			t.Fatalf("observe: %v", err)
+		}
+	}
+	if len(rec.appended) != 0 {
+		t.Fatalf("expected buffering, got %d rows", len(rec.appended))
+	}
+
+	// A delta that trips the char budget → one partial row, full text.
+	big := strings.Repeat("x", thinkingFlushChars)
+	if err := o.observe(context.Background(), memaxagent.Event{
+		Kind: memaxagent.EventThinkingDelta, ThinkingDelta: big,
+	}); err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	if len(rec.appended) != 1 || rec.appended[0].EventType != "thinking_delta" {
+		t.Fatalf("rows = %+v, want one thinking_delta", rec.appended)
+	}
+	var partial struct {
+		Text    string `json:"text"`
+		Partial bool   `json:"partial"`
+	}
+	if err := json.Unmarshal(rec.appended[0].Payload, &partial); err != nil {
+		t.Fatalf("payload: %v", err)
+	}
+	if !partial.Partial || partial.Text != "step one step two "+big {
+		t.Fatalf("partial = %+v", partial)
+	}
+
+	// Completed block → provider_artifact row with duration + reset.
+	full := "step one step two " + big + " done"
+	artifact := &sdkmodel.ProviderArtifact{
+		Provider: "anthropic",
+		Type:     "thinking",
+		Data:     json.RawMessage(`{"type":"thinking","thinking":"` + full + `"}`),
+	}
+	if err := o.observe(context.Background(), memaxagent.Event{
+		Kind: memaxagent.EventProviderArtifact, ProviderArtifact: artifact,
+	}); err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	if len(rec.appended) != 2 || rec.appended[1].EventType != "provider_artifact" {
+		t.Fatalf("rows = %+v, want provider_artifact second", rec.appended)
+	}
+	var final struct {
+		Text       string `json:"text"`
+		DurationMs *int64 `json:"duration_ms"`
+	}
+	if err := json.Unmarshal(rec.appended[1].Payload, &final); err != nil {
+		t.Fatalf("payload: %v", err)
+	}
+	if final.Text != full || final.DurationMs == nil || *final.DurationMs < 0 {
+		t.Fatalf("final = %+v", final)
+	}
+	// Accumulator reset: a fresh delta after the block buffers again.
+	if err := o.observe(context.Background(), memaxagent.Event{
+		Kind: memaxagent.EventThinkingDelta, ThinkingDelta: "next block",
+	}); err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	if len(rec.appended) != 2 {
+		t.Fatalf("expected buffering after reset, got %d rows", len(rec.appended))
 	}
 }

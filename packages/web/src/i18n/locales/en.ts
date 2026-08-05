@@ -243,6 +243,7 @@ export const en = {
       // Readable reasoning blocks (model.thinking wire events).
       reasoningLive: "Thinking…",
       reasoningLabel: "Thought",
+      reasoningFor: "Thought for {s}s",
       recallNoHits: "No memories matched",
       // Per-tool in-flight labels (running…).
       recallMemoriesRunning: "Searching memories…",

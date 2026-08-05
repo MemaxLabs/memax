@@ -10,18 +10,18 @@ import "time"
 // The dream engine respects user-modified topics: it never renames them, but CAN
 // create subtopics under them or suggest merges (via Review items).
 type Topic struct {
-	ID              string                `json:"id"`
-	OwnerID         string                `json:"owner_id"`
-	HubID           string                `json:"hub_id,omitempty"`
-	ParentID        *string               `json:"parent_id"`
-	Name            string                `json:"name"`
-	Description     string                `json:"description,omitempty"`
-	Icon            string                `json:"icon"`
-	Position        int                   `json:"position"`
-	Pinned          bool                  `json:"pinned"`
-	UserModified    bool                  `json:"user_modified"`
-	CreatedAt       time.Time             `json:"created_at"`
-	UpdatedAt       time.Time             `json:"updated_at"`
+	ID           string    `json:"id"`
+	OwnerID      string    `json:"owner_id"`
+	HubID        string    `json:"hub_id,omitempty"`
+	ParentID     *string   `json:"parent_id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description,omitempty"`
+	Icon         string    `json:"icon"`
+	Position     int       `json:"position"`
+	Pinned       bool      `json:"pinned"`
+	UserModified bool      `json:"user_modified"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 	// ArchivedAt is set when the topic is archived (soft lifecycle state).
 	// Archived topics keep their memory assignments but are hidden from the
 	// active tree and excluded from AI organization; nil means active.

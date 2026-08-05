@@ -67,11 +67,11 @@ func (s *PostgresStore) GetHubDreamUsage(
 //     already counted; return the prior state and exit.
 //  2. If terminal state is countable AND limit != 0:
 //     a. Hard mode: guarded UPSERT into usage/hub_usage with
-//        WHERE limit < 0 OR count < limit. If no row returned,
-//        race lost — UPDATE the completion's terminal_state to
-//        'quota_race_lost'.
+//     WHERE limit < 0 OR count < limit. If no row returned,
+//     race lost — UPDATE the completion's terminal_state to
+//     'quota_race_lost'.
 //     b. Soft mode: unguarded UPSERT, plus INSERT into
-//        dream_quota_signals snapshotting the resolved state.
+//     dream_quota_signals snapshotting the resolved state.
 //  3. On successful counter increment, UPDATE the completion's
 //     counted=true.
 //

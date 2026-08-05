@@ -46,6 +46,9 @@ const (
 	BoardSlotActionAck      = "ack"
 	BoardSlotActionDismiss  = "dismiss"
 	BoardSlotActionFeedback = "feedback"
+	// BoardSlotActionChoose resolves a decision gate with one of its
+	// option ids (carried in BoardSlotResolution.Verdict).
+	BoardSlotActionChoose = "choose"
 
 	BoardFeedbackAccurate   = "accurate"
 	BoardFeedbackInaccurate = "inaccurate"
@@ -127,15 +130,26 @@ const (
 	BoardKindWeek    = "week"    // 周对比 — this week vs last week
 )
 
+// BoardAgentItem is one concrete memory reference inside a trace row —
+// the drill-down that lets a member verify what an agent actually
+// wrote instead of trusting a count.
+type BoardAgentItem struct {
+	MemoryID string `json:"memory_id"`
+	Title    string `json:"title"`
+}
+
 // BoardAgentActivity is one agent's line in the trace card. LatestTitle
 // is the newest memory title from that agent — plain user content,
-// quoted verbatim by the renderer.
+// quoted verbatim by the renderer. Items carries the newest few
+// memories (id + title) so each row expands to the receipts behind
+// the number.
 type BoardAgentActivity struct {
-	Slug        string `json:"slug"`
-	DisplayName string `json:"display_name,omitempty"`
-	Icon        string `json:"icon,omitempty"`
-	Count       int    `json:"count"`
-	LatestTitle string `json:"latest_title,omitempty"`
+	Slug        string           `json:"slug"`
+	DisplayName string           `json:"display_name,omitempty"`
+	Icon        string           `json:"icon,omitempty"`
+	Count       int              `json:"count"`
+	LatestTitle string           `json:"latest_title,omitempty"`
+	Items       []BoardAgentItem `json:"items,omitempty"`
 }
 
 type BoardTracePayload struct {
@@ -212,4 +226,107 @@ func ValidateBoardSlot(s *BoardSlot) error {
 		return fmt.Errorf("board slot: cite_memory_ids exceeds %d entries", maxBoardSlotCitations)
 	}
 	return nil
+}
+
+// --- Lane B kinds + payloads (P2) ---
+//
+// Lane B cards are agent-synthesized during the dream cycle. The
+// structural contract is stricter than Lane A because the content is
+// generated: every card must quote its receipts (CiteMemoryIDs) and
+// the producer drops any card that fails the citation floor — a
+// synthesized claim with no receipts is exactly the Barnum statement
+// the design forbids.
+
+const (
+	BoardKindDreamlog     = "dreamlog"      // 梦记 — first-person account of last night's dream work
+	BoardKindEcho         = "echo"          // 回声 — an old question meets a new answer
+	BoardKindThread       = "thread"        // 暗线 — two memories that may be one idea
+	BoardKindOpenQuestion = "openq"         // 开放问题 — questions the hub never answered
+	BoardKindPattern      = "pattern"       // 未观察模式 — a habit visible in the data, invisible to the user
+	BoardKindMusing       = "musing"        // 随想 — memax thinking out loud about the hub
+	BoardKindDecisionGate = "decision_gate" // 等你 — an agent needs the user to decide
+
+	// Lane B slot keys. "0-" sorts the dream log first, "1-" puts the
+	// rotating wow card right after it, decision gates prefix "2g-" so
+	// they sit above the Lane A band ("a-"…"d-").
+	BoardSlotKeyDreamlog   = "0-dream"
+	BoardSlotKeyWow        = "1-wow"
+	BoardSlotKeyGatePrefix = "2g-"
+)
+
+// WowKinds is the nightly rotation pool for the single wow slot.
+var WowKinds = []string{
+	BoardKindEcho,
+	BoardKindThread,
+	BoardKindOpenQuestion,
+	BoardKindPattern,
+	BoardKindMusing,
+}
+
+// BoardQuoteRef is a quoted memory inside a Lane B card: the id makes
+// it navigable, When/Excerpt make it renderable without a fetch.
+type BoardQuoteRef struct {
+	MemoryID string `json:"memory_id"`
+	When     string `json:"when,omitempty"` // RFC3339
+	Excerpt  string `json:"excerpt"`
+}
+
+// BoardDreamlogPayload — 梦记. Body is memax speaking in first person
+// about what it found while organizing; plain text.
+type BoardDreamlogPayload struct {
+	Description string `json:"description,omitempty"`
+	Body        string `json:"body"`
+}
+
+// BoardEchoPayload — 回声. Then (the old question) and Now (the new
+// answer) render as a quote pair joined by the signature mark.
+type BoardEchoPayload struct {
+	Description string        `json:"description,omitempty"`
+	Body        string        `json:"body,omitempty"`
+	Then        BoardQuoteRef `json:"then"`
+	Now         BoardQuoteRef `json:"now"`
+}
+
+// BoardWowPayload is the shared shape for thread/openq/pattern/musing:
+// a first-person body plus the quoted receipts behind it.
+type BoardWowPayload struct {
+	Description string          `json:"description,omitempty"`
+	Body        string          `json:"body"`
+	Quotes      []BoardQuoteRef `json:"quotes,omitempty"`
+}
+
+// BoardDecisionOption is one choice on a decision gate.
+type BoardDecisionOption struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// BoardDecisionGatePayload — 等你. Created by memax_request_decision;
+// resolving with a choice writes the decision back as a hub memory so
+// the requesting agent can recall it.
+type BoardDecisionGatePayload struct {
+	Description string                `json:"description,omitempty"`
+	Question    string                `json:"question"`
+	Context     string                `json:"context,omitempty"`
+	Options     []BoardDecisionOption `json:"options"`
+	SourceAgent string                `json:"source_agent,omitempty"`
+}
+
+// laneBCitationFloor is the minimum receipts per synthesized kind.
+// Kinds not listed have no floor (decision gates cite nothing — the
+// agent's question is the content).
+var laneBCitationFloor = map[string]int{
+	BoardKindEcho:         2,
+	BoardKindThread:       2,
+	BoardKindOpenQuestion: 1,
+	BoardKindPattern:      3,
+	BoardKindMusing:       3,
+	BoardKindDreamlog:     0,
+}
+
+// LaneBCitationFloor returns the citation minimum for a kind and
+// whether the kind is a Lane B synthesized kind at all.
+func LaneBCitationFloor(kind string) (int, bool) {
+	floor, ok := laneBCitationFloor[kind]
+	return floor, ok
 }

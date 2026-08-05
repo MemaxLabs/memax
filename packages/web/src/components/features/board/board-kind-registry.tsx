@@ -13,7 +13,9 @@ import { BoardCardFallbackBody, BoardKindLabel } from "@memaxlabs/ui";
  * plain map.
  *
  * Lane A kinds (trace/pulse/capsule/week) register from
- * board-kinds.tsx; BoardView side-effect-imports that module so
+ * board-kinds.tsx, Lane B kinds (dreamlog/echo/thread/openq/pattern/
+ * musing/decision_gate) from board-kinds-lane-b.tsx; BoardView
+ * side-effect-imports board-kinds (which chains the Lane B module) so
  * registration precedes first render.
  */
 export interface BoardKindBodyProps {
@@ -39,9 +41,42 @@ type TranslationsLike = {
   board: Record<string, string>;
 };
 
-interface BoardKindEntry {
-  Body: ComponentType<BoardKindBodyProps>;
+/** One-line collapsed-band representation of a slot. */
+export interface BoardStripSummary {
+  label: string;
+  detail?: string;
+}
+
+/**
+ * Per-kind presentation options consumed by BoardView (the host).
+ * All optional — a kind that registers only a Body gets the default
+ * ack/dismiss pair and no strip/purpose affordances.
+ */
+export interface BoardKindOptions {
+  /** Per-kind resolve verb labels (defaults to the generic pair). */
   actions?: BoardKindActionLabels;
+  /**
+   * "Why does this card exist" copy, shown in an InfoPopover on the
+   * card — the board explains itself instead of assuming the user
+   * reverse-engineers its purpose from numbers.
+   */
+  purpose?: (t: TranslationsLike) => string;
+  /** Collapsed one-line summary; falls back to the slot title. */
+  strip?: (slot: BoardSlot, t: TranslationsLike) => BoardStripSummary;
+  /**
+   * Show the 准/不准 feedback verbs in the live action row. Set on
+   * synthesized kinds where the claim can be right or wrong.
+   */
+  feedback?: boolean;
+  /**
+   * Suppress the default ack/dismiss verbs — the kind's body renders
+   * its own actions (e.g. decision-gate option buttons).
+   */
+  hideDefaultActions?: boolean;
+}
+
+interface BoardKindEntry extends BoardKindOptions {
+  Body: ComponentType<BoardKindBodyProps>;
 }
 
 const REGISTRY = new Map<string, BoardKindEntry>();
@@ -49,15 +84,31 @@ const REGISTRY = new Map<string, BoardKindEntry>();
 export function registerBoardKind(
   kind: string,
   Body: ComponentType<BoardKindBodyProps>,
-  actions?: BoardKindActionLabels,
+  options?: BoardKindOptions,
 ) {
-  REGISTRY.set(kind, { Body, actions });
+  REGISTRY.set(kind, { Body, ...options });
 }
 
-export function boardKindActionLabels(
+export function boardKindOptions(kind: string): BoardKindOptions | undefined {
+  return REGISTRY.get(kind);
+}
+
+export function boardKindPurpose(
   kind: string,
-): BoardKindActionLabels | undefined {
-  return REGISTRY.get(kind)?.actions;
+  t: TranslationsLike,
+): string | undefined {
+  return REGISTRY.get(kind)?.purpose?.(t);
+}
+
+export function boardKindStripSummary(
+  slot: BoardSlot,
+  t: TranslationsLike,
+): BoardStripSummary {
+  const strip = REGISTRY.get(slot.kind)?.strip;
+  if (strip) return strip(slot, t);
+  // Fallback: the slot's plain-text title (the same literal-text
+  // contract the unknown-kind card body relies on).
+  return { label: slot.title };
 }
 
 /**

@@ -29,7 +29,7 @@ var ErrEmptyHubIDsForStrictSearch = errors.New("store: SearchChunksInHubs requir
 //     (e.g., a CLI invocation without X-Hub-ID).
 //
 //   - chunkAccessOwnerOrHub: WHERE m.owner_id = $user OR
-//                                  m.hub_id = ANY($hubs)
+//     m.hub_id = ANY($hubs)
 //     The default cross-hub recall. Used by /v1/recall, /v1/ask,
 //     and MCP tools. Users see their own content regardless of
 //     which hub they explicitly scoped to.

@@ -453,6 +453,20 @@ func (s *PostgresStore) ListNotificationsForUser(ctx context.Context, opts Notif
 // GetNotification reads a single notification by id, enforcing the
 // same visibility union as ListNotificationsForUser. Returns
 // ErrNotificationNotFound when the row does not exist or is not visible.
+func (s *PostgresStore) GetNotificationBySource(ctx context.Context, sourceKind, sourceID string) (*model.Notification, error) {
+	row := s.pool.QueryRow(ctx,
+		`SELECT `+notificationCols+` FROM notifications WHERE source_kind = $1 AND source_id = $2`,
+		sourceKind, sourceID)
+	n, err := scanNotification(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotificationNotFound
+		}
+		return nil, err
+	}
+	return &n, nil
+}
+
 func (s *PostgresStore) GetNotification(ctx context.Context, id string, userID string, hubIDs []string) (*model.Notification, error) {
 	visPred, args := notificationVisibilityClause(NotificationListOpts{UserID: userID, HubIDs: hubIDs}, 1)
 	args = append(args, id)
@@ -875,6 +889,7 @@ var supportedNotificationKinds = []string{
 	"hub_restored",
 	"system_notice",
 	"gift_invite_link",
+	"decision_gate",
 }
 
 // notificationBucket is the internal split between the Needs-action
@@ -897,7 +912,8 @@ func notificationKindBucket(kind string) notificationBucket {
 		"review_low_confidence",
 		"review_stale",
 		"hub_invite",
-		"hub_ownership_transfer":
+		"hub_ownership_transfer",
+		"decision_gate":
 		return bucketNeedsAction
 	default:
 		return bucketUpdates

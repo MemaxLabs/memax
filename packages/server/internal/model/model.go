@@ -50,28 +50,28 @@ func DefaultRetrievalWeight(weight float64) float64 {
 }
 
 type Memory struct {
-	ID              string             `json:"id"`
-	HubID           string             `json:"hub_id"`
-	OwnerID         string             `json:"owner_id"`
-	Title           string             `json:"title"`
-	Content         string             `json:"content"`
-	ContentType     string             `json:"content_type"`
-	ContentHash     string             `json:"content_hash"`
-	Summary         string             `json:"summary"`
-	Hint            string             `json:"hint,omitempty"`
-	Kind            string             `json:"kind"`
-	Stability       string             `json:"stability"`
-	RetrievalWeight float64            `json:"retrieval_weight"`
-	AccessIntents   map[string]int     `json:"access_intents,omitempty"`
-	Tags            []string           `json:"tags"`
-	Boundary        string             `json:"boundary"`
-	State           string             `json:"state"`
-	Pinned          bool               `json:"pinned"`
-	Source          string             `json:"source"`
+	ID              string         `json:"id"`
+	HubID           string         `json:"hub_id"`
+	OwnerID         string         `json:"owner_id"`
+	Title           string         `json:"title"`
+	Content         string         `json:"content"`
+	ContentType     string         `json:"content_type"`
+	ContentHash     string         `json:"content_hash"`
+	Summary         string         `json:"summary"`
+	Hint            string         `json:"hint,omitempty"`
+	Kind            string         `json:"kind"`
+	Stability       string         `json:"stability"`
+	RetrievalWeight float64        `json:"retrieval_weight"`
+	AccessIntents   map[string]int `json:"access_intents,omitempty"`
+	Tags            []string       `json:"tags"`
+	Boundary        string         `json:"boundary"`
+	State           string         `json:"state"`
+	Pinned          bool           `json:"pinned"`
+	Source          string         `json:"source"`
 	// SourceKind is a sub-classification under Source. For onboarding
 	// seed memories: Source = "system", SourceKind = "onboarding-seed".
 	// Plan 23 §4.1. Empty for legacy rows + non-seed memories.
-	SourceKind      string             `json:"source_kind,omitempty"`
+	SourceKind string `json:"source_kind,omitempty"`
 	// Metadata is a structured bag for per-memory facts that don't fit
 	// existing columns. Used by seeds (`metadata.seed_origin_id`
 	// references the source seed-template UUID for idempotency); future
@@ -102,14 +102,14 @@ type Memory struct {
 	// so the dream agent has actionable context, not just a
 	// boolean. Empty string = no marker found (or pre-Phase-2a
 	// memory that hasn't been re-ingested).
-	UserFollowupMarker string `json:"user_followup_marker,omitempty"`
-	Version         int                `json:"version"`
-	TopicID         string             `json:"topic_id,omitempty"` // populated at query time, not stored
-	AccessCount     int                `json:"access_count"`
-	ShownCount      int                `json:"shown_count"`
-	CreatedAt       time.Time          `json:"created_at"`
-	UpdatedAt       time.Time          `json:"updated_at"`
-	AccessedAt      time.Time          `json:"accessed_at"`
+	UserFollowupMarker string    `json:"user_followup_marker,omitempty"`
+	Version            int       `json:"version"`
+	TopicID            string    `json:"topic_id,omitempty"` // populated at query time, not stored
+	AccessCount        int       `json:"access_count"`
+	ShownCount         int       `json:"shown_count"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	AccessedAt         time.Time `json:"accessed_at"`
 	// Denormalized attribution info — populated at query time via JOIN, not stored on memory row
 	AuthorName       string            `json:"author_name,omitempty"`
 	AuthorAvatarURL  string            `json:"author_avatar_url,omitempty"`
@@ -740,10 +740,10 @@ type DreamAction struct {
 	// rows zero-default the counts so calibration queries can
 	// AVG(agent_model_calls) WHERE agent_path = 'lucid_active'
 	// without filtering NULLs.
-	AgentPath        string `json:"agent_path,omitempty"`
-	AgentSessionID   string `json:"agent_session_id,omitempty"`
-	AgentModelCalls  int    `json:"agent_model_calls,omitempty"`
-	AgentToolCalls   int    `json:"agent_tool_calls,omitempty"`
+	AgentPath       string `json:"agent_path,omitempty"`
+	AgentSessionID  string `json:"agent_session_id,omitempty"`
+	AgentModelCalls int    `json:"agent_model_calls,omitempty"`
+	AgentToolCalls  int    `json:"agent_tool_calls,omitempty"`
 }
 
 // DreamActionAgentPath values mirror the dream_actions.agent_path
@@ -886,7 +886,7 @@ func DefaultSettings() map[string]any {
 		// the single-call path. Per-hub opt-in for staged rollout
 		// per plan 24's calibration gate.
 		"dreams_use_agent_runtime": false,
-		"hub_header_aurora_mode":      "signature",
+		"hub_header_aurora_mode":   "signature",
 		"dev_flags": map[string]any{
 			"mockDreams":      false,
 			"mockDreaming":    false,

@@ -16,19 +16,19 @@
 // **Defense in depth.** Two stages of validation, both required
 // because either alone has a known bypass:
 //
-//   1. URL-level checks before the dial. Scheme (only http /
-//      https), userinfo (rejected — credentials in URLs are
-//      basically always SSRF bait), host shape (literal
-//      IP-address hosts are validated against the blocklist
-//      directly; hostnames have to wait for DNS).
-//   2. IP-level checks at dial time, AFTER DNS resolution,
-//      via a custom net.Dialer.ControlContext. This catches
-//      DNS-rebinding attacks where the hostname's first DNS
-//      response was public but a subsequent re-resolve points
-//      at 127.0.0.1 — and it catches A-records that always
-//      resolve to private IPs. The ControlContext gets the
-//      resolved address Go is about to dial; we parse the IP
-//      and reject if it falls in any blocked range.
+//  1. URL-level checks before the dial. Scheme (only http /
+//     https), userinfo (rejected — credentials in URLs are
+//     basically always SSRF bait), host shape (literal
+//     IP-address hosts are validated against the blocklist
+//     directly; hostnames have to wait for DNS).
+//  2. IP-level checks at dial time, AFTER DNS resolution,
+//     via a custom net.Dialer.ControlContext. This catches
+//     DNS-rebinding attacks where the hostname's first DNS
+//     response was public but a subsequent re-resolve points
+//     at 127.0.0.1 — and it catches A-records that always
+//     resolve to private IPs. The ControlContext gets the
+//     resolved address Go is about to dial; we parse the IP
+//     and reject if it falls in any blocked range.
 //
 // **Redirect re-validation.** http.Client.CheckRedirect re-runs
 // URL-level checks (scheme, userinfo, host blocklist) on every
@@ -109,8 +109,8 @@ var blockedCIDRs = func() []*net.IPNet {
 		"::/128",
 		"::1/128",
 		"64:ff9b::/96", // IPv4/IPv6 translation.
-		"100::/64",      // Discard prefix.
-		"2001::/23",     // IETF protocol assignments.
+		"100::/64",     // Discard prefix.
+		"2001::/23",    // IETF protocol assignments.
 		"2001:db8::/32",
 		"fc00::/7",
 		"fe80::/10",

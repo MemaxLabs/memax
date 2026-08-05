@@ -227,7 +227,9 @@ func (s *PostgresStore) ListRecentAgentActivityByHub(hubID string, since time.Ti
 			COALESCE(MAX(ca.display_name), '') AS display_name,
 			COALESCE(MAX(ca.icon), '') AS icon,
 			COUNT(*) AS cnt,
-			(array_agg(m.title ORDER BY m.created_at DESC))[1] AS latest_title
+			(array_agg(m.title ORDER BY m.created_at DESC))[1] AS latest_title,
+			(array_agg(m.id::text ORDER BY m.created_at DESC))[1:3] AS item_ids,
+			(array_agg(m.title ORDER BY m.created_at DESC))[1:3] AS item_titles
 		FROM memories m
 		LEFT JOIN connected_agents ca ON m.owner_id = ca.owner_id AND `+memoryAgentSlugExpr+` = ca.agent_name
 		WHERE `+boardMemoryFilter+` AND m.created_at > $2
@@ -242,8 +244,15 @@ func (s *PostgresStore) ListRecentAgentActivityByHub(hubID string, since time.Ti
 	var activity []model.BoardAgentActivity
 	for rows.Next() {
 		var a model.BoardAgentActivity
-		if err := rows.Scan(&a.Slug, &a.DisplayName, &a.Icon, &a.Count, &a.LatestTitle); err != nil {
+		var itemIDs, itemTitles []string
+		if err := rows.Scan(&a.Slug, &a.DisplayName, &a.Icon, &a.Count, &a.LatestTitle,
+			&itemIDs, &itemTitles); err != nil {
 			return nil, err
+		}
+		for i := range itemIDs {
+			if i < len(itemTitles) && itemTitles[i] != "" {
+				a.Items = append(a.Items, model.BoardAgentItem{MemoryID: itemIDs[i], Title: itemTitles[i]})
+			}
 		}
 		activity = append(activity, a)
 	}

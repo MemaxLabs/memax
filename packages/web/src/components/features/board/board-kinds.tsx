@@ -7,22 +7,36 @@
  * through i18n. Visual reference: kitchen section 44.
  */
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BoardAgentRow, BoardKindLabel, BoardMemQuote } from "@memaxlabs/ui";
 import { resolveAgentIdentity } from "@memaxlabs/ui/tokens/agents";
 import { useActiveHub } from "@/lib/auth";
 import { buildMemoryDetailPath } from "@/lib/route-helpers";
-import { pluralize, useInterpolate, useLocale } from "@/i18n";
+import { interpolate, pluralize, useInterpolate, useLocale } from "@/i18n";
 import {
   registerBoardKind,
   type BoardKindBodyProps,
+  type BoardStripSummary,
 } from "./board-kind-registry";
+import { buildTopicPath } from "@/lib/route-helpers";
+// Side-effect chain: importing the Lane A module also registers the
+// Lane B synthesized kinds (dreamlog/echo/thread/openq/pattern/musing/
+// decision_gate), so BoardView's single `import "./board-kinds"` brings
+// the whole registry up before first render.
+import "./board-kinds-lane-b";
+
+interface TraceAgentItem {
+  memory_id?: string;
+  title?: string;
+}
 
 interface TraceAgent {
   slug?: string;
   display_name?: string;
   count?: number;
   latest_title?: string;
+  items?: TraceAgentItem[];
 }
 
 function asArray<T>(value: unknown): T[] {
@@ -47,35 +61,88 @@ function TraceBody({ slot }: BoardKindBodyProps) {
       <BoardKindLabel>
         {interpolate(t.board.kindTrace, { n: String(windowHours) })}
       </BoardKindLabel>
-      {agents.map((agent) => {
-        const slug = asString(agent.slug);
-        const identity = slug ? resolveAgentIdentity(slug) : null;
-        const name =
-          asString(agent.display_name) ||
-          identity?.displayName ||
-          slug ||
-          t.board.traceManual;
-        return (
-          <BoardAgentRow
-            key={slug || "manual"}
-            dotColor={identity?.color}
-            title={pluralize(
-              t.board.traceCountOne,
-              t.board.traceCount,
-              asNumber(agent.count),
-            )}
-            meta={
-              asString(agent.latest_title)
-                ? interpolate(t.board.traceLatest, {
-                    title: asString(agent.latest_title),
-                  })
-                : undefined
-            }
-            who={name}
-          />
-        );
-      })}
+      {agents.map((agent) => (
+        <TraceAgentSection
+          key={asString(agent.slug) || "manual"}
+          agent={agent}
+        />
+      ))}
     </>
+  );
+}
+
+/**
+ * One agent's line, expandable to the actual memories behind the count
+ * — the number is a claim, the titles are the receipts. Each title
+ * opens the memory detail.
+ */
+function TraceAgentSection({ agent }: { agent: TraceAgent }) {
+  const { t } = useLocale();
+  const router = useRouter();
+  const { activeHub } = useActiveHub();
+  const [open, setOpen] = useState(false);
+  const slug = asString(agent.slug);
+  const identity = slug ? resolveAgentIdentity(slug) : null;
+  const name =
+    asString(agent.display_name) ||
+    identity?.displayName ||
+    slug ||
+    t.board.traceManual;
+  const items = asArray<TraceAgentItem>(agent.items).filter(
+    (item) => asString(item.title) !== "",
+  );
+  const row = (
+    <BoardAgentRow
+      dotColor={identity?.color}
+      title={pluralize(
+        t.board.traceCountOne,
+        t.board.traceCount,
+        asNumber(agent.count),
+      )}
+      meta={
+        !open && asString(agent.latest_title)
+          ? interpolate(t.board.traceLatest, {
+              title: asString(agent.latest_title),
+            })
+          : undefined
+      }
+      who={name}
+    />
+  );
+  if (items.length === 0) return row;
+  return (
+    <div>
+      <button
+        type="button"
+        className="block w-full text-left"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {row}
+      </button>
+      {open ? (
+        <div className="mb-1 ml-4 flex flex-col gap-1.5">
+          {items.map((item) => (
+            <BoardMemQuote
+              key={asString(item.memory_id) || asString(item.title)}
+              onClick={
+                asString(item.memory_id)
+                  ? () =>
+                      router.push(
+                        buildMemoryDetailPath(
+                          activeHub?.hub.slug ?? null,
+                          asString(item.memory_id),
+                        ),
+                      )
+                  : undefined
+              }
+            >
+              {asString(item.title)}
+            </BoardMemQuote>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -88,6 +155,8 @@ interface PulseTopic {
 
 function PulseBody({ slot }: BoardKindBodyProps) {
   const { t } = useLocale();
+  const router = useRouter();
+  const { activeHub } = useActiveHub();
   const interpolate = useInterpolate();
   const topics = asArray<PulseTopic>(slot.payload?.topics);
   const windowDays = asNumber(slot.payload?.window_days) || 7;
@@ -98,9 +167,9 @@ function PulseBody({ slot }: BoardKindBodyProps) {
       </BoardKindLabel>
       {topics.map((topic) => {
         const contributors = asNumber(topic.contributors);
-        return (
+        const topicId = asString(topic.topic_id);
+        const row = (
           <BoardAgentRow
-            key={asString(topic.topic_id) || asString(topic.name)}
             dotColor="var(--signature)"
             title={asString(topic.name)}
             meta={pluralize(
@@ -116,6 +185,23 @@ function PulseBody({ slot }: BoardKindBodyProps) {
                 : undefined
             }
           />
+        );
+        if (!topicId) {
+          return <div key={asString(topic.name)}>{row}</div>;
+        }
+        // Row → the topic page: the pulse card is a table of contents,
+        // not a dead end.
+        return (
+          <button
+            key={topicId}
+            type="button"
+            className="block w-full text-left"
+            onClick={() =>
+              router.push(buildTopicPath(activeHub?.hub.slug ?? null, topicId))
+            }
+          >
+            {row}
+          </button>
         );
       })}
     </>
@@ -179,11 +265,55 @@ function WeekBody({ slot }: BoardKindBodyProps) {
   );
 }
 
+function stripFromPayload(
+  label: string,
+  detail: string | undefined,
+): BoardStripSummary {
+  return { label, detail };
+}
+
 registerBoardKind("trace", TraceBody, {
-  ack: (t) => t.board.traceAck,
+  actions: { ack: (t) => t.board.traceAck },
+  purpose: (t) => t.board.tracePurpose,
+  strip: (slot, t) =>
+    stripFromPayload(
+      t.board.stripTrace,
+      (() => {
+        const agents = asArray<TraceAgent>(slot.payload?.agents);
+        const total = agents.reduce((sum, a) => sum + asNumber(a.count), 0);
+        return total > 0
+          ? pluralize(t.board.traceCountOne, t.board.traceCount, total)
+          : undefined;
+      })(),
+    ),
 });
-registerBoardKind("pulse", PulseBody);
+registerBoardKind("pulse", PulseBody, {
+  purpose: (t) => t.board.pulsePurpose,
+  strip: (slot, t) =>
+    stripFromPayload(
+      t.board.stripPulse,
+      (() => {
+        const count = asArray<PulseTopic>(slot.payload?.topics).length;
+        return count > 0
+          ? interpolate(t.board.stripPulseDetail, { n: count })
+          : undefined;
+      })(),
+    ),
+});
 registerBoardKind("capsule", CapsuleBody, {
-  ack: (t) => t.board.capsuleAck,
+  actions: { ack: (t) => t.board.capsuleAck },
+  purpose: (t) => t.board.capsulePurpose,
+  strip: (_slot, t) => ({ label: t.board.kindCapsule }),
 });
-registerBoardKind("week", WeekBody);
+registerBoardKind("week", WeekBody, {
+  purpose: (t) => t.board.weekPurpose,
+  strip: (slot, t) =>
+    stripFromPayload(
+      t.board.kindWeek,
+      pluralize(
+        t.board.weekLineOne,
+        t.board.weekLine,
+        asNumber(slot.payload?.this_week),
+      ),
+    ),
+});

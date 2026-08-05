@@ -32,9 +32,9 @@ import (
 //   - U2 with personal hub h-personal-u2
 //   - Team hub h-team owned by U1, with U2 as member
 //   - Three memories:
-//     * U1 owns one in h-personal-u1 (semantic match for "lighthouse")
-//     * U1 owns one in h-team (semantic match for "lighthouse")
-//     * U2 owns one in h-team (semantic match for "lighthouse")
+//   - U1 owns one in h-personal-u1 (semantic match for "lighthouse")
+//   - U1 owns one in h-team (semantic match for "lighthouse")
+//   - U2 owns one in h-team (semantic match for "lighthouse")
 //
 // Test calls SearchChunksInHubs([h-team]). The leak-prevention rule
 // says the U1-owned-personal-hub memory MUST NOT appear in results
@@ -68,7 +68,7 @@ func strictHubFixture(t *testing.T, ctx context.Context, s store.Store, pool *pg
 
 	team := &model.Hub{
 		ID: uuid.NewString(), Name: "Team",
-		Slug: "team-" + uuid.NewString()[:8],
+		Slug:    "team-" + uuid.NewString()[:8],
 		HubType: "team", Plan: model.HubFreeTeamPlanID, OwnerID: u1,
 	}
 	if err := s.CreateTeamHub(ctx, team, u1, 999); err != nil {
@@ -183,7 +183,7 @@ func TestPostgresSearchChunksInHubs_MultiHubReturnsUnion(t *testing.T) {
 	// target hubs simultaneously.
 	hTeamB := &model.Hub{
 		ID: uuid.NewString(), Name: "TeamB",
-		Slug: "tb-" + uuid.NewString()[:8],
+		Slug:    "tb-" + uuid.NewString()[:8],
 		HubType: "team", Plan: model.HubFreeTeamPlanID, OwnerID: getOwnerOf(t, ctx, pool, hTeam),
 	}
 	if err := s.CreateTeamHub(ctx, hTeamB, hTeamB.OwnerID, 999); err != nil {

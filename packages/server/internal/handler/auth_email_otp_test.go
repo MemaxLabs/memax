@@ -20,10 +20,10 @@ import (
 func TestCanonicalizeEmail(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name    string
-		in      string
-		want    string
-		wantOK  bool
+		name   string
+		in     string
+		want   string
+		wantOK bool
 	}{
 		{"plain", "user@example.com", "user@example.com", true},
 		{"mixed case", "User@Example.COM", "user@example.com", true},
@@ -71,15 +71,15 @@ func TestGenerateEmailOTPCode(t *testing.T) {
 func TestValidEmailOTPCode(t *testing.T) {
 	t.Parallel()
 	cases := map[string]bool{
-		"000000": true,
-		"123456": true,
-		"999999": true,
-		"":       false,
-		"12345":  false,  // too short
+		"000000":  true,
+		"123456":  true,
+		"999999":  true,
+		"":        false,
+		"12345":   false, // too short
 		"1234567": false, // too long
-		"abcdef": false,  // non-digit
-		"12 456": false,  // space
-		"12-456": false,  // hyphen
+		"abcdef":  false, // non-digit
+		"12 456":  false, // space
+		"12-456":  false, // hyphen
 	}
 	for in, want := range cases {
 		if got := validEmailOTPCode(in); got != want {

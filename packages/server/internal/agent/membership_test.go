@@ -87,8 +87,8 @@ func TestStoreMembershipResolverRoundTrip(t *testing.T) {
 	// WritableHubIDs derivation from the role column.
 	s := &stubMembershipStore{hubs: map[string][]model.HubMembership{
 		"u1": {
-			{HubID: "h-a", Role: "owner"},      // writable
-			{HubID: "h-b", Role: "viewer"},     // readable, NOT writable
+			{HubID: "h-a", Role: "owner"},       // writable
+			{HubID: "h-b", Role: "viewer"},      // readable, NOT writable
 			{HubID: "h-c", Role: "contributor"}, // writable
 		},
 	}}

@@ -376,10 +376,10 @@ func (e *Engine) phaseRestructure(ctx context.Context, hub *model.Hub, runID str
 					// (which on this path can include it,
 					// because the LLM emits target inside the
 					// source list).
-					SourceID:        model.BuildTopicMergeNotificationSourceID(s.TargetID, s.TopicIDs, recipientID),
-					DreamRunID:      &runIDMerge,
-					Payload:         payload,
-					CreatedAt:       now,
+					SourceID:   model.BuildTopicMergeNotificationSourceID(s.TargetID, s.TopicIDs, recipientID),
+					DreamRunID: &runIDMerge,
+					Payload:    payload,
+					CreatedAt:  now,
 				}
 				if err := e.store.CreateNotification(notif); err != nil {
 					slog.WarnContext(ctx, "dream: topic_merge notification create failed", "error", err, "target", s.TargetID, "recipient", recipientID)

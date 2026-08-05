@@ -48,7 +48,7 @@ For agent-specific setup, see the [Integrations guides](/integrations/index).
 
 ## Exposed tools
 
-The MCP server exposes **9 tools**. All parameter names and types
+The MCP server exposes **10 tools**. All parameter names and types
 below come directly from the server's `inputSchema`.
 
 ### `memax_recall`
@@ -130,6 +130,24 @@ persistence from the agent's perspective.
 | `summary`   | string   | **yes**  | Short summary of what was accomplished.      |
 | `decisions` | string[] |          | Key decisions made (one entry per decision). |
 | `learnings` | string[] |          | Things learned during the session.           |
+
+### `memax_request_decision`
+
+Put a decision the agent should not make alone in front of the user.
+Creates a **decision card** on the user's memax board and sends a
+needs-action ping. When the user picks an option, their choice is
+**written back into hub memory** — the agent recalls it later with
+`memax_recall` using keywords from the question. Agents should not
+block waiting for the answer.
+
+At most 3 decision gates can be open per board; further calls return
+an error telling the agent to continue with other work.
+
+| Parameter  | Type     | Required | Description                                             |
+| ---------- | -------- | :------: | ------------------------------------------------------- |
+| `question` | string   | **yes**  | The decision question — one sentence, user-facing.      |
+| `options`  | string[] | **yes**  | 2-4 mutually exclusive choices, short labels.           |
+| `context`  | string   |          | Tradeoffs, constraints, the agent's recommendation.     |
 
 ### `memax_topics`
 

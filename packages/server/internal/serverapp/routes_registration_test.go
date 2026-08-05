@@ -30,6 +30,7 @@ func newSmokeDeps(t *testing.T) routeDeps {
 		notifications:          handler.NewNotificationsHandler(s, nil),
 		settings:               handler.NewSettingsHandler(s),
 		hubs:                   handler.NewHubsHandler(s),
+		boards:                 handler.NewBoardsHandler(s),
 		configs:                handler.NewConfigsHandler(s, nil),
 		agents:                 handler.NewAgentsHandler(s, nil),
 		events:                 handler.NewEventsHandler(s, nil),

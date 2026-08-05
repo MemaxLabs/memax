@@ -866,6 +866,25 @@ export const en = {
     },
   },
 
+  board: {
+    actionAck: "Got it",
+    actionDismiss: "Not interested",
+    receiptAcked: "Noted",
+    receiptDismissed: "Dismissed",
+    kindTrace: "Traces · last {n} hours",
+    kindPulse: "Topic pulse · last {n} days",
+    kindCapsule: "One year ago today",
+    kindWeek: "This week",
+    traceCountOne: "1 memory",
+    traceCount: "{n} memories",
+    traceManual: "Captured by hand",
+    pulseRecentOne: "1 new memory",
+    pulseRecent: "{n} new memories",
+    pulseContributors: "{n} people",
+    weekLineOne: "1 memory this week",
+    weekLine: "{n} memories this week",
+    weekCompare: "Last week: {n}",
+  },
   inbox: {
     title: "Inbox",
     open: "Open Inbox",
@@ -2295,6 +2314,8 @@ export const en = {
       // Personas
       deletePersona: "forget that persona",
       restorePersona: "restore that persona",
+      // Board
+      resolveBoardCard: "resolve that card",
       // Hubs
       createHub: "create that hub",
       updateHub: "update the hub",

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 )
@@ -416,5 +417,58 @@ func (ChatEventPurgeArgs) InsertOpts() river.InsertOpts {
 		Queue:       "default",
 		MaxAttempts: 2,
 		UniqueOpts:  river.UniqueOpts{ByPeriod: 30 * time.Minute},
+	}
+}
+
+// --- Board Refresh Jobs (plan 25, Lane A) ---
+// BoardSweepArgs fans out BoardRefreshArgs for every dreamable hub
+// once a day; BoardRefreshArgs recomputes one hub's Lane A cards.
+// Deterministic and cheap (pure SQL), so failures just wait for the
+// next sweep. Rides the dreams queue: board refreshes are part of the
+// same nightly intelligence cycle and don't need their own capacity.
+
+type BoardSweepArgs struct{}
+
+func (BoardSweepArgs) Kind() string { return "board_sweep" }
+
+func (BoardSweepArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue:       "dreams",
+		MaxAttempts: 1,
+		// Dedupe restart storms: the periodic job runs on start, so a
+		// crash-looping or rolling-deployed worker would otherwise
+		// re-fan-out the whole fleet on every boot.
+		UniqueOpts: river.UniqueOpts{
+			ByPeriod: 6 * time.Hour,
+		},
+	}
+}
+
+type BoardRefreshArgs struct {
+	HubID string `json:"hub_id" river:"unique"`
+}
+
+func (BoardRefreshArgs) Kind() string { return "board_refresh" }
+
+func (BoardRefreshArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue:       "dreams",
+		MaxAttempts: 2,
+		// Dedupe only against jobs that haven't run yet. The default
+		// unique states include `completed`, which would silently drop
+		// a dream-chained refresh landing in the same period bucket as
+		// an already-finished sweep refresh — the dream just changed
+		// the data, so that refresh must run.
+		UniqueOpts: river.UniqueOpts{
+			ByArgs:   true,
+			ByPeriod: 10 * time.Minute,
+			ByState: []rivertype.JobState{
+				rivertype.JobStateAvailable,
+				rivertype.JobStatePending,
+				rivertype.JobStateRunning,
+				rivertype.JobStateRetryable,
+				rivertype.JobStateScheduled,
+			},
+		},
 	}
 }

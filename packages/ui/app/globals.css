@@ -1728,3 +1728,44 @@
     overscroll-behavior: contain;
   }
 }
+
+/* Pulse-board card surface — mirrors the .glass-card recipe in
+   packages/web/src/app/globals.css (the quietest glass: 75% fill +
+   12px blur). Duplicated here so the kitchen renders the real
+   BoardCard with the same material as production; keep the two
+   recipes in sync when either changes. */
+.glass-card {
+  background: color-mix(in srgb, var(--card) 75%, transparent);
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  border: 1px solid oklch(0 0 0 / 0.06);
+  box-shadow: 0 0 0 1px oklch(0 0 0 / 0.03);
+}
+.glass-card:hover {
+  background: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--card) 75%, transparent) 96%,
+    color-mix(in srgb, var(--foreground) 100%, transparent) 4%
+  );
+  border-color: oklch(0 0 0 / 0.1);
+}
+:is(.dark *).glass-card,
+.dark .glass-card {
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+  border-color: oklch(1 0 0 / 0.06);
+  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.04);
+}
+:is(.dark *).glass-card:hover,
+.dark .glass-card:hover {
+  background: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--card) 70%, transparent) 94%,
+    color-mix(in srgb, var(--foreground) 100%, transparent) 6%
+  );
+  border-color: oklch(1 0 0 / 0.12);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-card {
+    background: var(--card);
+  }
+}

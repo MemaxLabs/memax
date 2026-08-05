@@ -589,6 +589,7 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		onboarding:             onboardingH,
 		settings:               settingsH,
 		hubs:                   hubsH,
+		boards:                 handler.NewBoardsHandler(s),
 		configs:                configsH,
 		agents:                 agentsH,
 		events:                 eventsH,

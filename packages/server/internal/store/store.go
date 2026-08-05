@@ -550,6 +550,36 @@ type Store interface {
 	ListPersonaRevisions(personaID, ownerID string) ([]model.PersonaRevision, error)
 	GetPersonaRevision(personaID string, version int, ownerID string) (*model.PersonaRevision, error)
 
+	// Boards — pulse boards (plan 25): per-hub slot surfaces.
+	// Boards are hub-scoped, not owner-scoped: access control is hub
+	// membership, checked by the handler before any board call (same
+	// contract as the /v1/hubs/{id} routes). ResolveBoardSlot only
+	// transitions slots still in fresh/seen; terminal slots return
+	// ErrBoardSlotAlreadyResolved.
+	GetOrCreateSystemBoard(hubID, createdBy string) (*model.Board, error)
+	GetBoardSlot(boardID, slotKey string) (*model.BoardSlot, error)
+	ListBoardSlots(boardID string) ([]model.BoardSlot, error)
+	UpsertBoardSlot(slot *model.BoardSlot) error
+	ResolveBoardSlot(boardID, slotKey, newState string, resolution model.BoardSlotResolution) (*model.BoardSlot, error)
+	// CreateBoardFeedback upserts on (board, slot, member): latest
+	// verdict wins, so repeat submissions and post-resolve retries are
+	// idempotent per member.
+	CreateBoardFeedback(f *model.BoardFeedback) error
+	DeleteBoardSlot(boardID, slotKey string) error
+
+	// Lane A board data (P1). Hub-direct by design: board content is
+	// the hub's shared content, produced by a per-hub worker with no
+	// requesting user; membership is enforced at the board read
+	// endpoint. All exclude archived memories and onboarding seeds.
+	ListRecentAgentActivityByHub(hubID string, since time.Time) ([]model.BoardAgentActivity, error)
+	ListTopicActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardTopicActivity, error)
+	// CountMemoriesInHubRange counts memories with from < created_at <= to.
+	CountMemoriesInHubRange(hubID string, from, to time.Time) (int, error)
+	// GetMemoryNear returns the quotable hub memory (non-empty title or
+	// summary) whose created_at is closest to target within ±tolerance,
+	// or nil (no error) when none exists.
+	GetMemoryNear(hubID string, target time.Time, tolerance time.Duration) (*model.Memory, error)
+
 	// Connected Agents — first-class agent registry
 	UpsertConnectedAgent(agent *model.ConnectedAgent) error
 	GetConnectedAgent(ownerID string, agentName string) (*model.ConnectedAgent, error)

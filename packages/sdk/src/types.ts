@@ -639,6 +639,78 @@ export interface PersonaRestoreResult {
   head_version: number;
 }
 
+// --- Boards (pulse boards, plan 25) ---
+
+export type BoardKind = "system" | "custom";
+
+/**
+ * Board lifecycle. `cooking` is the 酝酿中 state a custom board shows
+ * between configuration and its first dream run.
+ */
+export type BoardStatus = "active" | "cooking" | "paused";
+
+/**
+ * Slot lifecycle. `fresh`/`seen` are live; `resolved`/`dismissed` are
+ * terminal for the current card — the slot only comes back to life by
+ * being replaced with new content.
+ */
+export type BoardSlotState = "fresh" | "seen" | "resolved" | "dismissed";
+
+/** Actions accepted by the slot resolve endpoint. Mirrors the Go handler's allow-list. */
+export type BoardSlotAction = "ack" | "dismiss" | "feedback";
+
+export type BoardFeedbackVerdict = "accurate" | "inaccurate";
+
+/**
+ * A per-hub pulse board. `instruction` is the board-as-instruction
+ * contract: empty for system boards, the user's natural-language brief
+ * for custom boards.
+ */
+export interface Board {
+  id: string;
+  hub_id: string;
+  created_by: string;
+  kind: BoardKind;
+  title?: string;
+  instruction?: string;
+  status: BoardStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Receipt stamped on a slot when it leaves its live state. */
+export interface BoardSlotResolution {
+  action: BoardSlotAction;
+  verdict?: BoardFeedbackVerdict;
+  resolved_by: string;
+  resolved_at: string;
+}
+
+/**
+ * One occupied board slot. `payload` varies by `kind`; per the plan-18
+ * item contract every text field in it is a plain user-facing string,
+ * so unknown kinds can be rendered literally by the fallback card.
+ */
+export interface BoardSlot {
+  id: string;
+  board_id: string;
+  slot_key: string;
+  kind: string;
+  title: string;
+  payload?: Record<string, unknown>;
+  cite_memory_ids?: string[];
+  state: BoardSlotState;
+  resolution?: BoardSlotResolution;
+  dream_run_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BoardWithSlots {
+  board: Board;
+  slots: BoardSlot[];
+}
+
 export interface DeletedAgentConfig {
   agent: string;
   file_path: string;

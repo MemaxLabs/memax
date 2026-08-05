@@ -30,6 +30,10 @@ type InMemoryStore struct {
 	personas                     map[string]*model.Persona
 	userPreferences              map[string]map[string]any
 	personaRevisions             map[string][]*model.PersonaRevision // personaID -> revisions
+	boards                       map[string]*model.Board                // boardID -> board
+	boardSlots                   map[string]map[string]*model.BoardSlot // boardID -> slotKey -> slot
+	boardFeedback                []*model.BoardFeedback
+	boardSeq                     int // auto-increment for board/slot/feedback IDs
 	configStates                 map[string]*model.AgentConfigSyncState
 	tombstones                   map[string]*model.AgentConfigTombstone
 	emailTemplateOverrides       map[string]*model.EmailTemplateOverride
@@ -3267,4 +3271,259 @@ func (s *InMemoryStore) GetPersonaRevision(personaID string, version int, ownerI
 		}
 	}
 	return nil, fmt.Errorf("persona revision not found: %s v%d", personaID, version)
+}
+
+// --- Boards (in-memory) ---
+
+func (s *InMemoryStore) GetOrCreateSystemBoard(hubID, createdBy string) (*model.Board, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.boards == nil {
+		s.boards = make(map[string]*model.Board)
+	}
+	for _, b := range s.boards {
+		if b.HubID == hubID && b.Kind == model.BoardKindSystem {
+			out := *b
+			return &out, nil
+		}
+	}
+	s.boardSeq++
+	now := time.Now().UTC()
+	board := &model.Board{
+		ID:        fmt.Sprintf("board_%d", s.boardSeq),
+		HubID:     hubID,
+		CreatedBy: createdBy,
+		Kind:      model.BoardKindSystem,
+		Status:    model.BoardStatusActive,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	s.boards[board.ID] = board
+	out := *board
+	return &out, nil
+}
+
+func (s *InMemoryStore) GetBoardSlot(boardID, slotKey string) (*model.BoardSlot, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	slot, ok := s.boardSlots[boardID][slotKey]
+	if !ok {
+		return nil, ErrBoardSlotNotFound
+	}
+	out := *slot
+	return &out, nil
+}
+
+func (s *InMemoryStore) ListBoardSlots(boardID string) ([]model.BoardSlot, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var slots []model.BoardSlot
+	for _, slot := range s.boardSlots[boardID] {
+		slots = append(slots, *slot)
+	}
+	sort.Slice(slots, func(i, j int) bool { return slots[i].SlotKey < slots[j].SlotKey })
+	return slots, nil
+}
+
+func (s *InMemoryStore) UpsertBoardSlot(slot *model.BoardSlot) error {
+	if err := model.ValidateBoardSlot(slot); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.boardSlots == nil {
+		s.boardSlots = make(map[string]map[string]*model.BoardSlot)
+	}
+	if s.boardSlots[slot.BoardID] == nil {
+		s.boardSlots[slot.BoardID] = make(map[string]*model.BoardSlot)
+	}
+	now := time.Now().UTC()
+	if existing, ok := s.boardSlots[slot.BoardID][slot.SlotKey]; ok {
+		slot.ID = existing.ID
+		slot.CreatedAt = existing.CreatedAt
+	} else {
+		s.boardSeq++
+		slot.ID = fmt.Sprintf("slot_%d", s.boardSeq)
+		slot.CreatedAt = now
+	}
+	slot.State = model.BoardSlotStateFresh
+	slot.Resolution = nil
+	slot.UpdatedAt = now
+	stored := *slot
+	s.boardSlots[slot.BoardID][slot.SlotKey] = &stored
+	return nil
+}
+
+func (s *InMemoryStore) ResolveBoardSlot(boardID, slotKey, newState string, resolution model.BoardSlotResolution) (*model.BoardSlot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	slot, ok := s.boardSlots[boardID][slotKey]
+	if !ok {
+		return nil, ErrBoardSlotNotFound
+	}
+	if slot.State != model.BoardSlotStateFresh && slot.State != model.BoardSlotStateSeen {
+		return nil, ErrBoardSlotAlreadyResolved
+	}
+	slot.State = newState
+	r := resolution
+	slot.Resolution = &r
+	slot.UpdatedAt = time.Now().UTC()
+	out := *slot
+	return &out, nil
+}
+
+func (s *InMemoryStore) CreateBoardFeedback(f *model.BoardFeedback) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	// Latest verdict wins per (board, slot, member) — mirrors the
+	// Postgres ON CONFLICT DO UPDATE upsert.
+	for _, existing := range s.boardFeedback {
+		if existing.BoardID == f.BoardID && existing.SlotKey == f.SlotKey && existing.UserID == f.UserID {
+			existing.CardKind = f.CardKind
+			existing.CardTitle = f.CardTitle
+			existing.Verdict = f.Verdict
+			existing.CiteMemoryIDs = f.CiteMemoryIDs
+			existing.CreatedAt = now
+			f.ID = existing.ID
+			f.CreatedAt = now
+			return nil
+		}
+	}
+	s.boardSeq++
+	f.ID = fmt.Sprintf("bf_%d", s.boardSeq)
+	f.CreatedAt = now
+	stored := *f
+	s.boardFeedback = append(s.boardFeedback, &stored)
+	return nil
+}
+
+func (s *InMemoryStore) DeleteBoardSlot(boardID, slotKey string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.boardSlots[boardID], slotKey)
+	return nil
+}
+
+// boardMemoryEligible mirrors the Postgres boardMemoryFilter: hub
+// content only, no archived rows, no onboarding seeds.
+func boardMemoryEligible(m *model.Memory, hubID string) bool {
+	return m.HubID == hubID && m.State != "archived" && m.SourceKind != "onboarding-seed"
+}
+
+func (s *InMemoryStore) ListRecentAgentActivityByHub(hubID string, since time.Time) ([]model.BoardAgentActivity, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	type agg struct {
+		activity model.BoardAgentActivity
+		latest   time.Time
+	}
+	groups := make(map[string]*agg)
+	for _, m := range s.memories {
+		if !boardMemoryEligible(m, hubID) || !m.CreatedAt.After(since) {
+			continue
+		}
+		slug := model.EffectiveMemoryAgentSlug(m)
+		g, ok := groups[slug]
+		if !ok {
+			g = &agg{activity: model.BoardAgentActivity{Slug: slug}}
+			groups[slug] = g
+		}
+		g.activity.Count++
+		if m.CreatedAt.After(g.latest) {
+			g.latest = m.CreatedAt
+			g.activity.LatestTitle = m.Title
+		}
+	}
+	var out []model.BoardAgentActivity
+	for _, g := range groups {
+		out = append(out, g.activity)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Slug < out[j].Slug
+	})
+	return out, nil
+}
+
+func (s *InMemoryStore) ListTopicActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardTopicActivity, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	counts := make(map[string]*model.BoardTopicActivity)
+	contributors := make(map[string]map[string]bool)
+	for _, mt := range s.memoryTopics {
+		m, ok := s.memories[mt.MemoryID]
+		if !ok || !boardMemoryEligible(m, hubID) || !m.CreatedAt.After(since) {
+			continue
+		}
+		topic, ok := s.topics[mt.TopicID]
+		if !ok || topic.HubID != hubID || topic.ArchivedAt != nil {
+			continue
+		}
+		entry, ok := counts[topic.ID]
+		if !ok {
+			entry = &model.BoardTopicActivity{TopicID: topic.ID, Name: topic.Name, Icon: topic.Icon}
+			counts[topic.ID] = entry
+			contributors[topic.ID] = make(map[string]bool)
+		}
+		entry.RecentCount++
+		contributors[topic.ID][m.OwnerID] = true
+	}
+	var out []model.BoardTopicActivity
+	for id, entry := range counts {
+		entry.Contributors = len(contributors[id])
+		out = append(out, *entry)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].RecentCount != out[j].RecentCount {
+			return out[i].RecentCount > out[j].RecentCount
+		}
+		return out[i].Name < out[j].Name
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (s *InMemoryStore) CountMemoriesInHubRange(hubID string, from, to time.Time) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	count := 0
+	for _, m := range s.memories {
+		if boardMemoryEligible(m, hubID) && m.CreatedAt.After(from) && !m.CreatedAt.After(to) {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (s *InMemoryStore) GetMemoryNear(hubID string, target time.Time, tolerance time.Duration) (*model.Memory, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var best *model.Memory
+	var bestDiff time.Duration
+	for _, m := range s.memories {
+		if !boardMemoryEligible(m, hubID) || (m.Title == "" && m.Summary == "") {
+			continue
+		}
+		diff := m.CreatedAt.Sub(target)
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > tolerance {
+			continue
+		}
+		if best == nil || diff < bestDiff {
+			best = m
+			bestDiff = diff
+		}
+	}
+	if best == nil {
+		return nil, nil
+	}
+	out := *best
+	return &out, nil
 }

@@ -35,6 +35,7 @@ import {
 } from "@/contexts/settings-panel-context";
 import { useIsMobile, IsMobileProvider } from "@/hooks/use-is-mobile";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
+import { useVisualViewportRect } from "@/hooks/use-visual-viewport-rect";
 import { useScrollDirection } from "@/hooks/use-scroll-direction";
 import { useShellState } from "@/contexts/shell-state-context";
 import { getBarClickOutsideAction } from "@/lib/bar-interaction";
@@ -476,6 +477,7 @@ function GlobalBar() {
   const [barVisible, setBarVisible] = useState(false);
   const [batchActive, setBatchActive] = useState(false);
   const keyboardOpen = useKeyboardOpen();
+  const viewportRect = useVisualViewportRect();
   const { direction: scrollDirection, atTop } = useScrollDirection();
   const reduceMotion = useReducedMotion();
   // Phase 4 — sticky scroll-hide. Once the user scrolls down enough to
@@ -707,8 +709,19 @@ function GlobalBar() {
   // report, 2026-08-05 mobile screenshots). When the dock isn't
   // visible under the bar, hug the safe-area bottom instead.
   const mobileDockCovered = mobileComposeState === "mirror";
+  // Keyboard open: anchor to the VISUAL viewport, not the layout
+  // viewport. iOS Safari keeps 100dvh full-height with the keyboard up
+  // (only visualViewport shrinks), so "calc(100dvh - 8px)" parks the
+  // bar underneath the keyboard and only Safari's focus auto-scroll
+  // makes it look right. offsetTop + height - 8 = 8px above the
+  // keyboard's top edge in layout coordinates (what position:fixed
+  // uses). Falls back to the dvh math where visualViewport is
+  // unavailable.
+  const mobileKeyboardTop = viewportRect
+    ? `${viewportRect.top + viewportRect.height - 8}px`
+    : "calc(100dvh - 8px)";
   const mobileRestTop = keyboardOpen
-    ? "calc(100dvh - 8px)"
+    ? mobileKeyboardTop
     : mobileDockCovered
       ? "calc(100dvh - 12px - var(--safe-bottom, 0px))"
       : `calc(100dvh - ${MOBILE_DOCK_BOTTOM_GAP_PX}px - var(--safe-bottom, 0px))`;

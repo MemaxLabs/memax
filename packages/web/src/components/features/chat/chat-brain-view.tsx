@@ -63,6 +63,7 @@ import { ChatSessionsList } from "./chat-sessions-list";
 import { ChatThread, PendingThinkingRow } from "./chat-thread";
 import { ChatComposer, type ChatComposerHandle } from "./chat-composer";
 import { ChatPersonaPicker } from "./chat-persona-picker";
+import { useChatDraft } from "@/hooks/use-chat-draft";
 
 function newIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -179,7 +180,9 @@ export function ChatBrainView({ routeSessionId }: ChatBrainViewProps = {}) {
   // navigation events update the URL and the prop flows back in.
   const activeSessionId = routeSessionId ?? null;
 
-  const [composerValue, setComposerValue] = useState("");
+  // Draft persists per session (sessionStorage) — half-typed text
+  // survives navigating away and back. Cleared on send below.
+  const [composerValue, setComposerValue] = useChatDraft(activeSessionId);
   const [inflightAssistantId, setInflightAssistantId] = useState<string | null>(
     null,
   );

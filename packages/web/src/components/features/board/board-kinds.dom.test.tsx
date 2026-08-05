@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import type { BoardSlot } from "memax-sdk";
+
+// Renderers navigate on drill-down (memory detail / topic page); the
+// test tree has no app router mounted.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 // Side-effect: registers the Lane A renderers (same import BoardView uses).
 import "./board-kinds";
 import {

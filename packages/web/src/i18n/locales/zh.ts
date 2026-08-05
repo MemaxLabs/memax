@@ -802,6 +802,19 @@ export const zh: Translations = {
     traceLatest: "最新：“{title}”",
     traceAck: "都对 · 收下",
     capsuleAck: "记得",
+    title: "脉搏",
+    purpose:
+      "你不在的时候，这个 hub 发生了什么——agent 的动作、主题的流向、旧记忆的回声。卡片每晚刷新；处理过的会留作回执，直到有新内容顶替。",
+    purposeAria: "这是什么？",
+    collapse: "收起",
+    stripTrace: "行迹",
+    stripPulse: "项目脉搏",
+    stripPulseDetail: "{n} 个主题有动静",
+    tracePurpose:
+      "你不在时 agent 往记忆里写了什么。展开每行能看到具体记忆——确认无误，memax 就知道 agent 没跑偏。",
+    pulsePurpose: "本周这个 hub 的注意力实际流向了哪些主题。点主题直接打开。",
+    capsulePurpose: "大约一年前的今天你留下的一条记忆。点引文回到那天。",
+    weekPurpose: "你的记忆节奏——本周与上周的对比。",
     pulseRecentOne: "1 条新动态",
     pulseRecent: "{n} 条新动态",
     pulseContributors: "{n} 人参与",
@@ -828,7 +841,6 @@ export const zh: Translations = {
       "agent 停下来等你拍板。你的选择会写回记忆，agent 之后能直接读到。",
     feedbackAccurate: "准",
     feedbackInaccurate: "不准",
-    actionCollapse: "收起",
   },
   inbox: {
     title: "收件箱",

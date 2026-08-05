@@ -130,15 +130,26 @@ const (
 	BoardKindWeek    = "week"    // 周对比 — this week vs last week
 )
 
+// BoardAgentItem is one concrete memory reference inside a trace row —
+// the drill-down that lets a member verify what an agent actually
+// wrote instead of trusting a count.
+type BoardAgentItem struct {
+	MemoryID string `json:"memory_id"`
+	Title    string `json:"title"`
+}
+
 // BoardAgentActivity is one agent's line in the trace card. LatestTitle
 // is the newest memory title from that agent — plain user content,
-// quoted verbatim by the renderer.
+// quoted verbatim by the renderer. Items carries the newest few
+// memories (id + title) so each row expands to the receipts behind
+// the number.
 type BoardAgentActivity struct {
-	Slug        string `json:"slug"`
-	DisplayName string `json:"display_name,omitempty"`
-	Icon        string `json:"icon,omitempty"`
-	Count       int    `json:"count"`
-	LatestTitle string `json:"latest_title,omitempty"`
+	Slug        string           `json:"slug"`
+	DisplayName string           `json:"display_name,omitempty"`
+	Icon        string           `json:"icon,omitempty"`
+	Count       int              `json:"count"`
+	LatestTitle string           `json:"latest_title,omitempty"`
+	Items       []BoardAgentItem `json:"items,omitempty"`
 }
 
 type BoardTracePayload struct {

@@ -41,6 +41,12 @@ type TranslationsLike = {
   board: Record<string, string>;
 };
 
+/** One-line collapsed-band representation of a slot. */
+export interface BoardStripSummary {
+  label: string;
+  detail?: string;
+}
+
 /**
  * Per-kind presentation options consumed by BoardView (the host).
  * All optional — a kind that registers only a Body gets the default
@@ -51,21 +57,12 @@ export interface BoardKindOptions {
   actions?: BoardKindActionLabels;
   /**
    * "Why does this card exist" copy, shown in an InfoPopover on the
-   * card. Lane B synthesized kinds use it to explain themselves.
+   * card — the board explains itself instead of assuming the user
+   * reverse-engineers its purpose from numbers.
    */
   purpose?: (t: TranslationsLike) => string;
-  /**
-   * Collapsed one-line representation (BoardSlotStrip). Kinds with a
-   * strip config can be tucked away by the user; the strip's label
-   * doubles as the purpose popover's title.
-   */
-  strip?: (
-    t: TranslationsLike,
-    slot: BoardSlot,
-  ) => {
-    label: string;
-    detail?: string;
-  };
+  /** Collapsed one-line summary; falls back to the slot title. */
+  strip?: (slot: BoardSlot, t: TranslationsLike) => BoardStripSummary;
   /**
    * Show the 准/不准 feedback verbs in the live action row. Set on
    * synthesized kinds where the claim can be right or wrong.
@@ -78,9 +75,8 @@ export interface BoardKindOptions {
   hideDefaultActions?: boolean;
 }
 
-interface BoardKindEntry {
+interface BoardKindEntry extends BoardKindOptions {
   Body: ComponentType<BoardKindBodyProps>;
-  options?: BoardKindOptions;
 }
 
 const REGISTRY = new Map<string, BoardKindEntry>();
@@ -90,11 +86,29 @@ export function registerBoardKind(
   Body: ComponentType<BoardKindBodyProps>,
   options?: BoardKindOptions,
 ) {
-  REGISTRY.set(kind, { Body, options });
+  REGISTRY.set(kind, { Body, ...options });
 }
 
 export function boardKindOptions(kind: string): BoardKindOptions | undefined {
-  return REGISTRY.get(kind)?.options;
+  return REGISTRY.get(kind);
+}
+
+export function boardKindPurpose(
+  kind: string,
+  t: TranslationsLike,
+): string | undefined {
+  return REGISTRY.get(kind)?.purpose?.(t);
+}
+
+export function boardKindStripSummary(
+  slot: BoardSlot,
+  t: TranslationsLike,
+): BoardStripSummary {
+  const strip = REGISTRY.get(slot.kind)?.strip;
+  if (strip) return strip(slot, t);
+  // Fallback: the slot's plain-text title (the same literal-text
+  // contract the unknown-kind card body relies on).
+  return { label: slot.title };
 }
 
 /**

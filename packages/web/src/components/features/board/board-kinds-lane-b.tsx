@@ -214,11 +214,11 @@ function DecisionGateBody({ slot }: BoardKindBodyProps) {
 
 registerBoardKind("dreamlog", DreamlogBody, {
   purpose: (t) => t.board.dreamlogPurpose,
-  strip: (t) => ({ label: t.board.kindDreamlog }),
+  strip: (_slot, t) => ({ label: t.board.kindDreamlog }),
 });
 registerBoardKind("echo", EchoBody, {
   purpose: (t) => t.board.echoPurpose,
-  strip: (t, slot) => ({ label: t.board.kindEcho, detail: slot.title }),
+  strip: (slot, t) => ({ label: t.board.kindEcho, detail: slot.title }),
   feedback: true,
 });
 registerBoardKind(
@@ -226,7 +226,7 @@ registerBoardKind(
   makeWowBody((t) => t.board.kindThread),
   {
     purpose: (t) => t.board.threadPurpose,
-    strip: (t, slot) => ({ label: t.board.kindThread, detail: slot.title }),
+    strip: (slot, t) => ({ label: t.board.kindThread, detail: slot.title }),
     feedback: true,
   },
 );
@@ -235,7 +235,7 @@ registerBoardKind(
   makeWowBody((t) => t.board.kindOpenq),
   {
     purpose: (t) => t.board.openqPurpose,
-    strip: (t, slot) => ({ label: t.board.kindOpenq, detail: slot.title }),
+    strip: (slot, t) => ({ label: t.board.kindOpenq, detail: slot.title }),
     feedback: true,
   },
 );
@@ -244,7 +244,7 @@ registerBoardKind(
   makeWowBody((t) => t.board.kindPattern),
   {
     purpose: (t) => t.board.patternPurpose,
-    strip: (t, slot) => ({ label: t.board.kindPattern, detail: slot.title }),
+    strip: (slot, t) => ({ label: t.board.kindPattern, detail: slot.title }),
     feedback: true,
   },
 );
@@ -253,12 +253,12 @@ registerBoardKind(
   makeWowBody((t) => t.board.kindMusing),
   {
     purpose: (t) => t.board.musingPurpose,
-    strip: (t, slot) => ({ label: t.board.kindMusing, detail: slot.title }),
+    strip: (slot, t) => ({ label: t.board.kindMusing, detail: slot.title }),
     feedback: true,
   },
 );
 registerBoardKind("decision_gate", DecisionGateBody, {
   purpose: (t) => t.board.gatePurpose,
-  strip: (t, slot) => ({ label: t.board.kindGate, detail: slot.title }),
+  strip: (slot, t) => ({ label: t.board.kindGate, detail: slot.title }),
   hideDefaultActions: true,
 });

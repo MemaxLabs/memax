@@ -881,6 +881,21 @@ export const en = {
     traceLatest: "Latest: “{title}”",
     traceAck: "All correct · got it",
     capsuleAck: "I remember",
+    title: "Pulse",
+    purpose:
+      "What changed in this hub while you were away — agent activity, topic movement, and echoes from your past memories. Cards refresh nightly; resolve one and it stays as a receipt until new content replaces it.",
+    purposeAria: "What is this?",
+    collapse: "Collapse",
+    stripTrace: "Traces",
+    stripPulse: "Topic pulse",
+    stripPulseDetail: "{n} topics active",
+    tracePurpose:
+      "What your agents wrote into memory while you were away. Expand a row to see the actual memories — confirm them and memax learns your agents are on track.",
+    pulsePurpose:
+      "Where this hub's attention actually went this week, by topic. Tap a topic to open it.",
+    capsulePurpose:
+      "A memory from about a year ago today. Tap the quote to revisit it.",
+    weekPurpose: "Your memory rhythm — this week versus last week.",
     pulseRecentOne: "1 new memory",
     pulseRecent: "{n} new memories",
     pulseContributors: "{n} people",
@@ -912,7 +927,6 @@ export const en = {
       "An agent stopped to wait for your call. Your choice is written back into memory so the agent can read it later.",
     feedbackAccurate: "Spot on",
     feedbackInaccurate: "Off the mark",
-    actionCollapse: "Tuck away",
   },
   inbox: {
     title: "Inbox",

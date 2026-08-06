@@ -25,7 +25,7 @@ export const zh: Translations = {
     tabs: {
       brain: "问问 memax",
       memories: "记忆",
-      agents: "AI 助手",
+      agents: "已连接 agents",
       pulse: "脉搏",
     },
   },
@@ -473,8 +473,8 @@ export const zh: Translations = {
   },
 
   agentConfigs: {
-    title: "你的 AI 助手们",
-    subtitle: "已连接到你的记忆的 AI 助手。",
+    title: "已连接的 agents",
+    subtitle: "配好一次，agent 走到哪都连着你的记忆。",
     empty: "还没有连接 AI 助手",
     emptyHint: "连上你的第一个助手，让它拥有跨会话的持久记忆。",
     emptyTitle: "连接你的第一个助手",

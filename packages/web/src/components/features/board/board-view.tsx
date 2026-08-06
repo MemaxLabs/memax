@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { BoardFeedbackVerdict, BoardSlot } from "memax-sdk";
 import {
   BoardAction,
@@ -10,7 +12,7 @@ import {
   BoardVoiceStar,
   InfoPopover,
 } from "@memaxlabs/ui";
-import { pluralize, useLocale } from "@/i18n";
+import { pluralize, useInterpolate, useLocale } from "@/i18n";
 import { useActiveHub, useAuth } from "@/lib/auth";
 import { trackEvent } from "@/lib/posthog";
 import {
@@ -29,10 +31,12 @@ import { useBoardCardActions } from "@/hooks/use-board-continue";
 import { PinnedDispatch } from "@/components/features/onboarding/onboarding-pinned";
 import { buildBoardCardContext } from "./board-card-context";
 import {
-  BoardNotificationCard,
+  BoardNotificationDeck,
+  groupWaitingByKind,
   BoardRecentRow,
   useBoardNotificationCards,
 } from "./board-notification-cards";
+import { BoardShelf } from "./board-shelf";
 import {
   BoardComposer,
   BoardCookingReceipt,
@@ -52,13 +56,21 @@ import "./board-kinds";
 
 type BoardResolveAction = "ack" | "dismiss" | "feedback";
 
+/** Per-hub sessionStorage key for the embedded shelf's expand state. */
+function shelfStorageKey(hubId: string) {
+  return `memax-board-shelf-expanded-${hubId}`;
+}
+
 /**
  * Where the board is mounted.
  *
  *   - "section" — embedded in the memories page under the hub header.
- *     Stays zero-height when the hub has nothing, so card-less hubs
- *     keep the exact pre-board layout. No board tabs, no composer, no
- *     receipts strip: those belong to the full surface.
+ *     Collapsed by default into a horizontal tile shelf (BoardShelf,
+ *     at most two scrollable rows); a header toggle expands it in
+ *     place to the full vertical card layout. Stays zero-height when
+ *     the hub has nothing, so card-less hubs keep the exact pre-board
+ *     layout. No board tabs, no composer, no receipts strip: those
+ *     belong to the full surface, one click away via 查看全部.
  *   - "page"    — the standalone /pulse route. The one surface: 等你
  *     decisions, the system board's cards, custom boards, and the
  *     collapsed 最近 receipts strip that absorbed the retired inbox.
@@ -83,6 +95,8 @@ export function BoardView({
   surface?: BoardSurface;
 }) {
   const { t } = useLocale();
+  const interpolate = useInterpolate();
+  const router = useRouter();
   const isPage = surface === "page";
   const { hubs } = useAuth();
   // Personal-hub detection is by the board's OWN hub, not the active
@@ -95,7 +109,9 @@ export function BoardView({
   }, [hubs, hubId]);
 
   const { data, isPending, isError } = useHubBoard(hubId);
-  const { data: boardsData } = useHubBoards(isPage ? hubId : undefined);
+  // Boards are fetched on BOTH surfaces now: the page needs them for
+  // tabs, the embedded shelf for its 酝酿中 cooking tiles.
+  const { data: boardsData } = useHubBoards(hubId);
   const resolve = useResolveBoardSlot(hubId);
   const cardActions = useBoardCardActions(hubId);
   const notifications = useBoardNotificationCards(hubId, isPersonalHub, isPage);
@@ -110,7 +126,40 @@ export function BoardView({
   const [cookingTitle, setCookingTitle] = useState<string | null>(null);
   const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
 
+  // Embedded surface: collapsed shelf vs expanded-in-place. Collapsed
+  // by default; the choice is remembered per hub for the SESSION only
+  // (sessionStorage) — a fresh visit should land on the quiet shelf.
+  const [shelfExpanded, setShelfExpanded] = useState(false);
+  useEffect(() => {
+    try {
+      setShelfExpanded(
+        globalThis.sessionStorage?.getItem(shelfStorageKey(hubId)) === "1",
+      );
+    } catch {
+      setShelfExpanded(false);
+    }
+  }, [hubId]);
+  const setShelfExpandedPersisted = useCallback(
+    (expanded: boolean) => {
+      setShelfExpanded(expanded);
+      try {
+        globalThis.sessionStorage?.setItem(
+          shelfStorageKey(hubId),
+          expanded ? "1" : "0",
+        );
+      } catch {
+        // Private mode / quota — preference holds in-memory.
+      }
+    },
+    [hubId],
+  );
+
   const boards = useMemo(() => boardsData?.boards ?? [], [boardsData]);
+  // 酝酿中 custom boards — the shelf shows them as promise tiles.
+  const cookingBoards = useMemo(
+    () => boards.filter((b) => b.kind !== "system" && b.status === "cooking"),
+    [boards],
+  );
   const systemBoardId = data?.board.id ?? null;
   // Selection falls back to the system board whenever the selected id
   // no longer exists (deleted board, hub switch).
@@ -201,6 +250,8 @@ export function BoardView({
   );
   const heroKey = liveSlots[0]?.slot_key;
   const showSlots = !activeCustomBoard;
+  // Embedded surface, not yet expanded → the compact tile shelf.
+  const collapsedShelf = !isPage && !shelfExpanded;
   // Only claim the board is empty once the slots query has settled —
   // otherwise "the board is quiet" flashes on every cold load and is
   // then contradicted a beat later by a stack of cards.
@@ -228,7 +279,42 @@ export function BoardView({
         {isPage && !composerOpen ? (
           <NewBoardButton onClick={() => setComposerOpen(true)} />
         ) : null}
+        {!isPage ? (
+          <>
+            {/* 展开/收起 — the shelf expands IN PLACE; the full /pulse
+                surface stays one click away via 查看全部. */}
+            <button
+              type="button"
+              onClick={() => setShelfExpandedPersisted(!shelfExpanded)}
+              className="ml-auto cursor-pointer rounded-full px-2 py-0.5 text-[11px] font-medium text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg-1"
+            >
+              {shelfExpanded ? t.board.shelfCollapse : t.board.shelfExpand}
+            </button>
+            <Link
+              href="/pulse"
+              className="rounded-full px-2 py-0.5 text-[11px] font-medium text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg-1"
+            >
+              {t.board.shelfViewAll}
+            </Link>
+          </>
+        ) : null}
       </div>
+
+      {collapsedShelf ? (
+        <BoardShelf
+          waiting={waiting}
+          slots={slots}
+          cookingBoards={cookingBoards}
+          onOpenDeck={() => setShelfExpandedPersisted(true)}
+          onOpenSlot={(slotKey) => {
+            // Remember the tapped card so it renders expanded once the
+            // full layout unfolds.
+            setOpenSlots((prev) => new Set(prev).add(slotKey));
+            setShelfExpandedPersisted(true);
+          }}
+          onOpenBoards={() => router.push("/pulse")}
+        />
+      ) : null}
 
       {isPage ? (
         <BoardTabs
@@ -279,20 +365,26 @@ export function BoardView({
         />
       ) : null}
 
-      {/* ── 等你 band — decisions merged from notifications (P4). ── */}
-      {showSlots &&
-        waiting.map((card, index) => (
-          <BoardNotificationCard
-            key={card.id}
-            card={card}
-            entranceIndex={index}
-            disabled={resolveNotification.isPending}
-            onResolve={onResolveNotification}
-          />
-        ))}
+      {/* ── 等你 — decisions merged from notifications (P4), rendered
+          as a DECK: one card at a time, the pile counted behind it.
+          Never a vertical list of N contradiction cards. ── */}
+      {!collapsedShelf && showSlots
+        ? groupWaitingByKind(waiting).map((group) => (
+            <BoardNotificationDeck
+              key={group[0].kind}
+              cards={group}
+              countLabel={interpolate(t.board.deckMore, {
+                n: group.length - 1,
+              })}
+              disabled={resolveNotification.isPending}
+              onResolve={onResolveNotification}
+            />
+          ))
+        : null}
 
       {/* ── System board slots. ── */}
-      {showSlots &&
+      {!collapsedShelf &&
+        showSlots &&
         slots.map((slot, index) => {
           const expanded =
             slot.slot_key === heroKey || openSlots.has(slot.slot_key);
@@ -301,7 +393,7 @@ export function BoardView({
               key={slot.slot_key}
               slot={slot}
               expanded={expanded}
-              entranceIndex={waiting.length + index}
+              entranceIndex={(waiting.length > 0 ? 1 : 0) + index}
               onToggle={(willOpen) => toggleSlot(slot.slot_key, willOpen)}
               onResolve={(action, verdict) => {
                 trackEvent("board_card_action", {

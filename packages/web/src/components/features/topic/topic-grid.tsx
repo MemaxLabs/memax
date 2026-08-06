@@ -55,6 +55,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { PinnedNotifications } from "@/components/features/onboarding/onboarding-pinned";
+import { BoardSection } from "@/components/features/board/board-view";
 import { SelectionProvider, useSelection } from "@/contexts/selection-context";
 import { BatchToolbar } from "@/components/features/batch-toolbar";
 import { useMemoryForget } from "@/hooks/use-memory-forget";
@@ -342,6 +343,11 @@ export function TopicGrid() {
           <div className="mb-3">
             <PinnedNotifications context="memories_hero" />
           </div>
+
+          {/* Pulse board (plan 25) — hub intelligence cards, below the
+              header/onboarding, above compose + fresh memories. Zero
+              height until the hub's producers have cards. */}
+          <BoardSection />
 
           {/* ── Compose entry-point ──
               v1: wide CTA above the row list.

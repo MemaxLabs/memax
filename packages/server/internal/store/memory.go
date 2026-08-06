@@ -29,7 +29,7 @@ type InMemoryStore struct {
 	agentConfigs                 map[string]*model.AgentConfig
 	personas                     map[string]*model.Persona
 	userPreferences              map[string]map[string]any
-	personaRevisions             map[string][]*model.PersonaRevision // personaID -> revisions
+	personaRevisions             map[string][]*model.PersonaRevision    // personaID -> revisions
 	boards                       map[string]*model.Board                // boardID -> board
 	boardSlots                   map[string]map[string]*model.BoardSlot // boardID -> slotKey -> slot
 	boardFeedback                []*model.BoardFeedback
@@ -3349,6 +3349,7 @@ func (s *InMemoryStore) UpsertBoardSlot(slot *model.BoardSlot) error {
 	slot.State = model.BoardSlotStateFresh
 	slot.Resolution = nil
 	slot.UpdatedAt = now
+	slot.ContentUpdatedAt = now
 	stored := *slot
 	s.boardSlots[slot.BoardID][slot.SlotKey] = &stored
 	return nil
@@ -3414,9 +3415,14 @@ func boardMemoryEligible(m *model.Memory, hubID string) bool {
 func (s *InMemoryStore) ListRecentAgentActivityByHub(hubID string, since time.Time) ([]model.BoardAgentActivity, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	type memRef struct {
+		id, title string
+		createdAt time.Time
+	}
 	type agg struct {
 		activity model.BoardAgentActivity
 		latest   time.Time
+		mems     []memRef
 	}
 	groups := make(map[string]*agg)
 	for _, m := range s.memories {
@@ -3430,6 +3436,7 @@ func (s *InMemoryStore) ListRecentAgentActivityByHub(hubID string, since time.Ti
 			groups[slug] = g
 		}
 		g.activity.Count++
+		g.mems = append(g.mems, memRef{id: m.ID, title: m.Title, createdAt: m.CreatedAt})
 		if m.CreatedAt.After(g.latest) {
 			g.latest = m.CreatedAt
 			g.activity.LatestTitle = m.Title
@@ -3437,6 +3444,15 @@ func (s *InMemoryStore) ListRecentAgentActivityByHub(hubID string, since time.Ti
 	}
 	var out []model.BoardAgentActivity
 	for _, g := range groups {
+		sort.Slice(g.mems, func(i, j int) bool { return g.mems[i].createdAt.After(g.mems[j].createdAt) })
+		for i, ref := range g.mems {
+			if i >= 3 {
+				break
+			}
+			if ref.title != "" {
+				g.activity.Items = append(g.activity.Items, model.BoardAgentItem{MemoryID: ref.id, Title: ref.title})
+			}
+		}
 		out = append(out, g.activity)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -3526,4 +3542,79 @@ func (s *InMemoryStore) GetMemoryNear(hubID string, target time.Time, tolerance 
 	}
 	out := *best
 	return &out, nil
+}
+
+// GetNotificationBySource mirrors the notification stubs above: the
+// in-memory store doesn't persist notifications, so lookups miss.
+func (s *InMemoryStore) GetNotificationBySource(_ context.Context, _, _ string) (*model.Notification, error) {
+	return nil, ErrNotificationNotFound
+}
+
+func (s *InMemoryStore) CreateBoard(b *model.Board) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.boards == nil {
+		s.boards = make(map[string]*model.Board)
+	}
+	s.boardSeq++
+	now := time.Now().UTC()
+	if b.ID == "" {
+		b.ID = fmt.Sprintf("board_%d", s.boardSeq)
+	}
+	b.CreatedAt, b.UpdatedAt = now, now
+	stored := *b
+	s.boards[b.ID] = &stored
+	return nil
+}
+
+func (s *InMemoryStore) GetBoard(boardID string) (*model.Board, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	b, ok := s.boards[boardID]
+	if !ok {
+		return nil, ErrBoardNotFound
+	}
+	out := *b
+	return &out, nil
+}
+
+func (s *InMemoryStore) ListBoardsByHub(hubID string) ([]model.Board, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var boards []model.Board
+	for _, b := range s.boards {
+		if b.HubID == hubID {
+			boards = append(boards, *b)
+		}
+	}
+	sort.Slice(boards, func(i, j int) bool {
+		if (boards[i].Kind == model.BoardKindSystem) != (boards[j].Kind == model.BoardKindSystem) {
+			return boards[i].Kind == model.BoardKindSystem
+		}
+		return boards[i].CreatedAt.Before(boards[j].CreatedAt)
+	})
+	return boards, nil
+}
+
+func (s *InMemoryStore) UpdateBoard(b *model.Board) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.boards[b.ID]
+	if !ok {
+		return ErrBoardNotFound
+	}
+	existing.Title = b.Title
+	existing.Instruction = b.Instruction
+	existing.Status = b.Status
+	existing.UpdatedAt = time.Now().UTC()
+	b.UpdatedAt = existing.UpdatedAt
+	return nil
+}
+
+func (s *InMemoryStore) DeleteBoard(boardID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.boards, boardID)
+	delete(s.boardSlots, boardID)
+	return nil
 }

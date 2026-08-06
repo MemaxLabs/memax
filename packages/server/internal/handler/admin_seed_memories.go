@@ -301,7 +301,7 @@ type adminSeedUpdateRequest struct {
 	Content *string  `json:"content,omitempty"`
 	Summary *string  `json:"summary,omitempty"`
 	Hint    *string  `json:"hint,omitempty"`
-	Tags    []string `json:"tags,omitempty"` // nil = no change; empty array = clear tags
+	Tags    []string `json:"tags,omitempty"`  // nil = no change; empty array = clear tags
 	State   *string  `json:"state,omitempty"` // "active" or "archived"
 }
 

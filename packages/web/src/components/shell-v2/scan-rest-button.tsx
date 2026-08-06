@@ -51,7 +51,7 @@ export function ScanRestButton() {
   const isMobile = useIsMobile();
   const pathname = usePathname();
   // Visible when the bar is hidden for ANY reason — scrolled off-screen
-  // (sticky scroll-hide) OR route-hidden (e.g., /agents, /inbox where
+  // (sticky scroll-hide) OR route-hidden (e.g., /agents, /pulse where
   // the bar isn't inline). The FAB is the persistent re-entry on every
   // route except those where the bar is already open as an overlay.
   // Plan 26 follow-up.

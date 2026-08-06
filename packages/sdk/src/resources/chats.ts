@@ -59,6 +59,7 @@ export class ChatsResource {
         tools: input.tools,
         model: input.model,
         persona_id: input.personaId,
+        pinned_memory_ids: input.pinnedMemoryIds,
       },
       hubId: options?.hubId,
       signal: options?.signal,

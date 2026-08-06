@@ -194,6 +194,25 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 	notificationsH := handler.NewNotificationsHandler(s, eventsBroker)
 	settingsH := handler.NewSettingsHandler(s)
 	hubsH := handler.NewHubsHandler(s).WithEvents(eventsBroker)
+	boardsH := handler.NewBoardsHandler(s).WithEvents(eventsBroker)
+	if queueClient != nil {
+		// Decision write-backs must be recallable — route them through
+		// the same ingest pipeline as every other memory.
+		boardsH.SetEnqueue(func(memoryID, ownerID string, req model.PushRequest) {
+			if err := queueClient.Insert(context.Background(), queue.MemoryProcessArgs{
+				MemoryID:    memoryID,
+				OwnerID:     ownerID,
+				Content:     req.Content,
+				Title:       req.Title,
+				MemoryKind:  req.Kind,
+				ContentType: req.ContentType,
+				Source:      req.Source,
+				SourceAgent: req.SourceAgent,
+			}, nil); err != nil {
+				slog.Warn("failed to enqueue decision memory processing", "error", err, "memory_id", memoryID)
+			}
+		})
+	}
 	configsH := handler.NewConfigsHandler(s, llm).WithEvents(eventsBroker)
 	agentsH := handler.NewAgentsHandler(s, eventsBroker)
 	eventsH := handler.NewEventsHandler(s, eventsBroker)
@@ -589,7 +608,7 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		onboarding:             onboardingH,
 		settings:               settingsH,
 		hubs:                   hubsH,
-		boards:                 handler.NewBoardsHandler(s),
+		boards:                 boardsH,
 		configs:                configsH,
 		agents:                 agentsH,
 		events:                 eventsH,

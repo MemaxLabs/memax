@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
@@ -14,11 +15,27 @@ import (
 // hub-scoped: every route lives under /v1/hubs/{id}/board and starts
 // with the same membership guard as the other hub routes.
 type BoardsHandler struct {
-	store store.Store
+	store  store.Store
+	events events.Publisher
+	// enqueue schedules ingest processing (chunk/embed/classify) for
+	// memories the board writes — the decision write-back must be
+	// recallable, not just stored. Same seam as MemoriesHandler.
+	enqueue func(memoryID, ownerID string, req model.PushRequest)
 }
 
 func NewBoardsHandler(s store.Store) *BoardsHandler {
 	return &BoardsHandler{store: s}
+}
+
+// WithEvents wires the realtime publisher (chained at construction).
+func (h *BoardsHandler) WithEvents(p events.Publisher) *BoardsHandler {
+	h.events = p
+	return h
+}
+
+// SetEnqueue wires the ingest queue seam (set from serverapp).
+func (h *BoardsHandler) SetEnqueue(fn func(memoryID, ownerID string, req model.PushRequest)) {
+	h.enqueue = fn
 }
 
 // boardSlotActionTargetState mirrors the notifications resolve
@@ -28,12 +45,20 @@ var boardSlotActionTargetState = map[string]string{
 	model.BoardSlotActionAck:      model.BoardSlotStateResolved,
 	model.BoardSlotActionDismiss:  model.BoardSlotStateDismissed,
 	model.BoardSlotActionFeedback: model.BoardSlotStateResolved,
+	model.BoardSlotActionChoose:   model.BoardSlotStateResolved,
 }
 
 // requireHubMember runs the standard hub membership guard. Returns the
 // hub id and true when the requester may proceed; writes the error
 // response and returns false otherwise.
 func (h *BoardsHandler) requireHubMember(w http.ResponseWriter, r *http.Request) (hubID, userID string, ok bool) {
+	hubID, userID, _, ok = h.requireHubRole(w, r)
+	return hubID, userID, ok
+}
+
+// requireHubRole is the membership guard that also surfaces the role,
+// so mutation paths can additionally require admin.
+func (h *BoardsHandler) requireHubRole(w http.ResponseWriter, r *http.Request) (hubID, userID, role string, ok bool) {
 	userID = GetUserID(r)
 	hubID = r.PathValue("id")
 
@@ -42,13 +67,13 @@ func (h *BoardsHandler) requireHubMember(w http.ResponseWriter, r *http.Request)
 		// A store failure must not masquerade as a membership denial —
 		// 403 would mislead real members and defeat client retries.
 		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
-		return "", "", false
+		return "", "", "", false
 	}
 	if role == "" {
 		writeError(w, http.StatusForbidden, "not_member", "You are not a member of this hub")
-		return "", "", false
+		return "", "", "", false
 	}
-	return hubID, userID, true
+	return hubID, userID, role, true
 }
 
 // Get returns the hub's system board and its occupied slots, creating
@@ -102,6 +127,7 @@ func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Action  string `json:"action"`
 		Verdict string `json:"verdict"`
+		Choice  string `json:"choice"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON body")
@@ -120,6 +146,10 @@ func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 	if req.Action != model.BoardSlotActionFeedback {
 		req.Verdict = ""
 	}
+	if req.Action == model.BoardSlotActionChoose && req.Choice == "" {
+		writeError(w, http.StatusBadRequest, "invalid_choice", "Choose requires a 'choice' option id")
+		return
+	}
 
 	board, err := h.store.GetOrCreateSystemBoard(hubID, userID)
 	if err != nil {
@@ -127,9 +157,31 @@ func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Action == model.BoardSlotActionChoose {
+		// Choose is decision-gate-only, and the choice must be one of
+		// the gate's own options.
+		gate, err := h.store.GetBoardSlot(board.ID, slotKey)
+		if errors.Is(err, store.ErrBoardSlotNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", "No card in that slot")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+			return
+		}
+		if gate.Kind != model.BoardKindDecisionGate || !decisionGateHasOption(gate, req.Choice) {
+			writeError(w, http.StatusBadRequest, "invalid_choice", "Choice is not an option on this card")
+			return
+		}
+	}
+
+	verdict := req.Verdict
+	if req.Action == model.BoardSlotActionChoose {
+		verdict = req.Choice
+	}
 	slot, err := h.store.ResolveBoardSlot(board.ID, slotKey, newState, model.BoardSlotResolution{
 		Action:     req.Action,
-		Verdict:    req.Verdict,
+		Verdict:    verdict,
 		ResolvedBy: userID,
 		ResolvedAt: time.Now().UTC(),
 	})
@@ -137,6 +189,7 @@ func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "No card in that slot")
 		return
 	}
+	transitioned := err == nil
 	if errors.Is(err, store.ErrBoardSlotAlreadyResolved) {
 		// Idempotent path: someone (or a retry) settled the card first.
 		// Return the current slot; feedback below still records.
@@ -170,7 +223,33 @@ func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Side effects fire only when THIS call performed the transition.
+	// A retry lands in the already-resolved branch (transitioned ==
+	// false) and must not write a second decision memory — comparing
+	// the stored resolution to the request can't tell the two apart
+	// when the retry replays the same choice.
+	if req.Action == model.BoardSlotActionChoose && transitioned {
+		if hub, err := h.store.GetHub(hubID); err == nil {
+			h.resolveDecisionGateSideEffects(r, hub, slot, userID, req.Choice)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, model.ApiResponse{Data: map[string]any{
 		"slot": slot,
 	}})
+}
+
+// decisionGateHasOption reports whether the gate payload contains the
+// option id.
+func decisionGateHasOption(slot *model.BoardSlot, choice string) bool {
+	var payload model.BoardDecisionGatePayload
+	if err := json.Unmarshal(slot.Payload, &payload); err != nil {
+		return false
+	}
+	for _, opt := range payload.Options {
+		if opt.ID == choice {
+			return true
+		}
+	}
+	return false
 }

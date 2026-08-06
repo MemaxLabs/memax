@@ -526,7 +526,7 @@ function GlobalBar() {
   const shouldShow = isInline || isOverlay;
   // Mirror shouldShow into shared shell state so ScanRestButton can
   // become the persistent re-entry on routes where the bar isn't
-  // visible (e.g., /agents, /inbox without overlay). Plan 26 follow-up.
+  // visible (e.g., /agents, /pulse without overlay). Plan 26 follow-up.
   useEffect(() => {
     setBarShown(shouldShow);
   }, [shouldShow, setBarShown]);
@@ -732,7 +732,7 @@ function GlobalBar() {
         //  composes with this anchor to render the bar visually centered).
         BRAIN_BAR_REST_TOP
       : isOverlay || shouldUseLiftedPosition
-        ? // ENGAGED on any view (brain typing, FAB tap on memory/inbox/
+        ? // ENGAGED on any view (brain typing, FAB tap on memory/pulse/
           //  agents, Cmd+K overlay): bar surfaces at the engaged anchor
           //  (24vh) so results have ample room below the input. Earlier
           //  this branch was unreachable on brain view because the

@@ -16,9 +16,9 @@ import (
 // (FetchResult, error) tuple they want to drive each branch
 // of chatFetchURLAdapter.FetchURL.
 type fakeChatFetchURLClient struct {
-	calls    []string
-	result   *safefetch.FetchResult
-	err      error
+	calls  []string
+	result *safefetch.FetchResult
+	err    error
 }
 
 func (f *fakeChatFetchURLClient) Fetch(_ context.Context, rawURL string) (*safefetch.FetchResult, error) {
@@ -78,13 +78,13 @@ func TestChatFetchURLAdapter_HappyPath(t *testing.T) {
 func TestChatFetchURLAdapter_AllSafefetchSentinelsMapToBlocked(t *testing.T) {
 	t.Parallel()
 	cases := map[string]error{
-		"empty url":             safefetch.ErrEmptyURL,
-		"parse error":           safefetch.ErrParseURL,
-		"unsupported scheme":    safefetch.ErrUnsupportedScheme,
-		"userinfo not allowed":  safefetch.ErrUserinfoNotAllowed,
-		"empty host":            safefetch.ErrEmptyHost,
-		"blocked host (memax)":  safefetch.ErrBlockedHost,
-		"blocked literal IP":    safefetch.ErrBlockedIP,
+		"empty url":            safefetch.ErrEmptyURL,
+		"parse error":          safefetch.ErrParseURL,
+		"unsupported scheme":   safefetch.ErrUnsupportedScheme,
+		"userinfo not allowed": safefetch.ErrUserinfoNotAllowed,
+		"empty host":           safefetch.ErrEmptyHost,
+		"blocked host (memax)": safefetch.ErrBlockedHost,
+		"blocked literal IP":   safefetch.ErrBlockedIP,
 	}
 	for name, sentinel := range cases {
 		sentinel := sentinel
@@ -343,15 +343,15 @@ func TestExtractHTMLTitle_Truncates(t *testing.T) {
 func TestRedactURLForLog_StripsQueryAndFragment(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"https://example.com/path?token=secret":            "https://example.com/path",
-		"https://example.com/path?a=1&b=2":                 "https://example.com/path",
-		"https://example.com/path#section":                 "https://example.com/path",
-		"https://example.com/path?q=1#frag":                "https://example.com/path",
-		"https://s3.amazonaws.com/bucket/key?Signature=x":  "https://s3.amazonaws.com/bucket/key",
-		"http://example.com/":                              "http://example.com/",
-		"http://example.com":                               "http://example.com/",
-		"  https://example.com/p?secret=1  ":               "https://example.com/p",
-		"":                                                 "",
+		"https://example.com/path?token=secret":           "https://example.com/path",
+		"https://example.com/path?a=1&b=2":                "https://example.com/path",
+		"https://example.com/path#section":                "https://example.com/path",
+		"https://example.com/path?q=1#frag":               "https://example.com/path",
+		"https://s3.amazonaws.com/bucket/key?Signature=x": "https://s3.amazonaws.com/bucket/key",
+		"http://example.com/":                             "http://example.com/",
+		"http://example.com":                              "http://example.com/",
+		"  https://example.com/p?secret=1  ":              "https://example.com/p",
+		"":                                                "",
 	}
 	for in, want := range cases {
 		t.Run(in, func(t *testing.T) {
@@ -401,11 +401,11 @@ func TestSafefetchSentinelName_Mapping(t *testing.T) {
 func TestIsHTMLContentType_Matrix(t *testing.T) {
 	t.Parallel()
 	cases := map[string]bool{
-		"text/html":              true,
-		"application/xhtml+xml":  true,
-		"text/plain":             false,
-		"application/json":       false,
-		"":                       false,
+		"text/html":                true,
+		"application/xhtml+xml":    true,
+		"text/plain":               false,
+		"application/json":         false,
+		"":                         false,
 		"text/html; charset=utf-8": false, // pre-strip; safefetch does the strip
 	}
 	for ct, want := range cases {

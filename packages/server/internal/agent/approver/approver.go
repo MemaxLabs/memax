@@ -255,12 +255,12 @@ type approvalStore interface {
 // as ChatAgentRuntime: a missing dependency is a structured
 // `runtime_not_configured` failure, NOT a silent degradation.
 type Service struct {
-	store              approvalStore
-	subscriber         EventSubscriber
-	pollInterval       time.Duration
-	ttl                time.Duration
-	postDecisionGrace  time.Duration
-	logger             *slog.Logger
+	store             approvalStore
+	subscriber        EventSubscriber
+	pollInterval      time.Duration
+	ttl               time.Duration
+	postDecisionGrace time.Duration
+	logger            *slog.Logger
 }
 
 // Config carries the dependencies and overridable knobs for New.
@@ -732,4 +732,3 @@ func (t *turnApprover) tryFetch(ctx context.Context, approvalID string) (sdkappr
 		return sdkapproval.Decision{Approved: false, Reason: ReasonUnknownStatus}, true, nil
 	}
 }
-

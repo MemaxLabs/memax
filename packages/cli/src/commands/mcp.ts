@@ -255,6 +255,33 @@ function createServer(agentId: string = ""): Server {
         },
       },
       {
+        name: "memax_request_decision",
+        description:
+          "Ask the user to make a decision you should not make alone (architecture choices, irreversible actions, tradeoffs with no clear winner). " +
+          "Creates a decision card on the user's memax board and pings them. The user's choice is written back into memory — " +
+          "call memax_recall later with keywords from your question to read their decision. Do NOT block waiting; continue with other work or end your turn.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            question: {
+              type: "string",
+              description: "The decision question, one sentence, user-facing",
+            },
+            options: {
+              type: "array",
+              items: { type: "string" },
+              description: "2-4 mutually exclusive choices, short labels",
+            },
+            context: {
+              type: "string",
+              description:
+                "Why this decision matters — tradeoffs, constraints, your recommendation if any",
+            },
+          },
+          required: ["question", "options"],
+        },
+      },
+      {
         name: "memax_topics",
         description:
           "Browse the user's knowledge topics. Without topic_id: returns full topic tree with memory counts. With topic_id: returns memories in that topic.",
@@ -640,6 +667,55 @@ function createServer(agentId: string = ""): Server {
               {
                 type: "text" as const,
                 text: `Capture failed: ${(err as Error).message}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+
+      case "memax_request_decision": {
+        const typedArgs = args as {
+          question: string;
+          options?: string[];
+          context?: string;
+        };
+        if (!typedArgs.question || (typedArgs.options?.length ?? 0) < 2) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "memax_request_decision requires 'question' and 2-4 'options'.",
+              },
+            ],
+            isError: true,
+          };
+        }
+        try {
+          // Resolve to a real hub UUID: the REST path is
+          // /v1/hubs/{id}/… and the server's membership check can't
+          // read an alias like "personal".
+          const hubId = await resolveHubReference(undefined);
+          const { slot } = await getClient().boards.requestDecision(hubId, {
+            question: typedArgs.question,
+            options: typedArgs.options ?? [],
+            context: typedArgs.context,
+            source_agent: agentId,
+          });
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Decision card created (id: ${slot.slot_key}). The user has been pinged; their choice will be saved to memory. Recall with keywords from your question later to read it. Continue with other work now.`,
+              },
+            ],
+          };
+        } catch (err) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Decision request failed: ${(err as Error).message}`,
               },
             ],
             isError: true,

@@ -131,15 +131,15 @@ func (s Scope) ID() string {
 // run was checked under, so a config change between start and
 // completion doesn't change what gets recorded.
 type Decision struct {
-	Allowed     bool          `json:"allowed"`
-	Mode        Mode          `json:"mode"`
-	Tier        Tier          `json:"tier"`
-	Limit       int           `json:"limit"`               // -1 unlimited, 0 disabled, >0 finite
-	Used        int           `json:"used"`                // count BEFORE this run
-	Remaining   int           `json:"remaining,omitempty"` // omitted when Limit=-1
-	PeriodStart time.Time     `json:"period_start"`
-	PeriodEnd   time.Time     `json:"period_end"`
-	QuotaSource string         `json:"quota_source"`              // plan ID
+	Allowed     bool           `json:"allowed"`
+	Mode        Mode           `json:"mode"`
+	Tier        Tier           `json:"tier"`
+	Limit       int            `json:"limit"`               // -1 unlimited, 0 disabled, >0 finite
+	Used        int            `json:"used"`                // count BEFORE this run
+	Remaining   int            `json:"remaining,omitempty"` // omitted when Limit=-1
+	PeriodStart time.Time      `json:"period_start"`
+	PeriodEnd   time.Time      `json:"period_end"`
+	QuotaSource string         `json:"quota_source"`             // plan ID
 	Details     *DenialDetails `json:"denial_details,omitempty"` // populated when !Allowed; nil on Allowed=true
 }
 
@@ -148,8 +148,8 @@ type Decision struct {
 // envelope shape (which is `any`); we use a typed shape here for
 // callsite clarity and JSON-marshal it into the error envelope.
 type DenialDetails struct {
-	Code        string    `json:"code"`         // "basic_quota_exhausted" | "lucid_quota_exhausted"
-	Scope       string    `json:"scope"`        // "personal" | "hub" — distinct from internal ScopeType for client clarity
+	Code        string    `json:"code"`  // "basic_quota_exhausted" | "lucid_quota_exhausted"
+	Scope       string    `json:"scope"` // "personal" | "hub" — distinct from internal ScopeType for client clarity
 	HubID       string    `json:"hub_id,omitempty"`
 	Limit       int       `json:"limit"`
 	Used        int       `json:"used"`

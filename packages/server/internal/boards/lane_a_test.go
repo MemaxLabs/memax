@@ -83,23 +83,30 @@ func TestRefreshHubBoardProducesLaneACards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(slots) != 4 {
-		t.Fatalf("expected 4 slots, got %d: %#v", len(slots), slots)
+	// Counts fold into ONE strip; only the capsule earns a card.
+	if len(slots) != 2 {
+		t.Fatalf("expected 2 slots (activity + capsule), got %d: %#v", len(slots), slots)
 	}
 
-	trace := slotByKey(t, s, board.ID, "a-trace")
-	if trace == nil || trace.Kind != model.BoardKindTrace {
-		t.Fatalf("missing trace slot: %#v", trace)
+	activity := slotByKey(t, s, board.ID, "z-activity")
+	if activity == nil || activity.Kind != model.BoardKindActivity {
+		t.Fatalf("missing activity slot: %#v", activity)
 	}
-	var tp model.BoardTracePayload
-	if err := json.Unmarshal(trace.Payload, &tp); err != nil {
+	var ap model.BoardActivityPayload
+	if err := json.Unmarshal(activity.Payload, &ap); err != nil {
 		t.Fatal(err)
 	}
-	if len(tp.Agents) != 2 || tp.Agents[0].Slug != "claude-code" || tp.Agents[0].Count != 2 {
-		t.Fatalf("trace grouping wrong (seed leaked or order wrong): %#v", tp.Agents)
+	if len(ap.Agents) != 2 || ap.Agents[0].Slug != "claude-code" || ap.Agents[0].Count != 2 {
+		t.Fatalf("agent grouping wrong (seed leaked or order wrong): %#v", ap.Agents)
 	}
-	if tp.Agents[0].LatestTitle != "Chose River over Redis queue" {
-		t.Fatalf("latest title wrong: %q", tp.Agents[0].LatestTitle)
+	if ap.Agents[0].LatestTitle != "Chose River over Redis queue" {
+		t.Fatalf("latest title wrong: %q", ap.Agents[0].LatestTitle)
+	}
+	if ap.ThisWeek != 3 || ap.LastWeek != 1 {
+		t.Fatalf("week diff wrong: %#v", ap)
+	}
+	if len(ap.Topics) != 1 || ap.Topics[0].Name != "部署" || ap.Topics[0].RecentCount != 1 {
+		t.Fatalf("topics wrong: %#v", ap.Topics)
 	}
 
 	capsule := slotByKey(t, s, board.ID, "c-capsule")
@@ -107,23 +114,6 @@ func TestRefreshHubBoardProducesLaneACards(t *testing.T) {
 		t.Fatalf("capsule must cite the year-old memory: %#v", capsule)
 	}
 
-	week := slotByKey(t, s, board.ID, "d-week")
-	var wp model.BoardWeekPayload
-	if err := json.Unmarshal(week.Payload, &wp); err != nil {
-		t.Fatal(err)
-	}
-	if wp.ThisWeek != 3 || wp.LastWeek != 1 {
-		t.Fatalf("week diff wrong: %#v", wp)
-	}
-
-	pulse := slotByKey(t, s, board.ID, "b-pulse")
-	var pp model.BoardPulsePayload
-	if err := json.Unmarshal(pulse.Payload, &pp); err != nil {
-		t.Fatal(err)
-	}
-	if len(pp.Topics) != 1 || pp.Topics[0].Name != "部署" || pp.Topics[0].RecentCount != 1 {
-		t.Fatalf("pulse topics wrong: %#v", pp.Topics)
-	}
 }
 
 func TestRefreshHubBoardEmptyHubProducesNothing(t *testing.T) {
@@ -191,12 +181,12 @@ func TestRefreshHubBoardRemovesStaleSlots(t *testing.T) {
 		t.Fatal(err)
 	}
 	board, _ := s.GetOrCreateSystemBoard(hubID, "u1")
-	if slotByKey(t, s, board.ID, "a-trace") == nil {
-		t.Fatal("trace slot should exist")
+	if slotByKey(t, s, board.ID, "z-activity") == nil {
+		t.Fatal("activity slot should exist")
 	}
 
-	// A month later the activity aged out — trace and week cards must
-	// disappear rather than showing stale content.
+	// A month later the activity aged out — the strip must disappear
+	// rather than showing stale counts.
 	p.now = func() time.Time { return testNow.Add(30 * 24 * time.Hour) }
 	if err := p.RefreshHubBoard(context.Background(), hubID); err != nil {
 		t.Fatal(err)

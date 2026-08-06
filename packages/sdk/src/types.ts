@@ -657,7 +657,7 @@ export type BoardStatus = "active" | "cooking" | "paused";
 export type BoardSlotState = "fresh" | "seen" | "resolved" | "dismissed";
 
 /** Actions accepted by the slot resolve endpoint. Mirrors the Go handler's allow-list. */
-export type BoardSlotAction = "ack" | "dismiss" | "feedback";
+export type BoardSlotAction = "ack" | "dismiss" | "feedback" | "choose";
 
 export type BoardFeedbackVerdict = "accurate" | "inaccurate";
 
@@ -2422,6 +2422,8 @@ export interface ChatSession {
   /** Persona binding: absent/"" inherits chat_default_persona_id, "none"
    *  explicitly disables the persona, else a persona id. */
   persona_id?: string;
+  /** Memories seeded as already-known context for this session. */
+  pinned_memory_ids?: string[];
   locked_at?: string;
   message_count: number;
   pinned_at?: string;
@@ -2482,6 +2484,12 @@ export interface CreateChatSessionInput {
   model?: string;
   /** "" inherit default · "none" disable · persona id */
   personaId?: string;
+  /**
+   * Memories the agent must already know when the session opens — a
+   * chat continued from a board card carries that card's citations.
+   * Access-checked server-side; max 12.
+   */
+  pinnedMemoryIds?: string[];
 }
 
 export interface PatchChatSessionInput {

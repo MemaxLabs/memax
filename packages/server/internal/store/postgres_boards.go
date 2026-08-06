@@ -12,6 +12,7 @@ import (
 )
 
 var (
+	ErrBoardNotFound            = errors.New("board not found")
 	ErrBoardSlotNotFound        = errors.New("board slot not found")
 	ErrBoardSlotAlreadyResolved = errors.New("board slot already resolved")
 )
@@ -53,7 +54,7 @@ func (s *PostgresStore) GetOrCreateSystemBoard(hubID, createdBy string) (*model.
 	return scanBoard(row)
 }
 
-const boardSlotColumns = `id, board_id, slot_key, kind, title, payload, cite_memory_ids, state, resolution, dream_run_id, created_at, updated_at`
+const boardSlotColumns = `id, board_id, slot_key, kind, title, payload, cite_memory_ids, state, resolution, dream_run_id, created_at, updated_at, content_updated_at`
 
 func scanBoardSlot(row pgx.Row) (*model.BoardSlot, error) {
 	var slot model.BoardSlot
@@ -61,7 +62,7 @@ func scanBoardSlot(row pgx.Row) (*model.BoardSlot, error) {
 	var dreamRunID *string
 	if err := row.Scan(&slot.ID, &slot.BoardID, &slot.SlotKey, &slot.Kind, &slot.Title,
 		&slot.Payload, &slot.CiteMemoryIDs, &slot.State, &resolution, &dreamRunID,
-		&slot.CreatedAt, &slot.UpdatedAt); err != nil {
+		&slot.CreatedAt, &slot.UpdatedAt, &slot.ContentUpdatedAt); err != nil {
 		return nil, err
 	}
 	if len(resolution) > 0 {
@@ -140,10 +141,11 @@ func (s *PostgresStore) UpsertBoardSlot(slot *model.BoardSlot) error {
 		VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6::uuid[], 'fresh', $7)
 		ON CONFLICT (board_id, slot_key)
 		DO UPDATE SET kind = $3, title = $4, payload = $5::jsonb, cite_memory_ids = $6::uuid[],
-			state = 'fresh', resolution = NULL, dream_run_id = $7, updated_at = now()
-		RETURNING id, state, created_at, updated_at`,
+			state = 'fresh', resolution = NULL, dream_run_id = $7,
+			updated_at = now(), content_updated_at = now()
+		RETURNING id, state, created_at, updated_at, content_updated_at`,
 		slot.BoardID, slot.SlotKey, slot.Kind, slot.Title, payload, cites, dreamRunID)
-	return row.Scan(&slot.ID, &slot.State, &slot.CreatedAt, &slot.UpdatedAt)
+	return row.Scan(&slot.ID, &slot.State, &slot.CreatedAt, &slot.UpdatedAt, &slot.ContentUpdatedAt)
 }
 
 // ResolveBoardSlot transitions a slot out of fresh/seen. Terminal slots
@@ -227,7 +229,9 @@ func (s *PostgresStore) ListRecentAgentActivityByHub(hubID string, since time.Ti
 			COALESCE(MAX(ca.display_name), '') AS display_name,
 			COALESCE(MAX(ca.icon), '') AS icon,
 			COUNT(*) AS cnt,
-			(array_agg(m.title ORDER BY m.created_at DESC))[1] AS latest_title
+			(array_agg(m.title ORDER BY m.created_at DESC))[1] AS latest_title,
+			(array_agg(m.id::text ORDER BY m.created_at DESC))[1:3] AS item_ids,
+			(array_agg(m.title ORDER BY m.created_at DESC))[1:3] AS item_titles
 		FROM memories m
 		LEFT JOIN connected_agents ca ON m.owner_id = ca.owner_id AND `+memoryAgentSlugExpr+` = ca.agent_name
 		WHERE `+boardMemoryFilter+` AND m.created_at > $2
@@ -242,8 +246,15 @@ func (s *PostgresStore) ListRecentAgentActivityByHub(hubID string, since time.Ti
 	var activity []model.BoardAgentActivity
 	for rows.Next() {
 		var a model.BoardAgentActivity
-		if err := rows.Scan(&a.Slug, &a.DisplayName, &a.Icon, &a.Count, &a.LatestTitle); err != nil {
+		var itemIDs, itemTitles []string
+		if err := rows.Scan(&a.Slug, &a.DisplayName, &a.Icon, &a.Count, &a.LatestTitle,
+			&itemIDs, &itemTitles); err != nil {
 			return nil, err
+		}
+		for i := range itemIDs {
+			if i < len(itemTitles) && itemTitles[i] != "" {
+				a.Items = append(a.Items, model.BoardAgentItem{MemoryID: itemIDs[i], Title: itemTitles[i]})
+			}
 		}
 		activity = append(activity, a)
 	}
@@ -309,4 +320,72 @@ func (s *PostgresStore) GetMemoryNear(hubID string, target time.Time, tolerance 
 	}
 	m.HubID = hubID
 	return &m, nil
+}
+
+// CreateBoard inserts a custom board. System boards go through
+// GetOrCreateSystemBoard (which owns the one-per-hub invariant).
+func (s *PostgresStore) CreateBoard(b *model.Board) error {
+	ctx := context.Background()
+	row := s.pool.QueryRow(ctx,
+		`INSERT INTO boards (hub_id, created_by, kind, title, instruction, status)
+		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+		RETURNING id, created_at, updated_at`,
+		b.HubID, b.CreatedBy, b.Kind, b.Title, b.Instruction, b.Status)
+	return row.Scan(&b.ID, &b.CreatedAt, &b.UpdatedAt)
+}
+
+func (s *PostgresStore) GetBoard(boardID string) (*model.Board, error) {
+	ctx := context.Background()
+	board, err := scanBoard(s.pool.QueryRow(ctx,
+		`SELECT `+boardColumns+` FROM boards WHERE id = $1::uuid`, boardID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrBoardNotFound
+	}
+	return board, err
+}
+
+// ListBoardsByHub returns the hub's boards, system first then custom
+// by creation order — the same order the client tabs them in.
+func (s *PostgresStore) ListBoardsByHub(hubID string) ([]model.Board, error) {
+	ctx := context.Background()
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+boardColumns+` FROM boards WHERE hub_id = $1::uuid
+		ORDER BY (kind <> 'system'), created_at ASC`, hubID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var boards []model.Board
+	for rows.Next() {
+		board, err := scanBoard(rows)
+		if err != nil {
+			return nil, err
+		}
+		boards = append(boards, *board)
+	}
+	return boards, rows.Err()
+}
+
+// UpdateBoard writes the mutable fields (title, instruction, status).
+// hub_id / kind / created_by are immutable after creation.
+func (s *PostgresStore) UpdateBoard(b *model.Board) error {
+	ctx := context.Background()
+	row := s.pool.QueryRow(ctx,
+		`UPDATE boards SET title = $2, instruction = $3, status = $4, updated_at = now()
+		WHERE id = $1::uuid RETURNING updated_at`,
+		b.ID, b.Title, b.Instruction, b.Status)
+	if err := row.Scan(&b.UpdatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrBoardNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) DeleteBoard(boardID string) error {
+	ctx := context.Background()
+	_, err := s.pool.Exec(ctx, `DELETE FROM boards WHERE id = $1::uuid`, boardID)
+	return err
 }

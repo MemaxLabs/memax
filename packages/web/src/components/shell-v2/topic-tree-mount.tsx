@@ -13,7 +13,7 @@
  * one paint after a deep-link to a different hub (the URL changes
  * before `switchHub` lands). Without the gate the tree briefly flashes
  * the previous hub's topics. We only suppress the tree on hub-scoped
- * routes that aren't synced yet — `/brain`, `/agents`, `/inbox`, and
+ * routes that aren't synced yet — `/brain`, `/agents`, `/pulse`, and
  * v1 paths render the tree immediately as before.
  *
  * Topic creation: the tree footer "New topic" button and per-node

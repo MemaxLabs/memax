@@ -12,7 +12,6 @@
  */
 
 import { use } from "react";
-import { BoardSection } from "@/components/features/board/board-view";
 import { TopicGrid } from "@/components/features/topic/topic-grid";
 import { SelectionProvider } from "@/contexts/selection-context";
 import { V2HubRoute } from "@/components/shell-v2/v2-hub-route";
@@ -25,9 +24,6 @@ export default function HubMemoriesPage({ params }: PageProps) {
   const { slug } = use(params);
   return (
     <V2HubRoute slug={slug}>
-      {/* Pulse board (plan 25): renders nothing until the hub's nightly
-          producers have cards, then leads the page. */}
-      <BoardSection />
       <SelectionProvider>
         <TopicGrid />
       </SelectionProvider>

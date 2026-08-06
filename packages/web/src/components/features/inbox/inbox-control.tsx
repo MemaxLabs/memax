@@ -9,7 +9,11 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { buildMemoryDetailPath, getHubSlugForPath } from "@/lib/route-helpers";
+import {
+  buildMemoriesPath,
+  buildMemoryDetailPath,
+  getHubSlugForPath,
+} from "@/lib/route-helpers";
 import {
   AlertCircle,
   ArrowUpRight,
@@ -136,6 +140,10 @@ const DECISION_INBOX_KINDS = new Set<string>([
   "topic_restructure",
   "hub_invite",
   "hub_ownership_transfer",
+  // Plan 25 P2 — the ping for a board decision gate. The notification
+  // itself only accepts dismiss; the real choice happens on the board
+  // card (kind has no review_ prefix, so it lands here unchanged).
+  "decision_gate",
 ]);
 
 // Receipt kinds that render without an action bar. The dismiss affordance
@@ -303,7 +311,7 @@ function reviewMemoryDisplayTitle(
   return "(untitled memory)";
 }
 
-interface InboxItemLocalization {
+export interface InboxItemLocalization {
   topicUntitled: string;
   topicRemoved: string;
   dreamRunCompletedTitle: string;
@@ -322,6 +330,39 @@ interface InboxItemLocalization {
 
 function isAccountLevelInboxItem(item: InboxItem): boolean {
   return item.audience === "user";
+}
+
+/**
+ * useInboxItemLocalization builds the label bundle
+ * `notificationToInboxItem` needs. Exported so every surface that
+ * adapts notification rows (the inbox panel AND the pulse board's 等你
+ * band) produces identically-worded titles.
+ */
+export function useInboxItemLocalization(): InboxItemLocalization {
+  const { t } = useLocale();
+  const interpolate = useInterpolate();
+  return useMemo<InboxItemLocalization>(
+    () => ({
+      topicUntitled: t.reviews.topicUntitled,
+      topicRemoved: t.reviews.topicRemoved,
+      dreamRunCompletedTitle: t.dreams.notificationTitle,
+      dreamRunCompletedCleanTitle: t.dreams.notificationCleanTitle,
+      dreamRunCompletedPartialTitle: t.dreams.notificationPartialTitle,
+      topicMergeOne: ({ source, target }) =>
+        interpolate(t.inbox.topicMergeOneTitle, { source, target }),
+      topicMergeMany: ({ sources, target }) =>
+        interpolate(t.inbox.topicMergeManyTitle, { sources, target }),
+      topicMergeFallback: ({ target }) =>
+        interpolate(t.inbox.topicMergeFallbackTitle, { target }),
+      topicRestructure: ({ child, parent }) =>
+        interpolate(t.inbox.topicRestructureTitle, { child, parent }),
+      hubOwnershipTransferredSelfTitle: ({ hub }) =>
+        interpolate(t.inbox.hubOwnershipTransferredSelfTitle, { hub }),
+      hubOwnershipTransferredOtherTitle: ({ owner, hub }) =>
+        interpolate(t.inbox.hubOwnershipTransferredOtherTitle, { owner, hub }),
+    }),
+    [interpolate, t],
+  );
 }
 
 function InboxHubChip({ hub }: { hub: NonNullable<InboxItem["hub"]> }) {
@@ -370,6 +411,72 @@ interface InboxRowProps {
   onDismiss: (id: string) => void;
 }
 
+/**
+ * InboxActionButton — one resolve verb for a decision kind. Exported
+ * because the pulse board (plan 25 P4) renders the SAME notification
+ * decisions as board cards and must fire the SAME action strings the
+ * server's resolve allow-list accepts. Duplicating the switch would
+ * drift the moment a kind gains or loses a verb.
+ */
+export interface InboxActionButton {
+  action: string;
+  label: string;
+  tone: "dream" | "ghost";
+}
+
+/**
+ * inboxDecisionActions returns the resolve verbs for a decision kind
+ * (stripped form — "contradiction", not "review_contradiction"), or
+ * null for receipt / scaffold kinds that have no /resolve path.
+ */
+export function inboxDecisionActions(
+  kind: string,
+  t: ReturnType<typeof useLocale>["t"],
+): InboxActionButton[] | null {
+  switch (kind) {
+    case "contradiction":
+      return [
+        { action: "keep_a", label: t.reviews.keepA, tone: "dream" },
+        { action: "keep_b", label: t.reviews.keepB, tone: "dream" },
+        { action: "keep_both", label: t.reviews.keepBoth, tone: "dream" },
+        { action: "dismiss", label: t.reviews.dismiss, tone: "ghost" },
+      ];
+    case "topic_merge":
+      return [
+        { action: "merge", label: t.reviews.merge, tone: "dream" },
+        {
+          action: "keep_separate",
+          label: t.reviews.keepSeparate,
+          tone: "dream",
+        },
+        { action: "dismiss", label: t.reviews.dismiss, tone: "ghost" },
+      ];
+    case "topic_restructure":
+      return [
+        { action: "apply", label: t.reviews.apply, tone: "dream" },
+        { action: "keep", label: t.reviews.keep, tone: "dream" },
+        { action: "dismiss", label: t.reviews.dismiss, tone: "ghost" },
+      ];
+    case "hub_invite":
+    case "hub_ownership_transfer":
+      return [
+        { action: "accept", label: t.reviews.accept, tone: "dream" },
+        { action: "decline", label: t.reviews.decline, tone: "ghost" },
+      ];
+    case "decision_gate":
+      // The notification is only the ping — the real choice happens on
+      // the board card (see DecisionGateInboxBody's board link), so the
+      // only resolve action here is acknowledging the ping.
+      return [{ action: "dismiss", label: t.inbox.gateDismiss, tone: "ghost" }];
+    default:
+      // Defensive: DECISION_INBOX_KINDS and this switch should stay in
+      // lockstep. If a new decision kind is added to the set but not
+      // here, fall through to null rather than shipping an ambiguous
+      // button bar.
+      return null;
+  }
+}
+
 function InboxActions({
   item,
   disabled,
@@ -383,11 +490,7 @@ function InboxActions({
 }) {
   const { t } = useLocale();
 
-  type ActionButton = {
-    action: InboxResolveAction;
-    label: string;
-    tone: "dream" | "ghost";
-  };
+  type ActionButton = InboxActionButton;
 
   // Receipt kinds render a single dismiss affordance that routes
   // through the notifications SDK dismiss method. Decision kinds
@@ -418,53 +521,8 @@ function InboxActions({
     return null;
   }
 
-  let buttons: ActionButton[];
-  switch (item.kind) {
-    case "contradiction":
-      buttons = [
-        { action: "keep_a", label: t.reviews.keepA, tone: "dream" },
-        { action: "keep_b", label: t.reviews.keepB, tone: "dream" },
-        { action: "keep_both", label: t.reviews.keepBoth, tone: "dream" },
-        { action: "dismiss", label: t.reviews.dismiss, tone: "ghost" },
-      ];
-      break;
-    case "topic_merge":
-      buttons = [
-        { action: "merge", label: t.reviews.merge, tone: "dream" },
-        {
-          action: "keep_separate",
-          label: t.reviews.keepSeparate,
-          tone: "dream",
-        },
-        { action: "dismiss", label: t.reviews.dismiss, tone: "ghost" },
-      ];
-      break;
-    case "topic_restructure":
-      buttons = [
-        { action: "apply", label: t.reviews.apply, tone: "dream" },
-        { action: "keep", label: t.reviews.keep, tone: "dream" },
-        { action: "dismiss", label: t.reviews.dismiss, tone: "ghost" },
-      ];
-      break;
-    case "hub_invite":
-      buttons = [
-        { action: "accept", label: t.reviews.accept, tone: "dream" },
-        { action: "decline", label: t.reviews.decline, tone: "ghost" },
-      ];
-      break;
-    case "hub_ownership_transfer":
-      buttons = [
-        { action: "accept", label: t.reviews.accept, tone: "dream" },
-        { action: "decline", label: t.reviews.decline, tone: "ghost" },
-      ];
-      break;
-    default:
-      // Defensive: DECISION_INBOX_KINDS and the switch should stay in
-      // lockstep. If a new decision kind is added to the set but not
-      // to the switch, fall through to null rather than shipping an
-      // ambiguous button bar.
-      return null;
-  }
+  const buttons: ActionButton[] | null = inboxDecisionActions(item.kind, t);
+  if (!buttons) return null;
 
   return (
     // Flat action row — no nested card. Sits inside the flat
@@ -947,6 +1005,46 @@ function GiftInviteLinkBody({ item }: { item: InboxItem }) {
   );
 }
 
+// DecisionGateInboxBody — the ping for a board decision gate (plan 25
+// P2). The collapsed row already shows the gate's question as the
+// title; the body adds the context paragraph plus a link to the hub's
+// board, where the actual choice happens. Navigation is a link-styled
+// button (same visual as the gift-invite / system-notice links) rather
+// than hijacking the row's primary click, which every other kind uses
+// for expand/collapse.
+function DecisionGateInboxBody({ item }: { item: InboxItem }) {
+  const { t } = useLocale();
+  const router = useRouter();
+  const payload = isRecord(item.payload) ? item.payload : undefined;
+  const hubSlug = typeof payload?.hub_slug === "string" ? payload.hub_slug : "";
+  if (!item.description && !hubSlug) return null;
+  return (
+    <div className="space-y-2 px-3 pb-3 pt-3">
+      {item.description && (
+        <p className="text-[12px] leading-relaxed text-fg-2">
+          {item.description}
+        </p>
+      )}
+      {hubSlug && (
+        <button
+          type="button"
+          onClick={() => {
+            // Same rationale as ContradictionBody: let the pathname
+            // change drive the popover close instead of calling
+            // closeInbox() here.
+            router.push(buildMemoriesPath(hubSlug));
+          }}
+          className="inline-flex cursor-pointer items-center gap-1 text-[12px] font-medium"
+          style={{ color: "var(--signature)" }}
+        >
+          {t.inbox.gateGoToBoard}
+          <ArrowUpRight className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ReviewScaffoldBody({ item }: { item: InboxItem }) {
   const { t } = useLocale();
   const note =
@@ -1152,6 +1250,14 @@ export function notificationToInboxItem(
       title = `${hubName} is back under capacity`;
       description = "The hub is no longer frozen.";
     }
+  } else if (kind === "decision_gate") {
+    // Payload written by the Go createDecisionGate ping: title is the
+    // gate's question, description its context (both plain text).
+    const payload = notification.payload as
+      | { title?: string; description?: string }
+      | undefined;
+    title = payload?.title ?? "";
+    description = payload?.description ?? "";
   } else if (kind === "stale" || kind === "low_confidence") {
     // Scaffold kinds — no producer yet. Title stays blank so the row
     // renders the fallback "kind unsupported yet" note.
@@ -1258,7 +1364,12 @@ function FallbackInboxBody({ item }: { item: InboxItem }) {
   );
 }
 
-function inboxKindLabel(
+/**
+ * inboxKindLabel — the uppercase eyebrow naming what a notification is.
+ * Exported so the pulse board's 等你 / 最近 bands reuse the exact same
+ * labels instead of maintaining a parallel table.
+ */
+export function inboxKindLabel(
   item: InboxItem,
   t: ReturnType<typeof useLocale>["t"],
 ): string {
@@ -1299,6 +1410,8 @@ function inboxKindLabel(
       return t.inbox.kindHubFrozen;
     case "hub_restored":
       return t.inbox.kindHubRestored;
+    case "decision_gate":
+      return t.inbox.kindDecisionGate;
     default:
       return t.reviews.title;
   }
@@ -1334,6 +1447,10 @@ const INBOX_KIND_VISUALS: Record<string, InboxKindVisual> = {
   topic_restructure: { icon: GitBranch, color: INBOX_TONE_SIGNATURE },
   stale: { icon: AlertCircle, color: INBOX_TONE_MUTED },
   low_confidence: { icon: HelpCircle, color: INBOX_TONE_MUTED },
+  // Board decision gate ping — an agent is waiting on the user's call.
+  // HelpCircle reads as "a question for you"; signature tone because
+  // it's a needs-action row, not an archival one.
+  decision_gate: { icon: HelpCircle, color: INBOX_TONE_SIGNATURE },
 
   // Hub social kinds — invites and membership changes.
   hub_invite: { icon: Mail, color: INBOX_TONE_SIGNATURE },
@@ -1393,6 +1510,7 @@ const KIND_DETAIL_COMPONENTS: Record<
   topic_restructure: TopicRestructureBody,
   hub_invite: HubInviteBody,
   hub_ownership_transfer: HubOwnershipTransferBody,
+  decision_gate: DecisionGateInboxBody,
 
   // Receipt kinds that carry payload.role — the title only says
   // "X joined Y" / "You joined Y", so the detail slot is where
@@ -1415,6 +1533,24 @@ const KIND_DETAIL_COMPONENTS: Record<
   stale: ReviewScaffoldBody,
   low_confidence: ReviewScaffoldBody,
 };
+
+/**
+ * getInboxDetailComponent resolves the per-kind detail renderer. The
+ * pulse board (plan 25 P4) renders notification decisions as board
+ * cards and reuses these bodies verbatim — a copy would drift from the
+ * payload guards the moment a payload shape changes.
+ *
+ * Returns `null` when the kind's title says everything (the shell
+ * skips the detail block), and the fallback body for kinds with no
+ * entry at all.
+ */
+export function getInboxDetailComponent(
+  kind: string,
+): React.FC<{ item: InboxItem }> | null {
+  return KIND_DETAIL_COMPONENTS[kind] !== undefined
+    ? KIND_DETAIL_COMPONENTS[kind]
+    : FallbackInboxBody;
+}
 
 export function InboxRow({
   item,
@@ -1475,10 +1611,7 @@ export function InboxRow({
   // kind only contributes the detail content between the title and
   // the action buttons (or null when the title says everything).
   // Adding a new kind = one entry in KIND_DETAIL_COMPONENTS above.
-  const DetailComponent =
-    KIND_DETAIL_COMPONENTS[item.kind] !== undefined
-      ? KIND_DETAIL_COMPONENTS[item.kind]
-      : FallbackInboxBody;
+  const DetailComponent = getInboxDetailComponent(item.kind);
 
   return (
     /*
@@ -1930,28 +2063,7 @@ function InboxPanelContent({
     refetch,
   } = useNotifications(query);
   const { closeInbox } = useInboxSurface();
-  const inboxItemLocalization = useMemo<InboxItemLocalization>(
-    () => ({
-      topicUntitled: t.reviews.topicUntitled,
-      topicRemoved: t.reviews.topicRemoved,
-      dreamRunCompletedTitle: t.dreams.notificationTitle,
-      dreamRunCompletedCleanTitle: t.dreams.notificationCleanTitle,
-      dreamRunCompletedPartialTitle: t.dreams.notificationPartialTitle,
-      topicMergeOne: ({ source, target }) =>
-        interpolate(t.inbox.topicMergeOneTitle, { source, target }),
-      topicMergeMany: ({ sources, target }) =>
-        interpolate(t.inbox.topicMergeManyTitle, { sources, target }),
-      topicMergeFallback: ({ target }) =>
-        interpolate(t.inbox.topicMergeFallbackTitle, { target }),
-      topicRestructure: ({ child, parent }) =>
-        interpolate(t.inbox.topicRestructureTitle, { child, parent }),
-      hubOwnershipTransferredSelfTitle: ({ hub }) =>
-        interpolate(t.inbox.hubOwnershipTransferredSelfTitle, { hub }),
-      hubOwnershipTransferredOtherTitle: ({ owner, hub }) =>
-        interpolate(t.inbox.hubOwnershipTransferredOtherTitle, { owner, hub }),
-    }),
-    [interpolate, t],
-  );
+  const inboxItemLocalization = useInboxItemLocalization();
   // Pending onboarding rows render as a hero section above the row
   // list (same visuals as /memories' pinned hero) — the inbox's
   // kind-switch doesn't have checklist/digest cases, so without this
@@ -2103,7 +2215,9 @@ function InboxPanelContent({
               }`}
               onClick={() => {
                 closeInbox();
-                router.push("/inbox");
+                // /inbox retired in plan 25 P4 — the board is the one
+                // surface now, and it hosts these same rows.
+                router.push("/pulse");
               }}
             >
               <span>

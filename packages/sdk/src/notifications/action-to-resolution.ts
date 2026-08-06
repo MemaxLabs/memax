@@ -65,6 +65,14 @@ export const actionToResolution: Readonly<
   checklist: {
     dismiss: "dismissed",
   },
+  // Plan 25 P2 — decision gates. The real choice happens on the board
+  // card (which records the option + writes the decision memory); the
+  // notification ping accepts only dismiss. The "resolved" resolution
+  // is applied server-side when the board slot resolves — never fired
+  // from a client, so it stays out of this map.
+  decision_gate: {
+    dismiss: "dismissed",
+  },
 };
 
 /**

@@ -7,7 +7,7 @@
  * Row-level copy (single memory) uses raw markdown — NOT this function.
  */
 
-interface ContextEntry {
+export interface ContextEntry {
   title: string;
   content: string;
   kind?: string;

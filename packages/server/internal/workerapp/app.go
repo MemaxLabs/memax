@@ -127,6 +127,25 @@ func New(ctx context.Context) (*App, error) {
 		slog.Info("realtime events broker enabled (worker process)")
 	}
 	dreamEngine := dreams.New(s, embedder, llm, eventsPublisher)
+	if dreamEngine != nil {
+		// Agentic dream runtime (plan 24/25): powers the routed
+		// contradiction/organize paths and the Lane B board-synthesis
+		// phase. Nil-safe at two layers — no ANTHROPIC_API_KEY means
+		// an unconfigured runtime and every agentic path falls back;
+		// hubs additionally opt in via dreams_use_agent_runtime.
+		if agentModel := providers.NewAnthropicFromEnv(anthropic.ModelFromEnvWithDefault("DREAMS_AGENT_MODEL", anthropic.SonnetModel)); agentModel != nil {
+			if dreamRecall, err := tools.NewAgentRecallService(chatRecallStoreAdapter{s: s}, embedder); err != nil {
+				slog.Warn("dream agent runtime: recall service init failed, agentic phases disabled", "error", err)
+			} else {
+				dreamEngine.SetAgentRuntime(&dreams.AgentRuntime{
+					Model:         agentModel,
+					RecallService: dreamRecall,
+					Resolver:      agent.NewScopeResolver(agent.NewStoreMembership(s)),
+				})
+				slog.Info("dream agent runtime configured (Lane B board synthesis available)")
+			}
+		}
+	}
 
 	// Plan 18 §4.6 — the first_dream checklist item was previously
 	// auto-ticked on dream completion via a hook wired here. Per

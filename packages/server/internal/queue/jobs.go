@@ -106,16 +106,16 @@ func (ConfigExtractArgs) InsertOpts() river.InsertOpts {
 // source_kind = 'onboarding-seed') into the user's personal hub.
 //
 // Idempotency: triple-layered.
-//   1. River unique-arg dedup (UserID hashed; same arg in window
-//      collapses) prevents the same job firing twice from the rare
-//      double-mount or retry loop.
-//   2. The DB-level partial unique index from migration 002
-//      (`memories_seed_origin_per_owner_uidx` on owner_id +
-//      metadata->>'seed_origin_id' WHERE source_kind =
-//      'onboarding-seed') catches concurrent inserts that beat the
-//      worker's existence check.
-//   3. The worker treats unique_violation on insert as success —
-//      already-copied seeds aren't an error.
+//  1. River unique-arg dedup (UserID hashed; same arg in window
+//     collapses) prevents the same job firing twice from the rare
+//     double-mount or retry loop.
+//  2. The DB-level partial unique index from migration 002
+//     (`memories_seed_origin_per_owner_uidx` on owner_id +
+//     metadata->>'seed_origin_id' WHERE source_kind =
+//     'onboarding-seed') catches concurrent inserts that beat the
+//     worker's existence check.
+//  3. The worker treats unique_violation on insert as success —
+//     already-copied seeds aren't an error.
 type CopySeedMemoriesArgs struct {
 	UserID string `json:"user_id" river:"unique"`
 }

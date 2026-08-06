@@ -297,7 +297,7 @@ func TestPostgresChat_ArchivedOnlyPaginates(t *testing.T) {
 		msg := &model.ChatMessage{
 			ID: uuid.NewString(), SessionID: sess.ID, Sequence: 1,
 			Role: model.ChatMessageRoleUser, AuthorUserID: owner,
-			Status: model.ChatMessageStatusCompleted,
+			Status:  model.ChatMessageStatusCompleted,
 			Content: "p", ToolsetVersionUsed: 1, CreatedAt: ts,
 		}
 		if err := s.AppendChatMessage(ctx, owner, msg); err != nil {

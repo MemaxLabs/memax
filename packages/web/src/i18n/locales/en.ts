@@ -23,8 +23,8 @@ export const en = {
     tabs: {
       brain: "Ask memax",
       memories: "Memories",
-      agents: "Agents",
-      inbox: "Inbox",
+      agents: "Connected agents",
+      pulse: "Pulse",
     },
   },
   // Bar
@@ -419,7 +419,7 @@ export const en = {
     allForgetting: "Forgetting {n} memories...",
     allForgettingOne: "Forgetting 1 memory...",
     thisMemory: "Forget this memory?",
-    forgettingQuote: "Forgetting \u201c{title}\u201d",
+    forgettingQuote: "Forgetting “{title}”",
   },
 
   // Note detail
@@ -520,8 +520,9 @@ export const en = {
   },
 
   agentConfigs: {
-    title: "Your Agents",
-    subtitle: "AI assistants connected to your memory.",
+    title: "Connected agents",
+    subtitle:
+      "Set an agent up once — it's connected to your memory everywhere.",
     empty: "No agents connected yet",
     emptyHint:
       "Connect your first agent to give it persistent memory across sessions.",
@@ -745,7 +746,7 @@ export const en = {
   dock: {
     brain: "Ask",
     topics: "Topics",
-    inbox: "Inbox",
+    pulse: "Pulse",
     recentTitle: "Recent",
   },
 
@@ -873,17 +874,110 @@ export const en = {
     receiptDismissed: "Dismissed",
     kindTrace: "Traces · last {n} hours",
     kindPulse: "Topic pulse · last {n} days",
+    kindActivity: "Activity · last {n}h",
+    activityTopics: "Topics:",
+    activityPurpose:
+      "The countable stuff — which agents wrote what, which topics moved, how this week compares. One line, because counts are worth knowing but not worth stopping on.",
+    stripActivity: "Activity",
+    stripActivityWeek: "{n} this week",
     kindCapsule: "One year ago today",
     kindWeek: "This week",
     traceCountOne: "1 memory",
     traceCount: "{n} memories",
     traceManual: "Captured by hand",
+    traceLatest: "Latest: “{title}”",
+    traceAck: "All correct · got it",
+    capsuleAck: "I remember",
+    title: "Pulse",
+    purpose:
+      "What changed in this hub while you were away — agent activity, topic movement, and echoes from your past memories. Cards refresh nightly; resolve one and it stays as a receipt until new content replaces it.",
+    purposeAria: "What is this?",
+    collapse: "Collapse",
+    loadFailed: "memax could not load your board. Refresh to try again.",
+    continueInMemax: "Continue in memax",
+    copyForAgent: "Copy for agent",
+    copied: "Copied",
+    copyFailed: "Could not copy to clipboard",
+    stripTrace: "Traces",
+    stripPulse: "Topic pulse",
+    stripPulseDetail: "{n} topics active",
+    tracePurpose:
+      "What your agents wrote into memory while you were away. Expand a row to see the actual memories — confirm them and memax learns your agents are on track.",
+    pulsePurpose:
+      "Where this hub's attention actually went this week, by topic. Tap a topic to open it.",
+    capsulePurpose:
+      "A memory from about a year ago today. Tap the quote to revisit it.",
+    weekPurpose: "Your memory rhythm — this week versus last week.",
     pulseRecentOne: "1 new memory",
     pulseRecent: "{n} new memories",
     pulseContributors: "{n} people",
     weekLineOne: "1 memory this week",
     weekLine: "{n} memories this week",
     weekCompare: "Last week: {n}",
+    kindDreamlog: "Last night's dream",
+    kindEcho: "Echo",
+    kindThread: "Hidden thread",
+    kindOpenq: "Forgotten question",
+    kindPattern: "Unobserved pattern",
+    kindMusing: "memax musing",
+    kindGate: "Waiting on you",
+    echoThen: "you asked yourself",
+    echoNow: "your answer",
+    gateFrom: "From {agent}",
+    dreamlogPurpose:
+      "memax's first-person notes from organizing your memories overnight.",
+    echoPurpose:
+      "An old question just met a new answer — only memory that carries time can do this.",
+    threadPurpose:
+      "Two memories you never connected that might be the same idea.",
+    openqPurpose: "A question you asked in your memories but never answered.",
+    patternPurpose:
+      "A habit hiding in your memory data that you may not have noticed yourself.",
+    musingPurpose:
+      "memax thinking out loud about the shape of this hub's knowledge.",
+    gatePurpose:
+      "An agent stopped to wait for your call. Your choice is written back into memory so the agent can read it later.",
+    feedbackAccurate: "Spot on",
+    feedbackInaccurate: "Off the mark",
+
+    // 等你 band (plan 25 P4) — notification decisions merged onto the
+    // board. The board is the one surface; /inbox retired.
+    kindWaiting: "Waiting on you",
+    waitingPurpose:
+      "Decisions memax can't make for you — memory conflicts, topic reshuffles, hub invites. Answer here and the board moves on.",
+
+    // 最近 strip — receipts that used to live in the inbox.
+    recentTitle: "Recent",
+    recentDetailOne: "1 update",
+    recentDetail: "{n} updates",
+    recentPurpose: "Things that already happened. Nothing to decide.",
+
+    // Full-page pulse surface.
+    pageEmptyTitle: "The board is quiet",
+    pageEmptyBody:
+      "memax refreshes this board after each night's dream run. Cards show up on their own.",
+
+    // Custom boards.
+    boardsLabel: "Boards",
+    newBoard: "New board",
+    newBoardTitleLabel: "Board name",
+    newBoardTitlePlaceholder: "Competitor moves",
+    newBoardInstructionLabel: "Standing instruction",
+    newBoardInstructionPlaceholder:
+      "What should memax watch for in this hub, every night?",
+    newBoardSave: "Create board",
+    newBoardCancel: "Cancel",
+    cookingLabel: "Cooking",
+    cookingReceipt:
+      "✦ Configured · {title} is cooking — first results tomorrow morning.",
+    cookingBody: "See you in the morning.",
+    pausedLabel: "Paused",
+    deleteBoard: "Delete this board",
+    deleteBoardConfirm: "Delete this board? Its cards go with it.",
+    deleteBoardConfirmYes: "Delete",
+    deleteBoardConfirmNo: "Keep it",
+    customBoardNoSlots:
+      "Cards for this board land after the next nightly dream run.",
   },
   inbox: {
     title: "Inbox",
@@ -910,6 +1004,9 @@ export const en = {
     kindHubOverLimit: "HUB OVER LIMIT",
     kindHubFrozen: "HUB FROZEN",
     kindHubRestored: "HUB RESTORED",
+    kindDecisionGate: "DECISION NEEDED",
+    gateDismiss: "Got it",
+    gateGoToBoard: "Decide on the board",
     topicMergeOneTitle: "Merge {source} into {target}?",
     topicMergeManyTitle: "Merge {sources} into {target}?",
     topicMergeFallbackTitle: "Merge topics into {target}?",
@@ -1990,7 +2087,7 @@ export const en = {
     streamConnectCountTooltip:
       "Number of connect() invocations since this session started. Healthy steady-state is 1. Higher numbers indicate server/network hang-ups forcing reconnects, or a bug re-mounting the bridge. Reset on logout.",
     debuggerEngaged: "Debugger engaged",
-    streamConnectedWithHubs: "Stream connected \u00b7 watching {count} hub(s)",
+    streamConnectedWithHubs: "Stream connected · watching {count} hub(s)",
     streamIsState: "Stream is {state}",
     eventStreamReady: "Event stream ready",
     eventStreamUnknownError: "Unknown stream error",
@@ -2316,6 +2413,9 @@ export const en = {
       restorePersona: "restore that persona",
       // Board
       resolveBoardCard: "resolve that card",
+      createBoard: "create that board",
+      updateBoard: "update that board",
+      deleteBoard: "delete that board",
       // Hubs
       createHub: "create that hub",
       updateHub: "update the hub",

@@ -65,7 +65,7 @@ func setupTwoHubRecallFixture(t *testing.T) (h *handler.RecallHandler, ownerID, 
 	// Team hub U1 owns.
 	team := &model.Hub{
 		ID: uuid.NewString(), Name: "Team",
-		Slug: "t-" + uuid.NewString()[:8],
+		Slug:    "t-" + uuid.NewString()[:8],
 		HubType: "team", Plan: model.HubFreeTeamPlanID, OwnerID: ownerID,
 	}
 	if err := s.CreateTeamHub(ctx, team, ownerID, 999); err != nil {

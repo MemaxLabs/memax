@@ -496,11 +496,11 @@ func TestSessionScope_IsHubWritable(t *testing.T) {
 		WritableHubIDs: []string{"h-a", "h-c"}, // h-b is viewer
 	}
 	cases := map[string]bool{
-		"h-a":  true,
-		"h-b":  false, // in HubIDs (readable) but not writable
-		"h-c":  true,
-		"h-z":  false, // not in scope at all
-		"":     false, // empty hub id never writable
+		"h-a": true,
+		"h-b": false, // in HubIDs (readable) but not writable
+		"h-c": true,
+		"h-z": false, // not in scope at all
+		"":    false, // empty hub id never writable
 	}
 	for in, want := range cases {
 		if got := s.IsHubWritable(in); got != want {

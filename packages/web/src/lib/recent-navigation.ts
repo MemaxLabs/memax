@@ -2,7 +2,7 @@ import {
   isBrainViewRoute,
   isMemoriesRoute,
   isTopicRoute,
-  isInboxRoute,
+  isPulseRoute,
 } from "./route-helpers";
 
 const OPEN_RECENT_ONCE_KEY = "memax-open-recent-once";
@@ -43,13 +43,13 @@ function getAppSurface(pathname: string): AppSurface {
   // Brain surface — v1 `/home` AND v2 `/brain` (both mount BrainView).
   if (isBrainViewRoute(pathname)) return "brain";
   // Memory-side surface — v1 `/memories[/...]` + v2 `/h/<slug>/memories[/...]`
-  // + topic detail under both shells + the shared `/inbox` route. /inbox
+  // + topic detail under both shells + the shared `/pulse` route. /pulse
   // belongs here per the bar's view derivation; keep these in sync with
   // bar-context.tsx so brain↔memory transitions fire consistently.
   if (
     isMemoriesRoute(pathname) ||
     isTopicRoute(pathname) ||
-    isInboxRoute(pathname)
+    isPulseRoute(pathname)
   ) {
     return "memory";
   }

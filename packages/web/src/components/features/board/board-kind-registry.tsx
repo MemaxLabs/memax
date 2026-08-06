@@ -3,6 +3,7 @@
 import type { ComponentType, ReactNode } from "react";
 import type { BoardSlot } from "memax-sdk";
 import { BoardCardFallbackBody, BoardKindLabel } from "@memaxlabs/ui";
+import { boardKindEyebrow } from "./board-kind-visuals";
 
 /**
  * L3 kind registry (plan 25). Each board kind registers the component
@@ -124,7 +125,9 @@ function FallbackBody({ slot }: BoardKindBodyProps) {
       : undefined;
   return (
     <>
-      <BoardKindLabel>{slot.kind}</BoardKindLabel>
+      <BoardKindLabel {...boardKindEyebrow(slot.kind)}>
+        {slot.kind}
+      </BoardKindLabel>
       <BoardCardFallbackBody title={slot.title} description={description} />
     </>
   );
@@ -138,4 +141,14 @@ export function renderBoardSlotBody(slot: BoardSlot): ReactNode {
 /** True when the slot's kind has a dedicated renderer (vs the fallback). */
 export function hasBoardKindRenderer(kind: string): boolean {
   return REGISTRY.has(kind);
+}
+
+/**
+ * Generated-at source for a slot's quiet timestamp line: content
+ * freshness (`content_updated_at`), not state churn — `updated_at`
+ * also moves on resolve, which would lie about when the card was
+ * written. Falls back for rows predating migration 021.
+ */
+export function slotContentTime(slot: BoardSlot): string {
+  return slot.content_updated_at ?? slot.updated_at;
 }

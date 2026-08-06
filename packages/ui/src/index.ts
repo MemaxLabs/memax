@@ -28,6 +28,7 @@ export {
   BoardCardFallbackBody,
   type BoardCardState,
 } from "./components/board-card";
+export { BoardDeckShell, BoardDeckControls } from "./components/board-deck";
 export {
   BottomSheet,
   type BottomSheetSnapPoint,

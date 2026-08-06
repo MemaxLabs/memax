@@ -96,6 +96,32 @@ describe("BoardNotificationDeck", () => {
     expect(screen.queryByText("0 more waiting")).toBeNull();
   });
 
+  it("↻ cycles to the next card client-side without resolving anything", () => {
+    const onResolve = vi.fn();
+    render(
+      <BoardNotificationDeck
+        cards={[
+          card("a", "First decision"),
+          card("b", "Second decision"),
+          card("c", "Third decision"),
+        ]}
+        countLabel="2 more waiting"
+        disabled={false}
+        onResolve={onResolve}
+      />,
+    );
+    // Re-query per click — cycling remounts the card (keyed by id).
+    fireEvent.click(screen.getByLabelText("Show next card"));
+    expect(screen.getByText("Second decision")).toBeTruthy();
+    expect(screen.queryByText("First decision")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Show next card"));
+    expect(screen.getByText("Third decision")).toBeTruthy();
+    // Wraps around; the pile itself is untouched.
+    fireEvent.click(screen.getByLabelText("Show next card"));
+    expect(screen.getByText("First decision")).toBeTruthy();
+    expect(onResolve).not.toHaveBeenCalled();
+  });
+
   it("renders nothing for an empty deck", () => {
     const { container } = render(
       <BoardNotificationDeck

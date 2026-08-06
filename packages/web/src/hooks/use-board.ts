@@ -210,41 +210,60 @@ export function useResolveBoardSlot(hubId: string | undefined) {
       ),
     onMutate: async ({ slotKey, action, verdict }) => {
       if (!hubId) return;
+      const stampTerminal = (data: BoardWithSlots): BoardWithSlots => ({
+        ...data,
+        slots: data.slots.map((slot): BoardSlot => {
+          if (slot.slot_key !== slotKey) return slot;
+          return {
+            ...slot,
+            // ack / feedback / choose all land the slot in
+            // "resolved"; only dismiss greys it out.
+            state: action === "dismiss" ? "dismissed" : "resolved",
+            resolution: {
+              action,
+              verdict,
+              resolved_by: "",
+              resolved_at: new Date().toISOString(),
+            },
+          };
+        }),
+      });
       const key = boardQueryKey(hubId);
       await qc.cancelQueries({ queryKey: key });
       const previous = qc.getQueryData<BoardWithSlots>(key);
       qc.setQueryData<BoardWithSlots>(key, (data) =>
-        data
-          ? {
-              ...data,
-              slots: data.slots.map((slot): BoardSlot => {
-                if (slot.slot_key !== slotKey) return slot;
-                return {
-                  ...slot,
-                  // ack / feedback / choose all land the slot in
-                  // "resolved"; only dismiss greys it out.
-                  state: action === "dismiss" ? "dismissed" : "resolved",
-                  resolution: {
-                    action,
-                    verdict,
-                    resolved_by: "",
-                    resolved_at: new Date().toISOString(),
-                  },
-                };
-              }),
-            }
-          : data,
+        data ? stampTerminal(data) : data,
       );
-      return { previous };
+      // Custom-board caches share the slot lifecycle (the shelf's ×
+      // dismisses their slots too) — stamp any per-board cache holding
+      // this slot so the tile leaves immediately. The prefix also
+      // matches the boards LIST cache ({boards}), hence the shape
+      // guard.
+      const previousCustom = qc.getQueriesData<BoardWithSlots>({
+        queryKey: boardsQueryKey(hubId),
+      });
+      for (const [queryKey, data] of previousCustom) {
+        if (data && Array.isArray(data.slots)) {
+          qc.setQueryData(queryKey, stampTerminal(data));
+        }
+      }
+      return { previous, previousCustom };
     },
     onError: (_err, _vars, context) => {
-      if (hubId && context?.previous) {
+      if (!hubId || !context) return;
+      if (context.previous) {
         qc.setQueryData(boardQueryKey(hubId), context.previous);
+      }
+      for (const [queryKey, data] of context.previousCustom ?? []) {
+        if (data && Array.isArray(data.slots)) {
+          qc.setQueryData(queryKey, data);
+        }
       }
     },
     onSettled: () => {
       if (hubId) {
         void qc.invalidateQueries({ queryKey: boardQueryKey(hubId) });
+        void qc.invalidateQueries({ queryKey: boardsQueryKey(hubId) });
       }
     },
   });

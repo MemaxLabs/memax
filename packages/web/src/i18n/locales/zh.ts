@@ -810,7 +810,7 @@ export const zh: Translations = {
     capsuleAck: "记得",
     title: "脉搏",
     purpose:
-      "你不在的时候，这个 hub 发生了什么——agent 的动作、主题的流向、旧记忆的回声。卡片每晚刷新；处理过的会留作回执，直到有新内容顶替。",
+      "你不在的时候，这个 hub 发生了什么——agent 的动作、主题的流向、旧记忆的回声。卡片在 memax 整理记忆后刷新；处理过的会留作回执，直到有新内容顶替。",
     purposeAria: "这是什么？",
     collapse: "收起",
     loadFailed: "板子没加载出来，刷新一下再试。",
@@ -842,7 +842,7 @@ export const zh: Translations = {
     echoThen: "你问自己",
     echoNow: "你的决策",
     gateFrom: "来自 {agent}",
-    dreamlogPurpose: "memax 每晚整理记忆后的第一人称手记。",
+    dreamlogPurpose: "memax 整理记忆后的第一人称手记。",
     echoPurpose: "一个旧问题遇到了新答案——只有带着时间的记忆能做到这件事。",
     threadPurpose: "两条你没关联过的记忆，可能是同一个想法。",
     openqPurpose: "你在记忆里问过、但从没回答的问题。",
@@ -860,6 +860,10 @@ export const zh: Translations = {
       "memax 替你做不了的决定——记忆冲突、主题归并、hub 邀请。在这儿回一句，板就能往下走。",
     // 等你牌堆——决策一张一张来，角标数着后面还压着几件。
     deckMore: "还有 {n} 件",
+    // 通用同类牌堆——任何 kind 的多张活卡都会叠起来。
+    stackCount: "还有 {n} 张",
+    // ↻ ——客户端换下一张看，不动任何卡的状态。
+    deckCycle: "看下一张",
 
     // 收起的货架——记忆页里的板先收成一排小卡片，点开才铺开。
     shelfExpand: "展开",
@@ -875,10 +879,10 @@ export const zh: Translations = {
     // 整页脉搏surface——设计过的空状态（2026-08）：✦ 开头的一段话
     // 讲清楚这里会出现什么，下面是"替你盯一件事"的示例 chips，
     // 点一下就带着完整指令打开创建表单。
-    pageEmptyTitle: "板上很安静",
+    pageEmptyTitle: "板上还没有卡片",
     pageEmptyBody:
-      "memax 每晚整理记忆后，会把发现写在这里——梦记、旧问题的回声、没人注意的模式。第一批卡片会在下一次梦之后出现。",
-    emptyWatchTitle: "让 memax 替你盯一件事",
+      "memax 整理记忆后，会把发现写在这里——梦记、旧问题的回声、没人注意的模式。第一批卡片会在下次整理后出现。",
+    emptyWatchTitle: "从一个例子开始",
     emptyExampleFitness: "健身 & 睡眠",
     emptyExampleFitnessInstruction:
       "帮我盯着健身和睡眠的记录，节奏变了或者开始松懈就提醒我。",
@@ -891,14 +895,16 @@ export const zh: Translations = {
 
     // 自定义板。
     newBoard: "新建板",
+    // 幽灵卡/幽灵tile——收在卡流和货架末尾的"新建板"潜在入口。
+    ghostTitle: "让 memax 盯一件事",
     newBoardTitleLabel: "板名",
     newBoardTitlePlaceholder: "对手动向",
     newBoardInstructionLabel: "长期指令",
-    newBoardInstructionPlaceholder: "每晚，memax 要在这个 hub 里盯着什么？",
+    newBoardInstructionPlaceholder: "memax 要在这个 hub 里持续盯着什么？",
     newBoardSave: "创建",
     newBoardCancel: "取消",
     cookingLabel: "酝酿中",
-    cookingBody: "明早见。",
+    cookingBody: "结果会在下次整理后出现。",
     deleteBoard: "删除这块板",
     deleteBoardConfirm: "删除这块板？板上的卡片会一起消失。",
     deleteBoardConfirmYes: "删除",

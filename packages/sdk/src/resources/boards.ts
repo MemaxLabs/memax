@@ -1,7 +1,9 @@
 import type {
+  Board,
   BoardFeedbackVerdict,
   BoardSlot,
   BoardSlotAction,
+  BoardStatus,
   BoardWithSlots,
 } from "../types.js";
 import type { RequestFn } from "../transport.js";
@@ -45,6 +47,44 @@ export class BoardsResource {
       `/v1/hubs/${hubId}/board/slots/${encodeURIComponent(slotKey)}/resolve`,
       { body: { action, verdict, choice } },
     );
+  }
+
+  /** Every board on the hub — system board first, then custom ones. */
+  async listForHub(hubId: string): Promise<{ boards: Board[] }> {
+    return this.req("GET", `/v1/hubs/${hubId}/boards`);
+  }
+
+  /**
+   * Create a custom board from a standing instruction. The board
+   * starts in the `cooking` state and flips to `active` when the next
+   * dream run puts its first card on it.
+   */
+  async createBoard(
+    hubId: string,
+    input: { title: string; instruction: string },
+  ): Promise<{ board: Board }> {
+    return this.req("POST", `/v1/hubs/${hubId}/boards`, { body: input });
+  }
+
+  /**
+   * Edit a custom board. Rewriting the instruction returns the board
+   * to `cooking` — the old cards answered a different question.
+   */
+  async updateBoard(
+    hubId: string,
+    boardId: string,
+    input: { title?: string; instruction?: string; status?: BoardStatus },
+  ): Promise<{ board: Board }> {
+    return this.req("PATCH", `/v1/hubs/${hubId}/boards/${boardId}`, {
+      body: input,
+    });
+  }
+
+  async deleteBoard(
+    hubId: string,
+    boardId: string,
+  ): Promise<{ deleted: boolean }> {
+    return this.req("DELETE", `/v1/hubs/${hubId}/boards/${boardId}`);
   }
 
   /**

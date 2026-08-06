@@ -12,6 +12,7 @@ import (
 )
 
 var (
+	ErrBoardNotFound            = errors.New("board not found")
 	ErrBoardSlotNotFound        = errors.New("board slot not found")
 	ErrBoardSlotAlreadyResolved = errors.New("board slot already resolved")
 )
@@ -318,4 +319,72 @@ func (s *PostgresStore) GetMemoryNear(hubID string, target time.Time, tolerance 
 	}
 	m.HubID = hubID
 	return &m, nil
+}
+
+// CreateBoard inserts a custom board. System boards go through
+// GetOrCreateSystemBoard (which owns the one-per-hub invariant).
+func (s *PostgresStore) CreateBoard(b *model.Board) error {
+	ctx := context.Background()
+	row := s.pool.QueryRow(ctx,
+		`INSERT INTO boards (hub_id, created_by, kind, title, instruction, status)
+		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+		RETURNING id, created_at, updated_at`,
+		b.HubID, b.CreatedBy, b.Kind, b.Title, b.Instruction, b.Status)
+	return row.Scan(&b.ID, &b.CreatedAt, &b.UpdatedAt)
+}
+
+func (s *PostgresStore) GetBoard(boardID string) (*model.Board, error) {
+	ctx := context.Background()
+	board, err := scanBoard(s.pool.QueryRow(ctx,
+		`SELECT `+boardColumns+` FROM boards WHERE id = $1::uuid`, boardID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrBoardNotFound
+	}
+	return board, err
+}
+
+// ListBoardsByHub returns the hub's boards, system first then custom
+// by creation order — the same order the client tabs them in.
+func (s *PostgresStore) ListBoardsByHub(hubID string) ([]model.Board, error) {
+	ctx := context.Background()
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+boardColumns+` FROM boards WHERE hub_id = $1::uuid
+		ORDER BY (kind <> 'system'), created_at ASC`, hubID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var boards []model.Board
+	for rows.Next() {
+		board, err := scanBoard(rows)
+		if err != nil {
+			return nil, err
+		}
+		boards = append(boards, *board)
+	}
+	return boards, rows.Err()
+}
+
+// UpdateBoard writes the mutable fields (title, instruction, status).
+// hub_id / kind / created_by are immutable after creation.
+func (s *PostgresStore) UpdateBoard(b *model.Board) error {
+	ctx := context.Background()
+	row := s.pool.QueryRow(ctx,
+		`UPDATE boards SET title = $2, instruction = $3, status = $4, updated_at = now()
+		WHERE id = $1::uuid RETURNING updated_at`,
+		b.ID, b.Title, b.Instruction, b.Status)
+	if err := row.Scan(&b.UpdatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrBoardNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *PostgresStore) DeleteBoard(boardID string) error {
+	ctx := context.Background()
+	_, err := s.pool.Exec(ctx, `DELETE FROM boards WHERE id = $1::uuid`, boardID)
+	return err
 }

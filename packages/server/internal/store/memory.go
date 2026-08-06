@@ -3548,3 +3548,72 @@ func (s *InMemoryStore) GetMemoryNear(hubID string, target time.Time, tolerance 
 func (s *InMemoryStore) GetNotificationBySource(_ context.Context, _, _ string) (*model.Notification, error) {
 	return nil, ErrNotificationNotFound
 }
+
+func (s *InMemoryStore) CreateBoard(b *model.Board) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.boards == nil {
+		s.boards = make(map[string]*model.Board)
+	}
+	s.boardSeq++
+	now := time.Now().UTC()
+	if b.ID == "" {
+		b.ID = fmt.Sprintf("board_%d", s.boardSeq)
+	}
+	b.CreatedAt, b.UpdatedAt = now, now
+	stored := *b
+	s.boards[b.ID] = &stored
+	return nil
+}
+
+func (s *InMemoryStore) GetBoard(boardID string) (*model.Board, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	b, ok := s.boards[boardID]
+	if !ok {
+		return nil, ErrBoardNotFound
+	}
+	out := *b
+	return &out, nil
+}
+
+func (s *InMemoryStore) ListBoardsByHub(hubID string) ([]model.Board, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var boards []model.Board
+	for _, b := range s.boards {
+		if b.HubID == hubID {
+			boards = append(boards, *b)
+		}
+	}
+	sort.Slice(boards, func(i, j int) bool {
+		if (boards[i].Kind == model.BoardKindSystem) != (boards[j].Kind == model.BoardKindSystem) {
+			return boards[i].Kind == model.BoardKindSystem
+		}
+		return boards[i].CreatedAt.Before(boards[j].CreatedAt)
+	})
+	return boards, nil
+}
+
+func (s *InMemoryStore) UpdateBoard(b *model.Board) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.boards[b.ID]
+	if !ok {
+		return ErrBoardNotFound
+	}
+	existing.Title = b.Title
+	existing.Instruction = b.Instruction
+	existing.Status = b.Status
+	existing.UpdatedAt = time.Now().UTC()
+	b.UpdatedAt = existing.UpdatedAt
+	return nil
+}
+
+func (s *InMemoryStore) DeleteBoard(boardID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.boards, boardID)
+	delete(s.boardSlots, boardID)
+	return nil
+}

@@ -14,6 +14,8 @@ import { useLocale } from "@/i18n";
 import { useActiveHub } from "@/lib/auth";
 import { trackEvent } from "@/lib/posthog";
 import { useHubBoard, useResolveBoardSlot } from "@/hooks/use-board";
+import { useBoardCardActions } from "@/hooks/use-board-continue";
+import { buildBoardCardContext } from "./board-card-context";
 import {
   boardKindOptions,
   boardKindPurpose,
@@ -39,6 +41,7 @@ export function BoardView({ hubId }: { hubId: string }) {
   const { t } = useLocale();
   const { data, isPending, isError } = useHubBoard(hubId);
   const resolve = useResolveBoardSlot(hubId);
+  const cardActions = useBoardCardActions(hubId);
   const [openSlots, setOpenSlots] = useState<ReadonlySet<string>>(new Set());
 
   // One impression event per board load (not per re-render).
@@ -110,6 +113,10 @@ export function BoardView({ hubId }: { hubId: string }) {
               });
               resolve.mutate({ slotKey: slot.slot_key, action, verdict });
             }}
+            onContinue={() => void cardActions.continueInMemax(slot)}
+            onCopy={() => void cardActions.copyForAgent(slot)}
+            copied={cardActions.copiedSlotKey === slot.slot_key}
+            continuing={cardActions.isContinuing}
           />
         );
       })}
@@ -136,6 +143,10 @@ function BoardSlotEntry({
   entranceIndex,
   onToggle,
   onResolve,
+  onContinue,
+  onCopy,
+  copied,
+  continuing,
 }: {
   slot: BoardSlot;
   expanded: boolean;
@@ -145,6 +156,10 @@ function BoardSlotEntry({
     action: BoardResolveAction,
     verdict?: BoardFeedbackVerdict,
   ) => void;
+  onContinue: () => void;
+  onCopy: () => void;
+  copied: boolean;
+  continuing: boolean;
 }) {
   const { t } = useLocale();
 
@@ -209,6 +224,24 @@ function BoardSlotEntry({
                 {t.board.feedbackInaccurate}
               </BoardAction>
             </>
+          ) : null}
+          {/* 续接 — a card is where memax noticed something; these
+              two verbs are how the user acts on it without retyping
+              the context. Only offered when the card has citations
+              (continue) or quotable substance (copy). */}
+          {(slot.cite_memory_ids?.length ?? 0) > 0 ? (
+            <BoardAction
+              emphasis="quiet"
+              disabled={continuing}
+              onClick={onContinue}
+            >
+              {t.board.continueInMemax}
+            </BoardAction>
+          ) : null}
+          {buildBoardCardContext(slot) ? (
+            <BoardAction emphasis="quiet" onClick={onCopy}>
+              {copied ? t.board.copied : t.board.copyForAgent}
+            </BoardAction>
           ) : null}
           <BoardAction
             emphasis="quiet"

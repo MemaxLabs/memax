@@ -1,0 +1,13 @@
+-- 020: chat_pinned_memories
+--
+-- Pinned memory context for chat sessions (plan 25 P3). A session
+-- created from a board card carries the card's cited memories so the
+-- agent opens already knowing what the user is looking at — the
+-- "continue in memax" seam. Ordered ids, capped by the handler; the
+-- worker renders them into the system prompt alongside the persona
+-- block.
+--
+-- Column (not a join table) because the list is small, ordered, and
+-- always read whole with its session — the same reasoning as
+-- chat_sessions.persona_id.
+ALTER TABLE chat_sessions ADD COLUMN pinned_memory_ids uuid[] DEFAULT '{}' NOT NULL;

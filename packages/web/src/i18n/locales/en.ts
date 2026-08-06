@@ -23,7 +23,7 @@ export const en = {
     tabs: {
       brain: "Ask memax",
       memories: "Memories",
-      agents: "Agents",
+      agents: "Connected agents",
       inbox: "Inbox",
     },
   },
@@ -520,8 +520,9 @@ export const en = {
   },
 
   agentConfigs: {
-    title: "Your Agents",
-    subtitle: "AI assistants connected to your memory.",
+    title: "Connected agents",
+    subtitle:
+      "Set an agent up once — it's connected to your memory everywhere.",
     empty: "No agents connected yet",
     emptyHint:
       "Connect your first agent to give it persistent memory across sessions.",

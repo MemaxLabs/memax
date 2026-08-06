@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/agent"
 	"github.com/MemaxLabs/memax/packages/server/internal/agent/tools"
@@ -97,7 +98,9 @@ func (e *Engine) shouldRunBoardSynthesis(settings map[string]any, runBudget *dre
 	if !e.agentRuntime.IsConfigured() {
 		return false
 	}
-	if enabled, _ := settings["dreams_use_agent_runtime"].(bool); !enabled {
+	// Own gate, default true — see DefaultSettings. A hub can opt out;
+	// an absent key means on.
+	if enabled, ok := settings["dreams_board_synthesis_enabled"].(bool); ok && !enabled {
 		return false
 	}
 	return runBudget.shouldRoute(runID)
@@ -115,24 +118,75 @@ func (e *Engine) phaseBoardSynthesis(
 	start := time.Now()
 	defer func() { metrics.DurationMs = time.Since(start).Milliseconds() }()
 
-	board, err := e.store.GetOrCreateSystemBoard(hub.ID, hub.OwnerID)
-	if err != nil {
+	// The system board always exists; custom boards (P4) are authored
+	// by the user and carry their own instruction. Each board gets its
+	// own agent session so one board's brief never bleeds into another.
+	if _, err := e.store.GetOrCreateSystemBoard(hub.ID, hub.OwnerID); err != nil {
 		slog.WarnContext(ctx, "dream: board synthesis skipped", "hub_id", hub.ID, "error", err)
 		metrics.Errors++
 		return 0, metrics
 	}
-	if board.Status != model.BoardStatusActive {
+	boards, err := e.store.ListBoardsByHub(hub.ID)
+	if err != nil {
+		metrics.Errors++
 		return 0, metrics
 	}
+
+	written := 0
+	for i := range boards {
+		board := boards[i]
+		// Paused boards are excluded; cooking boards are INCLUDED —
+		// this run is exactly what they've been waiting for.
+		if board.Status == model.BoardStatusPaused {
+			continue
+		}
+		if !runBudget.shouldRoute(run.ID) {
+			// The cycle's governor is spent; remaining boards wait for
+			// tomorrow rather than starving the organizational phases.
+			break
+		}
+		n, boardMetrics := e.synthesizeBoard(ctx, hub, run, runBudget, &board)
+		written += n
+		mergeSynthesisMetrics(&metrics, boardMetrics)
+	}
+	return written, metrics
+}
+
+// mergeSynthesisMetrics folds one board's counters into the phase
+// total so the cycle's cost accounting stays whole.
+func mergeSynthesisMetrics(total *model.DreamPhaseMetrics, part model.DreamPhaseMetrics) {
+	total.LLMCalls += part.LLMCalls
+	total.LLMErrors += part.LLMErrors
+	total.TokensIn += part.TokensIn
+	total.TokensOut += part.TokensOut
+	total.Errors += part.Errors
+}
+
+// synthesizeBoard runs one agent session for one board.
+func (e *Engine) synthesizeBoard(
+	ctx context.Context,
+	hub *model.Hub,
+	run *model.DreamRun,
+	runBudget *dreamRunBudget,
+	board *model.Board,
+) (int, model.DreamPhaseMetrics) {
+	var metrics model.DreamPhaseMetrics
+
 	// Cadence dedupe: keep last night's cards if they're still fresh.
+	// Keyed on content_updated_at, NOT updated_at —
+	// acking or dismissing a card bumps updated_at, and using that
+	// would mean the more a user engages with the board, the longer it
+	// stays silent. A cooking board has no slots yet, so it proceeds.
 	if existing, err := e.store.GetBoardSlot(board.ID, model.BoardSlotKeyDreamlog); err == nil {
-		if time.Since(existing.UpdatedAt) < boardSynthesisMinInterval {
+		if time.Since(existing.ContentUpdatedAt) < boardSynthesisMinInterval {
 			return 0, metrics
 		}
 	}
 
-	wowKind := pickWowKind(hub.ID, time.Now().UTC())
-	prompt := buildSynthesisPrompt(run, wowKind)
+	// Rotation keys on the board, not the hub, so two boards on the
+	// same hub don't chase the same lens on the same night.
+	wowKind := pickWowKind(board.ID, time.Now().UTC())
+	prompt := buildSynthesisPrompt(run, wowKind, board)
 
 	session := agent.SessionDescriptor{
 		OwnerID: hub.OwnerID,
@@ -156,7 +210,7 @@ func (e *Engine) phaseBoardSynthesis(
 		Tools:        []sdktool.Tool{recallTool},
 		Model:        e.agentRuntime.Model,
 		Session:      session,
-		SystemPrompt: boardSynthesisSystemPrompt,
+		SystemPrompt: boardSystemPrompt(board),
 	})
 	if err != nil {
 		metrics.Errors++
@@ -208,6 +262,29 @@ func (e *Engine) phaseBoardSynthesis(
 			written++
 		}
 	}
+
+	// 酝酿中 → 活跃: a custom board leaves the cooking state the moment
+	// it has its first real card. If synthesis produced nothing, it
+	// keeps cooking and the UI keeps promising tomorrow rather than
+	// showing an empty board that looks broken.
+	if written > 0 && board.Status == model.BoardStatusCooking {
+		// Re-read before writing: this board snapshot was taken before
+		// a multi-minute agent run, and the user may have rewritten the
+		// brief in the meantime. Writing the stale copy back would
+		// silently revert their edit — and that edit deliberately put
+		// the board BACK into cooking, so we must not activate it.
+		fresh, err := e.store.GetBoard(board.ID)
+		if err != nil {
+			slog.WarnContext(ctx, "dream: could not re-read board for activation",
+				"board_id", board.ID, "error", err)
+		} else if fresh.Status == model.BoardStatusCooking && fresh.Instruction == board.Instruction {
+			fresh.Status = model.BoardStatusActive
+			if err := e.store.UpdateBoard(fresh); err != nil {
+				slog.WarnContext(ctx, "dream: could not activate cooking board",
+					"board_id", board.ID, "error", err)
+			}
+		}
+	}
 	return written, metrics
 }
 
@@ -227,9 +304,11 @@ func (e *Engine) buildWowSlot(
 	kind := wow.Kind
 	if kind != requestedKind {
 		// The agent picked a different lens than asked. Accept it only
-		// if it's still a known wow kind — an unknown kind would hit
-		// the fallback renderer with generated text.
-		if _, ok := model.LaneBCitationFloor(kind); !ok {
+		// if it's a real WOW kind — LaneBCitationFloor also knows
+		// dreamlog (floor 0), and letting that through here would ship
+		// an uncited first-person claim in the wow slot, which is
+		// exactly what the validator exists to stop.
+		if !isWowKind(kind) {
 			return nil
 		}
 	}
@@ -288,10 +367,20 @@ func (e *Engine) buildWowSlot(
 	}
 }
 
-// verifyQuotes keeps only quotes whose memory ids exist AND live in
-// this hub. Excerpts stay as the agent wrote them (they were told to
-// quote verbatim; enforcing that would require content fetch + fuzzy
-// match, tracked for a later hardening pass).
+// isWowKind reports whether a kind belongs to the rotating wow pool.
+func isWowKind(kind string) bool {
+	for _, k := range model.WowKinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// verifyQuotes keeps only quotes whose memory ids exist, live in this
+// hub, and are DISTINCT — citing one memory three times must not
+// satisfy a floor of three, or "a pattern across 3+ memories" becomes
+// one memory quoted thrice.
 func (e *Engine) verifyQuotes(ctx context.Context, hub *model.Hub, quotes []synthesizedQuote) []synthesizedQuote {
 	ids := make([]string, 0, len(quotes))
 	for _, q := range quotes {
@@ -307,20 +396,48 @@ func (e *Engine) verifyQuotes(ctx context.Context, hub *model.Hub, quotes []synt
 		return nil
 	}
 	var out []synthesizedQuote
+	seen := make(map[string]bool, len(quotes))
 	for _, q := range quotes {
 		mem, ok := accessible[q.MemoryID]
 		if !ok || mem.HubID != hub.ID {
 			continue
 		}
-		if strings.TrimSpace(q.Excerpt) == "" {
+		if strings.TrimSpace(q.Excerpt) == "" || seen[q.MemoryID] {
 			continue
 		}
+		seen[q.MemoryID] = true
 		out = append(out, q)
 	}
 	return out
 }
 
-func buildSynthesisPrompt(run *model.DreamRun, wowKind string) string {
+// boardSystemPrompt appends the board's own brief for custom boards.
+// The base rules (anti-Barnum, receipts, voice) always win — a user
+// instruction shapes WHAT to look for, never whether to cite.
+func boardSystemPrompt(board *model.Board) string {
+	instruction := strings.TrimSpace(board.Instruction)
+	if instruction == "" {
+		return boardSynthesisSystemPrompt
+	}
+	return boardSynthesisSystemPrompt + fmt.Sprintf(
+		"\n\nThis board is user-authored. Their standing brief for it:\n\n%s\n\nHonor the brief when choosing what to surface. It does NOT relax any rule above: no receipts, no card.",
+		truncateForTitle2(instruction))
+}
+
+// truncateForTitle2 bounds a user instruction inside the prompt.
+func truncateForTitle2(s string) string {
+	const maxInstructionChars = 2000
+	if len(s) <= maxInstructionChars {
+		return s
+	}
+	cut := maxInstructionChars
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "…"
+}
+
+func buildSynthesisPrompt(run *model.DreamRun, wowKind string, board *model.Board) string {
 	var b strings.Builder
 	b.WriteString("Tonight's dream cycle just finished. Stats: ")
 	fmt.Fprintf(&b, "%d memories scanned, %d duplicates merged, %d contradictions found, %d memories organized, %d topics restructured.\n\n",
@@ -329,6 +446,9 @@ func buildSynthesisPrompt(run *model.DreamRun, wowKind string) string {
 	b.WriteString("Tonight's wow lens: ")
 	b.WriteString(wowKindHints[wowKind])
 	b.WriteString("\nUse recall (multiple searches, different angles) to hunt for it. If the hub genuinely doesn't contain one, return null for wow.")
+	if title := strings.TrimSpace(board.Title); title != "" {
+		fmt.Fprintf(&b, "\n\nYou are writing for the board titled %q — keep both cards on that subject.", title)
+	}
 	return b.String()
 }
 

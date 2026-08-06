@@ -8,7 +8,7 @@
  *   /memories                 → /h/personal/memories
  *   /memories/topics/:id      → /h/personal/topics/:id
  *   /memories/:id             (unchanged — see below)
- *   /inbox[/...]              (unchanged — inbox is shared)
+ *   /pulse                    (unchanged — the board is shared)
  *   /brain, /agents, …        (unchanged — not hub-scoped)
  *
  * `personal` is the safe default redirect target because every user
@@ -102,7 +102,7 @@ export function middleware(request: NextRequest) {
 
 // Match the legacy /memories tree plus the signed-out entry surfaces
 // (/, /login) for the session-presence fast path. Other paths (/h/*,
-// /brain, /agents, /inbox, /register, /api/*, _next, etc.) skip the
+// /brain, /agents, /pulse, /register, /api/*, _next, etc.) skip the
 // middleware entirely so it stays cheap.
 export const config = {
   matcher: ["/", "/login", "/memories", "/memories/:path*"],

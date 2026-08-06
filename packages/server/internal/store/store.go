@@ -557,6 +557,15 @@ type Store interface {
 	// transitions slots still in fresh/seen; terminal slots return
 	// ErrBoardSlotAlreadyResolved.
 	GetOrCreateSystemBoard(hubID, createdBy string) (*model.Board, error)
+	// Custom boards (P4): a hub can carry several boards — the system
+	// board plus user-authored ones whose `instruction` drives the
+	// nightly synthesis. ListBoardsByHub returns every board (system
+	// first) so producers can loop and the client can tab between them.
+	CreateBoard(b *model.Board) error
+	GetBoard(boardID string) (*model.Board, error)
+	ListBoardsByHub(hubID string) ([]model.Board, error)
+	UpdateBoard(b *model.Board) error
+	DeleteBoard(boardID string) error
 	GetBoardSlot(boardID, slotKey string) (*model.BoardSlot, error)
 	ListBoardSlots(boardID string) ([]model.BoardSlot, error)
 	UpsertBoardSlot(slot *model.BoardSlot) error

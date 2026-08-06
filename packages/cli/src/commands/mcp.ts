@@ -692,7 +692,10 @@ function createServer(agentId: string = ""): Server {
           };
         }
         try {
-          const hubId = getActiveHubID() || PERSONAL_HUB_ALIAS;
+          // Resolve to a real hub UUID: the REST path is
+          // /v1/hubs/{id}/… and the server's membership check can't
+          // read an alias like "personal".
+          const hubId = await resolveHubReference(undefined);
           const { slot } = await getClient().boards.requestDecision(hubId, {
             question: typedArgs.question,
             options: typedArgs.options ?? [],

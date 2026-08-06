@@ -51,26 +51,6 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function TraceBody({ slot }: BoardKindBodyProps) {
-  const { t } = useLocale();
-  const interpolate = useInterpolate();
-  const agents = asArray<TraceAgent>(slot.payload?.agents);
-  const windowHours = asNumber(slot.payload?.window_hours) || 24;
-  return (
-    <>
-      <BoardKindLabel>
-        {interpolate(t.board.kindTrace, { n: String(windowHours) })}
-      </BoardKindLabel>
-      {agents.map((agent) => (
-        <TraceAgentSection
-          key={asString(agent.slug) || "manual"}
-          agent={agent}
-        />
-      ))}
-    </>
-  );
-}
-
 /**
  * One agent's line, expandable to the actual memories behind the count
  * — the number is a claim, the titles are the receipts. Each title
@@ -153,61 +133,6 @@ interface PulseTopic {
   contributors?: number;
 }
 
-function PulseBody({ slot }: BoardKindBodyProps) {
-  const { t } = useLocale();
-  const router = useRouter();
-  const { activeHub } = useActiveHub();
-  const interpolate = useInterpolate();
-  const topics = asArray<PulseTopic>(slot.payload?.topics);
-  const windowDays = asNumber(slot.payload?.window_days) || 7;
-  return (
-    <>
-      <BoardKindLabel>
-        {interpolate(t.board.kindPulse, { n: String(windowDays) })}
-      </BoardKindLabel>
-      {topics.map((topic) => {
-        const contributors = asNumber(topic.contributors);
-        const topicId = asString(topic.topic_id);
-        const row = (
-          <BoardAgentRow
-            dotColor="var(--signature)"
-            title={asString(topic.name)}
-            meta={pluralize(
-              t.board.pulseRecentOne,
-              t.board.pulseRecent,
-              asNumber(topic.recent_count),
-            )}
-            who={
-              contributors > 1
-                ? interpolate(t.board.pulseContributors, {
-                    n: String(contributors),
-                  })
-                : undefined
-            }
-          />
-        );
-        if (!topicId) {
-          return <div key={asString(topic.name)}>{row}</div>;
-        }
-        // Row → the topic page: the pulse card is a table of contents,
-        // not a dead end.
-        return (
-          <button
-            key={topicId}
-            type="button"
-            className="block w-full text-left"
-            onClick={() =>
-              router.push(buildTopicPath(activeHub?.hub.slug ?? null, topicId))
-            }
-          >
-            {row}
-          </button>
-        );
-      })}
-    </>
-  );
-}
-
 function CapsuleBody({ slot }: BoardKindBodyProps) {
   const { t, locale } = useLocale();
   const router = useRouter();
@@ -247,24 +172,6 @@ function CapsuleBody({ slot }: BoardKindBodyProps) {
   );
 }
 
-function WeekBody({ slot }: BoardKindBodyProps) {
-  const { t } = useLocale();
-  const interpolate = useInterpolate();
-  const thisWeek = asNumber(slot.payload?.this_week);
-  const lastWeek = asNumber(slot.payload?.last_week);
-  return (
-    <>
-      <BoardKindLabel>{t.board.kindWeek}</BoardKindLabel>
-      <p className="m-0 text-[14px] text-fg-1">
-        {pluralize(t.board.weekLineOne, t.board.weekLine, thisWeek)}
-      </p>
-      <p className="m-0 mt-0.5 text-[12.5px] text-fg-3">
-        {interpolate(t.board.weekCompare, { n: String(lastWeek) })}
-      </p>
-    </>
-  );
-}
-
 function stripFromPayload(
   label: string,
   detail: string | undefined,
@@ -272,31 +179,74 @@ function stripFromPayload(
   return { label, detail };
 }
 
-registerBoardKind("trace", TraceBody, {
-  actions: { ack: (t) => t.board.traceAck },
-  purpose: (t) => t.board.tracePurpose,
+/**
+ * ActivityBody — the folded counts, expanded. Agent traces, topic
+ * movement and the week diff were three separate cards; three cards
+ * of counters pushed the cards that actually say something off the
+ * screen. Now they're one line that opens into the breakdown.
+ */
+function ActivityBody({ slot }: BoardKindBodyProps) {
+  const { t } = useLocale();
+  const interpolate = useInterpolate();
+  const agents = asArray<TraceAgent>(slot.payload?.agents);
+  const topics = asArray<PulseTopic>(slot.payload?.topics);
+  const thisWeek = asNumber(slot.payload?.this_week);
+  const lastWeek = asNumber(slot.payload?.last_week);
+  const windowHours = asNumber(slot.payload?.window_hours) || 24;
+
+  return (
+    <>
+      <BoardKindLabel>
+        {interpolate(t.board.kindActivity, { n: String(windowHours) })}
+      </BoardKindLabel>
+      {agents.map((agent) => (
+        <TraceAgentSection
+          key={asString(agent.slug) || "manual"}
+          agent={agent}
+        />
+      ))}
+      {topics.length > 0 ? (
+        <p className="m-0 mt-2 text-[12.5px] text-fg-3">
+          {t.board.activityTopics}{" "}
+          {topics
+            .map(
+              (topic) =>
+                `${asString(topic.name)} (${asNumber(topic.recent_count)})`,
+            )
+            .join(" · ")}
+        </p>
+      ) : null}
+      <p className="m-0 mt-1 text-[12.5px] text-fg-4">
+        {pluralize(t.board.weekLineOne, t.board.weekLine, thisWeek)} ·{" "}
+        {interpolate(t.board.weekCompare, { n: String(lastWeek) })}
+      </p>
+    </>
+  );
+}
+
+// The activity strip is the board's quietest row: never the hero, it
+// collapses to one line and only opens when asked.
+registerBoardKind("activity", ActivityBody, {
+  purpose: (t) => t.board.activityPurpose,
   strip: (slot, t) =>
     stripFromPayload(
-      t.board.stripTrace,
+      t.board.stripActivity,
       (() => {
-        const agents = asArray<TraceAgent>(slot.payload?.agents);
-        const total = agents.reduce((sum, a) => sum + asNumber(a.count), 0);
-        return total > 0
-          ? pluralize(t.board.traceCountOne, t.board.traceCount, total)
-          : undefined;
-      })(),
-    ),
-});
-registerBoardKind("pulse", PulseBody, {
-  purpose: (t) => t.board.pulsePurpose,
-  strip: (slot, t) =>
-    stripFromPayload(
-      t.board.stripPulse,
-      (() => {
-        const count = asArray<PulseTopic>(slot.payload?.topics).length;
-        return count > 0
-          ? interpolate(t.board.stripPulseDetail, { n: count })
-          : undefined;
+        const total = asArray<TraceAgent>(slot.payload?.agents).reduce(
+          (sum, a) => sum + asNumber(a.count),
+          0,
+        );
+        const week = asNumber(slot.payload?.this_week);
+        const parts: string[] = [];
+        if (total > 0) {
+          parts.push(
+            pluralize(t.board.traceCountOne, t.board.traceCount, total),
+          );
+        }
+        if (week > 0) {
+          parts.push(interpolate(t.board.stripActivityWeek, { n: week }));
+        }
+        return parts.length > 0 ? parts.join(" · ") : undefined;
       })(),
     ),
 });
@@ -304,16 +254,4 @@ registerBoardKind("capsule", CapsuleBody, {
   actions: { ack: (t) => t.board.capsuleAck },
   purpose: (t) => t.board.capsulePurpose,
   strip: (_slot, t) => ({ label: t.board.kindCapsule }),
-});
-registerBoardKind("week", WeekBody, {
-  purpose: (t) => t.board.weekPurpose,
-  strip: (slot, t) =>
-    stripFromPayload(
-      t.board.kindWeek,
-      pluralize(
-        t.board.weekLineOne,
-        t.board.weekLine,
-        asNumber(slot.payload?.this_week),
-      ),
-    ),
 });

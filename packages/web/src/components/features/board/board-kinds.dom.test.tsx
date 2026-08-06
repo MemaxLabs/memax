@@ -21,8 +21,8 @@ function slot(overrides: Partial<BoardSlot>): BoardSlot {
   return {
     id: "s1",
     board_id: "b1",
-    slot_key: "a-trace",
-    kind: "trace",
+    slot_key: "z-activity",
+    kind: "activity",
     title: "fallback title (must not render)",
     state: "fresh",
     created_at: "2026-08-05T00:00:00Z",
@@ -34,13 +34,17 @@ function slot(overrides: Partial<BoardSlot>): BoardSlot {
 describe("lane A board kind renderers", () => {
   afterEach(cleanup);
 
-  it("registers all four lane A kinds", () => {
-    for (const kind of ["trace", "pulse", "capsule", "week"]) {
-      expect(hasBoardKindRenderer(kind)).toBe(true);
+  it("registers the two lane A kinds and no longer the retired ones", () => {
+    // Counts folded into one `activity` strip; only the capsule — which
+    // surfaces real content rather than a number — still earns a card.
+    expect(hasBoardKindRenderer("activity")).toBe(true);
+    expect(hasBoardKindRenderer("capsule")).toBe(true);
+    for (const retired of ["trace", "pulse", "week"]) {
+      expect(hasBoardKindRenderer(retired)).toBe(false);
     }
   });
 
-  it("trace groups by agent with identity display names", () => {
+  it("activity folds agents, topics and the week diff into one body", () => {
     render(
       <div>
         {renderBoardSlotBody(
@@ -55,60 +59,43 @@ describe("lane A board kind renderers", () => {
                 },
                 { slug: "", count: 1, latest_title: "A manual note" },
               ],
+              topics: [{ topic_id: "t1", name: "部署", recent_count: 5 }],
+              this_week: 1,
+              last_week: 4,
             },
           }),
         )}
       </div>,
     );
+    // Agent attribution resolves through the identity tokens.
     expect(screen.getByText("Claude Code")).toBeTruthy();
     expect(screen.getByText("3 memories")).toBeTruthy();
     expect(screen.getByText("Latest: “Chose River over Redis”")).toBeTruthy();
-    // Unattributed rows get the manual-capture label, and the slot's
-    // fallback title never leaks into a dedicated renderer.
     expect(screen.getByText("Captured by hand")).toBeTruthy();
+    // Topic movement and the week diff live in the same body now.
+    expect(screen.getByText(/部署 \(5\)/)).toBeTruthy();
+    expect(screen.getByText(/1 memory this week/)).toBeTruthy();
+    expect(screen.getByText(/Last week: 4/)).toBeTruthy();
+    // The slot's fallback title never leaks into a dedicated renderer.
     expect(screen.queryByText("fallback title (must not render)")).toBeNull();
   });
 
-  it("week renders singular and comparison lines", () => {
+  it("retired kinds fall through to the literal-text fallback", () => {
+    // Boards written by the previous version keep rendering rather
+    // than disappearing, until the producer replaces their slots.
     render(
       <div>
         {renderBoardSlotBody(
           slot({
             slot_key: "d-week",
             kind: "week",
-            payload: { this_week: 1, last_week: 4 },
+            title: "This week: 12 memories",
+            payload: { description: "legacy card" },
           }),
         )}
       </div>,
     );
-    expect(screen.getByText("1 memory this week")).toBeTruthy();
-    expect(screen.getByText("Last week: 4")).toBeTruthy();
-  });
-
-  it("pulse lists topics with recent counts", () => {
-    render(
-      <div>
-        {renderBoardSlotBody(
-          slot({
-            slot_key: "b-pulse",
-            kind: "pulse",
-            payload: {
-              window_days: 7,
-              topics: [
-                {
-                  topic_id: "t1",
-                  name: "部署",
-                  recent_count: 5,
-                  contributors: 2,
-                },
-              ],
-            },
-          }),
-        )}
-      </div>,
-    );
-    expect(screen.getByText("部署")).toBeTruthy();
-    expect(screen.getByText("5 new memories")).toBeTruthy();
-    expect(screen.getByText("2 people")).toBeTruthy();
+    expect(screen.getByText("This week: 12 memories")).toBeTruthy();
+    expect(screen.getByText("legacy card")).toBeTruthy();
   });
 });

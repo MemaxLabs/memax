@@ -25,10 +25,18 @@ const (
 
 	// Slot keys carry an ordering prefix: ListBoardSlots sorts by
 	// slot_key, so these literals fix the board layout top-to-bottom.
-	slotKeyTrace   = "a-trace"
-	slotKeyPulse   = "b-pulse"
-	slotKeyCapsule = "c-capsule"
-	slotKeyWeek    = "d-week"
+	// Counts collapse into ONE strip ("z-" sorts it to the bottom —
+	// it's the least interesting thing on the board); the capsule
+	// stays a real card because it surfaces actual content, not a
+	// number.
+	slotKeyCapsule  = "c-capsule"
+	slotKeyActivity = "z-activity"
+
+	// Retired keys from the four-card era; the producer deletes them
+	// so upgraded boards don't keep stale cards forever.
+	slotKeyTrace = "a-trace"
+	slotKeyPulse = "b-pulse"
+	slotKeyWeek  = "d-week"
 )
 
 // Producer computes Lane A cards for one hub's system board.
@@ -60,58 +68,62 @@ func (p *Producer) RefreshHubBoard(ctx context.Context, hubID string) error {
 	}
 	now := p.now().UTC()
 
-	if err := p.refreshTrace(board.ID, hubID, now); err != nil {
-		return err
+	// One-time cleanup of the retired per-metric cards.
+	for _, stale := range []string{slotKeyTrace, slotKeyPulse, slotKeyWeek} {
+		if err := p.store.DeleteBoardSlot(board.ID, stale); err != nil {
+			return fmt.Errorf("boards: drop retired slot %s: %w", stale, err)
+		}
 	}
-	if err := p.refreshPulse(board.ID, hubID, now); err != nil {
-		return err
-	}
+
 	if err := p.refreshCapsule(board.ID, hubID, now); err != nil {
 		return err
 	}
-	return p.refreshWeek(board.ID, hubID, now)
+	return p.refreshActivity(board.ID, hubID, now)
 }
 
-func (p *Producer) refreshTrace(boardID, hubID string, now time.Time) error {
-	activity, err := p.store.ListRecentAgentActivityByHub(hubID, now.Add(-traceWindowHours*time.Hour))
+// refreshActivity folds agent traces, topic movement and the week
+// diff into a single line. Each was its own card once; three cards of
+// counters pushed the cards that actually say something off the
+// screen, which is the opposite of what the board is for.
+func (p *Producer) refreshActivity(boardID, hubID string, now time.Time) error {
+	agents, err := p.store.ListRecentAgentActivityByHub(hubID, now.Add(-traceWindowHours*time.Hour))
 	if err != nil {
-		return fmt.Errorf("boards: trace query: %w", err)
+		return fmt.Errorf("boards: activity agents: %w", err)
 	}
-	if len(activity) == 0 {
-		return p.store.DeleteBoardSlot(boardID, slotKeyTrace)
-	}
-	total := 0
-	for _, a := range activity {
-		total += a.Count
-	}
-	return p.writeSlotIfChanged(&model.BoardSlot{
-		BoardID: boardID,
-		SlotKey: slotKeyTrace,
-		Kind:    model.BoardKindTrace,
-		Title:   fmt.Sprintf("Agent activity: %d memories in the last %dh", total, traceWindowHours),
-		Payload: mustJSON(model.BoardTracePayload{
-			WindowHours: traceWindowHours,
-			Agents:      activity,
-		}),
-	})
-}
-
-func (p *Producer) refreshPulse(boardID, hubID string, now time.Time) error {
 	topics, err := p.store.ListTopicActivityByHub(hubID, now.Add(-pulseWindowDays*24*time.Hour), pulseTopicLimit)
 	if err != nil {
-		return fmt.Errorf("boards: pulse query: %w", err)
+		return fmt.Errorf("boards: activity topics: %w", err)
 	}
-	if len(topics) == 0 {
-		return p.store.DeleteBoardSlot(boardID, slotKeyPulse)
+	thisWeek, err := p.store.CountMemoriesInHubRange(hubID, now.Add(-weekWindow), now)
+	if err != nil {
+		return fmt.Errorf("boards: week count: %w", err)
 	}
+	lastWeek, err := p.store.CountMemoriesInHubRange(hubID, now.Add(-2*weekWindow), now.Add(-weekWindow))
+	if err != nil {
+		return fmt.Errorf("boards: last-week count: %w", err)
+	}
+
+	recent := 0
+	for _, a := range agents {
+		recent += a.Count
+	}
+	if recent == 0 && len(topics) == 0 && thisWeek == 0 && lastWeek == 0 {
+		return p.store.DeleteBoardSlot(boardID, slotKeyActivity)
+	}
+
 	return p.writeSlotIfChanged(&model.BoardSlot{
 		BoardID: boardID,
-		SlotKey: slotKeyPulse,
-		Kind:    model.BoardKindPulse,
-		Title:   fmt.Sprintf("Topic pulse: %d active topics this week", len(topics)),
-		Payload: mustJSON(model.BoardPulsePayload{
-			WindowDays: pulseWindowDays,
-			Topics:     topics,
+		SlotKey: slotKeyActivity,
+		Kind:    model.BoardKindActivity,
+		Title: fmt.Sprintf("%d memories in the last %dh · %d this week",
+			recent, traceWindowHours, thisWeek),
+		Payload: mustJSON(model.BoardActivityPayload{
+			WindowHours: traceWindowHours,
+			WindowDays:  pulseWindowDays,
+			Agents:      agents,
+			Topics:      topics,
+			ThisWeek:    thisWeek,
+			LastWeek:    lastWeek,
 		}),
 	})
 }
@@ -141,33 +153,6 @@ func (p *Producer) refreshCapsule(boardID, hubID string, now time.Time) error {
 			MemoryID: mem.ID,
 			When:     mem.CreatedAt.UTC().Format(time.RFC3339),
 			Quote:    quote,
-		}),
-	})
-}
-
-func (p *Producer) refreshWeek(boardID, hubID string, now time.Time) error {
-	// Two disjoint ranges, no subtraction: deriving last week as
-	// (14d count − 7d count) could go negative when a memory is
-	// archived between the two scans.
-	thisWeek, err := p.store.CountMemoriesInHubRange(hubID, now.Add(-weekWindow), now)
-	if err != nil {
-		return fmt.Errorf("boards: week count: %w", err)
-	}
-	lastWeek, err := p.store.CountMemoriesInHubRange(hubID, now.Add(-2*weekWindow), now.Add(-weekWindow))
-	if err != nil {
-		return fmt.Errorf("boards: last-week count: %w", err)
-	}
-	if thisWeek == 0 && lastWeek == 0 {
-		return p.store.DeleteBoardSlot(boardID, slotKeyWeek)
-	}
-	return p.writeSlotIfChanged(&model.BoardSlot{
-		BoardID: boardID,
-		SlotKey: slotKeyWeek,
-		Kind:    model.BoardKindWeek,
-		Title:   fmt.Sprintf("This week: %d memories (last week %d)", thisWeek, lastWeek),
-		Payload: mustJSON(model.BoardWeekPayload{
-			ThisWeek: thisWeek,
-			LastWeek: lastWeek,
 		}),
 	})
 }

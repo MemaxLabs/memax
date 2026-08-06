@@ -144,6 +144,8 @@ var HubSettingsAllowedKeys = map[string]bool{
 	// rolling out broadly. Once a paid-tier rollout is calibrated
 	// per plan 24, the default flips to plan-derived.
 	"dreams_use_agent_runtime": true,
+	// Per-hub opt-OUT for board synthesis (default on globally).
+	"dreams_board_synthesis_enabled": true,
 }
 
 // IsHubSettingsKey reports whether key may appear in a PATCH

@@ -101,6 +101,14 @@ type ChatSession struct {
 	// "" inherits the chat_default_persona_id setting, "none" explicitly
 	// disables the persona, anything else is a personas.id owned by the user.
 	PersonaID     string     `json:"persona_id,omitempty"`
+
+	// PinnedMemoryIDs seeds the session with specific memories the
+	// agent must see (plan 25 P3): a chat opened from a board card
+	// carries that card's citations, so the agent starts already
+	// knowing what the user is looking at instead of having to
+	// rediscover it through recall. Rendered into the system prompt
+	// by the chat worker, capped at creation.
+	PinnedMemoryIDs []string `json:"pinned_memory_ids,omitempty"`
 	LockedAt      *time.Time `json:"locked_at,omitempty"`
 	MessageCount  int        `json:"message_count"`
 	PinnedAt      *time.Time `json:"pinned_at,omitempty"`

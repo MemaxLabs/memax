@@ -886,6 +886,17 @@ func DefaultSettings() map[string]any {
 		// the single-call path. Per-hub opt-in for staged rollout
 		// per plan 24's calibration gate.
 		"dreams_use_agent_runtime": false,
+		// Lane B board synthesis (plan 25 P2). Deliberately a SEPARATE
+		// gate from dreams_use_agent_runtime, and default ON: the two
+		// are different features that only share a mechanism. The
+		// runtime flag governs plan-24's experimental rerouting of the
+		// contradict/organize phases (a correctness-sensitive change to
+		// existing behavior, still staged); board synthesis only ADDS
+		// cards to a surface that is otherwise a wall of counters, and
+		// is the whole point of the board. It still requires a
+		// configured AgentRuntime, so a deployment without an API key
+		// degrades to Lane A instead of failing.
+		"dreams_board_synthesis_enabled": true,
 		"hub_header_aurora_mode":   "signature",
 		"dev_flags": map[string]any{
 			"mockDreams":      false,

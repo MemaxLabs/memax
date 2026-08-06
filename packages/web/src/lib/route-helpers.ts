@@ -5,9 +5,9 @@
  * Two route families coexist during the migration:
  *
  *   v1 (legacy):       /memories                  /memories/topics/:id
- *                      /memories/:id              /inbox
+ *                      /memories/:id              /pulse
  *   v2 (shell-v2):     /h/:slug/memories          /h/:slug/topics/:id
- *                      /h/:slug/memories/:id      /inbox  (unchanged)
+ *                      /h/:slug/memories/:id      /pulse  (shared)
  *
  * Predicates (`isMemoriesRoute`, `isTopicRoute`, ...) match BOTH shapes
  * so consumers don't have to branch on shell version. Path builders take
@@ -26,7 +26,9 @@
 // trailing segment so consumers don't accidentally match "/memoriesfoo".
 const V1_MEMORIES_PREFIX_RE = /^\/memories(\/|$)/;
 const V2_MEMORIES_PREFIX_RE = /^\/h\/[^/]+\/memories(\/|$)/;
-const V1_INBOX_PREFIX_RE = /^\/inbox(\/|$)/;
+// The pulse surface (plan 25 P4). Replaces the retired `/inbox` route,
+// which now only exists as a redirect so old deep links don't 404.
+const PULSE_PREFIX_RE = /^\/pulse(\/|$)/;
 
 // Topic detail. v1: /memories/topics/:id  v2: /h/:slug/topics/:id
 const V1_TOPIC_RE = /^\/memories\/topics\/([^/]+)\/?$/;
@@ -112,8 +114,13 @@ export function isChatSessionRoute(pathname: string): boolean {
   return pathname.startsWith("/brain/sessions/");
 }
 
-export function isInboxRoute(pathname: string): boolean {
-  return V1_INBOX_PREFIX_RE.test(pathname);
+/**
+ * The pulse board surface. `/inbox` is NOT matched here on purpose —
+ * it redirects to `/pulse` server-side, so no chrome ever renders
+ * against it.
+ */
+export function isPulseRoute(pathname: string): boolean {
+  return PULSE_PREFIX_RE.test(pathname);
 }
 
 export function isTopicRoute(pathname: string): boolean {
@@ -131,7 +138,7 @@ export function isMemoryDetailRoute(pathname: string): boolean {
 /**
  * Bar-context "memory surface" predicate. The bar renders its
  * memory-surface chrome (drop targets, focus-to-engage docking) on
- * memories routes AND on /inbox (per route-aware bar setup at
+ * memories routes AND on /pulse (per route-aware bar setup at
  * bar-context.tsx:368). Topic and memory-detail nested routes count.
  *
  * v1 topic routes (`/memories/topics/:id`) match isMemoriesRoute via
@@ -144,7 +151,7 @@ export function isBarMemorySurfaceRoute(pathname: string): boolean {
   return (
     isMemoriesRoute(pathname) ||
     isTopicRoute(pathname) ||
-    isInboxRoute(pathname)
+    isPulseRoute(pathname)
   );
 }
 
@@ -240,8 +247,8 @@ export function getShellTabForPath(pathname: string): ShellTabId | null {
   // /agents and any descendant
   if (pathname === "/agents" || pathname.startsWith("/agents/"))
     return "agents";
-  // /inbox and any descendant
-  if (isInboxRoute(pathname)) return "inbox";
+  // /pulse and any descendant
+  if (isPulseRoute(pathname)) return "pulse";
   // memories overview, memory detail, topic detail (v1 + v2)
   if (isMemoriesRoute(pathname) || isTopicRoute(pathname)) return "memories";
   return null;

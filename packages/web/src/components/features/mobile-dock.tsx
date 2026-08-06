@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Inbox, Network } from "lucide-react";
+import { Network, Sparkles } from "lucide-react";
 import { useLocale } from "@/i18n";
 import { useAuth, useActiveHub } from "@/lib/auth";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
@@ -27,13 +27,13 @@ import { MemaxStar } from "./memax-star";
  * Adding a tab: add entry to TABS + create route + add i18n key.
  */
 
-type DockTab = "brain" | "topics" | "inbox";
+type DockTab = "brain" | "topics" | "pulse";
 
 interface DockTabSpec {
   id: DockTab;
   icon?: React.ElementType;
   star?: boolean;
-  labelKey: "brain" | "topics" | "inbox";
+  labelKey: "brain" | "topics" | "pulse";
   /** Resolved navigation target for this tab. */
   resolveRoute: (memoriesPath: string) => string;
   signature?: boolean;
@@ -59,10 +59,12 @@ const TABS: DockTabSpec[] = [
     resolveRoute: (memoriesPath) => memoriesPath,
   },
   {
-    id: "inbox",
-    icon: Inbox,
-    labelKey: "inbox",
-    resolveRoute: () => "/inbox",
+    id: "pulse",
+    icon: Sparkles,
+    labelKey: "pulse",
+    // The pulse board full-page surface (plan 25 P4). Replaced the
+    // retired /inbox tab — /inbox now redirects here.
+    resolveRoute: () => "/pulse",
     signature: true,
   },
 ];
@@ -80,8 +82,8 @@ function shellTabToDockTab(
       return "brain";
     case "memories":
       return "topics";
-    case "inbox":
-      return "inbox";
+    case "pulse":
+      return "pulse";
     case "agents":
     case null:
       return null;

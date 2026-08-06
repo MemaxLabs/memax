@@ -179,6 +179,11 @@ type CreateChatSessionRequest struct {
 	// PersonaID: "" inherits the chat_default_persona_id setting,
 	// "none" explicitly disables the persona, else a personas.id.
 	PersonaID string `json:"persona_id,omitempty"`
+	// PinnedMemoryIDs seeds the session with memories the agent must
+	// already know (plan 25 P3) — a chat opened from a board card
+	// carries that card's citations. Validated against the caller's
+	// access at create time; capped at chatMaxPinnedMemories.
+	PinnedMemoryIDs []string `json:"pinned_memory_ids,omitempty"`
 }
 
 // PatchChatSessionRequest is the wire shape of PATCH /v1/chat/sessions/{id}.
@@ -202,6 +207,45 @@ type PatchChatSessionRequest struct {
 	// patchable mid-session — it only affects FUTURE turns' system
 	// prompts (each turn snapshots the prompt at send time).
 	PersonaID *string `json:"persona_id,omitempty"`
+}
+
+// chatMaxPinnedMemories bounds the seeded context list. Board cards
+// cite a handful; anything larger is a caller bug, not a use case.
+const chatMaxPinnedMemories = 12
+
+// validatePinnedMemoryIDs keeps only ids the caller can actually read,
+// preserving order and dropping duplicates. Rejects over-long lists
+// outright rather than silently truncating — a caller sending 50 ids
+// has a bug worth surfacing.
+func (h *ChatHandler) validatePinnedMemoryIDs(w http.ResponseWriter, r *http.Request, ownerID string, ids []string) ([]string, bool) {
+	if len(ids) == 0 {
+		return nil, true
+	}
+	if len(ids) > chatMaxPinnedMemories {
+		writeError(w, http.StatusBadRequest, "too_many_pinned_memories",
+			fmt.Sprintf("pinned_memory_ids exceeds %d entries", chatMaxPinnedMemories))
+		return nil, false
+	}
+	accessible, err := h.store.GetAccessibleMemories(ids, ownerID, GetAccessibleHubIDs(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+		return nil, false
+	}
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		if _, ok := accessible[id]; !ok {
+			writeError(w, http.StatusForbidden, "memory_not_accessible",
+				"pinned_memory_ids contains a memory you cannot access")
+			return nil, false
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out, true
 }
 
 // validateChatPersonaID checks a session persona binding: "" (inherit
@@ -347,20 +391,30 @@ func (h *ChatHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Pinned memories are access-checked HERE, at create time: the
+	// worker re-checks on every turn, but validating up front means a
+	// caller can't seed a session with ids it can't read and discover
+	// the failure later as silently-missing context.
+	pinnedMemoryIDs, ok := h.validatePinnedMemoryIDs(w, r, ownerID, req.PinnedMemoryIDs)
+	if !ok {
+		return
+	}
+
 	sess := &model.ChatSession{
-		ID:             uuid.NewString(),
-		OwnerID:        ownerID,
-		ScopeType:      scopeType,
-		ScopeHubIDs:    scopeHubIDs,
-		WriteHubID:     writeHubID,
-		Title:          title,
-		Model:          modelID,
-		Tools:          tools,
-		ToolsetVersion: 1,
-		Status:         model.ChatSessionStatusIdle,
-		PersonaID:      personaID,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		ID:              uuid.NewString(),
+		OwnerID:         ownerID,
+		ScopeType:       scopeType,
+		ScopeHubIDs:     scopeHubIDs,
+		WriteHubID:      writeHubID,
+		Title:           title,
+		Model:           modelID,
+		Tools:           tools,
+		ToolsetVersion:  1,
+		Status:          model.ChatSessionStatusIdle,
+		PersonaID:       personaID,
+		PinnedMemoryIDs: pinnedMemoryIDs,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 	if err := h.store.CreateChatSession(r.Context(), sess); err != nil {
 		writeError(w, http.StatusInternalServerError, "store_error", err.Error())

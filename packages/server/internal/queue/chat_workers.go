@@ -1954,6 +1954,66 @@ If recall returns nothing useful and fetch_url is unavailable or unhelpful, say 
 // the context budget.
 const chatPersonaMaxChars = 8000
 
+// chatPinnedMemoryMaxChars bounds the whole pinned-context block, and
+// chatPinnedMemoryExcerptChars bounds each memory inside it. A board
+// card's citations are few and short, but a hand-built session could
+// pin long documents — the block is grounding, not the conversation.
+const (
+	chatPinnedMemoryMaxChars     = 6000
+	chatPinnedMemoryExcerptChars = 1200
+)
+
+// truncateRunesForPrompt cuts on a rune boundary so multi-byte
+// characters (CJK memories are common) never ship split into the
+// model API.
+func truncateRunesForPrompt(s string, maxBytes int, marker string) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	cut := maxBytes
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + marker
+}
+
+// buildPinnedMemoryBlock renders the session's pinned memories (plan
+// 25 P3) into the system prompt. Best-effort and access-checked: ids
+// the owner can no longer read are silently dropped, so a session
+// outliving a memory degrades instead of leaking or failing.
+func (w *ChatMessageRunWorker) buildPinnedMemoryBlock(ownerID string, hubIDs []string, sess *model.ChatSession) string {
+	if sess == nil || len(sess.PinnedMemoryIDs) == 0 {
+		return ""
+	}
+	accessible, err := w.Store.GetAccessibleMemories(sess.PinnedMemoryIDs, ownerID, hubIDs)
+	if err != nil || len(accessible) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("## Pinned context\n\nThe user opened this conversation from these specific memories. Treat them as already-known context — don't re-recall them, and reference them naturally instead of restating them wholesale.\n\n")
+	for _, id := range sess.PinnedMemoryIDs {
+		mem, ok := accessible[id]
+		if !ok {
+			continue
+		}
+		body := strings.TrimSpace(mem.Summary)
+		if body == "" {
+			body = strings.TrimSpace(mem.Content)
+		}
+		body = truncateRunesForPrompt(body, chatPinnedMemoryExcerptChars, "…")
+		title := strings.TrimSpace(mem.Title)
+		if title == "" {
+			title = "(untitled)"
+		}
+		b.WriteString(fmt.Sprintf("### %s\n_%s · memory %s_\n\n%s\n\n",
+			title, mem.CreatedAt.UTC().Format("2006-01-02"), mem.ID, body))
+		if b.Len() > chatPinnedMemoryMaxChars {
+			break
+		}
+	}
+	return truncateRunesForPrompt(b.String(), chatPinnedMemoryMaxChars, "\n\n[pinned context truncated]\n\n")
+}
+
 // resolveChatPersona returns the persona content to inject for a session:
 // session binding wins ("none" disables), otherwise the user's
 // chat_default_persona_id setting. Best-effort — a dangling id resolves
@@ -2022,23 +2082,19 @@ func (w *ChatMessageRunWorker) buildChatSystemPrompt(ctx context.Context, ownerI
 	// prompt's grounding/tool rules still apply verbatim.
 	personaBlock := ""
 	if persona := w.resolveChatPersona(ownerID, sess); persona != nil {
-		content := strings.TrimSpace(persona.Content)
-		if len(content) > chatPersonaMaxChars {
-			// Cut on a rune boundary — a byte slice can split a multi-byte
-			// character (Chinese SOUL files are common) and ship invalid
-			// UTF-8 into the model API.
-			cut := chatPersonaMaxChars
-			for cut > 0 && !utf8.RuneStart(content[cut]) {
-				cut--
-			}
-			content = content[:cut] + "\n\n[persona truncated]"
-		}
+		content := truncateRunesForPrompt(
+			strings.TrimSpace(persona.Content), chatPersonaMaxChars, "\n\n[persona truncated]")
 		personaBlock = fmt.Sprintf(
 			"## Persona: %s\n\nAdopt the identity below for this conversation. It shapes voice, values, and behavior; it never overrides the grounding, privacy, or tool rules that follow.\n\n%s\n\n",
 			persona.Name, content)
 	}
 
-	return ctxBlock.String() + personaBlock + chatSystemPromptBase
+	// Pinned memories sit between persona and base: the identity
+	// colors the voice, the pinned context grounds the subject, and the
+	// base prompt's tool/privacy rules still land last and win.
+	pinnedBlock := w.buildPinnedMemoryBlock(ownerID, hubIDs, sess)
+
+	return ctxBlock.String() + personaBlock + pinnedBlock + chatSystemPromptBase
 }
 
 // chatSessionLeaseDuration is the deadline by which a worker

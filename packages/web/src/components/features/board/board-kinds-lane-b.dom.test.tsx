@@ -9,6 +9,7 @@ import type { BoardSlot } from "memax-sdk";
 // hoisted above this import by vitest, so the renderers see the mocks.
 import "./board-kinds-lane-b";
 import {
+  boardKindOptions,
   hasBoardKindRenderer,
   renderBoardSlotBody,
 } from "./board-kind-registry";
@@ -55,9 +56,10 @@ describe("lane B board kind renderers", () => {
     resolveMutate.mockClear();
   });
 
-  it("registers all seven lane B kinds", () => {
+  it("registers all eight lane B kinds", () => {
     for (const kind of [
       "dreamlog",
+      "nextup",
       "echo",
       "thread",
       "openq",
@@ -158,6 +160,67 @@ describe("lane B board kind renderers", () => {
     const button = screen.getByText("Merge now");
     fireEvent.click(button);
     expect(resolveMutate).not.toHaveBeenCalled();
+  });
+
+  it("nextup renders numbered items with why lines and quoted receipts", () => {
+    render(
+      <div>
+        {renderBoardSlotBody(
+          slot({
+            slot_key: "0n-next",
+            kind: "nextup",
+            title: "Pick a backup strategy",
+            payload: {
+              items: [
+                {
+                  title: "Pick a backup strategy",
+                  why: "You asked yourself and never answered.",
+                  quotes: [
+                    {
+                      memory_id: "m1",
+                      when: "2026-07-20T00:00:00Z",
+                      excerpt: "Where do backups actually live?",
+                    },
+                  ],
+                },
+                {
+                  title: "Finish the migration script",
+                  why: "You said tomorrow; that was three weeks ago.",
+                  quotes: [
+                    {
+                      memory_id: "m2",
+                      excerpt: "Writing the migration script tomorrow.",
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+        )}
+      </div>,
+    );
+    // Numbered list of imperative titles.
+    expect(screen.getByText("1")).toBeTruthy();
+    expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.getByText("Pick a backup strategy")).toBeTruthy();
+    expect(screen.getByText("Finish the migration script")).toBeTruthy();
+    // Why lines.
+    expect(
+      screen.getByText("You asked yourself and never answered."),
+    ).toBeTruthy();
+    // Per-item quotes render as clickable memory quotes.
+    expect(screen.getByText("“Where do backups actually live?”")).toBeTruthy();
+    expect(
+      screen.getByText("“Writing the migration script tomorrow.”"),
+    ).toBeTruthy();
+  });
+
+  it("nextup is registered with feedback verbs and a relabeled ack", () => {
+    const options = boardKindOptions("nextup");
+    expect(options?.feedback).toBe(true);
+    expect(
+      options?.actions?.ack?.({ board: { nextupAck: "Done · got it" } }),
+    ).toBe("Done · got it");
   });
 
   it("wow kinds render the body plus quoted receipts", () => {

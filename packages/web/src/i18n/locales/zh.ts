@@ -807,6 +807,7 @@ export const zh: Translations = {
       "你不在的时候，这个 hub 发生了什么——agent 的动作、主题的流向、旧记忆的回声。卡片每晚刷新；处理过的会留作回执，直到有新内容顶替。",
     purposeAria: "这是什么？",
     collapse: "收起",
+    loadFailed: "板子没加载出来，刷新一下再试。",
     continueInMemax: "在 memax 继续",
     copyForAgent: "复制给 agent",
     copied: "已复制",

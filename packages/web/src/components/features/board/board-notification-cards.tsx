@@ -144,6 +144,17 @@ function isOnboardingPinned(notification: Notification): boolean {
 export function useBoardNotificationCards(
   hubId: string | undefined,
   isPersonalHub: boolean,
+  /**
+   * True on the dedicated /pulse page — the single destination the
+   * badge and dock point at. User-addressed rows (invites, ownership
+   * transfers, onboarding) belong to the PERSON, not a hub, so they
+   * must always render there: gating them on "is the personal hub
+   * active" made an invite unreachable whenever a team hub happened
+   * to be selected, while the badge stayed lit. The embedded memories
+   * section keeps the personal-hub-only rule so a team hub's page
+   * doesn't surface your personal decisions.
+   */
+  isUserSurface = false,
 ): BoardNotificationBuckets {
   const { data } = useNotifications({ status: "pending" });
   const { user } = useAuth();
@@ -178,7 +189,7 @@ export function useBoardNotificationCards(
       if (isOnboardingPinned(notification)) {
         // Onboarding rows are addressed to the person, not the hub —
         // the personal board is their home.
-        if (isPersonalHub) pinned.push(notification);
+        if (isPersonalHub || isUserSurface) pinned.push(notification);
         continue;
       }
       if (HUB_REVIEW_KINDS.has(notification.kind)) {
@@ -186,15 +197,15 @@ export function useBoardNotificationCards(
         continue;
       }
       if (USER_DECISION_KINDS.has(notification.kind)) {
-        if (isPersonalHub) waiting.push(toModel(notification));
+        if (isPersonalHub || isUserSurface) waiting.push(toModel(notification));
         continue;
       }
       if (RECEIPT_KINDS.has(notification.kind)) {
         // On its own hub when the viewer is looking at it; on the
         // personal board otherwise, so nothing is unreachable.
         const belongsHere = notification.hub_id
-          ? notification.hub_id === hubId || isPersonalHub
-          : isPersonalHub;
+          ? notification.hub_id === hubId || isPersonalHub || isUserSurface
+          : isPersonalHub || isUserSurface;
         if (belongsHere) recent.push(toModel(notification));
         continue;
       }
@@ -215,7 +226,7 @@ export function useBoardNotificationCards(
     });
 
     return { waiting, pinned, recent };
-  }, [data, hubId, isPersonalHub, labels, t, userId]);
+  }, [data, hubId, isPersonalHub, isUserSurface, labels, t, userId]);
 }
 
 /**

@@ -171,9 +171,12 @@ func (e *Engine) synthesizeBoard(
 	var metrics model.DreamPhaseMetrics
 
 	// Cadence dedupe: keep last night's cards if they're still fresh.
-	// A cooking board has no slots yet, so it always proceeds.
+	// Keyed on content_updated_at, NOT updated_at —
+	// acking or dismissing a card bumps updated_at, and using that
+	// would mean the more a user engages with the board, the longer it
+	// stays silent. A cooking board has no slots yet, so it proceeds.
 	if existing, err := e.store.GetBoardSlot(board.ID, model.BoardSlotKeyDreamlog); err == nil {
-		if time.Since(existing.UpdatedAt) < boardSynthesisMinInterval {
+		if time.Since(existing.ContentUpdatedAt) < boardSynthesisMinInterval {
 			return 0, metrics
 		}
 	}
@@ -263,10 +266,21 @@ func (e *Engine) synthesizeBoard(
 	// keeps cooking and the UI keeps promising tomorrow rather than
 	// showing an empty board that looks broken.
 	if written > 0 && board.Status == model.BoardStatusCooking {
-		board.Status = model.BoardStatusActive
-		if err := e.store.UpdateBoard(board); err != nil {
-			slog.WarnContext(ctx, "dream: could not activate cooking board",
+		// Re-read before writing: this board snapshot was taken before
+		// a multi-minute agent run, and the user may have rewritten the
+		// brief in the meantime. Writing the stale copy back would
+		// silently revert their edit — and that edit deliberately put
+		// the board BACK into cooking, so we must not activate it.
+		fresh, err := e.store.GetBoard(board.ID)
+		if err != nil {
+			slog.WarnContext(ctx, "dream: could not re-read board for activation",
 				"board_id", board.ID, "error", err)
+		} else if fresh.Status == model.BoardStatusCooking && fresh.Instruction == board.Instruction {
+			fresh.Status = model.BoardStatusActive
+			if err := e.store.UpdateBoard(fresh); err != nil {
+				slog.WarnContext(ctx, "dream: could not activate cooking board",
+					"board_id", board.ID, "error", err)
+			}
 		}
 	}
 	return written, metrics
@@ -288,9 +302,11 @@ func (e *Engine) buildWowSlot(
 	kind := wow.Kind
 	if kind != requestedKind {
 		// The agent picked a different lens than asked. Accept it only
-		// if it's still a known wow kind — an unknown kind would hit
-		// the fallback renderer with generated text.
-		if _, ok := model.LaneBCitationFloor(kind); !ok {
+		// if it's a real WOW kind — LaneBCitationFloor also knows
+		// dreamlog (floor 0), and letting that through here would ship
+		// an uncited first-person claim in the wow slot, which is
+		// exactly what the validator exists to stop.
+		if !isWowKind(kind) {
 			return nil
 		}
 	}
@@ -349,10 +365,20 @@ func (e *Engine) buildWowSlot(
 	}
 }
 
-// verifyQuotes keeps only quotes whose memory ids exist AND live in
-// this hub. Excerpts stay as the agent wrote them (they were told to
-// quote verbatim; enforcing that would require content fetch + fuzzy
-// match, tracked for a later hardening pass).
+// isWowKind reports whether a kind belongs to the rotating wow pool.
+func isWowKind(kind string) bool {
+	for _, k := range model.WowKinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// verifyQuotes keeps only quotes whose memory ids exist, live in this
+// hub, and are DISTINCT — citing one memory three times must not
+// satisfy a floor of three, or "a pattern across 3+ memories" becomes
+// one memory quoted thrice.
 func (e *Engine) verifyQuotes(ctx context.Context, hub *model.Hub, quotes []synthesizedQuote) []synthesizedQuote {
 	ids := make([]string, 0, len(quotes))
 	for _, q := range quotes {
@@ -368,14 +394,16 @@ func (e *Engine) verifyQuotes(ctx context.Context, hub *model.Hub, quotes []synt
 		return nil
 	}
 	var out []synthesizedQuote
+	seen := make(map[string]bool, len(quotes))
 	for _, q := range quotes {
 		mem, ok := accessible[q.MemoryID]
 		if !ok || mem.HubID != hub.ID {
 			continue
 		}
-		if strings.TrimSpace(q.Excerpt) == "" {
+		if strings.TrimSpace(q.Excerpt) == "" || seen[q.MemoryID] {
 			continue
 		}
+		seen[q.MemoryID] = true
 		out = append(out, q)
 	}
 	return out

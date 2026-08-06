@@ -52,6 +52,13 @@ var boardSlotActionTargetState = map[string]string{
 // hub id and true when the requester may proceed; writes the error
 // response and returns false otherwise.
 func (h *BoardsHandler) requireHubMember(w http.ResponseWriter, r *http.Request) (hubID, userID string, ok bool) {
+	hubID, userID, _, ok = h.requireHubRole(w, r)
+	return hubID, userID, ok
+}
+
+// requireHubRole is the membership guard that also surfaces the role,
+// so mutation paths can additionally require admin.
+func (h *BoardsHandler) requireHubRole(w http.ResponseWriter, r *http.Request) (hubID, userID, role string, ok bool) {
 	userID = GetUserID(r)
 	hubID = r.PathValue("id")
 
@@ -60,13 +67,13 @@ func (h *BoardsHandler) requireHubMember(w http.ResponseWriter, r *http.Request)
 		// A store failure must not masquerade as a membership denial —
 		// 403 would mislead real members and defeat client retries.
 		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
-		return "", "", false
+		return "", "", "", false
 	}
 	if role == "" {
 		writeError(w, http.StatusForbidden, "not_member", "You are not a member of this hub")
-		return "", "", false
+		return "", "", "", false
 	}
-	return hubID, userID, true
+	return hubID, userID, role, true
 }
 
 // Get returns the hub's system board and its occupied slots, creating
@@ -182,6 +189,7 @@ func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "No card in that slot")
 		return
 	}
+	transitioned := err == nil
 	if errors.Is(err, store.ErrBoardSlotAlreadyResolved) {
 		// Idempotent path: someone (or a retry) settled the card first.
 		// Return the current slot; feedback below still records.
@@ -215,8 +223,12 @@ func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if req.Action == model.BoardSlotActionChoose &&
-		slot.Resolution != nil && slot.Resolution.ResolvedBy == userID && slot.Resolution.Verdict == req.Choice {
+	// Side effects fire only when THIS call performed the transition.
+	// A retry lands in the already-resolved branch (transitioned ==
+	// false) and must not write a second decision memory — comparing
+	// the stored resolution to the request can't tell the two apart
+	// when the retry replays the same choice.
+	if req.Action == model.BoardSlotActionChoose && transitioned {
 		if hub, err := h.store.GetHub(hubID); err == nil {
 			h.resolveDecisionGateSideEffects(r, hub, slot, userID, req.Choice)
 		}

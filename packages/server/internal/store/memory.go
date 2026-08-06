@@ -3349,6 +3349,7 @@ func (s *InMemoryStore) UpsertBoardSlot(slot *model.BoardSlot) error {
 	slot.State = model.BoardSlotStateFresh
 	slot.Resolution = nil
 	slot.UpdatedAt = now
+	slot.ContentUpdatedAt = now
 	stored := *slot
 	s.boardSlots[slot.BoardID][slot.SlotKey] = &stored
 	return nil

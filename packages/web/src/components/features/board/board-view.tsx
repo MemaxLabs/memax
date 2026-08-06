@@ -98,7 +98,7 @@ export function BoardView({
   const { data: boardsData } = useHubBoards(isPage ? hubId : undefined);
   const resolve = useResolveBoardSlot(hubId);
   const cardActions = useBoardCardActions(hubId);
-  const notifications = useBoardNotificationCards(hubId, isPersonalHub);
+  const notifications = useBoardNotificationCards(hubId, isPersonalHub, isPage);
   const resolveNotification = useResolveNotification();
   const dismissNotification = useNotificationDismiss();
   const createBoard = useCreateBoard(hubId);
@@ -181,6 +181,16 @@ export function BoardView({
   // something. The full page always renders — it needs its header,
   // composer, and empty state.
   const embeddedHasContent = slots.length > 0 || waiting.length > 0;
+  // The page surface must distinguish "nothing to show" from "we
+  // couldn't load it" — telling a user their board is quiet during a
+  // backend outage is a lie with no retry affordance.
+  if (isPage && isError) {
+    return (
+      <div className="px-0.5 py-6 text-[13px] text-fg-3">
+        {t.board.loadFailed}
+      </div>
+    );
+  }
   if (!isPage) {
     if (isPending || isError || !data) return null;
     if (!embeddedHasContent) return null;

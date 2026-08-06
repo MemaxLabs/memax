@@ -886,6 +886,7 @@ export const en = {
       "What changed in this hub while you were away — agent activity, topic movement, and echoes from your past memories. Cards refresh nightly; resolve one and it stays as a receipt until new content replaces it.",
     purposeAria: "What is this?",
     collapse: "Collapse",
+    loadFailed: "memax could not load your board. Refresh to try again.",
     continueInMemax: "Continue in memax",
     copyForAgent: "Copy for agent",
     copied: "Copied",

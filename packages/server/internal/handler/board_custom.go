@@ -48,8 +48,15 @@ func (h *BoardsHandler) ListBoards(w http.ResponseWriter, r *http.Request) {
 
 // CreateBoard adds a custom board to the hub.
 func (h *BoardsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) {
-	hubID, userID, ok := h.requireHubMember(w, r)
+	hubID, userID, role, ok := h.requireHubRole(w, r)
 	if !ok {
+		return
+	}
+	// Boards shape what the whole hub sees every morning — that's an
+	// admin act, same bar as the other hub mutations. Viewers read.
+	if !isHubAdmin(role) {
+		writeError(w, http.StatusForbidden, "insufficient_role",
+			"Only hub owners and admins can create boards")
 		return
 	}
 	var req struct {
@@ -213,8 +220,13 @@ func (h *BoardsHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) {
 // requireCustomBoard resolves {board_id} under the hub membership
 // guard and rejects both cross-hub ids and the system board.
 func (h *BoardsHandler) requireCustomBoard(w http.ResponseWriter, r *http.Request) (*model.Board, bool) {
-	hubID, _, ok := h.requireHubMember(w, r)
+	hubID, _, role, ok := h.requireHubRole(w, r)
 	if !ok {
+		return nil, false
+	}
+	if !isHubAdmin(role) {
+		writeError(w, http.StatusForbidden, "insufficient_role",
+			"Only hub owners and admins can edit or delete boards")
 		return nil, false
 	}
 	board, err := h.store.GetBoard(r.PathValue("board_id"))

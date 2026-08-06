@@ -54,7 +54,7 @@ func (s *PostgresStore) GetOrCreateSystemBoard(hubID, createdBy string) (*model.
 	return scanBoard(row)
 }
 
-const boardSlotColumns = `id, board_id, slot_key, kind, title, payload, cite_memory_ids, state, resolution, dream_run_id, created_at, updated_at`
+const boardSlotColumns = `id, board_id, slot_key, kind, title, payload, cite_memory_ids, state, resolution, dream_run_id, created_at, updated_at, content_updated_at`
 
 func scanBoardSlot(row pgx.Row) (*model.BoardSlot, error) {
 	var slot model.BoardSlot
@@ -62,7 +62,7 @@ func scanBoardSlot(row pgx.Row) (*model.BoardSlot, error) {
 	var dreamRunID *string
 	if err := row.Scan(&slot.ID, &slot.BoardID, &slot.SlotKey, &slot.Kind, &slot.Title,
 		&slot.Payload, &slot.CiteMemoryIDs, &slot.State, &resolution, &dreamRunID,
-		&slot.CreatedAt, &slot.UpdatedAt); err != nil {
+		&slot.CreatedAt, &slot.UpdatedAt, &slot.ContentUpdatedAt); err != nil {
 		return nil, err
 	}
 	if len(resolution) > 0 {
@@ -141,10 +141,11 @@ func (s *PostgresStore) UpsertBoardSlot(slot *model.BoardSlot) error {
 		VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6::uuid[], 'fresh', $7)
 		ON CONFLICT (board_id, slot_key)
 		DO UPDATE SET kind = $3, title = $4, payload = $5::jsonb, cite_memory_ids = $6::uuid[],
-			state = 'fresh', resolution = NULL, dream_run_id = $7, updated_at = now()
-		RETURNING id, state, created_at, updated_at`,
+			state = 'fresh', resolution = NULL, dream_run_id = $7,
+			updated_at = now(), content_updated_at = now()
+		RETURNING id, state, created_at, updated_at, content_updated_at`,
 		slot.BoardID, slot.SlotKey, slot.Kind, slot.Title, payload, cites, dreamRunID)
-	return row.Scan(&slot.ID, &slot.State, &slot.CreatedAt, &slot.UpdatedAt)
+	return row.Scan(&slot.ID, &slot.State, &slot.CreatedAt, &slot.UpdatedAt, &slot.ContentUpdatedAt)
 }
 
 // ResolveBoardSlot transitions a slot out of fresh/seen. Terminal slots

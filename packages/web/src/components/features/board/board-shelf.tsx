@@ -11,11 +11,14 @@
  *   1. the 等你 deck tile — the only thing actually blocked on the
  *      user, so it always leads. Shows the top decision + a "还有 N 件"
  *      badge for the pile behind it.
- *   2. live Lane B cards (dreamlog / echo / thread / openq / pattern /
+ *   2. highlights (a new member joined) — news, right behind the
+ *      decisions.
+ *   3. live Lane B cards (dreamlog / echo / thread / openq / pattern /
  *      musing / decision_gate — the fresh intelligence).
- *   3. the capsule (real content, but a year old — it can wait).
- *   4. the activity strip-tile (counts; worth knowing, never urgent).
- *   5. custom boards still 酝酿中 (cooking) — a promise, not content.
+ *   4. the capsule (real content, but a year old — it can wait).
+ *   5. the activity strip-tile (counts; worth knowing, never urgent).
+ *   6. custom-board live cards — tagged with their board title.
+ *   7. custom boards still 酝酿中 (cooking) — a promise, not content.
  *
  * Resolved / dismissed receipts are deliberately EXCLUDED: the shelf
  * is "what's new", receipts belong to the expanded layout's strips.
@@ -29,6 +32,8 @@ import type { ReactNode } from "react";
 import type { Board, BoardSlot } from "memax-sdk";
 import { BoardKindLabel } from "@memaxlabs/ui";
 import { useInterpolate, useLocale } from "@/i18n";
+import { inboxKindLabel } from "@/components/features/inbox/inbox-control";
+import type { CustomBoardWithSlots } from "@/hooks/use-board";
 import { boardKindStripSummary } from "./board-kind-registry";
 import { boardDisplayTitle } from "./board-custom-boards";
 import {
@@ -63,7 +68,9 @@ export function orderShelfSlots(slots: readonly BoardSlot[]): BoardSlot[] {
 
 export function BoardShelf({
   waiting,
+  highlights,
   slots,
+  customBoards,
   cookingBoards,
   onOpenDeck,
   onOpenSlot,
@@ -71,8 +78,19 @@ export function BoardShelf({
 }: {
   /** 等你 decisions — first tile shows the top one + depth badge. */
   waiting: readonly BoardNotificationCardModel[];
+  /**
+   * Highlights (hub_member_joined) — one tile each, right after the
+   * 等你 deck tiles; tapping expands the shelf where the standalone
+   * BoardHighlightCard renders.
+   */
+  highlights: readonly BoardNotificationCardModel[];
   /** System-board slots; receipts are filtered out here. */
   slots: readonly BoardSlot[];
+  /**
+   * Every custom board with its slots — live cards join the tile
+   * ordering after the system tiles, tagged with the board title.
+   */
+  customBoards: readonly CustomBoardWithSlots[];
   /** Custom boards still cooking — rendered as promise tiles. */
   cookingBoards: readonly Board[];
   /** Deck tile tapped → expand the shelf (deck renders on top). */
@@ -108,6 +126,19 @@ export function BoardShelf({
       />,
     );
   }
+  // Highlights (new member joined) — high-signal news, right behind
+  // the decisions and ahead of the lane B intelligence.
+  for (const card of highlights) {
+    tiles.push(
+      <BoardTile
+        key={`hl-${card.id}`}
+        star
+        label={inboxKindLabel(card.item, t)}
+        title={card.title}
+        onClick={onOpenDeck}
+      />,
+    );
+  }
   for (const slot of liveSlots) {
     const strip = boardKindStripSummary(slot, t);
     tiles.push(
@@ -121,6 +152,24 @@ export function BoardShelf({
         onClick={() => onOpenSlot(slot.slot_key)}
       />,
     );
+  }
+  // Custom-board live cards — after the system tiles, each tagged
+  // with its board title (the badge pill doubles as the tag here).
+  // Tap → expand in place; the tagged card renders in the stream.
+  for (const { board, slots: boardSlots } of customBoards) {
+    for (const slot of orderShelfSlots(boardSlots)) {
+      const strip = boardKindStripSummary(slot, t);
+      tiles.push(
+        <BoardTile
+          key={`custom-${board.id}-${slot.slot_key}`}
+          label={strip.label}
+          badge={boardDisplayTitle(board, t.board.title)}
+          title={slot.title}
+          meta={strip.detail !== slot.title ? strip.detail : undefined}
+          onClick={onOpenDeck}
+        />,
+      );
+    }
   }
   for (const board of cookingBoards) {
     tiles.push(

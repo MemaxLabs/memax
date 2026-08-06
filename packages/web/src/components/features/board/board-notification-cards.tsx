@@ -76,13 +76,22 @@ const PINNED_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Highlight kinds — no decision either, but HIGH-signal moments the
+ * founder wants surfaced as their own standalone card, not buried in
+ * the collapsed 最近 strip (2026-08 spec: a new member joining your
+ * hub is news, not a receipt). Rendered by BoardHighlightCard after
+ * the 等你 decks and before the slots; single dismiss action.
+ */
+const HIGHLIGHT_KINDS: ReadonlySet<string> = new Set(["hub_member_joined"]);
+
+/**
  * Receipt kinds — no decision, just "this happened". Mirrors
  * RECEIPT_INBOX_KINDS in inbox-control (stripped-kind form there,
  * wire-kind form here; the two sets are identical because no receipt
- * kind carries a `review_` prefix).
+ * kind carries a `review_` prefix), minus the kinds promoted to
+ * HIGHLIGHT_KINDS above.
  */
 const RECEIPT_KINDS: ReadonlySet<string> = new Set([
-  "hub_member_joined",
   "hub_invite_accepted",
   "hub_invite_declined",
   "hub_invite_declined_by_you",
@@ -117,6 +126,11 @@ export interface BoardNotificationBuckets {
    * surface should render them, or they'd double up.
    */
   pinned: Notification[];
+  /**
+   * Highlights — high-signal news (a member joined your hub) that
+   * earns a standalone card between the 等你 decks and the slots.
+   */
+  highlights: BoardNotificationCardModel[];
   /** 最近 — receipts, rendered as a collapsed strip at the bottom. */
   recent: BoardNotificationCardModel[];
 }
@@ -124,6 +138,7 @@ export interface BoardNotificationBuckets {
 const EMPTY_BUCKETS: BoardNotificationBuckets = {
   waiting: [],
   pinned: [],
+  highlights: [],
   recent: [],
 };
 
@@ -168,6 +183,7 @@ export function useBoardNotificationCards(
 
     const waiting: BoardNotificationCardModel[] = [];
     const pinned: Notification[] = [];
+    const highlights: BoardNotificationCardModel[] = [];
     const recent: BoardNotificationCardModel[] = [];
 
     const toModel = (
@@ -200,6 +216,16 @@ export function useBoardNotificationCards(
         if (isPersonalHub || isUserSurface) waiting.push(toModel(notification));
         continue;
       }
+      if (HIGHLIGHT_KINDS.has(notification.kind)) {
+        // Same reachability rule as receipts — its own hub when
+        // visible, the personal board otherwise — but it lands in the
+        // standalone-card bucket, never the collapsed 最近 strip.
+        const belongsHere = notification.hub_id
+          ? notification.hub_id === hubId || isPersonalHub || isUserSurface
+          : isPersonalHub || isUserSurface;
+        if (belongsHere) highlights.push(toModel(notification));
+        continue;
+      }
       if (RECEIPT_KINDS.has(notification.kind)) {
         // On its own hub when the viewer is looking at it; on the
         // personal board otherwise, so nothing is unreachable.
@@ -219,13 +245,14 @@ export function useBoardNotificationCards(
       b: BoardNotificationCardModel,
     ) => Date.parse(b.item.created_at) - Date.parse(a.item.created_at) || 0;
     waiting.sort(byNewest);
+    highlights.sort(byNewest);
     recent.sort(byNewest);
     pinned.sort((a, b) => {
       if (a.priority !== b.priority) return b.priority - a.priority;
       return Date.parse(b.created_at) - Date.parse(a.created_at);
     });
 
-    return { waiting, pinned, recent };
+    return { waiting, pinned, highlights, recent };
   }, [data, hubId, isPersonalHub, isUserSurface, labels, t, userId]);
 }
 
@@ -367,6 +394,63 @@ export function BoardNotificationCard({
         // Long prose paragraphs (contradiction reasons, notice bodies)
         // clamp at 4 lines — the founder's "卡片文本太长太乱" fix; the
         // full text is one click away on the memories themselves.
+        <div className="-mx-3 -mb-3 [&_p]:line-clamp-4">
+          <Body item={card.item} />
+        </div>
+      ) : null}
+    </BoardCard>
+  );
+}
+
+/**
+ * BoardHighlightCard — one highlight (hub_member_joined) as a
+ * standalone board card: fresh state, ✦ star label reusing the inbox
+ * kind label ("新成员"), the shared inbox body renderer, and a single
+ * dismiss action. Rendered by BoardView after the 等你 decks and
+ * before the slots.
+ */
+export function BoardHighlightCard({
+  card,
+  entranceIndex,
+  disabled,
+  onDismiss,
+}: {
+  card: BoardNotificationCardModel;
+  entranceIndex: number;
+  disabled: boolean;
+  onDismiss: (id: string) => void;
+}) {
+  const { t } = useLocale();
+  const Body = getInboxDetailComponent(card.kind);
+  return (
+    <BoardCard
+      state="fresh"
+      className="animate-fade-up"
+      style={{ animationDelay: `${Math.min(entranceIndex, 4) * 60}ms` }}
+      live={
+        <BoardActionRow>
+          <BoardAction
+            emphasis="quiet"
+            disabled={disabled}
+            className="ml-auto"
+            onClick={() => onDismiss(card.id)}
+          >
+            {t.reviews.dismiss}
+          </BoardAction>
+        </BoardActionRow>
+      }
+    >
+      <BoardKindLabel star className="min-w-0">
+        {inboxKindLabel(card.item, t)}
+      </BoardKindLabel>
+      {card.title ? (
+        <p className="m-0 line-clamp-2 text-[14px] leading-snug text-fg-1">
+          {card.title}
+        </p>
+      ) : null}
+      {Body ? (
+        // Same gutter pull-back + prose clamp as BoardNotificationCard
+        // — the inbox bodies carry their own px-3 row padding.
         <div className="-mx-3 -mb-3 [&_p]:line-clamp-4">
           <Body item={card.item} />
         </div>

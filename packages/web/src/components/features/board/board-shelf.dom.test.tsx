@@ -50,10 +50,31 @@ function waitingCard(id: string, title: string): BoardNotificationCardModel {
   };
 }
 
+function highlightCard(id: string, title: string): BoardNotificationCardModel {
+  return {
+    id,
+    kind: "hub_member_joined",
+    title,
+    description: "",
+    actions: [],
+    item: {
+      id,
+      audience: "hub",
+      kind: "hub_member_joined",
+      status: "pending",
+      seen: false,
+      title,
+      description: "",
+      similarity: 0,
+      created_at: "2026-08-05T00:00:00Z",
+    },
+  };
+}
+
 describe("BoardShelf", () => {
   afterEach(cleanup);
 
-  it("orders tiles 等你 → lane B → capsule → activity → cooking and excludes receipts", () => {
+  it("orders tiles 等你 → highlight → lane B → capsule → activity → custom → cooking and excludes receipts", () => {
     // Server order deliberately scrambled (activity first) to prove the
     // shelf re-sorts; the resolved slot must not surface at all.
     const slots = [
@@ -67,13 +88,36 @@ describe("BoardShelf", () => {
       }),
       slot({ slot_key: "s-echo", kind: "echo", title: "Echo card" }),
     ];
+    const fitnessBoard = {
+      id: "b3",
+      hub_id: "h1",
+      kind: "custom",
+      status: "active",
+      title: "健身 & 睡眠",
+      instruction: "watch my sleep",
+      created_at: "2026-08-05T00:00:00Z",
+      updated_at: "2026-08-05T00:00:00Z",
+    } as Board;
     render(
       <BoardShelf
         waiting={[
           waitingCard("n1", "Keep which memory?"),
           waitingCard("n2", "Second decision"),
         ]}
+        highlights={[highlightCard("n3", "Ada joined your hub")]}
         slots={slots}
+        customBoards={[
+          {
+            board: fitnessBoard,
+            slots: [
+              slot({
+                slot_key: "s-custom",
+                kind: "pattern",
+                title: "Custom board card",
+              }),
+            ],
+          },
+        ]}
         cookingBoards={[
           {
             id: "b2",
@@ -93,18 +137,25 @@ describe("BoardShelf", () => {
     );
 
     const tiles = screen.getAllByRole("button");
-    expect(tiles).toHaveLength(5);
+    expect(tiles).toHaveLength(7);
     // 等你 deck tile leads: top decision + depth badge, second decision
     // stays behind the deck (never its own tile).
     expect(tiles[0].textContent).toContain("Waiting on you");
     expect(tiles[0].textContent).toContain("Keep which memory?");
     expect(tiles[0].textContent).toContain("1 more waiting");
     expect(screen.queryByText("Second decision")).toBeNull();
-    // Then lane B → capsule → activity → cooking custom board.
-    expect(tiles[1].textContent).toContain("Echo card");
-    expect(tiles[2].textContent).toContain("Capsule card");
-    expect(tiles[3].textContent).toContain("Activity card");
-    expect(tiles[4].textContent).toContain("对手动向");
+    // The member-joined highlight gets its OWN tile, right after the
+    // decisions — it does not hide in the 最近 receipts.
+    expect(tiles[1].textContent).toContain("NEW MEMBER");
+    expect(tiles[1].textContent).toContain("Ada joined your hub");
+    // Then lane B → capsule → activity → custom live card (tagged
+    // with its board title) → cooking custom board.
+    expect(tiles[2].textContent).toContain("Echo card");
+    expect(tiles[3].textContent).toContain("Capsule card");
+    expect(tiles[4].textContent).toContain("Activity card");
+    expect(tiles[5].textContent).toContain("Custom board card");
+    expect(tiles[5].textContent).toContain("健身 & 睡眠");
+    expect(tiles[6].textContent).toContain("对手动向");
     // Resolved receipts do not earn shelf space.
     expect(screen.queryByText("Resolved dream")).toBeNull();
   });
@@ -125,7 +176,9 @@ describe("BoardShelf", () => {
     render(
       <BoardShelf
         waiting={[waitingCard("n1", "Keep which memory?")]}
+        highlights={[]}
         slots={[slot({ slot_key: "s-echo", kind: "echo", title: "Echo card" })]}
+        customBoards={[]}
         cookingBoards={[]}
         onOpenDeck={onOpenDeck}
         onOpenSlot={onOpenSlot}

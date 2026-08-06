@@ -17,6 +17,7 @@ import { useActiveHub, useAuth } from "@/lib/auth";
 import { trackEvent } from "@/lib/posthog";
 import {
   useCreateBoard,
+  useCustomBoardsWithSlots,
   useDeleteBoard,
   useHubBoard,
   useHubBoards,
@@ -31,6 +32,7 @@ import { useBoardCardActions } from "@/hooks/use-board-continue";
 import { PinnedDispatch } from "@/components/features/onboarding/onboarding-pinned";
 import { buildBoardCardContext } from "./board-card-context";
 import {
+  BoardHighlightCard,
   BoardNotificationDeck,
   groupWaitingByKind,
   BoardRecentRow,
@@ -39,9 +41,9 @@ import {
 import { BoardShelf } from "./board-shelf";
 import {
   BoardComposer,
-  BoardCookingReceipt,
-  BoardTabs,
-  CustomBoardView,
+  BoardEmptyState,
+  CookingBoardCard,
+  CustomBoardSlotCard,
   NewBoardButton,
 } from "./board-custom-boards";
 import {
@@ -69,10 +71,11 @@ function shelfStorageKey(hubId: string) {
  *     at most two scrollable rows); a header toggle expands it in
  *     place to the full vertical card layout. Stays zero-height when
  *     the hub has nothing, so card-less hubs keep the exact pre-board
- *     layout. No board tabs, no composer, no receipts strip: those
- *     belong to the full surface, one click away via 查看全部.
+ *     layout. No composer, no receipts strip: those belong to the
+ *     full surface, one click away via 查看全部.
  *   - "page"    — the standalone /pulse route. The one surface: 等你
- *     decisions, the system board's cards, custom boards, and the
+ *     decisions, highlights, the system board's cards, custom-board
+ *     cards merged into the same stream (2026-08: no tabs), and the
  *     collapsed 最近 receipts strip that absorbed the retired inbox.
  */
 export type BoardSurface = "section" | "page";
@@ -123,8 +126,12 @@ export function BoardView({
   const [openSlots, setOpenSlots] = useState<ReadonlySet<string>>(new Set());
   const [recentOpen, setRecentOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
-  const [cookingTitle, setCookingTitle] = useState<string | null>(null);
-  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
+  // Example chip → composer prefill (empty-state teaching moment). The
+  // composer is re-keyed on this so a chip tap always lands its copy.
+  const [composerPrefill, setComposerPrefill] = useState<{
+    title: string;
+    instruction: string;
+  } | null>(null);
 
   // Embedded surface: collapsed shelf vs expanded-in-place. Collapsed
   // by default; the choice is remembered per hub for the SESSION only
@@ -155,22 +162,20 @@ export function BoardView({
   );
 
   const boards = useMemo(() => boardsData?.boards ?? [], [boardsData]);
-  // 酝酿中 custom boards — the shelf shows them as promise tiles.
+  // 酝酿中 custom boards — inline cooking cards + shelf promise tiles.
   const cookingBoards = useMemo(
     () => boards.filter((b) => b.kind !== "system" && b.status === "cooking"),
     [boards],
   );
-  const systemBoardId = data?.board.id ?? null;
-  // Selection falls back to the system board whenever the selected id
-  // no longer exists (deleted board, hub switch).
-  const activeBoardId =
-    selectedBoardId && boards.some((b) => b.id === selectedBoardId)
-      ? selectedBoardId
-      : systemBoardId;
-  const activeCustomBoard =
-    activeBoardId && activeBoardId !== systemBoardId
-      ? (boards.find((b) => b.id === activeBoardId) ?? null)
-      : null;
+  // Unified stream (2026-08): every custom board's slots, aggregated
+  // client-side. Live cards merge into the flow after the system
+  // board's, each tagged with its board title. No tabs.
+  const customBoards = useCustomBoardsWithSlots(hubId, boards);
+  const customLiveCards = customBoards.flatMap(({ board, slots: boardSlots }) =>
+    boardSlots
+      .filter((s) => s.state === "fresh" || s.state === "seen")
+      .map((slot) => ({ board, slot })),
+  );
 
   // One impression event per board load (not per re-render).
   const trackedFor = useRef<string | null>(null);
@@ -223,13 +228,18 @@ export function BoardView({
 
   const slots = data?.slots ?? [];
   const waiting = notifications.waiting;
+  const highlights = notifications.highlights;
   const recent = notifications.recent;
   const pinned = isPage ? notifications.pinned : [];
 
   // Embedded surface stays zero-height until the hub actually has
   // something. The full page always renders — it needs its header,
   // composer, and empty state.
-  const embeddedHasContent = slots.length > 0 || waiting.length > 0;
+  const embeddedHasContent =
+    slots.length > 0 ||
+    waiting.length > 0 ||
+    highlights.length > 0 ||
+    customLiveCards.length > 0;
   // The page surface must distinguish "nothing to show" from "we
   // couldn't load it" — telling a user their board is quiet during a
   // backend outage is a lie with no retry affordance.
@@ -249,7 +259,6 @@ export function BoardView({
     (s) => s.state === "fresh" || s.state === "seen",
   );
   const heroKey = liveSlots[0]?.slot_key;
-  const showSlots = !activeCustomBoard;
   // Embedded surface, not yet expanded → the compact tile shelf.
   const collapsedShelf = !isPage && !shelfExpanded;
   // Only claim the board is empty once the slots query has settled —
@@ -258,17 +267,26 @@ export function BoardView({
   const pageIsEmpty =
     isPage &&
     !isPending &&
-    !activeCustomBoard &&
     slots.length === 0 &&
     waiting.length === 0 &&
+    highlights.length === 0 &&
+    customLiveCards.length === 0 &&
+    cookingBoards.length === 0 &&
     pinned.length === 0 &&
     recent.length === 0 &&
     !composerOpen;
 
   return (
     <div className="mb-3 flex flex-col gap-2">
-      <div className="flex items-center gap-1 px-0.5">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fg-3">
+      {/* Section header — the exact SectionHeader "plain" idiom the
+          sibling memories sections use (fresh memories via
+          DataSectionCard variant="plain"): px-1 row, 14px semibold
+          fg-2 label, flex-1 spacer, right-aligned 12px fg-3 trailing
+          actions. Inlined (not <SectionHeader>) only because the ✦
+          leading mark + adjacent InfoPopover don't fit its
+          icon/label/trailing slots; every class matches. */}
+      <div className="flex items-center gap-2 px-1">
+        <span className="text-[14px] font-semibold text-fg-2">
           <BoardVoiceStar /> {t.board.title}
         </span>
         <InfoPopover
@@ -276,23 +294,31 @@ export function BoardView({
           title={t.board.title}
           body={t.board.purpose}
         />
+        <div className="flex-1" />
         {isPage && !composerOpen ? (
-          <NewBoardButton onClick={() => setComposerOpen(true)} />
+          <NewBoardButton
+            onClick={() => {
+              setComposerPrefill(null);
+              setComposerOpen(true);
+            }}
+          />
         ) : null}
         {!isPage ? (
           <>
             {/* 展开/收起 — the shelf expands IN PLACE; the full /pulse
-                surface stays one click away via 查看全部. */}
+                surface stays one click away via 查看全部. Trailing
+                actions match the fresh-memories header's verbs
+                (Select / filter): 12px fg-3 → fg-2 text buttons. */}
             <button
               type="button"
               onClick={() => setShelfExpandedPersisted(!shelfExpanded)}
-              className="ml-auto cursor-pointer rounded-full px-2 py-0.5 text-[11px] font-medium text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg-1"
+              className="cursor-pointer text-[12px] text-fg-3 transition-colors hover:text-fg-2"
             >
               {shelfExpanded ? t.board.shelfCollapse : t.board.shelfExpand}
             </button>
             <Link
               href="/pulse"
-              className="rounded-full px-2 py-0.5 text-[11px] font-medium text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg-1"
+              className="text-[12px] text-fg-3 transition-colors hover:text-fg-2"
             >
               {t.board.shelfViewAll}
             </Link>
@@ -303,7 +329,9 @@ export function BoardView({
       {collapsedShelf ? (
         <BoardShelf
           waiting={waiting}
+          highlights={highlights}
           slots={slots}
+          customBoards={customBoards}
           cookingBoards={cookingBoards}
           onOpenDeck={() => setShelfExpandedPersisted(true)}
           onOpenSlot={(slotKey) => {
@@ -316,31 +344,28 @@ export function BoardView({
         />
       ) : null}
 
-      {isPage ? (
-        <BoardTabs
-          boards={boards}
-          activeBoardId={activeBoardId}
-          onSelect={setSelectedBoardId}
-        />
-      ) : null}
-
       {composerOpen ? (
         <BoardComposer
+          // Re-key on prefill so an example chip always lands its copy
+          // even if the composer was already mounted.
+          key={composerPrefill ? composerPrefill.title : "blank"}
           pending={createBoard.isPending}
-          onCancel={() => setComposerOpen(false)}
+          initialTitle={composerPrefill?.title}
+          initialInstruction={composerPrefill?.instruction}
+          onCancel={() => {
+            setComposerOpen(false);
+            setComposerPrefill(null);
+          }}
           onCreate={(input) => {
             createBoard.mutate(input, {
-              onSuccess: (result) => {
+              onSuccess: () => {
                 setComposerOpen(false);
-                setCookingTitle(result.board.title || input.title);
-                setSelectedBoardId(result.board.id);
+                setComposerPrefill(null);
               },
             });
           }}
         />
       ) : null}
-
-      {cookingTitle ? <BoardCookingReceipt title={cookingTitle} /> : null}
 
       {/* Onboarding super-notifs — the highest-priority thing a brand
           new user can act on, so they sit above even 等你. Page-only:
@@ -349,26 +374,10 @@ export function BoardView({
         <PinnedDispatch key={notification.id} notification={notification} />
       ))}
 
-      {activeCustomBoard ? (
-        <CustomBoardView
-          board={activeCustomBoard}
-          hubId={hubId}
-          deletePending={deleteBoard.isPending}
-          onDelete={(boardId) => {
-            deleteBoard.mutate(boardId, {
-              onSuccess: () => {
-                setSelectedBoardId(null);
-                setCookingTitle(null);
-              },
-            });
-          }}
-        />
-      ) : null}
-
       {/* ── 等你 — decisions merged from notifications (P4), rendered
           as a DECK: one card at a time, the pile counted behind it.
           Never a vertical list of N contradiction cards. ── */}
-      {!collapsedShelf && showSlots
+      {!collapsedShelf
         ? groupWaitingByKind(waiting).map((group) => (
             <BoardNotificationDeck
               key={group[0].kind}
@@ -382,9 +391,22 @@ export function BoardView({
           ))
         : null}
 
+      {/* ── Highlights — high-signal news (a member joined), each a
+          standalone card between the decisions and the slots. ── */}
+      {!collapsedShelf
+        ? highlights.map((card, index) => (
+            <BoardHighlightCard
+              key={card.id}
+              card={card}
+              entranceIndex={(waiting.length > 0 ? 1 : 0) + index}
+              disabled={dismissNotification.isPending}
+              onDismiss={(id) => dismissNotification.mutate(id)}
+            />
+          ))
+        : null}
+
       {/* ── System board slots. ── */}
       {!collapsedShelf &&
-        showSlots &&
         slots.map((slot, index) => {
           const expanded =
             slot.slot_key === heroKey || openSlots.has(slot.slot_key);
@@ -393,7 +415,9 @@ export function BoardView({
               key={slot.slot_key}
               slot={slot}
               expanded={expanded}
-              entranceIndex={(waiting.length > 0 ? 1 : 0) + index}
+              entranceIndex={
+                (waiting.length > 0 ? 1 : 0) + highlights.length + index
+              }
               onToggle={(willOpen) => toggleSlot(slot.slot_key, willOpen)}
               onResolve={(action, verdict) => {
                 trackEvent("board_card_action", {
@@ -413,15 +437,49 @@ export function BoardView({
           );
         })}
 
+      {/* ── Custom-board cards — the unified stream (2026-08): live
+          cards after the system board's, each tagged with its board
+          title; cooking boards as one compact card each. ── */}
+      {!collapsedShelf &&
+        customLiveCards.map(({ board, slot }, index) => (
+          <CustomBoardSlotCard
+            key={`${board.id}-${slot.slot_key}`}
+            board={board}
+            slot={slot}
+            entranceIndex={
+              (waiting.length > 0 ? 1 : 0) +
+              highlights.length +
+              slots.length +
+              index
+            }
+            deletePending={deleteBoard.isPending}
+            onDelete={(boardId) => deleteBoard.mutate(boardId)}
+          />
+        ))}
+      {!collapsedShelf &&
+        cookingBoards.map((board, index) => (
+          <CookingBoardCard
+            key={board.id}
+            board={board}
+            entranceIndex={
+              (waiting.length > 0 ? 1 : 0) +
+              highlights.length +
+              slots.length +
+              customLiveCards.length +
+              index
+            }
+            deletePending={deleteBoard.isPending}
+            onDelete={(boardId) => deleteBoard.mutate(boardId)}
+          />
+        ))}
+
       {pageIsEmpty ? (
-        <div className="glass-card rounded-[18px] px-4 py-6 text-center">
-          <p className="m-0 text-[13.5px] text-fg-2">
-            {t.board.pageEmptyTitle}
-          </p>
-          <p className="m-0 mt-1 text-[12.5px] leading-relaxed text-fg-3">
-            {t.board.pageEmptyBody}
-          </p>
-        </div>
+        <BoardEmptyState
+          onPickExample={(example) => {
+            setComposerPrefill(example);
+            setComposerOpen(true);
+          }}
+        />
       ) : null}
 
       {/* ── 最近 — the receipts the retired inbox used to hold. Always

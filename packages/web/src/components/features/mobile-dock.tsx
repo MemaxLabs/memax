@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Network, Sparkles } from "lucide-react";
+import { Activity, Network } from "lucide-react";
 import { useLocale } from "@/i18n";
 import { useAuth, useActiveHub } from "@/lib/auth";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
@@ -39,15 +39,9 @@ interface DockTabSpec {
   signature?: boolean;
 }
 
+// Order mirrors SHELL_TABS (2026-08 founder reorder): memories first
+// (the home), pulse second (what's new), brain last of the three.
 const TABS: DockTabSpec[] = [
-  {
-    id: "brain",
-    labelKey: "brain",
-    // `/brain` is the canonical Brain landing.
-    resolveRoute: () => "/brain",
-    star: true,
-    signature: true,
-  },
   {
     id: "topics",
     icon: Network,
@@ -60,11 +54,19 @@ const TABS: DockTabSpec[] = [
   },
   {
     id: "pulse",
-    icon: Sparkles,
+    icon: Activity,
     labelKey: "pulse",
     // The pulse board full-page surface (plan 25 P4). Replaced the
     // retired /inbox tab — /inbox now redirects here.
     resolveRoute: () => "/pulse",
+    signature: true,
+  },
+  {
+    id: "brain",
+    labelKey: "brain",
+    // `/brain` is the canonical Brain landing.
+    resolveRoute: () => "/brain",
+    star: true,
     signature: true,
   },
 ];

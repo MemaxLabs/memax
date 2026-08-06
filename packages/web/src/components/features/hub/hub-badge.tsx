@@ -25,15 +25,17 @@ export function HubBadge({
   kind: "personal" | "team";
   label: string;
   accent?: string;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
 }) {
   const accentStyle = getHubAccentStyle(accent, kind);
   const dim =
-    size === "lg"
-      ? "h-6 w-6 text-[11px]"
-      : size === "sm"
-        ? "h-4 w-4 text-[9px]"
-        : "h-5 w-5 text-[10px]";
+    size === "xl"
+      ? "h-8 w-8 text-[13px]"
+      : size === "lg"
+        ? "h-6 w-6 text-[11px]"
+        : size === "sm"
+          ? "h-4 w-4 text-[9px]"
+          : "h-5 w-5 text-[10px]";
 
   return (
     <div

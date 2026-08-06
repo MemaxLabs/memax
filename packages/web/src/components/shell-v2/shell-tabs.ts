@@ -24,7 +24,7 @@
  */
 
 import type { LucideIcon } from "lucide-react";
-import { Brain, Bot, Library, Sparkles } from "lucide-react";
+import { Activity, Brain, Bot, Library } from "lucide-react";
 
 export type ShellTabId = "brain" | "memories" | "agents" | "pulse";
 
@@ -51,11 +51,11 @@ export interface ShellTabSpec {
   staticPath: string | null;
 }
 
-// Order reflects product hierarchy (2026-05-20 reorder per user
-// direction): Memories is the foundation — what the user has
-// dumped. Agents is the surface that wrote / will write into it.
-// Brain is the conversational surface ON TOP of those memories.
-// Pulse is what memax noticed + what's waiting on you, last.
+// Order reflects daily-usage frequency + mental model (2026-08
+// founder reorder): Memories first — the home, the content itself.
+// Pulse second — what's new / what's waiting on you. Brain third —
+// the conversational surface where you act on those memories. Agents
+// last — setup, visited rarely.
 //
 // Pulse resolves to the STATIC `/pulse` route rather than mirroring
 // the memories tab's active-hub path: the board is embedded in the
@@ -65,9 +65,11 @@ export interface ShellTabSpec {
 // active hub, and gives the retired `/inbox` route a redirect target.
 export const SHELL_TABS: readonly ShellTabSpec[] = [
   { id: "memories", icon: Library, hasSecondary: true, staticPath: null },
-  { id: "agents", icon: Bot, hasSecondary: false, staticPath: "/agents" },
+  // Activity — the EKG pulse line. Literal 脉搏, and it doesn't fight
+  // the ✦ signature mark, which stays reserved for memax's own voice.
+  { id: "pulse", icon: Activity, hasSecondary: false, staticPath: "/pulse" },
   { id: "brain", icon: Brain, hasSecondary: true, staticPath: "/brain" },
-  { id: "pulse", icon: Sparkles, hasSecondary: false, staticPath: "/pulse" },
+  { id: "agents", icon: Bot, hasSecondary: false, staticPath: "/agents" },
 ] as const;
 
 export function getShellTab(id: ShellTabId): ShellTabSpec {

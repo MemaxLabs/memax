@@ -31,7 +31,10 @@ import { BoardKindLabel } from "@memaxlabs/ui";
 import { useInterpolate, useLocale } from "@/i18n";
 import { boardKindStripSummary } from "./board-kind-registry";
 import { boardDisplayTitle } from "./board-custom-boards";
-import type { BoardNotificationCardModel } from "./board-notification-cards";
+import {
+  groupWaitingByKind,
+  type BoardNotificationCardModel,
+} from "./board-notification-cards";
 
 /**
  * Shelf ordering: lower sorts earlier. Lane B kinds (and any unknown
@@ -83,22 +86,24 @@ export function BoardShelf({
   const interpolate = useInterpolate();
 
   const liveSlots = orderShelfSlots(slots);
-  const topWaiting = waiting[0];
 
   const tiles: ReactNode[] = [];
-  if (topWaiting) {
+  // One tile per same-kind deck: contradictions stack, but an invite
+  // is a different decision and gets its own tile.
+  for (const group of groupWaitingByKind(waiting)) {
+    const top = group[0];
     tiles.push(
       <BoardTile
-        key={`deck-${topWaiting.id}`}
+        key={`deck-${top.kind}`}
         star
         label={t.board.kindWaiting}
         badge={
-          waiting.length > 1
-            ? interpolate(t.board.deckMore, { n: waiting.length - 1 })
+          group.length > 1
+            ? interpolate(t.board.deckMore, { n: group.length - 1 })
             : undefined
         }
-        title={topWaiting.title}
-        body={topWaiting.description || undefined}
+        title={top.title}
+        body={top.description || undefined}
         onClick={onOpenDeck}
       />,
     );

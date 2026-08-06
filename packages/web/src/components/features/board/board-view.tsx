@@ -32,6 +32,7 @@ import { PinnedDispatch } from "@/components/features/onboarding/onboarding-pinn
 import { buildBoardCardContext } from "./board-card-context";
 import {
   BoardNotificationDeck,
+  groupWaitingByKind,
   BoardRecentRow,
   useBoardNotificationCards,
 } from "./board-notification-cards";
@@ -367,16 +368,19 @@ export function BoardView({
       {/* ── 等你 — decisions merged from notifications (P4), rendered
           as a DECK: one card at a time, the pile counted behind it.
           Never a vertical list of N contradiction cards. ── */}
-      {!collapsedShelf && showSlots && waiting.length > 0 ? (
-        <BoardNotificationDeck
-          cards={waiting}
-          countLabel={interpolate(t.board.deckMore, {
-            n: waiting.length - 1,
-          })}
-          disabled={resolveNotification.isPending}
-          onResolve={onResolveNotification}
-        />
-      ) : null}
+      {!collapsedShelf && showSlots
+        ? groupWaitingByKind(waiting).map((group) => (
+            <BoardNotificationDeck
+              key={group[0].kind}
+              cards={group}
+              countLabel={interpolate(t.board.deckMore, {
+                n: group.length - 1,
+              })}
+              disabled={resolveNotification.isPending}
+              onResolve={onResolveNotification}
+            />
+          ))
+        : null}
 
       {/* ── System board slots. ── */}
       {!collapsedShelf &&

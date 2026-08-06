@@ -242,6 +242,28 @@ export function useBoardNotificationCards(
  * the next slides up. The stacked edges + counter tell the user how
  * deep the pile is without spending the screen on it.
  */
+/**
+ * groupWaitingByKind — decks stack SAME-KIND cards only. Seven dream
+ * contradictions are one work queue; a hub invite is a different
+ * decision entirely and must not be buried under them. Group order
+ * follows first appearance (newest kinds first, since the source list
+ * is newest-first).
+ */
+export function groupWaitingByKind(
+  cards: readonly BoardNotificationCardModel[],
+): BoardNotificationCardModel[][] {
+  const order: string[] = [];
+  const byKind = new Map<string, BoardNotificationCardModel[]>();
+  for (const card of cards) {
+    if (!byKind.has(card.kind)) {
+      byKind.set(card.kind, []);
+      order.push(card.kind);
+    }
+    byKind.get(card.kind)!.push(card);
+  }
+  return order.map((kind) => byKind.get(kind)!);
+}
+
 export function BoardNotificationDeck({
   cards,
   countLabel,

@@ -873,6 +873,12 @@ export const en = {
     receiptDismissed: "Dismissed",
     kindTrace: "Traces · last {n} hours",
     kindPulse: "Topic pulse · last {n} days",
+    kindActivity: "Activity · last {n}h",
+    activityTopics: "Topics:",
+    activityPurpose:
+      "The countable stuff — which agents wrote what, which topics moved, how this week compares. One line, because counts are worth knowing but not worth stopping on.",
+    stripActivity: "Activity",
+    stripActivityWeek: "{n} this week",
     kindCapsule: "One year ago today",
     kindWeek: "This week",
     traceCountOne: "1 memory",

@@ -98,7 +98,9 @@ func (e *Engine) shouldRunBoardSynthesis(settings map[string]any, runBudget *dre
 	if !e.agentRuntime.IsConfigured() {
 		return false
 	}
-	if enabled, _ := settings["dreams_use_agent_runtime"].(bool); !enabled {
+	// Own gate, default true — see DefaultSettings. A hub can opt out;
+	// an absent key means on.
+	if enabled, ok := settings["dreams_board_synthesis_enabled"].(bool); ok && !enabled {
 		return false
 	}
 	return runBudget.shouldRoute(runID)

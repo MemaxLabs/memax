@@ -794,6 +794,12 @@ export const zh: Translations = {
     receiptDismissed: "已略过",
     kindTrace: "行迹 · 过去 {n} 小时",
     kindPulse: "项目脉搏 · 近 {n} 天",
+    kindActivity: "动静 · 过去 {n} 小时",
+    activityTopics: "主题：",
+    activityPurpose:
+      "能数出来的那些——哪个 agent 写了什么、哪些主题在动、本周比上周如何。就一行，因为数字值得知道，但不值得停下来看。",
+    stripActivity: "动静",
+    stripActivityWeek: "本周 {n} 条",
     kindCapsule: "一年前的今天",
     kindWeek: "本周",
     traceCountOne: "1 条记忆",

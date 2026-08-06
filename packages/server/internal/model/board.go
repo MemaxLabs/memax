@@ -128,10 +128,19 @@ type BoardFeedback struct {
 // ListBoardSlots' slot_key ordering fixes the board layout.
 
 const (
-	BoardKindTrace   = "trace"   // 行迹 — agent activity in the window
-	BoardKindPulse   = "pulse"   // 项目脉搏 — most active topics
-	BoardKindCapsule = "capsule" // 时间胶囊 — a memory from ~1 year ago
-	BoardKindWeek    = "week"    // 周对比 — this week vs last week
+	// BoardKindActivity is the one-line activity summary: agent
+	// traces, topic movement and the week diff folded together.
+	// These are COUNTS — true but low-value-per-pixel — so they get a
+	// single strip, not three cards. Cards are for things worth
+	// stopping on.
+	BoardKindActivity = "activity"
+	BoardKindCapsule  = "capsule" // 时间胶囊 — a memory from ~1 year ago
+
+	// Retired kinds, kept only so the producer can clean up slots
+	// written by earlier versions.
+	BoardKindTrace = "trace"
+	BoardKindPulse = "pulse"
+	BoardKindWeek  = "week"
 )
 
 // BoardAgentItem is one concrete memory reference inside a trace row —
@@ -160,6 +169,19 @@ type BoardTracePayload struct {
 	Description string               `json:"description,omitempty"`
 	WindowHours int                  `json:"window_hours"`
 	Agents      []BoardAgentActivity `json:"agents"`
+}
+
+// BoardActivityPayload is the folded activity line. Everything here is
+// countable fact; the renderer shows one summary line and reveals the
+// breakdown on demand.
+type BoardActivityPayload struct {
+	Description string               `json:"description,omitempty"`
+	WindowHours int                  `json:"window_hours"`
+	WindowDays  int                  `json:"window_days"`
+	Agents      []BoardAgentActivity `json:"agents,omitempty"`
+	Topics      []BoardTopicActivity `json:"topics,omitempty"`
+	ThisWeek    int                  `json:"this_week"`
+	LastWeek    int                  `json:"last_week"`
 }
 
 // BoardTopicActivity is one topic's line in the pulse card.

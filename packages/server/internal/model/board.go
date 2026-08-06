@@ -274,9 +274,12 @@ const (
 
 	// Lane B slot keys. "0-" sorts the dream log first, "1-" puts the
 	// rotating wow card right after it, decision gates prefix "2g-" so
-	// they sit above the Lane A band ("a-"…"d-").
+	// they sit above the Lane A band ("a-"…"d-"). Custom boards have
+	// no dreamlog and may carry a second synthesized card in "2-wow"
+	// ("2-" still sorts before "2g-").
 	BoardSlotKeyDreamlog   = "0-dream"
 	BoardSlotKeyWow        = "1-wow"
+	BoardSlotKeyWow2       = "2-wow"
 	BoardSlotKeyGatePrefix = "2g-"
 )
 

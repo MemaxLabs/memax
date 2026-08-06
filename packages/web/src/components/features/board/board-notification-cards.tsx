@@ -235,16 +235,68 @@ export function useBoardNotificationCards(
  * BoardCard shell, but the body and the action verbs come from the
  * inbox renderers so the wire contract stays single-sourced.
  */
+/**
+ * BoardNotificationDeck — 等你 renders as a DECK, not a list. Seven
+ * dream contradictions as seven full cards is a wall; as a deck it's
+ * one decision at a time with the rest waiting behind — resolve one,
+ * the next slides up. The stacked edges + counter tell the user how
+ * deep the pile is without spending the screen on it.
+ */
+export function BoardNotificationDeck({
+  cards,
+  countLabel,
+  disabled,
+  onResolve,
+}: {
+  cards: BoardNotificationCardModel[];
+  countLabel: string;
+  disabled: boolean;
+  onResolve: (id: string, action: string) => void;
+}) {
+  if (cards.length === 0) return null;
+  const top = cards[0];
+  return (
+    <div className={`relative ${cards.length > 1 ? "mb-2" : ""}`}>
+      {/* Stacked edges: up to two ghost layers peeking from behind. */}
+      {cards.length > 2 ? (
+        <div
+          aria-hidden
+          className="glass-card absolute inset-x-4 -bottom-2 h-6 rounded-[18px] opacity-40"
+        />
+      ) : null}
+      {cards.length > 1 ? (
+        <div
+          aria-hidden
+          className="glass-card absolute inset-x-2 -bottom-1 h-6 rounded-[18px] opacity-70"
+        />
+      ) : null}
+      <div className="relative">
+        <BoardNotificationCard
+          key={top.id}
+          card={top}
+          entranceIndex={0}
+          disabled={disabled}
+          onResolve={onResolve}
+          badge={cards.length > 1 ? countLabel : undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function BoardNotificationCard({
   card,
   entranceIndex,
   disabled,
   onResolve,
+  badge,
 }: {
   card: BoardNotificationCardModel;
   entranceIndex: number;
   disabled: boolean;
   onResolve: (id: string, action: string) => void;
+  /** Deck-depth indicator, e.g. "还有 6 件" — shown when stacked. */
+  badge?: string;
 }) {
   const { t } = useLocale();
   const Body = getInboxDetailComponent(card.kind);
@@ -271,15 +323,29 @@ export function BoardNotificationCard({
         ) : null
       }
     >
-      <BoardKindLabel star>{t.board.kindWaiting}</BoardKindLabel>
+      <div className="flex items-start justify-between gap-2">
+        <BoardKindLabel star className="min-w-0">
+          {t.board.kindWaiting}
+        </BoardKindLabel>
+        {badge ? (
+          <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[10.5px] font-medium text-fg-2">
+            {badge}
+          </span>
+        ) : null}
+      </div>
       {card.title ? (
-        <p className="m-0 text-[14px] leading-snug text-fg-1">{card.title}</p>
+        <p className="m-0 line-clamp-2 text-[14px] leading-snug text-fg-1">
+          {card.title}
+        </p>
       ) : null}
       {Body ? (
         // The inbox bodies carry their own px-3 row padding, which is
         // one notch wider than BoardCard's px-4 gutter — pull it back
         // so quotes and topic chips align with the card's own text.
-        <div className="-mx-3 -mb-3">
+        // Long prose paragraphs (contradiction reasons, notice bodies)
+        // clamp at 4 lines — the founder's "卡片文本太长太乱" fix; the
+        // full text is one click away on the memories themselves.
+        <div className="-mx-3 -mb-3 [&_p]:line-clamp-4">
           <Body item={card.item} />
         </div>
       ) : null}

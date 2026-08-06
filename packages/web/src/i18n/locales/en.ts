@@ -945,6 +945,15 @@ export const en = {
     kindWaiting: "Waiting on you",
     waitingPurpose:
       "Decisions memax can't make for you — memory conflicts, topic reshuffles, hub invites. Answer here and the board moves on.",
+    // 等你 deck — decisions render one at a time; the badge counts the
+    // pile behind the top card.
+    deckMore: "{n} more waiting",
+
+    // Collapsed shelf — the embedded memories-page board renders as a
+    // compact horizontal tile shelf until expanded in place.
+    shelfExpand: "Expand",
+    shelfCollapse: "Collapse",
+    shelfViewAll: "View all →",
 
     // 最近 strip — receipts that used to live in the inbox.
     recentTitle: "Recent",

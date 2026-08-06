@@ -858,6 +858,13 @@ export const zh: Translations = {
     kindWaiting: "等你",
     waitingPurpose:
       "memax 替你做不了的决定——记忆冲突、主题归并、hub 邀请。在这儿回一句，板就能往下走。",
+    // 等你牌堆——决策一张一张来，角标数着后面还压着几件。
+    deckMore: "还有 {n} 件",
+
+    // 收起的货架——记忆页里的板先收成一排小卡片，点开才铺开。
+    shelfExpand: "展开",
+    shelfCollapse: "收起",
+    shelfViewAll: "查看全部 →",
 
     // 最近 —— 原来住在收件箱里的回执。
     recentTitle: "最近",

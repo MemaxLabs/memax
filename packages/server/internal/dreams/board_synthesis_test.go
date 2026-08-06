@@ -106,3 +106,52 @@ func TestBuildWowSlotCitationValidator(t *testing.T) {
 		t.Fatalf("unknown kind must drop, got %#v", got)
 	}
 }
+
+func TestBuildWowSlotRejectsDreamlogAndDuplicateCitations(t *testing.T) {
+	t.Parallel()
+	s := store.NewInMemoryStore()
+	hub := &model.Hub{ID: "hub-1", OwnerID: "u1"}
+	if err := s.CreateHub(hub); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []*model.Memory{
+		{ID: "m1", OwnerID: "u1", HubID: "hub-1", Title: "a"},
+		{ID: "m2", OwnerID: "u1", HubID: "hub-1", Title: "b"},
+	} {
+		if err := s.CreateMemory(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := &Engine{store: s}
+	ctx := context.Background()
+
+	mk := func(kind string, quotes []synthesizedQuote) *synthesisResponse {
+		return &synthesisResponse{Wow: &struct {
+			Kind   string             `json:"kind"`
+			Title  string             `json:"title"`
+			Body   string             `json:"body"`
+			Quotes []synthesizedQuote `json:"quotes"`
+			Then   *synthesizedQuote  `json:"then"`
+			Now    *synthesizedQuote  `json:"now"`
+		}{Kind: kind, Title: "t", Body: "b", Quotes: quotes}}
+	}
+
+	// dreamlog has a zero citation floor — accepting it as a wow kind
+	// would ship an uncited first-person claim, the exact thing the
+	// validator exists to stop.
+	if got := e.buildWowSlot(ctx, hub, "b1", "run1", model.BoardKindPattern,
+		mk(model.BoardKindDreamlog, nil)); got != nil {
+		t.Fatalf("dreamlog must never fill the wow slot, got %#v", got)
+	}
+
+	// One memory quoted three times is one memory, not a pattern.
+	dupes := []synthesizedQuote{
+		{MemoryID: "m1", Excerpt: "x"},
+		{MemoryID: "m1", Excerpt: "y"},
+		{MemoryID: "m1", Excerpt: "z"},
+	}
+	if got := e.buildWowSlot(ctx, hub, "b1", "run1", model.BoardKindPattern,
+		mk(model.BoardKindPattern, dupes)); got != nil {
+		t.Fatalf("duplicate citations must not satisfy the floor, got %#v", got)
+	}
+}

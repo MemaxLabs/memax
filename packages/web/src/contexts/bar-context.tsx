@@ -379,12 +379,12 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
           usage.ask_count < usage.limits.ask_limit)));
 
   // Derive view from route. "memory" = main app content surface with a
-  // bottom-docked bar (focus-to-engage, drag-to-stage). /inbox rides in
+  // bottom-docked bar (focus-to-engage, drag-to-stage). /pulse rides in
   // this bucket so the bar mounts + docks consistently across browsing
-  // surfaces — without it /inbox was view="none", producing a
+  // surfaces — without it /pulse was view="none", producing a
   // ghost-docked opacity-0 bar (codex-review 2026-04-21).
   // `isBarMemorySurfaceRoute` covers both shell-v1 (/memories[/...] +
-  // /inbox) and shell-v2 (/h/<slug>/memories[/...]) so the bar mounts
+  // /pulse) and shell-v2 (/h/<slug>/memories[/...]) so the bar mounts
   // identically across the cookie flag.
   const view: View = isBrainViewRoute(pathname)
     ? "brain"
@@ -2806,7 +2806,7 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
     // Resolve the destination hub. Order:
     //   1. Pathname slug (if we're already on a v2 hub-scoped surface,
     //      stay in that hub's memories overview).
-    //   2. Active hub from auth (covers /brain, /agents, /inbox — non-
+    //   2. Active hub from auth (covers /brain, /agents, /pulse — non-
     //      hub-scoped routes that have no slug in the path). Without
     //      this, callers from /brain landed on /memories which middleware
     //      routes to /h/personal/memories regardless of which hub the

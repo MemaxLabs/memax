@@ -46,7 +46,9 @@ export function InboxSurfaceProvider({
 
   const openInbox = useCallback(() => {
     if (isMobile) {
-      router.push("/inbox");
+      // /inbox retired in plan 25 P4 — the pulse board hosts the
+      // decisions and receipts the inbox used to own.
+      router.push("/pulse");
       return;
     }
     setOpen(true);

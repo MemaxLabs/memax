@@ -26,7 +26,7 @@ export const zh: Translations = {
       brain: "问问 memax",
       memories: "记忆",
       agents: "AI 助手",
-      inbox: "收件箱",
+      pulse: "脉搏",
     },
   },
   bar: {
@@ -681,7 +681,7 @@ export const zh: Translations = {
   dock: {
     brain: "问问",
     topics: "主题",
-    inbox: "收件箱",
+    pulse: "脉搏",
     recentTitle: "最近",
   },
 
@@ -807,6 +807,7 @@ export const zh: Translations = {
       "你不在的时候，这个 hub 发生了什么——agent 的动作、主题的流向、旧记忆的回声。卡片每晚刷新；处理过的会留作回执，直到有新内容顶替。",
     purposeAria: "这是什么？",
     collapse: "收起",
+    loadFailed: "板子没加载出来，刷新一下再试。",
     continueInMemax: "在 memax 继续",
     copyForAgent: "复制给 agent",
     copied: "已复制",
@@ -845,6 +846,41 @@ export const zh: Translations = {
       "agent 停下来等你拍板。你的选择会写回记忆，agent 之后能直接读到。",
     feedbackAccurate: "准",
     feedbackInaccurate: "不准",
+
+    // 等你 band（plan 25 P4）——把通知里的决策并进板上。
+    // 板成为唯一的surface，/inbox 退役。
+    kindWaiting: "等你",
+    waitingPurpose:
+      "memax 替你做不了的决定——记忆冲突、主题归并、hub 邀请。在这儿回一句，板就能往下走。",
+
+    // 最近 —— 原来住在收件箱里的回执。
+    recentTitle: "最近",
+    recentDetailOne: "1 条",
+    recentDetail: "{n} 条",
+    recentPurpose: "已经发生的事，不需要你拍板。",
+
+    // 整页脉搏surface。
+    pageEmptyTitle: "板上很安静",
+    pageEmptyBody: "memax 每晚做完梦会刷新这块板。卡片会自己出现。",
+
+    // 自定义板。
+    boardsLabel: "板",
+    newBoard: "新建板",
+    newBoardTitleLabel: "板名",
+    newBoardTitlePlaceholder: "对手动向",
+    newBoardInstructionLabel: "长期指令",
+    newBoardInstructionPlaceholder: "每晚，memax 要在这个 hub 里盯着什么？",
+    newBoardSave: "创建",
+    newBoardCancel: "取消",
+    cookingLabel: "酝酿中",
+    cookingReceipt: "✦ 已配置 · {title} 正在酝酿——明早的第一次结果，板上见。",
+    cookingBody: "明早见。",
+    pausedLabel: "已暂停",
+    deleteBoard: "删除这块板",
+    deleteBoardConfirm: "删除这块板？板上的卡片会一起消失。",
+    deleteBoardConfirmYes: "删除",
+    deleteBoardConfirmNo: "先留着",
+    customBoardNoSlots: "这块板的卡片会在下一次夜间 dream 之后出现。",
   },
   inbox: {
     title: "收件箱",
@@ -2144,6 +2180,9 @@ export const zh: Translations = {
       deletePersona: "忘记那个 persona",
       restorePersona: "恢复那个 persona",
       resolveBoardCard: "处理那张卡片",
+      createBoard: "创建那块板",
+      updateBoard: "更新那块板",
+      deleteBoard: "删除那块板",
       createHub: "创建该 hub",
       updateHub: "更新 hub",
       deleteHub: "删除 hub",

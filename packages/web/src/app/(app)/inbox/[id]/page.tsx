@@ -1,28 +1,18 @@
-"use client";
-
 /**
- * /inbox/<id> — plan 24 §4.5 deep-link route.
+ * /inbox/<id> — retired deep-link route (plan 25 P4).
  *
- * Mounts the same `<InboxView>` as /inbox but seeds the target
- * notification's id so InboxList expands + scrolls it into view on
- * first paint. Deep links from email CTAs ("review the auto-merge
- * proposal we just made") land here; if the notification has been
- * resolved or expired, InboxList silently ignores the missing id and
- * shows the regular pending list.
+ * The inbox is gone: its decisions now render as 等你 cards on the
+ * pulse board and its receipts as the board's 最近 strip. This route
+ * stays mounted purely as a redirect so old email CTAs
+ * ("review the auto-merge proposal we just made") don't 404.
  *
- * Client component because InboxView's data path
- * (useNotifications + interactive resolve/dismiss) needs the
- * client-side TanStack cache.
+ * The notification id is dropped rather than forwarded: the board has
+ * no per-row deep-link anchor yet, and the pulse surface already shows
+ * every pending decision the id could have pointed at.
  */
 
-import { use } from "react";
-import { InboxView } from "@/components/features/inbox/inbox-control";
+import { redirect } from "next/navigation";
 
-export default function InboxDeepLinkPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = use(params);
-  return <InboxView initialExpandedId={id} />;
+export default function InboxDeepLinkRedirectPage() {
+  redirect("/pulse");
 }

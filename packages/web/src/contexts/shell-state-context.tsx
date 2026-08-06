@@ -102,7 +102,7 @@ interface ShellStateValue {
   /**
    * Whether the bar is currently inline on the route (vs route-hidden
    * because the route doesn't host a bar surface — e.g., /agents,
-   * /inbox in some configurations). When `false`, the bar's glass
+   * /pulse in some configurations). When `false`, the bar's glass
    * material is skipped (no floating blur rectangle) and ScanRestButton
    * surfaces as the persistent re-entry. Plan 26 follow-up: previously
    * the bar's outer glass-bar class always rendered, which on bar-less

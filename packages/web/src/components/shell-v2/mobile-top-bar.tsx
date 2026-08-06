@@ -95,7 +95,7 @@ export function MobileTopBar({
   const tabLabel: Record<ShellTabId, string> = {
     brain: t.nav.tabs.brain,
     memories: t.nav.tabs.memories,
-    inbox: t.nav.tabs.inbox,
+    pulse: t.nav.tabs.pulse,
     agents: t.nav.tabs.agents,
   };
 
@@ -191,7 +191,7 @@ export function MobileTopBar({
       ) : null}
 
       {/* Hub anchor on non-memories tabs — hub context is not a
-          memories-only concern (brain chat scope, inbox, agents all
+          memories-only concern (brain chat scope, pulse, agents all
           read the active hub). Memories keeps the full title-position
           chip; other tabs get a compact badge in the trailing corner
           so the anchor is present on every surface at a consistent

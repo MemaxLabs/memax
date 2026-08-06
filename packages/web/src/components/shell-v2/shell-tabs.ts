@@ -12,7 +12,9 @@
  *                  hub assumption; the rail is the only consumer of the
  *                  routing decision and pulls the active hub there)
  *   - `agents`   → `/agents`     (built in plan 24)
- *   - `inbox`    → `/inbox`      (already exists; plan 24 adds deep links)
+ *   - `pulse`    → `/pulse`      (plan 25 P4 — the pulse board surface;
+ *                  replaced the retired `/inbox` tab, which now only
+ *                  survives as a redirect for old deep links)
  *
  * Visible labels live in `t.nav.tabs.<id>` (i18n requirement). Each tab
  * exposes a stable `id` callers use to look up its label at render time.
@@ -22,9 +24,9 @@
  */
 
 import type { LucideIcon } from "lucide-react";
-import { Brain, Bot, Inbox, Library } from "lucide-react";
+import { Brain, Bot, Library, Sparkles } from "lucide-react";
 
-export type ShellTabId = "brain" | "memories" | "agents" | "inbox";
+export type ShellTabId = "brain" | "memories" | "agents" | "pulse";
 
 export interface ShellTabSpec {
   id: ShellTabId;
@@ -41,7 +43,7 @@ export interface ShellTabSpec {
   hasSecondary: boolean;
   /**
    * Static fallback path. Used when the tab does NOT need active-hub
-   * context (brain, agents, inbox). The memories tab ignores this and
+   * context (brain, agents, pulse). The memories tab ignores this and
    * resolves at render time via `useActiveHub()` + `hubRouteSlug` so
    * users in a team hub click "Memories" and land on the team hub's
    * memories grid, not personal.
@@ -53,12 +55,19 @@ export interface ShellTabSpec {
 // direction): Memories is the foundation — what the user has
 // dumped. Agents is the surface that wrote / will write into it.
 // Brain is the conversational surface ON TOP of those memories.
-// Inbox is the operator/review surface, last.
+// Pulse is what memax noticed + what's waiting on you, last.
+//
+// Pulse resolves to the STATIC `/pulse` route rather than mirroring
+// the memories tab's active-hub path: the board is embedded in the
+// memories page too (BoardSection), and if both tabs resolved to
+// `/h/<slug>/memories` the pathname-derived active-tab lookup would
+// be ambiguous. `/pulse` renders the same board full-page for the
+// active hub, and gives the retired `/inbox` route a redirect target.
 export const SHELL_TABS: readonly ShellTabSpec[] = [
   { id: "memories", icon: Library, hasSecondary: true, staticPath: null },
   { id: "agents", icon: Bot, hasSecondary: false, staticPath: "/agents" },
   { id: "brain", icon: Brain, hasSecondary: true, staticPath: "/brain" },
-  { id: "inbox", icon: Inbox, hasSecondary: false, staticPath: "/inbox" },
+  { id: "pulse", icon: Sparkles, hasSecondary: false, staticPath: "/pulse" },
 ] as const;
 
 export function getShellTab(id: ShellTabId): ShellTabSpec {

@@ -10,7 +10,7 @@
  *     icons only). The secondary panel owns the visual budget.
  *   - Active tab has a HIDDEN secondary panel → rail EXPANDED
  *     (196px, labels visible). The rail owns the visual budget.
- *   - Active tab has NO secondary panel (agents, inbox) → rail
+ *   - Active tab has NO secondary panel (agents, pulse) → rail
  *     EXPANDED. Nothing competes for space.
  *
  * Principle: exactly one panel is expanded at a time. This replaces
@@ -81,7 +81,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   const { user, hubs } = useAuth();
   const { activeHub } = useActiveHub();
   const settingsPanel = useSettingsPanel();
-  const inboxBadgeTone =
+  const pulseBadgeTone =
     (notificationSummary?.needs_action_pending ?? 0) > 0
       ? ("needs-action" as const)
       : (notificationSummary?.updates_unseen ?? 0) > 0
@@ -113,7 +113,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   const visualWidth = expanded ? RAIL_WIDTH_EXPANDED : RAIL_WIDTH_COLLAPSED;
 
   // Resolve the memories path against the user's active hub. Static-path
-  // tabs (brain, agents, inbox) ignore active-hub context.
+  // tabs (brain, agents, pulse) ignore active-hub context.
   const memoriesPath = useMemo(() => {
     if (!activeHub?.hub || !user) return "/h/personal/memories";
     const slug = hubRouteSlug(activeHub.hub, user.id);
@@ -247,7 +247,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
           const isActive = tab.id === displayedActiveTab;
           const isSecondaryHidden = secondaryHidden[tab.id];
           const label = t.nav.tabs[tab.id];
-          const badgeTone = tab.id === "inbox" ? inboxBadgeTone : null;
+          const badgeTone = tab.id === "pulse" ? pulseBadgeTone : null;
           const button = (
             <button
               key={tab.id}

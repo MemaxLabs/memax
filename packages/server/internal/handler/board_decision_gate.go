@@ -88,7 +88,12 @@ func createDecisionGate(
 		return nil, errGateLimit
 	}
 
-	slotKey := model.BoardSlotKeyGatePrefix + generateID()[:8]
+	// Full uuid, not a truncation: this key doubles as the
+	// notification's globally-unique source_id, so 32 bits of entropy
+	// would collide across hubs (birthday bound: ~1% at 9k gates) —
+	// and a collision silently drops the ping AND lets a later resolve
+	// settle a different hub's decision.
+	slotKey := model.BoardSlotKeyGatePrefix + generateID()
 	payload, err := json.Marshal(model.BoardDecisionGatePayload{
 		Description: question,
 		Question:    question,
@@ -132,7 +137,10 @@ func createDecisionGate(
 		Status:     model.NotificationStatusPending,
 		Priority:   1,
 		SourceKind: model.NotificationSourceDecisionGate,
-		SourceID:   slotKey,
+		// Hub-qualified: even if two hubs ever produced the same slot
+		// key, their notification rows stay distinct and a resolve can
+		// never reach across hubs.
+		SourceID: decisionGateSourceID(hub.ID, slotKey),
 		Payload:    notifPayload,
 		CreatedAt:  time.Now().UTC(),
 	}
@@ -240,12 +248,19 @@ func (h *BoardsHandler) resolveDecisionGateSideEffects(
 
 	// Settle the ping so the inbox row doesn't outlive the decision.
 	hubIDs := GetAccessibleHubIDs(r)
-	if n, err := h.store.GetNotificationBySource(r.Context(), model.NotificationSourceDecisionGate, slot.SlotKey); err == nil && n != nil {
+	if n, err := h.store.GetNotificationBySource(r.Context(), model.NotificationSourceDecisionGate,
+		decisionGateSourceID(hub.ID, slot.SlotKey)); err == nil && n != nil {
 		_ = h.store.ResolveNotification(r.Context(), n.ID, userID, hubIDs, model.NotificationResolution("applied"))
 		if updated, err := h.store.GetNotification(r.Context(), n.ID, userID, hubIDs); err == nil {
 			events.PublishNotificationResolved(r.Context(), h.events, updated)
 		}
 	}
+}
+
+// decisionGateSourceID keys a gate's notification by (hub, slot) so
+// the row is unique per hub regardless of slot-key entropy.
+func decisionGateSourceID(hubID, slotKey string) string {
+	return hubID + ":" + slotKey
 }
 
 func orUnknownAgent(agent string) string {

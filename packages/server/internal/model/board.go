@@ -96,8 +96,12 @@ type BoardSlot struct {
 	State         string               `json:"state"`
 	Resolution    *BoardSlotResolution `json:"resolution,omitempty"`
 	DreamRunID    string               `json:"dream_run_id,omitempty"`
-	CreatedAt     time.Time            `json:"created_at"`
-	UpdatedAt     time.Time            `json:"updated_at"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	// ContentUpdatedAt moves only when a producer writes content —
+	// user actions bump UpdatedAt, so only this field can answer
+	// "how long since this card was actually regenerated".
+	ContentUpdatedAt time.Time `json:"content_updated_at"`
 }
 
 // BoardFeedback is the append-only 准/不准 snapshot. It outlives the

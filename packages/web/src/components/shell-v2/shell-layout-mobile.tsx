@@ -122,7 +122,7 @@ function DrawerContent({ tab: activeTab, onNavigate }: DrawerContentProps) {
   const tabLabel: Record<ShellTabId, string> = {
     brain: t.nav.tabs.brain,
     memories: t.nav.tabs.memories,
-    inbox: t.nav.tabs.inbox,
+    pulse: t.nav.tabs.pulse,
     agents: t.nav.tabs.agents,
   };
 

@@ -890,7 +890,7 @@ export const en = {
     capsuleAck: "I remember",
     title: "Pulse",
     purpose:
-      "What changed in this hub while you were away — agent activity, topic movement, and echoes from your past memories. Cards refresh nightly; resolve one and it stays as a receipt until new content replaces it.",
+      "What changed in this hub while you were away — agent activity, topic movement, and echoes from your past memories. Cards refresh after each organizing pass; resolve one and it stays as a receipt until new content replaces it.",
     purposeAria: "What is this?",
     collapse: "Collapse",
     loadFailed: "memax could not load your board. Refresh to try again.",
@@ -925,7 +925,7 @@ export const en = {
     echoNow: "your answer",
     gateFrom: "From {agent}",
     dreamlogPurpose:
-      "memax's first-person notes from organizing your memories overnight.",
+      "memax's first-person notes from its last pass over your memories.",
     echoPurpose:
       "An old question just met a new answer — only memory that carries time can do this.",
     threadPurpose:
@@ -948,6 +948,10 @@ export const en = {
     // 等你 deck — decisions render one at a time; the badge counts the
     // pile behind the top card.
     deckMore: "{n} more waiting",
+    // Generic same-kind stack — any kind's live slots deck up.
+    stackCount: "{n} more",
+    // ↻ — advance the deck client-side without resolving anything.
+    deckCycle: "Show next card",
 
     // Collapsed shelf — the embedded memories-page board renders as a
     // compact horizontal tile shelf until expanded in place.
@@ -964,10 +968,10 @@ export const en = {
     // Full-page pulse surface — designed empty state (2026-08): a
     // ✦-led pitch of what will appear, then the watch-one-thing block
     // with example chips that prefill the composer.
-    pageEmptyTitle: "The board is quiet",
+    pageEmptyTitle: "No cards yet",
     pageEmptyBody:
-      "After each night's pass over your memories, memax writes what it noticed here — dream notes, echoes of old questions, patterns nobody flagged. Your first cards arrive after the next dream.",
-    emptyWatchTitle: "Have memax watch one thing for you",
+      "When memax organizes this hub's memories, it writes what it noticed here — dream notes, echoes of old questions, patterns nobody flagged. Your first cards appear after the next pass.",
+    emptyWatchTitle: "Start from an example",
     emptyExampleFitness: "Fitness & sleep",
     emptyExampleFitnessInstruction:
       "Keep an eye on my workout and sleep records — tell me when my rhythm changes or I start slacking off.",
@@ -980,15 +984,18 @@ export const en = {
 
     // Custom boards.
     newBoard: "New board",
+    // Ghost card/tile — the latent new-board affordance closing the
+    // stream and the shelf.
+    ghostTitle: "Have memax watch one thing",
     newBoardTitleLabel: "Board name",
     newBoardTitlePlaceholder: "Competitor moves",
     newBoardInstructionLabel: "Standing instruction",
     newBoardInstructionPlaceholder:
-      "What should memax watch for in this hub, every night?",
+      "What should memax keep watching for in this hub?",
     newBoardSave: "Create board",
     newBoardCancel: "Cancel",
     cookingLabel: "Cooking",
-    cookingBody: "See you in the morning.",
+    cookingBody: "First results after the next pass.",
     deleteBoard: "Delete this board",
     deleteBoardConfirm: "Delete this board? Its cards go with it.",
     deleteBoardConfirmYes: "Delete",

@@ -20,6 +20,7 @@ import {
   type BoardStripSummary,
 } from "./board-kind-registry";
 import { buildTopicPath } from "@/lib/route-helpers";
+import { boardKindEyebrow } from "./board-kind-visuals";
 // Side-effect chain: importing the Lane A module also registers the
 // Lane B synthesized kinds (dreamlog/echo/thread/openq/pattern/musing/
 // decision_gate), so BoardView's single `import "./board-kinds"` brings
@@ -154,7 +155,9 @@ function CapsuleBody({ slot }: BoardKindBodyProps) {
       : "";
   return (
     <>
-      <BoardKindLabel star>{t.board.kindCapsule}</BoardKindLabel>
+      <BoardKindLabel star {...boardKindEyebrow("capsule")}>
+        {t.board.kindCapsule}
+      </BoardKindLabel>
       <BoardMemQuote
         when={whenLabel}
         onClick={
@@ -196,7 +199,7 @@ function ActivityBody({ slot }: BoardKindBodyProps) {
 
   return (
     <>
-      <BoardKindLabel>
+      <BoardKindLabel {...boardKindEyebrow("activity")}>
         {interpolate(t.board.kindActivity, { n: String(windowHours) })}
       </BoardKindLabel>
       {agents.map((agent) => (

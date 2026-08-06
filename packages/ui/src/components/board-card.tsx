@@ -36,6 +36,7 @@ export function BoardCard({
   children,
   live,
   receipt,
+  timestamp,
   className,
   style,
 }: {
@@ -46,6 +47,12 @@ export function BoardCard({
   live?: React.ReactNode;
   /** Receipt line content shown once terminal. */
   receipt?: React.ReactNode;
+  /**
+   * Quiet generated-at line ("3 天前") under the body — when this
+   * card's content was produced. Persistent across states; the receipt
+   * line separately carries the RESOLVED time.
+   */
+  timestamp?: React.ReactNode;
   className?: string;
   /** Merged with the card's own style (e.g. entrance animationDelay). */
   style?: React.CSSProperties;
@@ -55,7 +62,7 @@ export function BoardCard({
     <div
       data-state={state}
       className={cn(
-        "glass-card rounded-[18px] px-4 py-3.5",
+        "glass-card rounded-[18px] px-4 py-3.5 text-left",
         // Spring, not ease-in-out: the resolve swap (border → dashed,
         // dismissed dim) should read as the card settling, per the
         // design language.
@@ -68,6 +75,11 @@ export function BoardCard({
       style={{ ...style, ...(terminal ? { borderStyle: "dashed" } : null) }}
     >
       {children}
+      {timestamp ? (
+        <div className="mt-2 text-left text-[10.5px] text-fg-4">
+          {timestamp}
+        </div>
+      ) : null}
       {!terminal ? live : null}
       {terminal && receipt ? (
         // The receipt fades up into the space the action row vacated —

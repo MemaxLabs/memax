@@ -19,6 +19,7 @@ import {
   registerBoardKind,
   type BoardKindBodyProps,
 } from "./board-kind-registry";
+import { boardKindEyebrow } from "./board-kind-visuals";
 
 // Payload guards duplicated from board-kinds.tsx on purpose: the Lane A
 // module side-effect-imports this one, so importing helpers back from it
@@ -92,7 +93,9 @@ function DreamlogBody({ slot }: BoardKindBodyProps) {
   const { t } = useLocale();
   return (
     <>
-      <BoardKindLabel star>{t.board.kindDreamlog}</BoardKindLabel>
+      <BoardKindLabel star {...boardKindEyebrow("dreamlog")}>
+        {t.board.kindDreamlog}
+      </BoardKindLabel>
       <p className="m-0 text-[14px] text-fg-1">
         {asString(slot.payload?.body)}
       </p>
@@ -105,7 +108,9 @@ function EchoBody({ slot }: BoardKindBodyProps) {
   const body = asString(slot.payload?.body);
   return (
     <>
-      <BoardKindLabel star>{t.board.kindEcho}</BoardKindLabel>
+      <BoardKindLabel star {...boardKindEyebrow("echo")}>
+        {t.board.kindEcho}
+      </BoardKindLabel>
       {body ? <p className="m-0 mb-2 text-[14px] text-fg-1">{body}</p> : null}
       <LaneBQuote
         quote={asQuote(slot.payload?.then)}
@@ -136,7 +141,9 @@ function makeWowBody(
     const quotes = asArray<QuoteRef>(slot.payload?.quotes);
     return (
       <>
-        <BoardKindLabel star>{labelOf(t)}</BoardKindLabel>
+        <BoardKindLabel star {...boardKindEyebrow(slot.kind)}>
+          {labelOf(t)}
+        </BoardKindLabel>
         <p className="m-0 text-[14px] text-fg-1">
           {asString(slot.payload?.body)}
         </p>
@@ -174,7 +181,9 @@ function DecisionGateBody({ slot }: BoardKindBodyProps) {
   const terminal = slot.state === "resolved" || slot.state === "dismissed";
   return (
     <>
-      <BoardKindLabel star>{t.board.kindGate}</BoardKindLabel>
+      <BoardKindLabel star {...boardKindEyebrow("decision_gate")}>
+        {t.board.kindGate}
+      </BoardKindLabel>
       <p className="m-0 text-[14px] font-semibold text-fg-1">
         {asString(slot.payload?.question)}
       </p>

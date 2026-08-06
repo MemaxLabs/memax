@@ -30,15 +30,23 @@
  * allow-list are the parts most likely to drift under a copy.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { Notification } from "memax-sdk";
 import {
   BoardAction,
   BoardActionRow,
   BoardCard,
+  BoardDeckControls,
+  BoardDeckShell,
   BoardKindLabel,
 } from "@memaxlabs/ui";
-import { useLocale } from "@/i18n";
+import { useInterpolate, useLocale } from "@/i18n";
+import { formatAge } from "@/lib/format-age";
+import {
+  boardKindEyebrow,
+  HIGHLIGHT_KIND,
+  WAITING_KIND,
+} from "./board-kind-visuals";
 import {
   getInboxDetailComponent,
   inboxDecisionActions,
@@ -302,34 +310,32 @@ export function BoardNotificationDeck({
   disabled: boolean;
   onResolve: (id: string, action: string) => void;
 }) {
+  const { t } = useLocale();
+  // Client-side cycle: ↻ peeks at the next decision without resolving
+  // the top one. Modulo-read keeps the index valid as resolves shrink
+  // the (prop-controlled) pile.
+  const [cursor, setCursor] = useState(0);
   if (cards.length === 0) return null;
-  const top = cards[0];
+  const top = cards[cursor % cards.length];
   return (
-    <div className={`relative ${cards.length > 1 ? "mb-2" : ""}`}>
-      {/* Stacked edges: up to two ghost layers peeking from behind. */}
-      {cards.length > 2 ? (
-        <div
-          aria-hidden
-          className="glass-card absolute inset-x-4 -bottom-2 h-6 rounded-[18px] opacity-40"
-        />
-      ) : null}
-      {cards.length > 1 ? (
-        <div
-          aria-hidden
-          className="glass-card absolute inset-x-2 -bottom-1 h-6 rounded-[18px] opacity-70"
-        />
-      ) : null}
-      <div className="relative">
-        <BoardNotificationCard
-          key={top.id}
-          card={top}
-          entranceIndex={0}
-          disabled={disabled}
-          onResolve={onResolve}
-          badge={cards.length > 1 ? countLabel : undefined}
-        />
-      </div>
-    </div>
+    <BoardDeckShell depth={cards.length - 1}>
+      <BoardNotificationCard
+        key={top.id}
+        card={top}
+        entranceIndex={0}
+        disabled={disabled}
+        onResolve={onResolve}
+        deckControls={
+          cards.length > 1 ? (
+            <BoardDeckControls
+              countLabel={countLabel}
+              onCycle={() => setCursor((i) => (i + 1) % cards.length)}
+              cycleAriaLabel={t.board.deckCycle}
+            />
+          ) : undefined
+        }
+      />
+    </BoardDeckShell>
   );
 }
 
@@ -338,22 +344,24 @@ export function BoardNotificationCard({
   entranceIndex,
   disabled,
   onResolve,
-  badge,
+  deckControls,
 }: {
   card: BoardNotificationCardModel;
   entranceIndex: number;
   disabled: boolean;
   onResolve: (id: string, action: string) => void;
-  /** Deck-depth indicator, e.g. "还有 6 件" — shown when stacked. */
-  badge?: string;
+  /** Deck depth pill + ↻ cycle — shown when stacked. */
+  deckControls?: ReactNode;
 }) {
   const { t } = useLocale();
+  const interpolate = useInterpolate();
   const Body = getInboxDetailComponent(card.kind);
   return (
     <BoardCard
       state="fresh"
       className="animate-fade-up"
       style={{ animationDelay: `${Math.min(entranceIndex, 4) * 60}ms` }}
+      timestamp={formatAge(card.item.created_at, t, interpolate)}
       live={
         card.actions.length > 0 ? (
           <BoardActionRow className="flex-wrap">
@@ -373,14 +381,14 @@ export function BoardNotificationCard({
       }
     >
       <div className="flex items-start justify-between gap-2">
-        <BoardKindLabel star className="min-w-0">
+        <BoardKindLabel
+          star
+          {...boardKindEyebrow(WAITING_KIND)}
+          className="min-w-0"
+        >
           {t.board.kindWaiting}
         </BoardKindLabel>
-        {badge ? (
-          <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[10.5px] font-medium text-fg-2">
-            {badge}
-          </span>
-        ) : null}
+        {deckControls}
       </div>
       {card.title ? (
         <p className="m-0 line-clamp-2 text-[14px] leading-snug text-fg-1">
@@ -421,12 +429,14 @@ export function BoardHighlightCard({
   onDismiss: (id: string) => void;
 }) {
   const { t } = useLocale();
+  const interpolate = useInterpolate();
   const Body = getInboxDetailComponent(card.kind);
   return (
     <BoardCard
       state="fresh"
       className="animate-fade-up"
       style={{ animationDelay: `${Math.min(entranceIndex, 4) * 60}ms` }}
+      timestamp={formatAge(card.item.created_at, t, interpolate)}
       live={
         <BoardActionRow>
           <BoardAction
@@ -440,7 +450,11 @@ export function BoardHighlightCard({
         </BoardActionRow>
       }
     >
-      <BoardKindLabel star className="min-w-0">
+      <BoardKindLabel
+        star
+        {...boardKindEyebrow(HIGHLIGHT_KIND)}
+        className="min-w-0"
+      >
         {inboxKindLabel(card.item, t)}
       </BoardKindLabel>
       {card.title ? (
@@ -474,11 +488,15 @@ export function BoardRecentRow({
   onDismiss: (id: string) => void;
 }) {
   const { t } = useLocale();
+  const interpolate = useInterpolate();
   return (
     <div className="flex items-start gap-3 px-4 py-2.5">
       <div className="min-w-0 flex-1">
         <div className="text-[10.5px] uppercase tracking-[0.12em] text-fg-4">
           {inboxKindLabel(card.item, t)}
+          <span className="ml-1.5 normal-case tracking-normal">
+            {formatAge(card.item.created_at, t, interpolate)}
+          </span>
         </div>
         <div className="mt-0.5 truncate text-[12.5px] text-fg-2">
           {card.title}

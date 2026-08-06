@@ -48,15 +48,20 @@ export function BoardVoiceStar({
 /**
  * KindLabel — the uppercase micro-eyebrow naming what kind of card
  * this is ("行迹 · 你不在的 9 小时"). Optional colored dot for
- * category-coded kinds, optional VoiceStar for first-person kinds.
+ * category-coded kinds, optional VoiceStar for first-person kinds,
+ * optional kind icon (lucide, rendered at eyebrow scale — subtle,
+ * never a loud background).
  */
 export function BoardKindLabel({
   dotColor,
+  icon: Icon,
   star = false,
   children,
   className,
 }: {
   dotColor?: string;
+  /** Kind icon component (lucide). Rendered dot-adjacent at 12px. */
+  icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
   star?: boolean;
   children: React.ReactNode;
   className?: string;
@@ -64,7 +69,7 @@ export function BoardKindLabel({
   return (
     <div
       className={cn(
-        "mb-2 flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.12em] text-fg-3",
+        "mb-2 flex items-center gap-1.5 text-left text-[10.5px] uppercase tracking-[0.12em] text-fg-3",
         className,
       )}
     >
@@ -74,6 +79,9 @@ export function BoardKindLabel({
           style={{ backgroundColor: dotColor }}
           aria-hidden="true"
         />
+      ) : null}
+      {Icon ? (
+        <Icon className="h-3 w-3 shrink-0 opacity-80" aria-hidden />
       ) : null}
       {star ? <BoardVoiceStar /> : null}
       <span className="min-w-0 truncate">{children}</span>

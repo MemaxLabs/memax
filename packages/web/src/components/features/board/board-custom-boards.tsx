@@ -13,7 +13,7 @@
  * card each. The old BoardTabs / CustomBoardView surfaces are gone.
  */
 
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { Board, BoardSlot } from "memax-sdk";
 import {
   BoardAction,
@@ -27,8 +27,10 @@ import {
   PopoverTrigger,
   Textarea,
 } from "@memaxlabs/ui";
-import { useLocale } from "@/i18n";
-import { renderBoardSlotBody } from "./board-kind-registry";
+import { useInterpolate, useLocale } from "@/i18n";
+import { formatAge } from "@/lib/format-age";
+import { renderBoardSlotBody, slotContentTime } from "./board-kind-registry";
+import { boardKindEyebrow, COOKING_KIND } from "./board-kind-visuals";
 
 /**
  * Board titles are optional on the wire (system boards carry none), so
@@ -114,6 +116,7 @@ export function BoardComposer({
   onCreate,
   initialTitle = "",
   initialInstruction = "",
+  onEmptyBlur,
 }: {
   pending: boolean;
   onCancel: () => void;
@@ -124,6 +127,12 @@ export function BoardComposer({
    */
   initialTitle?: string;
   initialInstruction?: string;
+  /**
+   * Ghost-morph contract: focus left the composer with BOTH fields
+   * empty → the host collapses back to its ghost form. Never fires
+   * with content on board — an unfinished thought is kept, not eaten.
+   */
+  onEmptyBlur?: () => void;
 }) {
   const { t } = useLocale();
   const [title, setTitle] = useState(initialTitle);
@@ -137,6 +146,19 @@ export function BoardComposer({
         event.preventDefault();
         if (!canSave || pending) return;
         onCreate({ title: title.trim(), instruction: instruction.trim() });
+      }}
+      // Esc anywhere in the form backs out (the ghost re-forms).
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onCancel();
+        }
+      }}
+      onBlur={(event) => {
+        if (!onEmptyBlur) return;
+        const next = event.relatedTarget as Node | null;
+        if (next && event.currentTarget.contains(next)) return;
+        if (title.trim() === "" && instruction.trim() === "") onEmptyBlur();
       }}
     >
       <BoardKindLabel star>{t.board.newBoard}</BoardKindLabel>
@@ -185,22 +207,29 @@ export function CustomBoardSlotCard({
   entranceIndex,
   deletePending,
   onDelete,
+  deckControls,
 }: {
   board: Board;
   slot: BoardSlot;
   entranceIndex: number;
   deletePending: boolean;
   onDelete: (boardId: string) => void;
+  /** Same-kind stack pill + ↻ cycle (BoardDeckControls) when decked. */
+  deckControls?: ReactNode;
 }) {
+  const { t } = useLocale();
+  const interpolate = useInterpolate();
   return (
     <BoardCard
       state={slot.state}
       className="animate-fade-up"
       style={{ animationDelay: `${Math.min(entranceIndex, 4) * 60}ms` }}
+      timestamp={formatAge(slotContentTime(slot), t, interpolate)}
     >
       {/* float-right BEFORE the body — same trick the slot purpose
           InfoPopover uses — so the tag sits on the kind-label line. */}
-      <div className="float-right ml-2">
+      <div className="float-right ml-2 flex items-center gap-1.5">
+        {deckControls}
         <BoardTitleTag
           board={board}
           deletePending={deletePending}
@@ -230,12 +259,14 @@ export function CookingBoardCard({
   onDelete: (boardId: string) => void;
 }) {
   const { t } = useLocale();
+  const interpolate = useInterpolate();
   const [confirming, setConfirming] = useState(false);
   return (
     <BoardCard
       state="fresh"
       className="animate-fade-up"
       style={{ animationDelay: `${Math.min(entranceIndex, 4) * 60}ms` }}
+      timestamp={formatAge(board.created_at, t, interpolate)}
       live={
         <BoardActionRow>
           {confirming ? (
@@ -270,7 +301,9 @@ export function CookingBoardCard({
         </BoardActionRow>
       }
     >
-      <BoardKindLabel star>{t.board.cookingLabel}</BoardKindLabel>
+      <BoardKindLabel star {...boardKindEyebrow(COOKING_KIND)}>
+        {t.board.cookingLabel}
+      </BoardKindLabel>
       <p className="m-0 text-[14px] leading-snug text-fg-1">
         {boardDisplayTitle(board, t.board.title)}
       </p>
@@ -343,21 +376,72 @@ export function BoardEmptyState({
 }
 
 /**
- * NewBoardButton — the "+ 新建板" affordance next to the ✦ Pulse title.
+ * BoardGhostCard — the latent new-board affordance closing the /pulse
+ * card stream (2026-08 founder spec, replacing the header 新建板
+ * button): the same latent-creation metaphor as the memory grid's
+ * dashed ComposePlusCell. At rest it is a dashed glass card with a
+ * quiet ✦ and placeholder copy; tapping morphs it IN PLACE into the
+ * composer (no modal, no jump — one container, dashed→solid, spring).
+ * Save → the new board's cooking card takes this spot on the next
+ * boards refetch and the ghost re-forms behind it. Esc or leaving the
+ * fields empty morphs it back to a ghost.
  */
-export function NewBoardButton({ onClick }: { onClick: () => void }) {
+export function BoardGhostCard({
+  pending,
+  onCreate,
+  prefill,
+  onPrefillConsumed,
+}: {
+  pending: boolean;
+  onCreate: (input: { title: string; instruction: string }) => void;
+  /**
+   * Empty-state example chip payload — arriving prefill snaps the
+   * ghost open with the example loaded, ready to edit.
+   */
+  prefill?: { title: string; instruction: string } | null;
+  /** Prefill landed (or was abandoned) — parent clears its state. */
+  onPrefillConsumed: () => void;
+}) {
   const { t } = useLocale();
+  const [composing, setComposing] = useState(false);
+  // A chip tap composes immediately, with the example loaded.
+  useEffect(() => {
+    if (prefill) setComposing(true);
+  }, [prefill]);
+  const close = () => {
+    setComposing(false);
+    onPrefillConsumed();
+  };
+
+  if (!composing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setComposing(true)}
+        // The ComposePlusCell "fill me in" idiom: dashed glass border,
+        // transparent body — a latent card, not a filled one.
+        className="animate-fade-up flex w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[18px] bg-transparent px-4 py-6 transition-colors [transition-timing-function:var(--ease-spring)] hover:bg-surface-1"
+        style={{ border: "1px dashed var(--glass-border)" }}
+      >
+        <BoardVoiceStar className="text-[15px]" />
+        <span className="text-[12.5px] text-fg-4">{t.board.ghostTitle}</span>
+      </button>
+    );
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      // Trailing-action idiom of the section header it sits in (the
-      // fresh-memories convention): 12px fg-3 → fg-2 text button. The
-      // header's flex-1 spacer right-aligns it — no ml-auto needed.
-      className="flex cursor-pointer items-center gap-1 text-[12px] text-fg-3 transition-colors hover:text-fg-2"
-    >
-      <BoardVoiceStar />
-      {t.board.newBoard}
-    </button>
+    <div className="animate-fade-up">
+      <BoardComposer
+        // Re-key on prefill so a chip tap always lands its copy even
+        // if the composer was already open.
+        key={prefill ? prefill.title : "blank"}
+        pending={pending}
+        initialTitle={prefill?.title}
+        initialInstruction={prefill?.instruction}
+        onCancel={close}
+        onEmptyBlur={close}
+        onCreate={onCreate}
+      />
+    </div>
   );
 }

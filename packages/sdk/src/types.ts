@@ -704,6 +704,13 @@ export interface BoardSlot {
   dream_run_id?: string;
   created_at: string;
   updated_at: string;
+  /**
+   * When the slot's CONTENT last changed (vs `updated_at`, which also
+   * moves on state transitions like resolve). The UI's "generated at"
+   * timestamps read this, falling back to `updated_at` for rows from
+   * servers that predate migration 021.
+   */
+  content_updated_at?: string;
 }
 
 export interface BoardWithSlots {

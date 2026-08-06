@@ -22,7 +22,7 @@ describe("ShellStateProvider", () => {
       brain: false,
       memories: false,
       agents: false,
-      inbox: false,
+      pulse: false,
     });
   });
 
@@ -35,7 +35,7 @@ describe("ShellStateProvider", () => {
           brain: false,
           memories: true,
           agents: false,
-          inbox: false,
+          pulse: false,
         },
       }),
     );
@@ -62,7 +62,7 @@ describe("ShellStateProvider", () => {
       brain: false,
       memories: false,
       agents: false,
-      inbox: false,
+      pulse: false,
     });
   });
 
@@ -75,7 +75,7 @@ describe("ShellStateProvider", () => {
           brain: "yes", // invalid
           memories: 1, // invalid
           agents: false,
-          inbox: true,
+          pulse: true,
         },
       }),
     );
@@ -85,7 +85,7 @@ describe("ShellStateProvider", () => {
       brain: false, // string "yes" rejected → default false
       memories: false, // number 1 rejected → default false
       agents: false,
-      inbox: true, // valid boolean preserved
+      pulse: true, // valid boolean preserved
     });
     // Re-canonicalized: persisted JSON should now hold the cleaned shape.
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
@@ -93,7 +93,7 @@ describe("ShellStateProvider", () => {
       brain: false,
       memories: false,
       agents: false,
-      inbox: true,
+      pulse: true,
     });
   });
 
@@ -114,7 +114,7 @@ describe("ShellStateProvider", () => {
       brain: false,
       memories: true,
       agents: false,
-      inbox: false,
+      pulse: false,
     });
     expect(Object.keys(result.current.secondaryHidden)).not.toContain("feed");
   });
@@ -130,7 +130,7 @@ describe("ShellStateProvider", () => {
       brain: false,
       memories: false,
       agents: false,
-      inbox: false,
+      pulse: false,
     });
   });
 
@@ -160,7 +160,7 @@ describe("ShellStateProvider", () => {
       brain: false,
       memories: true,
       agents: false,
-      inbox: false,
+      pulse: false,
     });
   });
 

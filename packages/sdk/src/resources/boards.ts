@@ -49,6 +49,11 @@ export class BoardsResource {
     );
   }
 
+  /** One board (system or custom) with its slots. */
+  async getBoard(hubId: string, boardId: string): Promise<BoardWithSlots> {
+    return this.req("GET", `/v1/hubs/${hubId}/boards/${boardId}`);
+  }
+
   /** Every board on the hub — system board first, then custom ones. */
   async listForHub(hubId: string): Promise<{ boards: Board[] }> {
     return this.req("GET", `/v1/hubs/${hubId}/boards`);

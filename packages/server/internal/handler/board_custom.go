@@ -107,6 +107,39 @@ func (h *BoardsHandler) CreateBoard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, model.ApiResponse{Data: map[string]any{"board": board}})
 }
 
+// GetBoard returns one board (system or custom) with its slots — the
+// per-board read that makes custom board tabs real rather than
+// permanently-cooking placeholders.
+func (h *BoardsHandler) GetBoardByID(w http.ResponseWriter, r *http.Request) {
+	hubID, _, ok := h.requireHubMember(w, r)
+	if !ok {
+		return
+	}
+	board, err := h.store.GetBoard(r.PathValue("board_id"))
+	if errors.Is(err, store.ErrBoardNotFound) || (err == nil && board.HubID != hubID) {
+		// Cross-hub ids 404 rather than 403: a member of another hub
+		// shouldn't learn this board exists.
+		writeError(w, http.StatusNotFound, "not_found", "Board not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+	slots, err := h.store.ListBoardSlots(board.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+	if slots == nil {
+		slots = []model.BoardSlot{}
+	}
+	writeJSON(w, http.StatusOK, model.ApiResponse{Data: map[string]any{
+		"board": board,
+		"slots": slots,
+	}})
+}
+
 // UpdateBoard edits a custom board's title/instruction/status. The
 // system board is not editable — its behavior is code-defined.
 func (h *BoardsHandler) UpdateBoard(w http.ResponseWriter, r *http.Request) {

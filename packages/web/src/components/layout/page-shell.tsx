@@ -2,7 +2,7 @@
 
 /**
  * `<PageShell>` — canonical desktop+mobile content container for top-level
- * routes (`/agents`, `/topics`, `/memories`, `/inbox`, `/dreams`, etc).
+ * routes (`/agents`, `/topics`, `/memories`, `/pulse`, `/dreams`, etc).
  *
  * One source of truth for:
  *   - horizontal padding (`px-5 sm:px-8`)

@@ -24,7 +24,7 @@ export const en = {
       brain: "Ask memax",
       memories: "Memories",
       agents: "Agents",
-      inbox: "Inbox",
+      pulse: "Pulse",
     },
   },
   // Bar
@@ -745,7 +745,7 @@ export const en = {
   dock: {
     brain: "Ask",
     topics: "Topics",
-    inbox: "Inbox",
+    pulse: "Pulse",
     recentTitle: "Recent",
   },
 
@@ -931,6 +931,45 @@ export const en = {
       "An agent stopped to wait for your call. Your choice is written back into memory so the agent can read it later.",
     feedbackAccurate: "Spot on",
     feedbackInaccurate: "Off the mark",
+
+    // 等你 band (plan 25 P4) — notification decisions merged onto the
+    // board. The board is the one surface; /inbox retired.
+    kindWaiting: "Waiting on you",
+    waitingPurpose:
+      "Decisions memax can't make for you — memory conflicts, topic reshuffles, hub invites. Answer here and the board moves on.",
+
+    // 最近 strip — receipts that used to live in the inbox.
+    recentTitle: "Recent",
+    recentDetailOne: "1 update",
+    recentDetail: "{n} updates",
+    recentPurpose: "Things that already happened. Nothing to decide.",
+
+    // Full-page pulse surface.
+    pageEmptyTitle: "The board is quiet",
+    pageEmptyBody:
+      "memax refreshes this board after each night's dream run. Cards show up on their own.",
+
+    // Custom boards.
+    boardsLabel: "Boards",
+    newBoard: "New board",
+    newBoardTitleLabel: "Board name",
+    newBoardTitlePlaceholder: "Competitor moves",
+    newBoardInstructionLabel: "Standing instruction",
+    newBoardInstructionPlaceholder:
+      "What should memax watch for in this hub, every night?",
+    newBoardSave: "Create board",
+    newBoardCancel: "Cancel",
+    cookingLabel: "Cooking",
+    cookingReceipt:
+      "✦ Configured · {title} is cooking — first results tomorrow morning.",
+    cookingBody: "See you in the morning.",
+    pausedLabel: "Paused",
+    deleteBoard: "Delete this board",
+    deleteBoardConfirm: "Delete this board? Its cards go with it.",
+    deleteBoardConfirmYes: "Delete",
+    deleteBoardConfirmNo: "Keep it",
+    customBoardNoSlots:
+      "Cards for this board land after the next nightly dream run.",
   },
   inbox: {
     title: "Inbox",
@@ -2366,6 +2405,9 @@ export const en = {
       restorePersona: "restore that persona",
       // Board
       resolveBoardCard: "resolve that card",
+      createBoard: "create that board",
+      updateBoard: "update that board",
+      deleteBoard: "delete that board",
       // Hubs
       createHub: "create that hub",
       updateHub: "update the hub",

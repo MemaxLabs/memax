@@ -267,6 +267,7 @@ func registerHubRoutes(root *http.ServeMux, protected *http.ServeMux, deps route
 	protected.HandleFunc("POST /v1/hubs/{id}/board/decision-gate", deps.boards.CreateDecisionGate)
 	protected.HandleFunc("GET /v1/hubs/{id}/boards", deps.boards.ListBoards)
 	protected.HandleFunc("POST /v1/hubs/{id}/boards", deps.boards.CreateBoard)
+	protected.HandleFunc("GET /v1/hubs/{id}/boards/{board_id}", deps.boards.GetBoardByID)
 	protected.HandleFunc("PATCH /v1/hubs/{id}/boards/{board_id}", deps.boards.UpdateBoard)
 	protected.HandleFunc("DELETE /v1/hubs/{id}/boards/{board_id}", deps.boards.DeleteBoard)
 	protected.HandleFunc("PATCH /v1/hubs/{id}", deps.hubs.Update)

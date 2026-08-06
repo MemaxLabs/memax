@@ -192,3 +192,54 @@ func TestCustomBoardGuards(t *testing.T) {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestGetBoardByIDReturnsSlots(t *testing.T) {
+	s := newBoardsTestStore()
+	seedGateHub(t, s, boardsTestHubID)
+	otherHub := "55555555-5555-5555-5555-555555555555"
+	if err := s.CreateHub(&model.Hub{ID: otherHub, OwnerID: "u2", Slug: "other2", HubType: "personal"}); err != nil {
+		t.Fatal(err)
+	}
+	s.roles[otherHub+":u2"] = "owner"
+	h := NewBoardsHandler(s)
+	board := createTestBoard(t, h, boardsTestHubID, "u1", `{"title":"健身","instruction":"追踪训练"}`)
+
+	// A card written by synthesis onto the custom board.
+	if err := s.UpsertBoardSlot(&model.BoardSlot{
+		BoardID: board.ID, SlotKey: "1-wow", Kind: "pattern", Title: "训练在周末塌方",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/hubs/"+boardsTestHubID+"/boards/"+board.ID, nil)
+	req.SetPathValue("id", boardsTestHubID)
+	req.SetPathValue("board_id", board.ID)
+	rec := httptest.NewRecorder()
+	h.GetBoardByID(rec, withTestIdentity(req, "u1"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			Board model.Board       `json:"board"`
+			Slots []model.BoardSlot `json:"slots"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Data.Board.ID != board.ID || len(resp.Data.Slots) != 1 ||
+		resp.Data.Slots[0].Title != "训练在周末塌方" {
+		t.Fatalf("unexpected payload: %#v %#v", resp.Data.Board, resp.Data.Slots)
+	}
+
+	// Reading through a hub the board doesn't belong to must 404.
+	req = httptest.NewRequest(http.MethodGet, "/v1/hubs/"+otherHub+"/boards/"+board.ID, nil)
+	req.SetPathValue("id", otherHub)
+	req.SetPathValue("board_id", board.ID)
+	rec = httptest.NewRecorder()
+	h.GetBoardByID(rec, withTestIdentity(req, "u2"))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("cross-hub read: expected 404, got %d", rec.Code)
+	}
+}

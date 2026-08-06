@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   isMemoriesRoute,
-  isInboxRoute,
+  isPulseRoute,
   isTopicRoute,
   isMemoryDetailRoute,
   isBarMemorySurfaceRoute,
@@ -54,15 +54,20 @@ describe("isMemoriesRoute", () => {
   });
 });
 
-describe("isInboxRoute", () => {
-  it("matches /inbox and /inbox/<id>", () => {
-    expect(isInboxRoute("/inbox")).toBe(true);
-    expect(isInboxRoute("/inbox/")).toBe(true);
-    expect(isInboxRoute("/inbox/notif-123")).toBe(true);
+describe("isPulseRoute", () => {
+  it("matches /pulse and descendants", () => {
+    expect(isPulseRoute("/pulse")).toBe(true);
+    expect(isPulseRoute("/pulse/")).toBe(true);
+    expect(isPulseRoute("/pulse/anything")).toBe(true);
   });
   it("rejects look-alikes", () => {
-    expect(isInboxRoute("/inboxfoo")).toBe(false);
-    expect(isInboxRoute("/memories")).toBe(false);
+    expect(isPulseRoute("/pulsefoo")).toBe(false);
+    expect(isPulseRoute("/memories")).toBe(false);
+  });
+  it("does NOT match the retired /inbox route", () => {
+    // /inbox is a server-side redirect to /pulse — no chrome should
+    // ever resolve against it.
+    expect(isPulseRoute("/inbox")).toBe(false);
   });
 });
 
@@ -95,10 +100,10 @@ describe("isMemoryDetailRoute", () => {
 });
 
 describe("isBarMemorySurfaceRoute", () => {
-  it("returns true on memories + inbox routes (matches existing bar contract)", () => {
+  it("returns true on memories + pulse routes (matches existing bar contract)", () => {
     expect(isBarMemorySurfaceRoute("/memories")).toBe(true);
     expect(isBarMemorySurfaceRoute("/memories/topics/x")).toBe(true);
-    expect(isBarMemorySurfaceRoute("/inbox")).toBe(true);
+    expect(isBarMemorySurfaceRoute("/pulse")).toBe(true);
     expect(isBarMemorySurfaceRoute("/h/personal/memories")).toBe(true);
     expect(isBarMemorySurfaceRoute("/h/team/memories/abc")).toBe(true);
   });
@@ -196,7 +201,7 @@ describe("getHubSlugForPath", () => {
   });
   it("returns null on v1 routes", () => {
     expect(getHubSlugForPath("/memories")).toBeNull();
-    expect(getHubSlugForPath("/inbox")).toBeNull();
+    expect(getHubSlugForPath("/pulse")).toBeNull();
     expect(getHubSlugForPath("/")).toBeNull();
   });
 });
@@ -239,8 +244,7 @@ describe("getShellTabForPath", () => {
     expect(getShellTabForPath("/brain/sessions/x")).toBe("brain");
     expect(getShellTabForPath("/agents")).toBe("agents");
     expect(getShellTabForPath("/agents/abc")).toBe("agents");
-    expect(getShellTabForPath("/inbox")).toBe("inbox");
-    expect(getShellTabForPath("/inbox/notif-1")).toBe("inbox");
+    expect(getShellTabForPath("/pulse")).toBe("pulse");
     expect(getShellTabForPath("/memories")).toBe("memories");
     expect(getShellTabForPath("/memories/abc")).toBe("memories");
     expect(getShellTabForPath("/memories/topics/x")).toBe("memories");

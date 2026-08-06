@@ -271,13 +271,16 @@ const (
 	BoardKindPattern      = "pattern"       // 未观察模式 — a habit visible in the data, invisible to the user
 	BoardKindMusing       = "musing"        // 随想 — memax thinking out loud about the hub
 	BoardKindDecisionGate = "decision_gate" // 等你 — an agent needs the user to decide
+	BoardKindNextUp       = "nextup"        // 接下来 — predicted next actions, grounded in open loops
 
-	// Lane B slot keys. "0-" sorts the dream log first, "1-" puts the
-	// rotating wow card right after it, decision gates prefix "2g-" so
-	// they sit above the Lane A band ("a-"…"d-"). Custom boards have
-	// no dreamlog and may carry a second synthesized card in "2-wow"
-	// ("2-" still sorts before "2g-").
+	// Lane B slot keys. "0-" sorts the dream log first, "0n-" the
+	// predictive next-up card right after it ("0-" < "0n-" because
+	// '-' < 'n'), "1-" the rotating wow card, and decision gates prefix
+	// "2g-" so they sit above the Lane A band ("a-"…"d-"). Custom
+	// boards have no dreamlog and may carry a second synthesized card
+	// in "2-wow" ("2-" still sorts before "2g-").
 	BoardSlotKeyDreamlog   = "0-dream"
+	BoardSlotKeyNextUp     = "0n-next"
 	BoardSlotKeyWow        = "1-wow"
 	BoardSlotKeyWow2       = "2-wow"
 	BoardSlotKeyGatePrefix = "2g-"
@@ -324,6 +327,24 @@ type BoardWowPayload struct {
 	Quotes      []BoardQuoteRef `json:"quotes,omitempty"`
 }
 
+// BoardNextUpItem is one predicted action on the 接下来 card: an
+// imperative title, a one-line why, and the verbatim quote(s) proving
+// the loop is actually open. The producer drops any item that ends up
+// with zero verified quotes — a prediction without receipts is exactly
+// the horoscope the design forbids.
+type BoardNextUpItem struct {
+	Title  string          `json:"title"`
+	Why    string          `json:"why,omitempty"`
+	Quotes []BoardQuoteRef `json:"quotes"`
+}
+
+// BoardNextUpPayload — 接下来. 1-3 items, each individually grounded;
+// the card ships only when at least one item survives validation.
+type BoardNextUpPayload struct {
+	Description string            `json:"description,omitempty"`
+	Items       []BoardNextUpItem `json:"items"`
+}
+
 // BoardDecisionOption is one choice on a decision gate.
 type BoardDecisionOption struct {
 	ID    string `json:"id"`
@@ -351,6 +372,10 @@ var laneBCitationFloor = map[string]int{
 	BoardKindPattern:      3,
 	BoardKindMusing:       3,
 	BoardKindDreamlog:     0,
+	// nextup's real gate is per-ITEM (every item needs ≥1 verified
+	// quote — see buildNextUpSlot); the card-level floor of 1 follows
+	// from "at least one item survives".
+	BoardKindNextUp: 1,
 }
 
 // LaneBCitationFloor returns the citation minimum for a kind and

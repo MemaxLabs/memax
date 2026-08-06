@@ -920,6 +920,7 @@ export const en = {
     kindOpenq: "Forgotten question",
     kindPattern: "Unobserved pattern",
     kindMusing: "memax musing",
+    kindNextup: "Next up",
     kindGate: "Waiting on you",
     echoThen: "you asked yourself",
     echoNow: "your answer",
@@ -935,6 +936,9 @@ export const en = {
       "A habit hiding in your memory data that you may not have noticed yourself.",
     musingPurpose:
       "memax thinking out loud about the shape of this hub's knowledge.",
+    nextupPurpose:
+      "memax's guess at what you most likely want to do next, inferred from your own memories — every item comes with its receipts.",
+    nextupAck: "Done · got it",
     gatePurpose:
       "An agent stopped to wait for your call. Your choice is written back into memory so the agent can read it later.",
     feedbackAccurate: "Spot on",

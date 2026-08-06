@@ -79,9 +79,12 @@ You have a recall tool. Use it to explore the hub before writing — search for 
     "quotes": [{"memory_id": "...", "excerpt": "verbatim quote", "when": "ISO date if known"}],
     "then": {"memory_id": "...", "excerpt": "...", "when": "..."},
     "now": {"memory_id": "...", "excerpt": "...", "when": "..."}
-  } | null
+  } | null,
+  "nextup": {"items": [{"title": "...", "why": "...", "quotes": [{"memory_id": "...", "excerpt": "verbatim quote", "when": "ISO date if known"}]}]} | null
 }
-"then"/"now" only for kind=echo (the old question and the new answer). Other kinds use "quotes". Return null for a card you cannot honestly fill.`
+"then"/"now" only for kind=echo (the old question and the new answer). Other kinds use "quotes". Return null for a card you cannot honestly fill.
+
+nextup: infer the 1-3 concrete actions the user most plausibly wants to take next — open loops, stated intentions, unfinished threads found via recall. Each item: imperative title (≤80 chars), one-line why, ≥1 verbatim quote from a real memory proving the loop is open. Anti-Barnum applies fully: no generic productivity advice; if no genuine open loops, null.`
 
 // customBoardCardRequest closes the custom board's user prompt. It
 // lives with the material (not the system prompt) so the output
@@ -118,11 +121,25 @@ type synthesizedWow struct {
 	Now    *synthesizedQuote  `json:"now"`
 }
 
+// synthesizedNextUpItem is one predicted action from the system
+// session's nextup field: title + why + the quotes claiming the loop
+// is open. Validated per item by buildNextUpSlot.
+type synthesizedNextUpItem struct {
+	Title  string             `json:"title"`
+	Why    string             `json:"why"`
+	Quotes []synthesizedQuote `json:"quotes"`
+}
+
+type synthesizedNextUp struct {
+	Items []synthesizedNextUpItem `json:"items"`
+}
+
 type synthesisResponse struct {
 	Dreamlog *struct {
 		Body string `json:"body"`
 	} `json:"dreamlog"`
-	Wow *synthesizedWow `json:"wow"`
+	Wow    *synthesizedWow    `json:"wow"`
+	NextUp *synthesizedNextUp `json:"nextup"`
 }
 
 // customBoardCard is one element of the custom board's JSON-array
@@ -310,6 +327,17 @@ func (e *Engine) synthesizeSystemBoard(
 
 	if wowSlot := e.buildWowSlot(ctx, hub, board.ID, run.ID, wowKind, &parsed); wowSlot != nil {
 		if err := e.store.UpsertBoardSlot(wowSlot); err != nil {
+			metrics.Errors++
+		} else {
+			written++
+		}
+	}
+
+	// 接下来 — system board only, like the dreamlog: the prediction
+	// needs the recall tool's open-loop hunting, which custom boards'
+	// cheap path doesn't have.
+	if nextUpSlot := e.buildNextUpSlot(ctx, hub, board.ID, run.ID, &parsed); nextUpSlot != nil {
+		if err := e.store.UpsertBoardSlot(nextUpSlot); err != nil {
 			metrics.Errors++
 		} else {
 			written++
@@ -573,6 +601,82 @@ func (e *Engine) buildWowSlot(
 		CiteMemoryIDs: citeIDs,
 		DreamRunID:    runID,
 		Payload:       mustMarshalPayload(payload),
+	}
+}
+
+// boardNextUpMaxItems caps the 接下来 card — three predictions is a
+// nudge, ten is a backlog.
+const boardNextUpMaxItems = 3
+
+// buildNextUpSlot validates the system session's nextup prediction.
+// The citation gate is per ITEM, not per card: every item must keep
+// ≥1 verified quote or it is dropped; the card ships only if at least
+// one item survives. An invented or cross-hub quote kills its item
+// (verifyQuotes filters it out), but not its siblings — unlike a wow
+// card, each prediction stands or falls on its own receipts.
+func (e *Engine) buildNextUpSlot(
+	ctx context.Context,
+	hub *model.Hub,
+	boardID, runID string,
+	parsed *synthesisResponse,
+) *model.BoardSlot {
+	if parsed.NextUp == nil || len(parsed.NextUp.Items) == 0 {
+		return nil
+	}
+
+	items := make([]model.BoardNextUpItem, 0, boardNextUpMaxItems)
+	citeIDs := make([]string, 0, boardNextUpMaxItems)
+	seenCite := make(map[string]bool)
+	for _, raw := range parsed.NextUp.Items {
+		if len(items) >= boardNextUpMaxItems {
+			break
+		}
+		title := strings.TrimSpace(raw.Title)
+		if title == "" {
+			continue
+		}
+		verified := e.verifyQuotes(ctx, hub, raw.Quotes)
+		if len(verified) == 0 {
+			slog.InfoContext(ctx, "dream: nextup item dropped by citation validator",
+				"hub_id", hub.ID, "title", truncateForTitle(title),
+				"claimed", len(raw.Quotes))
+			continue
+		}
+		refs := make([]model.BoardQuoteRef, 0, len(verified))
+		for _, q := range verified {
+			refs = append(refs, model.BoardQuoteRef{MemoryID: q.MemoryID, When: q.When, Excerpt: q.Excerpt})
+			if !seenCite[q.MemoryID] {
+				seenCite[q.MemoryID] = true
+				citeIDs = append(citeIDs, q.MemoryID)
+			}
+		}
+		items = append(items, model.BoardNextUpItem{
+			Title:  truncateForTitle(title),
+			Why:    strings.TrimSpace(raw.Why),
+			Quotes: refs,
+		})
+	}
+	if len(items) == 0 {
+		return nil
+	}
+
+	// Description joins the surviving titles so the unknown-kind
+	// fallback still shows the actual predictions as plain text.
+	titles := make([]string, len(items))
+	for i, item := range items {
+		titles[i] = item.Title
+	}
+	return &model.BoardSlot{
+		BoardID:       boardID,
+		SlotKey:       model.BoardSlotKeyNextUp,
+		Kind:          model.BoardKindNextUp,
+		Title:         items[0].Title,
+		CiteMemoryIDs: citeIDs,
+		DreamRunID:    runID,
+		Payload: mustMarshalPayload(model.BoardNextUpPayload{
+			Description: strings.Join(titles, " · "),
+			Items:       items,
+		}),
 	}
 }
 

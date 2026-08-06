@@ -2,6 +2,7 @@ package dreams
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -142,6 +143,119 @@ func TestBuildWowSlotRejectsDreamlogAndDuplicateCitations(t *testing.T) {
 	if got := e.buildWowSlot(ctx, hub, "b1", "run1", model.BoardKindPattern,
 		mk(model.BoardKindPattern, dupes)); got != nil {
 		t.Fatalf("duplicate citations must not satisfy the floor, got %#v", got)
+	}
+}
+
+func TestBuildNextUpSlotPerItemCitationGate(t *testing.T) {
+	t.Parallel()
+	s := store.NewInMemoryStore()
+	hub := &model.Hub{ID: "hub-1", OwnerID: "u1"}
+	if err := s.CreateHub(hub); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []*model.Memory{
+		{ID: "m1", OwnerID: "u1", HubID: "hub-1", Title: "开放问题：备份策略"},
+		{ID: "m2", OwnerID: "u1", HubID: "hub-1", Title: "说好要写的迁移脚本"},
+		{ID: "other", OwnerID: "u1", HubID: "hub-2", Title: "foreign"},
+	} {
+		if err := s.CreateMemory(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := &Engine{store: s}
+	ctx := context.Background()
+
+	// Valid 2-item card: both items keep their verified quotes.
+	valid := &synthesisResponse{NextUp: &synthesizedNextUp{Items: []synthesizedNextUpItem{
+		{Title: "定下备份策略", Why: "你问过但一直没回答。",
+			Quotes: []synthesizedQuote{{MemoryID: "m1", Excerpt: "备份到底放哪？"}}},
+		{Title: "写完迁移脚本", Why: "你说好要写，之后再没提。",
+			Quotes: []synthesizedQuote{{MemoryID: "m2", Excerpt: "明天写迁移脚本"}}},
+	}}}
+	slot := e.buildNextUpSlot(ctx, hub, "b1", "run1", valid)
+	if slot == nil {
+		t.Fatal("valid 2-item nextup should build")
+	}
+	if slot.Kind != model.BoardKindNextUp || slot.SlotKey != model.BoardSlotKeyNextUp {
+		t.Fatalf("wrong kind/slot key: %#v", slot)
+	}
+	if slot.DreamRunID != "run1" {
+		t.Fatalf("nextup slot must link its dream run: %#v", slot)
+	}
+	if slot.Title != "定下备份策略" {
+		t.Fatalf("slot title must be the first item's title, got %q", slot.Title)
+	}
+	if len(slot.CiteMemoryIDs) != 2 {
+		t.Fatalf("cite ids must union both items' quotes: %v", slot.CiteMemoryIDs)
+	}
+	var payload model.BoardNextUpPayload
+	if err := json.Unmarshal(slot.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(payload.Items))
+	}
+	for i, item := range payload.Items {
+		if len(item.Quotes) != 1 {
+			t.Fatalf("item %d must keep its verified quote: %#v", i, item)
+		}
+	}
+
+	// Invented quote drops ITS item; the sibling with real receipts
+	// survives and the card still ships.
+	invented := &synthesisResponse{NextUp: &synthesizedNextUp{Items: []synthesizedNextUpItem{
+		{Title: "幻觉任务", Why: "编造的。",
+			Quotes: []synthesizedQuote{{MemoryID: "does-not-exist", Excerpt: "made up"}}},
+		{Title: "写完迁移脚本", Why: "真的开放。",
+			Quotes: []synthesizedQuote{{MemoryID: "m2", Excerpt: "明天写迁移脚本"}}},
+	}}}
+	slot = e.buildNextUpSlot(ctx, hub, "b1", "run1", invented)
+	if slot == nil {
+		t.Fatal("sibling with verified quotes must survive an invented sibling")
+	}
+	if err := json.Unmarshal(slot.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Items) != 1 || payload.Items[0].Title != "写完迁移脚本" {
+		t.Fatalf("only the verified item should survive: %#v", payload.Items)
+	}
+	if slot.Title != "写完迁移脚本" {
+		t.Fatalf("title must fall to the first SURVIVING item, got %q", slot.Title)
+	}
+	if len(slot.CiteMemoryIDs) != 1 || slot.CiteMemoryIDs[0] != "m2" {
+		t.Fatalf("cite ids must only carry surviving quotes: %v", slot.CiteMemoryIDs)
+	}
+
+	// All items invalid → no slot at all.
+	allInvalid := &synthesisResponse{NextUp: &synthesizedNextUp{Items: []synthesizedNextUpItem{
+		{Title: "没有出处", Quotes: []synthesizedQuote{{MemoryID: "does-not-exist", Excerpt: "x"}}},
+		{Title: "也没有出处", Quotes: nil},
+	}}}
+	if got := e.buildNextUpSlot(ctx, hub, "b1", "run1", allInvalid); got != nil {
+		t.Fatalf("all-invalid items must drop the card, got %#v", got)
+	}
+
+	// Cross-hub quote kills its item (isolation), sparing siblings.
+	leaked := &synthesisResponse{NextUp: &synthesizedNextUp{Items: []synthesizedNextUpItem{
+		{Title: "泄漏的任务", Why: "引了别的 hub。",
+			Quotes: []synthesizedQuote{{MemoryID: "other", Excerpt: "foreign"}}},
+		{Title: "定下备份策略", Why: "真的开放。",
+			Quotes: []synthesizedQuote{{MemoryID: "m1", Excerpt: "备份到底放哪？"}}},
+	}}}
+	slot = e.buildNextUpSlot(ctx, hub, "b1", "run1", leaked)
+	if slot == nil {
+		t.Fatal("in-hub sibling must survive a cross-hub sibling")
+	}
+	if err := json.Unmarshal(slot.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Items) != 1 || payload.Items[0].Title != "定下备份策略" {
+		t.Fatalf("cross-hub item must be dropped: %#v", payload.Items)
+	}
+
+	// nil / empty nextup → no slot.
+	if got := e.buildNextUpSlot(ctx, hub, "b1", "run1", &synthesisResponse{}); got != nil {
+		t.Fatalf("nil nextup must not build a slot, got %#v", got)
 	}
 }
 

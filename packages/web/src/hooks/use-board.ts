@@ -1,6 +1,11 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type {
   Board,
   BoardFeedbackVerdict,
@@ -56,6 +61,39 @@ export function useBoardSlots(
     enabled: Boolean(hubId && boardId),
     staleTime: 60 * 1000,
     gcTime: 30 * 60 * 1000,
+  });
+}
+
+export interface CustomBoardWithSlots {
+  board: Board;
+  slots: BoardSlot[];
+}
+
+/**
+ * Slots for every CUSTOM board on the hub, aggregated client-side
+ * (2026-08 unified stream — custom-board cards merge into the main
+ * flow, no tabs). Hubs cap out at a handful of boards, so N parallel
+ * getBoard calls are fine; each query shares its cache entry with
+ * useBoardSlots (same key), so nothing double-fetches.
+ */
+export function useCustomBoardsWithSlots(
+  hubId: string | undefined,
+  boards: readonly Board[],
+): CustomBoardWithSlots[] {
+  const customBoards = boards.filter((b) => b.kind !== "system");
+  return useQueries({
+    queries: customBoards.map((board) => ({
+      queryKey: [...boardsQueryKey(hubId ?? ""), board.id] as const,
+      queryFn: () => getMemaxClient().boards.getBoard(hubId!, board.id),
+      enabled: Boolean(hubId),
+      staleTime: 60 * 1000,
+      gcTime: 30 * 60 * 1000,
+    })),
+    combine: (results) =>
+      customBoards.map((board, index) => ({
+        board,
+        slots: results[index]?.data?.slots ?? [],
+      })),
   });
 }
 

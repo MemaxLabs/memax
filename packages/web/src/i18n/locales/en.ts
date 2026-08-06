@@ -961,13 +961,24 @@ export const en = {
     recentDetail: "{n} updates",
     recentPurpose: "Things that already happened. Nothing to decide.",
 
-    // Full-page pulse surface.
+    // Full-page pulse surface — designed empty state (2026-08): a
+    // ✦-led pitch of what will appear, then the watch-one-thing block
+    // with example chips that prefill the composer.
     pageEmptyTitle: "The board is quiet",
     pageEmptyBody:
-      "memax refreshes this board after each night's dream run. Cards show up on their own.",
+      "After each night's pass over your memories, memax writes what it noticed here — dream notes, echoes of old questions, patterns nobody flagged. Your first cards arrive after the next dream.",
+    emptyWatchTitle: "Have memax watch one thing for you",
+    emptyExampleFitness: "Fitness & sleep",
+    emptyExampleFitnessInstruction:
+      "Keep an eye on my workout and sleep records — tell me when my rhythm changes or I start slacking off.",
+    emptyExampleProject: "Project cadence",
+    emptyExampleProjectInstruction:
+      "Watch the pace of my projects — flag anything that stalls or quietly gets forgotten.",
+    emptyExampleStudy: "Learning progress",
+    emptyExampleStudyInstruction:
+      "Track what I'm learning, sum up my progress, and nudge me about things I haven't touched in a while.",
 
     // Custom boards.
-    boardsLabel: "Boards",
     newBoard: "New board",
     newBoardTitleLabel: "Board name",
     newBoardTitlePlaceholder: "Competitor moves",
@@ -977,16 +988,11 @@ export const en = {
     newBoardSave: "Create board",
     newBoardCancel: "Cancel",
     cookingLabel: "Cooking",
-    cookingReceipt:
-      "✦ Configured · {title} is cooking — first results tomorrow morning.",
     cookingBody: "See you in the morning.",
-    pausedLabel: "Paused",
     deleteBoard: "Delete this board",
     deleteBoardConfirm: "Delete this board? Its cards go with it.",
     deleteBoardConfirmYes: "Delete",
     deleteBoardConfirmNo: "Keep it",
-    customBoardNoSlots:
-      "Cards for this board land after the next nightly dream run.",
   },
   inbox: {
     title: "Inbox",

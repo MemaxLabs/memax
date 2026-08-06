@@ -7,11 +7,17 @@
  * Two responsibilities:
  *   1. Hamburger that opens the `<MobileDrawer>` (caller-owned via
  *      `onMenuClick`).
- *   2. Tab-aware identity row in the middle:
- *      - Memories tab: `HubBadge + hub name + chevron` (chevron taps
- *        the hub-switcher BottomSheet — wired by Phase 3; for now the
- *        chevron is decorative).
- *      - Other tabs: tab label only.
+ *   2. Page identity + hub entry, the SAME on every tab (founder fix,
+ *      2026-08: memories had a centered hub-name-as-switcher while
+ *      other tabs had a tiny top-right avatar — one inconsistent
+ *      entry, and the avatar didn't read as tappable):
+ *      - Center: the tab label as plain text — a title, not a control.
+ *      - Top-right: the hub PILL — 32px HubBadge + truncated hub name
+ *        + chevron on a glass-subtle rounded-full surface, ≥44px tap
+ *        target. Tapping opens the hub-switcher BottomSheet
+ *        (`onHubSwitchClick`, wired by ShellLayoutMobile). With a
+ *        single hub the pill still anchors hub identity but renders
+ *        without the chevron and is inert.
  *
  * Glass material: `--background`-based translucent fill + 12px blur,
  * applied via inline style so the backdrop-filter actually samples
@@ -53,9 +59,9 @@ interface MobileTopBarProps {
   tab: ShellTabId | null;
   onMenuClick: () => void;
   /**
-   * Click handler for the hub-identity chevron. Defaults to a no-op
-   * (chevron renders decorative). Phase 3 wires it to open a hub-
-   * switcher `<BottomSheet>` per plan 22 §5.2.
+   * Opens the hub-switcher `<BottomSheet>` (plan 22 §5.2). When
+   * absent — or when the user only has one hub — the top-right pill
+   * renders inert (identity anchor only, no chevron).
    */
   onHubSwitchClick?: () => void;
 }
@@ -87,7 +93,6 @@ export function MobileTopBar({
   const hubInitial = activeHub
     ? getHubDisplayInitial(activeHub.hub, t, viewerIdentity)
     : "";
-  const showHubChip = tab === "memories" && !!activeHub;
   const canSwitchHub = hubs.length >= 2 && !!onHubSwitchClick;
 
   // Tab labels reuse the shared `nav.tabs.*` strings the rail
@@ -149,7 +154,24 @@ export function MobileTopBar({
         </button>
       )}
 
-      {showHubChip ? (
+      {tab !== null ? (
+        // 17px font + semibold = iOS HIG nav bar title. Plain text on
+        // EVERY tab — memories included; hub identity/switching lives
+        // exclusively in the top-right pill so the entry point is the
+        // same on every surface.
+        <span className="min-w-0 flex-1 truncate text-[17px] font-semibold text-fg-1">
+          {tabLabel[tab]}
+        </span>
+      ) : null}
+
+      {/* Hub pill — the ONE hub entry on mobile, top-right on every
+          tab (hub context is not a memories-only concern: brain chat
+          scope, pulse, agents all read the active hub). Reads as a
+          button: 32px badge + truncated name + chevron on a
+          glass-subtle rounded-full pill, min-h-11 (44px) tap target.
+          Same 2+ hubs gating as every switcher trigger; with one hub
+          it stays as an inert identity anchor (no chevron). */}
+      {!inChatSession && activeHub ? (
         <button
           type="button"
           onClick={canSwitchHub ? onHubSwitchClick : undefined}
@@ -159,56 +181,27 @@ export function MobileTopBar({
               ? t.composeModal.targetHubAria.replace("{hub}", hubName)
               : hubName
           }
-          // 17px font + semibold matches iOS large-title scale for
-          // mobile nav identity. py-2 / 44px-ish height keeps the
-          // chip in the bar's vertical center without crowding.
-          className={`min-w-0 inline-flex items-center gap-2 rounded-full px-3 py-2 text-[17px] text-fg-1 ${
-            canSwitchHub
-              ? "transition-colors hover:bg-foreground/6 cursor-pointer"
-              : "cursor-default"
+          // 32px badge + py-1.5 (6px) = 44px pill height — the visual
+          // pill IS the tap target, no invisible padding trickery.
+          className={`glass-subtle ml-auto flex min-h-11 min-w-0 shrink-0 items-center gap-1.5 rounded-full py-1.5 pl-1.5 pr-2.5 ${
+            canSwitchHub ? "cursor-pointer" : "cursor-default"
           }`}
         >
           <HubBadge
             kind={isTeamHub ? "team" : "personal"}
             label={hubInitial}
-            accent={activeHub?.hub.accent}
-            size="md"
+            accent={activeHub.hub.accent}
+            size="xl"
           />
-          <span className="truncate max-w-44 font-semibold">{hubName}</span>
+          <span className="max-w-24 truncate text-[13px] font-medium text-fg-1">
+            {hubName}
+          </span>
           {canSwitchHub ? (
             <ChevronDown
-              className="h-4 w-4 text-fg-3 shrink-0"
+              className="h-4 w-4 shrink-0 text-fg-3"
               strokeWidth={2}
             />
           ) : null}
-        </button>
-      ) : tab !== null ? (
-        // 17px font + semibold = iOS HIG nav bar title. Earlier
-        // 13px read as a caption, not a title.
-        <span className="min-w-0 truncate text-[17px] font-semibold text-fg-1">
-          {tabLabel[tab]}
-        </span>
-      ) : null}
-
-      {/* Hub anchor on non-memories tabs — hub context is not a
-          memories-only concern (brain chat scope, pulse, agents all
-          read the active hub). Memories keeps the full title-position
-          chip; other tabs get a compact badge in the trailing corner
-          so the anchor is present on every surface at a consistent
-          spot. Same 2+ hubs gating as every switcher trigger. */}
-      {!showHubChip && !inChatSession && canSwitchHub && activeHub ? (
-        <button
-          type="button"
-          onClick={onHubSwitchClick}
-          aria-label={t.composeModal.targetHubAria.replace("{hub}", hubName)}
-          className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-md cursor-pointer transition-colors hover:bg-foreground/6"
-        >
-          <HubBadge
-            kind={isTeamHub ? "team" : "personal"}
-            label={hubInitial}
-            accent={activeHub.hub.accent}
-            size="md"
-          />
         </button>
       ) : null}
     </header>

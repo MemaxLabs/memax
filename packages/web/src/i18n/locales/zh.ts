@@ -872,12 +872,24 @@ export const zh: Translations = {
     recentDetail: "{n} 条",
     recentPurpose: "已经发生的事，不需要你拍板。",
 
-    // 整页脉搏surface。
+    // 整页脉搏surface——设计过的空状态（2026-08）：✦ 开头的一段话
+    // 讲清楚这里会出现什么，下面是"替你盯一件事"的示例 chips，
+    // 点一下就带着完整指令打开创建表单。
     pageEmptyTitle: "板上很安静",
-    pageEmptyBody: "memax 每晚做完梦会刷新这块板。卡片会自己出现。",
+    pageEmptyBody:
+      "memax 每晚整理记忆后，会把发现写在这里——梦记、旧问题的回声、没人注意的模式。第一批卡片会在下一次梦之后出现。",
+    emptyWatchTitle: "让 memax 替你盯一件事",
+    emptyExampleFitness: "健身 & 睡眠",
+    emptyExampleFitnessInstruction:
+      "帮我盯着健身和睡眠的记录，节奏变了或者开始松懈就提醒我。",
+    emptyExampleProject: "项目节奏",
+    emptyExampleProjectInstruction:
+      "盯着我手上项目的推进节奏，有卡住或者被悄悄遗忘的就告诉我。",
+    emptyExampleStudy: "学习进度",
+    emptyExampleStudyInstruction:
+      "帮我记着正在学的东西，总结进展，太久没碰的提醒我一下。",
 
     // 自定义板。
-    boardsLabel: "板",
     newBoard: "新建板",
     newBoardTitleLabel: "板名",
     newBoardTitlePlaceholder: "对手动向",
@@ -886,14 +898,11 @@ export const zh: Translations = {
     newBoardSave: "创建",
     newBoardCancel: "取消",
     cookingLabel: "酝酿中",
-    cookingReceipt: "✦ 已配置 · {title} 正在酝酿——明早的第一次结果，板上见。",
     cookingBody: "明早见。",
-    pausedLabel: "已暂停",
     deleteBoard: "删除这块板",
     deleteBoardConfirm: "删除这块板？板上的卡片会一起消失。",
     deleteBoardConfirmYes: "删除",
     deleteBoardConfirmNo: "先留着",
-    customBoardNoSlots: "这块板的卡片会在下一次夜间 dream 之后出现。",
   },
   inbox: {
     title: "收件箱",

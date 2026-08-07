@@ -321,7 +321,7 @@ describe("BoardShelf", () => {
       '[data-board-tile="echo"]',
     )!;
     fireEvent.click(echoTile.querySelector('[aria-label="Not interested"]')!);
-    expect(onDismissSlot).toHaveBeenCalledWith("s-echo");
+    expect(onDismissSlot).toHaveBeenCalledWith("s-echo", expect.any(String));
     expect(onOpenSlot).not.toHaveBeenCalled();
     // Highlight tile × → notification dismiss path.
     const hlTile = container.querySelector<HTMLElement>(

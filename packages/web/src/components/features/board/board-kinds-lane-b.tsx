@@ -180,7 +180,9 @@ function NextUpBody({ slot }: BoardKindBodyProps) {
   const items = asArray<NextUpItem>(slot.payload?.items);
   return (
     <>
-      <BoardKindLabel star>{t.board.kindNextup}</BoardKindLabel>
+      <BoardKindLabel star {...boardKindEyebrow("nextup")}>
+        {t.board.kindNextup}
+      </BoardKindLabel>
       <ol className="m-0 flex list-none flex-col gap-2.5 p-0">
         {items.map((item, index) => (
           <li key={index} className="flex gap-2">

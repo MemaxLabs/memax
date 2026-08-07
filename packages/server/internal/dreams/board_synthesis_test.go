@@ -310,7 +310,7 @@ func TestSynthesizeCustomBoardWritesWowSlotsNeverDreamlog(t *testing.T) {
 	e := &Engine{store: s, client: fake, organizeModel: "test-model"}
 	run := &model.DreamRun{ID: "run1"}
 
-	n, metrics := e.synthesizeCustomBoard(context.Background(), hub, run, board, "night material")
+	n, metrics := e.synthesizeCustomBoard(context.Background(), hub, run, board, "night material", newDreamRunBudget())
 	if n != 2 {
 		t.Fatalf("expected 2 cards written, got %d (metrics %+v)", n, metrics)
 	}
@@ -398,5 +398,57 @@ func TestNightMaterialTruncatesRuneSafe(t *testing.T) {
 	}
 	if short := truncateBytesRuneSafe("short", 4000); short != "short" {
 		t.Fatalf("under-cap string must pass through unchanged, got %q", short)
+	}
+}
+
+// A nextup item whose evidence is one real memory plus fabricated ones
+// is a half-lie: the user can't tell which half is real, so the item
+// must die like a wow card would.
+func TestBuildNextUpSlotDropsPartiallyInventedItem(t *testing.T) {
+	t.Parallel()
+	s := store.NewInMemoryStore()
+	hub := &model.Hub{ID: "hub-1", OwnerID: "u1"}
+	if err := s.CreateHub(hub); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []*model.Memory{
+		{ID: "m1", OwnerID: "u1", HubID: "hub-1", Title: "real"},
+		{ID: "m2", OwnerID: "u1", HubID: "hub-1", Title: "also real"},
+	} {
+		if err := s.CreateMemory(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := &Engine{store: s}
+
+	parsed := &synthesisResponse{NextUp: &synthesizedNextUp{Items: []synthesizedNextUpItem{
+		{
+			Title: "半真半假的一条",
+			Why:   "one real quote, one invented",
+			Quotes: []synthesizedQuote{
+				{MemoryID: "m1", Excerpt: "real evidence"},
+				{MemoryID: "does-not-exist", Excerpt: "fabricated evidence"},
+			},
+		},
+		{
+			Title:  "完全有据的一条",
+			Why:    "fully grounded",
+			Quotes: []synthesizedQuote{{MemoryID: "m2", Excerpt: "solid"}},
+		},
+	}}}
+
+	slot := e.buildNextUpSlot(context.Background(), hub, "b1", "run1", parsed)
+	if slot == nil {
+		t.Fatal("the fully-grounded item should still ship the card")
+	}
+	var payload model.BoardNextUpPayload
+	if err := json.Unmarshal(slot.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Items) != 1 || payload.Items[0].Title != "完全有据的一条" {
+		t.Fatalf("partially-invented item must be dropped, got %#v", payload.Items)
+	}
+	if slot.Title != "完全有据的一条" {
+		t.Fatalf("title must come from the surviving item, got %q", slot.Title)
 	}
 }

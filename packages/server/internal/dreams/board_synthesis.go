@@ -404,7 +404,7 @@ func (e *Engine) synthesizeCustomBoards(
 			// tomorrow rather than starving the organizational phases.
 			break
 		}
-		n, boardMetrics := e.synthesizeCustomBoard(ctx, hub, run, &board, material)
+		n, boardMetrics := e.synthesizeCustomBoard(ctx, hub, run, &board, material, runBudget)
 		written += n
 		mergeSynthesisMetrics(&metrics, boardMetrics)
 	}
@@ -421,7 +421,17 @@ func (e *Engine) synthesizeCustomBoard(
 	run *model.DreamRun,
 	board *model.Board,
 	material string,
+	runBudget *dreamRunBudget,
 ) (int, model.DreamPhaseMetrics) {
+	// One-time cleanup: boards synthesized before the one-dream-one-
+	// dreamlog refactor each wrote their own 梦记. Nothing overwrites
+	// those slots any more, so without this they'd sit on the board
+	// forever showing a months-old first-person night report.
+	if err := e.store.DeleteBoardSlot(board.ID, model.BoardSlotKeyDreamlog); err != nil {
+		slog.WarnContext(ctx, "dream: could not drop legacy dreamlog slot",
+			"board_id", board.ID, "error", err)
+	}
+
 	var metrics model.DreamPhaseMetrics
 
 	// Cadence dedupe, keyed on this board's primary card slot (custom
@@ -437,6 +447,10 @@ func (e *Engine) synthesizeCustomBoard(
 	resp, err := e.callLLMWithModelTimeout(trackCtx, e.organizeModel, customBoardSystemPrompt(board), prompt,
 		customBoardMaxTokens, customBoardLLMTimeout, "dreams.board_synthesis")
 	metrics.LLMCalls++
+	// Debit the cycle governor: these are real model calls, and
+	// without counting them the loop's shouldRoute gate can never trip
+	// and cycle-end budget telemetry undercounts what was spent.
+	runBudget.consumeModelCalls(1)
 	if err != nil {
 		metrics.LLMErrors++
 		metrics.Errors++
@@ -614,6 +628,19 @@ const boardNextUpMaxItems = 3
 // one item survives. An invented or cross-hub quote kills its item
 // (verifyQuotes filters it out), but not its siblings — unlike a wow
 // card, each prediction stands or falls on its own receipts.
+// countDistinctQuotedMemories counts unique non-empty memory ids in a
+// quote list — verifyQuotes de-duplicates, so the comparison must be
+// against distinct claims, not raw quote count.
+func countDistinctQuotedMemories(quotes []synthesizedQuote) int {
+	seen := make(map[string]bool, len(quotes))
+	for _, q := range quotes {
+		if q.MemoryID != "" {
+			seen[q.MemoryID] = true
+		}
+	}
+	return len(seen)
+}
+
 func (e *Engine) buildNextUpSlot(
 	ctx context.Context,
 	hub *model.Hub,
@@ -635,11 +662,16 @@ func (e *Engine) buildNextUpSlot(
 		if title == "" {
 			continue
 		}
+		// Same bar as the wow card: ANY invented or cross-hub quote
+		// kills the item, not just an item with zero survivors. An
+		// item whose evidence is one real memory plus two fabricated
+		// ones is a half-lie, and half-lying receipts are worse than
+		// no card — the user can't tell which half is real.
 		verified := e.verifyQuotes(ctx, hub, raw.Quotes)
-		if len(verified) == 0 {
+		if len(verified) == 0 || len(verified) < countDistinctQuotedMemories(raw.Quotes) {
 			slog.InfoContext(ctx, "dream: nextup item dropped by citation validator",
 				"hub_id", hub.ID, "title", truncateForTitle(title),
-				"claimed", len(raw.Quotes))
+				"claimed", len(raw.Quotes), "verified", len(verified))
 			continue
 		}
 		refs := make([]model.BoardQuoteRef, 0, len(verified))

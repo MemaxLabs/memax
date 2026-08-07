@@ -200,6 +200,11 @@ export function useResolveBoardSlot(hubId: string | undefined) {
       verdict?: BoardFeedbackVerdict;
       /** For action "choose" (decision gates): the chosen option id. */
       choice?: string;
+      /**
+       * The board owning this slot. Callers resolving a custom-board
+       * card must pass it; omitted means the system board.
+       */
+      boardId?: string;
     }) =>
       getMemaxClient().boards.resolveSlot(
         hubId!,
@@ -208,12 +213,17 @@ export function useResolveBoardSlot(hubId: string | undefined) {
         verdict,
         choice,
       ),
-    onMutate: async ({ slotKey, action, verdict }) => {
+    onMutate: async ({ slotKey, action, verdict, boardId }) => {
       if (!hubId) return;
+      // Slot keys are only unique WITHIN a board: every board has its
+      // own "1-wow". Matching on the key alone stamped every custom
+      // board's card terminal whenever a system-board card resolved,
+      // so the whole shelf blinked out and back on each dismiss.
       const stampTerminal = (data: BoardWithSlots): BoardWithSlots => ({
         ...data,
         slots: data.slots.map((slot): BoardSlot => {
           if (slot.slot_key !== slotKey) return slot;
+          if (targetBoardId && slot.board_id !== targetBoardId) return slot;
           return {
             ...slot,
             // ack / feedback / choose all land the slot in
@@ -231,6 +241,12 @@ export function useResolveBoardSlot(hubId: string | undefined) {
       const key = boardQueryKey(hubId);
       await qc.cancelQueries({ queryKey: key });
       const previous = qc.getQueryData<BoardWithSlots>(key);
+      // Which board does this slot belong to? The caller knows when it
+      // resolves a custom-board card; otherwise it's the system board
+      // in the primary cache.
+      const targetBoardId =
+        boardId ??
+        previous?.slots.find((slot) => slot.slot_key === slotKey)?.board_id;
       qc.setQueryData<BoardWithSlots>(key, (data) =>
         data ? stampTerminal(data) : data,
       );

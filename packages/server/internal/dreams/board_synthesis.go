@@ -90,16 +90,14 @@ nextup: infer the 1-3 concrete actions the user most plausibly wants to take nex
 // lives with the material (not the system prompt) so the output
 // contract sits right next to the data it applies to.
 const customBoardCardRequest = `Based on the night material above, write 0-2 cards for this board as a JSON array:
-[{"kind": "musing"|"pattern"|"openq", "title": "one plain-text line, the hook", "body": "2-4 sentences making the specific claim", "quotes": [{"memory_id": "...", "excerpt": "verbatim quote"}]}]
+[{"kind": "pattern"|"thread", "title": "one plain-text line, the hook", "body": "2-4 sentences making the specific claim", "quotes": [{"memory_id": "...", "excerpt": "verbatim quote"}]}]
 Only write a card if the material is genuinely relevant to this board's brief — an empty array [] is a good answer. Cite only memory ids that appear in the material.`
 
 // wowKindHints steers the agent's exploration per rotated kind.
 var wowKindHints = map[string]string{
 	model.BoardKindEcho:         "echo (回声): find a question or uncertainty the user recorded 30+ days ago that a RECENT memory now answers or settles. The payoff is the time gap.",
 	model.BoardKindThread:       "thread (暗线): find two memories from different times or contexts that are plausibly the same underlying idea the user never connected. Be conservative — a false connection is worse than none.",
-	model.BoardKindOpenQuestion: "openq (开放问题): find a question the user asked in their memories that was never answered or followed up. Surface it verbatim.",
 	model.BoardKindPattern:      "pattern (未观察模式): find a recurring behavior visible across 3+ memories that the user likely hasn't noticed about themselves. Must be provable from the citations.",
-	model.BoardKindMusing:       "musing (随想): an observation about the shape of this hub's knowledge — what's growing, what's abandoned, what's oddly missing — grounded in 3+ specific memories.",
 }
 
 type synthesizedQuote struct {
@@ -499,12 +497,13 @@ func (e *Engine) synthesizeCustomBoard(
 	return written, metrics
 }
 
-// isCustomCardKind is the kinds the cheap path may produce. echo and
-// thread need the recall tool's cross-time hunting, so the material-
-// only path doesn't offer them.
+// isCustomCardKind is the kinds the cheap path may produce. echo
+// needs the recall tool's cross-time hunting, so the material-only
+// path doesn't offer it; pattern and thread are both provable from
+// the material pack's citations.
 func isCustomCardKind(kind string) bool {
 	switch kind {
-	case model.BoardKindMusing, model.BoardKindPattern, model.BoardKindOpenQuestion:
+	case model.BoardKindPattern, model.BoardKindThread:
 		return true
 	}
 	return false

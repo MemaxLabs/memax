@@ -134,13 +134,17 @@ const (
 	// single strip, not three cards. Cards are for things worth
 	// stopping on.
 	BoardKindActivity = "activity"
-	BoardKindCapsule  = "capsule" // 时间胶囊 — a memory from ~1 year ago
 
 	// Retired kinds, kept only so the producer can clean up slots
-	// written by earlier versions.
-	BoardKindTrace = "trace"
-	BoardKindPulse = "pulse"
-	BoardKindWeek  = "week"
+	// written by earlier versions. `capsule` was calendar-driven — the
+	// one card with no trigger, surfacing a memory from a year ago
+	// whether or not anything happened. New users never saw it; old
+	// users got a coin flip. The genuine time-gap payoff lives in
+	// `echo`, where the span is causal instead of coincidental.
+	BoardKindTrace   = "trace"
+	BoardKindPulse   = "pulse"
+	BoardKindWeek    = "week"
+	BoardKindCapsule = "capsule"
 )
 
 // BoardAgentItem is one concrete memory reference inside a trace row —
@@ -267,9 +271,7 @@ const (
 	BoardKindDreamlog     = "dreamlog"      // 梦记 — first-person account of last night's dream work
 	BoardKindEcho         = "echo"          // 回声 — an old question meets a new answer
 	BoardKindThread       = "thread"        // 暗线 — two memories that may be one idea
-	BoardKindOpenQuestion = "openq"         // 开放问题 — questions the hub never answered
 	BoardKindPattern      = "pattern"       // 未观察模式 — a habit visible in the data, invisible to the user
-	BoardKindMusing       = "musing"        // 随想 — memax thinking out loud about the hub
 	BoardKindDecisionGate = "decision_gate" // 等你 — an agent needs the user to decide
 	BoardKindNextUp       = "nextup"        // 接下来 — predicted next actions, grounded in open loops
 
@@ -284,15 +286,21 @@ const (
 	BoardSlotKeyWow        = "1-wow"
 	BoardSlotKeyWow2       = "2-wow"
 	BoardSlotKeyGatePrefix = "2g-"
+
+	// Retired synthesized kinds. `openq` asked the same question
+	// `nextup` answers — an open loop — but stopped at naming it;
+	// `musing` was the loosest-defined kind and the likeliest source
+	// of Barnum text, and what it aimed at (what's growing, what's
+	// abandoned) is either provable by `pattern` or countable outright.
+	BoardKindOpenQuestion = "openq"
+	BoardKindMusing       = "musing"
 )
 
 // WowKinds is the nightly rotation pool for the single wow slot.
 var WowKinds = []string{
 	BoardKindEcho,
 	BoardKindThread,
-	BoardKindOpenQuestion,
 	BoardKindPattern,
-	BoardKindMusing,
 }
 
 // BoardQuoteRef is a quoted memory inside a Lane B card: the id makes
@@ -366,12 +374,10 @@ type BoardDecisionGatePayload struct {
 // Kinds not listed have no floor (decision gates cite nothing — the
 // agent's question is the content).
 var laneBCitationFloor = map[string]int{
-	BoardKindEcho:         2,
-	BoardKindThread:       2,
-	BoardKindOpenQuestion: 1,
-	BoardKindPattern:      3,
-	BoardKindMusing:       3,
-	BoardKindDreamlog:     0,
+	BoardKindEcho:     2,
+	BoardKindThread:   2,
+	BoardKindPattern:  3,
+	BoardKindDreamlog: 0,
 	// nextup's real gate is per-ITEM (every item needs ≥1 verified
 	// quote — see buildNextUpSlot); the card-level floor of 1 follows
 	// from "at least one item survives".

@@ -297,29 +297,11 @@ registerBoardKind(
   },
 );
 registerBoardKind(
-  "openq",
-  makeWowBody((t) => t.board.kindOpenq),
-  {
-    purpose: (t) => t.board.openqPurpose,
-    strip: (slot, t) => ({ label: t.board.kindOpenq, detail: slot.title }),
-    feedback: true,
-  },
-);
-registerBoardKind(
   "pattern",
   makeWowBody((t) => t.board.kindPattern),
   {
     purpose: (t) => t.board.patternPurpose,
     strip: (slot, t) => ({ label: t.board.kindPattern, detail: slot.title }),
-    feedback: true,
-  },
-);
-registerBoardKind(
-  "musing",
-  makeWowBody((t) => t.board.kindMusing),
-  {
-    purpose: (t) => t.board.musingPurpose,
-    strip: (slot, t) => ({ label: t.board.kindMusing, detail: slot.title }),
     feedback: true,
   },
 );

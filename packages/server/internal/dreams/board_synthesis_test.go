@@ -305,7 +305,7 @@ func TestSynthesizeCustomBoardWritesWowSlotsNeverDreamlog(t *testing.T) {
 	}
 	fake := &cannedLLM{responses: []string{
 		`[{"kind":"pattern","title":"周末训练在塌方","body":"三条记录都指向同一件事。","quotes":[{"memory_id":"m1","excerpt":"周六没去"},{"memory_id":"m2","excerpt":"周日又没去"},{"memory_id":"m3","excerpt":"补不回来"}]},
-		  {"kind":"openq","title":"补不回来之后呢","body":"你记录了缺席，但从没写下打算怎么办。","quotes":[{"memory_id":"m3","excerpt":"补不回来"}]}]`,
+		  {"kind":"thread","title":"补不回来之后呢","body":"你记录了缺席，但从没写下打算怎么办。","quotes":[{"memory_id":"m3","excerpt":"补不回来"},{"memory_id":"m2","excerpt":"周日又没去"}]}]`,
 	}}
 	e := &Engine{store: s, client: fake, organizeModel: "test-model"}
 	run := &model.DreamRun{ID: "run1"}
@@ -323,8 +323,8 @@ func TestSynthesizeCustomBoardWritesWowSlotsNeverDreamlog(t *testing.T) {
 		t.Fatalf("first card should land in 1-wow as pattern: %#v (err %v)", first, err)
 	}
 	second, err := s.GetBoardSlot(board.ID, model.BoardSlotKeyWow2)
-	if err != nil || second.Kind != model.BoardKindOpenQuestion {
-		t.Fatalf("second card should land in 2-wow as openq: %#v (err %v)", second, err)
+	if err != nil || second.Kind != model.BoardKindThread {
+		t.Fatalf("second card should land in 2-wow as thread: %#v (err %v)", second, err)
 	}
 	if metrics.LLMCalls != 1 {
 		t.Fatalf("custom board must cost exactly one LLM call, got %d", metrics.LLMCalls)
@@ -350,7 +350,7 @@ func TestSynthesizeCustomBoardsIsolatesParseFailure(t *testing.T) {
 	}
 	fake := &cannedLLM{responses: []string{
 		"tonight I dreamed of unparseable prose, not JSON",
-		`[{"kind":"openq","title":"没答的问题","body":"你问过但没回。","quotes":[{"memory_id":"m1","excerpt":"周六没去"}]}]`,
+		`[{"kind":"pattern","title":"没答的问题","body":"你问过但没回。","quotes":[{"memory_id":"m1","excerpt":"周六没去"},{"memory_id":"m2","excerpt":"周日又没去"},{"memory_id":"m3","excerpt":"补不回来"}]}]`,
 	}}
 	e := &Engine{store: s, client: fake, organizeModel: "test-model"}
 	run := &model.DreamRun{ID: "run1"}
@@ -366,7 +366,7 @@ func TestSynthesizeCustomBoardsIsolatesParseFailure(t *testing.T) {
 	if _, err := s.GetBoardSlot(b1.ID, model.BoardSlotKeyWow); err == nil {
 		t.Fatalf("failed board must not have a card")
 	}
-	if slot, err := s.GetBoardSlot(b2.ID, model.BoardSlotKeyWow); err != nil || slot.Kind != model.BoardKindOpenQuestion {
+	if slot, err := s.GetBoardSlot(b2.ID, model.BoardSlotKeyWow); err != nil || slot.Kind != model.BoardKindPattern {
 		t.Fatalf("second board should have its card: %#v (err %v)", slot, err)
 	}
 }

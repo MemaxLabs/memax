@@ -134,47 +134,6 @@ interface PulseTopic {
   contributors?: number;
 }
 
-function CapsuleBody({ slot }: BoardKindBodyProps) {
-  const { t, locale } = useLocale();
-  const router = useRouter();
-  const { activeHub } = useActiveHub();
-  const quote = asString(slot.payload?.quote);
-  const memoryId =
-    asString(slot.payload?.memory_id) || slot.cite_memory_ids?.[0] || "";
-  const when = asString(slot.payload?.when);
-  // Validity-guarded: Intl.format throws RangeError on an Invalid
-  // Date, which would take down the whole page for one bad payload.
-  const whenDate = when ? new Date(when) : null;
-  const whenLabel =
-    whenDate && !Number.isNaN(whenDate.getTime())
-      ? new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        }).format(whenDate)
-      : "";
-  return (
-    <>
-      <BoardKindLabel star {...boardKindEyebrow("capsule")}>
-        {t.board.kindCapsule}
-      </BoardKindLabel>
-      <BoardMemQuote
-        when={whenLabel}
-        onClick={
-          memoryId
-            ? () =>
-                router.push(
-                  buildMemoryDetailPath(activeHub?.hub.slug ?? null, memoryId),
-                )
-            : undefined
-        }
-      >
-        “{quote}”
-      </BoardMemQuote>
-    </>
-  );
-}
-
 function stripFromPayload(
   label: string,
   detail: string | undefined,
@@ -252,9 +211,4 @@ registerBoardKind("activity", ActivityBody, {
         return parts.length > 0 ? parts.join(" · ") : undefined;
       })(),
     ),
-});
-registerBoardKind("capsule", CapsuleBody, {
-  actions: { ack: (t) => t.board.capsuleAck },
-  purpose: (t) => t.board.capsulePurpose,
-  strip: (_slot, t) => ({ label: t.board.kindCapsule }),
 });

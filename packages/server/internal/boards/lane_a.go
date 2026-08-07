@@ -20,7 +20,6 @@ const (
 	traceWindowHours = 24
 	pulseWindowDays  = 7
 	pulseTopicLimit  = 5
-	capsuleTolerance = 7 * 24 * time.Hour
 	weekWindow       = 7 * 24 * time.Hour
 
 	// Slot keys carry an ordering prefix: ListBoardSlots sorts by
@@ -29,14 +28,14 @@ const (
 	// it's the least interesting thing on the board); the capsule
 	// stays a real card because it surfaces actual content, not a
 	// number.
-	slotKeyCapsule  = "c-capsule"
 	slotKeyActivity = "z-activity"
 
 	// Retired keys from the four-card era; the producer deletes them
 	// so upgraded boards don't keep stale cards forever.
-	slotKeyTrace = "a-trace"
-	slotKeyPulse = "b-pulse"
-	slotKeyWeek  = "d-week"
+	slotKeyTrace   = "a-trace"
+	slotKeyPulse   = "b-pulse"
+	slotKeyWeek    = "d-week"
+	slotKeyCapsule = "c-capsule"
 )
 
 // Producer computes Lane A cards for one hub's system board.
@@ -69,15 +68,12 @@ func (p *Producer) RefreshHubBoard(ctx context.Context, hubID string) error {
 	now := p.now().UTC()
 
 	// One-time cleanup of the retired per-metric cards.
-	for _, stale := range []string{slotKeyTrace, slotKeyPulse, slotKeyWeek} {
+	for _, stale := range []string{slotKeyTrace, slotKeyPulse, slotKeyWeek, slotKeyCapsule} {
 		if err := p.store.DeleteBoardSlot(board.ID, stale); err != nil {
 			return fmt.Errorf("boards: drop retired slot %s: %w", stale, err)
 		}
 	}
 
-	if err := p.refreshCapsule(board.ID, hubID, now); err != nil {
-		return err
-	}
 	return p.refreshActivity(board.ID, hubID, now)
 }
 
@@ -128,34 +124,6 @@ func (p *Producer) refreshActivity(boardID, hubID string, now time.Time) error {
 	})
 }
 
-func (p *Producer) refreshCapsule(boardID, hubID string, now time.Time) error {
-	mem, err := p.store.GetMemoryNear(hubID, now.AddDate(-1, 0, 0), capsuleTolerance)
-	if err != nil {
-		return fmt.Errorf("boards: capsule query: %w", err)
-	}
-	if mem == nil {
-		return p.store.DeleteBoardSlot(boardID, slotKeyCapsule)
-	}
-	quote := mem.Title
-	if quote == "" {
-		quote = mem.Summary
-	}
-	if quote == "" {
-		return p.store.DeleteBoardSlot(boardID, slotKeyCapsule)
-	}
-	return p.writeSlotIfChanged(&model.BoardSlot{
-		BoardID:       boardID,
-		SlotKey:       slotKeyCapsule,
-		Kind:          model.BoardKindCapsule,
-		Title:         "One year ago: " + truncateRunes(quote, 120),
-		CiteMemoryIDs: []string{mem.ID},
-		Payload: mustJSON(model.BoardCapsulePayload{
-			MemoryID: mem.ID,
-			When:     mem.CreatedAt.UTC().Format(time.RFC3339),
-			Quote:    quote,
-		}),
-	})
-}
 
 // writeSlotIfChanged upserts only when kind, title, payload, or
 // citations differ from the stored slot. An unchanged refresh is a

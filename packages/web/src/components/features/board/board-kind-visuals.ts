@@ -75,9 +75,7 @@ export const BOARD_KIND_VISUALS: Record<string, BoardKindVisual> = {
   dreamlog: { dot: VOICE, icon: Moon, tile: "standard" },
   echo: { dot: VOICE, icon: Waves, tile: "standard" },
   thread: { dot: VOICE, icon: Link2, tile: "standard" },
-  openq: { dot: VOICE, icon: HelpCircle, tile: "standard" },
   pattern: { dot: VOICE, icon: Repeat, tile: "standard" },
-  musing: { dot: VOICE, icon: Sparkles, tile: "standard" },
   // 接下来 — memax's voice, but it asks for action, so it earns the
   // wide tile alongside decisions rather than the standard read-only
   // width.
@@ -86,12 +84,17 @@ export const BOARD_KIND_VISUALS: Record<string, BoardKindVisual> = {
   decision_gate: { dot: DECISION, icon: Hourglass, tile: "wide" },
   [WAITING_KIND]: { dot: DECISION, icon: Hourglass, tile: "wide" },
   // Single-artifact kinds — square-ish.
-  capsule: { dot: CAPSULE, icon: Clock, tile: "square" },
   [HIGHLIGHT_KIND]: { dot: HIGHLIGHT, icon: UserPlus, tile: "square" },
   // Counters — slim.
   activity: { dot: ACTIVITY, icon: Activity, tile: "slim" },
   // Cooking boards — memax's own promise ("明早见"), violet.
   [COOKING_KIND]: { dot: VOICE, icon: Coffee, tile: "standard" },
+  // Retired kinds (capsule / openq / musing). Entries stay so boards
+  // still holding one of their slots render coherently until the next
+  // producer pass clears it.
+  capsule: { dot: CAPSULE, icon: Clock, tile: "square" },
+  openq: { dot: VOICE, icon: HelpCircle, tile: "standard" },
+  musing: { dot: VOICE, icon: Sparkles, tile: "standard" },
 };
 
 /** Unknown / future kinds lead with the voice treatment. */

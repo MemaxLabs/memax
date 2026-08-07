@@ -56,18 +56,21 @@ describe("lane B board kind renderers", () => {
     resolveMutate.mockClear();
   });
 
-  it("registers all eight lane B kinds", () => {
+  it("registers the live lane B kinds and not the retired ones", () => {
     for (const kind of [
       "dreamlog",
-      "nextup",
       "echo",
       "thread",
-      "openq",
       "pattern",
-      "musing",
       "decision_gate",
+      "nextup",
     ]) {
       expect(hasBoardKindRenderer(kind)).toBe(true);
+    }
+    // openq collapsed into nextup (same open-loop signal, actionable);
+    // musing was the loosest-defined kind and the likeliest Barnum source.
+    for (const retired of ["openq", "musing"]) {
+      expect(hasBoardKindRenderer(retired)).toBe(false);
     }
   });
 

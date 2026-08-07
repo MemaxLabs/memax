@@ -34,12 +34,12 @@ function slot(overrides: Partial<BoardSlot>): BoardSlot {
 describe("lane A board kind renderers", () => {
   afterEach(cleanup);
 
-  it("registers the two lane A kinds and no longer the retired ones", () => {
+  it("registers only the activity strip; counters and the capsule are retired", () => {
     // Counts folded into one `activity` strip; only the capsule — which
     // surfaces real content rather than a number — still earns a card.
     expect(hasBoardKindRenderer("activity")).toBe(true);
-    expect(hasBoardKindRenderer("capsule")).toBe(true);
-    for (const retired of ["trace", "pulse", "week"]) {
+    // capsule was calendar-driven — the one card with no trigger.
+    for (const retired of ["trace", "pulse", "week", "capsule"]) {
       expect(hasBoardKindRenderer(retired)).toBe(false);
     }
   });

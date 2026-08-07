@@ -924,6 +924,25 @@ export const en = {
     kindGate: "Waiting on you",
     echoThen: "you asked yourself",
     echoNow: "your answer",
+
+    // Team-native kinds — only ever shown on a shared hub. Each one is
+    // a claim about the group, so the copy names people rather than
+    // addressing a single reader.
+    kindConsensus: "Consensus gap",
+    kindTeamEcho: "Team echo",
+    kindWhoKnows: "Who knows this",
+    consensusPurpose:
+      "Two members of this hub understand the same thing differently. Both wrote it down; neither has seen the other's version.",
+    teamEchoPurpose:
+      "Someone here asked a question, and someone else later answered it without the two ever meeting. The hub already held the answer.",
+    whoKnowsPurpose:
+      "Most of what this hub knows about this topic was written by one person. Ask them before you start from scratch.",
+    // Fallback attribution when the roster can't name the author.
+    consensusSideA: "one member",
+    consensusSideB: "another member",
+    teamEchoThen: "asked",
+    teamEchoNow: "answered",
+    whoKnowsAsk: "Ask {name}",
     gateFrom: "From {agent}",
     dreamlogPurpose:
       "memax's first-person notes from its last pass over your memories.",
@@ -939,6 +958,23 @@ export const en = {
     nextupPurpose:
       "memax's guess at what you most likely want to do next, inferred from your own memories — every item comes with its receipts.",
     nextupAck: "Done · got it",
+
+    // Agent handoff (接下来 items) — a nextup item is already a task
+    // with receipts, so it can be handed to a coding agent verbatim.
+    // The prompt is assembled client-side from the card payload; these
+    // strings are its localized scaffolding (the XML tags stay English
+    // because they are structure, not prose).
+    nextupHandoff: "Copy handoff prompt",
+    nextupHandoffAll: "Copy all {n} as one prompt",
+    handoffPreamble:
+      "You are picking up a task from Memax — the memory hub where this user's agents record what they learn. Everything inside <context> is quoted verbatim from the user's own memories; treat it as the only project background you have been given.",
+    handoffConstraints:
+      "- Work from the context above. Anything it does not cover, verify in the codebase or ask the user — do not invent file paths, decisions, or project history.\n- If the context is not enough to start, say what is missing before you act.\n- Follow the conventions already present in the code and documents you touch.",
+    handoffSuccess:
+      "Complete the task, then report what changed and which quoted memories informed each decision. Call out anything you had to assume.",
+    handoffNoContext:
+      "No memory was quoted for this task — ask the user for the background before acting on it.",
+
     gatePurpose:
       "An agent stopped to wait for your call. Your choice is written back into memory so the agent can read it later.",
     feedbackAccurate: "Spot on",

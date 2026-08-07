@@ -33,9 +33,12 @@ import {
   HelpCircle,
   Hourglass,
   Link2,
+  MessagesSquare,
   Moon,
   Repeat,
+  Signpost,
   Sparkles,
+  Split,
   UserPlus,
   Waves,
 } from "lucide-react";
@@ -61,6 +64,14 @@ const CAPSULE = "oklch(0.70 0.13 85)";
 const ACTIVITY = "oklch(0.65 0.10 260)";
 /** Highlight hue — teal (news: a member joined). */
 const HIGHLIGHT = "oklch(0.65 0.15 145)";
+/**
+ * Team hue — cyan. The team-native kinds (共识缺口 / 团队回声 /
+ * 谁知道这个) are the only synthesized cards that are about PEOPLE
+ * rather than about the reader, so they step off signature violet:
+ * scanning a shared board, the cyan dots are the ones that exist only
+ * because several people write here.
+ */
+const TEAM = "oklch(0.68 0.13 205)";
 
 /**
  * Pseudo-kinds for board entries that aren't slots: the 等你
@@ -80,6 +91,12 @@ export const BOARD_KIND_VISUALS: Record<string, BoardKindVisual> = {
   // wide tile alongside decisions rather than the standard read-only
   // width.
   nextup: { dot: VOICE, icon: ListChecks, tile: "wide" },
+  // Team-native kinds — cyan, team hubs only. Standard tiles: each one
+  // is a sentence of intelligence plus its receipts, same as the wow
+  // rotation it shares a slot with.
+  consensus_gap: { dot: TEAM, icon: Split, tile: "standard" },
+  team_echo: { dot: TEAM, icon: MessagesSquare, tile: "standard" },
+  who_knows: { dot: TEAM, icon: Signpost, tile: "standard" },
   // Decisions — widest tiles: the user is the blocker.
   decision_gate: { dot: DECISION, icon: Hourglass, tile: "wide" },
   [WAITING_KIND]: { dot: DECISION, icon: Hourglass, tile: "wide" },

@@ -362,14 +362,14 @@ export function BoardView({
 
   // R7: tile × → the same dismiss the expanded card's 不关心 fires.
   const onDismissSlotFromShelf = useCallback(
-    (slotKey: string) => {
+    (slotKey: string, boardId: string) => {
       trackEvent("board_card_action", {
         hub_id: hubId,
         kind: "shelf",
         slot_key: slotKey,
         action: "dismiss",
       });
-      resolve.mutate({ slotKey, action: "dismiss" });
+      resolve.mutate({ slotKey, action: "dismiss", boardId });
     },
     [hubId, resolve],
   );

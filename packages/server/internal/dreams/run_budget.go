@@ -121,6 +121,18 @@ func (b *dreamRunBudget) consume(res *agent.RunResult) {
 	b.toolCalls += len(res.ToolCalls)
 }
 
+// consumeModelCalls accumulates spend that did NOT come from an
+// agent.Run — the per-board single completions in Lane B board
+// synthesis. Without this the governor's counter never advanced for
+// them, so the mid-loop shouldRoute gate could never trip and the
+// cycle's budget telemetry undercounted real model calls.
+func (b *dreamRunBudget) consumeModelCalls(n int) {
+	if b == nil || n <= 0 {
+		return
+	}
+	b.modelCalls += n
+}
+
 // summary returns the running totals for cycle-end logging. Kept
 // as a method (not bare struct field reads) so a future change
 // can add metric exports / tracing without touching call sites.

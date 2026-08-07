@@ -26,6 +26,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import {
+  ListChecks,
   Activity,
   Clock,
   Coffee,
@@ -77,6 +78,10 @@ export const BOARD_KIND_VISUALS: Record<string, BoardKindVisual> = {
   openq: { dot: VOICE, icon: HelpCircle, tile: "standard" },
   pattern: { dot: VOICE, icon: Repeat, tile: "standard" },
   musing: { dot: VOICE, icon: Sparkles, tile: "standard" },
+  // 接下来 — memax's voice, but it asks for action, so it earns the
+  // wide tile alongside decisions rather than the standard read-only
+  // width.
+  nextup: { dot: VOICE, icon: ListChecks, tile: "wide" },
   // Decisions — widest tiles: the user is the blocker.
   decision_gate: { dot: DECISION, icon: Hourglass, tile: "wide" },
   [WAITING_KIND]: { dot: DECISION, icon: Hourglass, tile: "wide" },

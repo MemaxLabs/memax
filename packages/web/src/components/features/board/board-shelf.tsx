@@ -146,7 +146,7 @@ export function BoardShelf({
   /** Cooking/ghost tile tapped → the full /pulse surface owns boards. */
   onOpenBoards: () => void;
   /** Tile × on a slot tile → resolve action="dismiss" (optimistic). */
-  onDismissSlot?: (slotKey: string) => void;
+  onDismissSlot?: (slotKey: string, boardId: string) => void;
   /** Tile × on a highlight tile → notification dismiss (optimistic). */
   onDismissNotification?: (id: string) => void;
 }) {
@@ -212,7 +212,9 @@ export function BoardShelf({
         when={age(slotContentTime(slot))}
         onClick={() => onOpenSlot(slot.slot_key)}
         onDismiss={
-          onDismissSlot ? () => onDismissSlot(slot.slot_key) : undefined
+          onDismissSlot
+            ? () => onDismissSlot(slot.slot_key, slot.board_id)
+            : undefined
         }
         dismissLabel={t.board.actionDismiss}
       />,
@@ -239,7 +241,9 @@ export function BoardShelf({
           when={age(slotContentTime(slot))}
           onClick={onOpenDeck}
           onDismiss={
-            onDismissSlot ? () => onDismissSlot(slot.slot_key) : undefined
+            onDismissSlot
+              ? () => onDismissSlot(slot.slot_key, slot.board_id)
+              : undefined
           }
           dismissLabel={t.board.actionDismiss}
         />,

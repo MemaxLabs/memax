@@ -275,6 +275,15 @@ const (
 	BoardKindDecisionGate = "decision_gate" // 等你 — an agent needs the user to decide
 	BoardKindNextUp       = "nextup"        // 接下来 — predicted next actions, grounded in open loops
 
+	// Team-native kinds. These exist ONLY because several people share a
+	// hub — each one is a claim about the group, not about one person,
+	// and each is validated against the OWNERS of its cited memories
+	// (see LaneBOwnerRule). A "team" card whose receipts all come from
+	// one person is a lie about collaboration, so the producer drops it.
+	BoardKindConsensusGap = "consensus_gap" // 共识缺口 — two members understand the same thing differently
+	BoardKindTeamEcho     = "team_echo"     // 团队回声 — A's question, B's answer, never connected
+	BoardKindWhoKnows     = "who_knows"     // 谁知道这个 — who to ask about a topic
+
 	// Lane B slot keys. "0-" sorts the dream log first, "0n-" the
 	// predictive next-up card right after it ("0-" < "0n-" because
 	// '-' < 'n'), "1-" the rotating wow card, and decision gates prefix
@@ -296,19 +305,63 @@ const (
 	BoardKindMusing       = "musing"
 )
 
-// WowKinds is the nightly rotation pool for the single wow slot.
+// WowKinds is the nightly rotation pool for the single wow slot on a
+// PERSONAL hub — three lenses, all of them about one person.
 var WowKinds = []string{
 	BoardKindEcho,
 	BoardKindThread,
 	BoardKindPattern,
 }
 
+// TeamWowKinds is the rotation pool for a TEAM hub: the personal three
+// (a shared hub still holds one person's echoes) plus the three kinds
+// that only mean anything when several people write into the same hub.
+// Six lenses instead of three, so a team board says something about
+// the team roughly half the time.
+var TeamWowKinds = []string{
+	BoardKindEcho,
+	BoardKindThread,
+	BoardKindPattern,
+	BoardKindConsensusGap,
+	BoardKindTeamEcho,
+	BoardKindWhoKnows,
+}
+
+// HubTypeTeam is the Hub.HubType value that unlocks the team kinds.
+const HubTypeTeam = "team"
+
+// WowKindsForHub returns the rotation pool for a hub type. Team kinds
+// are never offered to a personal hub — on a hub with one writer they
+// would either be unfillable or, worse, fabricated.
+func WowKindsForHub(hubType string) []string {
+	if hubType == HubTypeTeam {
+		return TeamWowKinds
+	}
+	return WowKinds
+}
+
+// IsTeamWowKind reports whether a kind is one of the team-only lenses.
+func IsTeamWowKind(kind string) bool {
+	switch kind {
+	case BoardKindConsensusGap, BoardKindTeamEcho, BoardKindWhoKnows:
+		return true
+	}
+	return false
+}
+
 // BoardQuoteRef is a quoted memory inside a Lane B card: the id makes
 // it navigable, When/Excerpt make it renderable without a fetch.
+//
+// Author is the display name of the member who WROTE the memory,
+// filled only on team-hub cards where "who said this" is the point.
+// It comes from the hub roster keyed by the memory's owner_id, never
+// from the model — attribution is the one thing a team card must not
+// guess. Empty on personal hubs, where there is only one author.
 type BoardQuoteRef struct {
 	MemoryID string `json:"memory_id"`
 	When     string `json:"when,omitempty"` // RFC3339
 	Excerpt  string `json:"excerpt"`
+	Author   string `json:"author,omitempty"`
 }
 
 // BoardDreamlogPayload — 梦记. Body is memax speaking in first person
@@ -333,6 +386,28 @@ type BoardWowPayload struct {
 	Description string          `json:"description,omitempty"`
 	Body        string          `json:"body"`
 	Quotes      []BoardQuoteRef `json:"quotes,omitempty"`
+}
+
+// BoardConsensusPayload — 共识缺口. Two members recorded contradictory
+// understandings of the same thing. Sides is exactly two quotes, one
+// per member, and the producer guarantees they come from DIFFERENT
+// owners — that difference IS the card. Distinct from the dream's
+// contradiction detection, which compares memory CONTENT: here each
+// side may be internally consistent, and the gap is between people.
+type BoardConsensusPayload struct {
+	Description string          `json:"description,omitempty"`
+	Body        string          `json:"body"`
+	Sides       []BoardQuoteRef `json:"sides"`
+}
+
+// BoardWhoKnowsPayload — 谁知道这个. Routing, not insight: Holder is the
+// display name of the member whose memories dominate the topic, and
+// the quotes are that member's own memories (all one owner — that is
+// the evidence they're the holder). Embeds the wow shape because the
+// body + receipts layout is identical; only the name is new.
+type BoardWhoKnowsPayload struct {
+	BoardWowPayload
+	Holder string `json:"holder,omitempty"`
 }
 
 // BoardNextUpItem is one predicted action on the 接下来 card: an
@@ -382,6 +457,12 @@ var laneBCitationFloor = map[string]int{
 	// quote — see buildNextUpSlot); the card-level floor of 1 follows
 	// from "at least one item survives".
 	BoardKindNextUp: 1,
+	// Team kinds: two receipts minimum, and the OWNER rule below is the
+	// half of the gate that makes them team claims rather than personal
+	// ones dressed up in plural pronouns.
+	BoardKindConsensusGap: 2,
+	BoardKindTeamEcho:     2,
+	BoardKindWhoKnows:     2,
 }
 
 // LaneBCitationFloor returns the citation minimum for a kind and
@@ -389,4 +470,55 @@ var laneBCitationFloor = map[string]int{
 func LaneBCitationFloor(kind string) (int, bool) {
 	floor, ok := laneBCitationFloor[kind]
 	return floor, ok
+}
+
+// BoardOwnerRule is the owner composition a kind's verified citations
+// must satisfy. Counting receipts is not enough for the team kinds: a
+// "gap between two members" quoting one person twice, or a "who to
+// ask" quoting three different people, is factually wrong about the
+// only thing the card claims.
+type BoardOwnerRule int
+
+const (
+	// BoardOwnersAny — no constraint (every personal kind).
+	BoardOwnersAny BoardOwnerRule = iota
+	// BoardOwnersDistinct — the quotes must span ≥2 distinct owners.
+	BoardOwnersDistinct
+	// BoardOwnersSame — every quote must come from ONE owner.
+	BoardOwnersSame
+)
+
+var laneBOwnerRule = map[string]BoardOwnerRule{
+	BoardKindConsensusGap: BoardOwnersDistinct,
+	BoardKindTeamEcho:     BoardOwnersDistinct,
+	BoardKindWhoKnows:     BoardOwnersSame,
+}
+
+// LaneBOwnerRule returns the owner-composition rule for a kind.
+func LaneBOwnerRule(kind string) BoardOwnerRule {
+	return laneBOwnerRule[kind]
+}
+
+// SatisfiesOwnerRule reports whether a set of citation owner ids meets
+// the rule. Empty input never satisfies a team rule — a card with no
+// attributable owners cannot be making a claim about people.
+func SatisfiesOwnerRule(rule BoardOwnerRule, ownerIDs []string) bool {
+	if rule == BoardOwnersAny {
+		return true
+	}
+	distinct := make(map[string]bool, len(ownerIDs))
+	for _, id := range ownerIDs {
+		if id == "" {
+			// An unattributable quote can't prove either rule.
+			return false
+		}
+		distinct[id] = true
+	}
+	switch rule {
+	case BoardOwnersDistinct:
+		return len(distinct) >= 2
+	case BoardOwnersSame:
+		return len(distinct) == 1
+	}
+	return true
 }

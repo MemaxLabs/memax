@@ -78,13 +78,78 @@ You have a recall tool. Use it to explore the hub before writing — search for 
     "body": "2-4 sentences making the specific claim",
     "quotes": [{"memory_id": "...", "excerpt": "verbatim quote", "when": "ISO date if known"}],
     "then": {"memory_id": "...", "excerpt": "...", "when": "..."},
-    "now": {"memory_id": "...", "excerpt": "...", "when": "..."}
+    "now": {"memory_id": "...", "excerpt": "...", "when": "..."},
+    "holder": "member name — kind=who_knows only"
   } | null,
   "nextup": {"items": [{"title": "...", "why": "...", "quotes": [{"memory_id": "...", "excerpt": "verbatim quote", "when": "ISO date if known"}]}]} | null
 }
-"then"/"now" only for kind=echo (the old question and the new answer). Other kinds use "quotes". Return null for a card you cannot honestly fill.
+"then"/"now" only for kind=echo and kind=team_echo (the old question and the new answer, oldest first). kind=consensus_gap uses exactly two "quotes", one per side. Other kinds use "quotes". Return null for a card you cannot honestly fill.
 
 nextup: infer the 1-3 concrete actions the user most plausibly wants to take next — open loops, stated intentions, unfinished threads found via recall. Each item: imperative title (≤80 chars), one-line why, ≥1 verbatim quote from a real memory proving the loop is open. Anti-Barnum applies fully: no generic productivity advice; if no genuine open loops, null.`
+
+// teamSynthesisContext is appended to the system prompt on a TEAM hub
+// and nowhere else. Without it every card comes out addressed to one
+// reader, which is how a shared board ends up being the personal board
+// with more rows in it. The last sentence is not a threat for its own
+// sake — buildWowSlot really does discard team cards whose receipts
+// don't match the claim, so telling the model the check exists is the
+// cheapest way to stop it guessing.
+const teamSynthesisContext = `
+
+TEAM HUB CONTEXT: this hub is shared by several members, and its memories were written by DIFFERENT PEOPLE. Write to the team, not to one person. Never merge two members' notes into one imagined head — attribute a claim to whoever actually wrote the memory. Every claim about the team is verified against the authorship of the memories you cite: a card that says two members disagree while citing two memories by the same person will be discarded, and so will a "who to ask" card whose citations are spread across several people.`
+
+// memberRosterMax bounds the roster line in the prompt — enough for
+// the model to name a holder, small enough that a 200-person hub
+// doesn't push the actual instructions out of attention.
+const memberRosterMax = 12
+
+// boardSynthesisSystemPromptFor picks the system prompt for one hub:
+// the shared one, plus the team paragraph and (when the roster is
+// available) the member names, on a team hub.
+func boardSynthesisSystemPromptFor(hub *model.Hub, members []model.HubMember) string {
+	if hub.HubType != model.HubTypeTeam {
+		return boardSynthesisSystemPrompt
+	}
+	prompt := boardSynthesisSystemPrompt + teamSynthesisContext
+	if roster := memberRosterLine(members); roster != "" {
+		prompt += "\nMembers of this hub: " + roster + "."
+	}
+	return prompt
+}
+
+// memberRosterLine renders the names the model may use. Members with
+// no display name are skipped rather than falling back to their email
+// — a card should never address someone by their login.
+func memberRosterLine(members []model.HubMember) string {
+	names := make([]string, 0, len(members))
+	for _, m := range members {
+		name := strings.TrimSpace(m.UserName)
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+		if len(names) >= memberRosterMax {
+			break
+		}
+	}
+	return strings.Join(names, ", ")
+}
+
+// memberNamesByID is the owner-id → display-name lookup used to fill
+// the who_knows holder from the AUTHOR of the cited memories instead
+// of trusting the model's own attribution.
+func memberNamesByID(members []model.HubMember) map[string]string {
+	if len(members) == 0 {
+		return nil
+	}
+	names := make(map[string]string, len(members))
+	for _, m := range members {
+		if name := strings.TrimSpace(m.UserName); name != "" {
+			names[m.UserID] = name
+		}
+	}
+	return names
+}
 
 // customBoardCardRequest closes the custom board's user prompt. It
 // lives with the material (not the system prompt) so the output
@@ -98,6 +163,13 @@ var wowKindHints = map[string]string{
 	model.BoardKindEcho:         "echo (回声): find a question or uncertainty the user recorded 30+ days ago that a RECENT memory now answers or settles. The payoff is the time gap.",
 	model.BoardKindThread:       "thread (暗线): find two memories from different times or contexts that are plausibly the same underlying idea the user never connected. Be conservative — a false connection is worse than none.",
 	model.BoardKindPattern:      "pattern (未观察模式): find a recurring behavior visible across 3+ memories that the user likely hasn't noticed about themselves. Must be provable from the citations.",
+
+	// Team-only lenses. Each one must cite memories written by the
+	// right MIX of people or it is dropped after the fact (see
+	// buildWowSlot) — say nothing rather than fake a team claim.
+	model.BoardKindConsensusGap: "consensus_gap (共识缺口): find one thing TWO DIFFERENT members of this hub understand differently — not a contradiction inside one person's notes, but two people who each sound sure and who disagree with each other. Cite exactly two memories, one per person, and they MUST be written by different members. If everyone in the hub agrees, return null.",
+	model.BoardKindTeamEcho:     "team_echo (团队回声): find a question or uncertainty ONE member recorded, which a DIFFERENT member later answered without ever connecting the two. Put the older question in \"then\" and the newer answer in \"now\" — they must be written by different members, oldest first. The payoff is that the hub already held the answer.",
+	model.BoardKindWhoKnows:     "who_knows (谁知道这个): pick a topic with recent activity in this hub and identify the ONE member whose memories dominate it, so everyone else knows who to ask. Cite 2+ memories that all belong to that SAME member, and put their name in \"holder\". If the topic's memories are spread evenly across members, there is no holder — return null.",
 }
 
 type synthesizedQuote struct {
@@ -117,6 +189,10 @@ type synthesizedWow struct {
 	Quotes []synthesizedQuote `json:"quotes"`
 	Then   *synthesizedQuote  `json:"then"`
 	Now    *synthesizedQuote  `json:"now"`
+	// Holder is who_knows only: the member to ask. Treated as a
+	// fallback — the producer prefers the roster name of the owner who
+	// actually wrote the cited memories over whatever the model typed.
+	Holder string `json:"holder"`
 }
 
 // synthesizedNextUpItem is one predicted action from the system
@@ -151,14 +227,19 @@ type customBoardCard struct {
 }
 
 // pickWowKind rotates deterministically by hub + day so every night
-// tries a different lens without storing rotation state.
-func pickWowKind(hubID string, day time.Time) string {
+// tries a different lens without storing rotation state. The pool
+// depends on hub type: a personal hub rotates over the three personal
+// lenses, a team hub over six (the personal three plus the team-native
+// three), so a shared board says something about the group roughly
+// half the nights.
+func pickWowKind(boardID, hubType string, day time.Time) string {
 	seed := 0
-	for _, r := range hubID {
+	for _, r := range boardID {
 		seed += int(r)
 	}
 	seed += day.YearDay() + day.Year()*366
-	return model.WowKinds[seed%len(model.WowKinds)]
+	pool := model.WowKindsForHub(hubType)
+	return pool[seed%len(pool)]
 }
 
 // shouldRunBoardSynthesis is the phase gate.
@@ -253,7 +334,22 @@ func (e *Engine) synthesizeSystemBoard(
 		}
 	}
 
-	wowKind := pickWowKind(board.ID, time.Now().UTC())
+	// Roster: team hubs only, one indexed read per night. It feeds the
+	// prompt (so the model can name a member) AND the who_knows holder
+	// resolution (so the NAME on the card comes from the authorship of
+	// the receipts, not from the model). A failure here is not fatal —
+	// the prompt falls back to generic "different members" wording and
+	// owner-id validation still holds the line.
+	var members []model.HubMember
+	if hub.HubType == model.HubTypeTeam {
+		var err error
+		if members, err = e.store.ListHubMembers(hub.ID); err != nil {
+			slog.WarnContext(ctx, "dream: board synthesis roster unavailable",
+				"hub_id", hub.ID, "error", err)
+		}
+	}
+
+	wowKind := pickWowKind(board.ID, hub.HubType, time.Now().UTC())
 	prompt := buildSynthesisPrompt(run, wowKind)
 
 	session := agent.SessionDescriptor{
@@ -278,7 +374,7 @@ func (e *Engine) synthesizeSystemBoard(
 		Tools:        []sdktool.Tool{recallTool},
 		Model:        e.agentRuntime.Model,
 		Session:      session,
-		SystemPrompt: boardSynthesisSystemPrompt,
+		SystemPrompt: boardSynthesisSystemPromptFor(hub, members),
 	})
 	if err != nil {
 		metrics.Errors++
@@ -323,7 +419,7 @@ func (e *Engine) synthesizeSystemBoard(
 		}
 	}
 
-	if wowSlot := e.buildWowSlot(ctx, hub, board.ID, run.ID, wowKind, &parsed); wowSlot != nil {
+	if wowSlot := e.buildWowSlot(ctx, hub, board.ID, run.ID, wowKind, &parsed, memberNamesByID(members)); wowSlot != nil {
 		if err := e.store.UpsertBoardSlot(wowSlot); err != nil {
 			metrics.Errors++
 		} else {
@@ -479,7 +575,7 @@ func (e *Engine) synthesizeCustomBoard(
 		// verifyQuotes + LaneBCitationFloor and drops invalid cards.
 		slot := e.buildWowSlot(ctx, hub, board.ID, run.ID, card.Kind, &synthesisResponse{
 			Wow: &synthesizedWow{Kind: card.Kind, Title: card.Title, Body: card.Body, Quotes: card.Quotes},
-		})
+		}, nil)
 		if slot == nil {
 			continue
 		}
@@ -538,14 +634,26 @@ func (e *Engine) maybeActivateCookingBoard(ctx context.Context, board *model.Boa
 	}
 }
 
+// consensusGapSides is the exact number of quotes a 共识缺口 card
+// carries — it is a two-sided card by definition, so "one side and a
+// half" or "three sides" is a different claim than the one the kind
+// makes.
+const consensusGapSides = 2
+
 // buildWowSlot validates a synthesized wow card against the citation
-// floor and hub-membership of every quoted memory. A card that fails
-// any check is dropped silently — no card beats a wrong card.
+// floor, the hub-membership of every quoted memory, and (for the team
+// kinds) the AUTHORSHIP composition its claim implies. A card that
+// fails any check is dropped silently — no card beats a wrong card.
+//
+// members is the hub's owner-id → display-name roster, used only to
+// fill the who_knows holder from the real author of the receipts. Nil
+// on personal hubs and on the custom-board path.
 func (e *Engine) buildWowSlot(
 	ctx context.Context,
 	hub *model.Hub,
 	boardID, runID, requestedKind string,
 	parsed *synthesisResponse,
+	members map[string]string,
 ) *model.BoardSlot {
 	wow := parsed.Wow
 	if wow == nil || strings.TrimSpace(wow.Title) == "" || strings.TrimSpace(wow.Body) == "" {
@@ -558,23 +666,34 @@ func (e *Engine) buildWowSlot(
 		// dreamlog (floor 0), and letting that through here would ship
 		// an uncited first-person claim in the wow slot, which is
 		// exactly what the validator exists to stop.
-		if !isWowKind(kind) {
+		if !isWowKindForHub(hub, kind) {
 			return nil
 		}
 	}
+	// A team kind on a personal hub is unfillable by construction: one
+	// writer cannot disagree with a colleague or be the person to ask.
+	// Guarded here as well as in the rotation pool so a stray kind in
+	// the model's output can't route around it.
+	if model.IsTeamWowKind(kind) && hub.HubType != model.HubTypeTeam {
+		return nil
+	}
 
 	var quotes []synthesizedQuote
-	if kind == model.BoardKindEcho {
+	switch kind {
+	case model.BoardKindEcho, model.BoardKindTeamEcho:
 		if wow.Then == nil || wow.Now == nil {
 			return nil
 		}
 		quotes = []synthesizedQuote{*wow.Then, *wow.Now}
-	} else {
+	default:
 		quotes = wow.Quotes
+	}
+	if kind == model.BoardKindConsensusGap && len(quotes) != consensusGapSides {
+		return nil
 	}
 
 	floor, _ := model.LaneBCitationFloor(kind)
-	verified := e.verifyQuotes(ctx, hub, quotes)
+	verified := e.verifyQuotesWithOwners(ctx, hub, quotes)
 	if len(verified) < floor || len(verified) < len(quotes) {
 		// Any invented citation kills the card, not just the quote —
 		// a card that half-lies about receipts is worse than none.
@@ -584,22 +703,84 @@ func (e *Engine) buildWowSlot(
 		return nil
 	}
 
+	// Owner composition. This is the whole difference between a team
+	// card and a personal card wearing plural pronouns: "two members
+	// disagree" quoting one person twice is a fabricated collaboration,
+	// and "ask Wei about deploys" quoting three people names the wrong
+	// person. Enforced on the OWNER of the stored memory, never on
+	// anything the model claimed.
+	ownerIDs := make([]string, 0, len(verified))
+	for _, q := range verified {
+		ownerIDs = append(ownerIDs, q.OwnerID)
+	}
+	rule := model.LaneBOwnerRule(kind)
+	if !model.SatisfiesOwnerRule(rule, ownerIDs) {
+		slog.InfoContext(ctx, "dream: team card dropped by owner-diversity rule",
+			"hub_id", hub.ID, "kind", kind, "rule", rule, "owners", len(ownerIDs))
+		return nil
+	}
+	// 团队回声 is a claim about direction: A asked, then B answered. If
+	// the stored timestamps say otherwise the card is telling the story
+	// backwards, and swapping the pair would silently rewrite who
+	// answered whom — so drop it instead.
+	if kind == model.BoardKindTeamEcho && !orderedOldToNew(verified[0], verified[1]) {
+		slog.InfoContext(ctx, "dream: team echo dropped, answer predates the question",
+			"hub_id", hub.ID)
+		return nil
+	}
+
 	citeIDs := make([]string, 0, len(verified))
 	refs := make([]model.BoardQuoteRef, 0, len(verified))
 	for _, q := range verified {
 		citeIDs = append(citeIDs, q.MemoryID)
-		refs = append(refs, model.BoardQuoteRef{MemoryID: q.MemoryID, When: q.When, Excerpt: q.Excerpt})
+		refs = append(refs, model.BoardQuoteRef{
+			MemoryID: q.MemoryID,
+			When:     q.When,
+			Excerpt:  q.Excerpt,
+			// Attribution from the roster, keyed on the stored owner —
+			// on a team card "who said this" is half the content, and it
+			// is the half the model must not be trusted with. Empty when
+			// the hub has no roster or the author has left.
+			Author: members[q.OwnerID],
+		})
 	}
 
 	var payload any
-	if kind == model.BoardKindEcho {
+	switch kind {
+	case model.BoardKindEcho, model.BoardKindTeamEcho:
 		payload = model.BoardEchoPayload{
 			Description: wow.Body,
 			Body:        wow.Body,
 			Then:        refs[0],
 			Now:         refs[1],
 		}
-	} else {
+	case model.BoardKindConsensusGap:
+		payload = model.BoardConsensusPayload{
+			Description: wow.Body,
+			Body:        wow.Body,
+			Sides:       refs,
+		}
+	case model.BoardKindWhoKnows:
+		// Owner rule already proved every receipt has the same author,
+		// so verified[0] IS the holder. Prefer the roster name over the
+		// model's — the model is guessing, the roster is a fact. Without
+		// either there is nobody to ask, and the card has no content.
+		holder := members[verified[0].OwnerID]
+		if holder == "" {
+			holder = strings.TrimSpace(wow.Holder)
+		}
+		if holder == "" {
+			return nil
+		}
+		payload = model.BoardWhoKnowsPayload{
+			BoardWowPayload: model.BoardWowPayload{
+				Description: wow.Body,
+				Body:        wow.Body,
+				Quotes:      refs,
+			},
+			Holder: holder,
+		}
+	default:
 		payload = model.BoardWowPayload{
 			Description: wow.Body,
 			Body:        wow.Body,
@@ -711,9 +892,10 @@ func (e *Engine) buildNextUpSlot(
 	}
 }
 
-// isWowKind reports whether a kind belongs to the rotating wow pool.
-func isWowKind(kind string) bool {
-	for _, k := range model.WowKinds {
+// isWowKindForHub reports whether a kind belongs to this hub's
+// rotating wow pool — three lenses on a personal hub, six on a team.
+func isWowKindForHub(hub *model.Hub, kind string) bool {
+	for _, k := range model.WowKindsForHub(hub.HubType) {
 		if k == kind {
 			return true
 		}
@@ -721,11 +903,48 @@ func isWowKind(kind string) bool {
 	return false
 }
 
+// verifiedQuote is a surviving quote plus the facts about the memory
+// behind it that the team kinds have to judge: who WROTE it and when
+// it was stored. Both come from the store, never from the model — the
+// whole point is that authorship is checked, not claimed.
+type verifiedQuote struct {
+	synthesizedQuote
+	OwnerID   string
+	CreatedAt time.Time
+}
+
+// orderedOldToNew reports whether a precedes b by stored creation
+// time. Missing timestamps pass: an unknown order is not evidence of
+// a wrong one, and the citation gates have already done the load-
+// bearing work.
+func orderedOldToNew(a, b verifiedQuote) bool {
+	if a.CreatedAt.IsZero() || b.CreatedAt.IsZero() {
+		return true
+	}
+	return !b.CreatedAt.Before(a.CreatedAt)
+}
+
 // verifyQuotes keeps only quotes whose memory ids exist, live in this
 // hub, and are DISTINCT — citing one memory three times must not
 // satisfy a floor of three, or "a pattern across 3+ memories" becomes
 // one memory quoted thrice.
 func (e *Engine) verifyQuotes(ctx context.Context, hub *model.Hub, quotes []synthesizedQuote) []synthesizedQuote {
+	verified := e.verifyQuotesWithOwners(ctx, hub, quotes)
+	out := make([]synthesizedQuote, 0, len(verified))
+	for _, q := range verified {
+		out = append(out, q.synthesizedQuote)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// verifyQuotesWithOwners is the single access-checked verification
+// path; verifyQuotes is the projection of it for callers that don't
+// care about authorship. Kept as one function so the hub-isolation
+// logic can never drift between a "personal" and a "team" copy.
+func (e *Engine) verifyQuotesWithOwners(_ context.Context, hub *model.Hub, quotes []synthesizedQuote) []verifiedQuote {
 	ids := make([]string, 0, len(quotes))
 	for _, q := range quotes {
 		if q.MemoryID != "" {
@@ -739,7 +958,7 @@ func (e *Engine) verifyQuotes(ctx context.Context, hub *model.Hub, quotes []synt
 	if err != nil {
 		return nil
 	}
-	var out []synthesizedQuote
+	var out []verifiedQuote
 	seen := make(map[string]bool, len(quotes))
 	for _, q := range quotes {
 		mem, ok := accessible[q.MemoryID]
@@ -750,7 +969,11 @@ func (e *Engine) verifyQuotes(ctx context.Context, hub *model.Hub, quotes []synt
 			continue
 		}
 		seen[q.MemoryID] = true
-		out = append(out, q)
+		out = append(out, verifiedQuote{
+			synthesizedQuote: q,
+			OwnerID:          mem.OwnerID,
+			CreatedAt:        mem.CreatedAt,
+		})
 	}
 	return out
 }

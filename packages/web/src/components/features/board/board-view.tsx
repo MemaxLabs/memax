@@ -24,6 +24,8 @@ import {
 import { pluralize, useInterpolate, useLocale } from "@/i18n";
 import { formatAge } from "@/lib/format-age";
 import { useActiveHub, useAuth } from "@/lib/auth";
+import { hubRouteSlug } from "@/lib/hub-from-slug";
+import { buildPulsePath } from "@/lib/route-helpers";
 import { trackEvent } from "@/lib/posthog";
 import {
   useCreateBoard,
@@ -236,7 +238,19 @@ export function BoardView({
   const interpolate = useInterpolate();
   const router = useRouter();
   const isPage = surface === "page";
-  const { hubs } = useAuth();
+  const { hubs, user } = useAuth();
+  // 查看全部 / cooking-tile taps go to the full surface for THIS board's
+  // hub, never the bare `/pulse` forwarder — the embedded shelf can be
+  // showing a hub the user reached by URL before active-hub state
+  // caught up, and forwarding through `/pulse` would land on the other
+  // hub's board. `null` (hub not in the list yet) falls back to the
+  // forwarder, which resolves once auth hydrates.
+  const pulseHref = useMemo(() => {
+    const entry = hubs.find((h) => h.hub.id === hubId);
+    return buildPulsePath(
+      entry && user ? hubRouteSlug(entry.hub, user.id) : null,
+    );
+  }, [hubs, user, hubId]);
   // Personal-hub detection is by the board's OWN hub, not the active
   // hub context: user-scoped rows (invites, ownership transfers, the
   // onboarding checklist) land on the personal board, and mis-deriving
@@ -490,7 +504,7 @@ export function BoardView({
         <div className="flex-1" />
         {!isPage ? (
           <>
-            {/* 展开/收起 — the shelf expands IN PLACE; the full /pulse
+            {/* 展开/收起 — the shelf expands IN PLACE; the full pulse
                 surface stays one click away via 查看全部. Trailing
                 actions match the fresh-memories header's verbs
                 (Select / filter): 12px fg-3 → fg-2 text buttons. */}
@@ -502,7 +516,7 @@ export function BoardView({
               {shelfExpanded ? t.board.shelfCollapse : t.board.shelfExpand}
             </button>
             <Link
-              href="/pulse"
+              href={pulseHref}
               className="text-[12px] text-fg-3 transition-colors hover:text-fg-2"
             >
               {t.board.shelfViewAll}
@@ -525,7 +539,7 @@ export function BoardView({
             setOpenSlots((prev) => new Set(prev).add(slotKey));
             setShelfExpanded(true);
           }}
-          onOpenBoards={() => router.push("/pulse")}
+          onOpenBoards={() => router.push(pulseHref)}
           onDismissSlot={onDismissSlotFromShelf}
           onDismissNotification={onDismissNotificationFromShelf}
         />
@@ -732,13 +746,20 @@ export function BoardSection() {
 }
 
 /**
- * BoardPage — the /pulse route body. Same board, full surface: the
- * unified stream, the ghost new-board card, and the 最近 strip.
+ * BoardPage — the `/h/<slug>/pulse` route body. Same board, full
+ * surface: the unified stream, the ghost new-board card, and the 最近
+ * strip.
+ *
+ * `hubId` comes from the route (resolved from the URL slug). It stays
+ * optional so a caller without a slug in hand — the bare `/pulse`
+ * forwarder's ancestors, tests, `/dev/kitchen` — still gets the active
+ * hub's board.
  */
-export function BoardPage() {
+export function BoardPage({ hubId }: { hubId?: string }) {
   const { hubFilter } = useActiveHub();
-  if (!hubFilter) return null;
-  return <BoardView hubId={hubFilter} surface="page" />;
+  const resolvedHubId = hubId ?? hubFilter;
+  if (!resolvedHubId) return null;
+  return <BoardView hubId={resolvedHubId} surface="page" />;
 }
 
 /**

@@ -2806,7 +2806,7 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
     // Resolve the destination hub. Order:
     //   1. Pathname slug (if we're already on a v2 hub-scoped surface,
     //      stay in that hub's memories overview).
-    //   2. Active hub from auth (covers /brain, /agents, /pulse — non-
+    //   2. Active hub from auth (covers /brain, /agents — non-
     //      hub-scoped routes that have no slug in the path). Without
     //      this, callers from /brain landed on /memories which middleware
     //      routes to /h/personal/memories regardless of which hub the

@@ -12,6 +12,7 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   buildMemoriesPath,
   buildMemoryDetailPath,
+  buildPulsePath,
   getHubSlugForPath,
 } from "@/lib/route-helpers";
 import {
@@ -2047,6 +2048,7 @@ function InboxPanelContent({
   const { t } = useLocale();
   const interpolate = useInterpolate();
   const router = useRouter();
+  const pathname = usePathname();
   const isMobile = useIsMobile();
   const { hubs, user } = useAuth();
   // The inbox badge is driven by the unscoped notification summary,
@@ -2216,8 +2218,11 @@ function InboxPanelContent({
               onClick={() => {
                 closeInbox();
                 // /inbox retired in plan 25 P4 — the board is the one
-                // surface now, and it hosts these same rows.
-                router.push("/pulse");
+                // surface now, and it hosts these same rows. It is
+                // hub-scoped: prefer the slug already in the URL, and
+                // fall back to the `/pulse` forwarder on slug-less
+                // routes (/brain, /agents).
+                router.push(buildPulsePath(getHubSlugForPath(pathname)));
               }}
             >
               <span>

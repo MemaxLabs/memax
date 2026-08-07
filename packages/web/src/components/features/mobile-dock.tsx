@@ -7,7 +7,12 @@ import { useLocale } from "@/i18n";
 import { useAuth, useActiveHub } from "@/lib/auth";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
-import { getShellTabForPath, isChatSessionRoute } from "@/lib/route-helpers";
+import {
+  buildMemoriesPath,
+  buildPulsePath,
+  getShellTabForPath,
+  isChatSessionRoute,
+} from "@/lib/route-helpers";
 import { MemaxStar } from "./memax-star";
 
 /**
@@ -34,9 +39,18 @@ interface DockTabSpec {
   icon?: React.ElementType;
   star?: boolean;
   labelKey: "brain" | "topics" | "pulse";
-  /** Resolved navigation target for this tab. */
-  resolveRoute: (memoriesPath: string) => string;
+  /**
+   * Resolved navigation target for this tab. Hub-scoped tabs pick their
+   * path out of the active-hub-aware `paths` bag; static tabs ignore it.
+   */
+  resolveRoute: (paths: HubTabPaths) => string;
   signature?: boolean;
+}
+
+/** Active-hub-aware destinations for the hub-scoped dock tabs. */
+interface HubTabPaths {
+  memories: string;
+  pulse: string;
 }
 
 // Order mirrors SHELL_TABS (2026-08 founder reorder): memories first
@@ -50,15 +64,17 @@ const TABS: DockTabSpec[] = [
     // LeftRail's memoriesPath logic). Without this, tapping Memories
     // bounces team-hub users to /h/personal/memories via the legacy
     // /memories middleware redirect — wrong hub.
-    resolveRoute: (memoriesPath) => memoriesPath,
+    resolveRoute: (paths) => paths.memories,
   },
   {
     id: "pulse",
     icon: Activity,
     labelKey: "pulse",
-    // The pulse board full-page surface (plan 25 P4). Replaced the
-    // retired /inbox tab — /inbox now redirects here.
-    resolveRoute: () => "/pulse",
+    // The pulse board full-page surface, hub-scoped like memories —
+    // the board belongs to one hub, so its identity comes from the URL.
+    // The retired /inbox route still points at the bare /pulse
+    // forwarder, which redirects here for the active hub.
+    resolveRoute: (paths) => paths.pulse,
     signature: true,
   },
   {
@@ -100,13 +116,15 @@ export function MobileDock() {
   const { activeHub } = useActiveHub();
   const keyboardOpen = useKeyboardOpen();
 
-  // Active-hub-aware Memories path. Mirrors the v2 LeftRail's
-  // memoriesPath logic so a team-hub user tapping Memories goes to
-  // their team hub, not the personal-hub fallback.
-  const memoriesPath = useMemo(() => {
-    if (!activeHub?.hub || !user) return "/h/personal/memories";
-    const slug = hubRouteSlug(activeHub.hub, user.id);
-    return `/h/${slug}/memories`;
+  // Active-hub-aware hub-scoped paths. Mirrors the v2 LeftRail's
+  // resolveTabPath logic so a team-hub user tapping Memories or Pulse
+  // goes to their team hub, not the personal-hub fallback.
+  const hubPaths = useMemo<HubTabPaths>(() => {
+    const slug =
+      activeHub?.hub && user
+        ? hubRouteSlug(activeHub.hub, user.id)
+        : "personal";
+    return { memories: buildMemoriesPath(slug), pulse: buildPulsePath(slug) };
   }, [activeHub, user]);
 
   // Active-tab matching delegates to the shared `getShellTabForPath`
@@ -175,7 +193,7 @@ export function MobileDock() {
           // and the label span inherit together. Instant on tab swap — no
           // color fade, no surface transition overlay. Cross-tab dock swap
           // is snap-instant per explicit user preference.
-          const route = tab.resolveRoute(memoriesPath);
+          const route = tab.resolveRoute(hubPaths);
           return (
             <button
               key={tab.id}

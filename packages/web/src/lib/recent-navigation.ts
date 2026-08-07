@@ -43,7 +43,8 @@ function getAppSurface(pathname: string): AppSurface {
   // Brain surface — v1 `/home` AND v2 `/brain` (both mount BrainView).
   if (isBrainViewRoute(pathname)) return "brain";
   // Memory-side surface — v1 `/memories[/...]` + v2 `/h/<slug>/memories[/...]`
-  // + topic detail under both shells + the shared `/pulse` route. /pulse
+  // + topic detail under both shells + the pulse board (`/h/<slug>/pulse`
+  // and its bare `/pulse` forwarder). Pulse
   // belongs here per the bar's view derivation; keep these in sync with
   // bar-context.tsx so brain↔memory transitions fire consistently.
   if (

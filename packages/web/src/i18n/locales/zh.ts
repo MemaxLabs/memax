@@ -842,6 +842,24 @@ export const zh: Translations = {
     kindGate: "等你",
     echoThen: "你问自己",
     echoNow: "你的决策",
+
+    // 团队专属 kind——只在共享 hub 上出现。每张都在说「这群人」，
+    // 所以文案点名到人，而不是对着一个读者说话。
+    kindConsensus: "共识缺口",
+    kindTeamEcho: "团队回声",
+    kindWhoKnows: "谁知道这个",
+    consensusPurpose:
+      "同一件事，hub 里两个人的理解不一样。两边都写下来了，但谁也没看过对方那版。",
+    teamEchoPurpose:
+      "有人问过的问题，后来另一个人答了，两条从没碰上。答案其实一直在这个 hub 里。",
+    whoKnowsPurpose:
+      "这个话题的记忆基本都是同一个人写的。动手之前，先问他一句。",
+    // 名册取不到作者时的兜底称呼。
+    consensusSideA: "一个人",
+    consensusSideB: "另一个人",
+    teamEchoThen: "问过",
+    teamEchoNow: "答了",
+    whoKnowsAsk: "问 {name}",
     gateFrom: "来自 {agent}",
     dreamlogPurpose: "memax 整理记忆后的第一人称手记。",
     echoPurpose: "一个旧问题遇到了新答案——只有带着时间的记忆能做到这件事。",
@@ -851,6 +869,20 @@ export const zh: Translations = {
     musingPurpose: "memax 对这个 hub 知识形状的随想。",
     nextupPurpose: "memax 从你的记忆里推测你接下来最想做的事——每一条都有出处。",
     nextupAck: "做完了 · 收下",
+
+    // agent 交接（接下来的每一条）——nextup 本身就是"带出处的任务"，
+    // 可以原样交给写代码的 agent。prompt 在前端用卡片数据拼出来，
+    // 这几条是它的中文骨架（XML 标签保持英文，那是结构不是话术）。
+    nextupHandoff: "复制交接 prompt",
+    nextupHandoffAll: "全部 {n} 条合成一个 prompt",
+    handoffPreamble:
+      "你正在接手一件来自 memax 的任务——memax 是这位用户的记忆中枢，用户的各个 agent 都把结论写在这里。<context> 里的内容逐字引自用户自己的记忆，请把它当作你目前掌握的全部项目背景。",
+    handoffConstraints:
+      "- 只依据上面的 context 工作；context 没覆盖到的部分，去代码里核实或直接问用户，不要臆造文件路径、既往决策和项目历史。\n- 如果 context 不足以让你开始，先说清楚缺什么，再动手。\n- 沿用你所改动的代码与文档里已有的约定。",
+    handoffSuccess:
+      "完成这件事，然后说明你改了什么、每个决定分别依据哪一条引用的记忆；凡是靠推断补上的地方都要明确标出来。",
+    handoffNoContext: "这条任务没有引用到任何记忆——动手前先向用户确认背景。",
+
     gatePurpose:
       "agent 停下来等你拍板。你的选择会写回记忆，agent 之后能直接读到。",
     feedbackAccurate: "准",

@@ -5,9 +5,9 @@
  * Two route families coexist during the migration:
  *
  *   v1 (legacy):       /memories                  /memories/topics/:id
- *                      /memories/:id              /pulse
+ *                      /memories/:id              /pulse  (forwarder)
  *   v2 (shell-v2):     /h/:slug/memories          /h/:slug/topics/:id
- *                      /h/:slug/memories/:id      /pulse  (shared)
+ *                      /h/:slug/memories/:id      /h/:slug/pulse
  *
  * Predicates (`isMemoriesRoute`, `isTopicRoute`, ...) match BOTH shapes
  * so consumers don't have to branch on shell version. Path builders take
@@ -26,9 +26,14 @@
 // trailing segment so consumers don't accidentally match "/memoriesfoo".
 const V1_MEMORIES_PREFIX_RE = /^\/memories(\/|$)/;
 const V2_MEMORIES_PREFIX_RE = /^\/h\/[^/]+\/memories(\/|$)/;
-// The pulse surface (plan 25 P4). Replaces the retired `/inbox` route,
-// which now only exists as a redirect so old deep links don't 404.
-const PULSE_PREFIX_RE = /^\/pulse(\/|$)/;
+// The pulse surface (plan 25 P4). The canonical shape is hub-scoped
+// (`/h/<slug>/pulse`) — the board belongs to ONE hub, so its identity
+// must come from the URL, exactly like memories. The bare `/pulse`
+// path survives as a client-side redirect to the active hub's pulse
+// (old deep links + the retired `/inbox` route point at it), so it
+// still has to classify as a pulse route while it renders.
+const V1_PULSE_PREFIX_RE = /^\/pulse(\/|$)/;
+const V2_PULSE_PREFIX_RE = /^\/h\/[^/]+\/pulse(\/|$)/;
 
 // Topic detail. v1: /memories/topics/:id  v2: /h/:slug/topics/:id
 const V1_TOPIC_RE = /^\/memories\/topics\/([^/]+)\/?$/;
@@ -115,12 +120,13 @@ export function isChatSessionRoute(pathname: string): boolean {
 }
 
 /**
- * The pulse board surface. `/inbox` is NOT matched here on purpose —
- * it redirects to `/pulse` server-side, so no chrome ever renders
+ * The pulse board surface — hub-scoped `/h/<slug>/pulse` plus the bare
+ * `/pulse` forwarder. `/inbox` is NOT matched here on purpose — it
+ * redirects to `/pulse` server-side, so no chrome ever renders
  * against it.
  */
 export function isPulseRoute(pathname: string): boolean {
-  return PULSE_PREFIX_RE.test(pathname);
+  return V1_PULSE_PREFIX_RE.test(pathname) || V2_PULSE_PREFIX_RE.test(pathname);
 }
 
 export function isTopicRoute(pathname: string): boolean {
@@ -215,6 +221,19 @@ export function buildMemoriesPath(slug: string | null): string {
   return slug ? `/h/${slug}/memories` : "/memories";
 }
 
+/**
+ * Build a pulse-board path. `slug = null` selects the bare `/pulse`
+ * forwarder (which client-side redirects to the active hub's board);
+ * a string selects the canonical hub-scoped `/h/<slug>/pulse`.
+ *
+ * Every in-app navigation should pass a slug — the board is per-hub,
+ * and routing through `/pulse` costs an extra client redirect and can
+ * land on the wrong hub if active-hub state hasn't caught up.
+ */
+export function buildPulsePath(slug: string | null): string {
+  return slug ? `/h/${slug}/pulse` : "/pulse";
+}
+
 export function buildTopicPath(slug: string | null, topicId: string): string {
   return slug ? `/h/${slug}/topics/${topicId}` : `/memories/topics/${topicId}`;
 }
@@ -247,7 +266,9 @@ export function getShellTabForPath(pathname: string): ShellTabId | null {
   // /agents and any descendant
   if (pathname === "/agents" || pathname.startsWith("/agents/"))
     return "agents";
-  // /pulse and any descendant
+  // Pulse — `/h/<slug>/pulse` and the bare `/pulse` forwarder, plus any
+  // descendant. MUST stay ahead of the memories branch: both live under
+  // `/h/<slug>/`, and only the segment after the slug tells them apart.
   if (isPulseRoute(pathname)) return "pulse";
   // memories overview, memory detail, topic detail (v1 + v2)
   if (isMemoriesRoute(pathname) || isTopicRoute(pathname)) return "memories";

@@ -8,7 +8,10 @@
  *   /memories                 → /h/personal/memories
  *   /memories/topics/:id      → /h/personal/topics/:id
  *   /memories/:id             (unchanged — see below)
- *   /pulse                    (unchanged — the board is shared)
+ *   /pulse                    (unchanged — a client-side forwarder to
+ *                              /h/<active-slug>/pulse; the active hub
+ *                              isn't server-readable, so redirecting
+ *                              here could only guess `personal`)
  *   /brain, /agents, …        (unchanged — not hub-scoped)
  *
  * `personal` is the safe default redirect target because every user

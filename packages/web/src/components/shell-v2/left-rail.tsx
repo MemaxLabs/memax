@@ -54,6 +54,7 @@ import { useNotificationSummary } from "@/hooks/use-notifications";
 import { useSettingsPanel } from "@/contexts/settings-panel-context";
 import { useLocale } from "@/i18n";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
+import { buildMemoriesPath, buildPulsePath } from "@/lib/route-helpers";
 import { SHELL_TABS, type ShellTabId } from "./shell-tabs";
 import {
   PANEL_INSET as RAIL_INSET,
@@ -112,13 +113,23 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   const expanded = !secondaryOpenOnActive && !isEntryResolver;
   const visualWidth = expanded ? RAIL_WIDTH_EXPANDED : RAIL_WIDTH_COLLAPSED;
 
-  // Resolve the memories path against the user's active hub. Static-path
-  // tabs (brain, agents, pulse) ignore active-hub context.
-  const memoriesPath = useMemo(() => {
-    if (!activeHub?.hub || !user) return "/h/personal/memories";
-    const slug = hubRouteSlug(activeHub.hub, user.id);
-    return `/h/${slug}/memories`;
+  // Resolve the hub-scoped tab paths against the user's active hub.
+  // Static-path tabs (brain, agents) ignore active-hub context; the
+  // memories and pulse tabs both live under `/h/<slug>/`, so a team-hub
+  // user clicking either lands in their team hub, not personal.
+  const hubTabSlug = useMemo(() => {
+    if (!activeHub?.hub || !user) return "personal";
+    return hubRouteSlug(activeHub.hub, user.id);
   }, [activeHub, user]);
+  const resolveTabPath = useCallback(
+    (id: ShellTabId, staticPath: string | null): string | null => {
+      if (staticPath) return staticPath;
+      if (id === "memories") return buildMemoriesPath(hubTabSlug);
+      if (id === "pulse") return buildPulsePath(hubTabSlug);
+      return null;
+    },
+    [hubTabSlug],
+  );
 
   // Prefetch tab routes so a click feels instant. Without this each
   // tab change pays the route's RSC payload + JS chunk download
@@ -129,11 +140,10 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   // prefetch shell-nav destinations on mount.
   useEffect(() => {
     for (const tab of SHELL_TABS) {
-      const path =
-        tab.staticPath ?? (tab.id === "memories" ? memoriesPath : null);
+      const path = resolveTabPath(tab.id, tab.staticPath);
       if (path) router.prefetch(path);
     }
-  }, [router, memoriesPath]);
+  }, [router, resolveTabPath]);
 
   // Optimistic active-tab state. The pathname-derived `activeTab`
   // prop only flips after the new route resolves; on cache miss
@@ -157,13 +167,13 @@ export function LeftRail({ activeTab }: LeftRailProps) {
         return;
       }
       if (hasSecondary) setSecondaryHidden(id, false);
-      const path = staticPath ?? (id === "memories" ? memoriesPath : null);
+      const path = resolveTabPath(id, staticPath);
       if (path) {
         setPendingTab(id);
         router.push(path);
       }
     },
-    [activeTab, router, toggleSecondary, setSecondaryHidden, memoriesPath],
+    [activeTab, router, toggleSecondary, setSecondaryHidden, resolveTabPath],
   );
 
   // Brand mark click → navigate to /brain (home). Per codex review:

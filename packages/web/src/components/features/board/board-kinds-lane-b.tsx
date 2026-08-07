@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * Lane B kind renderers (plan 25 P2): 梦记 dreamlog, 回声 echo, the
- * rotating wow kinds (暗线 thread, 被遗忘的问题 openq, 未观察的模式
- * pattern, memax 随想 musing) and 等你 decision_gate. Server payloads
+ * Lane B kind renderers (plan 25 P2): 梦记 dreamlog, 接下来 nextup, 回声
+ * echo, the rotating wow kinds (暗线 thread, 被遗忘的问题 openq,
+ * 未观察的模式 pattern, memax 随想 musing) and 等你 decision_gate. Server
+ * payloads
  * are structured data (see Go model.Board*Payload); all user-facing
  * copy is composed here through i18n. Every Lane B kind speaks in
  * memax's first person, so all labels carry the VoiceStar.
@@ -162,6 +163,60 @@ function makeWowBody(
   };
 }
 
+interface NextUpItem {
+  title?: string;
+  why?: string;
+  quotes?: unknown;
+}
+
+/**
+ * 接下来 — the predictive to-do. Items are display + memory links
+ * only: the card resolves through the standard ack verb (relabeled
+ * "做完了 · 收下"), so there is no per-item state to manage and the
+ * registry body needs no resolve access.
+ */
+function NextUpBody({ slot }: BoardKindBodyProps) {
+  const { t } = useLocale();
+  const items = asArray<NextUpItem>(slot.payload?.items);
+  return (
+    <>
+      <BoardKindLabel star>{t.board.kindNextup}</BoardKindLabel>
+      <ol className="m-0 flex list-none flex-col gap-2.5 p-0">
+        {items.map((item, index) => (
+          <li key={index} className="flex gap-2">
+            <span
+              className="mt-px shrink-0 text-[12px] font-semibold tabular-nums text-fg-4"
+              aria-hidden="true"
+            >
+              {index + 1}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="m-0 text-[14px] font-semibold text-fg-1">
+                {asString(item.title)}
+              </p>
+              {asString(item.why) ? (
+                <p className="m-0 mt-0.5 text-[12.5px] text-fg-3">
+                  {asString(item.why)}
+                </p>
+              ) : null}
+              {asArray<QuoteRef>(item.quotes).length > 0 ? (
+                <div className="mt-1.5 flex flex-col gap-1.5">
+                  {asArray<QuoteRef>(item.quotes).map((quote, quoteIndex) => (
+                    <LaneBQuote
+                      key={asString(quote.memory_id) || quoteIndex}
+                      quote={quote}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </>
+  );
+}
+
 interface GateOption {
   id?: string;
   label?: string;
@@ -266,6 +321,14 @@ registerBoardKind(
     feedback: true,
   },
 );
+registerBoardKind("nextup", NextUpBody, {
+  purpose: (t) => t.board.nextupPurpose,
+  // slot.title IS the first item's title (server contract), so the
+  // collapsed strip shows the top prediction.
+  strip: (slot, t) => ({ label: t.board.kindNextup, detail: slot.title }),
+  actions: { ack: (t) => t.board.nextupAck },
+  feedback: true,
+});
 registerBoardKind("decision_gate", DecisionGateBody, {
   purpose: (t) => t.board.gatePurpose,
   strip: (slot, t) => ({ label: t.board.kindGate, detail: slot.title }),

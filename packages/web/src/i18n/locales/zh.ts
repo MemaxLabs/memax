@@ -838,6 +838,7 @@ export const zh: Translations = {
     kindOpenq: "被遗忘的问题",
     kindPattern: "未观察的模式",
     kindMusing: "memax 随想",
+    kindNextup: "接下来",
     kindGate: "等你",
     echoThen: "你问自己",
     echoNow: "你的决策",
@@ -848,6 +849,8 @@ export const zh: Translations = {
     openqPurpose: "你在记忆里问过、但从没回答的问题。",
     patternPurpose: "藏在记忆数据里、你自己未必察觉的习惯。",
     musingPurpose: "memax 对这个 hub 知识形状的随想。",
+    nextupPurpose: "memax 从你的记忆里推测你接下来最想做的事——每一条都有出处。",
+    nextupAck: "做完了 · 收下",
     gatePurpose:
       "agent 停下来等你拍板。你的选择会写回记忆，agent 之后能直接读到。",
     feedbackAccurate: "准",

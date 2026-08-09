@@ -238,6 +238,21 @@ export function buildTopicPath(slug: string | null, topicId: string): string {
   return slug ? `/h/${slug}/topics/${topicId}` : `/memories/topics/${topicId}`;
 }
 
+/**
+ * Where a hub SWITCH lands, given where the user currently is.
+ * Surface-preserving: switching hubs on a hub-scoped surface stays on
+ * that surface for the target hub — on pulse you get the target hub's
+ * pulse, not its memories. Everything else falls back to the target
+ * hub's memories overview (the hub home): topic and memory detail
+ * routes carry ids that belong to the ORIGIN hub and don't exist on
+ * the target, and non-hub routes (/brain, /agents) have no per-hub
+ * variant to preserve.
+ */
+export function buildHubSwitchPath(pathname: string, slug: string): string {
+  if (isPulseRoute(pathname)) return buildPulsePath(slug);
+  return buildMemoriesPath(slug);
+}
+
 export function buildMemoryDetailPath(
   slug: string | null,
   memoryId: string,

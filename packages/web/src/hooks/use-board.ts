@@ -26,14 +26,25 @@ export function boardsQueryKey(hubId: string) {
   return ["boards", hubId] as const;
 }
 
+/**
+ * Query options for the hub's system board + slots. Exported so the
+ * hub-switch warm path (`lib/hub-route-readiness.ts`) prefetches into
+ * the same cache entry the pulse surface reads.
+ */
+export function getHubBoardQueryOptions(hubId: string) {
+  return {
+    queryKey: boardQueryKey(hubId),
+    queryFn: () => getMemaxClient().boards.getForHub(hubId),
+    staleTime: 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  } as const;
+}
+
 /** The hub's pulse board + occupied slots. Empty slots = dreams haven't produced cards yet. */
 export function useHubBoard(hubId: string | undefined) {
   return useQuery<BoardWithSlots>({
-    queryKey: boardQueryKey(hubId ?? ""),
-    queryFn: () => getMemaxClient().boards.getForHub(hubId!),
+    ...getHubBoardQueryOptions(hubId ?? ""),
     enabled: Boolean(hubId),
-    staleTime: 60 * 1000,
-    gcTime: 30 * 60 * 1000,
   });
 }
 

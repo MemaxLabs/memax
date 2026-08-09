@@ -106,10 +106,15 @@ export function LandingFull() {
           <OverviewStrip />
         </div>
 
-        {/* Primary CTA — hero-anchored waitlist (morphs inline). Team pivot
-            adds a direct sales-touch line under the self-serve CTA. */}
+        {/* Primary CTA — hero-anchored waitlist (morphs inline). A
+            time-to-value promise sits under it (competitive table stakes:
+            the ask is followed immediately by how cheap saying yes is).
+            Team pivot adds a direct sales-touch line below that. */}
         <div className="w-full flex flex-col items-center gap-3.5 animate-fade-up stagger-3">
           <HeroWaitlist />
+          <p className="text-[13px] text-fg-4 text-center">
+            {t.landing.timePromise}
+          </p>
           {isTeam && (
             <p className="text-[13px] text-fg-4 text-center">
               {t.landing.teamContactPrompt}{" "}
@@ -123,16 +128,17 @@ export function LandingFull() {
           )}
         </div>
 
-        {/* Scenario showcase — coded recreations of the four real surfaces
-            (Claude Code, terminal, memax.app, third-party agent). */}
+        {/* Benchmark proof — directly after the ask. This is evidence no
+            competitor in the category shows (LongMemEval), so it outranks
+            the showcase: numbers first, then what using it looks like. */}
         <div className="w-full animate-fade-up stagger-4">
-          <ScenarioShowcase />
+          <BenchmarkStrip />
         </div>
 
-        {/* Benchmark proof — the showcase shows what memax looks like,
-            this shows how well it works. */}
+        {/* Scenario showcase — coded recreations of the four real surfaces
+            (Claude Code, terminal, memax.app, third-party agent). */}
         <div className="w-full animate-fade-up stagger-5">
-          <BenchmarkStrip />
+          <ScenarioShowcase />
         </div>
       </div>
 

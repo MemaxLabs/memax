@@ -2250,12 +2250,18 @@ export const en = {
     heroTeamPrefix: "Your team's",
     heroTeamWords: ["shared brain", "context", "decisions", "project pulse"],
     heroWordLine: "{word}.",
-    sublineFull: "Dump anything. memax organizes. Every AI you use remembers.",
+    sublineFull:
+      "Never brief your AI twice. Dump anything — memax organizes, and every AI you use remembers.",
     sublineTeam:
       "Your teammate's AI knows what yours knows. Context, decisions, progress — shared across every agent.",
     // Team pivot contact — sales-touch alongside the self-serve waitlist.
     teamContactPrompt: "Setting up memax for your team?",
     teamContactCta: "Talk to us",
+    // Time-to-value promise under the CTA. Kept honest by the CLI
+    // quickstart: install → login → mcp add → first recall really is
+    // under two minutes. If setup ever gets slower, change this line.
+    timePromise:
+      "From connecting your agent to its first recall: under two minutes.",
     sublineSafe:
       "Shared memory across Claude Code, Cursor, and every AI agent.",
     openMemax: "Give your AI a memory",

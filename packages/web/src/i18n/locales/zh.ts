@@ -2042,12 +2042,14 @@ export const zh: Translations = {
     heroTeamPrefix: "团队的",
     heroTeamWords: ["共享大脑", "上下文", "决策", "项目进展"],
     heroWordLine: "{word}。",
-    sublineFull: "随手丢进来。memax 自动整理。你用的每一个 AI 都记得。",
+    sublineFull:
+      "不用再跟 AI 解释第二遍。随手丢进来，memax 自动整理，你用的每一个 AI 都记得。",
     sublineTeam:
       "队友的 AI 也知道你知道的。上下文、决策、进展——每个 agent 都同步。",
     // 团队联系入口 —— 候补名单之外的直接沟通渠道
     teamContactPrompt: "想给团队搭一个 memax？",
     teamContactCta: "找我们聊聊",
+    timePromise: "从接上 agent 到第一次 recall，不到两分钟。",
     sublineSafe: "跨 Claude Code、Cursor 和所有 AI 助手的共享记忆。",
     openMemax: "让你的 AI 记得你",
     // Hero 候补名单 CTA \u2014\u2014 原地变形：邮箱 \u2192 完整表单 \u2192 成功

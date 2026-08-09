@@ -24,7 +24,6 @@ import { SettingsDialog } from "@/components/features/settings/settings-dialog";
 import { MemaxDebugger } from "@/components/features/memax-debugger";
 import { ImpersonationBar } from "@/components/features/impersonation-bar";
 import { MemaxEventBridge } from "@/components/features/memax-event-bridge";
-import { LandingSurfaceSync } from "@/components/shell-v2/landing-surface-sync";
 import {
   SettingsDialogProvider,
   useSettingsDialog,
@@ -312,7 +311,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   <SettingsDialog />
                   <MemaxDebugger />
                   <MemaxEventBridge />
-                  <LandingSurfaceSync />
 
                   {/* Global bar + portals + backdrop. */}
                   <GlobalBar />

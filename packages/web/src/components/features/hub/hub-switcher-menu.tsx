@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Check, Plus } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { MenuItem } from "@memaxlabs/ui";
 import { useAuth } from "@/lib/auth";
 import { useLocale } from "@/i18n";
@@ -12,7 +12,7 @@ import { startLiveSurfaceTransition } from "@/lib/recent-navigation";
 import { warmHubLandingRoute } from "@/lib/hub-route-readiness";
 import { getHubDisplayInitial, getHubDisplayName } from "@/lib/hub-display";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
-import { buildMemoriesPath } from "@/lib/route-helpers";
+import { buildHubSwitchPath, isPulseRoute } from "@/lib/route-helpers";
 
 interface HubSwitcherMenuProps {
   onSelect?: () => void;
@@ -36,6 +36,7 @@ export function HubSwitcherMenu({
 }: HubSwitcherMenuProps) {
   const { user, hubs, activeHubId, switchHub } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const { t } = useLocale();
   const { data: liveHubs } = useHubs();
   const [pendingHubId, setPendingHubId] = useState<string | null>(null);
@@ -73,7 +74,14 @@ export function HubSwitcherMenu({
                 return;
               }
               setPendingHubId(hub.id);
-              const warmPromise = warmHubLandingRoute("/memories", hub.id);
+              // Surface-preserving switch: on pulse, warm + land on
+              // the TARGET hub's pulse; everywhere else the target
+              // hub's memories overview (topic/memory detail ids
+              // belong to the origin hub and don't exist over there).
+              const warmPromise = warmHubLandingRoute(
+                isPulseRoute(pathname) ? "/pulse" : "/memories",
+                hub.id,
+              );
               startLiveSurfaceTransition({
                 kind: "hub-switch",
                 hubName: label,
@@ -91,7 +99,7 @@ export function HubSwitcherMenu({
               // useV2RouteHubSync silently revert a team-hub selection
               // back to personal.
               const destination = user
-                ? buildMemoriesPath(hubRouteSlug(hub, user.id))
+                ? buildHubSwitchPath(pathname, hubRouteSlug(hub, user.id))
                 : "/memories";
               router.push(destination);
               // No success toast: the transition overlay already names

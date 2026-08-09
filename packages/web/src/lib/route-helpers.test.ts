@@ -11,6 +11,7 @@ import {
   getTopicIdForPath,
   getActiveTopicIdForPath,
   getHubSlugForPath,
+  buildHubSwitchPath,
   buildMemoriesPath,
   buildPulsePath,
   buildTopicPath,
@@ -241,6 +242,34 @@ describe("buildMemoriesPath", () => {
   it("emits v2 path when slug is provided", () => {
     expect(buildMemoriesPath("personal")).toBe("/h/personal/memories");
     expect(buildMemoriesPath("engineering")).toBe("/h/engineering/memories");
+  });
+});
+
+describe("buildHubSwitchPath", () => {
+  it("stays on pulse when switching hubs from a pulse surface", () => {
+    expect(buildHubSwitchPath("/h/personal/pulse", "engineering")).toBe(
+      "/h/engineering/pulse",
+    );
+    expect(buildHubSwitchPath("/pulse", "personal")).toBe("/h/personal/pulse");
+  });
+  it("lands on memories when switching from memories surfaces", () => {
+    expect(buildHubSwitchPath("/h/personal/memories", "engineering")).toBe(
+      "/h/engineering/memories",
+    );
+  });
+  it("falls back to memories from origin-hub detail routes", () => {
+    // Topic and memory ids belong to the ORIGIN hub — they don't
+    // exist on the target, so preserving the surface would 404.
+    expect(buildHubSwitchPath("/h/personal/topics/welcome", "team")).toBe(
+      "/h/team/memories",
+    );
+    expect(buildHubSwitchPath("/h/personal/memories/abc", "team")).toBe(
+      "/h/team/memories",
+    );
+  });
+  it("falls back to memories from non-hub routes", () => {
+    expect(buildHubSwitchPath("/brain", "team")).toBe("/h/team/memories");
+    expect(buildHubSwitchPath("/agents", "team")).toBe("/h/team/memories");
   });
 });
 

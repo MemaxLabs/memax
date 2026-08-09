@@ -176,14 +176,15 @@ export function LeftRail({ activeTab }: LeftRailProps) {
     [activeTab, router, toggleSecondary, setSecondaryHidden, resolveTabPath],
   );
 
-  // Brand mark click → navigate to /brain (home). Per codex review:
-  // a clickable-looking brand surface must do something meaningful.
-  // Toggling pin was removed (no-pin model) so we re-purpose the
-  // gesture to "go home", which is a universal brand-mark
+  // Brand mark click → go home, which is the active hub's memories
+  // overview (founder call 2026-08: memories is the home surface;
+  // Ask memax is a tab you choose, never a place the brand mark
+  // teleports you to). A clickable-looking brand surface must do
+  // something meaningful, and "logo goes home" is the universal
   // convention (web logos, IDE app icons, etc.).
   const onBrandClick = useCallback(() => {
-    router.push("/brain");
-  }, [router]);
+    router.push(buildMemoriesPath(hubTabSlug));
+  }, [router, hubTabSlug]);
 
   return (
     <motion.aside

@@ -30,6 +30,7 @@ import { useAuth, useActiveHub } from "@/lib/auth";
 import { useLocale } from "@/i18n";
 import { useSettingsPanel } from "@/contexts/settings-panel-context";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
+import { buildMemoriesPath, buildPulsePath } from "@/lib/route-helpers";
 import { MemaxLogo, MemaxTextLogo } from "@memaxlabs/ui";
 import { MobileTopBar } from "./mobile-top-bar";
 import { MobileDrawer } from "./mobile-drawer";
@@ -110,14 +111,13 @@ function DrawerContent({ tab: activeTab, onNavigate }: DrawerContentProps) {
   const settingsPanel = useSettingsPanel();
 
   // Same active-hub-aware path logic as the desktop LeftRail / mobile
-  // dock. Single source of truth would mean lifting this; for now
-  // the snippet is small enough that copying is preferable to a
-  // shared hook with no other consumers.
-  const memoriesPath = (() => {
-    if (!activeHub?.hub || !user) return "/h/personal/memories";
-    const slug = hubRouteSlug(activeHub.hub, user.id);
-    return `/h/${slug}/memories`;
-  })();
+  // dock: memories AND pulse are both hub-scoped (`staticPath: null`
+  // in SHELL_TABS), so both must resolve here — a tab this map misses
+  // resolves to null and its tap silently no-ops, which is exactly how
+  // the drawer's Pulse row broke when pulse went hub-scoped and only
+  // the rail + dock were updated.
+  const hubTabSlug =
+    activeHub?.hub && user ? hubRouteSlug(activeHub.hub, user.id) : "personal";
 
   const tabLabel: Record<ShellTabId, string> = {
     brain: t.nav.tabs.brain,
@@ -129,7 +129,13 @@ function DrawerContent({ tab: activeTab, onNavigate }: DrawerContentProps) {
   const handleTabTap = (id: ShellTabId) => {
     const spec = SHELL_TABS.find((s) => s.id === id);
     if (!spec) return;
-    const target = spec.staticPath ?? (id === "memories" ? memoriesPath : null);
+    const target =
+      spec.staticPath ??
+      (id === "memories"
+        ? buildMemoriesPath(hubTabSlug)
+        : id === "pulse"
+          ? buildPulsePath(hubTabSlug)
+          : null);
     if (!target) return;
     if (pathname !== target) router.push(target);
     onNavigate();

@@ -7,7 +7,7 @@ import { DOCS_URL } from "@/lib/urls";
 // with packages/docs-site/content/docs/quickstart/benchmarks.mdx when a new
 // eval run changes the published results.
 const STATS = [
-  { value: "96.9%", labelKey: "benchRecallLabel" as const },
+  { value: "97.6%", labelKey: "benchRecallLabel" as const },
   { value: "91.2%", labelKey: "benchQaLabel" as const },
   { value: "$0.046", labelKey: "benchCostLabel" as const },
 ];

@@ -11,7 +11,6 @@ import {
 } from "react";
 import { getPublicMemaxClient } from "@/lib/memax-client";
 import { isImpersonating, restoreOriginalSession } from "@/lib/impersonation";
-import { clearLandingSurfaceHint } from "@/lib/landing-surface";
 import {
   clearSessionPresence,
   markSessionPresence,
@@ -164,7 +163,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(ACTIVE_HUB_KEY);
-    clearLandingSurfaceHint();
+    // Retired landing-surface hint (home now always lands on
+    // memories); still evicted here so browsers that wrote it under
+    // the old scheme don't carry the stale key forever.
+    localStorage.removeItem("memax_landing_surface");
     clearSessionPresence();
     setUser(null);
     setHubs([]);

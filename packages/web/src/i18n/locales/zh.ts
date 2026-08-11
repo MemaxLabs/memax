@@ -30,6 +30,7 @@ export const zh: Translations = {
     },
   },
   bar: {
+    dropHint: "松开，存进记忆",
     placeholder: {
       default: "记录或提问…",
       brain: "记录或提问...",

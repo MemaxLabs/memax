@@ -1046,9 +1046,10 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
       // the lift signal — files would be "saved" into a hidden bar.
       // This is the shared file-intake seam — drag-drop, paste, and any
       // future picker all route through addStagedFiles, so the invariant
-      // is fixed once here (codex-review 2026-04-21). Spec: bar does NOT
-      // elevate during the drag gesture itself — only after the drop
-      // commits files, which triggers this path.
+      // is fixed once here (codex-review 2026-04-21). Spec update
+      // 2026-08-10 (founder): the bar DOES elevate during the drag
+      // gesture (isDragging feeds hasLiftSignal, and dragenter clears
+      // suppression) — this path remains the post-drop commit seam.
       dispatch({ type: "setBarPanelSuppressed", value: false });
 
       updateStagedFiles((prev) => {
@@ -1239,7 +1240,11 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
     hasLiftSignal:
       derivedInteraction.hasLiftSignal ||
       recallQuery.length > 0 ||
-      rememberActive,
+      rememberActive ||
+      // A file drag over the window lifts the bar so the drop target
+      // is visibly awake (founder 2026-08-10 — supersedes the earlier
+      // "no elevation during the drag gesture" spec below).
+      isDragging,
     hasExpandContent:
       derivedInteraction.hasExpandContent ||
       recallQuery.length > 0 ||
@@ -2336,6 +2341,9 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
       dragCounter.current++;
       if (e.dataTransfer?.types.includes("Files")) {
         setIsDragging(true);
+        // A peeled/⌘K-hidden bar must wake for the drop target to be
+        // visible — same invariant addStagedFiles enforces post-drop.
+        dispatch({ type: "setBarPanelSuppressed", value: false });
       }
     };
     const onDragLeave = (e: DragEvent) => {
@@ -2376,15 +2384,34 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
         }
       });
     };
+    // Cancelled drags don't reliably fire dragleave/drop — Escape,
+    // releasing outside the window, or alt-tabbing away can leave the
+    // gesture with no terminal event. Now that isDragging drives a
+    // visible overlay + bar lift, a stale true is user-visible, so
+    // reset on every cancellation signal too (codex PR review
+    // 2026-08-11).
+    const onDragCancel = () => {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") onDragCancel();
+    };
     window.addEventListener("dragenter", onDragEnter);
     window.addEventListener("dragleave", onDragLeave);
     window.addEventListener("dragover", onDragOver);
     window.addEventListener("drop", onDrop);
+    window.addEventListener("dragend", onDragCancel);
+    window.addEventListener("blur", onDragCancel);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("dragenter", onDragEnter);
       window.removeEventListener("dragleave", onDragLeave);
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
+      window.removeEventListener("dragend", onDragCancel);
+      window.removeEventListener("blur", onDragCancel);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [
     addStagedFiles,

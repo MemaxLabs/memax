@@ -29,6 +29,7 @@ export const en = {
   },
   // Bar
   bar: {
+    dropHint: "Drop to save into memory",
     placeholder: {
       default: "dump or ask…",
       brain: "remember or ask...",

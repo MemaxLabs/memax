@@ -121,8 +121,13 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 			}
 
 			if userID == "" {
+				// "Run: memax login" is only correct advice for the CLI —
+				// MCP clients authenticate via OAuth or an mxk_ API key,
+				// and their users may already be logged in to the CLI.
+				message := "Authentication required. Run: memax login"
 				// For MCP endpoints, include WWW-Authenticate header for OAuth discovery
 				if strings.HasPrefix(r.URL.Path, "/mcp") {
+					message = "Authentication required. Authorize this MCP client via OAuth (for Codex: codex mcp login memax), or configure an API key with: memax setup --mcp --api-key"
 					baseURL := os.Getenv("API_BASE_URL")
 					if baseURL == "" {
 						scheme := "https"
@@ -142,7 +147,7 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 					))
 				}
 				writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
-					Error: &model.Error{Code: "unauthorized", Message: "Authentication required. Run: memax login"},
+					Error: &model.Error{Code: "unauthorized", Message: message},
 				})
 				return
 			}

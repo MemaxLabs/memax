@@ -13,6 +13,11 @@ OpenAI Codex supports MCP servers.
 memax setup --only codex --mcp
 ```
 
+Setup configures the remote MCP server and walks you through Codex's
+one-time OAuth login (`codex mcp login memax`). Unlike most MCP clients,
+Codex does not start the OAuth flow on first connect — until the login
+runs, `codex mcp list` shows the server as "Not logged in".
+
 ## Manual setup
 
 <Steps>
@@ -27,15 +32,21 @@ memax setup --only codex --mcp
     args = ["-y", "memax-cli", "mcp", "serve", "--agent", "codex"]
     ```
 
-    For remote MCP (hosted), use a `url` block and put the auth
-    header under a nested `[mcp_servers.memax.headers]` table:
+    For remote MCP (hosted), use a `url` block:
 
     ```toml
     [mcp_servers.memax]
     type = "url"
     url = "https://api.memax.app/mcp"
+    ```
 
-    [mcp_servers.memax.headers]
+    To authenticate with an API key instead of OAuth, add the header
+    under a nested `[mcp_servers.memax.http_headers]` table — Codex
+    only reads `http_headers`; a plain `headers` table is silently
+    ignored:
+
+    ```toml
+    [mcp_servers.memax.http_headers]
     Authorization = "Bearer mxk_..."
     ```
 
@@ -43,11 +54,20 @@ memax setup --only codex --mcp
   <Step>
     ### Sign in
 
+    For local (stdio) MCP, log in to the CLI:
+
     ```bash
     memax login
     ```
 
-    (Skip if using remote MCP with an `mxk_` token.)
+    For remote MCP with OAuth (no `mxk_` key in the config), authorize
+    Codex explicitly:
+
+    ```bash
+    codex mcp login memax
+    ```
+
+    (Skip both if using remote MCP with an `mxk_` token.)
 
   </Step>
   <Step>

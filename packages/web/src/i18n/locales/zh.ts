@@ -910,6 +910,10 @@ export const zh: Translations = {
     recentDetailOne: "1 条",
     recentDetail: "{n} 条",
     recentPurpose: "已经发生的事，不需要你拍板。",
+    // 个人板聚合:来源 hub 标签 + 一键隐藏。
+    hideHubTitle: "在个人脉搏中隐藏这个 hub 的动态",
+    hiddenHubsRestore: "已隐藏 {n} 个 hub · 恢复显示",
+    hiddenHubsRestoreOne: "已隐藏 1 个 hub · 恢复显示",
 
     // 整页脉搏surface——设计过的空状态（2026-08）：✦ 开头的一段话
     // 讲清楚这里会出现什么，下面是"替你盯一件事"的示例 chips，

@@ -1004,6 +1004,10 @@ export const en = {
     recentDetailOne: "1 update",
     recentDetail: "{n} updates",
     recentPurpose: "Things that already happened. Nothing to decide.",
+    // Personal-board aggregation: source-hub tag + one-click hide.
+    hideHubTitle: "Hide this hub from your personal pulse",
+    hiddenHubsRestore: "{n} hubs hidden · show again",
+    hiddenHubsRestoreOne: "1 hub hidden · show again",
 
     // Full-page pulse surface — designed empty state (2026-08): a
     // ✦-led pitch of what will appear, then the watch-one-thing block

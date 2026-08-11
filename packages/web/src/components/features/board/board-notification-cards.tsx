@@ -58,6 +58,8 @@ import {
 } from "@/components/features/inbox/inbox-control";
 import { useAuth } from "@/lib/auth";
 import { useNotifications } from "@/hooks/use-notifications";
+import { useSettings } from "@/hooks/use-settings";
+import { getHubDisplayName } from "@/lib/hub-display";
 
 /** Hub-scoped decisions — only shown on the hub they belong to. */
 const HUB_REVIEW_KINDS: ReadonlySet<string> = new Set([
@@ -122,6 +124,12 @@ export interface BoardNotificationCardModel {
   payload?: InboxItem["payload"];
   /** The adapted row the shared inbox body renderers consume. */
   item: InboxItem;
+  /**
+   * Present when this hub-scoped row is shown on the PERSONAL board's
+   * aggregated view and belongs to another hub — carries the source
+   * hub for the attribution tag + one-click hide.
+   */
+  hubTag?: { hubId: string; hubName: string };
 }
 
 export interface BoardNotificationBuckets {
@@ -180,10 +188,12 @@ export function useBoardNotificationCards(
   isUserSurface = false,
 ): BoardNotificationBuckets {
   const { data } = useNotifications({ status: "pending" });
-  const { user } = useAuth();
+  const { user, hubs } = useAuth();
+  const { data: settings } = useSettings();
   const labels = useInboxItemLocalization();
   const { t } = useLocale();
   const userId = user?.id;
+  const hiddenHubIds = settings?.pulse_hidden_hub_ids;
 
   return useMemo<BoardNotificationBuckets>(() => {
     const rows = data?.notifications ?? [];
@@ -209,6 +219,42 @@ export function useBoardNotificationCards(
       };
     };
 
+    // Hub-scoped rows (highlights + receipts): STRICT on hub boards —
+    // a team hub's pulse shows only its own rows (founder 2026-08-10).
+    // The PERSONAL board aggregates other hubs' rows WITH a hub
+    // attribution tag and a one-click hide (same call): hubs muted via
+    // settings.pulse_hidden_hub_ids drop out; rows from hubs the user
+    // can no longer resolve (left the hub) are skipped rather than
+    // shown unattributed. `isUserSurface` never widens this branch —
+    // it exists solely for USER-scoped rows (no hub_id).
+    const viewerIdentity = user
+      ? { name: user.name, displayName: user.display_name }
+      : undefined;
+    const hidden = new Set(hiddenHubIds ?? []);
+    const scopeHubRow = (
+      notification: Notification,
+    ): {
+      belongsHere: boolean;
+      hubTag?: BoardNotificationCardModel["hubTag"];
+    } => {
+      if (!notification.hub_id) {
+        return { belongsHere: isPersonalHub || isUserSurface };
+      }
+      if (notification.hub_id === hubId) return { belongsHere: true };
+      if (!isPersonalHub || hidden.has(notification.hub_id)) {
+        return { belongsHere: false };
+      }
+      const entry = hubs.find((h) => h.hub.id === notification.hub_id);
+      if (!entry) return { belongsHere: false };
+      return {
+        belongsHere: true,
+        hubTag: {
+          hubId: notification.hub_id,
+          hubName: getHubDisplayName(entry.hub, t, viewerIdentity),
+        },
+      };
+    };
+
     for (const notification of rows) {
       if (isOnboardingPinned(notification)) {
         // Onboarding rows are addressed to the person, not the hub —
@@ -225,30 +271,15 @@ export function useBoardNotificationCards(
         continue;
       }
       if (HIGHLIGHT_KINDS.has(notification.kind)) {
-        // Same reachability rule as receipts — its own hub when
-        // visible, the personal board otherwise — but it lands in the
-        // standalone-card bucket, never the collapsed 最近 strip.
-        // STRICT hub scoping (founder call 2026-08-10): every hub's
-        // pulse shows ONLY that hub's rows. No personal-board
-        // catch-all for hub-scoped rows, and `isUserSurface` never
-        // widens the hub_id branch — it exists solely so USER-scoped
-        // rows (invites, onboarding; no hub_id) stay reachable on the
-        // pulse page. The previous catch-all leaked every hub's dream
-        // receipts onto every other hub's board.
-        const belongsHere = notification.hub_id
-          ? notification.hub_id === hubId
-          : isPersonalHub || isUserSurface;
-        if (belongsHere) highlights.push(toModel(notification));
+        const scoped = scopeHubRow(notification);
+        if (scoped.belongsHere)
+          highlights.push({ ...toModel(notification), hubTag: scoped.hubTag });
         continue;
       }
       if (RECEIPT_KINDS.has(notification.kind)) {
-        // Same strict rule as highlights: a receipt lives on the hub
-        // it happened in, and nowhere else. A hub-scoped receipt is
-        // reachable exactly where its board is — that's the contract.
-        const belongsHere = notification.hub_id
-          ? notification.hub_id === hubId
-          : isPersonalHub || isUserSurface;
-        if (belongsHere) recent.push(toModel(notification));
+        const scoped = scopeHubRow(notification);
+        if (scoped.belongsHere)
+          recent.push({ ...toModel(notification), hubTag: scoped.hubTag });
         continue;
       }
       // Everything else (decision_gate pings, scaffold review kinds
@@ -269,7 +300,47 @@ export function useBoardNotificationCards(
     });
 
     return { waiting, pinned, highlights, recent };
-  }, [data, hubId, isPersonalHub, isUserSurface, labels, t, userId]);
+  }, [
+    data,
+    hubId,
+    hubs,
+    hiddenHubIds,
+    isPersonalHub,
+    isUserSurface,
+    labels,
+    t,
+    user,
+    userId,
+  ]);
+}
+
+/**
+ * HubAttributionTag — the source-hub pill on aggregated personal-board
+ * rows. One click hides that hub from the personal pulse (persisted in
+ * settings.pulse_hidden_hub_ids); the strip footer offers restore.
+ */
+function HubAttributionTag({
+  tag,
+  disabled,
+  onHide,
+}: {
+  tag: NonNullable<BoardNotificationCardModel["hubTag"]>;
+  disabled?: boolean;
+  onHide?: (hubId: string) => void;
+}) {
+  const { t } = useLocale();
+  return (
+    <button
+      type="button"
+      disabled={disabled || !onHide}
+      onClick={() => onHide?.(tag.hubId)}
+      title={t.board.hideHubTitle}
+      className="inline-flex max-w-[150px] items-center gap-1 rounded-md bg-surface-1 px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-fg-3 transition-colors hover:text-fg-1 disabled:cursor-default"
+    >
+      <span className="truncate">{tag.hubName}</span>
+      {onHide ? <span aria-hidden>×</span> : null}
+    </button>
+  );
 }
 
 /**
@@ -430,11 +501,13 @@ export function BoardHighlightCard({
   entranceIndex,
   disabled,
   onDismiss,
+  onHideHub,
 }: {
   card: BoardNotificationCardModel;
   entranceIndex: number;
   disabled: boolean;
   onDismiss: (id: string) => void;
+  onHideHub?: (hubId: string) => void;
 }) {
   const { t } = useLocale();
   const interpolate = useInterpolate();
@@ -464,6 +537,13 @@ export function BoardHighlightCard({
         className="min-w-0"
       >
         {inboxKindLabel(card.item, t)}
+        {card.hubTag ? (
+          <HubAttributionTag
+            tag={card.hubTag}
+            disabled={disabled}
+            onHide={onHideHub}
+          />
+        ) : null}
       </BoardKindLabel>
       {card.title ? (
         <p className="m-0 line-clamp-2 text-[14px] leading-snug text-fg-1">
@@ -490,21 +570,30 @@ export function BoardRecentRow({
   card,
   disabled,
   onDismiss,
+  onHideHub,
 }: {
   card: BoardNotificationCardModel;
   disabled: boolean;
   onDismiss: (id: string) => void;
+  onHideHub?: (hubId: string) => void;
 }) {
   const { t } = useLocale();
   const interpolate = useInterpolate();
   return (
     <div className="flex items-start gap-3 px-4 py-2.5">
       <div className="min-w-0 flex-1">
-        <div className="text-[10.5px] uppercase tracking-[0.12em] text-fg-4">
-          {inboxKindLabel(card.item, t)}
-          <span className="ml-1.5 normal-case tracking-normal">
+        <div className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.12em] text-fg-4">
+          <span>{inboxKindLabel(card.item, t)}</span>
+          <span className="normal-case tracking-normal">
             {formatAge(card.item.created_at, t, interpolate)}
           </span>
+          {card.hubTag ? (
+            <HubAttributionTag
+              tag={card.hubTag}
+              disabled={disabled}
+              onHide={onHideHub}
+            />
+          ) : null}
         </div>
         <div className="mt-0.5 truncate text-[12.5px] text-fg-2">
           {card.title}

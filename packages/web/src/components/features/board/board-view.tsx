@@ -41,6 +41,7 @@ import {
 } from "@/hooks/use-notifications";
 import type { NotificationResolveAction } from "memax-sdk";
 import { useBoardCardActions } from "@/hooks/use-board-continue";
+import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { PinnedDispatch } from "@/components/features/onboarding/onboarding-pinned";
 import { buildBoardCardContext } from "./board-card-context";
 import {
@@ -269,6 +270,27 @@ export function BoardView({
   const notifications = useBoardNotificationCards(hubId, isPersonalHub, isPage);
   const resolveNotification = useResolveNotification();
   const dismissNotification = useNotificationDismiss();
+  // Personal-board aggregation controls: one-click hide a source hub
+  // from the aggregated view (persisted cross-device in settings),
+  // plus a restore affordance under the 最近 strip.
+  const { data: settings } = useSettings();
+  const updateSettings = useUpdateSettings();
+  const hiddenPulseHubIds = useMemo(
+    () => settings?.pulse_hidden_hub_ids ?? [],
+    [settings?.pulse_hidden_hub_ids],
+  );
+  const onHideHub = useCallback(
+    (hideId: string) => {
+      if (hiddenPulseHubIds.includes(hideId)) return;
+      updateSettings.mutate({
+        pulse_hidden_hub_ids: [...hiddenPulseHubIds, hideId],
+      });
+    },
+    [hiddenPulseHubIds, updateSettings],
+  );
+  const onRestoreHiddenHubs = useCallback(() => {
+    updateSettings.mutate({ pulse_hidden_hub_ids: [] });
+  }, [updateSettings]);
   const createBoard = useCreateBoard(hubId);
   const deleteBoard = useDeleteBoard(hubId);
 
@@ -579,6 +601,7 @@ export function BoardView({
               entranceIndex={(waiting.length > 0 ? 1 : 0) + index}
               disabled={dismissNotification.isPending}
               onDismiss={(id) => dismissNotification.mutate(id)}
+              onHideHub={onHideHub}
             />
           ))
         : null}
@@ -722,11 +745,29 @@ export function BoardView({
                   card={card}
                   disabled={dismissNotification.isPending}
                   onDismiss={(id) => dismissNotification.mutate(id)}
+                  onHideHub={onHideHub}
                 />
               ))}
             </div>
           ) : null}
         </div>
+      ) : null}
+
+      {/* Restore muted hubs — outside the recent-strip conditional so
+          it stays reachable even when hiding emptied the strip. */}
+      {isPage && isPersonalHub && hiddenPulseHubIds.length > 0 ? (
+        <button
+          type="button"
+          onClick={onRestoreHiddenHubs}
+          disabled={updateSettings.isPending}
+          className="mt-1 self-start px-1 text-[11.5px] text-fg-4 transition-colors hover:text-fg-2"
+        >
+          {pluralize(
+            t.board.hiddenHubsRestoreOne,
+            t.board.hiddenHubsRestore,
+            hiddenPulseHubIds.length,
+          )}
+        </button>
       ) : null}
     </div>
   );

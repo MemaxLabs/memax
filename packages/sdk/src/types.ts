@@ -1379,6 +1379,8 @@ export interface Settings {
   dev_flags?: DevFlagsSettings;
   notifications_enabled: boolean;
   theme: string;
+  /** Hubs muted from the personal board's aggregated pulse view. */
+  pulse_hidden_hub_ids?: string[];
   [key: string]: unknown;
 }
 
@@ -1407,6 +1409,8 @@ export interface SettingsUpdateInput {
   theme?: string;
   /** Default persona for the memax agent (Agent Chat). "" = none. */
   chat_default_persona_id?: string;
+  /** Hubs muted from the personal board's aggregated pulse view. */
+  pulse_hidden_hub_ids?: string[];
 }
 
 // --- Topics ---

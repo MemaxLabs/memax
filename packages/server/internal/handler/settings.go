@@ -181,6 +181,9 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		// Default persona for the memax agent (Agent Chat). Validated
 		// below: "" (none) or a persona owned by the caller.
 		"chat_default_persona_id": true,
+		// Hubs the user muted from the personal board's aggregated
+		// pulse view (array of hub id strings). Validated below.
+		"pulse_hidden_hub_ids": true,
 	}
 	// Phase keys moved to hub settings in 018 — same allowlist the
 	// engine now reads from in MergedHubDreamSettings.
@@ -224,6 +227,24 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			prefs.Settings[k] = pid
+			continue
+		}
+		if k == "pulse_hidden_hub_ids" {
+			raw, ok := v.([]any)
+			if !ok {
+				writeError(w, http.StatusBadRequest, "invalid_setting", "pulse_hidden_hub_ids must be an array of hub id strings")
+				return
+			}
+			ids := make([]string, 0, len(raw))
+			for _, entry := range raw {
+				id, ok := entry.(string)
+				if !ok || id == "" {
+					writeError(w, http.StatusBadRequest, "invalid_setting", "pulse_hidden_hub_ids must be an array of hub id strings")
+					return
+				}
+				ids = append(ids, id)
+			}
+			prefs.Settings[k] = ids
 			continue
 		}
 		if k == "dev_flags" {

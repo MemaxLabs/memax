@@ -228,25 +228,25 @@ export function useBoardNotificationCards(
         // Same reachability rule as receipts — its own hub when
         // visible, the personal board otherwise — but it lands in the
         // standalone-card bucket, never the collapsed 最近 strip.
-        // NOTE: `isUserSurface` deliberately does NOT widen the
-        // hub_id branch — it exists so USER-scoped rows (invites,
-        // onboarding) stay reachable on any pulse page. Applying it
-        // to hub-scoped rows leaked every hub's highlights/receipts
-        // onto every other hub's full pulse page (a brand-new hub
-        // showed the personal hub's dream receipts).
+        // STRICT hub scoping (founder call 2026-08-10): every hub's
+        // pulse shows ONLY that hub's rows. No personal-board
+        // catch-all for hub-scoped rows, and `isUserSurface` never
+        // widens the hub_id branch — it exists solely so USER-scoped
+        // rows (invites, onboarding; no hub_id) stay reachable on the
+        // pulse page. The previous catch-all leaked every hub's dream
+        // receipts onto every other hub's board.
         const belongsHere = notification.hub_id
-          ? notification.hub_id === hubId || isPersonalHub
+          ? notification.hub_id === hubId
           : isPersonalHub || isUserSurface;
         if (belongsHere) highlights.push(toModel(notification));
         continue;
       }
       if (RECEIPT_KINDS.has(notification.kind)) {
-        // On its own hub when the viewer is looking at it; on the
-        // personal board otherwise, so nothing is unreachable. Same
-        // hub-scoping rule as highlights above — no isUserSurface on
-        // the hub_id branch.
+        // Same strict rule as highlights: a receipt lives on the hub
+        // it happened in, and nowhere else. A hub-scoped receipt is
+        // reachable exactly where its board is — that's the contract.
         const belongsHere = notification.hub_id
-          ? notification.hub_id === hubId || isPersonalHub
+          ? notification.hub_id === hubId
           : isPersonalHub || isUserSurface;
         if (belongsHere) recent.push(toModel(notification));
         continue;

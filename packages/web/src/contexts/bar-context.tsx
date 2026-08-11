@@ -2384,15 +2384,34 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
         }
       });
     };
+    // Cancelled drags don't reliably fire dragleave/drop — Escape,
+    // releasing outside the window, or alt-tabbing away can leave the
+    // gesture with no terminal event. Now that isDragging drives a
+    // visible overlay + bar lift, a stale true is user-visible, so
+    // reset on every cancellation signal too (codex PR review
+    // 2026-08-11).
+    const onDragCancel = () => {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") onDragCancel();
+    };
     window.addEventListener("dragenter", onDragEnter);
     window.addEventListener("dragleave", onDragLeave);
     window.addEventListener("dragover", onDragOver);
     window.addEventListener("drop", onDrop);
+    window.addEventListener("dragend", onDragCancel);
+    window.addEventListener("blur", onDragCancel);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("dragenter", onDragEnter);
       window.removeEventListener("dragleave", onDragLeave);
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
+      window.removeEventListener("dragend", onDragCancel);
+      window.removeEventListener("blur", onDragCancel);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [
     addStagedFiles,

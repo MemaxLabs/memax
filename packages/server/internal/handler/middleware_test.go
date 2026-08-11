@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -378,6 +379,60 @@ func TestRequireAuthResolvesJWTGrant(t *testing.T) {
 	}
 	if got.PrincipalType != "oauth_grant" || got.AgentName != "chatgpt" || got.HubScopeMode != HubScopeAllowlist {
 		t.Fatalf("unexpected grant context: %#v", got)
+	}
+}
+
+func TestRequireAuthUnauthorizedMessage(t *testing.T) {
+	secret := []byte("test-secret")
+	tests := []struct {
+		name            string
+		path            string
+		wantMessagePart string
+		wantWWWAuth     bool
+	}{
+		{
+			name:            "REST paths point to the CLI login",
+			path:            "/v1/memories",
+			wantMessagePart: "Run: memax login",
+			wantWWWAuth:     false,
+		},
+		{
+			name: "MCP paths point to client OAuth or API keys, not the CLI",
+			path: "/mcp",
+			// The requester is an MCP client — `memax login` would not fix it.
+			wantMessagePart: "memax setup --mcp --api-key",
+			wantWWWAuth:     true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, tt.path, nil)
+			rec := httptest.NewRecorder()
+			RequireAuth(secret, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Fatal("handler should not be called without auth")
+			})).ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+			}
+			var resp model.ApiResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("invalid JSON body: %v", err)
+			}
+			if resp.Error == nil || resp.Error.Code != "unauthorized" {
+				t.Fatalf("error = %#v, want code unauthorized", resp.Error)
+			}
+			if !strings.Contains(resp.Error.Message, tt.wantMessagePart) {
+				t.Fatalf("message = %q, want it to contain %q", resp.Error.Message, tt.wantMessagePart)
+			}
+			if tt.path == "/v1/memories" && strings.Contains(resp.Error.Message, "MCP") {
+				t.Fatalf("REST message should not mention MCP: %q", resp.Error.Message)
+			}
+			gotWWWAuth := rec.Header().Get("WWW-Authenticate") != ""
+			if gotWWWAuth != tt.wantWWWAuth {
+				t.Fatalf("WWW-Authenticate present = %v, want %v", gotWWWAuth, tt.wantWWWAuth)
+			}
+		})
 	}
 }
 

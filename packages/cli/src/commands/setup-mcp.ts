@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { execSync } from "node:child_process";
 import { loadConfig } from "../lib/config.js";
+import { confirmDefault } from "../lib/prompt.js";
 import { getLocalAgentKey, saveLocalAgentKey } from "../lib/credentials.js";
 import { resolveHubID } from "../lib/hubs.js";
 import {
@@ -59,24 +60,148 @@ export function setupMcpOAuth(agent: AgentDef): void {
 
   // Codex TOML
   if (agent.format === "toml") {
-    mkdirSync(dirname(agent.configPath), { recursive: true });
-    let content = "";
-    if (existsSync(agent.configPath)) {
-      content = readFileSync(agent.configPath, "utf-8");
-    }
-    content = content.replace(
-      /\[mcp_servers\.memax(?:\.\w+)*\][\s\S]*?(?=\n\[|$)/g,
-      "",
-    );
-    content = content.trim();
-    if (content) content += "\n\n";
-    content += `[mcp_servers.memax]\ntype = "url"\nurl = "${mcpUrl}"\n`;
-    writeFileSync(agent.configPath, content);
+    upsertMemaxTomlSection(agent, codexMcpTomlSection(mcpUrl));
     return;
   }
 
   // JSON-based agents — per-agent config shape, no auth header
   writeRemoteJsonConfig(agent, mcpUrl);
+}
+
+/**
+ * Renders the [mcp_servers.memax] TOML section for Codex.
+ *
+ * Codex only reads HTTP headers from a nested `http_headers` table — a plain
+ * `headers` table is silently ignored, which leaves the server configured but
+ * rejected with 401 on every connection. Verify with `codex mcp list --json`:
+ * the key must show up under transport.http_headers.
+ */
+export function codexMcpTomlSection(mcpUrl: string, apiKey?: string): string {
+  let section = `[mcp_servers.memax]\ntype = "url"\nurl = "${mcpUrl}"\n`;
+  if (apiKey) {
+    section += `\n[mcp_servers.memax.http_headers]\nAuthorization = "Bearer ${apiKey}"\n`;
+  }
+  return section;
+}
+
+/**
+ * Replaces the memax section (and any of its sub-tables) in a TOML config,
+ * preserving everything else in the file.
+ */
+export function upsertMemaxTomlSection(agent: AgentDef, section: string): void {
+  mkdirSync(dirname(agent.configPath), { recursive: true });
+  let content = "";
+  if (existsSync(agent.configPath)) {
+    content = readFileSync(agent.configPath, "utf-8");
+  }
+  content = content.replace(
+    /\[mcp_servers\.memax(?:\.\w+)*\][\s\S]*?(?=\n\[|$)/g,
+    "",
+  );
+  content = content.trim();
+  if (content) content += "\n\n";
+  content += section;
+  writeFileSync(agent.configPath, content);
+}
+
+// --- Codex OAuth login ---
+//
+// Unlike Claude Code / Cursor / VS Code, Codex does not start the OAuth flow
+// when it first connects to a url-type MCP server — it stays "Not logged in"
+// until the user runs `codex mcp login <name>`. Setup walks the user through
+// that step so the default OAuth mode is usable out of the box.
+
+export type CodexAuthStatus = "ok" | "needs_login" | "unknown";
+
+/** Parses `codex mcp list --json` output into a memax auth status. */
+export function parseCodexAuthStatus(json: string): CodexAuthStatus {
+  try {
+    const servers: unknown = JSON.parse(json);
+    if (!Array.isArray(servers)) return "unknown";
+    const memax = servers.find(
+      (s: unknown) =>
+        typeof s === "object" &&
+        s !== null &&
+        (s as { name?: unknown }).name === "memax",
+    );
+    if (!memax) return "unknown";
+    const auth = (memax as { auth_status?: unknown }).auth_status;
+    // Older Codex versions don't report auth_status — can't tell.
+    if (typeof auth !== "string" || auth === "") return "unknown";
+    // Anything else ("oauth", "bearer_token", ...) means credentials exist.
+    return auth === "not_logged_in" ? "needs_login" : "ok";
+  } catch {
+    return "unknown";
+  }
+}
+
+export function codexAuthStatus(): CodexAuthStatus {
+  if (!commandExists("codex")) return "unknown";
+  try {
+    // Timeout so a wedged codex (config lock, unexpected prompt) can't
+    // hang setup — on timeout we fall through to "unknown".
+    const out = execSync("codex mcp list --json", {
+      stdio: "pipe",
+      timeout: 10000,
+    });
+    return parseCodexAuthStatus(out.toString("utf-8"));
+  } catch {
+    return "unknown";
+  }
+}
+
+function runCodexLogin(): boolean {
+  try {
+    // Inherit stdio so Codex can print its authorization URL / open a browser.
+    execSync("codex mcp login memax", { stdio: "inherit" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Called after OAuth-mode setup configured Codex. Checks login state and, in
+ * interactive sessions, offers to run `codex mcp login memax` on the spot.
+ * Never fails setup — worst case it prints the command to run manually.
+ */
+export async function finalizeCodexOAuthLogin(): Promise<void> {
+  const status = codexAuthStatus();
+  if (status === "ok") return;
+
+  const hint = "codex mcp login memax";
+  if (status === "unknown") {
+    console.log(
+      chalk.gray(
+        `\n  Codex CLI: if Memax tools don't load, authorize with: ${hint}`,
+      ),
+    );
+    return;
+  }
+
+  const interactive =
+    process.stdin.isTTY === true && process.stdout.isTTY === true;
+  if (!interactive) {
+    console.log(chalk.yellow("\n  Codex CLI is not logged in to Memax yet."));
+    console.log(chalk.gray(`  Run: ${hint}`));
+    return;
+  }
+
+  console.log(
+    chalk.white("\n  Codex CLI needs a one-time OAuth login to connect."),
+  );
+  const proceed = await confirmDefault(
+    "  Log in now (opens your browser)? [Y/n] ",
+  );
+  if (!proceed) {
+    console.log(chalk.gray(`  Skipped — run later: ${hint}`));
+    return;
+  }
+  if (runCodexLogin() && codexAuthStatus() !== "needs_login") {
+    console.log(chalk.green("  ✓ Codex CLI logged in to Memax"));
+  } else {
+    console.log(chalk.yellow(`  Login didn't complete — run: ${hint}`));
+  }
 }
 
 export async function ensureApiKey(
@@ -173,19 +298,7 @@ export function setupMcpRemote(agent: AgentDef, apiKey: string): void {
 
   // Codex TOML
   if (agent.format === "toml") {
-    mkdirSync(dirname(agent.configPath), { recursive: true });
-    let content = "";
-    if (existsSync(agent.configPath)) {
-      content = readFileSync(agent.configPath, "utf-8");
-    }
-    content = content.replace(
-      /\[mcp_servers\.memax(?:\.\w+)*\][\s\S]*?(?=\n\[|$)/g,
-      "",
-    );
-    content = content.trim();
-    if (content) content += "\n\n";
-    content += `[mcp_servers.memax]\ntype = "url"\nurl = "${mcpUrl}"\n\n[mcp_servers.memax.headers]\nAuthorization = "Bearer ${apiKey}"\n`;
-    writeFileSync(agent.configPath, content);
+    upsertMemaxTomlSection(agent, codexMcpTomlSection(mcpUrl, apiKey));
     return;
   }
 
@@ -423,26 +536,13 @@ export function setupMcpClaudeCode(bin: MemaxBin): void {
 
 export function setupMcpToml(agent: AgentDef, bin: MemaxBin): void {
   // Codex uses TOML — append or update the memax section
-  let content = "";
-  if (existsSync(agent.configPath)) {
-    content = readFileSync(agent.configPath, "utf-8");
-  }
-
-  // Remove existing memax section if present
-  content = content.replace(
-    /\[mcp_servers\.memax(?:\.\w+)*\][\s\S]*?(?=\n\[|$)/g,
-    "",
-  );
-
   const args = [...bin.args, "mcp", "serve", "--agent", agent.id]
     .map((a) => `"${a}"`)
     .join(", ");
-
-  content = content.trim();
-  if (content) content += "\n\n";
-  content += `[mcp_servers.memax]\ncommand = "${bin.command}"\nargs = [${args}]\n`;
-
-  writeFileSync(agent.configPath, content);
+  upsertMemaxTomlSection(
+    agent,
+    `[mcp_servers.memax]\ncommand = "${bin.command}"\nargs = [${args}]\n`,
+  );
 }
 
 export async function printMcpConfigs(opts: {
@@ -564,7 +664,7 @@ export async function printMcpConfigs(opts: {
     console.log(chalk.gray(`  [mcp_servers.memax]`));
     console.log(chalk.gray(`  type = "url"`));
     console.log(chalk.gray(`  url = "${mcpUrl}"`));
-    console.log(chalk.gray(`\n  [mcp_servers.memax.headers]`));
+    console.log(chalk.gray(`\n  [mcp_servers.memax.http_headers]`));
     console.log(chalk.gray(`  Authorization = "Bearer ${keyDisplay}"`));
 
     if (apiKey) {
@@ -616,10 +716,11 @@ export async function printMcpConfigs(opts: {
     console.log(chalk.gray(`  [mcp_servers.memax]`));
     console.log(chalk.gray(`  type = "url"`));
     console.log(chalk.gray(`  url = "${mcpUrl}"`));
+    console.log(chalk.gray(`\n  Then authorize: codex mcp login memax`));
 
     console.log(
       chalk.gray(
-        "\n  All agents authenticate via OAuth when they first connect.\n  For API key mode: memax setup --print --api-key",
+        "\n  Most agents authenticate via OAuth when they first connect;\n  Codex requires the explicit login above.\n  For API key mode: memax setup --print --api-key",
       ),
     );
   }

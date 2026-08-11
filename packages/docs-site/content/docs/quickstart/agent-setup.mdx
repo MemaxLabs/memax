@@ -96,16 +96,20 @@ does not work. Use `--only claude-code` to restrict instead.
     args = ["-y", "memax-cli", "mcp", "serve", "--agent", "codex"]
     ```
 
-    Or the remote MCP server with an API key:
+    Or the remote MCP server with an API key (Codex only reads the
+    nested `http_headers` table — not `headers`):
 
     ```toml
     [mcp_servers.memax]
     type = "url"
     url = "https://api.memax.app/mcp"
 
-    [mcp_servers.memax.headers]
+    [mcp_servers.memax.http_headers]
     Authorization = "Bearer mxk_..."
     ```
+
+    For OAuth instead of an API key, omit `http_headers` and run
+    `codex mcp login memax` once.
 
   </Tab>
   <Tab value="Any MCP client">

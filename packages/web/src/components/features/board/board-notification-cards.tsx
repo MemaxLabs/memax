@@ -238,7 +238,12 @@ export function useBoardNotificationCards(
       hubTag?: BoardNotificationCardModel["hubTag"];
     } => {
       if (!notification.hub_id) {
-        return { belongsHere: isPersonalHub || isUserSurface };
+        // Passive user-scoped rows (system notices, quota receipts):
+        // personal board ONLY. Unlike the actionable decisions above,
+        // nothing blocks on them — showing them on a team hub's full
+        // page would break the strict per-hub rule for no benefit
+        // (codex PR review 2026-08-11 P1).
+        return { belongsHere: isPersonalHub };
       }
       if (notification.hub_id === hubId) return { belongsHere: true };
       if (!isPersonalHub || hidden.has(notification.hub_id)) {
@@ -267,6 +272,13 @@ export function useBoardNotificationCards(
         continue;
       }
       if (USER_DECISION_KINDS.has(notification.kind)) {
+        // Deliberate exception to strict per-hub scoping: invites and
+        // ownership transfers BLOCK on the person and the badge routes
+        // to whichever hub's pulse is active — restricting them to the
+        // personal board would strand them whenever a team hub is
+        // selected (the original unreachable-invite bug). Actionable
+        // person-addressed rows show on any full pulse page; passive
+        // ones don't (see scopeHubRow).
         if (isPersonalHub || isUserSurface) waiting.push(toModel(notification));
         continue;
       }

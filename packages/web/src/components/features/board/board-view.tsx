@@ -41,7 +41,12 @@ import {
 } from "@/hooks/use-notifications";
 import type { NotificationResolveAction } from "memax-sdk";
 import { useBoardCardActions } from "@/hooks/use-board-continue";
-import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
+import {
+  useSettings,
+  useUpdateSettings,
+  type Settings,
+} from "@/hooks/use-settings";
+import { queryClient } from "@/lib/query-client";
 import { PinnedDispatch } from "@/components/features/onboarding/onboarding-pinned";
 import { buildBoardCardContext } from "./board-card-context";
 import {
@@ -281,9 +286,15 @@ export function BoardView({
   );
   const onHideHub = useCallback(
     (hideId: string) => {
-      if (hiddenPulseHubIds.includes(hideId)) return;
+      // Read the freshest list from the query cache at call time —
+      // the render-closure copy can be one hide behind under rapid
+      // clicks, and a full-array PATCH built from it would drop the
+      // earlier hide (codex PR review 2026-08-11).
+      const cached = queryClient.getQueryData<Settings>(["settings"]);
+      const current = cached?.pulse_hidden_hub_ids ?? hiddenPulseHubIds;
+      if (current.includes(hideId)) return;
       updateSettings.mutate({
-        pulse_hidden_hub_ids: [...hiddenPulseHubIds, hideId],
+        pulse_hidden_hub_ids: [...current, hideId],
       });
     },
     [hiddenPulseHubIds, updateSettings],

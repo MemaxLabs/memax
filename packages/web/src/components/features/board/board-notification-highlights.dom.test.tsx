@@ -34,6 +34,13 @@ vi.mock("@/hooks/use-notifications", () => ({
   }),
 }));
 
+// The bucket hook reads settings (pulse_hidden_hub_ids) via React
+// Query; mock it like the other hooks so the test tree needs no
+// QueryClientProvider.
+vi.mock("@/hooks/use-settings", () => ({
+  useSettings: () => ({ data: undefined }),
+}));
+
 import {
   BoardHighlightCard,
   useBoardNotificationCards,

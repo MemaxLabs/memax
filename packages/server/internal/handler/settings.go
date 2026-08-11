@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"regexp"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
+
+// uuidShapeRe — RFC 4122 shape for hub ids in settings payloads.
+var uuidShapeRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // planLimitsResolver resolves a user's effective plan limits. Avoids
 // importing plans package directly (breaks import cycle with meter).
@@ -181,6 +185,9 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		// Default persona for the memax agent (Agent Chat). Validated
 		// below: "" (none) or a persona owned by the caller.
 		"chat_default_persona_id": true,
+		// Hubs the user muted from the personal board's aggregated
+		// pulse view (array of hub id strings). Validated below.
+		"pulse_hidden_hub_ids": true,
 	}
 	// Phase keys moved to hub settings in 018 — same allowlist the
 	// engine now reads from in MergedHubDreamSettings.
@@ -224,6 +231,37 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			prefs.Settings[k] = pid
+			continue
+		}
+		if k == "pulse_hidden_hub_ids" {
+			raw, ok := v.([]any)
+			if !ok {
+				writeError(w, http.StatusBadRequest, "invalid_setting", "pulse_hidden_hub_ids must be an array of hub id strings")
+				return
+			}
+			// Bounded + deduped + UUID-shaped: a hostile client must
+			// not be able to bloat the settings row or persist junk
+			// (codex PR review 2026-08-11). 200 hubs is far above any
+			// real membership count.
+			if len(raw) > 200 {
+				writeError(w, http.StatusBadRequest, "invalid_setting", "pulse_hidden_hub_ids: too many entries (max 200)")
+				return
+			}
+			seen := make(map[string]bool, len(raw))
+			ids := make([]string, 0, len(raw))
+			for _, entry := range raw {
+				id, ok := entry.(string)
+				if !ok || !uuidShapeRe.MatchString(id) {
+					writeError(w, http.StatusBadRequest, "invalid_setting", "pulse_hidden_hub_ids must be an array of hub id strings")
+					return
+				}
+				if seen[id] {
+					continue
+				}
+				seen[id] = true
+				ids = append(ids, id)
+			}
+			prefs.Settings[k] = ids
 			continue
 		}
 		if k == "dev_flags" {

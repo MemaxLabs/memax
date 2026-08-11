@@ -228,17 +228,25 @@ export function useBoardNotificationCards(
         // Same reachability rule as receipts — its own hub when
         // visible, the personal board otherwise — but it lands in the
         // standalone-card bucket, never the collapsed 最近 strip.
+        // NOTE: `isUserSurface` deliberately does NOT widen the
+        // hub_id branch — it exists so USER-scoped rows (invites,
+        // onboarding) stay reachable on any pulse page. Applying it
+        // to hub-scoped rows leaked every hub's highlights/receipts
+        // onto every other hub's full pulse page (a brand-new hub
+        // showed the personal hub's dream receipts).
         const belongsHere = notification.hub_id
-          ? notification.hub_id === hubId || isPersonalHub || isUserSurface
+          ? notification.hub_id === hubId || isPersonalHub
           : isPersonalHub || isUserSurface;
         if (belongsHere) highlights.push(toModel(notification));
         continue;
       }
       if (RECEIPT_KINDS.has(notification.kind)) {
         // On its own hub when the viewer is looking at it; on the
-        // personal board otherwise, so nothing is unreachable.
+        // personal board otherwise, so nothing is unreachable. Same
+        // hub-scoping rule as highlights above — no isUserSurface on
+        // the hub_id branch.
         const belongsHere = notification.hub_id
-          ? notification.hub_id === hubId || isPersonalHub || isUserSurface
+          ? notification.hub_id === hubId || isPersonalHub
           : isPersonalHub || isUserSurface;
         if (belongsHere) recent.push(toModel(notification));
         continue;

@@ -24,6 +24,7 @@ import { SettingsDialog } from "@/components/features/settings/settings-dialog";
 import { MemaxDebugger } from "@/components/features/memax-debugger";
 import { ImpersonationBar } from "@/components/features/impersonation-bar";
 import { MemaxEventBridge } from "@/components/features/memax-event-bridge";
+import { BarDropOverlay } from "@/components/bar/bar-drop-overlay";
 import {
   SettingsDialogProvider,
   useSettingsDialog,
@@ -314,6 +315,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
                   {/* Global bar + portals + backdrop. */}
                   <GlobalBar />
+                  {/* File-drag visual cue — consumer of BarProvider's
+                      isDragging (the listeners existed; the visual
+                      never did). */}
+                  <BarDropOverlay />
 
                   <TopicDndProvider>
                     <div className="relative flex">

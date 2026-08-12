@@ -1507,6 +1507,31 @@
   animation: drill-back 0.12s ease-out both;
 }
 
+/* Spring-loaded expand cue (TopicTreeNode). Two quick blinks close the
+   600ms hover-hold and mark which row is about to open, so a branch
+   unfolding mid-drag reads as an answer rather than the tree shifting
+   underfoot. Background only — no transform, since the row is a
+   dnd-kit drop target and moving it would fight rect measurement. */
+@keyframes spring-flash {
+  0%,
+  100% {
+    background-color: transparent;
+  }
+  25%,
+  75% {
+    background-color: color-mix(in oklab, var(--foreground) 12%, transparent);
+  }
+}
+.animate-spring-flash {
+  animation: spring-flash 0.13s steps(1, end) 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-spring-flash {
+    animation: none;
+    background-color: color-mix(in oklab, var(--foreground) 8%, transparent);
+  }
+}
+
 /* ─── Spotlight sweep ─── */
 /* Used by the bar's recall loading state — the Spotlight icon
    swings back and forth like a stage beam actively scanning,

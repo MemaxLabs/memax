@@ -52,6 +52,8 @@ interface TreeNodeProps {
 }
 
 const AUTO_EXPAND_MS = 600;
+/** Two 130ms blinks, then the branch opens. Matches animate-spring-flash. */
+const SPRING_FLASH_MS = 260;
 
 export function TopicTreeNode({
   topic,
@@ -127,29 +129,54 @@ export function TopicTreeNode({
   const isValidOver =
     isOver && !isInvalidDropTarget && dragContext.activeId !== topic.id;
 
-  // Auto-expand on hover-over-collapsed during an active topic drag. The
-  // 600ms hold matches Finder / Linear / Notion — long enough to avoid
-  // accidental expansions while the user passes over a collapsed folder,
-  // short enough to feel responsive when the intent is "open this branch
-  // so I can drop inside".
+  // Spring-loaded expand on hover-over-collapsed, for EITHER kind of
+  // drag. The 600ms hold matches Finder / Linear / Notion — long enough
+  // to avoid accidental expansions while the user passes over a
+  // collapsed folder, short enough to feel responsive when the intent
+  // is "open this branch so I can drop inside".
+  //
+  // It used to fire only while dragging a topic, which left the far
+  // more common case — dragging a memory into a nested topic — with no
+  // way to reach a collapsed branch at all.
+  //
+  // The hold ends with two quick flashes before the branch opens, the
+  // Finder cue: it confirms the hold registered and marks WHICH row is
+  // about to move, so the expansion doesn't read as the tree shifting
+  // underfoot mid-drag.
+  const [springFlashing, setSpringFlashing] = useState(false);
   const autoExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const springOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    const dragging =
+      dragContext.activeType === "topic" || dragContext.activeType === "memory";
     if (
       isOver &&
-      dragContext.activeType === "topic" &&
+      dragging &&
       hasChildren &&
       !isExpanded &&
       !isInvalidDropTarget
     ) {
       autoExpandTimerRef.current = setTimeout(() => {
-        onToggleExpand(topic.id);
+        setSpringFlashing(true);
+        springOpenTimerRef.current = setTimeout(() => {
+          setSpringFlashing(false);
+          onToggleExpand(topic.id);
+        }, SPRING_FLASH_MS);
       }, AUTO_EXPAND_MS);
     }
     return () => {
+      // Leaving the row mid-hold cancels everything, flash included —
+      // a half-played cue on a row the pointer already left is worse
+      // than no cue.
       if (autoExpandTimerRef.current) {
         clearTimeout(autoExpandTimerRef.current);
         autoExpandTimerRef.current = null;
       }
+      if (springOpenTimerRef.current) {
+        clearTimeout(springOpenTimerRef.current);
+        springOpenTimerRef.current = null;
+      }
+      setSpringFlashing(false);
     };
   }, [
     isOver,
@@ -171,6 +198,7 @@ export function TopicTreeNode({
           touch-no-hover group relative flex items-center gap-1 py-1.5 pr-2 rounded-lg cursor-pointer transition-colors
           ${isActive ? "bg-foreground/6" : isMobile ? "" : "hover:bg-foreground/3"}
           ${isValidOver ? "ring-1 ring-foreground/20 bg-foreground/4" : ""}
+          ${springFlashing ? "animate-spring-flash" : ""}
           ${isInvalidDropTarget && isOver ? "ring-1 ring-destructive/40 opacity-60" : ""}
           ${isDragging ? "opacity-50" : ""}
         `}

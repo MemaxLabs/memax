@@ -406,7 +406,13 @@ export function DrillDownTree({
   );
 
   return (
-    <div onKeyDown={handleKeyDown}>
+    // flex column + min-h-0 so the list below claims exactly the space
+    // the back button and any wrapper chrome leave behind. The old
+    // layout gave the list a fixed pixel height that call sites had to
+    // hand-compute against the popover cap; the back button only exists
+    // once you drill in, so every call site's arithmetic was short by
+    // its 44px and the last row was clipped outside the popover.
+    <div onKeyDown={handleKeyDown} className="flex min-h-0 flex-col">
       {/* Back button */}
       {canGoBack && (
         <button
@@ -423,12 +429,15 @@ export function DrillDownTree({
       )}
 
       {/* List — CSS animation on key change, no framer-motion */}
-      <div className="overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
           key={animKey}
           ref={listRef}
-          className={cn("overflow-y-auto p-1.5", animClass)}
-          style={listHeight ? { height: listHeight } : undefined}
+          className={cn("min-h-0 flex-1 overflow-y-auto p-1.5", animClass)}
+          // listHeight is a CAP, never a fixed size: a short list stays
+          // short instead of rendering a tall empty box, and a long one
+          // stops at the cap with its own scrollbar.
+          style={listHeight ? { maxHeight: listHeight } : undefined}
           role="listbox"
           tabIndex={0}
           aria-label={

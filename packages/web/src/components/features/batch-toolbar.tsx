@@ -433,14 +433,14 @@ export function BatchToolbar({
               // trigger the outside-click handler attached at document.
               onPointerDownCapture={(e) => e.stopPropagation()}
             >
-              {/* Explicit listHeight so DrillDownTree's internal
-                  overflow-y-auto region owns its own scroll instead
-                  of growing to content and getting clipped by the
-                  shell's overflow-hidden. 380 (shell max-h) - 52
-                  (anchor row) - 44 (DestinationPicker hint row) ≈
-                  284px of list space; 260 keeps a little breathing
-                  room. Without this, long topic trees either clip or
-                  the page behind the picker inherits touch-scroll. */}
+              {/* listHeight is a max, not a fixed height: the list
+                  owns its own scroll instead of growing to content and
+                  getting clipped by the shell's overflow-hidden, but a
+                  short tree no longer renders a tall empty box. 260
+                  leaves room for every chrome row the picker can show
+                  at once — 44 hint + 44 back button — inside the 380px
+                  shell, so drilling into a sub-topic can't push the
+                  last row out of view. */}
               <DestinationPicker
                 variant="plain"
                 listHeight={260}

@@ -25,9 +25,8 @@ import { useLocale, useInterpolate } from "@/i18n";
 import { ConnectAgentsSection } from "@/components/features/connect-agents-section";
 import { AgentCard } from "@/components/features/agent-card/agent-card";
 import { useAgentListController } from "./use-agent-list-controller";
+import { CLI_SETUP_CMD } from "@/lib/cli";
 
-const SETUP_CMD =
-  "npx memax-cli@latest login && npx memax-cli@latest setup --all";
 const EMPTY_AGENT_NAMES = [
   "Claude Code",
   "Cursor",
@@ -91,7 +90,7 @@ export function AgentList({
           </p>
           <p className="mb-4 text-[12px] text-fg-3">{EMPTY_AGENT_NAMES}</p>
           <div className="mx-auto max-w-xs">
-            <CopyBlock text={SETUP_CMD} mono />
+            <CopyBlock text={CLI_SETUP_CMD} mono />
           </div>
         </div>
       </section>

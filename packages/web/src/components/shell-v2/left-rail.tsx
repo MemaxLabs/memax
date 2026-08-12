@@ -4,26 +4,21 @@
  * LeftRail — shell-v2 primary navigation.
  *
  * Visual surface: floating glass rail at top:12 left:12 bottom:12.
- * Width is **derived from secondary-panel state**, not hover:
+ * Width is CONSTANT (RAIL_WIDTH, labels always visible).
  *
- *   - Active tab has an OPEN secondary panel → rail COLLAPSED (56px,
- *     icons only). The secondary panel owns the visual budget.
- *   - Active tab has a HIDDEN secondary panel → rail EXPANDED
- *     (196px, labels visible). The rail owns the visual budget.
- *   - Active tab has NO secondary panel (agents, pulse) → rail
- *     EXPANDED. Nothing competes for space.
- *
- * Principle: exactly one panel is expanded at a time. This replaces
- * the earlier hover-to-expand model (removed 2026-05-18) which felt
- * jittery and made the rail's state mouse-position-dependent. Now
- * state transitions are user-driven (tab click / secondary toggle)
- * and predictable.
+ * It used to derive its width from secondary-panel state under an
+ * "exactly one panel expanded at a time" budget: opening the knowledge
+ * tree collapsed the rail to an icon column, and closing it expanded
+ * the rail back. That made primary navigation rearrange itself as a
+ * side effect of looking at something else — the reader's anchor moved
+ * whenever they used the app. Primary navigation is the one surface
+ * that must not move underfoot, so the budget was dropped instead of
+ * tuned (2026-08). Only the secondary panel opens and closes now, and
+ * the rail is a real layout footprint rather than an overlay.
  *
  * Active-tab click on a `hasSecondary: true` tab toggles the secondary
- * panel for that tab (Notion / Linear convention). The rail then
- * inverts width as a deliberate part of the same transition — clicking
- * "Memories" while on /memories collapses the rail and shows the
- * topic panel; clicking again expands the rail back with labels.
+ * panel for that tab (Notion / Linear convention). The rail no longer
+ * moves as part of that transition.
  *
  * Brand-mark click navigates to `/brain` (the home/default landing).
  *
@@ -32,8 +27,8 @@
  *   - Each tab is a button with aria-current="page" when active
  *   - Brand-mark button has aria-label="Memax (home)"
  *   - Keyboard: tab cycles brand → tabs → user; Enter/Space activate
- *   - Tooltips render labels when the rail is collapsed; when
- *     expanded, labels are visible inline so tooltips redundant.
+ *   - Labels are always visible inline; tooltips remain as the
+ *     accessible name for icon-only affordances.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -56,11 +51,7 @@ import { useLocale } from "@/i18n";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
 import { buildMemoriesPath, buildPulsePath } from "@/lib/route-helpers";
 import { SHELL_TABS, type ShellTabId } from "./shell-tabs";
-import {
-  PANEL_INSET as RAIL_INSET,
-  RAIL_WIDTH_COLLAPSED,
-  RAIL_WIDTH_EXPANDED,
-} from "@/lib/shell-geometry";
+import { PANEL_INSET as RAIL_INSET, RAIL_WIDTH } from "@/lib/shell-geometry";
 
 interface LeftRailProps {
   /**
@@ -89,29 +80,18 @@ export function LeftRail({ activeTab }: LeftRailProps) {
         ? ("updates" as const)
         : null;
 
-  // Rail expansion is now derived from secondary-panel state, NOT
-  // hover. The rail collapses ONLY when the active tab has a
-  // secondary panel and that panel is currently open — the panel
-  // owns the visual budget in that case. Otherwise the rail is
-  // expanded so labels are visible. See the file-level docstring
-  // for the full "always one panel expanded" principle.
-  const activeTabSpec = activeTab
-    ? SHELL_TABS.find((tab) => tab.id === activeTab)
-    : null;
-  const secondaryOpenOnActive = Boolean(
-    activeTabSpec?.hasSecondary &&
-    activeTab !== null &&
-    !secondaryHidden[activeTab],
-  );
-  // `/home` is the neutral entry resolver (see app/(app)/home/page.tsx):
-  // it exists for a few frames while the landing surface resolves, and
-  // every destination it routes to opens a secondary panel — i.e. the
-  // rail lands collapsed. Starting expanded there would play a
-  // full-width rail that immediately collapses on arrival: a layout
-  // shift on every cold entry with no information payoff.
-  const isEntryResolver = pathname === "/home";
-  const expanded = !secondaryOpenOnActive && !isEntryResolver;
-  const visualWidth = expanded ? RAIL_WIDTH_EXPANDED : RAIL_WIDTH_COLLAPSED;
+  // The rail is ALWAYS expanded (2026-08). It used to derive its width
+  // from secondary-panel state under an "always exactly one panel
+  // expanded" budget, which meant opening the knowledge tree silently
+  // collapsed the rail to a column of icons — navigation rearranging
+  // itself as a side effect of looking at something. Primary
+  // navigation is the one surface that must not move under the reader;
+  // only the secondary panel opens and closes now.
+  //
+  // This also retires the `/home` entry-resolver special case, which
+  // existed purely to pre-empt the collapse animation on cold entry.
+  const expanded = true;
+  const visualWidth = RAIL_WIDTH;
 
   // Resolve the hub-scoped tab paths against the user's active hub.
   // Static-path tabs (brain, agents) ignore active-hub context; the

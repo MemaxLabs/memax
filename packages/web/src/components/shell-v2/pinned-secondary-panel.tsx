@@ -8,7 +8,7 @@
  * children inside this primitive.
  *
  * Visual model:
- *   - position: fixed; `left = PANEL_INSET + RAIL_WIDTH_COLLAPSED`
+ *   - position: fixed; `left = PANEL_INSET + RAIL_WIDTH`
  *     so the panel meets the rail's right edge with NO gap. Top +
  *     bottom page-edge insets remain.
  *   - `rounded-r-[var(--app-radius-surface)]` ONLY — the left edge
@@ -32,17 +32,14 @@
  *     sliding in from off-screen on every page load when the user
  *     has `secondaryHidden[tab] = false` persisted.
  *
- * Header is tab-gated:
- *   - memories: hub-identity chip + close chevron (the panel is
- *     hub-scoped)
- *   - brain: close chevron only (hub-scoped sessions render their
- *     own grouping)
+ * Header carries the close chevron and nothing else. Hub identity
+ * lives in the rail alone (2026-08) — it used to render here too, so
+ * the same hub was stated twice, side by side, in two treatments.
  *
  * Visibility is driven by `useShellState().secondaryHidden[tab]`.
  * The close chevron sets `secondaryHidden[tab] = true`. Re-open by
- * clicking the active rail tab again — when the panel is hidden the
- * rail is expanded with labels visible (see left-rail docstring), so
- * the active label IS the affordance.
+ * clicking the active rail tab again — the rail is always expanded
+ * with labels visible, so the active label IS the affordance.
  */
 
 import { type ReactNode } from "react";
@@ -51,15 +48,9 @@ import { ChevronsLeft } from "lucide-react";
 import { NORMAL, EASE } from "@memaxlabs/ui/tokens/motion";
 import { useShellState } from "@/contexts/shell-state-context";
 import { useTreePanel } from "@/components/features/topic/topic-tree-panel";
-import { useAuth, useActiveHub } from "@/lib/auth";
-import { HubIdentityChip } from "@/components/features/hub/hub-identity-chip";
 import { useLocale } from "@/i18n";
 import type { ShellTabId } from "./shell-tabs";
-import {
-  PANEL_INSET,
-  PANEL_WIDTH,
-  RAIL_WIDTH_COLLAPSED,
-} from "@/lib/shell-geometry";
+import { PANEL_INSET, PANEL_WIDTH, RAIL_WIDTH } from "@/lib/shell-geometry";
 
 interface PinnedSecondaryPanelProps {
   tab: ShellTabId;
@@ -73,8 +64,6 @@ export function PinnedSecondaryPanel({
   const { secondaryHidden, toggleSecondary, isHydrated } = useShellState();
   const reduceMotion = useReducedMotion();
   const { t } = useLocale();
-  const { user, hubs } = useAuth();
-  const { activeHub, isTeamHub } = useActiveHub();
   // Drag-session bridge: while a memory→topic drag is in flight, the
   // panel must be visually visible (and its drop targets reachable)
   // even if the user has it hidden. Mirrors v1 PinnedTreeSidebar's
@@ -91,8 +80,6 @@ export function PinnedSecondaryPanel({
   const target = reduceMotion
     ? { opacity: hidden ? 0 : 1, x: 0 }
     : { opacity: hidden ? 0 : 1, x: hidden ? -PANEL_WIDTH : 0 };
-
-  const showHubChip = tab === "memories" && hubs.length >= 2 && !!activeHub;
 
   return (
     <motion.aside
@@ -113,37 +100,23 @@ export function PinnedSecondaryPanel({
       style={{
         top: PANEL_INSET,
         // Flush against the rail's right edge — no gap. The rail
-        // sits at `left: PANEL_INSET, width: RAIL_WIDTH_COLLAPSED`,
-        // so this panel starts at PANEL_INSET + RAIL_WIDTH_COLLAPSED.
-        left: PANEL_INSET + RAIL_WIDTH_COLLAPSED,
+        // sits at `left: PANEL_INSET, width: RAIL_WIDTH`,
+        // so this panel starts at PANEL_INSET + RAIL_WIDTH.
+        left: PANEL_INSET + RAIL_WIDTH,
         bottom: PANEL_INSET,
         width: PANEL_WIDTH,
         pointerEvents: hidden ? "none" : "auto",
       }}
     >
-      {/* Header is tab-gated. Memories: hub chip + close chevron.
-          Brain: close chevron only. The chevron sits on the right
-          per the open↔close affordance pair (active rail tab opens;
-          chevron closes). */}
-      <div className="flex h-12 items-center justify-between gap-2 px-3 shrink-0">
-        <div className="min-w-0 flex-1">
-          {showHubChip ? (
-            <HubIdentityChip
-              kind={isTeamHub ? "team" : "personal"}
-              name={activeHub.hub.name}
-              icon={activeHub.hub.icon}
-              accent={activeHub.hub.accent}
-              viewerName={user?.name}
-              viewerDisplayName={user?.display_name}
-              role={
-                isTeamHub &&
-                (activeHub.role === "owner" || activeHub.role === "admin")
-                  ? activeHub.role
-                  : undefined
-              }
-            />
-          ) : null}
-        </div>
+      {/* Close chevron only. The hub chip used to render here as well
+          as in the rail, so which hub you were in was stated twice,
+          side by side, in two different treatments. Hub identity now
+          lives in exactly one place — the rail, which is always
+          visible — and this header carries only the affordance that
+          belongs to the panel itself. The chevron sits on the right
+          per the open↔close pair (active rail tab opens; chevron
+          closes). */}
+      <div className="flex h-12 items-center justify-end gap-2 px-3 shrink-0">
         <button
           type="button"
           onClick={() => toggleSecondary(tab)}

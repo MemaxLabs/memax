@@ -11,27 +11,32 @@
  * computations without parsing.
  */
 
-/** Collapsed left-rail width (default user preference). */
-export const RAIL_WIDTH_COLLAPSED = 56;
-
-/** Expanded left-rail width (after user click / hover-to-expand). */
-export const RAIL_WIDTH_EXPANDED = 196;
+/**
+ * Left-rail width. The rail is always expanded (2026-08) — it used to
+ * shrink to an icon column whenever a secondary panel opened, which
+ * meant primary navigation rearranged itself as a side effect of
+ * looking at something else. One width now, and it is a real layout
+ * footprint rather than an overlay.
+ */
+export const RAIL_WIDTH = 196;
 
 /** Inset between the rail and the pinned secondary panel (and page edges). */
 export const PANEL_INSET = 12;
 
-/** Pinned secondary panel width (memories tab tree explorer). */
-export const PANEL_WIDTH = 296;
+/**
+ * Pinned secondary panel width (memories tab tree explorer). Narrowed
+ * from 296 with the always-expanded rail: the rail now claims a real
+ * 196px of layout, so the pair has to stay within a sane share of the
+ * viewport, and a topic tree reads fine at this width.
+ */
+export const PANEL_WIDTH = 260;
 
 /**
  * Compute the leftward chrome footprint that fixed-position content must
  * clear.
  *
- * The rail's LAYOUT width is always RAIL_WIDTH_COLLAPSED — hover-expansion
- * is a visual overlay that does NOT shove page content. Pinned mode was
- * removed (industry: VS Code / Slack workspace switcher pattern). The
- * `collapsed` arg is preserved on the type for back-compat but ignored
- * by the layout calc; callers should stop passing it.
+ * The rail is a real layout footprint now, not an overlay: it is always
+ * RAIL_WIDTH wide, so content clears it instead of being covered by it.
  *
  * Secondary panel sits FLUSH against the rail's right edge (no insets
  * between rail and panel). Top/bottom + outer-right page insets stay,
@@ -40,10 +45,9 @@ export const PANEL_WIDTH = 296;
 export function shellLeftOffsetPx({
   secondaryExpanded,
 }: {
-  collapsed?: boolean;
   secondaryExpanded: boolean;
 }): number {
-  const railFootprint = PANEL_INSET + RAIL_WIDTH_COLLAPSED;
+  const railFootprint = PANEL_INSET + RAIL_WIDTH;
   if (secondaryExpanded) {
     return railFootprint + PANEL_WIDTH + PANEL_INSET;
   }

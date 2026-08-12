@@ -10,7 +10,7 @@ import { queryClient } from "@/lib/query-client";
 import { getHubDisplayName } from "@/lib/hub-display";
 import { TopicIcon } from "@/components/features/topic/topic-icon";
 import { cn } from "@memaxlabs/ui";
-import { ArrowRight, Users, ChevronLeft, Check } from "lucide-react";
+import { ArrowRight, Users, ChevronLeft, Check, Search } from "lucide-react";
 
 /* ── Types ── */
 
@@ -84,6 +84,7 @@ export function DrillDownTree({
   const [direction, setDirection] = useState<"forward" | "back">("forward");
   const [fetchingHubId, setFetchingHubId] = useState<string | null>(null);
   const [showHubs, setShowHubs] = useState(false);
+  const [query, setQuery] = useState("");
 
   const listRef = useRef<HTMLDivElement>(null);
   const keyboardNavigationRef = useRef(false);
@@ -151,19 +152,54 @@ export function DrillDownTree({
           )
         : (current?.label ?? t.topics.title);
 
+  // Search flattens the WHOLE forest, not the level you happen to be
+  // standing in. A drill-down that only filters its current level is
+  // useless for the case that motivates search — a topic buried three
+  // levels down whose path you don't remember. Matches therefore carry
+  // their ancestry so a bare name like "hk" is still identifiable.
+  const { searchMatches, pathById } = useMemo(() => {
+    const matches: TopicTree[] = [];
+    const paths = new Map<string, string>();
+    const q = query.trim().toLowerCase();
+    const walk = (nodes: readonly TopicTree[], trail: string[]) => {
+      for (const node of nodes) {
+        if (node.id === excludeTopicId) continue;
+        if (q !== "" && node.name.toLowerCase().includes(q)) {
+          matches.push(node);
+          paths.set(node.id, trail.join(" / "));
+        }
+        if (node.children.length > 0)
+          walk(node.children, [...trail, node.name]);
+      }
+    };
+    if (q !== "") {
+      // The hub level's items ARE the whole forest for this hub, so
+      // search stays correct no matter how deep the user has drilled.
+      walk(stack.find((level) => level.hubId)?.items ?? [], []);
+    }
+    return { searchMatches: matches, pathById: paths };
+  }, [query, excludeTopicId, stack]);
+
+  const isSearching = query.trim() !== "";
+
   const visibleItems = useMemo(() => {
-    if (isAtHubs || !current?.items) return [];
+    if (isAtHubs) return [];
+    if (isSearching) return searchMatches;
+    if (!current?.items) return [];
     return excludeTopicId
       ? current.items.filter((t) => t.id !== excludeTopicId)
       : current.items;
-  }, [isAtHubs, current, excludeTopicId]);
+  }, [isAtHubs, isSearching, searchMatches, current, excludeTopicId]);
 
   const itemCount = isAtHubs ? hubs.length : visibleItems.length;
 
+  // Reset the cursor when the visible set changes underneath it —
+  // drilling a level, or narrowing the search. Keeping index 3 while
+  // the list shrinks to two rows would leave the highlight nowhere.
   useEffect(() => {
     setFocusedIndex(0);
     setVisualFocusIndex(null);
-  }, [stack.length]);
+  }, [stack.length, query]);
 
   useEffect(() => {
     if (!keyboardNavigationRef.current) return;
@@ -209,6 +245,10 @@ export function DrillDownTree({
   const drillIntoChildren = useCallback((topic: TopicTree) => {
     if (topic.children.length === 0) return;
     setDirection("forward");
+    // Drilling from a search result means "show me inside this one", so
+    // the query is spent — leaving it on would keep the flat matches
+    // rendered and the new level would never appear.
+    setQuery("");
     setStack((s) => [...s, { label: topic.name, items: topic.children }]);
   }, []);
 
@@ -428,6 +468,41 @@ export function DrillDownTree({
         </button>
       )}
 
+      {/* Search — above the back button because it is level-agnostic:
+          back moves within the hierarchy, search ignores it entirely.
+          Only in select mode; browse mode is the mobile tree, where the
+          page's own search already covers this. */}
+      {mode === "select" && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border/30 px-3 py-2">
+          <Search className="h-3.5 w-3.5 shrink-0 text-fg-4" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t.topics.searchTopicsPlaceholder}
+            aria-label={t.topics.searchTopicsPlaceholder}
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-fg-1 placeholder:text-fg-4 focus:outline-none"
+            onKeyDown={(e) => {
+              // The list owns ↑↓/Enter — preventDefault stops the caret
+              // from moving but lets the event bubble to handleKeyDown,
+              // so typing and navigating share one keyboard model.
+              if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                e.preventDefault();
+                return;
+              }
+              // Escape is two-stage: clear the query first, and only a
+              // second press leaves the level. Otherwise a typo would
+              // throw away the user's place in the tree.
+              if (e.key === "Escape" && query !== "") {
+                e.preventDefault();
+                e.stopPropagation();
+                setQuery("");
+              }
+            }}
+          />
+        </div>
+      )}
+
       {/* List — CSS animation on key change, no framer-motion */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
@@ -572,8 +647,15 @@ export function DrillDownTree({
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate">{topic.name}</span>
-                        <span className="mt-0.5 block text-[12px] text-fg-4">
-                          {describeSelectTopic(topic)}
+                        <span className="mt-0.5 block truncate text-[12px] text-fg-4">
+                          {isSearching
+                            ? // A match is shown out of context, so its
+                              // ancestry replaces the counts — "hk" alone
+                              // says nothing about WHICH hk you're picking.
+                              [currentHubLabel, pathById.get(topic.id)]
+                                .filter(Boolean)
+                                .join(" / ")
+                            : describeSelectTopic(topic)}
                         </span>
                       </span>
                       {isSelected && (

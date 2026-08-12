@@ -1450,6 +1450,7 @@ export const en = {
 
   // Topics — knowledge organization
   topics: {
+    searchTopicsPlaceholder: "Search topics",
     title: "Your Topics",
     titlePersonal: "Your Topics",
     titleTeam: "Topics",

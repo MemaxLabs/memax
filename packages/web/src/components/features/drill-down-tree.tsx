@@ -198,7 +198,11 @@ export function DrillDownTree({
   // the list shrinks to two rows would leave the highlight nowhere.
   useEffect(() => {
     setFocusedIndex(0);
-    setVisualFocusIndex(null);
+    // While searching, the cursor must be VISIBLE: Enter commits
+    // visibleItems[focusedIndex], which is a real move. Leaving the
+    // highlight null showed an unmarked list whose Enter silently
+    // moved the memory into the first match.
+    setVisualFocusIndex(query.trim() === "" ? null : 0);
   }, [stack.length, query]);
 
   useEffect(() => {
@@ -472,7 +476,7 @@ export function DrillDownTree({
           back moves within the hierarchy, search ignores it entirely.
           Only in select mode; browse mode is the mobile tree, where the
           page's own search already covers this. */}
-      {mode === "select" && (
+      {mode === "select" && !isAtHubs && (
         <div className="flex shrink-0 items-center gap-2 border-b border-border/30 px-3 py-2">
           <Search className="h-3.5 w-3.5 shrink-0 text-fg-4" />
           <input
@@ -488,6 +492,19 @@ export function DrillDownTree({
               // so typing and navigating share one keyboard model.
               if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                 e.preventDefault();
+                return;
+              }
+              // Text-editing keys belong to the input, full stop. The
+              // list treats Backspace as "go back a level" and Home/End
+              // as "jump to first/last row", so without this a typo was
+              // literally uncorrectable: Backspace threw you out to the
+              // hub list with the bad query still in the box.
+              if (
+                e.key === "Backspace" ||
+                e.key === "Home" ||
+                e.key === "End"
+              ) {
+                e.stopPropagation();
                 return;
               }
               // Escape is two-stage: clear the query first, and only a

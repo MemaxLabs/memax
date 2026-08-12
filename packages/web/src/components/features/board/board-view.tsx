@@ -280,9 +280,6 @@ export function BoardView({
   const deleteBoard = useDeleteBoard(hubId);
 
   const [openSlots, setOpenSlots] = useState<ReadonlySet<string>>(new Set());
-  const [collapsedSlots, setCollapsedSlots] = useState<ReadonlySet<string>>(
-    new Set(),
-  );
   const [recentOpen, setRecentOpen] = useState(false);
   // Example chip → ghost-composer prefill (empty-state teaching
   // moment). The ghost re-keys its composer on this so a chip tap
@@ -344,22 +341,14 @@ export function BoardView({
     });
   }, [data, hubId, slotCount]);
 
-  // Two sets because live cards and receipts have OPPOSITE defaults:
-  // a live card is open until you close it, a receipt is a strip until
-  // you open it. Each set therefore holds only the slots that deviate
-  // from their own default, and a card that resolves while collapsed
-  // correctly stays a strip — it simply changes which set governs it.
   const toggleSlot = useCallback(
-    (slotKey: string, willOpen: boolean, isLive: boolean) => {
-      const mutate = (prev: ReadonlySet<string>) => {
+    (slotKey: string, willOpen: boolean) => {
+      setOpenSlots((prev) => {
         const next = new Set(prev);
-        // deviating = live&&closed, or resolved&&open
-        if (willOpen === isLive) next.delete(slotKey);
-        else next.add(slotKey);
+        if (willOpen) next.add(slotKey);
+        else next.delete(slotKey);
         return next;
-      };
-      if (isLive) setCollapsedSlots(mutate);
-      else setOpenSlots(mutate);
+      });
       if (willOpen) {
         trackEvent("board_card_expand", { hub_id: hubId, slot_key: slotKey });
       }
@@ -432,7 +421,7 @@ export function BoardView({
     if (!embeddedHasContent) return null;
   }
 
-  const liveSlotKeys = new Set(liveSlots.map((s) => s.slot_key));
+  const heroKey = liveSlots[0]?.slot_key;
   // Embedded surface, not yet expanded → the compact tile shelf.
   const collapsedShelf = !isPage && !shelfExpanded;
   // Only claim the board is empty once the slots query has settled —
@@ -469,19 +458,10 @@ export function BoardView({
     <BoardSlotEntry
       key={slot.slot_key}
       slot={slot}
-      // Live cards open by default (2026-08: the hero was the only one
-      // expanded, so everything else read as collapsed-and-broken);
-      // receipts stay strips so the stream still scans.
-      expanded={
-        liveSlotKeys.has(anchorKey)
-          ? !collapsedSlots.has(anchorKey)
-          : openSlots.has(anchorKey)
-      }
+      expanded={anchorKey === heroKey || openSlots.has(anchorKey)}
       entranceIndex={entranceIndex}
       deckControls={deckControls}
-      onToggle={(willOpen) =>
-        toggleSlot(anchorKey, willOpen, liveSlotKeys.has(anchorKey))
-      }
+      onToggle={(willOpen) => toggleSlot(anchorKey, willOpen)}
       onResolve={(action, verdict) => {
         trackEvent("board_card_action", {
           hub_id: hubId,
@@ -552,15 +532,9 @@ export function BoardView({
           cookingBoards={cookingBoards}
           onOpenDeck={() => setShelfExpanded(true)}
           onOpenSlot={(slotKey) => {
-            // R3: make sure the tapped card renders expanded once the
-            // full layout unfolds. Tiles are always live cards, and
-            // live is open-by-default, so this only has to undo a
-            // previous collapse.
-            setCollapsedSlots((prev) => {
-              const next = new Set(prev);
-              next.delete(slotKey);
-              return next;
-            });
+            // R3: remember the tapped card so it renders expanded once
+            // the full layout unfolds.
+            setOpenSlots((prev) => new Set(prev).add(slotKey));
             setShelfExpanded(true);
           }}
           onOpenBoards={() => router.push(pulseHref)}

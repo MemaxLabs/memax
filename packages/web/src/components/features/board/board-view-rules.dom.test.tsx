@@ -2,9 +2,12 @@
 
 /**
  * BOARD_SHELF_RULES coverage: the useShelfExpansion state machine
- * (R1 collapsed default, R2 auto-expand on decision/highlight, R5
- * auto-collapse after the last resolve, R6 manual override persists)
- * plus the BoardSlotDeck ↻ cycle.
+ * (R1 expanded default, R6 manual override persists per session) plus
+ * the BoardSlotDeck ↻ cycle.
+ *
+ * R2/R5 were deleted with the 2026-08 R1 revision — auto-expand only
+ * existed to rescue a collapsed default, and auto-collapse fought the
+ * new default. Their tests went with them rather than being softened.
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
@@ -79,59 +82,24 @@ describe("useShelfExpansion (BOARD_SHELF_RULES)", () => {
     vi.useRealTimers();
   });
 
-  function mount(initial: { needsAttention: boolean; liveCount: number }) {
-    return renderHook(
-      (props: { needsAttention: boolean; liveCount: number }) =>
-        useShelfExpansion({ hubId: "h1", enabled: true, ...props }),
-      { initialProps: initial },
-    );
+  function mount() {
+    return renderHook(() => useShelfExpansion({ hubId: "h1", enabled: true }));
   }
 
-  it("R1: collapsed by default when nothing needs the user", () => {
-    const { result } = mount({ needsAttention: false, liveCount: 3 });
-    expect(result.current.expanded).toBe(false);
-  });
-
-  it("R2: auto-expands when a pending decision / fresh highlight exists", () => {
-    const { result } = mount({ needsAttention: true, liveCount: 3 });
+  it("R1: expanded by default on a fresh visit", () => {
+    const { result } = mount();
     expect(result.current.expanded).toBe(true);
   });
 
-  it("R5: auto-collapses ~800ms after the last live card resolves", () => {
-    vi.useFakeTimers();
-    const { result, rerender } = mount({ needsAttention: true, liveCount: 2 });
-    expect(result.current.expanded).toBe(true);
-    // Both cards resolved — the board exhales after a beat.
-    rerender({ needsAttention: false, liveCount: 0 });
-    expect(result.current.expanded).toBe(true);
-    act(() => {
-      vi.advanceTimersByTime(800);
-    });
-    expect(result.current.expanded).toBe(false);
-  });
-
-  it("R6: a manual choice overrides auto rules and persists per session", () => {
-    const first = mount({ needsAttention: true, liveCount: 2 });
-    // User collapses despite the pending decision…
+  it("R6: a manual collapse persists across a remount in the session", () => {
+    const first = mount();
     act(() => first.result.current.setExpanded(false));
-    // …auto-expand must not fight the choice.
-    first.rerender({ needsAttention: true, liveCount: 2 });
     expect(first.result.current.expanded).toBe(false);
     first.unmount();
-    // A remount in the same session honors the stored choice.
-    const second = mount({ needsAttention: true, liveCount: 2 });
+    // A remount in the same session honors the stored choice instead of
+    // re-applying the expanded default.
+    const second = mount();
     expect(second.result.current.expanded).toBe(false);
-  });
-
-  it("R5 does not fire over a manual expand", () => {
-    vi.useFakeTimers();
-    const { result, rerender } = mount({ needsAttention: false, liveCount: 1 });
-    act(() => result.current.setExpanded(true));
-    rerender({ needsAttention: false, liveCount: 0 });
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-    expect(result.current.expanded).toBe(true);
   });
 });
 

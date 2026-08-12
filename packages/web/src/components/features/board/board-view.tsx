@@ -87,17 +87,15 @@ function shelfStorageKey(hubId: string) {
  * is implemented by useShelfExpansion + the shelf/card handlers; when
  * changing one, change both.
  *
- *   R1  The shelf is COLLAPSED by default on every fresh visit.
- *   R2  Auto-expand ONLY when something needs the user: a pending 等你
- *       decision or a fresh highlight. Ambient intelligence (slots)
- *       never auto-expands the shelf.
+ *   R1  The shelf is EXPANDED by default on every fresh visit (2026-08
+ *       revision). Collapsing it is a choice the reader makes, not a
+ *       state they have to undo before they can see anything.
  *   R3  Tile tap = expand the shelf in place AND open that card.
  *   R4  Resolving a card while expanded swaps it to a receipt INLINE —
  *       no reflow jump, nothing disappears.
- *   R5  When the LAST live card resolves, the shelf auto-collapses
- *       back after a beat (~800ms, spring) — the board exhales.
- *   R6  Manual 展开/收起 always overrides R2/R5 and persists per hub
- *       for the SESSION (sessionStorage; a fresh visit re-applies R1).
+ *   R6  Manual 展开/收起 overrides R1 and persists per hub for the
+ *       SESSION (sessionStorage; a fresh visit re-applies R1).
+ *
  *   R7  Every live tile/card has a quiet dismiss: tiles via the
  *       hover/long-press ×, expanded cards via the 不关心 verb. Both
  *       call resolve action="dismiss" (slots) or the notification
@@ -105,47 +103,42 @@ function shelfStorageKey(hubId: string) {
  *       shelf immediately and lives on only as a receipt. Decision
  *       tiles (等你) are the exception: a decision needs an answer,
  *       and the server refuses plain dismiss on decision kinds.
+ *
+ * R2 (auto-expand when something needs the user) and R5 (auto-collapse
+ * after the last resolve) were removed with the R1 revision: R2 only
+ * existed to rescue a collapsed default, and R5 would collapse a shelf
+ * that the next visit immediately re-expands — a rule arguing with
+ * itself. Both are gone rather than reconciled.
  */
 export const BOARD_SHELF_RULES = [
-  "collapsed-by-default",
-  "auto-expand-only-on-decision-or-highlight",
+  "expanded-by-default",
   "tile-tap-expands-and-opens",
   "resolve-swaps-to-receipt-inline",
-  "auto-collapse-after-last-resolve",
   "manual-toggle-overrides-and-persists-per-session",
   "tiles-dismiss-optimistically-except-decisions",
 ] as const;
 
 /**
- * useShelfExpansion — the state machine behind BOARD_SHELF_RULES R1,
- * R2, R5 and R6. Exported for tests.
+ * useShelfExpansion — the state machine behind BOARD_SHELF_RULES R1
+ * and R6. Exported for tests.
  *
- * `manual` means the CURRENT state was chosen by the user (toggle or
- * tile tap) this session — automatic transitions only ever apply on
- * top of the default state, never over a user choice.
+ * With R1 flipped to expanded-by-default there is nothing left to
+ * automate: the shelf is open unless the reader closed it this
+ * session. `manual` survives only to record that a stored choice was
+ * found, which keeps the toggle honest across remounts.
  */
 export function useShelfExpansion({
   hubId,
   enabled,
-  needsAttention,
-  liveCount,
 }: {
   hubId: string;
   /** False on the /pulse page — the full surface never collapses. */
   enabled: boolean;
-  /** R2: a pending 等你 decision or a fresh highlight exists. */
-  needsAttention: boolean;
-  /** R5: live (unresolved) cards across all bands. */
-  liveCount: number;
 }) {
-  const [expanded, setExpandedState] = useState(false);
-  const [manual, setManual] = useState(false);
-  // The auto rules (R2/R5) must not race the sessionStorage read —
-  // they only engage once the stored choice (or its absence) is known,
-  // or a stored 收起 would be overridden by auto-expand on remount.
-  const [hydrated, setHydrated] = useState(false);
+  const [expanded, setExpandedState] = useState(true);
+  const [, setManual] = useState(false);
 
-  // R1 + R6: default collapsed; a stored per-session choice wins.
+  // R1 + R6: default expanded; a stored per-session choice wins.
   // sessionStorage is read in an effect (not the initializer) so the
   // SSR and first client render agree.
   useEffect(() => {
@@ -156,14 +149,13 @@ export function useShelfExpansion({
         setExpandedState(stored === "1");
         setManual(true);
       } else {
-        setExpandedState(false);
+        setExpandedState(true);
         setManual(false);
       }
     } catch {
-      setExpandedState(false);
+      setExpandedState(true);
       setManual(false);
     }
-    setHydrated(true);
   }, [hubId, enabled]);
 
   /** Manual toggle / tile tap — R3, R6. */
@@ -183,24 +175,6 @@ export function useShelfExpansion({
     [hubId],
   );
 
-  // R2: auto-expand only for things blocked on the user.
-  useEffect(() => {
-    if (!enabled || !hydrated || manual || !needsAttention) return;
-    setExpandedState(true);
-  }, [enabled, hydrated, manual, needsAttention]);
-
-  // R5: last live card resolved → collapse back after a beat.
-  const prevLiveCount = useRef(liveCount);
-  useEffect(() => {
-    const prev = prevLiveCount.current;
-    prevLiveCount.current = liveCount;
-    if (!enabled || !hydrated || manual) return;
-    if (prev > 0 && liveCount === 0) {
-      const timer = window.setTimeout(() => setExpandedState(false), 800);
-      return () => window.clearTimeout(timer);
-    }
-  }, [enabled, hydrated, manual, liveCount]);
-
   return { expanded, setExpanded };
 }
 
@@ -208,9 +182,9 @@ export function useShelfExpansion({
  * Where the board is mounted.
  *
  *   - "section" — embedded in the memories page under the hub header.
- *     Collapsed by default into a ONE-ROW horizontal tile shelf
- *     (BoardShelf); a header toggle expands it in place to the full
- *     vertical card layout, per BOARD_SHELF_RULES. Stays zero-height
+ *     Expanded by default to the full vertical card layout; a header
+ *     toggle collapses it in place to a ONE-ROW horizontal tile shelf
+ *     (BoardShelf), per BOARD_SHELF_RULES. Stays zero-height
  *     when the hub has nothing, so card-less hubs keep the exact
  *     pre-board layout. No composer, no receipts strip: those belong
  *     to the full surface, one click away via 查看全部.
@@ -306,6 +280,9 @@ export function BoardView({
   const deleteBoard = useDeleteBoard(hubId);
 
   const [openSlots, setOpenSlots] = useState<ReadonlySet<string>>(new Set());
+  const [collapsedSlots, setCollapsedSlots] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const [recentOpen, setRecentOpen] = useState(false);
   // Example chip → ghost-composer prefill (empty-state teaching
   // moment). The ghost re-keys its composer on this so a chip tap
@@ -348,15 +325,9 @@ export function BoardView({
     [slots],
   );
 
-  // Embedded shelf expansion — BOARD_SHELF_RULES R1/R2/R5/R6.
+  // Embedded shelf expansion — BOARD_SHELF_RULES R1/R6.
   const { expanded: shelfExpanded, setExpanded: setShelfExpanded } =
-    useShelfExpansion({
-      hubId,
-      enabled: !isPage,
-      needsAttention: waiting.length > 0 || highlights.length > 0,
-      liveCount:
-        waiting.length + highlights.length + liveSlots.length + customLiveCount,
-    });
+    useShelfExpansion({ hubId, enabled: !isPage });
 
   // One impression event per board load (not per re-render).
   const trackedFor = useRef<string | null>(null);
@@ -373,17 +344,22 @@ export function BoardView({
     });
   }, [data, hubId, slotCount]);
 
+  // Two sets because live cards and receipts have OPPOSITE defaults:
+  // a live card is open until you close it, a receipt is a strip until
+  // you open it. Each set therefore holds only the slots that deviate
+  // from their own default, and a card that resolves while collapsed
+  // correctly stays a strip — it simply changes which set governs it.
   const toggleSlot = useCallback(
-    (slotKey: string, willOpen: boolean) => {
-      setOpenSlots((prev) => {
+    (slotKey: string, willOpen: boolean, isLive: boolean) => {
+      const mutate = (prev: ReadonlySet<string>) => {
         const next = new Set(prev);
-        if (willOpen) {
-          next.add(slotKey);
-        } else {
-          next.delete(slotKey);
-        }
+        // deviating = live&&closed, or resolved&&open
+        if (willOpen === isLive) next.delete(slotKey);
+        else next.add(slotKey);
         return next;
-      });
+      };
+      if (isLive) setCollapsedSlots(mutate);
+      else setOpenSlots(mutate);
       if (willOpen) {
         trackEvent("board_card_expand", { hub_id: hubId, slot_key: slotKey });
       }
@@ -456,7 +432,7 @@ export function BoardView({
     if (!embeddedHasContent) return null;
   }
 
-  const heroKey = liveSlots[0]?.slot_key;
+  const liveSlotKeys = new Set(liveSlots.map((s) => s.slot_key));
   // Embedded surface, not yet expanded → the compact tile shelf.
   const collapsedShelf = !isPage && !shelfExpanded;
   // Only claim the board is empty once the slots query has settled —
@@ -493,10 +469,19 @@ export function BoardView({
     <BoardSlotEntry
       key={slot.slot_key}
       slot={slot}
-      expanded={anchorKey === heroKey || openSlots.has(anchorKey)}
+      // Live cards open by default (2026-08: the hero was the only one
+      // expanded, so everything else read as collapsed-and-broken);
+      // receipts stay strips so the stream still scans.
+      expanded={
+        liveSlotKeys.has(anchorKey)
+          ? !collapsedSlots.has(anchorKey)
+          : openSlots.has(anchorKey)
+      }
       entranceIndex={entranceIndex}
       deckControls={deckControls}
-      onToggle={(willOpen) => toggleSlot(anchorKey, willOpen)}
+      onToggle={(willOpen) =>
+        toggleSlot(anchorKey, willOpen, liveSlotKeys.has(anchorKey))
+      }
       onResolve={(action, verdict) => {
         trackEvent("board_card_action", {
           hub_id: hubId,
@@ -567,9 +552,15 @@ export function BoardView({
           cookingBoards={cookingBoards}
           onOpenDeck={() => setShelfExpanded(true)}
           onOpenSlot={(slotKey) => {
-            // R3: remember the tapped card so it renders expanded once
-            // the full layout unfolds.
-            setOpenSlots((prev) => new Set(prev).add(slotKey));
+            // R3: make sure the tapped card renders expanded once the
+            // full layout unfolds. Tiles are always live cards, and
+            // live is open-by-default, so this only has to undo a
+            // previous collapse.
+            setCollapsedSlots((prev) => {
+              const next = new Set(prev);
+              next.delete(slotKey);
+              return next;
+            });
             setShelfExpanded(true);
           }}
           onOpenBoards={() => router.push(pulseHref)}

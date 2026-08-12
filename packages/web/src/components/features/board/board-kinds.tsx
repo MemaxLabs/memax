@@ -74,6 +74,8 @@ function TraceAgentSection({ agent }: { agent: TraceAgent }) {
   );
   const row = (
     <BoardAgentRow
+      expandable={items.length > 0}
+      expanded={open}
       dotColor={identity?.color}
       title={pluralize(
         t.board.traceCountOne,

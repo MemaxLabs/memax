@@ -13,9 +13,8 @@ import {
   Share2,
 } from "lucide-react";
 import { AGENT_IDENTITIES } from "@memaxlabs/ui/tokens/agents";
+import { CLI_SETUP_CMD } from "@/lib/cli";
 
-const SETUP_CMD =
-  "npx memax-cli@latest login && npx memax-cli@latest setup --all";
 const MCP_URL = "https://api.memax.app/mcp";
 const MCP_CONFIG = `"memax": {
   "command": "npx",
@@ -110,7 +109,7 @@ export function ConnectAgentsBody() {
         <p className="text-[14px] font-medium text-fg-2 mb-2">
           {t.settings.setupLabel}
         </p>
-        <CopyBlock text={SETUP_CMD} mono />
+        <CopyBlock text={CLI_SETUP_CMD} mono />
         <p className="text-[12px] text-fg-3 mt-1.5">{t.settings.setupDesc}</p>
       </div>
 

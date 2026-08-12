@@ -507,7 +507,7 @@ export const en = {
     connectAgents: "Connect your AI agents",
     setupLabel: "One command, all agents",
     setupDesc:
-      "Auto-detects your installed agents, creates per-agent API keys, and configures MCP + hooks. Tomorrow, your AI will remember today.",
+      "Installs the memax CLI, auto-detects your installed agents, creates per-agent API keys, and configures MCP + hooks. Tomorrow, your AI will remember today.",
     promptLabel: "Or paste this into any agent chat",
     promptTemplate: "Connect to memax MCP: {url}",
     altMethods: "Other setup methods",

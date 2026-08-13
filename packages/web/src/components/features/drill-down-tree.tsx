@@ -392,6 +392,14 @@ export function DrillDownTree({
           break;
         case "Escape":
           e.preventDefault();
+          // Stop where it is consumed. Hosts listen for Escape too —
+          // the batch toolbar on its shell, base-ui's popover dismiss,
+          // the mobile modal on window — and none of them check
+          // defaultPrevented. Without this, one Escape both went back a
+          // level AND tore down the whole picker, so "back" was never
+          // observable outside jsdom. (batch-toolbar's comment already
+          // documented this contract; it just wasn't true yet.)
+          e.stopPropagation();
           if (canGoBack) goBack();
           else onClose?.();
           break;

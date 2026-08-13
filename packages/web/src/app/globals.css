@@ -1514,16 +1514,18 @@
    dnd-kit drop target and moving it would fight rect measurement. */
 @keyframes spring-flash {
   0%,
+  40%,
+  80%,
   100% {
-    background-color: transparent;
-  }
-  25%,
-  75% {
     background-color: color-mix(in oklab, var(--foreground) 12%, transparent);
+  }
+  20%,
+  60% {
+    background-color: transparent;
   }
 }
 .animate-spring-flash {
-  animation: spring-flash 0.13s steps(1, end) 2;
+  animation: spring-flash 0.26s ease-in-out 1;
 }
 @media (prefers-reduced-motion: reduce) {
   .animate-spring-flash {

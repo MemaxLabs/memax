@@ -433,17 +433,13 @@ export function BatchToolbar({
               // trigger the outside-click handler attached at document.
               onPointerDownCapture={(e) => e.stopPropagation()}
             >
-              {/* listHeight is a max, not a fixed height: the list
-                  owns its own scroll instead of growing to content and
-                  getting clipped by the shell's overflow-hidden, but a
-                  short tree no longer renders a tall empty box. 260
-                  leaves room for every chrome row the picker can show
-                  at once — 44 hint + 44 back button — inside the 380px
-                  shell, so drilling into a sub-topic can't push the
-                  last row out of view. */}
+              {/* No listHeight: the flex chain above bounds the list,
+                  so it claims exactly what the anchor row, hint, search
+                  and back button leave. Every hand-computed cap here
+                  has been wrong at least once — the last one forgot
+                  both the 52px anchor row and the back button. */}
               <DestinationPicker
                 variant="plain"
-                listHeight={260}
                 onSelectTopic={handlePickerSelectTopic}
                 onSelectHub={handlePickerSelectHub}
                 onClose={() => setShowPicker(false)}
@@ -495,7 +491,10 @@ function ClickableBody({
   return (
     <div
       onPointerDownCapture={onPointerDownCapture}
-      className="flex-1 overflow-hidden"
+      // flex-1 alone sets no `display`, so this stayed a block and the
+      // picker's own flex column had nothing to shrink against — the
+      // list grew to content and the shell simply clipped its tail.
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       {children}
     </div>

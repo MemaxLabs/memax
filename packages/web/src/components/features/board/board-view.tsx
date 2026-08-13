@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -76,6 +77,11 @@ import "./board-kinds";
 
 type BoardResolveAction = "ack" | "dismiss" | "feedback";
 
+// useLayoutEffect warns during SSR; the shelf only exists client-side,
+// but the module is imported into a server-rendered tree.
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
 /** Per-hub sessionStorage key for the embedded shelf's expand state. */
 function shelfStorageKey(hubId: string) {
   return `memax-board-shelf-expanded-${hubId}`;
@@ -136,25 +142,25 @@ export function useShelfExpansion({
   enabled: boolean;
 }) {
   const [expanded, setExpandedState] = useState(true);
-  const [, setManual] = useState(false);
 
   // R1 + R6: default expanded; a stored per-session choice wins.
-  // sessionStorage is read in an effect (not the initializer) so the
-  // SSR and first client render agree.
-  useEffect(() => {
+  //
+  // Read in a layout effect so a stored 收起 is applied BEFORE the
+  // browser paints. While the default was collapsed this could sit in a
+  // plain effect — guessing "collapsed" and correcting to expanded is
+  // cheap. Flipping R1 inverted that: guessing "expanded" for someone
+  // who collapsed the shelf painted the full card stack and then
+  // snapped it shut, yanking the memories list up by several hundred
+  // px on every return to the page.
+  useIsomorphicLayoutEffect(() => {
     if (!enabled) return;
     try {
       const stored = globalThis.sessionStorage?.getItem(shelfStorageKey(hubId));
-      if (stored === "1" || stored === "0") {
-        setExpandedState(stored === "1");
-        setManual(true);
-      } else {
-        setExpandedState(true);
-        setManual(false);
-      }
+      setExpandedState(
+        stored === "1" || stored === "0" ? stored === "1" : true,
+      );
     } catch {
       setExpandedState(true);
-      setManual(false);
     }
   }, [hubId, enabled]);
 
@@ -162,7 +168,6 @@ export function useShelfExpansion({
   const setExpanded = useCallback(
     (next: boolean) => {
       setExpandedState(next);
-      setManual(true);
       try {
         globalThis.sessionStorage?.setItem(
           shelfStorageKey(hubId),
@@ -201,9 +206,12 @@ export type BoardSurface = "section" | "page";
  * "cards eat the page": banding. The 等你 band (decisions merged from
  * notifications — plan 25 P4) comes first because it is the only band
  * that is actually blocked on the user. Then the system board's slots:
- * only the FIRST live card renders expanded (the hero); every other
- * slot collapses to a one-line SlotStrip that expands on tap and can
- * be collapsed again. Same-kind live slots render as ONE deck with a
+ * the FIRST live card renders expanded (the hero); every other slot
+ * collapses to a one-line SlotStrip that expands on tap and can be
+ * collapsed again. Making every live card open by default needs an
+ * override keyed to CONTENT rather than to slot_key (slots are reused
+ * across dream runs) plus a freeze on the resolve transition — see the
+ * 2026-08 revert. Same-kind live slots render as ONE deck with a
  * ↻ cycle. Resolved receipts always render as strips. Finally the
  * 最近 strip — things that already happened.
  */

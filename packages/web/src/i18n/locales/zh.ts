@@ -1322,6 +1322,7 @@ export const zh: Translations = {
 
   topics: {
     searchTopicsPlaceholder: "搜索主题",
+    noSearchResults: "没有匹配「{query}」的主题",
     title: "你的主题",
     titlePersonal: "你的主题",
     titleTeam: "主题",

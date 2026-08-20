@@ -762,6 +762,18 @@ export function DrillDownTree({
                 />
                 <span>{t.topics.loadingHubTopics}</span>
               </div>
+            ) : isSearching ? (
+              // Zero search matches is its own state — "No topics yet"
+              // (plus the Move-to-hub CTA) would claim the hub is empty
+              // when it's the QUERY that came up dry, and offer a hub
+              // move the user never asked for.
+              <div className="px-3 py-3">
+                <p className="text-[13px] text-fg-3">
+                  {interpolate(t.topics.noSearchResults, {
+                    query: query.trim(),
+                  })}
+                </p>
+              </div>
             ) : (
               <div className="px-3 py-3">
                 <p className="text-[13px] text-fg-3">{t.topics.noTopics}</p>

@@ -24,6 +24,8 @@ vi.mock("@/i18n", () => ({
         movePickerEmpty: "Move here",
         loadingHubTopics: "Loading topics...",
         noTopics: "No topics",
+        noSearchResults: 'No topics match "{query}"',
+        moveToHub: "Move to {name}",
       },
       hubs: {
         hubsListLabel: "Hubs",
@@ -167,6 +169,22 @@ describe("DrillDownTree search", () => {
     expect(row.closest('[role="option"]')?.textContent).toContain("Beta");
     // Non-matching siblings drop out.
     expect(screen.queryByText("Alpha")).toBeNull();
+  });
+
+  it("zero matches shows a no-results line, not the empty-hub state", async () => {
+    // "No topics yet" + the Move-to-hub CTA claim the HUB is empty; a
+    // query with no matches is a different fact and must not surface
+    // a hub-move action the user never asked for.
+    render(<DrillDownTree mode="select" onClose={() => {}} />);
+    await screen.findByText("Alpha");
+
+    fireEvent.change(screen.getByPlaceholderText("Search topics"), {
+      target: { value: "zzz-nothing" },
+    });
+
+    await screen.findByText('No topics match "zzz-nothing"');
+    expect(screen.queryByText("No topics")).toBeNull();
+    expect(screen.queryByText(/Move to /)).toBeNull();
   });
 
   it("clears the query on Escape before leaving the level", async () => {

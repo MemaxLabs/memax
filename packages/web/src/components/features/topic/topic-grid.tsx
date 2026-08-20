@@ -444,7 +444,7 @@ export function TopicGrid() {
  * doesn't have a panel here so the card frame substitutes.
  */
 function MobileInlineTree() {
-  const { visibleExpandedIds, onToggleExpand, activeTopic } =
+  const { visibleExpandedIds, onToggleExpand, onSpringExpand, activeTopic } =
     useTopicTreeController();
   const { data: topicsData } = useTopics();
   const router = useRouter();
@@ -458,6 +458,7 @@ function MobileInlineTree() {
       <TopicTreeContent
         expandedIds={visibleExpandedIds}
         onToggleExpand={onToggleExpand}
+        onSpringExpand={onSpringExpand}
         activeTopic={activeTopic}
         onCreateTopic={() => setCreateTarget({})}
         onCreateSubtopic={(parentId) =>

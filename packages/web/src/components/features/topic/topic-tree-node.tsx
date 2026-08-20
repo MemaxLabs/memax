@@ -47,11 +47,18 @@ interface TreeNodeProps {
   isMobile: boolean;
   expandedIds: Set<string>;
   onToggleExpand: (id: string) => void;
+  /** Spring-load expansion — transient, reverts when the drag ends. */
+  onSpringExpand: (id: string) => void;
   activeTopic?: string;
   onCreateSubtopic?: (parentId: string) => void;
 }
 
-const AUTO_EXPAND_MS = 600;
+/**
+ * Hold before the cue starts. Hold + cue = 600ms total from hover to
+ * open, the Finder-class spring delay — the earlier 600ms hold put the
+ * actual open at 860ms, which read as "is this going to open or not".
+ */
+const AUTO_EXPAND_MS = 340;
 /** Two 130ms blinks, then the branch opens. Matches animate-spring-flash. */
 const SPRING_FLASH_MS = 260;
 
@@ -61,6 +68,7 @@ export function TopicTreeNode({
   isMobile,
   expandedIds,
   onToggleExpand,
+  onSpringExpand,
   activeTopic,
   onCreateSubtopic,
 }: TreeNodeProps) {
@@ -130,10 +138,14 @@ export function TopicTreeNode({
     isOver && !isInvalidDropTarget && dragContext.activeId !== topic.id;
 
   // Spring-loaded expand on hover-over-collapsed, for EITHER kind of
-  // drag. The 600ms hold matches Finder / Linear / Notion — long enough
-  // to avoid accidental expansions while the user passes over a
-  // collapsed folder, short enough to feel responsive when the intent
-  // is "open this branch so I can drop inside".
+  // drag. 600ms total (hold + cue) matches Finder / Linear / Notion —
+  // long enough to avoid accidental expansions while the user passes
+  // over a collapsed folder, short enough to feel responsive when the
+  // intent is "open this branch so I can drop inside". The expansion
+  // goes through onSpringExpand — a transient overlay that reverts on
+  // drag end — never through onToggleExpand, which would permanently
+  // rewrite the user's persisted sidebar as a side effect of passing
+  // a drag over it.
   //
   // It used to fire only while dragging a topic, which left the far
   // more common case — dragging a memory into a nested topic — with no
@@ -160,7 +172,7 @@ export function TopicTreeNode({
         setSpringFlashing(true);
         springOpenTimerRef.current = setTimeout(() => {
           setSpringFlashing(false);
-          onToggleExpand(topic.id);
+          onSpringExpand(topic.id);
         }, SPRING_FLASH_MS);
       }, AUTO_EXPAND_MS);
     }
@@ -184,7 +196,7 @@ export function TopicTreeNode({
     hasChildren,
     isExpanded,
     isInvalidDropTarget,
-    onToggleExpand,
+    onSpringExpand,
     topic.id,
   ]);
 
@@ -363,6 +375,7 @@ export function TopicTreeNode({
             isMobile={isMobile}
             expandedIds={expandedIds}
             onToggleExpand={onToggleExpand}
+            onSpringExpand={onSpringExpand}
             activeTopic={activeTopic}
             onCreateSubtopic={onCreateSubtopic}
           />

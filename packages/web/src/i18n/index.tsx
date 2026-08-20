@@ -24,10 +24,23 @@ const LOCALES: Record<Locale, Translations> = { en, zh };
 const STORAGE_KEY = "memax-locale";
 
 // ─── Detect from browser ───
+
+/**
+ * The locale the user explicitly chose on THIS device, or null.
+ * Exposed so the server-sync layer can tell "explicit local choice"
+ * apart from "browser default" — only the former is worth migrating
+ * up to the server-side settings.locale.
+ */
+export function getStoredLocale(): Locale | null {
+  if (typeof window === "undefined") return null;
+  const saved = localStorage.getItem(STORAGE_KEY);
+  return saved && saved in LOCALES ? (saved as Locale) : null;
+}
+
 function detectLocale(): Locale {
   if (typeof window === "undefined") return "en";
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved && saved in LOCALES) return saved as Locale;
+  const saved = getStoredLocale();
+  if (saved) return saved;
   const lang = navigator.language.toLowerCase();
   if (lang.startsWith("zh")) return "zh";
   return "en";
@@ -37,12 +50,21 @@ function detectLocale(): Locale {
 interface LocaleContextValue {
   locale: Locale;
   setLocale: (l: Locale) => void;
+  /**
+   * Apply the server-persisted preference (settings.locale) without
+   * treating it as a new user choice. Same local effect as setLocale
+   * — state + localStorage — but callers of setLocale additionally
+   * PATCH the preference up to the server; this path exists so the
+   * server → client sync can't loop back into a server write.
+   */
+  applyServerLocale: (l: Locale) => void;
   t: Translations;
 }
 
 const LocaleContext = createContext<LocaleContextValue>({
   locale: "en",
   setLocale: () => {},
+  applyServerLocale: () => {},
   t: en,
 });
 
@@ -67,8 +89,14 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(STORAGE_KEY, l);
   }, []);
 
+  // Same local behavior; a separate identity so LocaleServerSync can
+  // distinguish "user chose" from "server said" (see interface note).
+  const applyServerLocale = setLocale;
+
   return (
-    <LocaleContext.Provider value={{ locale, setLocale, t: LOCALES[locale] }}>
+    <LocaleContext.Provider
+      value={{ locale, setLocale, applyServerLocale, t: LOCALES[locale] }}
+    >
       {children}
     </LocaleContext.Provider>
   );

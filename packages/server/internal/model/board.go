@@ -369,6 +369,11 @@ type BoardQuoteRef struct {
 type BoardDreamlogPayload struct {
 	Description string `json:"description,omitempty"`
 	Body        string `json:"body"`
+	// SourceLang is the language the prose was generated in ("en",
+	// "zh"). Recorded so a reader whose locale differs can be served
+	// a translation later without regenerating; absent on slots
+	// written before 2026-08.
+	SourceLang string `json:"source_lang,omitempty"`
 }
 
 // BoardEchoPayload — 回声. Then (the old question) and Now (the new
@@ -378,6 +383,7 @@ type BoardEchoPayload struct {
 	Body        string        `json:"body,omitempty"`
 	Then        BoardQuoteRef `json:"then"`
 	Now         BoardQuoteRef `json:"now"`
+	SourceLang  string        `json:"source_lang,omitempty"`
 }
 
 // BoardWowPayload is the shared shape for thread/openq/pattern/musing:
@@ -386,6 +392,7 @@ type BoardWowPayload struct {
 	Description string          `json:"description,omitempty"`
 	Body        string          `json:"body"`
 	Quotes      []BoardQuoteRef `json:"quotes,omitempty"`
+	SourceLang  string          `json:"source_lang,omitempty"`
 }
 
 // BoardConsensusPayload — 共识缺口. Two members recorded contradictory
@@ -398,6 +405,7 @@ type BoardConsensusPayload struct {
 	Description string          `json:"description,omitempty"`
 	Body        string          `json:"body"`
 	Sides       []BoardQuoteRef `json:"sides"`
+	SourceLang  string          `json:"source_lang,omitempty"`
 }
 
 // BoardWhoKnowsPayload — 谁知道这个. Routing, not insight: Holder is the
@@ -426,6 +434,7 @@ type BoardNextUpItem struct {
 type BoardNextUpPayload struct {
 	Description string            `json:"description,omitempty"`
 	Items       []BoardNextUpItem `json:"items"`
+	SourceLang  string            `json:"source_lang,omitempty"`
 }
 
 // BoardDecisionOption is one choice on a decision gate.

@@ -1365,6 +1365,12 @@ export interface DevFlagsSettings {
 export interface Settings {
   /** Default persona for the memax agent (Agent Chat). "" = none. */
   chat_default_persona_id?: string;
+  /**
+   * UI locale ("en", "zh"). "" or absent = unset: clients fall back
+   * to browser detection. Persisted server-side so agentic output
+   * (board synthesis, notifications) can follow the reader's language.
+   */
+  locale?: Locale | "";
   dreams_enabled: boolean;
   dreams_merge_enabled: boolean;
   dreams_archive_enabled: boolean;
@@ -1400,6 +1406,8 @@ export interface Settings {
  * scoped.
  */
 export interface SettingsUpdateInput {
+  /** UI locale ("en", "zh"); "" clears back to client-side detection. */
+  locale?: Locale | "";
   dreams_excluded_kinds?: MemoryKind[];
   dreams_similarity_threshold?: number;
   dreams_staleness_days?: number;

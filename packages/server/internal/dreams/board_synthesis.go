@@ -59,15 +59,40 @@ const (
 // system board's agent session and every custom board's cheap call
 // embed it verbatim — a user instruction shapes WHAT to look for,
 // never whether to cite.
-const boardSynthesisCoreRules = `Non-negotiable rules:
+// boardSynthesisLanguageRuleFor renders rule 3's language clause.
+//
+// When the reader's locale is known (personal hubs with a persisted
+// settings.locale), card PROSE follows the reader's interface language
+// — hybrid contract: quotes stay verbatim in their source language and
+// technical terms/proper nouns stay as the memories write them, so the
+// receipts remain checkable against the originals. When no locale is
+// known (team hubs, or the preference is unset), fall back to the
+// content-dominant language — a team board has many readers and one
+// stored copy; per-reader language is a read-time concern, which is
+// why every slot records source_lang at generation.
+func boardSynthesisLanguageRuleFor(locale string) string {
+	switch locale {
+	case "en":
+		return `Write all card prose (titles, bodies) in English — the reader's interface language. Quoted excerpts stay verbatim in their original language; never translate a quote. Keep proper nouns and technical terms exactly as the memories write them, even mid-sentence.`
+	case "zh":
+		return `所有卡片正文(标题、内容)用中文写——这是读者的界面语言。引用的原文保持原样,绝不翻译引文。专有名词和技术术语保持记忆里的原始写法,即使夹在中文句子里。`
+	default:
+		return `Chinese memories get Chinese cards; English memories get English cards; mixed hubs follow the dominant language of the cited memories.`
+	}
+}
+
+func boardSynthesisCoreRulesFor(locale string) string {
+	return `Non-negotiable rules:
 1. ANTI-BARNUM: never write a claim that could apply to anyone ("you've been busy lately", "you care about quality"). Every claim must be specific enough that the quoted memories PROVE it. If you cannot find a genuinely specific insight, omit the card entirely — an empty result is a good result; a hollow card destroys trust.
 2. RECEIPTS: every card cites the memories behind it via their exact memory ids. Quote excerpts verbatim — do not paraphrase inside quotes.
-3. VOICE: first person, warm, concise, zero corporate filler. Chinese memories get Chinese cards; English memories get English cards; mixed hubs follow the dominant language of the cited memories.
+3. VOICE: first person, warm, concise, zero corporate filler. ` + boardSynthesisLanguageRuleFor(locale) + `
 4. PLAIN TEXT: no markdown, no HTML — card text renders literally.`
+}
 
-const boardSynthesisSystemPrompt = `You are memax — the user's memory, speaking in first person about what you noticed while organizing their hub overnight. You write cards for the hub's pulse board.
+func boardSynthesisSystemPrompt(locale string) string {
+	return `You are memax — the user's memory, speaking in first person about what you noticed while organizing their hub overnight. You write cards for the hub's pulse board.
 
-` + boardSynthesisCoreRules + `
+` + boardSynthesisCoreRulesFor(locale) + `
 
 You have a recall tool. Use it to explore the hub before writing — search for old questions, recurring themes, and connections. Then respond with ONLY a JSON object:
 {
@@ -86,6 +111,7 @@ You have a recall tool. Use it to explore the hub before writing — search for 
 "then"/"now" only for kind=echo and kind=team_echo (the old question and the new answer, oldest first). kind=consensus_gap uses exactly two "quotes", one per side. Other kinds use "quotes". Return null for a card you cannot honestly fill.
 
 nextup: infer the 1-3 concrete actions the user most plausibly wants to take next — open loops, stated intentions, unfinished threads found via recall. Each item: imperative title (≤80 chars), one-line why, ≥1 verbatim quote from a real memory proving the loop is open. Anti-Barnum applies fully: no generic productivity advice; if no genuine open loops, null.`
+}
 
 // teamSynthesisContext is appended to the system prompt on a TEAM hub
 // and nowhere else. Without it every card comes out addressed to one
@@ -103,14 +129,55 @@ TEAM HUB CONTEXT: this hub is shared by several members, and its memories were w
 // doesn't push the actual instructions out of attention.
 const memberRosterMax = 12
 
+// readerLocaleForHub resolves the locale card prose should follow.
+// Personal hub: the owner is the only reader, so their persisted
+// settings.locale applies at generation time — zero translation cost.
+// Team hub: many readers, one stored copy — generation stays in the
+// content language ("" here) and source_lang on each slot is what a
+// future translate-on-read path keys on.
+func (e *Engine) readerLocaleForHub(hub *model.Hub) string {
+	if hub.HubType == model.HubTypeTeam {
+		return ""
+	}
+	prefs, err := e.store.GetUserPreferences(hub.OwnerID)
+	if err != nil {
+		return ""
+	}
+	locale, _ := prefs.MergedSettings()["locale"].(string)
+	if locale != "en" && locale != "zh" {
+		return ""
+	}
+	return locale
+}
+
+// detectSourceLang classifies which language a card's prose came out
+// in — recorded on the slot payload so a reader whose locale differs
+// can be served a translation later without regenerating the card.
+// Heuristic on purpose: any meaningful CJK presence means the prose
+// is Chinese (English cards contain no CJK at all; Chinese cards keep
+// Latin technical terms inline, so a ratio threshold would misread
+// them).
+func detectSourceLang(text string) string {
+	var cjk int
+	for _, r := range text {
+		if r >= 0x4E00 && r <= 0x9FFF {
+			cjk++
+			if cjk >= 2 {
+				return "zh"
+			}
+		}
+	}
+	return "en"
+}
+
 // boardSynthesisSystemPromptFor picks the system prompt for one hub:
 // the shared one, plus the team paragraph and (when the roster is
 // available) the member names, on a team hub.
-func boardSynthesisSystemPromptFor(hub *model.Hub, members []model.HubMember) string {
+func boardSynthesisSystemPromptFor(hub *model.Hub, members []model.HubMember, locale string) string {
 	if hub.HubType != model.HubTypeTeam {
-		return boardSynthesisSystemPrompt
+		return boardSynthesisSystemPrompt(locale)
 	}
-	prompt := boardSynthesisSystemPrompt + teamSynthesisContext
+	prompt := boardSynthesisSystemPrompt(locale) + teamSynthesisContext
 	if roster := memberRosterLine(members); roster != "" {
 		prompt += "\nMembers of this hub: " + roster + "."
 	}
@@ -351,6 +418,7 @@ func (e *Engine) synthesizeSystemBoard(
 
 	wowKind := pickWowKind(board.ID, hub.HubType, time.Now().UTC())
 	prompt := buildSynthesisPrompt(run, wowKind)
+	readerLocale := e.readerLocaleForHub(hub)
 
 	session := agent.SessionDescriptor{
 		OwnerID: hub.OwnerID,
@@ -374,7 +442,7 @@ func (e *Engine) synthesizeSystemBoard(
 		Tools:        []sdktool.Tool{recallTool},
 		Model:        e.agentRuntime.Model,
 		Session:      session,
-		SystemPrompt: boardSynthesisSystemPromptFor(hub, members),
+		SystemPrompt: boardSynthesisSystemPromptFor(hub, members, readerLocale),
 	})
 	if err != nil {
 		metrics.Errors++
@@ -410,6 +478,7 @@ func (e *Engine) synthesizeSystemBoard(
 			Payload: mustMarshalPayload(model.BoardDreamlogPayload{
 				Description: parsed.Dreamlog.Body,
 				Body:        parsed.Dreamlog.Body,
+				SourceLang:  detectSourceLang(parsed.Dreamlog.Body),
 			}),
 		}
 		if err := e.store.UpsertBoardSlot(slot); err != nil {
@@ -538,7 +607,7 @@ func (e *Engine) synthesizeCustomBoard(
 
 	prompt := material + "\n\n" + customBoardCardRequest
 	trackCtx := e.trackingContextForHub(ctx, hub.ID, hub.OwnerID, "", "dreams")
-	resp, err := e.callLLMWithModelTimeout(trackCtx, e.organizeModel, customBoardSystemPrompt(board), prompt,
+	resp, err := e.callLLMWithModelTimeout(trackCtx, e.organizeModel, customBoardSystemPrompt(board, e.readerLocaleForHub(hub)), prompt,
 		customBoardMaxTokens, customBoardLLMTimeout, "dreams.board_synthesis")
 	metrics.LLMCalls++
 	// Debit the cycle governor: these are real model calls, and
@@ -745,6 +814,10 @@ func (e *Engine) buildWowSlot(
 		})
 	}
 
+	// Language of the PROSE (title + body), not the quotes — the whole
+	// point of source_lang is that quotes and prose can differ.
+	sourceLang := detectSourceLang(wow.Title + " " + wow.Body)
+
 	var payload any
 	switch kind {
 	case model.BoardKindEcho, model.BoardKindTeamEcho:
@@ -753,12 +826,14 @@ func (e *Engine) buildWowSlot(
 			Body:        wow.Body,
 			Then:        refs[0],
 			Now:         refs[1],
+			SourceLang:  sourceLang,
 		}
 	case model.BoardKindConsensusGap:
 		payload = model.BoardConsensusPayload{
 			Description: wow.Body,
 			Body:        wow.Body,
 			Sides:       refs,
+			SourceLang:  sourceLang,
 		}
 	case model.BoardKindWhoKnows:
 		// Owner rule already proved every receipt has the same author,
@@ -777,6 +852,7 @@ func (e *Engine) buildWowSlot(
 				Description: wow.Body,
 				Body:        wow.Body,
 				Quotes:      refs,
+				SourceLang:  sourceLang,
 			},
 			Holder: holder,
 		}
@@ -785,6 +861,7 @@ func (e *Engine) buildWowSlot(
 			Description: wow.Body,
 			Body:        wow.Body,
 			Quotes:      refs,
+			SourceLang:  sourceLang,
 		}
 	}
 	return &model.BoardSlot{
@@ -888,6 +965,7 @@ func (e *Engine) buildNextUpSlot(
 		Payload: mustMarshalPayload(model.BoardNextUpPayload{
 			Description: strings.Join(titles, " · "),
 			Items:       items,
+			SourceLang:  detectSourceLang(strings.Join(titles, " ")),
 		}),
 	}
 }
@@ -982,10 +1060,10 @@ func (e *Engine) verifyQuotesWithOwners(_ context.Context, hub *model.Hub, quote
 // shared core rules plus the board's own brief. The base rules
 // (anti-Barnum, receipts, voice) always win — a user instruction
 // shapes WHAT to look for, never whether to cite.
-func customBoardSystemPrompt(board *model.Board) string {
+func customBoardSystemPrompt(board *model.Board, locale string) string {
 	base := `You are memax — the user's memory, writing cards for one user-authored pulse board from tonight's night material. You have no tools: work ONLY from the material you are given.
 
-` + boardSynthesisCoreRules
+` + boardSynthesisCoreRulesFor(locale)
 	instruction := strings.TrimSpace(board.Instruction)
 	if instruction == "" {
 		return base

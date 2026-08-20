@@ -4,7 +4,7 @@
  * Brain view — the /brain page (and /home alias). Phase 3.7c
  * pivoted Brain from the prior memory-count badge surface into a
  * full agent chat experience. The chat surface owns its own
- * composer; the global bar + ScanRestButton FAB are suppressed on
+ * composer; the global bar is suppressed on
  * /brain via `isChatSurfaceRoute` so there's one input, one focus
  * (option A of the chat-integration plan).
  *

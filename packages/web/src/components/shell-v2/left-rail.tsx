@@ -20,6 +20,12 @@
  * panel for that tab (Notion / Linear convention). The rail no longer
  * moves as part of that transition.
  *
+ * A Search action row sits above the tabs: it toggles the global bar
+ * via the same code path as Cmd+K (see BarContext.toggleBar). It
+ * replaced the bottom-right ScanRestButton FAB (2026-08) so search
+ * has one fixed home in the chrome instead of a floating button that
+ * appeared and disappeared with scroll state.
+ *
  * Brand-mark click navigates to `/brain` (the home/default landing).
  *
  * Accessibility:
@@ -33,17 +39,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { motion, useReducedMotion } from "framer-motion";
-import {
-  MemaxLogo,
-  MemaxTextLogo,
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from "@memaxlabs/ui";
-import { NORMAL, EASE } from "@memaxlabs/ui/tokens/motion";
+import { Search } from "lucide-react";
+import { MemaxLogo, MemaxTextLogo } from "@memaxlabs/ui";
 import { useAuth, useActiveHub } from "@/lib/auth";
 import { HubIdentityChip } from "@/components/features/hub/hub-identity-chip";
+import { useBar } from "@/contexts/bar-context";
 import { useShellState } from "@/contexts/shell-state-context";
 import { useNotificationSummary } from "@/hooks/use-notifications";
 import { useSettingsPanel } from "@/contexts/settings-panel-context";
@@ -63,11 +63,15 @@ interface LeftRailProps {
 }
 
 export function LeftRail({ activeTab }: LeftRailProps) {
-  const { secondaryHidden, toggleSecondary, setSecondaryHidden, isHydrated } =
-    useShellState();
+  const {
+    secondaryHidden,
+    toggleSecondary,
+    setSecondaryHidden,
+    setBarScrollHidden,
+  } = useShellState();
+  const { toggleBar, barOverlayOpen } = useBar();
   const router = useRouter();
   const pathname = usePathname();
-  const reduceMotion = useReducedMotion();
   const { t } = useLocale();
   const { data: notificationSummary } = useNotificationSummary();
   const { user, hubs } = useAuth();
@@ -80,18 +84,26 @@ export function LeftRail({ activeTab }: LeftRailProps) {
         ? ("updates" as const)
         : null;
 
-  // The rail is ALWAYS expanded (2026-08). It used to derive its width
-  // from secondary-panel state under an "always exactly one panel
-  // expanded" budget, which meant opening the knowledge tree silently
-  // collapsed the rail to a column of icons — navigation rearranging
-  // itself as a side effect of looking at something. Primary
-  // navigation is the one surface that must not move under the reader;
-  // only the secondary panel opens and closes now.
-  //
-  // This also retires the `/home` entry-resolver special case, which
-  // existed purely to pre-empt the collapse animation on cold entry.
-  const expanded = true;
-  const visualWidth = RAIL_WIDTH;
+  // The rail is ALWAYS expanded at RAIL_WIDTH (2026-08). It used to
+  // derive its width from secondary-panel state under an "always
+  // exactly one panel expanded" budget, which meant opening the
+  // knowledge tree silently collapsed the rail to a column of icons —
+  // navigation rearranging itself as a side effect of looking at
+  // something. Primary navigation is the one surface that must not
+  // move under the reader; only the secondary panel opens and closes
+  // now. This also retired the `/home` entry-resolver special case,
+  // which existed purely to pre-empt the collapse animation on cold
+  // entry, and the width animation itself (a constant can't tween).
+
+  // Platform-appropriate shortcut hint for the Search row. Computed
+  // after mount (null during SSR + first paint) so server and client
+  // markup match — the hint is a detail, not worth a hydration
+  // mismatch.
+  const [kbdHint, setKbdHint] = useState<string | null>(null);
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    setKbdHint(/Mac|iPhone|iPad|iPod/.test(ua) ? "⌘K" : "Ctrl K");
+  }, []);
 
   // Resolve the hub-scoped tab paths against the user's active hub.
   // Static-path tabs (brain, agents) ignore active-hub context; the
@@ -167,28 +179,18 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   }, [router, hubTabSlug]);
 
   return (
-    <motion.aside
+    <aside
       role="navigation"
       aria-label={t.nav.primary}
       // Glass material matches the secondary panel
       // (`glass-dropdown backdrop-blur-sm`) so both surfaces read
       // as the same chrome family.
       className="glass-dropdown backdrop-blur-sm z-shell-rail fixed flex flex-col rounded-card"
-      initial={{ width: visualWidth }}
-      animate={{ width: visualWidth }}
-      transition={
-        // Skip the width transition until persisted state has
-        // hydrated; also skip on reduced-motion. Width animates only
-        // on secondary-panel toggle / tab navigation — both
-        // user-driven, never mouse-position-driven.
-        reduceMotion || !isHydrated
-          ? { duration: 0 }
-          : { duration: NORMAL, ease: EASE }
-      }
       style={{
         top: RAIL_INSET,
         left: RAIL_INSET,
         bottom: RAIL_INSET,
+        width: RAIL_WIDTH,
       }}
     >
       {/* Brand-mark band — clicks navigate to /brain. Hover swaps the
@@ -198,16 +200,12 @@ export function LeftRail({ activeTab }: LeftRailProps) {
         type="button"
         onClick={onBrandClick}
         aria-label={`memax (${t.nav.tabs.brain})`}
-        className={`group flex h-12 items-center gap-2 cursor-pointer transition-[padding] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-          expanded ? "px-3" : "justify-center px-0"
-        }`}
+        className="group flex h-12 items-center gap-2 cursor-pointer px-3"
       >
         <span className="relative flex h-9 w-9 items-center justify-center rounded-card text-foreground shrink-0 transition-colors group-hover:bg-surface-2">
           <MemaxLogo size={24} />
         </span>
-        {expanded && (
-          <MemaxTextLogo height={18} className="text-foreground shrink-0" />
-        )}
+        <MemaxTextLogo height={18} className="text-foreground shrink-0" />
       </button>
 
       {/* Hub anchor — the global hub identity + switcher, present on
@@ -216,9 +214,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
           hubs like every other switcher trigger; single-hub users have
           nothing to switch. */}
       {hubs.length >= 2 && activeHub && (
-        <div
-          className={`mt-1 flex shrink-0 ${expanded ? "px-3" : "justify-center px-0"}`}
-        >
+        <div className="mt-1 flex shrink-0 px-3">
           <HubIdentityChip
             variant="rail"
             kind={activeHub.hub.hub_type === "team" ? "team" : "personal"}
@@ -231,6 +227,53 @@ export function LeftRail({ activeTab }: LeftRailProps) {
         </div>
       )}
 
+      {/* Search — an action row, not a navigation tab: it toggles the
+          global bar (the exact Cmd+K semantic, same code path) instead
+          of routing anywhere. Lives above the tabs per the sidebar
+          convention (Slack / Linear / Notion put search at the top of
+          the nav stack) and replaces the old bottom-right FAB, which
+          was a second floating chrome language competing with the
+          rail. Never gets aria-current — aria-expanded reflects the
+          overlay it controls. */}
+      <div className="flex flex-col px-2 mt-2 shrink-0">
+        <button
+          type="button"
+          onClick={() => {
+            // Clear the sticky scroll-hide flag so a bar hidden by
+            // scrolling reveals on the same click that summons it —
+            // matches the old FAB's tap path.
+            setBarScrollHidden(false);
+            toggleBar();
+          }}
+          aria-label={t.nav.openBar}
+          aria-expanded={barOverlayOpen}
+          className="relative flex h-9 items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
+          style={{
+            background: barOverlayOpen ? "var(--surface-3)" : undefined,
+            color: barOverlayOpen ? "var(--foreground)" : "var(--fg-2)",
+          }}
+        >
+          <span className="relative flex h-6 w-6 shrink-0 items-center justify-center">
+            <Search
+              className="h-5 w-5"
+              strokeWidth={barOverlayOpen ? 2.2 : 1.8}
+            />
+          </span>
+          <span className="text-[13px] font-medium truncate flex-1">
+            {t.nav.search}
+          </span>
+          {kbdHint && (
+            <kbd
+              aria-hidden
+              className="shrink-0 rounded-md border border-border px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-fg-3"
+              style={{ fontFamily: "inherit" }}
+            >
+              {kbdHint}
+            </kbd>
+          )}
+        </button>
+      </div>
+
       {/* Tabs */}
       <nav className="flex flex-col gap-0.5 px-2 mt-2 flex-1">
         {SHELL_TABS.map((tab) => {
@@ -239,7 +282,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
           const isSecondaryHidden = secondaryHidden[tab.id];
           const label = t.nav.tabs[tab.id];
           const badgeTone = tab.id === "pulse" ? pulseBadgeTone : null;
-          const button = (
+          return (
             <button
               key={tab.id}
               type="button"
@@ -254,9 +297,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
                     : t.nav.hideSecondaryPanel
                   : label
               }
-              className={`relative flex h-9 items-center gap-2.5 rounded-lg text-left transition-[padding,background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2 ${
-                expanded ? "px-2" : "justify-center px-0"
-              }`}
+              className="relative flex h-9 items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
               style={{
                 background: isActive ? "var(--surface-3)" : undefined,
                 color: isActive ? "var(--foreground)" : "var(--fg-2)",
@@ -278,26 +319,8 @@ export function LeftRail({ activeTab }: LeftRailProps) {
                   />
                 )}
               </span>
-              {expanded && (
-                <span className="text-[13px] font-medium truncate">
-                  {label}
-                </span>
-              )}
+              <span className="text-[13px] font-medium truncate">{label}</span>
             </button>
-          );
-          // Tooltip surfaces the label only in the collapsed (resting)
-          // visual state. When hover-expanded, the label is already
-          // inline. On touch devices (no hover), the tooltip is the
-          // only label-surfacing path.
-          return !expanded ? (
-            <Tooltip key={tab.id}>
-              <TooltipTrigger render={button} />
-              <TooltipContent side="right" sideOffset={12}>
-                {label}
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            button
           );
         })}
       </nav>
@@ -309,9 +332,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
           onClick={settingsPanel.toggle}
           aria-label={t.nav.openSettings}
           aria-expanded={settingsPanel.open}
-          className={`flex h-9 w-full items-center gap-2.5 rounded-lg text-left transition-[padding,background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2 ${
-            expanded ? "px-2" : "justify-center px-0"
-          }`}
+          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
           style={{ color: "var(--fg-2)" }}
         >
           <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-2">
@@ -328,13 +349,11 @@ export function LeftRail({ activeTab }: LeftRailProps) {
               </span>
             )}
           </span>
-          {expanded && (
-            <span className="text-[13px] font-medium truncate">
-              {user?.name ?? t.nav.openSettings}
-            </span>
-          )}
+          <span className="text-[13px] font-medium truncate">
+            {user?.name ?? t.nav.openSettings}
+          </span>
         </button>
       </div>
-    </motion.aside>
+    </aside>
   );
 }

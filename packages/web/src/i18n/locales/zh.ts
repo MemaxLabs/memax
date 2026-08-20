@@ -14,10 +14,9 @@ export const zh: Translations = {
   },
   nav: {
     primary: "主导航",
-    expandRail: "展开导航栏",
-    collapseRail: "收起导航栏",
     showSecondaryPanel: "显示话题面板",
     hideSecondaryPanel: "收起话题面板",
+    search: "搜索",
     openBar: "打开输入栏 (⌘K)",
     openSettings: "打开设置",
     topicTreeRegion: "话题",

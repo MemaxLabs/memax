@@ -23,7 +23,7 @@ export interface ScrollDirectionState {
  * inside `<main>` (window.scrollY stays 0 but `<main>.scrollTop`
  * changes). Without listening to both, scroll-hide silently broke on
  * desktop after shell-v2 introduced the inner-main scroll container
- * (plan 26 phase 4 fix: ScanRestButton never appeared on desktop).
+ * (plan 26 phase 4 fix: scroll-hide never fired on desktop).
  *
  * Touchmove fallback: pages without scrollable content (mobile brain
  * tab, short memory detail pages) never fire scroll events. We

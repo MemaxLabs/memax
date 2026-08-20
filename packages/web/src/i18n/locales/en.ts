@@ -12,10 +12,9 @@ export const en = {
   // namespace gymnastics.
   nav: {
     primary: "Primary",
-    expandRail: "Expand navigation rail",
-    collapseRail: "Collapse navigation rail",
     showSecondaryPanel: "Show topic panel",
     hideSecondaryPanel: "Hide topic panel",
+    search: "Search",
     openBar: "Open bar (⌘K)",
     openSettings: "Open settings",
     topicTreeRegion: "Topics",

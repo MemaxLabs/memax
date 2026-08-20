@@ -7,11 +7,7 @@
  * one provider instance and one re-render frontier:
  *
  * **Persisted user preferences** (localStorage, `memax_shell_state`):
- *   1. `collapsed` — left rail collapsed (56px) vs expanded (196px).
- *      Default: true (collapsed). Most users want the rail compact
- *      unless they're actively navigating; expansion is the explicit
- *      gesture (hovering the brand mark or clicking the toggle).
- *   2. `secondaryHidden` — per-tab visibility of the secondary panel
+ *   1. `secondaryHidden` — per-tab visibility of the secondary panel
  *      (currently only Memories has one; the API stays per-tab so
  *      future tabs with secondaries can opt in without re-shaping).
  *      Default: false (visible). The topic explorer is the core
@@ -19,15 +15,22 @@
  *      gesture (close chevron or click the active rail tab again —
  *      Notion / Linear convention).
  *
+ *   (A `collapsed` rail preference used to live here too. The rail is
+ *   always expanded since 2026-08 — the preference was written and
+ *   persisted but never read, so it was deleted rather than left as
+ *   dead state. Old localStorage payloads still carrying the key are
+ *   tolerated by the parser and re-canonicalized on next write.)
+ *
  * **Transient session state** (NOT persisted, route + scroll ephemera):
- *   3. `barScrollHidden` — sticky scroll-hide flag for the global bar
- *      (plan 26 phase 4). Resets on reload by design.
- *   4. `barShown` — whether the bar is currently inline on the route.
- *      Mirrors `shouldShow` from app-shell-client so ScanRestButton
- *      can surface as the persistent re-entry on bar-less routes.
- *   5. `isHydrated` — true once the persisted state has been read from
- *      localStorage. Components that animate the rail width or panel
- *      slide read this to skip the first-paint animation.
+ *   2. `barScrollHidden` — sticky scroll-hide flag for the global bar
+ *      (plan 26 phase 4). Resets on reload by design. Lives here
+ *      (rather than BarContext or local to any single component) so
+ *      the bar's hide rendering and the rail's Search row — which
+ *      clears the flag when it summons the bar — react from one
+ *      source.
+ *   3. `isHydrated` — true once the persisted state has been read from
+ *      localStorage. Components that animate the panel slide read this
+ *      to skip the first-paint animation.
  *
  * Storage strategy:
  *   - Single localStorage key (`memax_shell_state`) holds the JSON-encoded
@@ -60,10 +63,6 @@ import { SHELL_TABS, type ShellTabId } from "@/components/shell-v2/shell-tabs";
 export type { ShellTabId };
 
 interface ShellStateValue {
-  collapsed: boolean;
-  toggleCollapsed: () => void;
-  setCollapsed: (next: boolean) => void;
-
   /** Per-tab visibility preference for the secondary panel. */
   secondaryHidden: Record<ShellTabId, boolean>;
   /**
@@ -79,44 +78,30 @@ interface ShellStateValue {
    * the client. Server renders + the first client render expose `false`
    * so React hydration matches; the second client render flips to
    * `true` and reflects the persisted state. Components that animate
-   * the rail width or panel slide MUST read this flag to skip the
-   * initial enter animation when hydrated state differs from defaults
-   * — without this gate the rail visibly snaps from collapsed (default)
-   * to expanded (persisted) on every page load for users who prefer
-   * the expanded shell.
+   * the panel slide MUST read this flag to skip the initial enter
+   * animation when hydrated state differs from defaults — without this
+   * gate the shell visibly snaps on every page load for users whose
+   * persisted preference differs from the default.
    */
   isHydrated: boolean;
 
   /**
    * Sticky scroll-hide state for the global bar. `true` once the user
    * has scrolled the bar off-screen on a scrollable surface; resets
-   * to `false` when the user reaches the top OR explicitly opens the
-   * bar via the FAB. Lives here (rather than BarContext or local to
-   * any single component) so both the bar's hide rendering and the
-   * FAB-style ScanRestButton can react from one source. Plan 26
+   * to `false` when the user reaches the top OR explicitly summons
+   * the bar via the rail's Search row. Lives here (rather than
+   * BarContext or local to any single component) so both the bar's
+   * hide rendering and the rail can react from one source. Plan 26
    * phase 4 — was duplicated between two components which would have
    * been racy.
    */
   barScrollHidden: boolean;
   setBarScrollHidden: (next: boolean) => void;
-  /**
-   * Whether the bar is currently inline on the route (vs route-hidden
-   * because the route doesn't host a bar surface — e.g., /agents,
-   * /pulse in some configurations). When `false`, the bar's glass
-   * material is skipped (no floating blur rectangle) and ScanRestButton
-   * surfaces as the persistent re-entry. Plan 26 follow-up: previously
-   * the bar's outer glass-bar class always rendered, which on bar-less
-   * routes (view==="none" without overlay) painted a blurry strip at
-   * the bottom that wasn't interactable.
-   */
-  barShown: boolean;
-  setBarShown: (next: boolean) => void;
 }
 
 const STORAGE_KEY = "memax_shell_state";
 
 interface PersistedState {
-  collapsed: boolean;
   secondaryHidden: Record<ShellTabId, boolean>;
 }
 
@@ -129,7 +114,6 @@ const DEFAULT_SECONDARY_HIDDEN: Record<ShellTabId, boolean> =
   >;
 
 const DEFAULT_STATE: PersistedState = {
-  collapsed: true,
   secondaryHidden: DEFAULT_SECONDARY_HIDDEN,
 };
 
@@ -166,12 +150,11 @@ function parsePersistedState(raw: string | null): PersistedState {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return DEFAULT_STATE;
     const obj = parsed as Partial<PersistedState>;
-    const collapsed =
-      typeof obj.collapsed === "boolean"
-        ? obj.collapsed
-        : DEFAULT_STATE.collapsed;
+    // Extra keys in older payloads (e.g. the retired `collapsed` rail
+    // preference) are dropped here by construction — only the fields
+    // this shape declares are read out.
     const secondaryHidden = sanitizeSecondaryHidden(obj.secondaryHidden);
-    return { collapsed, secondaryHidden };
+    return { secondaryHidden };
   } catch {
     return DEFAULT_STATE;
   }
@@ -209,9 +192,6 @@ export function ShellStateProvider({ children }: { children: ReactNode }) {
   // Bar scroll-hide is intentionally NOT persisted (session-scoped).
   // Reloading the page should always start with the bar visible.
   const [barScrollHidden, setBarScrollHidden] = useState(false);
-  // Default `true` — most routes host the bar inline. App-shell-client
-  // flips it to `false` on routes that don't (e.g., /agents).
-  const [barShown, setBarShown] = useState(true);
 
   // Read localStorage exactly once on mount. We deliberately don't put
   // `state` in the dependency array — this is a one-shot hydration, not
@@ -221,7 +201,7 @@ export function ShellStateProvider({ children }: { children: ReactNode }) {
     setState(persisted);
     setIsHydrated(true);
     // We re-canonicalize the localStorage shape on hydration: if the
-    // payload had unknown keys or invalid types, sanitizeSecondaryHidden
+    // payload had unknown keys or invalid types, parsePersistedState
     // already cleaned them up. Persist the canonical shape so the next
     // load is a clean JSON.parse.
     persistState(persisted);
@@ -234,16 +214,6 @@ export function ShellStateProvider({ children }: { children: ReactNode }) {
     if (!isHydrated) return;
     persistState(state);
   }, [state, isHydrated]);
-
-  const toggleCollapsed = useCallback(() => {
-    setState((prev) => ({ ...prev, collapsed: !prev.collapsed }));
-  }, []);
-
-  const setCollapsed = useCallback((next: boolean) => {
-    setState((prev) =>
-      prev.collapsed === next ? prev : { ...prev, collapsed: next },
-    );
-  }, []);
 
   const toggleSecondary = useCallback((tab: ShellTabId) => {
     setState((prev) => ({
@@ -267,28 +237,14 @@ export function ShellStateProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ShellStateValue>(
     () => ({
-      collapsed: state.collapsed,
-      toggleCollapsed,
-      setCollapsed,
       secondaryHidden: state.secondaryHidden,
       toggleSecondary,
       setSecondaryHidden,
       isHydrated,
       barScrollHidden,
       setBarScrollHidden,
-      barShown,
-      setBarShown,
     }),
-    [
-      state,
-      isHydrated,
-      toggleCollapsed,
-      setCollapsed,
-      toggleSecondary,
-      setSecondaryHidden,
-      barScrollHidden,
-      barShown,
-    ],
+    [state, isHydrated, toggleSecondary, setSecondaryHidden, barScrollHidden],
   );
 
   return (

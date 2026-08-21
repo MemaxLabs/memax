@@ -214,7 +214,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
           hubs like every other switcher trigger; single-hub users have
           nothing to switch. */}
       {hubs.length >= 2 && activeHub && (
-        <div className="mt-1 flex shrink-0 px-3">
+        <div className="mt-1 flex shrink-0 px-2">
           <HubIdentityChip
             variant="rail"
             kind={activeHub.hub.hub_type === "team" ? "team" : "personal"}

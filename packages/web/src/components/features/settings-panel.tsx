@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "next-themes";
-import Link from "next/link";
 import {
   Moon,
   Sun,
@@ -23,6 +22,7 @@ import { useSettingsDialog } from "@/contexts/settings-dialog-context";
 import { useUpdateSettings } from "@/hooks/use-settings";
 import { getHubDisplayName } from "@/lib/hub-display";
 import { acquireBodyScrollLock } from "@/lib/scroll-lock";
+import { ConnectAgentsModal } from "@/components/features/connect-agents-modal";
 
 interface Props {
   open: boolean;
@@ -43,6 +43,7 @@ export function SettingsPanel({ open, onClose, anchor = "top-right" }: Props) {
   const { user, hubs, activeHubId, logout } = useAuth();
   const settingsDialog = useSettingsDialog();
   const updateSettings = useUpdateSettings();
+  const [connectOpen, setConnectOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const { locale, setLocale, t } = useLocale();
   const { data: memoriesPages } = useMemories();
@@ -99,7 +100,13 @@ export function SettingsPanel({ open, onClose, anchor = "top-right" }: Props) {
       })
     : "";
 
-  if (!open) return null;
+  // The connect modal outlives the menu (the menu closes when it
+  // opens), so it renders on BOTH sides of the open gate.
+  const connectModal = connectOpen ? (
+    <ConnectAgentsModal onClose={() => setConnectOpen(false)} />
+  ) : null;
+
+  if (!open) return connectModal;
 
   // Snap-instant open/close — no framer motion, no opacity animation.
   // Click-outside catcher is a plain div; the panel renders directly.
@@ -227,14 +234,21 @@ export function SettingsPanel({ open, onClose, anchor = "top-right" }: Props) {
           {/* Connect agents — the setup command is otherwise buried in a
               Settings disclosure, so users who install and then lose the
               command have nowhere obvious to find it again. */}
-          <Link
-            href="/agents/connect"
-            onClick={onClose}
+          <button
+            onClick={() => {
+              // Centered modal, not a route (founder call 2026-08-21):
+              // connecting an agent is a side-task; routing replaced
+              // the /agents tab's real connected-state view with setup
+              // copy. /agents/connect stays for deep links + the grid
+              // "+" tile.
+              onClose();
+              setConnectOpen(true);
+            }}
             className={menuItemClass}
           >
             <Bot className="h-3.5 w-3.5" />
             {t.settings.connectAgents}
-          </Link>
+          </button>
           <a
             href={DOCS_URL}
             target="_blank"

@@ -1,4 +1,4 @@
--- 022: board_slot_history
+-- 023: board_slot_history
 --
 -- Slots are replaced in place (ON CONFLICT ... DO UPDATE), which means
 -- every producer run silently destroys the previous card. For stateful

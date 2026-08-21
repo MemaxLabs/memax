@@ -383,9 +383,16 @@ export function BoardView({
   const toggleCard = useCallback(
     (contentKey: string, willOpen: boolean) => {
       setCollapsedCards((prev) => {
-        const next = new Set(prev);
+        let next = new Set(prev);
         if (willOpen) next.delete(contentKey);
         else next.add(contentKey);
+        // Cap the set — replaced content leaves stale keys behind, and
+        // a long-lived tab across many dream runs would otherwise grow
+        // the stored array without bound (codex review). Insertion
+        // order makes the oldest collapses the ones dropped.
+        if (next.size > 100) {
+          next = new Set([...next].slice(-100));
+        }
         try {
           globalThis.sessionStorage?.setItem(
             `memax_board_cards:${hubId}`,

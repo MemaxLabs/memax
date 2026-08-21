@@ -32,10 +32,17 @@ export function MemoryNavRow({ memoryId, title, ageISO }: MemoryNavRowProps) {
   const router = useRouter();
   const pathname = usePathname();
   const currentHubSlug = getHubSlugForPath(pathname);
+  // On the /full escape route, stay in full-page mode: pushing the
+  // bare memory URL from here would be caught by the @panel intercept
+  // and open a PANEL on top of the full page (codex review). Suffixing
+  // /full keeps sibling navigation full-page-to-full-page.
+  const fullSuffix = pathname.endsWith("/full") ? "/full" : "";
   return (
     <button
       onClick={() =>
-        router.push(buildMemoryDetailPath(currentHubSlug, memoryId))
+        router.push(
+          buildMemoryDetailPath(currentHubSlug, memoryId) + fullSuffix,
+        )
       }
       className="touch-no-hover flex w-full cursor-pointer items-center gap-2 border-t border-border/30 px-4 py-2.5 text-left transition-colors hover:bg-surface-1 first:border-t-0"
     >

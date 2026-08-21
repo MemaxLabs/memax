@@ -382,6 +382,9 @@ export function TopicGrid() {
                 hubId={hubFilter}
                 topicPathLookup={topicPathLookup}
                 filterStorageKey={recentFilterStorageKey}
+                defaultViewMode={
+                  activeHub?.hub.hub_type === "team" ? "rows" : "cards"
+                }
                 showHeaderLabel
                 t={t}
                 interpolate={interpolate}
@@ -568,6 +571,7 @@ export function RecentSection({
   hubId,
   topicPathLookup = new Map(),
   filterStorageKey,
+  defaultViewMode = "cards",
   showHeaderLabel = true,
   t,
   interpolate,
@@ -577,6 +581,13 @@ export function RecentSection({
   hubId?: string;
   topicPathLookup?: Map<string, { id?: string; name: string; icon?: string }[]>;
   filterStorageKey: string;
+  /**
+   * View mode when the user hasn't chosen one. Team hubs default to
+   * "rows" — a shared feed is scanned like a log, and one member's
+   * burst of pushes as a wall of cards buries everyone else's; the
+   * personal hub keeps "cards". An explicit toggle always wins.
+   */
+  defaultViewMode?: "cards" | "rows";
   showHeaderLabel?: boolean;
   t: ReturnType<typeof useLocale>["t"];
   interpolate: ReturnType<typeof useInterpolate>;
@@ -624,12 +635,12 @@ export function RecentSection({
   // follow-up: user wants the row view brought back as an option.
   const viewModeStorageKey = `${filterStorageKey}.viewMode`;
   const [viewMode, setViewMode] = useState<"cards" | "rows">(() => {
-    if (typeof globalThis.localStorage === "undefined") return "cards";
+    if (typeof globalThis.localStorage === "undefined") return defaultViewMode;
     try {
       const saved = localStorage.getItem(viewModeStorageKey);
-      return saved === "rows" ? "rows" : "cards";
+      return saved === "rows" || saved === "cards" ? saved : defaultViewMode;
     } catch {
-      return "cards";
+      return defaultViewMode;
     }
   });
   const setViewModePersisted = useCallback(
@@ -660,12 +671,13 @@ export function RecentSection({
     if (typeof globalThis.localStorage === "undefined") return;
     try {
       const saved = localStorage.getItem(viewModeStorageKey);
-      const next: "cards" | "rows" = saved === "rows" ? "rows" : "cards";
+      const next: "cards" | "rows" =
+        saved === "rows" || saved === "cards" ? saved : defaultViewMode;
       setViewMode((prev) => (prev === next ? prev : next));
     } catch {
       // localStorage unavailable — keep current.
     }
-  }, [viewModeStorageKey]);
+  }, [viewModeStorageKey, defaultViewMode]);
 
   useEffect(() => {
     const shouldExpand = consumeRecentExpandOnArrival(hubId);

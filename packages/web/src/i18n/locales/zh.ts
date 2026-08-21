@@ -459,7 +459,7 @@ export const zh: Translations = {
     connectAgents: "连接你的 AI 助手们",
     setupLabel: "一条命令，连接所有助手",
     setupDesc:
-      "自动检测已安装的助手，创建独立密钥，配置 MCP + hooks。明天，你的 AI 就会记得今天。",
+      "安装 memax CLI，自动检测已安装的助手，创建独立密钥，配置 MCP + hooks。明天，你的 AI 就会记得今天。",
     promptLabel: "或粘贴到任意 agent 对话里",
     promptTemplate: "帮我连接 memax MCP: {url}",
     altMethods: "其他设置方式",

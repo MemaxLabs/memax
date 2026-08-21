@@ -243,7 +243,7 @@ const SEED_MEMORIES: SeedMemory[] = [
     fileType: "link",
     title: "Connect Claude Code in 30s",
     preview:
-      "npx memax-cli setup --agent claude-code. One command syncs your settings + memories. Memory flows both ways.",
+      "memax setup --only claude-code. One command syncs your settings + memories. Memory flows both ways.",
     actor: { kind: "system", display: "memax" },
     kind: "procedural",
     age: "seed",

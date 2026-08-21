@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "next-themes";
+import Link from "next/link";
 import {
   Moon,
   Sun,
@@ -11,6 +12,7 @@ import {
   Settings,
   Shield,
   BookOpen,
+  Bot,
 } from "lucide-react";
 import { DOCS_URL } from "@/lib/urls";
 import { useMemories, memoriesTotalCount } from "@/hooks/use-memories";
@@ -222,6 +224,17 @@ export function SettingsPanel({ open, onClose, anchor = "top-right" }: Props) {
             <Settings className="h-3.5 w-3.5" />
             {t.userSettings.title}
           </button>
+          {/* Connect agents — the setup command is otherwise buried in a
+              Settings disclosure, so users who install and then lose the
+              command have nowhere obvious to find it again. */}
+          <Link
+            href="/agents/connect"
+            onClick={onClose}
+            className={menuItemClass}
+          >
+            <Bot className="h-3.5 w-3.5" />
+            {t.settings.connectAgents}
+          </Link>
           <a
             href={DOCS_URL}
             target="_blank"

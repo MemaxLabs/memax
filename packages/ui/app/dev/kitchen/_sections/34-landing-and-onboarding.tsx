@@ -411,7 +411,7 @@ function CTAOptionsDemo() {
             }}
           >
             <span className="whitespace-nowrap">
-              npx memax-cli@latest login && npx memax-cli@latest setup --all
+              npm i -g memax-cli && memax login && memax setup --all
             </span>
             <Copy className="w-3.5 h-3.5 text-fg-4 shrink-0" />
           </div>
@@ -436,7 +436,7 @@ function CTAOptionsDemo() {
             }}
           >
             <span className="whitespace-nowrap">
-              npx memax-cli@latest login && npx memax-cli@latest setup --all
+              npm i -g memax-cli && memax login && memax setup --all
             </span>
             <Copy className="w-3.5 h-3.5 text-fg-4 shrink-0" />
           </div>
@@ -683,7 +683,7 @@ function CLITrackDemo() {
       <div>
         <StepLabel step={1} label="Set up your agents" />
         <TerminalBlock
-          command="npx memax-cli@latest login && npx memax-cli@latest setup --all"
+          command="npm i -g memax-cli && memax login && memax setup --all"
           output="Configured: Claude Code, Cursor, Copilot, Windsurf"
         />
         <p className="text-[12px] text-fg-4 mt-1.5 ml-7">
@@ -1813,7 +1813,7 @@ function AgentsModalDemo() {
                 <div className="flex items-center gap-2 px-4 py-3">
                   <Terminal className="w-3.5 h-3.5 text-fg-4" />
                   <code className="flex-1 text-[13px] font-mono text-fg-1 truncate">
-                    npx memax-cli@latest setup --all
+                    npm i -g memax-cli && memax setup --all
                   </code>
                   <button
                     type="button"
@@ -2434,7 +2434,7 @@ function FastPathTimelineDemo() {
     {
       time: "0:00",
       icon: Terminal,
-      title: "npx memax-cli login",
+      title: "memax login",
       detail: "GitHub OAuth. 10 seconds.",
       tone: "user",
     },
@@ -3893,10 +3893,10 @@ export function LandingAndOnboardingSection() {
 
       <DemoCard label="34-fast-path. Silent ambient onboarding (CLI → aha moment)">
         <p className="text-[12px] text-fg-2 mb-1">
-          For developers who run{" "}
-          <span className="font-mono">npx memax-cli setup</span> and close the
-          terminal, the aha moment happens ambiently the next time they open an
-          AI agent and the hook injects context. No guided tour required.
+          For developers who run <span className="font-mono">memax setup</span>{" "}
+          and close the terminal, the aha moment happens ambiently the next time
+          they open an AI agent and the hook injects context. No guided tour
+          required.
         </p>
         <p className="text-[12px] text-fg-3 mb-4">
           The first web app visit is{" "}
@@ -3994,7 +3994,7 @@ export function LandingAndOnboardingSection() {
                 Two-speed onboarding: fast path for CLI, inline for web.
               </span>{" "}
               CLI users who complete{" "}
-              <span className="font-mono">npx memax-cli setup</span> skip the
+              <span className="font-mono">memax setup</span> skip the
               welcome/preference/track cards entirely — first-run detection
               hides them if the user already has imported memories on first
               login. Their aha moment is ambient (the next agent session shows

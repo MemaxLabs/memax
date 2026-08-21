@@ -2,7 +2,8 @@
 
 /**
  * BOARD_SHELF_RULES coverage: the useShelfExpansion state machine
- * (R1 expanded default, R6 manual override persists per session) plus
+ * (R1 embedded-collapsed default, R6 manual override persists per
+ * session) plus
  * the BoardSlotDeck ↻ cycle.
  *
  * R2/R5 were deleted with the 2026-08 R1 revision — auto-expand only
@@ -90,20 +91,20 @@ describe("useShelfExpansion (BOARD_SHELF_RULES)", () => {
     return renderHook(() => useShelfExpansion({ hubId: "h1", enabled: true }));
   }
 
-  it("R1: expanded by default on a fresh visit", () => {
+  it("R1: the embedded shelf is collapsed by default on a fresh visit", () => {
     const { result } = mount();
-    expect(result.current.expanded).toBe(true);
+    expect(result.current.expanded).toBe(false);
   });
 
-  it("R6: a manual collapse persists across a remount in the session", () => {
+  it("R6: a manual expand persists across a remount in the session", () => {
     const first = mount();
-    act(() => first.result.current.setExpanded(false));
-    expect(first.result.current.expanded).toBe(false);
+    act(() => first.result.current.setExpanded(true));
+    expect(first.result.current.expanded).toBe(true);
     first.unmount();
     // A remount in the same session honors the stored choice instead of
-    // re-applying the expanded default.
+    // re-applying the collapsed default.
     const second = mount();
-    expect(second.result.current.expanded).toBe(false);
+    expect(second.result.current.expanded).toBe(true);
   });
 });
 

@@ -89,9 +89,18 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(STORAGE_KEY, l);
   }, []);
 
-  // Same local behavior; a separate identity so LocaleServerSync can
-  // distinguish "user chose" from "server said" (see interface note).
-  const applyServerLocale = setLocale;
+  // Server-synced values set STATE ONLY — never localStorage. If the
+  // sync wrote localStorage, a synced value would be indistinguishable
+  // from an explicit device choice, and clearing the server preference
+  // ("" via PATCH) would get silently undone by the migration effect
+  // re-uploading the synced value it mistook for a user choice
+  // (adversarial review C1). The cost is one extra language swap on
+  // cold load for server-set users (localStorage stays on the last
+  // EXPLICIT choice), which the sync corrects as soon as settings
+  // resolve — same class of late swap the provider already has.
+  const applyServerLocale = useCallback((l: Locale) => {
+    setLocaleState(l);
+  }, []);
 
   return (
     <LocaleContext.Provider

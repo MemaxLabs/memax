@@ -34,7 +34,7 @@ export interface Settings extends SDKSettings {
   dev_flags?: DevFlagsSettings;
 }
 
-export function useSettings(opts?: { enabled?: boolean }) {
+export function useSettings() {
   return useQuery<Settings>({
     queryKey: ["settings"],
     queryFn: async () =>
@@ -43,7 +43,6 @@ export function useSettings(opts?: { enabled?: boolean }) {
       ),
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
-    enabled: opts?.enabled ?? true,
   });
 }
 

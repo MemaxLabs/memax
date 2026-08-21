@@ -965,9 +965,26 @@ func (e *Engine) buildNextUpSlot(
 		Payload: mustMarshalPayload(model.BoardNextUpPayload{
 			Description: strings.Join(titles, " · "),
 			Items:       items,
-			SourceLang:  detectSourceLang(strings.Join(titles, " ")),
+			// Titles are often English imperatives ("Fix the deploy
+			// config") even in Chinese prose — the why lines are
+			// where the prose language actually shows, so both feed
+			// the detector.
+			SourceLang: detectSourceLang(nextUpProseSample(items)),
 		}),
 	}
+}
+
+// nextUpProseSample joins the prose-bearing parts of nextup items for
+// language detection: titles plus why lines.
+func nextUpProseSample(items []model.BoardNextUpItem) string {
+	parts := make([]string, 0, len(items)*2)
+	for _, item := range items {
+		parts = append(parts, item.Title)
+		if item.Why != "" {
+			parts = append(parts, item.Why)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // isWowKindForHub reports whether a kind belongs to this hub's

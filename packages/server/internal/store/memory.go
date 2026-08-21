@@ -3362,6 +3362,26 @@ func (s *InMemoryStore) UpsertBoardSlot(slot *model.BoardSlot) error {
 				ContentProducedAt: existing.ContentUpdatedAt,
 				ArchivedAt:        now,
 			})
+			// Prune to the same per-slot cap Postgres enforces —
+			// without this the two stores diverge and tests can't
+			// observe cap behavior (adversarial review).
+			perSlot := 0
+			kept := s.boardSlotHistory[:0]
+			for i := len(s.boardSlotHistory) - 1; i >= 0; i-- {
+				v := s.boardSlotHistory[i]
+				if v.BoardID == existing.BoardID && v.SlotKey == existing.SlotKey {
+					perSlot++
+					if perSlot > 20 {
+						continue
+					}
+				}
+				kept = append(kept, v)
+			}
+			// kept is reversed (newest first) — restore append order.
+			for i, j := 0, len(kept)-1; i < j; i, j = i+1, j-1 {
+				kept[i], kept[j] = kept[j], kept[i]
+			}
+			s.boardSlotHistory = kept
 		}
 	} else {
 		s.boardSeq++

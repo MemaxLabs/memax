@@ -194,9 +194,10 @@ export function SettingsPanel({ open, onClose, anchor = "top-right" }: Props) {
                   setLocale(next);
                   // Persist the choice server-side so agentic output
                   // (board synthesis etc.) follows it and other
-                  // devices converge. Optimistic-local either way —
-                  // a failed PATCH keeps the UI in the chosen
-                  // language for this session.
+                  // devices converge. On PATCH failure the settings
+                  // cache rolls back and LocaleServerSync snaps the
+                  // UI back to the server value (plus an error
+                  // toast) — the toggle is server-authoritative.
                   updateSettings.mutate({ locale: next });
                 }}
                 className="p-1.5 rounded-lg text-fg-3 hover:text-fg-2 hover:bg-surface-2 transition-colors cursor-pointer text-[13px] font-medium"

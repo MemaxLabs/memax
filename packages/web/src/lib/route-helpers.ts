@@ -90,7 +90,7 @@ export function isBrainViewRoute(pathname: string): boolean {
  * isChatSurfaceRoute — true on routes where the new chat surface
  * (Phase 3.7c) takes over the page. Today that's `/brain[/...]`
  * which renders <ChatBrainView />. The chat surface owns its own
- * composer, so the global bar + ScanRestButton FAB are suppressed
+ * composer, so the global bar is suppressed
  * on these routes (option A from the chat-integration plan): no
  * competing text inputs, no FAB redirecting users away from chat.
  *

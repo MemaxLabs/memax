@@ -491,6 +491,7 @@ function WhoKnowsBody({ slot }: BoardKindBodyProps) {
 registerBoardKind("dreamlog", DreamlogBody, {
   purpose: (t) => t.board.dreamlogPurpose,
   strip: (_slot, t) => ({ label: t.board.kindDreamlog }),
+  temporality: "stateful",
 });
 registerBoardKind("echo", EchoBody, {
   purpose: (t) => t.board.echoPurpose,
@@ -522,6 +523,7 @@ registerBoardKind("nextup", NextUpBody, {
   strip: (slot, t) => ({ label: t.board.kindNextup, detail: slot.title }),
   actions: { ack: (t) => t.board.nextupAck },
   feedback: true,
+  temporality: "stateful",
 });
 registerBoardKind("decision_gate", DecisionGateBody, {
   purpose: (t) => t.board.gatePurpose,
@@ -547,4 +549,5 @@ registerBoardKind("who_knows", WhoKnowsBody, {
   purpose: (t) => t.board.whoKnowsPurpose,
   strip: (slot, t) => ({ label: t.board.kindWhoKnows, detail: slot.title }),
   feedback: true,
+  temporality: "stateful",
 });

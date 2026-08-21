@@ -10,7 +10,7 @@ import { queryClient } from "@/lib/query-client";
 import { getHubDisplayName } from "@/lib/hub-display";
 import { TopicIcon } from "@/components/features/topic/topic-icon";
 import { cn } from "@memaxlabs/ui";
-import { ArrowRight, Users, ChevronLeft, Check } from "lucide-react";
+import { ArrowRight, Users, ChevronLeft, Check, Search } from "lucide-react";
 
 /* ── Types ── */
 
@@ -84,6 +84,7 @@ export function DrillDownTree({
   const [direction, setDirection] = useState<"forward" | "back">("forward");
   const [fetchingHubId, setFetchingHubId] = useState<string | null>(null);
   const [showHubs, setShowHubs] = useState(false);
+  const [query, setQuery] = useState("");
 
   const listRef = useRef<HTMLDivElement>(null);
   const keyboardNavigationRef = useRef(false);
@@ -151,19 +152,58 @@ export function DrillDownTree({
           )
         : (current?.label ?? t.topics.title);
 
+  // Search flattens the WHOLE forest, not the level you happen to be
+  // standing in. A drill-down that only filters its current level is
+  // useless for the case that motivates search — a topic buried three
+  // levels down whose path you don't remember. Matches therefore carry
+  // their ancestry so a bare name like "hk" is still identifiable.
+  const { searchMatches, pathById } = useMemo(() => {
+    const matches: TopicTree[] = [];
+    const paths = new Map<string, string>();
+    const q = query.trim().toLowerCase();
+    const walk = (nodes: readonly TopicTree[], trail: string[]) => {
+      for (const node of nodes) {
+        if (node.id === excludeTopicId) continue;
+        if (q !== "" && node.name.toLowerCase().includes(q)) {
+          matches.push(node);
+          paths.set(node.id, trail.join(" / "));
+        }
+        if (node.children.length > 0)
+          walk(node.children, [...trail, node.name]);
+      }
+    };
+    if (q !== "") {
+      // The hub level's items ARE the whole forest for this hub, so
+      // search stays correct no matter how deep the user has drilled.
+      walk(stack.find((level) => level.hubId)?.items ?? [], []);
+    }
+    return { searchMatches: matches, pathById: paths };
+  }, [query, excludeTopicId, stack]);
+
+  const isSearching = query.trim() !== "";
+
   const visibleItems = useMemo(() => {
-    if (isAtHubs || !current?.items) return [];
+    if (isAtHubs) return [];
+    if (isSearching) return searchMatches;
+    if (!current?.items) return [];
     return excludeTopicId
       ? current.items.filter((t) => t.id !== excludeTopicId)
       : current.items;
-  }, [isAtHubs, current, excludeTopicId]);
+  }, [isAtHubs, isSearching, searchMatches, current, excludeTopicId]);
 
   const itemCount = isAtHubs ? hubs.length : visibleItems.length;
 
+  // Reset the cursor when the visible set changes underneath it —
+  // drilling a level, or narrowing the search. Keeping index 3 while
+  // the list shrinks to two rows would leave the highlight nowhere.
   useEffect(() => {
     setFocusedIndex(0);
-    setVisualFocusIndex(null);
-  }, [stack.length]);
+    // While searching, the cursor must be VISIBLE: Enter commits
+    // visibleItems[focusedIndex], which is a real move. Leaving the
+    // highlight null showed an unmarked list whose Enter silently
+    // moved the memory into the first match.
+    setVisualFocusIndex(query.trim() === "" ? null : 0);
+  }, [stack.length, query]);
 
   useEffect(() => {
     if (!keyboardNavigationRef.current) return;
@@ -209,6 +249,10 @@ export function DrillDownTree({
   const drillIntoChildren = useCallback((topic: TopicTree) => {
     if (topic.children.length === 0) return;
     setDirection("forward");
+    // Drilling from a search result means "show me inside this one", so
+    // the query is spent — leaving it on would keep the flat matches
+    // rendered and the new level would never appear.
+    setQuery("");
     setStack((s) => [...s, { label: topic.name, items: topic.children }]);
   }, []);
 
@@ -348,6 +392,14 @@ export function DrillDownTree({
           break;
         case "Escape":
           e.preventDefault();
+          // Stop where it is consumed. Hosts listen for Escape too —
+          // the batch toolbar on its shell, base-ui's popover dismiss,
+          // the mobile modal on window — and none of them check
+          // defaultPrevented. Without this, one Escape both went back a
+          // level AND tore down the whole picker, so "back" was never
+          // observable outside jsdom. (batch-toolbar's comment already
+          // documented this contract; it just wasn't true yet.)
+          e.stopPropagation();
           if (canGoBack) goBack();
           else onClose?.();
           break;
@@ -406,7 +458,13 @@ export function DrillDownTree({
   );
 
   return (
-    <div onKeyDown={handleKeyDown}>
+    // flex column + min-h-0 so the list below claims exactly the space
+    // the back button and any wrapper chrome leave behind. The old
+    // layout gave the list a fixed pixel height that call sites had to
+    // hand-compute against the popover cap; the back button only exists
+    // once you drill in, so every call site's arithmetic was short by
+    // its 44px and the last row was clipped outside the popover.
+    <div onKeyDown={handleKeyDown} className="flex min-h-0 flex-col">
       {/* Back button */}
       {canGoBack && (
         <button
@@ -422,13 +480,64 @@ export function DrillDownTree({
         </button>
       )}
 
+      {/* Search — above the back button because it is level-agnostic:
+          back moves within the hierarchy, search ignores it entirely.
+          Only in select mode; browse mode is the mobile tree, where the
+          page's own search already covers this. */}
+      {mode === "select" && !isAtHubs && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border/30 px-3 py-2">
+          <Search className="h-3.5 w-3.5 shrink-0 text-fg-4" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t.topics.searchTopicsPlaceholder}
+            aria-label={t.topics.searchTopicsPlaceholder}
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-fg-1 placeholder:text-fg-4 focus:outline-none"
+            onKeyDown={(e) => {
+              // The list owns ↑↓/Enter — preventDefault stops the caret
+              // from moving but lets the event bubble to handleKeyDown,
+              // so typing and navigating share one keyboard model.
+              if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                e.preventDefault();
+                return;
+              }
+              // Text-editing keys belong to the input, full stop. The
+              // list treats Backspace as "go back a level" and Home/End
+              // as "jump to first/last row", so without this a typo was
+              // literally uncorrectable: Backspace threw you out to the
+              // hub list with the bad query still in the box.
+              if (
+                e.key === "Backspace" ||
+                e.key === "Home" ||
+                e.key === "End"
+              ) {
+                e.stopPropagation();
+                return;
+              }
+              // Escape is two-stage: clear the query first, and only a
+              // second press leaves the level. Otherwise a typo would
+              // throw away the user's place in the tree.
+              if (e.key === "Escape" && query !== "") {
+                e.preventDefault();
+                e.stopPropagation();
+                setQuery("");
+              }
+            }}
+          />
+        </div>
+      )}
+
       {/* List — CSS animation on key change, no framer-motion */}
-      <div className="overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
           key={animKey}
           ref={listRef}
-          className={cn("overflow-y-auto p-1.5", animClass)}
-          style={listHeight ? { height: listHeight } : undefined}
+          className={cn("min-h-0 flex-1 overflow-y-auto p-1.5", animClass)}
+          // listHeight is a CAP, never a fixed size: a short list stays
+          // short instead of rendering a tall empty box, and a long one
+          // stops at the cap with its own scrollbar.
+          style={listHeight ? { maxHeight: listHeight } : undefined}
           role="listbox"
           tabIndex={0}
           aria-label={
@@ -563,8 +672,15 @@ export function DrillDownTree({
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate">{topic.name}</span>
-                        <span className="mt-0.5 block text-[12px] text-fg-4">
-                          {describeSelectTopic(topic)}
+                        <span className="mt-0.5 block truncate text-[12px] text-fg-4">
+                          {isSearching
+                            ? // A match is shown out of context, so its
+                              // ancestry replaces the counts — "hk" alone
+                              // says nothing about WHICH hk you're picking.
+                              [currentHubLabel, pathById.get(topic.id)]
+                                .filter(Boolean)
+                                .join(" / ")
+                            : describeSelectTopic(topic)}
                         </span>
                       </span>
                       {isSelected && (
@@ -645,6 +761,18 @@ export function DrillDownTree({
                   style={{ background: "var(--signature)" }}
                 />
                 <span>{t.topics.loadingHubTopics}</span>
+              </div>
+            ) : isSearching ? (
+              // Zero search matches is its own state — "No topics yet"
+              // (plus the Move-to-hub CTA) would claim the hub is empty
+              // when it's the QUERY that came up dry, and offer a hub
+              // move the user never asked for.
+              <div className="px-3 py-3">
+                <p className="text-[13px] text-fg-3">
+                  {interpolate(t.topics.noSearchResults, {
+                    query: query.trim(),
+                  })}
+                </p>
               </div>
             ) : (
               <div className="px-3 py-3">

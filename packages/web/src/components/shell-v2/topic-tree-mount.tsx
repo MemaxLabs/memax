@@ -45,7 +45,7 @@ export function TopicTreeMount() {
   // no-op resolve that always returns `{ resolvedHubId: null,
   // isSynced: false }`, which we ignore on slug-less paths.
   const { isSynced } = useV2RouteHubSync(slug ?? "");
-  const { visibleExpandedIds, onToggleExpand, activeTopic } =
+  const { visibleExpandedIds, onToggleExpand, onSpringExpand, activeTopic } =
     useTopicTreeController();
   const { data: topicsData } = useTopics();
   const [createTarget, setCreateTarget] = useState<TopicCreateTarget | null>(
@@ -57,6 +57,7 @@ export function TopicTreeMount() {
       <TopicTreeContent
         expandedIds={visibleExpandedIds}
         onToggleExpand={onToggleExpand}
+        onSpringExpand={onSpringExpand}
         activeTopic={activeTopic}
         onCreateTopic={() => setCreateTarget({})}
         onCreateSubtopic={(parentId) =>

@@ -90,6 +90,7 @@ export type {
   Board,
   BoardSlotResolution,
   BoardSlot,
+  BoardSlotVersion,
   BoardWithSlots,
   AgentConfigListResult,
   DeletedAgentConfig,

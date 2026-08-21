@@ -7,6 +7,7 @@ import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider } from "next-themes";
 import { initPostHog } from "@/lib/posthog";
 import { LocaleProvider } from "@/i18n";
+import { LocaleServerSync } from "@/components/features/locale-server-sync";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -22,7 +23,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
         <LocaleProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <LocaleServerSync />
+            {children}
+          </AuthProvider>
         </LocaleProvider>
       </ThemeProvider>
     </QueryClientProvider>

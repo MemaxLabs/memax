@@ -15,6 +15,7 @@ vi.mock("@/i18n", () => ({
       topics: {
         title: "Topics",
         topicLabel: "Topic",
+        searchTopicsPlaceholder: "Search topics",
         movePickerBrowseSubtopics: "Browse subtopics in {name}",
         movePickerTopicWithChildren:
           "Move here · {memories} in this topic · {subtopics} subtopics",
@@ -23,6 +24,8 @@ vi.mock("@/i18n", () => ({
         movePickerEmpty: "Move here",
         loadingHubTopics: "Loading topics...",
         noTopics: "No topics",
+        noSearchResults: 'No topics match "{query}"',
+        moveToHub: "Move to {name}",
       },
       hubs: {
         hubsListLabel: "Hubs",
@@ -53,9 +56,18 @@ vi.mock("@/hooks/use-topics", () => ({
           id: "beta",
           name: "Beta",
           icon: "folder",
-          children: [],
+          children: [
+            {
+              id: "gamma",
+              name: "Gamma-deep",
+              icon: "folder",
+              children: [],
+              memory_count: 2,
+              total_memory_count: 2,
+            },
+          ],
           memory_count: 1,
-          total_memory_count: 1,
+          total_memory_count: 3,
         },
       ],
     },
@@ -133,5 +145,60 @@ describe("DrillDownTree mobile/touch focus behavior", () => {
     expect(
       document.querySelector('[role="option"][aria-selected="true"]'),
     ).toBeNull();
+  });
+});
+
+describe("DrillDownTree search", () => {
+  // The bug this covers: a drill-down shows one level at a time, so a
+  // topic nested under another is unreachable without knowing the path.
+  // Search has to flatten the whole forest, not filter the level.
+  it("finds a nested topic from the root level and shows its path", async () => {
+    render(<DrillDownTree mode="select" onClose={() => {}} />);
+    await screen.findByText("Alpha");
+
+    // Nested topic is NOT visible at the root level.
+    expect(screen.queryByText("Gamma-deep")).toBeNull();
+
+    fireEvent.change(screen.getByPlaceholderText("Search topics"), {
+      target: { value: "gamma" },
+    });
+
+    const row = await screen.findByText("Gamma-deep");
+    // Its ancestry replaces the counts, so the match is identifiable
+    // out of context.
+    expect(row.closest('[role="option"]')?.textContent).toContain("Beta");
+    // Non-matching siblings drop out.
+    expect(screen.queryByText("Alpha")).toBeNull();
+  });
+
+  it("zero matches shows a no-results line, not the empty-hub state", async () => {
+    // "No topics yet" + the Move-to-hub CTA claim the HUB is empty; a
+    // query with no matches is a different fact and must not surface
+    // a hub-move action the user never asked for.
+    render(<DrillDownTree mode="select" onClose={() => {}} />);
+    await screen.findByText("Alpha");
+
+    fireEvent.change(screen.getByPlaceholderText("Search topics"), {
+      target: { value: "zzz-nothing" },
+    });
+
+    await screen.findByText('No topics match "zzz-nothing"');
+    expect(screen.queryByText("No topics")).toBeNull();
+    expect(screen.queryByText(/Move to /)).toBeNull();
+  });
+
+  it("clears the query on Escape before leaving the level", async () => {
+    render(<DrillDownTree mode="select" onClose={() => {}} />);
+    await screen.findByText("Alpha");
+    const input = screen.getByPlaceholderText("Search topics");
+
+    fireEvent.change(input, { target: { value: "gamma" } });
+    await screen.findByText("Gamma-deep");
+
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    // First Escape restores the level instead of closing the picker.
+    await screen.findByText("Alpha");
+    expect((input as HTMLInputElement).value).toBe("");
   });
 });

@@ -12,10 +12,9 @@ export const en = {
   // namespace gymnastics.
   nav: {
     primary: "Primary",
-    expandRail: "Expand navigation rail",
-    collapseRail: "Collapse navigation rail",
     showSecondaryPanel: "Show topic panel",
     hideSecondaryPanel: "Hide topic panel",
+    search: "Search",
     openBar: "Open bar (⌘K)",
     openSettings: "Open settings",
     topicTreeRegion: "Topics",
@@ -873,6 +872,10 @@ export const en = {
     actionDismiss: "Not interested",
     receiptAcked: "Noted",
     receiptDismissed: "Dismissed",
+    archivedSection: "Archived",
+    restore: "Restore",
+    history: "History",
+    historyEmpty: "No earlier versions yet",
     kindTrace: "Traces · last {n} hours",
     kindPulse: "Topic pulse · last {n} days",
     kindActivity: "Activity · last {n}h",
@@ -1450,6 +1453,8 @@ export const en = {
 
   // Topics — knowledge organization
   topics: {
+    searchTopicsPlaceholder: "Search topics",
+    noSearchResults: 'No topics match "{query}"',
     title: "Your Topics",
     titlePersonal: "Your Topics",
     titleTeam: "Topics",

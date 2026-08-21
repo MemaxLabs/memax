@@ -7,6 +7,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type {
+  BoardSlotVersion,
   Board,
   BoardFeedbackVerdict,
   BoardSlot,
@@ -235,6 +236,11 @@ export function useResolveBoardSlot(hubId: string | undefined) {
         slots: data.slots.map((slot): BoardSlot => {
           if (slot.slot_key !== slotKey) return slot;
           if (targetBoardId && slot.board_id !== targetBoardId) return slot;
+          // Reopen is the inverse stamp: back to the live board with
+          // the receipt cleared (the server lands it in "seen").
+          if (action === "reopen") {
+            return { ...slot, state: "seen", resolution: undefined };
+          }
           return {
             ...slot,
             // ack / feedback / choose all land the slot in
@@ -293,5 +299,23 @@ export function useResolveBoardSlot(hubId: string | undefined) {
         void qc.invalidateQueries({ queryKey: boardsQueryKey(hubId) });
       }
     },
+  });
+}
+
+/**
+ * A slot's archived content versions (工单 8 — stateful cards keep a
+ * readable timeline). Fetched lazily: `enabled` only when the 历史
+ * disclosure is open, so the board GET stays one request.
+ */
+export function useSlotHistory(
+  hubId: string | undefined,
+  slotKey: string,
+  enabled: boolean,
+) {
+  return useQuery<{ versions: BoardSlotVersion[] }>({
+    queryKey: ["board-slot-history", hubId, slotKey],
+    queryFn: () => getMemaxClient().boards.slotHistory(hubId!, slotKey),
+    enabled: enabled && !!hubId,
+    staleTime: 5 * 60 * 1000,
   });
 }

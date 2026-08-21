@@ -74,6 +74,8 @@ function TraceAgentSection({ agent }: { agent: TraceAgent }) {
   );
   const row = (
     <BoardAgentRow
+      expandable={items.length > 0}
+      expanded={open}
       dotColor={identity?.color}
       title={pluralize(
         t.board.traceCountOne,
@@ -190,6 +192,7 @@ function ActivityBody({ slot }: BoardKindBodyProps) {
 // collapses to one line and only opens when asked.
 registerBoardKind("activity", ActivityBody, {
   purpose: (t) => t.board.activityPurpose,
+  temporality: "stateful",
   strip: (slot, t) =>
     stripFromPayload(
       t.board.stripActivity,

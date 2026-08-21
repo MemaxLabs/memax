@@ -14,10 +14,9 @@ export const zh: Translations = {
   },
   nav: {
     primary: "主导航",
-    expandRail: "展开导航栏",
-    collapseRail: "收起导航栏",
     showSecondaryPanel: "显示话题面板",
     hideSecondaryPanel: "收起话题面板",
+    search: "搜索",
     openBar: "打开输入栏 (⌘K)",
     openSettings: "打开设置",
     topicTreeRegion: "话题",
@@ -793,6 +792,10 @@ export const zh: Translations = {
     actionDismiss: "不关心",
     receiptAcked: "已收下",
     receiptDismissed: "已略过",
+    archivedSection: "已归档",
+    restore: "恢复",
+    history: "历史",
+    historyEmpty: "还没有旧版本",
     kindTrace: "行迹 · 过去 {n} 小时",
     kindPulse: "项目脉搏 · 近 {n} 天",
     kindActivity: "动静 · 过去 {n} 小时",
@@ -1322,6 +1325,8 @@ export const zh: Translations = {
   },
 
   topics: {
+    searchTopicsPlaceholder: "搜索主题",
+    noSearchResults: "没有匹配「{query}」的主题",
     title: "你的主题",
     titlePersonal: "你的主题",
     titleTeam: "主题",

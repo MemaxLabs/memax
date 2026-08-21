@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -34,6 +35,7 @@ import {
   useHubBoard,
   useHubBoards,
   useResolveBoardSlot,
+  useSlotHistory,
 } from "@/hooks/use-board";
 import {
   useNotificationDismiss,
@@ -67,6 +69,7 @@ import {
   boardKindOptions,
   boardKindPurpose,
   boardKindStripSummary,
+  boardKindTemporality,
   renderBoardSlotBody,
   slotContentTime,
 } from "./board-kind-registry";
@@ -75,6 +78,11 @@ import {
 import "./board-kinds";
 
 type BoardResolveAction = "ack" | "dismiss" | "feedback";
+
+// useLayoutEffect warns during SSR; the shelf only exists client-side,
+// but the module is imported into a server-rendered tree.
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 /** Per-hub sessionStorage key for the embedded shelf's expand state. */
 function shelfStorageKey(hubId: string) {
@@ -87,17 +95,15 @@ function shelfStorageKey(hubId: string) {
  * is implemented by useShelfExpansion + the shelf/card handlers; when
  * changing one, change both.
  *
- *   R1  The shelf is COLLAPSED by default on every fresh visit.
- *   R2  Auto-expand ONLY when something needs the user: a pending 等你
- *       decision or a fresh highlight. Ambient intelligence (slots)
- *       never auto-expands the shelf.
+ *   R1  The shelf is EXPANDED by default on every fresh visit (2026-08
+ *       revision). Collapsing it is a choice the reader makes, not a
+ *       state they have to undo before they can see anything.
  *   R3  Tile tap = expand the shelf in place AND open that card.
  *   R4  Resolving a card while expanded swaps it to a receipt INLINE —
  *       no reflow jump, nothing disappears.
- *   R5  When the LAST live card resolves, the shelf auto-collapses
- *       back after a beat (~800ms, spring) — the board exhales.
- *   R6  Manual 展开/收起 always overrides R2/R5 and persists per hub
- *       for the SESSION (sessionStorage; a fresh visit re-applies R1).
+ *   R6  Manual 展开/收起 overrides R1 and persists per hub for the
+ *       SESSION (sessionStorage; a fresh visit re-applies R1).
+ *
  *   R7  Every live tile/card has a quiet dismiss: tiles via the
  *       hover/long-press ×, expanded cards via the 不关心 verb. Both
  *       call resolve action="dismiss" (slots) or the notification
@@ -105,72 +111,65 @@ function shelfStorageKey(hubId: string) {
  *       shelf immediately and lives on only as a receipt. Decision
  *       tiles (等你) are the exception: a decision needs an answer,
  *       and the server refuses plain dismiss on decision kinds.
+ *
+ * R2 (auto-expand when something needs the user) and R5 (auto-collapse
+ * after the last resolve) were removed with the R1 revision: R2 only
+ * existed to rescue a collapsed default, and R5 would collapse a shelf
+ * that the next visit immediately re-expands — a rule arguing with
+ * itself. Both are gone rather than reconciled.
  */
 export const BOARD_SHELF_RULES = [
-  "collapsed-by-default",
-  "auto-expand-only-on-decision-or-highlight",
+  "expanded-by-default",
   "tile-tap-expands-and-opens",
   "resolve-swaps-to-receipt-inline",
-  "auto-collapse-after-last-resolve",
   "manual-toggle-overrides-and-persists-per-session",
   "tiles-dismiss-optimistically-except-decisions",
 ] as const;
 
 /**
- * useShelfExpansion — the state machine behind BOARD_SHELF_RULES R1,
- * R2, R5 and R6. Exported for tests.
+ * useShelfExpansion — the state machine behind BOARD_SHELF_RULES R1
+ * and R6. Exported for tests.
  *
- * `manual` means the CURRENT state was chosen by the user (toggle or
- * tile tap) this session — automatic transitions only ever apply on
- * top of the default state, never over a user choice.
+ * With R1 flipped to expanded-by-default there is nothing left to
+ * automate: the shelf is open unless the reader closed it this
+ * session. `manual` survives only to record that a stored choice was
+ * found, which keeps the toggle honest across remounts.
  */
 export function useShelfExpansion({
   hubId,
   enabled,
-  needsAttention,
-  liveCount,
 }: {
   hubId: string;
   /** False on the /pulse page — the full surface never collapses. */
   enabled: boolean;
-  /** R2: a pending 等你 decision or a fresh highlight exists. */
-  needsAttention: boolean;
-  /** R5: live (unresolved) cards across all bands. */
-  liveCount: number;
 }) {
-  const [expanded, setExpandedState] = useState(false);
-  const [manual, setManual] = useState(false);
-  // The auto rules (R2/R5) must not race the sessionStorage read —
-  // they only engage once the stored choice (or its absence) is known,
-  // or a stored 收起 would be overridden by auto-expand on remount.
-  const [hydrated, setHydrated] = useState(false);
+  const [expanded, setExpandedState] = useState(true);
 
-  // R1 + R6: default collapsed; a stored per-session choice wins.
-  // sessionStorage is read in an effect (not the initializer) so the
-  // SSR and first client render agree.
-  useEffect(() => {
+  // R1 + R6: default expanded; a stored per-session choice wins.
+  //
+  // Read in a layout effect so a stored 收起 is applied BEFORE the
+  // browser paints. While the default was collapsed this could sit in a
+  // plain effect — guessing "collapsed" and correcting to expanded is
+  // cheap. Flipping R1 inverted that: guessing "expanded" for someone
+  // who collapsed the shelf painted the full card stack and then
+  // snapped it shut, yanking the memories list up by several hundred
+  // px on every return to the page.
+  useIsomorphicLayoutEffect(() => {
     if (!enabled) return;
     try {
       const stored = globalThis.sessionStorage?.getItem(shelfStorageKey(hubId));
-      if (stored === "1" || stored === "0") {
-        setExpandedState(stored === "1");
-        setManual(true);
-      } else {
-        setExpandedState(false);
-        setManual(false);
-      }
+      setExpandedState(
+        stored === "1" || stored === "0" ? stored === "1" : true,
+      );
     } catch {
-      setExpandedState(false);
-      setManual(false);
+      setExpandedState(true);
     }
-    setHydrated(true);
   }, [hubId, enabled]);
 
   /** Manual toggle / tile tap — R3, R6. */
   const setExpanded = useCallback(
     (next: boolean) => {
       setExpandedState(next);
-      setManual(true);
       try {
         globalThis.sessionStorage?.setItem(
           shelfStorageKey(hubId),
@@ -183,24 +182,6 @@ export function useShelfExpansion({
     [hubId],
   );
 
-  // R2: auto-expand only for things blocked on the user.
-  useEffect(() => {
-    if (!enabled || !hydrated || manual || !needsAttention) return;
-    setExpandedState(true);
-  }, [enabled, hydrated, manual, needsAttention]);
-
-  // R5: last live card resolved → collapse back after a beat.
-  const prevLiveCount = useRef(liveCount);
-  useEffect(() => {
-    const prev = prevLiveCount.current;
-    prevLiveCount.current = liveCount;
-    if (!enabled || !hydrated || manual) return;
-    if (prev > 0 && liveCount === 0) {
-      const timer = window.setTimeout(() => setExpandedState(false), 800);
-      return () => window.clearTimeout(timer);
-    }
-  }, [enabled, hydrated, manual, liveCount]);
-
   return { expanded, setExpanded };
 }
 
@@ -208,9 +189,9 @@ export function useShelfExpansion({
  * Where the board is mounted.
  *
  *   - "section" — embedded in the memories page under the hub header.
- *     Collapsed by default into a ONE-ROW horizontal tile shelf
- *     (BoardShelf); a header toggle expands it in place to the full
- *     vertical card layout, per BOARD_SHELF_RULES. Stays zero-height
+ *     Expanded by default to the full vertical card layout; a header
+ *     toggle collapses it in place to a ONE-ROW horizontal tile shelf
+ *     (BoardShelf), per BOARD_SHELF_RULES. Stays zero-height
  *     when the hub has nothing, so card-less hubs keep the exact
  *     pre-board layout. No composer, no receipts strip: those belong
  *     to the full surface, one click away via 查看全部.
@@ -227,9 +208,12 @@ export type BoardSurface = "section" | "page";
  * "cards eat the page": banding. The 等你 band (decisions merged from
  * notifications — plan 25 P4) comes first because it is the only band
  * that is actually blocked on the user. Then the system board's slots:
- * only the FIRST live card renders expanded (the hero); every other
- * slot collapses to a one-line SlotStrip that expands on tap and can
- * be collapsed again. Same-kind live slots render as ONE deck with a
+ * the FIRST live card renders expanded (the hero); every other slot
+ * collapses to a one-line SlotStrip that expands on tap and can be
+ * collapsed again. Making every live card open by default needs an
+ * override keyed to CONTENT rather than to slot_key (slots are reused
+ * across dream runs) plus a freeze on the resolve transition — see the
+ * 2026-08 revert. Same-kind live slots render as ONE deck with a
  * ↻ cycle. Resolved receipts always render as strips. Finally the
  * 最近 strip — things that already happened.
  */
@@ -347,16 +331,15 @@ export function BoardView({
     () => slots.filter((s) => s.state === "fresh" || s.state === "seen"),
     [slots],
   );
+  const archivedSlots = useMemo(
+    () =>
+      slots.filter((s) => s.state === "resolved" || s.state === "dismissed"),
+    [slots],
+  );
 
-  // Embedded shelf expansion — BOARD_SHELF_RULES R1/R2/R5/R6.
+  // Embedded shelf expansion — BOARD_SHELF_RULES R1/R6.
   const { expanded: shelfExpanded, setExpanded: setShelfExpanded } =
-    useShelfExpansion({
-      hubId,
-      enabled: !isPage,
-      needsAttention: waiting.length > 0 || highlights.length > 0,
-      liveCount:
-        waiting.length + highlights.length + liveSlots.length + customLiveCount,
-    });
+    useShelfExpansion({ hubId, enabled: !isPage });
 
   // One impression event per board load (not per re-render).
   const trackedFor = useRef<string | null>(null);
@@ -377,11 +360,8 @@ export function BoardView({
     (slotKey: string, willOpen: boolean) => {
       setOpenSlots((prev) => {
         const next = new Set(prev);
-        if (willOpen) {
-          next.add(slotKey);
-        } else {
-          next.delete(slotKey);
-        }
+        if (willOpen) next.add(slotKey);
+        else next.delete(slotKey);
         return next;
       });
       if (willOpen) {
@@ -511,6 +491,11 @@ export function BoardView({
       onCopy={() => void cardActions.copyForAgent(slot)}
       copied={cardActions.copiedSlotKey === slot.slot_key}
       continuing={cardActions.isContinuing}
+      history={
+        boardKindTemporality(slot.kind) === "stateful" ? (
+          <SlotHistoryDisclosure hubId={hubId} slotKey={slot.slot_key} />
+        ) : undefined
+      }
     />
   );
 
@@ -622,8 +607,12 @@ export function BoardView({
       {!collapsedShelf &&
         slots.map((slot) => {
           const isLive = slot.state === "fresh" || slot.state === "seen";
-          if (isLive && groupedMemberKeys.has(slot.slot_key)) return null;
-          const group = isLive ? groupByAnchor.get(slot.slot_key) : undefined;
+          // Terminal cards leave the live flow entirely — they live in
+          // the 已归档 section below (工单 8: dismiss = archive with
+          // undo, not a grey strip forever holding its place in line).
+          if (!isLive) return null;
+          if (groupedMemberKeys.has(slot.slot_key)) return null;
+          const group = groupByAnchor.get(slot.slot_key);
           const entranceIndex = entranceCursor++;
           if (group && group.length > 1) {
             return (
@@ -701,6 +690,24 @@ export function BoardView({
             onDelete={(boardId) => deleteBoard.mutate(boardId)}
           />
         ))}
+
+      {/* ── 已归档 — resolved/dismissed cards, out of the live flow but
+          one tap from coming back (工单 8: dismiss is archive + undo,
+          never data loss). Collapsed to a count until opened. ── */}
+      {!collapsedShelf && archivedSlots.length > 0 ? (
+        <BoardArchivedSection
+          slots={archivedSlots}
+          pending={resolve.isPending}
+          onRestore={(slotKey) => {
+            trackEvent("board_card_action", {
+              hub_id: hubId,
+              slot_key: slotKey,
+              action: "reopen",
+            });
+            resolve.mutate({ slotKey, action: "reopen" });
+          }}
+        />
+      ) : null}
 
       {pageIsEmpty ? (
         <BoardEmptyState
@@ -860,6 +867,7 @@ function BoardSlotEntry({
   onCopy,
   copied,
   continuing,
+  history,
 }: {
   slot: BoardSlot;
   expanded: boolean;
@@ -875,6 +883,8 @@ function BoardSlotEntry({
   onCopy: () => void;
   copied: boolean;
   continuing: boolean;
+  /** 历史 disclosure — provided only for stateful kinds (工单 8). */
+  history?: ReactNode;
 }) {
   const { t } = useLocale();
   const interpolate = useInterpolate();
@@ -994,6 +1004,122 @@ function BoardSlotEntry({
         </div>
       ) : null}
       {renderBoardSlotBody(slot)}
+      {history}
     </BoardCard>
+  );
+}
+
+/**
+ * SlotHistoryDisclosure — the 历史 affordance on stateful cards. A
+ * quiet toggle; open fetches the slot's archived versions (lazy — the
+ * board GET stays one request) and lists them newest-first. Old
+ * versions are read-only context, not cards: title + date only.
+ */
+function SlotHistoryDisclosure({
+  hubId,
+  slotKey,
+}: {
+  hubId: string | undefined;
+  slotKey: string;
+}) {
+  const { t, locale } = useLocale();
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useSlotHistory(hubId, slotKey, open);
+  const versions = data?.versions ?? [];
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="cursor-pointer text-[12px] font-medium text-fg-3 transition-colors hover:text-fg-2"
+      >
+        {t.board.history}
+      </button>
+      {open ? (
+        isLoading ? (
+          <p className="mt-1.5 text-[12.5px] text-fg-3">…</p>
+        ) : versions.length === 0 ? (
+          <p className="mt-1.5 text-[12.5px] text-fg-3">
+            {t.board.historyEmpty}
+          </p>
+        ) : (
+          <ul className="mt-1.5 flex flex-col gap-1">
+            {versions.map((v) => (
+              <li
+                key={v.id}
+                className="flex items-baseline gap-2 text-[12.5px]"
+              >
+                <span className="shrink-0 tabular-nums text-fg-3">
+                  {new Date(v.content_produced_at).toLocaleDateString(
+                    locale === "zh" ? "zh-CN" : "en-US",
+                    { month: "short", day: "numeric" },
+                  )}
+                </span>
+                <span className="min-w-0 truncate text-fg-2">{v.title}</span>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * BoardArchivedSection — the 已归档 read surface (工单 8). Terminal
+ * cards leave the live flow and land here: a count header, collapsed
+ * by default, each row restorable. Dismiss stops being a one-way
+ * door without keeping grey strips in the middle of the board.
+ */
+export function BoardArchivedSection({
+  slots,
+  pending,
+  onRestore,
+}: {
+  slots: BoardSlot[];
+  pending: boolean;
+  onRestore: (slotKey: string) => void;
+}) {
+  const { t } = useLocale();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex cursor-pointer items-center gap-1.5 px-1 text-[12px] font-medium text-fg-3 transition-colors hover:text-fg-2"
+      >
+        <span>{t.board.archivedSection}</span>
+        <span className="tabular-nums">{slots.length}</span>
+      </button>
+      {open
+        ? slots.map((slot) => (
+            <div
+              key={slot.slot_key}
+              className="flex items-center gap-2 rounded-[14px] border border-border/40 px-4 py-2.5 opacity-80"
+            >
+              <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg-2">
+                {boardKindStripSummary(slot, t).label}
+                {slot.title ? ` · ${slot.title}` : ""}
+              </span>
+              <span className="shrink-0 text-[12px] text-fg-3">
+                {slot.resolution?.action === "dismiss"
+                  ? t.board.receiptDismissed
+                  : t.board.receiptAcked}
+              </span>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => onRestore(slot.slot_key)}
+                className="shrink-0 cursor-pointer text-[12px] font-medium text-fg-3 transition-colors hover:text-fg-1 disabled:opacity-50"
+              >
+                {t.board.restore}
+              </button>
+            </div>
+          ))
+        : null}
+    </div>
   );
 }

@@ -743,6 +743,56 @@ func TestTeamKindsNeverShipOnPersonalHub(t *testing.T) {
 	}
 }
 
+// The language rule is the hybrid contract: prose follows the reader's
+// locale when known, quotes stay verbatim; unset locale falls back to
+// content-dominant language. detectSourceLang records which language
+// the prose actually came out in, so a future translate-on-read path
+// can key on it without regenerating cards.
+func TestBoardSynthesisLanguageRule(t *testing.T) {
+	t.Parallel()
+
+	en := boardSynthesisCoreRulesFor("en")
+	if !strings.Contains(en, "in English") || !strings.Contains(en, "never translate a quote") {
+		t.Fatalf("en rule must direct prose to English and protect quotes, got:\n%s", en)
+	}
+	zh := boardSynthesisCoreRulesFor("zh")
+	if !strings.Contains(zh, "用中文写") || !strings.Contains(zh, "绝不翻译引文") {
+		t.Fatalf("zh rule must direct prose to Chinese and protect quotes, got:\n%s", zh)
+	}
+	unset := boardSynthesisCoreRulesFor("")
+	if !strings.Contains(unset, "dominant language") {
+		t.Fatalf("unset locale must keep the content-dominant fallback, got:\n%s", unset)
+	}
+	// The prompt builders embed the same rule.
+	if !strings.Contains(boardSynthesisSystemPrompt("zh"), "用中文写") {
+		t.Fatal("system prompt must carry the locale rule")
+	}
+	if !strings.Contains(customBoardSystemPrompt(&model.Board{}, "zh"), "用中文写") {
+		t.Fatal("custom board prompt must carry the locale rule")
+	}
+}
+
+func TestDetectSourceLang(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		text string
+		want string
+	}{
+		{"You asked about the webhook retry flow three weeks ago.", "en"},
+		{"三周前你问过 webhook 重试的问题,昨晚有了答案。", "zh"},
+		// Chinese prose keeps Latin technical terms inline — still zh.
+		{"你在 memax-sdk 里定下了 ApiResponse 信封的约定。", "zh"},
+		// A single stray CJK char in English prose is not Chinese.
+		{"The character 梦 appears in the logo.", "en"},
+		{"", "en"},
+	}
+	for _, tc := range cases {
+		if got := detectSourceLang(tc.text); got != tc.want {
+			t.Fatalf("detectSourceLang(%q) = %q, want %q", tc.text, got, tc.want)
+		}
+	}
+}
+
 // The team system prompt is additive and team-only: a personal hub
 // must never be told its memories were written by several people.
 func TestBoardSynthesisSystemPromptTeamContext(t *testing.T) {
@@ -753,12 +803,12 @@ func TestBoardSynthesisSystemPromptTeamContext(t *testing.T) {
 		{UserID: "u3", UserEmail: "ghost@example.com"},
 	}
 
-	personal := boardSynthesisSystemPromptFor(&model.Hub{HubType: "personal"}, members)
-	if personal != boardSynthesisSystemPrompt {
+	personal := boardSynthesisSystemPromptFor(&model.Hub{HubType: "personal"}, members, "")
+	if personal != boardSynthesisSystemPrompt("") {
 		t.Fatal("personal hubs must get the unmodified system prompt")
 	}
 
-	team := boardSynthesisSystemPromptFor(&model.Hub{HubType: model.HubTypeTeam}, members)
+	team := boardSynthesisSystemPromptFor(&model.Hub{HubType: model.HubTypeTeam}, members, "")
 	if !strings.Contains(team, "TEAM HUB CONTEXT") {
 		t.Fatal("team hubs must get the team context paragraph")
 	}
@@ -772,7 +822,7 @@ func TestBoardSynthesisSystemPromptTeamContext(t *testing.T) {
 	// No roster (store failure, or an in-memory store that doesn't
 	// track members) still gets the team framing — owner-id validation
 	// is what actually holds the line.
-	bare := boardSynthesisSystemPromptFor(&model.Hub{HubType: model.HubTypeTeam}, nil)
+	bare := boardSynthesisSystemPromptFor(&model.Hub{HubType: model.HubTypeTeam}, nil, "")
 	if !strings.Contains(bare, "TEAM HUB CONTEXT") || strings.Contains(bare, "Members of this hub") {
 		t.Fatal("a missing roster must degrade to generic team framing")
 	}

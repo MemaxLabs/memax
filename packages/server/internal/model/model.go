@@ -908,6 +908,11 @@ func DefaultSettings() map[string]any {
 		},
 		"notifications_enabled": true,
 		"theme":                 "auto",
+		// UI locale ("en", "zh"). "" = unset: the client falls back to
+		// browser detection. Persisted server-side so agentic output
+		// (board synthesis frames, notifications) can follow the
+		// reader's language without the client re-sending it per call.
+		"locale": "",
 		// Default persona for the memax agent (Agent Chat). "" = none;
 		// otherwise a personas.id. Sessions may override via persona_id.
 		"chat_default_persona_id": "",

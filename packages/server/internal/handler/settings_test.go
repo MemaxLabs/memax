@@ -92,6 +92,42 @@ func TestSettingsUpdatePersistsHubHeaderAuroraMode(t *testing.T) {
 	}
 }
 
+func TestSettingsUpdateLocale(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		want    int
+		persist string // expected stored value when want==200
+	}{
+		{"accepts zh", `{"locale":"zh"}`, http.StatusOK, "zh"},
+		{"accepts en", `{"locale":"en"}`, http.StatusOK, "en"},
+		{"empty clears back to client detection", `{"locale":""}`, http.StatusOK, ""},
+		{"rejects unsupported language", `{"locale":"fr"}`, http.StatusBadRequest, ""},
+		{"rejects non-string", `{"locale":true}`, http.StatusBadRequest, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			testStore := &settingsTestStore{
+				InMemoryStore: store.NewInMemoryStore(),
+				prefs:         map[string]any{},
+			}
+			h := NewSettingsHandler(testStore)
+			req := httptest.NewRequest(http.MethodPatch, "/v1/settings", strings.NewReader(tc.body))
+			req = req.WithContext(context.WithValue(req.Context(), userIDKey, "u1"))
+			rec := httptest.NewRecorder()
+			h.Update(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("expected %d, got %d: %s", tc.want, rec.Code, rec.Body.String())
+			}
+			if tc.want == http.StatusOK {
+				if got := testStore.prefs["locale"]; got != tc.persist {
+					t.Fatalf("expected locale to persist as %q, got %#v", tc.persist, got)
+				}
+			}
+		})
+	}
+}
+
 func TestSettingsUpdatePersistsDevFlags(t *testing.T) {
 	testStore := &settingsTestStore{
 		InMemoryStore: store.NewInMemoryStore(),

@@ -23,6 +23,8 @@ import { getHubDisplayInitial, getHubDisplayName } from "@/lib/hub-display";
 interface TreeContentProps {
   expandedIds: Set<string>;
   onToggleExpand: (id: string) => void;
+  /** Transient drag-scoped expansion (spring-load) — see controller. */
+  onSpringExpand: (id: string) => void;
   activeTopic?: string;
   onCreateTopic?: () => void;
   onCreateSubtopic?: (parentId: string) => void;
@@ -31,6 +33,7 @@ interface TreeContentProps {
 export function TopicTreeContent({
   expandedIds,
   onToggleExpand,
+  onSpringExpand,
   activeTopic,
   onCreateTopic,
   onCreateSubtopic,
@@ -142,6 +145,7 @@ export function TopicTreeContent({
               isMobile={isMobile}
               expandedIds={expandedIds}
               onToggleExpand={onToggleExpand}
+              onSpringExpand={onSpringExpand}
               activeTopic={activeTopic}
               onCreateSubtopic={onCreateSubtopic}
             />

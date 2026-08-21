@@ -194,6 +194,127 @@ func TestBoardsResolveSlotLifecycle(t *testing.T) {
 	}
 }
 
+// Reopen is the undo half of "dismiss = archive, not delete": a
+// terminal card returns to the live board with its receipt cleared,
+// and undoing twice is as safe as resolving twice.
+func TestBoardsReopenSlot(t *testing.T) {
+	s := newBoardsTestStore()
+	s.roles[boardsTestHubID+":u1"] = "member"
+	h := NewBoardsHandler(s)
+	seedBoardSlot(t, s, boardsTestHubID, "hero")
+
+	var resp struct {
+		Data struct {
+			Slot model.BoardSlot `json:"slot"`
+		} `json:"data"`
+	}
+
+	// Dismiss, then undo.
+	rec := httptest.NewRecorder()
+	h.ResolveSlot(rec, boardsResolveRequest(boardsTestHubID, "hero", "u1", `{"action":"dismiss"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dismiss: expected 200, got %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	h.ResolveSlot(rec, boardsResolveRequest(boardsTestHubID, "hero", "u1", `{"action":"reopen"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reopen: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Data.Slot.State != model.BoardSlotStateSeen {
+		t.Fatalf("reopened card must be 'seen' (it has been seen by definition), got %s", resp.Data.Slot.State)
+	}
+	if resp.Data.Slot.Resolution != nil {
+		t.Fatalf("reopen must clear the resolution receipt, got %#v", resp.Data.Slot.Resolution)
+	}
+
+	// Reopening a live card is idempotent — 200 with the current slot.
+	rec = httptest.NewRecorder()
+	h.ResolveSlot(rec, boardsResolveRequest(boardsTestHubID, "hero", "u1", `{"action":"reopen"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("idempotent reopen: expected 200, got %d", rec.Code)
+	}
+
+	// Unknown slot still 404s.
+	rec = httptest.NewRecorder()
+	h.ResolveSlot(rec, boardsResolveRequest(boardsTestHubID, "nope", "u1", `{"action":"reopen"}`))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown slot: expected 404, got %d", rec.Code)
+	}
+}
+
+// Replacing a slot's content archives the outgoing version; a
+// byte-identical rewrite does not. The history endpoint returns the
+// archive newest-first, without the live slot.
+func TestBoardsSlotHistory(t *testing.T) {
+	s := newBoardsTestStore()
+	s.roles[boardsTestHubID+":u1"] = "member"
+	h := NewBoardsHandler(s)
+	board := seedBoardSlot(t, s, boardsTestHubID, "hero")
+
+	historyReq := func() *http.Request {
+		req := httptest.NewRequest(http.MethodGet,
+			"/v1/hubs/"+boardsTestHubID+"/board/slots/hero/history", nil)
+		req.SetPathValue("id", boardsTestHubID)
+		req.SetPathValue("slot_key", "hero")
+		return withTestIdentity(req, "u1")
+	}
+	var resp struct {
+		Data struct {
+			Versions []model.BoardSlotVersion `json:"versions"`
+		} `json:"data"`
+	}
+
+	// No replacement yet — empty history.
+	rec := httptest.NewRecorder()
+	h.SlotHistory(rec, historyReq())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("history: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Data.Versions) != 0 {
+		t.Fatalf("expected empty history before any replacement, got %d", len(resp.Data.Versions))
+	}
+
+	// Identical rewrite: no version minted (idempotent producer retry).
+	if err := s.UpsertBoardSlot(&model.BoardSlot{
+		BoardID: board.ID, SlotKey: "hero", Kind: "trace",
+		Title:   "Claude Code 这周在 3 个仓库里找过部署配置",
+		Payload: json.RawMessage(`{"description":"seeded"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	h.SlotHistory(rec, historyReq())
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if len(resp.Data.Versions) != 0 {
+		t.Fatalf("byte-identical rewrite must not mint a version, got %d", len(resp.Data.Versions))
+	}
+
+	// Real replacement: outgoing content is archived.
+	if err := s.UpsertBoardSlot(&model.BoardSlot{
+		BoardID: board.ID, SlotKey: "hero", Kind: "trace",
+		Title:   "新的一晚,新的发现",
+		Payload: json.RawMessage(`{"description":"night two"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	h.SlotHistory(rec, historyReq())
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if len(resp.Data.Versions) != 1 {
+		t.Fatalf("expected 1 archived version after replacement, got %d", len(resp.Data.Versions))
+	}
+	if resp.Data.Versions[0].Title != "Claude Code 这周在 3 个仓库里找过部署配置" {
+		t.Fatalf("archive must hold the OUTGOING content, got %q", resp.Data.Versions[0].Title)
+	}
+}
+
 func TestBoardsFeedbackRecordsVerdictSnapshot(t *testing.T) {
 	s := newBoardsTestStore()
 	s.roles[boardsTestHubID+":u1"] = "member"

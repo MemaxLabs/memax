@@ -46,6 +46,12 @@ const (
 	BoardSlotActionAck      = "ack"
 	BoardSlotActionDismiss  = "dismiss"
 	BoardSlotActionFeedback = "feedback"
+	// BoardSlotActionReopen undoes a resolve/dismiss: the card returns
+	// to "seen" (it has, by definition, been seen) and the resolution
+	// receipt is cleared. This is the undo half of "dismiss = archive,
+	// not delete" — a terminal state the user can't walk back turns
+	// every mis-tap into data loss.
+	BoardSlotActionReopen = "reopen"
 	// BoardSlotActionChoose resolves a decision gate with one of its
 	// option ids (carried in BoardSlotResolution.Verdict).
 	BoardSlotActionChoose = "choose"
@@ -102,6 +108,24 @@ type BoardSlot struct {
 	// user actions bump UpdatedAt, so only this field can answer
 	// "how long since this card was actually regenerated".
 	ContentUpdatedAt time.Time `json:"content_updated_at"`
+}
+
+// BoardSlotVersion is one archived generation of a slot's content —
+// written by UpsertBoardSlot when a producer replaces a card whose
+// content actually changed. The version timeline is what makes
+// replace-in-place safe for stateful kinds: the new run replaces, the
+// old runs remain readable.
+type BoardSlotVersion struct {
+	ID                string          `json:"id"`
+	BoardID           string          `json:"board_id"`
+	SlotKey           string          `json:"slot_key"`
+	Kind              string          `json:"kind"`
+	Title             string          `json:"title"`
+	Payload           json.RawMessage `json:"payload,omitempty"`
+	CiteMemoryIDs     []string        `json:"cite_memory_ids,omitempty"`
+	DreamRunID        string          `json:"dream_run_id,omitempty"`
+	ContentProducedAt time.Time       `json:"content_produced_at"`
+	ArchivedAt        time.Time       `json:"archived_at"`
 }
 
 // BoardFeedback is the append-only 准/不准 snapshot. It outlives the
@@ -369,6 +393,11 @@ type BoardQuoteRef struct {
 type BoardDreamlogPayload struct {
 	Description string `json:"description,omitempty"`
 	Body        string `json:"body"`
+	// SourceLang is the language the prose was generated in ("en",
+	// "zh"). Recorded so a reader whose locale differs can be served
+	// a translation later without regenerating; absent on slots
+	// written before 2026-08.
+	SourceLang string `json:"source_lang,omitempty"`
 }
 
 // BoardEchoPayload — 回声. Then (the old question) and Now (the new
@@ -378,6 +407,7 @@ type BoardEchoPayload struct {
 	Body        string        `json:"body,omitempty"`
 	Then        BoardQuoteRef `json:"then"`
 	Now         BoardQuoteRef `json:"now"`
+	SourceLang  string        `json:"source_lang,omitempty"`
 }
 
 // BoardWowPayload is the shared shape for thread/openq/pattern/musing:
@@ -386,6 +416,7 @@ type BoardWowPayload struct {
 	Description string          `json:"description,omitempty"`
 	Body        string          `json:"body"`
 	Quotes      []BoardQuoteRef `json:"quotes,omitempty"`
+	SourceLang  string          `json:"source_lang,omitempty"`
 }
 
 // BoardConsensusPayload — 共识缺口. Two members recorded contradictory
@@ -398,6 +429,7 @@ type BoardConsensusPayload struct {
 	Description string          `json:"description,omitempty"`
 	Body        string          `json:"body"`
 	Sides       []BoardQuoteRef `json:"sides"`
+	SourceLang  string          `json:"source_lang,omitempty"`
 }
 
 // BoardWhoKnowsPayload — 谁知道这个. Routing, not insight: Holder is the
@@ -426,6 +458,7 @@ type BoardNextUpItem struct {
 type BoardNextUpPayload struct {
 	Description string            `json:"description,omitempty"`
 	Items       []BoardNextUpItem `json:"items"`
+	SourceLang  string            `json:"source_lang,omitempty"`
 }
 
 // BoardDecisionOption is one choice on a decision gate.

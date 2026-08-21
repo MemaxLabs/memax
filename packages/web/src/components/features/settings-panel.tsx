@@ -20,6 +20,7 @@ import { useHubs } from "@/hooks/use-hubs";
 import { useUsage, hasLimits } from "@/hooks/use-usage";
 import { useLocale } from "@/i18n";
 import { useSettingsDialog } from "@/contexts/settings-dialog-context";
+import { useUpdateSettings } from "@/hooks/use-settings";
 import { getHubDisplayName } from "@/lib/hub-display";
 import { acquireBodyScrollLock } from "@/lib/scroll-lock";
 
@@ -41,6 +42,7 @@ const menuItemClass =
 export function SettingsPanel({ open, onClose, anchor = "top-right" }: Props) {
   const { user, hubs, activeHubId, logout } = useAuth();
   const settingsDialog = useSettingsDialog();
+  const updateSettings = useUpdateSettings();
   const { theme, setTheme } = useTheme();
   const { locale, setLocale, t } = useLocale();
   const { data: memoriesPages } = useMemories();
@@ -189,7 +191,17 @@ export function SettingsPanel({ open, onClose, anchor = "top-right" }: Props) {
                 )}
               </button>
               <button
-                onClick={() => setLocale(locale === "en" ? "zh" : "en")}
+                onClick={() => {
+                  const next = locale === "en" ? "zh" : "en";
+                  setLocale(next);
+                  // Persist the choice server-side so agentic output
+                  // (board synthesis etc.) follows it and other
+                  // devices converge. On PATCH failure the settings
+                  // cache rolls back and LocaleServerSync snaps the
+                  // UI back to the server value (plus an error
+                  // toast) — the toggle is server-authoritative.
+                  updateSettings.mutate({ locale: next });
+                }}
                 className="p-1.5 rounded-lg text-fg-3 hover:text-fg-2 hover:bg-surface-2 transition-colors cursor-pointer text-[13px] font-medium"
               >
                 {locale === "en" ? "中" : "EN"}

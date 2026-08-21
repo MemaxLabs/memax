@@ -12,7 +12,6 @@
  *   - `<main>` fills the viewport between the top bar and the bottom
  *     bar surface; scrolls with `overscroll-contain` so the bar
  *     surface doesn't bounce-overlap.
- *   - `<ScanRestButton>` floats bottom-right (legacy mobile placement).
  *   - `<MobileBarSurface>` and `<MobileComposeOverlay>` are mounted
  *     by `<AppShellClient>` already (above the layout dispatch) — they
  *     position via `fixed` and don't need a slot here.
@@ -31,12 +30,14 @@ import { useLocale } from "@/i18n";
 import { useSettingsPanel } from "@/contexts/settings-panel-context";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
 import { buildMemoriesPath, buildPulsePath } from "@/lib/route-helpers";
+import { Search } from "lucide-react";
 import { MemaxLogo, MemaxTextLogo } from "@memaxlabs/ui";
+import { useBar } from "@/contexts/bar-context";
+import { useShellState } from "@/contexts/shell-state-context";
 import { MobileTopBar } from "./mobile-top-bar";
 import { MobileDrawer } from "./mobile-drawer";
 import { HubSwitcherBottomSheet } from "./hub-switcher-bottom-sheet";
 import { PushTransitionWrapper } from "./push-transition-wrapper";
-import { ScanRestButton } from "./scan-rest-button";
 import { SHELL_TABS, type ShellTabId } from "./shell-tabs";
 
 interface ShellLayoutMobileProps {
@@ -91,7 +92,6 @@ export function ShellLayoutMobile({ tab, children }: ShellLayoutMobileProps) {
         open={hubSwitcherOpen}
         onClose={() => setHubSwitcherOpen(false)}
       />
-      <ScanRestButton />
     </div>
   );
 }
@@ -109,6 +109,8 @@ function DrawerContent({ tab: activeTab, onNavigate }: DrawerContentProps) {
   const { activeHub } = useActiveHub();
   const { t } = useLocale();
   const settingsPanel = useSettingsPanel();
+  const { openBar } = useBar();
+  const { setBarScrollHidden } = useShellState();
 
   // Same active-hub-aware path logic as the desktop LeftRail / mobile
   // dock: memories AND pulse are both hub-scoped (`staticPath: null`
@@ -164,6 +166,27 @@ function DrawerContent({ tab: activeTab, onNavigate }: DrawerContentProps) {
         aria-label={t.nav.primary}
         className="flex-1 px-2 pt-3 flex flex-col gap-0.5"
       >
+        {/* Search — action row above the tabs, same convention as the
+            desktop rail (replaced the bottom-right FAB, 2026-08). It
+            closes the drawer and summons the bar: openBar() promotes
+            the mobile compose state to "mirror" so the input is
+            immediately editable. */}
+        <button
+          type="button"
+          onClick={() => {
+            setBarScrollHidden(false);
+            onNavigate();
+            openBar();
+          }}
+          aria-label={t.nav.openBar}
+          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] transition-colors cursor-pointer text-fg-2 hover:bg-foreground/4"
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+            <Search className="h-5 w-5" strokeWidth={2} />
+          </span>
+          <span>{t.nav.search}</span>
+        </button>
+
         {SHELL_TABS.map((spec) => {
           const Icon = spec.icon;
           const isActive = spec.id === activeTab;

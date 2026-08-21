@@ -20,7 +20,6 @@ import { useLocale } from "@/i18n";
 import { TopicTreeContent } from "./topic-tree-content";
 import { DestinationPicker } from "../destination-picker";
 import { BrandMark } from "../brand-mark";
-import { TREE_PANEL_INSET, TREE_PANEL_WIDTH } from "@/lib/layout";
 import {
   GLASS_ENTER_DURATION,
   GLASS_ENTER_DURATION_MOBILE,

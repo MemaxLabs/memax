@@ -570,6 +570,14 @@ type Store interface {
 	ListBoardSlots(boardID string) ([]model.BoardSlot, error)
 	UpsertBoardSlot(slot *model.BoardSlot) error
 	ResolveBoardSlot(boardID, slotKey, newState string, resolution model.BoardSlotResolution) (*model.BoardSlot, error)
+	// ReopenBoardSlot undoes a resolve/dismiss (terminal → seen,
+	// resolution cleared). ErrBoardSlotAlreadyResolved when the slot
+	// is already live (idempotent-undo), ErrBoardSlotNotFound when
+	// the slot doesn't exist.
+	ReopenBoardSlot(boardID, slotKey string) (*model.BoardSlot, error)
+	// ListBoardSlotHistory returns archived versions of a slot's
+	// content, newest first; the live slot is not included.
+	ListBoardSlotHistory(boardID, slotKey string, limit int) ([]model.BoardSlotVersion, error)
 	// CreateBoardFeedback upserts on (board, slot, member): latest
 	// verdict wins, so repeat submissions and post-resolve retries are
 	// idempotent per member.

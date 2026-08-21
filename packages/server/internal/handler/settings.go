@@ -182,6 +182,8 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		"dev_flags":                   true,
 		"notifications_enabled":       true,
 		"theme":                       true,
+		// UI locale — validated below ("", "en", "zh").
+		"locale": true,
 		// Default persona for the memax agent (Agent Chat). Validated
 		// below: "" (none) or a persona owned by the caller.
 		"chat_default_persona_id": true,
@@ -218,6 +220,16 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for k, v := range patch {
+		if k == "locale" {
+			loc, ok := v.(string)
+			// "" clears the preference back to client-side detection.
+			if !ok || (loc != "" && loc != "en" && loc != "zh") {
+				writeError(w, http.StatusBadRequest, "invalid_setting", `locale must be "", "en" or "zh"`)
+				return
+			}
+			prefs.Settings[k] = loc
+			continue
+		}
 		if k == "chat_default_persona_id" {
 			pid, ok := v.(string)
 			if !ok {

@@ -657,7 +657,33 @@ export type BoardStatus = "active" | "cooking" | "paused";
 export type BoardSlotState = "fresh" | "seen" | "resolved" | "dismissed";
 
 /** Actions accepted by the slot resolve endpoint. Mirrors the Go handler's allow-list. */
-export type BoardSlotAction = "ack" | "dismiss" | "feedback" | "choose";
+export type BoardSlotAction =
+  | "ack"
+  | "dismiss"
+  | "feedback"
+  | "choose"
+  /** Undo a resolve/dismiss: the card returns to the live board
+   *  ("seen") with its resolution receipt cleared. Idempotent. */
+  | "reopen";
+
+/**
+ * One archived generation of a slot's content. Producers replace slots
+ * in place; the server archives the outgoing content whenever it
+ * actually changes, so stateful cards keep a readable timeline.
+ */
+export interface BoardSlotVersion {
+  id: string;
+  board_id: string;
+  slot_key: string;
+  kind: string;
+  title: string;
+  payload?: Record<string, unknown>;
+  cite_memory_ids?: string[];
+  dream_run_id?: string;
+  /** When this content was originally produced — the timeline axis. */
+  content_produced_at: string;
+  archived_at: string;
+}
 
 export type BoardFeedbackVerdict = "accurate" | "inaccurate";
 

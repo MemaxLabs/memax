@@ -119,6 +119,11 @@ func (s *PostgresStore) ListBoardSlots(boardID string) ([]model.BoardSlot, error
 // (board_id, slot_key). Replacing a slot resets it to fresh and clears
 // any prior resolution — the old card is gone, feedback rows are the
 // only surviving trace of it.
+// boardSlotHistoryCap bounds retained versions per slot. Growth is
+// (slots × cap), not nights elapsed; 20 nightly generations ≈ three
+// weeks of timeline, far beyond what the version UI pages through.
+const boardSlotHistoryCap = 20
+
 func (s *PostgresStore) UpsertBoardSlot(slot *model.BoardSlot) error {
 	if err := model.ValidateBoardSlot(slot); err != nil {
 		return err
@@ -136,7 +141,30 @@ func (s *PostgresStore) UpsertBoardSlot(slot *model.BoardSlot) error {
 	if slot.DreamRunID != "" {
 		dreamRunID = &slot.DreamRunID
 	}
-	row := s.pool.QueryRow(ctx,
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Archive the outgoing content BEFORE the overwrite, but only when
+	// the replacement actually changes it — a byte-identical re-write
+	// (idempotent producer retry) must not mint a duplicate version.
+	// Kind-agnostic on purpose: the store can't know which kinds are
+	// "stateful"; retention is uniform and the read side decides what
+	// to surface.
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO board_slot_history (board_id, slot_key, kind, title, payload, cite_memory_ids, dream_run_id, content_produced_at)
+		SELECT board_id, slot_key, kind, title, payload, cite_memory_ids, dream_run_id, content_updated_at
+		FROM board_slots
+		WHERE board_id = $1::uuid AND slot_key = $2
+			AND (kind IS DISTINCT FROM $3 OR title IS DISTINCT FROM $4 OR payload IS DISTINCT FROM $5::jsonb)`,
+		slot.BoardID, slot.SlotKey, slot.Kind, slot.Title, payload); err != nil {
+		return err
+	}
+
+	row := tx.QueryRow(ctx,
 		`INSERT INTO board_slots (board_id, slot_key, kind, title, payload, cite_memory_ids, state, dream_run_id)
 		VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6::uuid[], 'fresh', $7)
 		ON CONFLICT (board_id, slot_key)
@@ -145,7 +173,90 @@ func (s *PostgresStore) UpsertBoardSlot(slot *model.BoardSlot) error {
 			updated_at = now(), content_updated_at = now()
 		RETURNING id, state, created_at, updated_at, content_updated_at`,
 		slot.BoardID, slot.SlotKey, slot.Kind, slot.Title, payload, cites, dreamRunID)
-	return row.Scan(&slot.ID, &slot.State, &slot.CreatedAt, &slot.UpdatedAt, &slot.ContentUpdatedAt)
+	if err := row.Scan(&slot.ID, &slot.State, &slot.CreatedAt, &slot.UpdatedAt, &slot.ContentUpdatedAt); err != nil {
+		return err
+	}
+
+	// Prune beyond the cap — oldest first.
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM board_slot_history
+		WHERE id IN (
+			SELECT id FROM board_slot_history
+			WHERE board_id = $1::uuid AND slot_key = $2
+			ORDER BY content_produced_at DESC, archived_at DESC
+			OFFSET $3
+		)`,
+		slot.BoardID, slot.SlotKey, boardSlotHistoryCap); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+// ListBoardSlotHistory returns a slot's archived versions, newest
+// first. The live slot is not included — callers already have it.
+func (s *PostgresStore) ListBoardSlotHistory(boardID, slotKey string, limit int) ([]model.BoardSlotVersion, error) {
+	if limit <= 0 || limit > boardSlotHistoryCap {
+		limit = boardSlotHistoryCap
+	}
+	ctx := context.Background()
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, board_id, slot_key, kind, title, payload, cite_memory_ids, dream_run_id, content_produced_at, archived_at
+		FROM board_slot_history
+		WHERE board_id = $1::uuid AND slot_key = $2
+		ORDER BY content_produced_at DESC, archived_at DESC
+		LIMIT $3`,
+		boardID, slotKey, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	versions := []model.BoardSlotVersion{}
+	for rows.Next() {
+		var v model.BoardSlotVersion
+		var dreamRunID *string
+		if err := rows.Scan(&v.ID, &v.BoardID, &v.SlotKey, &v.Kind, &v.Title, &v.Payload,
+			&v.CiteMemoryIDs, &dreamRunID, &v.ContentProducedAt, &v.ArchivedAt); err != nil {
+			return nil, err
+		}
+		if dreamRunID != nil {
+			v.DreamRunID = *dreamRunID
+		}
+		versions = append(versions, v)
+	}
+	return versions, rows.Err()
+}
+
+// ReopenBoardSlot is the undo for resolve/dismiss: terminal → seen,
+// resolution cleared. The WHERE mirrors ResolveBoardSlot's transition
+// guard in the opposite direction; reopening a live slot is a benign
+// no-op surfaced as ErrBoardSlotAlreadyResolved so the handler can
+// return the current row idempotently.
+func (s *PostgresStore) ReopenBoardSlot(boardID, slotKey string) (*model.BoardSlot, error) {
+	ctx := context.Background()
+	row := s.pool.QueryRow(ctx,
+		`UPDATE board_slots
+		SET state = 'seen', resolution = NULL, updated_at = now()
+		WHERE board_id = $1::uuid AND slot_key = $2 AND state IN ('resolved', 'dismissed')
+		RETURNING `+boardSlotColumns,
+		boardID, slotKey)
+	slot, err := scanBoardSlot(row)
+	if err == nil {
+		return slot, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	var exists bool
+	if probeErr := s.pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM board_slots WHERE board_id = $1::uuid AND slot_key = $2)`,
+		boardID, slotKey).Scan(&exists); probeErr != nil {
+		return nil, probeErr
+	}
+	if exists {
+		return nil, ErrBoardSlotAlreadyResolved
+	}
+	return nil, ErrBoardSlotNotFound
 }
 
 // ResolveBoardSlot transitions a slot out of fresh/seen. Terminal slots

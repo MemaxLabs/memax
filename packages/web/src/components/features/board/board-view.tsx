@@ -35,6 +35,7 @@ import {
   useHubBoard,
   useHubBoards,
   useResolveBoardSlot,
+  useSlotHistory,
 } from "@/hooks/use-board";
 import {
   useNotificationDismiss,
@@ -68,6 +69,7 @@ import {
   boardKindOptions,
   boardKindPurpose,
   boardKindStripSummary,
+  boardKindTemporality,
   renderBoardSlotBody,
   slotContentTime,
 } from "./board-kind-registry";
@@ -329,6 +331,11 @@ export function BoardView({
     () => slots.filter((s) => s.state === "fresh" || s.state === "seen"),
     [slots],
   );
+  const archivedSlots = useMemo(
+    () =>
+      slots.filter((s) => s.state === "resolved" || s.state === "dismissed"),
+    [slots],
+  );
 
   // Embedded shelf expansion — BOARD_SHELF_RULES R1/R6.
   const { expanded: shelfExpanded, setExpanded: setShelfExpanded } =
@@ -484,6 +491,11 @@ export function BoardView({
       onCopy={() => void cardActions.copyForAgent(slot)}
       copied={cardActions.copiedSlotKey === slot.slot_key}
       continuing={cardActions.isContinuing}
+      history={
+        boardKindTemporality(slot.kind) === "stateful" ? (
+          <SlotHistoryDisclosure hubId={hubId} slotKey={slot.slot_key} />
+        ) : undefined
+      }
     />
   );
 
@@ -595,8 +607,12 @@ export function BoardView({
       {!collapsedShelf &&
         slots.map((slot) => {
           const isLive = slot.state === "fresh" || slot.state === "seen";
-          if (isLive && groupedMemberKeys.has(slot.slot_key)) return null;
-          const group = isLive ? groupByAnchor.get(slot.slot_key) : undefined;
+          // Terminal cards leave the live flow entirely — they live in
+          // the 已归档 section below (工单 8: dismiss = archive with
+          // undo, not a grey strip forever holding its place in line).
+          if (!isLive) return null;
+          if (groupedMemberKeys.has(slot.slot_key)) return null;
+          const group = groupByAnchor.get(slot.slot_key);
           const entranceIndex = entranceCursor++;
           if (group && group.length > 1) {
             return (
@@ -674,6 +690,24 @@ export function BoardView({
             onDelete={(boardId) => deleteBoard.mutate(boardId)}
           />
         ))}
+
+      {/* ── 已归档 — resolved/dismissed cards, out of the live flow but
+          one tap from coming back (工单 8: dismiss is archive + undo,
+          never data loss). Collapsed to a count until opened. ── */}
+      {!collapsedShelf && archivedSlots.length > 0 ? (
+        <BoardArchivedSection
+          slots={archivedSlots}
+          pending={resolve.isPending}
+          onRestore={(slotKey) => {
+            trackEvent("board_card_action", {
+              hub_id: hubId,
+              slot_key: slotKey,
+              action: "reopen",
+            });
+            resolve.mutate({ slotKey, action: "reopen" });
+          }}
+        />
+      ) : null}
 
       {pageIsEmpty ? (
         <BoardEmptyState
@@ -833,6 +867,7 @@ function BoardSlotEntry({
   onCopy,
   copied,
   continuing,
+  history,
 }: {
   slot: BoardSlot;
   expanded: boolean;
@@ -848,6 +883,8 @@ function BoardSlotEntry({
   onCopy: () => void;
   copied: boolean;
   continuing: boolean;
+  /** 历史 disclosure — provided only for stateful kinds (工单 8). */
+  history?: ReactNode;
 }) {
   const { t } = useLocale();
   const interpolate = useInterpolate();
@@ -967,6 +1004,122 @@ function BoardSlotEntry({
         </div>
       ) : null}
       {renderBoardSlotBody(slot)}
+      {history}
     </BoardCard>
+  );
+}
+
+/**
+ * SlotHistoryDisclosure — the 历史 affordance on stateful cards. A
+ * quiet toggle; open fetches the slot's archived versions (lazy — the
+ * board GET stays one request) and lists them newest-first. Old
+ * versions are read-only context, not cards: title + date only.
+ */
+function SlotHistoryDisclosure({
+  hubId,
+  slotKey,
+}: {
+  hubId: string | undefined;
+  slotKey: string;
+}) {
+  const { t, locale } = useLocale();
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useSlotHistory(hubId, slotKey, open);
+  const versions = data?.versions ?? [];
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="cursor-pointer text-[12px] font-medium text-fg-3 transition-colors hover:text-fg-2"
+      >
+        {t.board.history}
+      </button>
+      {open ? (
+        isLoading ? (
+          <p className="mt-1.5 text-[12.5px] text-fg-3">…</p>
+        ) : versions.length === 0 ? (
+          <p className="mt-1.5 text-[12.5px] text-fg-3">
+            {t.board.historyEmpty}
+          </p>
+        ) : (
+          <ul className="mt-1.5 flex flex-col gap-1">
+            {versions.map((v) => (
+              <li
+                key={v.id}
+                className="flex items-baseline gap-2 text-[12.5px]"
+              >
+                <span className="shrink-0 tabular-nums text-fg-3">
+                  {new Date(v.content_produced_at).toLocaleDateString(
+                    locale === "zh" ? "zh-CN" : "en-US",
+                    { month: "short", day: "numeric" },
+                  )}
+                </span>
+                <span className="min-w-0 truncate text-fg-2">{v.title}</span>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * BoardArchivedSection — the 已归档 read surface (工单 8). Terminal
+ * cards leave the live flow and land here: a count header, collapsed
+ * by default, each row restorable. Dismiss stops being a one-way
+ * door without keeping grey strips in the middle of the board.
+ */
+export function BoardArchivedSection({
+  slots,
+  pending,
+  onRestore,
+}: {
+  slots: BoardSlot[];
+  pending: boolean;
+  onRestore: (slotKey: string) => void;
+}) {
+  const { t } = useLocale();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex cursor-pointer items-center gap-1.5 px-1 text-[12px] font-medium text-fg-3 transition-colors hover:text-fg-2"
+      >
+        <span>{t.board.archivedSection}</span>
+        <span className="tabular-nums">{slots.length}</span>
+      </button>
+      {open
+        ? slots.map((slot) => (
+            <div
+              key={slot.slot_key}
+              className="flex items-center gap-2 rounded-[14px] border border-border/40 px-4 py-2.5 opacity-80"
+            >
+              <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg-2">
+                {boardKindStripSummary(slot, t).label}
+                {slot.title ? ` · ${slot.title}` : ""}
+              </span>
+              <span className="shrink-0 text-[12px] text-fg-3">
+                {slot.resolution?.action === "dismiss"
+                  ? t.board.receiptDismissed
+                  : t.board.receiptAcked}
+              </span>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => onRestore(slot.slot_key)}
+                className="shrink-0 cursor-pointer text-[12px] font-medium text-fg-3 transition-colors hover:text-fg-1 disabled:opacity-50"
+              >
+                {t.board.restore}
+              </button>
+            </div>
+          ))
+        : null}
+    </div>
   );
 }

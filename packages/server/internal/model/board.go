@@ -46,6 +46,12 @@ const (
 	BoardSlotActionAck      = "ack"
 	BoardSlotActionDismiss  = "dismiss"
 	BoardSlotActionFeedback = "feedback"
+	// BoardSlotActionReopen undoes a resolve/dismiss: the card returns
+	// to "seen" (it has, by definition, been seen) and the resolution
+	// receipt is cleared. This is the undo half of "dismiss = archive,
+	// not delete" — a terminal state the user can't walk back turns
+	// every mis-tap into data loss.
+	BoardSlotActionReopen = "reopen"
 	// BoardSlotActionChoose resolves a decision gate with one of its
 	// option ids (carried in BoardSlotResolution.Verdict).
 	BoardSlotActionChoose = "choose"
@@ -102,6 +108,24 @@ type BoardSlot struct {
 	// user actions bump UpdatedAt, so only this field can answer
 	// "how long since this card was actually regenerated".
 	ContentUpdatedAt time.Time `json:"content_updated_at"`
+}
+
+// BoardSlotVersion is one archived generation of a slot's content —
+// written by UpsertBoardSlot when a producer replaces a card whose
+// content actually changed. The version timeline is what makes
+// replace-in-place safe for stateful kinds: the new run replaces, the
+// old runs remain readable.
+type BoardSlotVersion struct {
+	ID                string          `json:"id"`
+	BoardID           string          `json:"board_id"`
+	SlotKey           string          `json:"slot_key"`
+	Kind              string          `json:"kind"`
+	Title             string          `json:"title"`
+	Payload           json.RawMessage `json:"payload,omitempty"`
+	CiteMemoryIDs     []string        `json:"cite_memory_ids,omitempty"`
+	DreamRunID        string          `json:"dream_run_id,omitempty"`
+	ContentProducedAt time.Time       `json:"content_produced_at"`
+	ArchivedAt        time.Time       `json:"archived_at"`
 }
 
 // BoardFeedback is the append-only 准/不准 snapshot. It outlives the

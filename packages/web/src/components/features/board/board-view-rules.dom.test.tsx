@@ -57,7 +57,11 @@ vi.mock("@/components/features/onboarding/onboarding-pinned", () => ({
   PinnedDispatch: () => null,
 }));
 
-import { BoardSlotDeck, useShelfExpansion } from "./board-view";
+import {
+  BoardArchivedSection,
+  BoardSlotDeck,
+  useShelfExpansion,
+} from "./board-view";
 
 function slot(overrides: Partial<BoardSlot>): BoardSlot {
   return {
@@ -153,5 +157,55 @@ describe("BoardSlotDeck", () => {
     expect(screen.getByText("Only pattern")).toBeTruthy();
     expect(screen.queryByLabelText("Show next card")).toBeNull();
     expect(container.querySelector(".glass-card.absolute")).toBeNull();
+  });
+});
+
+describe("BoardArchivedSection (工单 8 — dismiss is archive + undo)", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("collapses to a count, expands to rows, and restore fires reopen", () => {
+    const onRestore = vi.fn();
+    render(
+      <BoardArchivedSection
+        slots={[
+          slot({
+            slot_key: "0-a",
+            title: "旧的洞察",
+            state: "dismissed",
+            resolution: {
+              action: "dismiss",
+              resolved_by: "u1",
+              resolved_at: "2026-08-10T00:00:00Z",
+            },
+          }),
+          slot({
+            slot_key: "0-b",
+            title: "old receipt",
+            state: "resolved",
+            resolution: {
+              action: "ack",
+              resolved_by: "u1",
+              resolved_at: "2026-08-10T00:00:00Z",
+            },
+          }),
+        ]}
+        pending={false}
+        onRestore={onRestore}
+      />,
+    );
+
+    // Collapsed: the count header, no rows yet.
+    expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.queryByText(/旧的洞察/)).toBeNull();
+
+    fireEvent.click(screen.getByText("Archived"));
+    expect(screen.getByText(/旧的洞察/)).toBeTruthy();
+    expect(screen.getByText(/old receipt/)).toBeTruthy();
+
+    // Restore is per-row and reports the slot key.
+    fireEvent.click(screen.getAllByText("Restore")[0]);
+    expect(onRestore).toHaveBeenCalledWith("0-a");
   });
 });

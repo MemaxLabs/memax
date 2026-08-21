@@ -192,6 +192,7 @@ function ActivityBody({ slot }: BoardKindBodyProps) {
 // collapses to one line and only opens when asked.
 registerBoardKind("activity", ActivityBody, {
   purpose: (t) => t.board.activityPurpose,
+  temporality: "stateful",
   strip: (slot, t) =>
     stripFromPayload(
       t.board.stripActivity,

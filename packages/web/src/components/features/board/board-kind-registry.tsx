@@ -74,6 +74,15 @@ export interface BoardKindOptions {
    * its own actions (e.g. decision-gate option buttons).
    */
   hideDefaultActions?: boolean;
+  /**
+   * Card temporality (工单 8). `stateful` kinds describe a CURRENT
+   * state that each run supersedes (nightly dreamlog, nextup
+   * predictions, who-knows routing, activity counts) — their old
+   * versions form a timeline the card exposes via the 历史 affordance.
+   * `additive` kinds are discrete insights where each card stands
+   * alone. Default: additive (no history affordance).
+   */
+  temporality?: "additive" | "stateful";
 }
 
 interface BoardKindEntry extends BoardKindOptions {
@@ -92,6 +101,11 @@ export function registerBoardKind(
 
 export function boardKindOptions(kind: string): BoardKindOptions | undefined {
   return REGISTRY.get(kind);
+}
+
+/** Card temporality — see BoardKindOptions.temporality. */
+export function boardKindTemporality(kind: string): "additive" | "stateful" {
+  return REGISTRY.get(kind)?.temporality ?? "additive";
 }
 
 export function boardKindPurpose(

@@ -689,3 +689,111 @@ func assertBoolAnnotation(t *testing.T, tool mcpTool, key string, want bool) {
 		t.Fatalf("%s annotation on tool %s = %t, want %t", key, tool.Name, got, want)
 	}
 }
+
+// The remote MCP surface must not advertise source_agent on
+// memax_push. Remote callers authenticate with a grant that already
+// carries the agent slug, and resolveMemoryProvenance fails the whole
+// write when a claimed slug differs (see
+// TestMCPPushRejectsConflictingAgentClaim). A model has no way to read
+// the grant's slug, so advertising the field invites it to guess and
+// lose the memory. It also keeps the tool schema at parity with the
+// CLI MCP server (packages/cli/src/commands/mcp.ts), which stamps the
+// slug from --agent instead of exposing it.
+func TestMCPPushSchemaOmitsSourceAgent(t *testing.T) {
+	h := NewMCPHandler(store.NewInMemoryStore(), nil, nil, nil)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp struct {
+		Result struct {
+			Tools []mcpTool `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	found := false
+	for _, tool := range resp.Result.Tools {
+		if tool.Name != "memax_push" {
+			continue
+		}
+		found = true
+		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
+			t.Fatalf("decode memax_push schema: %v", err)
+		}
+	}
+	if !found {
+		t.Fatal("memax_push missing from tools/list")
+	}
+	if _, ok := schema.Properties["source_agent"]; ok {
+		t.Error("memax_push advertises source_agent; a model guessing a slug that differs from the grant's loses the whole write")
+	}
+	if _, ok := schema.Properties["content"]; !ok {
+		t.Error("memax_push schema lost its content property")
+	}
+}
+
+// Pins the behaviour that makes advertising source_agent dangerous: an
+// authenticated agent identity plus a differing claim fails the entire
+// push rather than ignoring the claim. Reproduces the live failure seen
+// through the claude.ai connector, whose grant resolves to "claude-ai"
+// while the model claimed "claude-code".
+func TestMCPPushRejectsConflictingAgentClaim(t *testing.T) {
+	s := store.NewInMemoryStore()
+	personalHubID := "hub-personal-u1"
+	if err := s.CreateHub(&model.Hub{
+		ID:      personalHubID,
+		OwnerID: "u1",
+		Name:    "Personal",
+		Slug:    "personal",
+		HubType: "personal",
+	}); err != nil {
+		t.Fatalf("CreateHub: %v", err)
+	}
+	h := NewMCPHandler(s, nil, nil, nil)
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memax_push","arguments":{"content":"body","title":"Conflicting claim","hub_id":"personal","source_agent":"claude-code"}}}`
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+	ctx := context.WithValue(req.Context(), userIDKey, "u1")
+	ctx = context.WithValue(ctx, agentNameKey, "claude-ai")
+	ctx = context.WithValue(ctx, authContextKey, &AuthContext{
+		UserID: "u1",
+		PermissionsByHub: map[string]PermissionSet{
+			personalHubID: NewPermissionSet(PermMemoryRead, PermMemoryWrite),
+		},
+	})
+	ctx = context.WithValue(ctx, grantContextKey, GrantContext{
+		UserID:        "u1",
+		PrincipalType: "oauth_grant",
+		AgentName:     "claude-ai",
+	})
+	ctx = context.WithValue(ctx, hubIDsKey, []string{personalHubID})
+	ctx = context.WithValue(ctx, writeHubIDKey, personalHubID)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	var resp struct {
+		Result mcpToolResult `json:"result"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.Result.IsError {
+		t.Fatal("conflicting agent claim was accepted; the auth identity must win and the write must not silently record a claimed slug")
+	}
+	if len(resp.Result.Content) == 0 || !strings.Contains(resp.Result.Content[0].Text, "attribution") {
+		t.Errorf("error text = %+v, want an attribution conflict message", resp.Result.Content)
+	}
+}

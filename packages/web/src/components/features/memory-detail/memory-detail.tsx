@@ -38,6 +38,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { ArrowUpRight, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MemoryDetailView } from "@/components/features/memory-detail/memory-detail-view";
+import { useRouter } from "next/navigation";
 import { useLocale } from "@/i18n";
 
 interface RouteVariantProps {
@@ -124,6 +125,7 @@ function MemoryDetailPanelShell({
   fullPagePath: string;
 }) {
   const { t } = useLocale();
+  const router = useRouter();
   // Controlled open with a mount-time false→true flip so base-ui
   // sees an actual opening transition and applies data-starting-style
   // (the translate-x-full → 0 slide-in). Mounting with open=true
@@ -172,20 +174,29 @@ function MemoryDetailPanelShell({
     }, PANEL_TRANSITION_MS);
   };
   // "Open full page" — animate the slide-out FIRST so the user sees
-  // the panel leave gracefully, THEN do the hard navigation. Hard
-  // nav is required because Next.js soft-navigation to the same
-  // memory URL would re-trigger the @panel/(.)memories/[id]
-  // intercept (the very thing we're trying to escape). Without the
-  // animation guard the click would flash a blank page-reload.
+  // the panel leave gracefully, THEN soft-navigate to the /full child
+  // route. Pushing the memory's own URL would be a no-op (the
+  // intercept already owns it) and the old escape — a hard
+  // window.location.assign — made this click AND every subsequent
+  // browser-back a full document reload. `(.)memories/[id]` matches
+  // exactly one segment, so `<memory>/full` is NOT intercepted: it
+  // renders the canonical full view inline, client-side, and back
+  // from it soft-returns to where the user was.
   const openFullPage = () => {
     if (closingRef.current) return;
     closingRef.current = true;
     setOpen(false);
     timerRef.current = window.setTimeout(() => {
       timerRef.current = null;
-      window.location.assign(fullPagePath);
+      router.push(`${fullPagePath}/full`);
     }, PANEL_TRANSITION_MS);
   };
+  // Prefetch the escape route while the panel is open so the swap
+  // lands the moment the slide-out finishes instead of paying the
+  // chunk download inside the transition window.
+  useEffect(() => {
+    router.prefetch(`${fullPagePath}/full`);
+  }, [router, fullPagePath]);
   useEffect(() => {
     return () => {
       if (timerRef.current !== null) {

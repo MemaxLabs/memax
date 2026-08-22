@@ -95,12 +95,16 @@ function shelfStorageKey(hubId: string) {
  * is implemented by useShelfExpansion + the shelf/card handlers; when
  * changing one, change both.
  *
- *   R1  The shelf is EXPANDED by default on every fresh visit (2026-08
- *       revision). Collapsing it is a choice the reader makes, not a
- *       state they have to undo before they can see anything.
+ *   R1  (2026-08-21 revision) The EMBEDDED shelf (memories page)
+ *       defaults COLLAPSED — it sits above the memories list, and a
+ *       full card stack there pushes the page's real content below
+ *       the fold. The /pulse PAGE is the full surface and is always
+ *       expanded. Inside an expanded shelf, CARDS default EXPANDED,
+ *       collapse recorded per content (slot_key + content_updated_at)
+ *       so new content re-expands.
  *   R3  Tile tap = expand the shelf in place AND open that card.
- *   R4  Resolving a card while expanded swaps it to a receipt INLINE —
- *       no reflow jump, nothing disappears.
+ *   R4  Resolving a card moves it to the 已归档 section (2026-08
+ *       archive revision superseded the inline-receipt swap).
  *   R6  Manual 展开/收起 overrides R1 and persists per hub for the
  *       SESSION (sessionStorage; a fresh visit re-applies R1).
  *
@@ -119,7 +123,7 @@ function shelfStorageKey(hubId: string) {
  * itself. Both are gone rather than reconciled.
  */
 export const BOARD_SHELF_RULES = [
-  "expanded-by-default",
+  "embedded-collapsed-page-expanded-cards-expanded",
   "tile-tap-expands-and-opens",
   "resolve-swaps-to-receipt-inline",
   "manual-toggle-overrides-and-persists-per-session",
@@ -130,9 +134,8 @@ export const BOARD_SHELF_RULES = [
  * useShelfExpansion — the state machine behind BOARD_SHELF_RULES R1
  * and R6. Exported for tests.
  *
- * With R1 flipped to expanded-by-default there is nothing left to
- * automate: the shelf is open unless the reader closed it this
- * session. `manual` survives only to record that a stored choice was
+ * The embedded shelf is collapsed unless the reader opened it this
+ * session; the /pulse page never routes through this hook. `manual` survives only to record that a stored choice was
  * found, which keeps the toggle honest across remounts.
  */
 export function useShelfExpansion({
@@ -143,26 +146,27 @@ export function useShelfExpansion({
   /** False on the /pulse page — the full surface never collapses. */
   enabled: boolean;
 }) {
-  const [expanded, setExpandedState] = useState(true);
+  const [expanded, setExpandedState] = useState(false);
 
-  // R1 + R6: default expanded; a stored per-session choice wins.
+  // R1 (2026-08-21 revision) + R6: the EMBEDDED shelf (memories page)
+  // defaults COLLAPSED — it sits above the memories list, and a full
+  // card stack there pushes the page's actual content below the fold.
+  // The /pulse page is the full surface and never collapses (enabled:
+  // false skips this hook entirely). The earlier global expanded
+  // default conflated the two surfaces; a stored per-session choice
+  // still wins on the embedded shelf.
   //
-  // Read in a layout effect so a stored 收起 is applied BEFORE the
-  // browser paints. While the default was collapsed this could sit in a
-  // plain effect — guessing "collapsed" and correcting to expanded is
-  // cheap. Flipping R1 inverted that: guessing "expanded" for someone
-  // who collapsed the shelf painted the full card stack and then
-  // snapped it shut, yanking the memories list up by several hundred
-  // px on every return to the page.
+  // Read in a layout effect so a stored 展开 is applied BEFORE the
+  // browser paints.
   useIsomorphicLayoutEffect(() => {
     if (!enabled) return;
     try {
       const stored = globalThis.sessionStorage?.getItem(shelfStorageKey(hubId));
       setExpandedState(
-        stored === "1" || stored === "0" ? stored === "1" : true,
+        stored === "1" || stored === "0" ? stored === "1" : false,
       );
     } catch {
-      setExpandedState(true);
+      setExpandedState(false);
     }
   }, [hubId, enabled]);
 
@@ -289,7 +293,27 @@ export function BoardView({
   const createBoard = useCreateBoard(hubId);
   const deleteBoard = useDeleteBoard(hubId);
 
-  const [openSlots, setOpenSlots] = useState<ReadonlySet<string>>(new Set());
+  // Card-level expansion. Default is EXPANDED (2026-08-21) — the user's
+  // collapse is recorded against the CONTENT (slot_key +
+  // content_updated_at), so a card that gets new content overnight
+  // re-expands: the collapse applied to the old version, not the slot
+  // forever. slot_key alone is a REUSED slot identity (ON CONFLICT ...
+  // DO UPDATE resets it in place), which is exactly why the earlier
+  // expanded-by-default attempt was reverted — keyed on slot_key it
+  // suppressed brand-new content. Session-scoped like the shelf state.
+  const [collapsedCards, setCollapsedCards] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  useIsomorphicLayoutEffect(() => {
+    try {
+      const raw = globalThis.sessionStorage?.getItem(
+        `memax_board_cards:${hubId}`,
+      );
+      setCollapsedCards(raw ? new Set(JSON.parse(raw) as string[]) : new Set());
+    } catch {
+      setCollapsedCards(new Set());
+    }
+  }, [hubId]);
   const [recentOpen, setRecentOpen] = useState(false);
   // Example chip → ghost-composer prefill (empty-state teaching
   // moment). The ghost re-keys its composer on this so a chip tap
@@ -356,16 +380,34 @@ export function BoardView({
     });
   }, [data, hubId, slotCount]);
 
-  const toggleSlot = useCallback(
-    (slotKey: string, willOpen: boolean) => {
-      setOpenSlots((prev) => {
-        const next = new Set(prev);
-        if (willOpen) next.add(slotKey);
-        else next.delete(slotKey);
+  const toggleCard = useCallback(
+    (contentKey: string, willOpen: boolean) => {
+      setCollapsedCards((prev) => {
+        let next = new Set(prev);
+        if (willOpen) next.delete(contentKey);
+        else next.add(contentKey);
+        // Cap the set — replaced content leaves stale keys behind, and
+        // a long-lived tab across many dream runs would otherwise grow
+        // the stored array without bound (codex review). Insertion
+        // order makes the oldest collapses the ones dropped.
+        if (next.size > 100) {
+          next = new Set([...next].slice(-100));
+        }
+        try {
+          globalThis.sessionStorage?.setItem(
+            `memax_board_cards:${hubId}`,
+            JSON.stringify([...next]),
+          );
+        } catch {
+          // Private mode / quota — choice holds in-memory.
+        }
         return next;
       });
       if (willOpen) {
-        trackEvent("board_card_expand", { hub_id: hubId, slot_key: slotKey });
+        trackEvent("board_card_expand", {
+          hub_id: hubId,
+          slot_key: contentKey,
+        });
       }
     },
     [hubId],
@@ -436,7 +478,14 @@ export function BoardView({
     if (!embeddedHasContent) return null;
   }
 
-  const heroKey = liveSlots[0]?.slot_key;
+  // Content identity for card expansion — see collapsedCards above.
+  // Deck expansion follows the GROUP's anchor slot so cycling the deck
+  // never collapses the card.
+  const slotBySlotKey = new Map(slots.map((s) => [s.slot_key, s]));
+  const cardContentKey = (slotKey: string): string => {
+    const anchor = slotBySlotKey.get(slotKey);
+    return `${slotKey}:${anchor?.content_updated_at ?? ""}`;
+  };
   // Embedded surface, not yet expanded → the compact tile shelf.
   const collapsedShelf = !isPage && !shelfExpanded;
   // Only claim the board is empty once the slots query has settled —
@@ -473,10 +522,10 @@ export function BoardView({
     <BoardSlotEntry
       key={slot.slot_key}
       slot={slot}
-      expanded={anchorKey === heroKey || openSlots.has(anchorKey)}
+      expanded={!collapsedCards.has(cardContentKey(anchorKey))}
       entranceIndex={entranceIndex}
       deckControls={deckControls}
-      onToggle={(willOpen) => toggleSlot(anchorKey, willOpen)}
+      onToggle={(willOpen) => toggleCard(cardContentKey(anchorKey), willOpen)}
       onResolve={(action, verdict) => {
         trackEvent("board_card_action", {
           hub_id: hubId,
@@ -552,9 +601,10 @@ export function BoardView({
           cookingBoards={cookingBoards}
           onOpenDeck={() => setShelfExpanded(true)}
           onOpenSlot={(slotKey) => {
-            // R3: remember the tapped card so it renders expanded once
-            // the full layout unfolds.
-            setOpenSlots((prev) => new Set(prev).add(slotKey));
+            // R3: cards are expanded by default now, so opening the
+            // shelf shows the tapped card open unless the user had
+            // collapsed this exact content — un-collapse it then.
+            toggleCard(cardContentKey(slotKey), true);
             setShelfExpanded(true);
           }}
           onOpenBoards={() => router.push(pulseHref)}

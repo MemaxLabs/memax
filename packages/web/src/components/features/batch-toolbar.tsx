@@ -433,17 +433,13 @@ export function BatchToolbar({
               // trigger the outside-click handler attached at document.
               onPointerDownCapture={(e) => e.stopPropagation()}
             >
-              {/* Explicit listHeight so DrillDownTree's internal
-                  overflow-y-auto region owns its own scroll instead
-                  of growing to content and getting clipped by the
-                  shell's overflow-hidden. 380 (shell max-h) - 52
-                  (anchor row) - 44 (DestinationPicker hint row) ≈
-                  284px of list space; 260 keeps a little breathing
-                  room. Without this, long topic trees either clip or
-                  the page behind the picker inherits touch-scroll. */}
+              {/* No listHeight: the flex chain above bounds the list,
+                  so it claims exactly what the anchor row, hint, search
+                  and back button leave. Every hand-computed cap here
+                  has been wrong at least once — the last one forgot
+                  both the 52px anchor row and the back button. */}
               <DestinationPicker
                 variant="plain"
-                listHeight={260}
                 onSelectTopic={handlePickerSelectTopic}
                 onSelectHub={handlePickerSelectHub}
                 onClose={() => setShowPicker(false)}
@@ -495,7 +491,10 @@ function ClickableBody({
   return (
     <div
       onPointerDownCapture={onPointerDownCapture}
-      className="flex-1 overflow-hidden"
+      // flex-1 alone sets no `display`, so this stayed a block and the
+      // picker's own flex column had nothing to shrink against — the
+      // list grew to content and the shell simply clipped its tail.
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       {children}
     </div>

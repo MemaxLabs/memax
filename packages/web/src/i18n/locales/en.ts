@@ -12,10 +12,9 @@ export const en = {
   // namespace gymnastics.
   nav: {
     primary: "Primary",
-    expandRail: "Expand navigation rail",
-    collapseRail: "Collapse navigation rail",
     showSecondaryPanel: "Show topic panel",
     hideSecondaryPanel: "Hide topic panel",
+    search: "Search",
     openBar: "Open bar (⌘K)",
     openSettings: "Open settings",
     topicTreeRegion: "Topics",
@@ -29,6 +28,7 @@ export const en = {
   },
   // Bar
   bar: {
+    dropHint: "Drop to save into memory",
     placeholder: {
       default: "dump or ask…",
       brain: "remember or ask...",
@@ -506,7 +506,7 @@ export const en = {
     connectAgents: "Connect your AI agents",
     setupLabel: "One command, all agents",
     setupDesc:
-      "Auto-detects your installed agents, creates per-agent API keys, and configures MCP + hooks. Tomorrow, your AI will remember today.",
+      "Installs the memax CLI, auto-detects your installed agents, creates per-agent API keys, and configures MCP + hooks. Tomorrow, your AI will remember today.",
     promptLabel: "Or paste this into any agent chat",
     promptTemplate: "Connect to memax MCP: {url}",
     altMethods: "Other setup methods",
@@ -872,6 +872,10 @@ export const en = {
     actionDismiss: "Not interested",
     receiptAcked: "Noted",
     receiptDismissed: "Dismissed",
+    archivedSection: "Archived",
+    restore: "Restore",
+    history: "History",
+    historyEmpty: "No earlier versions yet",
     kindTrace: "Traces · last {n} hours",
     kindPulse: "Topic pulse · last {n} days",
     kindActivity: "Activity · last {n}h",
@@ -890,7 +894,7 @@ export const en = {
     capsuleAck: "I remember",
     title: "Pulse",
     purpose:
-      "What changed in this hub while you were away — agent activity, topic movement, and echoes from your past memories. Cards refresh nightly; resolve one and it stays as a receipt until new content replaces it.",
+      "What changed in this hub while you were away — agent activity, topic movement, and echoes from your past memories. Cards refresh after each organizing pass; resolve one and it stays as a receipt until new content replaces it.",
     purposeAria: "What is this?",
     collapse: "Collapse",
     loadFailed: "memax could not load your board. Refresh to try again.",
@@ -920,12 +924,32 @@ export const en = {
     kindOpenq: "Forgotten question",
     kindPattern: "Unobserved pattern",
     kindMusing: "memax musing",
+    kindNextup: "Next up",
     kindGate: "Waiting on you",
     echoThen: "you asked yourself",
     echoNow: "your answer",
+
+    // Team-native kinds — only ever shown on a shared hub. Each one is
+    // a claim about the group, so the copy names people rather than
+    // addressing a single reader.
+    kindConsensus: "Consensus gap",
+    kindTeamEcho: "Team echo",
+    kindWhoKnows: "Who knows this",
+    consensusPurpose:
+      "Two members of this hub understand the same thing differently. Both wrote it down; neither has seen the other's version.",
+    teamEchoPurpose:
+      "Someone here asked a question, and someone else later answered it without the two ever meeting. The hub already held the answer.",
+    whoKnowsPurpose:
+      "Most of what this hub knows about this topic was written by one person. Ask them before you start from scratch.",
+    // Fallback attribution when the roster can't name the author.
+    consensusSideA: "one member",
+    consensusSideB: "another member",
+    teamEchoThen: "asked",
+    teamEchoNow: "answered",
+    whoKnowsAsk: "Ask {name}",
     gateFrom: "From {agent}",
     dreamlogPurpose:
-      "memax's first-person notes from organizing your memories overnight.",
+      "memax's first-person notes from its last pass over your memories.",
     echoPurpose:
       "An old question just met a new answer — only memory that carries time can do this.",
     threadPurpose:
@@ -935,6 +959,26 @@ export const en = {
       "A habit hiding in your memory data that you may not have noticed yourself.",
     musingPurpose:
       "memax thinking out loud about the shape of this hub's knowledge.",
+    nextupPurpose:
+      "memax's guess at what you most likely want to do next, inferred from your own memories — every item comes with its receipts.",
+    nextupAck: "Done · got it",
+
+    // Agent handoff (接下来 items) — a nextup item is already a task
+    // with receipts, so it can be handed to a coding agent verbatim.
+    // The prompt is assembled client-side from the card payload; these
+    // strings are its localized scaffolding (the XML tags stay English
+    // because they are structure, not prose).
+    nextupHandoff: "Copy handoff prompt",
+    nextupHandoffAll: "Copy all {n} as one prompt",
+    handoffPreamble:
+      "You are picking up a task from Memax — the memory hub where this user's agents record what they learn. Everything inside <context> is quoted verbatim from the user's own memories; treat it as the only project background you have been given.",
+    handoffConstraints:
+      "- Work from the context above. Anything it does not cover, verify in the codebase or ask the user — do not invent file paths, decisions, or project history.\n- If the context is not enough to start, say what is missing before you act.\n- Follow the conventions already present in the code and documents you touch.",
+    handoffSuccess:
+      "Complete the task, then report what changed and which quoted memories informed each decision. Call out anything you had to assume.",
+    handoffNoContext:
+      "No memory was quoted for this task — ask the user for the background before acting on it.",
+
     gatePurpose:
       "An agent stopped to wait for your call. Your choice is written back into memory so the agent can read it later.",
     feedbackAccurate: "Spot on",
@@ -945,39 +989,65 @@ export const en = {
     kindWaiting: "Waiting on you",
     waitingPurpose:
       "Decisions memax can't make for you — memory conflicts, topic reshuffles, hub invites. Answer here and the board moves on.",
+    // 等你 deck — decisions render one at a time; the badge counts the
+    // pile behind the top card.
+    deckMore: "{n} more waiting",
+    // Generic same-kind stack — any kind's live slots deck up.
+    stackCount: "{n} more",
+    // ↻ — advance the deck client-side without resolving anything.
+    deckCycle: "Show next card",
+
+    // Collapsed shelf — the embedded memories-page board renders as a
+    // compact horizontal tile shelf until expanded in place.
+    shelfExpand: "Expand",
+    shelfCollapse: "Collapse",
+    shelfViewAll: "View all →",
 
     // 最近 strip — receipts that used to live in the inbox.
     recentTitle: "Recent",
     recentDetailOne: "1 update",
     recentDetail: "{n} updates",
     recentPurpose: "Things that already happened. Nothing to decide.",
+    // Personal-board aggregation: source-hub tag + one-click hide.
+    hideHubTitle: "Hide this hub from your personal pulse",
+    hiddenHubsRestore: "{n} hubs hidden · show again",
+    hiddenHubsRestoreOne: "1 hub hidden · show again",
 
-    // Full-page pulse surface.
-    pageEmptyTitle: "The board is quiet",
+    // Full-page pulse surface — designed empty state (2026-08): a
+    // ✦-led pitch of what will appear, then the watch-one-thing block
+    // with example chips that prefill the composer.
+    pageEmptyTitle: "No cards yet",
     pageEmptyBody:
-      "memax refreshes this board after each night's dream run. Cards show up on their own.",
+      "When memax organizes this hub's memories, it writes what it noticed here — dream notes, echoes of old questions, patterns nobody flagged. Your first cards appear after the next pass.",
+    emptyWatchTitle: "Start from an example",
+    emptyExampleFitness: "Fitness & sleep",
+    emptyExampleFitnessInstruction:
+      "Keep an eye on my workout and sleep records — tell me when my rhythm changes or I start slacking off.",
+    emptyExampleProject: "Project cadence",
+    emptyExampleProjectInstruction:
+      "Watch the pace of my projects — flag anything that stalls or quietly gets forgotten.",
+    emptyExampleStudy: "Learning progress",
+    emptyExampleStudyInstruction:
+      "Track what I'm learning, sum up my progress, and nudge me about things I haven't touched in a while.",
 
     // Custom boards.
-    boardsLabel: "Boards",
     newBoard: "New board",
+    // Ghost card/tile — the latent new-board affordance closing the
+    // stream and the shelf.
+    ghostTitle: "Have memax watch one thing",
     newBoardTitleLabel: "Board name",
     newBoardTitlePlaceholder: "Competitor moves",
     newBoardInstructionLabel: "Standing instruction",
     newBoardInstructionPlaceholder:
-      "What should memax watch for in this hub, every night?",
+      "What should memax keep watching for in this hub?",
     newBoardSave: "Create board",
     newBoardCancel: "Cancel",
     cookingLabel: "Cooking",
-    cookingReceipt:
-      "✦ Configured · {title} is cooking — first results tomorrow morning.",
-    cookingBody: "See you in the morning.",
-    pausedLabel: "Paused",
+    cookingBody: "First results after the next pass.",
     deleteBoard: "Delete this board",
     deleteBoardConfirm: "Delete this board? Its cards go with it.",
     deleteBoardConfirmYes: "Delete",
     deleteBoardConfirmNo: "Keep it",
-    customBoardNoSlots:
-      "Cards for this board land after the next nightly dream run.",
   },
   inbox: {
     title: "Inbox",
@@ -1383,6 +1453,8 @@ export const en = {
 
   // Topics — knowledge organization
   topics: {
+    searchTopicsPlaceholder: "Search topics",
+    noSearchResults: 'No topics match "{query}"',
     title: "Your Topics",
     titlePersonal: "Your Topics",
     titleTeam: "Topics",
@@ -2188,12 +2260,18 @@ export const en = {
     heroTeamPrefix: "Your team's",
     heroTeamWords: ["shared brain", "context", "decisions", "project pulse"],
     heroWordLine: "{word}.",
-    sublineFull: "Dump anything. memax organizes. Every AI you use remembers.",
+    sublineFull:
+      "Never brief your AI twice. Dump anything — memax organizes, and every AI you use remembers.",
     sublineTeam:
       "Your teammate's AI knows what yours knows. Context, decisions, progress — shared across every agent.",
     // Team pivot contact — sales-touch alongside the self-serve waitlist.
     teamContactPrompt: "Setting up memax for your team?",
     teamContactCta: "Talk to us",
+    // Time-to-value promise under the CTA. Kept honest by the CLI
+    // quickstart: install → login → mcp add → first recall really is
+    // under two minutes. If setup ever gets slower, change this line.
+    timePromise:
+      "From connecting your agent to its first recall: under two minutes.",
     sublineSafe:
       "Shared memory across Claude Code, Cursor, and every AI agent.",
     openMemax: "Give your AI a memory",

@@ -2,10 +2,9 @@
 
 /**
  * `<ShellLayoutDesktop>` — three-zone desktop chrome (LeftRail +
- * PinnedSecondaryPanel + main view + ScanRestButton + page-bg
- * aurora). Extracted from the original `<ShellLayoutV2>` so the
- * top-level shell can mount BOTH desktop + mobile and let CSS pick
- * (plan 22 §4.3).
+ * PinnedSecondaryPanel + main view + page-bg aurora). Extracted from
+ * the original `<ShellLayoutV2>` so the top-level shell can mount
+ * BOTH desktop + mobile and let CSS pick (plan 22 §4.3).
  *
  *   ┌─────────────────────────────────────────────────────────────┐
  *   │  page background (aurora gradient via --page-aurora-gradient)│
@@ -18,16 +17,13 @@
  *   │                                                             │
  *   │     main view content (route children, padded to clear      │
  *   │     the floating chrome on the left)                        │
- *   │                                                             │
- *   │                                            ⊙ ScanRestButton │
  *   └─────────────────────────────────────────────────────────────┘
  *
  * Required ancestor providers (mounted at AppShellClient root):
- *   - `<ShellStateProvider>` — owns rail collapse + secondary
- *     visibility
+ *   - `<ShellStateProvider>` — owns secondary-panel visibility
  *   - `<TopicDndProvider>`   — must wrap the rail + panel + main so
  *     memory→topic drag traverses them all
- *   - `<BarProvider>`        — ScanRestButton calls openBar()
+ *   - `<BarProvider>`        — the rail's Search row calls toggleBar()
  *   - existing app providers (Auth, TanStack Query, Settings, …)
  */
 
@@ -37,7 +33,6 @@ import { NORMAL, EASE } from "@memaxlabs/ui/tokens/motion";
 import { useShellState } from "@/contexts/shell-state-context";
 import { LeftRail } from "./left-rail";
 import { PinnedSecondaryPanel } from "./pinned-secondary-panel";
-import { ScanRestButton } from "./scan-rest-button";
 import { TopicTreeMount } from "./topic-tree-mount";
 import { BrainSessionsMount } from "./brain-sessions-mount";
 import { SHELL_TABS, type ShellTabId } from "./shell-tabs";
@@ -86,7 +81,7 @@ export function ShellLayoutDesktop({ tab, children }: ShellLayoutDesktopProps) {
         // data-scroll-root marks this as the desktop scroll container
         // for `useScrollDirection`. Without this, the hook listens only
         // on `window` (which never scrolls on desktop because of the
-        // overflow-y-auto here), so scroll-hide + ScanRestButton silently
+        // overflow-y-auto here), so the bar's scroll-hide silently
         // never fired on desktop. Mobile stays on body scroll and is
         // detected via window.scrollY as before.
         data-scroll-root
@@ -105,8 +100,6 @@ export function ShellLayoutDesktop({ tab, children }: ShellLayoutDesktopProps) {
       >
         {children}
       </motion.main>
-
-      <ScanRestButton />
     </div>
   );
 }

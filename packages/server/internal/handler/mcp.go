@@ -248,7 +248,15 @@ func (h *MCPHandler) agentTools() []mcpTool {
 		{
 			Name:        "memax_push",
 			Description: "Save a piece of knowledge to the user's Memax knowledge base. Memax classifies it automatically for retrieval.",
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"content":{"type":"string","description":"The knowledge content to save"},"title":{"type":"string","description":"Optional title (auto-generated if omitted)"},"hint":{"type":"string","description":"Context hint to help AI process this memory (e.g. 'This is my resume', 'Meeting notes from product review'). Improves summarization and retrieval."},"tags":{"type":"array","items":{"type":"string"},"description":"Tags for the memory"},"source_agent":{"type":"string","description":"Agent identity (e.g. 'claude-code', 'cursor'). Auto-set by CLI."},"initiation_type":{"type":"string","description":"How this save was initiated: human_direct, human_requested_agent, agent_proactive, agent_automatic, import, or unknown."},"project_context":{"type":"object","description":"Project context (auto-detected by CLI). Keys: repo (git remote URL), project (short name), branch."},"hub_id":{"type":"string","description":"Target hub ID. Required when pushing into a team hub."},"hub_reason":{"type":"string","description":"Why this belongs in the shared hub. Required when hub_id targets a team hub."}},"required":["content"]}`),
+			// source_agent is deliberately NOT advertised. Remote callers
+			// authenticate with an OAuth grant or API key that already
+			// carries the agent slug, and resolveMemoryProvenance rejects
+			// the whole write when a claimed slug differs from the
+			// authenticated one. A model filling in a plausible-looking
+			// slug ("claude-code" on a claude-ai grant) would lose the
+			// memory. The field is still parsed for API-key principals
+			// with no pinned agent_name, which take the claim path.
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"content":{"type":"string","description":"The knowledge content to save"},"title":{"type":"string","description":"Optional title (auto-generated if omitted)"},"hint":{"type":"string","description":"Context hint to help AI process this memory (e.g. 'This is my resume', 'Meeting notes from product review'). Improves summarization and retrieval."},"tags":{"type":"array","items":{"type":"string"},"description":"Tags for the memory"},"initiation_type":{"type":"string","description":"How this save was initiated: human_direct, human_requested_agent, agent_proactive, agent_automatic, import, or unknown."},"project_context":{"type":"object","description":"Project context (auto-detected by CLI). Keys: repo (git remote URL), project (short name), branch."},"hub_id":{"type":"string","description":"Target hub ID. Required when pushing into a team hub."},"hub_reason":{"type":"string","description":"Why this belongs in the shared hub. Required when hub_id targets a team hub."}},"required":["content"]}`),
 		},
 		{
 			Name:        "memax_get",

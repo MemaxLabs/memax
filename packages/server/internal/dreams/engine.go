@@ -854,10 +854,13 @@ func (e *Engine) RunForActor(ctx context.Context, hubID string, actorID string) 
 	e.heartbeat(run.ID)
 
 	// Phase 6: Lane B board synthesis (plan 25 P2) — one agent session
-	// writes the 梦记 slot + a rotating wow card. Two-layer gated
-	// (AgentRuntime configured + dreams_use_agent_runtime) and skipped
-	// when the cycle's shared budget governor is exhausted, so board
-	// polish never crowds out the organizational phases above.
+	// writes the system board's 梦记 slot + a rotating wow card, then
+	// each custom board drafts its own cards from the shared night
+	// material with a single cheap LLM call (一场梦一张梦记，共享勘探
+	// 分开成稿). Two-layer gated (AgentRuntime configured +
+	// dreams_use_agent_runtime) and skipped when the cycle's shared
+	// budget governor is exhausted, so board polish never crowds out
+	// the organizational phases above.
 	if e.shouldRunBoardSynthesis(settings, runBudget, run.ID) {
 		phaseStart := time.Now()
 		slog.InfoContext(ctx, "dream: phase starting",

@@ -15,7 +15,7 @@ On **[LongMemEval](https://github.com/xiaowu0162/LongMemEval)**
 (ICLR 2025) — the standard benchmark for long-term memory
 systems — Memax reaches:
 
-- **96.9% retrieval recall@5** (top-tier, ahead of published
+- **97.6% retrieval recall@5** (top-tier, ahead of published
   dense-retrieval baselines)
 - **91.2% QA accuracy** — ranked **#9 worldwide**, on par with
   Hindsight (91.4%)
@@ -52,11 +52,16 @@ community-standard benchmark for long-term memory:
 
 How often at least one evidence chunk appears in the top-k.
 
+Re-measured 2026-08-09 on the same methodology (s_cleaned, session
+granularity, single pass, no rerank) after retrieval-pipeline
+improvements. QA figures below are from the most recent judged run
+and are re-judged separately.
+
 | Metric           | k=1    | k=3    | k=5        | k=10   | k=30   |
 | ---------------- | ------ | ------ | ---------- | ------ | ------ |
-| **recall_any@k** | 0.8520 | 0.9379 | **0.9690** | 0.9833 | 0.9881 |
-| **recall_all@k** | 0.2363 | 0.7924 | 0.8974     | 0.9427 | 0.9761 |
-| **ndcg_any@k**   | 0.8520 | 0.8753 | 0.8980     | 0.9079 | 0.9131 |
+| **recall_any@k** | 0.8520 | 0.9523 | **0.9761** | 0.9833 | 0.9952 |
+| **recall_all@k** | 0.2387 | 0.8234 | 0.9236     | 0.9642 | 0.9881 |
+| **ndcg_any@k**   | 0.8520 | 0.8971 | 0.9175     | 0.9252 | 0.9296 |
 
 ### Recall comparison vs published systems
 
@@ -68,7 +73,7 @@ report end-to-end QA accuracy.
 | BM25 (LongMemEval paper)           |     0.51     | Sparse keyword baseline      |
 | Stella V5 1.5B (LongMemEval paper) |     0.70     | Dense retrieval, 1.5B params |
 | MemPalace raw (ChromaDB)           |    0.966     | Verbatim sessions, MiniLM    |
-| **Memax**                          |  **0.969**   | **Single pass, no tuning**   |
+| **Memax**                          |  **0.976**   | **Single pass, no tuning**   |
 | MemPalace hybrid v4 (held-out)     |    0.984     | + keyword/temporal boost     |
 
 ## QA accuracy — leaderboard

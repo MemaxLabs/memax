@@ -46,6 +46,12 @@ const (
 	BoardSlotActionAck      = "ack"
 	BoardSlotActionDismiss  = "dismiss"
 	BoardSlotActionFeedback = "feedback"
+	// BoardSlotActionReopen undoes a resolve/dismiss: the card returns
+	// to "seen" (it has, by definition, been seen) and the resolution
+	// receipt is cleared. This is the undo half of "dismiss = archive,
+	// not delete" — a terminal state the user can't walk back turns
+	// every mis-tap into data loss.
+	BoardSlotActionReopen = "reopen"
 	// BoardSlotActionChoose resolves a decision gate with one of its
 	// option ids (carried in BoardSlotResolution.Verdict).
 	BoardSlotActionChoose = "choose"
@@ -104,6 +110,24 @@ type BoardSlot struct {
 	ContentUpdatedAt time.Time `json:"content_updated_at"`
 }
 
+// BoardSlotVersion is one archived generation of a slot's content —
+// written by UpsertBoardSlot when a producer replaces a card whose
+// content actually changed. The version timeline is what makes
+// replace-in-place safe for stateful kinds: the new run replaces, the
+// old runs remain readable.
+type BoardSlotVersion struct {
+	ID                string          `json:"id"`
+	BoardID           string          `json:"board_id"`
+	SlotKey           string          `json:"slot_key"`
+	Kind              string          `json:"kind"`
+	Title             string          `json:"title"`
+	Payload           json.RawMessage `json:"payload,omitempty"`
+	CiteMemoryIDs     []string        `json:"cite_memory_ids,omitempty"`
+	DreamRunID        string          `json:"dream_run_id,omitempty"`
+	ContentProducedAt time.Time       `json:"content_produced_at"`
+	ArchivedAt        time.Time       `json:"archived_at"`
+}
+
 // BoardFeedback is the append-only 准/不准 snapshot. It outlives the
 // slot content it judged (slots are replaced in place) and is read by
 // later synthesis runs as a first-class quality signal.
@@ -134,13 +158,17 @@ const (
 	// single strip, not three cards. Cards are for things worth
 	// stopping on.
 	BoardKindActivity = "activity"
-	BoardKindCapsule  = "capsule" // 时间胶囊 — a memory from ~1 year ago
 
 	// Retired kinds, kept only so the producer can clean up slots
-	// written by earlier versions.
-	BoardKindTrace = "trace"
-	BoardKindPulse = "pulse"
-	BoardKindWeek  = "week"
+	// written by earlier versions. `capsule` was calendar-driven — the
+	// one card with no trigger, surfacing a memory from a year ago
+	// whether or not anything happened. New users never saw it; old
+	// users got a coin flip. The genuine time-gap payoff lives in
+	// `echo`, where the span is causal instead of coincidental.
+	BoardKindTrace   = "trace"
+	BoardKindPulse   = "pulse"
+	BoardKindWeek    = "week"
+	BoardKindCapsule = "capsule"
 )
 
 // BoardAgentItem is one concrete memory reference inside a trace row —
@@ -267,34 +295,97 @@ const (
 	BoardKindDreamlog     = "dreamlog"      // 梦记 — first-person account of last night's dream work
 	BoardKindEcho         = "echo"          // 回声 — an old question meets a new answer
 	BoardKindThread       = "thread"        // 暗线 — two memories that may be one idea
-	BoardKindOpenQuestion = "openq"         // 开放问题 — questions the hub never answered
 	BoardKindPattern      = "pattern"       // 未观察模式 — a habit visible in the data, invisible to the user
-	BoardKindMusing       = "musing"        // 随想 — memax thinking out loud about the hub
 	BoardKindDecisionGate = "decision_gate" // 等你 — an agent needs the user to decide
+	BoardKindNextUp       = "nextup"        // 接下来 — predicted next actions, grounded in open loops
 
-	// Lane B slot keys. "0-" sorts the dream log first, "1-" puts the
-	// rotating wow card right after it, decision gates prefix "2g-" so
-	// they sit above the Lane A band ("a-"…"d-").
+	// Team-native kinds. These exist ONLY because several people share a
+	// hub — each one is a claim about the group, not about one person,
+	// and each is validated against the OWNERS of its cited memories
+	// (see LaneBOwnerRule). A "team" card whose receipts all come from
+	// one person is a lie about collaboration, so the producer drops it.
+	BoardKindConsensusGap = "consensus_gap" // 共识缺口 — two members understand the same thing differently
+	BoardKindTeamEcho     = "team_echo"     // 团队回声 — A's question, B's answer, never connected
+	BoardKindWhoKnows     = "who_knows"     // 谁知道这个 — who to ask about a topic
+
+	// Lane B slot keys. "0-" sorts the dream log first, "0n-" the
+	// predictive next-up card right after it ("0-" < "0n-" because
+	// '-' < 'n'), "1-" the rotating wow card, and decision gates prefix
+	// "2g-" so they sit above the Lane A band ("a-"…"d-"). Custom
+	// boards have no dreamlog and may carry a second synthesized card
+	// in "2-wow" ("2-" still sorts before "2g-").
 	BoardSlotKeyDreamlog   = "0-dream"
+	BoardSlotKeyNextUp     = "0n-next"
 	BoardSlotKeyWow        = "1-wow"
+	BoardSlotKeyWow2       = "2-wow"
 	BoardSlotKeyGatePrefix = "2g-"
+
+	// Retired synthesized kinds. `openq` asked the same question
+	// `nextup` answers — an open loop — but stopped at naming it;
+	// `musing` was the loosest-defined kind and the likeliest source
+	// of Barnum text, and what it aimed at (what's growing, what's
+	// abandoned) is either provable by `pattern` or countable outright.
+	BoardKindOpenQuestion = "openq"
+	BoardKindMusing       = "musing"
 )
 
-// WowKinds is the nightly rotation pool for the single wow slot.
+// WowKinds is the nightly rotation pool for the single wow slot on a
+// PERSONAL hub — three lenses, all of them about one person.
 var WowKinds = []string{
 	BoardKindEcho,
 	BoardKindThread,
-	BoardKindOpenQuestion,
 	BoardKindPattern,
-	BoardKindMusing,
+}
+
+// TeamWowKinds is the rotation pool for a TEAM hub: the personal three
+// (a shared hub still holds one person's echoes) plus the three kinds
+// that only mean anything when several people write into the same hub.
+// Six lenses instead of three, so a team board says something about
+// the team roughly half the time.
+var TeamWowKinds = []string{
+	BoardKindEcho,
+	BoardKindThread,
+	BoardKindPattern,
+	BoardKindConsensusGap,
+	BoardKindTeamEcho,
+	BoardKindWhoKnows,
+}
+
+// HubTypeTeam is the Hub.HubType value that unlocks the team kinds.
+const HubTypeTeam = "team"
+
+// WowKindsForHub returns the rotation pool for a hub type. Team kinds
+// are never offered to a personal hub — on a hub with one writer they
+// would either be unfillable or, worse, fabricated.
+func WowKindsForHub(hubType string) []string {
+	if hubType == HubTypeTeam {
+		return TeamWowKinds
+	}
+	return WowKinds
+}
+
+// IsTeamWowKind reports whether a kind is one of the team-only lenses.
+func IsTeamWowKind(kind string) bool {
+	switch kind {
+	case BoardKindConsensusGap, BoardKindTeamEcho, BoardKindWhoKnows:
+		return true
+	}
+	return false
 }
 
 // BoardQuoteRef is a quoted memory inside a Lane B card: the id makes
 // it navigable, When/Excerpt make it renderable without a fetch.
+//
+// Author is the display name of the member who WROTE the memory,
+// filled only on team-hub cards where "who said this" is the point.
+// It comes from the hub roster keyed by the memory's owner_id, never
+// from the model — attribution is the one thing a team card must not
+// guess. Empty on personal hubs, where there is only one author.
 type BoardQuoteRef struct {
 	MemoryID string `json:"memory_id"`
 	When     string `json:"when,omitempty"` // RFC3339
 	Excerpt  string `json:"excerpt"`
+	Author   string `json:"author,omitempty"`
 }
 
 // BoardDreamlogPayload — 梦记. Body is memax speaking in first person
@@ -302,6 +393,11 @@ type BoardQuoteRef struct {
 type BoardDreamlogPayload struct {
 	Description string `json:"description,omitempty"`
 	Body        string `json:"body"`
+	// SourceLang is the language the prose was generated in ("en",
+	// "zh"). Recorded so a reader whose locale differs can be served
+	// a translation later without regenerating; absent on slots
+	// written before 2026-08.
+	SourceLang string `json:"source_lang,omitempty"`
 }
 
 // BoardEchoPayload — 回声. Then (the old question) and Now (the new
@@ -311,6 +407,7 @@ type BoardEchoPayload struct {
 	Body        string        `json:"body,omitempty"`
 	Then        BoardQuoteRef `json:"then"`
 	Now         BoardQuoteRef `json:"now"`
+	SourceLang  string        `json:"source_lang,omitempty"`
 }
 
 // BoardWowPayload is the shared shape for thread/openq/pattern/musing:
@@ -319,6 +416,49 @@ type BoardWowPayload struct {
 	Description string          `json:"description,omitempty"`
 	Body        string          `json:"body"`
 	Quotes      []BoardQuoteRef `json:"quotes,omitempty"`
+	SourceLang  string          `json:"source_lang,omitempty"`
+}
+
+// BoardConsensusPayload — 共识缺口. Two members recorded contradictory
+// understandings of the same thing. Sides is exactly two quotes, one
+// per member, and the producer guarantees they come from DIFFERENT
+// owners — that difference IS the card. Distinct from the dream's
+// contradiction detection, which compares memory CONTENT: here each
+// side may be internally consistent, and the gap is between people.
+type BoardConsensusPayload struct {
+	Description string          `json:"description,omitempty"`
+	Body        string          `json:"body"`
+	Sides       []BoardQuoteRef `json:"sides"`
+	SourceLang  string          `json:"source_lang,omitempty"`
+}
+
+// BoardWhoKnowsPayload — 谁知道这个. Routing, not insight: Holder is the
+// display name of the member whose memories dominate the topic, and
+// the quotes are that member's own memories (all one owner — that is
+// the evidence they're the holder). Embeds the wow shape because the
+// body + receipts layout is identical; only the name is new.
+type BoardWhoKnowsPayload struct {
+	BoardWowPayload
+	Holder string `json:"holder,omitempty"`
+}
+
+// BoardNextUpItem is one predicted action on the 接下来 card: an
+// imperative title, a one-line why, and the verbatim quote(s) proving
+// the loop is actually open. The producer drops any item that ends up
+// with zero verified quotes — a prediction without receipts is exactly
+// the horoscope the design forbids.
+type BoardNextUpItem struct {
+	Title  string          `json:"title"`
+	Why    string          `json:"why,omitempty"`
+	Quotes []BoardQuoteRef `json:"quotes"`
+}
+
+// BoardNextUpPayload — 接下来. 1-3 items, each individually grounded;
+// the card ships only when at least one item survives validation.
+type BoardNextUpPayload struct {
+	Description string            `json:"description,omitempty"`
+	Items       []BoardNextUpItem `json:"items"`
+	SourceLang  string            `json:"source_lang,omitempty"`
 }
 
 // BoardDecisionOption is one choice on a decision gate.
@@ -342,12 +482,20 @@ type BoardDecisionGatePayload struct {
 // Kinds not listed have no floor (decision gates cite nothing — the
 // agent's question is the content).
 var laneBCitationFloor = map[string]int{
-	BoardKindEcho:         2,
-	BoardKindThread:       2,
-	BoardKindOpenQuestion: 1,
-	BoardKindPattern:      3,
-	BoardKindMusing:       3,
-	BoardKindDreamlog:     0,
+	BoardKindEcho:     2,
+	BoardKindThread:   2,
+	BoardKindPattern:  3,
+	BoardKindDreamlog: 0,
+	// nextup's real gate is per-ITEM (every item needs ≥1 verified
+	// quote — see buildNextUpSlot); the card-level floor of 1 follows
+	// from "at least one item survives".
+	BoardKindNextUp: 1,
+	// Team kinds: two receipts minimum, and the OWNER rule below is the
+	// half of the gate that makes them team claims rather than personal
+	// ones dressed up in plural pronouns.
+	BoardKindConsensusGap: 2,
+	BoardKindTeamEcho:     2,
+	BoardKindWhoKnows:     2,
 }
 
 // LaneBCitationFloor returns the citation minimum for a kind and
@@ -355,4 +503,55 @@ var laneBCitationFloor = map[string]int{
 func LaneBCitationFloor(kind string) (int, bool) {
 	floor, ok := laneBCitationFloor[kind]
 	return floor, ok
+}
+
+// BoardOwnerRule is the owner composition a kind's verified citations
+// must satisfy. Counting receipts is not enough for the team kinds: a
+// "gap between two members" quoting one person twice, or a "who to
+// ask" quoting three different people, is factually wrong about the
+// only thing the card claims.
+type BoardOwnerRule int
+
+const (
+	// BoardOwnersAny — no constraint (every personal kind).
+	BoardOwnersAny BoardOwnerRule = iota
+	// BoardOwnersDistinct — the quotes must span ≥2 distinct owners.
+	BoardOwnersDistinct
+	// BoardOwnersSame — every quote must come from ONE owner.
+	BoardOwnersSame
+)
+
+var laneBOwnerRule = map[string]BoardOwnerRule{
+	BoardKindConsensusGap: BoardOwnersDistinct,
+	BoardKindTeamEcho:     BoardOwnersDistinct,
+	BoardKindWhoKnows:     BoardOwnersSame,
+}
+
+// LaneBOwnerRule returns the owner-composition rule for a kind.
+func LaneBOwnerRule(kind string) BoardOwnerRule {
+	return laneBOwnerRule[kind]
+}
+
+// SatisfiesOwnerRule reports whether a set of citation owner ids meets
+// the rule. Empty input never satisfies a team rule — a card with no
+// attributable owners cannot be making a claim about people.
+func SatisfiesOwnerRule(rule BoardOwnerRule, ownerIDs []string) bool {
+	if rule == BoardOwnersAny {
+		return true
+	}
+	distinct := make(map[string]bool, len(ownerIDs))
+	for _, id := range ownerIDs {
+		if id == "" {
+			// An unattributable quote can't prove either rule.
+			return false
+		}
+		distinct[id] = true
+	}
+	switch rule {
+	case BoardOwnersDistinct:
+		return len(distinct) >= 2
+	case BoardOwnersSame:
+		return len(distinct) == 1
+	}
+	return true
 }

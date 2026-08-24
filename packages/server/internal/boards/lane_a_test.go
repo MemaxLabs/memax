@@ -83,9 +83,10 @@ func TestRefreshHubBoardProducesLaneACards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Counts fold into ONE strip; only the capsule earns a card.
-	if len(slots) != 2 {
-		t.Fatalf("expected 2 slots (activity + capsule), got %d: %#v", len(slots), slots)
+	// Lane A is now a single strip: counts are worth knowing, not
+	// worth a card, and the calendar-driven capsule is retired.
+	if len(slots) != 1 {
+		t.Fatalf("expected 1 slot (activity), got %d: %#v", len(slots), slots)
 	}
 
 	activity := slotByKey(t, s, board.ID, "z-activity")
@@ -109,10 +110,6 @@ func TestRefreshHubBoardProducesLaneACards(t *testing.T) {
 		t.Fatalf("topics wrong: %#v", ap.Topics)
 	}
 
-	capsule := slotByKey(t, s, board.ID, "c-capsule")
-	if capsule == nil || len(capsule.CiteMemoryIDs) != 1 || capsule.CiteMemoryIDs[0] != "m5" {
-		t.Fatalf("capsule must cite the year-old memory: %#v", capsule)
-	}
 
 }
 
@@ -132,15 +129,16 @@ func TestRefreshHubBoardEmptyHubProducesNothing(t *testing.T) {
 func TestRefreshHubBoardUnchangedContentKeepsReceipt(t *testing.T) {
 	t.Parallel()
 	p, s, hubID := newTestProducer(t)
-	// Only a capsule memory: its content is stable across runs (same
-	// quote, same cite), so a second refresh must be a no-op.
-	seedMemory(t, s, "m5", hubID, "", "one year ago thought", testNow.AddDate(-1, 0, 0))
+	// Stable activity across two runs: the counts don't move, so the
+	// second refresh must be a no-op and must NOT reset the receipt
+	// the user already left on the card.
+	seedMemory(t, s, "m1", hubID, "claude-code", "Recent work", testNow.Add(-1*time.Hour))
 
 	if err := p.RefreshHubBoard(context.Background(), hubID); err != nil {
 		t.Fatal(err)
 	}
 	board, _ := s.GetOrCreateSystemBoard(hubID, "u1")
-	if _, err := s.ResolveBoardSlot(board.ID, "c-capsule", model.BoardSlotStateResolved,
+	if _, err := s.ResolveBoardSlot(board.ID, "z-activity", model.BoardSlotStateResolved,
 		model.BoardSlotResolution{Action: "ack", ResolvedBy: "u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -148,9 +146,9 @@ func TestRefreshHubBoardUnchangedContentKeepsReceipt(t *testing.T) {
 	if err := p.RefreshHubBoard(context.Background(), hubID); err != nil {
 		t.Fatal(err)
 	}
-	capsule := slotByKey(t, s, board.ID, "c-capsule")
-	if capsule.State != model.BoardSlotStateResolved {
-		t.Fatalf("no-op refresh must not reset a resolved card, got state %s", capsule.State)
+	after := slotByKey(t, s, board.ID, "z-activity")
+	if after == nil || after.State != model.BoardSlotStateResolved {
+		t.Fatalf("no-op refresh must not reset the receipt, got %#v", after)
 	}
 }
 

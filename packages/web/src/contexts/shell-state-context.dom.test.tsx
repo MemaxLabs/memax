@@ -17,7 +17,6 @@ describe("ShellStateProvider", () => {
   it("first render uses SSR-safe defaults; isHydrated flips after mount", async () => {
     const { result } = renderHook(() => useShellState(), { wrapper });
     await waitFor(() => expect(result.current.isHydrated).toBe(true));
-    expect(result.current.collapsed).toBe(true);
     expect(result.current.secondaryHidden).toEqual({
       brain: false,
       memories: false,
@@ -27,6 +26,33 @@ describe("ShellStateProvider", () => {
   });
 
   it("hydrates persisted state on mount, after first render", async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        secondaryHidden: {
+          brain: false,
+          memories: true,
+          agents: false,
+          pulse: false,
+        },
+      }),
+    );
+    const { result } = renderHook(() => useShellState(), { wrapper });
+    await waitFor(() => expect(result.current.isHydrated).toBe(true));
+    expect(result.current.secondaryHidden.memories).toBe(true);
+  });
+
+  it("falls back to defaults when localStorage is corrupt JSON", async () => {
+    localStorage.setItem(STORAGE_KEY, "not valid json {{{");
+    const { result } = renderHook(() => useShellState(), { wrapper });
+    await waitFor(() => expect(result.current.isHydrated).toBe(true));
+    expect(result.current.secondaryHidden.memories).toBe(false);
+  });
+
+  it("tolerates a legacy payload still carrying the retired `collapsed` key", async () => {
+    // Payloads written before 2026-08 persisted a rail-collapse
+    // preference. The key must be ignored on read and dropped on the
+    // re-canonicalization write, not crash parsing or leak through.
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
@@ -41,36 +67,16 @@ describe("ShellStateProvider", () => {
     );
     const { result } = renderHook(() => useShellState(), { wrapper });
     await waitFor(() => expect(result.current.isHydrated).toBe(true));
-    expect(result.current.collapsed).toBe(false);
     expect(result.current.secondaryHidden.memories).toBe(true);
-  });
-
-  it("falls back to defaults when localStorage is corrupt JSON", async () => {
-    localStorage.setItem(STORAGE_KEY, "not valid json {{{");
-    const { result } = renderHook(() => useShellState(), { wrapper });
-    await waitFor(() => expect(result.current.isHydrated).toBe(true));
-    expect(result.current.collapsed).toBe(true);
-    expect(result.current.secondaryHidden.memories).toBe(false);
-  });
-
-  it("merges defaults into a partial persisted shape", async () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ collapsed: false }));
-    const { result } = renderHook(() => useShellState(), { wrapper });
-    await waitFor(() => expect(result.current.isHydrated).toBe(true));
-    expect(result.current.collapsed).toBe(false);
-    expect(result.current.secondaryHidden).toEqual({
-      brain: false,
-      memories: false,
-      agents: false,
-      pulse: false,
-    });
+    expect("collapsed" in result.current).toBe(false);
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    expect("collapsed" in stored).toBe(false);
   });
 
   it("rejects non-boolean per-tab values and falls back to default for that tab", async () => {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        collapsed: false,
         secondaryHidden: {
           brain: "yes", // invalid
           memories: 1, // invalid
@@ -104,7 +110,6 @@ describe("ShellStateProvider", () => {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        collapsed: true,
         secondaryHidden: { feed: true, memories: true },
       }),
     );
@@ -122,7 +127,7 @@ describe("ShellStateProvider", () => {
   it("rejects an array passed as secondaryHidden", async () => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ collapsed: true, secondaryHidden: [true, false] }),
+      JSON.stringify({ secondaryHidden: [true, false] }),
     );
     const { result } = renderHook(() => useShellState(), { wrapper });
     await waitFor(() => expect(result.current.isHydrated).toBe(true));
@@ -132,24 +137,6 @@ describe("ShellStateProvider", () => {
       agents: false,
       pulse: false,
     });
-  });
-
-  it("toggleCollapsed flips the collapsed flag and persists", async () => {
-    const { result } = renderHook(() => useShellState(), { wrapper });
-    await waitFor(() => expect(result.current.isHydrated).toBe(true));
-    expect(result.current.collapsed).toBe(true);
-    act(() => result.current.toggleCollapsed());
-    expect(result.current.collapsed).toBe(false);
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
-    expect(stored.collapsed).toBe(false);
-  });
-
-  it("setCollapsed is a no-op when value is unchanged (referential stability)", async () => {
-    const { result } = renderHook(() => useShellState(), { wrapper });
-    await waitFor(() => expect(result.current.isHydrated).toBe(true));
-    const beforeRef = result.current.secondaryHidden;
-    act(() => result.current.setCollapsed(true)); // already true
-    expect(result.current.secondaryHidden).toBe(beforeRef);
   });
 
   it("toggleSecondary flips one tab without mutating others", async () => {
@@ -170,6 +157,15 @@ describe("ShellStateProvider", () => {
     const beforeRef = result.current.secondaryHidden;
     act(() => result.current.setSecondaryHidden("memories", false));
     expect(result.current.secondaryHidden).toBe(beforeRef);
+  });
+
+  it("barScrollHidden is session state — never persisted", async () => {
+    const { result } = renderHook(() => useShellState(), { wrapper });
+    await waitFor(() => expect(result.current.isHydrated).toBe(true));
+    act(() => result.current.setBarScrollHidden(true));
+    expect(result.current.barScrollHidden).toBe(true);
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    expect("barScrollHidden" in stored).toBe(false);
   });
 
   it("useShellState throws a clear error outside the provider", () => {

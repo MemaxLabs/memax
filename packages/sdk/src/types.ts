@@ -657,7 +657,33 @@ export type BoardStatus = "active" | "cooking" | "paused";
 export type BoardSlotState = "fresh" | "seen" | "resolved" | "dismissed";
 
 /** Actions accepted by the slot resolve endpoint. Mirrors the Go handler's allow-list. */
-export type BoardSlotAction = "ack" | "dismiss" | "feedback" | "choose";
+export type BoardSlotAction =
+  | "ack"
+  | "dismiss"
+  | "feedback"
+  | "choose"
+  /** Undo a resolve/dismiss: the card returns to the live board
+   *  ("seen") with its resolution receipt cleared. Idempotent. */
+  | "reopen";
+
+/**
+ * One archived generation of a slot's content. Producers replace slots
+ * in place; the server archives the outgoing content whenever it
+ * actually changes, so stateful cards keep a readable timeline.
+ */
+export interface BoardSlotVersion {
+  id: string;
+  board_id: string;
+  slot_key: string;
+  kind: string;
+  title: string;
+  payload?: Record<string, unknown>;
+  cite_memory_ids?: string[];
+  dream_run_id?: string;
+  /** When this content was originally produced — the timeline axis. */
+  content_produced_at: string;
+  archived_at: string;
+}
 
 export type BoardFeedbackVerdict = "accurate" | "inaccurate";
 
@@ -704,6 +730,13 @@ export interface BoardSlot {
   dream_run_id?: string;
   created_at: string;
   updated_at: string;
+  /**
+   * When the slot's CONTENT last changed (vs `updated_at`, which also
+   * moves on state transitions like resolve). The UI's "generated at"
+   * timestamps read this, falling back to `updated_at` for rows from
+   * servers that predate migration 021.
+   */
+  content_updated_at?: string;
 }
 
 export interface BoardWithSlots {
@@ -1358,6 +1391,12 @@ export interface DevFlagsSettings {
 export interface Settings {
   /** Default persona for the memax agent (Agent Chat). "" = none. */
   chat_default_persona_id?: string;
+  /**
+   * UI locale ("en", "zh"). "" or absent = unset: clients fall back
+   * to browser detection. Persisted server-side so agentic output
+   * (board synthesis, notifications) can follow the reader's language.
+   */
+  locale?: Locale | "";
   dreams_enabled: boolean;
   dreams_merge_enabled: boolean;
   dreams_archive_enabled: boolean;
@@ -1372,6 +1411,8 @@ export interface Settings {
   dev_flags?: DevFlagsSettings;
   notifications_enabled: boolean;
   theme: string;
+  /** Hubs muted from the personal board's aggregated pulse view. */
+  pulse_hidden_hub_ids?: string[];
   [key: string]: unknown;
 }
 
@@ -1391,6 +1432,8 @@ export interface Settings {
  * scoped.
  */
 export interface SettingsUpdateInput {
+  /** UI locale ("en", "zh"); "" clears back to client-side detection. */
+  locale?: Locale | "";
   dreams_excluded_kinds?: MemoryKind[];
   dreams_similarity_threshold?: number;
   dreams_staleness_days?: number;
@@ -1400,6 +1443,8 @@ export interface SettingsUpdateInput {
   theme?: string;
   /** Default persona for the memax agent (Agent Chat). "" = none. */
   chat_default_persona_id?: string;
+  /** Hubs muted from the personal board's aggregated pulse view. */
+  pulse_hidden_hub_ids?: string[];
 }
 
 // --- Topics ---

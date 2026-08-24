@@ -20,6 +20,7 @@ import {
   type BoardStripSummary,
 } from "./board-kind-registry";
 import { buildTopicPath } from "@/lib/route-helpers";
+import { boardKindEyebrow } from "./board-kind-visuals";
 // Side-effect chain: importing the Lane A module also registers the
 // Lane B synthesized kinds (dreamlog/echo/thread/openq/pattern/musing/
 // decision_gate), so BoardView's single `import "./board-kinds"` brings
@@ -73,6 +74,8 @@ function TraceAgentSection({ agent }: { agent: TraceAgent }) {
   );
   const row = (
     <BoardAgentRow
+      expandable={items.length > 0}
+      expanded={open}
       dotColor={identity?.color}
       title={pluralize(
         t.board.traceCountOne,
@@ -133,45 +136,6 @@ interface PulseTopic {
   contributors?: number;
 }
 
-function CapsuleBody({ slot }: BoardKindBodyProps) {
-  const { t, locale } = useLocale();
-  const router = useRouter();
-  const { activeHub } = useActiveHub();
-  const quote = asString(slot.payload?.quote);
-  const memoryId =
-    asString(slot.payload?.memory_id) || slot.cite_memory_ids?.[0] || "";
-  const when = asString(slot.payload?.when);
-  // Validity-guarded: Intl.format throws RangeError on an Invalid
-  // Date, which would take down the whole page for one bad payload.
-  const whenDate = when ? new Date(when) : null;
-  const whenLabel =
-    whenDate && !Number.isNaN(whenDate.getTime())
-      ? new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        }).format(whenDate)
-      : "";
-  return (
-    <>
-      <BoardKindLabel star>{t.board.kindCapsule}</BoardKindLabel>
-      <BoardMemQuote
-        when={whenLabel}
-        onClick={
-          memoryId
-            ? () =>
-                router.push(
-                  buildMemoryDetailPath(activeHub?.hub.slug ?? null, memoryId),
-                )
-            : undefined
-        }
-      >
-        “{quote}”
-      </BoardMemQuote>
-    </>
-  );
-}
-
 function stripFromPayload(
   label: string,
   detail: string | undefined,
@@ -196,7 +160,7 @@ function ActivityBody({ slot }: BoardKindBodyProps) {
 
   return (
     <>
-      <BoardKindLabel>
+      <BoardKindLabel {...boardKindEyebrow("activity")}>
         {interpolate(t.board.kindActivity, { n: String(windowHours) })}
       </BoardKindLabel>
       {agents.map((agent) => (
@@ -228,6 +192,7 @@ function ActivityBody({ slot }: BoardKindBodyProps) {
 // collapses to one line and only opens when asked.
 registerBoardKind("activity", ActivityBody, {
   purpose: (t) => t.board.activityPurpose,
+  temporality: "stateful",
   strip: (slot, t) =>
     stripFromPayload(
       t.board.stripActivity,
@@ -249,9 +214,4 @@ registerBoardKind("activity", ActivityBody, {
         return parts.length > 0 ? parts.join(" · ") : undefined;
       })(),
     ),
-});
-registerBoardKind("capsule", CapsuleBody, {
-  actions: { ack: (t) => t.board.capsuleAck },
-  purpose: (t) => t.board.capsulePurpose,
-  strip: (_slot, t) => ({ label: t.board.kindCapsule }),
 });

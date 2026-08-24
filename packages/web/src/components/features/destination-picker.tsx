@@ -66,11 +66,14 @@ export function DestinationPicker({
 }: DestinationPickerProps) {
   const { t } = useLocale();
   const chrome = variant === "card";
-  const resolvedListHeight =
-    listHeight ?? (chrome ? (mode === "select" ? 268 : 320) : undefined);
+  // Card variant caps its own height, so the list needs no cap of its
+  // own — flex-1 + min-h-0 lets it fill whatever the hint row and back
+  // button leave. Plain variant defers entirely to its wrapper.
+  const resolvedListHeight = listHeight;
   return (
     <div
       className={cn(
+        "flex min-h-0 flex-col",
         chrome ? "rounded-surface overflow-hidden" : "overflow-hidden",
         className,
       )}
@@ -93,7 +96,7 @@ export function DestinationPicker({
           its own glass shell) still gets the helpful prompt; the old
           `&& chrome` gate suppressed it inside plain wrappers. */}
       {mode === "select" && (
-        <div className="border-b border-border/30 px-3 py-2.5">
+        <div className="shrink-0 border-b border-border/30 px-3 py-2.5">
           <p className="text-[12px] text-fg-3">{t.topics.movePickerHint}</p>
         </div>
       )}

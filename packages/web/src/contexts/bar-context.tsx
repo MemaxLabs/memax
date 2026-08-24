@@ -250,6 +250,13 @@ interface BarState {
   openBar: () => void;
   hideBar: () => void;
   closeBar: () => void;
+  /**
+   * Toggle bar visibility — the Cmd+K semantic. The left-rail Search
+   * row calls this so the click and the shortcut are literally the
+   * same code path (open the overlay / hide it preserving state; on
+   * the brain page, cycle focus/suppress instead of hiding).
+   */
+  toggleBar: () => void;
   mobileComposeActive: boolean;
   openMobileComposeActive: () => void;
   closeMobileComposeActive: () => void;
@@ -1046,9 +1053,10 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
       // the lift signal — files would be "saved" into a hidden bar.
       // This is the shared file-intake seam — drag-drop, paste, and any
       // future picker all route through addStagedFiles, so the invariant
-      // is fixed once here (codex-review 2026-04-21). Spec: bar does NOT
-      // elevate during the drag gesture itself — only after the drop
-      // commits files, which triggers this path.
+      // is fixed once here (codex-review 2026-04-21). Spec update
+      // 2026-08-10 (founder): the bar DOES elevate during the drag
+      // gesture (isDragging feeds hasLiftSignal, and dragenter clears
+      // suppression) — this path remains the post-drop commit seam.
       dispatch({ type: "setBarPanelSuppressed", value: false });
 
       updateStagedFiles((prev) => {
@@ -1239,7 +1247,11 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
     hasLiftSignal:
       derivedInteraction.hasLiftSignal ||
       recallQuery.length > 0 ||
-      rememberActive,
+      rememberActive ||
+      // A file drag over the window lifts the bar so the drop target
+      // is visibly awake (founder 2026-08-10 — supersedes the earlier
+      // "no elevation during the drag gesture" spec below).
+      isDragging,
     hasExpandContent:
       derivedInteraction.hasExpandContent ||
       recallQuery.length > 0 ||
@@ -2336,6 +2348,9 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
       dragCounter.current++;
       if (e.dataTransfer?.types.includes("Files")) {
         setIsDragging(true);
+        // A peeled/⌘K-hidden bar must wake for the drop target to be
+        // visible — same invariant addStagedFiles enforces post-drop.
+        dispatch({ type: "setBarPanelSuppressed", value: false });
       }
     };
     const onDragLeave = (e: DragEvent) => {
@@ -2376,15 +2391,34 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
         }
       });
     };
+    // Cancelled drags don't reliably fire dragleave/drop — Escape,
+    // releasing outside the window, or alt-tabbing away can leave the
+    // gesture with no terminal event. Now that isDragging drives a
+    // visible overlay + bar lift, a stale true is user-visible, so
+    // reset on every cancellation signal too (codex PR review
+    // 2026-08-11).
+    const onDragCancel = () => {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") onDragCancel();
+    };
     window.addEventListener("dragenter", onDragEnter);
     window.addEventListener("dragleave", onDragLeave);
     window.addEventListener("dragover", onDragOver);
     window.addEventListener("drop", onDrop);
+    window.addEventListener("dragend", onDragCancel);
+    window.addEventListener("blur", onDragCancel);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("dragenter", onDragEnter);
       window.removeEventListener("dragleave", onDragLeave);
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
+      window.removeEventListener("dragend", onDragCancel);
+      window.removeEventListener("blur", onDragCancel);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [
     addStagedFiles,
@@ -2413,7 +2447,7 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
     // input. Previously the promotion happened only via the input's
     // onFocus handler (openMobileComposeActive), which silently
     // failed if inputRef.current wasn't mounted yet at the time
-    // openBar fired (FAB tap on a route where the bar wasn't
+    // openBar fired (rail Search tap on a route where the bar wasn't
     // previously rendered). Result: user saw mirror without input
     // (or input without mirror), couldn't edit. Plan 26 follow-up.
     if (isMobile && mobileComposeState !== "fullscreen") {
@@ -2676,74 +2710,92 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
     ],
   );
 
+  // Toggle bar visibility (Raycast model) — the ONE semantic behind
+  // both entry points: the Cmd+K shortcut and the left-rail Search
+  // row. After plan 26's rest-state shift, the bar is inline ONLY on
+  // the brain page; every other route surfaces it as a centered
+  // overlay on demand, and this toggles that overlay open/closed.
+  const toggleBar = useCallback(() => {
+    // Chat surface (/brain*): the bar isn't inline — the toggle is the
+    // ONLY way to summon it. Treat like every other overlay-state
+    // route and toggle the centered overlay. The chat composer
+    // is blurred on overlay-open by `<ChatBrainView>` itself
+    // (see use-bar-overlay-blur effect) so focus lands cleanly
+    // on the bar input.
+    if (isChatSurfaceRoute(pathname)) {
+      if (barOverlayOpen) {
+        hideBar();
+      } else {
+        openBar();
+      }
+      return;
+    }
+    if (view === "brain") {
+      // Brain page: the bar IS the page's primary surface (centered
+      // capture). Toggle cycles between focused-empty / suppress-with-
+      // state / expanded states without ever fully hiding the bar.
+      if (barPanelSuppressed) {
+        dispatch({ type: "setBarPanelSuppressed", value: false });
+        requestAnimationFrame(() => {
+          const el = inputRef.current;
+          if (el) {
+            el.focus();
+            el.selectionStart = el.selectionEnd = el.value.length;
+          }
+        });
+      } else if (barHasState()) {
+        dispatch({ type: "setBarPanelSuppressed", value: true });
+        inputRef.current?.blur();
+      } else {
+        const isOpen =
+          barFocused || isBarExpanded || mobileComposeState !== "docked";
+        if (isOpen) {
+          inputRef.current?.blur();
+          setIsBarExpanded(false);
+          if (mobileComposeState !== "docked") {
+            setMobileComposeState("docked");
+          }
+          clearNavigationSelection();
+        } else {
+          const el = inputRef.current;
+          if (el) {
+            el.focus();
+            el.selectionStart = el.selectionEnd = el.value.length;
+          }
+        }
+      }
+    } else if (barOverlayOpen) {
+      // Overlay-state route with bar overlay open: toggle hides it
+      // (preserves any typed state — toggling again brings it back).
+      hideBar();
+    } else {
+      // Overlay-state route with overlay closed: toggle opens it.
+      openBar();
+    }
+  }, [
+    pathname,
+    view,
+    barOverlayOpen,
+    barPanelSuppressed,
+    barHasState,
+    barFocused,
+    isBarExpanded,
+    mobileComposeState,
+    openBar,
+    hideBar,
+    setIsBarExpanded,
+    setMobileComposeState,
+    clearNavigationSelection,
+  ]);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Cmd+K / Ctrl+K — toggle bar visibility (Raycast model).
-      // After plan 26's "FAB-as-rest-state" shift, the bar is inline
-      // ONLY on the brain page; every other route uses the FAB
-      // (ScanRestButton) as the rest state and surfaces the bar as a
-      // centered overlay on demand. Cmd+K is the keyboard equivalent
-      // of tapping the FAB — it toggles the overlay open/closed.
+      // Cmd+K / Ctrl+K — toggle bar visibility. Same semantic as the
+      // left-rail Search row; both call toggleBar().
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        // Chat surface (/brain*): the bar isn't inline — Cmd+K is the
-        // ONLY way to summon it. Treat like every other FAB-state
-        // route and toggle the centered overlay. The chat composer
-        // is blurred on overlay-open by `<ChatBrainView>` itself
-        // (see use-bar-overlay-blur effect) so focus lands cleanly
-        // on the bar input.
-        if (isChatSurfaceRoute(pathname)) {
-          if (barOverlayOpen) {
-            hideBar();
-          } else {
-            openBar();
-          }
-          return;
-        }
-        if (view === "brain") {
-          // Brain page: the bar IS the page's primary surface (centered
-          // capture). Cmd+K cycles between focused-empty / suppress-with-
-          // state / expanded states without ever fully hiding the bar.
-          if (barPanelSuppressed) {
-            dispatch({ type: "setBarPanelSuppressed", value: false });
-            requestAnimationFrame(() => {
-              const el = inputRef.current;
-              if (el) {
-                el.focus();
-                el.selectionStart = el.selectionEnd = el.value.length;
-              }
-            });
-          } else if (barHasState()) {
-            dispatch({ type: "setBarPanelSuppressed", value: true });
-            inputRef.current?.blur();
-          } else {
-            const isOpen =
-              barFocused || isBarExpanded || mobileComposeState !== "docked";
-            if (isOpen) {
-              inputRef.current?.blur();
-              setIsBarExpanded(false);
-              if (mobileComposeState !== "docked") {
-                setMobileComposeState("docked");
-              }
-              clearNavigationSelection();
-            } else {
-              const el = inputRef.current;
-              if (el) {
-                el.focus();
-                el.selectionStart = el.selectionEnd = el.value.length;
-              }
-            }
-          }
-        } else if (barOverlayOpen) {
-          // FAB-state route with bar overlay open: Cmd+K hides it
-          // (preserves any typed state — Cmd+K again brings it back).
-          hideBar();
-        } else {
-          // FAB-state route with overlay closed: Cmd+K opens it,
-          // mirroring the FAB tap.
-          openBar();
-        }
+        toggleBar();
         return;
       }
 
@@ -2782,23 +2834,7 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [
-    view,
-    barOverlayOpen,
-    barPanelSuppressed,
-    barHasState,
-    openBar,
-    hideBar,
-    peelBack,
-    barFocused,
-    isBarExpanded,
-    mobileComposeState,
-    pathname,
-    router,
-    setIsBarExpanded,
-    setMobileComposeState,
-    clearNavigationSelection,
-  ]);
+  }, [toggleBar, view, pathname, router, peelBack]);
 
   const goMemory = useCallback(() => {
     inputRef.current?.blur();
@@ -2806,7 +2842,7 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
     // Resolve the destination hub. Order:
     //   1. Pathname slug (if we're already on a v2 hub-scoped surface,
     //      stay in that hub's memories overview).
-    //   2. Active hub from auth (covers /brain, /agents, /pulse — non-
+    //   2. Active hub from auth (covers /brain, /agents — non-
     //      hub-scoped routes that have no slug in the path). Without
     //      this, callers from /brain landed on /memories which middleware
     //      routes to /h/personal/memories regardless of which hub the
@@ -2910,6 +2946,7 @@ export function BarProvider({ children }: { children: React.ReactNode }) {
         openBar,
         hideBar,
         closeBar,
+        toggleBar,
         mobileComposeActive,
         openMobileComposeActive,
         closeMobileComposeActive,

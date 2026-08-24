@@ -142,7 +142,7 @@ export function TopicLocation({
           side="bottom"
           align="start"
           sideOffset={4}
-          className="min-w-[220px] max-h-[320px] overflow-hidden"
+          className="flex min-w-[220px] max-h-[320px] flex-col overflow-hidden"
         >
           {/* PopoverContent now always paints the glass-dropdown chrome
               (border + bg + shadow). DestinationPicker's default
@@ -153,16 +153,15 @@ export function TopicLocation({
               keep those two paths in sync by always letting the outer
               container own the material.
 
-              Explicit listHeight={268} matches the card variant's
-              default select-mode cap (320px outer - 52px hint row =
-              268px list), so switching to plain doesn't drop the
-              height constraint and let long topic trees grow
-              unbounded (codex High on the prior commit). The
-              PopoverContent's own max-h-[320px] + overflow-hidden is
-              the outer safety cap. */}
+              No listHeight: the picker is a flex column inside this
+              flex-col popover, so the list claims whatever the hint row
+              and (once drilled in) the back button leave. The previous
+              fixed 268px was computed as "320 outer - 52 hint" and
+              never subtracted the 44px back button, so drilling into a
+              sub-topic pushed the last row into the clipped strip below
+              the popover — reachable by neither scroll nor pointer. */}
           <DestinationPicker
             variant="plain"
-            listHeight={268}
             onSelectTopic={handleSelect}
             onSelectHub={handleMoveToHub}
             onClose={() => setOpen(false)}

@@ -87,76 +87,13 @@ export const MOBILE_OVERLAY_CONTENT_TOP = `calc(${MOBILE_CONTENT_TOP} + 12px)`;
 /** Tabs/header container max-width: max-w-4xl (56rem) + px-8 padding (64px) */
 export const TABS_MAX_WIDTH = "calc(56rem + 64px)";
 
-/**
- * Desktop tree surface geometry.
- *
- * The tree panel is now a floating glass card (macOS Tahoe / Claude
- * Desktop style) rather than an in-flow column. It is rendered with
- * `position: fixed`, inset 12px from the top/left/bottom viewport edges,
- * and 296px wide. The visual footprint consumed by the tree — and thus
- * the horizontal clearance that fixed-position siblings must respect —
- * is the panel width plus a gutter on each side.
- *
- *   TREE_PANEL_INSET  (12)  = margin from left viewport edge
- *   TREE_PANEL_WIDTH  (296) = panel card width
- *   TREE_PANEL_INSET  (12)  = matching gutter on the right of the panel
- *                             so neighbouring fixed surfaces don't
- *                             visually crash into the glass edge
- *   TREE_SIDEBAR_W    (320) = TREE_PANEL_INSET * 2 + TREE_PANEL_WIDTH
- *                             occupied footprint; consumed by
- *                             `desktopLeftWidth()` and by the
- *                             SidebarSlot layout spacer width
- *
- * TREE_SIDEBAR_W plays two distinct roles:
- *
- *   1. Pinned-open (user's persistent toggle): foreground content
- *      regions may offset themselves right by TREE_SIDEBAR_W so the
- *      panel has visual breathing room. The fixed panel itself does not
- *      paint a spacer column — full-bleed backgrounds such as the hub
- *      aura stay anchored edge-to-edge.
- *
- *   2. Drag-session auto-open (transient): SidebarSlot stays 0; the
- *      panel overlays the page without reflowing content. `desktopLeftWidth`
- *      still returns TREE_SIDEBAR_W in this case so fixed-position
- *      siblings (primarily the /memories bottom glass-edge strip)
- *      clear the visually-occupied panel footprint.
- *
- * The tree subtree is kept mounted inside PinnedTreeSidebar at all
- * times — regardless of any foreground content offset — for DnD
- * droppable stability.
- *
- * Callers computing a left-edge offset MUST use `desktopLeftWidth()`
- * below so the drag-session case is handled uniformly.
- */
-export const TREE_PANEL_INSET = 12;
-export const TREE_PANEL_WIDTH = 296;
-export const TREE_SIDEBAR_W = TREE_PANEL_INSET * 2 + TREE_PANEL_WIDTH;
-export const TREE_PANEL_CONTENT_OFFSET = 88;
-
-/**
- * Compute the desktop left-side occupied width of the tree surface.
- *
- * Used by any fixed-position element that needs to clear the tree
- * surface — most notably the `/memories` bottom glass-edge strip which
- * must not render behind the sidebar when the tree is user-open OR
- * transiently drag-open. Returns 0 on mobile (no sidebar).
- *
- * Pass both `isPinned` and `isDragSessionOpen` so the offset updates
- * during drag-session auto-open. There is no permanent rail — the
- * Notion/Linear-style design uses a floating toggle near the logo
- * when closed and folds the close button into the sidebar header when
- * open, so the ONLY left-side width to clear is the sidebar itself.
- */
-export function desktopLeftWidth({
-  isMobile,
-  isTreeOpen,
-}: {
-  isMobile: boolean;
-  isTreeOpen: boolean;
-}): number {
-  if (isMobile) return 0;
-  return isTreeOpen ? TREE_SIDEBAR_W : 0;
-}
+// Desktop tree/panel geometry now lives in `src/lib/shell-geometry.ts`
+// (RAIL_WIDTH / PANEL_WIDTH / PANEL_INSET / shellLeftOffsetPx). The v1
+// constants that used to sit here (TREE_PANEL_INSET/WIDTH, TREE_SIDEBAR_W,
+// TREE_PANEL_CONTENT_OFFSET, desktopLeftWidth) had no remaining code
+// consumers — two sources of truth for the same 296px was exactly how the
+// rail and panel drifted apart — so they were deleted rather than kept in
+// sync (2026-08).
 
 // ─── Bar height ───
 

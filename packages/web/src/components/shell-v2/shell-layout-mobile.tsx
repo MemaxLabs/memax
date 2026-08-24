@@ -12,7 +12,6 @@
  *   - `<main>` fills the viewport between the top bar and the bottom
  *     bar surface; scrolls with `overscroll-contain` so the bar
  *     surface doesn't bounce-overlap.
- *   - `<ScanRestButton>` floats bottom-right (legacy mobile placement).
  *   - `<MobileBarSurface>` and `<MobileComposeOverlay>` are mounted
  *     by `<AppShellClient>` already (above the layout dispatch) — they
  *     position via `fixed` and don't need a slot here.
@@ -30,12 +29,15 @@ import { useAuth, useActiveHub } from "@/lib/auth";
 import { useLocale } from "@/i18n";
 import { useSettingsPanel } from "@/contexts/settings-panel-context";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
+import { buildMemoriesPath, buildPulsePath } from "@/lib/route-helpers";
+import { Search } from "lucide-react";
 import { MemaxLogo, MemaxTextLogo } from "@memaxlabs/ui";
+import { useBar } from "@/contexts/bar-context";
+import { useShellState } from "@/contexts/shell-state-context";
 import { MobileTopBar } from "./mobile-top-bar";
 import { MobileDrawer } from "./mobile-drawer";
 import { HubSwitcherBottomSheet } from "./hub-switcher-bottom-sheet";
 import { PushTransitionWrapper } from "./push-transition-wrapper";
-import { ScanRestButton } from "./scan-rest-button";
 import { SHELL_TABS, type ShellTabId } from "./shell-tabs";
 
 interface ShellLayoutMobileProps {
@@ -90,7 +92,6 @@ export function ShellLayoutMobile({ tab, children }: ShellLayoutMobileProps) {
         open={hubSwitcherOpen}
         onClose={() => setHubSwitcherOpen(false)}
       />
-      <ScanRestButton />
     </div>
   );
 }
@@ -108,16 +109,17 @@ function DrawerContent({ tab: activeTab, onNavigate }: DrawerContentProps) {
   const { activeHub } = useActiveHub();
   const { t } = useLocale();
   const settingsPanel = useSettingsPanel();
+  const { openBar } = useBar();
+  const { setBarScrollHidden } = useShellState();
 
   // Same active-hub-aware path logic as the desktop LeftRail / mobile
-  // dock. Single source of truth would mean lifting this; for now
-  // the snippet is small enough that copying is preferable to a
-  // shared hook with no other consumers.
-  const memoriesPath = (() => {
-    if (!activeHub?.hub || !user) return "/h/personal/memories";
-    const slug = hubRouteSlug(activeHub.hub, user.id);
-    return `/h/${slug}/memories`;
-  })();
+  // dock: memories AND pulse are both hub-scoped (`staticPath: null`
+  // in SHELL_TABS), so both must resolve here — a tab this map misses
+  // resolves to null and its tap silently no-ops, which is exactly how
+  // the drawer's Pulse row broke when pulse went hub-scoped and only
+  // the rail + dock were updated.
+  const hubTabSlug =
+    activeHub?.hub && user ? hubRouteSlug(activeHub.hub, user.id) : "personal";
 
   const tabLabel: Record<ShellTabId, string> = {
     brain: t.nav.tabs.brain,
@@ -129,7 +131,13 @@ function DrawerContent({ tab: activeTab, onNavigate }: DrawerContentProps) {
   const handleTabTap = (id: ShellTabId) => {
     const spec = SHELL_TABS.find((s) => s.id === id);
     if (!spec) return;
-    const target = spec.staticPath ?? (id === "memories" ? memoriesPath : null);
+    const target =
+      spec.staticPath ??
+      (id === "memories"
+        ? buildMemoriesPath(hubTabSlug)
+        : id === "pulse"
+          ? buildPulsePath(hubTabSlug)
+          : null);
     if (!target) return;
     if (pathname !== target) router.push(target);
     onNavigate();
@@ -158,6 +166,27 @@ function DrawerContent({ tab: activeTab, onNavigate }: DrawerContentProps) {
         aria-label={t.nav.primary}
         className="flex-1 px-2 pt-3 flex flex-col gap-0.5"
       >
+        {/* Search — action row above the tabs, same convention as the
+            desktop rail (replaced the bottom-right FAB, 2026-08). It
+            closes the drawer and summons the bar: openBar() promotes
+            the mobile compose state to "mirror" so the input is
+            immediately editable. */}
+        <button
+          type="button"
+          onClick={() => {
+            setBarScrollHidden(false);
+            onNavigate();
+            openBar();
+          }}
+          aria-label={t.nav.openBar}
+          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] transition-colors cursor-pointer text-fg-2 hover:bg-foreground/4"
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+            <Search className="h-5 w-5" strokeWidth={2} />
+          </span>
+          <span>{t.nav.search}</span>
+        </button>
+
         {SHELL_TABS.map((spec) => {
           const Icon = spec.icon;
           const isActive = spec.id === activeTab;

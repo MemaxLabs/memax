@@ -24,7 +24,7 @@ import { SettingsDialog } from "@/components/features/settings/settings-dialog";
 import { MemaxDebugger } from "@/components/features/memax-debugger";
 import { ImpersonationBar } from "@/components/features/impersonation-bar";
 import { MemaxEventBridge } from "@/components/features/memax-event-bridge";
-import { LandingSurfaceSync } from "@/components/shell-v2/landing-surface-sync";
+import { BarDropOverlay } from "@/components/bar/bar-drop-overlay";
 import {
   SettingsDialogProvider,
   useSettingsDialog,
@@ -59,7 +59,6 @@ import { MobileThumbBarRow } from "@/components/bar/mobile-thumb-bar-row";
 import {
   TopicTreePanelProvider,
   TopicTreePanelOverlayHost,
-  useTreePanel,
 } from "@/components/features/topic/topic-tree-panel";
 import dynamic from "next/dynamic";
 import { BarNotificationCard } from "@/components/bar/bar-notification-card";
@@ -75,7 +74,6 @@ import { NavigationDirectionProvider } from "@/contexts/navigation-direction";
 import {
   BRAIN_BAR_REST_TOP,
   BAR_ENGAGED_TOP,
-  TREE_SIDEBAR_W,
   DESKTOP_DOCK_BOTTOM_GAP_PX,
   MOBILE_DOCK_BOTTOM_GAP_PX,
   BAR_HEIGHT,
@@ -276,8 +274,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <ComposeTriggers />
             {/* ShellStateProvider lifted above <GlobalBar> + <V2ChromeWrap>
                 (plan 26 phase 4). The bar reads `barScrollHidden` to drive
-                its sticky scroll-hide state, and V2ChromeWrap's rail +
-                ScanRestButton read the same flag. Single source for both.
+                its sticky scroll-hide state, and V2ChromeWrap's rail Search
+                row clears the same flag. Single source for both.
 
                 ComposeProvider wraps BarProvider as of 2026-05-20 so the
                 bar can call `useCompose().openModal()` from its
@@ -312,10 +310,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   <SettingsDialog />
                   <MemaxDebugger />
                   <MemaxEventBridge />
-                  <LandingSurfaceSync />
 
                   {/* Global bar + portals + backdrop. */}
                   <GlobalBar />
+                  {/* File-drag visual cue — consumer of BarProvider's
+                      isDragging (the listeners existed; the visual
+                      never did). */}
+                  <BarDropOverlay />
 
                   <TopicDndProvider>
                     <div className="relative flex">
@@ -458,14 +459,6 @@ function GlobalBar() {
     setBarPanelSuppressed,
   } = useBar();
   const { t } = useLocale();
-  // Glass-edge offset must track BOTH the user's explicit toggle state
-  // AND the transient drag-session auto-open, otherwise the bottom blur
-  // strip runs under the temporarily opened tree during a drag. Computed
-  // via `desktopLeftWidth()` which returns 0 when the tree is closed
-  // and the panel's visual footprint (TREE_SIDEBAR_W) when it's open
-  // — the panel floats via position: fixed and does not push content.
-  const { isPinned: isTreePinned, isDragSessionOpen } = useTreePanel();
-
   const barRef = useRef<HTMLDivElement>(null);
   // Notification now lives OUTSIDE the bar's fixed DOM (see the
   // z-bar-notif sibling in the return) so the bar's z-bar glass can
@@ -482,17 +475,12 @@ function GlobalBar() {
   const reduceMotion = useReducedMotion();
   // Phase 4 — sticky scroll-hide. Once the user scrolls down enough to
   // hide the bar, the bar STAYS hidden (scroll-up no longer reveals it)
-  // until the user reaches the top of the page. The re-entry is the
-  // ScanRestButton (FAB-style search button at bottom-right) which
-  // becomes visible only while `barScrollHidden` is true; clicking it
-  // calls openBar() AND clears the flag so the bar reveals again.
-  // Lives in ShellStateContext so both this component (drives bar
-  // hide rendering) and ScanRestButton (drives FAB visibility) read
-  // from one source — duplicating local state would be racy.
-  // `barShown` mirrors `shouldShow` so ScanRestButton can surface as
-  // the persistent re-entry on routes where the bar is route-hidden
-  // (view==="none" without overlay).
-  const { barScrollHidden, setBarScrollHidden, setBarShown } = useShellState();
+  // until the user reaches the top of the page. The re-entries are the
+  // rail's Search row and Cmd+K — the Search row clears the flag when
+  // it summons the bar. Lives in ShellStateContext so this component
+  // (drives bar hide rendering) and the rail read from one source —
+  // duplicating local state would be racy.
+  const { barScrollHidden, setBarScrollHidden } = useShellState();
 
   // Listen for batch toolbar visibility — bar hides when batch toolbar shows
   useEffect(() => {
@@ -503,33 +491,26 @@ function GlobalBar() {
   // Mobile with dock: bar is only inline on Brain tab. Topics tab uses dock.
   // Desktop: bar is inline ONLY on Brain (the centered capture surface
   // that IS the brain page). Memory + inbox + agents + everywhere else
-  // default to FAB-as-entry (ScanRestButton); tapping the FAB opens the
-  // bar as an overlay. User-driven shift away from a permanently-docked
-  // bar to a single FAB language across all destination routes.
+  // summon the bar on demand (rail Search row / Cmd+K) as a centered
+  // overlay. User-driven shift away from a permanently-docked bar on
+  // destination routes.
   //
   // Phase 3.7c chat surface — when the new ChatBrainView owns the page
   // (`isChatSurfaceRoute`), the chat composer is the user's input.
-  // Suppressing the inline bar (and the FAB below) avoids two
-  // competing text affordances on the same surface; option A of the
-  // chat-integration plan.
+  // Suppressing the inline bar avoids two competing text affordances
+  // on the same surface; option A of the chat-integration plan.
   const onChatSurface = isChatSurfaceRoute(pathname);
   const isInline = !onChatSurface && view === "brain";
   // Overlay path now applies on ANY non-brain desktop route (memory,
-  // inbox, agents, etc.) so opening the bar via the FAB consistently
-  // surfaces it as a centered overlay regardless of which destination
-  // the user was on.
+  // inbox, agents, etc.) so summoning the bar consistently surfaces
+  // it as a centered overlay regardless of which destination the
+  // user was on.
   const isOverlay = !isInline && barOverlayOpen;
   const isMemory = view === "memory";
   // Bar is always mounted. Visible when on a bar page, or overlay is open.
   // Batch no longer hides the bar — it mutes it (see barMuted below) so
   // users keep their spatial anchor for where the bar lives.
   const shouldShow = isInline || isOverlay;
-  // Mirror shouldShow into shared shell state so ScanRestButton can
-  // become the persistent re-entry on routes where the bar isn't
-  // visible (e.g., /agents, /pulse without overlay). Plan 26 follow-up.
-  useEffect(() => {
-    setBarShown(shouldShow);
-  }, [shouldShow, setBarShown]);
   // Muted state: bar stays mounted but is visually secondary and
   // non-interactive while the batch toolbar is active. 0.45 opacity +
   // pointer-events-none + inert attribute mirrors the disabled-button
@@ -803,8 +784,8 @@ function GlobalBar() {
     if (atTop) setBarScrollHidden(false);
   }, [atTop, setBarScrollHidden]);
   const isScrollHidden = scrollHideable && barScrollHidden;
-  // ScanRestButton owns the FAB tap path: it calls openBar() AND
-  // clears barScrollHidden itself when clicked (so the bar reveals
+  // The rail's Search row owns the summon path: it clears
+  // barScrollHidden itself before toggleBar() (so the bar reveals
   // AND focuses simultaneously). No openBar reference needed here.
 
   // Compose the scroll-hide translate so the bar's top edge lands
@@ -1107,9 +1088,8 @@ function GlobalBar() {
                     : 1
                   : 0,
             }}
-            // Mobile: no fade. Desktop: snappy spring matching the
-            // ScanRestButton FAB so the two surfaces feel like one
-            // morph (~120ms settle, no overshoot). Plan 26 critical
+            // Mobile: no fade. Desktop: snappy spring (~120ms
+            // settle, no overshoot). Plan 26 critical
             // change — earlier 200ms iOS-curve fade read as sluggish
             // for a chrome morph.
             //
@@ -1283,9 +1263,8 @@ function GlobalBar() {
 /**
  * V2ChromeWrap — wraps route children in shell-v2 chrome.
  *
- * Mounts <ShellStateProvider> (rail collapsed + secondaryHidden state)
- * and <ShellLayoutV2> (LeftRail + PinnedSecondaryPanel + ScanRestButton +
- * page-bg aurora). The active tab is resolved from the URL via
+ * Mounts <ShellStateProvider> (secondaryHidden state) and
+ * <ShellLayoutV2> (LeftRail + PinnedSecondaryPanel + page-bg aurora). The active tab is resolved from the URL via
  * getShellTabForPath; routes that don't map to any tab return null and
  * the rail renders no active state.
  *
@@ -1306,7 +1285,7 @@ function V2ChromeWrap({
   // Memories. ShellLayoutV2 + LeftRail accept null directly.
   const tab = getShellTabForPath(pathname);
   // ShellStateProvider is mounted higher up (above GlobalBar) so the bar
-  // can consume `barScrollHidden` from the same source as the rail and
-  // ScanRestButton. Plan 26 phase 4.
+  // can consume `barScrollHidden` from the same source as the rail's
+  // Search row. Plan 26 phase 4.
   return <ShellLayoutV2 tab={tab}>{children}</ShellLayoutV2>;
 }

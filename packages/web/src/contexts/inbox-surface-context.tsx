@@ -10,6 +10,7 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useIsMobile } from "@/hooks/use-is-mobile";
+import { buildPulsePath, getHubSlugForPath } from "@/lib/route-helpers";
 
 interface InboxSurfaceState {
   open: boolean;
@@ -47,12 +48,15 @@ export function InboxSurfaceProvider({
   const openInbox = useCallback(() => {
     if (isMobile) {
       // /inbox retired in plan 25 P4 — the pulse board hosts the
-      // decisions and receipts the inbox used to own.
-      router.push("/pulse");
+      // decisions and receipts the inbox used to own. The board is
+      // hub-scoped, so prefer the slug already in the URL; slug-less
+      // routes (/brain, /agents) fall back to the `/pulse` forwarder,
+      // which resolves the active hub client-side.
+      router.push(buildPulsePath(getHubSlugForPath(pathname)));
       return;
     }
     setOpen(true);
-  }, [isMobile, router]);
+  }, [isMobile, pathname, router]);
 
   const value = useMemo(
     () => ({

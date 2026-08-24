@@ -1,32 +1,38 @@
 "use client";
 
 /**
- * /pulse — the pulse board's own surface (plan 25 P4).
+ * /pulse — forwarder to the active hub's pulse board.
  *
- * This route replaced `/inbox` as the fourth shell tab. The board was
- * already embedded on the memories page (`<BoardSection>`); this is the
- * same board for the active hub, mounted full-page with the pieces the
- * embedded variant deliberately leaves out — board tabs, the
- * custom-board composer, and the 最近 receipts strip that absorbed the
- * retired inbox.
+ * The board itself moved to `/h/<slug>/pulse` (hub identity belongs in
+ * the URL — see that route's docstring for the bug this fixed). This
+ * path stays mounted because it is the old deep-link target: bookmarks,
+ * the retired `/inbox` + `/inbox/<id>` routes, and `/discover` all
+ * redirect here.
  *
- * Route choice: a STATIC `/pulse` path rather than mirroring the
- * memories tab's active-hub path. Both tabs would otherwise resolve to
- * `/h/<slug>/memories` and the pathname-derived active-tab lookup
- * (`getShellTabForPath`) could not tell them apart. `/pulse` also gives
- * the retired `/inbox` route a stable redirect target for old email
- * deep links. Hub identity comes from the active-hub context, which is
- * how every other static-path tab (`/brain`, `/agents`) already works —
- * so no slug and no `<V2HubRoute>` gate is needed here.
+ * It has to be a CLIENT component: the active hub lives in client auth
+ * state (there is no server-readable hub preference), so a server
+ * `redirect()` could only ever guess `personal` — which is exactly the
+ * wrong-hub bug we just removed. We render nothing until auth hydrates,
+ * then `router.replace` so the forwarder never lands in history.
  */
 
-import { BoardPage } from "@/components/features/board/board-view";
-import { PageShell } from "@/components/layout";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useActiveHub, useAuth } from "@/lib/auth";
+import { hubRouteSlug } from "@/lib/hub-from-slug";
+import { buildPulsePath } from "@/lib/route-helpers";
 
-export default function PulsePage() {
-  return (
-    <PageShell>
-      <BoardPage />
-    </PageShell>
-  );
+export default function PulseForwarderPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const { activeHub } = useActiveHub();
+  const slug =
+    activeHub?.hub && user ? hubRouteSlug(activeHub.hub, user.id) : null;
+
+  useEffect(() => {
+    if (!slug) return;
+    router.replace(buildPulsePath(slug));
+  }, [router, slug]);
+
+  return null;
 }

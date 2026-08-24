@@ -14,10 +14,9 @@ export const zh: Translations = {
   },
   nav: {
     primary: "主导航",
-    expandRail: "展开导航栏",
-    collapseRail: "收起导航栏",
     showSecondaryPanel: "显示话题面板",
     hideSecondaryPanel: "收起话题面板",
+    search: "搜索",
     openBar: "打开输入栏 (⌘K)",
     openSettings: "打开设置",
     topicTreeRegion: "话题",
@@ -30,6 +29,7 @@ export const zh: Translations = {
     },
   },
   bar: {
+    dropHint: "松开，存进记忆",
     placeholder: {
       default: "记录或提问…",
       brain: "记录或提问...",
@@ -459,7 +459,7 @@ export const zh: Translations = {
     connectAgents: "连接你的 AI 助手们",
     setupLabel: "一条命令，连接所有助手",
     setupDesc:
-      "自动检测已安装的助手，创建独立密钥，配置 MCP + hooks。明天，你的 AI 就会记得今天。",
+      "安装 memax CLI，自动检测已安装的助手，创建独立密钥，配置 MCP + hooks。明天，你的 AI 就会记得今天。",
     promptLabel: "或粘贴到任意 agent 对话里",
     promptTemplate: "帮我连接 memax MCP: {url}",
     altMethods: "其他设置方式",
@@ -792,6 +792,10 @@ export const zh: Translations = {
     actionDismiss: "不关心",
     receiptAcked: "已收下",
     receiptDismissed: "已略过",
+    archivedSection: "已归档",
+    restore: "恢复",
+    history: "历史",
+    historyEmpty: "还没有旧版本",
     kindTrace: "行迹 · 过去 {n} 小时",
     kindPulse: "项目脉搏 · 近 {n} 天",
     kindActivity: "动静 · 过去 {n} 小时",
@@ -810,7 +814,7 @@ export const zh: Translations = {
     capsuleAck: "记得",
     title: "脉搏",
     purpose:
-      "你不在的时候，这个 hub 发生了什么——agent 的动作、主题的流向、旧记忆的回声。卡片每晚刷新；处理过的会留作回执，直到有新内容顶替。",
+      "你不在的时候，这个 hub 发生了什么——agent 的动作、主题的流向、旧记忆的回声。卡片在 memax 整理记忆后刷新；处理过的会留作回执，直到有新内容顶替。",
     purposeAria: "这是什么？",
     collapse: "收起",
     loadFailed: "板子没加载出来，刷新一下再试。",
@@ -838,16 +842,51 @@ export const zh: Translations = {
     kindOpenq: "被遗忘的问题",
     kindPattern: "未观察的模式",
     kindMusing: "memax 随想",
+    kindNextup: "接下来",
     kindGate: "等你",
     echoThen: "你问自己",
     echoNow: "你的决策",
+
+    // 团队专属 kind——只在共享 hub 上出现。每张都在说「这群人」，
+    // 所以文案点名到人，而不是对着一个读者说话。
+    kindConsensus: "共识缺口",
+    kindTeamEcho: "团队回声",
+    kindWhoKnows: "谁知道这个",
+    consensusPurpose:
+      "同一件事，hub 里两个人的理解不一样。两边都写下来了，但谁也没看过对方那版。",
+    teamEchoPurpose:
+      "有人问过的问题，后来另一个人答了，两条从没碰上。答案其实一直在这个 hub 里。",
+    whoKnowsPurpose:
+      "这个话题的记忆基本都是同一个人写的。动手之前，先问他一句。",
+    // 名册取不到作者时的兜底称呼。
+    consensusSideA: "一个人",
+    consensusSideB: "另一个人",
+    teamEchoThen: "问过",
+    teamEchoNow: "答了",
+    whoKnowsAsk: "问 {name}",
     gateFrom: "来自 {agent}",
-    dreamlogPurpose: "memax 每晚整理记忆后的第一人称手记。",
+    dreamlogPurpose: "memax 整理记忆后的第一人称手记。",
     echoPurpose: "一个旧问题遇到了新答案——只有带着时间的记忆能做到这件事。",
     threadPurpose: "两条你没关联过的记忆，可能是同一个想法。",
     openqPurpose: "你在记忆里问过、但从没回答的问题。",
     patternPurpose: "藏在记忆数据里、你自己未必察觉的习惯。",
     musingPurpose: "memax 对这个 hub 知识形状的随想。",
+    nextupPurpose: "memax 从你的记忆里推测你接下来最想做的事——每一条都有出处。",
+    nextupAck: "做完了 · 收下",
+
+    // agent 交接（接下来的每一条）——nextup 本身就是"带出处的任务"，
+    // 可以原样交给写代码的 agent。prompt 在前端用卡片数据拼出来，
+    // 这几条是它的中文骨架（XML 标签保持英文，那是结构不是话术）。
+    nextupHandoff: "复制交接 prompt",
+    nextupHandoffAll: "全部 {n} 条合成一个 prompt",
+    handoffPreamble:
+      "你正在接手一件来自 memax 的任务——memax 是这位用户的记忆中枢，用户的各个 agent 都把结论写在这里。<context> 里的内容逐字引自用户自己的记忆，请把它当作你目前掌握的全部项目背景。",
+    handoffConstraints:
+      "- 只依据上面的 context 工作；context 没覆盖到的部分，去代码里核实或直接问用户，不要臆造文件路径、既往决策和项目历史。\n- 如果 context 不足以让你开始，先说清楚缺什么，再动手。\n- 沿用你所改动的代码与文档里已有的约定。",
+    handoffSuccess:
+      "完成这件事，然后说明你改了什么、每个决定分别依据哪一条引用的记忆；凡是靠推断补上的地方都要明确标出来。",
+    handoffNoContext: "这条任务没有引用到任何记忆——动手前先向用户确认背景。",
+
     gatePurpose:
       "agent 停下来等你拍板。你的选择会写回记忆，agent 之后能直接读到。",
     feedbackAccurate: "准",
@@ -858,35 +897,61 @@ export const zh: Translations = {
     kindWaiting: "等你",
     waitingPurpose:
       "memax 替你做不了的决定——记忆冲突、主题归并、hub 邀请。在这儿回一句，板就能往下走。",
+    // 等你牌堆——决策一张一张来，角标数着后面还压着几件。
+    deckMore: "还有 {n} 件",
+    // 通用同类牌堆——任何 kind 的多张活卡都会叠起来。
+    stackCount: "还有 {n} 张",
+    // ↻ ——客户端换下一张看，不动任何卡的状态。
+    deckCycle: "看下一张",
+
+    // 收起的货架——记忆页里的板先收成一排小卡片，点开才铺开。
+    shelfExpand: "展开",
+    shelfCollapse: "收起",
+    shelfViewAll: "查看全部 →",
 
     // 最近 —— 原来住在收件箱里的回执。
     recentTitle: "最近",
     recentDetailOne: "1 条",
     recentDetail: "{n} 条",
     recentPurpose: "已经发生的事，不需要你拍板。",
+    // 个人板聚合:来源 hub 标签 + 一键隐藏。
+    hideHubTitle: "在个人脉搏中隐藏这个 hub 的动态",
+    hiddenHubsRestore: "已隐藏 {n} 个 hub · 恢复显示",
+    hiddenHubsRestoreOne: "已隐藏 1 个 hub · 恢复显示",
 
-    // 整页脉搏surface。
-    pageEmptyTitle: "板上很安静",
-    pageEmptyBody: "memax 每晚做完梦会刷新这块板。卡片会自己出现。",
+    // 整页脉搏surface——设计过的空状态（2026-08）：✦ 开头的一段话
+    // 讲清楚这里会出现什么，下面是"替你盯一件事"的示例 chips，
+    // 点一下就带着完整指令打开创建表单。
+    pageEmptyTitle: "板上还没有卡片",
+    pageEmptyBody:
+      "memax 整理记忆后，会把发现写在这里——梦记、旧问题的回声、没人注意的模式。第一批卡片会在下次整理后出现。",
+    emptyWatchTitle: "从一个例子开始",
+    emptyExampleFitness: "健身 & 睡眠",
+    emptyExampleFitnessInstruction:
+      "帮我盯着健身和睡眠的记录，节奏变了或者开始松懈就提醒我。",
+    emptyExampleProject: "项目节奏",
+    emptyExampleProjectInstruction:
+      "盯着我手上项目的推进节奏，有卡住或者被悄悄遗忘的就告诉我。",
+    emptyExampleStudy: "学习进度",
+    emptyExampleStudyInstruction:
+      "帮我记着正在学的东西，总结进展，太久没碰的提醒我一下。",
 
     // 自定义板。
-    boardsLabel: "板",
     newBoard: "新建板",
+    // 幽灵卡/幽灵tile——收在卡流和货架末尾的"新建板"潜在入口。
+    ghostTitle: "让 memax 盯一件事",
     newBoardTitleLabel: "板名",
     newBoardTitlePlaceholder: "对手动向",
     newBoardInstructionLabel: "长期指令",
-    newBoardInstructionPlaceholder: "每晚，memax 要在这个 hub 里盯着什么？",
+    newBoardInstructionPlaceholder: "memax 要在这个 hub 里持续盯着什么？",
     newBoardSave: "创建",
     newBoardCancel: "取消",
     cookingLabel: "酝酿中",
-    cookingReceipt: "✦ 已配置 · {title} 正在酝酿——明早的第一次结果，板上见。",
-    cookingBody: "明早见。",
-    pausedLabel: "已暂停",
+    cookingBody: "结果会在下次整理后出现。",
     deleteBoard: "删除这块板",
     deleteBoardConfirm: "删除这块板？板上的卡片会一起消失。",
     deleteBoardConfirmYes: "删除",
     deleteBoardConfirmNo: "先留着",
-    customBoardNoSlots: "这块板的卡片会在下一次夜间 dream 之后出现。",
   },
   inbox: {
     title: "收件箱",
@@ -1260,6 +1325,8 @@ export const zh: Translations = {
   },
 
   topics: {
+    searchTopicsPlaceholder: "搜索主题",
+    noSearchResults: "没有匹配「{query}」的主题",
     title: "你的主题",
     titlePersonal: "你的主题",
     titleTeam: "主题",
@@ -1985,12 +2052,14 @@ export const zh: Translations = {
     heroTeamPrefix: "团队的",
     heroTeamWords: ["共享大脑", "上下文", "决策", "项目进展"],
     heroWordLine: "{word}。",
-    sublineFull: "随手丢进来。memax 自动整理。你用的每一个 AI 都记得。",
+    sublineFull:
+      "不用再跟 AI 解释第二遍。随手丢进来，memax 自动整理，你用的每一个 AI 都记得。",
     sublineTeam:
       "队友的 AI 也知道你知道的。上下文、决策、进展——每个 agent 都同步。",
     // 团队联系入口 —— 候补名单之外的直接沟通渠道
     teamContactPrompt: "想给团队搭一个 memax？",
     teamContactCta: "找我们聊聊",
+    timePromise: "从接上 agent 到第一次 recall，不到两分钟。",
     sublineSafe: "跨 Claude Code、Cursor 和所有 AI 助手的共享记忆。",
     openMemax: "让你的 AI 记得你",
     // Hero 候补名单 CTA \u2014\u2014 原地变形：邮箱 \u2192 完整表单 \u2192 成功

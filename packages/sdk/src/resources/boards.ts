@@ -3,6 +3,7 @@ import type {
   BoardFeedbackVerdict,
   BoardSlot,
   BoardSlotAction,
+  BoardSlotVersion,
   BoardStatus,
   BoardWithSlots,
 } from "../types.js";
@@ -46,6 +47,21 @@ export class BoardsResource {
       "POST",
       `/v1/hubs/${hubId}/board/slots/${encodeURIComponent(slotKey)}/resolve`,
       { body: { action, verdict, choice } },
+    );
+  }
+
+  /**
+   * A slot's archived content versions, newest first (the live slot is
+   * not included). Empty until a producer has replaced the card at
+   * least once with different content.
+   */
+  async slotHistory(
+    hubId: string,
+    slotKey: string,
+  ): Promise<{ versions: BoardSlotVersion[] }> {
+    return this.req(
+      "GET",
+      `/v1/hubs/${hubId}/board/slots/${encodeURIComponent(slotKey)}/history`,
     );
   }
 

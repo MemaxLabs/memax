@@ -11,9 +11,6 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
 } from "@memaxlabs/ui";
 import { HubSwitcherMenu } from "@/components/features/hub/hub-switcher-menu";
 import { HubBadge } from "@/components/features/hub/hub-badge";
@@ -137,12 +134,24 @@ export function HubIdentityChip({
       });
 
   const isRail = variant === "rail";
+  // Rail variant is a full-width ROW, not a lone badge — the rail's
+  // rows (search, tabs, footer) share one rhythm (h-9 / rounded-lg /
+  // px-2 / gap-2.5 / 13px medium), and a floating 36px square broke
+  // it: wrong shape, no label, identity hidden behind a tooltip. The
+  // workspace-row pattern (Slack / Linear / Notion) is icon + name +
+  // chevron as one full-width affordance.
   const trigger = isRail ? (
     <PopoverTrigger
       aria-label={`${t.hubs.switchTitle}: ${label}`}
-      className="flex h-9 w-9 items-center justify-center rounded-card cursor-pointer transition-colors hover:bg-surface-2"
+      className="flex h-9 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-left cursor-pointer transition-colors hover:bg-surface-2"
     >
-      <HubBadge kind={kind} label={badgeLabel} accent={accent} size="md" />
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+        <HubBadge kind={kind} label={badgeLabel} accent={accent} size="sm" />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+        {label}
+      </span>
+      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-fg-4" />
     </PopoverTrigger>
   ) : (
     <PopoverTrigger className={triggerClass}>
@@ -162,21 +171,8 @@ export function HubIdentityChip({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      {isRail ? (
-        <Tooltip>
-          <TooltipTrigger render={trigger} />
-          <TooltipContent side="right" sideOffset={12}>
-            {label}
-          </TooltipContent>
-        </Tooltip>
-      ) : (
-        trigger
-      )}
-      <PopoverContent
-        side={isRail ? "right" : "bottom"}
-        align="start"
-        sideOffset={isRail ? 12 : 6}
-      >
+      {trigger}
+      <PopoverContent side="bottom" align="start" sideOffset={6}>
         <div className="w-60 p-1">
           <HubSwitcherMenu
             onSelect={() => setOpen(false)}

@@ -13,8 +13,9 @@
  * one paint after a deep-link to a different hub (the URL changes
  * before `switchHub` lands). Without the gate the tree briefly flashes
  * the previous hub's topics. We only suppress the tree on hub-scoped
- * routes that aren't synced yet — `/brain`, `/agents`, `/pulse`, and
- * v1 paths render the tree immediately as before.
+ * routes that aren't synced yet — `/brain`, `/agents`, the bare
+ * `/pulse` forwarder, and v1 paths render the tree immediately as
+ * before.
  *
  * Topic creation: the tree footer "New topic" button and per-node
  * hover "New subtopic" affordance both open TopicCreateDialog here.
@@ -44,7 +45,7 @@ export function TopicTreeMount() {
   // no-op resolve that always returns `{ resolvedHubId: null,
   // isSynced: false }`, which we ignore on slug-less paths.
   const { isSynced } = useV2RouteHubSync(slug ?? "");
-  const { visibleExpandedIds, onToggleExpand, activeTopic } =
+  const { visibleExpandedIds, onToggleExpand, onSpringExpand, activeTopic } =
     useTopicTreeController();
   const { data: topicsData } = useTopics();
   const [createTarget, setCreateTarget] = useState<TopicCreateTarget | null>(
@@ -56,6 +57,7 @@ export function TopicTreeMount() {
       <TopicTreeContent
         expandedIds={visibleExpandedIds}
         onToggleExpand={onToggleExpand}
+        onSpringExpand={onSpringExpand}
         activeTopic={activeTopic}
         onCreateTopic={() => setCreateTarget({})}
         onCreateSubtopic={(parentId) =>

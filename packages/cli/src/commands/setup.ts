@@ -17,6 +17,7 @@ import {
   setupMcpRemote,
   setupMcpOAuth,
   setupMcp,
+  finalizeCodexOAuthLogin,
   printMcpConfigs,
   removeMcpJson,
   removeMcpToml,
@@ -492,6 +493,20 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
         ),
       );
     }
+  }
+
+  // Codex doesn't auto-discover OAuth on first connect like other MCP
+  // clients — it needs an explicit `codex mcp login`. Walk the user
+  // through it so OAuth mode works out of the box.
+  if (
+    useRemote &&
+    !useApiKey &&
+    results.some(
+      (r) =>
+        r.agent === "Codex CLI" && r.changes.includes("MCP server (OAuth)"),
+    )
+  ) {
+    await finalizeCodexOAuthLogin();
   }
 
   console.log(

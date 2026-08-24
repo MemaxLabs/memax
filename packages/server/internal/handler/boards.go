@@ -133,9 +133,37 @@ func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON body")
 		return
 	}
+	// Reopen is the undo path — the inverse transition of everything
+	// below, so it short-circuits before the target-state table.
+	// Idempotent like resolve: undoing a card someone already reopened
+	// returns 200 with the current (live) slot.
+	if req.Action == model.BoardSlotActionReopen {
+		board, err := h.store.GetOrCreateSystemBoard(hubID, userID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+			return
+		}
+		slot, err := h.store.ReopenBoardSlot(board.ID, slotKey)
+		if errors.Is(err, store.ErrBoardSlotAlreadyResolved) {
+			slot, err = h.store.GetBoardSlot(board.ID, slotKey)
+		}
+		if errors.Is(err, store.ErrBoardSlotNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", "No card in that slot")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, model.ApiResponse{Data: map[string]any{
+			"slot": slot,
+		}})
+		return
+	}
+
 	newState, allowed := boardSlotActionTargetState[req.Action]
 	if !allowed {
-		writeError(w, http.StatusBadRequest, "invalid_action", "Action must be one of: ack, dismiss, feedback")
+		writeError(w, http.StatusBadRequest, "invalid_action", "Action must be one of: ack, dismiss, feedback, reopen")
 		return
 	}
 	if req.Action == model.BoardSlotActionFeedback &&
@@ -236,6 +264,32 @@ func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, model.ApiResponse{Data: map[string]any{
 		"slot": slot,
+	}})
+}
+
+// SlotHistory returns a slot's archived content versions, newest
+// first. Slots are replaced in place by producers; the history is what
+// lets the pulse UI show a stateful card's timeline (新 version / 旧
+// version) instead of pretending each night's card is the first.
+// GET /v1/hubs/{id}/board/slots/{slot_key}/history
+func (h *BoardsHandler) SlotHistory(w http.ResponseWriter, r *http.Request) {
+	hubID, userID, ok := h.requireHubMember(w, r)
+	if !ok {
+		return
+	}
+	slotKey := r.PathValue("slot_key")
+	board, err := h.store.GetOrCreateSystemBoard(hubID, userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+	versions, err := h.store.ListBoardSlotHistory(board.ID, slotKey, 20)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, model.ApiResponse{Data: map[string]any{
+		"versions": versions,
 	}})
 }
 

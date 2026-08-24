@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "../utils";
 
 /**
@@ -48,15 +49,20 @@ export function BoardVoiceStar({
 /**
  * KindLabel — the uppercase micro-eyebrow naming what kind of card
  * this is ("行迹 · 你不在的 9 小时"). Optional colored dot for
- * category-coded kinds, optional VoiceStar for first-person kinds.
+ * category-coded kinds, optional VoiceStar for first-person kinds,
+ * optional kind icon (lucide, rendered at eyebrow scale — subtle,
+ * never a loud background).
  */
 export function BoardKindLabel({
   dotColor,
+  icon: Icon,
   star = false,
   children,
   className,
 }: {
   dotColor?: string;
+  /** Kind icon component (lucide). Rendered dot-adjacent at 12px. */
+  icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
   star?: boolean;
   children: React.ReactNode;
   className?: string;
@@ -64,7 +70,7 @@ export function BoardKindLabel({
   return (
     <div
       className={cn(
-        "mb-2 flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.12em] text-fg-3",
+        "mb-2 flex items-center gap-1.5 text-left text-[10.5px] uppercase tracking-[0.12em] text-fg-3",
         className,
       )}
     >
@@ -74,6 +80,9 @@ export function BoardKindLabel({
           style={{ backgroundColor: dotColor }}
           aria-hidden="true"
         />
+      ) : null}
+      {Icon ? (
+        <Icon className="h-3 w-3 shrink-0 opacity-80" aria-hidden />
       ) : null}
       {star ? <BoardVoiceStar /> : null}
       <span className="min-w-0 truncate">{children}</span>
@@ -172,17 +181,31 @@ export function BoardAgentRow({
   meta,
   who,
   className,
+  expandable = false,
+  expanded = false,
 }: {
   dotColor?: string;
   title: React.ReactNode;
   meta?: React.ReactNode;
   who?: React.ReactNode;
   className?: string;
+  /**
+   * Whether this row has something to reveal. Rows are wrapped in a
+   * button by their caller only when they do, so without a visible
+   * marker an inert row is indistinguishable from an expandable one —
+   * the reader clicks and nothing happens, which reads as broken.
+   * The chevron is the contract: it appears if and only if the row
+   * responds.
+   */
+  expandable?: boolean;
+  expanded?: boolean;
 }) {
   return (
     <div
       className={cn(
         "flex items-start gap-2.5 border-t border-border/40 py-2 first:border-t-0 first:pt-0.5",
+        expandable &&
+          "-mx-2 rounded-chrome px-2 transition-colors hover:bg-surface-1",
         className,
       )}
     >
@@ -199,6 +222,15 @@ export function BoardAgentRow({
         <span className="whitespace-nowrap pt-0.5 text-[11px] text-fg-4">
           {who}
         </span>
+      ) : null}
+      {expandable ? (
+        <ChevronRight
+          className={cn(
+            "mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-4 transition-transform duration-150",
+            expanded && "rotate-90",
+          )}
+          aria-hidden="true"
+        />
       ) : null}
     </div>
   );

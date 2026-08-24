@@ -1,7 +1,9 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -32,6 +34,8 @@ type InMemoryStore struct {
 	personaRevisions             map[string][]*model.PersonaRevision    // personaID -> revisions
 	boards                       map[string]*model.Board                // boardID -> board
 	boardSlots                   map[string]map[string]*model.BoardSlot // boardID -> slotKey -> slot
+	boardSlotHistory             []*model.BoardSlotVersion              // archived slot generations, append order
+	boardSlotSeq                 int                                    // auto-increment for version IDs
 	boardFeedback                []*model.BoardFeedback
 	boardSeq                     int // auto-increment for board/slot/feedback IDs
 	configStates                 map[string]*model.AgentConfigSyncState
@@ -3341,6 +3345,44 @@ func (s *InMemoryStore) UpsertBoardSlot(slot *model.BoardSlot) error {
 	if existing, ok := s.boardSlots[slot.BoardID][slot.SlotKey]; ok {
 		slot.ID = existing.ID
 		slot.CreatedAt = existing.CreatedAt
+		// Mirror Postgres: archive the outgoing content when the
+		// replacement actually changes it (kind/title/payload).
+		if existing.Kind != slot.Kind || existing.Title != slot.Title ||
+			!bytes.Equal(normalizeJSON(existing.Payload), normalizeJSON(slot.Payload)) {
+			s.boardSlotSeq++
+			s.boardSlotHistory = append(s.boardSlotHistory, &model.BoardSlotVersion{
+				ID:                fmt.Sprintf("bsv_%d", s.boardSlotSeq),
+				BoardID:           existing.BoardID,
+				SlotKey:           existing.SlotKey,
+				Kind:              existing.Kind,
+				Title:             existing.Title,
+				Payload:           existing.Payload,
+				CiteMemoryIDs:     existing.CiteMemoryIDs,
+				DreamRunID:        existing.DreamRunID,
+				ContentProducedAt: existing.ContentUpdatedAt,
+				ArchivedAt:        now,
+			})
+			// Prune to the same per-slot cap Postgres enforces —
+			// without this the two stores diverge and tests can't
+			// observe cap behavior (adversarial review).
+			perSlot := 0
+			kept := s.boardSlotHistory[:0]
+			for i := len(s.boardSlotHistory) - 1; i >= 0; i-- {
+				v := s.boardSlotHistory[i]
+				if v.BoardID == existing.BoardID && v.SlotKey == existing.SlotKey {
+					perSlot++
+					if perSlot > 20 {
+						continue
+					}
+				}
+				kept = append(kept, v)
+			}
+			// kept is reversed (newest first) — restore append order.
+			for i, j := 0, len(kept)-1; i < j; i, j = i+1, j-1 {
+				kept[i], kept[j] = kept[j], kept[i]
+			}
+			s.boardSlotHistory = kept
+		}
 	} else {
 		s.boardSeq++
 		slot.ID = fmt.Sprintf("slot_%d", s.boardSeq)
@@ -3371,6 +3413,61 @@ func (s *InMemoryStore) ResolveBoardSlot(boardID, slotKey, newState string, reso
 	slot.UpdatedAt = time.Now().UTC()
 	out := *slot
 	return &out, nil
+}
+
+func (s *InMemoryStore) ReopenBoardSlot(boardID, slotKey string) (*model.BoardSlot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	slot, ok := s.boardSlots[boardID][slotKey]
+	if !ok {
+		return nil, ErrBoardSlotNotFound
+	}
+	if slot.State != model.BoardSlotStateResolved && slot.State != model.BoardSlotStateDismissed {
+		return nil, ErrBoardSlotAlreadyResolved
+	}
+	slot.State = model.BoardSlotStateSeen
+	slot.Resolution = nil
+	slot.UpdatedAt = time.Now().UTC()
+	out := *slot
+	return &out, nil
+}
+
+func (s *InMemoryStore) ListBoardSlotHistory(boardID, slotKey string, limit int) ([]model.BoardSlotVersion, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if limit <= 0 || limit > 20 {
+		limit = 20
+	}
+	versions := []model.BoardSlotVersion{}
+	for _, v := range s.boardSlotHistory {
+		if v.BoardID == boardID && v.SlotKey == slotKey {
+			versions = append(versions, *v)
+		}
+	}
+	sort.Slice(versions, func(i, j int) bool {
+		return versions[i].ContentProducedAt.After(versions[j].ContentProducedAt)
+	})
+	if len(versions) > limit {
+		versions = versions[:limit]
+	}
+	return versions, nil
+}
+
+// normalizeJSON canonicalizes for the change comparison; invalid or
+// empty JSON compares as raw bytes.
+func normalizeJSON(raw json.RawMessage) []byte {
+	if len(raw) == 0 {
+		return []byte("{}")
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return raw
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		return raw
+	}
+	return out
 }
 
 func (s *InMemoryStore) CreateBoardFeedback(f *model.BoardFeedback) error {

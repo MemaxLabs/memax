@@ -88,7 +88,9 @@ DATASET_FILE="$DATA_DIR/longmemeval_${DATASET_SIZE}.json"
 
 if [[ ! -f "$DATASET_FILE" ]]; then
     echo "Downloading LongMemEval ${DATASET_SIZE} dataset..."
-    REPO_URL="https://raw.githubusercontent.com/xiaowu0162/LongMemEval/main/data"
+    # The GitHub repo does not host the data files (raw URL 404s) —
+    # the cleaned datasets live on the authors' Hugging Face repo.
+    REPO_URL="https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main"
     curl -fSL "${REPO_URL}/longmemeval_${DATASET_SIZE}.json" -o "$DATASET_FILE"
     echo "Downloaded to $DATASET_FILE ($(du -h "$DATASET_FILE" | cut -f1))"
 fi

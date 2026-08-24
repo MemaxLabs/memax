@@ -11,7 +11,9 @@ import {
   getTopicIdForPath,
   getActiveTopicIdForPath,
   getHubSlugForPath,
+  buildHubSwitchPath,
   buildMemoriesPath,
+  buildPulsePath,
   buildTopicPath,
   buildMemoryDetailPath,
   getShellTabForPath,
@@ -55,14 +57,26 @@ describe("isMemoriesRoute", () => {
 });
 
 describe("isPulseRoute", () => {
-  it("matches /pulse and descendants", () => {
+  it("matches the bare /pulse forwarder and descendants", () => {
     expect(isPulseRoute("/pulse")).toBe(true);
     expect(isPulseRoute("/pulse/")).toBe(true);
     expect(isPulseRoute("/pulse/anything")).toBe(true);
   });
+  it("matches the canonical hub-scoped shape", () => {
+    expect(isPulseRoute("/h/personal/pulse")).toBe(true);
+    expect(isPulseRoute("/h/engineering/pulse/")).toBe(true);
+    expect(isPulseRoute("/h/team/pulse/anything")).toBe(true);
+  });
   it("rejects look-alikes", () => {
     expect(isPulseRoute("/pulsefoo")).toBe(false);
     expect(isPulseRoute("/memories")).toBe(false);
+    expect(isPulseRoute("/h/personal/pulsefoo")).toBe(false);
+    // Sibling hub surfaces must NOT read as pulse — otherwise the rail
+    // would light the Pulse tab on the memories grid.
+    expect(isPulseRoute("/h/personal/memories")).toBe(false);
+    expect(isPulseRoute("/h/personal/memories/abc")).toBe(false);
+    expect(isPulseRoute("/h/personal/topics/x")).toBe(false);
+    expect(isPulseRoute("/h/personal")).toBe(false);
   });
   it("does NOT match the retired /inbox route", () => {
     // /inbox is a server-side redirect to /pulse — no chrome should
@@ -104,6 +118,7 @@ describe("isBarMemorySurfaceRoute", () => {
     expect(isBarMemorySurfaceRoute("/memories")).toBe(true);
     expect(isBarMemorySurfaceRoute("/memories/topics/x")).toBe(true);
     expect(isBarMemorySurfaceRoute("/pulse")).toBe(true);
+    expect(isBarMemorySurfaceRoute("/h/personal/pulse")).toBe(true);
     expect(isBarMemorySurfaceRoute("/h/personal/memories")).toBe(true);
     expect(isBarMemorySurfaceRoute("/h/team/memories/abc")).toBe(true);
   });
@@ -199,10 +214,24 @@ describe("getHubSlugForPath", () => {
     expect(getHubSlugForPath("/h/engineering/topics/x")).toBe("engineering");
     expect(getHubSlugForPath("/h/some-slug")).toBe("some-slug");
   });
+  it("returns the slug on hub-scoped pulse routes", () => {
+    expect(getHubSlugForPath("/h/personal/pulse")).toBe("personal");
+    expect(getHubSlugForPath("/h/engineering/pulse")).toBe("engineering");
+  });
   it("returns null on v1 routes", () => {
     expect(getHubSlugForPath("/memories")).toBeNull();
     expect(getHubSlugForPath("/pulse")).toBeNull();
     expect(getHubSlugForPath("/")).toBeNull();
+  });
+});
+
+describe("buildPulsePath", () => {
+  it("emits the bare forwarder when slug is null", () => {
+    expect(buildPulsePath(null)).toBe("/pulse");
+  });
+  it("emits the hub-scoped path when slug is provided", () => {
+    expect(buildPulsePath("personal")).toBe("/h/personal/pulse");
+    expect(buildPulsePath("engineering")).toBe("/h/engineering/pulse");
   });
 });
 
@@ -213,6 +242,34 @@ describe("buildMemoriesPath", () => {
   it("emits v2 path when slug is provided", () => {
     expect(buildMemoriesPath("personal")).toBe("/h/personal/memories");
     expect(buildMemoriesPath("engineering")).toBe("/h/engineering/memories");
+  });
+});
+
+describe("buildHubSwitchPath", () => {
+  it("stays on pulse when switching hubs from a pulse surface", () => {
+    expect(buildHubSwitchPath("/h/personal/pulse", "engineering")).toBe(
+      "/h/engineering/pulse",
+    );
+    expect(buildHubSwitchPath("/pulse", "personal")).toBe("/h/personal/pulse");
+  });
+  it("lands on memories when switching from memories surfaces", () => {
+    expect(buildHubSwitchPath("/h/personal/memories", "engineering")).toBe(
+      "/h/engineering/memories",
+    );
+  });
+  it("falls back to memories from origin-hub detail routes", () => {
+    // Topic and memory ids belong to the ORIGIN hub — they don't
+    // exist on the target, so preserving the surface would 404.
+    expect(buildHubSwitchPath("/h/personal/topics/welcome", "team")).toBe(
+      "/h/team/memories",
+    );
+    expect(buildHubSwitchPath("/h/personal/memories/abc", "team")).toBe(
+      "/h/team/memories",
+    );
+  });
+  it("falls back to memories from non-hub routes", () => {
+    expect(buildHubSwitchPath("/brain", "team")).toBe("/h/team/memories");
+    expect(buildHubSwitchPath("/agents", "team")).toBe("/h/team/memories");
   });
 });
 
@@ -253,6 +310,14 @@ describe("getShellTabForPath", () => {
     expect(getShellTabForPath("/h/personal/memories")).toBe("memories");
     expect(getShellTabForPath("/h/team/memories/abc")).toBe("memories");
     expect(getShellTabForPath("/h/personal/topics/x")).toBe("memories");
+  });
+  it("separates the two hub-scoped tabs by their segment after the slug", () => {
+    // Both live under /h/<slug>/ — the pulse branch runs first, so this
+    // pins that it doesn't swallow the memories tree (or vice versa).
+    expect(getShellTabForPath("/h/personal/pulse")).toBe("pulse");
+    expect(getShellTabForPath("/h/engineering/pulse")).toBe("pulse");
+    expect(getShellTabForPath("/h/engineering/memories")).toBe("memories");
+    expect(getShellTabForPath("/h/engineering/memories/abc")).toBe("memories");
   });
   it("returns null for routes not under a tab", () => {
     expect(getShellTabForPath("/")).toBeNull();

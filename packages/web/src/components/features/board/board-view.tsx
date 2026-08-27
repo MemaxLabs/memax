@@ -310,6 +310,13 @@ export function BoardView({
   // kind's freshest content_updated_at so the reader can see at a
   // glance which lenses moved recently.
   const [kindFilter, setKindFilter] = useState<string | null>(null);
+  // Reviewer-confirmed dead-end: focus on kind A, triage every A card
+  // (the exact flow a focus mode invites) → A leaves the live set →
+  // its chip vanishes while the filter persists → blank board with no
+  // way out. A filter whose kind no longer exists resets itself.
+  //
+  // (kindFilterResetRef avoids an effect-on-derived-value loop: the
+  // reset runs post-render only when the stale state is observed.)
   useIsomorphicLayoutEffect(() => {
     try {
       const raw = globalThis.sessionStorage?.getItem(
@@ -366,6 +373,29 @@ export function BoardView({
       slots.filter((s) => s.state === "resolved" || s.state === "dismissed"),
     [slots],
   );
+
+  // C5 chip data: live kinds (system + custom) → freshest content
+  // time. Lives BEFORE the early returns — the stale-filter reset
+  // below is a hook (rules-of-hooks).
+  const kindChips = (() => {
+    const byKind = new Map<string, { latest: string; sample: BoardSlot }>();
+    const absorb = (s2: BoardSlot) => {
+      if (s2.state !== "fresh" && s2.state !== "seen") return;
+      const ts = s2.content_updated_at ?? s2.updated_at;
+      const existing = byKind.get(s2.kind);
+      if (!existing || (ts && ts > existing.latest)) {
+        byKind.set(s2.kind, { latest: ts ?? "", sample: s2 });
+      }
+    };
+    slots.forEach(absorb);
+    customLiveDecks.forEach(({ group }) => group.forEach(absorb));
+    return [...byKind.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  })();
+  const kindFilterIsStale =
+    kindFilter !== null && !kindChips.some(([kind]) => kind === kindFilter);
+  useEffect(() => {
+    if (kindFilterIsStale) setKindFilter(null);
+  }, [kindFilterIsStale]);
 
   // Embedded shelf expansion — BOARD_SHELF_RULES R1/R6.
   const { expanded: shelfExpanded, setExpanded: setShelfExpanded } =
@@ -492,22 +522,6 @@ export function BoardView({
     const anchor = slotBySlotKey.get(slotKey);
     return `${slotKey}:${anchor?.content_updated_at ?? ""}`;
   };
-  // C5 chip data: live kinds (system + custom) → freshest content time.
-  const kindChips = (() => {
-    const byKind = new Map<string, { latest: string; sample: BoardSlot }>();
-    const absorb = (s2: BoardSlot) => {
-      if (s2.state !== "fresh" && s2.state !== "seen") return;
-      const ts = s2.content_updated_at ?? s2.updated_at;
-      const existing = byKind.get(s2.kind);
-      if (!existing || (ts && ts > existing.latest)) {
-        byKind.set(s2.kind, { latest: ts ?? "", sample: s2 });
-      }
-    };
-    slots.forEach(absorb);
-    customLiveDecks.forEach(({ group }) => group.forEach(absorb));
-    return [...byKind.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
-  })();
-
   // Embedded surface, not yet expanded → the compact tile shelf.
   const collapsedShelf = !isPage && !shelfExpanded;
   // Only claim the board is empty once the slots query has settled —
@@ -646,7 +660,7 @@ export function BoardView({
           than one lens live. Selecting a chip focuses the stream on
           that kind (notifications step back too — a filter is a focus
           mode); each chip carries its kind's freshest update age. ── */}
-      {isPage && kindChips.length > 1 ? (
+      {isPage && (kindChips.length > 1 || kindFilter !== null) ? (
         <div className="flex flex-wrap items-center gap-1.5 px-1">
           <button
             type="button"
@@ -814,7 +828,7 @@ export function BoardView({
       {/* ── 已归档 — resolved/dismissed cards, out of the live flow but
           one tap from coming back (工单 8: dismiss is archive + undo,
           never data loss). Collapsed to a count until opened. ── */}
-      {!collapsedShelf && archivedSlots.length > 0 ? (
+      {!collapsedShelf && kindFilter === null && archivedSlots.length > 0 ? (
         <BoardArchivedSection
           slots={archivedSlots}
           pending={resolve.isPending}

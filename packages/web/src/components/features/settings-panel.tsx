@@ -222,9 +222,6 @@ export function SettingsPanel({ open, onClose, anchor = "top-right" }: Props) {
             <Settings className="h-3.5 w-3.5" />
             {t.userSettings.title}
           </button>
-          {/* Connect agents — the setup command is otherwise buried in a
-              Settings disclosure, so users who install and then lose the
-              command have nowhere obvious to find it again. */}
           <a
             href={DOCS_URL}
             target="_blank"

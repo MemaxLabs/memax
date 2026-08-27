@@ -35,7 +35,7 @@ import {
 } from "./demo-kit";
 
 const FOCUS_RING =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 
 type ActKey = "crossAgent" | "handoff" | "teamBrain" | "crossDevice";
 
@@ -108,7 +108,7 @@ function CrossAgentAct() {
         <TuiPane>
           <TuiUser>{u.a1SavePrompt}</TuiUser>
           <TuiTool
-            call="memax - push (MCP)(title: “ETF portfolio strategy”, hub: personal)"
+            call='memax - push (MCP)(title: "ETF portfolio strategy")'
             result="Saved · 1 memory (ctrl+r to expand)"
           />
           <TuiAssistant>{u.a1SaveDone}</TuiAssistant>
@@ -117,7 +117,7 @@ function CrossAgentAct() {
       <DemoWindow title="claude.ai">
         <ChatPane>
           <ChatUser>{u.a1AskPrompt}</ChatUser>
-          <ChatToolChip>memax · recall</ChatToolChip>
+          <ChatToolChip>memax_recall</ChatToolChip>
           <ChatAssistant>{u.a1AskAnswer}</ChatAssistant>
         </ChatPane>
       </DemoWindow>
@@ -135,7 +135,7 @@ function HandoffAct() {
         <TuiUser>{u.a2Prompt}</TuiUser>
         <TuiAssistant>{u.a2Working}</TuiAssistant>
         <TuiTool
-          call="memax - push (MCP)(title: “API v2 gap analysis + migration plan”, hub: team)"
+          call='memax - push (MCP)(title: "API v2 gap analysis + migration plan", hub_id: "team")'
           result="Saved to team hub · cited 14 memories (ctrl+r to expand)"
         />
         <TuiAssistant>{u.a2Done}</TuiAssistant>
@@ -152,7 +152,7 @@ function TeamBrainAct() {
     <DemoWindow title="memax.app — Ask">
       <ChatPane>
         <ChatUser>{u.a3Question}</ChatUser>
-        <ChatToolChip>memax · 3 sources</ChatToolChip>
+        <ChatToolChip>memax_recall · 3 sources</ChatToolChip>
         <ChatAssistant>{u.a3Answer}</ChatAssistant>
       </ChatPane>
     </DemoWindow>
@@ -169,14 +169,19 @@ function CrossDeviceAct() {
         <ChatPane>
           <ChatUser>{u.a4IdeaPrompt}</ChatUser>
           <ChatAssistant>{u.a4IdeaReply}</ChatAssistant>
-          <ChatToolChip>memax · push · personal hub</ChatToolChip>
+          <ChatToolChip>memax_push · personal hub</ChatToolChip>
         </ChatPane>
       </DemoWindow>
-      <DemoWindow title="codex — workstation">
+      {/* Claude Code, not codex: the kit's TUI beats are faithful to
+          Claude Code specifically (⏺/⎿/ctrl+r are ITS chrome) —
+          labeling them codex would be faithful chrome on the wrong
+          tool (review finding 1). Cross-device is the point; the
+          second machine runs Claude Code. */}
+      <DemoWindow title="Claude Code — workstation">
         <TuiPane>
           <TuiUser>{u.a4ResumePrompt}</TuiUser>
           <TuiTool
-            call="memax - recall (MCP)(query: “onboarding widget idea”)"
+            call='memax - recall (MCP)(query: "onboarding widget idea")'
             result="Found 3 memories (ctrl+r to expand)"
           />
           <TuiAssistant>{u.a4ResumeReply}</TuiAssistant>

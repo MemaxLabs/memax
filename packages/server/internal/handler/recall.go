@@ -262,6 +262,9 @@ func (h *RecallHandler) RunPipeline(ctx context.Context, query string, source st
 	// Run distiller and embedder in parallel — hides distiller latency behind embedding
 	var distillResult *distill.Result
 	var queryEmbedding []float64
+	// Embedding for the distilled query when the distiller rewrote it —
+	// nil means "same as raw" (single-query mode).
+	var distilledEmbedding []float64
 	now := time.Now()
 
 	var parallelWg sync.WaitGroup
@@ -322,7 +325,16 @@ func (h *RecallHandler) RunPipeline(ctx context.Context, query string, source st
 				finishRecallStage(embedCtx, embedStage, err)
 				slog.Warn("distilled query embedding failed, keeping raw query embedding", "error", err)
 			} else if len(embeddings) > 0 && embeddings[0] != nil {
-				queryEmbedding = embeddings[0]
+				// The distilled embedding used to OVERWRITE the raw one
+				// here — combined with searchQuery being the distilled
+				// text, that made distillation the ONLY retrieval
+				// channel, and every entity it dropped (Gracery, Kin
+				// Khao, knee — eval p1/p3/p6) was unrecoverable. The
+				// raw query is now its own always-on retrieval lane
+				// (research-validated: rewriting degrades retrieval up
+				// to ~9% by replacing domain terms, arXiv:2603.13301),
+				// so the distilled embedding lands in its own variable.
+				distilledEmbedding = embeddings[0]
 				finishRecallStage(embedCtx, embedStage, nil, attribute.Bool("memax.recall.distilled_embedding", true))
 			} else {
 				finishRecallStage(embedCtx, embedStage, nil, attribute.Bool("memax.recall.distilled_embedding", false))
@@ -369,6 +381,16 @@ func (h *RecallHandler) RunPipeline(ctx context.Context, query string, source st
 	if entityTerms := preserveRawEntityTerms(query, searchQuery); len(entityTerms) > 0 {
 		searchQuery = searchQuery + " " + strings.Join(entityTerms, " ")
 	}
+
+	// The RAW query is a retrieval channel of its own (A1). Structured
+	// filter terms still apply — they narrow, not rewrite. When the
+	// distiller didn't change anything (or didn't run), raw and
+	// distilled collapse to one query and search runs once, as before.
+	rawSearchQuery := query
+	if filters != nil {
+		rawSearchQuery = appendStructuredFilterTerms(rawSearchQuery, filters)
+	}
+	dualQuery := distillResult != nil && searchQuery != rawSearchQuery
 
 	// --- Phase 3: Intent classification (microseconds, regex fast-path) ---
 	intentCtx, intentStage := startRecallStage(ctx, "intent.classify")
@@ -444,35 +466,71 @@ func (h *RecallHandler) RunPipeline(ctx context.Context, query string, source st
 		err           error
 	)
 	candidateLimit := recallCandidateLimit(limit)
-	searchCtx, searchStage := startRecallStage(ctx, "search.hybrid", attribute.Int("memax.recall.candidate_limit", candidateLimit))
-	switch {
-	case scope.Strict && len(hubIDs) > 0:
-		// Scope-bounded principal (OAuth grant or API key with hub
-		// allowlist). The store applies `m.hub_id = ANY($hubs)`
-		// EXACTLY — no owner-OR fallback. A scoped principal must
-		// not see content outside their granted hubs even if they
-		// own it. This is the load-bearing leak fix codex flagged
-		// during plan-24 step 5b review (commit d6324ab5).
-		matchedChunks, err = h.store.SearchChunksInHubs(searchCtx, searchQuery, queryEmbedding, hubIDs, candidateLimit, filters, searchOpts)
-	case scope.Strict && len(hubIDs) == 0:
-		// Scope-bounded principal but no hubs in scope (their
-		// allowlist intersected with accessibility produced empty).
-		// MUST NOT fall through to SearchChunks (owner-only) —
-		// that would leak the user's full corpus. Return zero
-		// matches; the handler surfaces it as an empty recall.
-		matchedChunks = nil
-	case len(hubIDs) > 0:
-		// Default cross-hub recall. owner_id = $user OR
-		// hub_id = ANY($hubs). Used by web sessions, unscoped CLI,
-		// MCP without grant scoping. The active hub stays a
-		// ranking-boost via scope.ActiveBoostHubID, not an access
-		// boundary.
-		matchedChunks, err = h.store.SearchChunksForHubs(searchCtx, searchQuery, queryEmbedding, ownerID, hubIDs, candidateLimit, filters, searchOpts)
-	default:
-		// Unscoped session with no accessible hubs (an unusual
-		// state — typically the personal hub is at minimum). Fall
-		// back to owner-only search.
-		matchedChunks, err = h.store.SearchChunks(searchCtx, searchQuery, queryEmbedding, ownerID, candidateLimit, filters, searchOpts)
+	searchCtx, searchStage := startRecallStage(ctx, "search.hybrid",
+		attribute.Int("memax.recall.candidate_limit", candidateLimit),
+		attribute.Bool("memax.recall.dual_query", dualQuery))
+	// One search variant per access scope; the scope selection is
+	// UNCHANGED from the single-query code (the strict-scope branches
+	// are the load-bearing leak fixes from plan-24 step 5b / commit
+	// d6324ab5 — see the case comments in git history). The closure
+	// exists so raw and distilled queries run through the SAME scope
+	// decision — a scoped principal must not gain a broader raw lane.
+	runSearch := func(q string, emb []float64) ([]model.Chunk, error) {
+		switch {
+		case scope.Strict && len(hubIDs) > 0:
+			return h.store.SearchChunksInHubs(searchCtx, q, emb, hubIDs, candidateLimit, filters, searchOpts)
+		case scope.Strict && len(hubIDs) == 0:
+			// Empty strict scope MUST NOT fall through to owner-only
+			// search — that would leak the user's full corpus.
+			return nil, nil
+		case len(hubIDs) > 0:
+			return h.store.SearchChunksForHubs(searchCtx, q, emb, ownerID, hubIDs, candidateLimit, filters, searchOpts)
+		default:
+			return h.store.SearchChunks(searchCtx, q, emb, ownerID, candidateLimit, filters, searchOpts)
+		}
+	}
+	if dualQuery {
+		// A1: raw and distilled are independent result sets, fused
+		// rank-based so neither channel's scores dominate. Run in
+		// parallel — each is its own five-lane store search.
+		distEmb := distilledEmbedding
+		if distEmb == nil {
+			distEmb = queryEmbedding
+		}
+		var rawChunks, distilledChunks []model.Chunk
+		var rawErr, distilledErr error
+		var dualWg sync.WaitGroup
+		dualWg.Add(2)
+		go func() {
+			defer dualWg.Done()
+			rawChunks, rawErr = runSearch(rawSearchQuery, queryEmbedding)
+		}()
+		go func() {
+			defer dualWg.Done()
+			distilledChunks, distilledErr = runSearch(searchQuery, distEmb)
+		}()
+		dualWg.Wait()
+		switch {
+		case rawErr != nil && distilledErr != nil:
+			err = rawErr
+		case rawErr != nil:
+			// One healthy channel beats a failed recall — degrade to
+			// the surviving result set and log the dead lane.
+			slog.Warn("raw-query search failed, using distilled channel only", "error", rawErr)
+			matchedChunks = distilledChunks
+		case distilledErr != nil:
+			slog.Warn("distilled-query search failed, using raw channel only", "error", distilledErr)
+			matchedChunks = rawChunks
+		default:
+			matchedChunks = fuseDualQueryChunks(rawChunks, distilledChunks, candidateLimit)
+			slog.Info("dual-query fusion",
+				"raw_count", len(rawChunks),
+				"distilled_count", len(distilledChunks),
+				"fused_count", len(matchedChunks),
+			)
+		}
+	} else {
+		matchedChunks, err = runSearch(searchQuery, queryEmbedding)
 	}
 	if err != nil {
 		finishRecallStage(searchCtx, searchStage, err)
@@ -529,7 +587,13 @@ func (h *RecallHandler) RunPipeline(ctx context.Context, query string, source st
 	finishRecallStage(scoreCtx, scoreStage, nil, attribute.Int("memax.recall.scored_count", len(scored)))
 
 	sort.Slice(scored, func(i, j int) bool {
-		return scored[i].score > scored[j].score
+		if scored[i].score != scored[j].score {
+			return scored[i].score > scored[j].score
+		}
+		if scored[i].chunk.MemoryID != scored[j].chunk.MemoryID {
+			return scored[i].chunk.MemoryID < scored[j].chunk.MemoryID
+		}
+		return scored[i].chunk.ID < scored[j].chunk.ID
 	})
 
 	bestByMemory := make(map[string]scoredChunk)
@@ -544,7 +608,10 @@ func (h *RecallHandler) RunPipeline(ctx context.Context, query string, source st
 		ranked = append(ranked, sc)
 	}
 	sort.Slice(ranked, func(i, j int) bool {
-		return ranked[i].score > ranked[j].score
+		if ranked[i].score != ranked[j].score {
+			return ranked[i].score > ranked[j].score
+		}
+		return ranked[i].chunk.MemoryID < ranked[j].chunk.MemoryID
 	})
 
 	metadata := model.QueryMetadata{
@@ -1832,6 +1899,64 @@ func shouldApplyHubFilter(rawQuery, hubSlug string) bool {
 // structured identifiers (contain hyphens, dots, slashes, colons, or
 // camelCase). Ordinary words like "discuss", "notes", "roadmap" are left to
 // the distiller.
+// fuseDualQueryChunks merges the raw-query and distilled-query result
+// sets with rank-based RRF (k=60, equal weight — learned/score-based
+// blending measurably loses to fixed equal weights, arXiv:2608.00183).
+// Rank-based fusion means neither channel's raw scores can dominate;
+// a chunk found by BOTH channels rises, a chunk only the raw channel
+// found (the entity the distiller dropped) still surfaces. Output
+// order is a deterministic total order: fused score desc → memory ID
+// → chunk ID, independent of input map/slice ordering.
+//
+// RelevanceScore is set to the max of the two channels' store scores
+// so downstream per-chunk scoring keeps operating on the same scale
+// it always has.
+func fuseDualQueryChunks(rawChunks, distilledChunks []model.Chunk, limit int) []model.Chunk {
+	const fusionK = 60
+	type fusedEntry struct {
+		chunk model.Chunk
+		score float64
+	}
+	entries := make(map[string]*fusedEntry, len(rawChunks)+len(distilledChunks))
+	absorb := func(chunks []model.Chunk) {
+		for rank, c := range chunks {
+			contribution := 1.0 / float64(fusionK+rank+1)
+			if existing, ok := entries[c.ID]; ok {
+				existing.score += contribution
+				if c.RelevanceScore > existing.chunk.RelevanceScore {
+					existing.chunk.RelevanceScore = c.RelevanceScore
+				}
+			} else {
+				entries[c.ID] = &fusedEntry{chunk: c, score: contribution}
+			}
+		}
+	}
+	absorb(rawChunks)
+	absorb(distilledChunks)
+
+	fused := make([]fusedEntry, 0, len(entries))
+	for _, e := range entries {
+		fused = append(fused, *e)
+	}
+	sort.Slice(fused, func(i, j int) bool {
+		if fused[i].score != fused[j].score {
+			return fused[i].score > fused[j].score
+		}
+		if fused[i].chunk.MemoryID != fused[j].chunk.MemoryID {
+			return fused[i].chunk.MemoryID < fused[j].chunk.MemoryID
+		}
+		return fused[i].chunk.ID < fused[j].chunk.ID
+	})
+	if len(fused) > limit {
+		fused = fused[:limit]
+	}
+	out := make([]model.Chunk, len(fused))
+	for i, e := range fused {
+		out[i] = e.chunk
+	}
+	return out
+}
+
 func preserveRawEntityTerms(rawQuery, distilledQuery string) []string {
 	distilledLower := strings.ToLower(distilledQuery)
 

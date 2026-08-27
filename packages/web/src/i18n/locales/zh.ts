@@ -2041,6 +2041,39 @@ export const zh: Translations = {
 
   // Landing page
   landing: {
+    usecases: {
+      sectionTitle: "你真正会用它做的事",
+      tabCrossAgent: "这里存,哪里都能问",
+      tabHandoff: "成果落得下来",
+      tabTeamBrain: "问团队的大脑",
+      tabCrossDevice: "手机聊,电脑做",
+      captionCrossAgent:
+        "一份记忆,所有 agent 共享——写代码时存下,聊天里就能召回。任何平台的内置记忆都跨不过这堵墙。",
+      captionHandoff:
+        "Agent 的工作成果不会消失在滚动条里——落进团队 hub,带引用,随时交接。",
+      captionTeamBrain: "队友直接问 hub,拿到带凭据的回答——不用什么都来问你。",
+      captionCrossDevice:
+        "在手机上把想法聊透;另一台电脑的编码 agent 接着上下文直接开工。",
+      a1SavePrompt: "把我的 ETF 组合策略存进 memax——就是刚才定的 70/20/10 配比",
+      a1SaveDone: "已存入你的个人 hub。你的任何 agent 都能召回它。",
+      a1AskPrompt: "我最新的投资组合策略是什么?",
+      a1AskAnswer:
+        "你的最新策略(昨天从 Claude Code 存入):70% 宽基 ETF、20% 国际、10% 债券——每季度再平衡,±5% 触发阈值。",
+      a2Prompt: "找出这个 repo 的技术缺口,写一份 Alex 能 review 的迁移计划",
+      a2Working:
+        "分析了 214 个文件——发现 6 个缺口:缺请求超时、无优雅停机、API 响应未版本化……",
+      a2Done: "完成——计划已推送到团队 hub,可交接给 Alex review。",
+      a3Question: "关于 auth token 过期时间我们是怎么定的,为什么?",
+      a3Answer:
+        "Access token 在 5 月 12 日改为 1 小时过期——团队用刷新流程的复杂度换取即时吊销能力,起因是外包离职事件。来源:3 条记忆,含 Jiahao 的决策笔记。",
+      a4IdeaPrompt:
+        "我一直在想可以加一个显示实时配置进度的 onboarding 组件——我们把它想清楚",
+      a4IdeaReply:
+        "思路已梳理:三个状态,挂接现有 setup 事件。设计笔记和开放问题已存入你的 hub,在哪都能接着做。",
+      a4ResumePrompt: "接着昨天 onboarding 组件的想法继续",
+      a4ResumeReply:
+        "接续你昨天手机上的讨论:三态组件、挂 setup 事件。两个开放问题已记录——先从事件契约开始,现在搭脚手架。",
+    },
     // ── 受众切换 —— hero 分成个人 / 团队两套表达 ──
     pivotPersonal: "个人",
     pivotTeam: "团队",

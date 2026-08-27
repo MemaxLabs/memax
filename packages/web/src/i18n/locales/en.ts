@@ -2301,6 +2301,44 @@ export const en = {
     scenarioTabWeb: "Web",
     // Claude Code scenario — agent recalls team context mid-session via MCP.
     ccWindowTitle: "~/work/api — Claude Code",
+    usecases: {
+      sectionTitle: "What you actually do with it",
+      tabCrossAgent: "Save here, ask anywhere",
+      tabHandoff: "Work that lands",
+      tabTeamBrain: "Ask the team brain",
+      tabCrossDevice: "Phone idea, desk build",
+      captionCrossAgent:
+        "One memory, every agent — saved from a coding session, recalled in chat. No platform's built-in memory crosses that wall.",
+      captionHandoff:
+        "Agent work products don't evaporate in scrollback — they land in the team hub, cited and ready to hand off.",
+      captionTeamBrain:
+        "Teammates ask the hub directly and get answers with receipts — no 'ask Derek' bottleneck.",
+      captionCrossDevice:
+        "Talk an idea through on your phone; your coding agent picks it up from another machine and builds.",
+      a1SavePrompt:
+        "save my ETF portfolio strategy to memax — the 70/20/10 split we just worked out",
+      a1SaveDone:
+        "Saved to your personal hub. Any of your agents can recall it.",
+      a1AskPrompt: "what's my latest investment portfolio strategy?",
+      a1AskAnswer:
+        "Your latest strategy (saved yesterday from Claude Code): 70% broad-market ETFs, 20% international, 10% bonds — rebalance quarterly, thresholds at ±5%.",
+      a2Prompt:
+        "identify the technical gaps in this repo and write a migration plan Alex can review",
+      a2Working:
+        "Analyzed 214 files — found 6 gaps: missing request timeouts, no graceful shutdown, unversioned API responses…",
+      a2Done:
+        "Done — plan pushed to your team hub, handoff ready for Alex to review.",
+      a3Question: "what did we decide about the auth token expiry, and why?",
+      a3Answer:
+        "Access tokens moved to 1-hour expiry on May 12 — the team traded refresh-flow complexity for instant revocation after the contractor-offboarding incident. Sources: 3 memories, including Jiahao's decision note.",
+      a4IdeaPrompt:
+        "I keep thinking we could add an onboarding widget that shows live setup progress — let's think it through",
+      a4IdeaReply:
+        "Sketched the approach: three states, hooks into the existing setup events. Saved the design notes and open questions to your hub so you can pick this up anywhere.",
+      a4ResumePrompt: "continue where I left off on the onboarding widget idea",
+      a4ResumeReply:
+        "Picking up from your phone session yesterday: three-state widget, hooks into setup events. Two open questions noted — starting with the event contract. Scaffolding now.",
+    },
     ccPrompt: "why did we move access tokens to 1h expiry?",
     // Claude Code renders MCP tools as `server - tool (MCP)(args)`; the
     // ⎿ line matches the real collapsed-result chrome. TUI chrome strings

@@ -12,6 +12,7 @@ import { OverviewStrip } from "./overview-strip";
 import { PivotToggle, type LandingPivot } from "./pivot-toggle";
 import { RotatingHeadline } from "./rotating-headline";
 import { ScenarioShowcase } from "./scenario-showcase";
+import { SecurityStrip } from "./security-strip";
 
 // Canonical outward contact — same address privacy/terms already publish.
 const TEAM_CONTACT_EMAIL = "team@memaxlabs.com";
@@ -139,6 +140,13 @@ export function LandingFull() {
             (Claude Code, terminal, memax.app, third-party agent). */}
         <div className="w-full animate-fade-up stagger-5">
           <ScenarioShowcase />
+        </div>
+
+        {/* Security strip (E3) — enforced mechanisms only, linking to
+            the docs security model. Last on purpose: trust is the
+            closer for a memory product. */}
+        <div className="w-full animate-fade-up stagger-5">
+          <SecurityStrip />
         </div>
       </div>
 

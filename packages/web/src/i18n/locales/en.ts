@@ -898,6 +898,8 @@ export const en = {
   board: {
     actionAck: "Got it",
     actionDismiss: "Not interested",
+    moreActions: "More actions",
+    kindFilterAll: "All",
     receiptAcked: "Noted",
     receiptDismissed: "Dismissed",
     archivedSection: "Archived",

@@ -816,6 +816,8 @@ export const zh: Translations = {
   board: {
     actionAck: "收下",
     actionDismiss: "不关心",
+    moreActions: "更多操作",
+    kindFilterAll: "全部",
     receiptAcked: "已收下",
     receiptDismissed: "已略过",
     archivedSection: "已归档",

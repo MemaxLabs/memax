@@ -30,9 +30,10 @@ import { useLocale } from "@/i18n";
 import { useSettingsPanel } from "@/contexts/settings-panel-context";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
 import { buildMemoriesPath, buildPulsePath } from "@/lib/route-helpers";
-import { Search } from "lucide-react";
+import { Compass, Search } from "lucide-react";
 import { MemaxLogo, MemaxTextLogo } from "@memaxlabs/ui";
 import { useBar } from "@/contexts/bar-context";
+import { OnboardingMechanismModal } from "@/components/features/onboarding-mechanism-modal";
 import { useShellState } from "@/contexts/shell-state-context";
 import { MobileTopBar } from "./mobile-top-bar";
 import { MobileDrawer } from "./mobile-drawer";
@@ -48,6 +49,13 @@ interface ShellLayoutMobileProps {
 export function ShellLayoutMobile({ tab, children }: ShellLayoutMobileProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [hubSwitcherOpen, setHubSwitcherOpen] = useState(false);
+  // Hoisted OUT of DrawerContent (adversarial review): inside the
+  // drawer the modal (a) only survived because no drawer-close path
+  // was reachable while it was open — an accidental invariant — and
+  // (b) sat outside the drawer's modal focus trap, unreachable by
+  // keyboard. The drawer closes when the modal opens; the modal
+  // renders as a layout sibling.
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
   return (
     <div
       // `overflow-x: clip` (NOT hidden) — `hidden` on one axis forces
@@ -86,12 +94,22 @@ export function ShellLayoutMobile({ tab, children }: ShellLayoutMobileProps) {
         <PushTransitionWrapper>{children}</PushTransitionWrapper>
       </main>
       <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
-        <DrawerContent tab={tab} onNavigate={() => setDrawerOpen(false)} />
+        <DrawerContent
+          tab={tab}
+          onNavigate={() => setDrawerOpen(false)}
+          onOpenOnboarding={() => {
+            setDrawerOpen(false);
+            setOnboardingOpen(true);
+          }}
+        />
       </MobileDrawer>
       <HubSwitcherBottomSheet
         open={hubSwitcherOpen}
         onClose={() => setHubSwitcherOpen(false)}
       />
+      {onboardingOpen && (
+        <OnboardingMechanismModal onClose={() => setOnboardingOpen(false)} />
+      )}
     </div>
   );
 }
@@ -100,9 +118,16 @@ interface DrawerContentProps {
   tab: ShellTabId | null;
   /** Called after a tab is tapped so the parent can close the drawer. */
   onNavigate: () => void;
+  /** Opens the 入门与机制 modal — hosted by the layout, not in here,
+   *  so it escapes the drawer's focus trap and its unmount. */
+  onOpenOnboarding: () => void;
 }
 
-function DrawerContent({ tab: activeTab, onNavigate }: DrawerContentProps) {
+function DrawerContent({
+  tab: activeTab,
+  onNavigate,
+  onOpenOnboarding,
+}: DrawerContentProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
@@ -185,6 +210,19 @@ function DrawerContent({ tab: activeTab, onNavigate }: DrawerContentProps) {
             <Search className="h-5 w-5" strokeWidth={2} />
           </span>
           <span>{t.nav.search}</span>
+        </button>
+
+        {/* 入门与机制 — same entry as the desktop rail (C1). */}
+        <button
+          type="button"
+          onClick={onOpenOnboarding}
+          aria-haspopup="dialog"
+          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] transition-colors cursor-pointer text-fg-2 hover:bg-foreground/4"
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+            <Compass className="h-5 w-5" strokeWidth={2} />
+          </span>
+          <span>{t.nav.gettingStarted}</span>
         </button>
 
         {SHELL_TABS.map((spec) => {

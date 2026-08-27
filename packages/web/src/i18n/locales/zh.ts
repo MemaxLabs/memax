@@ -17,6 +17,7 @@ export const zh: Translations = {
     showSecondaryPanel: "显示话题面板",
     hideSecondaryPanel: "收起话题面板",
     search: "搜索",
+    gettingStarted: "入门与机制",
     openBar: "打开输入栏 (⌘K)",
     openSettings: "打开设置",
     topicTreeRegion: "话题",
@@ -28,6 +29,31 @@ export const zh: Translations = {
       pulse: "脉搏",
     },
   },
+  mechanism: {
+    tabQuickstart: "快速开始",
+    tabMechanism: "机制",
+    title: "memax 是怎么记住你的",
+    subtitle: "记忆怎么写入、怎么整理、怎么想起——以及边界在哪里。",
+    statHubs: "个 hub",
+    statMemories: "条记忆",
+    statTopics: "个主题",
+    statAgents: "个已连接 agent",
+    layerHubTitle: "Hub 是权限的边界",
+    layerHubBody:
+      "每条记忆恰好属于一个 hub——默认私人,共享凭意图。谁能看到一条记忆,只由 hub 成员资格决定。",
+    layerTopicTitle: "主题在 hub 内整理语境",
+    layerTopicBody:
+      "主题是语境不是权限:它把相关记忆归成一棵可浏览、可筛选的树,夜间整理会把新记忆归档进来。",
+    layerMemoryTitle: "记忆带着来源",
+    layerMemoryBody:
+      "每条记忆记录是哪个 agent 写入、来自哪里;自动切块并向量化用于召回,每个回答都会引用背后的记忆。",
+    dreamsTitle: "梦在夜里整理",
+    dreamsBody:
+      "相关记忆合并、过期的归档、主题重组——脉搏板只呈现拿得出凭据的结论。",
+    lastDream: "上次整理 {age}",
+    liveNote: "本页数字全部来自你的实时账户——没有一个是写死的。",
+  },
+
   bar: {
     dropHint: "松开，存进记忆",
     placeholder: {
@@ -790,6 +816,8 @@ export const zh: Translations = {
   board: {
     actionAck: "收下",
     actionDismiss: "不关心",
+    moreActions: "更多操作",
+    kindFilterAll: "全部",
     receiptAcked: "已收下",
     receiptDismissed: "已略过",
     archivedSection: "已归档",

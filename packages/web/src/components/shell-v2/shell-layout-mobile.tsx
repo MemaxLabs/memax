@@ -30,9 +30,10 @@ import { useLocale } from "@/i18n";
 import { useSettingsPanel } from "@/contexts/settings-panel-context";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
 import { buildMemoriesPath, buildPulsePath } from "@/lib/route-helpers";
-import { Search } from "lucide-react";
+import { Compass, Search } from "lucide-react";
 import { MemaxLogo, MemaxTextLogo } from "@memaxlabs/ui";
 import { useBar } from "@/contexts/bar-context";
+import { OnboardingMechanismModal } from "@/components/features/onboarding-mechanism-modal";
 import { useShellState } from "@/contexts/shell-state-context";
 import { MobileTopBar } from "./mobile-top-bar";
 import { MobileDrawer } from "./mobile-drawer";
@@ -111,6 +112,7 @@ function DrawerContent({ tab: activeTab, onNavigate }: DrawerContentProps) {
   const settingsPanel = useSettingsPanel();
   const { openBar } = useBar();
   const { setBarScrollHidden } = useShellState();
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   // Same active-hub-aware path logic as the desktop LeftRail / mobile
   // dock: memories AND pulse are both hub-scoped (`staticPath: null`
@@ -186,6 +188,22 @@ function DrawerContent({ tab: activeTab, onNavigate }: DrawerContentProps) {
           </span>
           <span>{t.nav.search}</span>
         </button>
+
+        {/* 入门与机制 — same entry as the desktop rail (C1). */}
+        <button
+          type="button"
+          onClick={() => setOnboardingOpen(true)}
+          aria-haspopup="dialog"
+          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] transition-colors cursor-pointer text-fg-2 hover:bg-foreground/4"
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+            <Compass className="h-5 w-5" strokeWidth={2} />
+          </span>
+          <span>{t.nav.gettingStarted}</span>
+        </button>
+        {onboardingOpen && (
+          <OnboardingMechanismModal onClose={() => setOnboardingOpen(false)} />
+        )}
 
         {SHELL_TABS.map((spec) => {
           const Icon = spec.icon;

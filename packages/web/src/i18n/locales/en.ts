@@ -15,6 +15,7 @@ export const en = {
     showSecondaryPanel: "Show topic panel",
     hideSecondaryPanel: "Hide topic panel",
     search: "Search",
+    gettingStarted: "Getting started",
     openBar: "Open bar (⌘K)",
     openSettings: "Open settings",
     topicTreeRegion: "Topics",
@@ -26,6 +27,33 @@ export const en = {
       pulse: "Pulse",
     },
   },
+  mechanism: {
+    tabQuickstart: "Quick start",
+    tabMechanism: "How it works",
+    title: "How memax remembers you",
+    subtitle:
+      "How memories are written, organized, recalled — and where the boundaries are.",
+    statHubs: "hubs",
+    statMemories: "memories",
+    statTopics: "topics",
+    statAgents: "connected agents",
+    layerHubTitle: "Hubs are the permission boundary",
+    layerHubBody:
+      "Every memory lives in exactly one hub — personal by default, team by intent. Who can see a memory is decided by hub membership, nothing else.",
+    layerTopicTitle: "Topics organize within a hub",
+    layerTopicBody:
+      "Topics are context, not permissions: they group related memories into a tree you can browse and filter. Nightly organization files new memories in.",
+    layerMemoryTitle: "Memories carry their source",
+    layerMemoryBody:
+      "Each memory records which agent wrote it and where it came from, is chunked and embedded for retrieval, and every answer cites the memories behind it.",
+    dreamsTitle: "Dreams tidy up overnight",
+    dreamsBody:
+      "Related memories get merged, stale ones archived, topics restructured — and the pulse board only shows claims it can back with receipts.",
+    lastDream: "last run {age}",
+    liveNote:
+      "The numbers on this page come from your live account — nothing here is hardcoded.",
+  },
+
   // Bar
   bar: {
     dropHint: "Drop to save into memory",

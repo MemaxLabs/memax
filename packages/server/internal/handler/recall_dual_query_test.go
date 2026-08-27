@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -80,11 +81,42 @@ func TestFuseDualQueryChunksDeterministic(t *testing.T) {
 func TestFuseDualQueryChunksRespectsLimit(t *testing.T) {
 	var raw, distilled []model.Chunk
 	for i := 0; i < 30; i++ {
-		raw = append(raw, chunkFixture(string(rune('a'+i%26))+"-r", "m", 0.5))
+		id := string(rune('a' + i%26))
+		raw = append(raw, chunkFixture(id+"-r", "m-"+id, 0.5))
 	}
 	fused := fuseDualQueryChunks(raw, distilled, 5)
 	if len(fused) != 5 {
 		t.Fatalf("expected limit 5, got %d", len(fused))
+	}
+}
+
+func TestFuseDualQueryChunksPerMemoryCap(t *testing.T) {
+	// One memory must not monopolize the fused candidate set: each
+	// channel caps at 3 chunks/memory in the store, and fusion
+	// re-applies the same cap so disjoint picks can't stack to 6
+	// (adversarial review finding 1).
+	var raw, distilled []model.Chunk
+	for i := 0; i < 4; i++ {
+		raw = append(raw, chunkFixture(fmt.Sprintf("r-%d", i), "m-hog", 0.9))
+		distilled = append(distilled, chunkFixture(fmt.Sprintf("d-%d", i), "m-hog", 0.9))
+	}
+	distilled = append(distilled, chunkFixture("other", "m-other", 0.5))
+	fused := fuseDualQueryChunks(raw, distilled, 10)
+	hog := 0
+	foundOther := false
+	for _, c := range fused {
+		if c.MemoryID == "m-hog" {
+			hog++
+		}
+		if c.MemoryID == "m-other" {
+			foundOther = true
+		}
+	}
+	if hog > 3 {
+		t.Fatalf("m-hog occupies %d slots, cap is 3", hog)
+	}
+	if !foundOther {
+		t.Fatal("the capped memory must not push other memories out")
 	}
 }
 

@@ -2271,6 +2271,20 @@ export const en = {
 
   // Landing page
   landing: {
+    security: {
+      title: "Enforced, not promised",
+      subtitle:
+        "Every protection is code you can read in the open-source server — not policy prose.",
+      point1:
+        "Owner isolation four layers deep, with CI-enforced access rules and cross-tenant regression tests",
+      point2:
+        "Identity comes from credentials — payload claims that conflict fail the write outright",
+      point3:
+        "Synthesized insights are verified against the store; a fabricated citation kills the card",
+      point4:
+        "Credentials are rejected at push time — memories replay verbatim, so keys never get in",
+      link: "Read the security model",
+    },
     usecases: {
       sectionTitle: "What you actually do with it",
       tabCrossAgent: "Save here, ask anywhere",

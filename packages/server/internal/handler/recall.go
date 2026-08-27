@@ -390,7 +390,10 @@ func (h *RecallHandler) RunPipeline(ctx context.Context, query string, source st
 	if filters != nil {
 		rawSearchQuery = appendStructuredFilterTerms(rawSearchQuery, filters)
 	}
-	dualQuery := distillResult != nil && searchQuery != rawSearchQuery
+	// EqualFold: a case-only distiller rewrite is not a different
+	// query — firing a second five-lane search for it is pure waste
+	// (adversarial review finding 3).
+	dualQuery := distillResult != nil && !strings.EqualFold(searchQuery, rawSearchQuery)
 
 	// --- Phase 3: Intent classification (microseconds, regex fast-path) ---
 	intentCtx, intentStage := startRecallStage(ctx, "intent.classify")
@@ -512,6 +515,8 @@ func (h *RecallHandler) RunPipeline(ctx context.Context, query string, source st
 		dualWg.Wait()
 		switch {
 		case rawErr != nil && distilledErr != nil:
+			slog.Warn("both recall channels failed",
+				"raw_error", rawErr, "distilled_error", distilledErr)
 			err = rawErr
 		case rawErr != nil:
 			// One healthy channel beats a failed recall — degrade to
@@ -1947,12 +1952,22 @@ func fuseDualQueryChunks(rawChunks, distilledChunks []model.Chunk, limit int) []
 		}
 		return fused[i].chunk.ID < fused[j].chunk.ID
 	})
-	if len(fused) > limit {
-		fused = fused[:limit]
-	}
-	out := make([]model.Chunk, len(fused))
-	for i, e := range fused {
-		out[i] = e.chunk
+	// Re-apply the store's per-memory cap: each channel already caps at
+	// 3 chunks/memory, but with disjoint picks one memory could occupy
+	// 6 of the limit slots and halve candidate memory diversity
+	// (adversarial review finding 1).
+	const fusedPerMemoryCap = 3
+	perMemory := make(map[string]int)
+	out := make([]model.Chunk, 0, minInt(len(fused), limit))
+	for _, e := range fused {
+		if perMemory[e.chunk.MemoryID] >= fusedPerMemoryCap {
+			continue
+		}
+		perMemory[e.chunk.MemoryID]++
+		out = append(out, e.chunk)
+		if len(out) >= limit {
+			break
+		}
 	}
 	return out
 }

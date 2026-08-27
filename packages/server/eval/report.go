@@ -26,16 +26,15 @@ func FormatMarkdownReport(report EvalReport) string {
 	b.WriteString("| Metric            | Value | Target | Status |\n")
 	b.WriteString("|-------------------|-------|--------|--------|\n")
 
-	// Targets match the enforcement thresholds in eval_test.go.
-	// Calibrated for the current corpus (180 memories, 82 graded
-	// queries). See eval_test.go for the 2026-05-19 drift-band-shift
-	// rationale.
-	writeMetricRow(&b, "nDCG@5", report.Aggregate.NDCG5, 0.72)
-	writeMetricRow(&b, "nDCG@10", report.Aggregate.NDCG10, 0.72)
-	writeMetricRow(&b, "Precision@5", report.Aggregate.Precision5, 0.20)
-	writeMetricRow(&b, "StrongPrecision@3", report.Aggregate.StrongPrecision3, 0.25)
-	writeMetricRow(&b, "Recall@20", report.Aggregate.Recall20, 0.60)
-	writeMetricRow(&b, "MRR@10", report.Aggregate.MRR10, 0.72)
+	// Targets come from the shared Thresholds var (thresholds.go) —
+	// the report can no longer show a different floor than the one
+	// the assertions enforce.
+	writeMetricRow(&b, "nDCG@5", report.Aggregate.NDCG5, Thresholds.NDCG5)
+	writeMetricRow(&b, "nDCG@10", report.Aggregate.NDCG10, Thresholds.NDCG10)
+	writeMetricRow(&b, "Precision@5", report.Aggregate.Precision5, Thresholds.Precision5)
+	writeMetricRow(&b, "StrongPrecision@3", report.Aggregate.StrongPrecision3, Thresholds.StrongPrecision3)
+	writeMetricRow(&b, "Recall@20", report.Aggregate.Recall20, Thresholds.Recall20)
+	writeMetricRow(&b, "MRR@10", report.Aggregate.MRR10, Thresholds.MRR10)
 	writeHarmfulRow(&b, report.Aggregate.Harmful10)
 	writeLatencyRow(&b, report.Aggregate.LatencyMs)
 	b.WriteString("\n")

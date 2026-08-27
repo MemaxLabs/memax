@@ -26,43 +26,9 @@ import (
 
 const evalOwnerID = "00000000-0000-0000-0000-000000000099"
 
-// Shared quality thresholds — used by both test assertions and report generation.
-// These must be kept in sync with report.go targets.
-var evalThresholds = struct {
-	NDCG5            float64
-	NDCG10           float64
-	Precision5       float64
-	StrongPrecision3 float64
-	Recall20         float64
-	MRR10            float64
-	Harmful10        int
-}{
-	// Thresholds calibrated to current corpus (180 memories, 85 queries
-	// with 82 graded).
-	//
-	// 2026-05-22: fourth softening (0.80 → 0.78 → 0.75 → 0.72 → 0.70).
-	// Three CI reruns on a commit that touched zero retrieval code
-	// (email OTP login only) landed nDCG@5 = 0.717 / 0.707 / 0.714 —
-	// consistently below the 0.72 floor with the SAME three queries
-	// failing every run: p1 missing "gracery" (hotel name), p3
-	// missing "kin khao" (restaurant name), p6 missing "knee" (body
-	// part). Pattern: query distillation is dropping the specific
-	// entity tokens before the retrieval stage runs, so the lane that
-	// would match the right chunks never gets the keyword. Followup
-	// (#tracked-separately): instrument Stage 0 distillation to log
-	// which input tokens survive, then either preserve entity-shape
-	// tokens during distillation or add a keyword-passthrough lane to
-	// the retrieval pipeline. Lowering to 0.70 absorbs the observed
-	// 0.71x band while we investigate; the per-query 10% tolerance
-	// from the 2026-05-19 softening still applies.
-	NDCG5:            0.70,
-	NDCG10:           0.70,
-	Precision5:       0.20,
-	StrongPrecision3: 0.25,
-	Recall20:         0.60,
-	MRR10:            0.70,
-	Harmful10:        0,
-}
+// evalThresholds aliases the shared source of truth in thresholds.go —
+// assertions and report can no longer disagree about the floor.
+var evalThresholds = Thresholds
 
 // TestRetrievalQuality seeds eval fixtures and runs queries to measure
 // retrieval quality using graded relevance metrics.

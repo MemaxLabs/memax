@@ -122,7 +122,7 @@ func TestFormatMarkdownReport(t *testing.T) {
 	requireContains(t, md, "145ms") // Avg Latency
 
 	// Check aggregate targets (synced with eval_test.go thresholds)
-	requireContains(t, md, "0.72") // nDCG@5, nDCG@10, and MRR@10 target
+	requireContains(t, md, "0.70") // nDCG@5, nDCG@10, and MRR@10 target
 	requireContains(t, md, "0.20") // Precision@5 target
 	requireContains(t, md, "0.25") // StrongPrecision@3 target
 	requireContains(t, md, "0.60") // Recall@20 target

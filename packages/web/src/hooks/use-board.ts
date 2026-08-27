@@ -206,6 +206,7 @@ export function useResolveBoardSlot(hubId: string | undefined) {
       action,
       verdict,
       choice,
+      boardId,
     }: {
       slotKey: string;
       action: BoardSlotAction;
@@ -218,12 +219,17 @@ export function useResolveBoardSlot(hubId: string | undefined) {
        */
       boardId?: string;
     }) =>
+      // boardId reaches the SERVER now (issue #41): slot keys are only
+      // unique within a board, and omitting it dismissed the SYSTEM
+      // board's same-keyed slot instead of the custom card the user
+      // actually clicked.
       getMemaxClient().boards.resolveSlot(
         hubId!,
         slotKey,
         action,
         verdict,
         choice,
+        boardId,
       ),
     onMutate: async ({ slotKey, action, verdict, boardId }) => {
       if (!hubId) return;

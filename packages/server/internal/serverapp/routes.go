@@ -265,6 +265,11 @@ func registerHubRoutes(root *http.ServeMux, protected *http.ServeMux, deps route
 	protected.HandleFunc("GET /v1/hubs/{id}/board", deps.boards.Get)
 	protected.HandleFunc("POST /v1/hubs/{id}/board/slots/{slot_key}/resolve", deps.boards.ResolveSlot)
 	protected.HandleFunc("GET /v1/hubs/{id}/board/slots/{slot_key}/history", deps.boards.SlotHistory)
+	// Board-scoped slot routes (issue #41): slot keys are only unique
+	// WITHIN a board — the unscoped routes above address the system
+	// board, and custom-board cards must address their own.
+	protected.HandleFunc("POST /v1/hubs/{id}/boards/{board_id}/slots/{slot_key}/resolve", deps.boards.ResolveSlot)
+	protected.HandleFunc("GET /v1/hubs/{id}/boards/{board_id}/slots/{slot_key}/history", deps.boards.SlotHistory)
 	protected.HandleFunc("POST /v1/hubs/{id}/board/decision-gate", deps.boards.CreateDecisionGate)
 	protected.HandleFunc("GET /v1/hubs/{id}/boards", deps.boards.ListBoards)
 	protected.HandleFunc("POST /v1/hubs/{id}/boards", deps.boards.CreateBoard)

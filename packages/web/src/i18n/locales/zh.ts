@@ -17,6 +17,7 @@ export const zh: Translations = {
     showSecondaryPanel: "显示话题面板",
     hideSecondaryPanel: "收起话题面板",
     search: "搜索",
+    gettingStarted: "入门与机制",
     openBar: "打开输入栏 (⌘K)",
     openSettings: "打开设置",
     topicTreeRegion: "话题",
@@ -28,6 +29,31 @@ export const zh: Translations = {
       pulse: "脉搏",
     },
   },
+  mechanism: {
+    tabQuickstart: "快速开始",
+    tabMechanism: "机制",
+    title: "memax 是怎么记住你的",
+    subtitle: "记忆怎么写入、怎么整理、怎么想起——以及边界在哪里。",
+    statHubs: "个 hub",
+    statMemories: "条记忆",
+    statTopics: "个主题",
+    statAgents: "个已连接 agent",
+    layerHubTitle: "Hub 是权限的边界",
+    layerHubBody:
+      "每条记忆恰好属于一个 hub——默认私人,共享凭意图。谁能看到一条记忆,只由 hub 成员资格决定。",
+    layerTopicTitle: "主题在 hub 内整理语境",
+    layerTopicBody:
+      "主题是语境不是权限:它把相关记忆归成一棵可浏览、可筛选的树,夜间整理会把新记忆归档进来。",
+    layerMemoryTitle: "记忆带着来源",
+    layerMemoryBody:
+      "每条记忆记录是哪个 agent 写入、来自哪里;自动切块并向量化用于召回,每个回答都会引用背后的记忆。",
+    dreamsTitle: "梦在夜里整理",
+    dreamsBody:
+      "相关记忆合并、过期的归档、主题重组——脉搏板只呈现拿得出凭据的结论。",
+    lastDream: "上次整理 {age}",
+    liveNote: "本页数字全部来自你的实时账户——没有一个是写死的。",
+  },
+
   bar: {
     dropHint: "松开，存进记忆",
     placeholder: {
@@ -790,6 +816,8 @@ export const zh: Translations = {
   board: {
     actionAck: "收下",
     actionDismiss: "不关心",
+    moreActions: "更多操作",
+    kindFilterAll: "全部",
     receiptAcked: "已收下",
     receiptDismissed: "已略过",
     archivedSection: "已归档",
@@ -2049,6 +2077,39 @@ export const zh: Translations = {
       point3: "合成的洞察逐条对库验证;一条编造引用即弃整卡",
       point4: "凭证在 push 时即被拒绝——记忆会逐字回放,所以密钥进不来",
       link: "阅读安全模型",
+    },
+    usecases: {
+      sectionTitle: "你真正会用它做的事",
+      tabCrossAgent: "这里存,哪里都能问",
+      tabHandoff: "成果落得下来",
+      tabTeamBrain: "问团队的大脑",
+      tabCrossDevice: "手机聊,电脑做",
+      captionCrossAgent:
+        "一份记忆,所有 agent 共享——写代码时存下,聊天里就能召回。任何平台的内置记忆都跨不过这堵墙。",
+      captionHandoff:
+        "Agent 的工作成果不会消失在滚动条里——落进团队 hub,带引用,随时交接。",
+      captionTeamBrain: "队友直接问 hub,拿到带凭据的回答——不用什么都来问你。",
+      captionCrossDevice:
+        "在手机上把想法聊透;另一台电脑的编码 agent 接着上下文直接开工。",
+      a1SavePrompt: "把我的 ETF 组合策略存进 memax——就是刚才定的 70/20/10 配比",
+      a1SaveDone: "已存入你的个人 hub。你的任何 agent 都能召回它。",
+      a1AskPrompt: "我最新的投资组合策略是什么?",
+      a1AskAnswer:
+        "你的最新策略(昨天从 Claude Code 存入):70% 宽基 ETF、20% 国际、10% 债券——每季度再平衡,±5% 触发阈值。",
+      a2Prompt: "找出这个 repo 的技术缺口,写一份 Alex 能 review 的迁移计划",
+      a2Working:
+        "分析了 214 个文件——发现 6 个缺口:缺请求超时、无优雅停机、API 响应未版本化……",
+      a2Done: "完成——计划已推送到团队 hub,可交接给 Alex review。",
+      a3Question: "关于 auth token 过期时间我们是怎么定的,为什么?",
+      a3Answer:
+        "Access token 在 5 月 12 日改为 1 小时过期——团队用刷新流程的复杂度换取即时吊销能力,起因是外包离职事件。来源:3 条记忆,含 Jiahao 的决策笔记。",
+      a4IdeaPrompt:
+        "我一直在想可以加一个显示实时配置进度的 onboarding 组件——我们把它想清楚",
+      a4IdeaReply:
+        "思路已梳理:三个状态,挂接现有 setup 事件。设计笔记和开放问题已存入你的 hub,在哪都能接着做。",
+      a4ResumePrompt: "接着昨天 onboarding 组件的想法继续",
+      a4ResumeReply:
+        "接续你昨天手机上的讨论:三态组件、挂 setup 事件。两个开放问题已记录——先从事件契约开始,现在搭脚手架。",
     },
     // ── 受众切换 —— hero 分成个人 / 团队两套表达 ──
     pivotPersonal: "个人",

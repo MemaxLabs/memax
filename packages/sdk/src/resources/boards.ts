@@ -42,12 +42,20 @@ export class BoardsResource {
     verdict?: BoardFeedbackVerdict,
     /** For action "choose" (decision gates): the chosen option id. */
     choice?: string,
+    /**
+     * Board owning the slot. Slot keys are only unique WITHIN a board
+     * (every board has "1-wow") — omitting this addresses the SYSTEM
+     * board; custom-board cards MUST pass their board id or the
+     * resolve lands on the system board's same-keyed slot (issue #41).
+     */
+    boardId?: string,
   ): Promise<{ slot: BoardSlot }> {
-    return this.req(
-      "POST",
-      `/v1/hubs/${hubId}/board/slots/${encodeURIComponent(slotKey)}/resolve`,
-      { body: { action, verdict, choice } },
-    );
+    const base = boardId
+      ? `/v1/hubs/${hubId}/boards/${boardId}/slots/${encodeURIComponent(slotKey)}`
+      : `/v1/hubs/${hubId}/board/slots/${encodeURIComponent(slotKey)}`;
+    return this.req("POST", `${base}/resolve`, {
+      body: { action, verdict, choice },
+    });
   }
 
   /**
@@ -58,11 +66,13 @@ export class BoardsResource {
   async slotHistory(
     hubId: string,
     slotKey: string,
+    /** Board owning the slot; omitted = the system board. */
+    boardId?: string,
   ): Promise<{ versions: BoardSlotVersion[] }> {
-    return this.req(
-      "GET",
-      `/v1/hubs/${hubId}/board/slots/${encodeURIComponent(slotKey)}/history`,
-    );
+    const base = boardId
+      ? `/v1/hubs/${hubId}/boards/${boardId}/slots/${encodeURIComponent(slotKey)}`
+      : `/v1/hubs/${hubId}/board/slots/${encodeURIComponent(slotKey)}`;
+    return this.req("GET", `${base}/history`);
   }
 
   /** One board (system or custom) with its slots. */

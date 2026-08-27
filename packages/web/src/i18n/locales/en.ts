@@ -15,6 +15,7 @@ export const en = {
     showSecondaryPanel: "Show topic panel",
     hideSecondaryPanel: "Hide topic panel",
     search: "Search",
+    gettingStarted: "Getting started",
     openBar: "Open bar (⌘K)",
     openSettings: "Open settings",
     topicTreeRegion: "Topics",
@@ -26,6 +27,33 @@ export const en = {
       pulse: "Pulse",
     },
   },
+  mechanism: {
+    tabQuickstart: "Quick start",
+    tabMechanism: "How it works",
+    title: "How memax remembers you",
+    subtitle:
+      "How memories are written, organized, recalled — and where the boundaries are.",
+    statHubs: "hubs",
+    statMemories: "memories",
+    statTopics: "topics",
+    statAgents: "connected agents",
+    layerHubTitle: "Hubs are the permission boundary",
+    layerHubBody:
+      "Every memory lives in exactly one hub — personal by default, team by intent. Who can see a memory is decided by hub membership, nothing else.",
+    layerTopicTitle: "Topics organize within a hub",
+    layerTopicBody:
+      "Topics are context, not permissions: they group related memories into a tree you can browse and filter. Nightly organization files new memories in.",
+    layerMemoryTitle: "Memories carry their source",
+    layerMemoryBody:
+      "Each memory records which agent wrote it and where it came from, is chunked and embedded for retrieval, and every answer cites the memories behind it.",
+    dreamsTitle: "Dreams tidy up overnight",
+    dreamsBody:
+      "Related memories get merged, stale ones archived, topics restructured — and the pulse board only shows claims it can back with receipts.",
+    lastDream: "last run {age}",
+    liveNote:
+      "The numbers on this page come from your live account — nothing here is hardcoded.",
+  },
+
   // Bar
   bar: {
     dropHint: "Drop to save into memory",
@@ -870,6 +898,8 @@ export const en = {
   board: {
     actionAck: "Got it",
     actionDismiss: "Not interested",
+    moreActions: "More actions",
+    kindFilterAll: "All",
     receiptAcked: "Noted",
     receiptDismissed: "Dismissed",
     archivedSection: "Archived",
@@ -2254,6 +2284,44 @@ export const en = {
       point4:
         "Credentials are rejected at push time — memories replay verbatim, so keys never get in",
       link: "Read the security model",
+    },
+    usecases: {
+      sectionTitle: "What you actually do with it",
+      tabCrossAgent: "Save here, ask anywhere",
+      tabHandoff: "Work that lands",
+      tabTeamBrain: "Ask the team brain",
+      tabCrossDevice: "Phone idea, desk build",
+      captionCrossAgent:
+        "One memory, every agent — saved from a coding session, recalled in chat. No platform's built-in memory crosses that wall.",
+      captionHandoff:
+        "Agent work products don't evaporate in scrollback — they land in the team hub, cited and ready to hand off.",
+      captionTeamBrain:
+        "Teammates ask the hub directly and get answers with receipts — no 'ask Derek' bottleneck.",
+      captionCrossDevice:
+        "Talk an idea through on your phone; your coding agent picks it up from another machine and builds.",
+      a1SavePrompt:
+        "save my ETF portfolio strategy to memax — the 70/20/10 split we just worked out",
+      a1SaveDone:
+        "Saved to your personal hub. Any of your agents can recall it.",
+      a1AskPrompt: "what's my latest investment portfolio strategy?",
+      a1AskAnswer:
+        "Your latest strategy (saved yesterday from Claude Code): 70% broad-market ETFs, 20% international, 10% bonds — rebalance quarterly, thresholds at ±5%.",
+      a2Prompt:
+        "identify the technical gaps in this repo and write a migration plan Alex can review",
+      a2Working:
+        "Analyzed 214 files — found 6 gaps: missing request timeouts, no graceful shutdown, unversioned API responses…",
+      a2Done:
+        "Done — plan pushed to your team hub, handoff ready for Alex to review.",
+      a3Question: "what did we decide about the auth token expiry, and why?",
+      a3Answer:
+        "Access tokens moved to 1-hour expiry on May 12 — the team traded refresh-flow complexity for instant revocation after the contractor-offboarding incident. Sources: 3 memories, including Jiahao's decision note.",
+      a4IdeaPrompt:
+        "I keep thinking we could add an onboarding widget that shows live setup progress — let's think it through",
+      a4IdeaReply:
+        "Sketched the approach: three states, hooks into the existing setup events. Saved the design notes and open questions to your hub so you can pick this up anywhere.",
+      a4ResumePrompt: "continue where I left off on the onboarding widget idea",
+      a4ResumeReply:
+        "Picking up from your phone session yesterday: three-state widget, hooks into setup events. Two open questions noted — starting with the event contract. Scaffolding now.",
     },
     // ── Audience pivot — hero splits into personal / team branding ──
     pivotPersonal: "For you",

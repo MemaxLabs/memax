@@ -117,6 +117,39 @@ func (h *BoardsHandler) Get(w http.ResponseWriter, r *http.Request) {
 // benign race on a shared board must not surface as a failure. Feedback
 // verdicts are still recorded on already-terminal slots so every hub
 // member can weigh in, not just whoever resolved the card first.
+// targetBoard resolves which board a slot route addresses: the hub's
+// system board by default, or — when the route carries {board_id}
+// (the board-scoped variants, issue #41) — that board, after
+// verifying it belongs to the path's hub. Membership-level: resolving
+// cards is a member action, unlike requireCustomBoard's admin gate
+// for editing boards. The path's hub stays authoritative — a member
+// of hub A must not reach hub B's board by id.
+func (h *BoardsHandler) targetBoard(w http.ResponseWriter, r *http.Request, hubID, userID string) (*model.Board, bool) {
+	boardID := r.PathValue("board_id")
+	if boardID == "" {
+		board, err := h.store.GetOrCreateSystemBoard(hubID, userID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+			return nil, false
+		}
+		return board, true
+	}
+	board, err := h.store.GetBoard(boardID)
+	if errors.Is(err, store.ErrBoardNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "Board not found")
+		return nil, false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+		return nil, false
+	}
+	if board.HubID != hubID {
+		writeError(w, http.StatusNotFound, "not_found", "Board not found")
+		return nil, false
+	}
+	return board, true
+}
+
 func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 	hubID, userID, ok := h.requireHubMember(w, r)
 	if !ok {
@@ -138,9 +171,8 @@ func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 	// Idempotent like resolve: undoing a card someone already reopened
 	// returns 200 with the current (live) slot.
 	if req.Action == model.BoardSlotActionReopen {
-		board, err := h.store.GetOrCreateSystemBoard(hubID, userID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+		board, ok := h.targetBoard(w, r, hubID, userID)
+		if !ok {
 			return
 		}
 		slot, err := h.store.ReopenBoardSlot(board.ID, slotKey)
@@ -179,9 +211,8 @@ func (h *BoardsHandler) ResolveSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	board, err := h.store.GetOrCreateSystemBoard(hubID, userID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+	board, boardOK := h.targetBoard(w, r, hubID, userID)
+	if !boardOK {
 		return
 	}
 
@@ -278,9 +309,8 @@ func (h *BoardsHandler) SlotHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slotKey := r.PathValue("slot_key")
-	board, err := h.store.GetOrCreateSystemBoard(hubID, userID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+	board, ok2 := h.targetBoard(w, r, hubID, userID)
+	if !ok2 {
 		return
 	}
 	versions, err := h.store.ListBoardSlotHistory(board.ID, slotKey, 20)

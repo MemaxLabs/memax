@@ -373,3 +373,79 @@ func TestBoardsSlotIsolationBetweenHubs(t *testing.T) {
 		t.Fatalf("non-member resolve: expected 403, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// Issue #41: slot keys are only unique WITHIN a board — resolving a
+// custom board's slot must not touch the system board's same-keyed
+// slot (which is exactly what the unscoped route used to do).
+func TestBoardsResolveSlotBoardScoped(t *testing.T) {
+	s := newBoardsTestStore()
+	s.roles[boardsTestHubID+":u1"] = "member"
+	h := NewBoardsHandler(s)
+
+	// System board slot AND a custom board slot sharing the key "hero".
+	sysBoard := seedBoardSlot(t, s, boardsTestHubID, "hero")
+	custom := &model.Board{
+		HubID: boardsTestHubID, CreatedBy: "u1", Kind: "custom",
+		Title: "Custom", Instruction: "watch things", Status: "active",
+	}
+	if err := s.CreateBoard(custom); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertBoardSlot(&model.BoardSlot{
+		BoardID: custom.ID, SlotKey: "hero", Kind: "pattern",
+		Title: "custom card", Payload: json.RawMessage(`{"description":"c"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Board-scoped dismiss of the CUSTOM slot.
+	req := httptest.NewRequest(http.MethodPost,
+		"/v1/hubs/"+boardsTestHubID+"/boards/"+custom.ID+"/slots/hero/resolve",
+		bytes.NewBufferString(`{"action":"dismiss"}`))
+	req.SetPathValue("id", boardsTestHubID)
+	req.SetPathValue("board_id", custom.ID)
+	req.SetPathValue("slot_key", "hero")
+	rec := httptest.NewRecorder()
+	h.ResolveSlot(rec, withTestIdentity(req, "u1"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("board-scoped dismiss: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// The custom slot is dismissed; the system board's same-keyed slot
+	// is UNTOUCHED — this is the whole bug.
+	customSlot, _ := s.GetBoardSlot(custom.ID, "hero")
+	if customSlot.State != model.BoardSlotStateDismissed {
+		t.Fatalf("custom slot should be dismissed, got %s", customSlot.State)
+	}
+	sysSlot, _ := s.GetBoardSlot(sysBoard.ID, "hero")
+	if sysSlot.State != model.BoardSlotStateFresh {
+		t.Fatalf("system slot must be untouched, got %s", sysSlot.State)
+	}
+}
+
+// Cross-hub board ids 404 — the path's hub stays authoritative.
+func TestBoardsResolveSlotBoardScopedCrossHub(t *testing.T) {
+	s := newBoardsTestStore()
+	otherHub := "33333333-3333-3333-3333-333333333333"
+	s.roles[boardsTestHubID+":u1"] = "member"
+	s.roles[otherHub+":u1"] = "member"
+	h := NewBoardsHandler(s)
+	foreign := &model.Board{
+		HubID: otherHub, CreatedBy: "u1", Kind: "custom",
+		Title: "Foreign", Instruction: "x", Status: "active",
+	}
+	if err := s.CreateBoard(foreign); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost,
+		"/v1/hubs/"+boardsTestHubID+"/boards/"+foreign.ID+"/slots/hero/resolve",
+		bytes.NewBufferString(`{"action":"dismiss"}`))
+	req.SetPathValue("id", boardsTestHubID)
+	req.SetPathValue("board_id", foreign.ID)
+	req.SetPathValue("slot_key", "hero")
+	rec := httptest.NewRecorder()
+	h.ResolveSlot(rec, withTestIdentity(req, "u1"))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("cross-hub board id must 404, got %d", rec.Code)
+	}
+}

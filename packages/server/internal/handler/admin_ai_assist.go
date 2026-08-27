@@ -6,13 +6,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
+	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
 
@@ -497,61 +497,11 @@ func (h *AdminAIAssistHandler) fetchGrounding(r *http.Request, actorID string, r
 }
 
 // sensitivePatterns is a small, conservative allow-list of things we
-// redact out of grounding snippets before they hit the LLM. These are
-// NOT exhaustive — a determined admin-author who wants to exfiltrate
-// data via AI-assist has easier paths. The bar is "obvious mistakes":
-// an admin pastes a Slack message with a token, an engineer records a
-// customer's SSN in a note, etc. Conservative over aggressive so we
-// don't silently neuter legitimate copy.
-var sensitivePatterns = []*regexp.Regexp{
-	// OpenAI / Anthropic / GitHub / Slack / Stripe-style prefixed keys.
-	// `sk_live_` and `pk_live_` / `rk_live_` are Stripe's live-mode
-	// secret + publishable / restricted keys — separate family from
-	// OpenAI's `sk-...`, so the `live_` requirement disambiguates.
-	// `xoxa` / `xoxp` / `xoxs` / `xapp` cover Slack's remaining token
-	// families beyond `xoxb`.
-	regexp.MustCompile(`(?i)\b(?:sk|pk|xoxb|xoxa|xoxp|xoxs|xapp|ghp|gho|ghu|ghs|ghr|github_pat)[_-][A-Za-z0-9_-]{16,}\b`),
-	regexp.MustCompile(`(?i)\b(?:sk|pk|rk)_live_[A-Za-z0-9]{16,}\b`),
-	// AWS access key IDs
-	regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
-	// Google Cloud API keys — "AIza" prefix + 35 base64-ish chars.
-	regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}\b`),
-	// Bearer token pattern
-	regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._-]{20,}\b`),
-	// key=value leak patterns for `client_secret=`, `token=`,
-	// `api_key=`, `password=` (catches copy-pasted curl one-liners)
-	regexp.MustCompile(`(?i)\b(?:client_secret|api[_-]?key|secret|token|password|passwd|authorization)\s*[:=]\s*["']?[A-Za-z0-9._\-+/]{16,}["']?`),
-	// PEM blocks (private keys, certificates) — redact the entire
-	// BEGIN/END envelope rather than only the body, so stripped
-	// snippets don't leave a dangling "-----BEGIN ..." header.
-	regexp.MustCompile(`(?s)-----BEGIN[^-]*?PRIVATE KEY-----.*?-----END[^-]*?PRIVATE KEY-----`),
-	regexp.MustCompile(`(?s)-----BEGIN[^-]*?CERTIFICATE-----.*?-----END[^-]*?CERTIFICATE-----`),
-	// JWT (three dot-separated base64url segments, ~20+ chars each)
-	regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b`),
-	// Long hex secret (32+ chars continuous)
-	regexp.MustCompile(`\b[a-f0-9]{40,}\b`),
-	// US SSN (nnn-nn-nnnn)
-	regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`),
-	// Credit-card-ish 13-19 digit runs
-	regexp.MustCompile(`\b(?:\d[ -]?){13,19}\b`),
-	// Internal/intranet hostnames and localhost
-	regexp.MustCompile(`\b(?:https?://)?(?:localhost|(?:\w+\.)?(?:intranet|internal|corp|lan)\.\w+)\b`),
-	// RFC1918 / loopback IPs
-	regexp.MustCompile(`\b(?:10|127|192\.168|172\.(?:1[6-9]|2\d|3[0-1]))\.\d{1,3}\.\d{1,3}(?:\.\d{1,3})?\b`),
-}
-
-// redactSensitive walks the conservative pattern list and replaces
-// matches with `[redacted]`. Empty input returns empty (nothing to
-// redact). Called on both the note title and the body snippet before
-// they enter the prompt.
+// Redaction now lives in the shared internal/secrets package — the
+// push gate (reject) and this grounding redaction (silent replace)
+// must never drift apart on what counts as sensitive.
 func redactSensitive(s string) string {
-	if s == "" {
-		return ""
-	}
-	for _, rx := range sensitivePatterns {
-		s = rx.ReplaceAllString(s, "[redacted]")
-	}
-	return s
+	return secrets.Redact(s)
 }
 
 // stripHTMLForRecall removes angle-bracket tags from HTML for query

@@ -43,6 +43,12 @@ for cli in claude codex; do
   ln -sfn "$target" "$link"
 done
 
+echo "🐋 Restoring optional Orca remote server (opt-in, per-developer)..."
+# No-op unless ~/.config/orca-app/.enabled exists. That path is a named volume,
+# so this only fires for developers who ran `setup-orca.sh enable` in their own
+# container; everyone else pays nothing.
+bash .devcontainer/setup-orca.sh start || echo "⚠️  Orca start failed; continuing devcontainer setup."
+
 echo "📦 Installing dependencies with pnpm..."
 pnpm install
 

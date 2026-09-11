@@ -133,7 +133,7 @@ func New(ctx context.Context) (*App, error) {
 		// phase. Nil-safe at two layers — no ANTHROPIC_API_KEY means
 		// an unconfigured runtime and every agentic path falls back;
 		// hubs additionally opt in via dreams_use_agent_runtime.
-		if agentModel := providers.NewAnthropicFromEnv(anthropic.ModelFromEnvWithDefault("DREAMS_AGENT_MODEL", anthropic.SonnetModel)); agentModel != nil {
+		if agentModel := providers.NewAnthropicFromEnv(anthropic.ModelFromEnvWithDefault("DREAMS_AGENT_MODEL", anthropic.StrongModel)); agentModel != nil {
 			if dreamRecall, err := tools.NewAgentRecallService(chatRecallStoreAdapter{s: s}, embedder); err != nil {
 				slog.Warn("dream agent runtime: recall service init failed, agentic phases disabled", "error", err)
 			} else {
@@ -500,8 +500,8 @@ func New(ctx context.Context) (*App, error) {
 // boundary it sees, and a handler change must consciously
 // touch this list too.
 var chatModelAllowlist = []string{
-	"claude-sonnet-4-6",
-	"claude-haiku-4-5-20251001",
+	anthropic.StrongModel,
+	anthropic.DefaultModel,
 }
 
 func buildChatAgentRuntime(s *store.PostgresStore, embedder embed.Embedder, broker *events.Broker, riverClient *river.Client[pgx.Tx]) *queue.ChatAgentRuntime {
@@ -526,10 +526,10 @@ func buildChatAgentRuntime(s *store.PostgresStore, embedder embed.Embedder, brok
 		}
 		models[name] = c
 	}
-	// DefaultModel is the chat default (sonnet 4.6) — used when
-	// a session row carries a name we haven't pre-built (rare,
+	// DefaultModel is the chat default (strong/reasoning tier) — used
+	// when a session row carries a name we haven't pre-built (rare,
 	// only happens during a model rollout / rollback).
-	defaultModel := models["claude-sonnet-4-6"]
+	defaultModel := models[anthropic.StrongModel]
 	recallService, err := tools.NewAgentRecallService(chatRecallStoreAdapter{s: s}, embedder)
 	if err != nil {
 		slog.Error("chat agent runtime: NewAgentRecallService failed", "err", err)

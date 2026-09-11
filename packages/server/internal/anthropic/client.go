@@ -7,7 +7,7 @@
 //	if client == nil { /* API key not set, LLM features disabled */ }
 //
 //	resp, err := client.Complete(ctx, anthropic.CompleteRequest{
-//	    Model:     "claude-haiku-4-5",
+//	    Model:     anthropic.DefaultModel,
 //	    MaxTokens: 200,
 //	    Prompt:    "Summarize this: ...",
 //	})
@@ -33,12 +33,40 @@ import (
 
 const (
 	DefaultBaseURL = "https://api.anthropic.com"
-	DefaultModel   = "claude-haiku-4-5"
-	SonnetModel    = "claude-sonnet-4-6"
-	apiVersion     = "2023-06-01"
+
+	// DefaultModel is the small/fast tier: classification, tagging,
+	// summarization, extraction, query distillation, and other
+	// high-volume tasks where latency and cost dominate. Served via
+	// OpenRouter by pointing ANTHROPIC_BASE_URL at
+	// https://openrouter.ai/api (the client speaks the Anthropic
+	// Messages wire format, which OpenRouter accepts).
+	DefaultModel = "deepseek/deepseek-v4-flash"
+
+	// StrongModel is the reasoning tier: chat agent runtime, agentic
+	// dreams (organize/restructure/contradictions), and Ask answer
+	// synthesis.
+	StrongModel = "deepseek/deepseek-v4.1-flash"
+
+	apiVersion = "2023-06-01"
 
 	defaultCaptureContentMaxChars = 4000
 )
+
+// IsStrongModel reports whether a model name belongs to the strong /
+// reasoning tier (plan gating, Ask source budgets, display labels). It
+// recognizes the current StrongModel slug plus legacy Claude
+// Sonnet/Opus IDs, so persisted sessions and env-pinned values keep
+// their tier across provider swaps.
+func IsStrongModel(modelName string) bool {
+	lower := strings.ToLower(strings.TrimSpace(modelName))
+	if lower == "" {
+		return false
+	}
+	return lower == StrongModel ||
+		strings.Contains(lower, "sonnet") ||
+		strings.Contains(lower, "opus") ||
+		strings.Contains(lower, "v4.1")
+}
 
 // Client is a shared Anthropic API client.
 // Create one instance and inject it into all modules that need LLM access.
@@ -143,7 +171,7 @@ func trackingFromContext(ctx context.Context) Tracking {
 
 // CompleteRequest is the input to a single LLM completion call.
 type CompleteRequest struct {
-	Model      string         // required — e.g. "claude-haiku-4-5"
+	Model      string         // required — e.g. "deepseek/deepseek-v4-flash"
 	MaxTokens  int            // required — max output tokens
 	Prompt     string         // required — user message content
 	System     string         // optional — system prompt

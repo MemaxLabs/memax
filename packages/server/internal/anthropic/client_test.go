@@ -420,3 +420,33 @@ func TestCompleteContextCancellationPropagates(t *testing.T) {
 		t.Fatal("canceled ctx should error")
 	}
 }
+
+func TestIsStrongModel(t *testing.T) {
+	t.Parallel()
+	strong := []string{
+		StrongModel,
+		"deepseek/deepseek-v4.1-flash",
+		"claude-sonnet-4-6",
+		"claude-opus-4-6",
+		"anthropic/claude-3.7-sonnet",
+	}
+	for _, model := range strong {
+		if !IsStrongModel(model) {
+			t.Errorf("IsStrongModel(%q) = false, want true", model)
+		}
+	}
+	cheap := []string{
+		DefaultModel,
+		"deepseek/deepseek-v4-flash",
+		"claude-haiku-4-5",
+		"qwen/qwen3.7-flash",
+		"inclusionai/ling-3.0-flash",
+		"",
+		"   ",
+	}
+	for _, model := range cheap {
+		if IsStrongModel(model) {
+			t.Errorf("IsStrongModel(%q) = true, want false", model)
+		}
+	}
+}

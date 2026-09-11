@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	eventsAPI "github.com/MemaxLabs/memax/packages/server/internal/events"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
@@ -138,7 +139,7 @@ func TestChatHandler_Create_SingleHub(t *testing.T) {
 		ScopeType:   model.ChatScopeTypeSingleHub,
 		ScopeHubIDs: []string{env.hubA},
 		Tools:       []string{"recall_memories"},
-		Model:       "claude-sonnet-4-6",
+		Model:       anthropic.StrongModel,
 	}, env.owner, []string{env.hubA, env.hubB})
 	h.Create(rec, req)
 	if rec.Code != http.StatusCreated {
@@ -175,8 +176,8 @@ func TestChatHandler_Create_AppliesDefaults(t *testing.T) {
 	}
 	got := decodeChatSession(t, rec.Body.Bytes())
 	// Default model + default tools.
-	if got.Model != "claude-sonnet-4-6" {
-		t.Errorf("default Model = %q, want claude-sonnet-4-6", got.Model)
+	if got.Model != anthropic.StrongModel {
+		t.Errorf("default Model = %q, want %q", got.Model, anthropic.StrongModel)
 	}
 	if len(got.Tools) == 0 {
 		t.Errorf("default Tools should not be empty")
@@ -336,7 +337,7 @@ func TestChatHandler_List_RecentFirst(t *testing.T) {
 		sess := &model.ChatSession{
 			ID: uuid.NewString(), OwnerID: env.owner,
 			ScopeType: model.ChatScopeTypeUserAllHubs, ScopeHubIDs: []string{},
-			Title: title, Model: "claude-sonnet-4-6",
+			Title: title, Model: anthropic.StrongModel,
 			Tools:  []string{"recall_memories"},
 			Status: model.ChatSessionStatusIdle, ToolsetVersion: 1,
 			CreatedAt: ts, UpdatedAt: ts,
@@ -402,7 +403,7 @@ func TestChatHandler_List_ArchivedOnly(t *testing.T) {
 		sess := &model.ChatSession{
 			ID: uuid.NewString(), OwnerID: env.owner,
 			ScopeType: model.ChatScopeTypeUserAllHubs, ScopeHubIDs: []string{},
-			Title: title, Model: "claude-sonnet-4-6",
+			Title: title, Model: anthropic.StrongModel,
 			Tools:  []string{"recall_memories"},
 			Status: model.ChatSessionStatusIdle, ToolsetVersion: 1,
 			CreatedAt: ts, UpdatedAt: ts,

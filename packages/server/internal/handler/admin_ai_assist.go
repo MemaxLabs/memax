@@ -335,15 +335,14 @@ func (h *AdminAIAssistHandler) GenerateEmailCopy(w http.ResponseWriter, r *http.
 	systemPrompt := buildSystemPrompt(req.FieldKind, req.Locale, len(grounding) > 0)
 	userPrompt := buildUserPrompt(req, grounding)
 
-	// Pick a Haiku-tier model. This is interactive (admin is waiting
+	// Pick the cheap/fast tier. This is interactive (admin is waiting
 	// on the response) and the output is short-form marketing copy —
-	// Sonnet-tier would burn tokens and latency without measurable
+	// the strong tier would burn tokens and latency without measurable
 	// quality improvement for this use case.
-	const llmModel = "claude-haiku-4-5"
 	const maxTokens = 2048
 
 	resp, err := h.llm.Complete(r.Context(), anthropic.CompleteRequest{
-		Model:     llmModel,
+		Model:     anthropic.DefaultModel,
 		MaxTokens: maxTokens,
 		System:    systemPrompt,
 		Prompt:    userPrompt,
@@ -373,7 +372,7 @@ func (h *AdminAIAssistHandler) GenerateEmailCopy(w http.ResponseWriter, r *http.
 	})
 	writeJSON(w, http.StatusOK, model.ApiResponse{Data: aiAssistResponse{
 		Text:               text,
-		Model:              llmModel,
+		Model:              anthropic.DefaultModel,
 		Tokens:             resp.OutputTokens,
 		GroundingCount:     len(grounding),
 		GroundingAttempted: groundingAttempted,
@@ -449,8 +448,8 @@ func (h *AdminAIAssistHandler) fetchGrounding(r *http.Request, actorID string, r
 		}
 	}
 	// Grounding budget: small enough to keep prompt focused, big
-	// enough to matter. 5 memories × a short snippet each fits well
-	// inside claude-haiku's context window and avoids dilution.
+	// enough to matter. 5 memories × a short snippet each stays well
+	// inside the cheap tier's context window and avoids dilution.
 	const recallLimit = 5
 	results, _, err := h.recall.RunPipeline(
 		r.Context(),

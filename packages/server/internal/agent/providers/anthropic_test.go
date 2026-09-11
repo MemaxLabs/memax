@@ -149,3 +149,21 @@ func TestNewAnthropicLeavesHTTPClientNilByDefault(t *testing.T) {
 		t.Errorf("HTTPClient = %p, want nil (SDK default)", got.HTTPClient)
 	}
 }
+
+func TestAnthropicChatThinkingIsClaudeOnly(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("ANTHROPIC_BASE_URL", "")
+
+	claude := NewAnthropicChatFromEnv("claude-sonnet-4-6")
+	if claude == nil || claude.Thinking == nil {
+		t.Fatal("expected adaptive thinking for Claude models")
+	}
+
+	deepseek := NewAnthropicChatFromEnv("deepseek/deepseek-v4.1-flash")
+	if deepseek == nil {
+		t.Fatal("expected non-nil client for OpenRouter model")
+	}
+	if deepseek.Thinking != nil {
+		t.Errorf("expected thinking omitted for non-Claude models, got %+v", deepseek.Thinking)
+	}
+}

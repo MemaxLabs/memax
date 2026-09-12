@@ -39,6 +39,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	"github.com/MemaxLabs/memax/packages/server/internal/chatstream"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
@@ -142,20 +143,22 @@ var chatDefaultTools = func() []string {
 }()
 
 // chatDefaultModel is the fallback when the caller passes an
-// empty `model` field. Sonnet 4.6 matches plan 24's chat margin
-// table for paid tiers; Free tier should override to Haiku
-// before reaching the handler (Phase 3.8 wires plan-aware
-// validation on top).
-const chatDefaultModel = "claude-sonnet-4-6"
+// empty `model` field. StrongModel (DeepSeek V4.1 Flash via
+// OpenRouter) matches plan 24's chat margin table for paid tiers;
+// Free tier should override to the cheap tier before reaching the
+// handler (Phase 3.8 wires plan-aware validation on top).
+const chatDefaultModel = anthropic.StrongModel
 
 // chatModelAllowlist guards against typo'd model strings reaching
 // the agent runtime. Plan 24's tier table determines which
 // models a given user CAN use; Phase 3.8 wires plan-aware
 // validation. For now the handler accepts any string in this
 // set so a missing tier-check doesn't silently allow Opus.
+// Sessions persisted under the previous Claude IDs fall back to
+// the runtime default in queue.ChatAgentRuntime.ModelFor.
 var chatModelAllowlist = map[string]struct{}{
-	"claude-haiku-4-5-20251001": {},
-	"claude-sonnet-4-6":         {},
+	anthropic.StrongModel:  {},
+	anthropic.DefaultModel: {},
 }
 
 // chatMaxTitleLen caps the session title at 200 chars so a stray
@@ -379,7 +382,7 @@ func (h *ChatHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, ok := chatModelAllowlist[modelID]; !ok {
 		writeError(w, http.StatusBadRequest, "invalid_model",
-			"model not in allowlist; supported: claude-sonnet-4-6, claude-haiku-4-5-20251001")
+			"model not in allowlist; supported: "+anthropic.StrongModel+", "+anthropic.DefaultModel)
 		return
 	}
 

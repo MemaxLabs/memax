@@ -186,27 +186,27 @@ memax/
 
 ## Tech Stack
 
-| Component                           | Technology                                                                |
-| ----------------------------------- | ------------------------------------------------------------------------- |
-| CLI                                 | TypeScript, Commander.js, chalk (`packages/cli`)                          |
-| SDK                                 | TypeScript (`memax-sdk`, `packages/sdk`)                                  |
-| API Server (includes retrieval)     | Go (stdlib net/http)                                                      |
-| Web App                             | Next.js 16 (App Router), Tailwind, Radix UI, TanStack Query, Tiptap, cmdk |
-| Developer Hub                       | Fumadocs (Next.js), Pagefind, Scalar                                      |
-| Design System                       | @memaxlabs/ui — Tailwind + Radix primitives                               |
-| Database                            | PostgreSQL (Neon) + pgvector                                              |
-| Cache                               | Redis (Upstash)                                                           |
-| Object Storage                      | Cloudflare R2                                                             |
-| Embeddings                          | Voyage AI                                                                 |
-| Reranking                           | Cohere Rerank                                                             |
-| LLM (distillation + classification) | Claude Haiku                                                              |
-| LLM (answer synthesis)              | Claude Haiku 3.5 / Sonnet 4                                               |
-| Queue                               | River (Postgres-backed, Go)                                               |
-| Auth                                | OAuth2 (GitHub/Google)                                                    |
-| Deployment                          | Fly.io (API + worker), Vercel (web)                                       |
-| CI/CD                               | GitHub Actions                                                            |
-| Package Manager                     | pnpm (workspaces)                                                         |
-| Monorepo                            | Turborepo                                                                 |
+| Component                             | Technology                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| CLI                                   | TypeScript, Commander.js, chalk (`packages/cli`)                          |
+| SDK                                   | TypeScript (`memax-sdk`, `packages/sdk`)                                  |
+| API Server (includes retrieval)       | Go (stdlib net/http)                                                      |
+| Web App                               | Next.js 16 (App Router), Tailwind, Radix UI, TanStack Query, Tiptap, cmdk |
+| Developer Hub                         | Fumadocs (Next.js), Pagefind, Scalar                                      |
+| Design System                         | @memaxlabs/ui — Tailwind + Radix primitives                               |
+| Database                              | PostgreSQL (Neon) + pgvector                                              |
+| Cache                                 | Redis (Upstash)                                                           |
+| Object Storage                        | Cloudflare R2                                                             |
+| Embeddings                            | Voyage AI                                                                 |
+| Reranking                             | Cohere Rerank                                                             |
+| LLM (distillation + classification)   | DeepSeek V4 Flash via OpenRouter (Anthropic-compatible Messages API)      |
+| LLM (answer synthesis + agent/dreams) | DeepSeek V4.1 Flash via OpenRouter (Anthropic-compatible Messages API)    |
+| Queue                                 | River (Postgres-backed, Go)                                               |
+| Auth                                  | OAuth2 (GitHub/Google)                                                    |
+| Deployment                            | Fly.io (API + worker), Vercel (web)                                       |
+| CI/CD                                 | GitHub Actions                                                            |
+| Package Manager                       | pnpm (workspaces)                                                         |
+| Monorepo                              | Turborepo                                                                 |
 
 ## Code Conventions
 

@@ -201,26 +201,30 @@ func (h *AskHandler) resolveModel(requested string) string {
 		if model := strings.TrimSpace(os.Getenv("ASK_MODEL")); model != "" {
 			return model
 		}
-		return "claude-sonnet-4-6"
+		return anthropic.StrongModel
 	case "haiku":
 		if model := strings.TrimSpace(os.Getenv("ASK_HAIKU_MODEL")); model != "" {
 			return model
 		}
-		return "claude-haiku-4-5"
+		return anthropic.DefaultModel
 	default:
 		if model := strings.TrimSpace(os.Getenv("ASK_HAIKU_MODEL")); model != "" {
 			return model
 		}
-		return "claude-haiku-4-5"
+		return anthropic.DefaultModel
 	}
 }
 
-// displayModel maps internal model IDs to short public names.
+// displayModel maps internal model IDs to the short public tier names.
+// Request-side tiers stay "haiku" (cheap/fast) and "sonnet" (strong) so
+// existing SDK/CLI consumers keep working across provider swaps.
 func displayModel(modelID string) string {
 	switch {
-	case strings.Contains(modelID, "sonnet"):
+	case anthropic.IsStrongModel(modelID):
 		return "sonnet"
-	case strings.Contains(modelID, "haiku"):
+	case modelID == anthropic.DefaultModel,
+		strings.Contains(strings.ToLower(modelID), "haiku"),
+		strings.Contains(strings.ToLower(modelID), "v4-flash"):
 		return "haiku"
 	default:
 		return modelID
@@ -985,11 +989,9 @@ func askSourceContextBudgetTokens(modelName string, maxOutputTokens int) int {
 	}
 
 	defaultBudget := 120000
-	if strings.Contains(strings.ToLower(modelName), "sonnet") {
-		defaultBudget = 500000
-	}
 	envName := "ASK_HAIKU_CONTEXT_BUDGET_TOKENS"
-	if strings.Contains(strings.ToLower(modelName), "sonnet") {
+	if anthropic.IsStrongModel(modelName) {
+		defaultBudget = 500000
 		envName = "ASK_SONNET_CONTEXT_BUDGET_TOKENS"
 	}
 	configured := envInt(envName, defaultBudget, 4096, 1000000)

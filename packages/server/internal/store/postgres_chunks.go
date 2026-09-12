@@ -388,7 +388,7 @@ func (s *PostgresStore) searchChunks(ctx context.Context, query string, queryEmb
 						AND c.embedding IS NOT NULL`
 			args := append([]any{embStr}, baseArgs...)
 			querySQL += ` AND ` + accessPredicate + topicPredicate + `
-					ORDER BY c.embedding <=> $1::vector
+					ORDER BY c.embedding <=> $1::vector, c.id ASC
 				LIMIT $2`
 			rows, err := s.pool.Query(ctx, querySQL, args...)
 			if err != nil {
@@ -457,7 +457,7 @@ func (s *PostgresStore) searchChunks(ctx context.Context, query string, queryEmb
 								)
 							)
 						) @@ websearch_to_tsquery(COALESCE(c.search_config, 'simple')::regconfig, $1)
-					ORDER BY rank DESC
+					ORDER BY rank DESC, c.id ASC
 					LIMIT $2`
 			args := append([]any{normalizedQuery}, baseArgs...)
 			rows, err := s.pool.Query(ctx, textSQL, args...)
@@ -514,7 +514,7 @@ func (s *PostgresStore) searchChunks(ctx context.Context, query string, queryEmb
 								COALESCE(c.content, '')
 							))))
 						) % $1
-					ORDER BY sim DESC
+					ORDER BY sim DESC, c.id ASC
 					LIMIT $2`
 			args := append([]any{trigramQuery}, baseArgs...)
 			rows, err := s.pool.Query(ctx, trgSQL, args...)
@@ -591,7 +591,7 @@ func (s *PostgresStore) searchChunks(ctx context.Context, query string, queryEmb
 							(m.created_at >= $%d::timestamptz AND m.created_at < $%d::timestamptz)
 							OR EXISTS (SELECT 1 FROM unnest(m.event_dates) d WHERE d >= $%d::timestamptz AND d < $%d::timestamptz)
 						)
-					ORDER BY m.created_at DESC
+					ORDER BY m.created_at DESC, c.id ASC
 					LIMIT $%d`, trlAccessPred, trlTopicPred, startParam, endParam, startParam, endParam, limitParam)
 			rows, err := s.pool.Query(ctx, trlSQL, trlArgs...)
 			if err != nil {
@@ -694,7 +694,7 @@ func (s *PostgresStore) searchChunks(ctx context.Context, query string, queryEmb
 					AND %s
 					AND immutable_unaccent(lower(m.title)) LIKE ANY($%d::text[])
 					%s%s
-				ORDER BY score DESC, similarity(immutable_unaccent(lower(m.title)), $%d) DESC, c.created_at DESC
+				ORDER BY score DESC, similarity(immutable_unaccent(lower(m.title)), $%d) DESC, c.created_at DESC, c.id ASC
 				LIMIT 20`, patternsParam, fieldAccessPred, patternsParam, projectFilter, fieldTopicFilter, queryParam)
 
 			rows, err := s.pool.Query(ctx, fieldSQL, fieldArgs...)
@@ -781,8 +781,19 @@ func (s *PostgresStore) searchChunks(ctx context.Context, query string, queryEmb
 		fused = append(fused, fusedResult{chunk: rc.chunk, score: score})
 	}
 
+	// Deterministic total order. `fused` is built by iterating a map, so
+	// a score-only comparator left equal-score chunks in random order —
+	// the direct cause of run-to-run eval jitter (0.717/0.707/0.714 on
+	// one commit). Tie-break by memory then chunk id for a total order
+	// independent of map iteration.
 	sort.Slice(fused, func(i, j int) bool {
-		return fused[i].score > fused[j].score
+		if fused[i].score != fused[j].score {
+			return fused[i].score > fused[j].score
+		}
+		if fused[i].chunk.MemoryID != fused[j].chunk.MemoryID {
+			return fused[i].chunk.MemoryID < fused[j].chunk.MemoryID
+		}
+		return fused[i].chunk.ID < fused[j].chunk.ID
 	})
 
 	filtered := make([]fusedResult, 0, minInt(len(fused), limit))

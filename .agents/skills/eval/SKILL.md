@@ -39,15 +39,16 @@ go test ./eval/ -count=1                          # metrics + reports + corpus
 
 ## Aggregate Thresholds
 
-| Metric            | Threshold | Measures                                   |
-| ----------------- | --------- | ------------------------------------------ |
-| nDCG@5            | >= 0.75   | Graded ranking quality in top 5            |
-| nDCG@10           | >= 0.75   | Graded ranking quality in top 10           |
-| MRR@10            | >= 0.80   | First relevant result appears early        |
-| Precision@5       | >= 0.20   | Fraction of top 5 that are relevant        |
-| StrongPrecision@3 | >= 0.25   | Fraction of top 3 that are highly relevant |
-| Recall@20         | >= 0.60   | Fraction of relevant docs found in top 20  |
-| Harmful@10        | == 0      | No stale/misleading results in top 10      |
+**数字的唯一来源是 `packages/server/eval/thresholds.go` 的 `Thresholds` 变量** — 断言与报告同源引用。这张表只解释每个指标衡量什么,不引用数字(2026-08 之前这里抄的数字与代码漂移了 0.05–0.10,教训备案)。
+
+| Metric            | Measures                                          |
+| ----------------- | ------------------------------------------------- |
+| nDCG@5 / nDCG@10  | Graded ranking quality in top 5 / top 10          |
+| MRR@10            | First relevant result appears early               |
+| Precision@5       | Fraction of top 5 that are relevant               |
+| StrongPrecision@3 | Fraction of top 3 that are highly relevant        |
+| Recall@20         | Fraction of relevant docs found in top 20         |
+| Harmful@10        | Must be 0 — no stale/misleading results in top 10 |
 
 ## Per-Query Checks
 

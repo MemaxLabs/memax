@@ -50,6 +50,7 @@ import {
 } from "@/hooks/use-settings";
 import { queryClient } from "@/lib/query-client";
 import { PinnedDispatch } from "@/components/features/onboarding/onboarding-pinned";
+import { ActionMenu } from "@/components/features/action-menu";
 import { buildBoardCardContext } from "./board-card-context";
 import {
   BoardHighlightCard,
@@ -304,6 +305,18 @@ export function BoardView({
   const [collapsedCards, setCollapsedCards] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  // C5 — kind filter (page only). null = the full stream. Chips are
+  // derived from the LIVE cards actually present, each carrying its
+  // kind's freshest content_updated_at so the reader can see at a
+  // glance which lenses moved recently.
+  const [kindFilter, setKindFilter] = useState<string | null>(null);
+  // Reviewer-confirmed dead-end: focus on kind A, triage every A card
+  // (the exact flow a focus mode invites) → A leaves the live set →
+  // its chip vanishes while the filter persists → blank board with no
+  // way out. A filter whose kind no longer exists resets itself.
+  //
+  // (kindFilterResetRef avoids an effect-on-derived-value loop: the
+  // reset runs post-render only when the stale state is observed.)
   useIsomorphicLayoutEffect(() => {
     try {
       const raw = globalThis.sessionStorage?.getItem(
@@ -360,6 +373,29 @@ export function BoardView({
       slots.filter((s) => s.state === "resolved" || s.state === "dismissed"),
     [slots],
   );
+
+  // C5 chip data: live kinds (system + custom) → freshest content
+  // time. Lives BEFORE the early returns — the stale-filter reset
+  // below is a hook (rules-of-hooks).
+  const kindChips = (() => {
+    const byKind = new Map<string, { latest: string; sample: BoardSlot }>();
+    const absorb = (s2: BoardSlot) => {
+      if (s2.state !== "fresh" && s2.state !== "seen") return;
+      const ts = s2.content_updated_at ?? s2.updated_at;
+      const existing = byKind.get(s2.kind);
+      if (!existing || (ts && ts > existing.latest)) {
+        byKind.set(s2.kind, { latest: ts ?? "", sample: s2 });
+      }
+    };
+    slots.forEach(absorb);
+    customLiveDecks.forEach(({ group }) => group.forEach(absorb));
+    return [...byKind.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  })();
+  const kindFilterIsStale =
+    kindFilter !== null && !kindChips.some(([kind]) => kind === kindFilter);
+  useEffect(() => {
+    if (kindFilterIsStale) setKindFilter(null);
+  }, [kindFilterIsStale]);
 
   // Embedded shelf expansion — BOARD_SHELF_RULES R1/R6.
   const { expanded: shelfExpanded, setExpanded: setShelfExpanded } =
@@ -620,10 +656,53 @@ export function BoardView({
         <PinnedDispatch key={notification.id} notification={notification} />
       ))}
 
+      {/* ── C5 kind chips — page only, and only when there's more
+          than one lens live. Selecting a chip focuses the stream on
+          that kind (notifications step back too — a filter is a focus
+          mode); each chip carries its kind's freshest update age. ── */}
+      {isPage && (kindChips.length > 1 || kindFilter !== null) ? (
+        <div className="flex flex-wrap items-center gap-1.5 px-1">
+          <button
+            type="button"
+            onClick={() => setKindFilter(null)}
+            aria-pressed={kindFilter === null}
+            className={`cursor-pointer rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors ${
+              kindFilter === null
+                ? "bg-surface-3 text-foreground"
+                : "text-fg-3 hover:bg-surface-1 hover:text-fg-2"
+            }`}
+          >
+            {t.board.kindFilterAll}
+          </button>
+          {kindChips.map(([kind, info]) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() =>
+                setKindFilter((prev) => (prev === kind ? null : kind))
+              }
+              aria-pressed={kindFilter === kind}
+              className={`cursor-pointer rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                kindFilter === kind
+                  ? "bg-surface-3 text-foreground"
+                  : "text-fg-3 hover:bg-surface-1 hover:text-fg-2"
+              }`}
+            >
+              {boardKindStripSummary(info.sample, t).label}
+              {info.latest ? (
+                <span className="ml-1.5 text-[11px] font-normal text-fg-4">
+                  {formatAge(info.latest, t, interpolate)}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {/* ── 等你 — decisions merged from notifications (P4), rendered
           as a DECK: one card at a time, the pile counted behind it.
           Never a vertical list of N contradiction cards. ── */}
-      {!collapsedShelf
+      {!collapsedShelf && kindFilter === null
         ? groupWaitingByKind(waiting).map((group) => (
             <BoardNotificationDeck
               key={group[0].kind}
@@ -639,7 +718,7 @@ export function BoardView({
 
       {/* ── Highlights — high-signal news (a member joined), each a
           standalone card between the decisions and the slots. ── */}
-      {!collapsedShelf
+      {!collapsedShelf && kindFilter === null
         ? highlights.map((card, index) => (
             <BoardHighlightCard
               key={card.id}
@@ -661,6 +740,7 @@ export function BoardView({
           // the 已归档 section below (工单 8: dismiss = archive with
           // undo, not a grey strip forever holding its place in line).
           if (!isLive) return null;
+          if (kindFilter !== null && slot.kind !== kindFilter) return null;
           if (groupedMemberKeys.has(slot.slot_key)) return null;
           const group = groupByAnchor.get(slot.slot_key);
           const entranceIndex = entranceCursor++;
@@ -693,43 +773,47 @@ export function BoardView({
           title; same-kind slots on one board deck together; cooking
           boards as one compact card each. ── */}
       {!collapsedShelf &&
-        customLiveDecks.map(({ board, group }) => {
-          const entranceIndex = entranceCursor++;
-          if (group.length > 1) {
+        customLiveDecks
+          .filter(
+            ({ group }) => kindFilter === null || group[0].kind === kindFilter,
+          )
+          .map(({ board, group }) => {
+            const entranceIndex = entranceCursor++;
+            if (group.length > 1) {
+              return (
+                <BoardSlotDeck
+                  key={`${board.id}-${group[0].slot_key}`}
+                  group={group}
+                  countLabel={interpolate(t.board.stackCount, {
+                    n: group.length - 1,
+                  })}
+                  cycleAriaLabel={t.board.deckCycle}
+                >
+                  {(current, controls) => (
+                    <CustomBoardSlotCard
+                      key={`${board.id}-${current.slot_key}`}
+                      board={board}
+                      slot={current}
+                      entranceIndex={entranceIndex}
+                      deletePending={deleteBoard.isPending}
+                      onDelete={(boardId) => deleteBoard.mutate(boardId)}
+                      deckControls={controls}
+                    />
+                  )}
+                </BoardSlotDeck>
+              );
+            }
             return (
-              <BoardSlotDeck
+              <CustomBoardSlotCard
                 key={`${board.id}-${group[0].slot_key}`}
-                group={group}
-                countLabel={interpolate(t.board.stackCount, {
-                  n: group.length - 1,
-                })}
-                cycleAriaLabel={t.board.deckCycle}
-              >
-                {(current, controls) => (
-                  <CustomBoardSlotCard
-                    key={`${board.id}-${current.slot_key}`}
-                    board={board}
-                    slot={current}
-                    entranceIndex={entranceIndex}
-                    deletePending={deleteBoard.isPending}
-                    onDelete={(boardId) => deleteBoard.mutate(boardId)}
-                    deckControls={controls}
-                  />
-                )}
-              </BoardSlotDeck>
+                board={board}
+                slot={group[0]}
+                entranceIndex={entranceIndex}
+                deletePending={deleteBoard.isPending}
+                onDelete={(boardId) => deleteBoard.mutate(boardId)}
+              />
             );
-          }
-          return (
-            <CustomBoardSlotCard
-              key={`${board.id}-${group[0].slot_key}`}
-              board={board}
-              slot={group[0]}
-              entranceIndex={entranceIndex}
-              deletePending={deleteBoard.isPending}
-              onDelete={(boardId) => deleteBoard.mutate(boardId)}
-            />
-          );
-        })}
+          })}
       {!collapsedShelf &&
         cookingBoards.map((board) => (
           <CookingBoardCard
@@ -744,7 +828,7 @@ export function BoardView({
       {/* ── 已归档 — resolved/dismissed cards, out of the live flow but
           one tap from coming back (工单 8: dismiss is archive + undo,
           never data loss). Collapsed to a count until opened. ── */}
-      {!collapsedShelf && archivedSlots.length > 0 ? (
+      {!collapsedShelf && kindFilter === null && archivedSlots.length > 0 ? (
         <BoardArchivedSection
           slots={archivedSlots}
           pending={resolve.isPending}
@@ -992,29 +1076,9 @@ function BoardSlotEntry({
               </BoardAction>
             </>
           ) : null}
-          {options?.feedback ? (
-            // 准/不准 — only on synthesized kinds, where the card makes
-            // a claim that can be right or wrong. The verdict feeds the
-            // next synthesis run.
-            <>
-              <BoardAction
-                emphasis="quiet"
-                onClick={() => onResolve("feedback", "accurate")}
-              >
-                {t.board.feedbackAccurate}
-              </BoardAction>
-              <BoardAction
-                emphasis="quiet"
-                onClick={() => onResolve("feedback", "inaccurate")}
-              >
-                {t.board.feedbackInaccurate}
-              </BoardAction>
-            </>
-          ) : null}
-          {/* 续接 — a card is where memax noticed something; these
-              two verbs are how the user acts on it without retyping
-              the context. Only offered when the card has citations
-              (continue) or quotable substance (copy). */}
+          {/* 续接 — the one secondary verb that earns a place on the
+              row: acting on the card without retyping its context.
+              Only offered when the card has citations. */}
           {(slot.cite_memory_ids?.length ?? 0) > 0 ? (
             <BoardAction
               emphasis="quiet"
@@ -1024,10 +1088,40 @@ function BoardSlotEntry({
               {t.board.continueInMemax}
             </BoardAction>
           ) : null}
-          {buildBoardCardContext(slot) ? (
-            <BoardAction emphasis="quiet" onClick={onCopy}>
-              {copied ? t.board.copied : t.board.copyForAgent}
-            </BoardAction>
+          {/* Everything else lives in a quiet overflow (C4 — the row
+              had grown to six verbs and read as a control panel):
+              准/不准 feeds the next synthesis run, copy-for-agent is
+              an occasional export. Both keep working, neither claims
+              row real estate. */}
+          {options?.feedback || buildBoardCardContext(slot) ? (
+            <ActionMenu
+              triggerAriaLabel={t.board.moreActions}
+              items={[
+                ...(options?.feedback
+                  ? [
+                      {
+                        id: "feedback-accurate",
+                        label: t.board.feedbackAccurate,
+                        onSelect: () => onResolve("feedback", "accurate"),
+                      },
+                      {
+                        id: "feedback-inaccurate",
+                        label: t.board.feedbackInaccurate,
+                        onSelect: () => onResolve("feedback", "inaccurate"),
+                      },
+                    ]
+                  : []),
+                ...(buildBoardCardContext(slot)
+                  ? [
+                      {
+                        id: "copy-for-agent",
+                        label: copied ? t.board.copied : t.board.copyForAgent,
+                        onSelect: onCopy,
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           ) : null}
           <BoardAction
             emphasis="quiet"

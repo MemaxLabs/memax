@@ -37,6 +37,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/language"
 	"github.com/MemaxLabs/memax/packages/server/internal/meterctx"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
+	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore"
 	"github.com/MemaxLabs/memax/packages/server/internal/sanitize"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
@@ -319,6 +320,16 @@ func (h *MemoriesHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if req.Content == "" && req.FileRef == nil {
 		writeError(w, http.StatusBadRequest, "missing_content", "Content is required")
+		return
+	}
+	// Secret gate (E2): memories are chunked, embedded and recalled
+	// VERBATIM across every connected agent — a credential that enters
+	// a memory becomes a replay device. Reject, never silently redact:
+	// the pusher must know their paste carried a key. Covers REST, SDK
+	// and CLI (all funnel here); the MCP push path gates separately.
+	if hits := secrets.DetectCredentials(req.Content); len(hits) > 0 {
+		writeError(w, http.StatusBadRequest, "secret_detected",
+			fmt.Sprintf("Content appears to contain a credential (%s). Memories are recalled verbatim across your agents — store secrets in a secret manager and push a reference instead.", strings.Join(hits, ", ")))
 		return
 	}
 	hubID := resolvedHubID(r)

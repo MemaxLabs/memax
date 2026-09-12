@@ -9,7 +9,7 @@ import (
 
 const (
 	defaultContextWindow   = 200000
-	sonnetContextWindow    = 1000000
+	largeContextWindow     = 1000000
 	fallbackContextWindow  = 64000
 	defaultSafetyMargin    = 2048
 	truncationMarker       = "\n\n[truncated]"
@@ -17,6 +17,11 @@ const (
 	documentTokenReserve   = 32768
 	imageTokenReserve      = 8192
 	genericBlockReserve    = 4096
+
+	lingFlashContextWindow = 262144
+	mercuryContextWindow   = 260000
+	gptOSSContextWindow    = 131072
+	novaMicroContextWindow = 128000
 )
 
 type ModelSpec struct {
@@ -69,12 +74,30 @@ func ResolveModelSpec(model string) ModelSpec {
 	}
 	switch {
 	case strings.Contains(lower, "claude-sonnet-4-6"):
-		spec.ContextWindow = sonnetContextWindow
+		spec.ContextWindow = largeContextWindow
 	case strings.Contains(lower, "claude-haiku"),
 		strings.Contains(lower, "claude-sonnet"),
 		strings.Contains(lower, "claude-opus"),
 		strings.Contains(lower, "anthropic/claude"):
 		spec.ContextWindow = defaultContextWindow
+	// OpenRouter-served models (the DefaultModel / StrongModel slugs
+	// plus the cheap alternatives documented in .env.example). Without
+	// these, unknown slugs fall back to the 64k window and get
+	// silently truncated long before the model's real limit.
+	case strings.Contains(lower, "deepseek/deepseek-v4"),
+		strings.Contains(lower, "qwen3.7-flash"),
+		strings.Contains(lower, "qwen3.5-flash"),
+		strings.Contains(lower, "gemini-2.5-flash-lite"):
+		spec.ContextWindow = largeContextWindow
+	case strings.Contains(lower, "ling-3.0-flash"):
+		spec.ContextWindow = lingFlashContextWindow
+	case strings.Contains(lower, "mercury-2.5"):
+		spec.ContextWindow = mercuryContextWindow
+	case strings.Contains(lower, "gpt-oss-20b"),
+		strings.Contains(lower, "gpt-oss-120b"):
+		spec.ContextWindow = gptOSSContextWindow
+	case strings.Contains(lower, "nova-micro"):
+		spec.ContextWindow = novaMicroContextWindow
 	}
 	return spec
 }

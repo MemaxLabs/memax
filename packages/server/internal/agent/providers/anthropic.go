@@ -100,6 +100,39 @@ func NewAnthropicFromEnv(modelName string) *sdkanthropic.Client {
 	return NewAnthropic(cfg)
 }
 
+// NewAnthropicChatFromEnv is NewAnthropicFromEnv plus thinking enabled
+// (adaptive + summarized display) for Anthropic-hosted Claude models —
+// the chat surface renders the model's readable reasoning as a
+// first-class stream layer. OpenRouter-served reasoning models
+// (DeepSeek etc.) don't accept Anthropic's adaptive thinking object on
+// the Messages compatibility endpoint, so thinking is omitted there and
+// the provider default applies.
+func NewAnthropicChatFromEnv(modelName string) *sdkanthropic.Client {
+	key := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnv))
+	if key == "" {
+		return nil
+	}
+	return NewAnthropic(AnthropicConfig{
+		APIKey:   key,
+		Model:    modelName,
+		BaseURL:  strings.TrimSpace(os.Getenv(anthropicBaseURLEnv)),
+		Timeout:  defaultStreamTimeout,
+		Thinking: chatThinkingFor(modelName),
+	})
+}
+
+// chatThinkingFor returns the Anthropic thinking config for chat when
+// the model is Anthropic-hosted, and nil otherwise.
+func chatThinkingFor(modelName string) *sdkanthropic.ThinkingConfig {
+	if !strings.Contains(strings.ToLower(modelName), "claude") {
+		return nil
+	}
+	return &sdkanthropic.ThinkingConfig{
+		Type:    sdkanthropic.ThinkingAdaptive,
+		Display: sdkanthropic.ThinkingDisplaySummarized,
+	}
+}
+
 // NewAnthropic builds a model.Client from an explicit config.
 // Returns nil when cfg.APIKey is empty-or-whitespace (matches
 // NewAnthropicFromEnv's fail-closed contract); panics on cfg.Model
@@ -115,26 +148,6 @@ func NewAnthropicFromEnv(modelName string) *sdkanthropic.Client {
 // We deliberately keep this helper minimal — it's a pure constructor.
 // Per-tenant overrides (different keys per workspace, etc.) go above
 // this layer where the deployment knows the policy.
-// NewAnthropicChatFromEnv is NewAnthropicFromEnv plus thinking enabled
-// (adaptive + summarized display) — the chat surface renders the model's
-// readable reasoning as a first-class stream layer.
-func NewAnthropicChatFromEnv(modelName string) *sdkanthropic.Client {
-	key := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnv))
-	if key == "" {
-		return nil
-	}
-	return NewAnthropic(AnthropicConfig{
-		APIKey:  key,
-		Model:   modelName,
-		BaseURL: strings.TrimSpace(os.Getenv(anthropicBaseURLEnv)),
-		Timeout: defaultStreamTimeout,
-		Thinking: &sdkanthropic.ThinkingConfig{
-			Type:    sdkanthropic.ThinkingAdaptive,
-			Display: sdkanthropic.ThinkingDisplaySummarized,
-		},
-	})
-}
-
 func NewAnthropic(cfg AnthropicConfig) *sdkanthropic.Client {
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	if apiKey == "" {

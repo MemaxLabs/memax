@@ -7,7 +7,7 @@
 //	if client == nil { /* API key not set, LLM features disabled */ }
 //
 //	resp, err := client.Complete(ctx, anthropic.CompleteRequest{
-//	    Model:     "claude-haiku-4-5",
+//	    Model:     anthropic.DefaultModel,
 //	    MaxTokens: 200,
 //	    Prompt:    "Summarize this: ...",
 //	})
@@ -33,12 +33,84 @@ import (
 
 const (
 	DefaultBaseURL = "https://api.anthropic.com"
-	DefaultModel   = "claude-haiku-4-5"
-	SonnetModel    = "claude-sonnet-4-6"
-	apiVersion     = "2023-06-01"
+
+	// DefaultModel is the small/fast tier: classification, tagging,
+	// summarization, extraction, query distillation, and other
+	// high-volume tasks where latency and cost dominate. Served via
+	// OpenRouter by pointing ANTHROPIC_BASE_URL at
+	// https://openrouter.ai/api (the client speaks the Anthropic
+	// Messages wire format, which OpenRouter accepts).
+	DefaultModel = "deepseek/deepseek-v4-flash"
+
+	// StrongModel is the reasoning tier: chat agent runtime, agentic
+	// dreams (organize/restructure/contradictions), and Ask answer
+	// synthesis.
+	StrongModel = "deepseek/deepseek-v4.1-flash"
+
+	apiVersion = "2023-06-01"
 
 	defaultCaptureContentMaxChars = 4000
 )
+
+// IsStrongModel reports whether a model name belongs to the strong /
+// reasoning tier (plan gating, Ask source budgets, display labels). It
+// recognizes the current StrongModel slug plus legacy Claude
+// Sonnet/Opus IDs, so persisted sessions and env-pinned values keep
+// their tier across provider swaps.
+func IsStrongModel(modelName string) bool {
+	lower := strings.ToLower(strings.TrimSpace(modelName))
+	if lower == "" {
+		return false
+	}
+	return lower == StrongModel ||
+		strings.Contains(lower, "sonnet") ||
+		strings.Contains(lower, "opus") ||
+		strings.Contains(lower, "v4.1")
+}
+
+// contentBlock is one block of a Messages API response. Thinking and
+// other non-text blocks carry no user-facing text.
+type contentBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+// textFromContent concatenates the text blocks of a Messages API
+// response, ignoring thinking/reasoning blocks.
+func textFromContent(content []contentBlock) string {
+	if len(content) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for _, block := range content {
+		if block.Type != "" && block.Type != "text" {
+			continue
+		}
+		if block.Text == "" {
+			continue
+		}
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(block.Text)
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+// thinkingDisabledFor returns the Anthropic-style thinking control for
+// direct (non-agent) completions. OpenRouter-served reasoning models
+// such as DeepSeek V4 default to thinking mode ON, and reasoning tokens
+// count against max_tokens — with the small budgets these JSON /
+// classification calls use, the whole budget can be spent thinking and
+// no answer is emitted. Claude models keep their existing behavior
+// (field omitted).
+func thinkingDisabledFor(model string) map[string]any {
+	lower := strings.ToLower(strings.TrimSpace(model))
+	if lower == "" || strings.Contains(lower, "claude") || strings.Contains(lower, "anthropic/") {
+		return nil
+	}
+	return map[string]any{"type": "disabled"}
+}
 
 // Client is a shared Anthropic API client.
 // Create one instance and inject it into all modules that need LLM access.
@@ -143,7 +215,7 @@ func trackingFromContext(ctx context.Context) Tracking {
 
 // CompleteRequest is the input to a single LLM completion call.
 type CompleteRequest struct {
-	Model      string         // required — e.g. "claude-haiku-4-5"
+	Model      string         // required — e.g. "deepseek/deepseek-v4-flash"
 	MaxTokens  int            // required — max output tokens
 	Prompt     string         // required — user message content
 	System     string         // optional — system prompt
@@ -194,6 +266,9 @@ func (c *Client) Complete(ctx context.Context, req CompleteRequest) (*CompleteRe
 	if req.System != "" {
 		body["system"] = req.System
 	}
+	if thinking := thinkingDisabledFor(req.Model); thinking != nil {
+		body["thinking"] = thinking
+	}
 
 	reqBody, err := json.Marshal(body)
 	if err != nil {
@@ -229,10 +304,8 @@ func (c *Client) Complete(ctx context.Context, req CompleteRequest) (*CompleteRe
 	}
 
 	var apiResp struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-		StopReason string `json:"stop_reason"`
+		Content    []contentBlock `json:"content"`
+		StopReason string         `json:"stop_reason"`
 		Usage      struct {
 			InputTokens  int `json:"input_tokens"`
 			OutputTokens int `json:"output_tokens"`
@@ -246,15 +319,16 @@ func (c *Client) Complete(ctx context.Context, req CompleteRequest) (*CompleteRe
 		c.trackLLMGeneration(tracking.withError(start, resp.StatusCode, fmt.Errorf("empty response from Anthropic")))
 		return nil, fmt.Errorf("empty response from Anthropic")
 	}
+	text := textFromContent(apiResp.Content)
 	if apiResp.Usage.InputTokens > 0 {
 		tracking.inputTokens = apiResp.Usage.InputTokens
 	}
 	tracking.outputTokens = apiResp.Usage.OutputTokens
-	tracking.output = c.captureOutput(apiResp.Content[0].Text)
+	tracking.output = c.captureOutput(text)
 	c.trackLLMGeneration(tracking.withSuccess(start, resp.StatusCode))
 
 	return &CompleteResponse{
-		Text:         strings.TrimSpace(apiResp.Content[0].Text),
+		Text:         text,
 		InputTokens:  apiResp.Usage.InputTokens,
 		OutputTokens: apiResp.Usage.OutputTokens,
 		StopReason:   apiResp.StopReason,
@@ -300,6 +374,9 @@ func (c *Client) CompleteMessages(ctx context.Context, model string, maxTokens i
 		"max_tokens": maxTokens,
 		"messages":   messages,
 	}
+	if thinking := thinkingDisabledFor(model); thinking != nil {
+		body["thinking"] = thinking
+	}
 
 	reqBody, err := json.Marshal(body)
 	if err != nil {
@@ -335,10 +412,8 @@ func (c *Client) CompleteMessages(ctx context.Context, model string, maxTokens i
 	}
 
 	var apiResp struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-		StopReason string `json:"stop_reason"`
+		Content    []contentBlock `json:"content"`
+		StopReason string         `json:"stop_reason"`
 		Usage      struct {
 			InputTokens  int `json:"input_tokens"`
 			OutputTokens int `json:"output_tokens"`
@@ -352,15 +427,16 @@ func (c *Client) CompleteMessages(ctx context.Context, model string, maxTokens i
 		c.trackLLMGeneration(tracking.withError(start, resp.StatusCode, fmt.Errorf("empty response from Anthropic")))
 		return nil, fmt.Errorf("empty response from Anthropic")
 	}
+	text := textFromContent(apiResp.Content)
 	if apiResp.Usage.InputTokens > 0 {
 		tracking.inputTokens = apiResp.Usage.InputTokens
 	}
 	tracking.outputTokens = apiResp.Usage.OutputTokens
-	tracking.output = c.captureOutput(apiResp.Content[0].Text)
+	tracking.output = c.captureOutput(text)
 	c.trackLLMGeneration(tracking.withSuccess(start, resp.StatusCode))
 
 	return &CompleteResponse{
-		Text:         strings.TrimSpace(apiResp.Content[0].Text),
+		Text:         text,
 		InputTokens:  apiResp.Usage.InputTokens,
 		OutputTokens: apiResp.Usage.OutputTokens,
 		StopReason:   apiResp.StopReason,
@@ -400,6 +476,9 @@ func (c *Client) CompleteStream(ctx context.Context, req CompleteRequest, onDelt
 	}
 	if req.System != "" {
 		body["system"] = req.System
+	}
+	if thinking := thinkingDisabledFor(req.Model); thinking != nil {
+		body["thinking"] = thinking
 	}
 
 	reqBody, err := json.Marshal(body)

@@ -5,9 +5,14 @@ import (
 	"testing"
 )
 
+// testSmallWindowModel has a 200k window, so trimming tests exercise
+// the budget path. The production DefaultModel intentionally has a much
+// larger window and would not trim these payloads.
+const testSmallWindowModel = "claude-haiku-4-5-20251001"
+
 func TestFitCompleteRequestTrimsOversizedPrompt(t *testing.T) {
 	req := CompleteRequest{
-		Model:     DefaultModel,
+		Model:     testSmallWindowModel,
 		MaxTokens: 1024,
 		System:    strings.Repeat("system ", 2000),
 		Prompt:    strings.Repeat("payload ", 150000),
@@ -23,7 +28,7 @@ func TestFitCompleteRequestTrimsOversizedPrompt(t *testing.T) {
 
 func TestFitCompleteRequestKeepsSmallPromptUnchanged(t *testing.T) {
 	req := CompleteRequest{
-		Model:     DefaultModel,
+		Model:     testSmallWindowModel,
 		MaxTokens: 300,
 		System:    "short system",
 		Prompt:    "short prompt",
@@ -44,8 +49,29 @@ func TestResolveModelSpecUsesLargerSonnet46Window(t *testing.T) {
 	}
 
 	sonnet := ResolveModelSpec("claude-sonnet-4-6-20250725")
-	if sonnet.ContextWindow != sonnetContextWindow {
-		t.Fatalf("expected Sonnet 4.6 window %d, got %d", sonnetContextWindow, sonnet.ContextWindow)
+	if sonnet.ContextWindow != largeContextWindow {
+		t.Fatalf("expected Sonnet 4.6 window %d, got %d", largeContextWindow, sonnet.ContextWindow)
+	}
+}
+
+func TestResolveModelSpecUsesOpenRouterWindows(t *testing.T) {
+	cases := []struct {
+		model string
+		want  int
+	}{
+		{"deepseek/deepseek-v4-flash", largeContextWindow},
+		{"deepseek/deepseek-v4.1-flash", largeContextWindow},
+		{"qwen/qwen3.7-flash", largeContextWindow},
+		{"inclusionai/ling-3.0-flash", lingFlashContextWindow},
+		{"inception/mercury-2.5", mercuryContextWindow},
+		{"openai/gpt-oss-20b", gptOSSContextWindow},
+		{"amazon/nova-micro-v1", novaMicroContextWindow},
+		{"some/unknown-model", fallbackContextWindow},
+	}
+	for _, tc := range cases {
+		if got := ResolveModelSpec(tc.model).ContextWindow; got != tc.want {
+			t.Errorf("ResolveModelSpec(%q).ContextWindow = %d, want %d", tc.model, got, tc.want)
+		}
 	}
 }
 
@@ -105,7 +131,7 @@ func TestFitMessagesTrimsOversizedTextBlocks(t *testing.T) {
 		},
 	}}
 
-	fitted, budget := FitMessages(DefaultModel, 4096, messages)
+	fitted, budget := FitMessages(testSmallWindowModel, 4096, messages)
 	if budget.DocumentBlockCount != 1 {
 		t.Fatalf("expected one document block, got %d", budget.DocumentBlockCount)
 	}
@@ -143,7 +169,7 @@ func TestFitMessagesTracksImagePayloadMetrics(t *testing.T) {
 		},
 	}}
 
-	_, budget := FitMessages(DefaultModel, 1024, messages)
+	_, budget := FitMessages(testSmallWindowModel, 1024, messages)
 	if budget.ImageBlockCount != 1 {
 		t.Fatalf("expected one image block, got %d", budget.ImageBlockCount)
 	}

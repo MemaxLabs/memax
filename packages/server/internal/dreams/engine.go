@@ -348,7 +348,7 @@ func New(s store.Store, embedder embed.Embedder, client *anthropic.Client, publi
 		client:        client,
 		events:        publisher,
 		model:         anthropic.ModelFromEnv("DREAMS_MODEL"),
-		organizeModel: anthropic.ModelFromEnvWithDefault("DREAMS_ORGANIZE_MODEL", anthropic.SonnetModel),
+		organizeModel: anthropic.ModelFromEnvWithDefault("DREAMS_ORGANIZE_MODEL", anthropic.StrongModel),
 	}
 }
 

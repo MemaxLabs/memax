@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "doppler run -- turbo dev",
     "build": "turbo build",
-    "lint": "node scripts/check-sdk-boundary.mjs && go run scripts/check-tool-store-calls.go && turbo lint",
+    "lint": "node scripts/check-sdk-boundary.mjs && node scripts/check-mcp-parity.mjs && go run scripts/check-tool-store-calls.go && turbo lint",
     "test": "turbo test",
     "check:sdk-boundary": "node scripts/check-sdk-boundary.mjs",
     "check:tool-store": "go run scripts/check-tool-store-calls.go",

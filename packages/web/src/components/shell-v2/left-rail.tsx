@@ -39,10 +39,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+import { Compass, Search } from "lucide-react";
 import { MemaxLogo, MemaxTextLogo } from "@memaxlabs/ui";
 import { useAuth, useActiveHub } from "@/lib/auth";
 import { HubIdentityChip } from "@/components/features/hub/hub-identity-chip";
+import { OnboardingMechanismModal } from "@/components/features/onboarding-mechanism-modal";
 import { useBar } from "@/contexts/bar-context";
 import { useShellState } from "@/contexts/shell-state-context";
 import { useNotificationSummary } from "@/hooks/use-notifications";
@@ -100,6 +101,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   // markup match — the hint is a detail, not worth a hydration
   // mismatch.
   const [kbdHint, setKbdHint] = useState<string | null>(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
   useEffect(() => {
     const ua = navigator.userAgent;
     setKbdHint(/Mac|iPhone|iPad|iPod/.test(ua) ? "⌘K" : "Ctrl K");
@@ -324,6 +326,30 @@ export function LeftRail({ activeTab }: LeftRailProps) {
           );
         })}
       </nav>
+
+      {/* 入门与机制 — onboarding + how-it-works, one quiet row above
+          the account footer (C1). Sits here, not in the avatar menu:
+          the avatar menu is account domain; understanding and
+          connecting are product domain. */}
+      <div className="px-2 pb-1 shrink-0">
+        <button
+          type="button"
+          onClick={() => setOnboardingOpen(true)}
+          aria-haspopup="dialog"
+          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
+          style={{ color: "var(--fg-2)" }}
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+            <Compass className="h-5 w-5" strokeWidth={1.8} />
+          </span>
+          <span className="text-[13px] font-medium truncate">
+            {t.nav.gettingStarted}
+          </span>
+        </button>
+      </div>
+      {onboardingOpen && (
+        <OnboardingMechanismModal onClose={() => setOnboardingOpen(false)} />
+      )}
 
       {/* Footer — user avatar opens the SettingsPanel. */}
       <div className="px-2 pb-2 shrink-0">

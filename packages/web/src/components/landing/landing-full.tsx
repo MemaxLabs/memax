@@ -12,6 +12,7 @@ import { OverviewStrip } from "./overview-strip";
 import { PivotToggle, type LandingPivot } from "./pivot-toggle";
 import { RotatingHeadline } from "./rotating-headline";
 import { ScenarioShowcase } from "./scenario-showcase";
+import { UseCaseShowcase } from "./use-case-showcase";
 
 // Canonical outward contact — same address privacy/terms already publish.
 const TEAM_CONTACT_EMAIL = "team@memaxlabs.com";
@@ -139,6 +140,13 @@ export function LandingFull() {
             (Claude Code, terminal, memax.app, third-party agent). */}
         <div className="w-full animate-fade-up stagger-5">
           <ScenarioShowcase />
+        </div>
+
+        {/* Use-case showcase (G2) — four acts of what you actually do
+            with it, each a demo-kit composition. Surfaces above showed
+            WHERE memax lives; these show WHY. */}
+        <div className="w-full animate-fade-up stagger-5">
+          <UseCaseShowcase />
         </div>
       </div>
 

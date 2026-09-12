@@ -420,3 +420,87 @@ func TestCompleteContextCancellationPropagates(t *testing.T) {
 		t.Fatal("canceled ctx should error")
 	}
 }
+
+func TestIsStrongModel(t *testing.T) {
+	t.Parallel()
+	strong := []string{
+		StrongModel,
+		"deepseek/deepseek-v4.1-flash",
+		"claude-sonnet-4-6",
+		"claude-opus-4-6",
+		"anthropic/claude-3.7-sonnet",
+	}
+	for _, model := range strong {
+		if !IsStrongModel(model) {
+			t.Errorf("IsStrongModel(%q) = false, want true", model)
+		}
+	}
+	cheap := []string{
+		DefaultModel,
+		"deepseek/deepseek-v4-flash",
+		"claude-haiku-4-5",
+		"qwen/qwen3.7-flash",
+		"inclusionai/ling-3.0-flash",
+		"",
+		"   ",
+	}
+	for _, model := range cheap {
+		if IsStrongModel(model) {
+			t.Errorf("IsStrongModel(%q) = true, want false", model)
+		}
+	}
+}
+
+func TestTextFromContentSkipsThinkingAndJoinsText(t *testing.T) {
+	t.Parallel()
+	got := textFromContent([]contentBlock{
+		{Type: "thinking", Text: "internal reasoning"},
+		{Type: "text", Text: "hello"},
+		{Type: "text", Text: "world"},
+	})
+	if got != "hello\nworld" {
+		t.Fatalf("textFromContent = %q, want %q", got, "hello\nworld")
+	}
+}
+
+func TestCompleteThinkingControl(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		model        string
+		wantDisabled bool
+	}{
+		{"deepseek/deepseek-v4-flash", true},
+		{"deepseek/deepseek-v4.1-flash", true},
+		{"claude-haiku-4-5", false},
+		{"anthropic/claude-sonnet-4.6", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.model, func(t *testing.T) {
+			t.Parallel()
+			bodies := make(chan map[string]any, 1)
+			srv := fakeAnthropic(t, func(w http.ResponseWriter, r *http.Request) {
+				var body map[string]any
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				bodies <- body
+				successResponse(w, "ok")
+			})
+			c := New("k", srv.URL)
+			if _, err := c.Complete(context.Background(), CompleteRequest{
+				Model: tc.model, MaxTokens: 50, Prompt: "hi",
+			}); err != nil {
+				t.Fatalf("Complete: %v", err)
+			}
+			body := <-bodies
+			thinking, hasThinking := body["thinking"].(map[string]any)
+			if tc.wantDisabled {
+				if !hasThinking || thinking["type"] != "disabled" {
+					t.Fatalf("thinking = %#v, want disabled", body["thinking"])
+				}
+				return
+			}
+			if hasThinking {
+				t.Fatalf("thinking = %#v, want omitted for Claude models", body["thinking"])
+			}
+		})
+	}
+}

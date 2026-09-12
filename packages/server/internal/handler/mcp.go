@@ -17,6 +17,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	ingesttitle "github.com/MemaxLabs/memax/packages/server/internal/ingest/title"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
+	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
 
@@ -515,6 +516,15 @@ func (h *MCPHandler) toolPush(w http.ResponseWriter, r *http.Request, id any, ar
 	if a.Content == "" {
 		writeRPCResult(w, id, mcpToolResult{
 			Content: []mcpContent{{Type: "text", Text: "Content is required."}},
+			IsError: true,
+		})
+		return
+	}
+	// Secret gate (E2) — same posture as the REST create path: reject
+	// with an actionable message the MODEL can relay and act on.
+	if hits := secrets.DetectCredentials(a.Content); len(hits) > 0 {
+		writeRPCResult(w, id, mcpToolResult{
+			Content: []mcpContent{{Type: "text", Text: "Push rejected: content appears to contain a credential (" + strings.Join(hits, ", ") + "). Memories are recalled verbatim across the user's agents. Remove the secret and push again — reference secrets by name, never by value."}},
 			IsError: true,
 		})
 		return

@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync/atomic"
+	"syscall"
 	"time"
 	_ "time/tzdata"
 
@@ -107,8 +110,27 @@ func main() {
 	// a pass-through — no behavioral change for local dev or
 	// non-Cloudflare deployments.
 	rootHandler := handler.OriginSharedSecretMiddleware()(corsMiddleware(innerHandler))
+
+	// A real *http.Server (not bare http.Serve) for two reasons the
+	// worker already had and this binary didn't:
+	//   - timeouts: without ReadHeaderTimeout a slow-loris connection
+	//     holds a goroutine forever; without IdleTimeout keep-alives
+	//     pile up across deploys. WriteTimeout stays 0 on purpose —
+	//     SSE streams (/v1/events) are long-lived writes and a global
+	//     write deadline would sever them; per-request deadlines are
+	//     the store-context workstream (F6).
+	//   - graceful shutdown: `select {}` meant the deferred
+	//     app.Shutdown NEVER ran and every deploy dropped in-flight
+	//     requests at the TCP layer. Fly sends SIGTERM and waits —
+	//     use the window.
+	srv := &http.Server{
+		Handler:           rootHandler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       2 * time.Minute,
+		IdleTimeout:       2 * time.Minute,
+	}
 	go func() {
-		if err := http.Serve(listener, rootHandler); err != nil {
+		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("server failed", "error", err)
 			os.Exit(1)
 		}
@@ -120,18 +142,29 @@ func main() {
 		slog.Error("failed to initialize API server", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		app.Shutdown(shutdownCtx)
-	}()
 
 	// Mark server as ready — health endpoint now returns 200
 	ready.Store(true)
 	slog.Info("memax API server ready", "addr", addr)
 
-	// Block forever (HTTP server runs in goroutine above)
-	select {}
+	// Block until SIGTERM/SIGINT (Fly's stop signal), then drain:
+	// stop accepting, let in-flight requests finish (30s budget, same
+	// as the worker), then release app resources. Mirrors
+	// cmd/worker/main.go's NotifyContext pattern.
+	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	<-sigCtx.Done()
+	slog.Info("shutdown signal received, draining")
+	ready.Store(false)
+	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelDrain()
+	if err := srv.Shutdown(drainCtx); err != nil {
+		slog.Warn("http drain incomplete", "error", err)
+	}
+	appCtx, cancelApp := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelApp()
+	app.Shutdown(appCtx)
+	slog.Info("memax API server stopped cleanly")
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

@@ -413,3 +413,97 @@ func TestResolveOwnershipEntitlements_FreeUserCannotCreate(t *testing.T) {
 		t.Errorf("expected max 0, got %d", ent.MaxOwnedFreeTeamHubs)
 	}
 }
+
+// hubTypeResolverStore extends the mock with a concrete GetHub answer
+// so hubIsTeam resolves definitively (the embedded InMemoryStore
+// returns not-found for unknown ids, which hubIsTeam deliberately
+// treats as "team" — the fail-safe path, covered below).
+type hubTypeResolverStore struct {
+	mockResolverStore
+	hub *model.Hub
+}
+
+func (m *hubTypeResolverStore) GetHub(_ string) (*model.Hub, error) {
+	if m.hub == nil {
+		return nil, fmt.Errorf("not found")
+	}
+	return m.hub, nil
+}
+
+// TestResolveHubWriteEntitlements_PersonalHubBillsOwnerPlan is the
+// 2026-09-14 founder incident: HubContext backfills writeHubID with
+// the personal hub, and forwarding that here must bill the OWNER'S
+// personal plan — never hub_free_team's 500/mo cap.
+func TestResolveHubWriteEntitlements_PersonalHubBillsOwnerPlan(t *testing.T) {
+	reg := setupTestRegistry(t, testPlans...)
+	ms := &hubTypeResolverStore{
+		mockResolverStore: mockResolverStore{
+			user: &model.User{Plan: model.LegacyProPlanID, PersonalPlanID: model.PersonalProPlanID},
+		},
+		hub: &model.Hub{ID: "hub-personal", HubType: "personal"},
+	}
+	r := New(nil, ms, reg)
+
+	ent := r.ResolveHubWriteEntitlements(context.Background(), "user-1", "hub-personal")
+	if ent.Limits.PushLimit != 1000 {
+		t.Errorf("personal-hub write should bill personal Pro (1000), got %d", ent.Limits.PushLimit)
+	}
+	if ent.Source.Reason != "personal_hub" {
+		t.Errorf("expected reason personal_hub, got %q", ent.Source.Reason)
+	}
+	if ent.Context != model.EntitlementHubWrite {
+		t.Errorf("expected hub-write context, got %q", ent.Context)
+	}
+}
+
+func TestResolveHubWriteEntitlements_TeamHubKeepsHubPlan(t *testing.T) {
+	reg := setupTestRegistry(t, testPlans...)
+	ms := &hubTypeResolverStore{
+		mockResolverStore: mockResolverStore{
+			user: &model.User{Plan: model.LegacyProPlanID, PersonalPlanID: model.PersonalProPlanID},
+		},
+		hub: &model.Hub{ID: "hub-team", HubType: "team"},
+	}
+	r := New(nil, ms, reg)
+
+	// No hub subscription → hub_free_team, NOT the pusher's Pro plan
+	// (a Pro user must not bypass a free team hub's lower limits).
+	ent := r.ResolveHubWriteEntitlements(context.Background(), "user-1", "hub-team")
+	if ent.Limits.PushLimit != 500 {
+		t.Errorf("team-hub write should keep hub_free_team (500), got %d", ent.Limits.PushLimit)
+	}
+	if ent.Source.Reason != "target_hub" {
+		t.Errorf("expected reason target_hub, got %q", ent.Source.Reason)
+	}
+}
+
+func TestResolveHubWriteEntitlements_LookupErrorFailsToHubPath(t *testing.T) {
+	reg := setupTestRegistry(t, testPlans...)
+	ms := &hubTypeResolverStore{
+		mockResolverStore: mockResolverStore{
+			user: &model.User{Plan: model.LegacyProPlanID, PersonalPlanID: model.PersonalProPlanID},
+		},
+		hub: nil, // GetHub errors → fail toward the stricter hub path
+	}
+	r := New(nil, ms, reg)
+
+	ent := r.ResolveHubWriteEntitlements(context.Background(), "user-1", "hub-mystery")
+	if ent.Limits.PushLimit != 500 {
+		t.Errorf("unknown hub should fail-safe to hub_free_team (500), got %d", ent.Limits.PushLimit)
+	}
+}
+
+func TestGetHubMemoryLimit_PersonalHubUnlimited(t *testing.T) {
+	reg := setupTestRegistry(t, testPlans...)
+	ms := &hubTypeResolverStore{
+		mockResolverStore: mockResolverStore{
+			user: &model.User{Plan: model.LegacyFreePlanID, PersonalPlanID: model.PersonalFreePlanID},
+		},
+		hub: &model.Hub{ID: "hub-personal", HubType: "personal"},
+	}
+	r := New(nil, ms, reg)
+
+	if got := r.GetHubMemoryLimit(context.Background(), "hub-personal"); got != -1 {
+		t.Errorf("personal hub has no hub-level memory cap, got %d", got)
+	}
+}

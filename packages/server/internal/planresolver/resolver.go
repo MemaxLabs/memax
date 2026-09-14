@@ -27,6 +27,7 @@ import (
 const (
 	effectivePlanKeyPrefix = "memax:effective_plan:"
 	hubPlanKeyPrefix       = "memax:hub_plan:"
+	hubTypeKeyPrefix       = "memax:hub_type:"
 	effectivePlanTTL       = 10 * time.Minute
 	hubPlanTTL             = 5 * time.Minute
 	pgFreshnessLimit       = 30 * time.Minute
@@ -252,6 +253,13 @@ func (r *Resolver) GetHubMemoryLimit(ctx context.Context, hubID string) int {
 	if hubID == "" {
 		return -1
 	}
+	// Personal hubs have no hub-level cap — the owner's personal
+	// MemoryLimit already governs their inventory. Callers currently
+	// guard HubType == "team" themselves; enforced here too so the
+	// next caller can't repeat the meter/ratelimit mistake.
+	if !r.hubIsTeam(ctx, hubID) {
+		return -1
+	}
 	hubPlanID := r.getHubPlanID(ctx, hubID)
 	hubPlan := r.registry.GetPlan(hubPlanID)
 	if hubPlan == nil || !hubPlan.Active {
@@ -263,6 +271,32 @@ func (r *Resolver) GetHubMemoryLimit(ctx context.Context, hubID string) int {
 	return hubPlan.MemoryLimit
 }
 
+// hubIsTeam reports whether hubID is a team hub, with the same Redis
+// cache discipline as getHubPlanID (hub_type is immutable after
+// creation, so a positive cache can never go stale within its TTL).
+//
+// Fail-safe direction: on a lookup ERROR we return true (treat as
+// team) so the caller keeps the hub-plan path — misclassifying a real
+// team hub as personal would let a free user write into a team hub on
+// their personal plan, which is exactly the bypass the "writes use
+// target hub plan" rule exists to prevent. Only a definitive
+// personal answer delegates to personal entitlements.
+func (r *Resolver) hubIsTeam(ctx context.Context, hubID string) bool {
+	if r.redis != nil {
+		if v, err := r.redis.Get(ctx, hubTypeKeyPrefix+hubID).Result(); err == nil {
+			return v == "team"
+		}
+	}
+	hub, err := r.store.GetHub(hubID)
+	if err != nil || hub == nil {
+		return true // fail toward the stricter hub-plan path
+	}
+	if r.redis != nil {
+		r.redis.Set(ctx, hubTypeKeyPrefix+hubID, hub.HubType, hubPlanTTL)
+	}
+	return hub.HubType == "team"
+}
+
 // ResolveHubWriteEntitlements returns limits for writes to a specific team hub.
 // Uses the target hub's subscription plan ONLY for operation limits (push, recall,
 // ask, rate). MemoryLimit comes from the user's effective personal plan since
@@ -271,6 +305,20 @@ func (r *Resolver) GetHubMemoryLimit(ctx context.Context, hubID string) int {
 // This is the key product rule: you cannot use Hub A's paid plan to write into
 // Hub B. Each hub owner pays for their own hub's experience.
 func (r *Resolver) ResolveHubWriteEntitlements(ctx context.Context, userID, hubID string) model.ResolvedEntitlements {
+	// SELF-ENFORCED contract: this function's semantics are TEAM hubs
+	// only, but the HubContext middleware backfills writeHubID with
+	// the user's PERSONAL hub on every push, and two callers (meter,
+	// ratelimit) forwarded it here unchecked — so a Pro+ user's
+	// personal-hub pushes were billed against hub_free_team's 500/mo
+	// cap while settings showed ∞ (founder report, 2026-09-14). A
+	// personal hub's writes bill the OWNER's personal plan; the
+	// prose-only rule became a check the same way writeJSON did.
+	if hubID == "" || !r.hubIsTeam(ctx, hubID) {
+		ent := r.ResolvePersonalWriteEntitlements(ctx, userID)
+		ent.Context = model.EntitlementHubWrite
+		ent.Source.Reason = "personal_hub"
+		return ent
+	}
 	hubPlanID := r.getHubPlanID(ctx, hubID)
 	hubPlan := r.registry.GetPlan(hubPlanID)
 

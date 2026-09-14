@@ -2759,7 +2759,9 @@ func (s *InMemoryStore) CountExtractedMemories(ownerID string) (map[string]int, 
 
 // ── Connected Agents (stubs for InMemoryStore) ──
 
-func (s *InMemoryStore) UpsertConnectedAgent(_ *model.ConnectedAgent) error { return nil }
+func (s *InMemoryStore) UpsertConnectedAgent(_ *model.ConnectedAgent) (bool, error) {
+	return false, nil
+}
 func (s *InMemoryStore) GetConnectedAgent(_, _ string) (*model.ConnectedAgent, error) {
 	return nil, fmt.Errorf("not found")
 }

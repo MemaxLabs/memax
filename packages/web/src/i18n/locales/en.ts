@@ -1129,6 +1129,11 @@ export const en = {
     kindHubInviteDeclined: "INVITE DECLINED",
     kindHubInviteDeclinedByYou: "INVITE DECLINED",
     kindHubMemberJoined: "NEW MEMBER",
+    // The agent first-connection wow notification (drawer · activity).
+    kindAgentConnected: "NEW AGENT",
+    agentConnectedTitle: "{agent} connected to your memory",
+    agentConnectedBody:
+      "It can recall and remember now — its reads and writes show up on the Agents page.",
     kindHubOwnershipTransfer: "OWNERSHIP TRANSFER",
     kindHubOwnershipTransferred: "OWNERSHIP CHANGED",
     kindSystemNotice: "NOTICE",

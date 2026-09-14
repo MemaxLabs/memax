@@ -150,6 +150,7 @@ const (
 	NotificationKindHubInviteDeclined       = "hub_invite_declined"
 	NotificationKindHubInviteDeclinedByYou  = "hub_invite_declined_by_you"
 	NotificationKindHubMemberJoined         = "hub_member_joined"
+	NotificationKindAgentConnected          = "agent_connected"
 	NotificationKindHubOwnershipTransfer    = "hub_ownership_transfer"
 	NotificationKindHubOwnershipTransferred = "hub_ownership_transferred"
 	// Hub quota lifecycle. Fired to the hub owner and any hub admins.

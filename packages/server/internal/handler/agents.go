@@ -214,13 +214,39 @@ func (h *AgentsHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 // notification read, so the row insert above + the agent.changed
 // event downstream are all the sync this path needs.
 func EnsureConnectedAgent(s store.Store, ownerID, agentName string) {
-	if agentName == "" {
+	// "memax" is the reserved built-in platform agent — never stored
+	// in connected_agents (the store synthesizes its row) and never a
+	// wow notification about itself. Reachable here via UpdateAPIKey's
+	// user-supplied agent_name, which normalizes but doesn't blocklist
+	// (adversarial review High).
+	if agentName == "" || agentName == "memax" {
 		return
 	}
-	if err := s.UpsertConnectedAgent(&model.ConnectedAgent{
+	created, err := s.UpsertConnectedAgent(&model.ConnectedAgent{
 		OwnerID:   ownerID,
 		AgentName: agentName,
-	}); err != nil {
+	})
+	if err != nil {
 		slog.Warn("failed to upsert connected agent", "agent", agentName, "owner", ownerID, "err", err)
+		return
 	}
+	// First sighting of this (owner, agent) pair — the wow moment
+	// (founder, 2026-09-14): a new agent joining your brain deserves
+	// a notification, not silence. Fired through the injected hook
+	// (SetAgentConnectedNotifier) so this nine-caller helper doesn't
+	// need publisher/store-notification plumbing threaded through
+	// every path.
+	if created && agentConnectedNotifier != nil {
+		agentConnectedNotifier(ownerID, agentName)
+	}
+}
+
+// agentConnectedNotifier is the package-level injection point for the
+// agent_connected wow notification (SetOnboardingVersionParser
+// precedent). Wired once from serverapp/app.go; nil in dev/tests.
+var agentConnectedNotifier func(ownerID, agentName string)
+
+// SetAgentConnectedNotifier installs the first-connection hook.
+func SetAgentConnectedNotifier(fn func(ownerID, agentName string)) {
+	agentConnectedNotifier = fn
 }

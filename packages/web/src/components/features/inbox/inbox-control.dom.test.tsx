@@ -246,6 +246,8 @@ const inboxItemLabels = {
   topicRemoved: "（已删除主题）",
   dreamRunCompletedTitle: "memax 做了个梦",
   dreamRunCompletedCleanTitle: "memax 整理好了",
+  agentConnectedTitle: ({ agent }: { agent: string }) => `${agent} connected`,
+  agentConnectedBody: "",
   dreamRunCompletedPartialTitle: "memax 做了个梦——中途遇到一些问题",
   topicMergeOne: ({ source, target }: { source: string; target: string }) =>
     `把 ${source} 合并进 ${target}？`,

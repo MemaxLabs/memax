@@ -49,6 +49,14 @@ describe("classifyDrawerRows", () => {
     expect(buckets.unseen).toBe(3);
   });
 
+  it("routes agent_connected into news (wow moment, drawer-only)", () => {
+    const buckets = classifyDrawerRows([
+      row({ id: "a1", kind: "agent_connected", source_kind: "agent" }),
+    ]);
+    expect(buckets.news.map((n) => n.id)).toEqual(["a1"]);
+    expect(buckets.unseen).toBe(1);
+  });
+
   it("sorts each section newest first", () => {
     const buckets = classifyDrawerRows([
       row({ id: "old", created_at: "2026-08-01T00:00:00Z" }),

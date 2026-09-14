@@ -890,6 +890,7 @@ var supportedNotificationKinds = []string{
 	"system_notice",
 	"gift_invite_link",
 	"decision_gate",
+	"agent_connected",
 }
 
 // notificationBucket is the internal split between the Needs-action

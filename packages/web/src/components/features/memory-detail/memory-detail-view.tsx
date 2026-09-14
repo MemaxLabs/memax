@@ -56,6 +56,7 @@ import {
   Copy,
   Check,
   Download,
+  FolderInput,
   Pencil,
   Info,
   Trash2,
@@ -100,6 +101,10 @@ export function MemoryDetailView({
   const [titleDraft, setTitleDraft] = useState("");
   const [copied, setCopied] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  // ⋯ → 移动到 opens the SAME topic picker the metadata band's pill
+  // anchors (TopicLocation is controlled here for exactly that) —
+  // two entry points, one surface, never a parallel move UI.
+  const [topicPickerOpen, setTopicPickerOpen] = useState(false);
   // Body edit mode (plan 21 phase 3) — flips the body section from
   // read-only ReactMarkdown to a Tiptap editor. State machine:
   //   idle      → "Edit body" pencil visible (owner only)
@@ -429,6 +434,15 @@ export function MemoryDetailView({
                       },
                     ] as const)
                   : []),
+                // 移动到 — same picker as the metadata band's topic
+                // pill (P10, 2026-09): the menu is where users look
+                // for verbs first, so the move verb lives in both.
+                {
+                  id: "move",
+                  label: t.topics.moveToTopic,
+                  icon: FolderInput,
+                  onSelect: () => setTopicPickerOpen(true),
+                },
                 {
                   id: "download",
                   label: t.note.actions.download,
@@ -493,6 +507,8 @@ export function MemoryDetailView({
                 memoryId={memory.id}
                 hubId={memory.hub_id}
                 topicId={memory.topic_id}
+                open={topicPickerOpen}
+                onOpenChange={setTopicPickerOpen}
               />
             </div>
           </div>

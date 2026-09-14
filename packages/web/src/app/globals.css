@@ -1435,6 +1435,31 @@
   animation: content-ready 0.15s ease-out both;
 }
 
+/* ─── Board focus flash ─── */
+/* Deep-link landing (`/pulse?focus=<slot>`): the focused card glows
+   once in the signature color and settles — a colored shadow, per the
+   design language, never a border. Applied to the card's wrapper by
+   board-view.tsx for ~2s after scroll-into-view. */
+@keyframes board-focus-flash {
+  0% {
+    box-shadow: 0 0 0 0 oklch(from var(--signature) l c h / 0);
+  }
+  25% {
+    box-shadow: 0 0 0 3px oklch(from var(--signature) l c h / 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 3px oklch(from var(--signature) l c h / 0);
+  }
+}
+.board-focus-flash {
+  animation: board-focus-flash 2s var(--ease-spring) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-focus-flash {
+    animation: none;
+  }
+}
+
 /* ─── MemaxLoader keyframes ─── */
 /* All loader keyframes live here (not inline <style>) to avoid hydration
    mismatches. Used by packages/ui/src/components/memax-loader.tsx. */

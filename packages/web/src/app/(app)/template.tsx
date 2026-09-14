@@ -14,7 +14,10 @@ import { useIsMobile } from "@/hooks/use-is-mobile";
 
 /**
  * Template — re-mounts on every navigation.
- * Desktop: CSS fade-in + optional surface transition overlay.
+ * Desktop: instant content (the per-navigation fade-in was cut
+ * 2026-09 — founder: tab switches must be snap, the replayed 渐入
+ * read as sluggish) + the optional surface transition overlay for
+ * hub switches only.
  * Mobile: instant — no fade, no overlay. Cross-tab dock swap is snap
  * per explicit user preference.
  */
@@ -76,7 +79,6 @@ export default function AppTemplate({
         />
       )}
       <div
-        className={transition ? undefined : "animate-fade-in"}
         style={
           transition
             ? {

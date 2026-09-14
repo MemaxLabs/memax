@@ -16,7 +16,9 @@ export const zh: Translations = {
     primary: "主导航",
     showSecondaryPanel: "显示话题面板",
     hideSecondaryPanel: "收起话题面板",
-    search: "搜索",
+    // 「快速搜索」不叫「搜索」——rail 里还有「问问 memax」，
+    // 两个入口的分工要在名字里读出来：快搜召回 vs 问答合成。
+    search: "快速搜索",
     gettingStarted: "入门与机制",
     openBar: "打开输入栏 (⌘K)",
     openSettings: "打开设置",
@@ -900,7 +902,7 @@ export const zh: Translations = {
     patternPurpose: "藏在记忆数据里、你自己未必察觉的习惯。",
     musingPurpose: "memax 对这个 hub 知识形状的随想。",
     nextupPurpose: "memax 从你的记忆里推测你接下来最想做的事——每一条都有出处。",
-    nextupAck: "做完了 · 收下",
+    nextupAck: "做完了",
 
     // agent 交接（接下来的每一条）——nextup 本身就是"带出处的任务"，
     // 可以原样交给写代码的 agent。prompt 在前端用卡片数据拼出来，
@@ -917,8 +919,6 @@ export const zh: Translations = {
 
     gatePurpose:
       "agent 停下来等你拍板。你的选择会写回记忆，agent 之后能直接读到。",
-    feedbackAccurate: "准",
-    feedbackInaccurate: "不准",
 
     // 等你 band（plan 25 P4）——把通知里的决策并进板上。
     // 板成为唯一的surface，/inbox 退役。
@@ -932,10 +932,10 @@ export const zh: Translations = {
     // ↻ ——客户端换下一张看，不动任何卡的状态。
     deckCycle: "看下一张",
 
-    // 收起的货架——记忆页里的板先收成一排小卡片，点开才铺开。
-    shelfExpand: "展开",
-    shelfCollapse: "收起",
-    shelfViewAll: "查看全部 →",
+    // 货架——记忆页里的板固定是两行两个的小卡片网格，点卡片
+    // 直接去脉搏页对应的那张；箭头由图标渲染，文案不带字符。
+    shelfViewAll: "查看全部",
+    shelfOverflow: "还有 {n} 条动态",
 
     // 最近 —— 原来住在收件箱里的回执。
     recentTitle: "最近",
@@ -1407,6 +1407,8 @@ export const zh: Translations = {
     deleteKeep: "保留",
     deleted: "主题已删除",
     rename: "重命名",
+    // 树行 ⋮ 菜单里的内联重命名子面板。
+    renameHint: "回车保存，Esc 返回",
     archive: "归档主题",
     archiveToast: "主题已归档",
     archiveToastDetail: "记忆保持归属——随时可以恢复。",

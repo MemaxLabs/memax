@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 
 /**
- * BOARD_SHELF_RULES coverage: the useShelfExpansion state machine
- * (R1 embedded-collapsed default, R6 manual override persists per
- * session) plus
- * the BoardSlotDeck ↻ cycle.
+ * BOARD_SHELF_RULES coverage: the BoardSlotDeck ↻ cycle and the
+ * archive section.
  *
- * R2/R5 were deleted with the 2026-08 R1 revision — auto-expand only
- * existed to rescue a collapsed default, and auto-collapse fought the
- * new default. Their tests went with them rather than being softened.
+ * R2/R5 were deleted with the 2026-08 R1 revision, and R6 (with its
+ * useShelfExpansion hook) with the 2026-09 one — the embedded board
+ * is always the tile shelf now and tiles navigate to /pulse, so
+ * there is no in-place expansion left to persist. Their tests went
+ * with them rather than being softened.
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
@@ -58,11 +58,7 @@ vi.mock("@/components/features/onboarding/onboarding-pinned", () => ({
   PinnedDispatch: () => null,
 }));
 
-import {
-  BoardArchivedSection,
-  BoardSlotDeck,
-  useShelfExpansion,
-} from "./board-view";
+import { BoardArchivedSection, BoardSlotDeck } from "./board-view";
 
 function slot(overrides: Partial<BoardSlot>): BoardSlot {
   return {
@@ -77,36 +73,6 @@ function slot(overrides: Partial<BoardSlot>): BoardSlot {
     ...overrides,
   };
 }
-
-describe("useShelfExpansion (BOARD_SHELF_RULES)", () => {
-  beforeEach(() => {
-    sessionStorage.clear();
-  });
-  afterEach(() => {
-    cleanup();
-    vi.useRealTimers();
-  });
-
-  function mount() {
-    return renderHook(() => useShelfExpansion({ hubId: "h1", enabled: true }));
-  }
-
-  it("R1: the embedded shelf is collapsed by default on a fresh visit", () => {
-    const { result } = mount();
-    expect(result.current.expanded).toBe(false);
-  });
-
-  it("R6: a manual expand persists across a remount in the session", () => {
-    const first = mount();
-    act(() => first.result.current.setExpanded(true));
-    expect(first.result.current.expanded).toBe(true);
-    first.unmount();
-    // A remount in the same session honors the stored choice instead of
-    // re-applying the collapsed default.
-    const second = mount();
-    expect(second.result.current.expanded).toBe(true);
-  });
-});
 
 describe("BoardSlotDeck", () => {
   afterEach(cleanup);

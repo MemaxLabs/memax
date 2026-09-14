@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, GripVertical, MoreVertical, Plus } from "lucide-react";
+import {
+  ChevronRight,
+  FolderInput,
+  GripVertical,
+  MoreVertical,
+  Pencil,
+  Plus,
+} from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { TopicIcon } from "./topic-icon";
 import { buildTopicPath, getHubSlugForPath } from "@/lib/route-helpers";
@@ -12,10 +19,15 @@ import {
   useTopicDragContext,
 } from "./topic-dnd-hooks";
 import { TopicMovePicker } from "./topic-move-picker";
-import { Popover, PopoverTrigger, PopoverContent } from "@memaxlabs/ui";
+import {
+  MenuItem,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@memaxlabs/ui";
 import { useLocale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
-import { useTopics } from "@/hooks/use-topics";
+import { useTopics, useUpdateTopic } from "@/hooks/use-topics";
 import { useTopicMove } from "@/hooks/use-topic-move";
 import type { TopicTree } from "@/hooks/use-topics";
 
@@ -122,6 +134,24 @@ export function TopicTreeNode({
   const isActive = activeTopic === topic.id;
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // ⋯ menu content — one popover, three intents (2026-09: the row's
+  // separate + button folded in here; two hover targets doing sibling
+  // jobs read as clutter). "menu" lists the verbs; "move" swaps to the
+  // TopicMovePicker sub-panel; "rename" swaps to an inline input.
+  const [menuView, setMenuView] = useState<"menu" | "move" | "rename">("menu");
+  const [renameValue, setRenameValue] = useState("");
+  const updateTopic = useUpdateTopic();
+  const openMenu = (open: boolean) => {
+    setMenuOpen(open);
+    if (open) setMenuView("menu");
+  };
+  const submitRename = () => {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== topic.name) {
+      updateTopic.mutate({ id: topic.id, name: trimmed });
+    }
+    setMenuOpen(false);
+  };
   // Keep the action cluster mounted while the move popover is open —
   // otherwise the cursor leaving the row (to reach the popover) flips
   // `hovered` false, unmounts the trigger, and either closes the popover
@@ -279,7 +309,8 @@ export function TopicTreeNode({
           {topic.name}
         </span>
 
-        {/* Hover actions: ⋮ move menu + (subtopic) plus button + count.
+        {/* Hover actions: ONE ⋮ menu (rename / move / new subtopic —
+            2026-09: the separate + button merged in) + count at rest.
             Visibility is `hovered || menuOpen` (Codex review) so the
             popover's trigger button stays mounted while the popover is
             open — otherwise moving the cursor from the row into the
@@ -287,75 +318,126 @@ export function TopicTreeNode({
             or breaks its anchor. */}
         {actionsVisible ? (
           <>
-            <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+            <Popover open={menuOpen} onOpenChange={openMenu}>
               <PopoverTrigger
                 onClick={(e) => e.stopPropagation()}
                 className={`touch-no-hover p-0.5 rounded text-fg-4 shrink-0 ${
                   isMobile ? "" : "hover:text-fg-3"
                 }`}
-                title={t.topics.moveTopic}
-                aria-label={t.topics.moveTopic}
+                title={t.topics.moreActions}
+                aria-label={t.topics.moreActions}
               >
                 <MoreVertical className="h-3 w-3" />
               </PopoverTrigger>
               <PopoverContent side="right" align="start" sideOffset={4}>
-                <TopicMovePicker
-                  topic={topic}
-                  hubId={topic.hub_id ?? activeHubId ?? ""}
-                  hubName={currentHubName}
-                  forest={topicsQuery.data?.topics ?? []}
-                  excludedIds={collectTopicDescendantIds(
-                    topicsQuery.data?.topics ?? [],
-                    topic.id,
-                  )}
-                  onSelect={(targetParentId, parentName) => {
-                    setMenuOpen(false);
-                    // Root destination success copy matches the drag path
-                    // (topic-dnd-provider.handleTopicDrop). The picker
-                    // passes `currentHubName` as parentName when the user
-                    // selects the root entry, so we can reuse that here.
-                    // Fall back to the neutral topicMoved string when the
-                    // hub name hasn't resolved — Codex: never emit an
-                    // empty destination.
-                    const successMessage =
-                      targetParentId === null
-                        ? parentName
-                          ? t.topics.topicMovedToHub
+                {menuView === "menu" ? (
+                  <div className="flex min-w-[168px] flex-col gap-0.5 p-1">
+                    <MenuItem
+                      icon={<Pencil className="h-3.5 w-3.5" />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRenameValue(topic.name);
+                        setMenuView("rename");
+                      }}
+                    >
+                      {t.topics.rename}
+                    </MenuItem>
+                    <MenuItem
+                      icon={<FolderInput className="h-3.5 w-3.5" />}
+                      keybind={<ChevronRight className="h-3 w-3" />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuView("move");
+                      }}
+                    >
+                      {t.topics.moveTopic}
+                    </MenuItem>
+                    {onCreateSubtopic ? (
+                      <MenuItem
+                        icon={<Plus className="h-3.5 w-3.5" />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuOpen(false);
+                          onCreateSubtopic(topic.id);
+                        }}
+                      >
+                        {t.topics.newSubtopic}
+                      </MenuItem>
+                    ) : null}
+                  </div>
+                ) : menuView === "rename" ? (
+                  <div className="flex flex-col gap-1.5 p-2">
+                    {/* Enter saves, Esc steps BACK to the menu (the
+                        popover's own Esc-close is stopped here) — the
+                        sub-panel convention ActionMenu set. */}
+                    <input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          submitRename();
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setMenuView("menu");
+                        }
+                      }}
+                      aria-label={t.topics.rename}
+                      className="w-[176px] rounded-lg bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg-1 outline-none placeholder:text-fg-4"
+                    />
+                    <span className="px-0.5 text-[11px] text-fg-4">
+                      {t.topics.renameHint}
+                    </span>
+                  </div>
+                ) : (
+                  <TopicMovePicker
+                    topic={topic}
+                    hubId={topic.hub_id ?? activeHubId ?? ""}
+                    hubName={currentHubName}
+                    forest={topicsQuery.data?.topics ?? []}
+                    excludedIds={collectTopicDescendantIds(
+                      topicsQuery.data?.topics ?? [],
+                      topic.id,
+                    )}
+                    onSelect={(targetParentId, parentName) => {
+                      setMenuOpen(false);
+                      // Root destination success copy matches the drag path
+                      // (topic-dnd-provider.handleTopicDrop). The picker
+                      // passes `currentHubName` as parentName when the user
+                      // selects the root entry, so we can reuse that here.
+                      // Fall back to the neutral topicMoved string when the
+                      // hub name hasn't resolved — Codex: never emit an
+                      // empty destination.
+                      const successMessage =
+                        targetParentId === null
+                          ? parentName
+                            ? t.topics.topicMovedToHub
+                                .replace("{name}", topic.name)
+                                .replace("{hub}", parentName)
+                            : t.topics.topicMoved.replace("{name}", topic.name)
+                          : t.topics.topicMovedUnderParent
                               .replace("{name}", topic.name)
-                              .replace("{hub}", parentName)
-                          : t.topics.topicMoved.replace("{name}", topic.name)
-                        : t.topics.topicMovedUnderParent
-                            .replace("{name}", topic.name)
-                            .replace("{parent}", parentName ?? "");
-                    void topicMover.moveTopicWithUndo(
-                      {
-                        id: topic.id,
-                        hubId: topic.hub_id ?? activeHubId ?? "",
-                        parentId: topic.parent_id ?? null,
-                        position: topic.position,
-                        name: topic.name,
-                      },
-                      { parentId: targetParentId },
-                      successMessage,
-                    );
-                  }}
-                />
+                              .replace("{parent}", parentName ?? "");
+                      void topicMover.moveTopicWithUndo(
+                        {
+                          id: topic.id,
+                          hubId: topic.hub_id ?? activeHubId ?? "",
+                          parentId: topic.parent_id ?? null,
+                          position: topic.position,
+                          name: topic.name,
+                        },
+                        { parentId: targetParentId },
+                        successMessage,
+                      );
+                    }}
+                  />
+                )}
               </PopoverContent>
             </Popover>
-            {onCreateSubtopic && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCreateSubtopic(topic.id);
-                }}
-                className={`touch-no-hover p-0.5 rounded text-fg-4 shrink-0 ${
-                  isMobile ? "" : "hover:text-fg-3"
-                }`}
-                title={t.topics.newSubtopic}
-              >
-                <Plus className="h-3 w-3" />
-              </button>
-            )}
           </>
         ) : (
           <span className="text-[12px] text-fg-4 tabular-nums shrink-0">

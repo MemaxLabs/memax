@@ -2272,6 +2272,11 @@ export function InboxControl() {
   // not detailed taxonomy.
   const { data: notificationSummary } = useNotificationSummary();
   const hasNeedsAction = (notificationSummary?.needs_action_pending ?? 0) > 0;
+  // STALE COUPLING (2026-09 drawer): this reads the server's wide
+  // updates_unseen bucket the bell deliberately abandoned. The
+  // component is currently unmounted from every route (fixtures +
+  // its own test only); if it ever remounts, source this from the
+  // drawer classifier instead — see notification-drawer.tsx.
   const hasUpdatesUnseen = (notificationSummary?.updates_unseen ?? 0) > 0;
   const badgeTone = hasNeedsAction
     ? "needs-action"

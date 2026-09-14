@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"log/slog"
 	"net/http"
 	"os"
@@ -296,13 +297,22 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 			return
 		}
 		n := &model.Notification{
+			// ID is mandatory — createNotificationExec hard-fails on
+			// empty (adversarial review Critical: the InMemory stub
+			// masked this, so tests were green while the feature was
+			// a silent no-op against Postgres).
+			ID:              uuid.New().String(),
 			Audience:        model.AudienceUser,
 			RecipientUserID: ownerID,
 			Kind:            model.NotificationKindAgentConnected,
 			Status:          model.NotificationStatusPending,
 			SourceKind:      "agent",
-			SourceID:        agentName,
-			Payload:         payload,
+			// source_id is GLOBALLY unique per source_kind (baseline
+			// schema) — a bare shared slug like "claude-code" would
+			// let the first user permanently own the row and starve
+			// everyone else's wow (review Critical #2). Owner-scoped.
+			SourceID: ownerID + ":" + agentName,
+			Payload:  payload,
 		}
 		if err := s.CreateNotification(n); err != nil {
 			slog.Warn("agent_connected notification failed", "owner", ownerID, "agent", agentName, "err", err)

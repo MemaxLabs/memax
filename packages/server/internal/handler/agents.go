@@ -214,7 +214,12 @@ func (h *AgentsHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 // notification read, so the row insert above + the agent.changed
 // event downstream are all the sync this path needs.
 func EnsureConnectedAgent(s store.Store, ownerID, agentName string) {
-	if agentName == "" {
+	// "memax" is the reserved built-in platform agent — never stored
+	// in connected_agents (the store synthesizes its row) and never a
+	// wow notification about itself. Reachable here via UpdateAPIKey's
+	// user-supplied agent_name, which normalizes but doesn't blocklist
+	// (adversarial review High).
+	if agentName == "" || agentName == "memax" {
 		return
 	}
 	created, err := s.UpsertConnectedAgent(&model.ConnectedAgent{

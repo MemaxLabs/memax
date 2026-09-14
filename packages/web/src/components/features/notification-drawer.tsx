@@ -29,9 +29,12 @@
  *             (hoisted above the nav drawer — the onboarding-modal
  *             focus-trap lesson), opened from a drawer nav row.
  *
- * Badge split (D3): the bell shows summary.updates_unseen; the rail
- * pulse tab dot narrows to needs_action_pending only. Two channels,
- * two clears.
+ * Badge split (D3): the bell (and mobile nav row) counts THIS file's
+ * classifier output — useDrawerData().unseen, exactly the rows the
+ * panel can clear — while the rail pulse tab dot narrows to
+ * needs_action_pending. Two channels, two clears; never the server
+ * summary's wider updates_unseen bucket (it counts kinds the drawer
+ * deliberately doesn't own).
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -320,9 +323,8 @@ export function NotificationDrawerPanel() {
 
 /**
  * NotificationBell — the desktop entry, living in the LeftRail footer
- * beside the avatar. Badge = summary.updates_unseen (the server's
- * canonical "things you haven't seen" count; decisions light the
- * pulse tab instead).
+ * beside the avatar. Badge = useDrawerData().unseen (what the panel
+ * shows and can clear; decisions light the pulse tab instead).
  */
 export function NotificationBell() {
   const { t } = useLocale();

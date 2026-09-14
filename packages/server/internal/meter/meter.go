@@ -166,9 +166,15 @@ func (m *Meter) Reserve(ctx context.Context, userID, op string, limit int) (toke
 	}
 	token = meterctx.NewToken(commitFn, rollbackFn)
 
-	// Unlimited plan
+	// Unlimited plan — nothing is reserved on the gate below, so the
+	// token gets a NO-OP rollback: decrementing a never-incremented
+	// gate key (or Postgres row) drifts the counter negative.
+	// Pre-existing latent quirk surfaced by the MCP guard, where
+	// tool-error rollbacks are routine (review, 2026-09-14). Commit
+	// keeps counting — the committed key is the usage DISPLAY
+	// ("501/∞"), which unlimited plans still want.
 	if model.IsUnlimited(limit) {
-		return token, true, 0
+		return meterctx.NewToken(commitFn, func() {}), true, 0
 	}
 
 	if m.redis == nil {

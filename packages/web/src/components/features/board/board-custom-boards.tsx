@@ -376,21 +376,29 @@ export function BoardEmptyState({
 }
 
 /**
- * BoardGhostCard — the latent new-board affordance closing the /pulse
- * card stream (2026-08 founder spec, replacing the header 新建板
- * button): the same latent-creation metaphor as the memory grid's
- * dashed ComposePlusCell. At rest it is a dashed glass card with a
- * quiet ✦ and placeholder copy; tapping morphs it IN PLACE into the
- * composer (no modal, no jump — one container, dashed→solid, spring).
- * Save → the new board's cooking card takes this spot on the next
- * boards refetch and the ghost re-forms behind it. Esc or leaving the
- * fields empty morphs it back to a ghost.
+ * BoardGhostCard — the latent new-board affordance (2026-09 revision:
+ * it no longer closes every card stream — a creation prompt trailing
+ * each filtered view read as clutter, founder feedback). It now lives
+ * in exactly two places:
+ *
+ *   - the EMPTY board, as the teaching centerpiece (example chips
+ *     prefill it) — its classic dashed rest state;
+ *   - summoned by the pulse header's + button, mounted at the TOP of
+ *     the stream already composing (`initialComposing`); closing it
+ *     hands control back via `onCloseSurface` so the parent unmounts
+ *     it instead of leaving a dashed ghost behind.
+ *
+ * The morph contract is unchanged: one container, dashed→solid,
+ * spring; no modal. Save → the new board's cooking card enters the
+ * stream and the surface closes/re-forms.
  */
 export function BoardGhostCard({
   pending,
   onCreate,
   prefill,
   onPrefillConsumed,
+  initialComposing = false,
+  onCloseSurface,
 }: {
   pending: boolean;
   onCreate: (input: { title: string; instruction: string }) => void;
@@ -401,9 +409,17 @@ export function BoardGhostCard({
   prefill?: { title: string; instruction: string } | null;
   /** Prefill landed (or was abandoned) — parent clears its state. */
   onPrefillConsumed: () => void;
+  /** Mount straight in the composer (header + summon). */
+  initialComposing?: boolean;
+  /**
+   * Closing the composer should REMOVE the surface (header + summon)
+   * rather than revert to the dashed rest card. Omit for the
+   * empty-state ghost, which rests as the dashed card.
+   */
+  onCloseSurface?: () => void;
 }) {
   const { t } = useLocale();
-  const [composing, setComposing] = useState(false);
+  const [composing, setComposing] = useState(initialComposing);
   // A chip tap composes immediately, with the example loaded.
   useEffect(() => {
     if (prefill) setComposing(true);
@@ -411,6 +427,7 @@ export function BoardGhostCard({
   const close = () => {
     setComposing(false);
     onPrefillConsumed();
+    onCloseSurface?.();
   };
 
   if (!composing) {

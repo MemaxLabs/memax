@@ -22,14 +22,13 @@
  *   5. the activity strip-tile (counts; worth knowing, never urgent).
  *   6. custom-board live cards — tagged with their board title.
  *   7. custom boards still 酝酿中 (cooking) — a promise, not content.
- *   8. the ghost tile — the latent new-board affordance, only when a
- *      cell is free (the grid never grows a third row for it).
  *
  * Overflow: with more than 4 tiles, the 4th cell becomes an overflow
  * tile ("还有 N 条动态 · 查看全部") routing to /pulse — content is
  * never silently hidden. Same-kind LIVE slots still collapse into ONE
  * tile with a depth badge — the 等你 deck metaphor extended to every
- * kind.
+ * kind. No ghost tile (2026-09): creation is chrome on the /pulse
+ * page's header, not preview content — a free cell stays free.
  *
  * Resolved / dismissed receipts are deliberately EXCLUDED: the shelf
  * is "what's new", receipts belong to the pulse page's archive. A
@@ -42,7 +41,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import type { Board, BoardSlot } from "memax-sdk";
 import { ArrowRight, X } from "lucide-react";
-import { BoardKindLabel, BoardVoiceStar } from "@memaxlabs/ui";
+import { BoardKindLabel } from "@memaxlabs/ui";
 import { useInterpolate, useLocale } from "@/i18n";
 import { formatAge } from "@/lib/format-age";
 import { inboxKindLabel } from "@/components/features/inbox/inbox-control";
@@ -142,7 +141,7 @@ export function BoardShelf({
   onOpenDeck: () => void;
   /** Slot tile tapped → the pulse surface focused on this card. */
   onOpenSlot: (slotKey: string) => void;
-  /** Cooking/ghost/overflow tile tapped → the full /pulse surface. */
+  /** Cooking/overflow tile tapped → the full /pulse surface. */
   onOpenBoards: () => void;
   /** Tile × on a slot tile → resolve action="dismiss" (optimistic). */
   onDismissSlot?: (slotKey: string, boardId: string) => void;
@@ -268,8 +267,8 @@ export function BoardShelf({
 
   // 两行两个 — the grid holds at most 4 cells. Overflowing content is
   // never silently dropped: the last cell becomes an overflow tile
-  // counting what's behind it. With room to spare, the ghost tile
-  // (new-board affordance) takes a free cell.
+  // counting what's behind it. A free cell stays free — the shelf is
+  // a preview, and board creation lives on the /pulse page's header.
   const overflow = tiles.length - SHELF_CAPACITY;
   const cells =
     overflow > 0
@@ -281,12 +280,7 @@ export function BoardShelf({
             onClick={onOpenBoards}
           />,
         ]
-      : [
-          ...tiles,
-          ...(tiles.length < SHELF_CAPACITY
-            ? [<BoardGhostTile key="ghost" onClick={onOpenBoards} />]
-            : []),
-        ];
+      : tiles;
 
   return (
     <div className="grid grid-cols-2 items-stretch gap-2 pb-1">{cells}</div>
@@ -441,31 +435,6 @@ function BoardOverflowTile({
       <span className="inline-flex items-center gap-1 text-[11.5px] text-fg-3">
         {t.board.shelfViewAll}
         <ArrowRight className="h-3 w-3" aria-hidden />
-      </span>
-    </button>
-  );
-}
-
-/**
- * BoardGhostTile — the latent new-board affordance closing the shelf
- * when a grid cell is free: dashed glass (the ComposePlusCell "fill me
- * in" idiom), quiet ✦, placeholder copy. Tapping routes to /pulse
- * where the ghost CARD morphs into the composer — the embedded shelf
- * never composes.
- */
-function BoardGhostTile({ onClick }: { onClick: () => void }) {
-  const { t } = useLocale();
-  return (
-    <button
-      type="button"
-      data-board-tile="ghost"
-      onClick={onClick}
-      className="flex w-full min-w-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-[16px] bg-transparent px-3.5 py-3 transition-colors [transition-timing-function:var(--ease-spring)] hover:bg-surface-1"
-      style={{ border: "1px dashed var(--glass-border)" }}
-    >
-      <BoardVoiceStar className="text-[13px]" />
-      <span className="text-center text-[11.5px] leading-snug text-fg-4">
-        {t.board.ghostTitle}
       </span>
     </button>
   );

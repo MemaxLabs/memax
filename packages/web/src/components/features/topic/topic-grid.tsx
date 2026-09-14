@@ -14,7 +14,6 @@ import {
   recentMemoriesTotal,
   recentActorCounts,
   RECENT_PAGE_LIMIT,
-  RECENT_PREVIEW_LIMIT,
   TIME_WINDOWS,
   type TimeWindow,
   type RecentActor,
@@ -75,7 +74,6 @@ import {
   useHubSummary,
   useMarkHubVisit,
 } from "@/hooks/use-hub-management";
-import { consumeRecentExpandOnArrival } from "@/lib/recent-navigation";
 import { buildTopicPathLookup } from "@/lib/topic-label";
 import { countPendingReviewNotifications } from "@/lib/notification-review-count";
 import {
@@ -603,12 +601,12 @@ export function RecentSection({
 }) {
   const readFilters = useCallback(() => {
     if (typeof globalThis.localStorage === "undefined") {
-      return { window: "7d" as TimeWindow, actor: "all" as RecentActor };
+      return { window: "all" as TimeWindow, actor: "all" as RecentActor };
     }
     try {
       const saved = localStorage.getItem(filterStorageKey);
       if (!saved) {
-        return { window: "7d" as TimeWindow, actor: "all" as RecentActor };
+        return { window: "all" as TimeWindow, actor: "all" as RecentActor };
       }
       const parsed = JSON.parse(saved) as {
         window?: TimeWindow;
@@ -618,18 +616,16 @@ export function RecentSection({
         window:
           parsed.window && TIME_WINDOWS.includes(parsed.window)
             ? parsed.window
-            : ("7d" as TimeWindow),
+            : ("all" as TimeWindow),
         actor: parsed.actor ?? ("all" as RecentActor),
       };
     } catch {
-      return { window: "7d" as TimeWindow, actor: "all" as RecentActor };
+      return { window: "all" as TimeWindow, actor: "all" as RecentActor };
     }
   }, [filterStorageKey]);
 
   const [window, setWindow] = useState<TimeWindow>(() => readFilters().window);
   const [actor, setActor] = useState<RecentActor>(() => readFilters().actor);
-  const [visibleCount, setVisibleCount] = useState(RECENT_PREVIEW_LIMIT);
-  const [keepExpandedOnReset, setKeepExpandedOnReset] = useState(false);
   // View mode: cards (v2 default) vs rows (legacy / dense). Persisted
   // in localStorage so user preference survives reload. Plan 26
   // follow-up: user wants the row view brought back as an option.
@@ -679,20 +675,6 @@ export function RecentSection({
     }
   }, [viewModeStorageKey, defaultViewMode]);
 
-  useEffect(() => {
-    const shouldExpand = consumeRecentExpandOnArrival(hubId);
-    setKeepExpandedOnReset(shouldExpand);
-    setVisibleCount(shouldExpand ? RECENT_PAGE_LIMIT : RECENT_PREVIEW_LIMIT);
-  }, [hubId]);
-
-  useEffect(() => {
-    setVisibleCount(
-      keepExpandedOnReset ? RECENT_PAGE_LIMIT : RECENT_PREVIEW_LIMIT,
-    );
-  }, [hubId, window, actor, keepExpandedOnReset]);
-
-  const expanded = visibleCount > RECENT_PREVIEW_LIMIT;
-
   const {
     data: recentPages,
     fetchNextPage,
@@ -706,14 +688,16 @@ export function RecentSection({
     hubId,
     window,
     actor,
-    expanded,
+    // 记忆片段 (2026-09): the section IS the timeline — always the
+    // paged full mode, no 5-item preview/expand two-step.
+    expanded: true,
   });
 
   const memories = flattenRecentMemories(recentPages);
   const total = recentMemoriesTotal(recentPages);
   const actorCounts = recentActorCounts(recentPages);
   const hasLoadedData = recentPages !== undefined;
-  const filterActive = window !== "7d" || actor !== "all";
+  const filterActive = window !== "all" || actor !== "all";
 
   const actorOptions = useMemo<RecentActorOption[]>(() => {
     const options: RecentActorOption[] = [
@@ -749,10 +733,11 @@ export function RecentSection({
     }
   }, [actor, actorOptions]);
 
-  const visible = memories.slice(0, visibleCount);
-  const hasMore = total > RECENT_PREVIEW_LIMIT;
-  const canLoadMore = visible.length < total;
-  const nextIncrement = Math.min(5, Math.max(total - visible.length, 0));
+  const visible = memories;
+  const nextIncrement = Math.min(
+    RECENT_PAGE_LIMIT,
+    Math.max(total - visible.length, 0),
+  );
   const recentlyArrived = useRecentArrivalIds();
   // Mobile fresh row collapses the topic pin to its leaf segment. The full
   // breadcrumb eats title space on a ~320px row, and the leaf is the most
@@ -811,29 +796,14 @@ export function RecentSection({
   );
 
   const resetFilters = useCallback(() => {
-    setWindow("7d");
+    setWindow("all");
     setActor("all");
-    persistFilters("7d", "all");
+    persistFilters("all", "all");
   }, [persistFilters]);
 
   const handleLoadMore = useCallback(async () => {
-    const target = visibleCount + 5;
-    if (target > memories.length && hasNextPage && !isFetchingNextPage) {
-      await fetchNextPage();
-    }
-    setVisibleCount((prev) => prev + 5);
-  }, [
-    visibleCount,
-    memories.length,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
-  ]);
-
-  const handleCollapse = useCallback(() => {
-    setKeepExpandedOnReset(false);
-    setVisibleCount(RECENT_PREVIEW_LIMIT);
-  }, []);
+    if (hasNextPage && !isFetchingNextPage) await fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const phase =
     isError && !hasLoadedData
@@ -871,11 +841,10 @@ export function RecentSection({
         isPlaceholderData={phase === "loaded" && isPlaceholderData}
         skeleton={
           isV2Surface ? (
-            // Match the loaded count so the skeleton → content
-            // transition has no row-count jump (5 cards loaded =
-            // 5 skeleton cards). RECENT_PREVIEW_LIMIT is the truth
-            // for both surfaces.
-            <MemoryCardSkeletonList count={RECENT_PREVIEW_LIMIT} />
+            // Two grid rows of skeleton cards — enough to hold the
+            // above-the-fold shape without a wall of shimmer while
+            // the first full page (20) loads.
+            <MemoryCardSkeletonList count={6} />
           ) : (
             <MemoryRowSkeletonList count={3} layout="stacked" />
           )
@@ -893,7 +862,10 @@ export function RecentSection({
           hint: t.memoryView.recentEmptyHint,
         }}
         filteredEmptyCopy={{
-          title: interpolate(t.memoryView.recentFilteredTitle, { window }),
+          title:
+            window === "all"
+              ? t.memoryView.recentFilteredAllTitle
+              : interpolate(t.memoryView.recentFilteredTitle, { window }),
           hint: t.memoryView.recentFilteredHint,
           clearLabel: t.memoryView.clearFilters,
           onClear: resetFilters,
@@ -1014,7 +986,11 @@ export function RecentSection({
               {phase === "filtered-empty" && (
                 <div className="mt-3 px-1">
                   <p className="text-[13px] text-fg-3">
-                    {interpolate(t.memoryView.recentFilteredTitle, { window })}
+                    {window === "all"
+                      ? t.memoryView.recentFilteredAllTitle
+                      : interpolate(t.memoryView.recentFilteredTitle, {
+                          window,
+                        })}
                   </p>
                   <button
                     onClick={resetFilters}
@@ -1066,29 +1042,19 @@ export function RecentSection({
               ))}
             </div>
           )}
-          {(hasMore || expanded) && (
+          {hasNextPage && (
             <div className="flex items-center justify-center gap-4 border-t border-border/30 px-4 py-2.5">
-              {expanded && (
-                <button
-                  onClick={handleCollapse}
-                  className="text-[13px] text-fg-3 transition-colors hover:text-fg-2 cursor-pointer"
-                >
-                  {t.memoryView.collapseRecent}
-                </button>
-              )}
-              {canLoadMore && (
-                <button
-                  onClick={() => void handleLoadMore()}
-                  disabled={isFetchingNextPage}
-                  className="text-[13px] text-fg-3 transition-colors hover:text-fg-2 cursor-pointer disabled:cursor-wait disabled:text-fg-4"
-                >
-                  {isFetchingNextPage
-                    ? t.memoryView.loadingMore
-                    : interpolate(t.memoryView.loadMoreRecent, {
-                        n: String(nextIncrement),
-                      })}
-                </button>
-              )}
+              <button
+                onClick={() => void handleLoadMore()}
+                disabled={isFetchingNextPage}
+                className="text-[13px] text-fg-3 transition-colors hover:text-fg-2 cursor-pointer disabled:cursor-wait disabled:text-fg-4"
+              >
+                {isFetchingNextPage
+                  ? t.memoryView.loadingMore
+                  : interpolate(t.memoryView.loadMoreRecent, {
+                      n: String(nextIncrement),
+                    })}
+              </button>
             </div>
           )}
         </>
@@ -1178,7 +1144,10 @@ function getRecentFilterSummary({
   interpolate: ReturnType<typeof useInterpolate>;
   t: ReturnType<typeof useLocale>["t"];
 }) {
-  const timeLabel = interpolate(t.memoryView.filterPast, { window });
+  const timeLabel =
+    window === "all"
+      ? t.memoryView.filterAllTime
+      : interpolate(t.memoryView.filterPast, { window });
   if (actor === "all") return timeLabel;
   return `${timeLabel} · ${getRecentActorLabel(actor, t)}`;
 }
@@ -1229,7 +1198,11 @@ function RecentFilterPanel({
             }`}
           >
             <span className="flex-1 truncate">
-              {interpolate(t.memoryView.filterPast, { window: windowOption })}
+              {windowOption === "all"
+                ? t.memoryView.filterAllTime
+                : interpolate(t.memoryView.filterPast, {
+                    window: windowOption,
+                  })}
             </span>
             {windowOption === currentWindow && (
               <Check className="h-3.5 w-3.5 shrink-0 text-fg-3" />

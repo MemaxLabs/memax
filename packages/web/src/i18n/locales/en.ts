@@ -2001,15 +2001,19 @@ export const en = {
 
   // Memory view
   memoryView: {
+    // Fragments (2026-09, was "Fresh memories") — the default is the
+    // FULL timeline; time window and actor are user-applied filters,
+    // no implicit 7-day cutoff anymore.
     freshMemory: {
-      zero: "Fresh memories",
-      one: "Fresh memories",
-      other: "Fresh memories",
+      zero: "Fragments",
+      one: "Fragments",
+      other: "Fragments",
     },
     remembering: "remembering",
     recentEmptyTitle: "Nothing new yet",
     recentEmptyHint: "Capture something and it'll show up here",
     recentFilteredTitle: "No memories in the past {window}",
+    recentFilteredAllTitle: "No memories under this filter",
     recentFilteredHint: "Try widening the window or switching actor",
     recentErrorTitle: "Couldn't reach your recent memories",
     recentErrorDetail: "Connection timed out. Your memories are safe.",
@@ -2017,6 +2021,7 @@ export const en = {
     switchToRows: "Switch to row view",
     switchToCards: "Switch to card view",
     filterPast: "Past {window}",
+    filterAllTime: "All time",
     filterPastLabel: "Filter recent window",
     filterBy: "Filter",
     filterTimeLabel: "Time",
@@ -2028,7 +2033,6 @@ export const en = {
     copiedContent: "Copied",
     loadingMore: "Loading more...",
     loadMoreRecent: "Show {n} more",
-    collapseRecent: "Collapse",
     scrollToLoad: "Scroll to load more",
     copyForAI: "Copy for AI",
     download: "Download",

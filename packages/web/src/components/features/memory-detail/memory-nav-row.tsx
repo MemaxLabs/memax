@@ -76,14 +76,14 @@ export function MemoryNavRow({
   // /full keeps sibling navigation full-page-to-full-page.
   const fullSuffix = pathname.endsWith("/full") ? "/full" : "";
   return (
-    <div className="group flex w-full items-center border-t border-border/30 transition-colors hover:bg-surface-1 first:border-t-0">
+    <div className="touch-no-hover group flex w-full items-center border-t border-border/30 transition-colors hover:bg-surface-1 first:border-t-0">
       <button
         onClick={() =>
           router.push(
             buildMemoryDetailPath(currentHubSlug, memoryId) + fullSuffix,
           )
         }
-        className="touch-no-hover flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-4 py-2.5 text-left"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-4 py-2.5 text-left"
       >
         <span className="text-[13px] text-fg-2 truncate flex-1">{title}</span>
         <span className="text-[12px] text-fg-3 shrink-0 tabular-nums">
@@ -146,7 +146,13 @@ export function MemoryNavRow({
                       mover.moveOneSuccess(name),
                     );
                   }}
-                  onClose={() => setMenuOpen(false)}
+                  // DrillDownTree owns Escape internally and routes the
+                  // un-drilled case here — this MUST step back to the
+                  // menu, not kill the popover (adversarial review:
+                  // wiring it to setMenuOpen(false) reproduced the
+                  // exact "no way back" bug this surface exists to
+                  // fix). Outside-press still dismisses via base-ui.
+                  onClose={() => setMenuView("menu")}
                 />
               </div>
             )}

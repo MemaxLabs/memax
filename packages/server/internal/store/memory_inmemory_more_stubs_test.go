@@ -15,7 +15,7 @@ func TestInMemoryConnectedAgents(t *testing.T) {
 	t.Parallel()
 	s := NewInMemoryStore()
 
-	_ = s.UpsertConnectedAgent(&model.ConnectedAgent{OwnerID: "u1", AgentName: "cc"})
+	_, _ = s.UpsertConnectedAgent(&model.ConnectedAgent{OwnerID: "u1", AgentName: "cc"})
 	_, _ = s.GetConnectedAgent("u1", "cc")
 	_, _ = s.ListConnectedAgentsWithStats("u1")
 	_ = s.UpdateConnectedAgent(&model.ConnectedAgent{OwnerID: "u1", AgentName: "cc"})

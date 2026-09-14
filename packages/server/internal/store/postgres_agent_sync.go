@@ -247,16 +247,22 @@ func nullIfEmpty(value string) any {
 
 // ── Connected Agents ────────────────────────────────────────────────
 
-func (s *PostgresStore) UpsertConnectedAgent(agent *model.ConnectedAgent) error {
-	_, err := s.pool.Exec(context.Background(), `
+func (s *PostgresStore) UpsertConnectedAgent(agent *model.ConnectedAgent) (bool, error) {
+	// xmax = 0 → the row was INSERTed (not updated) in this statement:
+	// the standard Postgres upsert "was it new" probe. Drives the
+	// agent_connected wow notification — fired exactly once per
+	// (owner, agent) first sighting.
+	var created bool
+	err := s.pool.QueryRow(context.Background(), `
 		INSERT INTO connected_agents (owner_id, agent_name, display_name, icon)
 		VALUES ($1::uuid, $2, $3, $4)
 		ON CONFLICT (owner_id, agent_name) DO UPDATE SET
 			display_name = CASE WHEN connected_agents.display_name = '' THEN EXCLUDED.display_name ELSE connected_agents.display_name END,
 			icon = CASE WHEN connected_agents.icon = '' THEN EXCLUDED.icon ELSE connected_agents.icon END,
-			updated_at = now()`,
-		agent.OwnerID, agent.AgentName, agent.DisplayName, agent.Icon)
-	return err
+			updated_at = now()
+		RETURNING (xmax = 0)`,
+		agent.OwnerID, agent.AgentName, agent.DisplayName, agent.Icon).Scan(&created)
+	return created, err
 }
 
 func (s *PostgresStore) GetConnectedAgent(ownerID string, agentName string) (*model.ConnectedAgent, error) {

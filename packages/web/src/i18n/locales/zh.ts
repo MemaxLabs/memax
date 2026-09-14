@@ -1029,6 +1029,11 @@ export const zh: Translations = {
     kindHubInviteDeclined: "邀请被拒",
     kindHubInviteDeclinedByYou: "已拒绝",
     kindHubMemberJoined: "新成员",
+    // agent 首次连接的 wow 通知（抽屉·动态）。
+    kindAgentConnected: "新伙伴",
+    agentConnectedTitle: "{agent} 连上了你的记忆",
+    agentConnectedBody:
+      "它现在可以召回和记住了——之后的读写都会出现在 agent 页。",
     kindHubOwnershipTransfer: "转让所有权",
     kindHubOwnershipTransferred: "所有权变更",
     kindSystemNotice: "系统通知",

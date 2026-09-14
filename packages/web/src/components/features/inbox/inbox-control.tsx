@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { resolveAgentIdentity } from "@memaxlabs/ui/tokens/agents";
 import {
   buildMemoriesPath,
   buildMemoryDetailPath,
@@ -318,6 +319,8 @@ export interface InboxItemLocalization {
   dreamRunCompletedTitle: string;
   dreamRunCompletedCleanTitle: string;
   dreamRunCompletedPartialTitle: string;
+  agentConnectedTitle: (vars: { agent: string }) => string;
+  agentConnectedBody: string;
   topicMergeOne: (vars: { source: string; target: string }) => string;
   topicMergeMany: (vars: { sources: string; target: string }) => string;
   topicMergeFallback: (vars: { target: string }) => string;
@@ -349,6 +352,9 @@ export function useInboxItemLocalization(): InboxItemLocalization {
       dreamRunCompletedTitle: t.dreams.notificationTitle,
       dreamRunCompletedCleanTitle: t.dreams.notificationCleanTitle,
       dreamRunCompletedPartialTitle: t.dreams.notificationPartialTitle,
+      agentConnectedTitle: ({ agent }) =>
+        interpolate(t.inbox.agentConnectedTitle, { agent }),
+      agentConnectedBody: t.inbox.agentConnectedBody,
       topicMergeOne: ({ source, target }) =>
         interpolate(t.inbox.topicMergeOneTitle, { source, target }),
       topicMergeMany: ({ sources, target }) =>
@@ -1149,6 +1155,16 @@ export function notificationToInboxItem(
     const hubName = payload?.hub?.name ?? "a hub";
     const inviter = payload?.inviter?.display ?? "Someone";
     title = `${inviter} invited you to ${hubName}`;
+  } else if (kind === "agent_connected") {
+    // The wow moment (founder, 2026-09-14): a new agent joined your
+    // brain. Display name resolves through the shared agent identity
+    // table so "claude-code" renders as Claude Code with its color.
+    const payload = notification.payload as { agent?: string } | undefined;
+    const slug = payload?.agent ?? "";
+    const identity = slug ? resolveAgentIdentity(slug) : null;
+    const name = identity?.displayName || slug || "Agent";
+    title = labels.agentConnectedTitle({ agent: name });
+    description = labels.agentConnectedBody;
   } else if (kind === "hub_member_joined") {
     const payload = notification.payload as HubMemberJoinedPayload | undefined;
     const memberName = payload?.member?.display ?? "Someone";
@@ -1395,6 +1411,8 @@ export function inboxKindLabel(
       return t.inbox.kindHubInviteDeclinedByYou;
     case "hub_member_joined":
       return t.inbox.kindHubMemberJoined;
+    case "agent_connected":
+      return t.inbox.kindAgentConnected;
     case "hub_ownership_transfer":
       return t.inbox.kindHubOwnershipTransfer;
     case "hub_ownership_transferred":

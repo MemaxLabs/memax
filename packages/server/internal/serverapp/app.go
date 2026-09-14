@@ -286,6 +286,31 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 	}
 	handler.SetOnboardingVersionParser(onboarding.ParseChecklistVersion)
 
+	// agent_connected wow notification — fired on the FIRST sighting
+	// of an (owner, agent) pair by EnsureConnectedAgent (founder,
+	// 2026-09-14). Payload carries the slug; the web drawer renders
+	// the pretty row. Fire-and-forget like the rest of that helper.
+	handler.SetAgentConnectedNotifier(func(ownerID, agentName string) {
+		payload, err := json.Marshal(map[string]string{"agent": agentName})
+		if err != nil {
+			return
+		}
+		n := &model.Notification{
+			Audience:        model.AudienceUser,
+			RecipientUserID: ownerID,
+			Kind:            model.NotificationKindAgentConnected,
+			Status:          model.NotificationStatusPending,
+			SourceKind:      "agent",
+			SourceID:        agentName,
+			Payload:         payload,
+		}
+		if err := s.CreateNotification(n); err != nil {
+			slog.Warn("agent_connected notification failed", "owner", ownerID, "agent", agentName, "err", err)
+			return
+		}
+		events.PublishNotificationCreated(context.Background(), eventsBroker, n)
+	})
+
 	// Plan 18 §4.6 — the onboarding Recorder used to cover five hot
 	// paths (memories, ask, configs, hubs, dreams). Four of those
 	// (memory_count, configs_sync = agent connected, hub_event,

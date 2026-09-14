@@ -93,7 +93,10 @@ export function classifyDrawerRows(
       continue;
     }
     if (n.kind === "system_notice") continue; // onboarding welcome → pinned board card
-    if (HIGHLIGHT_KINDS.has(n.kind)) {
+    if (HIGHLIGHT_KINDS.has(n.kind) || n.kind === "agent_connected") {
+      // agent_connected is drawer-only news (the wow moment) — it is
+      // deliberately NOT in the board's HIGHLIGHT_KINDS, which would
+      // pin it on pulse pages.
       news.push(n);
       continue;
     }

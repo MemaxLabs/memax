@@ -33,6 +33,21 @@ export const en = {
   mechanism: {
     tabQuickstart: "Quick start",
     tabMechanism: "How it works",
+    tabShortcuts: "Shortcuts",
+    // Shortcuts tab — organized by "what you want to do", not key names.
+    shortcutsTitle: "Keyboard shortcuts",
+    shortcutsIntro:
+      "Each shortcut maps to one everyday move. On desktop, press ? anywhere to open this page.",
+    shortcutSearch: "Quick search — recall a memory",
+    shortcutRemember: "Quick capture — dump a thought straight into memory",
+    shortcutCompose: "Write something longer — open the compose modal",
+    shortcutBrainToggle: "Brain view ↔ memory list",
+    shortcutBarSubmit: "In the bar: send / search",
+    shortcutBarSave: "In the bar: save as a memory right away",
+    shortcutBarGraduate: "In the bar: graduate the draft to compose",
+    shortcutSelectAll: "While batch-selecting: select everything listed",
+    shortcutEscape: "Peel back one layer (modal → bar → closed)",
+    shortcutHelp: "Open this page",
     title: "How memax remembers you",
     subtitle:
       "How memories are written, organized, recalled — and where the boundaries are.",

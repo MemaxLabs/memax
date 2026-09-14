@@ -34,6 +34,21 @@ export const zh: Translations = {
   mechanism: {
     tabQuickstart: "快速开始",
     tabMechanism: "机制",
+    tabShortcuts: "快捷键",
+    // 快捷键 tab —— 按「你想做什么」组织，不是按键名罗列。
+    shortcutsTitle: "键盘快捷键",
+    shortcutsIntro:
+      "每个快捷键对应一件常做的事。桌面端任意界面按 ? 也能打开这页。",
+    shortcutSearch: "快速搜索——召回一条记忆",
+    shortcutRemember: "快速记一条——想法直接进记忆",
+    shortcutCompose: "写长内容——打开写作弹窗",
+    shortcutBrainToggle: "大脑视图 ↔ 记忆列表",
+    shortcutBarSubmit: "输入栏里：发送 / 搜索",
+    shortcutBarSave: "输入栏里：立即存成记忆",
+    shortcutBarGraduate: "输入栏里：带着草稿升级到写作弹窗",
+    shortcutSelectAll: "批量选择时：全选当前列表",
+    shortcutEscape: "逐层退出（弹窗 → 输入栏 → 收起）",
+    shortcutHelp: "打开这页",
     title: "memax 是怎么记住你的",
     subtitle: "记忆怎么写入、怎么整理、怎么想起——以及边界在哪里。",
     statHubs: "个 hub",

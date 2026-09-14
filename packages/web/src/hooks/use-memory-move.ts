@@ -122,7 +122,11 @@ function isRecentQueryKey(
   return (
     value[0] === "recent-memories" &&
     typeof value[1] === "string" &&
-    (value[2] === "12h" ||
+    // Keep in lockstep with TIME_WINDOWS (adversarial review caught
+    // this copy missing "all" — the guard silently no-oped the
+    // optimistic move patch for 记忆片段's default cache).
+    (value[2] === "all" ||
+      value[2] === "12h" ||
       value[2] === "1d" ||
       value[2] === "3d" ||
       value[2] === "7d") &&

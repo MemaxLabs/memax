@@ -1044,19 +1044,17 @@ export function RecentSection({
           )}
           {hasNextPage && (
             <div className="flex items-center justify-center gap-4 border-t border-border/30 px-4 py-2.5">
-              {hasNextPage && (
-                <button
-                  onClick={() => void handleLoadMore()}
-                  disabled={isFetchingNextPage}
-                  className="text-[13px] text-fg-3 transition-colors hover:text-fg-2 cursor-pointer disabled:cursor-wait disabled:text-fg-4"
-                >
-                  {isFetchingNextPage
-                    ? t.memoryView.loadingMore
-                    : interpolate(t.memoryView.loadMoreRecent, {
-                        n: String(nextIncrement),
-                      })}
-                </button>
-              )}
+              <button
+                onClick={() => void handleLoadMore()}
+                disabled={isFetchingNextPage}
+                className="text-[13px] text-fg-3 transition-colors hover:text-fg-2 cursor-pointer disabled:cursor-wait disabled:text-fg-4"
+              >
+                {isFetchingNextPage
+                  ? t.memoryView.loadingMore
+                  : interpolate(t.memoryView.loadMoreRecent, {
+                      n: String(nextIncrement),
+                    })}
+              </button>
             </div>
           )}
         </>

@@ -40,21 +40,10 @@ func (m *Meter) Middleware() func(http.Handler) http.Handler {
 			// Each operation type routes to the correct resolver method
 			// per the design doc's operation matrix.
 			billingHubID := resolveBillingHub(r, op)
-			var limits model.UserLimits
-			if m.resolver != nil {
-				limits = resolveByOperation(r, m.resolver, userID, op, billingHubID)
-			} else {
-				user, err := m.store.GetUser(userID)
-				if err != nil || user == nil {
-					next.ServeHTTP(w, r)
-					return
-				}
-				// Prefer scoped personal_plan_id for limit resolution
-				planID := user.PersonalPlanID
-				if planID == "" {
-					planID = user.Plan
-				}
-				limits = m.registry.GetUserLimits(r.Context(), userID, planID)
+			limits, ok := m.resolveOpLimits(r, userID, op, billingHubID)
+			if !ok {
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			// Determine the quota limit for this operation
@@ -197,4 +186,82 @@ func upgradeHint(currentPlan string) string {
 	default:
 		return ""
 	}
+}
+
+// resolveOpLimits is the one limit-resolution path shared by the HTTP
+// middleware and BeginOp. ok=false means the user row could not be
+// read in registry-only mode — historic middleware behavior is to
+// fail open (pass the request through unmetered).
+func (m *Meter) resolveOpLimits(r *http.Request, userID, op, billingHubID string) (model.UserLimits, bool) {
+	if m.resolver != nil {
+		return resolveByOperation(r, m.resolver, userID, op, billingHubID), true
+	}
+	user, err := m.store.GetUser(userID)
+	if err != nil || user == nil {
+		return model.UserLimits{}, false
+	}
+	// Prefer scoped personal_plan_id for limit resolution
+	planID := user.PersonalPlanID
+	if planID == "" {
+		planID = user.Plan
+	}
+	return m.registry.GetUserLimits(r.Context(), userID, planID), true
+}
+
+// BeginOp enforces ONE metered operation for a transport the HTTP
+// middleware cannot classify. Every /mcp tool call arrives as POST
+// /mcp, so ClassifyOperation returns "" and the middleware waves the
+// request through — which meant MCP pushes and recalls hit NO quota
+// at all while the same user's web pushes were 402'd at the plan cap
+// (founder repro, 2026-09-14: "CLI/MCP 能 push,网页不行").
+//
+// Same resolution, same gate counter, same fail-open posture as the
+// middleware. The caller receives finish(committed): commit charges
+// the op, rollback un-reserves it (the tool errored — don't bill).
+// finish is never nil and is idempotent-safe via the token's own
+// guards. Usage-event LOGGING stays with the caller — MCP tools
+// already write their own events via SetLogEvent, and logging here
+// too would double-count rows.
+func (m *Meter) BeginOp(
+	r *http.Request,
+	userID, op, billingHubID string,
+) (func(committed bool), *meterctx.OpDenial) {
+	noop := func(bool) {}
+	if userID == "" || op == "" {
+		return noop, nil
+	}
+	limits, ok := m.resolveOpLimits(r, userID, op, billingHubID)
+	if !ok {
+		return noop, nil // fail open, mirroring the middleware
+	}
+	limit := operationLimit(op, &limits)
+	token, allowed, current := m.Reserve(r.Context(), userID, op, limit)
+	if !allowed {
+		return noop, &meterctx.OpDenial{
+			Op:       op,
+			Current:  int(current),
+			Limit:    limit,
+			PlanID:   limits.PlanID,
+			PlanName: limits.PlanDisplayName,
+		}
+	}
+	return func(committed bool) {
+		if committed {
+			token.Commit()
+		} else {
+			token.Rollback()
+		}
+	}, nil
+}
+
+// OpDenialMessage phrases a denial for a text-protocol client (MCP
+// IsError content) with the same facts writeQuotaExceeded puts in
+// the 402 payload, so an agent can relay an actionable message.
+func OpDenialMessage(d *meterctx.OpDenial) string {
+	msg := fmt.Sprintf("Monthly %s limit reached (%d/%d) on plan %s.", d.Op, d.Current, d.Limit, d.PlanName)
+	if hint := upgradeHint(d.PlanID); hint != "" {
+		msg += " Upgrade to " + hint + " for higher limits."
+	}
+	msg += " Quota resets on the 1st (UTC)."
+	return msg
 }

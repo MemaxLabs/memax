@@ -20,6 +20,10 @@ import {
 } from "./topic-dnd-hooks";
 import { TopicMovePicker } from "./topic-move-picker";
 import {
+  MenuSubPanelHeader,
+  subPanelEscapeHandler,
+} from "@/components/features/menu-sub-panel";
+import {
   MenuItem,
   Popover,
   PopoverTrigger,
@@ -376,75 +380,96 @@ export function TopicTreeNode({
                     ) : null}
                   </div>
                 ) : menuView === "rename" ? (
-                  <div className="flex flex-col gap-1.5 p-2">
-                    {/* Enter saves, Esc steps BACK to the menu (the
-                        popover's own Esc-close is stopped here) — the
-                        sub-panel convention ActionMenu set. */}
-                    <input
-                      autoFocus
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      onFocus={(e) => e.currentTarget.select()}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          submitRename();
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setMenuView("menu");
-                        }
-                      }}
-                      aria-label={t.topics.rename}
-                      className="w-[176px] rounded-lg bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg-1 outline-none placeholder:text-fg-4"
+                  <div className="flex flex-col">
+                    <MenuSubPanelHeader
+                      label={t.topics.rename}
+                      onBack={() => setMenuView("menu")}
+                      backAriaLabel={t.common.backToMenu}
                     />
-                    <span className="px-0.5 text-[11px] text-fg-4">
-                      {t.topics.renameHint}
-                    </span>
+                    <div className="flex flex-col gap-1.5 p-2">
+                      {/* Enter saves; Esc and the ‹ header both step
+                          BACK to the menu (the popover's own
+                          Esc-close is stopped) — the universal
+                          sub-panel convention. */}
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            submitRename();
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setMenuView("menu");
+                          }
+                        }}
+                        aria-label={t.topics.rename}
+                        className="w-[176px] rounded-lg bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg-1 outline-none placeholder:text-fg-4"
+                      />
+                      <span className="px-0.5 text-[11px] text-fg-4">
+                        {t.topics.renameHint}
+                      </span>
+                    </div>
                   </div>
                 ) : (
-                  <TopicMovePicker
-                    topic={topic}
-                    hubId={topic.hub_id ?? activeHubId ?? ""}
-                    hubName={currentHubName}
-                    forest={topicsQuery.data?.topics ?? []}
-                    excludedIds={collectTopicDescendantIds(
-                      topicsQuery.data?.topics ?? [],
-                      topic.id,
-                    )}
-                    onSelect={(targetParentId, parentName) => {
-                      setMenuOpen(false);
-                      // Root destination success copy matches the drag path
-                      // (topic-dnd-provider.handleTopicDrop). The picker
-                      // passes `currentHubName` as parentName when the user
-                      // selects the root entry, so we can reuse that here.
-                      // Fall back to the neutral topicMoved string when the
-                      // hub name hasn't resolved — Codex: never emit an
-                      // empty destination.
-                      const successMessage =
-                        targetParentId === null
-                          ? parentName
-                            ? t.topics.topicMovedToHub
+                  <div
+                    className="flex flex-col"
+                    onKeyDown={subPanelEscapeHandler(() => setMenuView("menu"))}
+                  >
+                    <MenuSubPanelHeader
+                      label={t.topics.moveTopic}
+                      onBack={() => setMenuView("menu")}
+                      backAriaLabel={t.common.backToMenu}
+                    />
+                    <TopicMovePicker
+                      topic={topic}
+                      hubId={topic.hub_id ?? activeHubId ?? ""}
+                      hubName={currentHubName}
+                      forest={topicsQuery.data?.topics ?? []}
+                      excludedIds={collectTopicDescendantIds(
+                        topicsQuery.data?.topics ?? [],
+                        topic.id,
+                      )}
+                      onSelect={(targetParentId, parentName) => {
+                        setMenuOpen(false);
+                        // Root destination success copy matches the drag path
+                        // (topic-dnd-provider.handleTopicDrop). The picker
+                        // passes `currentHubName` as parentName when the user
+                        // selects the root entry, so we can reuse that here.
+                        // Fall back to the neutral topicMoved string when the
+                        // hub name hasn't resolved — Codex: never emit an
+                        // empty destination.
+                        const successMessage =
+                          targetParentId === null
+                            ? parentName
+                              ? t.topics.topicMovedToHub
+                                  .replace("{name}", topic.name)
+                                  .replace("{hub}", parentName)
+                              : t.topics.topicMoved.replace(
+                                  "{name}",
+                                  topic.name,
+                                )
+                            : t.topics.topicMovedUnderParent
                                 .replace("{name}", topic.name)
-                                .replace("{hub}", parentName)
-                            : t.topics.topicMoved.replace("{name}", topic.name)
-                          : t.topics.topicMovedUnderParent
-                              .replace("{name}", topic.name)
-                              .replace("{parent}", parentName ?? "");
-                      void topicMover.moveTopicWithUndo(
-                        {
-                          id: topic.id,
-                          hubId: topic.hub_id ?? activeHubId ?? "",
-                          parentId: topic.parent_id ?? null,
-                          position: topic.position,
-                          name: topic.name,
-                        },
-                        { parentId: targetParentId },
-                        successMessage,
-                      );
-                    }}
-                  />
+                                .replace("{parent}", parentName ?? "");
+                        void topicMover.moveTopicWithUndo(
+                          {
+                            id: topic.id,
+                            hubId: topic.hub_id ?? activeHubId ?? "",
+                            parentId: topic.parent_id ?? null,
+                            position: topic.position,
+                            name: topic.name,
+                          },
+                          { parentId: targetParentId },
+                          successMessage,
+                        );
+                      }}
+                    />
+                  </div>
                 )}
               </PopoverContent>
             </Popover>

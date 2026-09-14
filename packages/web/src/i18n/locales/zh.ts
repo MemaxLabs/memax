@@ -8,6 +8,8 @@ export const zh: Translations = {
   common: {
     retry: "重试",
     undo: "撤销",
+    // 二级菜单面板头部的返回控件（menu-sub-panel.tsx）。
+    backToMenu: "返回上级菜单",
   },
   billing: {
     upgrade: "升级",

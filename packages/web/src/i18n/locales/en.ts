@@ -3,6 +3,8 @@ export const en = {
   common: {
     retry: "Retry",
     undo: "Undo",
+    // Back control in sub-panel headers (menu-sub-panel.tsx).
+    backToMenu: "Back to menu",
   },
   billing: {
     upgrade: "Upgrade",

@@ -46,7 +46,16 @@ const (
 	MaxPairsPerRun = 30
 
 	// dreamLLMTimeout bounds any single LLM call made during a dream cycle.
-	dreamLLMTimeout = 12 * time.Second
+	// 30s, not the original 12s: after the 2026-09-11 switch to DeepSeek
+	// via OpenRouter, merge generations (2000 max_tokens) exceeded 12s
+	// essentially every time — prod logged "dream: merge failed — read
+	// response: context deadline exceeded" on 100% of merge pairs
+	// (observed 2026-09-14), silently disabling dedup-merge since the
+	// switch. 30s matches customBoardLLMTimeout and the worst-case-LLM
+	// assumption already baked into the staleRunThreshold heartbeat
+	// math below; board_synthesis calls at 30s succeed reliably
+	// (observed 11-34s per phase, multiple calls).
+	dreamLLMTimeout = 30 * time.Second
 
 	// staleRunThreshold bounds how long a `running` dream_run row can
 	// go without a heartbeat before the engine reclaims it on the

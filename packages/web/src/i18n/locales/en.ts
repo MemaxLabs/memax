@@ -14,7 +14,10 @@ export const en = {
     primary: "Primary",
     showSecondaryPanel: "Show topic panel",
     hideSecondaryPanel: "Hide topic panel",
-    search: "Search",
+    // "Quick search", not "Search" — the rail also offers Ask memax,
+    // and the two entries' split (fast recall vs synthesized answers)
+    // should read from the names alone.
+    search: "Quick search",
     gettingStarted: "Getting started",
     openBar: "Open bar (⌘K)",
     openSettings: "Open settings",
@@ -30,6 +33,21 @@ export const en = {
   mechanism: {
     tabQuickstart: "Quick start",
     tabMechanism: "How it works",
+    tabShortcuts: "Shortcuts",
+    // Shortcuts tab — organized by "what you want to do", not key names.
+    shortcutsTitle: "Keyboard shortcuts",
+    shortcutsIntro:
+      "Each shortcut maps to one everyday move. On desktop, press ? anywhere to open this page.",
+    shortcutSearch: "Quick search — recall a memory",
+    shortcutRemember: "Quick capture — dump a thought straight into memory",
+    shortcutCompose: "Write something longer — open the compose modal",
+    shortcutBrainToggle: "Brain view ↔ memory list",
+    shortcutBarSubmit: "In the bar: send / search",
+    shortcutBarSave: "In the bar: save as a memory right away",
+    shortcutBarGraduate: "In the bar: graduate the draft to compose",
+    shortcutSelectAll: "While batch-selecting: select everything listed",
+    shortcutEscape: "Peel back one layer (modal → bar → closed)",
+    shortcutHelp: "Open this page",
     title: "How memax remembers you",
     subtitle:
       "How memories are written, organized, recalled — and where the boundaries are.",
@@ -991,7 +1009,7 @@ export const en = {
       "memax thinking out loud about the shape of this hub's knowledge.",
     nextupPurpose:
       "memax's guess at what you most likely want to do next, inferred from your own memories — every item comes with its receipts.",
-    nextupAck: "Done · got it",
+    nextupAck: "Done",
 
     // Agent handoff (接下来 items) — a nextup item is already a task
     // with receipts, so it can be handed to a coding agent verbatim.
@@ -1011,8 +1029,6 @@ export const en = {
 
     gatePurpose:
       "An agent stopped to wait for your call. Your choice is written back into memory so the agent can read it later.",
-    feedbackAccurate: "Spot on",
-    feedbackInaccurate: "Off the mark",
 
     // 等你 band (plan 25 P4) — notification decisions merged onto the
     // board. The board is the one surface; /inbox retired.
@@ -1027,11 +1043,11 @@ export const en = {
     // ↻ — advance the deck client-side without resolving anything.
     deckCycle: "Show next card",
 
-    // Collapsed shelf — the embedded memories-page board renders as a
-    // compact horizontal tile shelf until expanded in place.
-    shelfExpand: "Expand",
-    shelfCollapse: "Collapse",
-    shelfViewAll: "View all →",
+    // Shelf — the embedded memories-page board is a fixed 2×2 tile
+    // grid; tapping a tile navigates to that card on the pulse page.
+    // The arrow is rendered as an icon, not a text glyph.
+    shelfViewAll: "View all",
+    shelfOverflow: "{n} more updates",
 
     // 最近 strip — receipts that used to live in the inbox.
     recentTitle: "Recent",
@@ -1537,6 +1553,8 @@ export const en = {
     deleteKeep: "Keep",
     deleted: "Topic deleted",
     rename: "Rename",
+    // Inline rename sub-panel in the tree row's ⋮ menu.
+    renameHint: "Enter to save, Esc to go back",
     archive: "Archive topic",
     archiveToast: "Topic archived",
     archiveToastDetail: "Memories stay assigned — restore anytime.",

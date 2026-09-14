@@ -11,7 +11,8 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { BoardFeedbackVerdict, BoardSlot } from "memax-sdk";
+import { ArrowRight } from "lucide-react";
+import type { BoardSlot } from "memax-sdk";
 import {
   BoardAction,
   BoardActionRow,
@@ -78,36 +79,31 @@ import {
 // before the first render so no card flashes through the fallback.
 import "./board-kinds";
 
-type BoardResolveAction = "ack" | "dismiss" | "feedback";
+type BoardResolveAction = "ack" | "dismiss";
 
 // useLayoutEffect warns during SSR; the shelf only exists client-side,
 // but the module is imported into a server-rendered tree.
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-/** Per-hub sessionStorage key for the embedded shelf's expand state. */
-function shelfStorageKey(hubId: string) {
-  return `memax-board-shelf-expanded-${hubId}`;
-}
-
 /**
- * BOARD_SHELF_RULES — the codified collapse/expand + dismiss ruleset
- * for the embedded board (founder spec, 2026-08). Every behavior below
- * is implemented by useShelfExpansion + the shelf/card handlers; when
- * changing one, change both.
+ * BOARD_SHELF_RULES — the codified shelf + dismiss ruleset for the
+ * embedded board (founder spec, 2026-09 revision). The shelf/card
+ * handlers implement every behavior below; when changing one, change
+ * both.
  *
- *   R1  (2026-08-21 revision) The EMBEDDED shelf (memories page)
- *       defaults COLLAPSED — it sits above the memories list, and a
- *       full card stack there pushes the page's real content below
- *       the fold. The /pulse PAGE is the full surface and is always
- *       expanded. Inside an expanded shelf, CARDS default EXPANDED,
- *       collapse recorded per content (slot_key + content_updated_at)
- *       so new content re-expands.
- *   R3  Tile tap = expand the shelf in place AND open that card.
+ *   R1  (2026-09 revision) The EMBEDDED board (memories page) is
+ *       ALWAYS the compact 2×2 tile shelf — it never expands in
+ *       place. The memories page is a preview; the /pulse PAGE is the
+ *       one full surface, where CARDS default EXPANDED, collapse
+ *       recorded per content (slot_key + content_updated_at) so new
+ *       content re-expands.
+ *   R3  (2026-09 revision) Tile tap = NAVIGATE to /pulse focused on
+ *       that card (`?focus=<slot_key>` → scroll + un-collapse +
+ *       flash). Deck/highlight/cooking/ghost tiles navigate to the
+ *       plain /pulse surface, where their content leads the stream.
  *   R4  Resolving a card moves it to the 已归档 section (2026-08
  *       archive revision superseded the inline-receipt swap).
- *   R6  Manual 展开/收起 overrides R1 and persists per hub for the
- *       SESSION (sessionStorage; a fresh visit re-applies R1).
  *
  *   R7  Every live tile/card has a quiet dismiss: tiles via the
  *       hover/long-press ×, expanded cards via the 不关心 verb. Both
@@ -117,89 +113,27 @@ function shelfStorageKey(hubId: string) {
  *       tiles (等你) are the exception: a decision needs an answer,
  *       and the server refuses plain dismiss on decision kinds.
  *
- * R2 (auto-expand when something needs the user) and R5 (auto-collapse
- * after the last resolve) were removed with the R1 revision: R2 only
- * existed to rescue a collapsed default, and R5 would collapse a shelf
- * that the next visit immediately re-expands — a rule arguing with
- * itself. Both are gone rather than reconciled.
+ * R2/R5 (auto-expand/collapse) died with the 2026-08 R1 revision, and
+ * R6 (manual 展开/收起 persisted per session) died with this one: an
+ * in-place expansion the tiles no longer trigger has no business
+ * keeping a toggle alive — one content, one home.
  */
 export const BOARD_SHELF_RULES = [
-  "embedded-collapsed-page-expanded-cards-expanded",
-  "tile-tap-expands-and-opens",
-  "resolve-swaps-to-receipt-inline",
-  "manual-toggle-overrides-and-persists-per-session",
+  "embedded-is-always-the-shelf-page-cards-expanded",
+  "tile-tap-navigates-to-pulse-focused",
+  "resolve-archives-with-undo",
   "tiles-dismiss-optimistically-except-decisions",
 ] as const;
-
-/**
- * useShelfExpansion — the state machine behind BOARD_SHELF_RULES R1
- * and R6. Exported for tests.
- *
- * The embedded shelf is collapsed unless the reader opened it this
- * session; the /pulse page never routes through this hook. `manual` survives only to record that a stored choice was
- * found, which keeps the toggle honest across remounts.
- */
-export function useShelfExpansion({
-  hubId,
-  enabled,
-}: {
-  hubId: string;
-  /** False on the /pulse page — the full surface never collapses. */
-  enabled: boolean;
-}) {
-  const [expanded, setExpandedState] = useState(false);
-
-  // R1 (2026-08-21 revision) + R6: the EMBEDDED shelf (memories page)
-  // defaults COLLAPSED — it sits above the memories list, and a full
-  // card stack there pushes the page's actual content below the fold.
-  // The /pulse page is the full surface and never collapses (enabled:
-  // false skips this hook entirely). The earlier global expanded
-  // default conflated the two surfaces; a stored per-session choice
-  // still wins on the embedded shelf.
-  //
-  // Read in a layout effect so a stored 展开 is applied BEFORE the
-  // browser paints.
-  useIsomorphicLayoutEffect(() => {
-    if (!enabled) return;
-    try {
-      const stored = globalThis.sessionStorage?.getItem(shelfStorageKey(hubId));
-      setExpandedState(
-        stored === "1" || stored === "0" ? stored === "1" : false,
-      );
-    } catch {
-      setExpandedState(false);
-    }
-  }, [hubId, enabled]);
-
-  /** Manual toggle / tile tap — R3, R6. */
-  const setExpanded = useCallback(
-    (next: boolean) => {
-      setExpandedState(next);
-      try {
-        globalThis.sessionStorage?.setItem(
-          shelfStorageKey(hubId),
-          next ? "1" : "0",
-        );
-      } catch {
-        // Private mode / quota — choice holds in-memory.
-      }
-    },
-    [hubId],
-  );
-
-  return { expanded, setExpanded };
-}
 
 /**
  * Where the board is mounted.
  *
  *   - "section" — embedded in the memories page under the hub header.
- *     Expanded by default to the full vertical card layout; a header
- *     toggle collapses it in place to a ONE-ROW horizontal tile shelf
- *     (BoardShelf), per BOARD_SHELF_RULES. Stays zero-height
- *     when the hub has nothing, so card-less hubs keep the exact
- *     pre-board layout. No composer, no receipts strip: those belong
- *     to the full surface, one click away via 查看全部.
+ *     Always the compact 2×2 tile shelf (BoardShelf) per
+ *     BOARD_SHELF_RULES; tiles navigate to the /pulse surface. Stays
+ *     zero-height when the hub has nothing, so card-less hubs keep
+ *     the exact pre-board layout. No composer, no receipts strip:
+ *     those belong to the full surface, one click away via 查看全部.
  *   - "page"    — the standalone /pulse route. The one surface: 等你
  *     decisions, highlights, the system board's cards, custom-board
  *     cards merged into the same stream (2026-08: no tabs), the ghost
@@ -397,10 +331,6 @@ export function BoardView({
     if (kindFilterIsStale) setKindFilter(null);
   }, [kindFilterIsStale]);
 
-  // Embedded shelf expansion — BOARD_SHELF_RULES R1/R6.
-  const { expanded: shelfExpanded, setExpanded: setShelfExpanded } =
-    useShelfExpansion({ hubId, enabled: !isPage });
-
   // One impression event per board load (not per re-render).
   const trackedFor = useRef<string | null>(null);
   const slotCount = data?.slots.length ?? 0;
@@ -447,6 +377,82 @@ export function BoardView({
       }
     },
     [hubId],
+  );
+
+  // ── R3 receiving side — `?focus=<slot_key>` (embedded tile tap).
+  // Read from window.location in an effect rather than
+  // useSearchParams(): the param is applied once client-side, and this
+  // avoids the CSR/Suspense bailout useSearchParams imposes on every
+  // page embedding this component. The URL is cleaned IMMEDIATELY on
+  // read (refresh/back never replay the focus); once the focused card
+  // shows up in the data, un-collapse it, scroll it to center, flash
+  // it. If the slot never materializes, a give-up timer drops the
+  // intent so a much-later refetch can't yank the scroll mid-reading.
+  //
+  // The scroll rAF / flash timer / give-up timer live in refs with an
+  // unmount-only cleanup — NOT in this effect's own cleanup. The
+  // consuming effect ends by setFocusKey(null), which re-runs itself,
+  // and a per-run cleanup would cancel the rAF and flash reset it
+  // scheduled milliseconds earlier (adversarial review: the scroll
+  // usually lost that race and the flash class never reset).
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const [focusFlashKey, setFocusFlashKey] = useState<string | null>(null);
+  const focusFrameRef = useRef<number | undefined>(undefined);
+  const focusFlashTimerRef = useRef<number | undefined>(undefined);
+  const focusGiveUpTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!isPage) return;
+    const param = new URLSearchParams(window.location.search).get("focus");
+    if (!param) return;
+    setFocusKey(param);
+    window.history.replaceState(null, "", window.location.pathname);
+    focusGiveUpTimerRef.current = window.setTimeout(
+      () => setFocusKey(null),
+      5000,
+    );
+  }, [isPage]);
+  useEffect(() => {
+    if (!isPage || !focusKey) return;
+    const target =
+      slots.find((s) => s.slot_key === focusKey) ??
+      customBoards
+        .flatMap((cb) => cb.slots)
+        .find((s) => s.slot_key === focusKey);
+    if (!target) return; // data not in yet — retry on the next load
+    if (focusGiveUpTimerRef.current !== undefined) {
+      window.clearTimeout(focusGiveUpTimerRef.current);
+      focusGiveUpTimerRef.current = undefined;
+    }
+    toggleCard(`${focusKey}:${target.content_updated_at ?? ""}`, true);
+    // Two frames: one for the un-collapse to commit, one for layout.
+    focusFrameRef.current = window.requestAnimationFrame(() => {
+      focusFrameRef.current = window.requestAnimationFrame(() => {
+        document
+          .querySelector(`[data-slot-focus="${CSS.escape(focusKey)}"]`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
+    setFocusFlashKey(focusKey);
+    focusFlashTimerRef.current = window.setTimeout(
+      () => setFocusFlashKey(null),
+      2200,
+    );
+    setFocusKey(null);
+  }, [isPage, focusKey, slots, customBoards, toggleCard]);
+  useEffect(
+    // Unmount-only: cancel whatever focus handle is still in flight.
+    () => () => {
+      if (focusFrameRef.current !== undefined) {
+        window.cancelAnimationFrame(focusFrameRef.current);
+      }
+      if (focusFlashTimerRef.current !== undefined) {
+        window.clearTimeout(focusFlashTimerRef.current);
+      }
+      if (focusGiveUpTimerRef.current !== undefined) {
+        window.clearTimeout(focusGiveUpTimerRef.current);
+      }
+    },
+    [],
   );
 
   const onResolveNotification = useCallback(
@@ -522,8 +528,8 @@ export function BoardView({
     const anchor = slotBySlotKey.get(slotKey);
     return `${slotKey}:${anchor?.content_updated_at ?? ""}`;
   };
-  // Embedded surface, not yet expanded → the compact tile shelf.
-  const collapsedShelf = !isPage && !shelfExpanded;
+  // Embedded surface → ALWAYS the compact tile shelf (R1, 2026-09).
+  const collapsedShelf = !isPage;
   // Only claim the board is empty once the slots query has settled —
   // otherwise the empty pitch flashes on every cold load and is then
   // contradicted a beat later by a stack of cards.
@@ -555,33 +561,41 @@ export function BoardView({
     deckControls?: ReactNode,
     anchorKey: string = slot.slot_key,
   ) => (
-    <BoardSlotEntry
+    <div
       key={slot.slot_key}
-      slot={slot}
-      expanded={!collapsedCards.has(cardContentKey(anchorKey))}
-      entranceIndex={entranceIndex}
-      deckControls={deckControls}
-      onToggle={(willOpen) => toggleCard(cardContentKey(anchorKey), willOpen)}
-      onResolve={(action, verdict) => {
-        trackEvent("board_card_action", {
-          hub_id: hubId,
-          kind: slot.kind,
-          slot_key: slot.slot_key,
-          action,
-          verdict,
-        });
-        resolve.mutate({ slotKey: slot.slot_key, action, verdict });
-      }}
-      onContinue={() => void cardActions.continueInMemax(slot)}
-      onCopy={() => void cardActions.copyForAgent(slot)}
-      copied={cardActions.copiedSlotKey === slot.slot_key}
-      continuing={cardActions.isContinuing}
-      history={
-        boardKindTemporality(slot.kind) === "stateful" ? (
-          <SlotHistoryDisclosure hubId={hubId} slotKey={slot.slot_key} />
-        ) : undefined
+      data-slot-focus={anchorKey}
+      className={
+        focusFlashKey === anchorKey
+          ? "board-focus-flash rounded-[18px]"
+          : undefined
       }
-    />
+    >
+      <BoardSlotEntry
+        slot={slot}
+        expanded={!collapsedCards.has(cardContentKey(anchorKey))}
+        entranceIndex={entranceIndex}
+        deckControls={deckControls}
+        onToggle={(willOpen) => toggleCard(cardContentKey(anchorKey), willOpen)}
+        onResolve={(action) => {
+          trackEvent("board_card_action", {
+            hub_id: hubId,
+            kind: slot.kind,
+            slot_key: slot.slot_key,
+            action,
+          });
+          resolve.mutate({ slotKey: slot.slot_key, action });
+        }}
+        onContinue={() => void cardActions.continueInMemax(slot)}
+        onCopy={() => void cardActions.copyForAgent(slot)}
+        copied={cardActions.copiedSlotKey === slot.slot_key}
+        continuing={cardActions.isContinuing}
+        history={
+          boardKindTemporality(slot.kind) === "stateful" ? (
+            <SlotHistoryDisclosure hubId={hubId} slotKey={slot.slot_key} />
+          ) : undefined
+        }
+      />
+    </div>
   );
 
   let entranceCursor = (waiting.length > 0 ? 1 : 0) + highlights.length;
@@ -606,25 +620,17 @@ export function BoardView({
         />
         <div className="flex-1" />
         {!isPage ? (
-          <>
-            {/* 展开/收起 — the shelf expands IN PLACE; the full pulse
-                surface stays one click away via 查看全部. Trailing
-                actions match the fresh-memories header's verbs
-                (Select / filter): 12px fg-3 → fg-2 text buttons. */}
-            <button
-              type="button"
-              onClick={() => setShelfExpanded(!shelfExpanded)}
-              className="cursor-pointer text-[12px] text-fg-3 transition-colors hover:text-fg-2"
-            >
-              {shelfExpanded ? t.board.shelfCollapse : t.board.shelfExpand}
-            </button>
-            <Link
-              href={pulseHref}
-              className="text-[12px] text-fg-3 transition-colors hover:text-fg-2"
-            >
-              {t.board.shelfViewAll}
-            </Link>
-          </>
+          /* 查看全部 — the ONE trailing action (2026-09: the in-place
+             展开 toggle is gone; tiles navigate instead). Arrow is the
+             lucide icon, not a literal glyph — same iconography as
+             everywhere else in the design system. */
+          <Link
+            href={pulseHref}
+            className="inline-flex items-center gap-1 text-[12px] text-fg-3 transition-colors hover:text-fg-2"
+          >
+            {t.board.shelfViewAll}
+            <ArrowRight className="h-3 w-3" aria-hidden />
+          </Link>
         ) : null}
       </div>
 
@@ -635,13 +641,12 @@ export function BoardView({
           slots={slots}
           customBoards={customBoards}
           cookingBoards={cookingBoards}
-          onOpenDeck={() => setShelfExpanded(true)}
+          onOpenDeck={() => router.push(pulseHref)}
           onOpenSlot={(slotKey) => {
-            // R3: cards are expanded by default now, so opening the
-            // shelf shows the tapped card open unless the user had
-            // collapsed this exact content — un-collapse it then.
-            toggleCard(cardContentKey(slotKey), true);
-            setShelfExpanded(true);
+            // R3 (2026-09): tiles navigate to the pulse surface with
+            // this card focused — the receiving effect above scrolls,
+            // un-collapses, and flashes it.
+            router.push(`${pulseHref}?focus=${encodeURIComponent(slotKey)}`);
           }}
           onOpenBoards={() => router.push(pulseHref)}
           onDismissSlot={onDismissSlotFromShelf}
@@ -790,28 +795,46 @@ export function BoardView({
                   cycleAriaLabel={t.board.deckCycle}
                 >
                   {(current, controls) => (
-                    <CustomBoardSlotCard
+                    <div
                       key={`${board.id}-${current.slot_key}`}
-                      board={board}
-                      slot={current}
-                      entranceIndex={entranceIndex}
-                      deletePending={deleteBoard.isPending}
-                      onDelete={(boardId) => deleteBoard.mutate(boardId)}
-                      deckControls={controls}
-                    />
+                      data-slot-focus={group[0].slot_key}
+                      className={
+                        focusFlashKey === group[0].slot_key
+                          ? "board-focus-flash rounded-[18px]"
+                          : undefined
+                      }
+                    >
+                      <CustomBoardSlotCard
+                        board={board}
+                        slot={current}
+                        entranceIndex={entranceIndex}
+                        deletePending={deleteBoard.isPending}
+                        onDelete={(boardId) => deleteBoard.mutate(boardId)}
+                        deckControls={controls}
+                      />
+                    </div>
                   )}
                 </BoardSlotDeck>
               );
             }
             return (
-              <CustomBoardSlotCard
+              <div
                 key={`${board.id}-${group[0].slot_key}`}
-                board={board}
-                slot={group[0]}
-                entranceIndex={entranceIndex}
-                deletePending={deleteBoard.isPending}
-                onDelete={(boardId) => deleteBoard.mutate(boardId)}
-              />
+                data-slot-focus={group[0].slot_key}
+                className={
+                  focusFlashKey === group[0].slot_key
+                    ? "board-focus-flash rounded-[18px]"
+                    : undefined
+                }
+              >
+                <CustomBoardSlotCard
+                  board={board}
+                  slot={group[0]}
+                  entranceIndex={entranceIndex}
+                  deletePending={deleteBoard.isPending}
+                  onDelete={(boardId) => deleteBoard.mutate(boardId)}
+                />
+              </div>
             );
           })}
       {!collapsedShelf &&
@@ -1009,10 +1032,7 @@ function BoardSlotEntry({
   /** Same-kind stack pill + ↻ cycle when this entry fronts a deck. */
   deckControls?: ReactNode;
   onToggle: (willOpen: boolean) => void;
-  onResolve: (
-    action: BoardResolveAction,
-    verdict?: BoardFeedbackVerdict,
-  ) => void;
+  onResolve: (action: BoardResolveAction) => void;
   onContinue: () => void;
   onCopy: () => void;
   copied: boolean;
@@ -1088,38 +1108,19 @@ function BoardSlotEntry({
               {t.board.continueInMemax}
             </BoardAction>
           ) : null}
-          {/* Everything else lives in a quiet overflow (C4 — the row
-              had grown to six verbs and read as a control panel):
-              准/不准 feeds the next synthesis run, copy-for-agent is
-              an occasional export. Both keep working, neither claims
-              row real estate. */}
-          {options?.feedback || buildBoardCardContext(slot) ? (
+          {/* The overflow holds the ONE occasional verb left —
+              copy-for-agent. The 准/不准 feedback pair was cut
+              (founder, 2026-09: options the product doesn't visibly
+              act on yet are noise, not affordances). */}
+          {buildBoardCardContext(slot) ? (
             <ActionMenu
               triggerAriaLabel={t.board.moreActions}
               items={[
-                ...(options?.feedback
-                  ? [
-                      {
-                        id: "feedback-accurate",
-                        label: t.board.feedbackAccurate,
-                        onSelect: () => onResolve("feedback", "accurate"),
-                      },
-                      {
-                        id: "feedback-inaccurate",
-                        label: t.board.feedbackInaccurate,
-                        onSelect: () => onResolve("feedback", "inaccurate"),
-                      },
-                    ]
-                  : []),
-                ...(buildBoardCardContext(slot)
-                  ? [
-                      {
-                        id: "copy-for-agent",
-                        label: copied ? t.board.copied : t.board.copyForAgent,
-                        onSelect: onCopy,
-                      },
-                    ]
-                  : []),
+                {
+                  id: "copy-for-agent",
+                  label: copied ? t.board.copied : t.board.copyForAgent,
+                  onSelect: onCopy,
+                },
               ]}
             />
           ) : null}

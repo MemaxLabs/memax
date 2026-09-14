@@ -496,7 +496,6 @@ registerBoardKind("dreamlog", DreamlogBody, {
 registerBoardKind("echo", EchoBody, {
   purpose: (t) => t.board.echoPurpose,
   strip: (slot, t) => ({ label: t.board.kindEcho, detail: slot.title }),
-  feedback: true,
 });
 registerBoardKind(
   "thread",
@@ -504,7 +503,6 @@ registerBoardKind(
   {
     purpose: (t) => t.board.threadPurpose,
     strip: (slot, t) => ({ label: t.board.kindThread, detail: slot.title }),
-    feedback: true,
   },
 );
 registerBoardKind(
@@ -513,7 +511,6 @@ registerBoardKind(
   {
     purpose: (t) => t.board.patternPurpose,
     strip: (slot, t) => ({ label: t.board.kindPattern, detail: slot.title }),
-    feedback: true,
   },
 );
 registerBoardKind("nextup", NextUpBody, {
@@ -522,7 +519,6 @@ registerBoardKind("nextup", NextUpBody, {
   // collapsed strip shows the top prediction.
   strip: (slot, t) => ({ label: t.board.kindNextup, detail: slot.title }),
   actions: { ack: (t) => t.board.nextupAck },
-  feedback: true,
   temporality: "stateful",
 });
 registerBoardKind("decision_gate", DecisionGateBody, {
@@ -533,21 +529,17 @@ registerBoardKind("decision_gate", DecisionGateBody, {
 
 // Team-native kinds. Registered last because they arrived last; they
 // share the wow slot with the personal rotation and behave the same
-// way in the action row — a claim about the team can be wrong, so all
-// three carry the 准/不准 verbs.
+// way in the action row.
 registerBoardKind("consensus_gap", ConsensusGapBody, {
   purpose: (t) => t.board.consensusPurpose,
   strip: (slot, t) => ({ label: t.board.kindConsensus, detail: slot.title }),
-  feedback: true,
 });
 registerBoardKind("team_echo", TeamEchoBody, {
   purpose: (t) => t.board.teamEchoPurpose,
   strip: (slot, t) => ({ label: t.board.kindTeamEcho, detail: slot.title }),
-  feedback: true,
 });
 registerBoardKind("who_knows", WhoKnowsBody, {
   purpose: (t) => t.board.whoKnowsPurpose,
   strip: (slot, t) => ({ label: t.board.kindWhoKnows, detail: slot.title }),
-  feedback: true,
   temporality: "stateful",
 });

@@ -65,11 +65,6 @@ export interface BoardKindOptions {
   /** Collapsed one-line summary; falls back to the slot title. */
   strip?: (slot: BoardSlot, t: TranslationsLike) => BoardStripSummary;
   /**
-   * Show the 准/不准 feedback verbs in the live action row. Set on
-   * synthesized kinds where the claim can be right or wrong.
-   */
-  feedback?: boolean;
-  /**
    * Suppress the default ack/dismiss verbs — the kind's body renders
    * its own actions (e.g. decision-gate option buttons).
    */

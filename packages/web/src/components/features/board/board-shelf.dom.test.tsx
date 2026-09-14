@@ -147,8 +147,10 @@ describe("BoardShelf", () => {
     );
 
     const tiles = tileEls(container);
-    // 7 content tiles + the trailing ghost tile.
-    expect(tiles).toHaveLength(8);
+    // 7 content tiles overflow the 2×2 grid: the first 3 render, the
+    // 4th cell is the overflow tile counting the rest — content is
+    // never silently hidden, and the ghost yields its cell.
+    expect(tiles).toHaveLength(4);
     // 等你 deck tile leads: top decision + depth badge, second decision
     // stays behind the deck (never its own tile).
     expect(tiles[0].textContent).toContain("Waiting on you");
@@ -159,21 +161,17 @@ describe("BoardShelf", () => {
     // decisions — it does not hide in the 最近 receipts.
     expect(tiles[1].textContent).toContain("NEW MEMBER");
     expect(tiles[1].textContent).toContain("Ada joined your hub");
-    // Then lane B → capsule → activity → custom live card (tagged
-    // with its board title) → cooking custom board → ghost.
+    // Then lane B; capsule/activity/custom/cooking fall behind the
+    // overflow tile (4 tiles hidden: capsule, activity, custom, 酝酿).
     expect(tiles[2].textContent).toContain("Echo card");
-    expect(tiles[3].textContent).toContain("Capsule card");
-    expect(tiles[4].textContent).toContain("Activity card");
-    expect(tiles[5].textContent).toContain("Custom board card");
-    expect(tiles[5].textContent).toContain("健身 & 睡眠");
-    expect(tiles[6].textContent).toContain("对手动向");
-    expect(tiles[7].dataset.boardTile).toBe("ghost");
-    // Resolved receipts do not earn shelf space.
+    expect(tiles[3].dataset.boardTile).toBe("overflow");
+    expect(tiles[3].textContent).toContain("4 more updates");
+    // Resolved receipts do not earn shelf space (or an overflow seat).
     expect(screen.queryByText("Resolved dream")).toBeNull();
   });
 
-  it("renders exactly ONE row — no second grid row, horizontal flex only", () => {
-    // Enough tiles that the old layout would have wrapped to two rows.
+  it("renders a 2×2 grid — two columns, capped at four cells, no horizontal scroller", () => {
+    // Enough tiles that the retired one-row layout would have scrolled.
     const manySlots = ["echo", "thread", "openq", "pattern", "musing"].map(
       (kind, i) =>
         slot({ slot_key: `s-${kind}`, kind, title: `${kind} card ${i}` }),
@@ -188,37 +186,31 @@ describe("BoardShelf", () => {
         {...noHandlers}
       />,
     );
-    expect(container.querySelector(".grid-rows-2")).toBeNull();
-    const row = container.querySelector(".flex.w-max");
-    expect(row).toBeTruthy();
-    expect(row!.className).toContain("flex-nowrap");
+    const grid = container.querySelector<HTMLElement>(".grid");
+    expect(grid).toBeTruthy();
+    expect(grid!.className).toContain("grid-cols-2");
+    expect(container.querySelector(".overflow-x-auto")).toBeNull();
+    expect(tileEls(container)).toHaveLength(4);
   });
 
-  it("sizes tiles by kind purpose: wide decision / standard insight / square capsule / slim activity", () => {
+  it("fills a free cell with the ghost tile instead of the overflow counter", () => {
     const { container } = render(
       <BoardShelf
-        waiting={[waitingCard("n1", "Keep which memory?")]}
+        waiting={[]}
         highlights={[]}
         slots={[
           slot({ slot_key: "s-echo", kind: "echo", title: "Echo card" }),
           slot({ slot_key: "s-cap", kind: "capsule", title: "Capsule card" }),
-          slot({ slot_key: "s-act", kind: "activity", title: "Activity card" }),
         ]}
         customBoards={[]}
         cookingBoards={[]}
         {...noHandlers}
       />,
     );
-    const byKind = (kind: string) =>
-      container.querySelector<HTMLElement>(`[data-board-tile="${kind}"]`);
-    expect(byKind("waiting")!.dataset.size).toBe("wide");
-    expect(byKind("waiting")!.className).toContain("w-[320px]");
-    expect(byKind("echo")!.dataset.size).toBe("standard");
-    expect(byKind("echo")!.className).toContain("w-[272px]");
-    expect(byKind("capsule")!.dataset.size).toBe("square");
-    expect(byKind("capsule")!.className).toContain("w-[200px]");
-    expect(byKind("activity")!.dataset.size).toBe("slim");
-    expect(byKind("activity")!.className).toContain("w-[180px]");
+    const tiles = tileEls(container);
+    expect(tiles).toHaveLength(3);
+    expect(tiles[2].dataset.boardTile).toBe("ghost");
+    expect(container.querySelector('[data-board-tile="overflow"]')).toBeNull();
   });
 
   it("left-aligns tile text and shows a quiet relative generated-at line", () => {

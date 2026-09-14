@@ -29,7 +29,7 @@ import { formatAge } from "@/lib/format-age";
 import { acquireBodyScrollLock } from "@/lib/scroll-lock";
 import { ConnectAgentsBody } from "./connect-agents-section";
 
-type MechanismTab = "quickstart" | "mechanism";
+export type MechanismTab = "quickstart" | "mechanism" | "shortcuts";
 
 export function OnboardingMechanismModal({
   onClose,
@@ -58,6 +58,7 @@ export function OnboardingMechanismModal({
   const tabs: { id: MechanismTab; label: string }[] = [
     { id: "quickstart", label: t.mechanism.tabQuickstart },
     { id: "mechanism", label: t.mechanism.tabMechanism },
+    { id: "shortcuts", label: t.mechanism.tabShortcuts },
   ];
 
   return createPortal(
@@ -115,7 +116,13 @@ export function OnboardingMechanismModal({
                 <X className="h-4 w-4" />
               </button>
             </div>
-            {tab === "quickstart" ? <ConnectAgentsBody /> : <MechanismPanel />}
+            {tab === "quickstart" ? (
+              <ConnectAgentsBody />
+            ) : tab === "mechanism" ? (
+              <MechanismPanel />
+            ) : (
+              <ShortcutsPanel />
+            )}
           </Surface>
         </div>
       </div>
@@ -248,6 +255,65 @@ function MechanismLayer({
       <div className="min-w-0">
         <p className="text-[13px] font-medium text-foreground">{title}</p>
         <p className="mt-0.5 text-[12.5px] leading-relaxed text-fg-3">{body}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ShortcutsPanel — the 快捷键 tab (founder batch 2026-09-14): every
+ * global shortcut mapped to the USE CASE it serves, not a bare key
+ * list. Platform-aware: Macs render ⌘, everyone else Ctrl. The same
+ * panel opens via "?" anywhere on desktop (left-rail listener).
+ */
+function ShortcutsPanel() {
+  const { t } = useLocale();
+  const [mod, setMod] = useState("⌘");
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    setMod(/Mac|iPhone|iPad|iPod/.test(ua) ? "⌘" : "Ctrl");
+  }, []);
+  const rows: { keys: string[]; label: string }[] = [
+    { keys: [mod, "K"], label: t.mechanism.shortcutSearch },
+    { keys: [mod, "J"], label: t.mechanism.shortcutRemember },
+    { keys: [mod, "⇧", "↵"], label: t.mechanism.shortcutCompose },
+    { keys: [mod, "M"], label: t.mechanism.shortcutBrainToggle },
+    { keys: ["↵"], label: t.mechanism.shortcutBarSubmit },
+    { keys: [mod, "↵"], label: t.mechanism.shortcutBarSave },
+    { keys: ["⇧", "↵"], label: t.mechanism.shortcutBarGraduate },
+    { keys: [mod, "A"], label: t.mechanism.shortcutSelectAll },
+    { keys: ["Esc"], label: t.mechanism.shortcutEscape },
+    { keys: ["?"], label: t.mechanism.shortcutHelp },
+  ];
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <h2 className="text-[15px] font-semibold text-foreground">
+          {t.mechanism.shortcutsTitle}
+        </h2>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-fg-3">
+          {t.mechanism.shortcutsIntro}
+        </p>
+      </div>
+      <div className="flex flex-col">
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className="flex items-center justify-between gap-3 py-2"
+          >
+            <span className="min-w-0 text-[13px] text-fg-2">{row.label}</span>
+            <span className="flex shrink-0 items-center gap-1">
+              {row.keys.map((key, i) => (
+                <kbd
+                  key={i}
+                  className="rounded-md border border-border bg-surface-1 px-1.5 py-0.5 text-[11px] font-medium tracking-wide text-fg-2"
+                >
+                  {key}
+                </kbd>
+              ))}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -1,14 +1,16 @@
 "use client";
 
 /**
- * BoardShelf — the collapsed form of the embedded pulse board (the
- * memories-page BoardSection). Founder direction (2026-08): the pulse
- * IS the first section of the memories page — collapsed it is a shelf
- * of compact tiles in EXACTLY ONE horizontally-scrollable row (two
- * rows read as a wall, not a shelf); expanding it in place restores
- * the full vertical card layout.
+ * BoardShelf — the embedded pulse preview on the memories page (the
+ * BoardSection). Founder direction (2026-09 revision): the shelf is a
+ * fixed 2×2 GRID of compact tiles — two per row, at most two rows.
+ * It never expands in place anymore; tapping a tile NAVIGATES to the
+ * /pulse surface with that card focused (`?focus=<slot_key>`), because
+ * the memories page is a preview and the pulse page is the real
+ * surface. The earlier in-place expansion (BOARD_SHELF_RULES R3/R6)
+ * is retired — one content, one home.
  *
- * Tile priority, left → right:
+ * Tile priority, reading order (left→right, top→bottom):
  *   1. the 等你 deck tile — the only thing actually blocked on the
  *      user, so it always leads. Shows the top decision + a "还有 N 件"
  *      badge for the pile behind it.
@@ -20,31 +22,26 @@
  *   5. the activity strip-tile (counts; worth knowing, never urgent).
  *   6. custom-board live cards — tagged with their board title.
  *   7. custom boards still 酝酿中 (cooking) — a promise, not content.
- *   8. the ghost tile — the latent new-board affordance, always last.
+ *   8. the ghost tile — the latent new-board affordance, only when a
+ *      cell is free (the grid never grows a third row for it).
  *
- * Tiles are NOT uniform: shape follows the card's purpose via the size
- * variant in board-kind-visuals (wide decision / standard insight /
- * square artifact / slim counter), on one shared vertical rhythm. All
- * text is left-aligned in a strict eyebrow → title → meta stack, with
- * a quiet relative generated-at line closing each tile. Same-kind LIVE
- * slots collapse into ONE tile with a depth badge — the 等你 deck
- * metaphor extended to every kind.
+ * Overflow: with more than 4 tiles, the 4th cell becomes an overflow
+ * tile ("还有 N 条动态 · 查看全部") routing to /pulse — content is
+ * never silently hidden. Same-kind LIVE slots still collapse into ONE
+ * tile with a depth badge — the 等你 deck metaphor extended to every
+ * kind.
  *
  * Resolved / dismissed receipts are deliberately EXCLUDED: the shelf
- * is "what's new", receipts belong to the expanded layout's strips. A
+ * is "what's new", receipts belong to the pulse page's archive. A
  * tile's hover/long-press × dismisses in place (optimistic — the tile
  * leaves immediately and lives on only as a receipt). Decision tiles
  * carry no ×: a decision needs an answer, not a swipe-away (and the
  * server refuses plain dismiss on decision kinds).
- *
- * Scrolling is contained: `overflow-x-auto` lives on the shelf's own
- * container so the page never pans horizontally (the root overflow-x
- * clip is global).
  */
 
 import { useRef, useState, type ReactNode } from "react";
 import type { Board, BoardSlot } from "memax-sdk";
-import { X } from "lucide-react";
+import { ArrowRight, X } from "lucide-react";
 import { BoardKindLabel, BoardVoiceStar } from "@memaxlabs/ui";
 import { useInterpolate, useLocale } from "@/i18n";
 import { formatAge } from "@/lib/format-age";
@@ -57,12 +54,14 @@ import {
   COOKING_KIND,
   HIGHLIGHT_KIND,
   WAITING_KIND,
-  type BoardTileSize,
 } from "./board-kind-visuals";
 import {
   groupWaitingByKind,
   type BoardNotificationCardModel,
 } from "./board-notification-cards";
+
+/** The grid is 两行两个 — two columns, at most two rows. */
+const SHELF_CAPACITY = 4;
 
 /**
  * Shelf ordering: lower sorts earlier. Lane B kinds (and any unknown
@@ -126,8 +125,8 @@ export function BoardShelf({
   waiting: readonly BoardNotificationCardModel[];
   /**
    * Highlights (hub_member_joined) — one tile each, right after the
-   * 等你 deck tiles; tapping expands the shelf where the standalone
-   * BoardHighlightCard renders.
+   * 等你 deck tiles; tapping navigates to the pulse surface where the
+   * standalone BoardHighlightCard renders.
    */
   highlights: readonly BoardNotificationCardModel[];
   /** System-board slots; receipts are filtered out here. */
@@ -139,11 +138,11 @@ export function BoardShelf({
   customBoards: readonly CustomBoardWithSlots[];
   /** Custom boards still cooking — rendered as promise tiles. */
   cookingBoards: readonly Board[];
-  /** Deck tile tapped → expand the shelf (deck renders on top). */
+  /** Deck/highlight tile tapped → the pulse surface (top of stream). */
   onOpenDeck: () => void;
-  /** Slot tile tapped → expand the shelf with this card open. */
+  /** Slot tile tapped → the pulse surface focused on this card. */
   onOpenSlot: (slotKey: string) => void;
-  /** Cooking/ghost tile tapped → the full /pulse surface owns boards. */
+  /** Cooking/ghost/overflow tile tapped → the full /pulse surface. */
   onOpenBoards: () => void;
   /** Tile × on a slot tile → resolve action="dismiss" (optimistic). */
   onDismissSlot?: (slotKey: string, boardId: string) => void;
@@ -222,7 +221,7 @@ export function BoardShelf({
   }
   // Custom-board live cards — after the system tiles, each tagged
   // with its board title (the badge pill doubles as the tag here).
-  // Tap → expand in place; the tagged card renders in the stream.
+  // Tap → the pulse surface focused on that card.
   for (const { board, slots: boardSlots } of customBoards) {
     for (const group of groupSlotsByKind(orderShelfSlots(boardSlots))) {
       const slot = group[0];
@@ -239,7 +238,7 @@ export function BoardShelf({
           title={slot.title}
           meta={strip.detail !== slot.title ? strip.detail : undefined}
           when={age(slotContentTime(slot))}
-          onClick={onOpenDeck}
+          onClick={() => onOpenSlot(slot.slot_key)}
           onDismiss={
             onDismissSlot
               ? () => onDismissSlot(slot.slot_key, slot.board_id)
@@ -267,31 +266,41 @@ export function BoardShelf({
 
   if (tiles.length === 0) return null;
 
+  // 两行两个 — the grid holds at most 4 cells. Overflowing content is
+  // never silently dropped: the last cell becomes an overflow tile
+  // counting what's behind it. With room to spare, the ghost tile
+  // (new-board affordance) takes a free cell.
+  const overflow = tiles.length - SHELF_CAPACITY;
+  const cells =
+    overflow > 0
+      ? [
+          ...tiles.slice(0, SHELF_CAPACITY - 1),
+          <BoardOverflowTile
+            key="overflow"
+            count={overflow + 1}
+            onClick={onOpenBoards}
+          />,
+        ]
+      : [
+          ...tiles,
+          ...(tiles.length < SHELF_CAPACITY
+            ? [<BoardGhostTile key="ghost" onClick={onOpenBoards} />]
+            : []),
+        ];
+
   return (
-    <div className="-mx-0.5 overflow-x-auto px-0.5 pb-1">
-      {/* ONE row, always — priority reads strictly left → right. */}
-      <div className="flex w-max snap-x snap-proximity flex-row flex-nowrap items-stretch gap-2">
-        {tiles}
-        <BoardGhostTile onClick={onOpenBoards} />
-      </div>
-    </div>
+    <div className="grid grid-cols-2 items-stretch gap-2 pb-1">{cells}</div>
   );
 }
 
-/** Tile size variants — width follows the card's purpose. */
-const TILE_WIDTH: Record<BoardTileSize, string> = {
-  wide: "w-[320px]",
-  standard: "w-[272px]",
-  square: "w-[200px]",
-  slim: "w-[180px]",
-};
-
 /**
  * BoardTile — one compact shelf entry. Product-specific composition of
- * the ui atoms (kind-sized width, clamped text), so it lives here
- * rather than in @memaxlabs/ui. All text is LEFT-aligned in a strict
- * vertical stack: eyebrow (dot + icon + kind) → title → body/meta →
- * quiet generated-at line.
+ * the ui atoms (clamped text on the shared grid cell), so it lives
+ * here rather than in @memaxlabs/ui. All text is LEFT-aligned in a
+ * strict vertical stack: eyebrow (icon + kind) → title → body/meta →
+ * quiet generated-at line. No eyebrow dot — the kind icon already
+ * carries the category, and dot+icon double-encoded it (founder
+ * feedback, 2026-09).
  */
 function BoardTile({
   kind,
@@ -306,7 +315,7 @@ function BoardTile({
   onDismiss,
   dismissLabel,
 }: {
-  /** Kind (or pseudo-kind) — resolves size + eyebrow visuals. */
+  /** Kind (or pseudo-kind) — resolves eyebrow visuals. */
   kind: string;
   label: string;
   star?: boolean;
@@ -337,8 +346,7 @@ function BoardTile({
   return (
     <div
       data-board-tile={kind}
-      data-size={visual.tile}
-      className={`group relative shrink-0 snap-start ${TILE_WIDTH[visual.tile]}`}
+      className="group relative min-w-0"
       onTouchStart={
         onDismiss
           ? () => {
@@ -361,7 +369,6 @@ function BoardTile({
         <div className="flex w-full items-start justify-between gap-2">
           <BoardKindLabel
             star={star}
-            dotColor={visual.dot}
             icon={visual.icon}
             className="mb-1 min-w-0"
           >
@@ -409,10 +416,42 @@ function BoardTile({
 }
 
 /**
- * BoardGhostTile — the latent new-board affordance closing the shelf:
- * dashed glass (the ComposePlusCell "fill me in" idiom), quiet ✦,
- * placeholder copy. Tapping routes to /pulse where the ghost CARD
- * morphs into the composer — the embedded shelf never composes.
+ * BoardOverflowTile — the honest 4th cell when the shelf holds more
+ * than it can show: counts what's behind it and routes to /pulse.
+ */
+function BoardOverflowTile({
+  count,
+  onClick,
+}: {
+  count: number;
+  onClick: () => void;
+}) {
+  const { t } = useLocale();
+  const interpolate = useInterpolate();
+  return (
+    <button
+      type="button"
+      data-board-tile="overflow"
+      onClick={onClick}
+      className="glass-card flex h-full w-full min-w-0 cursor-pointer flex-col items-start justify-center gap-1 rounded-[16px] px-3.5 py-3 text-left transition-colors [transition-timing-function:var(--ease-spring)] hover:bg-surface-1"
+    >
+      <span className="text-[13px] leading-snug text-fg-2">
+        {interpolate(t.board.shelfOverflow, { n: count })}
+      </span>
+      <span className="inline-flex items-center gap-1 text-[11.5px] text-fg-3">
+        {t.board.shelfViewAll}
+        <ArrowRight className="h-3 w-3" aria-hidden />
+      </span>
+    </button>
+  );
+}
+
+/**
+ * BoardGhostTile — the latent new-board affordance closing the shelf
+ * when a grid cell is free: dashed glass (the ComposePlusCell "fill me
+ * in" idiom), quiet ✦, placeholder copy. Tapping routes to /pulse
+ * where the ghost CARD morphs into the composer — the embedded shelf
+ * never composes.
  */
 function BoardGhostTile({ onClick }: { onClick: () => void }) {
   const { t } = useLocale();
@@ -421,7 +460,7 @@ function BoardGhostTile({ onClick }: { onClick: () => void }) {
       type="button"
       data-board-tile="ghost"
       onClick={onClick}
-      className="flex w-[200px] shrink-0 snap-start cursor-pointer flex-col items-center justify-center gap-1 rounded-[16px] bg-transparent px-3.5 py-3 transition-colors [transition-timing-function:var(--ease-spring)] hover:bg-surface-1"
+      className="flex w-full min-w-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-[16px] bg-transparent px-3.5 py-3 transition-colors [transition-timing-function:var(--ease-spring)] hover:bg-surface-1"
       style={{ border: "1px dashed var(--glass-border)" }}
     >
       <BoardVoiceStar className="text-[13px]" />

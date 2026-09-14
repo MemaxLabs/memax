@@ -291,12 +291,11 @@ describe("lane B board kind renderers", () => {
     expect(screen.getAllByText("Copy handoff prompt")).toHaveLength(1);
   });
 
-  it("nextup is registered with feedback verbs and a relabeled ack", () => {
+  it("nextup is registered with a relabeled ack (no feedback verbs — cut 2026-09)", () => {
     const options = boardKindOptions("nextup");
-    expect(options?.feedback).toBe(true);
-    expect(
-      options?.actions?.ack?.({ board: { nextupAck: "Done · got it" } }),
-    ).toBe("Done · got it");
+    expect(options?.actions?.ack?.({ board: { nextupAck: "Done" } })).toBe(
+      "Done",
+    );
   });
 
   it("wow kinds render the body plus quoted receipts", () => {
@@ -339,10 +338,9 @@ describe("lane B board kind renderers", () => {
 describe("team-native board kind renderers", () => {
   afterEach(cleanup);
 
-  it("registers the three team kinds with feedback verbs", () => {
+  it("registers the three team kinds", () => {
     for (const kind of ["consensus_gap", "team_echo", "who_knows"]) {
       expect(hasBoardKindRenderer(kind)).toBe(true);
-      expect(boardKindOptions(kind)?.feedback).toBe(true);
       expect(
         boardKindOptions(kind)?.strip?.(slot({ kind, title: "card title" }), {
           board: {

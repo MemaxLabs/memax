@@ -33,6 +33,14 @@ interface TopicLocationProps {
   topicId?: string;
   /** Pill size — defaults to "sm" so the chip baseline-aligns with text. */
   size?: "sm" | "md" | "lg";
+  /**
+   * Optional controlled open state — lets a second entry point (the
+   * detail page's ⋯ → 移动到 item) open the SAME picker the pill
+   * anchors, instead of growing a parallel move surface. Omit both
+   * for the default uncontrolled pill.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function TopicLocation({
@@ -40,11 +48,15 @@ export function TopicLocation({
   hubId,
   topicId,
   size = "sm",
+  open: openProp,
+  onOpenChange,
 }: TopicLocationProps) {
   const { t } = useLocale();
   const { data: topicsData } = useTopics(hubId);
   const mover = useMemoryMove();
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = onOpenChange ?? setOpenState;
 
   const currentTopic = useMemo(() => {
     if (!topicId || !topicsData?.topics) return null;
@@ -73,7 +85,7 @@ export function TopicLocation({
         mover.moveOneSuccess(destinationName),
       );
     },
-    [mover, memoryId, hubId, topicId],
+    [mover, memoryId, hubId, topicId, setOpen],
   );
 
   // Clear-topic is semantically distinct from "Moved to X" — there is no
@@ -96,7 +108,7 @@ export function TopicLocation({
         mover.moveOneSuccess(destinationName),
       );
     },
-    [mover, memoryId, hubId, topicId],
+    [mover, memoryId, hubId, topicId, setOpen],
   );
 
   return (

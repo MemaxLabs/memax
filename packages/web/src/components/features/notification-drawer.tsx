@@ -262,14 +262,15 @@ export function NotificationDrawerPanel() {
           <button
             type="button"
             onClick={() =>
+              // Broadcasts are deliberately EXCLUDED (codex review):
+              // marking system_notice seen would darken the bell while
+              // the announcement is still pending — broadcasts clear
+              // only by their per-row dismiss, and 全部已读 must not
+              // contradict that contract.
               bulkSeen.mutate({
                 kinds: [
                   ...new Set(
-                    [
-                      ...buckets.broadcasts,
-                      ...buckets.news,
-                      ...buckets.receipts,
-                    ].map((n) => n.kind),
+                    [...buckets.news, ...buckets.receipts].map((n) => n.kind),
                   ),
                 ],
               })

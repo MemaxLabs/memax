@@ -16,6 +16,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	ingesttitle "github.com/MemaxLabs/memax/packages/server/internal/ingest/title"
+	"github.com/MemaxLabs/memax/packages/server/internal/meterctx"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
@@ -41,13 +42,15 @@ import (
 type LogEventFn func(userID, op, hubID, source, agentName string, metadata map[string]any)
 
 type MCPHandler struct {
-	store    store.Store
-	recall   *RecallHandler
-	memories *MemoriesHandler
-	events   events.Publisher
-	mode     mcpMode
-	sessions sync.Map // sessionID -> *mcpSession
-	logEvent LogEventFn
+	store         store.Store
+	recall        *RecallHandler
+	memories      *MemoriesHandler
+	events        events.Publisher
+	mode          mcpMode
+	sessions      sync.Map // sessionID -> *mcpSession
+	logEvent      LogEventFn
+	beginOp       func(r *http.Request, userID, op, billingHubID string) (func(bool), *meterctx.OpDenial)
+	denialMessage func(*meterctx.OpDenial) string
 }
 
 type mcpMode string
@@ -78,6 +81,48 @@ func newMCPHandler(s store.Store, recall *RecallHandler, memories *MemoriesHandl
 // Safe to call with nil — the tool handlers null-check before calling.
 func (h *MCPHandler) SetLogEvent(fn LogEventFn) {
 	h.logEvent = fn
+}
+
+// SetOpGuard wires quota enforcement for tool calls (meter.BeginOp +
+// meter.OpDenialMessage, injected as functions — meter imports
+// handler for context accessors, so handler can never import meter).
+// Nil-safe: without a guard (dev/memory mode, tests) tools run
+// unmetered, exactly the pre-2026-09 behavior.
+func (h *MCPHandler) SetOpGuard(
+	begin func(r *http.Request, userID, op, billingHubID string) (func(committed bool), *meterctx.OpDenial),
+	message func(*meterctx.OpDenial) string,
+) {
+	h.beginOp = begin
+	h.denialMessage = message
+}
+
+// guardOp reserves one metered op for a tool call. ok=false means the
+// quota refused it and the MCP error is already written — the tool
+// must return immediately. finish is never nil; call finish(true)
+// after the operation durably succeeded, finish(false) on any error
+// path (the deferred-flag idiom at the call sites).
+func (h *MCPHandler) guardOp(
+	w http.ResponseWriter,
+	r *http.Request,
+	id any,
+	userID, op, billingHubID string,
+) (finish func(bool), ok bool) {
+	if h.beginOp == nil {
+		return func(bool) {}, true
+	}
+	finish, denial := h.beginOp(r, userID, op, billingHubID)
+	if denial != nil {
+		text := "Quota exceeded."
+		if h.denialMessage != nil {
+			text = h.denialMessage(denial)
+		}
+		writeRPCResult(w, id, mcpToolResult{
+			Content: []mcpContent{{Type: "text", Text: text}},
+			IsError: true,
+		})
+		return nil, false
+	}
+	return finish, true
 }
 
 func (h *MCPHandler) publishMemoryChanged(ctx context.Context, memory *model.Memory, actorID string) {
@@ -417,6 +462,15 @@ func (h *MCPHandler) toolRecall(w http.ResponseWriter, r *http.Request, id any, 
 		return
 	}
 
+	// Same recall quota as REST /v1/recall. Reads bill the active
+	// read hub (resolveBillingHub's read rule).
+	finishOp, opOK := h.guardOp(w, r, id, ownerID, "recall", GetHubID(r))
+	if !opOK {
+		return
+	}
+	opCommitted := false
+	defer func() { finishOp(opCommitted) }()
+
 	scope := requestRecallScope(r, nil)
 	// Resolve hub_id (supports UUID, slug, or "personal")
 	if a.HubID != "" {
@@ -430,6 +484,11 @@ func (h *MCPHandler) toolRecall(w http.ResponseWriter, r *http.Request, id any, 
 		filters = &model.SearchFilters{TopicID: a.TopicID, Explicit: true}
 	}
 	results, _, err := h.recall.RunPipeline(r.Context(), a.Query, "mcp", "", a.ProjectContext, a.Limit, ownerID, filters, scope)
+	if err == nil {
+		// The pipeline ran — charge the recall (empty results still
+		// cost COGS, matching the REST commit semantics).
+		opCommitted = true
+	}
 	if err != nil {
 		writeRPCResult(w, id, mcpToolResult{
 			Content: []mcpContent{{Type: "text", Text: fmt.Sprintf("Recall failed: %s", err.Error())}},
@@ -567,6 +626,17 @@ func (h *MCPHandler) toolPush(w http.ResponseWriter, r *http.Request, id any, ar
 		return
 	}
 
+	// Quota gate — the SAME push quota the REST middleware enforces
+	// (this transport used to walk straight past it). Billing hub =
+	// the resolved TARGET hub, mirroring resolveBillingHub's write
+	// rule; the resolver routes personal hubs to the owner's plan.
+	finishOp, opOK := h.guardOp(w, r, id, ownerID, "push", hubID)
+	if !opOK {
+		return
+	}
+	opCommitted := false
+	defer func() { finishOp(opCommitted) }()
+
 	memoryID := generateMCPID()
 	now := time.Now()
 	projCtx := a.ProjectContext
@@ -658,6 +728,8 @@ func (h *MCPHandler) toolPush(w http.ResponseWriter, r *http.Request, id any, ar
 		})
 		return
 	}
+	// The memory is durable — charge the push (deferred finishOp).
+	opCommitted = true
 	h.publishMemoryChanged(r.Context(), memory, ownerID)
 
 	// Trigger the same background processing pipeline as POST /v1/memories
@@ -1016,6 +1088,14 @@ func (h *MCPHandler) toolCapture(w http.ResponseWriter, r *http.Request, id any,
 	if !mcpRequirePermission(w, r, id, PermMemoryWrite, hubID) {
 		return
 	}
+
+	// Same push quota as REST + toolPush — capture creates a memory.
+	finishOp, opOK := h.guardOp(w, r, id, ownerID, "push", hubID)
+	if !opOK {
+		return
+	}
+	opCommitted := false
+	defer func() { finishOp(opCommitted) }()
 	authAgent := resolveAuthSourceAgent(r)
 	if authAgent == "" {
 		writeRPCResult(w, id, mcpToolResult{
@@ -1081,6 +1161,7 @@ func (h *MCPHandler) toolCapture(w http.ResponseWriter, r *http.Request, id any,
 		})
 		return
 	}
+	opCommitted = true
 	h.publishMemoryChanged(r.Context(), memory, ownerID)
 
 	// Trigger extraction pipeline in background

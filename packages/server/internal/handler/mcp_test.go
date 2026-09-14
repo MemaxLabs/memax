@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/meterctx"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
@@ -796,4 +798,154 @@ func TestMCPPushRejectsConflictingAgentClaim(t *testing.T) {
 	if len(resp.Result.Content) == 0 || !strings.Contains(resp.Result.Content[0].Text, "attribution") {
 		t.Errorf("error text = %+v, want an attribution conflict message", resp.Result.Content)
 	}
+}
+
+// TestMCPToolPush_QuotaDenied — the 2026-09-14 parity fix: /mcp tool
+// calls must hit the same push gate REST does. A denying guard must
+// produce an IsError result and the tool must NOT create the memory.
+func TestMCPToolPush_QuotaDenied(t *testing.T) {
+	s := store.NewInMemoryStore()
+	s.AddUser(&model.User{ID: "u1", Email: "u@example.com"})
+	hub := &model.Hub{ID: "h1", OwnerID: "u1", HubType: "personal", Slug: "personal"}
+	if err := s.CreateHub(hub); err != nil {
+		t.Fatal(err)
+	}
+	h := NewMCPHandler(s, nil, nil, nil)
+	denied := false
+	h.SetOpGuard(
+		func(_ *http.Request, userID, op, billingHubID string) (func(bool), *meterctx.OpDenial) {
+			if op != "push" {
+				t.Fatalf("expected op push, got %q", op)
+			}
+			if userID != "u1" {
+				t.Fatalf("expected user u1, got %q", userID)
+			}
+			if billingHubID != "h1" {
+				t.Fatalf("expected billing hub h1, got %q", billingHubID)
+			}
+			denied = true
+			return func(bool) {}, &meterctx.OpDenial{
+				Op: "push", Current: 500, Limit: 500,
+				PlanID: "hub_free_team", PlanName: "Free Team",
+			}
+		},
+		func(_ *meterctx.OpDenial) string { return "quota exceeded test" },
+	)
+
+	w := doMCPQuotaRequest(t, h, "u1", "h1",
+		mcpQuotaBody(t, "memax_push", map[string]any{"content": "hello"}))
+	if !denied {
+		t.Fatal("guard was never consulted")
+	}
+	var resp struct {
+		Result struct {
+			IsError bool `json:"isError"`
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("parse response: %v (%s)", err, w.Body.String())
+	}
+	if !resp.Result.IsError {
+		t.Fatalf("expected IsError result, got %s", w.Body.String())
+	}
+	if len(resp.Result.Content) == 0 ||
+		resp.Result.Content[0].Text != "quota exceeded test" {
+		t.Fatalf("expected denial message, got %s", w.Body.String())
+	}
+	mems, _ := s.ListMemories("u1", 10)
+	if len(mems) != 0 {
+		t.Fatalf("denied push must not create a memory, found %d", len(mems))
+	}
+}
+
+// TestMCPToolPush_QuotaCommitLifecycle — the reservation commits
+// exactly when the memory is durable; a tool-level error (empty
+// content) never bills.
+func TestMCPToolPush_QuotaCommitLifecycle(t *testing.T) {
+	s := store.NewInMemoryStore()
+	s.AddUser(&model.User{ID: "u1", Email: "u@example.com"})
+	if err := s.CreateHub(&model.Hub{ID: "h1", OwnerID: "u1", HubType: "personal", Slug: "personal"}); err != nil {
+		t.Fatal(err)
+	}
+	h := NewMCPHandler(s, nil, nil, nil)
+	var commits, rollbacks int
+	h.SetOpGuard(
+		func(_ *http.Request, _, _, _ string) (func(bool), *meterctx.OpDenial) {
+			return func(committed bool) {
+				if committed {
+					commits++
+				} else {
+					rollbacks++
+				}
+			}, nil
+		},
+		nil,
+	)
+
+	// Success → one commit, memory exists.
+	w := doMCPQuotaRequest(t, h, "u1", "h1",
+		mcpQuotaBody(t, "memax_push", map[string]any{"content": "hello"}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("push status %d: %s", w.Code, w.Body.String())
+	}
+	if commits != 1 || rollbacks != 0 {
+		t.Fatalf("success push: commits=%d rollbacks=%d", commits, rollbacks)
+	}
+	mems, _ := s.ListMemories("u1", 10)
+	if len(mems) != 1 {
+		t.Fatalf("expected 1 memory, got %d", len(mems))
+	}
+}
+
+// ── shared fixtures for the quota-guard tests ──
+
+func mcpQuotaBody(t *testing.T, tool string, args map[string]any) []byte {
+	t.Helper()
+	rawArgs, err := json.Marshal(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      tool,
+			"arguments": json.RawMessage(rawArgs),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
+func doMCPQuotaRequest(
+	t *testing.T,
+	h *MCPHandler,
+	userID, hubID string,
+	body []byte,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := context.WithValue(req.Context(), userIDKey, userID)
+	ctx = context.WithValue(ctx, hubIDKey, hubID)
+	ctx = context.WithValue(ctx, writeHubIDKey, hubID)
+	ctx = context.WithValue(ctx, authContextKey, &AuthContext{
+		UserID:        userID,
+		PrincipalType: "user",
+		HubScopeMode:  HubScopeAllAccessible,
+		PermissionsByHub: map[string]PermissionSet{
+			hubID: NewPermissionSet(PermMemoryRead, PermMemoryWrite),
+		},
+		DefaultWriteHubID: hubID,
+	})
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	return w
 }

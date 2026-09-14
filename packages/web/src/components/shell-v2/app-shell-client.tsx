@@ -87,6 +87,7 @@ import {
 } from "@/lib/batch-active";
 import {
   clearLiveSurfaceTransition,
+  isLiveSurfaceTransition,
   subscribeLiveSurfaceTransition,
   type SurfaceTransitionRequest,
 } from "@/lib/recent-navigation";
@@ -196,6 +197,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
     const startedAt = performance.now();
     const timeouts: number[] = [];
+    // This run's identity. A superseded run's `.finally(finish)` on
+    // its warm promise cannot be cancelled; its orphan timers check
+    // this token so they only ever hide/clear THEIR OWN transition,
+    // never a later still-in-flight one (adversarial review).
+    const requestToken = liveTransition;
     const finish = () => {
       if (settled) return;
       settled = true;
@@ -203,10 +209,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
       const remaining =
         elapsed < instantThresholdMs ? 0 : Math.max(0, holdMs - elapsed);
       const hideTimeout = window.setTimeout(() => {
-        setLiveTransitionVisible(false);
+        if (isLiveSurfaceTransition(requestToken)) {
+          setLiveTransitionVisible(false);
+        }
       }, remaining);
       const clearTimeoutId = window.setTimeout(() => {
-        clearLiveSurfaceTransition();
+        clearLiveSurfaceTransition(requestToken);
       }, remaining + fadeMs);
       timeouts.push(hideTimeout, clearTimeoutId);
     };

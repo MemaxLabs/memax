@@ -51,7 +51,6 @@ import {
   useBulkNotificationSeen,
   useNotificationDismiss,
   useNotifications,
-  useNotificationSummary,
 } from "@/hooks/use-notifications";
 import {
   HIGHLIGHT_KINDS,
@@ -125,7 +124,17 @@ function bulkSeenKinds(buckets: DrawerBuckets): string[] {
   return [...kinds];
 }
 
-function useDrawerData() {
+/**
+ * Exported: the bell/nav-row badge counts THIS hook's `unseen`, not
+ * the server summary's updates_unseen. The summary bucket is wider
+ * than the drawer (onboarding system_notice, digest, producerless
+ * scaffold kinds all count there but never render here), so a badge
+ * driven by it could show a number the drawer cannot clear — the
+ * founder hit exactly that: 全部已读 "did nothing" against a count
+ * fed by rows the drawer deliberately doesn't own. One classifier,
+ * one number: what the badge counts is what the panel can clear.
+ */
+export function useDrawerData(): DrawerBuckets {
   const { data } = useNotifications();
   const rows = useMemo(() => data?.notifications ?? [], [data]);
   return useMemo(() => classifyDrawerRows(rows), [rows]);
@@ -258,7 +267,7 @@ export function NotificationDrawerPanel() {
         <span className="text-[13px] font-semibold text-fg-1">
           {t.notificationDrawer.title}
         </span>
-        {!empty ? (
+        {buckets.unseen > 0 ? (
           <button
             type="button"
             onClick={() =>
@@ -315,8 +324,7 @@ export function NotificationDrawerPanel() {
 export function NotificationBell() {
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
-  const { data: summary } = useNotificationSummary();
-  const unseen = summary?.updates_unseen ?? 0;
+  const { unseen } = useDrawerData();
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger

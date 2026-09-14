@@ -34,8 +34,10 @@ import { Bell, Compass, Search } from "lucide-react";
 import { MemaxLogo, MemaxTextLogo } from "@memaxlabs/ui";
 import { useBar } from "@/contexts/bar-context";
 import { OnboardingMechanismModal } from "@/components/features/onboarding-mechanism-modal";
-import { MobileNotificationSheet } from "@/components/features/notification-drawer";
-import { useNotificationSummary } from "@/hooks/use-notifications";
+import {
+  MobileNotificationSheet,
+  useDrawerData,
+} from "@/components/features/notification-drawer";
 import { useShellState } from "@/contexts/shell-state-context";
 import { MobileTopBar } from "./mobile-top-bar";
 import { MobileDrawer } from "./mobile-drawer";
@@ -311,8 +313,10 @@ function DrawerContent({
 /** The drawer nav's 通知 row — count badge from the shared summary. */
 function NotificationsDrawerRow({ onOpen }: { onOpen: () => void }) {
   const { t } = useLocale();
-  const { data: summary } = useNotificationSummary();
-  const unseen = summary?.updates_unseen ?? 0;
+  // Same source as the desktop bell — the drawer's own classifier
+  // (see useDrawerData's doc: the badge must only count what the
+  // panel can clear).
+  const { unseen } = useDrawerData();
   return (
     <button
       type="button"

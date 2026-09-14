@@ -9,7 +9,9 @@ import type { MemoriesListResponse } from "./use-memories";
 
 export const RECENT_PREVIEW_LIMIT = 5;
 export const RECENT_PAGE_LIMIT = 20;
-export const TIME_WINDOWS = ["12h", "1d", "3d", "7d"] as const;
+// "all" leads: 记忆片段 (2026-09) defaults to the FULL timeline —
+// time windows are a filter the user applies, not a default cutoff.
+export const TIME_WINDOWS = ["all", "12h", "1d", "3d", "7d"] as const;
 export type TimeWindow = (typeof TIME_WINDOWS)[number];
 export type RecentActor =
   | "all"
@@ -18,7 +20,7 @@ export type RecentActor =
   | `author:${string}`;
 export type RecentMode = "preview" | "full";
 
-const WINDOW_MS: Record<TimeWindow, number> = {
+const WINDOW_MS: Record<Exclude<TimeWindow, "all">, number> = {
   "12h": 12 * 3600_000,
   "1d": 24 * 3600_000,
   "3d": 3 * 24 * 3600_000,
@@ -98,7 +100,8 @@ function normalizeRecentResponse(
   return res;
 }
 
-function createdAfterForWindow(window: TimeWindow): string {
+function createdAfterForWindow(window: TimeWindow): string | undefined {
+  if (window === "all") return undefined; // full timeline — no cutoff
   return new Date(Date.now() - WINDOW_MS[window]).toISOString();
 }
 

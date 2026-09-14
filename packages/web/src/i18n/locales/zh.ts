@@ -1818,15 +1818,18 @@ export const zh: Translations = {
 
   // Memory view
   memoryView: {
+    // 记忆片段（2026-09，原「新鲜记忆」）——默认是完整时间线，
+    // 时间窗与来源是用户主动加的 filter，不再有 7 天默认截断。
     freshMemory: {
-      zero: "新鲜记忆",
-      one: "新鲜记忆",
-      other: "新鲜记忆",
+      zero: "记忆片段",
+      one: "记忆片段",
+      other: "记忆片段",
     },
     remembering: "记着呢",
     recentEmptyTitle: "还没有新记忆",
     recentEmptyHint: "记住点什么，就会出现在这儿",
     recentFilteredTitle: "过去 {window} 没有记忆",
+    recentFilteredAllTitle: "当前筛选下没有记忆",
     recentFilteredHint: "试试放宽时间范围或切换来源",
     recentErrorTitle: "没能拿到最近的记忆",
     recentErrorDetail: "连接超时，你的记忆没有丢失",
@@ -1834,6 +1837,7 @@ export const zh: Translations = {
     switchToRows: "切换为列表视图",
     switchToCards: "切换为卡片视图",
     filterPast: "过去 {window}",
+    filterAllTime: "全部时间",
     filterPastLabel: "筛选最近时间范围",
     filterBy: "筛选",
     filterTimeLabel: "时间",
@@ -1845,7 +1849,6 @@ export const zh: Translations = {
     copiedContent: "已复制",
     loadingMore: "正在加载更多…",
     loadMoreRecent: "再看 {n} 条",
-    collapseRecent: "收起",
     scrollToLoad: "继续下滑加载更多",
     copyForAI: "复制给 AI",
     download: "下载",

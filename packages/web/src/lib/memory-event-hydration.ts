@@ -43,7 +43,7 @@ import { memoryMatchesRecentActor } from "@/lib/recent-actor";
 
 const RECENT_QUERY_PREFIX = ["recent-memories"] as const;
 
-const RECENT_WINDOW_MS: Record<TimeWindow, number> = {
+const RECENT_WINDOW_MS: Record<Exclude<TimeWindow, "all">, number> = {
   "12h": 12 * 3600_000,
   "1d": 24 * 3600_000,
   "3d": 3 * 24 * 3600_000,
@@ -64,7 +64,10 @@ function isRecentQueryKey(
   return (
     value[0] === "recent-memories" &&
     typeof value[1] === "string" &&
-    (value[2] === "12h" ||
+    // Keep in lockstep with TIME_WINDOWS — miss one and SSE-arrived
+    // memories silently stop patching that window's cache.
+    (value[2] === "all" ||
+      value[2] === "12h" ||
       value[2] === "1d" ||
       value[2] === "3d" ||
       value[2] === "7d") &&
@@ -74,6 +77,7 @@ function isRecentQueryKey(
 }
 
 function memoryWithinWindow(memory: Memory, window: TimeWindow) {
+  if (window === "all") return true; // full timeline — everything belongs
   return (
     Date.now() - new Date(memory.created_at).getTime() <=
     RECENT_WINDOW_MS[window]

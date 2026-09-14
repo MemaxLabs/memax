@@ -67,9 +67,12 @@ describe("hub route readiness", () => {
     });
     expect(getRecentMemoriesInfiniteQueryOptions).toHaveBeenCalledWith({
       hubId: "hub-2",
-      window: "7d",
+      // 记忆片段 default: full timeline, paged full mode — the warm
+      // must mirror the section's query key exactly or it pre-fills
+      // a cache nothing reads.
+      window: "all",
       actor: "all",
-      expanded: false,
+      expanded: true,
     });
     expect(ensureQueryData).toHaveBeenCalledTimes(2);
     expect(fetchInfiniteQuery).toHaveBeenCalledTimes(2);

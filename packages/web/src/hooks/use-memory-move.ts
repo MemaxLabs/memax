@@ -45,7 +45,7 @@ import { recentActorForMemory } from "@/lib/recent-actor";
 
 const RECENT_QUERY_PREFIX = ["recent-memories"] as const;
 const TOPIC_QUERY_PREFIX = ["topics"] as const;
-const WINDOW_MS: Record<TimeWindow, number> = {
+const WINDOW_MS: Record<Exclude<TimeWindow, "all">, number> = {
   "12h": 12 * 3600_000,
   "1d": 24 * 3600_000,
   "3d": 3 * 24 * 3600_000,
@@ -142,6 +142,7 @@ function isTopicMemoriesQueryKey(
 }
 
 function isWithinRecentWindow(memory: Memory, window: TimeWindow) {
+  if (window === "all") return true; // full timeline — everything belongs
   return (
     Date.now() - new Date(memory.created_at).getTime() <= WINDOW_MS[window]
   );

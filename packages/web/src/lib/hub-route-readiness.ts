@@ -34,9 +34,12 @@ const HUB_ROUTE_READINESS_CONTRACTS: Record<
       queryClient.fetchInfiniteQuery(
         getRecentMemoriesInfiniteQueryOptions({
           hubId,
-          window: "7d",
+          // Mirror 记忆片段's default query exactly (full timeline,
+          // paged full mode) so the warm actually pre-fills the cache
+          // the section reads on landing.
+          window: "all",
           actor: "all",
-          expanded: false,
+          expanded: true,
         }),
       ),
   ],

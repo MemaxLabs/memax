@@ -813,7 +813,7 @@ func TestMCPToolPush_QuotaDenied(t *testing.T) {
 	h := NewMCPHandler(s, nil, nil, nil)
 	denied := false
 	h.SetOpGuard(
-		func(_ *http.Request, userID, op, billingHubID string) (func(bool), *meterctx.OpDenial) {
+		func(_ *http.Request, userID, op, billingHubID string) (func(bool), *model.UserLimits, *meterctx.OpDenial) {
 			if op != "push" {
 				t.Fatalf("expected op push, got %q", op)
 			}
@@ -824,7 +824,7 @@ func TestMCPToolPush_QuotaDenied(t *testing.T) {
 				t.Fatalf("expected billing hub h1, got %q", billingHubID)
 			}
 			denied = true
-			return func(bool) {}, &meterctx.OpDenial{
+			return func(bool) {}, nil, &meterctx.OpDenial{
 				Op: "push", Current: 500, Limit: 500,
 				PlanID: "hub_free_team", PlanName: "Free Team",
 			}
@@ -873,14 +873,14 @@ func TestMCPToolPush_QuotaCommitLifecycle(t *testing.T) {
 	h := NewMCPHandler(s, nil, nil, nil)
 	var commits, rollbacks int
 	h.SetOpGuard(
-		func(_ *http.Request, _, _, _ string) (func(bool), *meterctx.OpDenial) {
+		func(_ *http.Request, _, _, _ string) (func(bool), *model.UserLimits, *meterctx.OpDenial) {
 			return func(committed bool) {
 				if committed {
 					commits++
 				} else {
 					rollbacks++
 				}
-			}, nil
+			}, nil, nil
 		},
 		nil,
 	)
@@ -969,14 +969,14 @@ func TestMCPToolPush_QuotaRollbackOnToolError(t *testing.T) {
 	h := NewMCPHandler(s, nil, nil, nil)
 	var commits, rollbacks int
 	h.SetOpGuard(
-		func(_ *http.Request, _, _, _ string) (func(bool), *meterctx.OpDenial) {
+		func(_ *http.Request, _, _, _ string) (func(bool), *model.UserLimits, *meterctx.OpDenial) {
 			return func(committed bool) {
 				if committed {
 					commits++
 				} else {
 					rollbacks++
 				}
-			}, nil
+			}, nil, nil
 		},
 		nil,
 	)
@@ -1025,11 +1025,11 @@ func TestMCPToolRecall_QuotaDenied(t *testing.T) {
 	recallH := NewRecallHandler(s, nil, nil, nil, nil)
 	h := NewMCPHandler(s, recallH, nil, nil)
 	h.SetOpGuard(
-		func(_ *http.Request, _, op, _ string) (func(bool), *meterctx.OpDenial) {
+		func(_ *http.Request, _, op, _ string) (func(bool), *model.UserLimits, *meterctx.OpDenial) {
 			if op != "recall" {
 				t.Fatalf("expected op recall, got %q", op)
 			}
-			return func(bool) {}, &meterctx.OpDenial{Op: "recall", Current: 10, Limit: 10}
+			return func(bool) {}, nil, &meterctx.OpDenial{Op: "recall", Current: 10, Limit: 10}
 		},
 		func(_ *meterctx.OpDenial) string { return "recall quota exceeded" },
 	)
@@ -1064,14 +1064,14 @@ func TestMCPToolRecall_QuotaCommitsOnPipelineRun(t *testing.T) {
 	h := NewMCPHandler(s, recallH, nil, nil)
 	var commits, rollbacks int
 	h.SetOpGuard(
-		func(_ *http.Request, _, _, _ string) (func(bool), *meterctx.OpDenial) {
+		func(_ *http.Request, _, _, _ string) (func(bool), *model.UserLimits, *meterctx.OpDenial) {
 			return func(committed bool) {
 				if committed {
 					commits++
 				} else {
 					rollbacks++
 				}
-			}, nil
+			}, nil, nil
 		},
 		nil,
 	)
@@ -1094,5 +1094,92 @@ func TestMCPToolRecall_QuotaCommitsOnPipelineRun(t *testing.T) {
 	}
 	if commits != 1 || rollbacks != 0 {
 		t.Fatalf("pipeline ran (empty results) → exactly one commit: commits=%d rollbacks=%d", commits, rollbacks)
+	}
+}
+
+// TestMCPToolPush_InventoryDenied — REST-create parity (codex
+// round-2 High): a user at their memory cap must be refused over MCP
+// too, with the push-op reservation rolled back and no row created.
+func TestMCPToolPush_InventoryDenied(t *testing.T) {
+	s := store.NewInMemoryStore()
+	s.AddUser(&model.User{ID: "u1", Email: "u@example.com"})
+	if err := s.CreateHub(&model.Hub{ID: "h1", OwnerID: "u1", HubType: "personal", Slug: "personal"}); err != nil {
+		t.Fatal(err)
+	}
+	h := NewMCPHandler(s, nil, nil, nil)
+	var opCommits, opRollbacks int
+	h.SetOpGuard(
+		func(_ *http.Request, _, _, _ string) (func(bool), *model.UserLimits, *meterctx.OpDenial) {
+			return func(committed bool) {
+				if committed {
+					opCommits++
+				} else {
+					opRollbacks++
+				}
+			}, &model.UserLimits{MemoryLimit: 300, PlanDisplayName: "Free"}, nil
+		},
+		nil,
+	)
+	var invRollbacks int
+	h.SetInventoryGuard(
+		func(_ context.Context, _ string, limit int) (bool, int, func(), func()) {
+			if limit != 300 {
+				t.Fatalf("owner reserve should see plan MemoryLimit 300, got %d", limit)
+			}
+			return false, 300, func() {}, func() { invRollbacks++ }
+		},
+		nil,
+	)
+
+	w := doMCPQuotaRequest(t, h, "u1", "h1",
+		mcpQuotaBody(t, "memax_push", map[string]any{"content": "hello"}))
+	var resp struct {
+		Result mcpToolResult `json:"result"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.Result.IsError || !strings.Contains(resp.Result.Content[0].Text, "Memory limit reached (300/300)") {
+		t.Fatalf("expected inventory denial, got %s", w.Body.String())
+	}
+	if opCommits != 0 || opRollbacks != 1 {
+		t.Fatalf("denied inventory must roll the op back: commits=%d rollbacks=%d", opCommits, opRollbacks)
+	}
+	mems, _ := s.ListMemories("u1", 10)
+	if len(mems) != 0 {
+		t.Fatalf("denied push must not create a memory, found %d", len(mems))
+	}
+}
+
+// TestMCPToolPush_InventoryCommitsWithOp — success commits the owner
+// reserve together with the op.
+func TestMCPToolPush_InventoryCommitsWithOp(t *testing.T) {
+	s := store.NewInMemoryStore()
+	s.AddUser(&model.User{ID: "u1", Email: "u@example.com"})
+	if err := s.CreateHub(&model.Hub{ID: "h1", OwnerID: "u1", HubType: "personal", Slug: "personal"}); err != nil {
+		t.Fatal(err)
+	}
+	h := NewMCPHandler(s, nil, nil, nil)
+	h.SetOpGuard(
+		func(_ *http.Request, _, _, _ string) (func(bool), *model.UserLimits, *meterctx.OpDenial) {
+			return func(bool) {}, &model.UserLimits{MemoryLimit: -1}, nil
+		},
+		nil,
+	)
+	var invCommits, invRollbacks int
+	h.SetInventoryGuard(
+		func(_ context.Context, _ string, _ int) (bool, int, func(), func()) {
+			return true, 0, func() { invCommits++ }, func() { invRollbacks++ }
+		},
+		nil,
+	)
+
+	w := doMCPQuotaRequest(t, h, "u1", "h1",
+		mcpQuotaBody(t, "memax_push", map[string]any{"content": "hello"}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	if invCommits != 1 || invRollbacks != 0 {
+		t.Fatalf("success must commit inventory once: commits=%d rollbacks=%d", invCommits, invRollbacks)
 	}
 }

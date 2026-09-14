@@ -49,8 +49,13 @@ type MCPHandler struct {
 	mode          mcpMode
 	sessions      sync.Map // sessionID -> *mcpSession
 	logEvent      LogEventFn
-	beginOp       func(r *http.Request, userID, op, billingHubID string) (func(bool), *meterctx.OpDenial)
+	beginOp       func(r *http.Request, userID, op, billingHubID string) (func(bool), *model.UserLimits, *meterctx.OpDenial)
 	denialMessage func(*meterctx.OpDenial) string
+	// Inventory reserves (REST create parity, codex round-2 High):
+	// owner memory-count cap + team-hub memory cap. Injected like the
+	// op guard; nil = unmetered mode.
+	reserveOwnerMemory func(ctx context.Context, ownerID string, limit int) (ok bool, current int, commit, rollback func())
+	reserveHubMemory   func(ctx context.Context, hubID string) (ok bool, commit, rollback func())
 }
 
 type mcpMode string
@@ -89,11 +94,25 @@ func (h *MCPHandler) SetLogEvent(fn LogEventFn) {
 // Nil-safe: without a guard (dev/memory mode, tests) tools run
 // unmetered, exactly the pre-2026-09 behavior.
 func (h *MCPHandler) SetOpGuard(
-	begin func(r *http.Request, userID, op, billingHubID string) (func(committed bool), *meterctx.OpDenial),
+	begin func(r *http.Request, userID, op, billingHubID string) (func(committed bool), *model.UserLimits, *meterctx.OpDenial),
 	message func(*meterctx.OpDenial) string,
 ) {
 	h.beginOp = begin
 	h.denialMessage = message
+}
+
+// SetInventoryGuard wires the memory-count reserves (owner cap +
+// team-hub cap) that REST's create handler enforces — MCP creates
+// must hit the same inventory gates (codex round-2 High: a user at
+// their memory cap could keep creating rows over MCP until the
+// monthly push quota stopped them). Same injection rationale as
+// SetOpGuard.
+func (h *MCPHandler) SetInventoryGuard(
+	reserveOwner func(ctx context.Context, ownerID string, limit int) (ok bool, current int, commit, rollback func()),
+	reserveHub func(ctx context.Context, hubID string) (ok bool, commit, rollback func()),
+) {
+	h.reserveOwnerMemory = reserveOwner
+	h.reserveHubMemory = reserveHub
 }
 
 // guardOp reserves one metered op for a tool call. ok=false means the
@@ -106,11 +125,11 @@ func (h *MCPHandler) guardOp(
 	r *http.Request,
 	id any,
 	userID, op, billingHubID string,
-) (finish func(bool), ok bool) {
+) (finish func(bool), limits *model.UserLimits, ok bool) {
 	if h.beginOp == nil {
-		return func(bool) {}, true
+		return func(bool) {}, nil, true
 	}
-	finish, denial := h.beginOp(r, userID, op, billingHubID)
+	finish, limits, denial := h.beginOp(r, userID, op, billingHubID)
 	if denial != nil {
 		text := "Quota exceeded."
 		if h.denialMessage != nil {
@@ -120,9 +139,74 @@ func (h *MCPHandler) guardOp(
 			Content: []mcpContent{{Type: "text", Text: text}},
 			IsError: true,
 		})
-		return nil, false
+		return nil, nil, false
 	}
-	return finish, true
+	return finish, limits, true
+}
+
+// guardInventory mirrors REST create's inventory chain for an MCP
+// memory create: frozen-hub short-circuit, owner memory-count
+// reserve, team-hub memory-count reserve. Returns commit/rollback
+// covering BOTH reserves (never nil) and ok=false with the MCP error
+// already written. `limits` nil (unmetered/fail-open) skips the
+// owner cap, matching how REST behaves without a meter.
+func (h *MCPHandler) guardInventory(
+	w http.ResponseWriter,
+	r *http.Request,
+	id any,
+	ownerID string,
+	limits *model.UserLimits,
+	hub *model.Hub,
+) (commit func(), rollback func(), ok bool) {
+	noop := func() {}
+	commit, rollback = noop, noop
+	// Frozen team hub refuses writes before any reservation — same
+	// order as REST (memories.go), so no counter is held for a hub
+	// that won't accept the row.
+	if hub.HubType == "team" {
+		sub, _ := h.store.GetHubSubscriptionAnyStatus(r.Context(), hub.ID)
+		if model.IsHubFrozen(sub, time.Now().UTC()) {
+			writeRPCResult(w, id, mcpToolResult{
+				Content: []mcpContent{{Type: "text", Text: "Hub is frozen. The hub owner needs to resolve the over-limit state (upgrade the plan or delete memories) before pushes can resume."}},
+				IsError: true,
+			})
+			return noop, noop, false
+		}
+	}
+	ownerCommit, ownerRollback := noop, noop
+	if h.reserveOwnerMemory != nil && limits != nil {
+		allowed, current, c, rb := h.reserveOwnerMemory(r.Context(), ownerID, limits.MemoryLimit)
+		if !allowed {
+			writeRPCResult(w, id, mcpToolResult{
+				Content: []mcpContent{{Type: "text", Text: fmt.Sprintf("Memory limit reached (%d/%d) on plan %s. Forget old memories or upgrade for more space.", current, limits.MemoryLimit, limits.PlanDisplayName)}},
+				IsError: true,
+			})
+			return noop, noop, false
+		}
+		ownerCommit, ownerRollback = c, rb
+	}
+	hubCommit, hubRollback := noop, noop
+	if hub.HubType == "team" && h.reserveHubMemory != nil {
+		allowed, c, rb := h.reserveHubMemory(r.Context(), hub.ID)
+		if !allowed {
+			ownerRollback()
+			// Start (or keep) the grace-period clock, idempotently —
+			// the same edge REST records. The transition notification
+			// stays with REST/the sweep; MCP only stamps the clock.
+			if _, err := h.store.SetHubOverLimit(r.Context(), hub.ID, time.Now().UTC()); err != nil {
+				slog.Warn("mcp: set hub over_limit_since failed", "hub_id", hub.ID, "err", err)
+			}
+			writeRPCResult(w, id, mcpToolResult{
+				Content: []mcpContent{{Type: "text", Text: "This hub is at its memory limit. The hub owner needs to upgrade the plan or free up space."}},
+				IsError: true,
+			})
+			return noop, noop, false
+		}
+		hubCommit, hubRollback = c, rb
+	}
+	return func() { ownerCommit(); hubCommit() },
+		func() { ownerRollback(); hubRollback() },
+		true
 }
 
 func (h *MCPHandler) publishMemoryChanged(ctx context.Context, memory *model.Memory, actorID string) {
@@ -464,7 +548,7 @@ func (h *MCPHandler) toolRecall(w http.ResponseWriter, r *http.Request, id any, 
 
 	// Same recall quota as REST /v1/recall. Reads bill the active
 	// read hub (resolveBillingHub's read rule).
-	finishOp, opOK := h.guardOp(w, r, id, ownerID, "recall", GetHubID(r))
+	finishOp, _, opOK := h.guardOp(w, r, id, ownerID, "recall", GetHubID(r))
 	if !opOK {
 		return
 	}
@@ -630,12 +714,26 @@ func (h *MCPHandler) toolPush(w http.ResponseWriter, r *http.Request, id any, ar
 	// (this transport used to walk straight past it). Billing hub =
 	// the resolved TARGET hub, mirroring resolveBillingHub's write
 	// rule; the resolver routes personal hubs to the owner's plan.
-	finishOp, opOK := h.guardOp(w, r, id, ownerID, "push", hubID)
+	finishOp, opLimits, opOK := h.guardOp(w, r, id, ownerID, "push", hubID)
 	if !opOK {
 		return
 	}
 	opCommitted := false
 	defer func() { finishOp(opCommitted) }()
+
+	// Inventory gates — owner memory cap + team-hub cap + frozen
+	// check, REST-create parity (codex round-2 High).
+	invCommit, invRollback, invOK := h.guardInventory(w, r, id, ownerID, opLimits, hub)
+	if !invOK {
+		return
+	}
+	defer func() {
+		if opCommitted {
+			invCommit()
+		} else {
+			invRollback()
+		}
+	}()
 
 	memoryID := generateMCPID()
 	now := time.Now()
@@ -1090,12 +1188,35 @@ func (h *MCPHandler) toolCapture(w http.ResponseWriter, r *http.Request, id any,
 	}
 
 	// Same push quota as REST + toolPush — capture creates a memory.
-	finishOp, opOK := h.guardOp(w, r, id, ownerID, "push", hubID)
+	finishOp, opLimits, opOK := h.guardOp(w, r, id, ownerID, "push", hubID)
 	if !opOK {
 		return
 	}
 	opCommitted := false
 	defer func() { finishOp(opCommitted) }()
+
+	// Inventory gates — same chain as toolPush (capture creates a
+	// memory row too). The hub row read is capture's own resolved
+	// target.
+	captureHub, hubErr := h.store.GetHub(hubID)
+	if hubErr != nil || captureHub == nil {
+		writeRPCResult(w, id, mcpToolResult{
+			Content: []mcpContent{{Type: "text", Text: "Hub not found or not accessible."}},
+			IsError: true,
+		})
+		return
+	}
+	invCommit, invRollback, invOK := h.guardInventory(w, r, id, ownerID, opLimits, captureHub)
+	if !invOK {
+		return
+	}
+	defer func() {
+		if opCommitted {
+			invCommit()
+		} else {
+			invRollback()
+		}
+	}()
 	authAgent := resolveAuthSourceAgent(r)
 	if authAgent == "" {
 		writeRPCResult(w, id, mcpToolResult{

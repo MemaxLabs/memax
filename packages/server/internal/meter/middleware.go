@@ -222,22 +222,25 @@ func (m *Meter) resolveOpLimits(r *http.Request, userID, op, billingHubID string
 // guards. Usage-event LOGGING stays with the caller — MCP tools
 // already write their own events via SetLogEvent, and logging here
 // too would double-count rows.
+// The returned *UserLimits is the resolved plan (nil on the fail-open
+// paths) so callers can enforce sibling limits — MCP push uses
+// MemoryLimit for the inventory reserve the REST create handler does.
 func (m *Meter) BeginOp(
 	r *http.Request,
 	userID, op, billingHubID string,
-) (func(committed bool), *meterctx.OpDenial) {
+) (func(committed bool), *model.UserLimits, *meterctx.OpDenial) {
 	noop := func(bool) {}
 	if userID == "" || op == "" {
-		return noop, nil
+		return noop, nil, nil
 	}
 	limits, ok := m.resolveOpLimits(r, userID, op, billingHubID)
 	if !ok {
-		return noop, nil // fail open, mirroring the middleware
+		return noop, nil, nil // fail open, mirroring the middleware
 	}
 	limit := operationLimit(op, &limits)
 	token, allowed, current := m.Reserve(r.Context(), userID, op, limit)
 	if !allowed {
-		return noop, &meterctx.OpDenial{
+		return noop, nil, &meterctx.OpDenial{
 			Op:       op,
 			Current:  int(current),
 			Limit:    limit,
@@ -251,7 +254,7 @@ func (m *Meter) BeginOp(
 		} else {
 			token.Rollback()
 		}
-	}, nil
+	}, &limits, nil
 }
 
 // OpDenialMessage phrases a denial for a text-protocol client (MCP

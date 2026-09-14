@@ -22,6 +22,9 @@ type hubAwarePlanResolver interface {
 	ResolveReadEntitlements(ctx context.Context, userID string) model.ResolvedEntitlements
 	ResolvePersonalWriteEntitlements(ctx context.Context, userID string) model.ResolvedEntitlements
 	ResolveHubWriteEntitlements(ctx context.Context, userID, hubID string) model.ResolvedEntitlements
+	// Hub-level memory cap for the MCP inventory guard (post-#60 this
+	// returns -1 for personal hubs).
+	GetHubMemoryLimit(ctx context.Context, hubID string) int
 }
 
 type routeDeps struct {
@@ -365,6 +368,26 @@ func registerMCPRoutes(root *http.ServeMux, withAuth func(http.Handler) http.Han
 		// meter back.
 		mcpH.SetOpGuard(deps.meter.BeginOp, meter.OpDenialMessage)
 		chatGPTH.SetOpGuard(deps.meter.BeginOp, meter.OpDenialMessage)
+		// Inventory parity (codex round-2): MCP creates hit the same
+		// owner/hub memory-count gates as REST create.
+		reserveOwner := func(ctx context.Context, ownerID string, limit int) (bool, int, func(), func()) {
+			allowed, current := deps.meter.ReserveMemoryCount(ctx, ownerID, limit)
+			return allowed, current,
+				func() { deps.meter.CommitMemoryCount(context.Background(), ownerID) },
+				func() { deps.meter.RollbackMemoryCount(context.Background(), ownerID) }
+		}
+		var reserveHub func(ctx context.Context, hubID string) (bool, func(), func())
+		if deps.hubResolver != nil {
+			reserveHub = func(ctx context.Context, hubID string) (bool, func(), func()) {
+				limit := deps.hubResolver.GetHubMemoryLimit(ctx, hubID)
+				allowed, _ := deps.meter.ReserveHubMemoryCount(ctx, hubID, limit)
+				return allowed,
+					func() { deps.meter.CommitHubMemoryCount(context.Background(), hubID) },
+					func() { deps.meter.RollbackHubMemoryCount(context.Background(), hubID) }
+			}
+		}
+		mcpH.SetInventoryGuard(reserveOwner, reserveHub)
+		chatGPTH.SetInventoryGuard(reserveOwner, reserveHub)
 	}
 	mcpProtected := http.NewServeMux()
 	mcpProtected.Handle("/mcp", mcpH)

@@ -6,6 +6,17 @@ export const en = {
     // Back control in sub-panel headers (menu-sub-panel.tsx).
     backToMenu: "Back to menu",
   },
+  // Notification drawer — the app's one notification home (design
+  // doc artifact 5a85ee8c).
+  notificationDrawer: {
+    title: "Notifications",
+    openAria: "Open notifications",
+    markAllRead: "Mark all read",
+    sectionPinned: "Pinned",
+    sectionNews: "Activity",
+    sectionReceipts: "Receipts",
+    empty: "All quiet — nothing new",
+  },
   billing: {
     upgrade: "Upgrade",
   },
@@ -21,6 +32,7 @@ export const en = {
     // should read from the names alone.
     search: "Quick search",
     gettingStarted: "Getting started",
+    notifications: "Notifications",
     openBar: "Open bar (⌘K)",
     openSettings: "Open settings",
     topicTreeRegion: "Topics",
@@ -917,6 +929,8 @@ export const en = {
 
   board: {
     actionAck: "Got it",
+    // Member-joined pinned card's acknowledge verb — seen, not deleted.
+    highlightAck: "Got it",
     actionDismiss: "Not interested",
     moreActions: "More actions",
     kindFilterAll: "All",

@@ -44,14 +44,12 @@ import { ArrowRight, X } from "lucide-react";
 import { BoardKindLabel } from "@memaxlabs/ui";
 import { useInterpolate, useLocale } from "@/i18n";
 import { formatAge } from "@/lib/format-age";
-import { inboxKindLabel } from "@/components/features/inbox/inbox-control";
 import type { CustomBoardWithSlots } from "@/hooks/use-board";
 import { boardKindStripSummary, slotContentTime } from "./board-kind-registry";
 import { boardDisplayTitle } from "./board-custom-boards";
 import {
   boardKindVisual,
   COOKING_KIND,
-  HIGHLIGHT_KIND,
   WAITING_KIND,
 } from "./board-kind-visuals";
 import {
@@ -110,7 +108,6 @@ export function groupSlotsByKind(slots: readonly BoardSlot[]): BoardSlot[][] {
 
 export function BoardShelf({
   waiting,
-  highlights,
   slots,
   customBoards,
   cookingBoards,
@@ -118,16 +115,9 @@ export function BoardShelf({
   onOpenSlot,
   onOpenBoards,
   onDismissSlot,
-  onDismissNotification,
 }: {
   /** 等你 decisions — first tile shows the top one + depth badge. */
   waiting: readonly BoardNotificationCardModel[];
-  /**
-   * Highlights (hub_member_joined) — one tile each, right after the
-   * 等你 deck tiles; tapping navigates to the pulse surface where the
-   * standalone BoardHighlightCard renders.
-   */
-  highlights: readonly BoardNotificationCardModel[];
   /** System-board slots; receipts are filtered out here. */
   slots: readonly BoardSlot[];
   /**
@@ -145,8 +135,6 @@ export function BoardShelf({
   onOpenBoards: () => void;
   /** Tile × on a slot tile → resolve action="dismiss" (optimistic). */
   onDismissSlot?: (slotKey: string, boardId: string) => void;
-  /** Tile × on a highlight tile → notification dismiss (optimistic). */
-  onDismissNotification?: (id: string) => void;
 }) {
   const { t } = useLocale();
   const interpolate = useInterpolate();
@@ -170,27 +158,6 @@ export function BoardShelf({
         body={top.description || undefined}
         when={age(top.item.created_at)}
         onClick={onOpenDeck}
-      />,
-    );
-  }
-  // Highlights (new member joined) — high-signal news, right behind
-  // the decisions and ahead of the lane B intelligence.
-  for (const card of highlights) {
-    tiles.push(
-      <BoardTile
-        key={`hl-${card.id}`}
-        kind={HIGHLIGHT_KIND}
-        star
-        label={inboxKindLabel(card.item, t)}
-        title={card.title}
-        when={age(card.item.created_at)}
-        onClick={onOpenDeck}
-        onDismiss={
-          onDismissNotification
-            ? () => onDismissNotification(card.id)
-            : undefined
-        }
-        dismissLabel={t.board.actionDismiss}
       />,
     );
   }

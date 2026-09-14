@@ -43,6 +43,7 @@ import { Compass, Search } from "lucide-react";
 import { MemaxLogo, MemaxTextLogo } from "@memaxlabs/ui";
 import { useAuth, useActiveHub } from "@/lib/auth";
 import { HubIdentityChip } from "@/components/features/hub/hub-identity-chip";
+import { NotificationBell } from "@/components/features/notification-drawer";
 import {
   OnboardingMechanismModal,
   type MechanismTab,
@@ -81,12 +82,13 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   const { user, hubs } = useAuth();
   const { activeHub } = useActiveHub();
   const settingsPanel = useSettingsPanel();
+  // Badge split (2026-09, notification drawer): the pulse tab dot is
+  // the CONTENT channel — pending decisions only. Unseen updates
+  // (news / receipts / broadcasts) belong to the footer bell.
   const pulseBadgeTone =
     (notificationSummary?.needs_action_pending ?? 0) > 0
       ? ("needs-action" as const)
-      : (notificationSummary?.updates_unseen ?? 0) > 0
-        ? ("updates" as const)
-        : null;
+      : null;
 
   // The rail is ALWAYS expanded at RAIL_WIDTH (2026-08). It used to
   // derive its width from secondary-panel state under an "always
@@ -371,7 +373,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
             setOnboardingOpen(true);
           }}
           aria-haspopup="dialog"
-          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
+          className="flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
           style={{ color: "var(--fg-2)" }}
         >
           <span className="flex h-6 w-6 shrink-0 items-center justify-center">
@@ -390,14 +392,16 @@ export function LeftRail({ activeTab }: LeftRailProps) {
         />
       )}
 
-      {/* Footer — user avatar opens the SettingsPanel. */}
-      <div className="px-2 pb-2 shrink-0">
+      {/* Footer — user avatar opens the SettingsPanel; the bell
+          beside it is the notification drawer's desktop home
+          (founder placement, 2026-09-14). */}
+      <div className="flex items-center gap-1 px-2 pb-2 shrink-0">
         <button
           type="button"
           onClick={settingsPanel.toggle}
           aria-label={t.nav.openSettings}
           aria-expanded={settingsPanel.open}
-          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
+          className="flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
           style={{ color: "var(--fg-2)" }}
         >
           <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-2">
@@ -418,6 +422,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
             {user?.name ?? t.nav.openSettings}
           </span>
         </button>
+        <NotificationBell />
       </div>
     </aside>
   );

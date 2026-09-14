@@ -40,6 +40,7 @@ import {
 } from "@/hooks/use-board";
 import {
   useNotificationDismiss,
+  useNotificationMarkSeen,
   useResolveNotification,
 } from "@/hooks/use-notifications";
 import type { NotificationResolveAction } from "memax-sdk";
@@ -57,7 +58,6 @@ import {
   BoardHighlightCard,
   BoardNotificationDeck,
   groupWaitingByKind,
-  BoardRecentRow,
   useBoardNotificationCards,
 } from "./board-notification-cards";
 import { BoardShelf, groupSlotsByKind } from "./board-shelf";
@@ -198,6 +198,7 @@ export function BoardView({
   const notifications = useBoardNotificationCards(hubId, isPersonalHub, isPage);
   const resolveNotification = useResolveNotification();
   const dismissNotification = useNotificationDismiss();
+  const markSeen = useNotificationMarkSeen();
   // Personal-board aggregation controls: one-click hide a source hub
   // from the aggregated view (persisted cross-device in settings),
   // plus a restore affordance under the 最近 strip.
@@ -261,7 +262,6 @@ export function BoardView({
       setCollapsedCards(new Set());
     }
   }, [hubId]);
-  const [recentOpen, setRecentOpen] = useState(false);
   // Example chip → ghost-composer prefill (empty-state teaching
   // moment). The ghost re-keys its composer on this so a chip tap
   // always lands its copy.
@@ -297,8 +297,19 @@ export function BoardView({
 
   const slots = useMemo(() => data?.slots ?? [], [data]);
   const waiting = notifications.waiting;
-  const highlights = notifications.highlights;
-  const recent = notifications.recent;
+  // Highlights (member joined) live in the notification drawer now
+  // (2026-09 design doc 5a85ee8c). The board keeps ONE exposure: an
+  // UNSEEN highlight pins once at the top of a TEAM hub's pulse page
+  // (a new teammate is news); 收下 marks it seen — it stays in the
+  // drawer's 动态 section, never re-pins. Personal aggregated views
+  // and the embedded shelf show none (multi-hub noise).
+  const highlights = useMemo(
+    () =>
+      isPage && !isPersonalHub
+        ? notifications.highlights.filter((card) => !card.item.seen)
+        : [],
+    [isPage, isPersonalHub, notifications.highlights],
+  );
   const pinned = isPage ? notifications.pinned : [];
 
   const liveSlots = useMemo(
@@ -487,18 +498,6 @@ export function BoardView({
     },
     [hubId, resolve],
   );
-  const onDismissNotificationFromShelf = useCallback(
-    (id: string) => {
-      trackEvent("board_card_action", {
-        hub_id: hubId,
-        kind: "shelf",
-        slot_key: id,
-        action: "dismiss",
-      });
-      dismissNotification.mutate(id);
-    },
-    [hubId, dismissNotification],
-  );
 
   // Embedded surface stays zero-height until the hub actually has
   // something. The full page always renders — it needs its header,
@@ -544,8 +543,7 @@ export function BoardView({
     highlights.length === 0 &&
     customLiveCount === 0 &&
     cookingBoards.length === 0 &&
-    pinned.length === 0 &&
-    recent.length === 0;
+    pinned.length === 0;
 
   // System slots render in server order; live same-kind slots collapse
   // into one deck anchored at the group's first member. Terminal slots
@@ -680,7 +678,6 @@ export function BoardView({
       {collapsedShelf ? (
         <BoardShelf
           waiting={waiting}
-          highlights={highlights}
           slots={slots}
           customBoards={customBoards}
           cookingBoards={cookingBoards}
@@ -693,7 +690,6 @@ export function BoardView({
           }}
           onOpenBoards={() => router.push(pulseHref)}
           onDismissSlot={onDismissSlotFromShelf}
-          onDismissNotification={onDismissNotificationFromShelf}
         />
       ) : null}
 
@@ -772,8 +768,10 @@ export function BoardView({
               key={card.id}
               card={card}
               entranceIndex={(waiting.length > 0 ? 1 : 0) + index}
-              disabled={dismissNotification.isPending}
-              onDismiss={(id) => dismissNotification.mutate(id)}
+              disabled={markSeen.isPending}
+              // 收下 = seen, NOT dismissed: the pin retires but the
+              // row stays in the drawer's 动态 timeline.
+              onDismiss={(id) => markSeen.mutate(id)}
               onHideHub={onHideHub}
             />
           ))
@@ -943,36 +941,8 @@ export function BoardView({
         />
       ) : null}
 
-      {/* ── 最近 — the receipts the retired inbox used to hold. Always
-          collapsed by default: nothing here needs a decision. ── */}
-      {isPage && recent.length > 0 ? (
-        <div className="mt-1 flex flex-col gap-1">
-          <BoardSlotStrip
-            label={t.board.recentTitle}
-            detail={pluralize(
-              t.board.recentDetailOne,
-              t.board.recentDetail,
-              recent.length,
-            )}
-            open={recentOpen}
-            onToggle={() => setRecentOpen((open) => !open)}
-            className="opacity-80"
-          />
-          {recentOpen ? (
-            <div className="animate-fade-up divide-y divide-border/20 rounded-[14px] border border-border/40">
-              {recent.map((card) => (
-                <BoardRecentRow
-                  key={card.id}
-                  card={card}
-                  disabled={dismissNotification.isPending}
-                  onDismiss={(id) => dismissNotification.mutate(id)}
-                  onHideHub={onHideHub}
-                />
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      {/* 最近 receipts moved to the notification drawer (2026-09,
+          design doc 5a85ee8c) — the stream ends at the archive. */}
 
       {/* Restore muted hubs — outside the recent-strip conditional so
           it stays reachable even when hiding emptied the strip. */}

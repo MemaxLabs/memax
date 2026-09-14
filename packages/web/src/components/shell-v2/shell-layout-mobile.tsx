@@ -30,10 +30,12 @@ import { useLocale } from "@/i18n";
 import { useSettingsPanel } from "@/contexts/settings-panel-context";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
 import { buildMemoriesPath, buildPulsePath } from "@/lib/route-helpers";
-import { Compass, Search } from "lucide-react";
+import { Bell, Compass, Search } from "lucide-react";
 import { MemaxLogo, MemaxTextLogo } from "@memaxlabs/ui";
 import { useBar } from "@/contexts/bar-context";
 import { OnboardingMechanismModal } from "@/components/features/onboarding-mechanism-modal";
+import { MobileNotificationSheet } from "@/components/features/notification-drawer";
+import { useNotificationSummary } from "@/hooks/use-notifications";
 import { useShellState } from "@/contexts/shell-state-context";
 import { MobileTopBar } from "./mobile-top-bar";
 import { MobileDrawer } from "./mobile-drawer";
@@ -56,6 +58,9 @@ export function ShellLayoutMobile({ tab, children }: ShellLayoutMobileProps) {
   // keyboard. The drawer closes when the modal opens; the modal
   // renders as a layout sibling.
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  // Notification drawer's mobile host — hoisted here for the same
+  // focus-trap/unmount reasons as the onboarding modal above.
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   return (
     <div
       // `overflow-x: clip` (NOT hidden) — `hidden` on one axis forces
@@ -101,8 +106,16 @@ export function ShellLayoutMobile({ tab, children }: ShellLayoutMobileProps) {
             setDrawerOpen(false);
             setOnboardingOpen(true);
           }}
+          onOpenNotifications={() => {
+            setDrawerOpen(false);
+            setNotificationsOpen(true);
+          }}
         />
       </MobileDrawer>
+      <MobileNotificationSheet
+        open={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+      />
       <HubSwitcherBottomSheet
         open={hubSwitcherOpen}
         onClose={() => setHubSwitcherOpen(false)}
@@ -121,12 +134,15 @@ interface DrawerContentProps {
   /** Opens the 入门与机制 modal — hosted by the layout, not in here,
    *  so it escapes the drawer's focus trap and its unmount. */
   onOpenOnboarding: () => void;
+  /** Opens the notification sheet — hosted by the layout, same reason. */
+  onOpenNotifications: () => void;
 }
 
 function DrawerContent({
   tab: activeTab,
   onNavigate,
   onOpenOnboarding,
+  onOpenNotifications,
 }: DrawerContentProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -212,6 +228,10 @@ function DrawerContent({
           <span>{t.nav.search}</span>
         </button>
 
+        {/* 通知 — the drawer's mobile entry (desktop: rail footer
+            bell). Badge mirrors the bell's updates_unseen count. */}
+        <NotificationsDrawerRow onOpen={onOpenNotifications} />
+
         {/* 入门与机制 — same entry as the desktop rail (C1). */}
         <button
           type="button"
@@ -285,5 +305,33 @@ function DrawerContent({
         </button>
       </div>
     </div>
+  );
+}
+
+/** The drawer nav's 通知 row — count badge from the shared summary. */
+function NotificationsDrawerRow({ onOpen }: { onOpen: () => void }) {
+  const { t } = useLocale();
+  const { data: summary } = useNotificationSummary();
+  const unseen = summary?.updates_unseen ?? 0;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-haspopup="dialog"
+      className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] transition-colors cursor-pointer text-fg-2 hover:bg-foreground/4"
+    >
+      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center">
+        <Bell className="h-5 w-5" strokeWidth={2} />
+        {unseen > 0 ? (
+          <span
+            className="absolute -right-1 -top-1 flex h-[15px] min-w-[15px] items-center justify-center rounded-full px-[3px] text-[9.5px] font-semibold leading-none text-white"
+            style={{ background: "var(--signature)" }}
+          >
+            {unseen > 9 ? "9+" : unseen}
+          </span>
+        ) : null}
+      </span>
+      <span>{t.nav.notifications}</span>
+    </button>
   );
 }

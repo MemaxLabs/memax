@@ -92,7 +92,9 @@ const PINNED_KINDS: ReadonlySet<string> = new Set([
  * hub is news, not a receipt). Rendered by BoardHighlightCard after
  * the 等你 decks and before the slots; single dismiss action.
  */
-const HIGHLIGHT_KINDS: ReadonlySet<string> = new Set(["hub_member_joined"]);
+export const HIGHLIGHT_KINDS: ReadonlySet<string> = new Set([
+  "hub_member_joined",
+]);
 
 /**
  * Receipt kinds — no decision, just "this happened". Mirrors
@@ -101,7 +103,9 @@ const HIGHLIGHT_KINDS: ReadonlySet<string> = new Set(["hub_member_joined"]);
  * kind carries a `review_` prefix), minus the kinds promoted to
  * HIGHLIGHT_KINDS above.
  */
-const RECEIPT_KINDS: ReadonlySet<string> = new Set([
+// Exported: the notification drawer classifies from the SAME tables
+// (single kind source — the triple-copied isRecentQueryKey lesson).
+export const RECEIPT_KINDS: ReadonlySet<string> = new Set([
   "hub_invite_accepted",
   "hub_invite_declined",
   "hub_invite_declined_by_you",

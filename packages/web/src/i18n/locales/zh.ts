@@ -11,6 +11,16 @@ export const zh: Translations = {
     // 二级菜单面板头部的返回控件（menu-sub-panel.tsx）。
     backToMenu: "返回上级菜单",
   },
+  // 通知抽屉——全应用唯一的通知收纳处（设计稿 5a85ee8c）。
+  notificationDrawer: {
+    title: "通知",
+    openAria: "打开通知",
+    markAllRead: "全部已读",
+    sectionPinned: "置顶",
+    sectionNews: "动态",
+    sectionReceipts: "回执",
+    empty: "现在很安静，没有新通知",
+  },
   billing: {
     upgrade: "升级",
   },
@@ -22,6 +32,7 @@ export const zh: Translations = {
     // 两个入口的分工要在名字里读出来：快搜召回 vs 问答合成。
     search: "快速搜索",
     gettingStarted: "入门与机制",
+    notifications: "通知",
     openBar: "打开输入栏 (⌘K)",
     openSettings: "打开设置",
     topicTreeRegion: "话题",

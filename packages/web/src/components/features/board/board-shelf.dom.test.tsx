@@ -116,7 +116,6 @@ describe("BoardShelf", () => {
           waitingCard("n1", "Keep which memory?"),
           waitingCard("n2", "Second decision"),
         ]}
-        highlights={[highlightCard("n3", "Ada joined your hub")]}
         slots={slots}
         customBoards={[
           {
@@ -157,15 +156,15 @@ describe("BoardShelf", () => {
     expect(tiles[0].textContent).toContain("Keep which memory?");
     expect(tiles[0].textContent).toContain("1 more");
     expect(screen.queryByText("Second decision")).toBeNull();
-    // The member-joined highlight gets its OWN tile, right after the
-    // decisions — it does not hide in the 最近 receipts.
-    expect(tiles[1].textContent).toContain("NEW MEMBER");
-    expect(tiles[1].textContent).toContain("Ada joined your hub");
-    // Then lane B; capsule/activity/custom/cooking fall behind the
-    // overflow tile (4 tiles hidden: capsule, activity, custom, 酝酿).
-    expect(tiles[2].textContent).toContain("Echo card");
+    // Highlights live in the notification drawer now — no member-
+    // joined tile. Lane B leads right after the deck; capsule/
+    // activity/custom/cooking fall behind the overflow tile
+    // (3 tiles hidden: activity, custom, 酝酿).
+    expect(screen.queryByText(/NEW MEMBER/)).toBeNull();
+    expect(tiles[1].textContent).toContain("Echo card");
+    expect(tiles[2].textContent).toContain("Capsule card");
     expect(tiles[3].dataset.boardTile).toBe("overflow");
-    expect(tiles[3].textContent).toContain("4 more updates");
+    expect(tiles[3].textContent).toContain("3 more updates");
     // Resolved receipts do not earn shelf space (or an overflow seat).
     expect(screen.queryByText("Resolved dream")).toBeNull();
   });
@@ -179,7 +178,6 @@ describe("BoardShelf", () => {
     const { container } = render(
       <BoardShelf
         waiting={[waitingCard("n1", "Keep which memory?")]}
-        highlights={[highlightCard("n2", "Ada joined")]}
         slots={manySlots}
         customBoards={[]}
         cookingBoards={[]}
@@ -199,7 +197,6 @@ describe("BoardShelf", () => {
     const { container } = render(
       <BoardShelf
         waiting={[]}
-        highlights={[]}
         slots={[
           slot({ slot_key: "s-echo", kind: "echo", title: "Echo card" }),
           slot({ slot_key: "s-cap", kind: "capsule", title: "Capsule card" }),
@@ -222,7 +219,6 @@ describe("BoardShelf", () => {
     const { container } = render(
       <BoardShelf
         waiting={[]}
-        highlights={[]}
         slots={[
           slot({
             slot_key: "s-echo",
@@ -252,7 +248,6 @@ describe("BoardShelf", () => {
     const { container } = render(
       <BoardShelf
         waiting={[]}
-        highlights={[]}
         slots={[
           slot({ slot_key: "s-p1", kind: "pattern", title: "First pattern" }),
           slot({ slot_key: "s-p2", kind: "pattern", title: "Second pattern" }),
@@ -277,7 +272,6 @@ describe("BoardShelf", () => {
     render(
       <BoardShelf
         waiting={[waitingCard("n1", "Keep which memory?")]}
-        highlights={[]}
         slots={[slot({ slot_key: "s-echo", kind: "echo", title: "Echo card" })]}
         customBoards={[]}
         cookingBoards={[]}
@@ -295,11 +289,9 @@ describe("BoardShelf", () => {
   it("tile × dismisses without opening; decision tiles carry no ×", () => {
     const onOpenSlot = vi.fn();
     const onDismissSlot = vi.fn();
-    const onDismissNotification = vi.fn();
     const { container } = render(
       <BoardShelf
         waiting={[waitingCard("n1", "Keep which memory?")]}
-        highlights={[highlightCard("n2", "Ada joined your hub")]}
         slots={[slot({ slot_key: "s-echo", kind: "echo", title: "Echo card" })]}
         customBoards={[]}
         cookingBoards={[]}
@@ -307,7 +299,6 @@ describe("BoardShelf", () => {
         onOpenSlot={onOpenSlot}
         onOpenBoards={() => {}}
         onDismissSlot={onDismissSlot}
-        onDismissNotification={onDismissNotification}
       />,
     );
     // Slot tile × → resolve action="dismiss" path, tap surface untouched.
@@ -317,12 +308,6 @@ describe("BoardShelf", () => {
     fireEvent.click(echoTile.querySelector('[aria-label="Not interested"]')!);
     expect(onDismissSlot).toHaveBeenCalledWith("s-echo", expect.any(String));
     expect(onOpenSlot).not.toHaveBeenCalled();
-    // Highlight tile × → notification dismiss path.
-    const hlTile = container.querySelector<HTMLElement>(
-      '[data-board-tile="highlight"]',
-    )!;
-    fireEvent.click(hlTile.querySelector('[aria-label="Not interested"]')!);
-    expect(onDismissNotification).toHaveBeenCalledWith("n2");
     // 等你 needs an answer, not a swipe-away: no × on decision tiles.
     const deckTile = container.querySelector<HTMLElement>(
       '[data-board-tile="waiting"]',

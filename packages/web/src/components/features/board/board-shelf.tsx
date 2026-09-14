@@ -50,7 +50,6 @@ import { boardDisplayTitle } from "./board-custom-boards";
 import {
   boardKindVisual,
   COOKING_KIND,
-  HIGHLIGHT_KIND,
   WAITING_KIND,
 } from "./board-kind-visuals";
 import {

@@ -929,6 +929,8 @@ export const en = {
 
   board: {
     actionAck: "Got it",
+    // Member-joined pinned card's acknowledge verb — seen, not deleted.
+    highlightAck: "Got it",
     actionDismiss: "Not interested",
     moreActions: "More actions",
     kindFilterAll: "All",

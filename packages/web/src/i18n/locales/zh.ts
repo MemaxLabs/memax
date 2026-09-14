@@ -948,6 +948,8 @@ export const zh: Translations = {
     gatePurpose:
       "agent 停下来等你拍板。你的选择会写回记忆，agent 之后能直接读到。",
 
+    // 成员加入置顶卡的确认动词——收下=已读进抽屉留档，不是删除。
+    highlightAck: "收下",
     // 等你 band（plan 25 P4）——把通知里的决策并进板上。
     // 板成为唯一的surface，/inbox 退役。
     kindWaiting: "等你",

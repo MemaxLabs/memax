@@ -50,27 +50,6 @@ function waitingCard(id: string, title: string): BoardNotificationCardModel {
   };
 }
 
-function highlightCard(id: string, title: string): BoardNotificationCardModel {
-  return {
-    id,
-    kind: "hub_member_joined",
-    title,
-    description: "",
-    actions: [],
-    item: {
-      id,
-      audience: "hub",
-      kind: "hub_member_joined",
-      status: "pending",
-      seen: false,
-      title,
-      description: "",
-      similarity: 0,
-      created_at: "2026-08-05T00:00:00Z",
-    },
-  };
-}
-
 const noHandlers = {
   onOpenDeck: () => {},
   onOpenSlot: () => {},

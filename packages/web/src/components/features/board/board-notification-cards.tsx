@@ -620,7 +620,7 @@ export function BoardRecentRow({
         disabled={disabled}
         onClick={() => onDismiss(card.id)}
       >
-        {t.reviews.dismiss}
+        {t.board.highlightAck}
       </BoardAction>
     </div>
   );

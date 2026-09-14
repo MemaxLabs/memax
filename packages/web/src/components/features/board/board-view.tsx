@@ -39,7 +39,6 @@ import {
   useSlotHistory,
 } from "@/hooks/use-board";
 import {
-  useNotificationDismiss,
   useNotificationMarkSeen,
   useResolveNotification,
 } from "@/hooks/use-notifications";
@@ -197,7 +196,6 @@ export function BoardView({
   const cardActions = useBoardCardActions(hubId);
   const notifications = useBoardNotificationCards(hubId, isPersonalHub, isPage);
   const resolveNotification = useResolveNotification();
-  const dismissNotification = useNotificationDismiss();
   const markSeen = useNotificationMarkSeen();
   // Personal-board aggregation controls: one-click hide a source hub
   // from the aggregated view (persisted cross-device in settings),

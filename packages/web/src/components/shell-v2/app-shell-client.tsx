@@ -97,6 +97,7 @@ import {
   getShellTabForPath,
   isChatSurfaceRoute,
   isMemoriesOverviewRoute,
+  isPulseRoute,
 } from "@/lib/route-helpers";
 
 const TopicDndProvider = dynamic(
@@ -180,14 +181,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!liveTransition) return;
-    // Hub-switch animation only fires on the memories OVERVIEW under
-    // either shell. v1 lands on `/memories`; v2 on `/h/<slug>/memories`.
-    if (
-      liveTransition.kind !== "hub-switch" ||
-      !isMemoriesOverviewRoute(pathname)
-    ) {
-      return;
-    }
     const holdMs = liveTransition.minDurationMs ?? 420;
     const fadeMs = 200;
     const maxMs = liveTransition.maxDurationMs ?? 2000;
@@ -201,6 +194,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
     const instantThresholdMs = 120;
     let settled = false;
 
+    const startedAt = performance.now();
+    const timeouts: number[] = [];
     const finish = () => {
       if (settled) return;
       settled = true;
@@ -216,19 +211,42 @@ function AppShell({ children }: { children: React.ReactNode }) {
       timeouts.push(hideTimeout, clearTimeoutId);
     };
 
-    const startedAt = performance.now();
-    const timeouts: number[] = [];
-    const maxTimeout = window.setTimeout(() => {
-      finish();
-    }, maxMs);
-    timeouts.push(maxTimeout);
+    // INVARIANT: the overlay must always be able to die. The max
+    // timer is armed BEFORE any route gating, on every run of this
+    // effect — a pathname change cancels the previous run's timers
+    // (standard effect cleanup) and this re-arms them, so however
+    // navigation lands, the overlay clears within maxMs of the last
+    // route change. Two prod incidents shaped this (2026-09-14):
+    //   1. The pulse surface-preserving hub switch landed on
+    //      /h/<slug>/pulse; the old memories-only guard early-returned
+    //      before arming ANY timer, and "Switching to <hub>" sat
+    //      fullscreen forever over already-rendered content.
+    //   2. On a normal memories switch, a navigation inside the 200ms
+    //      hide→clear fade window cancelled the clear timer; the
+    //      overlay stayed mounted at opacity 0 — invisible, but
+    //      z-takeover and hit-testable — killing every tap on every
+    //      route until refresh.
+    timeouts.push(window.setTimeout(finish, maxMs));
 
-    if (liveTransition.waitFor) {
-      Promise.resolve(liveTransition.waitFor)
-        .catch(() => {})
-        .finally(() => finish());
-    } else {
-      finish();
+    // Route gate — only decides WHEN the happy-path finish starts
+    // (never whether the overlay can end): a hub switch resolves on
+    // the destination surface, which is the target hub's memories
+    // overview or, for the surface-preserving pulse switch, its pulse
+    // page (hub-switcher-menu builds both via buildHubSwitchPath).
+    // On other pathnames (mid-navigation) we wait for the pathname
+    // dep to flip and re-run — with the max timer armed above as the
+    // backstop for any destination this predicate doesn't know.
+    const arrived =
+      liveTransition.kind === "hub-switch" &&
+      (isMemoriesOverviewRoute(pathname) || isPulseRoute(pathname));
+    if (arrived) {
+      if (liveTransition.waitFor) {
+        Promise.resolve(liveTransition.waitFor)
+          .catch(() => {})
+          .finally(() => finish());
+      } else {
+        finish();
+      }
     }
     return () => {
       timeouts.forEach((id) => window.clearTimeout(id));

@@ -2069,6 +2069,15 @@ export const zh: Translations = {
 
   // Landing page
   landing: {
+    security: {
+      title: "强制执行,不是口头承诺",
+      subtitle: "每一条保护都是开源服务器里可以读到的代码——不是条款里的散文。",
+      point1: "四层纵深的所有者隔离,CI 强制访问规则 + 跨租户回归测试",
+      point2: "身份只来自凭证——与凭证冲突的载荷声明直接写入失败",
+      point3: "合成的洞察逐条对库验证;一条编造引用即弃整卡",
+      point4: "凭证在 push 时即被拒绝——记忆会逐字回放,所以密钥进不来",
+      link: "阅读安全模型",
+    },
     usecases: {
       sectionTitle: "你真正会用它做的事",
       tabCrossAgent: "这里存,哪里都能问",

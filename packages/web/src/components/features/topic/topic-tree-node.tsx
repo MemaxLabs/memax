@@ -329,7 +329,17 @@ export function TopicTreeNode({
               >
                 <MoreVertical className="h-3 w-3" />
               </PopoverTrigger>
-              <PopoverContent side="right" align="start" sideOffset={4}>
+              <PopoverContent
+                side="right"
+                align="start"
+                sideOffset={4}
+                // The popover is portaled but React portal events
+                // still bubble to the row's onClick (router.push) —
+                // stop EVERY click here so panel padding, hint text,
+                // and the move picker can never navigate the row
+                // (adversarial review).
+                onClick={(e) => e.stopPropagation()}
+              >
                 {menuView === "menu" ? (
                   <div className="flex min-w-[168px] flex-col gap-0.5 p-1">
                     <MenuItem

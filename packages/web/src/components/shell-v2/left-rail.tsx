@@ -107,6 +107,11 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingTab, setOnboardingTab] =
     useState<MechanismTab>("quickstart");
+  // Bumped by the "?" opener so a press while the modal is ALREADY
+  // open remounts it on the shortcuts tab — initialTab is only read
+  // at mount, so without a key change the press would no-op
+  // (adversarial review).
+  const [onboardingEpoch, setOnboardingEpoch] = useState(0);
   useEffect(() => {
     const ua = navigator.userAgent;
     setKbdHint(/Mac|iPhone|iPad|iPod/.test(ua) ? "⌘K" : "Ctrl K");
@@ -127,6 +132,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
       }
       e.preventDefault();
       setOnboardingTab("shortcuts");
+      setOnboardingEpoch((n) => n + 1);
       setOnboardingOpen(true);
     };
     window.addEventListener("keydown", handler);
@@ -378,6 +384,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
       </div>
       {onboardingOpen && (
         <OnboardingMechanismModal
+          key={onboardingEpoch}
           initialTab={onboardingTab}
           onClose={() => setOnboardingOpen(false)}
         />

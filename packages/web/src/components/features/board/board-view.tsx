@@ -383,15 +383,33 @@ export function BoardView({
   // Read from window.location in an effect rather than
   // useSearchParams(): the param is applied once client-side, and this
   // avoids the CSR/Suspense bailout useSearchParams imposes on every
-  // page embedding this component. Once the focused card is in the
-  // data, un-collapse it, scroll it to center, flash it, and clean the
-  // URL so refresh/back don't replay the focus.
+  // page embedding this component. The URL is cleaned IMMEDIATELY on
+  // read (refresh/back never replay the focus); once the focused card
+  // shows up in the data, un-collapse it, scroll it to center, flash
+  // it. If the slot never materializes, a give-up timer drops the
+  // intent so a much-later refetch can't yank the scroll mid-reading.
+  //
+  // The scroll rAF / flash timer / give-up timer live in refs with an
+  // unmount-only cleanup — NOT in this effect's own cleanup. The
+  // consuming effect ends by setFocusKey(null), which re-runs itself,
+  // and a per-run cleanup would cancel the rAF and flash reset it
+  // scheduled milliseconds earlier (adversarial review: the scroll
+  // usually lost that race and the flash class never reset).
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [focusFlashKey, setFocusFlashKey] = useState<string | null>(null);
+  const focusFrameRef = useRef<number | undefined>(undefined);
+  const focusFlashTimerRef = useRef<number | undefined>(undefined);
+  const focusGiveUpTimerRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!isPage) return;
     const param = new URLSearchParams(window.location.search).get("focus");
-    if (param) setFocusKey(param);
+    if (!param) return;
+    setFocusKey(param);
+    window.history.replaceState(null, "", window.location.pathname);
+    focusGiveUpTimerRef.current = window.setTimeout(
+      () => setFocusKey(null),
+      5000,
+    );
   }, [isPage]);
   useEffect(() => {
     if (!isPage || !focusKey) return;
@@ -401,24 +419,41 @@ export function BoardView({
         .flatMap((cb) => cb.slots)
         .find((s) => s.slot_key === focusKey);
     if (!target) return; // data not in yet — retry on the next load
+    if (focusGiveUpTimerRef.current !== undefined) {
+      window.clearTimeout(focusGiveUpTimerRef.current);
+      focusGiveUpTimerRef.current = undefined;
+    }
     toggleCard(`${focusKey}:${target.content_updated_at ?? ""}`, true);
     // Two frames: one for the un-collapse to commit, one for layout.
-    const frame = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
+    focusFrameRef.current = window.requestAnimationFrame(() => {
+      focusFrameRef.current = window.requestAnimationFrame(() => {
         document
           .querySelector(`[data-slot-focus="${CSS.escape(focusKey)}"]`)
           ?.scrollIntoView({ behavior: "smooth", block: "center" });
       });
     });
     setFocusFlashKey(focusKey);
-    const flashTimer = window.setTimeout(() => setFocusFlashKey(null), 2200);
-    window.history.replaceState(null, "", window.location.pathname);
+    focusFlashTimerRef.current = window.setTimeout(
+      () => setFocusFlashKey(null),
+      2200,
+    );
     setFocusKey(null);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(flashTimer);
-    };
   }, [isPage, focusKey, slots, customBoards, toggleCard]);
+  useEffect(
+    // Unmount-only: cancel whatever focus handle is still in flight.
+    () => () => {
+      if (focusFrameRef.current !== undefined) {
+        window.cancelAnimationFrame(focusFrameRef.current);
+      }
+      if (focusFlashTimerRef.current !== undefined) {
+        window.clearTimeout(focusFlashTimerRef.current);
+      }
+      if (focusGiveUpTimerRef.current !== undefined) {
+        window.clearTimeout(focusGiveUpTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const onResolveNotification = useCallback(
     (id: string, action: string) => {

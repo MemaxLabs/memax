@@ -949,3 +949,150 @@ func doMCPQuotaRequest(
 	h.ServeHTTP(w, req)
 	return w
 }
+
+// TestMCPToolPush_QuotaRollbackOnToolError — a post-guard tool
+// failure (conflicting agent claim → provErr) must roll the
+// reservation back: a failed push is never billed. This is the exact
+// path the review flagged as claimed-but-untested.
+func TestMCPToolPush_QuotaRollbackOnToolError(t *testing.T) {
+	s := store.NewInMemoryStore()
+	personalHubID := "hub-personal-u1"
+	if err := s.CreateHub(&model.Hub{
+		ID:      personalHubID,
+		OwnerID: "u1",
+		Name:    "Personal",
+		Slug:    "personal",
+		HubType: "personal",
+	}); err != nil {
+		t.Fatalf("CreateHub: %v", err)
+	}
+	h := NewMCPHandler(s, nil, nil, nil)
+	var commits, rollbacks int
+	h.SetOpGuard(
+		func(_ *http.Request, _, _, _ string) (func(bool), *meterctx.OpDenial) {
+			return func(committed bool) {
+				if committed {
+					commits++
+				} else {
+					rollbacks++
+				}
+			}, nil
+		},
+		nil,
+	)
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memax_push","arguments":{"content":"body","title":"Conflicting claim","hub_id":"personal","source_agent":"claude-code"}}}`
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+	ctx := context.WithValue(req.Context(), userIDKey, "u1")
+	ctx = context.WithValue(ctx, agentNameKey, "claude-ai")
+	ctx = context.WithValue(ctx, authContextKey, &AuthContext{
+		UserID: "u1",
+		PermissionsByHub: map[string]PermissionSet{
+			personalHubID: NewPermissionSet(PermMemoryRead, PermMemoryWrite),
+		},
+	})
+	ctx = context.WithValue(ctx, grantContextKey, GrantContext{
+		UserID:        "u1",
+		PrincipalType: "oauth_grant",
+		AgentName:     "claude-ai",
+	})
+	ctx = context.WithValue(ctx, hubIDsKey, []string{personalHubID})
+	ctx = context.WithValue(ctx, writeHubIDKey, personalHubID)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	var resp struct {
+		Result mcpToolResult `json:"result"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.Result.IsError {
+		t.Fatal("expected the claim conflict to error")
+	}
+	if commits != 0 || rollbacks != 1 {
+		t.Fatalf("failed push must roll back, not bill: commits=%d rollbacks=%d", commits, rollbacks)
+	}
+}
+
+// TestMCPToolRecall_QuotaDeniedAndCommit — recall shares the REST
+// recall gate: denial → IsError without running the pipeline; a run
+// that reaches the pipeline commits exactly once (even with zero
+// results — COGS were spent).
+func TestMCPToolRecall_QuotaDenied(t *testing.T) {
+	s := store.NewInMemoryStore()
+	recallH := NewRecallHandler(s, nil, nil, nil, nil)
+	h := NewMCPHandler(s, recallH, nil, nil)
+	h.SetOpGuard(
+		func(_ *http.Request, _, op, _ string) (func(bool), *meterctx.OpDenial) {
+			if op != "recall" {
+				t.Fatalf("expected op recall, got %q", op)
+			}
+			return func(bool) {}, &meterctx.OpDenial{Op: "recall", Current: 10, Limit: 10}
+		},
+		func(_ *meterctx.OpDenial) string { return "recall quota exceeded" },
+	)
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memax_recall","arguments":{"query":"anything"}}}`
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+	ctx := context.WithValue(req.Context(), userIDKey, "u1")
+	ctx = context.WithValue(ctx, authContextKey, &AuthContext{
+		UserID: "u1",
+		PermissionsByHub: map[string]PermissionSet{
+			"": NewPermissionSet(PermMemoryRead),
+		},
+	})
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	var resp struct {
+		Result mcpToolResult `json:"result"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.Result.IsError || !strings.Contains(resp.Result.Content[0].Text, "recall quota exceeded") {
+		t.Fatalf("expected quota denial, got %s", w.Body.String())
+	}
+}
+
+func TestMCPToolRecall_QuotaCommitsOnPipelineRun(t *testing.T) {
+	s := store.NewInMemoryStore()
+	recallH := NewRecallHandler(s, nil, nil, nil, nil)
+	h := NewMCPHandler(s, recallH, nil, nil)
+	var commits, rollbacks int
+	h.SetOpGuard(
+		func(_ *http.Request, _, _, _ string) (func(bool), *meterctx.OpDenial) {
+			return func(committed bool) {
+				if committed {
+					commits++
+				} else {
+					rollbacks++
+				}
+			}, nil
+		},
+		nil,
+	)
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memax_recall","arguments":{"query":"how does caching work"}}}`
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+	ctx := context.WithValue(req.Context(), userIDKey, "u1")
+	ctx = context.WithValue(ctx, authContextKey, &AuthContext{
+		UserID: "u1",
+		PermissionsByHub: map[string]PermissionSet{
+			"": NewPermissionSet(PermMemoryRead),
+		},
+	})
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("recall status %d: %s", w.Code, w.Body.String())
+	}
+	if commits != 1 || rollbacks != 0 {
+		t.Fatalf("pipeline ran (empty results) → exactly one commit: commits=%d rollbacks=%d", commits, rollbacks)
+	}
+}

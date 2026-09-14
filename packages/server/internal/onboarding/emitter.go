@@ -47,10 +47,14 @@ const (
 // historical row and new signups get the new shape.
 const checklistVersion = 1
 
-// expiresAfter is the 14-day inactivity window from plan 18 §3.2.
-// Past this the nightly sweep moves the row to status=expired and the
-// user can re-enter via Settings → Getting started → Restart.
-const expiresAfter = 14 * 24 * time.Hour
+// expiresAfter is the inactivity window after which the pinned
+// onboarding rows (founder note + first-week checklist) auto-clear.
+// Plan 18 §3.2 shipped this as 14 days; tightened to 7 (founder,
+// 2026-09-14) — a FIRST-WEEK checklist that lingers into week two
+// reads as stale chrome, and the restart path (Settings → Getting
+// started) stays one click away. The hourly sweep moves rows past
+// this to status=expired.
+const expiresAfter = 7 * 24 * time.Hour
 
 // Emitter is the plan-18 producer surface. Construct it once at
 // startup with a Store reference; signup wiring calls EmitWelcome on
@@ -242,8 +246,8 @@ func checklistSourceID(userID string, version int) string {
 	return fmt.Sprintf("%s:v%d", userID, version)
 }
 
-// expiresAt returns a 14-day expiry from now. Nightly sweep flips
-// status=expired past this.
+// expiresAt returns the expiresAfter window from now. The hourly
+// sweep flips status=expired past this.
 func expiresAt() *time.Time {
 	t := time.Now().UTC().Add(expiresAfter)
 	return &t

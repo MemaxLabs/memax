@@ -86,7 +86,7 @@ function tileEls(container: HTMLElement): HTMLElement[] {
 describe("BoardShelf", () => {
   afterEach(cleanup);
 
-  it("orders tiles 等你 → highlight → lane B → capsule → activity → custom → cooking → ghost and excludes receipts", () => {
+  it("orders tiles 等你 → highlight → lane B → capsule → activity → custom → cooking and excludes receipts", () => {
     // Server order deliberately scrambled (activity first) to prove the
     // shelf re-sorts; the resolved slot must not surface at all.
     const slots = [
@@ -149,7 +149,7 @@ describe("BoardShelf", () => {
     const tiles = tileEls(container);
     // 7 content tiles overflow the 2×2 grid: the first 3 render, the
     // 4th cell is the overflow tile counting the rest — content is
-    // never silently hidden, and the ghost yields its cell.
+    // never silently hidden.
     expect(tiles).toHaveLength(4);
     // 等你 deck tile leads: top decision + depth badge, second decision
     // stays behind the deck (never its own tile).
@@ -193,7 +193,9 @@ describe("BoardShelf", () => {
     expect(tileEls(container)).toHaveLength(4);
   });
 
-  it("fills a free cell with the ghost tile instead of the overflow counter", () => {
+  it("leaves free cells free — no ghost tile, no overflow counter", () => {
+    // 2026-09: creation is chrome on the /pulse header, not preview
+    // content; the shelf renders exactly its content tiles.
     const { container } = render(
       <BoardShelf
         waiting={[]}
@@ -208,8 +210,8 @@ describe("BoardShelf", () => {
       />,
     );
     const tiles = tileEls(container);
-    expect(tiles).toHaveLength(3);
-    expect(tiles[2].dataset.boardTile).toBe("ghost");
+    expect(tiles).toHaveLength(2);
+    expect(container.querySelector('[data-board-tile="ghost"]')).toBeNull();
     expect(container.querySelector('[data-board-tile="overflow"]')).toBeNull();
   });
 
@@ -326,28 +328,6 @@ describe("BoardShelf", () => {
       '[data-board-tile="waiting"]',
     )!;
     expect(deckTile.querySelector('[aria-label="Not interested"]')).toBeNull();
-  });
-
-  it("closes the shelf with the ghost tile → the boards surface", () => {
-    const onOpenBoards = vi.fn();
-    const { container } = render(
-      <BoardShelf
-        waiting={[]}
-        highlights={[]}
-        slots={[slot({ slot_key: "s-echo", kind: "echo", title: "Echo card" })]}
-        customBoards={[]}
-        cookingBoards={[]}
-        onOpenDeck={() => {}}
-        onOpenSlot={() => {}}
-        onOpenBoards={onOpenBoards}
-      />,
-    );
-    const ghost = container.querySelector<HTMLElement>(
-      '[data-board-tile="ghost"]',
-    )!;
-    expect(ghost.textContent).toContain("Have memax watch one thing");
-    fireEvent.click(ghost);
-    expect(onOpenBoards).toHaveBeenCalledTimes(1);
   });
 
   it("orderShelfSlots drops terminal states and demotes capsule/activity", () => {

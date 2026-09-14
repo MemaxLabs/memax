@@ -11,7 +11,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 import type { BoardSlot } from "memax-sdk";
 import {
   BoardAction,
@@ -272,6 +272,9 @@ export function BoardView({
   // Bumped on successful create so the ghost re-forms behind the new
   // cooking card instead of holding a stale composer open.
   const [ghostEpoch, setGhostEpoch] = useState(0);
+  // Header + summon (2026-09): creation moved out of the card stream
+  // into the page header; this mounts the composer at the stream top.
+  const [composerOpen, setComposerOpen] = useState(false);
 
   const boards = useMemo(() => boardsData?.boards ?? [], [boardsData]);
   // 酝酿中 custom boards — inline cooking cards + shelf promise tiles.
@@ -631,8 +634,48 @@ export function BoardView({
             {t.board.shelfViewAll}
             <ArrowRight className="h-3 w-3" aria-hidden />
           </Link>
-        ) : null}
+        ) : (
+          /* 新建板 — creation is CHROME, not content (2026-09: the
+             ghost card no longer trails every filtered view). Same
+             quiet trailing-action family as the embedded 查看全部;
+             tapping mounts the composer at the top of the stream.
+             Hidden while the empty state teaches with its own ghost
+             card — two creation surfaces at once is one too many. */
+          !pageIsEmpty && (
+            <button
+              type="button"
+              onClick={() => setComposerOpen(true)}
+              aria-expanded={composerOpen}
+              className="inline-flex cursor-pointer items-center gap-1 text-[12px] text-fg-3 transition-colors hover:text-fg-2"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden />
+              {t.board.newBoard}
+            </button>
+          )
+        )}
       </div>
+
+      {/* Header-summoned composer — top of the stream, right under
+          the chrome that summoned it. Re-keyed per open so a fresh
+          summon never resurrects an abandoned draft. */}
+      {isPage && composerOpen && !pageIsEmpty ? (
+        <BoardGhostCard
+          key={`summon-${ghostEpoch}`}
+          initialComposing
+          onCloseSurface={() => setComposerOpen(false)}
+          pending={createBoard.isPending}
+          prefill={null}
+          onPrefillConsumed={() => {}}
+          onCreate={(input) => {
+            createBoard.mutate(input, {
+              onSuccess: () => {
+                setComposerOpen(false);
+                setGhostEpoch((n) => n + 1);
+              },
+            });
+          }}
+        />
+      ) : null}
 
       {collapsedShelf ? (
         <BoardShelf
@@ -876,9 +919,12 @@ export function BoardView({
         />
       ) : null}
 
-      {/* ── The ghost card — the latent new-board affordance, always
-          closing the card stream on the full surface. ── */}
-      {isPage ? (
+      {/* ── The ghost card — EMPTY BOARD ONLY (2026-09: it used to
+          close every card stream, which put a creation prompt at the
+          end of each filtered view; creation now lives in the header
+          + and this stays as the empty state's teaching centerpiece,
+          prefilled by the example chips above). ── */}
+      {isPage && pageIsEmpty ? (
         <BoardGhostCard
           key={ghostEpoch}
           pending={createBoard.isPending}

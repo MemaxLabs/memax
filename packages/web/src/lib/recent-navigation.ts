@@ -99,8 +99,26 @@ export function startLiveSurfaceTransition(request: SurfaceTransitionRequest) {
   emitLiveSurfaceTransition();
 }
 
-export function clearLiveSurfaceTransition() {
+/**
+ * True while `request` is still the CURRENT live transition. Timer
+ * callbacks captured by a superseded effect run use this to tell
+ * whether they're acting on their own transition or someone else's.
+ */
+export function isLiveSurfaceTransition(
+  request: SurfaceTransitionRequest,
+): boolean {
+  return liveSurfaceTransition === request;
+}
+
+export function clearLiveSurfaceTransition(request?: SurfaceTransitionRequest) {
   if (!liveSurfaceTransition) return;
+  // Identity check (adversarial review, 2026-09-14): a hub switch
+  // superseded mid-warm leaves an uncancellable `.finally(finish)` on
+  // its warm promise; when that settles it schedules orphan timers
+  // that would otherwise blind-clear whatever transition is live NOW
+  // — hiding a later, still-in-flight switch's overlay early. Callers
+  // pass the request their run belongs to; a stale caller no-ops.
+  if (request && liveSurfaceTransition !== request) return;
   liveSurfaceTransition = null;
   emitLiveSurfaceTransition();
 }

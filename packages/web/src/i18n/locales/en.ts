@@ -804,10 +804,10 @@ export const en = {
 
   // Mobile dock navigation
   dock: {
-    brain: "Ask",
-    topics: "Topics",
+    memories: "Memories",
     pulse: "Pulse",
-    recentTitle: "Recent",
+    brain: "Ask",
+    agents: "Agents",
   },
 
   settingsOnboarding: {

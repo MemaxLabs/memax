@@ -58,7 +58,7 @@ export function ShellLayoutV2({ tab, children }: ShellLayoutV2Props) {
   useAuroraOnRoot(auroraMode);
 
   return isMobile ? (
-    <ShellLayoutMobile tab={tab}>{children}</ShellLayoutMobile>
+    <ShellLayoutMobile>{children}</ShellLayoutMobile>
   ) : (
     <ShellLayoutDesktop tab={tab}>{children}</ShellLayoutDesktop>
   );

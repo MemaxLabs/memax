@@ -734,11 +734,12 @@ export const zh: Translations = {
     all: "全部",
   },
 
+  // 手机底部 tab 栏——与桌面 rail 同四个 tab，标签取短形（栏宽有限）。
   dock: {
-    brain: "问问",
-    topics: "主题",
+    memories: "记忆",
     pulse: "脉搏",
-    recentTitle: "最近",
+    brain: "问问",
+    agents: "agents",
   },
 
   settingsOnboarding: {

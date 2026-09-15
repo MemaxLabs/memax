@@ -9,9 +9,8 @@
  *
  * Plan 24 phase 4b removed the v1/v2 cookie dispatch — pre-launch,
  * no external users — so v2 chrome is the only path. Mobile chrome
- * (floating BrandMark, top-right hub chip, MobileDock, tree drawer
- * overlay host) still mounts on `isMobile` until plan 22 ships v2
- * mobile chrome.
+ * (top bar, dock, sheets) is owned by <ShellLayoutMobile>; only the
+ * tree drawer overlay host still mounts here on `isMobile`.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -34,12 +33,12 @@ import {
   useSettingsPanel,
 } from "@/contexts/settings-panel-context";
 import { useIsMobile, IsMobileProvider } from "@/hooks/use-is-mobile";
+import { OnboardingMechanismModal } from "@/components/features/onboarding-mechanism-modal";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import { useVisualViewportRect } from "@/hooks/use-visual-viewport-rect";
 import { useScrollDirection } from "@/hooks/use-scroll-direction";
 import { useShellState } from "@/contexts/shell-state-context";
 import { getBarClickOutsideAction } from "@/lib/bar-interaction";
-import { MobileDock } from "@/components/features/mobile-dock";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { FAST, NORMAL, EASE } from "@memaxlabs/ui/tokens/motion";
 import { BarProvider, useBar } from "@/contexts/bar-context";
@@ -152,6 +151,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
     toggle: toggleSettings,
     close: closeSettings,
   } = useSettingsPanel();
+  // Mobile 入门与机制 host — entered from the SettingsPanel row (the
+  // desktop rail owns its own modal instance).
+  const [mobileOnboardingOpen, setMobileOnboardingOpen] = useState(false);
   const [liveTransition, setLiveTransition] =
     useState<SurfaceTransitionRequest | null>(null);
   const [liveTransitionVisible, setLiveTransitionVisible] = useState(false);
@@ -331,8 +333,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   <SettingsPanel
                     open={settingsOpen}
                     onClose={closeSettings}
-                    anchor="bottom-left"
+                    anchor={isMobile ? "top-right" : "bottom-left"}
+                    onOpenGettingStarted={
+                      isMobile ? () => setMobileOnboardingOpen(true) : undefined
+                    }
                   />
+                  {isMobile && mobileOnboardingOpen && (
+                    <OnboardingMechanismModal
+                      onClose={() => setMobileOnboardingOpen(false)}
+                    />
+                  )}
                   <SettingsDialog />
                   <MemaxDebugger />
                   <MemaxEventBridge />
@@ -1294,9 +1304,9 @@ function GlobalBar() {
  * getShellTabForPath; routes that don't map to any tab return null and
  * the rail renders no active state.
  *
- * Mobile-only legacy floating chrome (BrandMark, top-right hub chip,
- * MobileDock, TopicTreePanelOverlayHost) is mounted directly by
- * <AppShell> on `isMobile` until plan 22 ships v2 mobile chrome.
+ * Mobile chrome (MobileTopBar, MobileDock, sheets) is rendered by
+ * <ShellLayoutMobile> inside <ShellLayoutV2>; only
+ * TopicTreePanelOverlayHost is mounted directly by <AppShell>.
  */
 function V2ChromeWrap({
   pathname,

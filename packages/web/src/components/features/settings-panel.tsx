@@ -11,6 +11,7 @@ import {
   Settings,
   Shield,
   BookOpen,
+  Compass,
 } from "lucide-react";
 import { DOCS_URL } from "@/lib/urls";
 import { useMemories, memoriesTotalCount } from "@/hooks/use-memories";
@@ -32,12 +33,19 @@ interface Props {
    * of in the opposite corner of the viewport. Default: `top-right`.
    */
   anchor?: "top-right" | "bottom-left";
+  /** Mobile only: the desktop rail has its own 入门与机制 row. */
+  onOpenGettingStarted?: () => void;
 }
 
 const menuItemClass =
   "w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-[14px] text-fg-2 hover:text-fg-1 hover:bg-surface-1 transition-colors cursor-pointer";
 
-export function SettingsPanel({ open, onClose, anchor = "top-right" }: Props) {
+export function SettingsPanel({
+  open,
+  onClose,
+  anchor = "top-right",
+  onOpenGettingStarted,
+}: Props) {
   const { user, hubs, activeHubId, logout } = useAuth();
   const settingsDialog = useSettingsDialog();
   const updateSettings = useUpdateSettings();
@@ -117,9 +125,15 @@ export function SettingsPanel({ open, onClose, anchor = "top-right" }: Props) {
               // and bottoms out above the rail's bottom inset so the panel
               // doesn't crowd the rail's user button.
               "left-4 bottom-16 md:left-20"
-            : // Default: top-right. Matches v1's floating avatar trigger.
-              "top-16 right-4 md:right-8"
+            : // top-right: under the mobile top bar's avatar. The bar is
+              // 56px + notch inset tall, so the offset carries the inset.
+              "right-4 md:right-8"
         }`}
+        style={
+          anchor === "top-right"
+            ? { top: "calc(4rem + env(safe-area-inset-top))" }
+            : undefined
+        }
       >
         {/* Account */}
         <div className="px-5 pt-4 pb-3">
@@ -212,6 +226,19 @@ export function SettingsPanel({ open, onClose, anchor = "top-right" }: Props) {
             previously had drifted padding (py-1.5 vs py-0.5, px-3 vs
             px-4) and mismatched hover states. */}
         <div className="px-3 py-1.5 flex flex-col gap-0.5">
+          {onOpenGettingStarted ? (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenGettingStarted();
+              }}
+              aria-haspopup="dialog"
+              className={menuItemClass}
+            >
+              <Compass className="h-3.5 w-3.5" />
+              {t.nav.gettingStarted}
+            </button>
+          ) : null}
           <button
             onClick={() => {
               onClose();

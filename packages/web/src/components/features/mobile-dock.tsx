@@ -2,10 +2,11 @@
 
 import { useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, Network } from "lucide-react";
 import { useLocale } from "@/i18n";
 import { useAuth, useActiveHub } from "@/lib/auth";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
+import { useBar } from "@/contexts/bar-context";
+import { useNotificationSummary } from "@/hooks/use-notifications";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
 import {
   buildMemoriesPath,
@@ -13,101 +14,20 @@ import {
   getShellTabForPath,
   isChatSessionRoute,
 } from "@/lib/route-helpers";
-import { MemaxStar } from "./memax-star";
+import { SHELL_TABS, type ShellTabId } from "@/components/shell-v2/shell-tabs";
 
 /**
- * MobileDock — bottom tab bar for mobile.
+ * Mobile tab bar — the same four tabs as the desktop rail, in the same
+ * order (memories / pulse / brain / agents). Sits flush at the bottom
+ * under the floating ✦ bar; the bar's rest gap (MOBILE_DOCK_BOTTOM_GAP_PX)
+ * is sized so the two never overlap. Hides only while the keyboard is
+ * up (the bar takes the bottom band then) and inside a chat session
+ * (the session owns the whole screen; the top bar's back arrow is the
+ * way out).
  *
- * Kitchen 30. Always visible on ALL surfaces (industry standard: iOS tab bar,
- * Instagram, Twitter/X). Users can switch tabs from any route, including
- * detail pages. Only hides when virtual keyboard opens.
- *
- * Active tab inferred from pathname via boundary-safe prefix matching
- * (exact match OR startsWith + "/"). No tab highlighted on unrelated routes.
- *
- * Keyboard handling: When the virtual keyboard opens, the dock stays
- * pinned to the physical screen bottom (hidden behind keyboard) instead
- * of riding up with the visual viewport.
- *
- * Adding a tab: add entry to TABS + create route + add i18n key.
+ * Badge grammar mirrors the rail: pulse carries a dot only for pending
+ * decisions (content channel); unseen updates live on the top-bar bell.
  */
-
-type DockTab = "brain" | "topics" | "pulse";
-
-interface DockTabSpec {
-  id: DockTab;
-  icon?: React.ElementType;
-  star?: boolean;
-  labelKey: "brain" | "topics" | "pulse";
-  /**
-   * Resolved navigation target for this tab. Hub-scoped tabs pick their
-   * path out of the active-hub-aware `paths` bag; static tabs ignore it.
-   */
-  resolveRoute: (paths: HubTabPaths) => string;
-  signature?: boolean;
-}
-
-/** Active-hub-aware destinations for the hub-scoped dock tabs. */
-interface HubTabPaths {
-  memories: string;
-  pulse: string;
-}
-
-// Order mirrors SHELL_TABS (2026-08 founder reorder): memories first
-// (the home), pulse second (what's new), brain last of the three.
-const TABS: DockTabSpec[] = [
-  {
-    id: "topics",
-    icon: Network,
-    labelKey: "topics",
-    // Memories tab targets the active-hub-aware path (matches the v2
-    // LeftRail's memoriesPath logic). Without this, tapping Memories
-    // bounces team-hub users to /h/personal/memories via the legacy
-    // /memories middleware redirect — wrong hub.
-    resolveRoute: (paths) => paths.memories,
-  },
-  {
-    id: "pulse",
-    icon: Activity,
-    labelKey: "pulse",
-    // The pulse board full-page surface, hub-scoped like memories —
-    // the board belongs to one hub, so its identity comes from the URL.
-    // The retired /inbox route still points at the bare /pulse
-    // forwarder, which redirects here for the active hub.
-    resolveRoute: (paths) => paths.pulse,
-    signature: true,
-  },
-  {
-    id: "brain",
-    labelKey: "brain",
-    // `/brain` is the canonical Brain landing.
-    resolveRoute: () => "/brain",
-    star: true,
-    signature: true,
-  },
-];
-
-/** Map a `ShellTabId` from the URL-based tab resolver onto our local
- *  `DockTab` set. The shell's "memories" maps to the dock's "topics"
- *  (v2 renamed the tab; we kept the older internal id here). The
- *  shell's "agents" tab has no dock counterpart — returns null so the
- *  dock renders unhighlighted on /agents (consistent with /settings). */
-function shellTabToDockTab(
-  tab: ReturnType<typeof getShellTabForPath>,
-): DockTab | null {
-  switch (tab) {
-    case "brain":
-      return "brain";
-    case "memories":
-      return "topics";
-    case "pulse":
-      return "pulse";
-    case "agents":
-    case null:
-      return null;
-  }
-}
-
 export function MobileDock() {
   const pathname = usePathname();
   const router = useRouter();
@@ -115,117 +35,101 @@ export function MobileDock() {
   const { user } = useAuth();
   const { activeHub } = useActiveHub();
   const keyboardOpen = useKeyboardOpen();
+  const { interaction } = useBar();
+  const { data: notificationSummary } = useNotificationSummary();
+  // Hidden while the keyboard is up AND while the ✦ bar is in any
+  // non-docked compose state: in "mirror" the bar drops to 12px above
+  // the viewport bottom (over the dock band) and MobileBarSurface sits
+  // BELOW z-bar, so a visible dock would paint over the input row and
+  // stay tappable mid-compose. Keyboard alone is not a safe signal —
+  // hardware keyboards never trip useKeyboardOpen.
+  const hidden = keyboardOpen || interaction.mobileComposeState !== "docked";
 
-  // Active-hub-aware hub-scoped paths. Mirrors the v2 LeftRail's
-  // resolveTabPath logic so a team-hub user tapping Memories or Pulse
-  // goes to their team hub, not the personal-hub fallback.
-  const hubPaths = useMemo<HubTabPaths>(() => {
-    const slug =
+  const hubSlug = useMemo(
+    () =>
       activeHub?.hub && user
         ? hubRouteSlug(activeHub.hub, user.id)
-        : "personal";
-    return { memories: buildMemoriesPath(slug), pulse: buildPulsePath(slug) };
-  }, [activeHub, user]);
+        : "personal",
+    [activeHub, user],
+  );
 
-  // Active-tab matching delegates to the shared `getShellTabForPath`
-  // so /h/<slug>/memories highlights the Memories tab the same way
-  // the LeftRail does. Without this, the dock would only match the
-  // legacy /memories pattern and lose highlighting after the
-  // middleware redirect to /h/<slug>/memories. Codex 5.5 caught this.
-  const activeTab = shellTabToDockTab(getShellTabForPath(pathname));
+  const activeTab = getShellTabForPath(pathname);
+  const pulseNeedsAction = (notificationSummary?.needs_action_pending ?? 0) > 0;
 
-  // Inside an active chat session (/brain/sessions/<id>), hide the
-  // dock entirely so the conversation owns the viewport. Industry
-  // pattern: ChatGPT and Claude.ai mobile both hide global nav
-  // inside threads. The sessions LIST at /brain keeps the dock —
-  // it's a list page like any other. Plan F (2026-05-04).
   if (isChatSessionRoute(pathname)) return null;
+
+  const label: Record<ShellTabId, string> = {
+    memories: t.dock.memories,
+    pulse: t.dock.pulse,
+    brain: t.dock.brain,
+    agents: t.dock.agents,
+  };
+
+  const routeFor = (id: ShellTabId): string => {
+    const spec = SHELL_TABS.find((s) => s.id === id);
+    if (spec?.staticPath) return spec.staticPath;
+    return id === "pulse"
+      ? buildPulsePath(hubSlug)
+      : buildMemoriesPath(hubSlug);
+  };
 
   return (
     <nav
-      aria-label="Main tabs"
+      aria-label={t.nav.primary}
       className="fixed left-0 right-0 bottom-0 z-bar"
       style={{
-        // Same glass material as the thumb bar so the two bottom surfaces
-        // read as one coherent layer instead of "pill on top of a flat
-        // rectangle". Matches iOS 26 Liquid Glass / Apple Music direction.
-        // Dropped the hairline border-top — the thumb bar above already
-        // carries its own border + shadow; stacking another 1px stroke
-        // here read as a seam (worse in dark mode where --card/--border
-        // sit close). The soft upward shadow does the separation.
         background: "oklch(from var(--card) l c h / 0.92)",
-        // Belt-and-suspenders gate: when the keyboard is open we fade
-        // the dock out (opacity 0 below), but a live backdrop-filter on
-        // a hidden-by-opacity surface still composites on iOS Safari
-        // and can leave a faint blurred strip near the home indicator
-        // (same class of bug the mobile bar guards against — see
-        // app/(app)/layout.tsx:771). Null the filter when hidden.
-        backdropFilter: keyboardOpen ? "none" : "blur(40px) saturate(180%)",
-        WebkitBackdropFilter: keyboardOpen
-          ? "none"
-          : "blur(40px) saturate(180%)",
+        backdropFilter: hidden ? "none" : "blur(40px) saturate(180%)",
+        WebkitBackdropFilter: hidden ? "none" : "blur(40px) saturate(180%)",
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         boxShadow: "0 -4px 16px oklch(0 0 0 / 0.04)",
         paddingBottom: "max(6px, env(safe-area-inset-bottom))",
-        // Hide dock when keyboard is open (native iOS/Android pattern).
-        // No translateY math — just fade out and disable pointer events.
-        opacity: keyboardOpen ? 0 : 1,
-        pointerEvents: keyboardOpen ? "none" : "auto",
+        opacity: hidden ? 0 : 1,
+        pointerEvents: hidden ? "none" : "auto",
         transition: "opacity 0.15s var(--ease-spring)",
       }}
-      aria-hidden={keyboardOpen}
+      aria-hidden={hidden}
     >
-      {/* Vertical icon-over-label layout — Apple HIG / Apple Music / Linear iOS.
-          ~50px content height + safe-area inset (HIG: 49pt minimum tab bar).
-          Active state = signature color tint + icon scale + weight 600. No
-          box fill, no underline — pure tint, preserves the flush tab-bar feel. */}
+      {/* Icon-over-label, 49pt-minimum band (Apple HIG). Active = tint +
+          slight icon scale + weight; no fill, no underline. */}
       <div className="flex items-stretch px-2 pt-1.5">
-        {TABS.map((tab) => {
-          const TabIcon = tab.icon ?? Network;
-          const isActive = tab.id === activeTab;
-          const activeColor = tab.signature
-            ? "var(--signature)"
-            : "var(--foreground)";
-          const color = isActive ? activeColor : "var(--fg-4)";
-
-          // Color lives on the parent button so lucide icons (currentColor)
-          // and the label span inherit together. Instant on tab swap — no
-          // color fade, no surface transition overlay. Cross-tab dock swap
-          // is snap-instant per explicit user preference.
-          const route = tab.resolveRoute(hubPaths);
+        {SHELL_TABS.map((spec) => {
+          const Icon = spec.icon;
+          const isActive = spec.id === activeTab;
+          const route = routeFor(spec.id);
           return (
             <button
-              key={tab.id}
+              key={spec.id}
+              type="button"
               onClick={() => {
-                // Different tab → navigate. Same tab on detail page → go to tab root.
-                // Same tab already on root → no-op (iOS: would scroll to top).
-                if (pathname !== route) {
-                  router.push(route);
-                }
+                if (pathname !== route) router.push(route);
               }}
               aria-current={isActive ? "page" : undefined}
               className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-0.5 py-1.5"
-              style={{ color }}
+              style={{ color: isActive ? "var(--foreground)" : "var(--fg-4)" }}
             >
               <span
-                className="inline-flex items-center justify-center transition-transform duration-150"
+                className="relative inline-flex items-center justify-center transition-transform duration-150"
                 style={{
                   transitionTimingFunction: "var(--ease-spring)",
                   transform: isActive ? "scale(1.04)" : "scale(1)",
                 }}
               >
-                {tab.star ? (
-                  <MemaxStar className="text-[20px]" />
-                ) : (
-                  <TabIcon className="h-5 w-5" />
-                )}
+                <Icon className="h-5 w-5" strokeWidth={isActive ? 2.25 : 2} />
+                {spec.id === "pulse" && pulseNeedsAction ? (
+                  <span
+                    aria-hidden
+                    className="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-full"
+                    style={{ background: "var(--signature)" }}
+                  />
+                ) : null}
               </span>
               <span
                 className="text-[10px] leading-none tracking-wide"
                 style={{ fontWeight: isActive ? 600 : 400 }}
               >
-                {t.dock[tab.labelKey]}
+                {label[spec.id]}
               </span>
             </button>
           );
@@ -234,5 +138,3 @@ export function MobileDock() {
     </nav>
   );
 }
-
-export const MOBILE_DOCK_HEIGHT = 56;

@@ -2,7 +2,7 @@
  * SHELL_TABS — canonical list of v2 left-rail tabs.
  *
  * Single source of truth shared between desktop `<LeftRail>` and mobile
- * `<MobileDrawer>` (plan 22). Adding a new tab = adding one entry here.
+ * `<MobileDock>` (plan 22). Adding a new tab = adding one entry here.
  *
  * Tab routing:
  *   - `brain`    → `/brain`

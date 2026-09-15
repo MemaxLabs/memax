@@ -2421,7 +2421,6 @@ export const en = {
     you: "You",
     yourTeam: "Your Team",
     // Scenario showcase — 4 coded recreations of real usage surfaces.
-    scenarioLabel: "memax, everywhere you work",
     scenarioTabCli: "Terminal",
     scenarioTabWeb: "Web",
     // Claude Code scenario — agent recalls team context mid-session via MCP.

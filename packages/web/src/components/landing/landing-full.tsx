@@ -11,8 +11,6 @@ import { HeroWaitlist } from "./hero-waitlist";
 import { OverviewStrip } from "./overview-strip";
 import { PivotToggle, type LandingPivot } from "./pivot-toggle";
 import { RotatingHeadline } from "./rotating-headline";
-import { ScenarioShowcase } from "./scenario-showcase";
-import { SecurityStrip } from "./security-strip";
 import { UseCaseShowcase } from "./use-case-showcase";
 
 // Canonical outward contact — same address privacy/terms already publish.
@@ -137,24 +135,13 @@ export function LandingFull() {
           <BenchmarkStrip />
         </div>
 
-        {/* Scenario showcase — coded recreations of the four real surfaces
-            (Claude Code, terminal, memax.app, third-party agent). */}
-        <div className="w-full animate-fade-up stagger-5">
-          <ScenarioShowcase />
-        </div>
-
         {/* Use-case showcase (G2) — four acts of what you actually do
-            with it, each a demo-kit composition. Surfaces above showed
-            WHERE memax lives; these show WHY. */}
+            with it, each a demo-kit composition. The four acts' windows
+            (Claude Code, OpenClaw, web, phone→codex) double as the
+            "works wherever you work" story — the separate surface
+            showcase was cut as redundant (founder, 2026-09-15). */}
         <div className="w-full animate-fade-up stagger-5">
           <UseCaseShowcase />
-        </div>
-
-        {/* Security strip (E3) — enforced mechanisms only, linking to
-            the docs security model. Last on purpose: trust is the
-            closer for a memory product. */}
-        <div className="w-full animate-fade-up stagger-5">
-          <SecurityStrip />
         </div>
       </div>
 

@@ -2192,7 +2192,6 @@ export const zh: Translations = {
     you: "你",
     yourTeam: "你的团队",
     // 场景展示 —— 四个真实使用界面的代码复刻
-    scenarioLabel: "你在哪儿工作，memax 就在哪儿",
     scenarioTabCli: "终端",
     scenarioTabWeb: "Web",
     // Claude Code 场景 —— agent 在会话中通过 MCP 回忆团队上下文

@@ -103,10 +103,13 @@ func NewAnthropicFromEnv(modelName string) *sdkanthropic.Client {
 // NewAnthropicChatFromEnv is NewAnthropicFromEnv plus thinking enabled
 // (adaptive + summarized display) for Anthropic-hosted Claude models —
 // the chat surface renders the model's readable reasoning as a
-// first-class stream layer. OpenRouter-served reasoning models
-// (DeepSeek etc.) don't accept Anthropic's adaptive thinking object on
-// the Messages compatibility endpoint, so thinking is omitted there and
-// the provider default applies.
+// first-class stream layer. Non-Claude reasoning models (DeepSeek via
+// OpenRouter) get thinking EXPLICITLY DISABLED: "omitted" meant the
+// provider default, and DeepSeek's default is reasoning ON — every
+// agent turn burned a silent thinking phase before the first visible
+// token, which is exactly the 问问 memax slowness the founder
+// reported (2026-09-15). Mirrors d8c9b80, which fixed the same thing
+// for the internal client's direct completions.
 func NewAnthropicChatFromEnv(modelName string) *sdkanthropic.Client {
 	key := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnv))
 	if key == "" {
@@ -121,11 +124,15 @@ func NewAnthropicChatFromEnv(modelName string) *sdkanthropic.Client {
 	})
 }
 
-// chatThinkingFor returns the Anthropic thinking config for chat when
-// the model is Anthropic-hosted, and nil otherwise.
+// chatThinkingFor returns adaptive summarized thinking for
+// Anthropic-hosted Claude models and an explicit DISABLED config for
+// everything else — never nil for a known reasoning family, because
+// nil means "provider default" and DeepSeek defaults thinking on.
 func chatThinkingFor(modelName string) *sdkanthropic.ThinkingConfig {
 	if !strings.Contains(strings.ToLower(modelName), "claude") {
-		return nil
+		return &sdkanthropic.ThinkingConfig{
+			Type: sdkanthropic.ThinkingDisabled,
+		}
 	}
 	return &sdkanthropic.ThinkingConfig{
 		Type:    sdkanthropic.ThinkingAdaptive,

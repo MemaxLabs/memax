@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	sdkanthropic "github.com/MemaxLabs/memax-go-agent-sdk/providers/anthropic"
 )
 
 // These tests pin the constructor's contract WITHOUT making real
@@ -151,19 +153,15 @@ func TestNewAnthropicLeavesHTTPClientNilByDefault(t *testing.T) {
 }
 
 func TestAnthropicChatThinkingIsClaudeOnly(t *testing.T) {
-	t.Setenv("ANTHROPIC_API_KEY", "test-key")
-	t.Setenv("ANTHROPIC_BASE_URL", "")
-
-	claude := NewAnthropicChatFromEnv("claude-sonnet-4-6")
-	if claude == nil || claude.Thinking == nil {
-		t.Fatal("expected adaptive thinking for Claude models")
+	claude := chatThinkingFor("claude-opus-5")
+	if claude == nil || claude.Type != sdkanthropic.ThinkingAdaptive {
+		t.Fatalf("expected adaptive thinking for Claude, got %+v", claude)
 	}
-
-	deepseek := NewAnthropicChatFromEnv("deepseek/deepseek-v4.1-flash")
-	if deepseek == nil {
-		t.Fatal("expected non-nil client for OpenRouter model")
-	}
-	if deepseek.Thinking != nil {
-		t.Errorf("expected thinking omitted for non-Claude models, got %+v", deepseek.Thinking)
+	// Non-Claude reasoning models must be EXPLICITLY disabled — nil
+	// meant "provider default", and DeepSeek's default is thinking ON
+	// (the 问问 memax slow-first-token report, 2026-09-15).
+	ds := chatThinkingFor("deepseek/deepseek-v4.1-flash")
+	if ds == nil || ds.Type != sdkanthropic.ThinkingDisabled {
+		t.Fatalf("expected thinking disabled for non-Claude models, got %+v", ds)
 	}
 }

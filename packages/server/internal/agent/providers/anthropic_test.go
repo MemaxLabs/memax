@@ -157,11 +157,18 @@ func TestAnthropicChatThinkingIsClaudeOnly(t *testing.T) {
 	if claude == nil || claude.Type != sdkanthropic.ThinkingAdaptive {
 		t.Fatalf("expected adaptive thinking for Claude, got %+v", claude)
 	}
-	// Non-Claude reasoning models must be EXPLICITLY disabled — nil
-	// meant "provider default", and DeepSeek's default is thinking ON
-	// (the 问问 memax slow-first-token report, 2026-09-15).
+	// Non-Claude reasoning models keep thinking but BOUNDED and
+	// DISPLAYED — nil meant "provider default" (unbounded + silent,
+	// the 问问 memax dead-air report), and outright disabled traded
+	// answer quality away (founder pushback, 2026-09-15).
 	ds := chatThinkingFor("deepseek/deepseek-v4.1-flash")
-	if ds == nil || ds.Type != sdkanthropic.ThinkingDisabled {
-		t.Fatalf("expected thinking disabled for non-Claude models, got %+v", ds)
+	if ds == nil || ds.Type != sdkanthropic.ThinkingEnabled {
+		t.Fatalf("expected bounded thinking for non-Claude models, got %+v", ds)
+	}
+	if ds.BudgetTokens != chatReasoningBudgetTokens {
+		t.Fatalf("expected budget %d, got %d", chatReasoningBudgetTokens, ds.BudgetTokens)
+	}
+	if ds.Display != sdkanthropic.ThinkingDisplaySummarized {
+		t.Fatalf("expected summarized display so the wait is visible, got %q", ds.Display)
 	}
 }

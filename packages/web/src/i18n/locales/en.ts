@@ -2534,14 +2534,13 @@ export const en = {
   personas: {
     title: "Personas",
     beta: "Beta",
-    subtitle:
-      "Identities extracted from your agents' SOUL files. Set one as default — or switch per chat — and the memax agent speaks as it.",
+    // 2026-09-15 founder redesign: radio-card grammar — tap selects,
+    // highlight is the state. No set-default CTA, badge, or success
+    // sentence.
+    subtitle: "Pick one and memax speaks as it.",
     sourceLabel: "from",
-    setDefaultCta: "Set as memax default",
-    clearDefaultCta: "Remove default",
-    defaultBadge: "default",
-    defaultSet: "memax now speaks as {name} — new chats pick it up instantly",
-    defaultCleared: "Default persona removed — memax is back to its own voice",
+    defaultCardTitle: "Memax itself",
+    defaultCardBody: "No persona — its own voice",
     pickerLabel: "Persona",
     pickerInherit: "Default",
     pickerNone: "No persona",

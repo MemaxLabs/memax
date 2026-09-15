@@ -11,7 +11,6 @@ import {
   usePersonaRevisions,
   useRestorePersonaRevision,
 } from "@/hooks/use-personas";
-import { useUpdateSettings } from "@/hooks/use-settings";
 
 // One expandable body at a time — history or delete confirm. The card
 // morphs in place per the container-morphing rule; no modals.
@@ -19,17 +18,19 @@ type CardMode = "idle" | "history" | "confirmDelete";
 
 export function PersonaCard({
   persona,
-  isDefault,
+  selected,
+  onSelect,
 }: {
   persona: Persona;
-  /** Whether this persona is the account's chat_default_persona_id. */
-  isDefault: boolean;
+  /** Radio state — this persona is the account's default voice. */
+  selected: boolean;
+  /** Card tap (radio grammar, 2026-09-15 founder redesign). */
+  onSelect: () => void;
 }) {
   const { t } = useLocale();
   const interpolate = useInterpolate();
   const deletePersona = useDeletePersona();
   const restoreRevision = useRestorePersonaRevision();
-  const updateSettings = useUpdateSettings();
 
   const [mode, setMode] = useState<CardMode>("idle");
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -59,28 +60,34 @@ export function PersonaCard({
 
   const isConfirmingDelete = mode === "confirmDelete";
 
-  const setAsDefault = async (nextID: string) => {
-    try {
-      await updateSettings.mutateAsync({ chat_default_persona_id: nextID });
-      setFeedback(
-        nextID === ""
-          ? t.personas.defaultCleared
-          : interpolate(t.personas.defaultSet, { name: persona.name }),
-      );
-      setMode("idle");
-    } catch {
-      // Error toast handled by the global mutation cache.
-    }
-  };
-
   return (
     <div
-      className="rounded-2xl border border-border/50 bg-surface-1 px-4 py-3.5 transition-colors"
-      style={
-        isConfirmingDelete
+      role="radio"
+      aria-checked={selected}
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (
+          (e.key === "Enter" || e.key === " ") &&
+          e.target === e.currentTarget
+        ) {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className={`cursor-pointer rounded-2xl border px-4 py-3.5 transition-colors ${
+        selected
+          ? "border-transparent bg-surface-1 shadow-glow"
+          : "border-border/50 bg-surface-1 hover:bg-surface-2/60"
+      }`}
+      style={{
+        ...(selected
+          ? { borderColor: "oklch(from var(--signature) l c h / 0.55)" }
+          : null),
+        ...(isConfirmingDelete
           ? { backgroundColor: "oklch(from var(--destructive) l c h / 0.08)" }
-          : undefined
-      }
+          : null),
+      }}
     >
       <div className="flex items-start gap-3">
         <div
@@ -98,11 +105,6 @@ export function PersonaCard({
         <div className="min-w-0 flex-1">
           <p className="text-[14px] font-medium text-fg-1 truncate">
             {persona.name}
-            {isDefault && (
-              <span className="ml-1.5 text-[10px] font-medium uppercase tracking-wide text-fg-3 bg-surface-2 px-1.5 py-0.5 rounded align-middle">
-                {t.personas.defaultBadge}
-              </span>
-            )}
           </p>
           <p className="text-[12px] text-fg-3 truncate">
             {t.personas.sourceLabel} {sourceLabel}
@@ -111,7 +113,10 @@ export function PersonaCard({
         </div>
         {!isConfirmingDelete && (
           <button
-            onClick={() => enterMode("confirmDelete")}
+            onClick={(e) => {
+              e.stopPropagation();
+              enterMode("confirmDelete");
+            }}
             className="text-fg-4 hover:text-destructive/70 transition-colors cursor-pointer shrink-0 p-0.5"
             aria-label={t.forget.button}
           >
@@ -121,7 +126,10 @@ export function PersonaCard({
       </div>
 
       {isConfirmingDelete ? (
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+        >
           <span className="text-[12px] text-fg-2">
             {t.personas.forgetConfirm}
           </span>
@@ -156,7 +164,7 @@ export function PersonaCard({
           <span>{feedback}</span>
         </p>
       ) : mode === "history" ? (
-        <div className="mt-3">
+        <div className="mt-3" onClick={(e) => e.stopPropagation()}>
           <p className="text-[11px] uppercase tracking-wide text-fg-4 mb-1.5">
             {t.personas.historyTitle}
           </p>
@@ -225,14 +233,10 @@ export function PersonaCard({
       ) : (
         <div className="mt-3 flex items-center gap-4">
           <button
-            onClick={() => setAsDefault(isDefault ? "" : persona.id)}
-            disabled={updateSettings.isPending}
-            className="text-[13px] font-medium text-fg-2 hover:text-fg-1 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
-          >
-            {isDefault ? t.personas.clearDefaultCta : t.personas.setDefaultCta}
-          </button>
-          <button
-            onClick={() => enterMode("history")}
+            onClick={(e) => {
+              e.stopPropagation();
+              enterMode("history");
+            }}
             className="text-[13px] text-fg-3 hover:text-fg-1 transition-colors cursor-pointer"
           >
             {t.personas.historyCta}

@@ -8,6 +8,18 @@ export const zh: Translations = {
   common: {
     retry: "重试",
     undo: "撤销",
+    // 二级菜单面板头部的返回控件（menu-sub-panel.tsx）。
+    backToMenu: "返回上级菜单",
+  },
+  // 通知抽屉——全应用唯一的通知收纳处（设计稿 5a85ee8c）。
+  notificationDrawer: {
+    title: "通知",
+    openAria: "打开通知",
+    markAllRead: "全部已读",
+    sectionPinned: "置顶",
+    sectionNews: "动态",
+    sectionReceipts: "回执",
+    empty: "现在很安静，没有新通知",
   },
   billing: {
     upgrade: "升级",
@@ -16,8 +28,11 @@ export const zh: Translations = {
     primary: "主导航",
     showSecondaryPanel: "显示话题面板",
     hideSecondaryPanel: "收起话题面板",
-    search: "搜索",
+    // 「快速搜索」不叫「搜索」——rail 里还有「问问 memax」，
+    // 两个入口的分工要在名字里读出来：快搜召回 vs 问答合成。
+    search: "快速搜索",
     gettingStarted: "入门与机制",
+    notifications: "通知",
     openBar: "打开输入栏 (⌘K)",
     openSettings: "打开设置",
     topicTreeRegion: "话题",
@@ -32,6 +47,21 @@ export const zh: Translations = {
   mechanism: {
     tabQuickstart: "快速开始",
     tabMechanism: "机制",
+    tabShortcuts: "快捷键",
+    // 快捷键 tab —— 按「你想做什么」组织，不是按键名罗列。
+    shortcutsTitle: "键盘快捷键",
+    shortcutsIntro:
+      "每个快捷键对应一件常做的事。桌面端任意界面按 ? 也能打开这页。",
+    shortcutSearch: "快速搜索——召回一条记忆",
+    shortcutRemember: "快速记一条——想法直接进记忆",
+    shortcutCompose: "写长内容——打开写作弹窗",
+    shortcutBrainToggle: "大脑视图 ↔ 记忆列表",
+    shortcutBarSubmit: "输入栏里：发送 / 搜索",
+    shortcutBarSave: "输入栏里：立即存成记忆",
+    shortcutBarGraduate: "输入栏里：带着草稿升级到写作弹窗",
+    shortcutSelectAll: "批量选择时：全选当前列表",
+    shortcutEscape: "逐层退出（弹窗 → 输入栏 → 收起）",
+    shortcutHelp: "打开这页",
     title: "memax 是怎么记住你的",
     subtitle: "记忆怎么写入、怎么整理、怎么想起——以及边界在哪里。",
     statHubs: "个 hub",
@@ -900,7 +930,7 @@ export const zh: Translations = {
     patternPurpose: "藏在记忆数据里、你自己未必察觉的习惯。",
     musingPurpose: "memax 对这个 hub 知识形状的随想。",
     nextupPurpose: "memax 从你的记忆里推测你接下来最想做的事——每一条都有出处。",
-    nextupAck: "做完了 · 收下",
+    nextupAck: "做完了",
 
     // agent 交接（接下来的每一条）——nextup 本身就是"带出处的任务"，
     // 可以原样交给写代码的 agent。prompt 在前端用卡片数据拼出来，
@@ -917,9 +947,9 @@ export const zh: Translations = {
 
     gatePurpose:
       "agent 停下来等你拍板。你的选择会写回记忆，agent 之后能直接读到。",
-    feedbackAccurate: "准",
-    feedbackInaccurate: "不准",
 
+    // 成员加入置顶卡的确认动词——收下=已读进抽屉留档，不是删除。
+    highlightAck: "收下",
     // 等你 band（plan 25 P4）——把通知里的决策并进板上。
     // 板成为唯一的surface，/inbox 退役。
     kindWaiting: "等你",
@@ -932,10 +962,10 @@ export const zh: Translations = {
     // ↻ ——客户端换下一张看，不动任何卡的状态。
     deckCycle: "看下一张",
 
-    // 收起的货架——记忆页里的板先收成一排小卡片，点开才铺开。
-    shelfExpand: "展开",
-    shelfCollapse: "收起",
-    shelfViewAll: "查看全部 →",
+    // 货架——记忆页里的板固定是两行两个的小卡片网格，点卡片
+    // 直接去脉搏页对应的那张；箭头由图标渲染，文案不带字符。
+    shelfViewAll: "查看全部",
+    shelfOverflow: "还有 {n} 条动态",
 
     // 最近 —— 原来住在收件箱里的回执。
     recentTitle: "最近",
@@ -999,6 +1029,11 @@ export const zh: Translations = {
     kindHubInviteDeclined: "邀请被拒",
     kindHubInviteDeclinedByYou: "已拒绝",
     kindHubMemberJoined: "新成员",
+    // agent 首次连接的 wow 通知（抽屉·动态）。
+    kindAgentConnected: "新伙伴",
+    agentConnectedTitle: "{agent} 连上了你的记忆",
+    agentConnectedBody:
+      "它现在可以召回和记住了——之后的读写都会出现在 agent 页。",
     kindHubOwnershipTransfer: "转让所有权",
     kindHubOwnershipTransferred: "所有权变更",
     kindSystemNotice: "系统通知",
@@ -1407,6 +1442,8 @@ export const zh: Translations = {
     deleteKeep: "保留",
     deleted: "主题已删除",
     rename: "重命名",
+    // 树行 ⋮ 菜单里的内联重命名子面板。
+    renameHint: "回车保存，Esc 返回",
     archive: "归档主题",
     archiveToast: "主题已归档",
     archiveToastDetail: "记忆保持归属——随时可以恢复。",
@@ -1801,15 +1838,18 @@ export const zh: Translations = {
 
   // Memory view
   memoryView: {
+    // 记忆片段（2026-09，原「新鲜记忆」）——默认是完整时间线，
+    // 时间窗与来源是用户主动加的 filter，不再有 7 天默认截断。
     freshMemory: {
-      zero: "新鲜记忆",
-      one: "新鲜记忆",
-      other: "新鲜记忆",
+      zero: "记忆片段",
+      one: "记忆片段",
+      other: "记忆片段",
     },
     remembering: "记着呢",
     recentEmptyTitle: "还没有新记忆",
     recentEmptyHint: "记住点什么，就会出现在这儿",
     recentFilteredTitle: "过去 {window} 没有记忆",
+    recentFilteredAllTitle: "当前筛选下没有记忆",
     recentFilteredHint: "试试放宽时间范围或切换来源",
     recentErrorTitle: "没能拿到最近的记忆",
     recentErrorDetail: "连接超时，你的记忆没有丢失",
@@ -1817,6 +1857,7 @@ export const zh: Translations = {
     switchToRows: "切换为列表视图",
     switchToCards: "切换为卡片视图",
     filterPast: "过去 {window}",
+    filterAllTime: "全部时间",
     filterPastLabel: "筛选最近时间范围",
     filterBy: "筛选",
     filterTimeLabel: "时间",
@@ -1828,7 +1869,6 @@ export const zh: Translations = {
     copiedContent: "已复制",
     loadingMore: "正在加载更多…",
     loadMoreRecent: "再看 {n} 条",
-    collapseRecent: "收起",
     scrollToLoad: "继续下滑加载更多",
     copyForAI: "复制给 AI",
     download: "下载",
@@ -2069,6 +2109,15 @@ export const zh: Translations = {
 
   // Landing page
   landing: {
+    security: {
+      title: "强制执行,不是口头承诺",
+      subtitle: "每一条保护都是开源服务器里可以读到的代码——不是条款里的散文。",
+      point1: "四层纵深的所有者隔离,CI 强制访问规则 + 跨租户回归测试",
+      point2: "身份只来自凭证——与凭证冲突的载荷声明直接写入失败",
+      point3: "合成的洞察逐条对库验证;一条编造引用即弃整卡",
+      point4: "凭证在 push 时即被拒绝——记忆会逐字回放,所以密钥进不来",
+      link: "阅读安全模型",
+    },
     usecases: {
       sectionTitle: "你真正会用它做的事",
       tabCrossAgent: "这里存,哪里都能问",
@@ -2251,14 +2300,12 @@ export const zh: Translations = {
   personas: {
     title: "Persona",
     beta: "Beta",
-    subtitle:
-      "从 agent 的 SOUL 文件里提取的身份。选一个应用，就能换掉 agent 的人格。",
+    // 2026-09-15 founder 重做：radio 卡片语法——点卡即选、高亮即状态，
+    // 不再有"设为默认"按钮、默认徽章和成功长句。
+    subtitle: "选一个，memax 就用这个人格说话。",
     sourceLabel: "来自",
-    setDefaultCta: "设为 memax 默认",
-    clearDefaultCta: "取消默认",
-    defaultBadge: "默认",
-    defaultSet: "memax 现在以 {name} 的人格说话——新对话即刻生效",
-    defaultCleared: "已取消默认 persona——memax 回到本来的声音",
+    defaultCardTitle: "memax 本色",
+    defaultCardBody: "不套 persona，本来的声音",
     pickerLabel: "Persona",
     pickerInherit: "默认",
     pickerNone: "不用 persona",

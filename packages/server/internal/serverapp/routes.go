@@ -356,6 +356,15 @@ func registerMCPRoutes(root *http.ServeMux, withAuth func(http.Handler) http.Han
 	if deps.meter != nil {
 		mcpH.SetLogEvent(deps.meter.LogEvent)
 		chatGPTH.SetLogEvent(deps.meter.LogEvent)
+		// Quota parity (2026-09-14): tool calls now reserve the same
+		// push/recall gate counters the REST middleware does — /mcp
+		// used to walk past every quota because ClassifyOperation
+		// only knows REST paths (founder repro: web pushes 402'd at
+		// the plan cap while MCP pushes sailed through). Injected as
+		// functions — meter imports handler, so handler can't import
+		// meter back.
+		mcpH.SetOpGuard(deps.meter.BeginOp, meter.OpDenialMessage)
+		chatGPTH.SetOpGuard(deps.meter.BeginOp, meter.OpDenialMessage)
 	}
 	mcpProtected := http.NewServeMux()
 	mcpProtected.Handle("/mcp", mcpH)

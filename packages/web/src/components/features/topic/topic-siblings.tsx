@@ -72,6 +72,8 @@ export function TopicSiblings({
             memoryId={m.id}
             title={m.title}
             ageISO={m.updated_at}
+            hubId={m.hub_id}
+            topicId={m.topic_id}
           />
         ))}
       </DataSectionCard>

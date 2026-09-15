@@ -362,6 +362,9 @@ export default function InboxFixturesPage() {
       topicRemoved: t.reviews.topicRemoved,
       dreamRunCompletedTitle: t.dreams.notificationTitle,
       dreamRunCompletedCleanTitle: t.dreams.notificationCleanTitle,
+      agentConnectedTitle: ({ agent }: { agent: string }) =>
+        `${agent} connected`,
+      agentConnectedBody: "",
       dreamRunCompletedPartialTitle: t.dreams.notificationPartialTitle,
       topicMergeOne: ({ source, target }) =>
         interpolate(t.inbox.topicMergeOneTitle, { source, target }),

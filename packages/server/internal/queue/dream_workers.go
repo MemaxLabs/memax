@@ -25,7 +25,14 @@ type DreamCycleWorker struct {
 }
 
 func (w *DreamCycleWorker) Timeout(*river.Job[DreamCycleArgs]) time.Duration {
-	return 10 * time.Minute
+	// 30 min, raised from 10 alongside dreamLLMTimeout 12s→30s: while
+	// merge calls were failing fast at 12s the cycle never came near
+	// 10 min, but with merges actually SUCCEEDING each pair runs the
+	// full merge→metadata→embed pipeline (~45-50s realistic), and
+	// 30 pairs (MaxPairsPerRun) lands around 25 min. 30 min matches
+	// the engine's staleRunThreshold, which reclaims a genuinely hung
+	// run at the same horizon.
+	return 30 * time.Minute
 }
 
 func (w *DreamCycleWorker) Work(ctx context.Context, job *river.Job[DreamCycleArgs]) error {

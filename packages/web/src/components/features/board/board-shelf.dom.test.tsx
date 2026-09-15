@@ -50,27 +50,6 @@ function waitingCard(id: string, title: string): BoardNotificationCardModel {
   };
 }
 
-function highlightCard(id: string, title: string): BoardNotificationCardModel {
-  return {
-    id,
-    kind: "hub_member_joined",
-    title,
-    description: "",
-    actions: [],
-    item: {
-      id,
-      audience: "hub",
-      kind: "hub_member_joined",
-      status: "pending",
-      seen: false,
-      title,
-      description: "",
-      similarity: 0,
-      created_at: "2026-08-05T00:00:00Z",
-    },
-  };
-}
-
 const noHandlers = {
   onOpenDeck: () => {},
   onOpenSlot: () => {},
@@ -86,7 +65,7 @@ function tileEls(container: HTMLElement): HTMLElement[] {
 describe("BoardShelf", () => {
   afterEach(cleanup);
 
-  it("orders tiles 等你 → highlight → lane B → capsule → activity → custom → cooking → ghost and excludes receipts", () => {
+  it("orders tiles 等你 → highlight → lane B → capsule → activity → custom → cooking and excludes receipts", () => {
     // Server order deliberately scrambled (activity first) to prove the
     // shelf re-sorts; the resolved slot must not surface at all.
     const slots = [
@@ -116,7 +95,6 @@ describe("BoardShelf", () => {
           waitingCard("n1", "Keep which memory?"),
           waitingCard("n2", "Second decision"),
         ]}
-        highlights={[highlightCard("n3", "Ada joined your hub")]}
         slots={slots}
         customBoards={[
           {
@@ -147,33 +125,31 @@ describe("BoardShelf", () => {
     );
 
     const tiles = tileEls(container);
-    // 7 content tiles + the trailing ghost tile.
-    expect(tiles).toHaveLength(8);
+    // 7 content tiles overflow the 2×2 grid: the first 3 render, the
+    // 4th cell is the overflow tile counting the rest — content is
+    // never silently hidden.
+    expect(tiles).toHaveLength(4);
     // 等你 deck tile leads: top decision + depth badge, second decision
     // stays behind the deck (never its own tile).
     expect(tiles[0].textContent).toContain("Waiting on you");
     expect(tiles[0].textContent).toContain("Keep which memory?");
     expect(tiles[0].textContent).toContain("1 more");
     expect(screen.queryByText("Second decision")).toBeNull();
-    // The member-joined highlight gets its OWN tile, right after the
-    // decisions — it does not hide in the 最近 receipts.
-    expect(tiles[1].textContent).toContain("NEW MEMBER");
-    expect(tiles[1].textContent).toContain("Ada joined your hub");
-    // Then lane B → capsule → activity → custom live card (tagged
-    // with its board title) → cooking custom board → ghost.
-    expect(tiles[2].textContent).toContain("Echo card");
-    expect(tiles[3].textContent).toContain("Capsule card");
-    expect(tiles[4].textContent).toContain("Activity card");
-    expect(tiles[5].textContent).toContain("Custom board card");
-    expect(tiles[5].textContent).toContain("健身 & 睡眠");
-    expect(tiles[6].textContent).toContain("对手动向");
-    expect(tiles[7].dataset.boardTile).toBe("ghost");
-    // Resolved receipts do not earn shelf space.
+    // Highlights live in the notification drawer now — no member-
+    // joined tile. Lane B leads right after the deck; capsule/
+    // activity/custom/cooking fall behind the overflow tile
+    // (3 tiles hidden: activity, custom, 酝酿).
+    expect(screen.queryByText(/NEW MEMBER/)).toBeNull();
+    expect(tiles[1].textContent).toContain("Echo card");
+    expect(tiles[2].textContent).toContain("Capsule card");
+    expect(tiles[3].dataset.boardTile).toBe("overflow");
+    expect(tiles[3].textContent).toContain("3 more updates");
+    // Resolved receipts do not earn shelf space (or an overflow seat).
     expect(screen.queryByText("Resolved dream")).toBeNull();
   });
 
-  it("renders exactly ONE row — no second grid row, horizontal flex only", () => {
-    // Enough tiles that the old layout would have wrapped to two rows.
+  it("renders a 2×2 grid — two columns, capped at four cells, no horizontal scroller", () => {
+    // Enough tiles that the retired one-row layout would have scrolled.
     const manySlots = ["echo", "thread", "openq", "pattern", "musing"].map(
       (kind, i) =>
         slot({ slot_key: `s-${kind}`, kind, title: `${kind} card ${i}` }),
@@ -181,44 +157,38 @@ describe("BoardShelf", () => {
     const { container } = render(
       <BoardShelf
         waiting={[waitingCard("n1", "Keep which memory?")]}
-        highlights={[highlightCard("n2", "Ada joined")]}
         slots={manySlots}
         customBoards={[]}
         cookingBoards={[]}
         {...noHandlers}
       />,
     );
-    expect(container.querySelector(".grid-rows-2")).toBeNull();
-    const row = container.querySelector(".flex.w-max");
-    expect(row).toBeTruthy();
-    expect(row!.className).toContain("flex-nowrap");
+    const grid = container.querySelector<HTMLElement>(".grid");
+    expect(grid).toBeTruthy();
+    expect(grid!.className).toContain("grid-cols-2");
+    expect(container.querySelector(".overflow-x-auto")).toBeNull();
+    expect(tileEls(container)).toHaveLength(4);
   });
 
-  it("sizes tiles by kind purpose: wide decision / standard insight / square capsule / slim activity", () => {
+  it("leaves free cells free — no ghost tile, no overflow counter", () => {
+    // 2026-09: creation is chrome on the /pulse header, not preview
+    // content; the shelf renders exactly its content tiles.
     const { container } = render(
       <BoardShelf
-        waiting={[waitingCard("n1", "Keep which memory?")]}
-        highlights={[]}
+        waiting={[]}
         slots={[
           slot({ slot_key: "s-echo", kind: "echo", title: "Echo card" }),
           slot({ slot_key: "s-cap", kind: "capsule", title: "Capsule card" }),
-          slot({ slot_key: "s-act", kind: "activity", title: "Activity card" }),
         ]}
         customBoards={[]}
         cookingBoards={[]}
         {...noHandlers}
       />,
     );
-    const byKind = (kind: string) =>
-      container.querySelector<HTMLElement>(`[data-board-tile="${kind}"]`);
-    expect(byKind("waiting")!.dataset.size).toBe("wide");
-    expect(byKind("waiting")!.className).toContain("w-[320px]");
-    expect(byKind("echo")!.dataset.size).toBe("standard");
-    expect(byKind("echo")!.className).toContain("w-[272px]");
-    expect(byKind("capsule")!.dataset.size).toBe("square");
-    expect(byKind("capsule")!.className).toContain("w-[200px]");
-    expect(byKind("activity")!.dataset.size).toBe("slim");
-    expect(byKind("activity")!.className).toContain("w-[180px]");
+    const tiles = tileEls(container);
+    expect(tiles).toHaveLength(2);
+    expect(container.querySelector('[data-board-tile="ghost"]')).toBeNull();
+    expect(container.querySelector('[data-board-tile="overflow"]')).toBeNull();
   });
 
   it("left-aligns tile text and shows a quiet relative generated-at line", () => {
@@ -228,7 +198,6 @@ describe("BoardShelf", () => {
     const { container } = render(
       <BoardShelf
         waiting={[]}
-        highlights={[]}
         slots={[
           slot({
             slot_key: "s-echo",
@@ -258,7 +227,6 @@ describe("BoardShelf", () => {
     const { container } = render(
       <BoardShelf
         waiting={[]}
-        highlights={[]}
         slots={[
           slot({ slot_key: "s-p1", kind: "pattern", title: "First pattern" }),
           slot({ slot_key: "s-p2", kind: "pattern", title: "Second pattern" }),
@@ -283,7 +251,6 @@ describe("BoardShelf", () => {
     render(
       <BoardShelf
         waiting={[waitingCard("n1", "Keep which memory?")]}
-        highlights={[]}
         slots={[slot({ slot_key: "s-echo", kind: "echo", title: "Echo card" })]}
         customBoards={[]}
         cookingBoards={[]}
@@ -301,11 +268,9 @@ describe("BoardShelf", () => {
   it("tile × dismisses without opening; decision tiles carry no ×", () => {
     const onOpenSlot = vi.fn();
     const onDismissSlot = vi.fn();
-    const onDismissNotification = vi.fn();
     const { container } = render(
       <BoardShelf
         waiting={[waitingCard("n1", "Keep which memory?")]}
-        highlights={[highlightCard("n2", "Ada joined your hub")]}
         slots={[slot({ slot_key: "s-echo", kind: "echo", title: "Echo card" })]}
         customBoards={[]}
         cookingBoards={[]}
@@ -313,7 +278,6 @@ describe("BoardShelf", () => {
         onOpenSlot={onOpenSlot}
         onOpenBoards={() => {}}
         onDismissSlot={onDismissSlot}
-        onDismissNotification={onDismissNotification}
       />,
     );
     // Slot tile × → resolve action="dismiss" path, tap surface untouched.
@@ -323,39 +287,11 @@ describe("BoardShelf", () => {
     fireEvent.click(echoTile.querySelector('[aria-label="Not interested"]')!);
     expect(onDismissSlot).toHaveBeenCalledWith("s-echo", expect.any(String));
     expect(onOpenSlot).not.toHaveBeenCalled();
-    // Highlight tile × → notification dismiss path.
-    const hlTile = container.querySelector<HTMLElement>(
-      '[data-board-tile="highlight"]',
-    )!;
-    fireEvent.click(hlTile.querySelector('[aria-label="Not interested"]')!);
-    expect(onDismissNotification).toHaveBeenCalledWith("n2");
     // 等你 needs an answer, not a swipe-away: no × on decision tiles.
     const deckTile = container.querySelector<HTMLElement>(
       '[data-board-tile="waiting"]',
     )!;
     expect(deckTile.querySelector('[aria-label="Not interested"]')).toBeNull();
-  });
-
-  it("closes the shelf with the ghost tile → the boards surface", () => {
-    const onOpenBoards = vi.fn();
-    const { container } = render(
-      <BoardShelf
-        waiting={[]}
-        highlights={[]}
-        slots={[slot({ slot_key: "s-echo", kind: "echo", title: "Echo card" })]}
-        customBoards={[]}
-        cookingBoards={[]}
-        onOpenDeck={() => {}}
-        onOpenSlot={() => {}}
-        onOpenBoards={onOpenBoards}
-      />,
-    );
-    const ghost = container.querySelector<HTMLElement>(
-      '[data-board-tile="ghost"]',
-    )!;
-    expect(ghost.textContent).toContain("Have memax watch one thing");
-    fireEvent.click(ghost);
-    expect(onOpenBoards).toHaveBeenCalledTimes(1);
   });
 
   it("orderShelfSlots drops terminal states and demotes capsule/activity", () => {

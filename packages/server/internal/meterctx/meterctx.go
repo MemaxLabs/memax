@@ -170,3 +170,16 @@ func UsageEventInfoFromContext(ctx context.Context) *UsageEventInfo {
 func SetUsageEventField(ctx context.Context, key string, value any) {
 	UsageEventInfoFromContext(ctx).Set(key, value)
 }
+
+// OpDenial describes a quota rejection for callers that speak a
+// non-HTTP protocol (the /mcp JSON-RPC transport) and must phrase the
+// refusal themselves. Lives here — the shared leaf package — because
+// meter imports handler for context accessors, so handler can never
+// import meter back.
+type OpDenial struct {
+	Op       string
+	Current  int
+	Limit    int
+	PlanID   string
+	PlanName string
+}

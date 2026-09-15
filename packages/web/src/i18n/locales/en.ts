@@ -3,6 +3,19 @@ export const en = {
   common: {
     retry: "Retry",
     undo: "Undo",
+    // Back control in sub-panel headers (menu-sub-panel.tsx).
+    backToMenu: "Back to menu",
+  },
+  // Notification drawer — the app's one notification home (design
+  // doc artifact 5a85ee8c).
+  notificationDrawer: {
+    title: "Notifications",
+    openAria: "Open notifications",
+    markAllRead: "Mark all read",
+    sectionPinned: "Pinned",
+    sectionNews: "Activity",
+    sectionReceipts: "Receipts",
+    empty: "All quiet — nothing new",
   },
   billing: {
     upgrade: "Upgrade",
@@ -14,8 +27,12 @@ export const en = {
     primary: "Primary",
     showSecondaryPanel: "Show topic panel",
     hideSecondaryPanel: "Hide topic panel",
-    search: "Search",
+    // "Quick search", not "Search" — the rail also offers Ask memax,
+    // and the two entries' split (fast recall vs synthesized answers)
+    // should read from the names alone.
+    search: "Quick search",
     gettingStarted: "Getting started",
+    notifications: "Notifications",
     openBar: "Open bar (⌘K)",
     openSettings: "Open settings",
     topicTreeRegion: "Topics",
@@ -30,6 +47,21 @@ export const en = {
   mechanism: {
     tabQuickstart: "Quick start",
     tabMechanism: "How it works",
+    tabShortcuts: "Shortcuts",
+    // Shortcuts tab — organized by "what you want to do", not key names.
+    shortcutsTitle: "Keyboard shortcuts",
+    shortcutsIntro:
+      "Each shortcut maps to one everyday move. On desktop, press ? anywhere to open this page.",
+    shortcutSearch: "Quick search — recall a memory",
+    shortcutRemember: "Quick capture — dump a thought straight into memory",
+    shortcutCompose: "Write something longer — open the compose modal",
+    shortcutBrainToggle: "Brain view ↔ memory list",
+    shortcutBarSubmit: "In the bar: send / search",
+    shortcutBarSave: "In the bar: save as a memory right away",
+    shortcutBarGraduate: "In the bar: graduate the draft to compose",
+    shortcutSelectAll: "While batch-selecting: select everything listed",
+    shortcutEscape: "Peel back one layer (modal → bar → closed)",
+    shortcutHelp: "Open this page",
     title: "How memax remembers you",
     subtitle:
       "How memories are written, organized, recalled — and where the boundaries are.",
@@ -897,6 +929,8 @@ export const en = {
 
   board: {
     actionAck: "Got it",
+    // Member-joined pinned card's acknowledge verb — seen, not deleted.
+    highlightAck: "Got it",
     actionDismiss: "Not interested",
     moreActions: "More actions",
     kindFilterAll: "All",
@@ -991,7 +1025,7 @@ export const en = {
       "memax thinking out loud about the shape of this hub's knowledge.",
     nextupPurpose:
       "memax's guess at what you most likely want to do next, inferred from your own memories — every item comes with its receipts.",
-    nextupAck: "Done · got it",
+    nextupAck: "Done",
 
     // Agent handoff (接下来 items) — a nextup item is already a task
     // with receipts, so it can be handed to a coding agent verbatim.
@@ -1011,8 +1045,6 @@ export const en = {
 
     gatePurpose:
       "An agent stopped to wait for your call. Your choice is written back into memory so the agent can read it later.",
-    feedbackAccurate: "Spot on",
-    feedbackInaccurate: "Off the mark",
 
     // 等你 band (plan 25 P4) — notification decisions merged onto the
     // board. The board is the one surface; /inbox retired.
@@ -1027,11 +1059,11 @@ export const en = {
     // ↻ — advance the deck client-side without resolving anything.
     deckCycle: "Show next card",
 
-    // Collapsed shelf — the embedded memories-page board renders as a
-    // compact horizontal tile shelf until expanded in place.
-    shelfExpand: "Expand",
-    shelfCollapse: "Collapse",
-    shelfViewAll: "View all →",
+    // Shelf — the embedded memories-page board is a fixed 2×2 tile
+    // grid; tapping a tile navigates to that card on the pulse page.
+    // The arrow is rendered as an icon, not a text glyph.
+    shelfViewAll: "View all",
+    shelfOverflow: "{n} more updates",
 
     // 最近 strip — receipts that used to live in the inbox.
     recentTitle: "Recent",
@@ -1097,6 +1129,11 @@ export const en = {
     kindHubInviteDeclined: "INVITE DECLINED",
     kindHubInviteDeclinedByYou: "INVITE DECLINED",
     kindHubMemberJoined: "NEW MEMBER",
+    // The agent first-connection wow notification (drawer · activity).
+    kindAgentConnected: "NEW AGENT",
+    agentConnectedTitle: "{agent} connected to your memory",
+    agentConnectedBody:
+      "It can recall and remember now — its reads and writes show up on the Agents page.",
     kindHubOwnershipTransfer: "OWNERSHIP TRANSFER",
     kindHubOwnershipTransferred: "OWNERSHIP CHANGED",
     kindSystemNotice: "NOTICE",
@@ -1537,6 +1574,8 @@ export const en = {
     deleteKeep: "Keep",
     deleted: "Topic deleted",
     rename: "Rename",
+    // Inline rename sub-panel in the tree row's ⋮ menu.
+    renameHint: "Enter to save, Esc to go back",
     archive: "Archive topic",
     archiveToast: "Topic archived",
     archiveToastDetail: "Memories stay assigned — restore anytime.",
@@ -1983,15 +2022,19 @@ export const en = {
 
   // Memory view
   memoryView: {
+    // Fragments (2026-09, was "Fresh memories") — the default is the
+    // FULL timeline; time window and actor are user-applied filters,
+    // no implicit 7-day cutoff anymore.
     freshMemory: {
-      zero: "Fresh memories",
-      one: "Fresh memories",
-      other: "Fresh memories",
+      zero: "Fragments",
+      one: "Fragments",
+      other: "Fragments",
     },
     remembering: "remembering",
     recentEmptyTitle: "Nothing new yet",
     recentEmptyHint: "Capture something and it'll show up here",
     recentFilteredTitle: "No memories in the past {window}",
+    recentFilteredAllTitle: "No memories under this filter",
     recentFilteredHint: "Try widening the window or switching actor",
     recentErrorTitle: "Couldn't reach your recent memories",
     recentErrorDetail: "Connection timed out. Your memories are safe.",
@@ -1999,6 +2042,7 @@ export const en = {
     switchToRows: "Switch to row view",
     switchToCards: "Switch to card view",
     filterPast: "Past {window}",
+    filterAllTime: "All time",
     filterPastLabel: "Filter recent window",
     filterBy: "Filter",
     filterTimeLabel: "Time",
@@ -2010,7 +2054,6 @@ export const en = {
     copiedContent: "Copied",
     loadingMore: "Loading more...",
     loadMoreRecent: "Show {n} more",
-    collapseRecent: "Collapse",
     scrollToLoad: "Scroll to load more",
     copyForAI: "Copy for AI",
     download: "Download",
@@ -2271,6 +2314,20 @@ export const en = {
 
   // Landing page
   landing: {
+    security: {
+      title: "Enforced, not promised",
+      subtitle:
+        "Every protection is code you can read in the open-source server — not policy prose.",
+      point1:
+        "Owner isolation four layers deep, with CI-enforced access rules and cross-tenant regression tests",
+      point2:
+        "Identity comes from credentials — payload claims that conflict fail the write outright",
+      point3:
+        "Synthesized insights are verified against the store; a fabricated citation kills the card",
+      point4:
+        "Credentials are rejected at push time — memories replay verbatim, so keys never get in",
+      link: "Read the security model",
+    },
     usecases: {
       sectionTitle: "What you actually do with it",
       tabCrossAgent: "Save here, ask anywhere",
@@ -2477,14 +2534,13 @@ export const en = {
   personas: {
     title: "Personas",
     beta: "Beta",
-    subtitle:
-      "Identities extracted from your agents' SOUL files. Set one as default — or switch per chat — and the memax agent speaks as it.",
+    // 2026-09-15 founder redesign: radio-card grammar — tap selects,
+    // highlight is the state. No set-default CTA, badge, or success
+    // sentence.
+    subtitle: "Pick one and memax speaks as it.",
     sourceLabel: "from",
-    setDefaultCta: "Set as memax default",
-    clearDefaultCta: "Remove default",
-    defaultBadge: "default",
-    defaultSet: "memax now speaks as {name} — new chats pick it up instantly",
-    defaultCleared: "Default persona removed — memax is back to its own voice",
+    defaultCardTitle: "Memax itself",
+    defaultCardBody: "No persona — its own voice",
     pickerLabel: "Persona",
     pickerInherit: "Default",
     pickerNone: "No persona",

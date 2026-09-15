@@ -46,6 +46,11 @@ export function SurfaceTransitionOverlay({
       style={{
         background: getTransitionOverlayBackground(request.kind),
         opacity: visible ? 1 : 0,
+        // Defense in depth: once hidden the overlay must never eat
+        // input. An opacity-0 fixed layer is still hit-testable, and
+        // a lifecycle bug that keeps it mounted (2026-09-14 incident)
+        // otherwise turns into "every tap on every page is dead".
+        pointerEvents: visible ? "auto" : "none",
       }}
     >
       {label ? (

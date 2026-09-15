@@ -126,13 +126,16 @@ export function boardKindVisual(kind: string): BoardKindVisual {
 }
 
 /**
- * Spread-ready eyebrow props for BoardKindLabel — dot + icon in one
- * call: `<BoardKindLabel star {...boardKindEyebrow(slot.kind)}>`.
+ * Spread-ready eyebrow props for BoardKindLabel:
+ * `<BoardKindLabel star {...boardKindEyebrow(slot.kind)}>`.
+ *
+ * Icon only — the eyebrow used to also carry the kind's colored dot,
+ * but dot + icon double-encoded the same category (founder feedback,
+ * 2026-09). The dot color survives in `boardKindVisual().dot` for the
+ * accents that are NOT next to the icon (lane B provenance marks).
  */
 export function boardKindEyebrow(kind: string): {
-  dotColor: string;
   icon: LucideIcon;
 } {
-  const visual = boardKindVisual(kind);
-  return { dotColor: visual.dot, icon: visual.icon };
+  return { icon: boardKindVisual(kind).icon };
 }

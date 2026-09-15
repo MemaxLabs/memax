@@ -598,7 +598,7 @@ type Store interface {
 	GetMemoryNear(hubID string, target time.Time, tolerance time.Duration) (*model.Memory, error)
 
 	// Connected Agents — first-class agent registry
-	UpsertConnectedAgent(agent *model.ConnectedAgent) error
+	UpsertConnectedAgent(agent *model.ConnectedAgent) (created bool, err error)
 	GetConnectedAgent(ownerID string, agentName string) (*model.ConnectedAgent, error)
 	ListConnectedAgentsWithStats(ownerID string) ([]model.ConnectedAgentWithStats, error)
 	UpdateConnectedAgent(agent *model.ConnectedAgent) error

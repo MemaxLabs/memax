@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/meterctx"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
@@ -795,5 +797,302 @@ func TestMCPPushRejectsConflictingAgentClaim(t *testing.T) {
 	}
 	if len(resp.Result.Content) == 0 || !strings.Contains(resp.Result.Content[0].Text, "attribution") {
 		t.Errorf("error text = %+v, want an attribution conflict message", resp.Result.Content)
+	}
+}
+
+// TestMCPToolPush_QuotaDenied — the 2026-09-14 parity fix: /mcp tool
+// calls must hit the same push gate REST does. A denying guard must
+// produce an IsError result and the tool must NOT create the memory.
+func TestMCPToolPush_QuotaDenied(t *testing.T) {
+	s := store.NewInMemoryStore()
+	s.AddUser(&model.User{ID: "u1", Email: "u@example.com"})
+	hub := &model.Hub{ID: "h1", OwnerID: "u1", HubType: "personal", Slug: "personal"}
+	if err := s.CreateHub(hub); err != nil {
+		t.Fatal(err)
+	}
+	h := NewMCPHandler(s, nil, nil, nil)
+	denied := false
+	h.SetOpGuard(
+		func(_ *http.Request, userID, op, billingHubID string) (func(bool), *meterctx.OpDenial) {
+			if op != "push" {
+				t.Fatalf("expected op push, got %q", op)
+			}
+			if userID != "u1" {
+				t.Fatalf("expected user u1, got %q", userID)
+			}
+			if billingHubID != "h1" {
+				t.Fatalf("expected billing hub h1, got %q", billingHubID)
+			}
+			denied = true
+			return func(bool) {}, &meterctx.OpDenial{
+				Op: "push", Current: 500, Limit: 500,
+				PlanID: "hub_free_team", PlanName: "Free Team",
+			}
+		},
+		func(_ *meterctx.OpDenial) string { return "quota exceeded test" },
+	)
+
+	w := doMCPQuotaRequest(t, h, "u1", "h1",
+		mcpQuotaBody(t, "memax_push", map[string]any{"content": "hello"}))
+	if !denied {
+		t.Fatal("guard was never consulted")
+	}
+	var resp struct {
+		Result struct {
+			IsError bool `json:"isError"`
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("parse response: %v (%s)", err, w.Body.String())
+	}
+	if !resp.Result.IsError {
+		t.Fatalf("expected IsError result, got %s", w.Body.String())
+	}
+	if len(resp.Result.Content) == 0 ||
+		resp.Result.Content[0].Text != "quota exceeded test" {
+		t.Fatalf("expected denial message, got %s", w.Body.String())
+	}
+	mems, _ := s.ListMemories("u1", 10)
+	if len(mems) != 0 {
+		t.Fatalf("denied push must not create a memory, found %d", len(mems))
+	}
+}
+
+// TestMCPToolPush_QuotaCommitLifecycle — the reservation commits
+// exactly when the memory is durable; a tool-level error (empty
+// content) never bills.
+func TestMCPToolPush_QuotaCommitLifecycle(t *testing.T) {
+	s := store.NewInMemoryStore()
+	s.AddUser(&model.User{ID: "u1", Email: "u@example.com"})
+	if err := s.CreateHub(&model.Hub{ID: "h1", OwnerID: "u1", HubType: "personal", Slug: "personal"}); err != nil {
+		t.Fatal(err)
+	}
+	h := NewMCPHandler(s, nil, nil, nil)
+	var commits, rollbacks int
+	h.SetOpGuard(
+		func(_ *http.Request, _, _, _ string) (func(bool), *meterctx.OpDenial) {
+			return func(committed bool) {
+				if committed {
+					commits++
+				} else {
+					rollbacks++
+				}
+			}, nil
+		},
+		nil,
+	)
+
+	// Success → one commit, memory exists.
+	w := doMCPQuotaRequest(t, h, "u1", "h1",
+		mcpQuotaBody(t, "memax_push", map[string]any{"content": "hello"}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("push status %d: %s", w.Code, w.Body.String())
+	}
+	if commits != 1 || rollbacks != 0 {
+		t.Fatalf("success push: commits=%d rollbacks=%d", commits, rollbacks)
+	}
+	mems, _ := s.ListMemories("u1", 10)
+	if len(mems) != 1 {
+		t.Fatalf("expected 1 memory, got %d", len(mems))
+	}
+}
+
+// ── shared fixtures for the quota-guard tests ──
+
+func mcpQuotaBody(t *testing.T, tool string, args map[string]any) []byte {
+	t.Helper()
+	rawArgs, err := json.Marshal(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      tool,
+			"arguments": json.RawMessage(rawArgs),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
+func doMCPQuotaRequest(
+	t *testing.T,
+	h *MCPHandler,
+	userID, hubID string,
+	body []byte,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := context.WithValue(req.Context(), userIDKey, userID)
+	ctx = context.WithValue(ctx, hubIDKey, hubID)
+	ctx = context.WithValue(ctx, writeHubIDKey, hubID)
+	ctx = context.WithValue(ctx, authContextKey, &AuthContext{
+		UserID:        userID,
+		PrincipalType: "user",
+		HubScopeMode:  HubScopeAllAccessible,
+		PermissionsByHub: map[string]PermissionSet{
+			hubID: NewPermissionSet(PermMemoryRead, PermMemoryWrite),
+		},
+		DefaultWriteHubID: hubID,
+	})
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	return w
+}
+
+// TestMCPToolPush_QuotaRollbackOnToolError — a post-guard tool
+// failure (conflicting agent claim → provErr) must roll the
+// reservation back: a failed push is never billed. This is the exact
+// path the review flagged as claimed-but-untested.
+func TestMCPToolPush_QuotaRollbackOnToolError(t *testing.T) {
+	s := store.NewInMemoryStore()
+	personalHubID := "hub-personal-u1"
+	if err := s.CreateHub(&model.Hub{
+		ID:      personalHubID,
+		OwnerID: "u1",
+		Name:    "Personal",
+		Slug:    "personal",
+		HubType: "personal",
+	}); err != nil {
+		t.Fatalf("CreateHub: %v", err)
+	}
+	h := NewMCPHandler(s, nil, nil, nil)
+	var commits, rollbacks int
+	h.SetOpGuard(
+		func(_ *http.Request, _, _, _ string) (func(bool), *meterctx.OpDenial) {
+			return func(committed bool) {
+				if committed {
+					commits++
+				} else {
+					rollbacks++
+				}
+			}, nil
+		},
+		nil,
+	)
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memax_push","arguments":{"content":"body","title":"Conflicting claim","hub_id":"personal","source_agent":"claude-code"}}}`
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+	ctx := context.WithValue(req.Context(), userIDKey, "u1")
+	ctx = context.WithValue(ctx, agentNameKey, "claude-ai")
+	ctx = context.WithValue(ctx, authContextKey, &AuthContext{
+		UserID: "u1",
+		PermissionsByHub: map[string]PermissionSet{
+			personalHubID: NewPermissionSet(PermMemoryRead, PermMemoryWrite),
+		},
+	})
+	ctx = context.WithValue(ctx, grantContextKey, GrantContext{
+		UserID:        "u1",
+		PrincipalType: "oauth_grant",
+		AgentName:     "claude-ai",
+	})
+	ctx = context.WithValue(ctx, hubIDsKey, []string{personalHubID})
+	ctx = context.WithValue(ctx, writeHubIDKey, personalHubID)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	var resp struct {
+		Result mcpToolResult `json:"result"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.Result.IsError {
+		t.Fatal("expected the claim conflict to error")
+	}
+	if commits != 0 || rollbacks != 1 {
+		t.Fatalf("failed push must roll back, not bill: commits=%d rollbacks=%d", commits, rollbacks)
+	}
+}
+
+// TestMCPToolRecall_QuotaDeniedAndCommit — recall shares the REST
+// recall gate: denial → IsError without running the pipeline; a run
+// that reaches the pipeline commits exactly once (even with zero
+// results — COGS were spent).
+func TestMCPToolRecall_QuotaDenied(t *testing.T) {
+	s := store.NewInMemoryStore()
+	recallH := NewRecallHandler(s, nil, nil, nil, nil)
+	h := NewMCPHandler(s, recallH, nil, nil)
+	h.SetOpGuard(
+		func(_ *http.Request, _, op, _ string) (func(bool), *meterctx.OpDenial) {
+			if op != "recall" {
+				t.Fatalf("expected op recall, got %q", op)
+			}
+			return func(bool) {}, &meterctx.OpDenial{Op: "recall", Current: 10, Limit: 10}
+		},
+		func(_ *meterctx.OpDenial) string { return "recall quota exceeded" },
+	)
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memax_recall","arguments":{"query":"anything"}}}`
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+	ctx := context.WithValue(req.Context(), userIDKey, "u1")
+	ctx = context.WithValue(ctx, authContextKey, &AuthContext{
+		UserID: "u1",
+		PermissionsByHub: map[string]PermissionSet{
+			"": NewPermissionSet(PermMemoryRead),
+		},
+	})
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	var resp struct {
+		Result mcpToolResult `json:"result"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.Result.IsError || !strings.Contains(resp.Result.Content[0].Text, "recall quota exceeded") {
+		t.Fatalf("expected quota denial, got %s", w.Body.String())
+	}
+}
+
+func TestMCPToolRecall_QuotaCommitsOnPipelineRun(t *testing.T) {
+	s := store.NewInMemoryStore()
+	recallH := NewRecallHandler(s, nil, nil, nil, nil)
+	h := NewMCPHandler(s, recallH, nil, nil)
+	var commits, rollbacks int
+	h.SetOpGuard(
+		func(_ *http.Request, _, _, _ string) (func(bool), *meterctx.OpDenial) {
+			return func(committed bool) {
+				if committed {
+					commits++
+				} else {
+					rollbacks++
+				}
+			}, nil
+		},
+		nil,
+	)
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memax_recall","arguments":{"query":"how does caching work"}}}`
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+	ctx := context.WithValue(req.Context(), userIDKey, "u1")
+	ctx = context.WithValue(ctx, authContextKey, &AuthContext{
+		UserID: "u1",
+		PermissionsByHub: map[string]PermissionSet{
+			"": NewPermissionSet(PermMemoryRead),
+		},
+	})
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("recall status %d: %s", w.Code, w.Body.String())
+	}
+	if commits != 1 || rollbacks != 0 {
+		t.Fatalf("pipeline ran (empty results) → exactly one commit: commits=%d rollbacks=%d", commits, rollbacks)
 	}
 }

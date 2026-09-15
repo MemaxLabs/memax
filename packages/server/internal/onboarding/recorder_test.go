@@ -111,9 +111,10 @@ func TestEmitter_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestExpiresAtIs14Days confirms the 14-day inactivity window from
-// plan 18 §3.2 is honored.
-func TestExpiresAtIs14Days(t *testing.T) {
+// TestExpiresAtWindow confirms expiresAt honors the expiresAfter
+// inactivity window (7 days — tightened from plan 18 §3.2's 14 on
+// founder direction, 2026-09-14).
+func TestExpiresAtWindow(t *testing.T) {
 	t.Parallel()
 	before := time.Now().UTC()
 	got := expiresAt()
@@ -124,7 +125,7 @@ func TestExpiresAtIs14Days(t *testing.T) {
 	lowerBound := before.Add(expiresAfter)
 	upperBound := after.Add(expiresAfter)
 	if got.Before(lowerBound) || got.After(upperBound) {
-		t.Errorf("expiresAt outside expected 14d window: got %v, want [%v, %v]",
+		t.Errorf("expiresAt outside expected window: got %v, want [%v, %v]",
 			got, lowerBound, upperBound)
 	}
 }

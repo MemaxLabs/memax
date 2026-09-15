@@ -227,9 +227,9 @@ Only write a card if the material is genuinely relevant to this board's brief �
 
 // wowKindHints steers the agent's exploration per rotated kind.
 var wowKindHints = map[string]string{
-	model.BoardKindEcho:         "echo (回声): find a question or uncertainty the user recorded 30+ days ago that a RECENT memory now answers or settles. The payoff is the time gap.",
-	model.BoardKindThread:       "thread (暗线): find two memories from different times or contexts that are plausibly the same underlying idea the user never connected. Be conservative — a false connection is worse than none.",
-	model.BoardKindPattern:      "pattern (未观察模式): find a recurring behavior visible across 3+ memories that the user likely hasn't noticed about themselves. Must be provable from the citations.",
+	model.BoardKindEcho:    "echo (回声): find a question or uncertainty the user recorded 30+ days ago that a RECENT memory now answers or settles. The payoff is the time gap.",
+	model.BoardKindThread:  "thread (暗线): find two memories from different times or contexts that are plausibly the same underlying idea the user never connected. Be conservative — a false connection is worse than none.",
+	model.BoardKindPattern: "pattern (未观察模式): find a recurring behavior visible across 3+ memories that the user likely hasn't noticed about themselves. Must be provable from the citations.",
 
 	// Team-only lenses. Each one must cite memories written by the
 	// right MIX of people or it is dropped after the fact (see

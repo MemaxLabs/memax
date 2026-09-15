@@ -43,7 +43,11 @@ import { Compass, Search } from "lucide-react";
 import { MemaxLogo, MemaxTextLogo } from "@memaxlabs/ui";
 import { useAuth, useActiveHub } from "@/lib/auth";
 import { HubIdentityChip } from "@/components/features/hub/hub-identity-chip";
-import { OnboardingMechanismModal } from "@/components/features/onboarding-mechanism-modal";
+import { NotificationBell } from "@/components/features/notification-drawer";
+import {
+  OnboardingMechanismModal,
+  type MechanismTab,
+} from "@/components/features/onboarding-mechanism-modal";
 import { useBar } from "@/contexts/bar-context";
 import { useShellState } from "@/contexts/shell-state-context";
 import { useNotificationSummary } from "@/hooks/use-notifications";
@@ -78,12 +82,13 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   const { user, hubs } = useAuth();
   const { activeHub } = useActiveHub();
   const settingsPanel = useSettingsPanel();
+  // Badge split (2026-09, notification drawer): the pulse tab dot is
+  // the CONTENT channel — pending decisions only. Unseen updates
+  // (news / receipts / broadcasts) belong to the footer bell.
   const pulseBadgeTone =
     (notificationSummary?.needs_action_pending ?? 0) > 0
       ? ("needs-action" as const)
-      : (notificationSummary?.updates_unseen ?? 0) > 0
-        ? ("updates" as const)
-        : null;
+      : null;
 
   // The rail is ALWAYS expanded at RAIL_WIDTH (2026-08). It used to
   // derive its width from secondary-panel state under an "always
@@ -102,9 +107,38 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   // mismatch.
   const [kbdHint, setKbdHint] = useState<string | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingTab, setOnboardingTab] =
+    useState<MechanismTab>("quickstart");
+  // Bumped by the "?" opener so a press while the modal is ALREADY
+  // open remounts it on the shortcuts tab — initialTab is only read
+  // at mount, so without a key change the press would no-op
+  // (adversarial review).
+  const [onboardingEpoch, setOnboardingEpoch] = useState(0);
   useEffect(() => {
     const ua = navigator.userAgent;
     setKbdHint(/Mac|iPhone|iPad|iPod/.test(ua) ? "⌘K" : "Ctrl K");
+  }, []);
+
+  // "?" anywhere (Linear/GitHub convention) → the 快捷键 tab of the
+  // 入门与机制 modal. Guarded against editable contexts so typing a
+  // question mark in the bar or an input never hijacks.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "?" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) {
+          return;
+        }
+      }
+      e.preventDefault();
+      setOnboardingTab("shortcuts");
+      setOnboardingEpoch((n) => n + 1);
+      setOnboardingOpen(true);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, []);
 
   // Resolve the hub-scoped tab paths against the user's active hub.
@@ -334,9 +368,12 @@ export function LeftRail({ activeTab }: LeftRailProps) {
       <div className="px-2 pb-1 shrink-0">
         <button
           type="button"
-          onClick={() => setOnboardingOpen(true)}
+          onClick={() => {
+            setOnboardingTab("quickstart");
+            setOnboardingOpen(true);
+          }}
           aria-haspopup="dialog"
-          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
+          className="flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
           style={{ color: "var(--fg-2)" }}
         >
           <span className="flex h-6 w-6 shrink-0 items-center justify-center">
@@ -348,17 +385,23 @@ export function LeftRail({ activeTab }: LeftRailProps) {
         </button>
       </div>
       {onboardingOpen && (
-        <OnboardingMechanismModal onClose={() => setOnboardingOpen(false)} />
+        <OnboardingMechanismModal
+          key={onboardingEpoch}
+          initialTab={onboardingTab}
+          onClose={() => setOnboardingOpen(false)}
+        />
       )}
 
-      {/* Footer — user avatar opens the SettingsPanel. */}
-      <div className="px-2 pb-2 shrink-0">
+      {/* Footer — user avatar opens the SettingsPanel; the bell
+          beside it is the notification drawer's desktop home
+          (founder placement, 2026-09-14). */}
+      <div className="flex items-center gap-1 px-2 pb-2 shrink-0">
         <button
           type="button"
           onClick={settingsPanel.toggle}
           aria-label={t.nav.openSettings}
           aria-expanded={settingsPanel.open}
-          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
+          className="flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
           style={{ color: "var(--fg-2)" }}
         >
           <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-2">
@@ -379,6 +422,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
             {user?.name ?? t.nav.openSettings}
           </span>
         </button>
+        <NotificationBell />
       </div>
     </aside>
   );

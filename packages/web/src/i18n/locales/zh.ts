@@ -2300,14 +2300,12 @@ export const zh: Translations = {
   personas: {
     title: "Persona",
     beta: "Beta",
-    subtitle:
-      "从 agent 的 SOUL 文件里提取的身份。选一个应用，就能换掉 agent 的人格。",
+    // 2026-09-15 founder 重做：radio 卡片语法——点卡即选、高亮即状态，
+    // 不再有"设为默认"按钮、默认徽章和成功长句。
+    subtitle: "选一个，memax 就用这个人格说话。",
     sourceLabel: "来自",
-    setDefaultCta: "设为 memax 默认",
-    clearDefaultCta: "取消默认",
-    defaultBadge: "默认",
-    defaultSet: "memax 现在以 {name} 的人格说话——新对话即刻生效",
-    defaultCleared: "已取消默认 persona——memax 回到本来的声音",
+    defaultCardTitle: "memax 本色",
+    defaultCardBody: "不套 persona，本来的声音",
     pickerLabel: "Persona",
     pickerInherit: "默认",
     pickerNone: "不用 persona",

@@ -40,7 +40,9 @@ export const zh: Translations = {
     tabs: {
       brain: "问问 memax",
       memories: "记忆",
-      agents: "已连接 agents",
+      // founder 2026-09-15：就叫 agents——品牌词不翻、不加状语
+      // （"已连接"是实现细节，不是名字）。
+      agents: "agents",
       pulse: "脉搏",
     },
   },
@@ -529,7 +531,7 @@ export const zh: Translations = {
   },
 
   agentConfigs: {
-    title: "已连接的 agents",
+    title: "agents",
     subtitle: "配好一次，agent 走到哪都连着你的记忆。",
     empty: "还没有连接 AI 助手",
     emptyHint: "连上你的第一个助手，让它拥有跨会话的持久记忆。",

@@ -40,7 +40,9 @@ export const en = {
     tabs: {
       brain: "Ask memax",
       memories: "Memories",
-      agents: "Connected agents",
+      // founder 2026-09-15: just "agents" — the brand word, no
+      // qualifier ("connected" is an implementation detail).
+      agents: "Agents",
       pulse: "Pulse",
     },
   },
@@ -580,7 +582,7 @@ export const en = {
   },
 
   agentConfigs: {
-    title: "Connected agents",
+    title: "Agents",
     subtitle:
       "Set an agent up once — it's connected to your memory everywhere.",
     empty: "No agents connected yet",

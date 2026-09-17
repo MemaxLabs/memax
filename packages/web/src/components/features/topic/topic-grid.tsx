@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import {
+  Fragment,
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useTopics } from "@/hooks/use-topics";
 import {
@@ -93,6 +100,9 @@ import { useTopicTreeController } from "@/hooks/use-topic-tree-controller";
 // longer mounts it inside the v2 grid — the dual-render risked two
 // `+` cells visible in the loaded phase.
 import { DraggableMemoryCard } from "../memory-card/memory-card-draggable";
+import { FragmentPreview } from "./fragment-preview";
+import { FragmentConflictStrip } from "./fragment-conflict-strip";
+import { buildFragmentConflictIndex } from "@/lib/fragment-conflicts";
 import { MemoryCardSkeletonList } from "../memory-card/memory-card-skeleton";
 /** Main topic cards grid with recent memories section. */
 export function TopicGrid() {
@@ -598,33 +608,61 @@ export function RecentSection({
    */
   leadingCell?: React.ReactNode;
 }) {
-  const readFilters = useCallback(() => {
-    if (typeof globalThis.localStorage === "undefined") {
-      return { window: "all" as TimeWindow, actor: "all" as RecentActor };
-    }
+  // Two modes (2026-09-17 founder spec): 「最近」 = a recent window
+  // (12h/1d/3d/7d) of what agents just filed — right ones stay, wrong
+  // ones get forgotten, nothing needs a "seen" state; 「全部」 = the full
+  // timeline. Mode is DERIVED from the window: "all" ↔ 全部, anything
+  // else ↔ 最近. `recentWindow` remembers the last recent choice so the
+  // toggle returns to it. First visit (nothing stored) starts on 最近
+  // and falls through to 全部 once when the window turns out empty.
+  const readFilters = useCallback((): {
+    window: TimeWindow;
+    actor: RecentActor;
+    recentWindow: RecentWindow;
+    stored: boolean;
+  } => {
+    const fresh = {
+      window: DEFAULT_RECENT_WINDOW as TimeWindow,
+      actor: "all" as RecentActor,
+      recentWindow: DEFAULT_RECENT_WINDOW,
+      stored: false,
+    };
+    if (typeof globalThis.localStorage === "undefined") return fresh;
     try {
       const saved = localStorage.getItem(filterStorageKey);
-      if (!saved) {
-        return { window: "all" as TimeWindow, actor: "all" as RecentActor };
-      }
+      if (!saved) return fresh;
       const parsed = JSON.parse(saved) as {
         window?: TimeWindow;
         actor?: RecentActor;
+        recentWindow?: RecentWindow;
       };
+      const recentWindow =
+        parsed.recentWindow && isRecentWindow(parsed.recentWindow)
+          ? parsed.recentWindow
+          : parsed.window && isRecentWindow(parsed.window)
+            ? parsed.window
+            : DEFAULT_RECENT_WINDOW;
       return {
         window:
           parsed.window && TIME_WINDOWS.includes(parsed.window)
             ? parsed.window
             : ("all" as TimeWindow),
         actor: parsed.actor ?? ("all" as RecentActor),
+        recentWindow,
+        stored: true,
       };
     } catch {
-      return { window: "all" as TimeWindow, actor: "all" as RecentActor };
+      return fresh;
     }
   }, [filterStorageKey]);
 
   const [window, setWindow] = useState<TimeWindow>(() => readFilters().window);
   const [actor, setActor] = useState<RecentActor>(() => readFilters().actor);
+  const [recentWindow, setRecentWindow] = useState<RecentWindow>(
+    () => readFilters().recentWindow,
+  );
+  const hasStoredFilters = useRef(readFilters().stored);
+  const mode: FragmentsMode = window === "all" ? "all" : "recent";
   // View mode: cards (v2 default) vs rows (legacy / dense). Persisted
   // in localStorage so user preference survives reload. Plan 26
   // follow-up: user wants the row view brought back as an option.
@@ -653,8 +691,12 @@ export function RecentSection({
   useEffect(() => {
     if (typeof globalThis.localStorage === "undefined") return;
     const next = readFilters();
+    hasStoredFilters.current = next.stored;
     setWindow((prev) => (prev === next.window ? prev : next.window));
     setActor((prev) => (prev === next.actor ? prev : next.actor));
+    setRecentWindow((prev) =>
+      prev === next.recentWindow ? prev : next.recentWindow,
+    );
   }, [readFilters]);
 
   // Rehydrate viewMode whenever the storage key changes (hub switch
@@ -694,6 +736,19 @@ export function RecentSection({
 
   const memories = flattenRecentMemories(recentPages);
   const total = recentMemoriesTotal(recentPages);
+  // Pending contradictions, keyed by memory id — the same query the
+  // pulse 「等你」 deck reads, so a verdict here clears there too.
+  const { data: pendingNotifications } = useNotifications({
+    status: "pending",
+  });
+  const conflictIndex = useMemo(
+    () => buildFragmentConflictIndex(pendingNotifications?.notifications),
+    [pendingNotifications],
+  );
+  const memoriesById = useMemo(
+    () => new Map(memories.map((m) => [m.id, m] as const)),
+    [memories],
+  );
   const actorCounts = recentActorCounts(recentPages);
   const hasLoadedData = recentPages !== undefined;
   const filterActive = window !== "all" || actor !== "all";
@@ -762,39 +817,103 @@ export function RecentSection({
   }, [visible, setVisibleIds]);
 
   const persistFilters = useCallback(
-    (nextWindow: TimeWindow, nextActor: RecentActor) => {
+    (
+      nextWindow: TimeWindow,
+      nextActor: RecentActor,
+      nextRecentWindow: RecentWindow,
+    ) => {
       if (typeof globalThis.localStorage === "undefined") return;
-      localStorage.setItem(
-        filterStorageKey,
-        JSON.stringify({ window: nextWindow, actor: nextActor }),
-      );
+      hasStoredFilters.current = true;
+      try {
+        localStorage.setItem(
+          filterStorageKey,
+          JSON.stringify({
+            window: nextWindow,
+            actor: nextActor,
+            recentWindow: nextRecentWindow,
+          }),
+        );
+      } catch {
+        // Private mode / quota: filters just don't persist.
+      }
     },
     [filterStorageKey],
   );
 
   const switchWindow = useCallback(
     (w: TimeWindow) => {
+      const nextRecent = isRecentWindow(w) ? w : recentWindow;
       setWindow(w);
-      persistFilters(w, actor);
+      setRecentWindow(nextRecent);
+      persistFilters(w, actor, nextRecent);
     },
-    [actor, persistFilters],
+    [actor, persistFilters, recentWindow],
   );
+
+  const switchMode = useCallback(
+    (next: FragmentsMode) => {
+      switchWindow(next === "all" ? "all" : recentWindow);
+    },
+    [recentWindow, switchWindow],
+  );
+
+  // First-visit landing: start on 最近, but if the window is empty once
+  // loaded, drop to 全部 (without persisting — the user hasn't chosen).
+  const autoLanded = useRef(false);
+  useEffect(() => {
+    if (autoLanded.current || hasStoredFilters.current) return;
+    if (mode !== "recent" || !hasLoadedData || isLoading) return;
+    autoLanded.current = true;
+    if (memories.length === 0) setWindow("all");
+  }, [mode, hasLoadedData, isLoading, memories.length]);
 
   const switchActor = useCallback(
     (nextActor: RecentActor) => {
       const resolvedActor =
         nextActor === actor && nextActor !== "all" ? "all" : nextActor;
       setActor(resolvedActor);
-      persistFilters(window, resolvedActor);
+      persistFilters(window, resolvedActor, recentWindow);
     },
-    [actor, persistFilters, window],
+    [actor, persistFilters, recentWindow, window],
   );
 
+  // "Clear" only touches the actor filter; the mode/window is a view
+  // choice, not a filter, and has its own control.
   const resetFilters = useCallback(() => {
-    setWindow("all");
     setActor("all");
-    persistFilters("all", "all");
-  }, [persistFilters]);
+    persistFilters(window, "all", recentWindow);
+  }, [persistFilters, recentWindow, window]);
+
+  // Hover preview (rows mode, pointer devices). A row opens its preview
+  // after a short dwell; leaving the row + preview closes it, unless
+  // the preview is "held" (its move picker is open).
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewHeld = useRef(false);
+  const clearPreviewTimer = () => {
+    if (previewTimer.current) {
+      clearTimeout(previewTimer.current);
+      previewTimer.current = null;
+    }
+  };
+  const armPreview = (id: string) => {
+    if (isMobile || selection.active) return;
+    clearPreviewTimer();
+    previewTimer.current = setTimeout(() => setPreviewId(id), PREVIEW_DWELL_MS);
+  };
+  const disarmPreview = () => {
+    clearPreviewTimer();
+    if (previewHeld.current) return;
+    setPreviewId(null);
+  };
+  const holdPreview = useCallback((held: boolean) => {
+    previewHeld.current = held;
+    if (!held) setPreviewId(null);
+  }, []);
+  useEffect(() => () => clearPreviewTimer(), []);
+  useEffect(() => {
+    if (selection.active) setPreviewId(null);
+  }, [selection.active]);
 
   const handleLoadMore = useCallback(async () => {
     if (hasNextPage && !isFetchingNextPage) await fetchNextPage();
@@ -856,35 +975,86 @@ export function RecentSection({
           title: t.memoryView.recentEmptyTitle,
           hint: t.memoryView.recentEmptyHint,
         }}
-        filteredEmptyCopy={{
-          title:
-            window === "all"
-              ? t.memoryView.recentFilteredAllTitle
-              : interpolate(t.memoryView.recentFilteredTitle, { window }),
-          hint: t.memoryView.recentFilteredHint,
-          clearLabel: t.memoryView.clearFilters,
-          onClear: resetFilters,
-        }}
+        filteredEmptyCopy={
+          mode === "recent" && actor === "all"
+            ? {
+                title: interpolate(t.memoryView.recentModeEmptyTitle, {
+                  window: windowLabel(window, t),
+                }),
+                hint: t.memoryView.recentModeEmptyHint,
+                clearLabel: t.memoryView.recentModeSeeAll,
+                onClear: () => switchMode("all"),
+              }
+            : {
+                title: t.memoryView.recentFilteredAllTitle,
+                hint: t.memoryView.recentFilteredHint,
+                clearLabel: t.memoryView.clearFilters,
+                onClear: resetFilters,
+              }
+        }
         trailing={
           <>
+            {/* 最近 | 全部 — a view choice, not a filter. */}
+            <div
+              role="radiogroup"
+              aria-label={t.memoryView.modeAria}
+              className="ml-1 inline-flex rounded-full bg-surface-2 p-0.5 text-[12px]"
+            >
+              {(["recent", "all"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === m}
+                  onClick={() => switchMode(m)}
+                  className={`rounded-full px-2.5 py-0.5 transition-colors cursor-pointer ${
+                    mode === m
+                      ? "bg-card text-fg-1 shadow-sm font-medium"
+                      : "text-fg-3 hover:text-fg-2"
+                  }`}
+                >
+                  {m === "recent"
+                    ? t.memoryView.modeRecent
+                    : t.memoryView.modeAll}
+                </button>
+              ))}
+            </div>
+            {mode === "recent" && (
+              <div
+                role="radiogroup"
+                aria-label={t.memoryView.filterPastLabel}
+                className="ml-1.5 hidden items-center gap-0.5 text-[12px] sm:inline-flex"
+              >
+                {RECENT_WINDOWS.map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    role="radio"
+                    aria-checked={window === w}
+                    onClick={() => switchWindow(w)}
+                    className={`rounded-full border px-2 py-0.5 transition-colors cursor-pointer ${
+                      window === w
+                        ? "border-border/60 text-fg-1"
+                        : "border-transparent text-fg-3 hover:text-fg-2"
+                    }`}
+                  >
+                    {windowLabel(w, t)}
+                  </button>
+                ))}
+              </div>
+            )}
             <Popover>
-              <PopoverTrigger className="flex items-center gap-1.5 text-[12px] text-fg-3 hover:text-fg-2 transition-colors cursor-pointer ml-1">
+              <PopoverTrigger className="flex items-center gap-1.5 text-[12px] text-fg-3 hover:text-fg-2 transition-colors cursor-pointer ml-2">
                 <SlidersHorizontal className="h-3 w-3" />
-                <span>
-                  {getRecentFilterSummary({ window, actor, interpolate, t })}
-                </span>
+                <span>{getRecentActorLabel(actor, t)}</span>
                 <ChevronDown className="h-2.5 w-2.5" />
               </PopoverTrigger>
               <PopoverContent side="bottom" align="start" sideOffset={4}>
                 <RecentFilterPanel
-                  windows={TIME_WINDOWS}
-                  currentWindow={window}
                   currentActor={actor}
                   actorOptions={actorOptions}
-                  onSelectWindow={switchWindow}
                   onSelectActor={switchActor}
                   onReset={resetFilters}
-                  interpolate={interpolate}
                   t={t}
                 />
               </PopoverContent>
@@ -948,24 +1118,44 @@ export function RecentSection({
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {leadingCell}
                 {phase === "loaded" &&
-                  visible.map((m) => (
-                    <DraggableMemoryCard
-                      key={getRecentRenderKey(m.id)}
-                      memory={m}
-                      topicLabel={(() => {
-                        const path = m.topic_id
-                          ? topicPathLookup.get(m.topic_id)
-                          : undefined;
-                        if (!path || path.length === 0) return undefined;
-                        return {
-                          path: isMobile ? [path[path.length - 1]] : path,
-                        };
-                      })()}
-                      currentHubId={hubId}
-                      isNew={recentlyArrived.has(m.id)}
-                      onClick={() => onClickMemory(m.id)}
-                    />
-                  ))}
+                  visible.map((m) => {
+                    const conflicts = conflictIndex.get(m.id);
+                    const card = (
+                      <DraggableMemoryCard
+                        key={getRecentRenderKey(m.id)}
+                        memory={m}
+                        topicLabel={(() => {
+                          const path = m.topic_id
+                            ? topicPathLookup.get(m.topic_id)
+                            : undefined;
+                          if (!path || path.length === 0) return undefined;
+                          return {
+                            path: isMobile ? [path[path.length - 1]] : path,
+                          };
+                        })()}
+                        currentHubId={hubId}
+                        isNew={recentlyArrived.has(m.id)}
+                        onClick={() => onClickMemory(m.id)}
+                      />
+                    );
+                    if (!conflicts) return card;
+                    return (
+                      <Fragment key={getRecentRenderKey(m.id)}>
+                        {card}
+                        <div className="col-span-full -mt-1">
+                          {conflicts.map((c) => (
+                            <FragmentConflictStrip
+                              key={c.notificationId}
+                              memory={m}
+                              conflict={c}
+                              otherMemory={memoriesById.get(c.other.id)}
+                              onOpenOther={onClickMemory}
+                            />
+                          ))}
+                        </div>
+                      </Fragment>
+                    );
+                  })}
               </div>
               {/* State messaging rendered as a peer of the grid (not in
                   place of it) so the leadingCell stays visible. Mirrors
@@ -981,18 +1171,39 @@ export function RecentSection({
               {phase === "filtered-empty" && (
                 <div className="mt-3 px-1">
                   <p className="text-[13px] text-fg-3">
-                    {window === "all"
-                      ? t.memoryView.recentFilteredAllTitle
-                      : interpolate(t.memoryView.recentFilteredTitle, {
-                          window,
-                        })}
+                    {mode === "recent" && actor === "all"
+                      ? interpolate(t.memoryView.recentModeEmptyTitle, {
+                          window: windowLabel(window, t),
+                        })
+                      : t.memoryView.recentFilteredAllTitle}
                   </p>
-                  <button
-                    onClick={resetFilters}
-                    className="mt-1.5 cursor-pointer text-[12px] text-fg-3 transition-colors hover:text-fg-2"
-                  >
-                    {t.memoryView.clearFilters}
-                  </button>
+                  <div className="mt-1.5 flex flex-wrap gap-3">
+                    {mode === "recent" && actor === "all" ? (
+                      <>
+                        {window !== "7d" && (
+                          <button
+                            onClick={() => switchWindow("7d")}
+                            className="cursor-pointer text-[12px] text-fg-3 transition-colors hover:text-fg-2"
+                          >
+                            {t.memoryView.recentModeWiden}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => switchMode("all")}
+                          className="cursor-pointer text-[12px] text-fg-3 transition-colors hover:text-fg-2"
+                        >
+                          {t.memoryView.recentModeSeeAll}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={resetFilters}
+                        className="cursor-pointer text-[12px] text-fg-3 transition-colors hover:text-fg-2"
+                      >
+                        {t.memoryView.clearFilters}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
               {phase === "error" && (
@@ -1016,25 +1227,51 @@ export function RecentSection({
             </>
           ) : (
             <div>
-              {visible.map((m, i) => (
-                <DraggableMemoryRow
-                  key={getRecentRenderKey(m.id)}
-                  memory={m}
-                  surface="recent"
-                  topicLabel={(() => {
-                    const path = m.topic_id
-                      ? topicPathLookup.get(m.topic_id)
-                      : undefined;
-                    if (!path || path.length === 0) return undefined;
-                    return {
-                      path: isMobile ? [path[path.length - 1]] : path,
-                    };
-                  })()}
-                  showDivider={i > 0}
-                  isNew={recentlyArrived.has(m.id)}
-                  onClick={() => onClickMemory(m.id)}
-                />
-              ))}
+              {visible.map((m, i) => {
+                const path = m.topic_id
+                  ? topicPathLookup.get(m.topic_id)
+                  : undefined;
+                const topicPath =
+                  path && path.length > 0
+                    ? isMobile
+                      ? [path[path.length - 1]]
+                      : path
+                    : undefined;
+                const conflicts = conflictIndex.get(m.id);
+                return (
+                  <div
+                    key={getRecentRenderKey(m.id)}
+                    onMouseEnter={() => armPreview(m.id)}
+                    onMouseLeave={disarmPreview}
+                  >
+                    <DraggableMemoryRow
+                      memory={m}
+                      surface="recent"
+                      topicLabel={topicPath ? { path: topicPath } : undefined}
+                      showDivider={i > 0}
+                      isNew={recentlyArrived.has(m.id)}
+                      onClick={() => onClickMemory(m.id)}
+                    />
+                    {previewId === m.id && (
+                      <FragmentPreview
+                        memory={m}
+                        topicPath={topicPath?.map((seg) => seg.name)}
+                        onOpen={() => onClickMemory(m.id)}
+                        onHold={holdPreview}
+                      />
+                    )}
+                    {conflicts?.map((c) => (
+                      <FragmentConflictStrip
+                        key={c.notificationId}
+                        memory={m}
+                        conflict={c}
+                        otherMemory={memoriesById.get(c.other.id)}
+                        onOpenOther={onClickMemory}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           )}
           {hasNextPage && (
@@ -1126,44 +1363,33 @@ function getRecentActorLabel(
   return actor.slice(7);
 }
 
-function getRecentFilterSummary({
-  window,
-  actor,
-  interpolate,
-  t,
-}: {
-  window: TimeWindow;
-  actor: RecentActor;
-  interpolate: ReturnType<typeof useInterpolate>;
-  t: ReturnType<typeof useLocale>["t"];
-}) {
-  const timeLabel =
-    window === "all"
-      ? t.memoryView.filterAllTime
-      : interpolate(t.memoryView.filterPast, { window });
-  if (actor === "all") return timeLabel;
-  return `${timeLabel} · ${getRecentActorLabel(actor, t)}`;
+type FragmentsMode = "recent" | "all";
+type RecentWindow = Exclude<TimeWindow, "all">;
+const RECENT_WINDOWS = TIME_WINDOWS.filter(
+  (w): w is RecentWindow => w !== "all",
+);
+const DEFAULT_RECENT_WINDOW: RecentWindow = "3d";
+const PREVIEW_DWELL_MS = 400;
+
+function isRecentWindow(w: string): w is RecentWindow {
+  return (RECENT_WINDOWS as readonly string[]).includes(w);
+}
+
+function windowLabel(w: TimeWindow, t: ReturnType<typeof useLocale>["t"]) {
+  return w === "all" ? t.memoryView.modeAll : t.memoryView.windowLabel[w];
 }
 
 function RecentFilterPanel({
-  windows,
-  currentWindow,
   currentActor,
   actorOptions,
-  onSelectWindow,
   onSelectActor,
   onReset,
-  interpolate,
   t,
 }: {
-  windows: readonly TimeWindow[];
-  currentWindow: TimeWindow;
   currentActor: RecentActor;
   actorOptions: RecentActorOption[];
-  onSelectWindow: (w: TimeWindow) => void;
   onSelectActor: (actor: RecentActor) => void;
   onReset: () => void;
-  interpolate: ReturnType<typeof useInterpolate>;
   t: ReturnType<typeof useLocale>["t"];
 }) {
   return (
@@ -1177,33 +1403,6 @@ function RecentFilterPanel({
         </p>
       </div>
       <div className="p-1.5">
-        <p className="px-2.5 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-fg-4">
-          {t.memoryView.filterTimeLabel}
-        </p>
-        {windows.map((windowOption) => (
-          <button
-            key={windowOption}
-            onClick={() => onSelectWindow(windowOption)}
-            className={`flex min-h-11 w-full items-center gap-2.5 rounded-chrome px-3 text-left text-[13px] transition-colors cursor-pointer ${
-              windowOption === currentWindow
-                ? "bg-foreground/[0.06] text-fg-1"
-                : "text-fg-2 hover:bg-foreground/[0.04]"
-            }`}
-          >
-            <span className="flex-1 truncate">
-              {windowOption === "all"
-                ? t.memoryView.filterAllTime
-                : interpolate(t.memoryView.filterPast, {
-                    window: windowOption,
-                  })}
-            </span>
-            {windowOption === currentWindow && (
-              <Check className="h-3.5 w-3.5 shrink-0 text-fg-3" />
-            )}
-          </button>
-        ))}
-      </div>
-      <div className="border-t border-border/30 p-1.5">
         <p className="px-2.5 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-fg-4">
           {t.memoryView.filterActorLabel}
         </p>

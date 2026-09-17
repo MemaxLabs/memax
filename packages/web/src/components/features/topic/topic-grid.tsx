@@ -13,7 +13,6 @@ import {
   flattenRecentMemories,
   recentMemoriesTotal,
   recentActorCounts,
-  RECENT_PAGE_LIMIT,
   TIME_WINDOWS,
   type TimeWindow,
   type RecentActor,
@@ -734,10 +733,6 @@ export function RecentSection({
   }, [actor, actorOptions]);
 
   const visible = memories;
-  const nextIncrement = Math.min(
-    RECENT_PAGE_LIMIT,
-    Math.max(total - visible.length, 0),
-  );
   const recentlyArrived = useRecentArrivalIds();
   // Mobile fresh row collapses the topic pin to its leaf segment. The full
   // breadcrumb eats title space on a ~320px row, and the leaf is the most
@@ -1051,9 +1046,7 @@ export function RecentSection({
               >
                 {isFetchingNextPage
                   ? t.memoryView.loadingMore
-                  : interpolate(t.memoryView.loadMoreRecent, {
-                      n: String(nextIncrement),
-                    })}
+                  : t.memoryView.loadMoreRecent}
               </button>
             </div>
           )}

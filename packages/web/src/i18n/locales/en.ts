@@ -2055,7 +2055,7 @@ export const en = {
     copyContent: "Copy",
     copiedContent: "Copied",
     loadingMore: "Loading more...",
-    loadMoreRecent: "Show {n} more",
+    loadMoreRecent: "Show more",
     scrollToLoad: "Scroll to load more",
     copyForAI: "Copy for AI",
     download: "Download",

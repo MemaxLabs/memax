@@ -1871,7 +1871,7 @@ export const zh: Translations = {
     copyContent: "复制",
     copiedContent: "已复制",
     loadingMore: "正在加载更多…",
-    loadMoreRecent: "再看 {n} 条",
+    loadMoreRecent: "查看更多",
     scrollToLoad: "继续下滑加载更多",
     copyForAI: "复制给 AI",
     download: "下载",

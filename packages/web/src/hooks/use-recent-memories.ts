@@ -8,9 +8,11 @@ import type { Memory } from "memax-sdk";
 import type { MemoriesListResponse } from "./use-memories";
 
 export const RECENT_PREVIEW_LIMIT = 5;
-export const RECENT_PAGE_LIMIT = 20;
-// "all" leads: 记忆片段 (2026-09) defaults to the FULL timeline —
-// time windows are a filter the user applies, not a default cutoff.
+// 10 per page (founder call, 2026-09-17): the fragments list was too long
+// at 20; the rest is one quiet "查看更多" away.
+export const RECENT_PAGE_LIMIT = 10;
+// "all" = the 全部 view (full timeline); the rest are the 最近 windows.
+// The list lands on 最近 (3d) for a first visit and remembers the choice.
 export const TIME_WINDOWS = ["all", "12h", "1d", "3d", "7d"] as const;
 export type TimeWindow = (typeof TIME_WINDOWS)[number];
 export type RecentActor =

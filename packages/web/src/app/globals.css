@@ -2258,3 +2258,23 @@ body {
     filter: blur(0);
   }
 }
+
+/* 记忆片段 hover preview — unfolds under its row. */
+@keyframes fragment-preview-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fragment-preview-enter {
+  animation: fragment-preview-enter 0.22s var(--ease-spring) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fragment-preview-enter {
+    animation: none;
+  }
+}

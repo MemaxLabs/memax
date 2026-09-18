@@ -6,7 +6,12 @@ export const metadata: Metadata = {
 };
 
 export default function DevLayout({ children }: { children: React.ReactNode }) {
-  if (process.env.NODE_ENV === "production") {
+  // Production hides /dev/* — except when a build opts in (screenshot
+  // runs of the fixture pages need a hydrated production bundle).
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.NEXT_PUBLIC_DEV_FIXTURES !== "1"
+  ) {
     notFound();
   }
   return children;

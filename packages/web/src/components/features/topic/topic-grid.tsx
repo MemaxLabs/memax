@@ -50,14 +50,7 @@ import {
   ContentError,
   DataSectionCard,
 } from "@memaxlabs/ui";
-import {
-  ChevronDown,
-  Check,
-  SlidersHorizontal,
-  Clock,
-  LayoutGrid,
-  List,
-} from "lucide-react";
+import { ChevronDown, Check, Clock, LayoutGrid, List } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { PinnedNotifications } from "@/components/features/onboarding/onboarding-pinned";
 import { BoardSection } from "@/components/features/board/board-view";
@@ -100,13 +93,13 @@ import { useTopicTreeController } from "@/hooks/use-topic-tree-controller";
 // longer mounts it inside the v2 grid — the dual-render risked two
 // `+` cells visible in the loaded phase.
 import { DraggableMemoryCard } from "../memory-card/memory-card-draggable";
-import { FragmentPreview } from "./fragment-preview";
+import { FragmentPreviewCard } from "./fragment-preview";
 import { FragmentConflictStrip } from "./fragment-conflict-strip";
 import { buildFragmentConflictIndex } from "@/lib/fragment-conflicts";
 import {
   DEFAULT_RECENT_WINDOW,
-  FragmentsModeControls,
-  RECENT_WINDOWS,
+  FragmentsModeToggle,
+  RecentWindowPills,
   isRecentWindow,
   windowLabel,
   type FragmentsMode,
@@ -898,68 +891,26 @@ export function RecentSection({
     persistFilters(window, "all", recentWindow);
   }, [persistFilters, recentWindow, window]);
 
-  // Hover preview (rows mode, pointer devices). A row opens its preview
-  // after a short dwell; leaving the row + preview closes it, unless
-  // the preview is "held" (its move picker is open).
+  // Hover preview (rows mode, pointer devices). base-ui PreviewCard
+  // owns the hover timing per row; the host keeps ONE open id and gates
+  // opening (no previews on touch, in selection mode, or mid-drag).
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const previewHeld = useRef(false);
-  // Which row wrapper the pointer is currently inside (null = none).
-  // Lets a released hold decide whether the pointer already left.
-  const hoveredRowId = useRef<string | null>(null);
-  const clearPreviewTimer = () => {
-    if (previewTimer.current) {
-      clearTimeout(previewTimer.current);
-      previewTimer.current = null;
-    }
-  };
   const { activeId: dragActiveId } = useTopicDragContext();
-  const armPreview = (id: string) => {
-    hoveredRowId.current = id;
-    // A held preview (its move picker is open) is modal-ish: no other
-    // row may take over until it releases. No previews mid-drag either.
-    if (isMobile || selection.active || previewHeld.current || dragActiveId)
-      return;
-    clearPreviewTimer();
-    previewTimer.current = setTimeout(() => setPreviewId(id), PREVIEW_DWELL_MS);
-  };
-  const disarmPreview = () => {
-    hoveredRowId.current = null;
-    clearPreviewTimer();
-    if (previewHeld.current) return;
-    setPreviewId(null);
-  };
-  const holdPreview = useCallback((memoryId: string, held: boolean) => {
-    // Only the current preview can hold (its picker is the only one
-    // open), so a release from ANY preview — including one unmounting
-    // because another row took over — safely drops the flag.
-    previewHeld.current = held;
-    if (held) return;
-    // Released: close only if it is still current and the pointer has
-    // already left its row. Pure updater — no side effects inside.
-    setPreviewId((current) =>
-      current === memoryId && hoveredRowId.current !== memoryId
-        ? null
-        : current,
-    );
-  }, []);
+  const previewBlocked = isMobile || selection.active || !!dragActiveId;
+  const handlePreviewOpenChange = useCallback(
+    (id: string, open: boolean) => {
+      if (open) {
+        if (previewBlocked) return;
+        setPreviewId(id);
+      } else {
+        setPreviewId((current) => (current === id ? null : current));
+      }
+    },
+    [previewBlocked],
+  );
   useEffect(() => {
-    if (dragActiveId) {
-      clearPreviewTimer();
-      setPreviewId(null);
-    }
-  }, [dragActiveId]);
-  // A press anywhere on the row (drag grip included) cancels the dwell
-  // and closes an open preview so dnd-kit never measures a layout that
-  // is about to shift.
-  const cancelPreviewForPress = () => {
-    clearPreviewTimer();
-    if (!previewHeld.current) setPreviewId(null);
-  };
-  useEffect(() => () => clearPreviewTimer(), []);
-  useEffect(() => {
-    if (selection.active) setPreviewId(null);
-  }, [selection.active]);
+    if (previewBlocked) setPreviewId(null);
+  }, [previewBlocked]);
 
   const handleLoadMore = useCallback(async () => {
     if (hasNextPage && !isFetchingNextPage) await fetchNextPage();
@@ -1040,31 +991,32 @@ export function RecentSection({
         }
         trailing={
           <>
-            <FragmentsModeControls
-              mode={mode}
-              window={window}
-              onSwitchMode={switchMode}
-              onSwitchWindow={switchWindow}
-            />
-            <Popover>
-              <PopoverTrigger className="flex items-center gap-1.5 text-[12px] text-fg-3 hover:text-fg-2 transition-colors cursor-pointer ml-2">
-                <SlidersHorizontal className="h-3 w-3" />
-                <span>{getRecentActorLabel(actor, t)}</span>
-                <ChevronDown className="h-2.5 w-2.5" />
-              </PopoverTrigger>
-              <PopoverContent side="bottom" align="start" sideOffset={4}>
-                <RecentFilterPanel
-                  windows={mode === "recent" ? RECENT_WINDOWS : null}
-                  currentWindow={window}
-                  onSelectWindow={switchWindow}
-                  currentActor={actor}
-                  actorOptions={actorOptions}
-                  onSelectActor={switchActor}
-                  onReset={resetFilters}
-                  t={t}
-                />
-              </PopoverContent>
-            </Popover>
+            <FragmentsModeToggle mode={mode} onSwitchMode={switchMode} />
+            {mode === "recent" && (
+              <RecentWindowPills
+                window={window}
+                onSwitchWindow={switchWindow}
+                className="ml-1.5 hidden sm:inline-flex"
+              />
+            )}
+            {/* 来源 — only when there is something to choose between
+                (you + at least one agent, or two agents). One actor
+                means no filter, and no chrome for it. */}
+            {actorOptions.length > 2 && (
+              <Popover>
+                <PopoverTrigger className="ml-2 flex items-center gap-1 text-[12px] text-fg-3 hover:text-fg-2 transition-colors cursor-pointer">
+                  <span>{getRecentActorLabel(actor, t)}</span>
+                  <ChevronDown className="h-2.5 w-2.5" />
+                </PopoverTrigger>
+                <PopoverContent side="bottom" align="end" sideOffset={4}>
+                  <ActorFilterMenu
+                    currentActor={actor}
+                    actorOptions={actorOptions}
+                    onSelectActor={switchActor}
+                  />
+                </PopoverContent>
+              </Popover>
+            )}
             {/* Select / Done toggle — hidden in v2 card mode because
                 cards don't participate in SelectionContext (P0b judgment:
                 cards are read-focused; batch select stays a row-mode
@@ -1113,6 +1065,13 @@ export function RecentSection({
         }
       >
         <>
+          {mode === "recent" && phase !== "loading" && phase !== "error" && (
+            <RecentWindowPills
+              window={window}
+              onSwitchWindow={switchWindow}
+              className="mb-2 flex overflow-x-auto px-3 sm:hidden"
+            />
+          )}
           {isV2Cards ? (
             // v2 card mode (default): 1 / 2 / 3 column glass card grid.
             // User can switch to row mode via the trailing toggle —
@@ -1246,18 +1205,18 @@ export function RecentSection({
                     : undefined;
                 const conflicts = conflictIndex.get(m.id);
                 return (
-                  // Outer wrapper = row + preview + strips, so leaving
-                  // any of them counts as leaving the row. Inner wrapper
-                  // = the row alone: only IT arms a preview, and only a
-                  // press on IT cancels one (a press on a preview /
-                  // strip button must not unmount the button mid-click).
-                  <div
-                    key={getRecentRenderKey(m.id)}
-                    onMouseLeave={disarmPreview}
-                  >
-                    <div
-                      onMouseEnter={() => armPreview(m.id)}
-                      onPointerDownCapture={cancelPreviewForPress}
+                  // The preview FLOATS over the rows below (never an
+                  // insertion); conflict strips are content and stay
+                  // inline under their row.
+                  <div key={getRecentRenderKey(m.id)}>
+                    <FragmentPreviewCard
+                      memory={m}
+                      topicPath={topicPath?.map((seg) => seg.name)}
+                      open={previewId === m.id}
+                      onOpenChange={(open) =>
+                        handlePreviewOpenChange(m.id, open)
+                      }
+                      onOpen={() => onClickMemory(m.id)}
                     >
                       <DraggableMemoryRow
                         memory={m}
@@ -1267,15 +1226,7 @@ export function RecentSection({
                         isNew={recentlyArrived.has(m.id)}
                         onClick={() => onClickMemory(m.id)}
                       />
-                    </div>
-                    {previewId === m.id && (
-                      <FragmentPreview
-                        memory={m}
-                        topicPath={topicPath?.map((seg) => seg.name)}
-                        onOpen={() => onClickMemory(m.id)}
-                        onHold={holdPreview}
-                      />
-                    )}
+                    </FragmentPreviewCard>
                     {conflicts?.map((c) => (
                       <FragmentConflictStrip
                         key={c.notificationId}
@@ -1379,97 +1330,38 @@ function getRecentActorLabel(
   return actor.slice(7);
 }
 
-const PREVIEW_DWELL_MS = 400;
-
-function RecentFilterPanel({
-  windows,
-  currentWindow,
-  onSelectWindow,
+function ActorFilterMenu({
   currentActor,
   actorOptions,
   onSelectActor,
-  onReset,
-  t,
 }: {
-  /** Recent windows to offer, or null in 全部 mode. */
-  windows: readonly RecentWindow[] | null;
-  currentWindow: TimeWindow;
-  onSelectWindow: (w: RecentWindow) => void;
   currentActor: RecentActor;
   actorOptions: RecentActorOption[];
   onSelectActor: (actor: RecentActor) => void;
-  onReset: () => void;
-  t: ReturnType<typeof useLocale>["t"];
 }) {
   return (
-    // Parent PopoverContent owns the glass material (via .glass-dropdown
-    // + backdrop-blur-sm). Inner body is a bare layout container — no
-    // second background/border/shadow, or the two materials stack muddily.
-    <div className="w-[280px] overflow-hidden">
-      <div className="border-b border-border/30 px-3 py-2.5">
-        <p className="text-[12px] font-medium uppercase tracking-wide text-fg-3">
-          {t.memoryView.filterBy}
-        </p>
-      </div>
-      {windows && (
-        // Phone only: the header pills are hidden below `sm`, so the
-        // window lives here instead. Desktop has the pills and skips it.
-        <div className="border-b border-border/30 p-1.5 sm:hidden">
-          <p className="px-2.5 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-fg-4">
-            {t.memoryView.filterTimeLabel}
-          </p>
-          {windows.map((w) => (
-            <button
-              key={w}
-              onClick={() => onSelectWindow(w)}
-              className={`flex min-h-11 w-full items-center gap-2.5 rounded-chrome px-3 text-left text-[13px] transition-colors cursor-pointer ${
-                w === currentWindow
-                  ? "bg-foreground/[0.06] text-fg-1"
-                  : "text-fg-2 hover:bg-foreground/[0.04]"
-              }`}
-            >
-              <span className="flex-1 truncate">{windowLabel(w, t)}</span>
-              {w === currentWindow && (
-                <Check className="h-3.5 w-3.5 shrink-0 text-fg-3" />
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="p-1.5">
-        <p className="px-2.5 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-fg-4">
-          {t.memoryView.filterActorLabel}
-        </p>
-        <div className="max-h-56 overflow-y-auto">
-          {actorOptions.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => onSelectActor(option.value)}
-              className={`flex min-h-11 w-full items-center gap-2.5 rounded-chrome px-3 text-left text-[13px] transition-colors cursor-pointer ${
-                option.value === currentActor
-                  ? "bg-foreground/[0.06] text-fg-1"
-                  : "text-fg-2 hover:bg-foreground/[0.04]"
-              }`}
-            >
-              <span className="flex-1 truncate">{option.label}</span>
-              <span className="shrink-0 text-[12px] tabular-nums text-fg-4">
-                {option.count}
-              </span>
-              {option.value === currentActor && (
-                <Check className="h-3.5 w-3.5 shrink-0 text-fg-3" />
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="border-t border-border/30 px-3 py-2">
+    // Parent PopoverContent owns the glass material; this is a bare
+    // list — picking 全部来源 IS the reset, no separate footer.
+    <div className="max-h-64 w-[240px] overflow-y-auto p-1.5">
+      {actorOptions.map((option) => (
         <button
-          onClick={onReset}
-          className="text-[12px] text-fg-3 hover:text-fg-2 transition-colors cursor-pointer"
+          key={option.value}
+          onClick={() => onSelectActor(option.value)}
+          className={`flex min-h-10 w-full items-center gap-2.5 rounded-chrome px-3 text-left text-[13px] transition-colors cursor-pointer ${
+            option.value === currentActor
+              ? "bg-foreground/[0.06] text-fg-1"
+              : "text-fg-2 hover:bg-foreground/[0.04]"
+          }`}
         >
-          {t.memoryView.filterReset}
+          <span className="flex-1 truncate">{option.label}</span>
+          <span className="shrink-0 text-[12px] tabular-nums text-fg-4">
+            {option.count}
+          </span>
+          {option.value === currentActor && (
+            <Check className="h-3.5 w-3.5 shrink-0 text-fg-3" />
+          )}
         </button>
-      </div>
+      ))}
     </div>
   );
 }

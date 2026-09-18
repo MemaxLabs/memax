@@ -2259,7 +2259,7 @@ body {
   }
 }
 
-/* 记忆片段 hover preview — unfolds under its row. */
+/* 记忆片段 hover preview — floats by its row. */
 @keyframes fragment-preview-enter {
   from {
     opacity: 0;

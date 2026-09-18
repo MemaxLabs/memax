@@ -3,15 +3,16 @@
 import { use, useState } from "react";
 import type { Memory } from "memax-sdk";
 import { Surface } from "@memaxlabs/ui";
-import { IsMobileProvider } from "@/hooks/use-is-mobile";
+import { IsMobileProvider, useIsMobile } from "@/hooks/use-is-mobile";
 import { BarProvider } from "@/contexts/bar-context";
 import { InboxSurfaceProvider } from "@/contexts/inbox-surface-context";
 import { LocaleProvider, useLocale, type Locale } from "@/i18n";
 import { DraggableMemoryRow } from "@/components/features/memory-card/memory-row-draggable";
-import { FragmentPreview } from "@/components/features/topic/fragment-preview";
+import { FragmentPreviewCard } from "@/components/features/topic/fragment-preview";
 import { FragmentConflictStrip } from "@/components/features/topic/fragment-conflict-strip";
 import {
-  FragmentsModeControls,
+  FragmentsModeToggle,
+  RecentWindowPills,
   type FragmentsMode,
   type RecentWindow,
 } from "@/components/features/topic/fragment-mode-controls";
@@ -111,84 +112,101 @@ export default function FragmentsFixturesPage({
 }
 
 function FragmentsFixtures({ initialMode }: { initialMode: FragmentsMode }) {
-  const { t } = useLocale();
-  const [mode, setMode] = useState<FragmentsMode>(initialMode);
-  const [window, setWindow] = useState<RecentWindow>("3d");
-  const [previewId, setPreviewId] = useState<string | null>(MEMORIES[1].id);
   return (
     <IsMobileProvider>
       <InboxSurfaceProvider>
         <BarProvider>
-          <div className="mx-auto max-w-3xl px-6 py-16">
-            <header className="mb-8 space-y-2">
-              <h1 className="text-display-2 font-semibold text-fg-1">
-                记忆片段 · 最近模式
-              </h1>
-              <p className="text-[14px] text-fg-3">
-                Dev-only fixture. Real components, fixture memories: the preview
-                is pinned open under the second row; the first row carries a
-                pending contradiction.
-              </p>
-            </header>
-
-            <Surface rounded="2xl" className="overflow-hidden">
-              <div className="flex flex-wrap items-center gap-1 border-b border-border/30 px-4 py-2.5">
-                <span className="text-[13px] font-semibold text-fg-1">
-                  {t.memoryView.freshMemory.other}
-                </span>
-                <span className="ml-auto inline-flex items-center">
-                  <FragmentsModeControls
-                    mode={mode}
-                    window={mode === "all" ? "all" : window}
-                    onSwitchMode={setMode}
-                    onSwitchWindow={setWindow}
-                  />
-                </span>
-              </div>
-              <div>
-                {MEMORIES.map((m, i) => (
-                  <div key={m.id} onMouseEnter={() => setPreviewId(m.id)}>
-                    <DraggableMemoryRow
-                      memory={m}
-                      surface="recent"
-                      topicLabel={{
-                        path: [
-                          { name: "memax" },
-                          { name: i < 2 ? "前端" : "设计" },
-                        ],
-                      }}
-                      showDivider={i > 0}
-                      isNew={i === 0}
-                      onClick={() => {}}
-                    />
-                    {previewId === m.id && (
-                      <FragmentPreview
-                        memory={m}
-                        topicPath={["memax", i < 2 ? "前端" : "设计"]}
-                        onOpen={() => {}}
-                        onHold={() => {}}
-                      />
-                    )}
-                    {i === 0 && (
-                      <FragmentConflictStrip
-                        memory={m}
-                        conflict={CONFLICT}
-                        otherMemory={MEMORIES[3]}
-                        onOpenOther={() => {}}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-center border-t border-border/30 px-4 py-2.5">
-                <span className="text-[13px] text-fg-3">
-                  {t.memoryView.loadMoreRecent}
-                </span>
-              </div>
-            </Surface>
-          </div>
+          <FragmentsFixtureList initialMode={initialMode} />
         </BarProvider>
       </InboxSurfaceProvider>
     </IsMobileProvider>
+  );
+}
+
+function FragmentsFixtureList({ initialMode }: { initialMode: FragmentsMode }) {
+  const { t } = useLocale();
+  const isMobile = useIsMobile();
+  const [mode, setMode] = useState<FragmentsMode>(initialMode);
+  const [window, setWindow] = useState<RecentWindow>("3d");
+  const [previewId, setPreviewId] = useState<string | null>(MEMORIES[1].id);
+  // Same gate as the real list: no hover previews on touch layouts.
+  const handleOpenChange = (id: string, open: boolean) => {
+    if (open && isMobile) return;
+    setPreviewId((cur) => (open ? id : cur === id ? null : cur));
+  };
+
+  return (
+    <>
+      <div className="mx-auto max-w-3xl px-6 py-16">
+        <header className="mb-8 space-y-2">
+          <h1 className="text-display-2 font-semibold text-fg-1">
+            记忆片段 · 最近模式
+          </h1>
+          <p className="text-[14px] text-fg-3">
+            Dev-only fixture. Real components, fixture memories: the preview
+            card is pinned open on the second row; the first row carries a
+            pending contradiction.
+          </p>
+        </header>
+
+        <Surface rounded="2xl" className="overflow-hidden">
+          <div className="flex flex-wrap items-center gap-1 border-b border-border/30 px-4 py-2.5">
+            <span className="text-[13px] font-semibold text-fg-1">
+              {t.memoryView.freshMemory.other}
+            </span>
+            <span className="ml-auto inline-flex items-center">
+              <FragmentsModeToggle mode={mode} onSwitchMode={setMode} />
+              {mode === "recent" && (
+                <RecentWindowPills
+                  window={window}
+                  onSwitchWindow={setWindow}
+                  className="ml-1.5 inline-flex"
+                />
+              )}
+            </span>
+          </div>
+          <div>
+            {MEMORIES.map((m, i) => (
+              <div key={m.id}>
+                <FragmentPreviewCard
+                  memory={m}
+                  topicPath={["memax", i < 2 ? "前端" : "设计"]}
+                  open={previewId === m.id}
+                  onOpenChange={(open) => handleOpenChange(m.id, open)}
+                  onOpen={() => {}}
+                >
+                  <DraggableMemoryRow
+                    memory={m}
+                    surface="recent"
+                    topicLabel={{
+                      path: [
+                        { name: "memax" },
+                        { name: i < 2 ? "前端" : "设计" },
+                      ],
+                    }}
+                    showDivider={i > 0}
+                    isNew={i === 0}
+                    onClick={() => {}}
+                  />
+                </FragmentPreviewCard>
+                {i === 0 && (
+                  <FragmentConflictStrip
+                    memory={m}
+                    conflict={CONFLICT}
+                    otherMemory={MEMORIES[3]}
+                    onOpenOther={() => {}}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-center border-t border-border/30 px-4 py-2.5">
+            <span className="text-[13px] text-fg-3">
+              {t.memoryView.loadMoreRecent}
+            </span>
+          </div>
+        </Surface>
+      </div>
+    </>
   );
 }

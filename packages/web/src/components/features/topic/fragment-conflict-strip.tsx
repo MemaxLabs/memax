@@ -10,6 +10,7 @@ import {
   type FragmentConflictVerdict,
 } from "@/lib/fragment-conflicts";
 import { useResolveNotification } from "@/hooks/use-notifications";
+import { queryClient } from "@/lib/query-client";
 
 /**
  * FragmentConflictStrip — a pending contradiction, rendered under the
@@ -26,11 +27,14 @@ export function FragmentConflictStrip({
   conflict,
   otherMemory,
   onOpenOther,
+  variant = "rows",
 }: {
   memory: Memory;
   conflict: FragmentConflict;
   otherMemory?: Memory;
   onOpenOther: (id: string) => void;
+  /** "rows" indents under the row's leading column; "grid" spans a card grid row. */
+  variant?: "rows" | "grid";
 }) {
   const { t } = useLocale();
   const interpolate = useInterpolate();
@@ -38,10 +42,24 @@ export function FragmentConflictStrip({
   const pending = resolve.isPending;
 
   const verdict = (v: FragmentConflictVerdict) =>
-    resolve.mutate({
-      id: conflict.notificationId,
-      action: fragmentConflictAction(conflict, v),
-    });
+    resolve.mutate(
+      {
+        id: conflict.notificationId,
+        action: fragmentConflictAction(conflict, v),
+      },
+      {
+        onSuccess: () => {
+          // keep_a / keep_b archive the loser server-side without a
+          // memory event; the loser may be on screen, so refetch lists.
+          if (v !== "keep_both") {
+            void queryClient.invalidateQueries({
+              queryKey: ["recent-memories"],
+            });
+            void queryClient.invalidateQueries({ queryKey: ["memories"] });
+          }
+        },
+      },
+    );
 
   const thisSnippet = sanitizeSummary(m.summary) || m.content || "";
   const otherSnippet = otherMemory
@@ -52,7 +70,9 @@ export function FragmentConflictStrip({
 
   return (
     <div
-      className="mx-3 mb-3 max-w-[600px] overflow-hidden rounded-xl border border-border/50 bg-card sm:ml-12"
+      className={`mb-3 overflow-hidden rounded-xl border border-border/50 bg-card ${
+        variant === "grid" ? "" : "mx-3 max-w-[600px] sm:ml-12"
+      }`}
       role="group"
       aria-label={t.memoryView.conflictEyebrow}
     >

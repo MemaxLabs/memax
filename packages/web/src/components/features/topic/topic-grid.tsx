@@ -103,6 +103,16 @@ import { DraggableMemoryCard } from "../memory-card/memory-card-draggable";
 import { FragmentPreview } from "./fragment-preview";
 import { FragmentConflictStrip } from "./fragment-conflict-strip";
 import { buildFragmentConflictIndex } from "@/lib/fragment-conflicts";
+import {
+  DEFAULT_RECENT_WINDOW,
+  FragmentsModeControls,
+  RECENT_WINDOWS,
+  isRecentWindow,
+  windowLabel,
+  type FragmentsMode,
+  type RecentWindow,
+} from "./fragment-mode-controls";
+import { useTopicDragContext } from "./topic-dnd-hooks";
 import { MemoryCardSkeletonList } from "../memory-card/memory-card-skeleton";
 /** Main topic cards grid with recent memories section. */
 export function TopicGrid() {
@@ -740,6 +750,7 @@ export function RecentSection({
   // pulse 「等你」 deck reads, so a verdict here clears there too.
   const { data: pendingNotifications } = useNotifications({
     status: "pending",
+    kind: ["review_contradiction"],
   });
   const conflictIndex = useMemo(
     () => buildFragmentConflictIndex(pendingNotifications?.notifications),
@@ -861,6 +872,9 @@ export function RecentSection({
   // loaded, drop to 全部 (without persisting — the user hasn't chosen).
   const autoLanded = useRef(false);
   useEffect(() => {
+    autoLanded.current = false;
+  }, [filterStorageKey]);
+  useEffect(() => {
     if (autoLanded.current || hasStoredFilters.current) return;
     if (mode !== "recent" || !hasLoadedData || isLoading) return;
     autoLanded.current = true;
@@ -890,26 +904,58 @@ export function RecentSection({
   const [previewId, setPreviewId] = useState<string | null>(null);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewHeld = useRef(false);
+  // Which row wrapper the pointer is currently inside (null = none).
+  // Lets a released hold decide whether the pointer already left.
+  const hoveredRowId = useRef<string | null>(null);
   const clearPreviewTimer = () => {
     if (previewTimer.current) {
       clearTimeout(previewTimer.current);
       previewTimer.current = null;
     }
   };
+  const { activeId: dragActiveId } = useTopicDragContext();
   const armPreview = (id: string) => {
-    if (isMobile || selection.active) return;
+    hoveredRowId.current = id;
+    // A held preview (its move picker is open) is modal-ish: no other
+    // row may take over until it releases. No previews mid-drag either.
+    if (isMobile || selection.active || previewHeld.current || dragActiveId)
+      return;
     clearPreviewTimer();
     previewTimer.current = setTimeout(() => setPreviewId(id), PREVIEW_DWELL_MS);
   };
   const disarmPreview = () => {
+    hoveredRowId.current = null;
     clearPreviewTimer();
     if (previewHeld.current) return;
     setPreviewId(null);
   };
-  const holdPreview = useCallback((held: boolean) => {
+  const holdPreview = useCallback((memoryId: string, held: boolean) => {
+    // Only the current preview can hold (its picker is the only one
+    // open), so a release from ANY preview — including one unmounting
+    // because another row took over — safely drops the flag.
     previewHeld.current = held;
-    if (!held) setPreviewId(null);
+    if (held) return;
+    // Released: close only if it is still current and the pointer has
+    // already left its row. Pure updater — no side effects inside.
+    setPreviewId((current) =>
+      current === memoryId && hoveredRowId.current !== memoryId
+        ? null
+        : current,
+    );
   }, []);
+  useEffect(() => {
+    if (dragActiveId) {
+      clearPreviewTimer();
+      setPreviewId(null);
+    }
+  }, [dragActiveId]);
+  // A press anywhere on the row (drag grip included) cancels the dwell
+  // and closes an open preview so dnd-kit never measures a layout that
+  // is about to shift.
+  const cancelPreviewForPress = () => {
+    clearPreviewTimer();
+    if (!previewHeld.current) setPreviewId(null);
+  };
   useEffect(() => () => clearPreviewTimer(), []);
   useEffect(() => {
     if (selection.active) setPreviewId(null);
@@ -957,7 +1003,7 @@ export function RecentSection({
           isV2Surface ? (
             // Two grid rows of skeleton cards — enough to hold the
             // above-the-fold shape without a wall of shimmer while
-            // the first full page (20) loads.
+            // the first full page (10) loads.
             <MemoryCardSkeletonList count={6} />
           ) : (
             <MemoryRowSkeletonList count={3} layout="stacked" />
@@ -994,55 +1040,12 @@ export function RecentSection({
         }
         trailing={
           <>
-            {/* 最近 | 全部 — a view choice, not a filter. */}
-            <div
-              role="radiogroup"
-              aria-label={t.memoryView.modeAria}
-              className="ml-1 inline-flex rounded-full bg-surface-2 p-0.5 text-[12px]"
-            >
-              {(["recent", "all"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="radio"
-                  aria-checked={mode === m}
-                  onClick={() => switchMode(m)}
-                  className={`rounded-full px-2.5 py-0.5 transition-colors cursor-pointer ${
-                    mode === m
-                      ? "bg-card text-fg-1 shadow-sm font-medium"
-                      : "text-fg-3 hover:text-fg-2"
-                  }`}
-                >
-                  {m === "recent"
-                    ? t.memoryView.modeRecent
-                    : t.memoryView.modeAll}
-                </button>
-              ))}
-            </div>
-            {mode === "recent" && (
-              <div
-                role="radiogroup"
-                aria-label={t.memoryView.filterPastLabel}
-                className="ml-1.5 hidden items-center gap-0.5 text-[12px] sm:inline-flex"
-              >
-                {RECENT_WINDOWS.map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    role="radio"
-                    aria-checked={window === w}
-                    onClick={() => switchWindow(w)}
-                    className={`rounded-full border px-2 py-0.5 transition-colors cursor-pointer ${
-                      window === w
-                        ? "border-border/60 text-fg-1"
-                        : "border-transparent text-fg-3 hover:text-fg-2"
-                    }`}
-                  >
-                    {windowLabel(w, t)}
-                  </button>
-                ))}
-              </div>
-            )}
+            <FragmentsModeControls
+              mode={mode}
+              window={window}
+              onSwitchMode={switchMode}
+              onSwitchWindow={switchWindow}
+            />
             <Popover>
               <PopoverTrigger className="flex items-center gap-1.5 text-[12px] text-fg-3 hover:text-fg-2 transition-colors cursor-pointer ml-2">
                 <SlidersHorizontal className="h-3 w-3" />
@@ -1051,6 +1054,9 @@ export function RecentSection({
               </PopoverTrigger>
               <PopoverContent side="bottom" align="start" sideOffset={4}>
                 <RecentFilterPanel
+                  windows={mode === "recent" ? RECENT_WINDOWS : null}
+                  currentWindow={window}
+                  onSelectWindow={switchWindow}
                   currentActor={actor}
                   actorOptions={actorOptions}
                   onSelectActor={switchActor}
@@ -1146,6 +1152,7 @@ export function RecentSection({
                           {conflicts.map((c) => (
                             <FragmentConflictStrip
                               key={c.notificationId}
+                              variant="grid"
                               memory={m}
                               conflict={c}
                               otherMemory={memoriesById.get(c.other.id)}
@@ -1239,19 +1246,28 @@ export function RecentSection({
                     : undefined;
                 const conflicts = conflictIndex.get(m.id);
                 return (
+                  // Outer wrapper = row + preview + strips, so leaving
+                  // any of them counts as leaving the row. Inner wrapper
+                  // = the row alone: only IT arms a preview, and only a
+                  // press on IT cancels one (a press on a preview /
+                  // strip button must not unmount the button mid-click).
                   <div
                     key={getRecentRenderKey(m.id)}
-                    onMouseEnter={() => armPreview(m.id)}
                     onMouseLeave={disarmPreview}
                   >
-                    <DraggableMemoryRow
-                      memory={m}
-                      surface="recent"
-                      topicLabel={topicPath ? { path: topicPath } : undefined}
-                      showDivider={i > 0}
-                      isNew={recentlyArrived.has(m.id)}
-                      onClick={() => onClickMemory(m.id)}
-                    />
+                    <div
+                      onMouseEnter={() => armPreview(m.id)}
+                      onPointerDownCapture={cancelPreviewForPress}
+                    >
+                      <DraggableMemoryRow
+                        memory={m}
+                        surface="recent"
+                        topicLabel={topicPath ? { path: topicPath } : undefined}
+                        showDivider={i > 0}
+                        isNew={recentlyArrived.has(m.id)}
+                        onClick={() => onClickMemory(m.id)}
+                      />
+                    </div>
                     {previewId === m.id && (
                       <FragmentPreview
                         memory={m}
@@ -1363,29 +1379,22 @@ function getRecentActorLabel(
   return actor.slice(7);
 }
 
-type FragmentsMode = "recent" | "all";
-type RecentWindow = Exclude<TimeWindow, "all">;
-const RECENT_WINDOWS = TIME_WINDOWS.filter(
-  (w): w is RecentWindow => w !== "all",
-);
-const DEFAULT_RECENT_WINDOW: RecentWindow = "3d";
 const PREVIEW_DWELL_MS = 400;
 
-function isRecentWindow(w: string): w is RecentWindow {
-  return (RECENT_WINDOWS as readonly string[]).includes(w);
-}
-
-function windowLabel(w: TimeWindow, t: ReturnType<typeof useLocale>["t"]) {
-  return w === "all" ? t.memoryView.modeAll : t.memoryView.windowLabel[w];
-}
-
 function RecentFilterPanel({
+  windows,
+  currentWindow,
+  onSelectWindow,
   currentActor,
   actorOptions,
   onSelectActor,
   onReset,
   t,
 }: {
+  /** Recent windows to offer, or null in 全部 mode. */
+  windows: readonly RecentWindow[] | null;
+  currentWindow: TimeWindow;
+  onSelectWindow: (w: RecentWindow) => void;
   currentActor: RecentActor;
   actorOptions: RecentActorOption[];
   onSelectActor: (actor: RecentActor) => void;
@@ -1402,6 +1411,31 @@ function RecentFilterPanel({
           {t.memoryView.filterBy}
         </p>
       </div>
+      {windows && (
+        // Phone only: the header pills are hidden below `sm`, so the
+        // window lives here instead. Desktop has the pills and skips it.
+        <div className="border-b border-border/30 p-1.5 sm:hidden">
+          <p className="px-2.5 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-fg-4">
+            {t.memoryView.filterTimeLabel}
+          </p>
+          {windows.map((w) => (
+            <button
+              key={w}
+              onClick={() => onSelectWindow(w)}
+              className={`flex min-h-11 w-full items-center gap-2.5 rounded-chrome px-3 text-left text-[13px] transition-colors cursor-pointer ${
+                w === currentWindow
+                  ? "bg-foreground/[0.06] text-fg-1"
+                  : "text-fg-2 hover:bg-foreground/[0.04]"
+              }`}
+            >
+              <span className="flex-1 truncate">{windowLabel(w, t)}</span>
+              {w === currentWindow && (
+                <Check className="h-3.5 w-3.5 shrink-0 text-fg-3" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="p-1.5">
         <p className="px-2.5 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-fg-4">
           {t.memoryView.filterActorLabel}

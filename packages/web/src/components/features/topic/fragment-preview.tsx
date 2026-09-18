@@ -33,7 +33,7 @@ export function FragmentPreview({
   memory: Memory;
   topicPath?: string[];
   onOpen: () => void;
-  onHold: (held: boolean) => void;
+  onHold: (memoryId: string, held: boolean) => void;
 }) {
   const { t } = useLocale();
   const interpolate = useInterpolate();
@@ -43,9 +43,15 @@ export function FragmentPreview({
   const [moveOpen, setMoveOpen] = useState(false);
   const [confirmingForget, setConfirmingForget] = useState(false);
 
-  useEffect(() => {
-    onHold(moveOpen);
-  }, [moveOpen, onHold]);
+  // Hold is event-driven (not an effect on `moveOpen`): an effect would
+  // fire `onHold(false)` on mount and close the preview the instant it
+  // opened. Unmount releases the hold so a row that disappears while
+  // its picker is open (SSE removal, forget) can't wedge the host.
+  const setMoveOpenHeld = (open: boolean) => {
+    setMoveOpen(open);
+    onHold(m.id, open);
+  };
+  useEffect(() => () => onHold(m.id, false), [m.id, onHold]);
 
   // The confirm arm disarms itself after a moment so a stray second
   // click a minute later doesn't delete anything.
@@ -100,7 +106,7 @@ export function FragmentPreview({
         >
           {t.memoryView.previewOpen}
         </button>
-        <Popover open={moveOpen} onOpenChange={setMoveOpen}>
+        <Popover open={moveOpen} onOpenChange={setMoveOpenHeld}>
           <PopoverTrigger className={actionClass}>
             {t.topics.moveToTopic}
           </PopoverTrigger>
@@ -115,7 +121,7 @@ export function FragmentPreview({
               variant="plain"
               selectedTopicId={m.topic_id}
               onSelectTopic={(selectedTopicId, targetHubId, name) => {
-                setMoveOpen(false);
+                setMoveOpenHeld(false);
                 void mover.moveWithUndo(
                   [{ id: m.id, hubId: m.hub_id, topicId: m.topic_id }],
                   { topicId: selectedTopicId, hubId: targetHubId },
@@ -123,38 +129,52 @@ export function FragmentPreview({
                 );
               }}
               onSelectHub={(targetHubId, name) => {
-                setMoveOpen(false);
+                setMoveOpenHeld(false);
                 void mover.moveWithUndo(
                   [{ id: m.id, hubId: m.hub_id, topicId: m.topic_id }],
                   { hubId: targetHubId },
                   mover.moveOneSuccess(name),
                 );
               }}
-              onClose={() => setMoveOpen(false)}
+              onClose={() => setMoveOpenHeld(false)}
             />
           </PopoverContent>
         </Popover>
-        <button
-          type="button"
-          disabled={forget.isPending}
-          onClick={() => {
-            if (!confirmingForget) {
-              setConfirmingForget(true);
-              return;
-            }
-            setConfirmingForget(false);
-            void forget.forgetWithConfirm([m.id]);
-          }}
-          className={`${actionClass} ${
-            confirmingForget
-              ? "border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
-              : "text-destructive/80 hover:text-destructive"
-          } disabled:cursor-wait disabled:opacity-60`}
-        >
-          {confirmingForget
-            ? t.memoryView.previewForgetConfirm
-            : t.memoryView.previewForget}
-        </button>
+        {confirmingForget ? (
+          // Armed: the SAFE target (留着) sits where 忘记 was, so a double
+          // click lands on it; the destructive confirm is a separate,
+          // clearly different button to its right.
+          <>
+            <button
+              type="button"
+              autoFocus
+              onClick={() => setConfirmingForget(false)}
+              className={actionClass}
+            >
+              {t.memoryView.previewKeep}
+            </button>
+            <button
+              type="button"
+              disabled={forget.isPending}
+              onClick={() => {
+                setConfirmingForget(false);
+                void forget.forgetWithConfirm([m.id]);
+              }}
+              className={`${actionClass} border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive disabled:cursor-wait disabled:opacity-60`}
+            >
+              {t.memoryView.previewForgetConfirm}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            disabled={forget.isPending}
+            onClick={() => setConfirmingForget(true)}
+            className={`${actionClass} text-destructive/80 hover:text-destructive disabled:cursor-wait disabled:opacity-60`}
+          >
+            {t.memoryView.previewForget}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -68,12 +68,24 @@ const LocaleContext = createContext<LocaleContextValue>({
   t: en,
 });
 
-export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>("en");
+export function LocaleProvider({
+  children,
+  initialLocale,
+}: {
+  children: React.ReactNode;
+  /**
+   * Pin the locale from the first render (dev fixtures / screenshots).
+   * Production leaves this unset: "en" on the server, then the device
+   * choice once mounted.
+   */
+  initialLocale?: Locale;
+}) {
+  const [locale, setLocaleState] = useState<Locale>(initialLocale ?? "en");
 
   useEffect(() => {
+    if (initialLocale) return;
     setLocaleState(detectLocale());
-  }, []);
+  }, [initialLocale]);
 
   // Mirror the active translations into a module-level ref so code
   // running outside React (MutationCache error classifier, etc.) can

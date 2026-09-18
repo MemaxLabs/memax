@@ -40,7 +40,9 @@ export const en = {
     tabs: {
       brain: "Ask memax",
       memories: "Memories",
-      agents: "Connected agents",
+      // founder 2026-09-15: just "agents" — the brand word, no
+      // qualifier ("connected" is an implementation detail).
+      agents: "Agents",
       pulse: "Pulse",
     },
   },
@@ -580,7 +582,7 @@ export const en = {
   },
 
   agentConfigs: {
-    title: "Connected agents",
+    title: "Agents",
     subtitle:
       "Set an agent up once — it's connected to your memory everywhere.",
     empty: "No agents connected yet",
@@ -804,10 +806,10 @@ export const en = {
 
   // Mobile dock navigation
   dock: {
-    brain: "Ask",
-    topics: "Topics",
+    memories: "Memories",
     pulse: "Pulse",
-    recentTitle: "Recent",
+    brain: "Ask",
+    agents: "Agents",
   },
 
   settingsOnboarding: {
@@ -2033,7 +2035,6 @@ export const en = {
     remembering: "remembering",
     recentEmptyTitle: "Nothing new yet",
     recentEmptyHint: "Capture something and it'll show up here",
-    recentFilteredTitle: "No memories in the past {window}",
     recentFilteredAllTitle: "No memories under this filter",
     recentFilteredHint: "Try widening the window or switching actor",
     recentErrorTitle: "Couldn't reach your recent memories",
@@ -2041,8 +2042,6 @@ export const en = {
     recentErrorRetry: "Reload recent",
     switchToRows: "Switch to row view",
     switchToCards: "Switch to card view",
-    filterPast: "Past {window}",
-    filterAllTime: "All time",
     filterPastLabel: "Filter recent window",
     filterBy: "Filter",
     filterTimeLabel: "Time",
@@ -2053,7 +2052,34 @@ export const en = {
     copyContent: "Copy",
     copiedContent: "Copied",
     loadingMore: "Loading more...",
-    loadMoreRecent: "Show {n} more",
+    loadMoreRecent: "Show more",
+    modeRecent: "Recent",
+    modeAll: "All",
+    modeAria: "Fragments view",
+    windowLabel: {
+      "12h": "12 hours",
+      "1d": "1 day",
+      "3d": "3 days",
+      "7d": "7 days",
+    },
+    recentModeEmptyTitle: "No new memories in the past {window}",
+    recentModeEmptyHint: "Widen the window, or see everything",
+    recentModeWiden: "Widen to 7 days",
+    recentModeSeeAll: "See all",
+    previewAria: "Memory preview",
+    previewOpen: "Open",
+    previewForget: "Forget",
+    previewForgetConfirm: "Confirm forget",
+    previewKeep: "Keep",
+    conflictEyebrow: "Conflict",
+    conflictWith: "Disagrees with \u201c{title}\u201d",
+    conflictThis: "This one",
+    conflictOther: "The other",
+    conflictOtherOpen: "Open it",
+    conflictKeepThis: "Keep this",
+    conflictKeepOther: "Keep the other",
+    conflictKeepBoth: "Keep both",
+    conflictNote: "Keep one and the other is archived",
     scrollToLoad: "Scroll to load more",
     copyForAI: "Copy for AI",
     download: "Download",
@@ -2421,7 +2447,6 @@ export const en = {
     you: "You",
     yourTeam: "Your Team",
     // Scenario showcase — 4 coded recreations of real usage surfaces.
-    scenarioLabel: "memax, everywhere you work",
     scenarioTabCli: "Terminal",
     scenarioTabWeb: "Web",
     // Claude Code scenario — agent recalls team context mid-session via MCP.

@@ -2,7 +2,9 @@
 
 import { useSyncExternalStore } from "react";
 
-const ARRIVAL_HOLD_MS = 2400;
+// 8s (2026-09-17): long enough to notice a row that just slid in, short
+// enough that the tint never reads as a to-do.
+const ARRIVAL_HOLD_MS = 8000;
 
 const listeners = new Set<() => void>();
 const arrivedIds = new Set<string>();

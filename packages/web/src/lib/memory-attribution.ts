@@ -17,7 +17,7 @@ export interface ResolvedMemoryAttribution {
   isOwnMemory: boolean;
   authorName: string | null;
   authorAvatar: string | null;
-  createdByType: "human" | "agent" | "system";
+  createdByType: "human" | "agent" | "system" | "unknown";
   initiationType:
     | "human_direct"
     | "human_requested_agent"
@@ -28,6 +28,13 @@ export interface ResolvedMemoryAttribution {
   isHumanRequestedAgent: boolean;
   isAgentCapture: boolean;
   isLegacyUnknownAgentAttribution: boolean;
+  /**
+   * The server could not vouch for an author: a machine entrypoint
+   * wrote this with no agent identity and no evidence of a direct human
+   * action (2026-09-18 attribution fix). Render as "unknown author",
+   * never as the user.
+   */
+  isUnknownAuthor: boolean;
   /**
    * True when the memory is system-authored (`source === "system"`).
    * Plan 23 onboarding seeds set this; future system-authored memories
@@ -77,6 +84,7 @@ export function resolveMemoryAttribution(
       isHumanRequestedAgent: false,
       isAgentCapture: true,
       isLegacyUnknownAgentAttribution: false,
+      isUnknownAuthor: false,
       isSystem: true,
       agentDisplayName: memaxIdentity.displayName,
       // No emoji override — let <AgentInlineIdentity> render the
@@ -120,6 +128,7 @@ export function resolveMemoryAttribution(
     (initiationType === "agent_proactive" ||
       initiationType === "agent_automatic" ||
       initiationType === "unknown");
+  const isUnknownAuthor = !hasAgent && createdByType === "unknown";
 
   if (!hasAgent) {
     return {
@@ -132,6 +141,7 @@ export function resolveMemoryAttribution(
       isHumanRequestedAgent,
       isAgentCapture,
       isLegacyUnknownAgentAttribution,
+      isUnknownAuthor,
       isSystem: false,
       agentDisplayName: "",
       agentIconEmoji: null,
@@ -156,6 +166,7 @@ export function resolveMemoryAttribution(
     isHumanRequestedAgent,
     isAgentCapture,
     isLegacyUnknownAgentAttribution,
+    isUnknownAuthor: false,
     isSystem: false,
     agentDisplayName: agent.displayName,
     agentIconEmoji: agent.iconEmoji ?? null,

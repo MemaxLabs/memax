@@ -37,9 +37,22 @@ const memoryFrom = `memories m LEFT JOIN users u ON m.owner_id = u.id LEFT JOIN 
 const recentActorExpr = `CASE
 	WHEN COALESCE(h.hub_type, '') = 'team' AND NULLIF(COALESCE(u.display_name, u.name, ''), '') IS NOT NULL THEN 'author:' || COALESCE(u.display_name, u.name, '')
 	WHEN ` + memoryAgentSlugExpr + ` IS NOT NULL THEN 'agent:' || ` + memoryAgentSlugExpr + `
+	WHEN ` + memoryUnknownAuthorPred + ` THEN 'unknown'
 	WHEN NULLIF(COALESCE(u.display_name, u.name, ''), '') IS NOT NULL THEN 'author:' || COALESCE(u.display_name, u.name, '')
 	ELSE 'self'
 END`
+
+// memoryUnknownAuthorPred mirrors model.BuildMemoryProvenance's unknown
+// rule in SQL so the 来源 filter never files an unknown author under the
+// user: written as unknown, OR a legacy "human" label with no agent, no
+// collaborator, a machine entrypoint and no evidence-grade source.
+const memoryUnknownAuthorPred = `(m.created_by_type = 'unknown' OR (
+	m.created_by_type IN ('', 'human')
+	AND ` + memoryAgentSlugExpr + ` IS NULL
+	AND COALESCE(m.assisted_by_agent, '') = ''
+	AND COALESCE(NULLIF(m.created_via, ''), m.source) IN ('cli', 'sdk', 'api', 'mcp', 'mcp/capture', 'hook', 'import', 'extraction')
+	AND COALESCE(m.attribution_source, '') IN ('', 'human', 'legacy_human')
+))`
 
 func buildMemoryListWhere(opts ListOptions) ([]string, []any) {
 	scope := opts.Scope

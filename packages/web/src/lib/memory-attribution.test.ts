@@ -66,3 +66,84 @@ describe("resolveMemoryAttribution", () => {
     expect(attribution.agentDisplayName).toBe("Claude Code");
   });
 });
+
+describe("resolveMemoryAttribution — unknown author", () => {
+  const base = {
+    id: "m1",
+    hub_id: "h1",
+    owner_id: "u1",
+    title: "t",
+    content: "",
+    content_type: "markdown",
+    content_hash: "",
+    summary: "",
+    kind: "note",
+    stability: "stable",
+    retrieval_weight: 1,
+    tags: [],
+    boundary: "private",
+    state: "active",
+    pinned: false,
+    source: "cli",
+    version: 1,
+    access_count: 0,
+    created_at: "2026-09-18T00:00:00Z",
+    updated_at: "2026-09-18T00:00:00Z",
+    accessed_at: "2026-09-18T00:00:00Z",
+  } as const;
+
+  it("marks a machine write with no agent and no human evidence as unknown, not the user", () => {
+    const attribution = resolveMemoryAttribution(
+      {
+        ...base,
+        provenance: {
+          created_by_type: "unknown",
+          created_via: "cli",
+          initiation_type: "unknown",
+          attribution_source: "unknown",
+        },
+      } as never,
+      "u1",
+    );
+    expect(attribution.hasAgent).toBe(false);
+    expect(attribution.isOwnMemory).toBe(true);
+    expect(attribution.isUnknownAuthor).toBe(true);
+    expect(attribution.createdByType).toBe("unknown");
+  });
+
+  it("keeps a web human_direct write as the user", () => {
+    const attribution = resolveMemoryAttribution(
+      {
+        ...base,
+        source: "web",
+        provenance: {
+          created_by_type: "human",
+          created_via: "web",
+          initiation_type: "human_direct",
+          attribution_source: "human",
+        },
+      } as never,
+      "u1",
+    );
+    expect(attribution.isUnknownAuthor).toBe(false);
+    expect(attribution.createdByType).toBe("human");
+  });
+
+  it("never flags an agent-attributed row as unknown author", () => {
+    const attribution = resolveMemoryAttribution(
+      {
+        ...base,
+        provenance: {
+          created_by_type: "agent",
+          created_by_slug: "hatch",
+          created_via: "cli",
+          initiation_type: "unknown",
+          attribution_source: "auth",
+        },
+      } as never,
+      "u1",
+    );
+    expect(attribution.hasAgent).toBe(true);
+    expect(attribution.isUnknownAuthor).toBe(false);
+  });
+});

@@ -160,6 +160,7 @@ vi.mock("@/lib/memory-attribution", async () => {
       agentIdentity: null,
       isOwnMemory: true,
       isLegacyUnknownAgentAttribution: false,
+      isUnknownAuthor: false,
       isHumanRequestedAgent: false,
     }),
   };

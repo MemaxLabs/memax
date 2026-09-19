@@ -528,13 +528,16 @@ func inheritProvenance(parent *model.Memory) model.MemoryProvenance {
 			AttributionSource: model.MemoryAttributionSourceInherited,
 		}
 	}
-	model.NormalizeMemoryProvenanceFields(parent)
+	// Derive from the presented provenance so an unknown parent (written
+	// as such, or a legacy human label with no evidence) yields unknown
+	// children — without mutating the parent row.
+	presented := model.BuildMemoryProvenance(parent)
 	return model.MemoryProvenance{
-		CreatedByType:        parent.ProvenanceCreatedByType,
-		CreatedBySlug:        parent.ProvenanceCreatedBySlug,
-		CreatedByDisplayName: parent.ProvenanceCreatedByDisplayName,
+		CreatedByType:        presented.CreatedByType,
+		CreatedBySlug:        presented.CreatedBySlug,
+		CreatedByDisplayName: presented.CreatedByDisplayName,
 		CreatedVia:           "extraction",
-		AssistedByAgent:      parent.ProvenanceAssistedByAgent,
+		AssistedByAgent:      presented.AssistedByAgent,
 		InitiationType:       model.MemoryInitiationAgentAutomatic,
 		AttributionSource:    model.MemoryAttributionSourceInherited,
 	}

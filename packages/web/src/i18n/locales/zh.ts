@@ -1544,6 +1544,9 @@ export const zh: Translations = {
     savedWithAgentSuffix: "记下了",
     capturedByAgentPrefix: "由",
     capturedByAgentSuffix: "记下了",
+    // 作者未知：机器入口（CLI / API / MCP / hook / import）写入且没带 agent
+    // 身份，也没有"人亲手做的"证据。诚实地说不知道，不猜成"你"。
+    unknownAuthor: "作者未知",
   },
 
   // 生命周期信号 — 被动浏览上下文中自上次访问以来的变更。

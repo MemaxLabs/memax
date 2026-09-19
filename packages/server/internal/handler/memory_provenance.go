@@ -20,6 +20,11 @@ import (
 const (
 	memaxWarningClaimRejected   = "agent_identity_claim_rejected"
 	memaxWarningReconnectNeeded = "reconnect_required"
+	// memaxWarningAuthorUnknown — the write was accepted but nothing
+	// vouched for who wrote it: no bound agent, no accepted claim, not a
+	// web action, no caller assertion. Clients should tell the user to
+	// pass an agent identity (`--agent`) or bind the key.
+	memaxWarningAuthorUnknown = "author_unknown"
 )
 
 var (
@@ -113,9 +118,31 @@ func resolveMemoryProvenance(s store.Store, ownerID string, req model.PushReques
 		}
 	}
 
+	// No agent: is there POSITIVE evidence a human did this? The web UI
+	// is the one surface where the person is demonstrably at the
+	// controls; a caller may also assert human_direct /
+	// human_requested_agent (an interactive CLI does this when stdout is
+	// a terminal — an assertion, so it is recorded as `claim`, not
+	// `human`). Everything else is honestly unknown; a credential only
+	// proves who may write, never who wrote (2026-09-18 attribution fix).
 	createdByType := model.MemoryCreatedByHuman
-	if createdBySlug != "" {
+	requestedInitiation := model.NormalizeMemoryInitiationType(strings.TrimSpace(req.InitiationType))
+	switch {
+	case createdBySlug != "":
 		createdByType = model.MemoryCreatedByAgent
+	case createdVia == "web":
+		// attributionSource stays "human".
+	case requestedInitiation == model.MemoryInitiationHumanDirect:
+		attributionSource = model.MemoryAttributionSourceClaim
+	case requestedInitiation == model.MemoryInitiationHumanRequestedAgent &&
+		model.NormalizeAgentSlug(req.AssistedByAgent) != "":
+		// "A human asked an agent" is only evidence of a human when the
+		// agent is named; a bare human_requested_agent from a tool call
+		// is the spoof this whole change exists to stop.
+		attributionSource = model.MemoryAttributionSourceClaim
+	default:
+		createdByType = model.MemoryCreatedByUnknown
+		attributionSource = model.MemoryAttributionSourceUnknown
 	}
 
 	assistedByAgent, err := resolveAssistedByAgent(s, ownerID, req, createdByType)
@@ -210,10 +237,12 @@ func resolveInitiationType(requested, createdVia, createdByType string) string {
 	case "hook", "extraction":
 		return model.MemoryInitiationAgentAutomatic
 	}
-	if createdByType == model.MemoryCreatedByAgent {
-		return model.MemoryInitiationUnknown
+	if createdByType == model.MemoryCreatedByHuman {
+		return model.MemoryInitiationHumanDirect
 	}
-	return model.MemoryInitiationHumanDirect
+	// Agent or unknown actor with no caller-asserted initiation: we do
+	// not know why it wrote.
+	return model.MemoryInitiationUnknown
 }
 
 func displayNameForAgentSlug(s store.Store, ownerID, slug string) string {

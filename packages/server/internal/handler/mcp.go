@@ -302,7 +302,7 @@ func (h *MCPHandler) agentTools() []mcpTool {
 			// slug ("claude-code" on a claude-ai grant) would lose the
 			// memory. The field is still parsed for API-key principals
 			// with no pinned agent_name, which take the claim path.
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"content":{"type":"string","description":"The knowledge content to save"},"title":{"type":"string","description":"Optional title (auto-generated if omitted)"},"hint":{"type":"string","description":"Context hint to help AI process this memory (e.g. 'This is my resume', 'Meeting notes from product review'). Improves summarization and retrieval."},"tags":{"type":"array","items":{"type":"string"},"description":"Tags for the memory"},"initiation_type":{"type":"string","description":"How this save was initiated: human_direct, human_requested_agent, agent_proactive, agent_automatic, import, or unknown."},"project_context":{"type":"object","description":"Project context (auto-detected by CLI). Keys: repo (git remote URL), project (short name), branch."},"hub_id":{"type":"string","description":"Target hub ID. Required when pushing into a team hub."},"hub_reason":{"type":"string","description":"Why this belongs in the shared hub. Required when hub_id targets a team hub."}},"required":["content"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"content":{"type":"string","description":"The knowledge content to save"},"title":{"type":"string","description":"Optional title (auto-generated if omitted)"},"hint":{"type":"string","description":"Context hint to help AI process this memory (e.g. 'This is my resume', 'Meeting notes from product review'). Improves summarization and retrieval."},"tags":{"type":"array","items":{"type":"string"},"description":"Tags for the memory"},"initiation_type":{"type":"string","description":"How this save was initiated: human_requested_agent, agent_proactive, agent_automatic, import, or unknown. A tool call is never human_direct; that value is ignored."},"project_context":{"type":"object","description":"Project context (auto-detected by CLI). Keys: repo (git remote URL), project (short name), branch."},"hub_id":{"type":"string","description":"Target hub ID. Required when pushing into a team hub."},"hub_reason":{"type":"string","description":"Why this belongs in the shared hub. Required when hub_id targets a team hub."}},"required":["content"]}`),
 		},
 		{
 			Name:        "memax_get",
@@ -646,7 +646,7 @@ func (h *MCPHandler) toolPush(w http.ResponseWriter, r *http.Request, id any, ar
 	provenance, sourceAgent, claimRejected, provErr := resolveMemoryProvenance(h.store, ownerID, model.PushRequest{
 		Source:         "mcp",
 		SourceAgent:    a.SourceAgent,
-		InitiationType: a.InitiationType,
+		InitiationType: mcpInitiationType(a.InitiationType),
 	}, r)
 	if provErr != nil {
 		writeRPCResult(w, id, mcpToolResult{
@@ -659,6 +659,8 @@ func (h *MCPHandler) toolPush(w http.ResponseWriter, r *http.Request, id any, ar
 		setMemaxWarningHeader(w, memaxWarningClaimRejected)
 	} else if requestNeedsReconnectWarning(r) {
 		setMemaxWarningHeader(w, memaxWarningReconnectNeeded)
+	} else if provenance.CreatedByType == model.MemoryCreatedByUnknown {
+		setMemaxWarningHeader(w, memaxWarningAuthorUnknown)
 	}
 	if sourceAgent != "" && provenance.AttributionSource == model.MemoryAttributionSourceAuth {
 		go EnsureConnectedAgent(h.store, ownerID, sourceAgent)
@@ -774,7 +776,7 @@ func (h *MCPHandler) toolPush(w http.ResponseWriter, r *http.Request, id any, ar
 	// auto-healed to a different slug (Hatch-style claim).
 	events.TryPublishAgentActivity(r.Context(), h.events, ownerID, sourceAgent)
 	writeRPCResult(w, id, mcpToolResult{
-		Content: []mcpContent{{Type: "text", Text: fmt.Sprintf("Saved: %s (id: %s)", a.Title, memoryID)}},
+		Content: []mcpContent{{Type: "text", Text: fmt.Sprintf("Saved: %s (id: %s)%s", a.Title, memoryID, mcpPushAttributionNote(provenance, claimRejected))}},
 	})
 }
 
@@ -1400,6 +1402,31 @@ func writeRPCError(w http.ResponseWriter, id any, code int, message string) {
 		ID:      id,
 		Error:   &rpcError{Code: code, Message: message},
 	})
+}
+
+// mcpPushAttributionNote — MCP clients never see HTTP headers, so the
+// author-unknown / claim-rejected warnings ride in the tool result text.
+func mcpPushAttributionNote(provenance *model.MemoryProvenance, claimRejected bool) string {
+	switch {
+	case claimRejected:
+		return " Note: the agent identity claim was rejected; the author is recorded as unknown."
+	case provenance != nil && provenance.CreatedByType == model.MemoryCreatedByUnknown:
+		return " Note: this credential has no agent identity, so the author is recorded as unknown. Bind the key to an agent on memax.app/agents."
+	default:
+		return ""
+	}
+}
+
+// mcpInitiationType filters the caller-asserted initiation_type for MCP
+// pushes. A tool call is by definition not a person at the keyboard, so a
+// model asserting human_direct is dropped (the resolver then records the
+// bound agent, or an unknown author) instead of being trusted into a
+// human label.
+func mcpInitiationType(requested string) string {
+	if model.NormalizeMemoryInitiationType(strings.TrimSpace(requested)) == model.MemoryInitiationHumanDirect {
+		return ""
+	}
+	return requested
 }
 
 func generateMCPID() string {

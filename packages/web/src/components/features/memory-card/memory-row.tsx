@@ -284,9 +284,11 @@ export function MemoryRow({
         ? standaloneAgentAttributionText(attribution, t, interpolate, "regular")
         : standaloneAgentAttributionText(attribution, t, interpolate, "compact")
       : attribution.isOwnMemory && !attribution.hasAgent
-        ? isMobile
-          ? t.attribution.you
-          : t.attribution.youPushed
+        ? attribution.isUnknownAuthor
+          ? t.attribution.unknownAuthor
+          : isMobile
+            ? t.attribution.you
+            : t.attribution.youPushed
         : null;
   const inlineAttributionLabel = hasTeamAuthor
     ? !isMobile && m.author_name

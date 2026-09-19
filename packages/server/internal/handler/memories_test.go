@@ -258,11 +258,58 @@ func TestMemoriesCreateSetsWarningHeaderWhenAgentClaimRejected(t *testing.T) {
 	if memory.Provenance == nil {
 		t.Fatal("expected provenance")
 	}
-	if memory.Provenance.CreatedByType != model.MemoryCreatedByHuman {
-		t.Fatalf("created_by_type = %q, want %q", memory.Provenance.CreatedByType, model.MemoryCreatedByHuman)
+	// A rejected claim leaves NO evidence of who wrote this (a session
+	// JWT through the API is not a person at the web UI), so the row is
+	// honestly unknown rather than silently "human".
+	if memory.Provenance.CreatedByType != model.MemoryCreatedByUnknown {
+		t.Fatalf("created_by_type = %q, want %q", memory.Provenance.CreatedByType, model.MemoryCreatedByUnknown)
 	}
-	if memory.Provenance.InitiationType != model.MemoryInitiationHumanDirect {
-		t.Fatalf("initiation_type = %q, want %q", memory.Provenance.InitiationType, model.MemoryInitiationHumanDirect)
+	if memory.Provenance.InitiationType != model.MemoryInitiationUnknown {
+		t.Fatalf("initiation_type = %q, want %q", memory.Provenance.InitiationType, model.MemoryInitiationUnknown)
+	}
+}
+
+// TestMemoriesCreateUnknownAuthorWarns — an unpinned API key pushing from
+// the CLI with no --agent (the Hatch feed case): the write succeeds, the
+// author is recorded as unknown, and the client is told so. Never
+// "human_direct".
+func TestMemoriesCreateUnknownAuthorWarns(t *testing.T) {
+	s := store.NewInMemoryStore()
+	h := NewMemoriesHandler(s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	body := `{"title":"feed item","content":"hello","source":"cli"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/memories", bytes.NewBufferString(body))
+	req = withTestIdentity(req, "u1")
+	req = req.WithContext(context.WithValue(req.Context(), grantContextKey, GrantContext{
+		UserID:             "u1",
+		PrincipalType:      "api_key",
+		HubScopeMode:       HubScopeAllAccessible,
+		DefaultPermissions: DefaultUserPermissions(),
+		TrustLevel:         TrustElevated,
+	}))
+	rec := httptest.NewRecorder()
+
+	h.Create(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Memax-Warning"); got != memaxWarningAuthorUnknown {
+		t.Fatalf("warning header = %q, want %q", got, memaxWarningAuthorUnknown)
+	}
+	var resp model.ApiResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(resp.Data)
+	var memory model.Memory
+	if err := json.Unmarshal(data, &memory); err != nil {
+		t.Fatal(err)
+	}
+	if memory.Provenance == nil || memory.Provenance.CreatedByType != model.MemoryCreatedByUnknown {
+		t.Fatalf("provenance = %+v, want created_by_type unknown", memory.Provenance)
+	}
+	if memory.Provenance.AttributionSource != model.MemoryAttributionSourceUnknown {
+		t.Fatalf("attribution_source = %q, want unknown", memory.Provenance.AttributionSource)
 	}
 }
 
@@ -503,6 +550,7 @@ func TestResolveMemoryProvenance(t *testing.T) {
 		wantSlug       string
 		wantSource     string
 		wantInitiation string
+		wantType       string
 		wantRejected   bool
 		wantErr        bool
 	}{
@@ -558,9 +606,83 @@ func TestResolveMemoryProvenance(t *testing.T) {
 				SourceAgent: "codex",
 			},
 			wantSlug:       "",
+			wantSource:     model.MemoryAttributionSourceUnknown,
+			wantInitiation: model.MemoryInitiationUnknown,
+			wantType:       model.MemoryCreatedByUnknown,
+			wantRejected:   true,
+		},
+		{
+			name:           "web action from a session is human_direct",
+			principalType:  "user",
+			req:            model.PushRequest{Source: "web"},
+			wantSlug:       "",
 			wantSource:     model.MemoryAttributionSourceHuman,
 			wantInitiation: model.MemoryInitiationHumanDirect,
-			wantRejected:   true,
+			wantType:       model.MemoryCreatedByHuman,
+		},
+		{
+			name:           "cli with no agent is unknown, never human",
+			principalType:  "api_key",
+			req:            model.PushRequest{Source: "cli"},
+			wantSlug:       "",
+			wantSource:     model.MemoryAttributionSourceUnknown,
+			wantInitiation: model.MemoryInitiationUnknown,
+			wantType:       model.MemoryCreatedByUnknown,
+		},
+		{
+			name:          "interactive cli asserting human_direct is a claim",
+			principalType: "api_key",
+			req: model.PushRequest{
+				Source:         "cli",
+				InitiationType: model.MemoryInitiationHumanDirect,
+			},
+			wantSlug:       "",
+			wantSource:     model.MemoryAttributionSourceClaim,
+			wantInitiation: model.MemoryInitiationHumanDirect,
+			wantType:       model.MemoryCreatedByHuman,
+		},
+		{
+			name:          "mcp human_requested_agent without a collaborator is unknown",
+			principalType: "api_key",
+			req: model.PushRequest{
+				Source:         "mcp",
+				InitiationType: model.MemoryInitiationHumanRequestedAgent,
+			},
+			wantSlug:       "",
+			wantSource:     model.MemoryAttributionSourceUnknown,
+			wantInitiation: model.MemoryInitiationHumanRequestedAgent,
+			wantType:       model.MemoryCreatedByUnknown,
+		},
+		{
+			name:          "cli --assisted-by names the collaborator and stays human",
+			principalType: "api_key",
+			req: model.PushRequest{
+				Source:          "cli",
+				InitiationType:  model.MemoryInitiationHumanRequestedAgent,
+				AssistedByAgent: "codex",
+			},
+			wantSlug:       "",
+			wantSource:     model.MemoryAttributionSourceClaim,
+			wantInitiation: model.MemoryInitiationHumanRequestedAgent,
+			wantType:       model.MemoryCreatedByHuman,
+		},
+		{
+			name:           "hook capture with no agent is unknown but automatic",
+			principalType:  "api_key",
+			req:            model.PushRequest{Source: "hook"},
+			wantSlug:       "",
+			wantSource:     model.MemoryAttributionSourceUnknown,
+			wantInitiation: model.MemoryInitiationAgentAutomatic,
+			wantType:       model.MemoryCreatedByUnknown,
+		},
+		{
+			name:           "import with no agent is unknown import",
+			principalType:  "user",
+			req:            model.PushRequest{Source: "import"},
+			wantSlug:       "",
+			wantSource:     model.MemoryAttributionSourceUnknown,
+			wantInitiation: model.MemoryInitiationImport,
+			wantType:       model.MemoryCreatedByUnknown,
 		},
 		{
 			name:          "web source cannot claim even from agent-capable principal",
@@ -612,6 +734,9 @@ func TestResolveMemoryProvenance(t *testing.T) {
 			}
 			if rejected != tt.wantRejected {
 				t.Fatalf("rejected = %v, want %v", rejected, tt.wantRejected)
+			}
+			if tt.wantType != "" && provenance.CreatedByType != tt.wantType {
+				t.Fatalf("created_by_type = %q, want %q", provenance.CreatedByType, tt.wantType)
 			}
 		})
 	}

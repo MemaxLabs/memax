@@ -148,9 +148,20 @@ export async function pushCommand(
       hint: options.hint ?? "",
       tags,
       source: "cli",
-      sourceAgent: options.agent ?? "",
-      assistedByAgent: options.assistedBy ?? "",
-      initiationType: options.assistedBy ? "human_requested_agent" : undefined,
+      sourceAgent: options.agent,
+      assistedByAgent: options.assistedBy,
+      // Who is at the keyboard? With --assisted-by the human asked an
+      // agent for help; with --agent the agent wrote it (server resolves
+      // the actor); otherwise a terminal on stdout is our evidence that a
+      // person typed this. A pipeline / cron (no TTY) sends nothing and
+      // the server records the author as unknown — never as you.
+      initiationType: options.assistedBy
+        ? "human_requested_agent"
+        : options.agent
+          ? undefined
+          : process.stdout.isTTY
+            ? "human_direct"
+            : undefined,
       sourcePath,
       contentType,
       projectContext: detectProjectContext(),

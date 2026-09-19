@@ -170,7 +170,13 @@ export interface Memory {
 }
 
 export interface MemoryProvenance {
-  created_by_type: "human" | "agent";
+  /**
+   * "unknown" — a machine entrypoint (CLI / SDK / MCP / API / hook /
+   * import) wrote this with no agent identity and no evidence of a
+   * direct human action. Clients must render it as an unknown author,
+   * never as the user.
+   */
+  created_by_type: "human" | "agent" | "unknown";
   created_by_slug?: string;
   created_by_display_name?: string;
   created_via?: string;

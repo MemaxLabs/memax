@@ -139,7 +139,7 @@ function createServer(agentId: string = ""): Server {
             initiation_type: {
               type: "string",
               description:
-                "How this save was initiated: human_direct, human_requested_agent, agent_proactive, agent_automatic, import, or unknown.",
+                "How this save was initiated: human_requested_agent, agent_proactive, agent_automatic, import, or unknown. A tool call is never human_direct; that value is ignored.",
             },
             project_context: {
               type: "object",
@@ -386,15 +386,18 @@ function createServer(agentId: string = ""): Server {
             tags: typedArgs.tags ?? [],
             source: "mcp",
             sourceAgent: agentId,
+            // A tool call is never human_direct (same rule as the Go MCP
+            // server drops server-side); keep the wire honest here too.
             initiationType:
-              (typedArgs.initiation_type as
-                | "human_direct"
-                | "human_requested_agent"
-                | "agent_proactive"
-                | "agent_automatic"
-                | "import"
-                | "unknown"
-                | undefined) ?? undefined,
+              typedArgs.initiation_type === "human_direct"
+                ? undefined
+                : ((typedArgs.initiation_type as
+                    | "human_requested_agent"
+                    | "agent_proactive"
+                    | "agent_automatic"
+                    | "import"
+                    | "unknown"
+                    | undefined) ?? undefined),
             projectContext: typedArgs.project_context,
             hubId: typedArgs.hub_id,
             hubReason: typedArgs.hub_reason,

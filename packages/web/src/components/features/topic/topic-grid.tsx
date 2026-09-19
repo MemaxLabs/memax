@@ -780,6 +780,8 @@ export function RecentSection({
       if (b.value === "all") return 1;
       if (a.value === "self") return -1;
       if (b.value === "self") return 1;
+      if (a.value === "unknown") return 1;
+      if (b.value === "unknown") return -1;
       return a.label.localeCompare(b.label);
     });
   }, [actorCounts, t, total]);
@@ -1323,6 +1325,7 @@ function getRecentActorLabel(
 ) {
   if (actor === "all") return t.memoryView.filterActorAll;
   if (actor === "self") return t.memoryView.filterActorYou;
+  if (actor === "unknown") return t.attribution.unknownAuthor;
   if (actor.startsWith("agent:")) {
     const agentId = getAgentIdentity(actor.slice(6));
     return agentId?.displayName ?? actor.slice(6);

@@ -37,9 +37,9 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/language"
 	"github.com/MemaxLabs/memax/packages/server/internal/meterctx"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
-	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore"
 	"github.com/MemaxLabs/memax/packages/server/internal/sanitize"
+	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
 
@@ -387,6 +387,12 @@ func (h *MemoriesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// downstream renderers (web, CLI, third-party API consumers) don't
 	// need to re-derive sanitization.
 	sanitizePushRequest(&req)
+	// The local CLI MCP server relays tool calls to this endpoint with
+	// the model's own initiation_type; apply the same "a tool call is
+	// never human_direct" rule the Go MCP endpoint applies (parity).
+	if req.Source == "mcp" || req.Source == "mcp/capture" {
+		req.InitiationType = mcpInitiationType(req.InitiationType)
+	}
 	provenance, sourceAgent, claimRejected, provErr := resolveMemoryProvenance(h.store, ownerID, req, r)
 	if provErr != nil {
 		if valErr, ok := asAttributionValidationError(provErr); ok {
@@ -400,6 +406,11 @@ func (h *MemoriesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		setMemaxWarningHeader(w, memaxWarningClaimRejected)
 	} else if requestNeedsReconnectWarning(r) {
 		setMemaxWarningHeader(w, memaxWarningReconnectNeeded)
+	} else if provenance.CreatedByType == model.MemoryCreatedByUnknown && provenance.CreatedVia != "import" {
+		// Imports are unattributed by nature (initiation already says
+		// so) and `memax import` has no --agent flag, so the advice in
+		// the warning would be unactionable there.
+		setMemaxWarningHeader(w, memaxWarningAuthorUnknown)
 	}
 	req.SourceAgent = sourceAgent
 	req.AssistedByAgent = provenance.AssistedByAgent

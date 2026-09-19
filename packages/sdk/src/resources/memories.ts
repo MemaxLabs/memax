@@ -32,9 +32,15 @@ export class MemoriesResource {
         hint: options?.hint ?? "",
         tags: options?.tags ?? [],
         source: options?.source ?? "sdk",
-        source_agent: options?.sourceAgent ?? "",
-        assisted_by_agent: options?.assistedByAgent ?? "",
-        initiation_type: options?.initiationType ?? "",
+        // Attribution fields are OMITTED when unset — an empty string
+        // would read as a (blank) claim on the wire; absence is honest.
+        ...(options?.sourceAgent ? { source_agent: options.sourceAgent } : {}),
+        ...(options?.assistedByAgent
+          ? { assisted_by_agent: options.assistedByAgent }
+          : {}),
+        ...(options?.initiationType
+          ? { initiation_type: options.initiationType }
+          : {}),
         source_path: options?.sourcePath,
         hub_reason: options?.hubReason ?? "",
         content_type: options?.contentType ?? "markdown",

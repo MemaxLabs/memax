@@ -1691,6 +1691,7 @@ export const en = {
     savedWithAgentSuffix: "",
     capturedByAgentPrefix: "captured by",
     capturedByAgentSuffix: "",
+    unknownAuthor: "Unknown author",
   },
 
   // Lifecycle signals — passive browse-context changes since last visit.

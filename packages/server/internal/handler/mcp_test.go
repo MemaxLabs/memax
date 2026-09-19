@@ -1096,3 +1096,18 @@ func TestMCPToolRecall_QuotaCommitsOnPipelineRun(t *testing.T) {
 		t.Fatalf("pipeline ran (empty results) → exactly one commit: commits=%d rollbacks=%d", commits, rollbacks)
 	}
 }
+
+func TestMCPInitiationTypeDropsHumanDirect(t *testing.T) {
+	t.Parallel()
+	if got := mcpInitiationType(model.MemoryInitiationHumanDirect); got != "" {
+		t.Fatalf("human_direct from a tool call should be dropped, got %q", got)
+	}
+	if got := mcpInitiationType(" human_direct "); got != "" {
+		t.Fatalf("padded human_direct should be dropped, got %q", got)
+	}
+	for _, keep := range []string{model.MemoryInitiationHumanRequestedAgent, model.MemoryInitiationAgentProactive, model.MemoryInitiationAgentAutomatic, "", "garbage"} {
+		if got := mcpInitiationType(keep); got != keep {
+			t.Fatalf("mcpInitiationType(%q) = %q, want passthrough", keep, got)
+		}
+	}
+}

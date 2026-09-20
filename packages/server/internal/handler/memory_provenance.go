@@ -20,11 +20,6 @@ import (
 const (
 	memaxWarningClaimRejected   = "agent_identity_claim_rejected"
 	memaxWarningReconnectNeeded = "reconnect_required"
-	// memaxWarningAuthorUnknown — the write was accepted but nothing
-	// vouched for who wrote it: no bound agent, no accepted claim, not a
-	// web action, no caller assertion. Clients should tell the user to
-	// pass an agent identity (`--agent`) or bind the key.
-	memaxWarningAuthorUnknown = "author_unknown"
 )
 
 var (
@@ -87,8 +82,25 @@ func setMemaxWarningHeader(w http.ResponseWriter, warning string) {
 	w.Header().Set("X-Memax-Warning", warning)
 }
 
+// resolveMemoryProvenance decides who authored a write. The author is a
+// property of the CREDENTIAL, fixed when the credential was made — never
+// guessed from a missing field:
+//
+//   - API key bound to an agent            → that agent (attribution_source=auth)
+//   - API key marked personal (standalone) → the owner   (attribution_source=human)
+//   - API key with neither                 → attribution_required (no write), unless
+//     the body claims an agent, which binds the key (TOFU, attribution_source=claim)
+//   - OAuth grant with an agent            → that agent; without one → reconnect_required
+//   - User session / local dev             → the owner
+//
+// A body claim that contradicts the credential is attribution_conflict.
 func resolveMemoryProvenance(s store.Store, ownerID string, req model.PushRequest, r *http.Request) (*model.MemoryProvenance, string, bool, error) {
 	authAgent := resolveAuthSourceAgent(r)
+	if authAgent == "unknown" {
+		// An OAuth grant whose client sent no name gets the placeholder
+		// slug "unknown" — that is the absence of an identity, not one.
+		authAgent = ""
+	}
 	claimedAgent := resolveRequestedSourceAgent(req)
 	if authAgent != "" && claimedAgent != "" && authAgent != claimedAgent {
 		return nil, "", false, newAttributionValidationError(
@@ -101,6 +113,7 @@ func resolveMemoryProvenance(s store.Store, ownerID string, req model.PushReques
 	if createdVia == "" {
 		createdVia = "api"
 	}
+	grant := grantFromRequest(r)
 
 	createdBySlug := authAgent
 	attributionSource := model.MemoryAttributionSourceHuman
@@ -108,6 +121,14 @@ func resolveMemoryProvenance(s store.Store, ownerID string, req model.PushReques
 	if createdBySlug != "" {
 		attributionSource = model.MemoryAttributionSourceAuth
 	} else if claimedAgent != "" {
+		if grant.PrincipalType == "api_key" && grant.KeyStandalone {
+			// A personal key IS the owner; it cannot speak as an agent.
+			// Make an agent key instead of teaching this one a new name.
+			return nil, "", false, newAttributionValidationError(
+				"attribution_conflict",
+				"this API key is personal (standalone) and cannot write as an agent; create an agent key instead",
+			)
+		}
 		if canClaimAgentFromRequest(r, createdVia) {
 			createdBySlug = claimedAgent
 			attributionSource = model.MemoryAttributionSourceClaim
@@ -118,31 +139,28 @@ func resolveMemoryProvenance(s store.Store, ownerID string, req model.PushReques
 		}
 	}
 
-	// No agent: is there POSITIVE evidence a human did this? The web UI
-	// is the one surface where the person is demonstrably at the
-	// controls; a caller may also assert human_direct /
-	// human_requested_agent (an interactive CLI does this when stdout is
-	// a terminal — an assertion, so it is recorded as `claim`, not
-	// `human`). Everything else is honestly unknown; a credential only
-	// proves who may write, never who wrote (2026-09-18 attribution fix).
+	if createdBySlug == "" {
+		// No agent identity: the credential must vouch for the owner.
+		switch grant.PrincipalType {
+		case "api_key":
+			if !grant.KeyStandalone {
+				return nil, "", false, newAttributionValidationError(
+					"attribution_required",
+					"this API key has no author identity yet: in memax.app Settings › You › API keys assign it to an agent or mark it as yours, or send source_agent (CLI: --agent) on this write",
+				)
+			}
+		case "oauth_grant":
+			return nil, "", false, newAttributionValidationError(
+				"reconnect_required",
+				"this connection carries no agent identity; reconnect the MCP client to memax, or if the client cannot send a client_name use an API key created with `memax auth create-key <name> --agent <slug>`",
+			)
+		}
+		// user session, local dev, web: the owner.
+	}
+
 	createdByType := model.MemoryCreatedByHuman
-	requestedInitiation := model.NormalizeMemoryInitiationType(strings.TrimSpace(req.InitiationType))
-	switch {
-	case createdBySlug != "":
+	if createdBySlug != "" {
 		createdByType = model.MemoryCreatedByAgent
-	case createdVia == "web":
-		// attributionSource stays "human".
-	case requestedInitiation == model.MemoryInitiationHumanDirect:
-		attributionSource = model.MemoryAttributionSourceClaim
-	case requestedInitiation == model.MemoryInitiationHumanRequestedAgent &&
-		model.NormalizeAgentSlug(req.AssistedByAgent) != "":
-		// "A human asked an agent" is only evidence of a human when the
-		// agent is named; a bare human_requested_agent from a tool call
-		// is the spoof this whole change exists to stop.
-		attributionSource = model.MemoryAttributionSourceClaim
-	default:
-		createdByType = model.MemoryCreatedByUnknown
-		attributionSource = model.MemoryAttributionSourceUnknown
 	}
 
 	assistedByAgent, err := resolveAssistedByAgent(s, ownerID, req, createdByType)
@@ -237,12 +255,10 @@ func resolveInitiationType(requested, createdVia, createdByType string) string {
 	case "hook", "extraction":
 		return model.MemoryInitiationAgentAutomatic
 	}
-	if createdByType == model.MemoryCreatedByHuman {
-		return model.MemoryInitiationHumanDirect
+	if createdByType == model.MemoryCreatedByAgent {
+		return model.MemoryInitiationUnknown
 	}
-	// Agent or unknown actor with no caller-asserted initiation: we do
-	// not know why it wrote.
-	return model.MemoryInitiationUnknown
+	return model.MemoryInitiationHumanDirect
 }
 
 func displayNameForAgentSlug(s store.Store, ownerID, slug string) string {

@@ -725,6 +725,13 @@ export const en = {
     forgetFailed: "Couldn't forget memories",
     forgetDenied: "You don't have permission to forget those memories",
     forgetNotReady: "This memory is still syncing. Try again in a moment.",
+    attribute: "Credit to",
+    attributePickerTitle: "Credit these to",
+    attributed: "Credited {n} memories to {agent}.",
+    attributedOne: "Credited 1 memory to {agent}.",
+    partialAttribute: "{success} · {skipped} could not be changed",
+    attributeFailed: "Could not change attribution",
+    attributeNoAgents: "No connected agents yet",
     moveFailed: "Couldn't move memories",
     moveNotReady: "This memory is still syncing. Try again in a moment.",
     moveSourceDenied:
@@ -1691,7 +1698,6 @@ export const en = {
     savedWithAgentSuffix: "",
     capturedByAgentPrefix: "captured by",
     capturedByAgentSuffix: "",
-    unknownAuthor: "Unknown author",
   },
 
   // Lifecycle signals — passive browse-context changes since last visit.
@@ -1854,17 +1860,21 @@ export const en = {
     placeholder: "Claude Code on laptop, CI deploy...",
     summary: "{total} keys · {auto} auto · {manual} manual",
     summaryWithStandalone:
-      "{total} keys · {linked} linked · {standalone} standalone · {unassigned} unassigned",
+      "{total} keys · {linked} agent · {standalone} personal",
     justNow: "just now",
     // Agent attribution affordances on unassigned keys.
     agentLabel: "Agent (optional)",
+    identityLabel: "Who uses this key",
+    identityMe: "Me (personal key)",
+    identityHint:
+      "For bots, pipelines and cron jobs pick the agent; what they write is credited to that agent.",
     agentPlaceholderNone: "No agent",
     unassigned: "Unassigned",
     assignAgent: "Assign to agent",
     createAgent: "Create agent: {slug}",
-    markStandalone: "Mark as standalone",
+    markStandalone: "Mark as personal",
     clearAssignment: "Clear assignment",
-    standalone: "Standalone",
+    standalone: "Personal",
     assigning: "Assigning...",
     updateFailed: "Couldn't update key — retry",
   },

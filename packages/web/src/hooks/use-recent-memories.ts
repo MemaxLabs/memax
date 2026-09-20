@@ -18,7 +18,6 @@ export type TimeWindow = (typeof TIME_WINDOWS)[number];
 export type RecentActor =
   | "all"
   | "self"
-  | "unknown"
   | `agent:${string}`
   | `author:${string}`;
 export type RecentMode = "preview" | "full";

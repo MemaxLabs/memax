@@ -650,7 +650,7 @@ func (h *MCPHandler) toolPush(w http.ResponseWriter, r *http.Request, id any, ar
 	}, r)
 	if provErr != nil {
 		writeRPCResult(w, id, mcpToolResult{
-			Content: []mcpContent{{Type: "text", Text: "Push failed: requested agent attribution conflicts with the authenticated agent."}},
+			Content: []mcpContent{{Type: "text", Text: "Push failed: " + attributionErrorText(provErr)}},
 			IsError: true,
 		})
 		return
@@ -659,8 +659,6 @@ func (h *MCPHandler) toolPush(w http.ResponseWriter, r *http.Request, id any, ar
 		setMemaxWarningHeader(w, memaxWarningClaimRejected)
 	} else if requestNeedsReconnectWarning(r) {
 		setMemaxWarningHeader(w, memaxWarningReconnectNeeded)
-	} else if provenance.CreatedByType == model.MemoryCreatedByUnknown {
-		setMemaxWarningHeader(w, memaxWarningAuthorUnknown)
 	}
 	if sourceAgent != "" && provenance.AttributionSource == model.MemoryAttributionSourceAuth {
 		go EnsureConnectedAgent(h.store, ownerID, sourceAgent)
@@ -776,7 +774,7 @@ func (h *MCPHandler) toolPush(w http.ResponseWriter, r *http.Request, id any, ar
 	// auto-healed to a different slug (Hatch-style claim).
 	events.TryPublishAgentActivity(r.Context(), h.events, ownerID, sourceAgent)
 	writeRPCResult(w, id, mcpToolResult{
-		Content: []mcpContent{{Type: "text", Text: fmt.Sprintf("Saved: %s (id: %s)%s", a.Title, memoryID, mcpPushAttributionNote(provenance, claimRejected))}},
+		Content: []mcpContent{{Type: "text", Text: fmt.Sprintf("Saved: %s (id: %s)%s", a.Title, memoryID, mcpPushAttributionNote(claimRejected))}},
 	})
 }
 
@@ -1099,9 +1097,9 @@ func (h *MCPHandler) toolCapture(w http.ResponseWriter, r *http.Request, id any,
 	opCommitted := false
 	defer func() { finishOp(opCommitted) }()
 	authAgent := resolveAuthSourceAgent(r)
-	if authAgent == "" {
+	if authAgent == "" || authAgent == "unknown" {
 		writeRPCResult(w, id, mcpToolResult{
-			Content: []mcpContent{{Type: "text", Text: "Session capture failed: authenticated agent identity is required."}},
+			Content: []mcpContent{{Type: "text", Text: "Session capture failed: this connection carries no agent identity. Reconnect the MCP client, or use an API key created with `memax auth create-key <name> --agent <slug>`."}},
 			IsError: true,
 		})
 		return
@@ -1112,7 +1110,7 @@ func (h *MCPHandler) toolCapture(w http.ResponseWriter, r *http.Request, id any,
 	}, r)
 	if provErr != nil {
 		writeRPCResult(w, id, mcpToolResult{
-			Content: []mcpContent{{Type: "text", Text: "Session capture failed: authenticated agent attribution was invalid."}},
+			Content: []mcpContent{{Type: "text", Text: "Session capture failed: " + attributionErrorText(provErr)}},
 			IsError: true,
 		})
 		return
@@ -1405,16 +1403,22 @@ func writeRPCError(w http.ResponseWriter, id any, code int, message string) {
 }
 
 // mcpPushAttributionNote — MCP clients never see HTTP headers, so the
-// author-unknown / claim-rejected warnings ride in the tool result text.
-func mcpPushAttributionNote(provenance *model.MemoryProvenance, claimRejected bool) string {
-	switch {
-	case claimRejected:
-		return " Note: the agent identity claim was rejected; the author is recorded as unknown."
-	case provenance != nil && provenance.CreatedByType == model.MemoryCreatedByUnknown:
-		return " Note: this credential has no agent identity, so the author is recorded as unknown. Bind the key to an agent on memax.app/agents."
-	default:
-		return ""
+// claim-rejected warning rides in the tool result text.
+func mcpPushAttributionNote(claimRejected bool) string {
+	if claimRejected {
+		return " Note: the agent identity claim was rejected; the memory is credited to the account owner."
 	}
+	return ""
+}
+
+// attributionErrorText renders a resolver error for a tool result: the
+// resolver's own message when it is one of ours (it says how to fix the
+// credential), a generic line otherwise.
+func attributionErrorText(err error) string {
+	if valErr, ok := asAttributionValidationError(err); ok {
+		return valErr.message + "."
+	}
+	return "requested agent attribution conflicts with the authenticated agent."
 }
 
 // mcpInitiationType filters the caller-asserted initiation_type for MCP

@@ -26,7 +26,6 @@ function makeAttribution(
     isHumanRequestedAgent: false,
     isAgentCapture: true,
     isLegacyUnknownAgentAttribution: false,
-    isUnknownAuthor: false,
     isSystem: false,
     agentDisplayName: "Codex",
     agentIconEmoji: null,
@@ -87,7 +86,6 @@ describe("memory attribution copy", () => {
         makeAttribution({
           initiationType: "unknown",
           isLegacyUnknownAgentAttribution: true,
-          isUnknownAuthor: false,
         }),
         en,
         interpolate,
@@ -100,7 +98,6 @@ describe("memory attribution copy", () => {
         makeAttribution({
           initiationType: "unknown",
           isLegacyUnknownAgentAttribution: true,
-          isUnknownAuthor: false,
         }),
         en,
       ),

@@ -179,18 +179,12 @@ export function ProvenanceStrip({
   // need to say "you" redundantly), but the detail page is where
   // identity is the whole point of the strip — so we fill in the gap
   // from the logged-in user.
-  // An unknown author is NOT the user: no name, no avatar — the glyph
-  // falls through to the anonymous Globe and the label says so.
   const ownIdentityName =
-    attribution.isOwnMemory &&
-    !attribution.hasAgent &&
-    !attribution.isUnknownAuthor
+    attribution.isOwnMemory && !attribution.hasAgent
       ? user?.display_name || user?.name || t.attribution.you
       : null;
   const ownIdentityAvatar =
-    attribution.isOwnMemory &&
-    !attribution.hasAgent &&
-    !attribution.isUnknownAuthor
+    attribution.isOwnMemory && !attribution.hasAgent
       ? user?.avatar_url || null
       : null;
   // Agent glyph only renders when we actually have an agent identity.
@@ -219,8 +213,6 @@ export function ProvenanceStrip({
     )
   ) : attribution.hasAgent ? (
     standaloneAgentAttributionText(attribution, t, interpolate, "regular")
-  ) : attribution.isUnknownAuthor ? (
-    <span className="text-fg-3">{t.attribution.unknownAuthor}</span>
   ) : (
     ownIdentityName
   );

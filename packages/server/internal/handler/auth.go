@@ -879,6 +879,7 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		HubID         string   `json:"hub_id,omitempty"`
 		HubIDs        []string `json:"hub_ids,omitempty"`
 		AgentName     string   `json:"agent_name,omitempty"` // agent identity: "claude-code", "cursor", etc.
+		Standalone    bool     `json:"standalone,omitempty"` // "this key is me" — the owner's own writes
 		ExpiresInDays int      `json:"expires_in_days,omitempty"`
 		Scopes        []string `json:"scopes,omitempty"`
 		Permissions   []string `json:"permissions,omitempty"`
@@ -887,6 +888,28 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
 		writeJSON(w, http.StatusBadRequest, model.ApiResponse{
 			Error: &model.Error{Code: "invalid_request", Message: "Missing name."},
+		})
+		return
+	}
+	// Every key carries an author identity from birth: an agent, or the
+	// owner ("standalone"). A key with neither could write memories that
+	// nobody authored — that state is not allowed to exist.
+	req.AgentName = model.NormalizeAgentSlug(req.AgentName)
+	if req.AgentName == "" && !req.Standalone {
+		writeJSON(w, http.StatusBadRequest, model.ApiResponse{
+			Error: &model.Error{Code: "identity_required", Message: "Choose who uses this key: an agent (agent_name) or you (standalone: true)."},
+		})
+		return
+	}
+	if req.AgentName != "" && req.Standalone {
+		writeJSON(w, http.StatusBadRequest, model.ApiResponse{
+			Error: &model.Error{Code: "invalid_request", Message: "A key is either an agent's or yours, not both."},
+		})
+		return
+	}
+	if req.AgentName == "memax" {
+		writeJSON(w, http.StatusBadRequest, model.ApiResponse{
+			Error: &model.Error{Code: "invalid_request", Message: "That agent name is reserved."},
 		})
 		return
 	}
@@ -971,11 +994,11 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	err := h.pool.QueryRow(context.Background(),
 		`INSERT INTO api_keys (
 			user_id, name, key_hash, prefix, scopes, expires_at, hub_id, agent_name,
-			hub_scope_mode, hub_ids, default_permissions, trust_level
+			hub_scope_mode, hub_ids, default_permissions, trust_level, standalone
 		)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::uuid, $8, $9, $10::text[]::uuid[], $11::text[], $12) RETURNING id`,
+		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::uuid, $8, $9, $10::text[]::uuid[], $11::text[], $12, $13) RETURNING id`,
 		userID, req.Name, keyHash, prefix, legacyScopes, expiresAt, hubID, req.AgentName,
-		hubScopeMode, hubIDs, permissions.Strings(), trustLevel,
+		hubScopeMode, hubIDs, permissions.Strings(), trustLevel, req.Standalone,
 	).Scan(&id)
 	if err != nil {
 		slog.Error("failed to create API key", "error", err)
@@ -1293,6 +1316,39 @@ func (h *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	// Build a partial UPDATE — only the fields the caller passed, plus
 	// the implicit fields needed to keep the two-field invariant.
+	// Post-state check: a key must keep an identity. Read the current
+	// row and refuse any patch that would leave neither an agent nor the
+	// personal flag — such a key could not write anything.
+	{
+		var curAgent string
+		var curStandalone bool
+		err := h.pool.QueryRow(context.Background(),
+			`SELECT COALESCE(agent_name, ''), COALESCE(standalone, false)
+			 FROM api_keys WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL`,
+			keyID, userID,
+		).Scan(&curAgent, &curStandalone)
+		if err == nil {
+			nextAgent := curAgent
+			if req.AgentName != nil {
+				nextAgent = normalizedAgent
+			} else if autoClearAgent {
+				nextAgent = ""
+			}
+			nextStandalone := curStandalone
+			if req.Standalone != nil {
+				nextStandalone = *req.Standalone
+			} else if autoClearStandalone {
+				nextStandalone = false
+			}
+			if nextAgent == "" && !nextStandalone {
+				writeJSON(w, http.StatusBadRequest, model.ApiResponse{
+					Error: &model.Error{Code: "identity_required", Message: "A key must belong to an agent or to you; assign an agent or mark it as yours instead of clearing."},
+				})
+				return
+			}
+		}
+	}
+
 	setClauses := make([]string, 0, 2)
 	args := make([]any, 0, 4)
 	if req.AgentName != nil {
@@ -1433,15 +1489,17 @@ func (h *AuthHandler) ResolveAPIKey(key string) APIKeyResult {
 	var defaultPermissions []string
 	var trustLevel string
 	var rateLimitTier *string
+	var standalone bool
 	err := h.pool.QueryRow(context.Background(),
 		`SELECT id, user_id, expires_at, hub_id, agent_name,
 			COALESCE(hub_scope_mode, 'all_accessible'),
 			ARRAY(SELECT hub_id::text FROM unnest(COALESCE(hub_ids, ARRAY[]::uuid[])) AS hub_id),
 			COALESCE(default_permissions, ARRAY[]::text[]),
 			COALESCE(trust_level, 'elevated'),
-			rate_limit_tier
+			rate_limit_tier,
+			COALESCE(standalone, false)
 		FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL`, keyHash,
-	).Scan(&id, &userID, &expiresAt, &hubID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier)
+	).Scan(&id, &userID, &expiresAt, &hubID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &standalone)
 	if err != nil {
 		return APIKeyResult{}
 	}
@@ -1460,6 +1518,7 @@ func (h *AuthHandler) ResolveAPIKey(key string) APIKeyResult {
 	result := APIKeyResult{
 		UserID:             userID,
 		GrantID:            id,
+		KeyStandalone:      standalone,
 		HubScopeMode:       hubScopeMode,
 		ScopedHubIDs:       hubIDs,
 		DefaultPermissions: perms,

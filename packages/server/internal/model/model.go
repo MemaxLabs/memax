@@ -191,11 +191,6 @@ type MemoryProvenance struct {
 const (
 	MemoryCreatedByHuman = "human"
 	MemoryCreatedByAgent = "agent"
-	// MemoryCreatedByUnknown — a machine entrypoint (CLI / SDK / MCP /
-	// API / hook / import) wrote the memory with no agent identity and
-	// no positive human-direct evidence. Recorded honestly instead of
-	// being guessed as "human" (2026-09-18 attribution fix).
-	MemoryCreatedByUnknown = "unknown"
 )
 
 // Plan 23 §5.4 — system actor + tutorial-template hub. Both UUIDs are
@@ -226,57 +221,15 @@ const (
 	MemoryAttributionSourceLegacyHuman   = "legacy_human"
 	MemoryAttributionSourceLegacyAgent   = "legacy_source_agent"
 	MemoryAttributionSourceServerDefault = "server_default"
-	// MemoryAttributionSourceUnknown — write-time: no agent, no human
-	// evidence; the author is genuinely unknown.
-	MemoryAttributionSourceUnknown = "unknown"
-	// MemoryAttributionSourceLegacyInferred — read-time only: a row
-	// stored as "human" by the pre-fix default, but whose created_via is
-	// a machine entrypoint with no agent, so the human label was an
-	// inference, not evidence. Presented as unknown; the row is untouched.
-	MemoryAttributionSourceLegacyInferred = "legacy_inferred"
+	// MemoryAttributionSourceRepaired — the owner re-attributed the row
+	// after the fact (batch-attribute); the original label is gone, the
+	// source value says so.
+	MemoryAttributionSourceRepaired = "repaired"
 )
-
-// IsMachineCreatedVia reports whether a created_via value names an
-// entrypoint where a human is not necessarily the one typing — every
-// non-web transport. Web is the only surface that can vouch for a
-// direct human action.
-func IsMachineCreatedVia(createdVia string) bool {
-	switch createdVia {
-	case "cli", "sdk", "api", "mcp", "mcp/capture", "hook", "import", "extraction":
-		return true
-	default:
-		return false
-	}
-}
-
-// legacyHumanLabelIsInferred reports whether a stored "human" label has
-// no positive evidence behind it: no agent, no collaborator, written via
-// a machine entrypoint, and an attribution_source that predates or
-// equals the old silent default.
-func legacyHumanLabelIsInferred(createdByType, slug, assistedBy, createdVia, source, attributionSource string) bool {
-	if createdByType != MemoryCreatedByHuman || slug != "" || assistedBy != "" {
-		return false
-	}
-	// Rows older than the created_via column carry the same signal in
-	// `source`; an empty via with a non-machine source stays human.
-	via := createdVia
-	if via == "" {
-		via = source
-	}
-	if !IsMachineCreatedVia(via) {
-		return false
-	}
-	switch attributionSource {
-	case "", MemoryAttributionSourceHuman, MemoryAttributionSourceLegacyHuman:
-		return true
-	default:
-		return false
-	}
-}
 
 func NormalizeMemoryCreatedByType(value string) string {
 	switch value {
-	case MemoryCreatedByHuman, MemoryCreatedByAgent, MemoryCreatedByUnknown:
+	case MemoryCreatedByHuman, MemoryCreatedByAgent:
 		return value
 	default:
 		return MemoryCreatedByHuman
@@ -319,9 +272,6 @@ func NormalizeMemoryProvenanceFields(m *Memory) {
 	}
 
 	initiationType := NormalizeMemoryInitiationType(m.ProvenanceInitiationType)
-	// NOTE: no legacy inference here. This normalizer runs on the WRITE
-	// path (create/update) and must never persist a read-time
-	// interpretation over the stored originals — see BuildMemoryProvenance.
 	if createdByType == MemoryCreatedByHuman && initiationType == MemoryInitiationUnknown {
 		initiationType = MemoryInitiationHumanDirect
 	}
@@ -345,17 +295,8 @@ func BuildMemoryProvenance(m *Memory) *MemoryProvenance {
 	createdByType := NormalizeMemoryCreatedByType(m.ProvenanceCreatedByType)
 	initiationType := NormalizeMemoryInitiationType(m.ProvenanceInitiationType)
 	slug := EffectiveMemoryAgentSlug(m)
-	attributionSource := m.ProvenanceAttributionSource
-	if createdByType != MemoryCreatedByAgent && slug != "" {
+	if createdByType == MemoryCreatedByHuman && slug != "" {
 		createdByType = MemoryCreatedByAgent
-	}
-	// Read-time honesty for rows the old default labelled "human" with
-	// no evidence: present them as unknown / legacy_inferred. The stored
-	// row is not rewritten — repair, when it exists, is append-only.
-	if legacyHumanLabelIsInferred(createdByType, slug, m.ProvenanceAssistedByAgent, m.ProvenanceCreatedVia, m.Source, attributionSource) {
-		createdByType = MemoryCreatedByUnknown
-		initiationType = MemoryInitiationUnknown
-		attributionSource = MemoryAttributionSourceLegacyInferred
 	}
 	if createdByType == MemoryCreatedByHuman && initiationType == MemoryInitiationUnknown {
 		initiationType = MemoryInitiationHumanDirect
@@ -367,7 +308,7 @@ func BuildMemoryProvenance(m *Memory) *MemoryProvenance {
 		CreatedVia:           m.ProvenanceCreatedVia,
 		AssistedByAgent:      firstNonEmptyMemoryAgentSlug(m.ProvenanceAssistedByAgent, createdByType, initiationType, m.SourceAgent),
 		InitiationType:       initiationType,
-		AttributionSource:    attributionSource,
+		AttributionSource:    m.ProvenanceAttributionSource,
 	}
 }
 
@@ -416,6 +357,14 @@ const (
 type SkippedMemory struct {
 	ID     string `json:"id"`
 	Reason string `json:"reason"`
+}
+
+// BatchAttributeResult is the structured response from a batch-attribute
+// (re-attribution) request: rows now credited to the agent, plus per-id
+// skip reasons (not_found / not_owned).
+type BatchAttributeResult struct {
+	Attributed int             `json:"attributed"`
+	Skipped    []SkippedMemory `json:"skipped"`
 }
 
 // BatchMoveResult is the structured response from a batch-move request.

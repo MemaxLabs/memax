@@ -61,23 +61,3 @@ describe("recent actor helpers", () => {
     expect(memoryMatchesRecentActor(memory, "self")).toBe(true);
   });
 });
-
-describe("recentActorForMemory — unknown author", () => {
-  it("files server-marked unknown rows under their own bucket, not self", () => {
-    expect(
-      recentActorForMemory({
-        author_name: "Derek",
-        provenance: { created_by_type: "unknown" },
-      }),
-    ).toBe("unknown");
-  });
-
-  it("keeps team-hub rows under their author even when unknown", () => {
-    expect(
-      recentActorForMemory(
-        { author_name: "Derek", provenance: { created_by_type: "unknown" } },
-        { hubType: "team" },
-      ),
-    ).toBe("author:Derek");
-  });
-});

@@ -57,6 +57,7 @@ export type {
   DreamTopicRef,
   ShareMemoryResult,
   BatchMoveResult,
+  BatchAttributeResult,
   BatchMoveSkippedMemory,
   BatchMoveSkipReason,
   BatchDeleteResult,

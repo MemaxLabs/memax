@@ -59,6 +59,7 @@ import { BatchToolbar } from "@/components/features/batch-toolbar";
 import { useMemoryForget } from "@/hooks/use-memory-forget";
 import { useBarToast } from "@/hooks/use-bar-toast";
 import { useMemoryMove } from "@/hooks/use-memory-move";
+import { useMemoryAttribute } from "@/hooks/use-memory-attribute";
 import { getAgentIdentity } from "@memaxlabs/ui/tokens/agents";
 import { useSettings } from "@/hooks/use-settings";
 import { useIsMobile } from "@/hooks/use-is-mobile";
@@ -780,8 +781,6 @@ export function RecentSection({
       if (b.value === "all") return 1;
       if (a.value === "self") return -1;
       if (b.value === "self") return 1;
-      if (a.value === "unknown") return 1;
-      if (b.value === "unknown") return -1;
       return a.label.localeCompare(b.label);
     });
   }, [actorCounts, t, total]);
@@ -803,6 +802,7 @@ export function RecentSection({
   const selection = useSelection();
   const forget = useMemoryForget();
   const mover = useMemoryMove();
+  const attributor = useMemoryAttribute();
   const toast = useBarToast();
   const pathname = usePathname();
   // v2 routes carry the hub identity in the URL (`/h/<slug>/...`).
@@ -1286,6 +1286,11 @@ export function RecentSection({
           }
           return success;
         }}
+        onBatchAttribute={(ids, agent) => {
+          void attributor.attributeWithToast(ids, agent).then((ok) => {
+            if (ok) selection.exit();
+          });
+        }}
         onBatchMove={(ids, target) => {
           const snapshots = memories
             .filter((memory) => ids.includes(memory.id))
@@ -1325,7 +1330,6 @@ function getRecentActorLabel(
 ) {
   if (actor === "all") return t.memoryView.filterActorAll;
   if (actor === "self") return t.memoryView.filterActorYou;
-  if (actor === "unknown") return t.attribution.unknownAuthor;
   if (actor.startsWith("agent:")) {
     const agentId = getAgentIdentity(actor.slice(6));
     return agentId?.displayName ?? actor.slice(6);

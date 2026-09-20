@@ -553,6 +553,8 @@ export async function printMcpConfigs(opts: {
   allowDelete?: boolean;
   allowOrganize?: boolean;
   agentSync?: boolean;
+  /** With --api-key: the agent the created key belongs to. */
+  agent?: string;
 }): Promise<void> {
   const mcpUrl = `${getApiUrl()}/mcp`;
   const indent = (json: unknown) =>
@@ -602,7 +604,15 @@ export async function printMcpConfigs(opts: {
   } else if (opts.apiKey) {
     let apiKey: string | undefined;
     try {
-      apiKey = await ensureApiKey(opts.hub, undefined, {
+      if (!opts.agent) {
+        console.error(
+          chalk.red(
+            "  --api-key needs --agent <slug> (e.g. claude-code): the key is created for that agent and its writes are credited to it.",
+          ),
+        );
+        process.exit(1);
+      }
+      apiKey = await ensureApiKey(opts.hub, opts.agent, {
         readOnly: opts.readOnly,
         allowDelete: opts.allowDelete,
         allowOrganize: opts.allowOrganize,

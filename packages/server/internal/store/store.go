@@ -243,6 +243,10 @@ type Store interface {
 	// actually removed for skipped-list accounting.
 	BatchDeleteHubMemories(ids []string, hubID string) ([]string, error)
 	BatchMoveMemories(ids []string, targetHubID string, targetTopicID string, ownerID string) (*model.BatchMoveResult, error)
+	// BatchAttributeMemories re-credits the caller's own memories to an
+	// agent slug (created_by_* + legacy source_agent), marking
+	// attribution_source="repaired". Rows not owned by ownerID are skipped.
+	BatchAttributeMemories(ids []string, ownerID string, agentSlug string, displayName string) (*model.BatchAttributeResult, error)
 	BatchMoveToTopic(ids []string, topicID string, hubID string, confidence float64) (int, error) // returns count moved, single transaction
 	BatchMoveToHub(ids []string, targetHubID string, ownerID string) (int, error)                 // returns count moved, single transaction
 	DeleteAllUserData(ownerID string) error                                                       // purge all user data (memories, topics, configs, dreams, reviews)

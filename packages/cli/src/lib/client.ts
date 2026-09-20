@@ -114,15 +114,7 @@ function printApiWarning(warning: string): void {
   if (warning === "agent_identity_claim_rejected") {
     console.error(
       chalk.yellow(
-        "  Warning: agent attribution was rejected for this write; the memory was saved with an unknown author.",
-      ),
-    );
-    return;
-  }
-  if (warning === "author_unknown") {
-    console.error(
-      chalk.yellow(
-        "  Warning: no agent identity on this write, so the author is recorded as unknown. Pass --agent <slug>, or bind this API key to an agent on memax.app/agents.",
+        "  Warning: agent attribution was rejected for this write; the memory was saved as you instead.",
       ),
     );
     return;

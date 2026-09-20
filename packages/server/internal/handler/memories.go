@@ -406,11 +406,6 @@ func (h *MemoriesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		setMemaxWarningHeader(w, memaxWarningClaimRejected)
 	} else if requestNeedsReconnectWarning(r) {
 		setMemaxWarningHeader(w, memaxWarningReconnectNeeded)
-	} else if provenance.CreatedByType == model.MemoryCreatedByUnknown && provenance.CreatedVia != "import" {
-		// Imports are unattributed by nature (initiation already says
-		// so) and `memax import` has no --agent flag, so the advice in
-		// the warning would be unactionable there.
-		setMemaxWarningHeader(w, memaxWarningAuthorUnknown)
 	}
 	req.SourceAgent = sourceAgent
 	req.AssistedByAgent = provenance.AssistedByAgent
@@ -3371,4 +3366,70 @@ func parseDuration(s string) (time.Duration, error) {
 		return time.Duration(days) * 24 * time.Hour, nil
 	}
 	return time.ParseDuration(s)
+}
+
+// BatchAttribute re-credits memories the caller owns to one of the
+// caller's connected agents — the repair path for rows written before a
+// key had an identity. Append-only in spirit: attribution_source becomes
+// "repaired" so the row says it was corrected.
+//
+// POST /v1/memories/batch-attribute { "ids": [...], "agent_name": "hatch" }
+func (h *MemoriesHandler) BatchAttribute(w http.ResponseWriter, r *http.Request) {
+	ownerID := GetUserID(r)
+	var req struct {
+		IDs       []string `json:"ids"`
+		AgentName string   `json:"agent_name"`
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "Could not read request body")
+		return
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", "Could not parse JSON")
+		return
+	}
+	if len(req.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "missing_ids", "No memory IDs provided")
+		return
+	}
+	if len(req.IDs) > 100 {
+		writeError(w, http.StatusBadRequest, "too_many", "Maximum 100 memories per batch")
+		return
+	}
+	slug := model.NormalizeAgentSlug(req.AgentName)
+	if slug == "" || slug == "memax" {
+		writeError(w, http.StatusBadRequest, "invalid_agent", "agent_name must name one of your connected agents")
+		return
+	}
+	agent, err := h.store.GetConnectedAgent(ownerID, slug)
+	if err != nil || agent == nil {
+		if !isKnownAgentSlug(slug) {
+			writeError(w, http.StatusNotFound, "unknown_agent", "agent_name must name one of your connected agents")
+			return
+		}
+	}
+	// A known-but-never-connected slug gets its agent card so the rows
+	// have something to filter and render by (same as the auth path).
+	EnsureConnectedAgent(h.store, ownerID, slug)
+	displayName := displayNameForAgentSlug(h.store, ownerID, slug)
+	result, err := h.store.BatchAttributeMemories(req.IDs, ownerID, slug, displayName)
+	if err != nil {
+		slog.Error("batch attribute failed", "error", err, "owner_id", ownerID)
+		writeError(w, http.StatusInternalServerError, "batch_attribute_failed", "Could not re-attribute memories")
+		return
+	}
+	skipped := make(map[string]bool, len(result.Skipped))
+	for _, sk := range result.Skipped {
+		skipped[sk.ID] = true
+	}
+	for _, id := range req.IDs {
+		if skipped[id] {
+			continue
+		}
+		if mem, err := h.store.GetMemory(id, ownerID); err == nil && mem != nil {
+			h.publishMemoryChanged(r.Context(), mem, ownerID)
+		}
+	}
+	writeJSON(w, http.StatusOK, model.ApiResponse{Data: result})
 }

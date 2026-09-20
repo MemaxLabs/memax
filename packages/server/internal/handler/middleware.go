@@ -29,6 +29,10 @@ type APIKeyResult struct {
 	TrustLevel         string
 	RateLimitTier      string
 	AgentName          string // agent identity from key creation (e.g., "claude-code", "cursor")
+	// KeyStandalone — the key was marked "personal": writes are the
+	// owner's own. A key with neither an agent nor this flag has no
+	// author identity and cannot write memories.
+	KeyStandalone bool
 }
 
 // APIKeyResolver resolves an API key string to a user ID and optional hub scope.
@@ -80,6 +84,7 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 						GrantID:            result.GrantID,
 						PrincipalType:      "api_key",
 						AgentName:          result.AgentName,
+						KeyStandalone:      result.KeyStandalone,
 						HubScopeMode:       result.HubScopeMode,
 						ScopedHubIDs:       result.ScopedHubIDs,
 						DefaultPermissions: result.DefaultPermissions,

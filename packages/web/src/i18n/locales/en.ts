@@ -38,14 +38,24 @@ export const en = {
     kickerConnect: "2 / 6 · Connect",
     connectTitle: "Plug your agents in",
     connectBody:
-      "One command and Claude Code, Cursor and Codex share the same memory. From then on every memory they write carries their name.",
+      "Agents in the terminal take one command; claude.ai takes a custom connector, and the phone app inherits it. From then on every memory they write carries their name.",
+    connectPaneAgents: "Claude Code · Cursor · Codex",
+    connectPaneClaude: "claude.ai · Settings › Connectors",
+    connectPhoneNote:
+      "Connectors are per account: set it up on the web and the phone app has it too.",
     copyCommand: "Copy command",
+    copyConnectorUrl: "Copy connector URL",
     copied: "Copied",
     connectWeb: "Connect from the web instead",
     kickerRemember: "3 / 6 · Remember",
     rememberTitle: "Toss something in",
+    rememberWayWeb: "Web",
+    rememberWayAgent: "Agent",
+    rememberWayClaude: "Claude",
+    rememberAgentSay: "Hey, remember: this project uses pnpm",
+    rememberClaudeSay: "Note that I need to align the release tomorrow",
     rememberBody:
-      "A single line is fine — memax does the organizing. Five memories unlock dreaming.",
+      "Any of three ways: ⌘K or the ✦ box on the web, a word to your agent, or Claude with the connector (phone included). Five memories unlock dreaming.",
     rememberProgress:
       "{current} / {target} so far. Five memories unlock dreaming.",
     rememberSaved: "Saved ✓",
@@ -75,7 +85,7 @@ export const en = {
     dreamSeePulse: "Open pulse",
     dreamCta: "Run a dream",
     dreamCard1: "Last night · 3 new cards",
-    dreamCard2: "Two memories disagree — waiting on you",
+    dreamCard2: "Two memories disagree — flagged for you",
     dreamCard3: "Echo · you thought about this two weeks ago",
     kickerTeam: "6 / 6 · Team",
     teamTitle: "One brain for the whole team",
@@ -101,8 +111,8 @@ export const en = {
         then: "Claude on your phone saves it; Claude Code on your Mac sees it when work starts.",
       },
       {
-        say: "Not sure about this one — ask me",
-        then: "The agent calls memax_request_decision; a card appears under ‘Waiting on you’ on pulse.",
+        say: "Remember: colors are always oklch, never hex",
+        then: "A preference. Every agent follows it from now on.",
       },
       {
         say: "Put this in the team hub",

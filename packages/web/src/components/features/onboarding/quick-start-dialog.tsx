@@ -60,6 +60,8 @@ const STEP_ORDER: QuickStartStep[] = [
 ];
 
 const SETUP_COMMAND = "npx memax-cli setup";
+/** Same URL ConnectAgentsBody hands to agents. */
+const MCP_URL = "https://api.memax.app/mcp";
 
 export function isOnboardingChecklist(n: Notification): boolean {
   return (
@@ -169,7 +171,7 @@ export function QuickStartDialog({
   );
   const [showConnectPanel, setShowConnectPanel] = useState(false);
   const [showHubCreate, setShowHubCreate] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"command" | "url" | null>(null);
   // Set on trigger success until the report shows the run — closes the
   // gap where isPending is already false but the report is still stale.
   const [dreamTriggered, setDreamTriggered] = useState(false);
@@ -251,16 +253,18 @@ export function QuickStartDialog({
     }
   };
 
-  const copyCommand = async () => {
+  const copyToClipboard = async (text: string, what: "command" | "url") => {
     try {
-      await navigator.clipboard.writeText(SETUP_COMMAND);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      await navigator.clipboard.writeText(text);
+      setCopied(what);
+      setTimeout(() => setCopied(null), 1800);
     } catch {
-      // clipboard blocked — the command is visible to select by hand
+      // clipboard blocked — the text is visible to select by hand
     }
     markViewed("connect_agent");
   };
+  const copyCommand = () => copyToClipboard(SETUP_COMMAND, "command");
+  const copyConnectorUrl = () => copyToClipboard(MCP_URL, "url");
 
   const reportRunning = dreamReport.data?.run?.status === "running";
   const dreamRunning = reportRunning || dreamTriggered;
@@ -316,43 +320,62 @@ export function QuickStartDialog({
           title: copy.connectTitle,
           body: copy.connectBody,
           art: (
-            <div className="relative h-full">
-              <div className="absolute inset-0 grid place-items-center">
-                <div
-                  className="grid h-14 w-14 place-items-center rounded-2xl text-[22px] text-white shadow-glow"
-                  style={{ background: "var(--signature)" }}
-                >
-                  ✦
-                </div>
-                {[
-                  {
-                    label: "CC",
-                    pos: "left-[18%] top-[18%]",
-                    color: "oklch(0.66 0.15 45)",
-                  },
-                  {
-                    label: "CU",
-                    pos: "right-[18%] top-[18%]",
-                    color: "oklch(0.6 0.12 200)",
-                  },
-                  {
-                    label: "CX",
-                    pos: "left-[18%] bottom-[84px]",
-                    color: "var(--fg-3)",
-                  },
-                ].map((s) => (
+            <div className="grid h-full grid-cols-1 gap-2 p-3 sm:grid-cols-2">
+              {/* Pane 1 — agents in the terminal, one command */}
+              <div className="flex min-h-0 flex-col rounded-xl border border-border/50 bg-card p-3">
+                <p className="m-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
+                  {copy.connectPaneAgents}
+                </p>
+                <div className="my-auto flex items-center justify-center gap-2 py-2">
+                  {[
+                    { label: "CC", color: "oklch(0.66 0.15 45)" },
+                    { label: "CU", color: "oklch(0.6 0.12 200)" },
+                    { label: "CX", color: "var(--fg-3)" },
+                  ].map((a) => (
+                    <span
+                      key={a.label}
+                      className="grid h-9 w-9 place-items-center rounded-xl border border-border/50 bg-surface-1 font-mono text-[10px] font-semibold"
+                      style={{ color: a.color }}
+                    >
+                      {a.label}
+                    </span>
+                  ))}
+                  <span className="text-fg-4">→</span>
                   <span
-                    key={s.label}
-                    className={`absolute ${s.pos} grid h-10 w-10 place-items-center rounded-xl border border-border/50 bg-card font-mono text-[10px] font-semibold`}
-                    style={{ color: s.color }}
+                    className="grid h-9 w-9 place-items-center rounded-xl text-[16px] text-white"
+                    style={{ background: "var(--signature)" }}
                   >
-                    {s.label}
+                    ✦
                   </span>
-                ))}
+                </div>
+                <div className="rounded-lg bg-foreground px-3 py-2 font-mono text-[11.5px] text-background">
+                  <span className="opacity-50">$ </span>
+                  {SETUP_COMMAND}
+                </div>
               </div>
-              <div className="absolute inset-x-4 bottom-4 rounded-xl bg-foreground px-3.5 py-2.5 font-mono text-[12.5px] text-background">
-                <span className="opacity-50">$ </span>
-                {SETUP_COMMAND}
+              {/* Pane 2 — claude.ai custom connector (phone app inherits) */}
+              <div className="flex min-h-0 flex-col rounded-xl border border-border/50 bg-card p-3">
+                <p className="m-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
+                  {copy.connectPaneClaude}
+                </p>
+                <div className="my-auto rounded-lg border border-border/50 bg-surface-1 p-2.5">
+                  <p className="m-0 text-[11.5px] font-medium text-fg-2">
+                    Add custom connector
+                  </p>
+                  <div className="mt-1.5 flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-[11.5px]">
+                    <span className="text-fg-4">Name</span>
+                    <span className="ml-auto font-medium text-fg-1">memax</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-[11.5px]">
+                    <span className="text-fg-4">URL</span>
+                    <span className="ml-auto truncate font-mono text-[10.5px] text-fg-1">
+                      {MCP_URL}
+                    </span>
+                  </div>
+                </div>
+                <p className="m-0 text-[11.5px] text-fg-3">
+                  {copy.connectPhoneNote}
+                </p>
               </div>
             </div>
           ),
@@ -363,16 +386,28 @@ export function QuickStartDialog({
                 className={primaryClass}
                 onClick={copyCommand}
               >
-                {copied ? (
+                {copied === "command" ? (
                   <Check className="h-3.5 w-3.5" />
                 ) : (
                   <Copy className="h-3.5 w-3.5" />
                 )}
-                {copied ? copy.copied : copy.copyCommand}
+                {copied === "command" ? copy.copied : copy.copyCommand}
               </button>
               <button
                 type="button"
                 className={secondaryClass}
+                onClick={copyConnectorUrl}
+              >
+                {copied === "url" ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+                {copied === "url" ? copy.copied : copy.copyConnectorUrl}
+              </button>
+              <button
+                type="button"
+                className={ghostClass}
                 onClick={() => {
                   markViewed("connect_agent");
                   setShowConnectPanel((v) => !v);
@@ -396,22 +431,53 @@ export function QuickStartDialog({
                 })
               : copy.rememberBody,
           art: (
-            <div className="relative h-full">
-              <div className="absolute inset-x-6 top-1/2 flex -translate-y-1/2 items-center gap-2.5 rounded-[22px] border border-border/50 bg-card px-4 py-3 shadow-glow">
-                <span style={{ color: "var(--signature)" }}>✦</span>
-                <span className="flex-1 text-[14px] text-fg-3">
-                  {t.compose.placeholder}
+            <div className="flex h-full flex-col justify-center gap-2 p-3">
+              {/* Way 1 — the ✦ bar on the web */}
+              <div className="flex items-center gap-3">
+                <span className="w-[72px] shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
+                  {copy.rememberWayWeb}
                 </span>
-                <span className="font-mono text-[10px] text-fg-4">⌘J</span>
+                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[18px] border border-border/50 bg-card px-3 py-2 shadow-glow">
+                  <span style={{ color: "var(--signature)" }}>✦</span>
+                  <span className="flex-1 truncate text-[13px] text-fg-3">
+                    {t.compose.placeholder}
+                  </span>
+                  <span className="font-mono text-[10px] text-fg-4">⌘K</span>
+                </div>
               </div>
-              <div
-                className="absolute right-7 top-5 rounded-xl px-2.5 py-1 text-[12px]"
-                style={{
-                  background: "oklch(from var(--signature) l c h / 0.12)",
-                  color: "var(--signature)",
-                }}
-              >
-                {copy.rememberSaved}
+              {/* Way 2 — tell your coding agent */}
+              <div className="flex items-center gap-3">
+                <span className="w-[72px] shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
+                  {copy.rememberWayAgent}
+                </span>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className="truncate rounded-[12px_12px_4px_12px] bg-foreground px-2.5 py-1 text-[12px] text-background">
+                    {copy.rememberAgentSay}
+                  </span>
+                  <span className="shrink-0 font-mono text-[10px] text-fg-4">
+                    → memax_push
+                  </span>
+                </div>
+              </div>
+              {/* Way 3 — Claude with the connector, phone included */}
+              <div className="flex items-center gap-3">
+                <span className="w-[72px] shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
+                  {copy.rememberWayClaude}
+                </span>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className="truncate rounded-[12px_12px_4px_12px] bg-foreground px-2.5 py-1 text-[12px] text-background">
+                    {copy.rememberClaudeSay}
+                  </span>
+                  <span
+                    className="shrink-0 rounded-md px-1.5 py-0.5 text-[10.5px]"
+                    style={{
+                      background: "oklch(from var(--signature) l c h / 0.12)",
+                      color: "var(--signature)",
+                    }}
+                  >
+                    {copy.rememberSaved}
+                  </span>
+                </div>
               </div>
             </div>
           ),
@@ -698,7 +764,9 @@ export function QuickStartDialog({
               className={`relative mx-4 mt-3 overflow-hidden rounded-2xl border border-border/50 bg-surface-1 sm:mx-5 ${
                 step === "use_cases"
                   ? "min-h-[300px] flex-1 sm:h-[360px] sm:flex-none"
-                  : "min-h-[220px] flex-1 sm:h-[250px] sm:flex-none"
+                  : step === "connect_agent"
+                    ? "min-h-[380px] flex-1 sm:h-[260px] sm:flex-none"
+                    : "min-h-[220px] flex-1 sm:h-[250px] sm:flex-none"
               }`}
             >
               {card.art}

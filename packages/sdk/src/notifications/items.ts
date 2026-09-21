@@ -104,6 +104,12 @@ export interface ChecklistPayload {
   description?: string;
   items: ChecklistItem[];
   required_ids?: string[];
+  /**
+   * Stamped when every required item is complete. The row stays
+   * pending so the card can show its finished state, and retires a day
+   * later. Render as "all done" while this is set.
+   */
+  all_done_at?: string;
   /** Compact-mode strip label. */
   collapse_hint?: string;
   pin_context?: PinContext;

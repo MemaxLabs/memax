@@ -17,6 +17,111 @@ export const en = {
     sectionReceipts: "Receipts",
     empty: "All quiet — nothing new",
   },
+  quickStart: {
+    title: "Quick start",
+    skip: "Skip",
+    next: "Next",
+    back: "Back",
+    start: "Start",
+    finish: "Got it, let's go",
+    progress: "First week {done} / {total}",
+    stepLabel: {
+      welcome: "Welcome",
+      connect_agent: "Connect",
+      first_memory: "Remember",
+      first_ask: "Ask",
+      first_dream: "Dream",
+      first_hub_invite: "Team",
+      use_cases: "Everyday use",
+    },
+    kickerWelcome: "1 / 6 · Welcome",
+    kickerConnect: "2 / 6 · Connect",
+    connectTitle: "Plug your agents in",
+    connectBody:
+      "One command and Claude Code, Cursor and Codex share the same memory. From then on every memory they write carries their name.",
+    copyCommand: "Copy command",
+    copied: "Copied",
+    connectWeb: "Connect from the web instead",
+    kickerRemember: "3 / 6 · Remember",
+    rememberTitle: "Toss something in",
+    rememberBody:
+      "A single line is fine — memax does the organizing. Five memories unlock dreaming.",
+    rememberProgress:
+      "{current} / {target} so far. Five memories unlock dreaming.",
+    rememberSaved: "Saved ✓",
+    rememberCta: "Remember one now",
+    kickerAsk: "4 / 6 · Ask",
+    askTitle: "Ask memax",
+    askBody: "It answers from what you tossed in, with citations.",
+    askExampleQ: "What bit us on the last deploy?",
+    askExampleA:
+      "The worker's 10-minute job timeout was too short; after the DeepSeek switch every merge stage timed out — you raised it to 30 minutes.",
+    askExampleCite: "cites · 2 memories",
+    askCta: "Ask one",
+    kickerDream: "5 / 6 · Dream",
+    kickerDreaming: "5 / 6 · Dreaming",
+    dreamTitle: "Let memax dream",
+    dreamBody:
+      "A dream threads your memories together: merges duplicates, finds contradictions, writes the night's notes. The first one takes a minute or two.",
+    dreamLocked: "Unlocks after five memories.",
+    dreamingTitle: "memax is threading your memories",
+    dreamingBody:
+      "The first one takes a minute or two. When it lands, this card becomes your first dream note — the pulse page's opening act.",
+    dreamingChip: "Dreaming",
+    dreamingLeave: "I'll look around, tell me when it's done",
+    dreamDoneTitle: "Your first dream is done",
+    dreamDoneBody:
+      "See what it threaded together on the pulse page. It dreams every night from now on.",
+    dreamSeePulse: "Open pulse",
+    dreamCta: "Run a dream",
+    dreamCard1: "Last night · 3 new cards",
+    dreamCard2: "Two memories disagree — waiting on you",
+    dreamCard3: "Echo · you thought about this two weeks ago",
+    kickerTeam: "6 / 6 · Team",
+    teamTitle: "One brain for the whole team",
+    teamBody:
+      "Make a team hub and your teammates' agents can recall it too. Who wrote what stays clear. Optional.",
+    teamCta: "Create a team hub",
+    teamMeInitial: "Me",
+    teamSkip: "Not now",
+    kickerUseCases: "Everyday use",
+    useCasesTitle: "How to talk to your agent",
+    useCasesTitleDone: "First week done. Here's how it goes from here",
+    useCases: [
+      {
+        say: "Hey, remember: this project uses pnpm, not npm",
+        then: "The agent calls memax_push; every agent remembers next time.",
+      },
+      {
+        say: "Check memax for my deploy notes first",
+        then: "The agent calls memax_recall and starts with context.",
+      },
+      {
+        say: "(on the phone) Note that I need to align the release tomorrow",
+        then: "Claude on your phone saves it; Claude Code on your Mac sees it when work starts.",
+      },
+      {
+        say: "Not sure about this one — ask me",
+        then: "The agent calls memax_request_decision; a card appears under ‘Waiting on you’ on pulse.",
+      },
+      {
+        say: "Put this in the team hub",
+        then: "Teammates' agents can recall it, with clear attribution.",
+      },
+      {
+        say: "(nothing at all)",
+        then: "memax dreams every night: merges, finds contradictions, writes the notes — read them on pulse the next day.",
+      },
+    ],
+    launcherContinue: "Continue",
+    launcherNext: "Next: {step}",
+    launcherAllDone: "All done! memax dreams every night — see you tomorrow.",
+    drawerSection: "Getting started",
+    drawerWelcomeRow: "A note from the founders",
+    openFromMechanism: "Open quick start",
+    openFromMechanismHint:
+      "Six cards through your first week: connect, remember, ask, dream, team.",
+  },
   billing: {
     upgrade: "Upgrade",
   },
@@ -850,73 +955,7 @@ export const en = {
     },
     checklist: {
       title: "Your first week",
-      progressFormat: "{done} of {total} done",
-      celebrateTitle: "You're all set up",
-      celebrateSubtitle: "memax dreams nightly now. See you tomorrow.",
-      stripOpen: "Open",
-      collapseAria: "Collapse checklist",
       dismissAria: "Dismiss checklist",
-      lockedHint: "Unlocks after you dump 5 memories.",
-      items: {
-        welcome: {
-          title: "Read the welcome note",
-          description: "90 seconds. Worth it.",
-          completedTitle: "Read the welcome note",
-          ctaLabel: "Read it",
-        },
-        connect_agent: {
-          title: "Connect your first agent",
-          description:
-            "Claude Code, Cursor, Codex — one command, memory flows both ways.",
-          completedTitle: "Connected your first agent",
-          ctaLabel: "Set up",
-        },
-        first_memory: {
-          title: "Dump your first memory",
-          description:
-            "Type anything in the bar, hit ⌘↵. A wiki, a link, a half-thought.",
-          completedTitle: "Dumped your first memory",
-          ctaLabel: "Try the bar",
-        },
-        first_ask: {
-          title: "Ask memax a question",
-          description:
-            "Press ↵ instead of ⌘↵ — memax answers from everything you've dumped.",
-          completedTitle: "Asked your first question",
-          ctaLabel: "Try asking",
-        },
-        five_memories: {
-          title: "Dump 5 memories",
-          description:
-            "memax needs a critical mass to start seeing patterns. Unlocks dreams.",
-          completedTitle: "Dumped 5 memories",
-        },
-        first_hub_invite: {
-          title: "Join or start a team hub",
-          description:
-            "Shared brain with people you work with. Jump in or start your own.",
-          completedTitle: "Joined a team hub",
-          ctaLabel: "Start a hub",
-        },
-        first_dream: {
-          title: "Let memax dream",
-          description:
-            "Dreams stitch your memories together. Tap to run your first one.",
-          completedTitle: "Ran your first dream",
-          // Single-use: row hides the button on optimistic complete
-          // after a successful trigger, so a user can't spam. Also,
-          // dreams no longer auto-tick this item from other surfaces
-          // — only this CTA completes it (per user direction).
-          ctaLabel: "Run a dream",
-          // Shown beneath the row title after the user clicks the
-          // CTA. The trigger fires fast (HTTP returns in <1s) but the
-          // actual dream takes 30–90s; without this caption the user
-          // sees the row check off instantly with no signal the work
-          // is still happening. Persists for the session — no timer,
-          // no SSE handshake needed.
-          dreamingHint: "memax is dreaming — check back in a minute.",
-        },
-      },
     },
     // Visual tag for the four onboarding-seed memory cards (plan 23
     // tutorial curriculum). Without this chip the seeds read as

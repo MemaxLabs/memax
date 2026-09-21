@@ -31,6 +31,8 @@ export interface NotificationItemUpdateResult {
   progress?: ItemProgress;
   auto_resolved?: boolean;
   auto_resolved_as?: NotificationResolution;
+  /** This completion finished the checklist (row stays pending, finished state). */
+  all_done?: boolean;
 }
 
 /**

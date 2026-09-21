@@ -21,6 +21,107 @@ export const zh: Translations = {
     sectionReceipts: "回执",
     empty: "现在很安静，没有新通知",
   },
+  // 快速开始（2026-09-21）——第一周清单的卡片版。一张卡一件事，主按钮就是去做。
+  quickStart: {
+    title: "快速开始",
+    skip: "跳过",
+    next: "下一步",
+    back: "上一步",
+    start: "开始",
+    finish: "好，开始用",
+    progress: "第一周 {done} / {total}",
+    stepLabel: {
+      welcome: "欢迎",
+      connect_agent: "连接",
+      first_memory: "记",
+      first_ask: "问",
+      first_dream: "梦",
+      first_hub_invite: "团队",
+      use_cases: "常见用法",
+    },
+    kickerWelcome: "1 / 6 · 欢迎",
+    kickerConnect: "2 / 6 · 连接",
+    connectTitle: "把你的 agent 接上来",
+    connectBody:
+      "一条命令，Claude Code、Cursor、Codex 都会拿到同一份记忆。接上之后它们写的每一条都会署自己的名。",
+    copyCommand: "复制命令",
+    copied: "已复制",
+    connectWeb: "我在网页上连",
+    kickerRemember: "3 / 6 · 记",
+    rememberTitle: "扔一条进来",
+    rememberBody: "随手一句也行，memax 会自己整理。扔够 5 条，做梦就解锁了。",
+    rememberProgress: "已经 {current} / {target} 条。扔够 5 条，做梦就解锁了。",
+    rememberSaved: "存好了 ✓",
+    rememberCta: "现在记一条",
+    kickerAsk: "4 / 6 · 问",
+    askTitle: "问问 memax",
+    askBody: "它会从你扔过的东西里给答案，带引用。",
+    askExampleQ: "上次部署踩了什么坑？",
+    askExampleA:
+      "worker 的 job 超时 10 分钟不够，DeepSeek 切换后 merge 阶段全部超时——你把它提到了 30 分钟。",
+    askExampleCite: "引用 · 2 条记忆",
+    askCta: "问一个",
+    kickerDream: "5 / 6 · 梦",
+    kickerDreaming: "5 / 6 · 做梦中",
+    dreamTitle: "让 memax 做个梦",
+    dreamBody:
+      "dream 会把你的记忆串起来：合并重复、找出矛盾、串成梦记。第一次大约一两分钟。",
+    dreamLocked: "扔够 5 条记忆后解锁。",
+    dreamingTitle: "memax 正在把记忆串起来",
+    dreamingBody:
+      "第一次大约一两分钟。做完这张卡会变成你的第一篇梦记——这就是脉搏页的开场。",
+    dreamingChip: "做梦中",
+    dreamingLeave: "先去逛逛，好了叫我",
+    dreamDoneTitle: "第一个梦做完了",
+    dreamDoneBody: "去脉搏页看看它串出了什么。以后每晚都会做。",
+    dreamSeePulse: "去脉搏页",
+    dreamCta: "跑一个 dream",
+    dreamCard1: "昨夜梦记 · 3 张新卡",
+    dreamCard2: "两条记忆说法不一致，等你",
+    dreamCard3: "回声 · 两周前你也想过这个",
+    kickerTeam: "6 / 6 · 团队",
+    teamTitle: "和团队共用一个脑子",
+    teamBody: "建一个团队 hub，同事的 agent 也能召回。谁记的一清二楚。可选。",
+    teamCta: "建一个团队 hub",
+    teamMeInitial: "我",
+    teamSkip: "先不用",
+    kickerUseCases: "常见用法",
+    useCasesTitle: "怎么跟 agent 说话",
+    useCasesTitleDone: "第一周搞定。以后这么用",
+    useCases: [
+      {
+        say: "哎，记一下：这个项目用 pnpm，不用 npm",
+        then: "agent 调 memax_push，下次在任何 agent 里都记得。",
+      },
+      {
+        say: "先看看 memax 里关于部署的笔记",
+        then: "agent 调 memax_recall，拿着上下文再动手。",
+      },
+      {
+        say: "（手机上）帮我记一下明天要对齐发布",
+        then: "手机上的 Claude 记进 memax；电脑上的 Claude Code 开工时自动看到。",
+      },
+      {
+        say: "这个决定拿不准，问一下我",
+        then: "agent 调 memax_request_decision，脉搏页「等你」出现一张卡。",
+      },
+      { say: "把这条放到团队 hub", then: "同事的 agent 也能召回，署名清楚。" },
+      {
+        say: "（什么都不用说）",
+        then: "每晚 memax 做梦：合并、找矛盾、串成梦记——第二天脉搏页上看。",
+      },
+    ],
+    // 记忆页置顶的瘦版清单卡
+    launcherContinue: "继续",
+    launcherNext: "下一步：{step}",
+    launcherAllDone: "全部搞定！memax 每晚都会做梦，明天见。",
+    // 通知抽屉
+    drawerSection: "入门",
+    drawerWelcomeRow: "创始人的话",
+    // 入门与机制
+    openFromMechanism: "打开快速开始",
+    openFromMechanismHint: "六张卡走一遍第一周：连接、记、问、做梦、团队。",
+  },
   billing: {
     upgrade: "升级",
   },
@@ -42,7 +143,7 @@ export const zh: Translations = {
       memories: "记忆",
       // founder 2026-09-15：就叫 agents——品牌词不翻、不加状语
       // （"已连接"是实现细节，不是名字）。
-      agents: "agents",
+      agents: "智能体",
       pulse: "脉搏",
     },
   },
@@ -531,7 +632,7 @@ export const zh: Translations = {
   },
 
   agentConfigs: {
-    title: "agents",
+    title: "智能体",
     subtitle: "配好一次，agent 走到哪都连着你的记忆。",
     empty: "还没有连接 AI 助手",
     emptyHint: "连上你的第一个助手，让它拥有跨会话的持久记忆。",
@@ -741,7 +842,7 @@ export const zh: Translations = {
     memories: "记忆",
     pulse: "脉搏",
     brain: "问问",
-    agents: "agents",
+    agents: "智能体",
   },
 
   settingsOnboarding: {
@@ -777,65 +878,7 @@ export const zh: Translations = {
     },
     checklist: {
       title: "你的第一周",
-      progressFormat: "{done} / {total} 已完成",
-      celebrateTitle: "全部搞定！",
-      celebrateSubtitle: "memax 每晚都会做梦，明天见。",
-      stripOpen: "展开",
-      collapseAria: "收起清单",
       dismissAria: "关闭清单",
-      lockedHint: "扔够 5 条记忆后解锁。",
-      items: {
-        welcome: {
-          title: "看看欢迎语",
-          description: "90 秒，值得读。",
-          completedTitle: "欢迎语已读",
-          ctaLabel: "去读",
-        },
-        connect_agent: {
-          title: "连接第一个 AI 代理",
-          description:
-            "Claude Code、Cursor、Codex——一行命令，memory 双向流动。",
-          completedTitle: "已连接第一个 AI 代理",
-          ctaLabel: "去设置",
-        },
-        first_memory: {
-          title: "扔进第一条记忆",
-          description:
-            "在 bar 里随便输点东西，按 ⌘↵。一条 wiki、一个链接、半个想法都行。",
-          completedTitle: "已扔进第一条记忆",
-          ctaLabel: "试试 bar",
-        },
-        first_ask: {
-          title: "向 memax 提个问题",
-          description: "按 ↵（不是 ⌘↵）——memax 会从你扔过的内容里给答案。",
-          completedTitle: "已问过第一个问题",
-          ctaLabel: "试着问问",
-        },
-        five_memories: {
-          title: "扔够 5 条记忆",
-          description: "memax 需要一定量才能开始连点成线，解锁 dreams。",
-          completedTitle: "已扔够 5 条记忆",
-        },
-        first_hub_invite: {
-          title: "加入或新建团队 hub",
-          description: "和共事的人共享大脑。加入现成的 hub，或者建一个自己的。",
-          completedTitle: "已加入团队 hub",
-          ctaLabel: "新建一个 hub",
-        },
-        first_dream: {
-          title: "让 memax 做个梦",
-          description: "dream 会把你的记忆串起来。点这里跑你的第一次。",
-          completedTitle: "已跑过第一个 dream",
-          // 单次使用：触发成功后乐观完成，按钮消失，避免被反复点击。
-          // 也不再被其他途径自动打钩 —— 仅此 CTA 可完成（用户要求）。
-          ctaLabel: "跑一个 dream",
-          // 用户点击 CTA 后显示在描述行的位置：触发本身很快返回（HTTP
-          // <1s），但实际 dream 在 worker 里跑要 30-90s。没有这个文案
-          // 的话，用户会看到一秒钟就打钩了，没法知道实际还在跑。这条
-          // 在 session 内持续显示，不靠定时器或 SSE。
-          dreamingHint: "memax 正在做梦——过一两分钟回来看。",
-        },
-      },
     },
     // 四张 plan-23 onboarding-seed 卡片的视觉标签。没有这个 chip 的话，
     // 这些卡片看起来像"我是不是从哪里同步过来的？"——它们其实是 memax
@@ -1658,7 +1701,7 @@ export const zh: Translations = {
     dangerZone: "危险操作",
     account: "账户",
     teams: "团队",
-    agents: "AI 助手",
+    agents: "智能体",
     intelligence: "智能",
   },
 

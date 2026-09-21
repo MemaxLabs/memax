@@ -1002,10 +1002,11 @@ type Store interface {
 	// authorized. The §4.4 visibility predicate is defense-in-depth so
 	// a stray id from the wrong user gets refused at the store boundary.
 	CompleteNotificationItem(ctx context.Context, id, userID string, hubIDs []string, itemID string) (*ItemMutationResult, error)
-	// TryAutoResolveChecklist atomically flips a pending checklist row
-	// to status=resolved + resolution=applied_auto after re-verifying
-	// (under FOR UPDATE) that every required_ids item is still complete.
-	// Returns `flipped=true` iff this call performed the UPDATE.
+	// TryAutoResolveChecklist atomically stamps payload.all_done_at on
+	// a pending checklist row (and caps its expiry at one day) after
+	// re-verifying (under FOR UPDATE) that every required_ids item is
+	// still complete. The row stays pending. Returns `flipped=true` iff
+	// this call performed the UPDATE.
 	//
 	// A concurrent /resolve {dismiss} that wins the race causes a
 	// subsequent TryAutoResolve call to return flipped=false with the

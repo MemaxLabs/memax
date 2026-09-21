@@ -374,11 +374,10 @@ func (h *NotificationsHandler) enrichOnboardingChecklists(notifs []model.Notific
 				slog.Warn("onboarding materialize: auto-resolve",
 					"notification_id", n.ID, "user_id", userID, "err", terr)
 			} else if flipped && post != nil {
-				// Emit notification.resolved SSE and update the response
-				// row so this GET returns the freshly-resolved state
-				// (status=resolved + resolution=applied_auto), not the
-				// stale pending snapshot it loaded from the list query.
-				events.PublishNotificationResolved(ctx, h.events, post)
+				// The checklist is finished, not resolved: it stays
+				// pending in its all-done state for a day. Emit
+				// notification.updated and return the fresh row.
+				events.PublishNotificationUpdated(ctx, h.events, post, events.NotificationChangeAllDone)
 				*n = *post
 				continue // *n already has the latest payload from post
 			}
@@ -881,6 +880,9 @@ type itemUpdateResponse struct {
 	Progress       *model.ItemProgress          `json:"progress,omitempty"`
 	AutoResolved   bool                         `json:"auto_resolved,omitempty"`
 	AutoResolvedAs model.NotificationResolution `json:"auto_resolved_as,omitempty"`
+	// AllDone — this completion finished the checklist; the row stays
+	// pending in its finished state for a day (see TryAutoResolveChecklist).
+	AllDone bool `json:"all_done,omitempty"`
 }
 
 // ViewItem — POST /v1/notifications/{id}/items/{item_id}/view (plan 18
@@ -1019,9 +1021,8 @@ func (h *NotificationsHandler) CompleteItem(w http.ResponseWriter, r *http.Reque
 			slog.Warn("checklist auto-resolve failed",
 				"notification_id", notifID, "item_id", itemID, "err", rerr)
 		} else if flipped && post != nil {
-			events.PublishNotificationResolved(ctx, h.events, post)
-			resp.AutoResolved = true
-			resp.AutoResolvedAs = model.ResolutionAppliedAuto
+			events.PublishNotificationUpdated(ctx, h.events, post, events.NotificationChangeAllDone)
+			resp.AllDone = true
 		}
 	}
 

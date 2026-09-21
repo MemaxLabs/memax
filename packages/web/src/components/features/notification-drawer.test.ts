@@ -64,4 +64,24 @@ describe("classifyDrawerRows", () => {
     ]);
     expect(buckets.news.map((n) => n.id)).toEqual(["new", "old"]);
   });
+
+  it("routes onboarding rows to their own bucket, checklist first, uncounted", () => {
+    const buckets = classifyDrawerRows([
+      row({
+        id: "w",
+        kind: "system_notice",
+        source_kind: "onboarding_welcome",
+        created_at: "2026-09-02T00:00:00Z",
+      }),
+      row({ id: "c", kind: "checklist", source_kind: "onboarding" }),
+      row({
+        id: "b",
+        kind: "system_notice",
+        source_kind: "release",
+      }),
+    ]);
+    expect(buckets.onboarding.map((n) => n.id)).toEqual(["c", "w"]);
+    expect(buckets.broadcasts.map((n) => n.id)).toEqual(["b"]);
+    expect(buckets.unseen).toBe(1);
+  });
 });

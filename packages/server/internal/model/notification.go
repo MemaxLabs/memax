@@ -565,6 +565,11 @@ type ChecklistPayload struct {
 	CollapseHint    string          `json:"collapse_hint,omitempty"` // strip label when compact
 	PinContext      string          `json:"pin_context,omitempty"`   // "memories_hero" | "inbox_hero" | ""
 	PinScopeHubKind string          `json:"pin_scope_hub_kind,omitempty"`
+	// AllDoneAt — stamped when every required item is complete. The row
+	// stays pending (so the card can show its finished state) and its
+	// expires_at is pulled in to one day after this; the hourly sweep
+	// retires it then. Never resolved on the user's behalf.
+	AllDoneAt *time.Time `json:"all_done_at,omitempty"`
 }
 
 // DigestPayload is the wire shape for kind=digest. Same validation as

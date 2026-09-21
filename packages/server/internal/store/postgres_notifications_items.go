@@ -241,15 +241,15 @@ func (s *PostgresStore) CompleteNotificationItem(ctx context.Context, id, userID
 //     has every required item complete. (The /complete write committed
 //     its tx already, but a concurrent /resolve {dismiss} can sneak in
 //     between the two transactions.)
-//   - Writes status=resolved + resolution=applied_auto + resolved_at iff
-//     both checks pass; returns flipped=true.
-//   - Otherwise returns flipped=false with the live row state — the
-//     handler reads `post.Resolution` to decide what to advertise.
+//   - Stamps payload.all_done_at, marks the row seen and caps
+//     expires_at at now()+1 day iff both checks pass; returns
+//     flipped=true. The row STAYS pending so the finished checklist is
+//     visible for a day (founder spec 2026-09-21) before the expiry
+//     sweep retires it.
+//   - Otherwise returns flipped=false with the live row state.
 //
-// Idempotent: a second call after a successful flip sees
-// status=resolved and returns flipped=false. The retry path (High 2
-// from codex pass 1) is therefore safe to invoke from idempotent
-// /complete re-fires.
+// Idempotent: a second call after a successful stamp sees
+// all_done_at set and returns flipped=false.
 func (s *PostgresStore) TryAutoResolveChecklist(ctx context.Context, id, userID string, hubIDs []string) (bool, *model.Notification, error) {
 	var (
 		flipped bool
@@ -289,7 +289,7 @@ func (s *PostgresStore) TryAutoResolveChecklist(ctx context.Context, id, userID 
 		// not just the snapshot the caller saw. Defends against a race
 		// where two /complete requests on adjacent required items race
 		// each other and both think they were the last one.
-		if len(payload.RequiredIDs) == 0 {
+		if len(payload.RequiredIDs) == 0 || payload.AllDoneAt != nil {
 			return nil
 		}
 		for _, rid := range payload.RequiredIDs {
@@ -298,16 +298,27 @@ func (s *PostgresStore) TryAutoResolveChecklist(ctx context.Context, id, userID 
 				return nil
 			}
 		}
+		// All required items done: the checklist is FINISHED, not gone.
+		// Keep it pending so the card can show its completed state, and
+		// let it retire one day from now (sooner if it was already about
+		// to expire). Founder call 2026-09-21: a card that disappears the
+		// moment the last step starts hides the very state it promised.
+		now := time.Now().UTC()
+		payload.AllDoneAt = &now
+		raw, merr := json.Marshal(payload)
+		if merr != nil {
+			return fmt.Errorf("try auto-resolve: encode payload: %w", merr)
+		}
 		if _, uerr := tx.Exec(ctx, `
 			UPDATE notifications
-			   SET status = 'resolved',
-			       resolution = $2::notification_resolution,
-			       resolved_at = now(),
+			   SET payload = $2::jsonb,
+			       expires_at = LEAST(COALESCE(expires_at, now() + interval '1 day'), now() + interval '1 day'),
 			       seen_at = COALESCE(seen_at, now())
 			 WHERE id = $1::uuid AND status = 'pending'
-		`, n.ID, string(model.ResolutionAppliedAuto)); uerr != nil {
+		`, n.ID, raw); uerr != nil {
 			return fmt.Errorf("try auto-resolve: update: %w", uerr)
 		}
+		post.Payload = raw
 		flipped = true
 		return nil
 	})
@@ -327,10 +338,10 @@ func (s *PostgresStore) TryAutoResolveChecklist(ctx context.Context, id, userID 
 		if gerr == nil {
 			post = fresh
 		} else if post != nil {
+			// The row is still pending — only the payload (all_done_at)
+			// and seen_at changed. Never synthesize a resolved status
+			// for a row we deliberately left open.
 			now := time.Now().UTC()
-			post.Status = model.NotificationStatusResolved
-			post.Resolution = model.ResolutionAppliedAuto
-			post.ResolvedAt = &now
 			if post.SeenAt == nil {
 				post.SeenAt = &now
 			}

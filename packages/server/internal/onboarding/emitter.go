@@ -176,6 +176,7 @@ func (e *Emitter) EmitWelcome(ctx context.Context, userID string) error {
 		SourceID:        userID, // one-shot per user
 		Payload:         mustMarshal(pinnedPayload(welcomePayload, "memories_hero", "personal")),
 		CreatedAt:       time.Now().UTC(),
+		ExpiresAt:       expiresAt(), // same first-week window as the checklist
 	}); err != nil {
 		slog.Warn("EmitWelcome: founder note insert failed",
 			"user_id", userID, "err", err)

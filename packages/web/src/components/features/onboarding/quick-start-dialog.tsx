@@ -40,6 +40,7 @@ import { useDreamReport, useDreamTrigger } from "@/hooks/use-dreams";
 import { useBar } from "@/contexts/bar-context";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { acquireBodyScrollLock } from "@/lib/scroll-lock";
+import { CLI_SETUP_CMD } from "@/lib/cli";
 import { HubCreateDialog } from "@/components/features/settings/hub-create-dialog";
 import { ConnectAgentsBody } from "@/components/features/connect-agents-section";
 import { HubBadge } from "@/components/features/hub/hub-badge";
@@ -59,7 +60,6 @@ const STEP_ORDER: QuickStartStep[] = [
   "first_hub_invite",
 ];
 
-const SETUP_COMMAND = "npx memax-cli setup";
 /** Same URL ConnectAgentsBody hands to agents. */
 const MCP_URL = "https://api.memax.app/mcp";
 
@@ -263,7 +263,7 @@ export function QuickStartDialog({
     }
     markViewed("connect_agent");
   };
-  const copyCommand = () => copyToClipboard(SETUP_COMMAND, "command");
+  const copyCommand = () => copyToClipboard(CLI_SETUP_CMD, "command");
   const copyConnectorUrl = () => copyToClipboard(MCP_URL, "url");
 
   const reportRunning = dreamReport.data?.run?.status === "running";
@@ -348,9 +348,13 @@ export function QuickStartDialog({
                     ✦
                   </span>
                 </div>
-                <div className="rounded-lg bg-foreground px-3 py-2 font-mono text-[11.5px] text-background">
-                  <span className="opacity-50">$ </span>
-                  {SETUP_COMMAND}
+                <div className="rounded-lg bg-foreground px-3 py-2 font-mono text-[11.5px] leading-relaxed text-background">
+                  {CLI_SETUP_CMD.split(" && ").map((line) => (
+                    <div key={line} className="truncate">
+                      <span className="opacity-50">$ </span>
+                      {line}
+                    </div>
+                  ))}
                 </div>
               </div>
               {/* Pane 2 — claude.ai custom connector (phone app inherits) */}

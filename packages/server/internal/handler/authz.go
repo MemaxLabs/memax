@@ -153,6 +153,7 @@ type GrantContext struct {
 	GrantID            string
 	PrincipalType      string
 	AgentName          string
+	KeyStandalone      bool
 	HubScopeMode       string
 	ScopedHubIDs       []string
 	DefaultPermissions PermissionSet

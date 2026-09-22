@@ -10,6 +10,8 @@ import {
 } from "@/lib/batch-active";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { DestinationPicker } from "@/components/features/destination-picker";
+import { useConnectedAgents } from "@/hooks/use-connected-agents";
+import { resolveAgentIdentity } from "@memaxlabs/ui/tokens/agents";
 import { useDestructiveAction } from "@/hooks/use-destructive-action";
 import {
   FolderInput,
@@ -21,6 +23,7 @@ import {
   Loader2,
   ChevronLeft,
   CheckCheck,
+  UserPen,
 } from "lucide-react";
 
 interface BatchToolbarProps {
@@ -46,6 +49,15 @@ interface BatchToolbarProps {
       hubId?: string;
       destinationName?: string;
     },
+  ) => void;
+  /**
+   * Re-credit the selected memories to one of the user's connected
+   * agents (repair for rows written before a key had an identity).
+   * Omit on surfaces where re-attribution makes no sense.
+   */
+  onBatchAttribute?: (
+    ids: string[],
+    agent: { slug: string; displayName: string },
   ) => void;
   /** Called with selected IDs to copy context */
   onCopyContext: (ids: string[]) => void;
@@ -73,6 +85,7 @@ type BatchMode = "actions" | "picker" | "confirm" | "pending";
 export function BatchToolbar({
   onBatchForget,
   onBatchMove,
+  onBatchAttribute,
   onCopyContext,
   onExport,
   pending = false,
@@ -85,6 +98,9 @@ export function BatchToolbar({
   const { selected, exit, selectAll, visibleCount } = useSelection();
   const forgetAction = useDestructiveAction<"forget">();
   const [showPicker, setShowPicker] = useState(false);
+  // Which picker the "picker" mode shows: topic/hub destination, or the
+  // connected-agent list for 改归属.
+  const [pickerKind, setPickerKind] = useState<"move" | "agent">("move");
   const [copied, setCopied] = useState(false);
 
   // Focus restoration + outside-click dismissal refs. shellRef is the
@@ -346,7 +362,10 @@ export function BatchToolbar({
                 <button
                   ref={moveButtonRef}
                   type="button"
-                  onClick={() => setShowPicker(true)}
+                  onClick={() => {
+                    setPickerKind("move");
+                    setShowPicker(true);
+                  }}
                   disabled={effectivePending}
                   className="flex items-center gap-1.5 min-h-11 px-3 rounded-chrome cursor-pointer transition-colors text-fg-2 hover:text-fg-1 hover:bg-surface-2 disabled:cursor-default disabled:text-fg-4 disabled:hover:bg-transparent"
                   title={t.batch.move}
@@ -358,6 +377,24 @@ export function BatchToolbar({
                 </button>
 
                 {/* Copy context */}
+                {onBatchAttribute && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickerKind("agent");
+                      setShowPicker(true);
+                    }}
+                    disabled={effectivePending}
+                    className="flex items-center gap-1.5 min-h-11 px-3 rounded-chrome cursor-pointer transition-colors text-fg-2 hover:text-fg-1 hover:bg-surface-2 disabled:cursor-default disabled:text-fg-4 disabled:hover:bg-transparent"
+                    title={t.batch.attribute}
+                  >
+                    <UserPen className="h-4 w-4" />
+                    {!compact && (
+                      <span className="text-[13px]">{t.batch.attribute}</span>
+                    )}
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={handleCopy}
@@ -422,7 +459,11 @@ export function BatchToolbar({
                 className="flex items-center gap-1.5 min-h-11 pl-2 pr-3 rounded-chrome cursor-pointer transition-colors text-fg-2 hover:text-fg-1 hover:bg-surface-2"
               >
                 <ChevronLeft className="h-3.5 w-3.5 text-fg-3" />
-                <span className="text-[13px]">{t.batch.move}</span>
+                <span className="text-[13px]">
+                  {pickerKind === "agent"
+                    ? t.batch.attributePickerTitle
+                    : t.batch.move}
+                </span>
               </button>
             )}
           </div>
@@ -438,12 +479,22 @@ export function BatchToolbar({
                   and back button leave. Every hand-computed cap here
                   has been wrong at least once — the last one forgot
                   both the 52px anchor row and the back button. */}
-              <DestinationPicker
-                variant="plain"
-                onSelectTopic={handlePickerSelectTopic}
-                onSelectHub={handlePickerSelectHub}
-                onClose={() => setShowPicker(false)}
-              />
+              {pickerKind === "agent" ? (
+                <AgentPickerList
+                  onPick={(agent) => {
+                    const ids = Array.from(selected);
+                    setShowPicker(false);
+                    onBatchAttribute?.(ids, agent);
+                  }}
+                />
+              ) : (
+                <DestinationPicker
+                  variant="plain"
+                  onSelectTopic={handlePickerSelectTopic}
+                  onSelectHub={handlePickerSelectHub}
+                  onClose={() => setShowPicker(false)}
+                />
+              )}
             </ClickableBody>
           )}
         </>
@@ -497,6 +548,63 @@ function ClickableBody({
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       {children}
+    </div>
+  );
+}
+
+/**
+ * AgentPickerList — the 改归属 picker body. Lives in its own component
+ * so the connected-agents query only mounts while the list is showing.
+ */
+function AgentPickerList({
+  onPick,
+}: {
+  onPick: (agent: { slug: string; displayName: string }) => void;
+}) {
+  const { t } = useLocale();
+  const { data: connectedAgents } = useConnectedAgents();
+  const agents = connectedAgents ?? [];
+  if (agents.length === 0) {
+    return (
+      <p className="px-3 py-3 text-[13px] text-fg-3">
+        {t.batch.attributeNoAgents}
+      </p>
+    );
+  }
+  return (
+    <div className="max-h-64 overflow-y-auto p-1.5">
+      {agents.map((agent) => {
+        const identity = resolveAgentIdentity(agent.agent_name, {
+          display_name: agent.display_name,
+          icon: agent.icon,
+        });
+        const Icon = identity.icon;
+        return (
+          <button
+            key={agent.agent_name}
+            type="button"
+            onClick={() =>
+              onPick({
+                slug: agent.agent_name,
+                displayName: identity.displayName,
+              })
+            }
+            className="flex min-h-11 w-full items-center gap-2.5 rounded-chrome px-3 text-left text-[13px] text-fg-2 transition-colors cursor-pointer hover:bg-foreground/[0.04] hover:text-fg-1"
+          >
+            {identity.iconEmoji ? (
+              <span className="w-4 text-center text-[13px]">
+                {identity.iconEmoji}
+              </span>
+            ) : Icon ? (
+              <Icon
+                className="h-4 w-4 shrink-0"
+                style={{ color: identity.color }}
+              />
+            ) : null}
+            <span className="truncate">{identity.displayName}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

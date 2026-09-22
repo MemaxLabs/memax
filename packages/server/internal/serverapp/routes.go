@@ -149,6 +149,7 @@ func registerMemoryRoutes(mux *http.ServeMux, deps routeDeps) {
 	mux.HandleFunc("DELETE /v1/memories/{id}", deps.memories.Delete)
 	mux.HandleFunc("POST /v1/memories/batch-delete", deps.memories.BatchDelete)
 	mux.HandleFunc("POST /v1/memories/batch-move", deps.memories.BatchMove)
+	mux.HandleFunc("POST /v1/memories/batch-attribute", deps.memories.BatchAttribute)
 	mux.HandleFunc("POST /v1/memories/{id}/share", deps.memories.Share)
 	// /v1/admin/reindex moved to registerAdminRoutes — every other
 	// /v1/admin/* path lives under the admin sub-mux which is

@@ -1212,3 +1212,60 @@ func (s *PostgresStore) DeleteAllUserData(ownerID string) error {
 
 	return tx.Commit(ctx)
 }
+
+// BatchAttributeMemories re-credits owned rows to an agent. Not a move,
+// not a content change: only the provenance columns and the legacy
+// source_agent mirror change, and updated_at is left alone so the
+// timeline does not reorder.
+func (s *PostgresStore) BatchAttributeMemories(ids []string, ownerID string, agentSlug string, displayName string) (*model.BatchAttributeResult, error) {
+	ctx := context.Background()
+	result := &model.BatchAttributeResult{Skipped: []model.SkippedMemory{}}
+	if len(ids) == 0 {
+		return result, nil
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT id::text, owner_id::text FROM memories WHERE id = ANY($1::uuid[])`, ids)
+	if err != nil {
+		return nil, err
+	}
+	owners := make(map[string]string, len(ids))
+	for rows.Next() {
+		var id, owner string
+		if err := rows.Scan(&id, &owner); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		owners[id] = owner
+	}
+	rows.Close()
+
+	eligible := make([]string, 0, len(ids))
+	for _, id := range ids {
+		owner, ok := owners[id]
+		switch {
+		case !ok:
+			result.Skipped = append(result.Skipped, model.SkippedMemory{ID: id, Reason: model.BatchMoveSkipNotFound})
+		case owner != ownerID:
+			result.Skipped = append(result.Skipped, model.SkippedMemory{ID: id, Reason: model.BatchMoveSkipNotOwned})
+		default:
+			eligible = append(eligible, id)
+		}
+	}
+	if len(eligible) == 0 {
+		return result, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE memories SET
+			source_agent = $3,
+			created_by_type = $4,
+			created_by_slug = $3,
+			created_by_display_name = $5,
+			attribution_source = $6
+		 WHERE id = ANY($1::uuid[]) AND owner_id = $2::uuid`,
+		eligible, ownerID, agentSlug, model.MemoryCreatedByAgent, displayName, model.MemoryAttributionSourceRepaired)
+	if err != nil {
+		return nil, err
+	}
+	result.Attributed = int(tag.RowsAffected())
+	return result, nil
+}

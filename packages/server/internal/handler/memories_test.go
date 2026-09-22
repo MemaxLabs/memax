@@ -258,11 +258,80 @@ func TestMemoriesCreateSetsWarningHeaderWhenAgentClaimRejected(t *testing.T) {
 	if memory.Provenance == nil {
 		t.Fatal("expected provenance")
 	}
+	// A session token IS the person; with the claim dropped the write is
+	// credited to the owner.
 	if memory.Provenance.CreatedByType != model.MemoryCreatedByHuman {
 		t.Fatalf("created_by_type = %q, want %q", memory.Provenance.CreatedByType, model.MemoryCreatedByHuman)
 	}
 	if memory.Provenance.InitiationType != model.MemoryInitiationHumanDirect {
 		t.Fatalf("initiation_type = %q, want %q", memory.Provenance.InitiationType, model.MemoryInitiationHumanDirect)
+	}
+}
+
+// An API key with no identity (no agent, not marked personal) cannot
+// write a memory — there would be nobody to credit. The response tells
+// the caller how to fix the key.
+func TestMemoriesCreateRejectsIdentitylessKey(t *testing.T) {
+	s := store.NewInMemoryStore()
+	h := NewMemoriesHandler(s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	body := `{"title":"feed item","content":"hello","source":"cli"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/memories", bytes.NewBufferString(body))
+	req = withTestIdentity(req, "u1")
+	req = req.WithContext(context.WithValue(req.Context(), grantContextKey, GrantContext{
+		UserID:             "u1",
+		PrincipalType:      "api_key",
+		HubScopeMode:       HubScopeAllAccessible,
+		DefaultPermissions: DefaultUserPermissions(),
+		TrustLevel:         TrustElevated,
+	}))
+	rec := httptest.NewRecorder()
+
+	h.Create(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "attribution_required") {
+		t.Fatalf("expected attribution_required, got %s", rec.Body.String())
+	}
+}
+
+// A personal (standalone) key is the owner: its writes are human_direct.
+func TestMemoriesCreatePersonalKeyIsOwner(t *testing.T) {
+	s := store.NewInMemoryStore()
+	h := NewMemoriesHandler(s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	body := `{"title":"note","content":"hello","source":"cli"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/memories", bytes.NewBufferString(body))
+	req = withTestIdentity(req, "u1")
+	req = req.WithContext(context.WithValue(req.Context(), grantContextKey, GrantContext{
+		UserID:             "u1",
+		PrincipalType:      "api_key",
+		KeyStandalone:      true,
+		HubScopeMode:       HubScopeAllAccessible,
+		DefaultPermissions: DefaultUserPermissions(),
+		TrustLevel:         TrustElevated,
+	}))
+	rec := httptest.NewRecorder()
+
+	h.Create(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp model.ApiResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(resp.Data)
+	var memory model.Memory
+	if err := json.Unmarshal(data, &memory); err != nil {
+		t.Fatal(err)
+	}
+	if memory.Provenance == nil || memory.Provenance.CreatedByType != model.MemoryCreatedByHuman {
+		t.Fatalf("provenance = %+v, want human", memory.Provenance)
+	}
+	if memory.Provenance.InitiationType != model.MemoryInitiationHumanDirect {
+		t.Fatalf("initiation = %q, want human_direct", memory.Provenance.InitiationType)
 	}
 }
 
@@ -318,7 +387,7 @@ func TestMemoriesCreateAttributesHookCaptureToAuthenticatedAgent(t *testing.T) {
 	}
 }
 
-func TestMemoriesCreateSetsReconnectWarningHeaderForUnknownOAuthGrant(t *testing.T) {
+func TestMemoriesCreateRejectsUnknownOAuthGrant(t *testing.T) {
 	s := store.NewInMemoryStore()
 	h := NewMemoriesHandler(s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
@@ -341,11 +410,13 @@ func TestMemoriesCreateSetsReconnectWarningHeaderForUnknownOAuthGrant(t *testing
 	rec := httptest.NewRecorder()
 
 	h.Create(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	// A grant with no agent identity has nobody to credit: the write is
+	// refused with the reconnect advice instead of accepted with a warning.
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("X-Memax-Warning"); got != memaxWarningReconnectNeeded {
-		t.Fatalf("warning header = %q, want %q", got, memaxWarningReconnectNeeded)
+	if !strings.Contains(rec.Body.String(), memaxWarningReconnectNeeded) {
+		t.Fatalf("expected %s in body, got %s", memaxWarningReconnectNeeded, rec.Body.String())
 	}
 }
 
@@ -477,13 +548,14 @@ func TestMemoriesCreateRejectsCollaboratorOnAgentActorWrite(t *testing.T) {
 }
 
 func TestResolveMemoryProvenance(t *testing.T) {
-	makeRequest := func(principalType string, agentName string) *http.Request {
+	makeRequest := func(principalType string, agentName string, standalone bool) *http.Request {
 		req := httptest.NewRequest(http.MethodPost, "/v1/memories", nil)
 		req = req.WithContext(context.WithValue(req.Context(), userIDKey, "u1"))
 		if principalType != "" {
 			req = req.WithContext(context.WithValue(req.Context(), grantContextKey, GrantContext{
 				UserID:             "u1",
 				PrincipalType:      principalType,
+				KeyStandalone:      standalone,
 				HubScopeMode:       HubScopeAllAccessible,
 				DefaultPermissions: DefaultUserPermissions(),
 				TrustLevel:         TrustElevated,
@@ -499,102 +571,153 @@ func TestResolveMemoryProvenance(t *testing.T) {
 		name           string
 		principalType  string
 		authAgent      string
+		standalone     bool
 		req            model.PushRequest
 		wantSlug       string
 		wantSource     string
 		wantInitiation string
+		wantType       string
 		wantRejected   bool
-		wantErr        bool
+		wantErr        string
 	}{
 		{
-			name:          "auth agent wins over matching claim",
-			principalType: "api_key",
-			authAgent:     "codex",
-			req: model.PushRequest{
-				Source:      "api",
-				SourceAgent: "codex",
-			},
+			name:           "auth agent wins over matching claim",
+			principalType:  "api_key",
+			authAgent:      "codex",
+			req:            model.PushRequest{Source: "api", SourceAgent: "codex"},
 			wantSlug:       "codex",
 			wantSource:     model.MemoryAttributionSourceAuth,
 			wantInitiation: model.MemoryInitiationUnknown,
+			wantType:       model.MemoryCreatedByAgent,
 		},
 		{
 			name:          "conflicting auth and claim is rejected",
 			principalType: "api_key",
 			authAgent:     "codex",
-			req: model.PushRequest{
-				Source:      "api",
-				SourceAgent: "cursor",
-			},
-			wantErr: true,
+			req:           model.PushRequest{Source: "api", SourceAgent: "cursor"},
+			wantErr:       "attribution_conflict",
 		},
 		{
-			name:          "api key can claim unknown agent on non-web path",
-			principalType: "api_key",
-			req: model.PushRequest{
-				Source:      "api",
-				SourceAgent: "openclaw",
-			},
+			name:           "identityless api key can claim an agent (TOFU) on a non-web path",
+			principalType:  "api_key",
+			req:            model.PushRequest{Source: "api", SourceAgent: "openclaw"},
 			wantSlug:       "openclaw",
 			wantSource:     model.MemoryAttributionSourceClaim,
 			wantInitiation: model.MemoryInitiationUnknown,
+			wantType:       model.MemoryCreatedByAgent,
 		},
 		{
-			name:          "oauth grant can claim on mcp path",
-			principalType: "oauth_grant",
-			req: model.PushRequest{
-				Source:      "mcp",
-				SourceAgent: "claude-code",
-			},
-			wantSlug:       "claude-code",
-			wantSource:     model.MemoryAttributionSourceClaim,
-			wantInitiation: model.MemoryInitiationUnknown,
+			name:          "identityless api key with no claim cannot write",
+			principalType: "api_key",
+			req:           model.PushRequest{Source: "cli"},
+			wantErr:       "attribution_required",
 		},
 		{
-			name:          "web user cannot claim by spoofing source api",
-			principalType: "user",
-			req: model.PushRequest{
-				Source:      "api",
-				SourceAgent: "codex",
-			},
+			name:          "identityless api key hook capture cannot write either",
+			principalType: "api_key",
+			req:           model.PushRequest{Source: "hook"},
+			wantErr:       "attribution_required",
+		},
+		{
+			name:           "personal key is the owner",
+			principalType:  "api_key",
+			standalone:     true,
+			req:            model.PushRequest{Source: "cli"},
 			wantSlug:       "",
 			wantSource:     model.MemoryAttributionSourceHuman,
 			wantInitiation: model.MemoryInitiationHumanDirect,
+			wantType:       model.MemoryCreatedByHuman,
+		},
+		{
+			name:          "personal key cannot speak as an agent",
+			principalType: "api_key",
+			standalone:    true,
+			req:           model.PushRequest{Source: "cli", SourceAgent: "hatch"},
+			wantErr:       "attribution_conflict",
+		},
+		{
+			name:           "personal key with --assisted-by is human_requested_agent",
+			principalType:  "api_key",
+			standalone:     true,
+			req:            model.PushRequest{Source: "cli", AssistedByAgent: "codex", InitiationType: model.MemoryInitiationHumanRequestedAgent},
+			wantSlug:       "",
+			wantSource:     model.MemoryAttributionSourceHuman,
+			wantInitiation: model.MemoryInitiationHumanRequestedAgent,
+			wantType:       model.MemoryCreatedByHuman,
+		},
+		{
+			name:           "oauth grant can claim on mcp path",
+			principalType:  "oauth_grant",
+			req:            model.PushRequest{Source: "mcp", SourceAgent: "claude-code"},
+			wantSlug:       "claude-code",
+			wantSource:     model.MemoryAttributionSourceClaim,
+			wantInitiation: model.MemoryInitiationUnknown,
+			wantType:       model.MemoryCreatedByAgent,
+		},
+		{
+			name:          "oauth grant without an agent must reconnect",
+			principalType: "oauth_grant",
+			req:           model.PushRequest{Source: "mcp"},
+			wantErr:       "reconnect_required",
+		},
+		{
+			name:           "user session cannot claim by spoofing source api — credited to the owner",
+			principalType:  "user",
+			req:            model.PushRequest{Source: "api", SourceAgent: "codex"},
+			wantSlug:       "",
+			wantSource:     model.MemoryAttributionSourceHuman,
+			wantInitiation: model.MemoryInitiationHumanDirect,
+			wantType:       model.MemoryCreatedByHuman,
 			wantRejected:   true,
 		},
 		{
 			name:          "web source cannot claim even from agent-capable principal",
 			principalType: "api_key",
-			req: model.PushRequest{
-				Source:      "web",
-				SourceAgent: "codex",
-			},
+			standalone:    true,
+			req:           model.PushRequest{Source: "web", SourceAgent: "codex"},
+			wantErr:       "attribution_conflict",
+		},
+		{
+			name:           "web action from a session is human_direct",
+			principalType:  "user",
+			req:            model.PushRequest{Source: "web"},
 			wantSlug:       "",
 			wantSource:     model.MemoryAttributionSourceHuman,
 			wantInitiation: model.MemoryInitiationHumanDirect,
-			wantRejected:   true,
+			wantType:       model.MemoryCreatedByHuman,
 		},
 		{
-			name:          "explicit initiation is preserved",
-			principalType: "api_key",
-			authAgent:     "codex",
-			req: model.PushRequest{
-				Source:         "api",
-				InitiationType: model.MemoryInitiationHumanRequestedAgent,
-			},
+			name:           "user session import is the owner's import",
+			principalType:  "user",
+			req:            model.PushRequest{Source: "import"},
+			wantSlug:       "",
+			wantSource:     model.MemoryAttributionSourceHuman,
+			wantInitiation: model.MemoryInitiationImport,
+			wantType:       model.MemoryCreatedByHuman,
+		},
+		{
+			name:           "explicit initiation is preserved on the agent path",
+			principalType:  "api_key",
+			authAgent:      "codex",
+			req:            model.PushRequest{Source: "api", InitiationType: model.MemoryInitiationHumanRequestedAgent},
 			wantSlug:       "codex",
 			wantSource:     model.MemoryAttributionSourceAuth,
 			wantInitiation: model.MemoryInitiationHumanRequestedAgent,
+			wantType:       model.MemoryCreatedByAgent,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := makeRequest(tt.principalType, tt.authAgent)
+			req := makeRequest(tt.principalType, tt.authAgent, tt.standalone)
 			provenance, slug, rejected, err := resolveMemoryProvenance(store.NewInMemoryStore(), "u1", tt.req, req)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error")
+			if tt.wantErr != "" {
+				valErr, ok := asAttributionValidationError(err)
+				if !ok {
+					t.Fatalf("expected %s error, got %v", tt.wantErr, err)
+				}
+				if valErr.code != tt.wantErr {
+					t.Fatalf("error code = %q, want %q", valErr.code, tt.wantErr)
 				}
 				return
 			}
@@ -612,6 +735,9 @@ func TestResolveMemoryProvenance(t *testing.T) {
 			}
 			if rejected != tt.wantRejected {
 				t.Fatalf("rejected = %v, want %v", rejected, tt.wantRejected)
+			}
+			if tt.wantType != "" && provenance.CreatedByType != tt.wantType {
+				t.Fatalf("created_by_type = %q, want %q", provenance.CreatedByType, tt.wantType)
 			}
 		})
 	}
@@ -3161,5 +3287,62 @@ func TestMemoriesRelatedIgnoresSessionHubMismatch(t *testing.T) {
 	h.Related(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 regardless of session hub mismatch, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMemoriesBatchAttribute(t *testing.T) {
+	s := store.NewInMemoryStore()
+	h := NewMemoriesHandler(s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	mine := &model.Memory{ID: "11111111-1111-4111-8111-111111111111", OwnerID: "u1", HubID: "h1", Title: "mine", Content: "x", ProvenanceCreatedByType: model.MemoryCreatedByHuman, ProvenanceCreatedVia: "cli"}
+	if err := s.CreateMemory(mine); err != nil {
+		t.Fatal(err)
+	}
+	theirs := &model.Memory{ID: "22222222-2222-4222-8222-222222222222", OwnerID: "u2", HubID: "h1", Title: "theirs", Content: "y"}
+	if err := s.CreateMemory(theirs); err != nil {
+		t.Fatal(err)
+	}
+
+	call := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1/memories/batch-attribute", bytes.NewBufferString(body))
+		req = withTestIdentity(req, "u1")
+		req = req.WithContext(context.WithValue(req.Context(), grantContextKey, defaultGrantContext("u1")))
+		rec := httptest.NewRecorder()
+		h.BatchAttribute(rec, req)
+		return rec
+	}
+
+	rec := call(`{"ids":["` + mine.ID + `","` + theirs.ID + `","00000000-0000-4000-8000-000000000000"],"agent_name":"cursor"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp model.ApiResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(resp.Data)
+	var result model.BatchAttributeResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Attributed != 1 || len(result.Skipped) != 2 {
+		t.Fatalf("result = %+v, want 1 attributed / 2 skipped", result)
+	}
+	updated, _ := s.GetMemory(mine.ID, "u1")
+	if updated.ProvenanceCreatedBySlug != "cursor" || updated.ProvenanceCreatedByType != model.MemoryCreatedByAgent || updated.ProvenanceAttributionSource != model.MemoryAttributionSourceRepaired {
+		t.Fatalf("provenance not repaired: slug=%q type=%q source=%q", updated.ProvenanceCreatedBySlug, updated.ProvenanceCreatedByType, updated.ProvenanceAttributionSource)
+	}
+	untouched, _ := s.GetMemory(theirs.ID, "u2")
+	if untouched.ProvenanceCreatedBySlug != "" {
+		t.Fatalf("another owner's row was rewritten: %+v", untouched.Provenance)
+	}
+
+	if rec := call(`{"ids":["` + mine.ID + `"],"agent_name":"nobody-ever"}`); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown agent: expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec := call(`{"ids":[],"agent_name":"cursor"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty ids: expected 400, got %d", rec.Code)
+	}
+	if rec := call(`{"ids":["` + mine.ID + `"],"agent_name":"memax"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("reserved slug: expected 400, got %d", rec.Code)
 	}
 }

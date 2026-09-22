@@ -772,6 +772,31 @@ func (s *InMemoryStore) BatchMoveToTopic(_ []string, _ string, _ string, _ float
 	return 0, nil
 }
 
+func (s *InMemoryStore) BatchAttributeMemories(ids []string, ownerID string, agentSlug string, displayName string) (*model.BatchAttributeResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := &model.BatchAttributeResult{Skipped: []model.SkippedMemory{}}
+	for _, id := range ids {
+		mem, ok := s.memories[id]
+		if !ok {
+			result.Skipped = append(result.Skipped, model.SkippedMemory{ID: id, Reason: model.BatchMoveSkipNotFound})
+			continue
+		}
+		if ownerID != "local" && mem.OwnerID != ownerID {
+			result.Skipped = append(result.Skipped, model.SkippedMemory{ID: id, Reason: model.BatchMoveSkipNotOwned})
+			continue
+		}
+		mem.SourceAgent = agentSlug
+		mem.ProvenanceCreatedByType = model.MemoryCreatedByAgent
+		mem.ProvenanceCreatedBySlug = agentSlug
+		mem.ProvenanceCreatedByDisplayName = displayName
+		mem.ProvenanceAttributionSource = model.MemoryAttributionSourceRepaired
+		mem.Provenance = model.BuildMemoryProvenance(mem)
+		result.Attributed++
+	}
+	return result, nil
+}
+
 func (s *InMemoryStore) BatchMoveMemories(ids []string, targetHubID string, targetTopicID string, ownerID string) (*model.BatchMoveResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -59,6 +59,7 @@ import { BatchToolbar } from "@/components/features/batch-toolbar";
 import { useMemoryForget } from "@/hooks/use-memory-forget";
 import { useBarToast } from "@/hooks/use-bar-toast";
 import { useMemoryMove } from "@/hooks/use-memory-move";
+import { useMemoryAttribute } from "@/hooks/use-memory-attribute";
 import { getAgentIdentity } from "@memaxlabs/ui/tokens/agents";
 import { useSettings } from "@/hooks/use-settings";
 import { useIsMobile } from "@/hooks/use-is-mobile";
@@ -801,6 +802,7 @@ export function RecentSection({
   const selection = useSelection();
   const forget = useMemoryForget();
   const mover = useMemoryMove();
+  const attributor = useMemoryAttribute();
   const toast = useBarToast();
   const pathname = usePathname();
   // v2 routes carry the hub identity in the URL (`/h/<slug>/...`).
@@ -1283,6 +1285,11 @@ export function RecentSection({
             selection.exit();
           }
           return success;
+        }}
+        onBatchAttribute={(ids, agent) => {
+          void attributor.attributeWithToast(ids, agent).then((ok) => {
+            if (ok) selection.exit();
+          });
         }}
         onBatchMove={(ids, target) => {
           const snapshots = memories

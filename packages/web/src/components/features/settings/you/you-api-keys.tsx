@@ -225,10 +225,7 @@ export function YouApiKeys() {
 
       {keys && keys.length > 0 && (
         <p className="mt-2 text-[12px] text-fg-4 px-1">
-          {(
-            t.apiKeys?.summaryWithStandalone ??
-            "{total} keys · {linked} linked · {standalone} standalone · {unassigned} unassigned"
-          )
+          {t.apiKeys.summaryWithStandalone
             .replace("{total}", String(keys.length))
             .replace(
               "{linked}",
@@ -237,10 +234,6 @@ export function YouApiKeys() {
             .replace(
               "{standalone}",
               String(keys.filter((k) => !k.agent_name && k.standalone).length),
-            )
-            .replace(
-              "{unassigned}",
-              String(keys.filter((k) => !k.agent_name && !k.standalone).length),
             )}
         </p>
       )}
@@ -263,7 +256,9 @@ function CreateKeyForm({
 }) {
   const [label, setLabel] = useState("");
   const [hubId, setHubId] = useState<string>("");
-  const [agentName, setAgentName] = useState("");
+  // Identity is required: "me" (a personal key) or one of the agents.
+  // A key with neither would write memories nobody authored.
+  const [identity, setIdentity] = useState<string>("me");
   const [creating, setCreating] = useState(false);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -275,7 +270,8 @@ function CreateKeyForm({
       const result = await getMemaxClient().auth.createKey({
         name: label.trim(),
         hubId: hubId || undefined,
-        agentName: agentName || undefined,
+        agentName: identity === "me" ? undefined : identity,
+        standalone: identity === "me" ? true : undefined,
       });
       setCreatedKey(result.key);
       // Invalidate key list
@@ -375,27 +371,24 @@ function CreateKeyForm({
             ))}
           </select>
         </div>
-        {agents.length > 0 && (
-          <div>
-            <label className="text-[13px] text-fg-3 mb-1 block">
-              {t.apiKeys?.agentLabel ?? "Agent (optional)"}
-            </label>
-            <select
-              value={agentName}
-              onChange={(e) => setAgentName(e.target.value)}
-              className="w-full rounded-lg bg-surface-1 border border-border/60 px-3 py-2 text-[14px] text-fg-1 outline-none focus:border-foreground/20 transition-colors cursor-pointer"
-            >
-              <option value="">
-                {t.apiKeys?.agentPlaceholderNone ?? "No agent"}
+        <div>
+          <label className="text-[13px] text-fg-3 mb-1 block">
+            {t.apiKeys.identityLabel}
+          </label>
+          <select
+            value={identity}
+            onChange={(e) => setIdentity(e.target.value)}
+            className="w-full rounded-lg bg-surface-1 border border-border/60 px-3 py-2 text-[14px] text-fg-1 outline-none focus:border-foreground/20 transition-colors cursor-pointer"
+          >
+            <option value="me">{t.apiKeys.identityMe}</option>
+            {agents.map((a) => (
+              <option key={a.agent_name} value={a.agent_name}>
+                {a.display_name || a.agent_name}
               </option>
-              {agents.map((a) => (
-                <option key={a.agent_name} value={a.agent_name}>
-                  {a.display_name || a.agent_name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+            ))}
+          </select>
+          <p className="mt-1 text-[12px] text-fg-3">{t.apiKeys.identityHint}</p>
+        </div>
         <div className="flex items-center gap-2 pt-1">
           <button
             onClick={handleCreate}

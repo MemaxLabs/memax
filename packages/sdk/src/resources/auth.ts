@@ -37,6 +37,7 @@ export class AuthResource {
         hub_id: options.hubId,
         hub_ids: options.hubIds,
         agent_name: options.agentName,
+        standalone: options.standalone,
         expires_in_days: options.expiresInDays,
         scopes: options.scopes,
         permissions: options.permissions,

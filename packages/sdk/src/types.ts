@@ -285,6 +285,16 @@ export interface BatchMoveSkippedMemory {
  * Consumers should treat any `moved > 0` as partial success and surface
  * skipped counts to the user so they know why fewer moved than requested.
  */
+/**
+ * Result of `memories.batchAttribute`: `attributed` counts rows now
+ * credited to the agent; `skipped` carries per-id reasons (`not_found`,
+ * `not_owned` — only the owner may re-attribute).
+ */
+export interface BatchAttributeResult {
+  attributed: number;
+  skipped: BatchMoveSkippedMemory[];
+}
+
 export interface BatchMoveResult {
   moved: number;
   skipped: BatchMoveSkippedMemory[];
@@ -1014,6 +1024,12 @@ export interface ApiKeyCreateOptions {
   hubId?: string;
   hubIds?: string[];
   agentName?: string; // agent identity: "claude-code", "cursor", etc.
+  /**
+   * "This key is me." Every key carries an author identity from birth:
+   * either `agentName` or `standalone: true`. The server rejects a key
+   * with neither, so a write can never land without someone to credit.
+   */
+  standalone?: boolean;
   expiresInDays?: number;
   scopes?: string[];
   permissions?: string[];

@@ -2,6 +2,7 @@ import type {
   AskOptions,
   AskResult,
   AttachmentViewURL,
+  BatchAttributeResult,
   BatchDeleteResult,
   BatchMoveResult,
   ListMemoriesOptions,
@@ -32,9 +33,15 @@ export class MemoriesResource {
         hint: options?.hint ?? "",
         tags: options?.tags ?? [],
         source: options?.source ?? "sdk",
-        source_agent: options?.sourceAgent ?? "",
-        assisted_by_agent: options?.assistedByAgent ?? "",
-        initiation_type: options?.initiationType ?? "",
+        // Attribution fields are OMITTED when unset — an empty string
+        // would read as a (blank) claim on the wire; absence is honest.
+        ...(options?.sourceAgent ? { source_agent: options.sourceAgent } : {}),
+        ...(options?.assistedByAgent
+          ? { assisted_by_agent: options.assistedByAgent }
+          : {}),
+        ...(options?.initiationType
+          ? { initiation_type: options.initiationType }
+          : {}),
         source_path: options?.sourcePath,
         hub_reason: options?.hubReason ?? "",
         content_type: options?.contentType ?? "markdown",
@@ -231,6 +238,27 @@ export class MemoriesResource {
       "POST",
       `/v1/memories/${memoryID}/attachments/${attachmentID}/view-url`,
     );
+  }
+
+  /**
+   * Re-credit memories you own to one of your connected agents — the
+   * repair path for rows written before a key had an identity. Only the
+   * provenance changes (created_by_* + the legacy source_agent mirror,
+   * attribution_source="repaired"); content and timestamps are untouched.
+   */
+  async batchAttribute(
+    ids: string[],
+    agentName: string,
+  ): Promise<BatchAttributeResult> {
+    const raw = await this.req<Partial<BatchAttributeResult>>(
+      "POST",
+      "/v1/memories/batch-attribute",
+      { body: { ids, agent_name: agentName } },
+    );
+    return {
+      attributed: typeof raw.attributed === "number" ? raw.attributed : 0,
+      skipped: Array.isArray(raw.skipped) ? raw.skipped : [],
+    };
   }
 
   /**

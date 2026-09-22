@@ -70,7 +70,7 @@ export const zh: Translations = {
         dumpReply: "记好了 ✓",
         refer: "客户上次提过什么要改的？",
         referReply: "找到 3 条",
-        hint: "Claude Code、Cursor、Codex、OpenClaw、Muse 都行。说人话就好，它知道该记还是该查。",
+        hint: "Claude Code、Cursor、Codex、OpenClaw、Muse 都行。说「记一下」它就存，说「查一下 memax」它就找。",
       },
       claude: {
         label: "在 Claude 里、在路上",
@@ -78,7 +78,7 @@ export const zh: Translations = {
         dumpReply: "记好了 ✓",
         refer: "上次那家火锅店叫什么来着？",
         referReply: "找到 1 条",
-        hint: "手机、电脑、网页都一样。带上「memax」两个字，它就知道往哪存、去哪找。",
+        hint: "手机、电脑、网页都一样。带上「memax」两个字，Claude 就知道往哪存、去哪找。",
       },
       web: {
         label: "在 memax 网页",
@@ -130,7 +130,7 @@ export const zh: Translations = {
     useCases: [
       {
         say: "帮我记一下，今天定了 10 月 1 号上线，客服老王负责",
-        then: "开完会说一句。以后在哪个 agent 里问，都知道。",
+        then: "开完会说一句。以后在哪个 agent 里问，都能查到。",
       },
       {
         say: "帮我记一下，牙医说三个月后复查",
@@ -138,11 +138,11 @@ export const zh: Translations = {
       },
       {
         say: "记一下：这个项目改完要先跑 migration 再部署",
-        then: "下次 Cursor 或 Claude Code 动手前，自己就想起来了。",
+        then: "下次在 Cursor 或 Claude Code 里问一句，它去 memax 一查就有。",
       },
       {
         say: "记个想法：给新用户第一周发一封「你这周记了什么」的信",
-        then: "点子先扔进去，不用整理。晚上做梦会把它和你之前想过的串起来。",
+        then: "先扔进去，不用整理。以后一问就在；做梦时要是和你之前的想法对上了，会放到一起给你看。",
       },
       {
         say: "这条放到团队 hub",
@@ -150,7 +150,7 @@ export const zh: Translations = {
       },
       {
         say: "（什么都不用做）",
-        then: "每天晚上 memax 自己整理：零碎的合成条，对不上的挑出来问你。",
+        then: "每晚整理一遍：重复的合起来，对不上的标出来给你看。",
       },
     ],
     // 记忆页置顶的瘦版清单卡

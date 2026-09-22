@@ -66,7 +66,7 @@ export const en = {
         dumpReply: "Saved ✓",
         refer: "What did the client ask us to change last time?",
         referReply: "Found 3",
-        hint: "Claude Code, Cursor, Codex, OpenClaw, Muse — any of them. Plain words are fine; it knows whether to save or look up.",
+        hint: 'Claude Code, Cursor, Codex, OpenClaw, Muse — any of them. Say "remember this" and it saves; say "check memax" and it looks.',
       },
       claude: {
         label: "In Claude, on the go",
@@ -130,7 +130,7 @@ export const en = {
     useCases: [
       {
         say: "Remember: launch is October 1st, Wang owns support",
-        then: "One line after the meeting. Ask in any agent later and it knows.",
+        then: "One line after the meeting. Ask in any agent later and it can look it up.",
       },
       {
         say: "Remember the dentist wants a check-up in three months",
@@ -138,11 +138,11 @@ export const en = {
       },
       {
         say: "Remember: run the migration before deploying this project",
-        then: "Next time Cursor or Claude Code starts, it remembers on its own.",
+        then: "Next time you ask in Cursor or Claude Code, one lookup in memax and it's there.",
       },
       {
         say: "Note an idea: send new users a 'what you saved this week' letter",
-        then: "Toss the idea in, no tidying. Tonight's dream threads it with what you thought before.",
+        then: "Toss it in, no tidying. It's there when you ask; if a dream finds an older thought that matches, it shows them together.",
       },
       {
         say: "Put this in the team hub",
@@ -150,7 +150,7 @@ export const en = {
       },
       {
         say: "(nothing at all)",
-        then: "Every night memax tidies up on its own: merges the scraps, asks you about what disagrees.",
+        then: "A tidy-up every night: duplicates merged, disagreements flagged for you to see.",
       },
     ],
     launcherContinue: "Continue",

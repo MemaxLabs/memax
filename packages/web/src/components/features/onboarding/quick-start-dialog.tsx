@@ -16,7 +16,14 @@
 // new account. State lives in lib/quick-start-store.ts.
 // =============================================================================
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
@@ -41,6 +48,8 @@ import { useBar } from "@/contexts/bar-context";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { acquireBodyScrollLock } from "@/lib/scroll-lock";
 import { CLI_SETUP_CMD } from "@/lib/cli";
+import { AGENT_BRAND_MARKS } from "@memaxlabs/ui/tokens/agent-brand-marks";
+import { AGENT_IDENTITIES } from "@memaxlabs/ui/tokens/agents";
 import { HubCreateDialog } from "@/components/features/settings/hub-create-dialog";
 import { ConnectAgentsBody } from "@/components/features/connect-agents-section";
 import { HubBadge } from "@/components/features/hub/hub-badge";
@@ -62,6 +71,89 @@ const STEP_ORDER: QuickStartStep[] = [
 
 /** Same URL ConnectAgentsBody hands to agents. */
 const MCP_URL = "https://api.memax.app/mcp";
+/** The one-liner, split into the three steps the card explains. */
+const SETUP_STEPS = CLI_SETUP_CMD.split(" && ");
+const TERMINAL_AGENTS = [
+  "claude-code",
+  "cursor",
+  "codex",
+  "gemini",
+  "copilot",
+  "windsurf",
+  "openclaw",
+  "muse",
+];
+
+type RememberScene = "agent" | "claude" | "web";
+const REMEMBER_SCENES: RememberScene[] = ["agent", "claude", "web"];
+const SCENE_MARKS: Record<RememberScene, string[]> = {
+  agent: ["claude-code", "cursor", "openclaw"],
+  claude: ["claude-ai"],
+  web: [],
+};
+
+/** Real brand marks (lobe-icons, vendored in @memaxlabs/ui). */
+function BrandMarkRow({
+  slugs,
+  size = "md",
+}: {
+  slugs: readonly string[];
+  size?: "sm" | "md";
+}) {
+  const cls = size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4";
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {slugs.map((slug) => {
+        const Mark = AGENT_BRAND_MARKS[slug];
+        return Mark ? (
+          <Mark
+            key={slug}
+            className={cls}
+            aria-label={AGENT_IDENTITIES[slug]?.displayName ?? slug}
+            role="img"
+          />
+        ) : null;
+      })}
+    </span>
+  );
+}
+
+function ReplyChip({ children }: { children: ReactNode }) {
+  return (
+    <span
+      className="w-fit shrink-0 whitespace-nowrap rounded-md px-1.5 py-0.5 font-mono text-[10.5px]"
+      style={{
+        background: "oklch(from var(--signature) l c h / 0.12)",
+        color: "var(--signature)",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** One "you say → memax answers" pair. */
+function Exchange({
+  label,
+  say,
+  reply,
+}: {
+  label: string;
+  say: string;
+  reply: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="w-[22px] shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
+        {label}
+      </span>
+      <span className="min-w-0 rounded-[12px_12px_4px_12px] bg-foreground px-2.5 py-1 text-[12px] leading-snug text-background sm:truncate">
+        {say}
+      </span>
+      <ReplyChip>{reply}</ReplyChip>
+    </div>
+  );
+}
 
 export function isOnboardingChecklist(n: Notification): boolean {
   return (
@@ -172,6 +264,7 @@ export function QuickStartDialog({
   const [showConnectPanel, setShowConnectPanel] = useState(false);
   const [showHubCreate, setShowHubCreate] = useState(false);
   const [copied, setCopied] = useState<"command" | "url" | null>(null);
+  const [rememberScene, setRememberScene] = useState<RememberScene>("agent");
   // Set on trigger success until the report shows the run — closes the
   // gap where isPending is already false but the report is still stale.
   const [dreamTriggered, setDreamTriggered] = useState(false);
@@ -320,48 +413,41 @@ export function QuickStartDialog({
           title: copy.connectTitle,
           body: copy.connectBody,
           art: (
-            <div className="grid h-full grid-cols-1 gap-2 p-3 sm:grid-cols-2">
-              {/* Pane 1 — agents in the terminal, one command */}
-              <div className="flex min-h-0 flex-col rounded-xl border border-border/50 bg-card p-3">
-                <p className="m-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
-                  {copy.connectPaneAgents}
-                </p>
-                <div className="my-auto flex items-center justify-center gap-2 py-2">
-                  {[
-                    { label: "CC", color: "oklch(0.66 0.15 45)" },
-                    { label: "CU", color: "oklch(0.6 0.12 200)" },
-                    { label: "CX", color: "var(--fg-3)" },
-                  ].map((a) => (
-                    <span
-                      key={a.label}
-                      className="grid h-9 w-9 place-items-center rounded-xl border border-border/50 bg-surface-1 font-mono text-[10px] font-semibold"
-                      style={{ color: a.color }}
-                    >
-                      {a.label}
-                    </span>
-                  ))}
-                  <span className="text-fg-4">→</span>
-                  <span
-                    className="grid h-9 w-9 place-items-center rounded-xl text-[16px] text-white"
-                    style={{ background: "var(--signature)" }}
-                  >
-                    ✦
-                  </span>
+            <div className="grid h-full grid-cols-1 gap-2 p-3 sm:grid-cols-[1.15fr_1fr]">
+              {/* Pane 1 — agents in the terminal: three steps, one line */}
+              <div className="flex min-h-0 flex-col gap-2.5 rounded-xl border border-border/50 bg-card p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="m-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
+                    {copy.connectPaneAgents}
+                  </p>
+                  <BrandMarkRow slugs={TERMINAL_AGENTS} />
                 </div>
-                <div className="rounded-lg bg-foreground px-3 py-2 font-mono text-[11.5px] leading-relaxed text-background">
-                  {CLI_SETUP_CMD.split(" && ").map((line) => (
-                    <div key={line} className="truncate">
-                      <span className="opacity-50">$ </span>
-                      {line}
-                    </div>
+                <ol className="m-0 flex list-none flex-col gap-2 p-0">
+                  {SETUP_STEPS.map((cmd, i) => (
+                    <li key={cmd} className="flex items-start gap-2.5">
+                      <span className="mt-[3px] grid h-4 w-4 shrink-0 place-items-center rounded-full bg-surface-2 font-mono text-[9.5px] text-fg-3">
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <code className="block w-fit max-w-full truncate rounded-md bg-foreground px-2 py-[3px] font-mono text-[11px] text-background">
+                          {cmd}
+                        </code>
+                        <p className="m-0 mt-0.5 text-[11.5px] leading-snug text-fg-3">
+                          {copy.connectSteps[i]}
+                        </p>
+                      </div>
+                    </li>
                   ))}
-                </div>
+                </ol>
               </div>
               {/* Pane 2 — claude.ai custom connector (phone app inherits) */}
               <div className="flex min-h-0 flex-col rounded-xl border border-border/50 bg-card p-3">
-                <p className="m-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
-                  {copy.connectPaneClaude}
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="m-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
+                    {copy.connectPaneClaude}
+                  </p>
+                  <BrandMarkRow slugs={["claude-ai"]} />
+                </div>
                 <div className="my-auto rounded-lg border border-border/50 bg-surface-1 p-2.5">
                   <p className="m-0 text-[11.5px] font-medium text-fg-2">
                     Add custom connector
@@ -377,7 +463,7 @@ export function QuickStartDialog({
                     </span>
                   </div>
                 </div>
-                <p className="m-0 text-[11.5px] text-fg-3">
+                <p className="m-0 text-[11.5px] leading-snug text-fg-3">
                   {copy.connectPhoneNote}
                 </p>
               </div>
@@ -395,7 +481,7 @@ export function QuickStartDialog({
                 ) : (
                   <Copy className="h-3.5 w-3.5" />
                 )}
-                {copied === "command" ? copy.copied : copy.copyCommand}
+                {copied === "command" ? copy.copied : copy.copyOneLiner}
               </button>
               <button
                 type="button"
@@ -423,7 +509,8 @@ export function QuickStartDialog({
             </>
           ),
         };
-      case "first_memory":
+      case "first_memory": {
+        const scene = copy.rememberScenes[rememberScene];
         return {
           kicker: copy.kickerRemember,
           title: copy.rememberTitle,
@@ -435,54 +522,60 @@ export function QuickStartDialog({
                 })
               : copy.rememberBody,
           art: (
-            <div className="flex h-full flex-col justify-center gap-2 p-3">
-              {/* Way 1 — the ✦ bar on the web */}
-              <div className="flex items-center gap-3">
-                <span className="w-[72px] shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
-                  {copy.rememberWayWeb}
-                </span>
-                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[18px] border border-border/50 bg-card px-3 py-2 shadow-glow">
-                  <span style={{ color: "var(--signature)" }}>✦</span>
-                  <span className="flex-1 truncate text-[13px] text-fg-3">
-                    {t.compose.placeholder}
-                  </span>
-                  <span className="font-mono text-[10px] text-fg-4">⌘K</span>
-                </div>
-              </div>
-              {/* Way 2 — tell your coding agent */}
-              <div className="flex items-center gap-3">
-                <span className="w-[72px] shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
-                  {copy.rememberWayAgent}
-                </span>
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="truncate rounded-[12px_12px_4px_12px] bg-foreground px-2.5 py-1 text-[12px] text-background">
-                    {copy.rememberAgentSay}
-                  </span>
-                  <span className="shrink-0 font-mono text-[10px] text-fg-4">
-                    → memax_push
-                  </span>
-                </div>
-              </div>
-              {/* Way 3 — Claude with the connector, phone included */}
-              <div className="flex items-center gap-3">
-                <span className="w-[72px] shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
-                  {copy.rememberWayClaude}
-                </span>
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="truncate rounded-[12px_12px_4px_12px] bg-foreground px-2.5 py-1 text-[12px] text-background">
-                    {copy.rememberClaudeSay}
-                  </span>
-                  <span
-                    className="shrink-0 rounded-md px-1.5 py-0.5 text-[10.5px]"
-                    style={{
-                      background: "oklch(from var(--signature) l c h / 0.12)",
-                      color: "var(--signature)",
-                    }}
+            <div className="flex h-full flex-col gap-3 p-3 sm:gap-2.5">
+              {/* Scene tabs — where the user is when they want to remember */}
+              <div
+                role="tablist"
+                aria-label={copy.rememberTitle}
+                className="flex flex-wrap items-center gap-1"
+              >
+                {REMEMBER_SCENES.map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={rememberScene === id}
+                    onClick={() => setRememberScene(id)}
+                    className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] transition-colors ${
+                      rememberScene === id
+                        ? "bg-foreground text-background"
+                        : "bg-surface-2 text-fg-3 hover:text-fg-1"
+                    }`}
                   >
-                    {copy.rememberSaved}
-                  </span>
-                </div>
+                    <BrandMarkRow slugs={SCENE_MARKS[id]} size="sm" />
+                    {copy.rememberScenes[id].label}
+                  </button>
+                ))}
               </div>
+              {/* The scene — a dump and a recall, in the user's words */}
+              {rememberScene === "web" ? (
+                <div className="flex flex-1 flex-col justify-center gap-2.5">
+                  <div className="flex items-center gap-2.5 rounded-[18px] border border-border/50 bg-card px-3.5 py-2.5 shadow-glow">
+                    <span style={{ color: "var(--signature)" }}>✦</span>
+                    <span className="flex-1 truncate text-[13px] text-fg-3">
+                      {t.compose.placeholder}
+                    </span>
+                    <span className="font-mono text-[10px] text-fg-4">⌘K</span>
+                  </div>
+                  <ReplyChip>{copy.rememberSaved}</ReplyChip>
+                </div>
+              ) : (
+                <div className="flex flex-1 flex-col justify-center gap-2.5">
+                  <Exchange
+                    label={copy.rememberDumpLabel}
+                    say={scene.dump}
+                    reply={scene.dumpReply}
+                  />
+                  <Exchange
+                    label={copy.rememberReferLabel}
+                    say={scene.refer}
+                    reply={scene.referReply}
+                  />
+                </div>
+              )}
+              <p className="m-0 text-[11.5px] leading-snug text-fg-3">
+                {scene.hint}
+              </p>
             </div>
           ),
           actions: (
@@ -499,6 +592,7 @@ export function QuickStartDialog({
             </button>
           ),
         };
+      }
       case "first_ask":
         return {
           kicker: copy.kickerAsk,
@@ -769,8 +863,10 @@ export function QuickStartDialog({
                 step === "use_cases"
                   ? "min-h-[300px] flex-1 sm:h-[360px] sm:flex-none"
                   : step === "connect_agent"
-                    ? "min-h-[380px] flex-1 sm:h-[260px] sm:flex-none"
-                    : "min-h-[220px] flex-1 sm:h-[250px] sm:flex-none"
+                    ? "min-h-[420px] flex-1 sm:h-[280px] sm:flex-none"
+                    : step === "first_memory"
+                      ? "flex-none sm:h-[250px]"
+                      : "min-h-[220px] flex-1 sm:h-[250px] sm:flex-none"
               }`}
             >
               {card.art}

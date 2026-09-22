@@ -52,8 +52,8 @@ func DefaultConfig(datasetPath string) Config {
 		Cutoffs:      []int{10, 20, 50, 200},
 		Distillation: true,
 		QACutoffs:    []int{10},
-		QAModel:      "claude-haiku-4-5-20251001",
-		JudgeModel:   "claude-haiku-4-5-20251001",
+		QAModel:      anthropic.StrongModel,
+		JudgeModel:   anthropic.StrongModel,
 		QAMaxTokens:  64,
 		OutputDir:    ".",
 	}
@@ -569,7 +569,7 @@ func (r *Runner) qaModel() string {
 	if strings.TrimSpace(r.cfg.QAModel) != "" {
 		return strings.TrimSpace(r.cfg.QAModel)
 	}
-	return "claude-haiku-4-5-20251001"
+	return anthropic.StrongModel
 }
 
 func (r *Runner) judgeModel() string {

@@ -63,16 +63,16 @@ go run ./cmd/locomo/ \
 | `-corpus-mode` | `dialog` | `dialog`, `observation`, or `summary` |
 | `-limit` | `200` | Max memories returned by Memax recall |
 | `-cutoffs` | `10,20,50,200` | Evidence recall cutoffs |
-| `-distill` | `true` | Enable query distillation when `ANTHROPIC_API_KEY` is configured |
+| `-distill` | `true` | Enable query distillation when an LLM API key is configured |
 | `-categories` | `1,2,3,4` | LoCoMo categories; excludes adversarial by default |
 | `-max-questions` | `0` | Limit for smoke runs |
 | `-samples` | empty | Comma-separated sample IDs |
 | `-qa` | false | Generate short answers from retrieved memories |
 | `-qa-cutoffs` | `10` | Retrieved-memory cutoffs used for QA generation |
-| `-qa-model` | `claude-haiku-4-5-20251001` | Anthropic model used for answer generation |
+| `-qa-model` | `deepseek/deepseek-v4.1-flash` | Model used for answer generation |
 | `-qa-max-tokens` | `64` | Max answer tokens |
 | `-judge` | false | Run LLM-as-judge for each generated answer |
-| `-judge-model` | `claude-haiku-4-5-20251001` | Anthropic model used for judge scoring |
+| `-judge-model` | `deepseek/deepseek-v4.1-flash` | Model used for judge scoring |
 | `-judge-evidence` | false | Include gold evidence context in judge prompts |
 | `-output` | `.` | Output directory |
 

@@ -16,7 +16,7 @@
 #   VOYAGE_API_KEY   — Voyage AI API key for embeddings
 #
 # Optional environment variables:
-#   ANTHROPIC_API_KEY — enables query distillation + QA generation
+#   ANTHROPIC_API_KEY + ANTHROPIC_BASE_URL — LLM gateway credentials (OpenRouter) for distillation + QA generation
 #   OPENAI_API_KEY    — enables GPT-4o QA evaluation (--eval flag)
 #
 set -euo pipefail
@@ -60,7 +60,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --turn            Turn-level granularity"
             echo ""
             echo "Evaluation flags:"
-            echo "  --qa              Enable QA hypothesis generation (needs ANTHROPIC_API_KEY)"
+            echo "  --qa              Enable QA hypothesis generation (needs LLM gateway credentials)"
             echo "  --eval            Run GPT-4o QA evaluation (needs OPENAI_API_KEY)"
             exit 0
             ;;

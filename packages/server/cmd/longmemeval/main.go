@@ -12,7 +12,7 @@
 //
 // Optional environment variables:
 //
-//	ANTHROPIC_API_KEY — enables QA hypothesis generation via Claude
+//	ANTHROPIC_API_KEY — enables QA hypothesis generation via the configured LLM gateway
 package main
 
 import (
@@ -46,14 +46,14 @@ func main() {
 	skipAbstention := flag.Bool("skip-abstention", false, "Skip abstention questions")
 	onlyIDs := flag.String("ids", "", "Comma-separated question IDs to evaluate (retry failed questions)")
 	appendOutput := flag.Bool("append", false, "Append to existing result files instead of overwriting")
-	enableQA := flag.Bool("qa", false, "Enable QA hypothesis generation (requires ANTHROPIC_API_KEY)")
+	enableQA := flag.Bool("qa", false, "Enable QA hypothesis generation (requires LLM gateway credentials)")
 	outputDir := flag.String("output", ".", "Output directory for result files")
 	flag.Parse()
 
 	if *dataset == "" {
 		fmt.Fprintln(os.Stderr, "Usage: longmemeval -dataset <path-to-dataset.json>")
 		fmt.Fprintln(os.Stderr, "\nRequired: DATABASE_URL, VOYAGE_API_KEY")
-		fmt.Fprintln(os.Stderr, "Optional: ANTHROPIC_API_KEY (for QA and distillation)")
+		fmt.Fprintln(os.Stderr, "Optional: ANTHROPIC_API_KEY + ANTHROPIC_BASE_URL (LLM gateway, e.g. OpenRouter, for QA and distillation)")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}

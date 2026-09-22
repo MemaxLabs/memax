@@ -101,6 +101,7 @@ vi.mock("@/lib/query-client", () => ({
 
 vi.mock("@/lib/hub-display", () => ({
   getHubDisplayName: (hub: { name: string }) => hub.name,
+  getHubDisplayInitial: (hub: { name: string }) => hub.name.slice(0, 1),
 }));
 
 vi.mock("@/components/features/topic/topic-icon", () => ({

@@ -7,6 +7,7 @@ import {
   CursorMark,
   GeminiMark,
   OpenClawMark,
+  MuseMark,
   HermesMark,
   OpenCodeMark,
   WindsurfMark,
@@ -22,7 +23,8 @@ export type BrandMarkComponent = ComponentType<SVGProps<SVGSVGElement>>;
  * AGENT_IDENTITIES for scannable color-coded shapes at 16px in memory
  * rows. Different jobs, different assets — see marks/brand-marks.tsx.
  *
- * All marks vendored verbatim from lobehub/lobe-icons (MIT).
+ * Marks vendored verbatim from lobehub/lobe-icons (MIT), except Muse
+ * (Meta's official favicon mark, flattened to monochrome).
  */
 export const AGENT_BRAND_MARKS: Record<string, BrandMarkComponent> = {
   "claude-code": ClaudeCodeMark,
@@ -33,6 +35,7 @@ export const AGENT_BRAND_MARKS: Record<string, BrandMarkComponent> = {
   windsurf: WindsurfMark,
   gemini: GeminiMark,
   openclaw: OpenClawMark,
+  muse: MuseMark,
   hermes: HermesMark,
   opencode: OpenCodeMark,
 };

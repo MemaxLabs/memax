@@ -21,6 +21,153 @@ export const zh: Translations = {
     sectionReceipts: "回执",
     empty: "现在很安静，没有新通知",
   },
+  // 快速开始（2026-09-21）——第一周清单的卡片版。一张卡一件事，主按钮就是去做。
+  quickStart: {
+    title: "快速开始",
+    skip: "跳过",
+    next: "下一步",
+    back: "上一步",
+    start: "开始",
+    finish: "好，开始用",
+    progress: "第一周 {done} / {total}",
+    stepLabel: {
+      welcome: "欢迎",
+      connect_agent: "连接",
+      first_memory: "记",
+      first_ask: "问",
+      first_dream: "梦",
+      first_hub_invite: "团队",
+      use_cases: "常见用法",
+    },
+    kickerWelcome: "1 / 6 · 欢迎",
+    kickerConnect: "2 / 6 · 连接",
+    connectTitle: "把你的 agent 接上来",
+    connectBody:
+      "终端里的 agent 三步，或者复制那一行一次跑完；用 Claude 的话加个连接器，手机上也就有了。以后谁记的，都写着名字。",
+    connectPaneAgents: "终端里的 agent",
+    connectSteps: [
+      "把 memax 装到电脑上",
+      "浏览器里登录一次",
+      "自动找到电脑上装的 agent，全部接上",
+    ],
+    copyOneLiner: "复制一行全搞定",
+    connectPaneClaude: "claude.ai · 设置 › 连接器",
+    connectPhoneNote: "连接器是账号级的：网页连好，手机 app 里就有。",
+    copyCommand: "复制命令",
+    // claude.ai 连接器表单的原样复刻——那边的 UI 是英文，这里照抄
+    connectMockTitle: "Add custom connector",
+    connectMockName: "Name",
+    connectMockUrl: "URL",
+    copyConnectorUrl: "复制连接器地址",
+    copied: "已复制",
+    connectWeb: "我在网页上连",
+    kickerRemember: "3 / 6 · 记",
+    rememberTitle: "扔一条进来",
+    rememberBody:
+      "在哪想起来，就在哪说一句。下面按场景看看怎么说；记满 5 条，晚上就会开始做梦。",
+    rememberDumpLabel: "记",
+    rememberReferLabel: "查",
+    rememberScenes: {
+      agent: {
+        label: "写代码的时候",
+        dump: "记一下：这个项目上线前要先跑 migration",
+        dumpReply: "记好了 ✓",
+        refer: "客户上次提过什么要改的？",
+        referReply: "找到 3 条",
+        hint: "Claude Code、Cursor、Codex、OpenClaw、Muse 都行。说「记一下」它就存，说「查一下 memax」它就找。",
+      },
+      claude: {
+        label: "在 Claude 里、在路上",
+        dump: "帮我记一下，牙医说三个月后复查",
+        dumpReply: "记好了 ✓",
+        refer: "上次那家火锅店叫什么来着？",
+        referReply: "找到 1 条",
+        hint: "手机、电脑、网页都一样。带上「memax」两个字，Claude 就知道往哪存、去哪找。",
+      },
+      web: {
+        label: "在 memax 网页",
+        dump: "",
+        dumpReply: "",
+        refer: "",
+        referReply: "",
+        hint: "⌘K，粘什么都行：一段会议纪要、一个链接、一个突然冒出来的想法。问问题也是同一个框。",
+      },
+    },
+    rememberProgress: "已经 {current} / {target} 条。扔够 5 条，做梦就解锁了。",
+    rememberSaved: "存好了 ✓",
+    rememberCta: "现在记一条",
+    kickerAsk: "4 / 6 · 问",
+    askTitle: "问问 memax",
+    askBody: "答案来自你自己记过的东西，每一句都能点回去看。",
+    askExampleQ: "上次和客户定的上线日期是哪天？",
+    askExampleA: "10 月 1 号，客服那边老王负责——9 月 20 号开会时记的。",
+    askExampleCite: "来自 2 条记忆",
+    askCta: "问一个",
+    kickerDream: "5 / 6 · 梦",
+    kickerDreaming: "5 / 6 · 做梦中",
+    dreamTitle: "让 memax 做个梦",
+    dreamBody:
+      "晚上 memax 会把你白天扔进来的零碎整理一遍：重复的合起来，对不上的挑出来，串成一篇给你。第一次一两分钟。",
+    dreamLocked: "扔够 5 条记忆后解锁。",
+    dreamingTitle: "memax 正在把记忆串起来",
+    dreamingBody:
+      "一两分钟就好。做完这张卡会变成你的第一篇梦记，脉搏页上也能看到。",
+    dreamingChip: "做梦中",
+    dreamingLeave: "先去逛逛，好了叫我",
+    dreamDoneTitle: "第一个梦做完了",
+    dreamDoneBody: "去脉搏页看看它串出了什么。以后每晚都会做。",
+    dreamSeePulse: "去脉搏页",
+    dreamCta: "跑一个 dream",
+    dreamCard1: "昨晚整理了 3 条",
+    dreamCard2: "有两条说法对不上，标出来了",
+    dreamCard3: "两周前你也想过这个",
+    kickerTeam: "6 / 6 · 团队",
+    teamTitle: "和团队共用一个脑子",
+    teamBody:
+      "开一个团队 hub，同事和他们的 agent 也能用。谁记的都写着名字。可选。",
+    teamCta: "建一个团队 hub",
+    teamMeInitial: "我",
+    teamSkip: "先不用",
+    kickerUseCases: "常见用法",
+    useCasesTitle: "怎么跟 agent 说话",
+    useCasesTitleDone: "第一周搞定。以后这么用",
+    useCases: [
+      {
+        say: "帮我记一下，今天定了 10 月 1 号上线，客服老王负责",
+        then: "开完会说一句。以后在哪个 agent 里问，都能查到。",
+      },
+      {
+        say: "帮我记一下，牙医说三个月后复查",
+        then: "路上跟手机说的，回到电脑也在。",
+      },
+      {
+        say: "记一下：这个项目改完要先跑 migration 再部署",
+        then: "下次在 Cursor 或 Claude Code 里问一句，它去 memax 一查就有。",
+      },
+      {
+        say: "记个想法：给新用户第一周发一封「你这周记了什么」的信",
+        then: "先扔进去，不用整理。以后一问就在；做梦时要是和你之前的想法对上了，会放到一起给你看。",
+      },
+      {
+        say: "这条放到团队 hub",
+        then: "新同事和 TA 的 agent 也能查到，写着是谁记的。",
+      },
+      {
+        say: "（什么都不用做）",
+        then: "每晚整理一遍：重复的合起来，对不上的标出来给你看。",
+      },
+    ],
+    // 记忆页置顶的瘦版清单卡
+    launcherContinue: "继续",
+    launcherNext: "下一步：{step}",
+    launcherAllDone: "全部搞定！memax 每晚都会做梦，明天见。",
+    // 通知抽屉
+    drawerSection: "入门",
+    drawerWelcomeRow: "创始人的话",
+    // 入门与机制
+    openFromMechanism: "打开快速开始",
+    openFromMechanismHint: "六张卡走一遍第一周：连接、记、问、做梦、团队。",
+  },
   billing: {
     upgrade: "升级",
   },
@@ -42,7 +189,7 @@ export const zh: Translations = {
       memories: "记忆",
       // founder 2026-09-15：就叫 agents——品牌词不翻、不加状语
       // （"已连接"是实现细节，不是名字）。
-      agents: "agents",
+      agents: "智能体",
       pulse: "脉搏",
     },
   },
@@ -531,7 +678,7 @@ export const zh: Translations = {
   },
 
   agentConfigs: {
-    title: "agents",
+    title: "智能体",
     subtitle: "配好一次，agent 走到哪都连着你的记忆。",
     empty: "还没有连接 AI 助手",
     emptyHint: "连上你的第一个助手，让它拥有跨会话的持久记忆。",
@@ -749,7 +896,7 @@ export const zh: Translations = {
     memories: "记忆",
     pulse: "脉搏",
     brain: "问问",
-    agents: "agents",
+    agents: "智能体",
   },
 
   settingsOnboarding: {
@@ -785,65 +932,7 @@ export const zh: Translations = {
     },
     checklist: {
       title: "你的第一周",
-      progressFormat: "{done} / {total} 已完成",
-      celebrateTitle: "全部搞定！",
-      celebrateSubtitle: "memax 每晚都会做梦，明天见。",
-      stripOpen: "展开",
-      collapseAria: "收起清单",
       dismissAria: "关闭清单",
-      lockedHint: "扔够 5 条记忆后解锁。",
-      items: {
-        welcome: {
-          title: "看看欢迎语",
-          description: "90 秒，值得读。",
-          completedTitle: "欢迎语已读",
-          ctaLabel: "去读",
-        },
-        connect_agent: {
-          title: "连接第一个 AI 代理",
-          description:
-            "Claude Code、Cursor、Codex——一行命令，memory 双向流动。",
-          completedTitle: "已连接第一个 AI 代理",
-          ctaLabel: "去设置",
-        },
-        first_memory: {
-          title: "扔进第一条记忆",
-          description:
-            "在 bar 里随便输点东西，按 ⌘↵。一条 wiki、一个链接、半个想法都行。",
-          completedTitle: "已扔进第一条记忆",
-          ctaLabel: "试试 bar",
-        },
-        first_ask: {
-          title: "向 memax 提个问题",
-          description: "按 ↵（不是 ⌘↵）——memax 会从你扔过的内容里给答案。",
-          completedTitle: "已问过第一个问题",
-          ctaLabel: "试着问问",
-        },
-        five_memories: {
-          title: "扔够 5 条记忆",
-          description: "memax 需要一定量才能开始连点成线，解锁 dreams。",
-          completedTitle: "已扔够 5 条记忆",
-        },
-        first_hub_invite: {
-          title: "加入或新建团队 hub",
-          description: "和共事的人共享大脑。加入现成的 hub，或者建一个自己的。",
-          completedTitle: "已加入团队 hub",
-          ctaLabel: "新建一个 hub",
-        },
-        first_dream: {
-          title: "让 memax 做个梦",
-          description: "dream 会把你的记忆串起来。点这里跑你的第一次。",
-          completedTitle: "已跑过第一个 dream",
-          // 单次使用：触发成功后乐观完成，按钮消失，避免被反复点击。
-          // 也不再被其他途径自动打钩 —— 仅此 CTA 可完成（用户要求）。
-          ctaLabel: "跑一个 dream",
-          // 用户点击 CTA 后显示在描述行的位置：触发本身很快返回（HTTP
-          // <1s），但实际 dream 在 worker 里跑要 30-90s。没有这个文案
-          // 的话，用户会看到一秒钟就打钩了，没法知道实际还在跑。这条
-          // 在 session 内持续显示，不靠定时器或 SSE。
-          dreamingHint: "memax 正在做梦——过一两分钟回来看。",
-        },
-      },
     },
     // 四张 plan-23 onboarding-seed 卡片的视觉标签。没有这个 chip 的话，
     // 这些卡片看起来像"我是不是从哪里同步过来的？"——它们其实是 memax
@@ -1666,7 +1755,7 @@ export const zh: Translations = {
     dangerZone: "危险操作",
     account: "账户",
     teams: "团队",
-    agents: "AI 助手",
+    agents: "智能体",
     intelligence: "智能",
   },
 

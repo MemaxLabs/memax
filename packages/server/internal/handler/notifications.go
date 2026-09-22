@@ -374,11 +374,10 @@ func (h *NotificationsHandler) enrichOnboardingChecklists(notifs []model.Notific
 				slog.Warn("onboarding materialize: auto-resolve",
 					"notification_id", n.ID, "user_id", userID, "err", terr)
 			} else if flipped && post != nil {
-				// Emit notification.resolved SSE and update the response
-				// row so this GET returns the freshly-resolved state
-				// (status=resolved + resolution=applied_auto), not the
-				// stale pending snapshot it loaded from the list query.
-				events.PublishNotificationResolved(ctx, h.events, post)
+				// The checklist is finished, not resolved: it stays
+				// pending in its all-done state for a day. Emit
+				// notification.updated and return the fresh row.
+				events.PublishNotificationUpdated(ctx, h.events, post, events.NotificationChangeAllDone)
 				*n = *post
 				continue // *n already has the latest payload from post
 			}
@@ -875,12 +874,13 @@ func (h *NotificationsHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 // local cache so /view + /complete behave identically to receiving an
 // item_updated SSE event.
 type itemUpdateResponse struct {
-	ItemID         string                       `json:"item_id"`
-	ViewedAt       *time.Time                   `json:"viewed_at,omitempty"`
-	CompletedAt    *time.Time                   `json:"completed_at,omitempty"`
-	Progress       *model.ItemProgress          `json:"progress,omitempty"`
-	AutoResolved   bool                         `json:"auto_resolved,omitempty"`
-	AutoResolvedAs model.NotificationResolution `json:"auto_resolved_as,omitempty"`
+	ItemID      string              `json:"item_id"`
+	ViewedAt    *time.Time          `json:"viewed_at,omitempty"`
+	CompletedAt *time.Time          `json:"completed_at,omitempty"`
+	Progress    *model.ItemProgress `json:"progress,omitempty"`
+	// AllDone — this completion finished the checklist; the row stays
+	// pending in its finished state for a day (see TryAutoResolveChecklist).
+	AllDone bool `json:"all_done,omitempty"`
 }
 
 // ViewItem — POST /v1/notifications/{id}/items/{item_id}/view (plan 18
@@ -943,11 +943,12 @@ func (h *NotificationsHandler) ViewItem(w http.ResponseWriter, r *http.Request) 
 //
 // When the call satisfies every required_ids item, the handler invokes
 // store.TryAutoResolveChecklist, which atomically re-checks the live
-// payload + status='pending' under FOR UPDATE before flipping the row
-// to resolution=applied_auto. Only when that primitive reports
-// flipped=true does the handler emit notification.resolved and
-// advertise auto_resolved=true in the HTTP response — so a concurrent
-// /resolve {dismiss} winning the race produces neither lie.
+// payload + status='pending' under FOR UPDATE before stamping
+// all_done_at and capping the expiry at one day. Only when that
+// primitive reports flipped=true does the handler emit
+// notification.updated(change=all_done) and advertise all_done=true in
+// the HTTP response — so a concurrent /resolve {dismiss} winning the
+// race produces neither lie.
 func (h *NotificationsHandler) CompleteItem(w http.ResponseWriter, r *http.Request) {
 	userID := GetUserID(r)
 	if userID == "" {
@@ -1002,13 +1003,13 @@ func (h *NotificationsHandler) CompleteItem(w http.ResponseWriter, r *http.Reque
 	//
 	// TryAutoResolveChecklist atomically re-locks the row, verifies
 	// every required item is still complete on the live payload, and
-	// returns flipped=true only when THIS call actually performed the
-	// status flip. A concurrent /resolve {dismiss} that landed between
+	// returns flipped=true only when THIS call actually stamped
+	// all_done_at. A concurrent /resolve {dismiss} that landed between
 	// our /complete tx and this call returns flipped=false with the
-	// dismissed row, so we don't lie about auto_resolved or
-	// double-fire the SSE. Idempotent /complete re-fires after a
-	// successful auto-resolve also return flipped=false (status is
-	// already non-pending) — the retry path collapses cleanly.
+	// dismissed row, so we don't lie about all_done or double-fire the
+	// SSE. Idempotent /complete re-fires after a successful stamp also
+	// return flipped=false (all_done_at is already set) — the retry
+	// path collapses cleanly.
 	if res.AllRequiredDone {
 		flipped, post, rerr := h.store.TryAutoResolveChecklist(ctx, notifID, userID, hubIDs)
 		if rerr != nil {
@@ -1019,9 +1020,8 @@ func (h *NotificationsHandler) CompleteItem(w http.ResponseWriter, r *http.Reque
 			slog.Warn("checklist auto-resolve failed",
 				"notification_id", notifID, "item_id", itemID, "err", rerr)
 		} else if flipped && post != nil {
-			events.PublishNotificationResolved(ctx, h.events, post)
-			resp.AutoResolved = true
-			resp.AutoResolvedAs = model.ResolutionAppliedAuto
+			events.PublishNotificationUpdated(ctx, h.events, post, events.NotificationChangeAllDone)
+			resp.AllDone = true
 		}
 	}
 

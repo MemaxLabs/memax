@@ -277,20 +277,40 @@ function ShortcutsPanel() {
     const ua = navigator.userAgent;
     setMod(/Mac|iPhone|iPad|iPod/.test(ua) ? "⌘" : "Ctrl");
   }, []);
-  const rows: { keys: string[]; label: string }[] = [
-    { keys: [mod, "K"], label: t.mechanism.shortcutSearch },
-    { keys: [mod, "J"], label: t.mechanism.shortcutRemember },
-    { keys: [mod, "⇧", "↵"], label: t.mechanism.shortcutCompose },
-    { keys: [mod, "M"], label: t.mechanism.shortcutBrainToggle },
-    { keys: ["↵"], label: t.mechanism.shortcutBarSubmit },
-    { keys: [mod, "↵"], label: t.mechanism.shortcutBarSave },
-    { keys: ["⇧", "↵"], label: t.mechanism.shortcutBarGraduate },
-    { keys: [mod, "A"], label: t.mechanism.shortcutSelectAll },
-    { keys: ["Esc"], label: t.mechanism.shortcutEscape },
-    { keys: ["?"], label: t.mechanism.shortcutHelp },
-  ];
+  const k = t.mechanism.keys;
+  // Grouped by what you are doing. Every binding here is verified
+  // against bar-context / ComposeTriggers / selection-context / the
+  // rail's "?" listener — never list a key the app does not bind.
+  const groups: { title: string; rows: { keys: string[]; label: string }[] }[] =
+    [
+      {
+        title: k.groupBar,
+        rows: [
+          { keys: [mod, "K"], label: k.barToggle },
+          { keys: ["↵"], label: k.barAsk },
+          { keys: [mod, "↵"], label: k.barSave },
+          { keys: [mod, "J"], label: k.barRemember },
+          { keys: ["Esc"], label: k.barEscape },
+        ],
+      },
+      {
+        title: k.groupWrite,
+        rows: [
+          { keys: ["⇧", "↵"], label: k.writeGraduate },
+          { keys: [mod, "⇧", "↵"], label: k.writeOpen },
+        ],
+      },
+      {
+        title: k.groupMove,
+        rows: [
+          { keys: [mod, "M"], label: k.moveBrain },
+          { keys: [mod, "A"], label: k.selectAll },
+          { keys: ["?"], label: k.help },
+        ],
+      },
+    ];
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <div>
         <h2 className="text-[15px] font-semibold text-foreground">
           {t.mechanism.shortcutsTitle}
@@ -299,26 +319,57 @@ function ShortcutsPanel() {
           {t.mechanism.shortcutsIntro}
         </p>
       </div>
-      <div className="flex flex-col">
-        {rows.map((row) => (
-          <div
-            key={row.label}
-            className="flex items-center justify-between gap-3 py-2"
-          >
-            <span className="min-w-0 text-[13px] text-fg-2">{row.label}</span>
-            <span className="flex shrink-0 items-center gap-1">
-              {row.keys.map((key, i) => (
-                <kbd
-                  key={i}
-                  className="rounded-md border border-border bg-surface-1 px-1.5 py-0.5 text-[11px] font-medium tracking-wide text-fg-2"
-                >
-                  {key}
-                </kbd>
-              ))}
-            </span>
-          </div>
-        ))}
+
+      {/* The bar in three lines — one box that both remembers and
+          asks. This is the model every shortcut below assumes. */}
+      <div className="rounded-surface bg-surface-1 px-4 py-3">
+        <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-fg-4">
+          {k.modelTitle}
+        </p>
+        <ol className="m-0 mt-2 flex list-none flex-col gap-1.5 p-0">
+          {[k.model1, k.model2, k.model3].map((line, i) => (
+            <li
+              key={i}
+              className="flex items-start gap-2.5 text-[13px] text-fg-2"
+            >
+              <span className="mt-[3px] grid h-4 w-4 shrink-0 place-items-center rounded-full bg-surface-2 font-mono text-[9.5px] text-fg-3">
+                {i + 1}
+              </span>
+              <span>{line}</span>
+            </li>
+          ))}
+        </ol>
       </div>
+
+      {groups.map((group) => (
+        <div key={group.title}>
+          <p className="m-0 mb-1 text-[10px] font-semibold uppercase tracking-wider text-fg-4">
+            {group.title}
+          </p>
+          <div className="flex flex-col">
+            {group.rows.map((row) => (
+              <div
+                key={row.label}
+                className="flex items-center justify-between gap-3 py-2"
+              >
+                <span className="min-w-0 text-[13px] text-fg-2">
+                  {row.label}
+                </span>
+                <span className="flex shrink-0 items-center gap-1">
+                  {row.keys.map((key, i) => (
+                    <kbd
+                      key={i}
+                      className="rounded-md border border-border bg-surface-1 px-1.5 py-0.5 text-[11px] font-medium tracking-wide text-fg-2"
+                    >
+                      {key}
+                    </kbd>
+                  ))}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

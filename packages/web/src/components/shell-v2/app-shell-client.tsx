@@ -35,6 +35,11 @@ import {
 } from "@/contexts/settings-panel-context";
 import { useIsMobile, IsMobileProvider } from "@/hooks/use-is-mobile";
 import { OnboardingMechanismModal } from "@/components/features/onboarding-mechanism-modal";
+import {
+  closeMechanism,
+  openMechanism,
+  useMechanismState,
+} from "@/lib/mechanism-store";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import { useVisualViewportRect } from "@/hooks/use-visual-viewport-rect";
 import { useScrollDirection } from "@/hooks/use-scroll-direction";
@@ -154,7 +159,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   } = useSettingsPanel();
   // Mobile 入门与机制 host — entered from the SettingsPanel row (the
   // desktop rail owns its own modal instance).
-  const [mobileOnboardingOpen, setMobileOnboardingOpen] = useState(false);
+  const mechanism = useMechanismState();
   const [liveTransition, setLiveTransition] =
     useState<SurfaceTransitionRequest | null>(null);
   const [liveTransitionVisible, setLiveTransitionVisible] = useState(false);
@@ -336,12 +341,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
                     onClose={closeSettings}
                     anchor={isMobile ? "top-right" : "bottom-left"}
                     onOpenGettingStarted={
-                      isMobile ? () => setMobileOnboardingOpen(true) : undefined
+                      isMobile ? () => openMechanism("quickstart") : undefined
                     }
                   />
-                  {isMobile && mobileOnboardingOpen && (
+                  {isMobile && mechanism.open && (
                     <OnboardingMechanismModal
-                      onClose={() => setMobileOnboardingOpen(false)}
+                      key={mechanism.epoch}
+                      initialTab={mechanism.tab}
+                      onClose={closeMechanism}
                     />
                   )}
                   <SettingsDialog />

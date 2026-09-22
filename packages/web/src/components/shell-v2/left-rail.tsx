@@ -48,6 +48,11 @@ import {
   OnboardingMechanismModal,
   type MechanismTab,
 } from "@/components/features/onboarding-mechanism-modal";
+import {
+  closeMechanism,
+  openMechanism,
+  useMechanismState,
+} from "@/lib/mechanism-store";
 import { useBar } from "@/contexts/bar-context";
 import { useShellState } from "@/contexts/shell-state-context";
 import { useNotificationSummary } from "@/hooks/use-notifications";
@@ -106,14 +111,10 @@ export function LeftRail({ activeTab }: LeftRailProps) {
   // markup match — the hint is a detail, not worth a hydration
   // mismatch.
   const [kbdHint, setKbdHint] = useState<string | null>(null);
-  const [onboardingOpen, setOnboardingOpen] = useState(false);
-  const [onboardingTab, setOnboardingTab] =
-    useState<MechanismTab>("quickstart");
-  // Bumped by the "?" opener so a press while the modal is ALREADY
-  // open remounts it on the shortcuts tab — initialTab is only read
-  // at mount, so without a key change the press would no-op
-  // (adversarial review).
-  const [onboardingEpoch, setOnboardingEpoch] = useState(0);
+  // 入门与机制 lives in a shared store (lib/mechanism-store) so the
+  // "?" key, this rail row, the mobile settings panel and the
+  // quick-start deck all open the same modal on the tab they mean.
+  const mechanism = useMechanismState();
   useEffect(() => {
     const ua = navigator.userAgent;
     setKbdHint(/Mac|iPhone|iPad|iPod/.test(ua) ? "⌘K" : "Ctrl K");
@@ -133,9 +134,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
         }
       }
       e.preventDefault();
-      setOnboardingTab("shortcuts");
-      setOnboardingEpoch((n) => n + 1);
-      setOnboardingOpen(true);
+      openMechanism("shortcuts");
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -368,10 +367,7 @@ export function LeftRail({ activeTab }: LeftRailProps) {
       <div className="px-2 pb-1 shrink-0">
         <button
           type="button"
-          onClick={() => {
-            setOnboardingTab("quickstart");
-            setOnboardingOpen(true);
-          }}
+          onClick={() => openMechanism("quickstart")}
           aria-haspopup="dialog"
           className="flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 text-left transition-[background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer hover:bg-surface-2"
           style={{ color: "var(--fg-2)" }}
@@ -384,11 +380,11 @@ export function LeftRail({ activeTab }: LeftRailProps) {
           </span>
         </button>
       </div>
-      {onboardingOpen && (
+      {mechanism.open && (
         <OnboardingMechanismModal
-          key={onboardingEpoch}
-          initialTab={onboardingTab}
-          onClose={() => setOnboardingOpen(false)}
+          key={mechanism.epoch}
+          initialTab={mechanism.tab}
+          onClose={closeMechanism}
         />
       )}
 

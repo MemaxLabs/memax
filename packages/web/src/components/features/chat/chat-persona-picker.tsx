@@ -1,7 +1,8 @@
 "use client";
 
 import { Fingerprint } from "lucide-react";
-import type { ChatSession } from "memax-sdk";
+import type { ChatSession, Persona } from "memax-sdk";
+import { resolveAgentIdentity } from "@memaxlabs/ui/tokens/agents";
 import {
   Select,
   SelectTrigger,
@@ -20,6 +21,15 @@ import { usePatchChatSession } from "@/hooks/use-chat";
  * allowed mid-session — it only shapes FUTURE turns' system prompts.
  * Hidden entirely while the user has no personas.
  */
+/** "Claude Code · SOUL.md" — agent display name plus the profile file. */
+function personaSourceLabel(p: Persona): string {
+  const name = resolveAgentIdentity(p.source_agent).displayName;
+  if (p.source_scope.startsWith("profile:")) {
+    return `${name} · ${p.source_scope.replace("profile:", "")}`;
+  }
+  return name;
+}
+
 export function ChatPersonaPicker({ session }: { session: ChatSession }) {
   const { t } = useLocale();
   const { data: personas } = usePersonas();
@@ -75,7 +85,15 @@ export function ChatPersonaPicker({ session }: { session: ChatSession }) {
           <SelectItem value="none">{t.personas.pickerNone}</SelectItem>
           {personas.map((p) => (
             <SelectItem key={p.id} value={p.id}>
-              {p.name}
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate">{p.name}</span>
+                {/* Where this voice came from — the same 来自 line the
+                    persona shelf shows, so the picker never lists a
+                    name without its origin. */}
+                <span className="truncate text-[11px] text-fg-4">
+                  {t.personas.sourceLabel} {personaSourceLabel(p)}
+                </span>
+              </span>
             </SelectItem>
           ))}
         </SelectContent>

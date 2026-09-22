@@ -97,7 +97,9 @@ export const en = {
     kickerAsk: "4 / 6 · Ask",
     askTitle: "Ask memax",
     askBody:
-      "Answers come from what you saved, and every line points back to where it came from.",
+      "Two ways to ask. ⌘K opens the bar for a quick search — press ↵ and matching memories appear; Ask memax is the sit-down conversation: multi-turn, cited, with personas.",
+    askCtaChat: "Open Ask memax",
+    barHowTo: "How the bar works",
     askExampleQ: "What launch date did we agree with the client?",
     askExampleA:
       "October 1st, with Wang owning support — from the meeting you noted on September 20th.",
@@ -203,17 +205,28 @@ export const en = {
     // Shortcuts tab — organized by "what you want to do", not key names.
     shortcutsTitle: "Keyboard shortcuts",
     shortcutsIntro:
-      "Each shortcut maps to one everyday move. On desktop, press ? anywhere to open this page.",
-    shortcutSearch: "Quick search — recall a memory",
-    shortcutRemember: "Quick capture — dump a thought straight into memory",
-    shortcutCompose: "Write something longer — open the compose modal",
-    shortcutBrainToggle: "Brain view ↔ memory list",
-    shortcutBarSubmit: "In the bar: send / search",
-    shortcutBarSave: "In the bar: save as a memory right away",
-    shortcutBarGraduate: "In the bar: graduate the draft to compose",
-    shortcutSelectAll: "While batch-selecting: select everything listed",
-    shortcutEscape: "Peel back one layer (modal → bar → closed)",
-    shortcutHelp: "Open this page",
+      "One bar, for saving and asking. Grouped by what you're doing.",
+    keys: {
+      modelTitle: "The bar does three things",
+      model1:
+        "Type, press ↵ = search / ask. Matching memories appear below; Pro adds a line from memax.",
+      model2:
+        "⌘↵ or the Remember button = save as a memory. Dropping a file saves too.",
+      model3: "Esc peels back one layer: results → text → closed.",
+      groupBar: "The bar",
+      barToggle: "Open / close the bar",
+      barAsk: "Search / ask",
+      barSave: "Save as a memory",
+      barRemember: "Open the bar straight into Remember",
+      barEscape: "Back one layer",
+      groupWrite: "Writing something longer",
+      writeGraduate: "In the bar: take the draft to the compose modal",
+      writeOpen: "Open the compose modal from anywhere",
+      groupMove: "Getting around",
+      moveBrain: "Ask memax ↔ Memories",
+      selectAll: "While batch-selecting: select all",
+      help: "Open this page",
+    },
     title: "How memax remembers you",
     subtitle:
       "How memories are written, organized, recalled — and where the boundaries are.",
@@ -2642,7 +2655,8 @@ export const en = {
     // 2026-09-15 founder redesign: radio-card grammar — tap selects,
     // highlight is the state. No set-default CTA, badge, or success
     // sentence.
-    subtitle: "Pick one and memax speaks as it.",
+    subtitle:
+      "Extracted from the identity files you sync. Pick one in Ask memax and it speaks in that voice.",
     sourceLabel: "from",
     defaultCardTitle: "Memax itself",
     defaultCardBody: "No persona — its own voice",

@@ -39,6 +39,7 @@ import { useDreamReport, useDreamTrigger } from "@/hooks/use-dreams";
 import { useBar } from "@/contexts/bar-context";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { acquireBodyScrollLock } from "@/lib/scroll-lock";
+import { openMechanism } from "@/lib/mechanism-store";
 import { CLI_SETUP_CMD } from "@/lib/cli";
 import { AGENT_BRAND_MARKS } from "@memaxlabs/ui/tokens/agent-brand-marks";
 import { AGENT_IDENTITIES } from "@memaxlabs/ui/tokens/agents";
@@ -585,17 +586,30 @@ export function QuickStartDialog({
             </div>
           ),
           actions: (
-            <button
-              type="button"
-              className={primaryClass}
-              onClick={() => {
-                markViewed("first_memory");
-                onClose();
-                openBar();
-              }}
-            >
-              {copy.rememberCta}
-            </button>
+            <>
+              <button
+                type="button"
+                className={primaryClass}
+                onClick={() => {
+                  markViewed("first_memory");
+                  onClose();
+                  openBar();
+                }}
+              >
+                {copy.rememberCta}
+              </button>
+              <button
+                type="button"
+                className={ghostClass}
+                onClick={() => {
+                  onClose();
+                  openMechanism("shortcuts");
+                }}
+              >
+                {copy.barHowTo}
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </>
           ),
         };
       }
@@ -624,17 +638,31 @@ export function QuickStartDialog({
             </div>
           ),
           actions: (
-            <button
-              type="button"
-              className={primaryClass}
-              onClick={() => {
-                markViewed("first_ask");
-                onClose();
-                openBar();
-              }}
-            >
-              {copy.askCta}
-            </button>
+            <>
+              <button
+                type="button"
+                className={primaryClass}
+                onClick={() => {
+                  markViewed("first_ask");
+                  onClose();
+                  openBar();
+                }}
+              >
+                {copy.askCta}
+                <span className="font-mono text-[10px] opacity-60">⌘K</span>
+              </button>
+              <button
+                type="button"
+                className={secondaryClass}
+                onClick={() => {
+                  markViewed("first_ask");
+                  onClose();
+                  router.push("/brain");
+                }}
+              >
+                {copy.askCtaChat}
+              </button>
+            </>
           ),
         };
       case "first_dream": {

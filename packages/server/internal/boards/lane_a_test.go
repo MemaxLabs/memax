@@ -103,13 +103,24 @@ func TestRefreshHubBoardProducesLaneACards(t *testing.T) {
 	if ap.Agents[0].LatestTitle != "Chose River over Redis queue" {
 		t.Fatalf("latest title wrong: %q", ap.Agents[0].LatestTitle)
 	}
-	if ap.ThisWeek != 3 || ap.LastWeek != 1 {
-		t.Fatalf("week diff wrong: %#v", ap)
+	// Receipt rows: the three in-window memories, newest first, each
+	// carrying its topic (m1 → 部署) and agent.
+	if len(ap.Items) != 3 || ap.Items[0].MemoryID != "m2" || ap.Items[2].MemoryID != "m3" {
+		t.Fatalf("activity items wrong: %#v", ap.Items)
+	}
+	if ap.Items[0].AgentSlug != "claude-code" {
+		t.Fatalf("item agent wrong: %#v", ap.Items[0])
+	}
+	m1 := ap.Items[1]
+	if m1.MemoryID != "m1" || m1.TopicID != "t1" || m1.TopicName != "部署" {
+		t.Fatalf("item topic wrong: %#v", m1)
+	}
+	if ap.ThisWeek != 0 || ap.LastWeek != 0 {
+		t.Fatalf("week counters are retired and must not be written: %#v", ap)
 	}
 	if len(ap.Topics) != 1 || ap.Topics[0].Name != "部署" || ap.Topics[0].RecentCount != 1 {
 		t.Fatalf("topics wrong: %#v", ap.Topics)
 	}
-
 
 }
 

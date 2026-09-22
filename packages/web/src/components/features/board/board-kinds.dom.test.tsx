@@ -9,6 +9,10 @@ import type { BoardSlot } from "memax-sdk";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
+vi.mock("@/lib/auth", () => ({
+  useAuth: () => ({ user: { id: "u-me" } }),
+  useActiveHub: () => ({ activeHub: null }),
+}));
 
 // Side-effect: registers the Lane A renderers (same import BoardView uses).
 import "./board-kinds";
@@ -44,7 +48,56 @@ describe("lane A board kind renderers", () => {
     }
   });
 
-  it("activity folds agents, topics and the week diff into one body", () => {
+  it("activity is a receipt grouped by topic: title · author · agent · age", () => {
+    render(
+      <div>
+        {renderBoardSlotBody(
+          slot({
+            payload: {
+              window_hours: 24,
+              items: [
+                {
+                  memory_id: "m2",
+                  title: "Chose River over Redis",
+                  created_at: "2026-08-04T23:00:00Z",
+                  agent_slug: "claude-code",
+                  author_id: "u-me",
+                  author_name: "Derek",
+                  topic_id: "t1",
+                  topic_name: "部署",
+                  topic_icon: "rocket",
+                },
+                {
+                  memory_id: "m1",
+                  title: "Weekly review 09-20",
+                  created_at: "2026-08-04T20:00:00Z",
+                  agent_slug: "hermes",
+                  author_id: "u-ziyang",
+                  author_name: "Ziyang",
+                },
+              ],
+              agents: [{ slug: "claude-code", count: 1 }],
+            },
+          }),
+        )}
+      </div>,
+    );
+    // Topic groups: the filed one by its chip, the rest under 未归主题.
+    expect(screen.getByText("部署")).toBeTruthy();
+    expect(screen.getByText("No topic yet")).toBeTruthy();
+    // Rows carry the memory row's attribution: you / teammate, agent.
+    expect(screen.getByText("Chose River over Redis")).toBeTruthy();
+    expect(screen.getByText("You")).toBeTruthy();
+    expect(screen.getByText("Claude Code")).toBeTruthy();
+    expect(screen.getByText("Ziyang")).toBeTruthy();
+    expect(screen.getByText("Hermes")).toBeTruthy();
+    // Weekly comparison is gone for good.
+    expect(screen.queryByText(/this week/)).toBeNull();
+    expect(screen.queryByText(/Last week/)).toBeNull();
+    expect(screen.queryByText("fallback title (must not render)")).toBeNull();
+  });
+
+  it("activity payloads from older producers still render their agent sections", () => {
     render(
       <div>
         {renderBoardSlotBody(
@@ -67,17 +120,10 @@ describe("lane A board kind renderers", () => {
         )}
       </div>,
     );
-    // Agent attribution resolves through the identity tokens.
     expect(screen.getByText("Claude Code")).toBeTruthy();
     expect(screen.getByText("3 memories")).toBeTruthy();
-    expect(screen.getByText("Latest: “Chose River over Redis”")).toBeTruthy();
     expect(screen.getByText("Captured by hand")).toBeTruthy();
-    // Topic movement and the week diff live in the same body now.
-    expect(screen.getByText(/部署 \(5\)/)).toBeTruthy();
-    expect(screen.getByText(/1 memory this week/)).toBeTruthy();
-    expect(screen.getByText(/Last week: 4/)).toBeTruthy();
-    // The slot's fallback title never leaks into a dedicated renderer.
-    expect(screen.queryByText("fallback title (must not render)")).toBeNull();
+    expect(screen.queryByText(/Last week/)).toBeNull();
   });
 
   it("retired kinds fall through to the literal-text fallback", () => {

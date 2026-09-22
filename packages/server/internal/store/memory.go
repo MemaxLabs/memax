@@ -3588,6 +3588,42 @@ func (s *InMemoryStore) ListRecentAgentActivityByHub(hubID string, since time.Ti
 	return out, nil
 }
 
+func (s *InMemoryStore) ListRecentMemoryActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardActivityItem, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var items []model.BoardActivityItem
+	for _, m := range s.memories {
+		if !boardMemoryEligible(m, hubID) || !m.CreatedAt.After(since) {
+			continue
+		}
+		it := model.BoardActivityItem{
+			MemoryID:  m.ID,
+			Title:     m.Title,
+			CreatedAt: m.CreatedAt,
+			AgentSlug: model.EffectiveMemoryAgentSlug(m),
+			AuthorID:  m.OwnerID,
+		}
+		if u, ok := s.users[m.OwnerID]; ok && u != nil {
+			if u.DisplayName != "" {
+				it.AuthorName = u.DisplayName
+			} else {
+				it.AuthorName = u.Name
+			}
+		}
+		if mt, ok := s.memoryTopics[m.ID]; ok {
+			if tp, ok := s.topics[mt.TopicID]; ok && tp != nil && tp.ArchivedAt == nil {
+				it.TopicID, it.TopicName, it.TopicIcon = tp.ID, tp.Name, tp.Icon
+			}
+		}
+		items = append(items, it)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
+}
+
 func (s *InMemoryStore) ListTopicActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardTopicActivity, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

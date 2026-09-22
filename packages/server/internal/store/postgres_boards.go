@@ -372,6 +372,53 @@ func (s *PostgresStore) ListRecentAgentActivityByHub(hubID string, since time.Ti
 	return activity, rows.Err()
 }
 
+// ListRecentMemoryActivityByHub — the 动静 receipt rows. One row per
+// memory in the window, newest first, with the owner's display name,
+// the effective agent (created_by_slug else source_agent, enriched
+// from connected_agents) and the memory's primary topic (lowest
+// position, then highest confidence). Hub-scoped by boardMemoryFilter.
+func (s *PostgresStore) ListRecentMemoryActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardActivityItem, error) {
+	ctx := context.Background()
+	rows, err := s.pool.Query(ctx,
+		`SELECT m.id::text, m.title, m.created_at,
+			COALESCE(`+memoryAgentSlugExpr+`, '') AS agent_slug,
+			COALESCE(ca.display_name, '') AS agent_display_name,
+			m.owner_id::text,
+			COALESCE(u.display_name, u.name, '') AS author_name,
+			COALESCE(tp.id::text, ''), COALESCE(tp.name, ''), COALESCE(tp.icon, '')
+		FROM memories m
+		LEFT JOIN users u ON m.owner_id = u.id
+		LEFT JOIN connected_agents ca ON m.owner_id = ca.owner_id AND `+memoryAgentSlugExpr+` = ca.agent_name
+		LEFT JOIN LATERAL (
+			SELECT t.id, t.name, t.icon
+			FROM memory_topics mt
+			JOIN topics t ON t.id = mt.topic_id
+			WHERE mt.memory_id = m.id AND t.hub_id = $1::uuid AND t.archived_at IS NULL
+			ORDER BY mt.position ASC, mt.confidence DESC
+			LIMIT 1
+		) tp ON true
+		WHERE `+boardMemoryFilter+` AND m.created_at > $2
+		ORDER BY m.created_at DESC
+		LIMIT $3`,
+		hubID, since, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.BoardActivityItem
+	for rows.Next() {
+		var it model.BoardActivityItem
+		if err := rows.Scan(&it.MemoryID, &it.Title, &it.CreatedAt,
+			&it.AgentSlug, &it.AgentDisplayName, &it.AuthorID, &it.AuthorName,
+			&it.TopicID, &it.TopicName, &it.TopicIcon); err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+	}
+	return items, rows.Err()
+}
+
 func (s *PostgresStore) ListTopicActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardTopicActivity, error) {
 	ctx := context.Background()
 	rows, err := s.pool.Query(ctx,

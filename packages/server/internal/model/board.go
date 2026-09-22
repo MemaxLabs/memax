@@ -102,8 +102,8 @@ type BoardSlot struct {
 	State         string               `json:"state"`
 	Resolution    *BoardSlotResolution `json:"resolution,omitempty"`
 	DreamRunID    string               `json:"dream_run_id,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt     time.Time            `json:"created_at"`
+	UpdatedAt     time.Time            `json:"updated_at"`
 	// ContentUpdatedAt moves only when a producer writes content —
 	// user actions bump UpdatedAt, so only this field can answer
 	// "how long since this card was actually regenerated".
@@ -199,17 +199,39 @@ type BoardTracePayload struct {
 	Agents      []BoardAgentActivity `json:"agents"`
 }
 
-// BoardActivityPayload is the folded activity line. Everything here is
-// countable fact; the renderer shows one summary line and reveals the
-// breakdown on demand.
+// BoardActivityItem is one memory in the 动静 window, with everything
+// the card needs to say "what landed where, by whom": the topic it was
+// filed under, the human who owns it, and the agent it came through.
+// Founder call 2026-09-22: the card is a receipt of additions, not a
+// counter — so the renderer groups these by topic and reuses the
+// memory row's attribution vocabulary.
+type BoardActivityItem struct {
+	MemoryID         string    `json:"memory_id"`
+	Title            string    `json:"title"`
+	CreatedAt        time.Time `json:"created_at"`
+	AgentSlug        string    `json:"agent_slug,omitempty"`
+	AgentDisplayName string    `json:"agent_display_name,omitempty"`
+	AuthorID         string    `json:"author_id,omitempty"`
+	AuthorName       string    `json:"author_name,omitempty"`
+	TopicID          string    `json:"topic_id,omitempty"`
+	TopicName        string    `json:"topic_name,omitempty"`
+	TopicIcon        string    `json:"topic_icon,omitempty"`
+}
+
+// BoardActivityPayload is the folded activity card. Items is the
+// receipt (newest first, capped); Agents/Topics are the per-agent and
+// per-topic counts. ThisWeek/LastWeek are no longer written (the
+// weekly comparison was retired 2026-09-22) but stay readable so
+// boards from older producers still decode.
 type BoardActivityPayload struct {
 	Description string               `json:"description,omitempty"`
 	WindowHours int                  `json:"window_hours"`
 	WindowDays  int                  `json:"window_days"`
+	Items       []BoardActivityItem  `json:"items,omitempty"`
 	Agents      []BoardAgentActivity `json:"agents,omitempty"`
 	Topics      []BoardTopicActivity `json:"topics,omitempty"`
-	ThisWeek    int                  `json:"this_week"`
-	LastWeek    int                  `json:"last_week"`
+	ThisWeek    int                  `json:"this_week,omitempty"`
+	LastWeek    int                  `json:"last_week,omitempty"`
 }
 
 // BoardTopicActivity is one topic's line in the pulse card.

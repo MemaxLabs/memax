@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 )
@@ -190,5 +191,58 @@ func TestInMemoryBoardsSlotValidation(t *testing.T) {
 				t.Fatalf("expected error containing %q, got %v", tc.wantSub, err)
 			}
 		})
+	}
+}
+
+// ListRecentMemoryActivityByHub — the 动静 receipt rows: window-scoped,
+// hub-scoped, newest first, capped, with owner name + effective agent
+// + the memory's topic; onboarding seeds and archived rows excluded.
+func TestInMemoryBoardsRecentMemoryActivity(t *testing.T) {
+	t.Parallel()
+	s := NewInMemoryStore()
+	now := time.Now().UTC()
+	s.AddUser(&model.User{ID: "u1", Name: "derek", DisplayName: "Derek"})
+	if err := s.CreateTopic(&model.Topic{ID: "t1", HubID: "hub-a", Name: "部署", Icon: "rocket"}); err != nil {
+		t.Fatal(err)
+	}
+	mk := func(id, hub, agent, title string, age time.Duration, extra func(*model.Memory)) {
+		m := &model.Memory{ID: id, HubID: hub, OwnerID: "u1", Title: title, SourceAgent: agent, CreatedAt: now.Add(-age)}
+		if extra != nil {
+			extra(m)
+		}
+		if err := s.CreateMemory(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("m-new", "hub-a", "cursor", "newest", time.Hour, nil)
+	mk("m-old", "hub-a", "claude-code", "older", 3*time.Hour, nil)
+	mk("m-out", "hub-a", "claude-code", "outside window", 40*time.Hour, nil)
+	mk("m-other", "hub-b", "claude-code", "other hub", time.Hour, nil)
+	mk("m-seed", "hub-a", "", "seed", time.Hour, func(m *model.Memory) { m.SourceKind = "onboarding-seed" })
+	mk("m-arch", "hub-a", "", "archived", time.Hour, func(m *model.Memory) { m.State = "archived" })
+	if err := s.AssignMemoryToTopic("m-old", "t1", "hub-a", 1.0); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := s.ListRecentMemoryActivityByHub("hub-a", now.Add(-24*time.Hour), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 || items[0].MemoryID != "m-new" || items[1].MemoryID != "m-old" {
+		t.Fatalf("expected [m-new, m-old], got %#v", items)
+	}
+	if items[0].AuthorName != "Derek" || items[0].AuthorID != "u1" || items[0].AgentSlug != "cursor" {
+		t.Fatalf("attribution wrong: %#v", items[0])
+	}
+	if items[1].TopicID != "t1" || items[1].TopicName != "部署" || items[1].TopicIcon != "rocket" {
+		t.Fatalf("topic wrong: %#v", items[1])
+	}
+	if items[0].TopicID != "" {
+		t.Fatalf("untopiced memory must carry no topic: %#v", items[0])
+	}
+
+	capped, err := s.ListRecentMemoryActivityByHub("hub-a", now.Add(-24*time.Hour), 1)
+	if err != nil || len(capped) != 1 || capped[0].MemoryID != "m-new" {
+		t.Fatalf("limit not honoured: %#v %v", capped, err)
 	}
 }

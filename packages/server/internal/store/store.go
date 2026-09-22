@@ -589,6 +589,10 @@ type Store interface {
 	// requesting user; membership is enforced at the board read
 	// endpoint. All exclude archived memories and onboarding seeds.
 	ListRecentAgentActivityByHub(hubID string, since time.Time) ([]model.BoardAgentActivity, error)
+	// ListRecentMemoryActivityByHub lists the window's memories newest
+	// first (capped at limit) with the owner, the effective agent and
+	// the memory's first topic — the receipt rows of the 动静 card.
+	ListRecentMemoryActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardActivityItem, error)
 	ListTopicActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardTopicActivity, error)
 	// CountMemoriesInHubRange counts memories with from < created_at <= to.
 	CountMemoriesInHubRange(hubID string, from, to time.Time) (int, error)

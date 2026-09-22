@@ -60,7 +60,9 @@ export const zh: Translations = {
     connectMockUrl: "URL",
     copyConnectorUrl: "复制连接器地址",
     copied: "已复制",
-    connectWeb: "我在网页上连",
+    connectWeb: "不开终端也行",
+    connectNoTerminalIntro:
+      "把下面这句话粘给你的 agent，它自己会把 memax 配好；或者把配置手动贴进 MCP 设置。",
     kickerRemember: "3 / 6 · 记",
     rememberTitle: "扔一条进来",
     rememberBody:
@@ -117,7 +119,7 @@ export const zh: Translations = {
     dreamDoneTitle: "第一个梦做完了",
     dreamDoneBody: "去脉搏页看看它串出了什么。以后每晚都会做。",
     dreamSeePulse: "去脉搏页",
-    dreamCta: "跑一个 dream",
+    dreamCta: "让 memax 做一个梦",
     dreamCard1: "昨晚整理了 3 条",
     dreamCard2: "有两条说法对不上，标出来了",
     dreamCard3: "两周前你也想过这个",

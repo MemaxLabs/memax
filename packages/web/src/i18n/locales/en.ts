@@ -55,7 +55,9 @@ export const en = {
     connectMockUrl: "URL",
     copyConnectorUrl: "Copy connector URL",
     copied: "Copied",
-    connectWeb: "Connect from the web instead",
+    connectWeb: "No terminal? Paste this",
+    connectNoTerminalIntro:
+      "Paste the line below to your agent and it sets memax up by itself, or drop the config into your MCP settings by hand.",
     kickerRemember: "3 / 6 · Remember",
     rememberTitle: "Toss something in",
     rememberBody:
@@ -116,7 +118,7 @@ export const en = {
     dreamDoneBody:
       "See what it threaded together on the pulse page. It dreams every night from now on.",
     dreamSeePulse: "Open pulse",
-    dreamCta: "Run a dream",
+    dreamCta: "Let memax dream",
     dreamCard1: "Tidied 3 memories last night",
     dreamCard2: "Two of them disagree — flagged",
     dreamCard3: "You had this thought two weeks ago too",

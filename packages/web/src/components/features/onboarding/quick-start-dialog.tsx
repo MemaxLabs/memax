@@ -26,15 +26,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  Copy,
-  Moon,
-  Sparkles,
-  X,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Copy, Moon, X } from "lucide-react";
 import type { ChecklistItem, ChecklistPayload, Notification } from "memax-sdk";
 import { Surface } from "@memaxlabs/ui";
 import { useInterpolate, useLocale } from "@/i18n";
@@ -51,7 +43,8 @@ import { CLI_SETUP_CMD } from "@/lib/cli";
 import { AGENT_BRAND_MARKS } from "@memaxlabs/ui/tokens/agent-brand-marks";
 import { AGENT_IDENTITIES } from "@memaxlabs/ui/tokens/agents";
 import { HubCreateDialog } from "@/components/features/settings/hub-create-dialog";
-import { ConnectAgentsBody } from "@/components/features/connect-agents-section";
+import { ConnectAltMethods } from "@/components/features/connect-agents-section";
+import { AnimatePresence, motion } from "framer-motion";
 import { HubBadge } from "@/components/features/hub/hub-badge";
 import {
   closeQuickStart,
@@ -71,6 +64,16 @@ const STEP_ORDER: QuickStartStep[] = [
 
 /** Same URL ConnectAgentsBody hands to agents. */
 const MCP_URL = "https://api.memax.app/mcp";
+/** Card slide: 24px along the travel direction, spring ease, ~240ms —
+ *  fast enough to feel like a page turn, slow enough to read direction.
+ *  framer-motion honours prefers-reduced-motion globally. */
+const CARD_VARIANTS = {
+  enter: (dir: 1 | -1) => ({ opacity: 0, x: dir * 24 }),
+  center: { opacity: 1, x: 0 },
+  exit: (dir: 1 | -1) => ({ opacity: 0, x: dir * -24 }),
+};
+const CARD_TRANSITION = { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const };
+
 /** The one-liner, split into the three steps the card explains. */
 const SETUP_STEPS = CLI_SETUP_CMD.split(" && ");
 const TERMINAL_AGENTS = [
@@ -262,6 +265,8 @@ export function QuickStartDialog({
     () => initialStep ?? firstUnfinishedStep(payload),
   );
   const [showConnectPanel, setShowConnectPanel] = useState(false);
+  // +1 = forward, -1 = back: the card slides in from the side it came from.
+  const [direction, setDirection] = useState<1 | -1>(1);
   const [showHubCreate, setShowHubCreate] = useState(false);
   const [copied, setCopied] = useState<"command" | "url" | null>(null);
   const [rememberScene, setRememberScene] = useState<RememberScene>("agent");
@@ -285,6 +290,7 @@ export function QuickStartDialog({
   const go = useCallback(
     (delta: number) => {
       setShowConnectPanel(false);
+      setDirection(delta < 0 ? -1 : 1);
       if (step === "use_cases") {
         if (delta < 0) setStep(STEP_ORDER[total - 1]);
         return;
@@ -708,7 +714,6 @@ export function QuickStartDialog({
                 });
               }}
             >
-              <Sparkles className="h-3.5 w-3.5" />
               {copy.dreamCta}
             </button>
           ),
@@ -794,135 +799,171 @@ export function QuickStartDialog({
 
   if (typeof document === "undefined") return null;
 
+  // HubCreateDialog is its own takeover; the deck steps aside while it
+  // is up (same z tier, so stacking would be DOM-order luck) and
+  // returns, on the same card, when it closes.
   return createPortal(
     <>
-      <div
-        className="fixed inset-0 z-takeover"
-        style={{
-          background: "rgba(0,0,0,0.4)",
-          touchAction: "none",
-          overscrollBehavior: "contain",
-        }}
-        onClick={onClose}
-      />
-      <div className="fixed inset-0 z-takeover flex items-end justify-center pointer-events-none sm:items-center sm:p-6">
+      {showHubCreate ? null : (
         <div
-          ref={dialogRef}
-          tabIndex={-1}
-          role="dialog"
-          aria-modal="true"
-          aria-label={copy.title}
-          className={`pointer-events-auto w-full animate-fade-up outline-none ${isMobile ? "h-[100dvh]" : "max-w-[720px]"}`}
-        >
-          <Surface
-            variant="subtle"
-            rounded="2xl"
-            className={`glass-dropdown backdrop-blur-sm flex flex-col overflow-hidden ${isMobile ? "h-full rounded-none!" : "max-h-[88dvh]"}`}
+          className="fixed inset-0 z-takeover"
+          style={{
+            background: "rgba(0,0,0,0.4)",
+            touchAction: "none",
+            overscrollBehavior: "contain",
+          }}
+          onClick={onClose}
+        />
+      )}
+      {showHubCreate ? null : (
+        <div className="fixed inset-0 z-takeover flex items-end justify-center pointer-events-none sm:items-center sm:p-6">
+          <div
+            ref={dialogRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-label={copy.title}
+            className={`pointer-events-auto w-full animate-fade-up outline-none ${isMobile ? "h-[100dvh]" : "max-w-[720px]"}`}
           >
-            {/* top: dots + skip */}
-            <div className="flex items-center justify-between px-4 pt-3.5 sm:px-5">
-              <div
-                role="group"
-                className="flex items-center gap-2"
-                aria-label={interpolate(copy.progress, {
-                  done: doneCount,
-                  total,
-                })}
-              >
-                {dots.map((d) => (
-                  <button
-                    key={d.id}
-                    type="button"
-                    onClick={() => {
-                      setShowConnectPanel(false);
-                      setStep(d.id);
-                    }}
-                    aria-label={copy.stepLabel[d.id]}
-                    aria-current={d.active ? "step" : undefined}
-                    className="h-[6px] rounded-full transition-all cursor-pointer"
-                    style={{
-                      width: d.active ? 18 : 6,
-                      transitionTimingFunction: "var(--ease-spring)",
-                      background:
-                        d.active || d.done ? "var(--fg-1)" : "var(--fg-4)",
-                      opacity: d.active ? 1 : d.done ? 0.55 : 1,
-                    }}
-                  />
-                ))}
-              </div>
-              <button type="button" onClick={onClose} className={ghostClass}>
-                {copy.skip}
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            {/* art */}
-            <div
-              key={`art-${step}`}
-              className={`animate-content-ready relative mx-4 mt-3 overflow-hidden rounded-surface bg-surface-1 sm:mx-5 ${
-                step === "use_cases"
-                  ? "min-h-[300px] flex-1 sm:h-[360px] sm:min-h-0 sm:flex-none"
-                  : step === "connect_agent"
-                    ? "min-h-[420px] flex-1 sm:h-[248px] sm:min-h-0 sm:flex-none"
-                    : step === "first_memory"
-                      ? "flex-none sm:h-[232px]"
-                      : "min-h-[220px] flex-1 sm:h-[250px] sm:min-h-0 sm:flex-none"
+            <Surface
+              variant="subtle"
+              rounded="2xl"
+              className={`glass-dropdown backdrop-blur-sm flex flex-col overflow-hidden ${
+                isMobile ? "h-full rounded-none!" : "h-[min(580px,88dvh)]"
               }`}
             >
-              {card.art}
-            </div>
-
-            {/* copy */}
-            <div
-              key={`copy-${step}`}
-              className="animate-content-ready min-h-0 shrink overflow-y-auto px-5 pt-4 sm:flex-1 sm:px-6"
-            >
-              <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-fg-4">
-                {card.kicker}
-              </p>
-              <h2 className="mb-1.5 mt-1 text-[21px] font-bold leading-tight tracking-[-0.01em] text-fg-1">
-                {card.title}
-              </h2>
-              {card.body ? (
-                <p className="m-0 max-w-[560px] text-[14px] leading-[1.65] text-fg-2">
-                  {card.body}
-                </p>
-              ) : null}
-              {step === "connect_agent" && showConnectPanel ? (
-                <div className="mt-3 rounded-surface bg-surface-1 p-4">
-                  <ConnectAgentsBody />
+              {/* top: dots + skip */}
+              <div className="flex items-center justify-between px-4 pt-3.5 sm:px-5">
+                <div
+                  role="group"
+                  className="flex items-center gap-2"
+                  aria-label={interpolate(copy.progress, {
+                    done: doneCount,
+                    total,
+                  })}
+                >
+                  {dots.map((d) => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => {
+                        setShowConnectPanel(false);
+                        setDirection(STEP_ORDER.indexOf(d.id) < index ? -1 : 1);
+                        setStep(d.id);
+                      }}
+                      aria-label={copy.stepLabel[d.id]}
+                      aria-current={d.active ? "step" : undefined}
+                      className="h-[6px] rounded-full transition-all cursor-pointer"
+                      style={{
+                        width: d.active ? 18 : 6,
+                        transitionTimingFunction: "var(--ease-spring)",
+                        background:
+                          d.active || d.done ? "var(--fg-1)" : "var(--fg-4)",
+                        opacity: d.active ? 1 : d.done ? 0.55 : 1,
+                      }}
+                    />
+                  ))}
                 </div>
-              ) : null}
-            </div>
+                <button type="button" onClick={onClose} className={ghostClass}>
+                  {copy.skip}
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
 
-            {/* actions */}
-            <div className="flex flex-wrap items-center gap-2 px-5 pb-5 pt-3 sm:px-6">
-              {card.actions}
-              <span className="flex-1" />
-              {index > 0 || step === "use_cases" ? (
-                <button
-                  type="button"
-                  className={ghostClass}
-                  onClick={() => go(-1)}
-                  aria-label={copy.back}
+              {/* card — art, copy and actions slide as one, direction-aware.
+                The dialog itself never resizes: stage height is fixed and
+                the copy zone scrolls, so the frame stays put while the
+                card inside changes (Apple onboarding / Linear stepper). */}
+              <AnimatePresence
+                initial={false}
+                mode="popLayout"
+                custom={direction}
+              >
+                <motion.div
+                  key={step}
+                  custom={direction}
+                  variants={CARD_VARIANTS}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={CARD_TRANSITION}
+                  className="flex min-h-0 flex-1 flex-col"
                 >
-                  <ArrowLeft className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-              {step !== "use_cases" ? (
-                <button
-                  type="button"
-                  className={ghostClass}
-                  onClick={() => go(1)}
-                >
-                  {copy.next}
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-            </div>
-          </Surface>
+                  {/* art */}
+                  <div
+                    className={`relative mx-4 mt-3 shrink-0 overflow-hidden rounded-surface bg-surface-1 sm:mx-5 sm:flex-1 ${
+                      step === "connect_agent"
+                        ? "min-h-[420px]"
+                        : step === "use_cases"
+                          ? "min-h-[300px]"
+                          : "min-h-[220px]"
+                    } sm:min-h-0`}
+                  >
+                    {card.art}
+                  </div>
+
+                  {/* copy */}
+                  <div className="max-h-[46%] shrink-0 overflow-y-auto px-5 pt-4 sm:px-6">
+                    <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-fg-4">
+                      {card.kicker}
+                    </p>
+                    <h2 className="mb-1.5 mt-1 flex items-center gap-2 text-[21px] font-bold leading-tight tracking-[-0.01em] text-fg-1">
+                      {card.title}
+
+                      {step === "first_ask" ? (
+                        // Ask is still Beta — same tag the persona shelf wears.
+
+                        <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-fg-3">
+                          {t.personas.beta}
+                        </span>
+                      ) : null}
+                    </h2>
+                    {card.body ? (
+                      <p className="m-0 max-w-[560px] text-[14px] leading-[1.65] text-fg-2">
+                        {card.body}
+                      </p>
+                    ) : null}
+                    {step === "connect_agent" && showConnectPanel ? (
+                      <div className="mt-3 rounded-surface bg-surface-1 p-4">
+                        <p className="m-0 mb-3 text-[13px] leading-relaxed text-fg-2">
+                          {copy.connectNoTerminalIntro}
+                        </p>
+                        <ConnectAltMethods />
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* actions */}
+                  <div className="flex shrink-0 flex-wrap items-center gap-2 px-5 pb-5 pt-3 sm:px-6">
+                    {card.actions}
+                    <span className="flex-1" />
+                    {index > 0 || step === "use_cases" ? (
+                      <button
+                        type="button"
+                        className={ghostClass}
+                        onClick={() => go(-1)}
+                        aria-label={copy.back}
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
+                    {step !== "use_cases" ? (
+                      <button
+                        type="button"
+                        className={ghostClass}
+                        onClick={() => go(1)}
+                      >
+                        {copy.next}
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+            </Surface>
+          </div>
         </div>
-      </div>
+      )}
       {showHubCreate ? (
         <HubCreateDialog
           onCreated={() => {

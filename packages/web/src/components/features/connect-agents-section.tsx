@@ -205,6 +205,31 @@ function CopyBlock({
 
 /* ── AltMethodsDisclosure ──────────────────────────────────────────── */
 
+/**
+ * ConnectAltMethods — the two no-terminal routes, bare (no disclosure
+ * chrome): a one-line prompt any MCP agent can act on, and the manual
+ * MCP config block. The quick-start deck renders this behind 「不开终端
+ * 也行」; the settings disclosure below wraps the same content.
+ */
+export function ConnectAltMethods() {
+  const { t } = useLocale();
+  const interpolate = useInterpolate();
+  return (
+    <div className="space-y-4">
+      <CopyBlock
+        label={t.settings.promptLabel}
+        text={interpolate(t.settings.promptTemplate, { url: MCP_URL })}
+      />
+      <CopyBlock
+        label={t.settings.manualConfig}
+        text={MCP_CONFIG}
+        mono
+        hint={t.settings.pasteInEditor}
+      />
+    </div>
+  );
+}
+
 function AltMethodsDisclosure({
   label,
   promptLabel,

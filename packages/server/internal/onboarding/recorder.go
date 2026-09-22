@@ -199,14 +199,24 @@ func TickFirstDream(ctx context.Context, s store.Store, publisher events.Publish
 			continue
 		}
 		if cerr != nil {
-			slog.Warn("onboarding.TickFirstDream: complete", "notification_id", row.ID, "err", cerr)
+			slog.Warn("onboarding.TickFirstDream: complete", "user_id", userID, "notification_id", row.ID, "item_id", "first_dream", "err", cerr)
 			continue
 		}
-		if updated, gerr := s.GetNotification(ctx, row.ID, userID, nil); gerr == nil && updated != nil {
+		if res == nil {
+			slog.Warn("onboarding.TickFirstDream: complete returned no result", "user_id", userID, "notification_id", row.ID, "item_id", "first_dream")
+			continue
+		}
+		updated, gerr := s.GetNotification(ctx, row.ID, userID, nil)
+		if gerr != nil || updated == nil {
+			slog.Warn("onboarding.TickFirstDream: reread", "user_id", userID, "notification_id", row.ID, "item_id", "first_dream", "err", gerr)
+		} else {
 			events.PublishNotificationItemUpdated(ctx, publisher, updated, recorderItemSnapshot(res))
 		}
 		if res.AllRequiredDone {
-			if flipped, post, terr := s.TryAutoResolveChecklist(ctx, row.ID, userID, nil); terr == nil && flipped && post != nil {
+			flipped, post, terr := s.TryAutoResolveChecklist(ctx, row.ID, userID, nil)
+			if terr != nil {
+				slog.Warn("onboarding.TickFirstDream: all-done", "user_id", userID, "notification_id", row.ID, "err", terr)
+			} else if flipped && post != nil {
 				events.PublishNotificationUpdated(ctx, publisher, post, events.NotificationChangeAllDone)
 			}
 		}

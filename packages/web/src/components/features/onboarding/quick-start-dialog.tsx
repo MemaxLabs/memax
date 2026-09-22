@@ -450,14 +450,14 @@ export function QuickStartDialog({
                 </div>
                 <div className="my-auto rounded-chrome bg-surface-1 p-2.5">
                   <p className="m-0 text-[11.5px] font-medium text-fg-2">
-                    Add custom connector
+                    {copy.connectMockTitle}
                   </p>
                   <div className="mt-1.5 flex items-center gap-1.5 rounded-chrome bg-card px-2.5 py-1.5 text-[11.5px]">
-                    <span className="text-fg-4">Name</span>
+                    <span className="text-fg-4">{copy.connectMockName}</span>
                     <span className="ml-auto font-medium text-fg-1">memax</span>
                   </div>
                   <div className="mt-1 flex items-center gap-1.5 rounded-chrome bg-card px-2.5 py-1.5 text-[11.5px]">
-                    <span className="text-fg-4">URL</span>
+                    <span className="text-fg-4">{copy.connectMockUrl}</span>
                     <span className="ml-auto truncate font-mono text-[10.5px] text-fg-1">
                       {MCP_URL}
                     </span>

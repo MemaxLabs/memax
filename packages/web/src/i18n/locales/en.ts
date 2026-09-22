@@ -50,6 +50,9 @@ export const en = {
     connectPhoneNote:
       "Connectors are per account: set it up on the web and the phone app has it too.",
     copyCommand: "Copy command",
+    connectMockTitle: "Add custom connector",
+    connectMockName: "Name",
+    connectMockUrl: "URL",
     copyConnectorUrl: "Copy connector URL",
     copied: "Copied",
     connectWeb: "Connect from the web instead",

@@ -54,6 +54,10 @@ export const zh: Translations = {
     connectPaneClaude: "claude.ai · 设置 › 连接器",
     connectPhoneNote: "连接器是账号级的：网页连好，手机 app 里就有。",
     copyCommand: "复制命令",
+    // claude.ai 连接器表单的原样复刻——那边的 UI 是英文，这里照抄
+    connectMockTitle: "Add custom connector",
+    connectMockName: "Name",
+    connectMockUrl: "URL",
     copyConnectorUrl: "复制连接器地址",
     copied: "已复制",
     connectWeb: "我在网页上连",

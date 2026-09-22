@@ -326,24 +326,25 @@ func (s *PostgresStore) TryAutoResolveChecklist(ctx context.Context, id, userID 
 		return false, post, err
 	}
 	if flipped {
-		// Re-read so the caller sees the freshly-stamped resolution,
-		// resolved_at, and seen_at for the SSE envelope. If the reread
+		// Re-read so the caller sees the stamped payload, seen_at and
+		// the capped expires_at for the SSE envelope. If the reread
 		// fails (e.g. a transient pool error after the tx committed),
-		// fall back to synthesizing those fields on the pre-update
-		// snapshot — we know exactly what the row looks like now
-		// because we wrote it. Codex pass 2 medium: never publish a
-		// notification.resolved event whose snapshot is missing the
-		// applied_auto resolution.
+		// synthesize exactly what the UPDATE wrote onto the pre-update
+		// snapshot: payload (already set), seen_at, and expires_at =
+		// LEAST(existing, now + 1 day). The row is still pending — never
+		// synthesize a resolved status for a row we deliberately left
+		// open.
 		fresh, gerr := s.GetNotification(ctx, id, userID, hubIDs)
 		if gerr == nil {
 			post = fresh
 		} else if post != nil {
-			// The row is still pending — only the payload (all_done_at)
-			// and seen_at changed. Never synthesize a resolved status
-			// for a row we deliberately left open.
 			now := time.Now().UTC()
 			if post.SeenAt == nil {
 				post.SeenAt = &now
+			}
+			deadline := now.Add(24 * time.Hour)
+			if post.ExpiresAt == nil || post.ExpiresAt.After(deadline) {
+				post.ExpiresAt = &deadline
 			}
 		}
 	}

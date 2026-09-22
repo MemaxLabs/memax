@@ -861,12 +861,12 @@ export function QuickStartDialog({
               key={`art-${step}`}
               className={`animate-content-ready relative mx-4 mt-3 overflow-hidden rounded-surface bg-surface-1 sm:mx-5 ${
                 step === "use_cases"
-                  ? "min-h-[300px] flex-1 sm:h-[360px] sm:flex-none"
+                  ? "min-h-[300px] flex-1 sm:h-[360px] sm:min-h-0 sm:flex-none"
                   : step === "connect_agent"
-                    ? "min-h-[420px] flex-1 sm:h-[248px] sm:flex-none"
+                    ? "min-h-[420px] flex-1 sm:h-[248px] sm:min-h-0 sm:flex-none"
                     : step === "first_memory"
                       ? "flex-none sm:h-[232px]"
-                      : "min-h-[220px] flex-1 sm:h-[250px] sm:flex-none"
+                      : "min-h-[220px] flex-1 sm:h-[250px] sm:min-h-0 sm:flex-none"
               }`}
             >
               {card.art}

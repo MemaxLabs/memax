@@ -121,7 +121,7 @@ function BrandMarkRow({
 function ReplyChip({ children }: { children: ReactNode }) {
   return (
     <span
-      className="w-fit shrink-0 whitespace-nowrap rounded-md px-1.5 py-0.5 font-mono text-[10.5px]"
+      className="w-fit shrink-0 whitespace-nowrap rounded-chrome px-2 py-0.5 font-mono text-[10.5px]"
       style={{
         background: "oklch(from var(--signature) l c h / 0.12)",
         color: "var(--signature)",
@@ -144,10 +144,10 @@ function Exchange({
 }) {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="w-[22px] shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
+      <span className="w-[22px] shrink-0 text-[10px] font-semibold uppercase tracking-wider text-fg-4">
         {label}
       </span>
-      <span className="min-w-0 rounded-[12px_12px_4px_12px] bg-foreground px-2.5 py-1 text-[12px] leading-snug text-background sm:truncate">
+      <span className="min-w-0 rounded-[14px_14px_4px_14px] bg-foreground px-2.5 py-1 text-[12px] leading-snug text-background sm:truncate">
         {say}
       </span>
       <ReplyChip>{reply}</ReplyChip>
@@ -373,11 +373,11 @@ export function QuickStartDialog({
   const fiveProgress = fiveItem?.progress;
 
   const primaryClass =
-    "inline-flex items-center gap-1.5 rounded-[14px] bg-foreground px-4 py-2 text-[13px] font-medium text-background transition-opacity cursor-pointer hover:opacity-85 disabled:cursor-default disabled:opacity-50";
+    "inline-flex h-9 items-center gap-1.5 rounded-chrome bg-foreground px-4 text-[13px] font-medium text-background transition-opacity cursor-pointer hover:opacity-90 active:opacity-80 disabled:cursor-default disabled:opacity-50";
   const secondaryClass =
-    "inline-flex items-center gap-1.5 rounded-[14px] border border-border/60 px-4 py-2 text-[13px] text-fg-2 transition-colors cursor-pointer hover:bg-surface-2 hover:text-fg-1";
+    "inline-flex h-9 items-center gap-1.5 rounded-chrome bg-surface-1 px-4 text-[13px] font-medium text-fg-1 transition-colors cursor-pointer hover:bg-surface-2";
   const ghostClass =
-    "inline-flex items-center gap-1 rounded-[14px] px-3 py-2 text-[13px] text-fg-3 transition-colors cursor-pointer hover:text-fg-1";
+    "inline-flex h-9 items-center gap-1 rounded-chrome px-3 text-[13px] text-fg-3 transition-colors cursor-pointer hover:text-fg-1";
 
   const card = (() => {
     switch (step) {
@@ -388,7 +388,7 @@ export function QuickStartDialog({
           title: w.title,
           body: null,
           art: (
-            <div className="flex h-full flex-col justify-center gap-2 px-6 text-[13.5px] leading-relaxed text-fg-2">
+            <div className="flex h-full flex-col justify-center gap-2.5 px-6 text-[14px] leading-[1.65] text-fg-2">
               <p className="m-0">{w.paragraph1}</p>
               <p className="m-0">{w.paragraph2}</p>
               <p className="m-0 hidden sm:block">{w.paragraph3}</p>
@@ -415,9 +415,9 @@ export function QuickStartDialog({
           art: (
             <div className="grid h-full grid-cols-1 gap-2 p-3 sm:grid-cols-[1.15fr_1fr]">
               {/* Pane 1 — agents in the terminal: three steps, one line */}
-              <div className="flex min-h-0 flex-col gap-2.5 rounded-xl border border-border/50 bg-card p-3">
+              <div className="flex min-h-0 flex-col gap-2.5 rounded-surface bg-card shadow-glow p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="m-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
+                  <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-fg-4">
                     {copy.connectPaneAgents}
                   </p>
                   <BrandMarkRow slugs={TERMINAL_AGENTS} />
@@ -429,7 +429,7 @@ export function QuickStartDialog({
                         {i + 1}
                       </span>
                       <div className="min-w-0">
-                        <code className="block w-fit max-w-full truncate rounded-md bg-foreground px-2 py-[3px] font-mono text-[11px] text-background">
+                        <code className="block w-fit max-w-full truncate rounded-chrome bg-foreground px-2.5 py-1 font-mono text-[11px] text-background">
                           {cmd}
                         </code>
                         <p className="m-0 mt-0.5 text-[11.5px] leading-snug text-fg-3">
@@ -441,22 +441,22 @@ export function QuickStartDialog({
                 </ol>
               </div>
               {/* Pane 2 — claude.ai custom connector (phone app inherits) */}
-              <div className="flex min-h-0 flex-col rounded-xl border border-border/50 bg-card p-3">
+              <div className="flex min-h-0 flex-col rounded-surface bg-card shadow-glow p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="m-0 font-mono text-[10px] uppercase tracking-[0.12em] text-fg-4">
+                  <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-fg-4">
                     {copy.connectPaneClaude}
                   </p>
                   <BrandMarkRow slugs={["claude-ai"]} />
                 </div>
-                <div className="my-auto rounded-lg border border-border/50 bg-surface-1 p-2.5">
+                <div className="my-auto rounded-chrome bg-surface-1 p-2.5">
                   <p className="m-0 text-[11.5px] font-medium text-fg-2">
                     Add custom connector
                   </p>
-                  <div className="mt-1.5 flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-[11.5px]">
+                  <div className="mt-1.5 flex items-center gap-1.5 rounded-chrome bg-card px-2.5 py-1.5 text-[11.5px]">
                     <span className="text-fg-4">Name</span>
                     <span className="ml-auto font-medium text-fg-1">memax</span>
                   </div>
-                  <div className="mt-1 flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-[11.5px]">
+                  <div className="mt-1 flex items-center gap-1.5 rounded-chrome bg-card px-2.5 py-1.5 text-[11.5px]">
                     <span className="text-fg-4">URL</span>
                     <span className="ml-auto truncate font-mono text-[10.5px] text-fg-1">
                       {MCP_URL}
@@ -536,10 +536,10 @@ export function QuickStartDialog({
                     role="tab"
                     aria-selected={rememberScene === id}
                     onClick={() => setRememberScene(id)}
-                    className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] transition-colors ${
+                    className={`inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-chrome px-2.5 text-[11.5px] transition-colors ${
                       rememberScene === id
                         ? "bg-foreground text-background"
-                        : "bg-surface-2 text-fg-3 hover:text-fg-1"
+                        : "bg-card text-fg-2 shadow-glow hover:text-fg-1"
                     }`}
                   >
                     <BrandMarkRow slugs={SCENE_MARKS[id]} size="sm" />
@@ -550,7 +550,7 @@ export function QuickStartDialog({
               {/* The scene — a dump and a recall, in the user's words */}
               {rememberScene === "web" ? (
                 <div className="flex flex-1 flex-col justify-center gap-2.5">
-                  <div className="flex items-center gap-2.5 rounded-[18px] border border-border/50 bg-card px-3.5 py-2.5 shadow-glow">
+                  <div className="flex items-center gap-2.5 rounded-surface bg-card px-3.5 py-2.5 shadow-glow">
                     <span style={{ color: "var(--signature)" }}>✦</span>
                     <span className="flex-1 truncate text-[13px] text-fg-3">
                       {t.compose.placeholder}
@@ -603,10 +603,10 @@ export function QuickStartDialog({
               <div className="ml-auto max-w-[62%] rounded-[14px_14px_4px_14px] bg-foreground px-3 py-2 text-[13px] text-background">
                 {copy.askExampleQ}
               </div>
-              <div className="mt-3 max-w-[78%] rounded-[14px_14px_14px_4px] border border-border/50 bg-card px-3 py-2.5 text-[13px] text-fg-2">
+              <div className="mt-3 max-w-[78%] rounded-[14px_14px_14px_4px] bg-card shadow-glow px-3 py-2.5 text-[13px] text-fg-2">
                 {copy.askExampleA}
                 <span
-                  className="mt-1.5 block w-fit rounded-md px-1.5 py-0.5 font-mono text-[10px]"
+                  className="mt-1.5 block w-fit rounded-chrome px-2 py-0.5 font-mono text-[10px]"
                   style={{
                     background: "oklch(from var(--signature) l c h / 0.12)",
                     color: "var(--signature)",
@@ -667,7 +667,7 @@ export function QuickStartDialog({
               ].map((c) => (
                 <div
                   key={c.pos}
-                  className={`absolute ${c.pos} w-[170px] rounded-xl border border-border/50 bg-card px-2.5 py-2 text-[12px] text-fg-2`}
+                  className={`absolute ${c.pos} w-[170px] rounded-surface bg-card shadow-glow px-2.5 py-2 text-[12px] text-fg-2`}
                 >
                   {c.text}
                 </div>
@@ -765,9 +765,9 @@ export function QuickStartDialog({
               {copy.useCases.map((u) => (
                 <div
                   key={u.say}
-                  className="rounded-xl border border-border/50 bg-card px-3 py-2.5"
+                  className="rounded-surface bg-card shadow-glow px-3 py-2.5"
                 >
-                  <span className="inline-block rounded-[12px_12px_4px_12px] bg-foreground px-2.5 py-1 text-[12px] text-background">
+                  <span className="inline-block rounded-[14px_14px_4px_14px] bg-foreground px-2.5 py-1 text-[12px] text-background">
                     {u.say}
                   </span>
                   <p className="m-0 mt-1.5 text-[12px] leading-snug text-fg-2">
@@ -839,14 +839,13 @@ export function QuickStartDialog({
                     }}
                     aria-label={copy.stepLabel[d.id]}
                     aria-current={d.active ? "step" : undefined}
-                    className="h-2 rounded-full transition-all cursor-pointer"
+                    className="h-[6px] rounded-full transition-all cursor-pointer"
                     style={{
-                      width: d.active ? 18 : 7,
-                      background: d.active
-                        ? "var(--signature)"
-                        : d.done
-                          ? "oklch(0.62 0.15 150)"
-                          : "var(--fg-4)",
+                      width: d.active ? 18 : 6,
+                      transitionTimingFunction: "var(--ease-spring)",
+                      background:
+                        d.active || d.done ? "var(--fg-1)" : "var(--fg-4)",
+                      opacity: d.active ? 1 : d.done ? 0.55 : 1,
                     }}
                   />
                 ))}
@@ -859,13 +858,14 @@ export function QuickStartDialog({
 
             {/* art */}
             <div
-              className={`relative mx-4 mt-3 overflow-hidden rounded-2xl border border-border/50 bg-surface-1 sm:mx-5 ${
+              key={`art-${step}`}
+              className={`animate-content-ready relative mx-4 mt-3 overflow-hidden rounded-surface bg-surface-1 sm:mx-5 ${
                 step === "use_cases"
                   ? "min-h-[300px] flex-1 sm:h-[360px] sm:flex-none"
                   : step === "connect_agent"
-                    ? "min-h-[420px] flex-1 sm:h-[280px] sm:flex-none"
+                    ? "min-h-[420px] flex-1 sm:h-[248px] sm:flex-none"
                     : step === "first_memory"
-                      ? "flex-none sm:h-[250px]"
+                      ? "flex-none sm:h-[232px]"
                       : "min-h-[220px] flex-1 sm:h-[250px] sm:flex-none"
               }`}
             >
@@ -873,23 +873,23 @@ export function QuickStartDialog({
             </div>
 
             {/* copy */}
-            <div className="min-h-0 shrink overflow-y-auto px-5 pt-4 sm:flex-1 sm:px-6">
-              <p
-                className="m-0 font-mono text-[10px] uppercase tracking-[0.14em]"
-                style={{ color: "var(--signature)" }}
-              >
+            <div
+              key={`copy-${step}`}
+              className="animate-content-ready min-h-0 shrink overflow-y-auto px-5 pt-4 sm:flex-1 sm:px-6"
+            >
+              <p className="m-0 text-[10px] font-semibold uppercase tracking-wider text-fg-4">
                 {card.kicker}
               </p>
-              <h2 className="mb-1.5 mt-1 text-[21px] font-semibold leading-tight tracking-[-0.015em] text-fg-1">
+              <h2 className="mb-1.5 mt-1 text-[21px] font-bold leading-tight tracking-[-0.01em] text-fg-1">
                 {card.title}
               </h2>
               {card.body ? (
-                <p className="m-0 max-w-[560px] text-[14px] leading-relaxed text-fg-2">
+                <p className="m-0 max-w-[560px] text-[14px] leading-[1.65] text-fg-2">
                   {card.body}
                 </p>
               ) : null}
               {step === "connect_agent" && showConnectPanel ? (
-                <div className="mt-3 rounded-xl border border-border/50 bg-card p-3">
+                <div className="mt-3 rounded-surface bg-surface-1 p-4">
                   <ConnectAgentsBody />
                 </div>
               ) : null}

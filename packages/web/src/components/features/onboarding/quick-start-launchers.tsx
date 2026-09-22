@@ -62,7 +62,7 @@ export function QuickStartHeroCard({
 
   return (
     <div
-      className="relative flex items-center gap-3 rounded-2xl px-5 py-4"
+      className="relative flex items-center gap-3 rounded-surface px-5 py-4"
       style={{
         background: "var(--card)",
         boxShadow:
@@ -89,7 +89,7 @@ export function QuickStartHeroCard({
         <button
           type="button"
           onClick={() => openQuickStart(progress.next)}
-          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-[14px] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background transition-opacity hover:opacity-85"
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-chrome bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background transition-opacity hover:opacity-90 active:opacity-80"
         >
           {copy.launcherContinue}
           <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.2} />
@@ -101,7 +101,7 @@ export function QuickStartHeroCard({
           resolve.mutate({ id: notification.id, action: "dismiss" })
         }
         aria-label={t.onboarding.checklist.dismissAria}
-        className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-fg-4 transition-colors hover:bg-surface-2 hover:text-fg-2"
+        className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-chrome text-fg-4 transition-colors hover:bg-surface-2 hover:text-fg-2"
       >
         <X className="h-4 w-4" />
       </button>
@@ -133,7 +133,7 @@ export function QuickStartDrawerRow({
     >
       <span
         aria-hidden
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[13px]"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-chrome text-[13px]"
         style={{
           background: "oklch(from var(--signature) l c h / 0.12)",
           color: SIGNATURE,
@@ -169,7 +169,7 @@ export function QuickStartLauncherRow({ onOpen }: { onOpen?: () => void }) {
         onOpen?.();
         openQuickStart();
       }}
-      className="mb-4 flex w-full cursor-pointer items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors hover:bg-surface-2/60"
+      className="mb-4 flex w-full cursor-pointer items-center gap-3 rounded-surface px-4 py-3 text-left transition-colors hover:bg-surface-2/60"
       style={{
         background: "var(--card)",
         border: "1px solid oklch(from var(--foreground) l c h / 0.06)",
@@ -177,7 +177,7 @@ export function QuickStartLauncherRow({ onOpen }: { onOpen?: () => void }) {
     >
       <span
         aria-hidden
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[16px] text-white"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-chrome text-[16px] text-white"
         style={{ background: SIGNATURE }}
       >
         ✦

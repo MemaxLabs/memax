@@ -1,8 +1,13 @@
 /**
  * The activity domain of the V2 data layer (epic 1.1): every receipt in a
- * space, newest first. LedgerDataSource extends ActivityData (source.ts);
- * the SDK source implements it in activity-sdk.ts (memax.v2.receipts) and
- * the demo in activity-demo.ts (the Activity board's rows).
+ * space, newest first, the reads (R-) beside them, and how far the
+ * receipts are sealed. LedgerDataSource extends ActivityData (source.ts);
+ * the SDK source implements it in activity-sdk.ts (memax.v2.receipts and
+ * memax.v2.reads) and the demo in activity-demo.ts (the Activity board's
+ * rows).
+ *
+ * Reads aren't receipts (plan §5.3): they come a page at a time on their
+ * own (`reads`), and the page merges the two by time (activity/merge.ts).
  *
  * An entry is a receipt plus what the source knows to say about it.
  * Receipts never hold a memory's words, so `detail` carries the extras
@@ -128,7 +133,7 @@ export interface ActivityEntry {
 
 /** This week's counts, as the aside shows them. */
 export interface WeeklyTotals {
-  /** Null when reads aren't known (they aren't receipts). */
+  /** Null when reads aren't known (they aren't receipts: ReadsPage.week counts them). */
   reads: number | null;
   proposals: number;
   kept: number;
@@ -149,6 +154,30 @@ export interface ActivityPage {
   totals: WeeklyTotals | null;
 }
 
+/** One page of the space's reads (R-), newest first. */
+export interface ReadsPage {
+  /** Each read as an Activity row: action `read`, object `read`. */
+  entries: ActivityEntry[];
+  /** Pass back as `cursor` for older reads; null at the end. */
+  nextCursor: string | null;
+  /** The space's reads in the last 7 days (spec ReadPage.reads_7d). */
+  week: number;
+}
+
+/** How far the space's receipt chain is sealed, and when it was last verified (spec SealStatus). */
+export interface SealView {
+  /** Receipts sealed so far: the last one's position in the chain, from 1. */
+  sealed: number;
+  /** When the latest checkpoint was sealed; null before the first. */
+  sealedAt: string | null;
+  /** Receipts written but not sealed yet (counted up to 10,000). */
+  unsealed: number;
+  /** Whether the newest checkpoint is signed (false: the server has no signing key); null before the first. */
+  signed: boolean | null;
+  /** The last check of the whole chain, from its first receipt; null until the verifier has run. */
+  verified: { at: string; problems: number } | null;
+}
+
 /** The activity part of LedgerDataSource. */
 export interface ActivityData {
   /** The first page on hand for the first render. The demo has it. */
@@ -159,6 +188,18 @@ export interface ActivityData {
     cursor?: string;
     signal?: AbortSignal;
   }): Promise<ActivityPage>;
+  /** The first page of reads on hand for the first render. The demo has it. */
+  readonly readsPeek?: (slug: string) => ReadsPage | undefined;
+  /** One page of the space's reads (R-), newest first, with the week's count. */
+  reads(input: {
+    space: SpaceSummary;
+    cursor?: string;
+    signal?: AbortSignal;
+  }): Promise<ReadsPage>;
+  /** The seal on hand for the first render. The demo has it. */
+  readonly sealPeek?: (slug: string) => SealView | undefined;
+  /** How far the space's receipts are sealed and verified. */
+  seal(input: { space: SpaceSummary; signal?: AbortSignal }): Promise<SealView>;
 }
 
 /** The board's filters. */

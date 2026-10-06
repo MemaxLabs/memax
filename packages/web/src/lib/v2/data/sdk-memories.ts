@@ -13,9 +13,10 @@ import { targetsOrNull } from "./targets-sdk";
 /**
  * Memories through memax.v2: the list (GET /v2/spaces/{space}/memories,
  * newest first, cursor-paged), one memory (GET /v2/memories/{ref}) and
- * edit with If-Match. Section counts, totals, links, reads and compiled
- * files aren't served yet (PLACEHOLDER: null), and search is the page's
- * own (it filters what's loaded) until /v2 has one.
+ * edit with If-Match. A memory's page has its reads and reach: the
+ * agents from its reads, the files from the compile targets. Section
+ * counts and totals aren't served yet (PLACEHOLDER: null), and search
+ * is the page's own (it filters what's loaded) until /v2 has one.
  */
 
 const PAGE = 50;
@@ -131,11 +132,13 @@ export function createSdkMemories(
       });
       if (!targets || record.lifecycle !== "kept") return record;
       // "Reaches": the files that hold its words, or read one that does.
+      const reaches = targets.filter(
+        (t) => t.syncState !== "off" && reachesTarget(record.ref, t, targets),
+      );
       return {
         ...record,
-        reaches: targets.filter(
-          (t) => t.syncState !== "off" && reachesTarget(record.ref, t, targets),
-        ),
+        reaches,
+        reach: { files: reaches.length, agents: record.reach?.agents ?? null },
       };
     },
 

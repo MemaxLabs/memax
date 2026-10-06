@@ -3,6 +3,8 @@ import type {
   ActivityData,
   ActivityEntry,
   ActivityPage,
+  ReadsPage,
+  SealView,
   ViaPart,
 } from "./activity";
 import { DEMO_AGENT_IDS } from "./agents-demo";
@@ -11,10 +13,10 @@ import type { GateView } from "./gates";
 import { DEMO_GATES } from "./gates-demo";
 
 /**
- * Activity.png's receipts for memax-v2, newest first, at Monday October 5
- * 2026, 14:40 in Vancouver. The demo plays an API that also serves the
- * week's totals and the words a receipt points at, so the screen
- * reproduces the board. Data, not copy.
+ * Activity.png's receipts and reads for memax-v2, newest first, at Monday
+ * October 5 2026, 14:40 in Vancouver. The demo plays an API that also
+ * serves the week's totals and the words a receipt points at, so the
+ * screen reproduces the board. Data, not copy.
  */
 
 const at = (day: string, time: string) => `2026-${day}T${time}:00-07:00`;
@@ -89,17 +91,6 @@ const MEMAX_V2: ActivityEntry[] = [
     detail: { kind: "handoff", to: "codex", carries: 7 },
   }),
   entry({
-    at: at("10-05", "14:02"),
-    actor: agent("claude-code"),
-    action: "read",
-    object: { kind: "read", ref: "R-5512", id: uid() },
-    via: [
-      { kind: "via", via: "mcp" },
-      { kind: "session", ref: "7c2f" },
-    ],
-    detail: { kind: "read", memories: 12, brief: true },
-  }),
-  entry({
     at: at("10-05", "13:48"),
     actor: you,
     action: "kept",
@@ -151,6 +142,29 @@ const MEMAX_V2: ActivityEntry[] = [
     detail: { kind: "brief", facts: 1 },
   }),
   entry({
+    at: at("10-03", "10:12"),
+    actor: you,
+    action: "forgot",
+    object: { kind: "memory", ref: "M-0201", id: uid() },
+    via: [{ kind: "via", via: "web" }],
+    detail: { kind: "forgot", files: 4, agents: 5 },
+  }),
+];
+
+// Activity.png's reads (R-): not receipts, listed beside them.
+const MEMAX_V2_READS: ActivityEntry[] = [
+  entry({
+    at: at("10-05", "14:02"),
+    actor: agent("claude-code"),
+    action: "read",
+    object: { kind: "read", ref: "R-5512", id: uid() },
+    via: [
+      { kind: "via", via: "mcp" },
+      { kind: "session", ref: "7c2f" },
+    ],
+    detail: { kind: "read", memories: 12, brief: true },
+  }),
+  entry({
     at: at("10-04", "12:30"),
     actor: agent("cursor"),
     action: "read",
@@ -160,14 +174,6 @@ const MEMAX_V2: ActivityEntry[] = [
       { kind: "surface", surface: "ide" },
     ],
     detail: { kind: "read", memories: 18, brief: false },
-  }),
-  entry({
-    at: at("10-03", "10:12"),
-    actor: you,
-    action: "forgot",
-    object: { kind: "memory", ref: "M-0201", id: uid() },
-    via: [{ kind: "via", via: "web" }],
-    detail: { kind: "forgot", files: 4, agents: 5 },
   }),
 ];
 
@@ -236,10 +242,46 @@ const PAGES: Readonly<Record<string, ActivityPage>> = {
 
 const EMPTY: ActivityPage = { entries: [], nextCursor: null, totals: null };
 
+/** The week's reads match the board's "This week" (693). */
+const READS: Readonly<Record<string, ReadsPage>> = {
+  "memax-v2": { entries: MEMAX_V2_READS, nextCursor: null, week: 693 },
+};
+
+const NO_READS: ReadsPage = { entries: [], nextCursor: null, week: 0 };
+
+/**
+ * How far each space's receipts are sealed. No board draws it; the
+ * demo seals memax-v2 through its newest receipt, signed, and verified
+ * overnight with nothing wrong.
+ */
+const SEALS: Readonly<Record<string, SealView>> = {
+  "memax-v2": {
+    sealed: 1284,
+    sealedAt: "2026-10-05T14:40:12-07:00",
+    unsealed: 0,
+    signed: true,
+    verified: { at: "2026-10-05T03:00:41-07:00", problems: 0 },
+  },
+};
+
+const UNSEALED: SealView = {
+  sealed: 0,
+  sealedAt: null,
+  unsealed: 0,
+  signed: null,
+  verified: null,
+};
+
 export function createDemoActivity(): ActivityData {
   const page = (slug: string) => PAGES[slug] ?? EMPTY;
+  const reads = (slug: string) => READS[slug] ?? NO_READS;
+  const seal = (slug: string) => SEALS[slug] ?? UNSEALED;
   return {
     activityPeek: (slug) => page(slug),
     activity: async ({ space }) => page(space.slug),
+    readsPeek: (slug) => reads(slug),
+    reads: async ({ space }) => reads(space.slug),
+    sealPeek: (slug) => seal(slug),
+    seal: async ({ space }) => seal(space.slug),
   };
 }

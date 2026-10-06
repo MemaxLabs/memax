@@ -10,19 +10,62 @@ import type { Viewer } from "./types";
  * Today through memax.v2: Review's queue (its counts and first items),
  * the decision gates waiting on an answer (the questions, and who asked
  * them), the space's agents and what each wrote today, from today's
- * receipts. What /v2 doesn't serve is said so: Dream editions
- * (unavailable), the Dream schedule and handoffs (PLACEHOLDER) and reads
- * (null).
+ * receipts, and read today, from the space's reads (R-). What /v2
+ * doesn't serve is said so: Dream editions (unavailable), the Dream
+ * schedule and handoffs (PLACEHOLDER).
  */
 
 const QUEUE = 200;
 const RECEIPTS = 200;
+/** Today's reads are counted from the reads list, up to this many pages of 200. */
+const READS = 200;
+const READ_PAGES = 5;
 
-/** Each connected agent's writes since the start of the viewer's day, from the space's receipts. */
+/**
+ * Each connection's reads since the start of the viewer's day, counted
+ * from the space's reads (newest first) a page at a time. Null when the
+ * day holds more reads than the pages Today reads: not counted rather
+ * than a floor shown as the count.
+ */
+export async function readsToday(
+  client: V2Client,
+  slug: string,
+  dayStart: Date,
+  signal?: AbortSignal,
+): Promise<Map<string, number> | null> {
+  const counts = new Map<string, number>();
+  let cursor: string | undefined;
+  for (let page = 0; page < READ_PAGES; page += 1) {
+    const { items, has_more, next_cursor } = await client.v2.reads.list(slug, {
+      cursor,
+      limit: READS,
+      signal,
+    });
+    for (const read of items) {
+      if (Date.parse(read.read_at) < dayStart.getTime()) return counts;
+      if (read.connection_id) {
+        counts.set(
+          read.connection_id,
+          (counts.get(read.connection_id) ?? 0) + 1,
+        );
+      }
+    }
+    if (!has_more || !next_cursor) return counts;
+    cursor = next_cursor;
+  }
+  return null;
+}
+
+/**
+ * Each connected agent's writes since the start of the viewer's day,
+ * from the space's receipts, and its reads (readsToday); null reads when
+ * they weren't counted.
+ */
 export function agentsTodayOf(
   connections: readonly AgentConnectionView[],
   receipts: readonly V2.Receipt[],
   dayStart: Date,
+  reads: ReadonlyMap<string, number> | null = null,
 ): AgentToday[] {
   const today = receipts.filter(
     (r) =>
@@ -38,8 +81,7 @@ export function agentsTodayOf(
         id: c.id,
         agent: c.agent,
         name: c.name,
-        // PLACEHOLDER: reads aren't recorded yet.
-        reads: null,
+        reads: reads ? (reads.get(c.id) ?? 0) : null,
         kept: mine.filter((r) => r.action === "kept").length,
         proposed: mine.filter((r) => r.action === "proposed").length,
         lastSeenAt: c.lastSeenAt,
@@ -75,6 +117,10 @@ export function createSdkToday({
           .list(space.slug, { limit: RECEIPTS, signal })
           .catch(() => null),
       ]);
+      // Not counted rather than failing Today.
+      const reads = connections
+        ? readsToday(client, space.slug, dayStart, signal).catch(() => null)
+        : null;
       const receipts = await receiptsFor(
         client,
         space.slug,
@@ -115,7 +161,12 @@ export function createSdkToday({
         inFlight: undefined,
         agents: connections
           ? {
-              rows: agentsTodayOf(connections, log?.items ?? [], dayStart),
+              rows: agentsTodayOf(
+                connections,
+                log?.items ?? [],
+                dayStart,
+                await reads,
+              ),
               connected: connections.filter((c) => c.state !== "disconnected")
                 .length,
             }

@@ -224,6 +224,47 @@ describe("a memory's page", () => {
   });
 });
 
+describe("a memory's reads and reach", () => {
+  it("shows Memory.png's line: reads, files and agents", async () => {
+    renderMemory(
+      "M-0219",
+      createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 }),
+    );
+    expect(
+      await screen.findByText("Read 214 times · reaches 4 files and 5 agents"),
+    ).toBeTruthy();
+    expect(screen.getByText("4 files · 5 agents")).toBeTruthy();
+  });
+
+  it("says a count is a floor, and leaves out the files it doesn't know", async () => {
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    const base = demo.memories.peekRecord!("memax-v2", "M-0098")!;
+    // As the SDK source reads one whose targets didn't load.
+    const record = {
+      ...base,
+      reads: 41,
+      readsUnobserved: true,
+      reach: { files: null, agents: 3 },
+    };
+    const source: LedgerDataSource = {
+      ...demo,
+      memories: {
+        ...demo.memories,
+        peekRecord: () => record,
+        get: vi.fn().mockResolvedValue(record),
+      },
+    };
+    renderMemory("M-0098", source);
+    const meta = await screen.findByText(
+      "Read at least 41 times · reaches 3 agents",
+    );
+    expect(meta.getAttribute("title")).toBe(
+      "It's in a compiled file agents load without telling Memax, so it may be read more than this.",
+    );
+    expect(screen.getByText("3 agents")).toBeTruthy();
+  });
+});
+
 describe("one of the judge's folds", () => {
   const team = DEMO_SPACES.find((s) => s.slug === "memax-team")!;
 

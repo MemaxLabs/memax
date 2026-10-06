@@ -5,10 +5,12 @@ import type { ActivityActor, ActivityEntry } from "../data/activity";
  * the page has loaded. The columns are the receipt's own fields, named
  * as the API names them, so the file is data rather than prose and
  * reads the same in any locale. A receipt never holds a memory's words,
- * so neither does the file.
+ * so neither does the file. Reads (R-) aren't receipts and stay out.
  *
  * PLACEHOLDER: a full export (every receipt, with the sealer's signed
- * checkpoints, plan §5.3) needs a server endpoint.
+ * checkpoints, plan §5.3) needs a server endpoint. /v2 serves the
+ * checkpoints (Activity shows how far they reach); the export that
+ * carries them and `memax verify-export` aren't built.
  */
 
 export const CSV_COLUMNS = [

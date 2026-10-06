@@ -129,10 +129,19 @@ export interface MemoryRecord {
   kept: { by: Actor | null; at: string } | null;
   /** The latest receipt, for a memory that isn't simply kept. */
   latest: RailReceipt | null;
-  /** Reads by agents, when counted (not served yet). */
+  /** Its reads by agents over the last 13 months; null when they couldn't be counted. */
   reads: number | null;
-  /** How far it reaches, when compile targets are served. */
-  reach: { files: number; agents: number } | null;
+  /**
+   * It's in a compiled file agents load without Memax seeing the loads,
+   * so it may be read more than `reads` says (MemoryReads.unobserved_target).
+   */
+  readsUnobserved?: boolean;
+  /**
+   * How far it reaches: the compiled files that hold it (from the
+   * targets) and the agents that read it (from its reads). Either is
+   * null when the source doesn't know it.
+   */
+  reach: { files: number | null; agents: number | null } | null;
   lineage: LineageEntry[];
   /** What was merged into it: Dream's notes, the judge's folds. Null when the source can't say. */
   merged: { notes: MergedNote[]; total: number } | null;

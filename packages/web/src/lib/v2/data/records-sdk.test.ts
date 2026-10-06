@@ -220,10 +220,43 @@ describe("mapping /v2 records", () => {
       kind: "pr",
       url: "https://github.com/MemaxLabs/memax/pull/212",
     });
-    // Not served yet: placeholders, never invented.
+    // Not served here: the caller's (targets, links), never invented.
     expect(record.reaches).toBeNull();
     expect(record.merged).toBeNull();
+    // No `reads` on the detail: the counts couldn't be read.
     expect(record.reads).toBeNull();
+    expect(record.reach).toBeNull();
+  });
+
+  it("reads a memory's reads and the agents they came from", () => {
+    const reads: V2.MemoryReads = {
+      reads: 214,
+      reads_7d: 41,
+      last_read_at: "2026-10-05T21:02:00Z",
+      agents: 5,
+      readers: [],
+      unobserved_target: false,
+    };
+    const detail = (r: V2.MemoryReads): V2.MemoryDetail => ({
+      memory: memory({ ref: "M-0219", state: "kept", lifecycle: "kept" }),
+      versions: [],
+      receipts: { items: [receipt()], has_more: false },
+      reads: r,
+    });
+    const record = recordOf(detail(reads), ME);
+    expect(record.reads).toBe(214);
+    expect(record.readsUnobserved).toBeUndefined();
+    // The files come from the targets (the caller), the agents from reads.
+    expect(record.reach).toEqual({ files: null, agents: 5 });
+    // In a file whose loads Memax can't see: the count is a floor.
+    expect(
+      recordOf(detail({ ...reads, unobserved_target: true }), ME)
+        .readsUnobserved,
+    ).toBe(true);
+    // Never read is a count, not "unknown".
+    expect(
+      recordOf(detail({ ...reads, reads: 0, reads_7d: 0, agents: 0 }), ME),
+    ).toMatchObject({ reads: 0, reach: { files: null, agents: 0 } });
   });
 });
 
@@ -975,6 +1008,80 @@ describe("the SDK's Memories", () => {
       { space: "memax-v2", ifMatch: 1, idempotencyKey: "k4" },
     );
     expect(result.outcome).toBe("kept");
+  });
+
+  it("counts the files a kept memory reaches from the targets, beside its readers", async () => {
+    const client = fakeClient();
+    client.v2.memories.get.mockResolvedValueOnce({
+      memory: memory({ ref: "M-0219", state: "kept", lifecycle: "kept" }),
+      versions: [],
+      receipts: { items: [receipt()], has_more: false },
+      reads: {
+        reads: 214,
+        reads_7d: 41,
+        agents: 5,
+        readers: [],
+        unobserved_target: false,
+      },
+    } satisfies V2.MemoryDetail);
+    const compiled = (refs: string[]) => ({
+      id: "c1",
+      ref: "C-0881",
+      target_id: "t1",
+      space_id: "s1",
+      brief: "B-0043",
+      brief_version: 6,
+      generation: 3,
+      status: "delivered",
+      input_sha256: "a".repeat(64),
+      bytes: 1263,
+      lines: 27,
+      refs,
+      dropped_for_budget: [],
+      files: [],
+      warnings: [],
+      enqueued_at: "2026-10-05T21:30:58Z",
+      compiled_at: "2026-10-05T21:31:01Z",
+      receipt_id: "rc1",
+    });
+    const target = (id: string, path: string, refs: string[]) => ({
+      id,
+      space_id: "s1",
+      tenant_id: "n1",
+      kind: "agents_md",
+      path,
+      label: path,
+      settings: { include: "kept_and_open", stale: "mark", size_budget: 25600 },
+      delivery: "local",
+      sync_state: "in_sync",
+      version: 1,
+      dirty_gen: 1,
+      compiled_gen: 1,
+      open_drift: 0,
+      created_receipt_id: "rc0",
+      last_receipt_id: "rc1",
+      created_at: "2026-09-28T00:00:00Z",
+      updated_at: "2026-10-05T21:31:01Z",
+      last_compile: compiled(refs),
+    });
+    const withTargets = {
+      v2: {
+        ...client.v2,
+        targets: {
+          list: vi.fn().mockResolvedValue({
+            items: [
+              target("t1", "AGENTS.md", ["M-0219"]),
+              target("t2", "docs/AGENTS.md", ["M-0300"]),
+            ],
+          }),
+        },
+      },
+    };
+    const memories = createSdkMemories(withTargets as never, () => ME);
+    const record = await memories.get({ space: v2, ref: "M-0219" });
+    expect(record?.reaches?.map((t) => t.path)).toEqual(["AGENTS.md"]);
+    expect(record?.reach).toEqual({ files: 1, agents: 5 });
+    expect(record?.reads).toBe(214);
   });
 
   it("answers null for a memory the person can't open", async () => {

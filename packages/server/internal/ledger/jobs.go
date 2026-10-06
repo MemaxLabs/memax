@@ -158,25 +158,38 @@ func asLoginRole(ctx context.Context, tx pgx.Tx, loginRole string, fn func() err
 	return nil
 }
 
+// CompileSweeperRole is the role the compile sweeper's cross-space read
+// runs as (migration 040): it alone may execute v2.dirty_targets, and the
+// policy that admits other spaces' dirty targets applies to it only, so
+// memax_v2 can't borrow it by setting app.sweep.
+const CompileSweeperRole = "memax_v2_compile_sweeper"
+
 // DirtyTargets lists targets whose latest compile is behind (dirty_gen >
 // compiled_gen), across every space, oldest change first: the compile
 // sweeper's read (§5.7 step 4). It returns ids only, through
-// v2.dirty_targets, the one cross-space read of the V2 record.
+// v2.dirty_targets, as CompileSweeperRole.
 func (l *Ledger) DirtyTargets(ctx context.Context, limit int) ([]TargetRef, error) {
-	var out []TargetRef
-	err := l.Read(ctx, Scope{}, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT target_id, space_id FROM v2.dirty_targets($1)`, limit)
-		if err != nil {
-			return fmt.Errorf("ledger: dirty targets: %w", err)
-		}
-		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (TargetRef, error) {
-			var t TargetRef
-			err := r.Scan(&t.TargetID, &t.SpaceID)
-			return t, err
-		})
-		return err
+	if l == nil {
+		return nil, ErrDisabled
+	}
+	tx, _, err := l.beginRole(ctx, CompileSweeperRole, Scope{}, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	rows, err := tx.Query(ctx, `SELECT target_id, space_id FROM v2.dirty_targets($1)`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("ledger: dirty targets: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (TargetRef, error) {
+		var t TargetRef
+		err := r.Scan(&t.TargetID, &t.SpaceID)
+		return t, err
 	})
-	return out, err
+	if err != nil {
+		return nil, fmt.Errorf("ledger: dirty targets: %w", err)
+	}
+	return out, tx.Commit(ctx)
 }
 
 // SpaceScope is the scope a system actor (Memax compiling, the

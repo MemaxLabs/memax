@@ -350,6 +350,11 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 			before.HasDecision, before.DecisionStatus, statement, hash, bands, rc.StreamVersion, rc.ID, sp.ID); err != nil {
 			return Result{}, fmt.Errorf("ledger: undo %s: %w", m.Ref, err)
 		}
+		if to.Lifecycle == lifecycle.Proposed || to.Lifecycle == lifecycle.Kept {
+			// The restored version is searchable again; its job is a no-op
+			// when its embedding is still stored.
+			w.indexVersion(sp.ID, m.ID, before.Version)
+		}
 		if m.Lifecycle == lifecycle.Kept || to.Lifecycle == lifecycle.Kept {
 			dirty = true
 		}

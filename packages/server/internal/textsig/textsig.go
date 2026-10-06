@@ -93,22 +93,28 @@ func ContentSHA256(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// shingleText is the text shingles are cut from: the normalised statement
-// with every run of punctuation and space made one space, so "pnpm, not
-// npm" and "pnpm not npm" shingle the same.
+// shingleText is the text shingles are cut from: the statement's words in
+// order, without stopwords and punctuation, one space apart, so "pnpm,
+// not npm" and "pnpm not npm" shingle the same, and so do "A and B" and
+// "A; B". Order still counts: "River, not Temporal" and "Temporal, not
+// River" share few shingles. Dropping stopwords is safe only because
+// NearDuplicate also requires SameSalient, which allows no other
+// difference.
 func shingleText(s string) []rune {
 	var out []rune
-	space := false
-	for _, r := range Normalize(s) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			if space && len(out) > 0 {
-				out = append(out, ' ')
-			}
-			space = false
-			out = append(out, r)
+	for _, w := range Words(s) {
+		if stopwords[w] {
 			continue
 		}
-		space = true
+		start := len(out)
+		for _, r := range w {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				if len(out) == start && start > 0 {
+					out = append(out, ' ')
+				}
+				out = append(out, r)
+			}
+		}
 	}
 	return out
 }

@@ -523,6 +523,10 @@ pnpm --filter @memaxlabs/server migrate:new <slug>
 # Run the LoCoMo benchmark harness
 cd packages/server && go run ./cmd/locomo/ -dataset eval/locomo/data/locomo10.json
 
+# Judge eval (eval/judge/pairs.json): the set, stage 0 and the harness on a fake model;
+# JUDGE_EVAL_LIVE=1 also scores the real JUDGE_* tiers (needs ANTHROPIC_API_KEY)
+cd packages/server && go test ./eval/judge/ -v
+
 # Connect V1 API keys and OAuth grants to the V2 record as agent connections, at Propose
 # (idempotent; prefer -user for the people moving to V2)
 cd packages/server && go run ./cmd/v2-backfill-agents -user <uuid>

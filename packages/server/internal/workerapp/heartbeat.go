@@ -11,21 +11,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// River v0.32 ships the `river_client` table in its migrations but
-// contains no Go code that ever writes to it. The `dbsqlc` package
-// generates a `ClientCreateOrSetUpdatedAt` helper but nothing in the
-// river library calls it. That leaves our admin ops pulse reading an
-// always-empty table and falling through to the synthesize-from-
-// leader branch, which always reports exactly 1 worker regardless of
-// how many Fly machines are actually running.
+// River keeps no per-client registry. Its leader row (`river_leader`)
+// only ever names one client, so on its own the admin ops pulse would
+// report exactly 1 worker regardless of how many Fly machines are
+// actually running.
 //
-// We populate river_client ourselves. The schema is a PK string id,
-// a metadata JSONB, and updated_at — perfect for a simple per-machine
-// heartbeat. The Pulse query already compares updated_at to a 60-
-// second healthy window, so a 15-second UPSERT interval leaves three
-// full cycles of headroom. On graceful shutdown we DELETE the row so
-// a clean deploy doesn't leave a stale "2 workers" reading for up to
-// a minute after scaling down.
+// Each worker process therefore writes its own row to the app-owned
+// `worker_heartbeats` table (migration 024). Until the River v0.49
+// upgrade this row lived in River's `river_client` table, which River
+// shipped but never wrote; River's schema migration 007 (v0.40) drops
+// that table as unused. The schema is a PK string id, a metadata
+// JSONB, and updated_at — a simple per-machine heartbeat. The Pulse
+// query compares updated_at to a 60-second healthy window, so a
+// 15-second UPSERT interval leaves three full cycles of headroom. On
+// graceful shutdown we DELETE the row so a clean deploy doesn't leave
+// a stale "2 workers" reading for up to a minute after scaling down.
 
 const (
 	heartbeatInterval = 15 * time.Second
@@ -37,7 +37,7 @@ const (
 )
 
 // workerClientID is the stable identity this machine uses in
-// river_client. Every fallback appends the PID so two worker
+// worker_heartbeats. Every fallback appends the PID so two worker
 // processes on the same host (common in dev: `pnpm dev` + a hand-
 // started `go run ./cmd/worker`) don't fight over the same PK and
 // silently mask each other in the admin pulse.
@@ -63,10 +63,10 @@ func workerClientID() string {
 	return "memax-worker-" + time.Now().UTC().Format("20060102T150405") + "-" + pid
 }
 
-// workerClientMetadata builds the JSON stored on the river_client
+// workerClientMetadata builds the JSON stored on the worker_heartbeats
 // row. The admin pulse UI doesn't currently render these fields, but
 // they're available for ad-hoc ops queries (psql inspection of
-// `SELECT id, metadata FROM river_client`) and are easy to surface
+// `SELECT id, metadata FROM worker_heartbeats`) and are easy to surface
 // later by extending getOpsWorkers + OpsWorkerClient. Keep small:
 // fly_region + fly_machine + fly_app + memax_env are the useful
 // diagnostics for "which VM is this?".
@@ -95,7 +95,7 @@ func workerClientMetadata() []byte {
 }
 
 // startClientHeartbeat spawns a goroutine that UPSERTs this worker's
-// row into river_client every heartbeatInterval. Returns a cleanup
+// row into worker_heartbeats every heartbeatInterval. Returns a cleanup
 // func that stops the ticker and deletes the row — call it from
 // App.Shutdown so a graceful stop removes the worker from the pulse
 // immediately instead of waiting out the 60s healthy window.
@@ -116,13 +116,13 @@ func startClientHeartbeat(parentCtx context.Context, pool *pgxpool.Pool) func(co
 	// timestamp, so we refresh it every tick even when nothing
 	// else changed.
 	upsertSQL := `
-		INSERT INTO river_client (id, metadata, updated_at)
+		INSERT INTO worker_heartbeats (id, metadata, updated_at)
 		VALUES ($1, $2::jsonb, now())
 		ON CONFLICT (id) DO UPDATE
 		SET updated_at = now(),
 		    metadata = EXCLUDED.metadata
 	`
-	deleteSQL := `DELETE FROM river_client WHERE id = $1`
+	deleteSQL := `DELETE FROM worker_heartbeats WHERE id = $1`
 
 	// hbCtx is derived from parentCtx so a parent cancel still
 	// flows through, but also has its own cancel() so the cleanup

@@ -1,4 +1,5 @@
-FROM golang:1.25-alpine AS build
+# Go version: see the note at the top of Dockerfile.server.
+FROM golang:1.26-alpine AS build
 # See Dockerfile.server for the full rationale on COMMIT_SHA +
 # ldflags. Same ARG placement here: below `go mod download` so a
 # new SHA on every deploy doesn't bust the module cache.

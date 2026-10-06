@@ -5,12 +5,11 @@
   max-width: 360px;
 }
 
-/* The stamp beside the title, inside the title's own line box. */
+/* The stamp beside the title (AgentDetail.dc.html). */
 .titleRow {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 12px;
-  vertical-align: top;
 }
 
 .grid {

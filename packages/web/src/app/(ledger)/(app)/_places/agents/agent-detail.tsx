@@ -2,14 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import {
-  AgentStamp,
-  Button,
-  Icon,
-  Kbd,
-  PageHeader,
-  useLedger,
-} from "@memaxlabs/ledger";
+import { AgentStamp, Button, Icon, Kbd, useLedger } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
 import { joinSentences } from "@/lib/v2/copy";
 import { autonomyIn, type AgentDetailView } from "@/lib/v2/data/agents";
@@ -144,41 +137,42 @@ function AgentDetail({
   const paused = agent.state === "paused";
   return (
     <PlaceColumn>
-      <PageHeader
-        className={styles.head}
-        eyebrow={interpolate(copy.eyebrow, { space: space.name })}
-        title={
-          <span className={styles.titleRow}>
+      {/* PageHeader's markup, with the stamp beside the title as drawn
+          (AgentDetail.dc.html), not inside the heading. */}
+      <header className={`mx-page-head ${styles.head}`}>
+        <div className="mx-page-head-text">
+          <div className="mx-page-eyebrow">
+            {interpolate(copy.eyebrow, { space: space.name })}
+          </div>
+          <div className={styles.titleRow}>
             <AgentStamp agent={agent.agent} name={agent.name} decorative />
-            <span>{agent.name}</span>
-          </span>
-        }
-        lede={lede}
-        actions={
-          <>
-            <Button
-              variant="secondary"
-              disabled={Boolean(pauseUnavailable)}
-              disabledReason={pauseUnavailable}
-              pending={busy && !confirming}
-              onClick={() => void command(paused ? "resume" : "pause")}
-            >
-              {paused ? copy.resume : copy.pause}
-            </Button>
-            <Button
-              ref={disconnectRef}
-              variant="danger"
-              disabled={Boolean(unavailable)}
-              disabledReason={unavailable}
-              aria-expanded={confirming}
-              aria-controls="agent-disconnect"
-              onClick={() => setConfirming(true)}
-            >
-              {copy.disconnect}
-            </Button>
-          </>
-        }
-      />
+            <h1 className="mx-page-title">{agent.name}</h1>
+          </div>
+          <p className="mx-page-lede">{lede}</p>
+        </div>
+        <div className="mx-page-actions">
+          <Button
+            variant="secondary"
+            disabled={Boolean(pauseUnavailable)}
+            disabledReason={pauseUnavailable}
+            pending={busy && !confirming}
+            onClick={() => void command(paused ? "resume" : "pause")}
+          >
+            {paused ? copy.resume : copy.pause}
+          </Button>
+          <Button
+            ref={disconnectRef}
+            variant="danger"
+            disabled={Boolean(unavailable)}
+            disabledReason={unavailable}
+            aria-expanded={confirming}
+            aria-controls="agent-disconnect"
+            onClick={() => setConfirming(true)}
+          >
+            {copy.disconnect}
+          </Button>
+        </div>
+      </header>
 
       {confirming ? (
         <section

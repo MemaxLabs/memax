@@ -18,7 +18,8 @@
 //     on a legacy session. Only accept-and-keep is a Keep, recorded as
 //     kept by the person via the agent, assurance client_attested. A
 //     client that can't elicit gets the proposal's ID and the Review link.
-//   - memax_recall reads kept memories (lexically for now; plan §5.11),
+//   - memax_recall reads kept memories (hybrid when V2 embeddings are on,
+//     else lexical; plan §5.11, and _meta says which),
 //     plus this session's own pending proposals, forget notices, how the
 //     connection's decision gates ended, and without a query a digest of
 //     each space (with the gates still waiting). A decision a newer one
@@ -101,7 +102,11 @@ type Options struct {
 	// Compile reads compiled artifacts (compile.Service); nil means none.
 	Compile Previewer
 	// Reads records agent reads (R-); nil uses the no-op hook.
-	Reads  ReadRecorder
+	Reads ReadRecorder
+	// Search answers recall and search queries. Nil is lexical only
+	// (v2recall.New); the API server passes the hybrid searcher (vectors
+	// and the reranker, when configured).
+	Search *v2recall.Searcher
 	Logger *slog.Logger
 	Now    func() time.Time
 }
@@ -117,6 +122,9 @@ func New(o Options) *Server {
 		digest: o.Digest, reads: o.Reads, appBase: strings.TrimRight(o.AppBaseURL, "/"),
 		log: o.Logger, now: o.Now,
 		recallBudget: 250 * time.Millisecond, elicitTimeout: 3 * time.Minute, stateTTL: 10 * time.Minute,
+	}
+	if o.Search != nil {
+		s.search = o.Search
 	}
 	if s.log == nil {
 		s.log = slog.Default()

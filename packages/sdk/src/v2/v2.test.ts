@@ -92,6 +92,54 @@ describe("memax.v2.memories", () => {
     expect(c.body).toEqual(input);
   });
 
+  it("checks a draft for near-duplicates without an Idempotency-Key", async () => {
+    const found: V2.NearDuplicates = {
+      items: [
+        {
+          memory: { ...memory, lifecycle: "proposed", state: "proposed" },
+          similarity: 0.94,
+          match: "near",
+          created: {
+            id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5e",
+            seq: 7,
+            tenant_id: memory.tenant_id,
+            space_id: memory.space_id,
+            object_kind: "memory",
+            object_id: memory.id,
+            object_ref: memory.ref,
+            action: "proposed",
+            actor_kind: "agent",
+            agent: "codex",
+            via: "mcp",
+            occurred_at: "2026-10-06T09:12:00Z",
+            recorded_at: "2026-10-06T09:12:00Z",
+            stream_id: memory.id,
+            stream_version: 1,
+          },
+        },
+      ],
+      semantic: true,
+      floor: 0.9,
+    };
+    const { memax, call } = client(jsonResponse({ data: found }));
+    const controller = new AbortController();
+
+    const got = await memax.v2.memories.nearDuplicates(
+      "memax v2",
+      { statement: "River is our queue", limit: 2 },
+      { signal: controller.signal },
+    );
+
+    expect(got).toEqual(found);
+    const c = call();
+    expect(c.url).toBe(
+      "https://api.memax.app/v2/spaces/memax%20v2/memories:near-duplicates",
+    );
+    expect(c.method).toBe("POST");
+    expect(c.headers["Idempotency-Key"]).toBeUndefined();
+    expect(c.body).toEqual({ statement: "River is our queue", limit: 2 });
+  });
+
   it("lists with repeated filters and a cursor", async () => {
     const page: V2.MemoryPage = { items: [memory], has_more: false };
     const { memax, call } = client(jsonResponse({ data: page }));

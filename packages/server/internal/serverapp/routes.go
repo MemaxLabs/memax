@@ -15,6 +15,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ratelimit"
 	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 )
 
 // hubAwarePlanResolver resolves limits with per-hub elevation.
@@ -72,7 +73,10 @@ type routeDeps struct {
 	store                  store.Store
 	eventsBroker           events.Publisher
 	v2                     *v2api.Handler
-	mcp                    mcpDeps
+	// v2Search answers MCP v2's recall and search: hybrid with V2
+	// embeddings, lexical without (nil: MCP v2 builds the lexical one).
+	v2Search *v2recall.Searcher
+	mcp      mcpDeps
 }
 
 // mcpDeps is what MCP v2 needs besides the /v2 handler (mcpDepsFromEnv).
@@ -399,6 +403,7 @@ func registerMCPRoutes(root *http.ServeMux, withAuth func(http.Handler) http.Han
 		AppBaseURL: deps.mcp.appBaseURL, Reads: deps.mcp.reads,
 		// The digest at session start is the space's latest compile.
 		Compile: deps.v2.Compile(),
+		Search:  deps.v2Search,
 	}); v2 != nil {
 		mcpH.SetV2(v2)
 		chatGPTH.SetV2(v2)

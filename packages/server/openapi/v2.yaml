@@ -10,7 +10,9 @@
 #   - every object schema with properties sets additionalProperties: false;
 #   - every response body is a named schema: an envelope with `data`, or
 #     ErrorEnvelope for 4xx and 5xx;
-#   - every POST and PATCH requires Idempotency-Key;
+#   - every POST and PATCH requires Idempotency-Key, except a POST marked
+#     `x-memax-read: true`, which only reads (it is a POST to keep its
+#     input out of URLs);
 #   - every operation documents 401, 429, 500 and 503.
 openapi: 3.1.1
 info:
@@ -55,6 +57,11 @@ info:
 
     A refusal is 403 `refused` with `details.policy`; clients localise by
     `details.policy.code` and fall back to `details.policy.message`.
+
+    One `POST` is not a command: the near-duplicate check
+    (`:near-duplicates`) only reads. It is a `POST` so a draft travels in
+    the body rather than a URL, and it takes no `Idempotency-Key`
+    (`x-memax-read: true`).
 
     ## Versions and If-Match
 
@@ -303,6 +310,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MemoryPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/memories:near-duplicates:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    post:
+      operationId: findNearDuplicates
+      tags: [memories]
+      summary: Find what a draft repeats
+      x-memax-read: true
+      description: |
+        Remember's near-duplicate check: the kept memories and pending
+        proposals of the space that a draft statement repeats, best first,
+        so a person can keep an agent's proposal instead of writing the
+        same thing twice. `exact` is the same words (case, spacing and
+        punctuation aside); `near` is at least `floor` similar by embedding
+        (cosine). Superseded decisions are left out.
+
+        No model runs on this path. The draft is embedded (within about
+        120 ms) and compared exactly with the space's stored embeddings,
+        so it answers in under 150 ms. When embeddings are off on this
+        server, or the draft's embedding misses its deadline, only exact
+        repeats are checked and `semantic` is `false`.
+
+        It only reads, so any credential that reads the space may call it.
+        It is a `POST` so the draft travels in the body, never in a URL or
+        an access log, and it takes no `Idempotency-Key`. Clients call it
+        while a person types (debounced), and it is rate-limited per
+        caller: 429 `rate_limited` with `Retry-After`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NearDuplicatesRequest'
+      responses:
+        '200':
+          description: What the draft repeats, best first; none is an empty list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NearDuplicatesEnvelope'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -4357,6 +4419,72 @@ components:
           type: string
           maxLength: 255
 
+    NearDuplicatesRequest:
+      description: A draft statement to check before remembering it.
+      type: object
+      additionalProperties: false
+      required: [statement]
+      properties:
+        statement:
+          description: The draft, as the person has typed it so far.
+          type: string
+          minLength: 1
+          maxLength: 2000
+        limit:
+          description: The most repeats to return (default 3).
+          type: integer
+          minimum: 1
+          maximum: 5
+
+    NearDuplicates:
+      description: What a draft repeats.
+      type: object
+      additionalProperties: false
+      required: [items, semantic, floor]
+      properties:
+        items:
+          description: Best first. Exact repeats come before near ones.
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/NearDuplicate'
+        semantic:
+          description: |
+            The draft was compared by meaning. `false` when embeddings are
+            off on this server or the draft's embedding missed its deadline:
+            only exact repeats were checked.
+          type: boolean
+        floor:
+          description: The least similarity a near repeat needed.
+          type: number
+          minimum: 0
+          maximum: 1
+
+    NearDuplicate:
+      description: A memory a draft repeats.
+      type: object
+      additionalProperties: false
+      required: [memory, similarity, match, created]
+      properties:
+        memory:
+          description: A kept memory or a pending proposal (its `lifecycle` says which).
+          $ref: '#/components/schemas/Memory'
+        similarity:
+          description: Cosine similarity of the draft and the memory; 1 for an exact repeat.
+          type: number
+          minimum: -1
+          maximum: 1
+        match:
+          $ref: '#/components/schemas/DuplicateMatch'
+        created:
+          description: The receipt that wrote the memory, so a client can say who proposed or kept it, through which agent, and when.
+          $ref: '#/components/schemas/Receipt'
+
+    DuplicateMatch:
+      description: '`exact`: the same words. `near`: the same thing by meaning.'
+      type: string
+      enum: [exact, near]
+
     RememberRequest:
       type: object
       additionalProperties: false
@@ -4838,6 +4966,14 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/CommandResult'
+
+    NearDuplicatesEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/NearDuplicates'
 
     MemoriesCommandResultEnvelope:
       type: object

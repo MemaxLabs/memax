@@ -33,6 +33,9 @@ const (
 	codeInternal               = "internal_error"
 	codeBusy                   = "busy"
 	codeUnavailable            = "unavailable"
+	// codeRateLimited is the rate-limit middleware's code, which the
+	// near-duplicate check also answers with (near.go).
+	codeRateLimited = "rate_limited"
 )
 
 // apiError is an error response: a status, an ErrorCode and a sentence

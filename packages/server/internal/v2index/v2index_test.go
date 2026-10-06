@@ -258,5 +258,3 @@ func TestConfigFromEnv(t *testing.T) {
 		t.Error("New without a ledger or an embedder must be nil")
 	}
 }
-
-

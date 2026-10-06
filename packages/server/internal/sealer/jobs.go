@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivertype"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
@@ -96,19 +97,34 @@ type SealWorker struct {
 func (w *SealWorker) Timeout(*river.Job[ledger.SealSpaceArgs]) time.Duration { return 2 * time.Minute }
 
 // Work seals the space; a space with more receipts than a job takes
-// snoozes and continues.
+// snoozes and continues. The job completes itself in the transaction that
+// checks the sweep hasn't passed a receipt it missed (ledger.FinishSeal):
+// seal_space is unique over running jobs, so a receipt the sweep passed
+// while this job ran is this job's to seal.
 func (w *SealWorker) Work(ctx context.Context, job *river.Job[ledger.SealSpaceArgs]) error {
 	if w.Sealer == nil {
 		return river.JobCancel(errNotConfigured)
 	}
 	_, err := w.Sealer.SealSpace(ctx, job.Args.SpaceID)
-	if errors.Is(err, ErrMore) {
+	switch {
+	case errors.Is(err, ErrMore):
+		return river.JobSnooze(0)
+	case errors.Is(err, ledger.ErrNotFound):
+		return river.JobCancel(fmt.Errorf("seal: space %s is gone", job.Args.SpaceID))
+	case err != nil:
+		return err
+	}
+	pending, err := w.Sealer.ledger.FinishSeal(ctx, job.Args.SpaceID, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := river.JobCompleteTx[*riverpgxv5.Driver](ctx, tx, job)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	if pending {
 		return river.JobSnooze(0)
 	}
-	if errors.Is(err, ledger.ErrNotFound) {
-		return river.JobCancel(fmt.Errorf("seal: space %s is gone", job.Args.SpaceID))
-	}
-	return err
+	return nil
 }
 
 // VerifySweepWorker runs receipts_verify_sweep.

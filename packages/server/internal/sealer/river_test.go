@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
@@ -54,5 +55,43 @@ func TestSealingThroughRiverWithTwoWorkers(t *testing.T) {
 	}
 	if v := f.verify(s); !v.OK() || v.Receipts != 30 || v.Signed != v.Checkpoints {
 		t.Errorf("verify = %+v", v.Problems)
+	}
+}
+
+// The race River's uniqueness opens: a receipt lands while the space's
+// seal job runs, and the sweep passes it, but its insert is deduplicated
+// against the running job. FinishSeal sees that the cursor passed a
+// receipt the head hasn't reached, so the job seals again instead of
+// completing; once nothing is left behind it completes in the same
+// transaction.
+func TestFinishSealDoesNotLoseADeduplicatedReceipt(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	ctx := context.Background()
+	signer, keys := keyed(t, 10)
+	s := f.sealer(signer, keys, nil)
+	f.remember("Sealed by the running job")
+	f.sealAll(s)
+	// The job has sealed; before it completes, a receipt lands and the
+	// sweep passes it (queueing nothing: the job is still running).
+	late := f.remember("Landed while the job ran")
+	eventually(t, "the sweep passes the late receipt", func() bool {
+		if _, err := f.l.SealSweep(ctx, 100, nil); err != nil {
+			t.Fatal(err)
+		}
+		return f.count(`
+			SELECT count(*) FROM v2.receipts r, v2.receipt_seal_cursor c
+			 WHERE r.id = $1 AND (r.txid, r.seq) <= (c.last_txid, c.last_seq)`, late.LastReceiptID) == 1
+	})
+	finished := 0
+	finish := func(context.Context, pgx.Tx) error { finished++; return nil }
+	pending, err := f.l.FinishSeal(ctx, f.space, finish)
+	if err != nil || !pending || finished != 0 {
+		t.Fatalf("finish with a receipt behind: pending %v, finished %d, %v", pending, finished, err)
+	}
+	f.sealAll(s)
+	pending, err = f.l.FinishSeal(ctx, f.space, finish)
+	if err != nil || pending || finished != 1 {
+		t.Errorf("finish after sealing it: pending %v, finished %d, %v", pending, finished, err)
 	}
 }

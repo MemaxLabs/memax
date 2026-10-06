@@ -473,6 +473,65 @@ func (l *Ledger) SealSweep(ctx context.Context, limit int, jobs Jobs) ([]uuid.UU
 	return spaces, nil
 }
 
+// FinishSeal ends a seal job without losing a receipt to the sweep's
+// deduplication. seal_space is unique over running jobs, so a sweep that
+// passes a new receipt of this space while its job runs queues nothing: the
+// running job must take it. FinishSeal takes the sweep's cursor FOR SHARE
+// (the sweep takes it FOR UPDATE), checks whether the cursor has passed a
+// receipt of the space the head hasn't reached, and if not, runs finish
+// (the job completing itself, as the login role) in the same transaction.
+// Either the sweep moved first, and FinishSeal sees its receipts and
+// reports pending (seal again), or FinishSeal commits first, and the
+// sweep's insert finds the job completed and queues a new one.
+func (l *Ledger) FinishSeal(ctx context.Context, spaceID uuid.UUID, finish Finisher) (pending bool, err error) {
+	if l == nil {
+		return false, ErrDisabled
+	}
+	scope, err := l.SpaceScope(ctx, spaceID)
+	if err != nil {
+		return false, err
+	}
+	tx, loginRole, err := l.beginRole(ctx, SealerRole, scope, pgx.TxOptions{AccessMode: pgx.ReadWrite})
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// The cursor's policy admits the sealer while app.sweep says so.
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.sweep', 'unsealed_spaces', true)`); err != nil {
+		return false, fmt.Errorf("ledger: finish seal: %w", err)
+	}
+	var cursorTxid string
+	var cursorSeq int64
+	if err := tx.QueryRow(ctx, `SELECT last_txid::text, last_seq FROM v2.receipt_seal_cursor WHERE id FOR SHARE`).
+		Scan(&cursorTxid, &cursorSeq); err != nil {
+		return false, fmt.Errorf("ledger: finish seal: read the cursor: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.sweep', '', true)`); err != nil {
+		return false, fmt.Errorf("ledger: finish seal: %w", err)
+	}
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+		    SELECT 1 FROM v2.receipts r
+		      LEFT JOIN v2.receipt_chain_heads h ON h.space_id = r.space_id
+		     WHERE r.space_id = $1
+		       AND (r.txid, r.seq) > (COALESCE(h.last_txid, '0'::xid8), COALESCE(h.last_seq, 0))
+		       AND (r.txid, r.seq) <= ($2::xid8, $3))`, spaceID, cursorTxid, cursorSeq).Scan(&pending); err != nil {
+		return false, fmt.Errorf("ledger: finish seal: %w", err)
+	}
+	if pending {
+		return true, nil
+	}
+	if finish != nil {
+		if _, err := tx.Exec(ctx, `SELECT set_config('role', $1, true)`, loginRole); err != nil {
+			return false, fmt.Errorf("ledger: finish seal: %w", err)
+		}
+		if err := finish(ctx, tx); err != nil {
+			return false, fmt.Errorf("ledger: finish seal: %w", err)
+		}
+	}
+	return false, tx.Commit(ctx)
+}
+
 func compareUUID(a, b uuid.UUID) int {
 	for i := range a {
 		if a[i] != b[i] {

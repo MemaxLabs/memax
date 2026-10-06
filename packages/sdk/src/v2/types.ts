@@ -93,6 +93,23 @@ export type GatePage = Schemas["GatePage"];
 /** A gate command's answer; for an answer, `memory` is the kept decision. */
 export type GateResult = Schemas["GateResult"];
 
+// The sealed receipt chain
+/** One signed checkpoint of a space's receipt chain. */
+export type Checkpoint = Schemas["Checkpoint"];
+export type CheckpointPage = Schemas["CheckpointPage"];
+/** How far the chain is sealed and verified ("sealed through receipt N"). */
+export type SealStatus = Schemas["SealStatus"];
+/** A public key checkpoints are signed with. */
+export type SigningKey = Schemas["SigningKey"];
+
+// Reads (R-): what agents read. Not receipts.
+export type Read = Schemas["Read"];
+export type ReadPage = Schemas["ReadPage"];
+/** How a memory has been read, and by which agents (MemoryDetail.reads). */
+export type MemoryReads = Schemas["MemoryReads"];
+export type MemoryReader = Schemas["MemoryReader"];
+export type CompileLoadResult = Schemas["CompileLoadResult"];
+
 // Agents
 export type AgentConnection = Schemas["AgentConnection"];
 export type AgentSpace = Schemas["AgentSpace"];
@@ -127,6 +144,8 @@ export type RequestDecisionInput = Schemas["RequestDecisionRequest"];
 export type AnswerGateInput = Schemas["AnswerGateRequest"];
 /** The body of withdrawing a gate: an optional reason, for the receipt. */
 export type WithdrawGateInput = Schemas["ReviewRequest"];
+/** A session start's report of the compile its agent loaded. */
+export type CompileLoadInput = Schemas["CompileLoadRequest"];
 
 // Vocabulary
 export type Section = Schemas["Section"];
@@ -180,5 +199,8 @@ export type ConflictChange = Schemas["ConflictChange"];
 export type UndoRefusal = Schemas["UndoRefusal"];
 /** waiting, answered, withdrawn or expired. */
 export type GateStatus = Schemas["GateStatus"];
+/** recall, search, get, list, digest or compile_load. */
+export type ReadKind = Schemas["ReadKind"];
+export type ReaderKind = Schemas["ReaderKind"];
 /** The surfaces a client may declare in `X-Memax-Via`. */
 export type ClientVia = components["parameters"]["Via"];

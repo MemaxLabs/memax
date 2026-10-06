@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/mcpv2"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore/mockobjectstore"
+	"github.com/MemaxLabs/memax/packages/server/internal/reads"
 	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
@@ -44,19 +46,46 @@ func TestMain(m *testing.M) {
 // env is one database behind the real auth middleware and both MCP
 // profiles, with V2 wired (unless built withoutV2).
 type env struct {
-	t       *testing.T
-	pool    *pgxpool.Pool
-	st      store.Store
-	ledger  *ledger.Ledger
-	spaces  *spacemode.Resolver
-	srv     *httptest.Server
-	reads   *recordedReads
-	compile *compile.Service
+	t      *testing.T
+	pool   *pgxpool.Pool
+	st     store.Store
+	ledger *ledger.Ledger
+	spaces *spacemode.Resolver
+	srv    *httptest.Server
+	reads  *recordedReads
+	// recorder is the production recorder, writing v2.reads; every read
+	// goes to both.
+	recorder *reads.Recorder
+	compile  *compile.Service
 }
 
-type recordedReads struct{ reads []mcpv2.Read }
+// tee hands every read to each recorder.
+type tee []ledger.ReadRecorder
 
-func (r *recordedReads) Record(read mcpv2.Read) { r.reads = append(r.reads, read) }
+func (t tee) Record(e ledger.ReadEvent) {
+	for _, r := range t {
+		r.Record(e)
+	}
+}
+
+// recordedReads keeps the reads handed to the recorder, for assertions on
+// what each tool reports.
+type recordedReads struct {
+	mu    sync.Mutex
+	reads []ledger.ReadEvent
+}
+
+func (r *recordedReads) Record(read ledger.ReadEvent) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.reads = append(r.reads, read)
+}
+
+func (r *recordedReads) all() []ledger.ReadEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]ledger.ReadEvent(nil), r.reads...)
+}
 
 func newEnv(t *testing.T) *env { return buildEnv(t, true) }
 
@@ -79,6 +108,8 @@ func buildEnvOn(t *testing.T, st store.Store, pool *pgxpool.Pool, withV2 bool, o
 	}
 	authH.SetStore(st)
 	e := &env{t: t, pool: pool, st: st, ledger: ledger.New(pool, ledger.WithLogger(quiet)), spaces: spacemode.New(pool), reads: &recordedReads{}}
+	e.recorder = reads.New(e.ledger, reads.Options{Logger: quiet})
+	t.Cleanup(e.recorder.Close) // before the database goes away
 	recallH := handler.NewRecallHandler(st, nil, nil, nil, nil)
 	agentH := handler.NewMCPHandler(st, recallH, nil, nil)
 	chatH := handler.NewChatGPTMCPHandler(st, recallH, nil, nil)
@@ -89,7 +120,7 @@ func buildEnvOn(t *testing.T, st store.Store, pool *pgxpool.Pool, withV2 bool, o
 		v2h := v2api.New(e.ledger, quiet, v2api.WithCompile(e.compile))
 		t.Cleanup(v2h.Wait)
 		o := mcpv2.Options{V2: v2h, Spaces: e.spaces, StateSecret: []byte(testSecret),
-			AppBaseURL: "https://memax.test", Reads: e.reads, Logger: quiet, Compile: v2h.Compile()}
+			AppBaseURL: "https://memax.test", Reads: tee{e.reads, e.recorder}, Logger: quiet, Compile: v2h.Compile()}
 		for _, opt := range opts {
 			opt(e, &o)
 		}

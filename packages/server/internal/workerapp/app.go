@@ -51,7 +51,9 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
 	"github.com/MemaxLabs/memax/packages/server/internal/quota"
+	"github.com/MemaxLabs/memax/packages/server/internal/reads"
 	"github.com/MemaxLabs/memax/packages/server/internal/safefetch"
+	"github.com/MemaxLabs/memax/packages/server/internal/sealer"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
@@ -279,6 +281,32 @@ func New(ctx context.Context) (*App, error) {
 	}
 	judge.AddWorkers(workers, v2Judge)
 
+	// V2 reads (plan 25 §5.3): the API records them; the worker keeps the
+	// monthly partitions ahead, prunes past retention and reports the north
+	// star, once a day.
+	reads.AddWorkers(workers, v2Ledger)
+
+	// V2 receipt sealing (plan 25 §5.3): a sweep every SEALER_INTERVAL
+	// queues a seal job per space with new receipts; each chains them into
+	// a checkpoint signed with RECEIPT_SIGNING_KEY and copies it to object
+	// storage; every space is verified from genesis nightly. A bad key
+	// fails startup rather than sealing unsigned by surprise.
+	sealCfg, err := sealer.ConfigFromEnv(os.Getenv)
+	if err != nil {
+		app.Shutdown(context.Background())
+		return nil, fmt.Errorf("receipt sealer: %w", err)
+	}
+	sealCfg.Store = blobStore
+	v2Sealer := sealer.New(v2Ledger, sealCfg)
+	if v2Sealer.Signed() {
+		slog.Info("V2 receipt sealer: checkpoints signed", "key_id", sealCfg.Signer.KeyID(), "every", v2Sealer.Interval().String(),
+			"verify_keys", len(sealCfg.Keys), "copies", blobStore != nil)
+	} else {
+		slog.Warn("V2 receipt sealer: RECEIPT_SIGNING_KEY is not set, so checkpoints are chained but unsigned",
+			"every", v2Sealer.Interval().String(), "copies", blobStore != nil)
+	}
+	sealer.AddWorkers(workers, v2Sealer)
+
 	river.AddWorker(workers, &queue.MemoryProcessWorker{
 		Store:         s,
 		Events:        eventsPublisher,
@@ -492,6 +520,8 @@ func New(ctx context.Context) (*App, error) {
 	}
 
 	periodicJobs := configurePeriodicJobs(dreamEngine != nil)
+	periodicJobs = append(periodicJobs, reads.PeriodicJobs()...)
+	periodicJobs = append(periodicJobs, sealer.PeriodicJobs(v2Sealer)...)
 	if compileSvc != nil {
 		periodicJobs = append(periodicJobs, compile.PeriodicJobs()...)
 		slog.Info("compile sweep scheduled", "every", compile.SweepInterval.String())
@@ -2011,6 +2041,8 @@ func workerRiverConfig(workers *river.Workers, periodicJobs []*river.PeriodicJob
 			// V2 embeddings wait on Voyage; one job embeds its space's
 			// whole burst, so a few slots do.
 			ledger.QueueIndex: {MaxWorkers: v2index.MaxWorkers},
+			// The receipt sealer: short, database-bound jobs, one per space.
+			ledger.QueueSeal: {MaxWorkers: sealer.MaxWorkers},
 		},
 		Workers: workers,
 		// Global worker middleware: every job's Work() runs inside a

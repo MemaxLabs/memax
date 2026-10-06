@@ -110,6 +110,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/checkpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List receipt checkpoints
+         * @description The space's sealed receipt chain, newest checkpoint first: each
+         *     checkpoint's range of receipts (positions in the chain, from 1), the
+         *     chain hash before and after it, the Merkle root of its receipts and
+         *     its signature. `seal` says how far the chain is sealed ("sealed
+         *     through receipt 1,284 at 14:02"), how many receipts wait to be sealed
+         *     and when the chain was last verified; `keys` are the public keys
+         *     checkpoints are signed with, current and retired.
+         */
+        get: operations["listCheckpoints"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/spaces/{space}/reads": {
         parameters: {
             query?: never;
@@ -1639,6 +1668,83 @@ export interface components {
             last_read_at: components["schemas"]["Timestamp"];
         };
         /**
+         * @description One signed checkpoint of a space's receipt chain. Its signature is
+         *     Ed25519 over the checkpoint statement (receiptchain format 1: the
+         *     magic `memax.checkpoint.v1`, then the length-prefixed space_id,
+         *     tenant_id, number, position_from, position_to, first and last
+         *     receipt ids, last_seq, prev_sha256, chain_sha256, merkle_root,
+         *     sealed_at in microseconds and key_id).
+         */
+        Checkpoint: {
+            id: components["schemas"]["Id"];
+            space_id: components["schemas"]["Id"];
+            tenant_id: components["schemas"]["Id"];
+            /** @description 1, 2, 3 … in the space. */
+            number: number;
+            /** @description The first receipt's position in the space's chain, from 1. */
+            position_from: number;
+            position_to: number;
+            receipts: number;
+            first_receipt_id: components["schemas"]["Id"];
+            last_receipt_id: components["schemas"]["Id"];
+            /** @description The last receipt's `seq`. */
+            last_seq: number;
+            /** @description The chain hash before the range (the space's genesis hash for the first checkpoint). */
+            prev_sha256: components["schemas"]["Sha256"];
+            /** @description The chain hash after the range. */
+            chain_sha256: components["schemas"]["Sha256"];
+            /** @description The RFC 6962 Merkle root of the range's receipt leaves. */
+            merkle_root: components["schemas"]["Sha256"];
+            /**
+             * @description The receipts' canonical encoding version.
+             * @enum {integer}
+             */
+            format: 1;
+            /** @description False when the server had no signing key; the checkpoint still chains. */
+            signed: boolean;
+            /** @description The signing key, as in `keys`. */
+            key_id?: string;
+            /** @description The Ed25519 signature, base64. */
+            signature?: string;
+            sealed_at: components["schemas"]["Timestamp"];
+            /** @description When its copy reached object storage; absent until then. */
+            stored_at?: components["schemas"]["Timestamp"];
+        };
+        /** @description How far a space's receipt chain is sealed and verified. */
+        SealStatus: {
+            /** @description Receipts sealed so far. */
+            sealed_receipts: number;
+            /** @description The last sealed receipt's `seq`. */
+            sealed_through_seq?: number;
+            sealed_through_receipt_id?: components["schemas"]["Id"];
+            /** @description The chain hash after the last sealed receipt. */
+            head_sha256?: components["schemas"]["Sha256"];
+            checkpoints: number;
+            sealed_at?: components["schemas"]["Timestamp"];
+            /** @description Receipts written but not sealed yet (counted up to 10,000). */
+            unsealed: number;
+            /** @description When the chain was last verified from its first receipt. */
+            verified_at?: components["schemas"]["Timestamp"];
+            verified_receipts?: number;
+            /** @description What the last verification found wrong; 0 means the chain verified. */
+            verify_problems?: number;
+        };
+        /** @description A public key checkpoints are signed with. */
+        SigningKey: {
+            key_id: string;
+            /** @enum {string} */
+            algorithm: "ed25519";
+            /** @description The raw 32-byte public key, base64. */
+            public_key: string;
+        };
+        CheckpointPage: {
+            items: components["schemas"]["Checkpoint"][];
+            has_more: boolean;
+            next_cursor?: components["schemas"]["Cursor"];
+            seal: components["schemas"]["SealStatus"];
+            keys: components["schemas"]["SigningKey"][];
+        };
+        /**
          * @description `agent` (an agent connection) or `person` (a person's CLI reporting their agent's session start).
          * @enum {string}
          */
@@ -2531,6 +2637,9 @@ export interface components {
         CompileLoadResultEnvelope: {
             data: components["schemas"]["CompileLoadResult"];
         };
+        CheckpointPageEnvelope: {
+            data: components["schemas"]["CheckpointPage"];
+        };
     };
     responses: {
         /** @description The command was applied, or sent to Review. */
@@ -2978,6 +3087,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReceiptPageEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listCheckpoints: {
+        parameters: {
+            query?: {
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size. Larger values are capped at 200. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of checkpoints. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckpointPageEnvelope"];
                 };
             };
             400: components["responses"]["BadRequest"];

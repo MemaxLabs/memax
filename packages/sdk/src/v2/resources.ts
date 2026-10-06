@@ -11,6 +11,7 @@ import type {
   AgentDetail,
   AgentList,
   AutonomyInput,
+  CheckpointPage,
   Brief,
   BriefResult,
   BriefVersionPage,
@@ -291,6 +292,22 @@ export class V2ReceiptsResource {
   async list(space: string, opts?: ListReceiptsOptions): Promise<ReceiptPage> {
     return this.req("GET", `/v2/spaces/${seg(space)}/receipts`, {
       query: { ...pageQuery(opts), memory: opts?.memory },
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * The space's sealed receipt chain, newest checkpoint first, with how
+   * far it is sealed and verified (`seal`) and the public keys checkpoints
+   * are signed with. Check an export against them with
+   * {@link verifyReceiptChain}, pinning the keys you trust.
+   */
+  async checkpoints(
+    space: string,
+    opts?: PageOptions,
+  ): Promise<CheckpointPage> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/checkpoints`, {
+      query: pageQuery(opts),
       signal: opts?.signal,
     });
   }

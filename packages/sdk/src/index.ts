@@ -54,6 +54,22 @@ export {
   V2GatesResource,
   refusalOf,
 } from "./v2/resources.js";
+export {
+  verifyReceiptChain,
+  canonicalReceipt,
+  checkpointStatement,
+  receiptLeaf,
+  genesisHash,
+  merkleRoot,
+} from "./v2/verify.js";
+export type {
+  ChainReceipt,
+  ChainReport,
+  ChainProblem,
+  ChainProblemKind,
+  ChainCrypto,
+  VerifyChainInput,
+} from "./v2/verify.js";
 export type {
   CommandOptions as V2CommandOptions,
   MemoryRefOptions as V2MemoryRefOptions,

@@ -62,6 +62,7 @@ var sampleRequests = map[string]struct {
 	"listReview":        {path: "/v2/spaces/memax-v2/review"},
 	"listReceipts":      {path: "/v2/spaces/memax-v2/receipts?memory=M-0001"},
 	"listReads":         {path: "/v2/spaces/memax-v2/reads"},
+	"listCheckpoints":   {path: "/v2/spaces/memax-v2/checkpoints?limit=5"},
 	"recordCompileLoad": {path: "/v2/spaces/memax-v2/compile-loads", body: `{"compile":"C-0001","agent":"claude-code"}`},
 	"getMemory":         {path: "/v2/memories/M-0001?space=memax-v2"},
 	"keepMemory":        {path: "/v2/memories/M-0001:keep?space=memax-v2", header: map[string]string{"If-Match": `"1"`}},

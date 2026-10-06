@@ -18,6 +18,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/judge"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
+	"github.com/MemaxLabs/memax/packages/server/internal/sealer"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
 )
 
@@ -30,7 +31,7 @@ func TestWorkerRiverConfig_QueuesAndMiddleware(t *testing.T) {
 	cfg := workerRiverConfig(river.NewWorkers(), nil)
 
 	want := map[string]int{river.QueueDefault: 20, "dreams": 3, "chat": 8, ledger.QueueCompile: compile.MaxWorkers,
-		ledger.QueueJudge: judge.MaxWorkers}
+		ledger.QueueJudge: judge.MaxWorkers, ledger.QueueSeal: sealer.MaxWorkers}
 	if len(cfg.Queues) != len(want) {
 		t.Errorf("queues = %v, want %v", cfg.Queues, want)
 	}

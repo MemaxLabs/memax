@@ -23,6 +23,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
+	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
@@ -41,6 +42,8 @@ type Handler struct {
 	webWarned atomic.Int64
 	// reads records agents' reads off the request path; nil records none.
 	reads ledger.ReadRecorder
+	// receiptKeys are the public keys checkpoints are signed with.
+	receiptKeys receiptchain.Keyring
 }
 
 // Option configures a Handler.
@@ -87,6 +90,7 @@ var routes = []Route{
 	{"GET", "/v2/spaces/{space}/memories", "listMemories", (*Handler).listMemories},
 	{"GET", "/v2/spaces/{space}/review", "listReview", (*Handler).listReview},
 	{"GET", "/v2/spaces/{space}/receipts", "listReceipts", (*Handler).listReceipts},
+	{"GET", "/v2/spaces/{space}/checkpoints", "listCheckpoints", (*Handler).listCheckpoints},
 	{"GET", "/v2/spaces/{space}/reads", "listReads", (*Handler).listReads},
 	{"POST", "/v2/spaces/{space}/compile-loads", "recordCompileLoad", (*Handler).recordCompileLoad},
 	{"GET", "/v2/memories/{ref}", "getMemory", (*Handler).getMemory},

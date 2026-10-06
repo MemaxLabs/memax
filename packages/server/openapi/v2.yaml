@@ -126,6 +126,19 @@ info:
     (7 days unless the agent says otherwise), then reads as `expired`. The
     agent hears how it ended in its next MCP recall.
 
+    ## Sealed receipts
+
+    Receipts are sealed into a hash chain per space, off the write path,
+    within seconds of being written: every receipt, in order, chained by
+    SHA-256 and cut into checkpoints, each with a Merkle root of its
+    receipts, the chain hash at its end and an Ed25519 signature
+    (`GET /v2/spaces/{space}/checkpoints`, with the public keys). Changing,
+    removing or reordering a sealed receipt breaks the chain. A sealed
+    receipt holds a salted hash of its reason, not the reason, so Forget
+    can redact the reason and the chain still verifies; the redaction is
+    itself a receipt (`forgot`). The SDK's `verifyReceiptChain` checks an
+    export against its checkpoints.
+
     ## Reads
 
     What agents read is recorded as reads (`R-`), not receipts: a read
@@ -395,6 +408,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReceiptPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/checkpoints:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listCheckpoints
+      tags: [activity]
+      summary: List receipt checkpoints
+      description: |
+        The space's sealed receipt chain, newest checkpoint first: each
+        checkpoint's range of receipts (positions in the chain, from 1), the
+        chain hash before and after it, the Merkle root of its receipts and
+        its signature. `seal` says how far the chain is sealed ("sealed
+        through receipt 1,284 at 14:02"), how many receipts wait to be sealed
+        and when the chain was last verified; `keys` are the public keys
+        checkpoints are signed with, current and retired.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of checkpoints.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckpointPageEnvelope'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3312,6 +3365,164 @@ components:
         last_read_at:
           $ref: '#/components/schemas/Timestamp'
 
+    Checkpoint:
+      description: |
+        One signed checkpoint of a space's receipt chain. Its signature is
+        Ed25519 over the checkpoint statement (receiptchain format 1: the
+        magic `memax.checkpoint.v1`, then the length-prefixed space_id,
+        tenant_id, number, position_from, position_to, first and last
+        receipt ids, last_seq, prev_sha256, chain_sha256, merkle_root,
+        sealed_at in microseconds and key_id).
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - space_id
+        - tenant_id
+        - number
+        - position_from
+        - position_to
+        - receipts
+        - first_receipt_id
+        - last_receipt_id
+        - last_seq
+        - prev_sha256
+        - chain_sha256
+        - merkle_root
+        - format
+        - signed
+        - sealed_at
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        tenant_id:
+          $ref: '#/components/schemas/Id'
+        number:
+          description: 1, 2, 3 … in the space.
+          type: integer
+          minimum: 1
+        position_from:
+          description: The first receipt's position in the space's chain, from 1.
+          type: integer
+          minimum: 1
+        position_to:
+          type: integer
+          minimum: 1
+        receipts:
+          type: integer
+          minimum: 1
+        first_receipt_id:
+          $ref: '#/components/schemas/Id'
+        last_receipt_id:
+          $ref: '#/components/schemas/Id'
+        last_seq:
+          description: The last receipt's `seq`.
+          type: integer
+          minimum: 1
+        prev_sha256:
+          description: The chain hash before the range (the space's genesis hash for the first checkpoint).
+          $ref: '#/components/schemas/Sha256'
+        chain_sha256:
+          description: The chain hash after the range.
+          $ref: '#/components/schemas/Sha256'
+        merkle_root:
+          description: The RFC 6962 Merkle root of the range's receipt leaves.
+          $ref: '#/components/schemas/Sha256'
+        format:
+          description: The receipts' canonical encoding version.
+          type: integer
+          enum: [1]
+        signed:
+          description: False when the server had no signing key; the checkpoint still chains.
+          type: boolean
+        key_id:
+          description: The signing key, as in `keys`.
+          type: string
+        signature:
+          description: The Ed25519 signature, base64.
+          type: string
+        sealed_at:
+          $ref: '#/components/schemas/Timestamp'
+        stored_at:
+          description: When its copy reached object storage; absent until then.
+          $ref: '#/components/schemas/Timestamp'
+
+    SealStatus:
+      description: How far a space's receipt chain is sealed and verified.
+      type: object
+      additionalProperties: false
+      required: [sealed_receipts, checkpoints, unsealed]
+      properties:
+        sealed_receipts:
+          description: Receipts sealed so far.
+          type: integer
+          minimum: 0
+        sealed_through_seq:
+          description: The last sealed receipt's `seq`.
+          type: integer
+          minimum: 1
+        sealed_through_receipt_id:
+          $ref: '#/components/schemas/Id'
+        head_sha256:
+          description: The chain hash after the last sealed receipt.
+          $ref: '#/components/schemas/Sha256'
+        checkpoints:
+          type: integer
+          minimum: 0
+        sealed_at:
+          $ref: '#/components/schemas/Timestamp'
+        unsealed:
+          description: Receipts written but not sealed yet (counted up to 10,000).
+          type: integer
+          minimum: 0
+        verified_at:
+          description: When the chain was last verified from its first receipt.
+          $ref: '#/components/schemas/Timestamp'
+        verified_receipts:
+          type: integer
+          minimum: 0
+        verify_problems:
+          description: What the last verification found wrong; 0 means the chain verified.
+          type: integer
+          minimum: 0
+
+    SigningKey:
+      description: A public key checkpoints are signed with.
+      type: object
+      additionalProperties: false
+      required: [key_id, algorithm, public_key]
+      properties:
+        key_id:
+          type: string
+        algorithm:
+          type: string
+          enum: [ed25519]
+        public_key:
+          description: The raw 32-byte public key, base64.
+          type: string
+
+    CheckpointPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more, seal, keys]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Checkpoint'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+        seal:
+          $ref: '#/components/schemas/SealStatus'
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/SigningKey'
+
     ReaderKind:
       description: '`agent` (an agent connection) or `person` (a person''s CLI reporting their agent''s session start).'
       type: string
@@ -5296,3 +5507,11 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/CompileLoadResult'
+
+    CheckpointPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/CheckpointPage'

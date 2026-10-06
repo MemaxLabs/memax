@@ -86,6 +86,15 @@ export type GatePage = Schemas["GatePage"];
 /** A gate command's answer; for an answer, `memory` is the kept decision. */
 export type GateResult = Schemas["GateResult"];
 
+// The sealed receipt chain
+/** One signed checkpoint of a space's receipt chain. */
+export type Checkpoint = Schemas["Checkpoint"];
+export type CheckpointPage = Schemas["CheckpointPage"];
+/** How far the chain is sealed and verified ("sealed through receipt N"). */
+export type SealStatus = Schemas["SealStatus"];
+/** A public key checkpoints are signed with. */
+export type SigningKey = Schemas["SigningKey"];
+
 // Reads (R-): what agents read. Not receipts.
 export type Read = Schemas["Read"];
 export type ReadPage = Schemas["ReadPage"];

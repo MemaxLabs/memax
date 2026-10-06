@@ -48,6 +48,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/quota"
 	"github.com/MemaxLabs/memax/packages/server/internal/ratelimit"
 	"github.com/MemaxLabs/memax/packages/server/internal/reads"
+	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/distill"
 	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/rerank"
 	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
@@ -759,7 +760,20 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 		slog.Info("/v2 enabled", "compile_jobs", queueClient != nil, "compile_service", svc != nil, "reads", rec != nil)
 	}
 	return v2api.New(l, slog.Default(), v2api.WithWebSurface(webSurfaceFromEnv()), v2api.WithCompile(svc),
-		v2api.WithReads(rec)), rec
+		v2api.WithReads(rec), v2api.WithReceiptKeys(receiptKeysFromEnv())), rec
+}
+
+// receiptKeysFromEnv reads the public keys receipt checkpoints are signed
+// with, to serve beside them: RECEIPT_VERIFY_KEYS (and the signing key's
+// public half, if RECEIPT_SIGNING_KEY happens to be set here too; the API
+// never signs). A bad value is logged, and no keys are served.
+func receiptKeysFromEnv() receiptchain.Keyring {
+	_, keys, err := receiptchain.FromEnv(os.Getenv)
+	if err != nil {
+		slog.Error("receipt checkpoint keys: unusable; serving none", "error", err)
+		return receiptchain.Keyring{}
+	}
+	return keys
 }
 
 func configureStore(ctx context.Context, app *App) (store.Store, *pgxpool.Pool, error) {

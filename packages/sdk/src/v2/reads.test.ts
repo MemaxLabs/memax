@@ -51,6 +51,29 @@ const read: V2.Read = {
   recorded_at: "2026-10-05T14:02:01Z",
 };
 
+describe("memax.v2.receipts.checkpoints", () => {
+  it("lists the sealed chain with its keys", async () => {
+    const page: V2.CheckpointPage = {
+      items: [],
+      has_more: false,
+      seal: { sealed_receipts: 1284, checkpoints: 40, unsealed: 2 },
+      keys: [
+        {
+          key_id: "ed25519:fe812c12f3ab4ce6",
+          algorithm: "ed25519",
+          public_key: "AAAA",
+        },
+      ],
+    };
+    const { memax, call } = client(jsonResponse({ data: page }));
+    const got = await memax.v2.receipts.checkpoints("memax-v2", { limit: 5 });
+    expect(got.seal.sealed_receipts).toBe(1284);
+    expect(call().url).toBe(
+      "https://api.memax.app/v2/spaces/memax-v2/checkpoints?limit=5",
+    );
+  });
+});
+
 describe("memax.v2.reads", () => {
   it("lists a space's reads, with the week's count", async () => {
     const page: V2.ReadPage = { items: [read], has_more: false, reads_7d: 41 };

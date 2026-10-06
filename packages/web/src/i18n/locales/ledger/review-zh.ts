@@ -9,6 +9,13 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
   retry: "再试一次",
   emptyFilter: "这个筛选下没有在等的。",
   showAll: "看全部在等的",
+  more: "再显示一些",
+  filtersBare: {
+    all: "全部",
+    conflicts: "冲突",
+    external: "外部",
+    stale: "过时",
+  },
   position: "{space} · 第 {n} 条，共 {total} 条",
   positionEditing: "{space} · 第 {n} 条，共 {total} 条 · 编辑中",
   session: "在会话 {session} 里提议",

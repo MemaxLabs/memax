@@ -37,6 +37,7 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     justNow: "刚刚",
     dateTime: "{date} {time}",
   },
+  sessionRef: "会话 {session}",
   sections: {
     decisions: "决策",
     conventions: "约定",

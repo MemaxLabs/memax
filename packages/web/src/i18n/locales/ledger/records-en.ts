@@ -41,6 +41,8 @@ export const ledgerRecordsEn = {
     justNow: "just now",
     dateTime: "{date}, {time}",
   },
+  // A session in a receipt ("session 3e1a").
+  sessionRef: "session {session}",
   sections: {
     decisions: "Decisions",
     conventions: "Conventions",

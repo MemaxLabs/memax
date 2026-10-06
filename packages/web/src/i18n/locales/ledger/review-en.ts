@@ -10,6 +10,14 @@ export const ledgerReviewEn = {
   retry: "Try again",
   emptyFilter: "Nothing waiting under this filter.",
   showAll: "Show everything waiting",
+  more: "Show more",
+  // The filters when the queue's counts aren't known yet.
+  filtersBare: {
+    all: "All",
+    conflicts: "Conflicts",
+    external: "External",
+    stale: "Stale",
+  },
   position: "{space} · {n} of {total}",
   positionEditing: "{space} · {n} of {total} · editing",
   session: "Proposed in session {session}",

@@ -122,6 +122,7 @@ export function createDemoRecords({
 
   const review: ReviewSource = {
     peekQueue,
+    peekCard: (_slug, ref) => DEMO_CARDS[ref] ?? EMPTY_CARD,
     async queue({ space }) {
       return peekQueue(space.slug);
     },

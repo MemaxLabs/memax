@@ -128,6 +128,7 @@ export interface ConflictData {
 export interface ReviewSource {
   /** The demo has the first page on hand, so screenshots never catch a loading frame. */
   peekQueue?(slug: string): ReviewQueue | undefined;
+  peekCard?(slug: string, ref: string): ReviewCardData | undefined;
   /** The queue: proposals, then conflicts, then stale; oldest first in each. */
   queue(input: {
     space: SpaceSummary;

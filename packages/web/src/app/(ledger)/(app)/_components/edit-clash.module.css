@@ -1,0 +1,44 @@
+/* The edit clash, after the States2 board's panel. */
+
+.clash {
+  border-color: var(--line-strong);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink);
+}
+
+.title b {
+  font-weight: 600;
+}
+
+.diff {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 25px;
+  color: var(--ink);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--sheet);
+  border-top: 1px solid var(--line);
+}

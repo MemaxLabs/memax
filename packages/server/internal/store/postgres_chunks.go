@@ -390,21 +390,20 @@ func (s *PostgresStore) searchChunks(ctx context.Context, query string, queryEmb
 			querySQL += ` AND ` + accessPredicate + topicPredicate + `
 					ORDER BY c.embedding <=> $1::vector, c.id ASC
 				LIMIT $2`
-			rows, err := s.pool.Query(ctx, querySQL, args...)
-			if err != nil {
-				if ctx.Err() == nil {
-					slog.Warn("vector search failed", "error", err)
-				}
-				return
-			}
-			defer rows.Close()
-			for rows.Next() {
+			// The vector lane runs through queryVectorLane so an HNSW index
+			// scan can't cut the candidate pool short (see
+			// postgres_vector_lane.go).
+			err := s.queryVectorLane(ctx, limit, querySQL, args, func(rows pgx.Rows) error {
 				var c model.Chunk
 				if err := rows.Scan(&c.ID, &c.MemoryID, &c.Content, &c.HeadingChain,
 					&c.ChunkIndex, &c.TokenCount, &c.Language, &c.SearchConfig, &c.Kind, &c.Stability, &c.RetrievalWeight, &c.Hint, &c.TagsText, &c.MetadataText, &c.ProjectRepo, &c.CreatedAt, &c.RelevanceScore); err != nil {
-					continue
+					return nil // skip an unreadable row, as before
 				}
 				vecChunks = append(vecChunks, c)
+				return nil
+			})
+			if err != nil && ctx.Err() == nil {
+				slog.Warn("vector search failed", "error", err)
 			}
 		}()
 	}

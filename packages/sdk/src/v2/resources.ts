@@ -1,9 +1,15 @@
-// The /v2 resources: `memax.v2.spaces`, `.memories`, `.review` and
-// `.receipts`. Thin, typed wrappers over the shared transport, so auth,
-// the `{data}` envelope and MemaxError behave exactly as on /v1.
+// The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`,
+// `.receipts` and `.agents`. Thin, typed wrappers over the shared
+// transport, so auth, the `{data}` envelope and MemaxError behave exactly
+// as on /v1.
 import { MemaxError } from "../errors.js";
 import type { QueryValue, RequestFn } from "../transport.js";
 import type {
+  AgentCommandInput,
+  AgentCommandResult,
+  AgentDetail,
+  AgentList,
+  AutonomyInput,
   ClientVia,
   CommandResult,
   EditInput,
@@ -222,18 +228,114 @@ export class V2ReceiptsResource {
   }
 }
 
+export class V2AgentsResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /**
+   * Your agent connections, each with its autonomy in every space of yours
+   * it is connected to. With an agent's own credential, only that agent.
+   */
+  async list(opts?: { signal?: AbortSignal }): Promise<AgentList> {
+    return this.req("GET", "/v2/agents", { signal: opts?.signal });
+  }
+
+  /** Every agent connected to a space, whoever it works for. */
+  async listInSpace(
+    space: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<AgentList> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/agents`, {
+      signal: opts?.signal,
+    });
+  }
+
+  /** One agent with its week, latest writes and latest sessions. */
+  async get(
+    agent: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<AgentDetail> {
+    return this.req("GET", `/v2/agents/${seg(agent)}`, {
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Set what an agent may do in a space, connecting it there if it isn't
+   * yet. Raising needs a person on the web app: elsewhere it throws a
+   * MemaxError `refused` with policy code `autonomy_needs_web` (see
+   * {@link refusalOf}). Lowering works from anywhere.
+   */
+  async setAutonomy(
+    agent: string,
+    space: string,
+    input: AutonomyInput,
+    opts: CommandOptions,
+  ): Promise<AgentCommandResult> {
+    return this.req("PATCH", `/v2/agents/${seg(agent)}/spaces/${seg(space)}`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** Stop an agent writing anywhere until it is resumed. It still reads. */
+  async pause(
+    agent: string,
+    input: AgentCommandInput,
+    opts: CommandOptions,
+  ): Promise<AgentCommandResult> {
+    return this.command(agent, "pause", input, opts);
+  }
+
+  /** Let a paused agent write again. Needs a person on the web app. */
+  async resume(
+    agent: string,
+    input: AgentCommandInput,
+    opts: CommandOptions,
+  ): Promise<AgentCommandResult> {
+    return this.command(agent, "resume", input, opts);
+  }
+
+  /**
+   * End the connection for good. Its API key or OAuth grant is revoked in
+   * the same step, so the agent stops working at once.
+   */
+  async disconnect(
+    agent: string,
+    input: AgentCommandInput,
+    opts: CommandOptions,
+  ): Promise<AgentCommandResult> {
+    return this.command(agent, "disconnect", input, opts);
+  }
+
+  private async command(
+    agent: string,
+    verb: "pause" | "resume" | "disconnect",
+    input: AgentCommandInput,
+    opts: CommandOptions,
+  ): Promise<AgentCommandResult> {
+    return this.req("POST", `/v2/agents/${seg(agent)}:${verb}`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+}
+
 /** `memax.v2`: the V2 record. */
 export class V2Resource {
   readonly spaces: V2SpacesResource;
   readonly memories: V2MemoriesResource;
   readonly review: V2ReviewResource;
   readonly receipts: V2ReceiptsResource;
+  readonly agents: V2AgentsResource;
 
   constructor(req: RequestFn) {
     this.spaces = new V2SpacesResource(req);
     this.memories = new V2MemoriesResource(req);
     this.review = new V2ReviewResource(req);
     this.receipts = new V2ReceiptsResource(req);
+    this.agents = new V2AgentsResource(req);
   }
 }
 

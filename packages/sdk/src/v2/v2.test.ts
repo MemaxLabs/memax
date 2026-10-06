@@ -320,3 +320,164 @@ describe("memax.v2 lists", () => {
     );
   });
 });
+
+const agent: V2.AgentConnection = {
+  id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a60",
+  person_id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a61",
+  agent: "codex",
+  display_name: "Codex",
+  surface: "cli",
+  credential: {
+    kind: "oauth_grant",
+    id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a62",
+    active: true,
+  },
+  max_autonomy: "write",
+  state: "active",
+  spaces: [
+    {
+      space_id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c",
+      slug: "memax-v2",
+      name: "memax-v2",
+      kind: "project",
+      autonomy: "propose",
+      reads_7d: 0,
+      writes_7d: 21,
+      updated_at: "2026-10-06T09:30:00Z",
+    },
+  ],
+  reads_7d: 0,
+  writes_7d: 21,
+  created_receipt_id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a63",
+  last_receipt_id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a63",
+  created_at: "2026-09-02T09:30:00Z",
+  updated_at: "2026-10-06T09:30:00Z",
+};
+
+const agentResult: V2.AgentCommandResult = {
+  outcome: "applied",
+  policy: { effect: "apply" },
+  agent,
+  receipts: [],
+};
+
+describe("memax.v2.agents", () => {
+  it("lists agents and a space's agents", async () => {
+    const list: V2.AgentList = { items: [agent] };
+    const { memax, call } = client(jsonResponse({ data: list }));
+
+    const mine = await memax.v2.agents.list();
+    await memax.v2.agents.listInSpace("memax v2");
+
+    expect(mine.items[0]?.spaces[0]?.autonomy).toBe("propose");
+    expect(call(0).url).toBe("https://api.memax.app/v2/agents");
+    expect(call(1).url).toBe(
+      "https://api.memax.app/v2/spaces/memax%20v2/agents",
+    );
+  });
+
+  it("reads one agent with its week", async () => {
+    const detail: V2.AgentDetail = {
+      agent,
+      this_week: {
+        reads: 0,
+        writes: 21,
+        proposals: 21,
+        kept: 14,
+        rejected: 3,
+        waiting: 4,
+      },
+      recent_writes: [],
+      sessions: [],
+    };
+    const { memax, call } = client(jsonResponse({ data: detail }));
+
+    const got = await memax.v2.agents.get(agent.id);
+
+    expect(got.this_week.waiting).toBe(4);
+    expect(call().url).toBe(`https://api.memax.app/v2/agents/${agent.id}`);
+    expect(call().method).toBe("GET");
+  });
+
+  it("sets autonomy with PATCH and an Idempotency-Key", async () => {
+    const { memax, call } = client(jsonResponse({ data: agentResult }));
+
+    await expect(
+      memax.v2.agents.setAutonomy(
+        agent.id,
+        "memax-v2",
+        { autonomy: "write", reason: "trusted now" },
+        { idempotencyKey: "a-1" },
+      ),
+    ).resolves.toEqual(agentResult);
+
+    const c = call();
+    expect(c.method).toBe("PATCH");
+    expect(c.url).toBe(
+      `https://api.memax.app/v2/agents/${agent.id}/spaces/memax-v2`,
+    );
+    expect(c.headers["Idempotency-Key"]).toBe("a-1");
+    expect(c.body).toEqual({ autonomy: "write", reason: "trusted now" });
+  });
+
+  it("pauses, resumes and disconnects", async () => {
+    const { memax, call } = client(jsonResponse({ data: agentResult }));
+
+    await memax.v2.agents.pause(agent.id, {}, { idempotencyKey: "p" });
+    await memax.v2.agents.resume(
+      agent.id,
+      { reason: "back" },
+      { idempotencyKey: "r" },
+    );
+    await memax.v2.agents.disconnect(
+      agent.id,
+      {},
+      { idempotencyKey: "d", via: "cli" },
+    );
+
+    expect(call(0).url).toBe(
+      `https://api.memax.app/v2/agents/${agent.id}:pause`,
+    );
+    expect(call(1).url).toBe(
+      `https://api.memax.app/v2/agents/${agent.id}:resume`,
+    );
+    expect(call(1).body).toEqual({ reason: "back" });
+    expect(call(2).url).toBe(
+      `https://api.memax.app/v2/agents/${agent.id}:disconnect`,
+    );
+    expect(call(2).method).toBe("POST");
+    expect(call(2).headers).toMatchObject({
+      "Idempotency-Key": "d",
+      "X-Memax-Via": "cli",
+    });
+  });
+
+  it("surfaces a refusal to raise from the CLI", async () => {
+    const { memax } = client(
+      jsonResponse(
+        {
+          error: {
+            code: "refused",
+            message:
+              "Raising what Codex may do needs you on the web, so an agent can't raise itself. Change it in Agents at memax.app.",
+            details: {
+              policy: { effect: "refuse", code: "autonomy_needs_web" },
+            },
+          },
+        },
+        { status: 403 },
+      ),
+    );
+
+    const err = await memax.v2.agents
+      .setAutonomy(
+        agent.id,
+        "memax-v2",
+        { autonomy: "write" },
+        { idempotencyKey: "a" },
+      )
+      .catch((e: unknown) => e);
+
+    expect(refusalOf(err)?.code).toBe("autonomy_needs_web");
+  });
+});

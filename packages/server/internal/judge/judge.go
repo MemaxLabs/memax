@@ -99,7 +99,9 @@ func (j *Judge) Run(ctx context.Context, args ledger.JudgeArgs, opts RunOptions)
 	if err != nil {
 		return nil, err
 	}
+	ts := j.now()
 	snap, err := j.ledger.JudgeSnapshot(ctx, scope, args, j.cfg.RejectedWithin)
+	timings["snapshot_ms"] = j.now().Sub(ts).Milliseconds()
 	if errors.Is(err, ledger.ErrNotFound) {
 		return &Run{Skipped: true}, nil
 	}

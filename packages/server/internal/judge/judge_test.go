@@ -709,6 +709,7 @@ func TestJudgeIsFast(t *testing.T) {
 	f.kept(zz, sp, decision("Deploy the v2 API to Railway.", "deploy target"))
 	p := f.propose(zz, sp, fact("The v2 API workers retry jobs with backoff."))
 	r := f.run(withModel(f, &fakeModel{answer: oracle(nil)}, tiers(false, false)), p)
+	t.Logf("timings with an instant model, 41 kept memories: %v, %d candidates", r.Timings, r.Candidates)
 	if r.Timings["total_ms"] > 1000 {
 		t.Errorf("total %d ms without the model", r.Timings["total_ms"])
 	}

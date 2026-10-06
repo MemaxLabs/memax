@@ -178,7 +178,7 @@ CREATE TABLE v2.judge_verdicts (
     model             text,
     candidates        jsonb NOT NULL DEFAULT '[]'::jsonb,   -- [{memory_id, ref, sets, relation, confidence, tier}]: never words
     error             text,                                 -- a code, never words (llm_failed, escalation_failed, …)
-    timings           jsonb NOT NULL DEFAULT '{}'::jsonb,   -- {queue_ms, stage0_ms, candidates_ms, llm_ms, strong_ms, total_ms}
+    timings           jsonb NOT NULL DEFAULT '{}'::jsonb,   -- {queue_ms, snapshot_ms, stage0_ms, candidates_ms, llm_ms, strong_ms, total_ms}
     receipt_id        uuid NOT NULL REFERENCES v2.receipts (id),
     last_receipt_id   uuid NOT NULL REFERENCES v2.receipts (id),
     created_at        timestamptz NOT NULL DEFAULT now(),

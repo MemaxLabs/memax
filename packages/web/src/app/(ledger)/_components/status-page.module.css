@@ -1,7 +1,6 @@
 /* The not-found and error pages of the (ledger) tree, after the
  * "Not found" state on the States2 board: a receipt line, one serif
- * sentence, one line of explanation and the actions. Buttons are
- * local until @memaxlabs/ledger's Button replaces them. */
+ * sentence (24/30), one line of explanation and the actions. */
 
 .page {
   box-sizing: border-box;
@@ -13,8 +12,18 @@
   background: var(--paper);
 }
 
+/* Inside the app frame: the sheet's page gutters, top aligned. */
+.sheet {
+  box-sizing: border-box;
+  padding: var(--space-16) var(--space-10) var(--space-12);
+}
+
 .panel {
   max-width: 440px;
+}
+
+.sheet .panel {
+  max-width: 520px;
 }
 
 .receipt {
@@ -25,6 +34,10 @@
 
 .title {
   margin: 0 0 var(--space-3);
+  font-family: var(--font-serif);
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 400;
   color: var(--ink);
   text-wrap: balance;
 }
@@ -38,37 +51,13 @@
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-6);
-}
-
-.action {
-  box-sizing: border-box;
-  display: inline-flex;
   align-items: center;
-  height: var(--control-md);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--card);
-  color: var(--ink);
-  font: inherit;
-  text-decoration: none;
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-standard);
+  gap: var(--space-2);
+  margin-top: var(--space-4);
 }
 
-.action:hover {
-  background: var(--hover);
-}
-
-.primary {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--on-ink);
-}
-
-.primary:hover {
-  background: var(--ink);
-  opacity: 0.88;
+@media (max-width: 639px) {
+  .sheet {
+    padding: var(--space-10) var(--space-4) var(--space-12);
+  }
 }

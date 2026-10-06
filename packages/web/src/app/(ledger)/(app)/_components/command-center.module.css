@@ -1,0 +1,165 @@
+/* ⌘K's bodies, after Ask.dc.html and Remember.dc.html. CommandBar
+ * (mx-cmd) supplies the card, the field and the key legend. */
+
+/* Ask: numbered sources under a hairline. */
+.sources {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.sourceList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sourceRow {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 8px 0;
+}
+
+.sourceRow :global(.mx-cite-wrap) {
+  padding-top: 5px;
+  line-height: 14px;
+}
+
+.sourceRow :global(.mx-cite) {
+  vertical-align: 0;
+  margin: 0;
+}
+
+.sourceText {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.sourceMerged {
+  color: var(--ink-3);
+}
+
+.sourceReceipt {
+  grid-column: 2;
+}
+
+.actions,
+.keepRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.keepRow {
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* Ask with no answer, or not available: one serif line and a way on. */
+.quiet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quietTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 19px;
+  line-height: 28px;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.quietDetail {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+/* Remember: the statement, where it goes, the duplicate offer. */
+.statement {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 19px;
+  line-height: 28px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 12px;
+  margin-top: 16px;
+}
+
+.fields > :global(.mx-seg) {
+  justify-self: start;
+  max-width: 100%;
+}
+
+.condition {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.duplicate {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  background: var(--well);
+  border-radius: var(--radius-sm);
+}
+
+.duplicateMark {
+  display: flex;
+  padding-top: 3px;
+}
+
+.duplicateText {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink);
+}
+
+.hint {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+@media (max-width: 639px) {
+  .fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .duplicate {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+
+  .duplicate > :global(.mx-btn) {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

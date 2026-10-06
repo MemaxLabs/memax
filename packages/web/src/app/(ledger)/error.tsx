@@ -4,13 +4,10 @@
 // Errors in the root layout itself fall through to app/global-error.tsx.
 
 import { useEffect } from "react";
+import { Button } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
 import { reportRenderError } from "@/lib/report-render-error";
-import {
-  StatusPage,
-  statusActionClass,
-  statusPrimaryActionClass,
-} from "./_components/status-page";
+import { StatusPage } from "./_components/status-page";
 
 export default function LedgerError({
   error,
@@ -44,16 +41,12 @@ export default function LedgerError({
       description={copy.description}
       actions={
         <>
-          <button
-            type="button"
-            className={statusPrimaryActionClass}
-            onClick={unstable_retry ?? reset}
-          >
+          <Button variant="primary" onClick={unstable_retry ?? reset}>
             {copy.retry}
-          </button>
-          <a href="/" className={statusActionClass}>
+          </Button>
+          <Button variant="quiet" href="/">
             {copy.home}
-          </a>
+          </Button>
         </>
       }
     />

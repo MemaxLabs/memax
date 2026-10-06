@@ -1,0 +1,129 @@
+/* The space switcher, after SpaceSwitcher.dc.html: a 316px card under
+ * the rail's space name, 44px rows, a ruled group for teams and a ruled
+ * footer for New space and Join. */
+
+.positioner {
+  z-index: 100;
+  outline: none;
+}
+
+.popup {
+  box-sizing: border-box;
+  width: 316px;
+  max-width: calc(100vw - var(--space-6));
+  padding: 6px;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float);
+  font-family: var(--font-sans);
+  outline: none;
+  transform-origin: var(--transform-origin);
+  transition: opacity var(--duration-fast) var(--ease-settle);
+}
+
+.popup[data-starting-style],
+.popup[data-ending-style] {
+  opacity: 0;
+}
+
+.label {
+  margin: 0;
+  padding: 8px 10px 6px;
+}
+
+.groupRuled {
+  margin-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.groupRuled .label {
+  padding-top: 12px;
+}
+
+.item {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  text-decoration: none;
+  outline: none;
+  cursor: pointer;
+}
+
+.item[data-highlighted] {
+  background: var(--hover);
+}
+
+.item[aria-current="true"] {
+  background: var(--select);
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.title {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check {
+  display: flex;
+  color: var(--ink);
+}
+
+.footer {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 20px;
+  outline: none;
+  cursor: pointer;
+}
+
+.action[data-highlighted] {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.action[data-disabled] {
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popup {
+    transition: none;
+  }
+}

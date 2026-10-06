@@ -1,6 +1,11 @@
 import { MemaxError, type V2 } from "memax-sdk";
 import { describe, expect, it, vi } from "vitest";
-import { createSdkActivity, receiptToEntry } from "./activity-sdk";
+import {
+  createSdkActivity,
+  readToEntry,
+  receiptToEntry,
+  sealOf,
+} from "./activity-sdk";
 import { AgentCommandError, autonomyIn } from "./agents";
 import {
   agentsOverview,
@@ -158,6 +163,187 @@ describe("receiptToEntry", () => {
     });
     expect(page.nextCursor).toBe("abc");
     expect(page.totals).toBeNull();
+  });
+});
+
+describe("readToEntry", () => {
+  const read = (over: Partial<V2.Read> = {}): V2.Read => ({
+    id: "d1",
+    ref: "R-5512",
+    space_id: "s1",
+    reader_kind: "agent",
+    connection_id: "c1",
+    person_id: ME,
+    agent: "claude-code",
+    kind: "digest",
+    via: "mcp",
+    session_ref: "7c2f",
+    compile: "C-0881",
+    memories: 12,
+    memory_refs: [],
+    read_at: "2026-10-05T14:02:00-07:00",
+    recorded_at: "2026-10-05T14:02:01-07:00",
+    ...over,
+  });
+
+  it("is a row by the agent, with how many memories it read and whether it read the Brief", () => {
+    expect(readToEntry(read(), viewer)).toEqual({
+      id: "d1",
+      at: "2026-10-05T14:02:00-07:00",
+      actor: { kind: "agent", agent: "claude-code", connectionId: "c1" },
+      action: "read",
+      object: { kind: "read", ref: "R-5512", id: "d1" },
+      via: [
+        { kind: "via", via: "mcp" },
+        { kind: "session", ref: "7c2f" },
+      ],
+      rawVia: "mcp",
+      session: "7c2f",
+      source: { kind: "compile", ref: "C-0881" },
+      reason: null,
+      detail: { kind: "read", memories: 12, brief: true },
+    });
+    const search = readToEntry(
+      read({ kind: "search", compile: undefined, session_ref: undefined }),
+      viewer,
+    );
+    expect(search.detail).toEqual({ kind: "read", memories: 12, brief: false });
+    expect(search.via).toEqual([{ kind: "via", via: "mcp" }]);
+  });
+
+  it("reads a person's CLI reporting a load as the agent it ran, and a bare person as who they are", () => {
+    const reported = readToEntry(
+      read({
+        reader_kind: "person",
+        connection_id: undefined,
+        agent: "gemini-cli",
+        kind: "compile_load",
+        via: "cli",
+      }),
+      viewer,
+    );
+    expect(reported.actor).toEqual({ kind: "agent", agent: "gemini" });
+    const person = (id: string) =>
+      readToEntry(
+        read({
+          reader_kind: "person",
+          connection_id: undefined,
+          agent: undefined,
+          person_id: id,
+        }),
+        viewer,
+      ).actor;
+    expect(person(ME)).toEqual({ kind: "you", initials: "ZZ" });
+    expect(person("someone")).toEqual({ kind: "person" });
+  });
+
+  it("pages reads with their own cursor and the week's count", async () => {
+    const list = vi.fn().mockResolvedValue({
+      items: [read()],
+      has_more: true,
+      next_cursor: "R1",
+      reads_7d: 693,
+    } satisfies V2.ReadPage);
+    const activity = createSdkActivity({
+      client: { v2: { reads: { list } } } as never,
+      viewer,
+    });
+    const page = await activity.reads({ space: DEMO_SPACES[1]!, cursor: "R0" });
+    expect(list).toHaveBeenCalledWith("memax-v2", {
+      cursor: "R0",
+      limit: 100,
+      signal: undefined,
+    });
+    expect(page).toMatchObject({ nextCursor: "R1", week: 693 });
+    expect(page.entries[0]?.object.ref).toBe("R-5512");
+  });
+});
+
+describe("sealOf", () => {
+  const checkpoint = (over: Partial<V2.Checkpoint> = {}): V2.Checkpoint => ({
+    id: "k40",
+    space_id: "s1",
+    tenant_id: "t1",
+    number: 40,
+    position_from: 1250,
+    position_to: 1284,
+    receipts: 35,
+    first_receipt_id: "r1250",
+    last_receipt_id: "r1284",
+    last_seq: 9120,
+    prev_sha256: "a".repeat(64),
+    chain_sha256: "b".repeat(64),
+    merkle_root: "c".repeat(64),
+    format: 1,
+    signed: true,
+    key_id: "k1",
+    signature: "c2ln",
+    sealed_at: "2026-10-05T14:02:00-07:00",
+    ...over,
+  });
+
+  it("says how far, whether the newest checkpoint is signed, and the last check", async () => {
+    const page: V2.CheckpointPage = {
+      items: [checkpoint()],
+      has_more: true,
+      seal: {
+        sealed_receipts: 1284,
+        sealed_through_seq: 9120,
+        sealed_through_receipt_id: "r1284",
+        checkpoints: 40,
+        sealed_at: "2026-10-05T14:02:00-07:00",
+        unsealed: 2,
+        verified_at: "2026-10-05T03:00:00-07:00",
+        verified_receipts: 1201,
+        verify_problems: 0,
+      },
+      keys: [{ key_id: "k1", algorithm: "ed25519", public_key: "a2V5" }],
+    };
+    expect(sealOf(page)).toEqual({
+      sealed: 1284,
+      sealedAt: "2026-10-05T14:02:00-07:00",
+      unsealed: 2,
+      signed: true,
+      verified: { at: "2026-10-05T03:00:00-07:00", problems: 0 },
+    });
+    // Without a signing key, checkpoints still chain, unsigned.
+    expect(
+      sealOf({
+        ...page,
+        items: [
+          checkpoint({
+            signed: false,
+            key_id: undefined,
+            signature: undefined,
+          }),
+        ],
+      }).signed,
+    ).toBe(false);
+    // Nothing sealed or checked yet.
+    expect(
+      sealOf({
+        items: [],
+        has_more: false,
+        seal: { sealed_receipts: 0, checkpoints: 0, unsealed: 3 },
+        keys: [],
+      }),
+    ).toEqual({
+      sealed: 0,
+      sealedAt: null,
+      unsealed: 3,
+      signed: null,
+      verified: null,
+    });
+    const checkpoints = vi.fn().mockResolvedValue(page);
+    const activity = createSdkActivity({
+      client: { v2: { receipts: { checkpoints } } } as never,
+      viewer,
+    });
+    expect((await activity.seal({ space: DEMO_SPACES[1]! })).sealed).toBe(1284);
+    expect(checkpoints).toHaveBeenCalledWith("memax-v2", {
+      limit: 1,
+      signal: undefined,
+    });
   });
 });
 

@@ -36,6 +36,15 @@ export const ledgerActivityEn = {
   more: "Load older receipts",
   loadingMore: "Loading older receipts",
   moreFailed: "Older receipts didn't load. Try again.",
+  // "All" pages the receipts and the reads (R-) together.
+  moreAll: "Load older activity",
+  loadingMoreAll: "Loading older activity",
+  moreAllFailed: "Older activity didn't load. Try again.",
+  moreReads: "Load older reads",
+  loadingMoreReads: "Loading older reads",
+  moreReadsFailed: "Older reads didn't load. Try again.",
+  readsFailed: "The reads didn't load.",
+  retry: "Try again",
   end: "That's every receipt in {space}.",
   week: {
     title: "This week",
@@ -66,8 +75,22 @@ export const ledgerActivityEn = {
   emptyFilter: {
     title: "No {filter} in what's loaded.",
     reads:
-      "Reads aren't receipts: they're counted, not listed, so they don't show here yet.",
+      "When an agent reads this space over MCP or the API, the read shows here.",
     more: "Older receipts may have some. Load them to look further back.",
+    moreReads: "Older reads may have some. Load them to look further back.",
+  },
+  // How far the receipts are sealed (GET …/checkpoints). No board draws
+  // it; it sits under This week.
+  seal: {
+    hint: "Every receipt is chained by SHA-256 and cut into signed checkpoints, so a receipt changed, removed or reordered later shows.",
+    through: "Sealed through receipt {n}, {when}.",
+    throughPlain: "Sealed through receipt {n}.",
+    waiting: "{n} receipts wait to be sealed.",
+    waitingOne: "1 receipt waits to be sealed.",
+    unsigned: "Its checkpoints aren't signed: this server has no signing key.",
+    verified: "Verified from the first receipt {when}.",
+    problems: "The check from the first receipt {when} found {n} problems.",
+    problemsOne: "The check from the first receipt {when} found 1 problem.",
   },
   // Who did it.
   actors: {
@@ -115,6 +138,7 @@ export const ledgerActivityEn = {
     readOne: "{actor} read 1 memory.",
     readBrief: "{actor} read {n} memories and the Brief.",
     readBriefOne: "{actor} read 1 memory and the Brief.",
+    readBriefOnly: "{actor} read the Brief.",
     kept: "{actor} kept {quote}",
     keptPlain: "{actor} kept a memory.",
     proposed: "{actor} proposed {quote}",

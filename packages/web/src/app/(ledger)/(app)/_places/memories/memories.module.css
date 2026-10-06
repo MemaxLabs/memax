@@ -1,0 +1,65 @@
+/* Memories, after Memories.dc.html: the toolbar (search, state filter,
+ * sort), then one panel with a header row per section. */
+
+.head {
+  margin-bottom: var(--space-6);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.search {
+  width: 340px;
+  max-width: 100%;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--sheet);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+}
+
+.none {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px 16px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+@media (max-width: 639px) {
+  .search {
+    width: 100%;
+  }
+}

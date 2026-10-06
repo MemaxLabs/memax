@@ -22,13 +22,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/auth"
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
+	"github.com/MemaxLabs/memax/packages/server/internal/compile/compiletest"
 	"github.com/MemaxLabs/memax/packages/server/internal/contract"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/objectstore/mockobjectstore"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
 	"github.com/MemaxLabs/memax/packages/server/openapi"
 )
@@ -93,15 +98,22 @@ func checkCoverage() int {
 }
 
 // env is one isolated database behind the real auth middleware and the
-// /v2 handler, with every exchange checked against the spec.
+// /v2 handler, with every exchange checked against the spec. Commands
+// enqueue their compile jobs with River (insert-only), and the compile
+// coordinator runs on an in-process fake compiler and an in-memory object
+// store; e.compileAll stands in for the worker.
 type env struct {
 	t      *testing.T
 	pool   *pgxpool.Pool
 	ledger *ledger.Ledger
 	h      *v2api.Handler
 	srv    http.Handler
+	svc    *compile.Service
+	store  *mockobjectstore.Store
 }
 
+// newEnv builds the env. The compile coordinator is on unless opts turn
+// it off (v2api.WithCompile(nil)).
 func newEnv(t *testing.T, opts ...v2api.Option) *env {
 	t.Helper()
 	st, pool := testdb.Acquire(t)
@@ -117,14 +129,21 @@ func newEnv(t *testing.T, opts ...v2api.Option) *env {
 		return handler.RequireAuth([]byte(testSecret), authH.ResolveAPIKey, authH.ResolveOAuthGrant)(
 			handler.HubContext(st)(handler.AuthorizeHTTP(h)))
 	}
+	jobs, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Logger: quiet})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &env{t: t, pool: pool, store: mockobjectstore.New()}
+	e.ledger = ledger.New(pool, ledger.WithLogger(quiet), ledger.WithJobs(jobs))
+	e.svc = compile.New(e.ledger, &compiletest.Fake{}, e.store, compile.Config{Log: quiet})
 	mux := http.NewServeMux()
-	l := ledger.New(pool, ledger.WithLogger(quiet))
-	h := v2api.New(l, quiet, opts...)
+	h := v2api.New(e.ledger, quiet, append([]v2api.Option{v2api.WithCompile(e.svc)}, opts...)...)
 	// Last-seen updates run in the background; let them finish before the
 	// database goes away (cleanups run last-registered first).
 	t.Cleanup(h.Wait)
 	h.Mount(mux, chain)
-	return &env{t: t, pool: pool, ledger: l, h: h, srv: spec.Handler(t, mux)}
+	e.h, e.srv = h, spec.Handler(t, mux)
+	return e
 }
 
 // connectAll connects the user's unconnected credentials, the way the V1
@@ -141,10 +160,26 @@ func (e *env) connectAll(user uuid.UUID) {
 func (e *env) connection(credential uuid.UUID) uuid.UUID {
 	e.t.Helper()
 	var id uuid.UUID
-	if err := e.pool.QueryRow(context.Background(), `SELECT id FROM v2.agent_connections WHERE credential_id = $1`, credential).Scan(&id); err != nil {
+	if err := e.pool.QueryRow(context.Background(), "SELECT id FROM v2.agent_connections WHERE credential_id = $1", credential).Scan(&id); err != nil {
 		e.t.Fatalf("connection of %s: %v", credential, err)
 	}
 	return id
+}
+
+// compileAll runs the compile coordinator on every dirty target, as the
+// worker's compile_target jobs would.
+func (e *env) compileAll() {
+	e.t.Helper()
+	ctx := context.Background()
+	refs, err := e.ledger.DirtyTargets(ctx, 100)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	for _, r := range refs {
+		if _, err := e.svc.Run(ctx, ledger.CompileTargetArgs{TargetID: r.TargetID, SpaceID: r.SpaceID}, compile.RunOptions{NoWait: true}); err != nil {
+			e.t.Fatalf("compile %s: %v", r.TargetID, err)
+		}
+	}
 }
 
 func (e *env) exec(sql string, args ...any) {

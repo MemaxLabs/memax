@@ -22,7 +22,8 @@ info:
     identifier: Apache-2.0
   description: |
     The `/v2` API reads and changes the V2 record: memories, their versions,
-    sources and receipts, in the spaces you belong to.
+    sources and receipts, the Brief, and the targets it compiles to, in the
+    spaces you belong to.
 
     ## Envelope
 
@@ -32,9 +33,11 @@ info:
 
     ## Commands
 
-    A command is a `POST` (or the `PATCH` that sets an agent's autonomy)
-    that changes the record: remember, keep, edit and reject a memory;
-    pause, resume, disconnect and set the autonomy of an agent. Every
+    A command is a `POST` (or the `PATCH` that sets an agent's autonomy or
+    changes a target) that changes the record: remember, keep, edit and
+    reject a memory; pause, resume, disconnect and set the autonomy of an
+    agent; revise the Brief; add, change and compile a target; acknowledge
+    a delivery, report a hand edit, and pull, overwrite or stop it. Every
     command:
 
     - needs an `Idempotency-Key` header (1 to 255 characters). Retrying a
@@ -74,6 +77,17 @@ info:
     spaces where they need a person on the web (team spaces by default),
     and raising what an agent may do all need `human_web`.
 
+    ## The Brief and its targets
+
+    A space has one Brief, in versions (`B-`): ordered sections of memory
+    items and cited prose. Every change that affects what compiles (a Keep,
+    new words for a kept memory, a Brief version, a target's settings)
+    recompiles the space's targets within seconds. Each compile is a run
+    (`C-`). A file target is in sync once a device acknowledges the run on
+    disk; Memax never writes over a file edited by hand. A device reports
+    such an edit, and a person pulls it back as proposals, overwrites it,
+    or stops compiling the file.
+
     ## Display IDs
 
     `M-0219` is unique within a tenant, not across tenants, so a display ID
@@ -106,10 +120,10 @@ info:
     | 403 | `surface_unverified` | A request claimed to come from the web app, and its signature didn't verify. |
     | 404 | `not_found` | No such space or memory in your spaces. |
     | 405 | `method_not_allowed` | The path exists, the method doesn't. |
-    | 409 | `invalid_transition` | The memory's state doesn't allow the command. |
+    | 409 | `invalid_transition` | The memory's (or target's) state doesn't allow the command. |
     | 412 | `edit_clash` | `If-Match` is not the memory's current version. |
     | 422 | `idempotency_key_reused` | The key was used for a different command. |
-    | 428 | `precondition_required` | An edit came without `If-Match`. |
+    | 428 | `precondition_required` | An edit (or a Brief revision) came without `If-Match`. |
     | 429 | `rate_limited` | Too many requests; see `Retry-After`. |
     | 500 | `internal_error` | Something failed on our side. |
     | 503 | `busy` | Another change holds the memory; see `Retry-After`. |
@@ -129,6 +143,10 @@ tags:
     description: The receipts of every change.
   - name: agents
     description: The agents connected to your spaces, and what each may do in each.
+  - name: briefs
+    description: The Brief every agent reads, in versions.
+  - name: targets
+    description: Where a space compiles to, its compile runs, deliveries and hand edits.
 paths:
   /v2/spaces:
     get:
@@ -783,6 +801,638 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/spaces/{space}/brief:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: getBrief
+      tags: [briefs]
+      summary: Read the Brief
+      description: |
+        The space's current Brief version, with the receipt of whoever wrote
+        it. A memory item is a display ID; render its statement from the
+        memory itself. 404 when the space has no Brief yet.
+      responses:
+        '200':
+          description: The current version.
+          headers:
+            ETag:
+              $ref: '#/components/headers/VersionETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BriefEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    post:
+      operationId: reviseBrief
+      tags: [briefs]
+      summary: Revise the Brief
+      description: |
+        Writes a new version (`B-`) of the space's Brief: ordered sections of
+        memory items and cited prose. Every memory item must be a kept
+        memory of the space; every prose line must cite at least one kept
+        memory, and nothing forgotten or rejected. Send `If-Match` with the
+        version you started from; it is required once the space has a
+        Brief. People who may keep revise the Brief; agents can't. Every
+        target of the space recompiles.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchVersion'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviseBriefRequest'
+      responses:
+        '201':
+          description: The new version.
+          headers:
+            ETag:
+              $ref: '#/components/headers/VersionETag'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BriefResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/brief/versions:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listBriefVersions
+      tags: [briefs]
+      summary: List the Brief's versions
+      description: |
+        Every version of the space's Brief, newest first, each with the
+        receipt of whoever wrote it and why (BriefHistory). Restore one by
+        revising the Brief with its sections.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of versions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BriefVersionPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/targets:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listTargets
+      tags: [targets]
+      summary: List where the space compiles to
+      description: |
+        The space's targets (AGENTS.md, the CLAUDE.md shim, scoped Cursor
+        rules, the ChatGPT copy-out, …), each with its sync state, its latest
+        compile run and what is on disk. Not paginated.
+      responses:
+        '200':
+          description: The targets.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    post:
+      operationId: createTarget
+      tags: [targets]
+      summary: Add a target
+      description: |
+        Adds a compile target to the space, with the kind's defaults for
+        whatever you leave out (path, settings, delivery), and compiles it.
+        The space needs a Brief first. People who may keep add targets.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTargetRequest'
+      responses:
+        '201':
+          description: The target, compiling.
+          headers:
+            ETag:
+              $ref: '#/components/headers/VersionETag'
+            Location:
+              $ref: '#/components/headers/TargetLocation'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/targets/{target}:
+    parameters:
+      - $ref: '#/components/parameters/TargetPath'
+    patch:
+      operationId: configureTarget
+      tags: [targets]
+      summary: Change a target
+      description: |
+        Changes a target's path, settings or delivery, or stops and restarts
+        compiling it (`enabled`), and recompiles it. Send `If-Match` with
+        the target's version to be sure you change what you saw. A change
+        that changes nothing writes nothing and has no receipts.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchVersion'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigureTargetRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/TargetResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/targets/{target}:compile:
+    parameters:
+      - $ref: '#/components/parameters/TargetPath'
+    post:
+      operationId: compileTarget
+      tags: [targets]
+      summary: Compile a target now
+      description: |
+        Asks for a fresh compile of the target (Compile now). It is queued,
+        so the answer is 202 with the target compiling; follow
+        `last_compile` on the target, or the runs. A stopped target is 409.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/TargetResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/targets/{target}/preview:
+    parameters:
+      - $ref: '#/components/parameters/TargetPath'
+    get:
+      operationId: getTargetPreview
+      tags: [targets]
+      summary: Read what a target compiled to
+      description: |
+        The latest good compile's content (TargetPreview): every file it
+        writes, or the copy-out text, with the run's metadata. Before the
+        first compile, `compile` is absent and there are no files. 503 when
+        the server has no compile service.
+      responses:
+        '200':
+          description: The compiled content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetPreviewEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/targets/{target}/runs:
+    parameters:
+      - $ref: '#/components/parameters/TargetPath'
+    get:
+      operationId: listCompileRuns
+      tags: [targets]
+      summary: List a target's compile runs
+      description: Every compile run (`C-`) of the target, newest first, failed ones included.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of runs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompileRunPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/targets/{target}/observations:
+    parameters:
+      - $ref: '#/components/parameters/TargetPath'
+    post:
+      operationId: recordObservation
+      tags: [targets]
+      summary: Report a target's file as seen
+      description: |
+        A device (the local daemon) reports a file the target writes, as it
+        is on disk. When it matches what Memax delivered (line endings and a
+        BOM aside), nothing is recorded: 200 with `drifted: false`. Otherwise
+        it is a hand edit: the content is kept, the compiler reads it back
+        as changes, and the target is drifted until a person pulls,
+        overwrites or stops it: 201 with the observation.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservationRequest'
+      responses:
+        '200':
+          description: The file matches what Memax delivered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationResultEnvelope'
+        '201':
+          description: A hand edit, recorded.
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/targets/{target}/deliveries:
+    parameters:
+      - $ref: '#/components/parameters/TargetPath'
+    post:
+      operationId: recordDelivery
+      tags: [targets]
+      summary: Acknowledge a delivery
+      description: |
+        A device acknowledges it wrote a compile run's output: `sha256` is
+        the run's drift hash, computed from what was written (for one file,
+        the compiler's drift_sha256 of that file; for several, the sha256
+        of `<path> NUL <drift_sha256> LF` lines sorted by path). A target is
+        in sync once its latest run is delivered. Acknowledging the same run
+        again, or an older one, changes nothing.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeliveryRequest'
+      responses:
+        '200':
+          description: The delivery, recorded (or already known).
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/targets/{target}/drift:
+    parameters:
+      - $ref: '#/components/parameters/TargetPath'
+    get:
+      operationId: getDrift
+      tags: [targets]
+      summary: Read a target's hand edits
+      description: |
+        Each open hand edit of the target (DriftResolve): the file as Memax
+        wrote it, the file as it is now, and what the edit says, change by
+        change. No open edits is an empty list. 503 when the server has no
+        compile service.
+      responses:
+        '200':
+          description: The open hand edits.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/targets/{target}/drift:pull:
+    parameters:
+      - $ref: '#/components/parameters/TargetPath'
+    post:
+      operationId: pullDrift
+      tags: [targets]
+      summary: Pull a hand edit back as proposals
+      description: |
+        Turns each change of the target's open hand edits into a proposal,
+        written by the person on the device (or by the repository, as
+        external, when nobody is known), with a `file:line` source: a changed
+        cited line proposes an edit of that memory, a new line a new memory.
+        A removed cited line waits in the resolution for a person to forget
+        or exclude the memory; it is never forgotten automatically. The file
+        stays as it is until the next compile delivers over it. Any person
+        in the space may pull.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveDriftRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/DriftResolution'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/targets/{target}/drift:overwrite:
+    parameters:
+      - $ref: '#/components/parameters/TargetPath'
+    post:
+      operationId: overwriteDrift
+      tags: [targets]
+      summary: Overwrite a hand edit
+      description: |
+        Lets Memax write the compiled file over the target's open hand
+        edits: the target recompiles and is delivered again. The edit stays
+        in the observation, so a copy remains in Activity. People who may
+        keep overwrite.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveDriftRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/DriftResolution'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/targets/{target}/drift:stop:
+    parameters:
+      - $ref: '#/components/parameters/TargetPath'
+    post:
+      operationId: stopDrift
+      tags: [targets]
+      summary: Stop compiling a hand-edited target
+      description: |
+        Stops compiling the target (`off`) and closes its open hand edits;
+        the file stays as it is, and agents keep reading the space over MCP.
+        Turn it back on with `enabled: true`. People who may keep stop
+        targets.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveDriftRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/DriftResolution'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
 components:
   securitySchemes:
     bearer:
@@ -880,6 +1530,22 @@ components:
         type: string
         enum: [api, cli, mcp]
 
+    TargetPath:
+      name: target
+      in: path
+      required: true
+      description: The target's id.
+      schema:
+        $ref: '#/components/schemas/Id'
+    IfMatchVersion:
+      name: If-Match
+      in: header
+      description: |
+        The `ETag` (the Brief's or the target's version) you started from,
+        e.g. `"3"`. Revising a Brief requires it once the space has one.
+      schema:
+        $ref: '#/components/schemas/VersionTag'
+
   headers:
     ETag:
       description: The memory's version, quoted. Send it back as `If-Match`.
@@ -903,6 +1569,18 @@ components:
       schema:
         type: string
         pattern: '^[0-9]+$'
+
+    VersionETag:
+      description: The object's version, quoted. Send it back as `If-Match`.
+      required: true
+      schema:
+        $ref: '#/components/schemas/VersionTag'
+    TargetLocation:
+      description: The target's URL, by id.
+      required: true
+      schema:
+        type: string
+        format: uri-reference
 
   responses:
     CommandResult:
@@ -1006,6 +1684,27 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
+
+    TargetResult:
+      description: The target after the command.
+      headers:
+        ETag:
+          $ref: '#/components/headers/VersionETag'
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TargetResultEnvelope'
+    DriftResolution:
+      description: The hand edits, resolved.
+      headers:
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DriftResolutionEnvelope'
 
   schemas:
     # ------------------------------------------------------------------
@@ -1249,6 +1948,87 @@ components:
         - internal_error
         - busy
         - unavailable
+
+    BriefRef:
+      description: A Brief version's display ID, unique within its tenant.
+      type: string
+      pattern: '^B-[0-9]{4,18}$'
+    CompileRef:
+      description: A compile run's display ID, unique within its tenant.
+      type: string
+      pattern: '^C-[0-9]{4,18}$'
+    MemoryDisplayRef:
+      description: A memory's display ID; any case and padding (`m-219` is M-0219).
+      type: string
+      pattern: '^[Mm]-[0-9]{1,18}$'
+    SectionKey:
+      description: 'The compiler''s section key: decisions, conventions, preferences, open, overview, or your own.'
+      type: string
+      pattern: '^[a-z][a-z0-9_-]{0,39}$'
+    RepoPath:
+      description: A path relative to the repository root, with no `..` and no leading `/`.
+      type: string
+      minLength: 1
+      maxLength: 300
+      pattern: '^[A-Za-z0-9._/-]+$'
+    Sha256:
+      description: A lowercase hex sha256.
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+    TargetKind:
+      description: |
+        The compiler's adapter. agents_md is the canonical AGENTS.md;
+        claude_md and gemini_md are shims that import it; cursor_mdc,
+        copilot, windsurf and claude_rules hold path-scoped facts only;
+        chatgpt is copied out.
+      type: string
+      enum: [agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf, claude_rules]
+    Delivery:
+      description: |
+        How the output reaches its readers: `local` (the daemon writes it),
+        `pr` (a pull request), `mcp` (agents read it over MCP) or `copy` (a
+        person copies it out; ChatGPT only).
+      type: string
+      enum: [local, pr, mcp, copy]
+    SyncState:
+      description: |
+        `compiling`: a change hasn't compiled yet. `pending_delivery`: the
+        latest compile isn't on disk yet. `in_sync`: it is (or, for MCP and
+        copy-out, it compiled). `drifted`: a file was edited by hand.
+        `off`: compiling is stopped.
+      type: string
+      enum: [in_sync, compiling, pending_delivery, drifted, off]
+    IncludeMode:
+      type: string
+      enum: [kept_only, kept_and_open]
+    StaleMode:
+      type: string
+      enum: [mark, omit]
+    ScopedMode:
+      type: string
+      enum: [inline, omit]
+    CompileStatus:
+      type: string
+      enum: [compiled, delivered, failed]
+    ObservationStatus:
+      type: string
+      enum: [open, pulled, overwritten, stopped, dismissed]
+    ObserverKind:
+      type: string
+      enum: [device, github]
+    DriftMode:
+      type: string
+      enum: [pull, overwrite, stop]
+    ChangeKind:
+      type: string
+      enum: [edit, new, remove]
+    ChangeOutcome:
+      description: |
+        `proposed`: a proposal was written. `review`: a removed line waits
+        for a person to forget or exclude its memory. `skipped`: nothing
+        was written (`reason` says why).
+      type: string
+      enum: [proposed, review, skipped]
 
     # ------------------------------------------------------------------
     # Objects
@@ -1864,6 +2644,738 @@ components:
           items:
             $ref: '#/components/schemas/Receipt'
 
+    BriefItem:
+      description: A memory item (`ref`) or a line of connective prose that cites what it rests on (`text`, `cites`).
+      type: object
+      additionalProperties: false
+      properties:
+        ref:
+          $ref: '#/components/schemas/DisplayRef'
+        text:
+          type: string
+          maxLength: 500
+        cites:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+
+    BriefSection:
+      type: object
+      additionalProperties: false
+      required: [key, heading, items]
+      properties:
+        key:
+          $ref: '#/components/schemas/SectionKey'
+        heading:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BriefItem'
+
+    Brief:
+      description: One version (`B-`) of a space's Brief.
+      type: object
+      additionalProperties: false
+      required: [id, version_id, ref, version, space_id, tenant_id, title, sections, facts, current, receipt_id, created_at]
+      properties:
+        id:
+          description: The Brief's id, the same for every version.
+          $ref: '#/components/schemas/Id'
+        version_id:
+          $ref: '#/components/schemas/Id'
+        ref:
+          $ref: '#/components/schemas/BriefRef'
+        version:
+          description: The version number; also the `ETag`.
+          type: integer
+          minimum: 1
+        space_id:
+          $ref: '#/components/schemas/Id'
+        tenant_id:
+          $ref: '#/components/schemas/Id'
+        parent_version:
+          description: The version it was revised from.
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        summary:
+          type: string
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/BriefSection'
+        facts:
+          description: How many memories the version places or cites.
+          type: integer
+          minimum: 0
+        current:
+          description: Set on the version in force.
+          type: boolean
+        receipt_id:
+          $ref: '#/components/schemas/Id'
+        receipt:
+          description: Who wrote this version, and why.
+          $ref: '#/components/schemas/Receipt'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    BriefResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, brief, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        brief:
+          $ref: '#/components/schemas/Brief'
+        receipts:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    BriefVersionPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Brief'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+
+    TargetSettings:
+      description: How a target is written.
+      type: object
+      additionalProperties: false
+      required: [include, stale, size_budget]
+      properties:
+        include:
+          $ref: '#/components/schemas/IncludeMode'
+        stale:
+          $ref: '#/components/schemas/StaleMode'
+        size_budget:
+          description: Bytes per file; the tool's own limit caps it.
+          type: integer
+          minimum: 1024
+          maximum: 32768
+        scoped:
+          description: agents_md and chatgpt only.
+          $ref: '#/components/schemas/ScopedMode'
+        user_owned:
+          description: Shims only. The person owns the file; Memax manages one marked block in it.
+          type: boolean
+
+    DeliveredFile:
+      type: object
+      additionalProperties: false
+      required: [path, sha256]
+      properties:
+        path:
+          $ref: '#/components/schemas/RepoPath'
+        sha256:
+          description: The file's drift hash as Memax believes it is on disk.
+          $ref: '#/components/schemas/Sha256'
+        observation:
+          description: Set when the baseline is a hand edit Memax accepted (pulled or overwritten).
+          $ref: '#/components/schemas/Id'
+
+    Delivered:
+      description: What Memax believes is on disk.
+      type: object
+      additionalProperties: false
+      required: [sha256, files]
+      properties:
+        compile_id:
+          $ref: '#/components/schemas/Id'
+        compile:
+          description: The run whose output is on disk, if Memax wrote it.
+          $ref: '#/components/schemas/CompileRef'
+        sha256:
+          $ref: '#/components/schemas/Sha256'
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveredFile'
+        at:
+          $ref: '#/components/schemas/Timestamp'
+
+    CompiledOutput:
+      description: 'One output of a compile run: a file (`path`) or copy-out text (`label`).'
+      type: object
+      additionalProperties: false
+      required: [sha256, drift_sha256, bytes, lines, refs, cites, dropped_for_budget]
+      properties:
+        path:
+          $ref: '#/components/schemas/RepoPath'
+        label:
+          type: string
+        sha256:
+          $ref: '#/components/schemas/Sha256'
+        drift_sha256:
+          $ref: '#/components/schemas/Sha256'
+        bytes:
+          type: integer
+          minimum: 0
+        lines:
+          type: integer
+          minimum: 0
+        refs:
+          description: Memories whose statements it contains.
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        cites:
+          description: Every memory it cites.
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        dropped_for_budget:
+          description: Memories that didn't fit the size budget; they stay live over MCP.
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        user_owned:
+          type: boolean
+
+    CompileWarning:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          description: The compiler's warning code, or `not_compiled` for what the server left out.
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+        ref:
+          type: string
+
+    CompileRun:
+      description: One compile (`C-`) of one target.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - ref
+        - target_id
+        - space_id
+        - brief
+        - brief_version
+        - generation
+        - status
+        - input_sha256
+        - bytes
+        - lines
+        - refs
+        - dropped_for_budget
+        - files
+        - warnings
+        - enqueued_at
+        - started_at
+        - compiled_at
+        - receipt_id
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        ref:
+          $ref: '#/components/schemas/CompileRef'
+        target_id:
+          $ref: '#/components/schemas/Id'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        brief:
+          $ref: '#/components/schemas/BriefRef'
+        brief_version:
+          type: integer
+          minimum: 1
+        generation:
+          description: The target generation it compiled.
+          type: integer
+          format: int64
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/CompileStatus'
+        input_sha256:
+          $ref: '#/components/schemas/Sha256'
+        output_sha256:
+          $ref: '#/components/schemas/Sha256'
+        drift_sha256:
+          description: What a delivery is acknowledged against.
+          $ref: '#/components/schemas/Sha256'
+        bytes:
+          type: integer
+          minimum: 0
+        lines:
+          type: integer
+          minimum: 0
+        refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        dropped_for_budget:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompiledOutput'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompileWarning'
+        error:
+          description: Why a failed run failed. Names fields, never memory text.
+          type: string
+        enqueued_at:
+          description: When the change it compiled was made.
+          $ref: '#/components/schemas/Timestamp'
+        started_at:
+          $ref: '#/components/schemas/Timestamp'
+        compiled_at:
+          $ref: '#/components/schemas/Timestamp'
+        delivered_at:
+          $ref: '#/components/schemas/Timestamp'
+        receipt_id:
+          $ref: '#/components/schemas/Id'
+
+    Target:
+      description: A compiled file (or copy-out) of a space, and where it stands.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - space_id
+        - tenant_id
+        - kind
+        - label
+        - settings
+        - delivery
+        - sync_state
+        - version
+        - dirty_gen
+        - compiled_gen
+        - dirty_at
+        - open_drift
+        - created_receipt_id
+        - last_receipt_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        tenant_id:
+          $ref: '#/components/schemas/Id'
+        kind:
+          $ref: '#/components/schemas/TargetKind'
+        path:
+          description: A file, or a rules directory for scoped kinds. Absent for ChatGPT.
+          $ref: '#/components/schemas/RepoPath'
+        label:
+          description: What people see, e.g. `AGENTS.md` or `ChatGPT project`.
+          type: string
+        settings:
+          $ref: '#/components/schemas/TargetSettings'
+        delivery:
+          $ref: '#/components/schemas/Delivery'
+        sync_state:
+          $ref: '#/components/schemas/SyncState'
+        version:
+          description: The target's version; also the `ETag`.
+          type: integer
+          minimum: 1
+        dirty_gen:
+          description: Bumped by every change that affects the output.
+          type: integer
+          format: int64
+          minimum: 1
+        compiled_gen:
+          description: The generation the latest compile covers.
+          type: integer
+          format: int64
+          minimum: 0
+        dirty_at:
+          $ref: '#/components/schemas/Timestamp'
+        last_compile:
+          description: The latest run, whatever its status.
+          $ref: '#/components/schemas/CompileRun'
+        delivered:
+          $ref: '#/components/schemas/Delivered'
+        open_drift:
+          description: Files with a hand edit waiting to be resolved.
+          type: integer
+          minimum: 0
+        created_receipt_id:
+          $ref: '#/components/schemas/Id'
+        last_receipt_id:
+          $ref: '#/components/schemas/Id'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    TargetList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Target'
+
+    TargetResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, target, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        target:
+          $ref: '#/components/schemas/Target'
+        receipts:
+          description: The receipts the command wrote; none when it changed nothing.
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    PreviewOutput:
+      description: One compiled output with its content.
+      type: object
+      additionalProperties: false
+      required: [content, sha256, drift_sha256, bytes, lines, refs, cites, dropped_for_budget]
+      properties:
+        path:
+          $ref: '#/components/schemas/RepoPath'
+        label:
+          type: string
+        content:
+          type: string
+        sha256:
+          $ref: '#/components/schemas/Sha256'
+        drift_sha256:
+          $ref: '#/components/schemas/Sha256'
+        bytes:
+          type: integer
+          minimum: 0
+        lines:
+          type: integer
+          minimum: 0
+        refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        cites:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        dropped_for_budget:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        user_owned:
+          type: boolean
+
+    TargetPreview:
+      type: object
+      additionalProperties: false
+      required: [target, files, copies]
+      properties:
+        target:
+          $ref: '#/components/schemas/Target'
+        compile:
+          description: The latest good run, whose content this is. Absent before the first compile.
+          $ref: '#/components/schemas/CompileRun'
+        reads:
+          description: The canonical file this tool also reads, e.g. `AGENTS.md` for Cursor.
+          type: string
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/PreviewOutput'
+        copies:
+          description: Copy-out text (ChatGPT project instructions).
+          type: array
+          items:
+            $ref: '#/components/schemas/PreviewOutput'
+
+    CompileRunPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompileRun'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+
+    DriftChange:
+      description: |
+        One change the compiler read back from a hand edit: `edit` (a cited
+        line's words changed: `ref`, `refs`, `old_text`, `new_text`,
+        `old_line`, `new_line`), `new` (a line with no matching cite:
+        `text`, `line`, `section`, `paths`, `cites`) or `remove` (a cited
+        line is gone: `ref`, `refs`, `old_text`, `old_line`).
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          $ref: '#/components/schemas/ChangeKind'
+        ref:
+          type: string
+        refs:
+          type: array
+          items:
+            type: string
+        old_text:
+          type: string
+        new_text:
+          type: string
+        old_line:
+          type: integer
+        new_line:
+          type: integer
+        text:
+          type: string
+        line:
+          type: integer
+        section:
+          description: The heading it was added under.
+          type: [string, 'null']
+        paths:
+          type: array
+          items:
+            type: string
+        cites:
+          type: array
+          items:
+            type: string
+
+    DriftInfo:
+      type: object
+      additionalProperties: false
+      required: [changed, header_edited, frontmatter_edited, layout_edited, managed_block, hidden_characters]
+      properties:
+        changed:
+          type: boolean
+        header_edited:
+          type: boolean
+        frontmatter_edited:
+          type: boolean
+        layout_edited:
+          type: boolean
+        managed_block:
+          description: For a file the person owns, the state of Memax's block.
+          type: [string, 'null']
+          enum: [intact, edited, removed, null]
+        hidden_characters:
+          description: Hidden characters in the edited file; they never reach a proposal.
+          type: integer
+          minimum: 0
+
+    ChangeSet:
+      type: object
+      additionalProperties: false
+      required: [changes, drift]
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriftChange'
+        drift:
+          $ref: '#/components/schemas/DriftInfo'
+
+    ChangeResult:
+      description: What resolving a hand edit did with one change.
+      type: object
+      additionalProperties: false
+      required: [kind, line, outcome]
+      properties:
+        kind:
+          $ref: '#/components/schemas/ChangeKind'
+        line:
+          type: integer
+        ref:
+          description: The memory the change is about (edits and removals).
+          type: string
+        outcome:
+          $ref: '#/components/schemas/ChangeOutcome'
+        proposal:
+          description: The proposal written for it.
+          $ref: '#/components/schemas/DisplayRef'
+        reason:
+          description: Why it was skipped (a policy code, or too_long, empty, invalid_text).
+          type: string
+
+    DriftResolutionRecord:
+      type: object
+      additionalProperties: false
+      required: [receipt_id]
+      properties:
+        mode:
+          $ref: '#/components/schemas/DriftMode'
+        receipt_id:
+          $ref: '#/components/schemas/Id'
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChangeResult'
+        superseded_by:
+          description: A newer observation of the same file that dismissed this one.
+          $ref: '#/components/schemas/Id'
+
+    Observation:
+      description: A compiled file seen changed outside Memax.
+      type: object
+      additionalProperties: false
+      required: [id, target_id, space_id, path, observed_sha256, observer_kind, observer_id, bytes, changeset, status, observed_at, receipt_id]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        target_id:
+          $ref: '#/components/schemas/Id'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        path:
+          $ref: '#/components/schemas/RepoPath'
+        observed_sha256:
+          $ref: '#/components/schemas/Sha256'
+        observer_kind:
+          $ref: '#/components/schemas/ObserverKind'
+        observer_id:
+          type: string
+        commit:
+          type: string
+        bytes:
+          type: integer
+          minimum: 0
+        base_compile_id:
+          $ref: '#/components/schemas/Id'
+        base_compile:
+          description: The run the edit was compared against, when Memax wrote the baseline.
+          $ref: '#/components/schemas/CompileRef'
+        base_sha256:
+          $ref: '#/components/schemas/Sha256'
+        changeset:
+          $ref: '#/components/schemas/ChangeSet'
+        status:
+          $ref: '#/components/schemas/ObservationStatus'
+        resolution:
+          $ref: '#/components/schemas/DriftResolutionRecord'
+        observed_at:
+          $ref: '#/components/schemas/Timestamp'
+        resolved_at:
+          $ref: '#/components/schemas/Timestamp'
+        receipt_id:
+          $ref: '#/components/schemas/Id'
+
+    ObservationResult:
+      type: object
+      additionalProperties: false
+      required: [drifted, target, receipts]
+      properties:
+        drifted:
+          description: Whether the file was a hand edit (and recorded).
+          type: boolean
+        target:
+          $ref: '#/components/schemas/Target'
+        observation:
+          $ref: '#/components/schemas/Observation'
+        receipts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    DeliveryResult:
+      type: object
+      additionalProperties: false
+      required: [target, compile, receipts]
+      properties:
+        target:
+          $ref: '#/components/schemas/Target'
+        compile:
+          $ref: '#/components/schemas/CompileRun'
+        receipts:
+          description: Empty when the delivery was already known.
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    DriftItem:
+      type: object
+      additionalProperties: false
+      required: [observation, compiled, observed]
+      properties:
+        observation:
+          $ref: '#/components/schemas/Observation'
+        compiled:
+          description: The file as Memax last delivered (or accepted) it; empty if it never wrote one.
+          type: string
+        base_compile:
+          $ref: '#/components/schemas/CompileRun'
+        observed:
+          description: The file as it is now.
+          type: string
+
+    Drift:
+      type: object
+      additionalProperties: false
+      required: [target, items]
+      properties:
+        target:
+          $ref: '#/components/schemas/Target'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriftItem'
+
+    DriftResolutionResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, target, observations, proposals, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        target:
+          $ref: '#/components/schemas/Target'
+        observations:
+          description: The hand edits resolved.
+          type: array
+          items:
+            $ref: '#/components/schemas/Observation'
+        proposals:
+          description: The proposals a pull wrote, in file order.
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
+        receipts:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Receipt'
+
     # ------------------------------------------------------------------
     # Requests
     # ------------------------------------------------------------------
@@ -1946,7 +3458,7 @@ components:
           $ref: '#/components/schemas/SessionRef'
 
     ReviewRequest:
-      description: The body of keep and reject. Every field is optional.
+      description: The body of keep, reject and compile. Every field is optional.
       type: object
       additionalProperties: false
       properties:
@@ -2002,6 +3514,192 @@ components:
           $ref: '#/components/schemas/Reason'
         occurred_at:
           description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    BriefItemInput:
+      description: A memory item (`ref`) or a line of prose that cites at least one kept memory (`text`, `cites`).
+      type: object
+      additionalProperties: false
+      properties:
+        ref:
+          $ref: '#/components/schemas/MemoryDisplayRef'
+        text:
+          type: string
+          minLength: 1
+          maxLength: 500
+        cites:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/MemoryDisplayRef'
+
+    BriefSectionInput:
+      type: object
+      additionalProperties: false
+      required: [key, heading]
+      properties:
+        key:
+          $ref: '#/components/schemas/SectionKey'
+        heading:
+          type: string
+          minLength: 1
+          maxLength: 80
+        items:
+          type: array
+          maxItems: 400
+          items:
+            $ref: '#/components/schemas/BriefItemInput'
+
+    ReviseBriefRequest:
+      type: object
+      additionalProperties: false
+      required: [title, sections]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        summary:
+          description: One line under the title.
+          type: string
+          maxLength: 500
+        sections:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/BriefSectionInput'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    TargetSettingsInput:
+      description: Settings to change; what you leave out stays.
+      type: object
+      additionalProperties: false
+      properties:
+        include:
+          $ref: '#/components/schemas/IncludeMode'
+        stale:
+          $ref: '#/components/schemas/StaleMode'
+        size_budget:
+          type: integer
+          minimum: 1024
+          maximum: 32768
+        scoped:
+          $ref: '#/components/schemas/ScopedMode'
+        user_owned:
+          type: boolean
+
+    CreateTargetRequest:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          $ref: '#/components/schemas/TargetKind'
+        path:
+          description: Defaults to the kind's own (AGENTS.md, CLAUDE.md, .cursor/rules, …). ChatGPT takes none.
+          $ref: '#/components/schemas/RepoPath'
+        settings:
+          $ref: '#/components/schemas/TargetSettingsInput'
+        delivery:
+          description: Defaults to local for files and copy for ChatGPT.
+          $ref: '#/components/schemas/Delivery'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    ConfigureTargetRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        path:
+          $ref: '#/components/schemas/RepoPath'
+        settings:
+          $ref: '#/components/schemas/TargetSettingsInput'
+        delivery:
+          $ref: '#/components/schemas/Delivery'
+        enabled:
+          description: false stops compiling the target; true turns it back on.
+          type: boolean
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    ObservationRequest:
+      type: object
+      additionalProperties: false
+      required: [path, content]
+      properties:
+        path:
+          description: The file, relative to the repository root.
+          $ref: '#/components/schemas/RepoPath'
+        content:
+          description: The file's content as it is on disk.
+          type: string
+          maxLength: 1048576
+        device_id:
+          description: The device that saw it, for the record.
+          type: string
+          minLength: 1
+          maxLength: 200
+        commit:
+          description: The commit the file is at, if the device knows it.
+          type: string
+          pattern: '^[0-9a-f]{7,64}$'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When the device saw it.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    DeliveryRequest:
+      type: object
+      additionalProperties: false
+      required: [compile, sha256]
+      properties:
+        compile:
+          description: The run you wrote, by display ID (C-0881) or id.
+          type: string
+          minLength: 1
+          maxLength: 64
+        sha256:
+          description: The run's drift hash, computed from what you wrote.
+          $ref: '#/components/schemas/Sha256'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it was written.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    ResolveDriftRequest:
+      description: Every field is optional.
+      type: object
+      additionalProperties: false
+      properties:
+        observation:
+          description: Resolve only this file's edit; without it, every open one of the target.
+          $ref: '#/components/schemas/Id'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
           $ref: '#/components/schemas/Timestamp'
         session_ref:
           $ref: '#/components/schemas/SessionRef'
@@ -2134,3 +3832,91 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/AgentCommandResult'
+
+    BriefEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Brief'
+
+    BriefResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/BriefResult'
+
+    BriefVersionPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/BriefVersionPage'
+
+    TargetListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TargetList'
+
+    TargetResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TargetResult'
+
+    TargetPreviewEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TargetPreview'
+
+    CompileRunPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/CompileRunPage'
+
+    ObservationResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ObservationResult'
+
+    DeliveryResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DeliveryResult'
+
+    DriftEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Drift'
+
+    DriftResolutionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DriftResolutionResult'

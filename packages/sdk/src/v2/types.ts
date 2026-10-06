@@ -32,6 +32,35 @@ export type ReceiptPage = Schemas["ReceiptPage"];
 export type MemoryDetail = Schemas["MemoryDetail"];
 export type CommandResult = Schemas["CommandResult"];
 export type ErrorBody = Schemas["Error"];
+
+// The Brief, targets and compiles
+export type Brief = Schemas["Brief"];
+export type BriefSection = Schemas["BriefSection"];
+export type BriefItem = Schemas["BriefItem"];
+export type BriefResult = Schemas["BriefResult"];
+export type BriefVersionPage = Schemas["BriefVersionPage"];
+export type Target = Schemas["Target"];
+export type TargetSettings = Schemas["TargetSettings"];
+export type TargetList = Schemas["TargetList"];
+export type TargetResult = Schemas["TargetResult"];
+export type Delivered = Schemas["Delivered"];
+export type DeliveredFile = Schemas["DeliveredFile"];
+export type CompileRun = Schemas["CompileRun"];
+export type CompileRunPage = Schemas["CompileRunPage"];
+export type CompiledOutput = Schemas["CompiledOutput"];
+export type CompileWarning = Schemas["CompileWarning"];
+export type TargetPreview = Schemas["TargetPreview"];
+export type PreviewOutput = Schemas["PreviewOutput"];
+export type Observation = Schemas["Observation"];
+export type ObservationResult = Schemas["ObservationResult"];
+export type ChangeSet = Schemas["ChangeSet"];
+export type DriftChange = Schemas["DriftChange"];
+export type DriftInfo = Schemas["DriftInfo"];
+export type ChangeResult = Schemas["ChangeResult"];
+export type DeliveryResult = Schemas["DeliveryResult"];
+export type Drift = Schemas["Drift"];
+export type DriftItem = Schemas["DriftItem"];
+export type DriftResolutionResult = Schemas["DriftResolutionResult"];
 export type ErrorDetails = Schemas["ErrorDetails"];
 
 // Agents
@@ -51,6 +80,15 @@ export type ReviewInput = Schemas["ReviewRequest"];
 export type SourceInput = Schemas["SourceInput"];
 export type AutonomyInput = Schemas["AutonomyRequest"];
 export type AgentCommandInput = Schemas["AgentCommandRequest"];
+export type ReviseBriefInput = Schemas["ReviseBriefRequest"];
+export type BriefSectionInput = Schemas["BriefSectionInput"];
+export type BriefItemInput = Schemas["BriefItemInput"];
+export type CreateTargetInput = Schemas["CreateTargetRequest"];
+export type ConfigureTargetInput = Schemas["ConfigureTargetRequest"];
+export type TargetSettingsInput = Schemas["TargetSettingsInput"];
+export type ObservationInput = Schemas["ObservationRequest"];
+export type DeliveryInput = Schemas["DeliveryRequest"];
+export type ResolveDriftInput = Schemas["ResolveDriftRequest"];
 
 // Vocabulary
 export type Section = Schemas["Section"];
@@ -68,6 +106,16 @@ export type AgentKind = Schemas["AgentKind"];
 export type AgentSurface = Schemas["AgentSurface"];
 export type AgentState = Schemas["AgentState"];
 export type CredentialKind = Schemas["CredentialKind"];
+export type TargetKind = Schemas["TargetKind"];
+export type Delivery = Schemas["Delivery"];
+/** in_sync, compiling, pending_delivery, drifted or off. */
+export type SyncState = Schemas["SyncState"];
+export type IncludeMode = Schemas["IncludeMode"];
+export type StaleMode = Schemas["StaleMode"];
+export type ScopedMode = Schemas["ScopedMode"];
+export type CompileStatus = Schemas["CompileStatus"];
+export type ObservationStatus = Schemas["ObservationStatus"];
+export type DriftMode = Schemas["DriftMode"];
 export type ActorKind = Schemas["ActorKind"];
 export type Via = Schemas["Via"];
 export type Assurance = Schemas["Assurance"];

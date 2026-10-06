@@ -96,6 +96,21 @@ var routes = []Route{
 	{"POST", "/v2/agents/{agent}:pause", "pauseAgent", (*Handler).pauseAgent},
 	{"POST", "/v2/agents/{agent}:resume", "resumeAgent", (*Handler).resumeAgent},
 	{"POST", "/v2/agents/{agent}:disconnect", "disconnectAgent", (*Handler).disconnectAgent},
+	{"GET", "/v2/spaces/{space}/brief", "getBrief", (*Handler).getBrief},
+	{"POST", "/v2/spaces/{space}/brief", "reviseBrief", (*Handler).reviseBrief},
+	{"GET", "/v2/spaces/{space}/brief/versions", "listBriefVersions", (*Handler).listBriefVersions},
+	{"GET", "/v2/spaces/{space}/targets", "listTargets", (*Handler).listTargets},
+	{"POST", "/v2/spaces/{space}/targets", "createTarget", (*Handler).createTarget},
+	{"PATCH", "/v2/targets/{target}", "configureTarget", (*Handler).configureTarget},
+	{"POST", "/v2/targets/{target}:compile", "compileTarget", (*Handler).compileTarget},
+	{"GET", "/v2/targets/{target}/preview", "getTargetPreview", (*Handler).getTargetPreview},
+	{"GET", "/v2/targets/{target}/runs", "listCompileRuns", (*Handler).listCompileRuns},
+	{"POST", "/v2/targets/{target}/observations", "recordObservation", (*Handler).recordObservation},
+	{"POST", "/v2/targets/{target}/deliveries", "recordDelivery", (*Handler).recordDelivery},
+	{"GET", "/v2/targets/{target}/drift", "getDrift", (*Handler).getDrift},
+	{"POST", "/v2/targets/{target}/drift:pull", "pullDrift", (*Handler).pullDrift},
+	{"POST", "/v2/targets/{target}/drift:overwrite", "overwriteDrift", (*Handler).overwriteDrift},
+	{"POST", "/v2/targets/{target}/drift:stop", "stopDrift", (*Handler).stopDrift},
 }
 
 // Routes lists every /v2 operation this package serves, named as in

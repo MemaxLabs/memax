@@ -20,6 +20,11 @@ type Compiler interface {
 	ParseBack(ctx context.Context, req *ParseBackRequest) (*ParseBackResult, error)
 }
 
+// ErrUnavailable is returned when the compile service didn't answer
+// after every attempt (it is down, restarting or unreachable). It is
+// transient: a compile job retries, and an API call can be retried.
+var ErrUnavailable = errors.New("compile: the compile service is unavailable")
+
 // InputError is a compile input the compiler refused (HTTP 422). It is
 // permanent: compiling the same input again fails the same way.
 type InputError struct {
@@ -174,7 +179,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		}
 		wait *= 2
 	}
-	return fmt.Errorf("compile: %s failed after %d attempts: %w", path, c.attempts, last)
+	return fmt.Errorf("%w: %s failed after %d attempts: %w", ErrUnavailable, path, c.attempts, last)
 }
 
 func (c *Client) once(ctx context.Context, method, path string, payload []byte, out any) error {

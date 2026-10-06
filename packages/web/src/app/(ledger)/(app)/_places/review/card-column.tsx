@@ -3,10 +3,9 @@
 import { AgentStamp, Button, Receipt } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { formatAgo } from "@/lib/v2/copy";
-import type { Actor } from "@/lib/v2/data/records";
 import type { ReviewItem } from "@/lib/v2/data/review";
 import { useKeycap } from "@/lib/v2/keymap/react";
-import { isYou } from "@/lib/v2/records-copy";
+import { clashTitle } from "@/lib/v2/records-copy";
 import { EditClash } from "../../_components/edit-clash";
 import { StatementEditor } from "../../_components/statement-editor";
 import type { RecordsView } from "../records-view";
@@ -70,13 +69,13 @@ export function CardColumn({
 
   let body;
   if (clash) {
-    const by: Actor | null = clash.theirs.by;
-    const ago = formatAgo(copy, clash.theirs.at, now);
-    const title = isYou(by)
-      ? interpolate(rc.clash.byYou, { ago })
-      : by && (by.kind !== "person" || by.name)
-        ? interpolate(rc.clash.by, { name: view.name(by), ago })
-        : interpolate(rc.clash.byTeammate, { ago });
+    const by = clash.theirs.by;
+    const title = clashTitle(
+      rc,
+      by,
+      formatAgo(copy, clash.theirs.at, now),
+      view.agentName,
+    );
     body = (
       <EditClash
         title={title}

@@ -73,6 +73,23 @@ export function isYou(actor: Actor | null): boolean {
   return actor?.kind === "person" && actor.self;
 }
 
+/** States2 "Edit clash": "Jiahao kept a change to this fact 1 minute ago." */
+export function clashTitle(
+  copy: RecordsCopy,
+  by: Actor | null,
+  ago: string,
+  agentName: AgentName,
+): string {
+  if (isYou(by)) return interpolate(copy.clash.byYou, { ago });
+  if (by && (by.kind !== "person" || by.name)) {
+    return interpolate(copy.clash.by, {
+      name: actorName(by, copy, agentName),
+      ago,
+    });
+  }
+  return interpolate(copy.clash.byTeammate, { ago });
+}
+
 export type RailVerb = RecordAction | "updated" | "editing";
 
 export function verbOf(copy: RecordsCopy, action: RailVerb): string {

@@ -377,7 +377,8 @@ export const DEMO_RECORDS: Record<string, Partial<MemoryRecord>> = {
         key: "s3",
         kind: "file",
         label: "docs/adr/004-queues.md",
-        provider: "Repository",
+        // A file in the repository: the catalogue words its kind.
+        provider: null,
         url: null,
       },
     ],

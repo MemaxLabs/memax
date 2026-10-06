@@ -83,6 +83,7 @@ export function createDemoSource({
     settleMs,
     nextRef: allocRef,
     propose: records.propose,
+    decided: (slug, ref) => records.session.decided(slug, ref) !== undefined,
   });
   const brief = createDemoBrief({
     now,
@@ -121,12 +122,15 @@ export function createDemoSource({
     const list = targets.peekList?.(slug) ?? [];
     if (list.length === 0) return merged;
     // The status line follows the targets once this session changes
-    // them; the board's "5 agents in sync" stays while nothing drifted.
+    // them; the board's "5 agents in sync" stays while nothing drifted
+    // or is held.
     const line = syncLineOf(list);
     return {
       ...merged,
       status:
-        line?.kind === "drifted" || base.status.kind !== "in-sync"
+        line?.kind === "drifted" ||
+        line?.kind === "held" ||
+        base.status.kind !== "in-sync"
           ? (line ?? base.status)
           : base.status,
       targets: {
@@ -226,8 +230,10 @@ export function createDemoSource({
         space.slug === "memax-v2" && DEMO_PNPM_PROPOSAL.matches.test(statement)
           ? {
               ref: DEMO_PNPM_PROPOSAL.ref,
+              lifecycle: "proposed" as const,
               agent: DEMO_PNPM_PROPOSAL.agent,
-              proposedAt: DEMO_PNPM_PROPOSAL.proposedAt,
+              writtenAt: DEMO_PNPM_PROPOSAL.proposedAt,
+              match: "near" as const,
             }
           : null;
       return {

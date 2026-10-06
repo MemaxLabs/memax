@@ -56,25 +56,26 @@ var sampleRequests = map[string]struct {
 	body   string
 	header map[string]string
 }{
-	"listSpaces":       {path: "/v2/spaces"},
-	"rememberMemory":   {path: "/v2/spaces/memax-v2/memories", body: `{"statement":"x","section":"decisions"}`},
-	"listMemories":     {path: "/v2/spaces/memax-v2/memories?state=kept&state=proposed&limit=10"},
-	"listReview":       {path: "/v2/spaces/memax-v2/review"},
-	"listReceipts":     {path: "/v2/spaces/memax-v2/receipts?memory=M-0001"},
-	"getMemory":        {path: "/v2/memories/M-0001?space=memax-v2"},
-	"keepMemory":       {path: "/v2/memories/M-0001:keep?space=memax-v2", header: map[string]string{"If-Match": `"1"`}},
-	"editMemory":       {path: "/v2/memories/M-0001:edit?space=memax-v2", body: `{"statement":"y"}`, header: map[string]string{"If-Match": `"1"`}},
-	"rejectMemory":     {path: "/v2/memories/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:reject", body: `{"reason":"duplicate"}`},
-	"getConflict":      {path: "/v2/memories/M-0431/conflict?space=memax-v2&with=M-0174"},
-	"resolveConflict":  {path: "/v2/memories/M-0431:resolve-conflict?space=memax-v2", body: `{"choice":"keep_this"}`},
-	"undoReceipt":      {path: "/v2/receipts/" + sampleID + ":undo"},
-	"listAgents":       {path: "/v2/agents"},
-	"listSpaceAgents":  {path: "/v2/spaces/memax-v2/agents"},
-	"getAgent":         {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"},
-	"setAgentAutonomy": {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/spaces/memax-v2", body: `{"autonomy":"write"}`},
-	"pauseAgent":       {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:pause"},
-	"resumeAgent":      {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:resume", body: `{"reason":"done testing"}`},
-	"disconnectAgent":  {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:disconnect"},
+	"listSpaces":         {path: "/v2/spaces"},
+	"rememberMemory":     {path: "/v2/spaces/memax-v2/memories", body: `{"statement":"x","section":"decisions"}`},
+	"listMemories":       {path: "/v2/spaces/memax-v2/memories?state=kept&state=proposed&limit=10"},
+	"findNearDuplicates": {path: "/v2/spaces/memax-v2/memories:near-duplicates", body: `{"statement":"Use pnpm catalogs"}`},
+	"listReview":         {path: "/v2/spaces/memax-v2/review"},
+	"listReceipts":       {path: "/v2/spaces/memax-v2/receipts?memory=M-0001"},
+	"getMemory":          {path: "/v2/memories/M-0001?space=memax-v2"},
+	"keepMemory":         {path: "/v2/memories/M-0001:keep?space=memax-v2", header: map[string]string{"If-Match": `"1"`}},
+	"editMemory":         {path: "/v2/memories/M-0001:edit?space=memax-v2", body: `{"statement":"y"}`, header: map[string]string{"If-Match": `"1"`}},
+	"rejectMemory":       {path: "/v2/memories/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:reject", body: `{"reason":"duplicate"}`},
+	"getConflict":        {path: "/v2/memories/M-0431/conflict?space=memax-v2&with=M-0174"},
+	"resolveConflict":    {path: "/v2/memories/M-0431:resolve-conflict?space=memax-v2", body: `{"choice":"keep_this"}`},
+	"undoReceipt":        {path: "/v2/receipts/" + sampleID + ":undo"},
+	"listAgents":         {path: "/v2/agents"},
+	"listSpaceAgents":    {path: "/v2/spaces/memax-v2/agents"},
+	"getAgent":           {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"},
+	"setAgentAutonomy":   {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/spaces/memax-v2", body: `{"autonomy":"write"}`},
+	"pauseAgent":         {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:pause"},
+	"resumeAgent":        {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:resume", body: `{"reason":"done testing"}`},
+	"disconnectAgent":    {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:disconnect"},
 
 	"getBrief":          {path: "/v2/spaces/memax-v2/brief"},
 	"reviseBrief":       {path: "/v2/spaces/memax-v2/brief", body: `{"title":"Brief","sections":[{"key":"decisions","heading":"Decisions","items":[{"ref":"M-0219"}]}]}`, header: map[string]string{"If-Match": `"1"`}},
@@ -238,13 +239,15 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "PolicyEffect", specEnum(t, "PolicyEffect"),
 		[]string{string(policy.EffectApply), string(policy.EffectPropose), string(policy.EffectConfirm), string(policy.EffectRefuse)})
 	sameSet(t, "PolicyCode", specEnum(t, "PolicyCode"), stringConsts(t, "../../ledger/policy/policy.go", "Code"))
-	// rate_limited comes from the rate-limit middleware in front of /v2.
-	sameSet(t, "ErrorCode", specEnum(t, "ErrorCode"), append(stringConsts(t, "errors.go", "code"), "rate_limited"))
+	// rate_limited (codeRateLimited) also comes from the rate-limit
+	// middleware in front of /v2.
+	sameSet(t, "ErrorCode", specEnum(t, "ErrorCode"), stringConsts(t, "errors.go", "code"))
+	sameSet(t, "DuplicateMatch", specEnum(t, "DuplicateMatch"), []string{string(ledger.MatchExact), string(ledger.MatchNear)})
 
 	// The Brief, targets and compiles.
 	sameSet(t, "TargetKind", specEnum(t, "TargetKind"), strs(ledger.TargetKinds))
 	sameSet(t, "Delivery", specEnum(t, "Delivery"), strs(ledger.Deliveries))
-	sameSet(t, "SyncState", specEnum(t, "SyncState"), strs(ledger.SyncStates))
+	sameSet(t, "SyncState", specEnum(t, "SyncState"), strs(ledger.ShownSyncStates))
 	sameSet(t, "IncludeMode", specEnum(t, "IncludeMode"), strs([]ledger.IncludeMode{ledger.IncludeKeptOnly, ledger.IncludeKeptAndOpen}))
 	sameSet(t, "StaleMode", specEnum(t, "StaleMode"), strs([]ledger.StaleMode{ledger.StaleMark, ledger.StaleOmit}))
 	sameSet(t, "ScopedMode", specEnum(t, "ScopedMode"), strs([]ledger.ScopedMode{ledger.ScopedInline, ledger.ScopedOmit}))

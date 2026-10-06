@@ -4,6 +4,7 @@ import { agentsOverview, createSdkAgents } from "./agents-sdk";
 import { createSdkBrief } from "./brief-sdk";
 import type { WebSession } from "./gates";
 import { createSdkGates } from "./gates-sdk";
+import { checkRememberOver } from "./remember-sdk";
 import { createSdkMemories } from "./sdk-memories";
 import { createSdkReview } from "./sdk-review";
 import type { LedgerDataSource } from "./source";
@@ -18,11 +19,11 @@ import type { AskEvent, KeepResult, SpaceOverview, Viewer } from "./types";
  * What /v2 serves today: the spaces list, Review's queue and the
  * decision gates waiting on an answer (together the rail's ochre count),
  * memories, receipts, agents, the Brief and its compile targets (which
- * feed the status line). Everything else the
- * frame shows is marked PLACEHOLDER below and returns "not served"
- * (null) or a neutral value until its endpoint lands: Handoffs, Dream,
- * the near-duplicate check and Ask. The demo source has all of them,
- * for comparison with the boards.
+ * feed the status line), and Remember's near-duplicate check. Everything
+ * else the frame shows is marked PLACEHOLDER below and returns "not
+ * served" (null) or a neutral value until its endpoint lands: Handoffs,
+ * Dream and Ask. The demo source has all of them, for comparison with
+ * the boards.
  */
 
 // `auth` for API keys (V1's auth.keys), until /v2 serves them.
@@ -123,10 +124,8 @@ export function createSdkSource({
     async *ask(): AsyncGenerator<AskEvent> {
       yield { type: "unavailable" };
     },
-    // PLACEHOLDER: no near-duplicate endpoint yet (plan §5.8).
-    async checkRemember() {
-      return { duplicate: null, section: null, condition: null };
-    },
+    // The near-duplicate check (plan §5.8), over memax.v2.memories.
+    checkRemember: (input) => checkRememberOver(client, input),
     // No X-Memax-Via: the server records a keep as a person's on the web
     // only when it can tell (spec, Via), not because a client says so.
     async remember({ space, statement, section, idempotencyKey }) {

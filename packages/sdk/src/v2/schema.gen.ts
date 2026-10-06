@@ -59,6 +59,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/memories:near-duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Find what a draft repeats
+         * @description Remember's near-duplicate check: the kept memories and pending
+         *     proposals of the space that a draft statement repeats, best first,
+         *     so a person can keep an agent's proposal instead of writing the
+         *     same thing twice. `exact` is the same words (case, spacing and
+         *     punctuation aside); `near` is at least `floor` similar by embedding
+         *     (cosine). Superseded decisions are left out.
+         *
+         *     No model runs on this path. The draft is embedded (within about
+         *     120 ms) and compared exactly with the space's stored embeddings,
+         *     so it answers in under 150 ms. When embeddings are off on this
+         *     server, or the draft's embedding misses its deadline, only exact
+         *     repeats are checked and `semantic` is `false`.
+         *
+         *     It only reads, so any credential that reads the space may call it.
+         *     It is a `POST` so the draft travels in the body, never in a URL or
+         *     an access log, and it takes no `Idempotency-Key`. Clients call it
+         *     while a person types (debounced), and it is rate-limited per
+         *     caller: 429 `rate_limited` with `Retry-After`.
+         */
+        post: operations["findNearDuplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/spaces/{space}/review": {
         parameters: {
             query?: never;
@@ -780,7 +820,9 @@ export interface paths {
          *     the compiler's drift_sha256 of that file; for several, the sha256
          *     of `<path> NUL <drift_sha256> LF` lines sorted by path). A target is
          *     in sync once its latest run is delivered. Acknowledging the same run
-         *     again, or an older one, changes nothing.
+         *     again, or an older one, changes nothing. While a pull holds one of
+         *     the run's files (the target is `held`), nothing may be written over
+         *     it: 409.
          */
         post: operations["recordDelivery"];
         delete?: never;
@@ -834,9 +876,16 @@ export interface paths {
          *     external, when nobody is known), with a `file:line` source: a changed
          *     cited line proposes an edit of that memory, a new line a new memory.
          *     A removed cited line waits in the resolution for a person to forget
-         *     or exclude the memory; it is never forgotten automatically. The file
-         *     stays as it is until the next compile delivers over it. Any person
-         *     in the space may pull.
+         *     or exclude the memory; it is never forgotten automatically. Any
+         *     person in the space may pull.
+         *
+         *     The edited file stays as it is until its proposals are decided:
+         *     while any of them is still proposed, the target is `held` and
+         *     nothing is delivered over the file (see `holds` on the target).
+         *     Once each is kept or rejected, the latest compile is delivered over
+         *     it: kept lines come back compiled, rejected ones go. A pull that
+         *     writes no proposal holds nothing; the file stays until the next
+         *     compile delivers over it.
          */
         post: operations["pullDrift"];
         delete?: never;
@@ -1282,10 +1331,12 @@ export interface components {
          * @description `compiling`: a change hasn't compiled yet. `pending_delivery`: the
          *     latest compile isn't on disk yet. `in_sync`: it is (or, for MCP and
          *     copy-out, it compiled). `drifted`: a file was edited by hand.
+         *     `held`: a hand edit came back by a pull, and its proposals wait in
+         *     Review; the file stays as it is until they are kept or rejected.
          *     `off`: compiling is stopped.
          * @enum {string}
          */
-        SyncState: "in_sync" | "compiling" | "pending_delivery" | "drifted" | "off";
+        SyncState: "in_sync" | "compiling" | "pending_delivery" | "drifted" | "held" | "off";
         /** @enum {string} */
         IncludeMode: "kept_only" | "kept_and_open";
         /** @enum {string} */
@@ -1754,6 +1805,22 @@ export interface components {
             sha256: components["schemas"]["Sha256"];
             /** @description Set when the baseline is a hand edit Memax accepted (pulled or overwritten). */
             observation?: components["schemas"]["Id"];
+            /**
+             * @description Set with `observation`. True while the proposals of the pull that
+             *     accepted this edit wait in Review: nothing is written over the
+             *     file until they are kept or rejected.
+             */
+            held?: boolean;
+        };
+        /** @description A file a pull holds, and the proposals it waits for. */
+        TargetHold: {
+            /** @description The hand edit the pull accepted. */
+            observation: components["schemas"]["Id"];
+            path: components["schemas"]["RepoPath"];
+            /** @description The pull's proposals that are still proposed. */
+            proposals: components["schemas"]["DisplayRef"][];
+            /** @description When the pull was made. */
+            since: components["schemas"]["Timestamp"];
         };
         /** @description What Memax believes is on disk. */
         Delivered: {
@@ -1851,6 +1918,8 @@ export interface components {
             delivered?: components["schemas"]["Delivered"];
             /** @description Files with a hand edit waiting to be resolved. */
             open_drift: number;
+            /** @description The files a pull holds (the target is `held`); absent when none. */
+            holds?: components["schemas"]["TargetHold"][];
             created_receipt_id: components["schemas"]["Id"];
             last_receipt_id: components["schemas"]["Id"];
             created_at: components["schemas"]["Timestamp"];
@@ -2102,6 +2171,41 @@ export interface components {
             quote?: string;
             content_hash?: string;
         };
+        /** @description A draft statement to check before remembering it. */
+        NearDuplicatesRequest: {
+            /** @description The draft, as the person has typed it so far. */
+            statement: string;
+            /** @description The most repeats to return (default 3). */
+            limit?: number;
+        };
+        /** @description What a draft repeats. */
+        NearDuplicates: {
+            /** @description Best first. Exact repeats come before near ones. */
+            items: components["schemas"]["NearDuplicate"][];
+            /**
+             * @description The draft was compared by meaning. `false` when embeddings are
+             *     off on this server or the draft's embedding missed its deadline:
+             *     only exact repeats were checked.
+             */
+            semantic: boolean;
+            /** @description The least similarity a near repeat needed. */
+            floor: number;
+        };
+        /** @description A memory a draft repeats. */
+        NearDuplicate: {
+            /** @description A kept memory or a pending proposal (its `lifecycle` says which). */
+            memory: components["schemas"]["Memory"];
+            /** @description Cosine similarity of the draft and the memory; 1 for an exact repeat. */
+            similarity: number;
+            match: components["schemas"]["DuplicateMatch"];
+            /** @description The receipt that wrote the memory, so a client can say who proposed or kept it, through which agent, and when. */
+            created: components["schemas"]["Receipt"];
+        };
+        /**
+         * @description `exact`: the same words. `near`: the same thing by meaning.
+         * @enum {string}
+         */
+        DuplicateMatch: "exact" | "near";
         RememberRequest: {
             /** @description One fact, in your words. */
             statement: string;
@@ -2325,6 +2429,9 @@ export interface components {
         };
         CommandResultEnvelope: {
             data: components["schemas"]["CommandResult"];
+        };
+        NearDuplicatesEnvelope: {
+            data: components["schemas"]["NearDuplicates"];
         };
         MemoriesCommandResultEnvelope: {
             data: components["schemas"]["MemoriesCommandResult"];
@@ -2758,6 +2865,40 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    findNearDuplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NearDuplicatesRequest"];
+            };
+        };
+        responses: {
+            /** @description What the draft repeats, best first; none is an empty list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NearDuplicatesEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];
@@ -3875,6 +4016,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
             422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];

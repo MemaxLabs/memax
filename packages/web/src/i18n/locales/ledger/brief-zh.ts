@@ -66,6 +66,9 @@ export const ledgerBriefZh: Translations["ledger"]["brief"] = {
     drifted: "被改动了",
     localEdits: "{n} 处本地改动",
     localEditsOne: "1 处本地改动",
+    held: "等审阅",
+    holding: "等审阅里的 {n} 条提议",
+    holdingOne: "等审阅里的 1 条提议",
     off: "已停止",
     live: "通过连接器实时读取",
     reads: "读取 {file}",
@@ -255,6 +258,10 @@ export const ledgerBriefZh: Translations["ledger"]["brief"] = {
     openCanonical: "打开 {file}",
     off: "Memax 已停止编译这个文件。Agent 仍然通过 MCP 读取这个空间。",
     restart: "重新编译",
+    held: "{file} 保留着拉入的手动改动，直到 {refs} 在审阅里被保留或拒绝。之后 Memax 会重新写入它。",
+    heldOne:
+      "{file} 保留着拉入的手动改动，直到 {refs} 在审阅里被保留或拒绝。之后 Memax 会重新写入它。",
+    openReview: "打开审阅",
     settings: {
       title: "这个文件怎么写",
       include: "包含",
@@ -337,6 +344,13 @@ export const ledgerBriefZh: Translations["ledger"]["brief"] = {
     waiting: "{n} 行被删的内容在等你决定是否忘记或排除对应的记忆。",
     waitingOne: "1 行被删的内容在等你决定是否忘记或排除对应的记忆。",
     openReview: "打开审阅",
+    heldNote: "在它们被保留或拒绝之前，{file} 保持你改过的样子。",
+    heldNoteOne: "在它被保留或拒绝之前，{file} 保持你改过的样子。",
+    heldTitle: "{file} 在等审阅",
+    heldDetail:
+      "拉入的改动会留在文件里，直到 {refs} 被保留或拒绝。之后 Memax 会重新写入：保留的行留下，拒绝的行去掉。",
+    heldDetailOne:
+      "拉入的改动会留在文件里，直到 {refs} 被保留或拒绝。之后 Memax 会重新写入：保留的那一行留下，拒绝的那一行去掉。",
     none: "这个文件没有在等处理的手动改动。",
     noneDetail:
       "它和 Memax 上次写入的一致，或者它的手动改动已经被拉入、覆盖或停止了。",

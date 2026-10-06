@@ -460,6 +460,17 @@ func (w *writer) recordDelivery(ctx context.Context, c *RecordDelivery) (Result,
 		}
 		return Result{Outcome: OutcomeApplied, Policy: dec, Target: t, Compile: run, Unchanged: true}, nil
 	}
+	// A pull holds the file: nothing is delivered over it until its
+	// proposals are decided (holds.go).
+	if err := fillHolds(ctx, w.tx, []*Target{t}); err != nil {
+		return Result{}, err
+	}
+	for _, f := range run.Files {
+		if f.Path != "" && t.heldPath(f.Path) {
+			return Result{}, &TargetStateError{Ref: t.Label,
+				Message: fmt.Sprintf("is held: %s has a pulled hand edit whose proposals wait in Review, and it stays as it is until they are kept or rejected", f.Path)}
+		}
+	}
 	version, err := nextStreamVersion(ctx, w.tx, run.ID)
 	if err != nil {
 		return Result{}, err

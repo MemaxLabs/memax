@@ -32,6 +32,8 @@ type writer struct {
 	finishers []Finisher
 	inserter  Jobs
 	loginRole string
+	// indexJobs queues index_memory for every new version (embeddings.go).
+	indexJobs bool
 
 	// undo collects the command's inverse when it is undoable (undo.go),
 	// with the windows the ledger was configured with.
@@ -328,6 +330,7 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 		VALUES ($1, $2, $3, $4, $5, $5)`, mem.ID, version, sp.ID, statement, rc.ID); err != nil {
 		return Result{}, fmt.Errorf("ledger: write version: %w", err)
 	}
+	w.indexVersion(sp.ID, mem.ID, version)
 	hash, bands := signature(statement)
 	if _, err := w.tx.Exec(ctx, fmt.Sprintf(`
 		UPDATE v2.memories
@@ -474,6 +477,7 @@ func (w *writer) insertMemory(ctx context.Context, sp spaceRow, grant SpaceGrant
 		VALUES ($1, 1, $2, $3, $4, $4)`, id, sp.ID, row.Statement, rc.ID); err != nil {
 		return uuid.Nil, Receipt{}, fmt.Errorf("ledger: write version: %w", err)
 	}
+	w.indexVersion(sp.ID, id, 1)
 	return id, rc, nil
 }
 

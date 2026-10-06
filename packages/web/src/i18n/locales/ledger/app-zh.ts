@@ -36,6 +36,8 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
       filesInSyncOne: "1 个文件已同步",
       drifted: "{agent} 的文件被改动了",
       fileDrifted: "{file} 被改动了",
+      held: "等审阅里的 {n} 条提议",
+      heldOne: "等审阅里的 1 条提议",
       compiling: "编译中",
       waitingDelivery: "{n} 个文件等 CLI 写入",
       waitingDeliveryOne: "1 个文件等 CLI 写入",
@@ -281,6 +283,10 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
     staysTrue: "成立的前提",
     duplicate:
       "{agent} {age}提议过几乎一样的内容（{ref}）。保留那一条吧，这样它的收据和来源都在。",
+    duplicateByPerson:
+      "{age}有人提议过几乎一样的内容（{ref}）。保留那一条吧，这样它的收据和来源都在。",
+    duplicateKept:
+      "几乎一样的内容{age}已经保留了（{ref}）。再保留会多出一条记忆。",
     keepRef: "保留 {ref}",
     keep: "保留",
     write: "写下你想让每个 Agent 都知道的事。",

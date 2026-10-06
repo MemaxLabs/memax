@@ -62,6 +62,7 @@ export function targetOf(
     },
     version: target.version,
     openDrift: target.open_drift,
+    holding: unique((target.holds ?? []).flatMap((h) => h.proposals)),
     lastCompile: target.last_compile ? compileOf(target.last_compile) : null,
   };
 }

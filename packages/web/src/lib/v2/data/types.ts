@@ -62,6 +62,8 @@ export type SyncLine =
    * agent owns it (AGENTS.md).
    */
   | { kind: "drifted"; agent?: string; file?: string }
+  /** A pulled hand edit holds its file until these proposals are kept or rejected. */
+  | { kind: "held"; proposals: number }
   | { kind: "compiling" }
   /** Compiled, but the CLI hasn't written these files to disk yet. */
   | { kind: "waiting-delivery"; files: number }
@@ -157,9 +159,17 @@ export type AskEvent =
 export interface RememberCheck {
   duplicate: {
     ref: string;
-    /** Registry key of the agent that proposed it. */
-    agent: string;
-    proposedAt: string;
+    /**
+     * `proposed`: a proposal waiting in Review, which Remember offers to
+     * keep instead. `kept`: it's already kept, so keeping adds a second.
+     */
+    lifecycle: "proposed" | "kept";
+    /** Registry key of the agent that wrote it; null when a person did. */
+    agent: string | null;
+    /** When it was proposed or kept. */
+    writtenAt: string;
+    /** `exact`: the same words. `near`: the same thing by meaning. */
+    match: "exact" | "near";
   } | null;
   /** The section the check suggests. */
   section: Section | null;

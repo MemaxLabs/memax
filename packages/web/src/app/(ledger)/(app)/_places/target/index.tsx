@@ -13,6 +13,7 @@ import {
   type TargetView,
 } from "@/lib/v2/data/targets";
 import { useHotkey } from "@/lib/v2/keymap/react";
+import { placeHref } from "@/lib/v2/places";
 import { HeaderSkeleton, PlaceSkeleton } from "../../_components/skeleton";
 import { PlaceError } from "../../_components/status";
 import {
@@ -208,6 +209,9 @@ function Target({
           {target.syncState === "off" ? (
             <Stopped view={view} target={target} />
           ) : null}
+          {target.syncState === "held" ? (
+            <Held view={view} target={target} />
+          ) : null}
           {noFile ? (
             <section className="mx-panel">
               <p className={styles.note}>{t.noFile}</p>
@@ -307,6 +311,30 @@ function CanonicalLink({
         file: target.reads ?? canonical.label,
       })}
     </Button>
+  );
+}
+
+/** A pulled hand edit stays in the file until Review decides its proposals. */
+function Held({ view, target }: { view: RecordsView; target: TargetView }) {
+  const t = view.l.brief.target;
+  return (
+    <section className="mx-panel">
+      <p className={styles.note}>
+        {interpolate(target.holding.length === 1 ? t.heldOne : t.held, {
+          file: targetName(target),
+          refs: target.holding.join(", "),
+        })}
+      </p>
+      <div className={styles.noteActions}>
+        <Button
+          variant="secondary"
+          size="sm"
+          href={placeHref(view.space.slug, "review")}
+        >
+          {t.openReview}
+        </Button>
+      </div>
+    </section>
   );
 }
 

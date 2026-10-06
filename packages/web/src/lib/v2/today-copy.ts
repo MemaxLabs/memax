@@ -106,7 +106,8 @@ export function agentDay(td: TodayCopy, agent: AgentToday): string {
     wrote.push(interpolate(a.proposed, { n: agent.proposed }));
   }
   const parts = [
-    agent.reads === null ? null : interpolate(a.read, { n: agent.reads }),
+    // "41 read"; an agent that read nothing today doesn't say "0 read".
+    agent.reads ? interpolate(a.read, { n: agent.reads }) : null,
     wrote.length > 0 ? wrote.join(" · ") : a.none,
   ];
   return parts.filter(Boolean).join(" · ");

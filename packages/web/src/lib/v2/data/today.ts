@@ -63,7 +63,7 @@ export interface AgentToday {
   /** Registry key. */
   agent: string;
   name: string;
-  /** Null until reads are recorded. */
+  /** Its reads (R-) here since the start of the viewer's day; null when they weren't counted. */
   reads: number | null;
   kept: number;
   proposed: number;

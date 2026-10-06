@@ -278,6 +278,8 @@ describe("Today's words", () => {
     expect(agentDay(en.ledger.today, cc!)).toBe("41 read · 3 kept");
     expect(agentDay(en.ledger.today, cu!)).toBe("12 read · none");
     expect(agentDay(en.ledger.today, { ...cc!, reads: null })).toBe("3 kept");
+    // Seen today, read nothing: no "0 read".
+    expect(agentDay(en.ledger.today, { ...cu!, reads: 0 })).toBe("none");
     expect(
       todayFooter(
         en.ledger.today,

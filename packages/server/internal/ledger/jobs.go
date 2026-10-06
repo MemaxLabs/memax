@@ -113,19 +113,46 @@ func (w *writer) markDirty(ctx context.Context, spaceID uuid.UUID, targets ...uu
 	return nil
 }
 
-// flush inserts the command's jobs, switching to the login role for the
-// insert only (see the package note above).
+// Finisher runs in a command's transaction, as the login role, right
+// before COMMIT, alongside the River inserts. The compile job passes one
+// that completes the job itself (river.JobCompleteTx), so the job is
+// finished in the same commit that records its generation. Without that,
+// a Keep landing after the commit but before River marked the job
+// completed would have its InsertTx deduplicated against the still
+// "running" job, and its generation would wait for the sweeper.
+type Finisher func(ctx context.Context, tx pgx.Tx) error
+
+// flush inserts the command's jobs and runs its finishers, switching to
+// the login role for them only (see the package note above).
 func (w *writer) flush(ctx context.Context) error {
-	if w.inserter == nil || len(w.jobs) == 0 {
+	if (w.inserter == nil || len(w.jobs) == 0) && len(w.finishers) == 0 {
 		return nil
 	}
-	if _, err := w.tx.Exec(ctx, `SELECT set_config('role', $1, true)`, w.loginRole); err != nil {
-		return fmt.Errorf("ledger: switch to %s for River: %w", w.loginRole, err)
+	return asLoginRole(ctx, w.tx, w.loginRole, func() error {
+		if w.inserter != nil && len(w.jobs) > 0 {
+			if _, err := w.inserter.InsertManyTx(ctx, w.tx, w.jobs); err != nil {
+				return fmt.Errorf("ledger: enqueue %d job(s): %w", len(w.jobs), err)
+			}
+		}
+		for _, f := range w.finishers {
+			if err := f(ctx, w.tx); err != nil {
+				return fmt.Errorf("ledger: finish: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+// asLoginRole runs fn as the transaction's login role, then switches back
+// to memax_v2. If fn fails, the transaction is aborted anyway.
+func asLoginRole(ctx context.Context, tx pgx.Tx, loginRole string, fn func() error) error {
+	if _, err := tx.Exec(ctx, `SELECT set_config('role', $1, true)`, loginRole); err != nil {
+		return fmt.Errorf("ledger: switch to %s for River: %w", loginRole, err)
 	}
-	if _, err := w.inserter.InsertManyTx(ctx, w.tx, w.jobs); err != nil {
-		return fmt.Errorf("ledger: enqueue %d job(s): %w", len(w.jobs), err)
+	if err := fn(); err != nil {
+		return err
 	}
-	if _, err := w.tx.Exec(ctx, `SELECT set_config('role', $1, true)`, DBRole); err != nil {
+	if _, err := tx.Exec(ctx, `SELECT set_config('role', $1, true)`, DBRole); err != nil {
 		return fmt.Errorf("ledger: switch back to %s: %w", DBRole, err)
 	}
 	return nil

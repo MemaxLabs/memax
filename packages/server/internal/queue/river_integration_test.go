@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
@@ -15,6 +16,8 @@ import (
 	"github.com/riverqueue/river/rivertest"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
 )
 
@@ -78,6 +81,8 @@ func TestInsertClient_InsertsEveryKindOnItsQueue(t *testing.T) {
 		{ChatEventPurgeArgs{}, "default", 2},
 		{BoardSweepArgs{}, "dreams", 1},
 		{BoardRefreshArgs{HubID: "h1"}, "dreams", 2},
+		{ledger.CompileTargetArgs{TargetID: uuid.New(), SpaceID: uuid.New()}, ledger.QueueCompile, 5},
+		{compile.SweepArgs{}, ledger.QueueCompile, 1},
 	}
 
 	expected := make([]rivertest.ExpectedJob, 0, len(cases))

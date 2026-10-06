@@ -1,7 +1,7 @@
 /**
  * Entry point: `node dist/main.js`.
  *
- *   PORT            port to listen on (default 8080)
+ *   PORT            port to listen on (default 8080; 0 picks a free one)
  *   HOST            address to bind (default "::", every IPv6 and IPv4
  *                   address; Fly's private network is IPv6)
  *   MAX_BODY_BYTES  largest accepted body (default 4 MiB)
@@ -11,7 +11,7 @@ import { jsonLogger } from "./log.js";
 import { DEFAULT_MAX_BODY, createService } from "./server.js";
 
 const log = jsonLogger();
-const port = intFrom("PORT", 8080);
+const port = intFrom("PORT", 8080, 0);
 const host = process.env.HOST?.trim() || "::";
 const grace = intFrom("SHUTDOWN_GRACE_MS", 10_000);
 const service = createService({
@@ -56,11 +56,11 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
   });
 }
 
-function intFrom(name: string, fallback: number): number {
+function intFrom(name: string, fallback: number, min = 1): number {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === "") return fallback;
   const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0) {
+  if (!Number.isInteger(n) || n < min) {
     log.log("error", "invalid setting", { name, value: raw });
     process.exit(1);
   }

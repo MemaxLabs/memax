@@ -365,6 +365,9 @@ func (w *writer) recordCompile(ctx context.Context, c *RecordCompile) (Result, e
 	if _, err := w.tx.Exec(ctx, `UPDATE v2.targets SET `+set+` WHERE id = $1 AND space_id = $5`, args...); err != nil {
 		return Result{}, fmt.Errorf("ledger: update target: %w", err)
 	}
+	if c.Finish != nil {
+		w.finishers = append(w.finishers, c.Finish)
+	}
 	res := Result{Outcome: OutcomeApplied, Policy: dec, Receipts: []Receipt{rc}}
 	if err := w.record(ctx, res, id); err != nil {
 		return Result{}, err
@@ -520,7 +523,7 @@ func (l *Ledger) ReserveCompileRef(ctx context.Context, scope Scope, spaceID uui
 		return "", ErrNotFound
 	}
 	var ref string
-	err := l.writeBookkeeping(ctx, scope, func(tx pgx.Tx) error {
+	err := l.writeBookkeeping(ctx, scope, func(tx pgx.Tx, _ string) error {
 		n, err := allocateRef(ctx, tx, g.TenantID, PrefixCompile)
 		ref = FormatRef(PrefixCompile, n)
 		return err
@@ -528,42 +531,48 @@ func (l *Ledger) ReserveCompileRef(ctx context.Context, scope Scope, spaceID uui
 	return ref, err
 }
 
-// SettleUnchanged records that generation gen compiled to the same bytes
-// as the target's latest run, so there is no new run to record: the
-// target's compiled_gen moves to gen, and it leaves "compiling". It is
-// ErrBehind when the target was dirtied again meanwhile.
-func (l *Ledger) SettleUnchanged(ctx context.Context, scope Scope, targetID uuid.UUID, gen int64) error {
-	return l.writeBookkeeping(ctx, scope, func(tx pgx.Tx) error {
+// SettleUnchanged records that generation gen needs no new run: it
+// compiled to the same bytes as the target's latest run, or was already
+// compiled. The target's compiled_gen moves to gen, and it leaves
+// "compiling". It is ErrBehind when the target was dirtied past gen. The
+// check holds the target's lock, and finish (see Finisher) runs in the
+// same transaction, so a compile job completes only when nothing is left
+// to compile.
+func (l *Ledger) SettleUnchanged(ctx context.Context, scope Scope, targetID uuid.UUID, gen int64, finish Finisher) error {
+	return l.writeBookkeeping(ctx, scope, func(tx pgx.Tx, loginRole string) error {
 		t, err := loadTarget(ctx, tx, scope, targetID, true)
 		if err != nil {
 			return err
 		}
-		switch {
-		case t.DirtyGen > gen:
+		if t.DirtyGen > gen {
 			return ErrBehind
-		case t.CompiledGen >= gen:
+		}
+		// A stopped target compiles nothing; it is dirtied again when it
+		// is turned back on.
+		if t.CompiledGen < gen && t.SyncState != SyncOff {
+			t.CompiledGen = gen
+			state := t.SyncState
+			if state == SyncCompiling {
+				last, err := lastGoodRun(ctx, tx, scope, t.ID)
+				if err != nil {
+					return err
+				}
+				lastGood := uuid.Nil
+				if last != nil {
+					lastGood = last.ID
+				}
+				state = settledState(t, lastGood)
+			}
+			if _, err := tx.Exec(ctx, `
+				UPDATE v2.targets SET compiled_gen = $2, sync_state = $3, updated_at = now()
+				 WHERE id = $1 AND space_id = ANY($4)`, t.ID, gen, string(state), scope.SpaceIDs()); err != nil {
+				return fmt.Errorf("ledger: settle target: %w", err)
+			}
+		}
+		if finish == nil {
 			return nil
 		}
-		t.CompiledGen = gen
-		state := t.SyncState
-		if state == SyncCompiling {
-			last, err := lastGoodRun(ctx, tx, scope, t.ID)
-			if err != nil {
-				return err
-			}
-			lastGood := uuid.Nil
-			if last != nil {
-				lastGood = last.ID
-			}
-			state = settledState(t, lastGood)
-		}
-		_, err = tx.Exec(ctx, `
-			UPDATE v2.targets SET compiled_gen = $2, sync_state = $3, updated_at = now()
-			 WHERE id = $1 AND space_id = ANY($4)`, t.ID, gen, string(state), scope.SpaceIDs())
-		if err != nil {
-			return fmt.Errorf("ledger: settle target: %w", err)
-		}
-		return nil
+		return asLoginRole(ctx, tx, loginRole, func() error { return finish(ctx, tx) })
 	})
 }
 
@@ -579,7 +588,7 @@ func (l *Ledger) AdvanceCounter(ctx context.Context, scope Scope, spaceID uuid.U
 	if !slices.Contains(prefixes, p) || next < 1 {
 		return invalid("prefix", "use a display-ID prefix and a positive number")
 	}
-	return l.writeBookkeeping(ctx, scope, func(tx pgx.Tx) error {
+	return l.writeBookkeeping(ctx, scope, func(tx pgx.Tx, _ string) error {
 		_, err := tx.Exec(ctx, `
 			INSERT INTO v2.id_counters AS c (tenant_id, prefix, next) VALUES ($1, $2, $3)
 			ON CONFLICT (tenant_id, prefix) DO UPDATE SET next = GREATEST(c.next, EXCLUDED.next)`,
@@ -592,17 +601,18 @@ func (l *Ledger) AdvanceCounter(ctx context.Context, scope Scope, spaceID uuid.U
 }
 
 // writeBookkeeping runs fn in a read-write transaction as memax_v2 in the
-// scope. Only bookkeeping that needs no receipt goes through it.
-func (l *Ledger) writeBookkeeping(ctx context.Context, scope Scope, fn func(pgx.Tx) error) error {
+// scope, with the transaction's login role for any River work. Only
+// bookkeeping that needs no receipt goes through it.
+func (l *Ledger) writeBookkeeping(ctx context.Context, scope Scope, fn func(tx pgx.Tx, loginRole string) error) error {
 	if l == nil {
 		return ErrDisabled
 	}
-	tx, _, err := l.begin(ctx, scope, pgx.ReadWrite)
+	tx, loginRole, err := l.begin(ctx, scope, pgx.ReadWrite)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := fn(tx); err != nil {
+	if err := fn(tx, loginRole); err != nil {
 		return mapDBError(err)
 	}
 	if err := tx.Commit(ctx); err != nil {

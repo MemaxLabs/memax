@@ -130,6 +130,9 @@ type RecordCompile struct {
 	// gave up waiting for a quiet moment); compiled_gen then stays behind
 	// dirty_gen and the sweeper compiles again.
 	AllowBehind bool
+	// Finish, when set, runs in the transaction that records the run (see
+	// Finisher): the compile job completes itself there.
+	Finish Finisher `json:"-"`
 }
 
 // Name implements Command.

@@ -29,6 +29,7 @@ type writer struct {
 	// The follow-up jobs the command queued (jobs.go), and how to insert
 	// them: River, as the role the transaction began with.
 	jobs      []river.InsertManyParams
+	finishers []Finisher
 	inserter  Jobs
 	loginRole string
 }

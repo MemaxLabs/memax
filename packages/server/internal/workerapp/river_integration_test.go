@@ -14,6 +14,8 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
 )
@@ -26,7 +28,7 @@ func TestWorkerRiverConfig_QueuesAndMiddleware(t *testing.T) {
 	t.Parallel()
 	cfg := workerRiverConfig(river.NewWorkers(), nil)
 
-	want := map[string]int{river.QueueDefault: 20, "dreams": 3, "chat": 8}
+	want := map[string]int{river.QueueDefault: 20, "dreams": 3, "chat": 8, ledger.QueueCompile: compile.MaxWorkers}
 	if len(cfg.Queues) != len(want) {
 		t.Errorf("queues = %v, want %v", cfg.Queues, want)
 	}

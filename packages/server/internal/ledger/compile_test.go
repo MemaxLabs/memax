@@ -570,10 +570,10 @@ func TestRecordCompileGenerations(t *testing.T) {
 	}
 	// SettleUnchanged: behind, then settles.
 	f.apply(&ledger.RequestCompile{Meta: meta(person(zz), f.scope(zz), policy.ViaWeb), Target: tg.ID})
-	if err := f.l.SettleUnchanged(ctx, scope, tg.ID, 2); !errors.Is(err, ledger.ErrBehind) {
+	if err := f.l.SettleUnchanged(ctx, scope, tg.ID, 2, nil); !errors.Is(err, ledger.ErrBehind) {
 		t.Errorf("settle a behind generation: %v", err)
 	}
-	if err := f.l.SettleUnchanged(ctx, scope, tg.ID, 3); err != nil {
+	if err := f.l.SettleUnchanged(ctx, scope, tg.ID, 3, nil); err != nil {
 		t.Fatal(err)
 	}
 	if g := f.get(zz, tg.ID); g.CompiledGen != 3 || g.SyncState != ledger.SyncPendingDelivery {

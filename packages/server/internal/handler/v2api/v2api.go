@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
@@ -28,9 +29,13 @@ import (
 // Handler serves /v2.
 type Handler struct {
 	ledger *ledger.Ledger
-	log    *slog.Logger
-	now    func() time.Time
-	seen   seenTracker
+	// compile serves what sits around a compile (the preview, hand edits,
+	// drift): artifacts and parse-back, with every record read and write
+	// through the ledger. Nil when compiling isn't configured.
+	compile *compile.Service
+	log     *slog.Logger
+	now     func() time.Time
+	seen    seenTracker
 	// web verifies the web app's signed requests; nil is disabled.
 	web       *websurface.Verifier
 	webWarned atomic.Int64
@@ -46,6 +51,10 @@ func WithClock(now func() time.Time) Option { return func(h *Handler) { h.now = 
 // on the web (assurance human_web). nil, the default, disables it: every
 // request is client-attested.
 func WithWebSurface(v *websurface.Verifier) Option { return func(h *Handler) { h.web = v } }
+
+// WithCompile serves the preview, observation and drift endpoints from the
+// compile coordinator. Without it (or with a nil one) they answer 503.
+func WithCompile(s *compile.Service) Option { return func(h *Handler) { h.compile = s } }
 
 // New returns the /v2 handler. A nil ledger (no database) is allowed:
 // every route then answers 503 unavailable, so the API says what is

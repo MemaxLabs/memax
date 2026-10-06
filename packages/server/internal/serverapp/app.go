@@ -23,6 +23,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/billing"
 	"github.com/MemaxLabs/memax/packages/server/internal/cache"
 	"github.com/MemaxLabs/memax/packages/server/internal/chatstream"
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/email"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
@@ -680,7 +681,7 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		eventsBroker:           eventsBroker,
 		// /v2 on the V2 record. With no database the ledger is nil and
 		// every /v2 route answers 503 unavailable.
-		v2: v2api.New(ledger.New(pool), slog.Default(), v2api.WithWebSurface(webSurfaceFromEnv())),
+		v2: v2Handler(pool, queueClient, blobStore),
 	})
 
 	configured = true
@@ -703,6 +704,24 @@ func webSurfaceFromEnv() *websurface.Verifier {
 		slog.Info("web surface verification enabled")
 	}
 	return v
+}
+
+// v2Handler builds /v2: the ledger, which enqueues compile jobs with
+// River's InsertTx when there is a queue (plan 25 §5.7), and the compile
+// coordinator for previews, hand edits and drift, which needs
+// COMPILE_SERVICE_URL and object storage (nil means disabled).
+func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store) *v2api.Handler {
+	var opts []ledger.Option
+	if queueClient != nil {
+		opts = append(opts, ledger.WithJobs(queueClient))
+	}
+	l := ledger.New(pool, opts...)
+	svc := compile.New(l, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL")), blobStore,
+		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
+	if l != nil {
+		slog.Info("/v2 enabled", "compile_jobs", queueClient != nil, "compile_service", svc != nil)
+	}
+	return v2api.New(l, slog.Default(), v2api.WithWebSurface(webSurfaceFromEnv()), v2api.WithCompile(svc))
 }
 
 func configureStore(ctx context.Context, app *App) (store.Store, *pgxpool.Pool, error) {

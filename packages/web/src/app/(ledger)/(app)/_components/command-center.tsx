@@ -13,6 +13,7 @@ import { useRemember } from "../_lib/use-remember";
 import { AskPanel } from "./ask-panel";
 import { RememberPanel } from "./remember-panel";
 import { useToast, type ShowToast } from "./toasts";
+import styles from "./command-center.module.css";
 
 /**
  * ⌘K: Ask or remember (plan §6.4; Ask.png, Remember.png). One field;
@@ -211,6 +212,7 @@ function CommandBody({
 
   return (
     <CommandBar
+      className={styles.bar}
       keepShortcut={keepKey}
       query={query}
       onQueryChange={setQuery}

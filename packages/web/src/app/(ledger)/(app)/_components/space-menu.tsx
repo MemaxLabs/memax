@@ -1,34 +1,76 @@
 "use client";
 
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Menu } from "@base-ui/react/menu";
 import { Icon, Kbd } from "@memaxlabs/ledger";
 import { useLocale } from "@/i18n";
 import { spaceMeta } from "@/lib/v2/copy";
 import type { SpaceSummary } from "@/lib/v2/data/types";
-import { useKeycaps } from "@/lib/v2/keymap/react";
+import { KeyScopeBoundary, useHotkey, useKeycaps } from "@/lib/v2/keymap/react";
 import { switchHref, type PlaceRoute } from "@/lib/v2/places";
 import { useCount } from "../_lib/frame-copy";
 import styles from "./space-menu.module.css";
 
-/**
- * The space switcher (SpaceSwitcher.png): your spaces, then teams, each
- * with its ⌘1–⌘9 key, a check on the current one and the waiting count
- * on the others. Base UI's Menu gives it roving focus, typeahead and
- * Escape; the frame's keymap adds ⌘1–⌘9 everywhere.
- */
-export function SpaceMenuPopup({
-  spaces,
-  current,
-  route,
-  anchorOffset,
-}: {
+interface SpaceMenuProps {
   spaces: SpaceSummary[];
   current: SpaceSummary | undefined;
   route: PlaceRoute | undefined;
   /** Lines the popup up with the rail's edge, as drawn. */
   anchorOffset?: { side: number; align: number };
+}
+
+/**
+ * The space switcher (SpaceSwitcher.png) around its trigger: `children`
+ * render a `<Menu.Trigger />` somewhere inside (the rail's space name,
+ * or the phone's top bar). While it's open it is a modal key layer, so
+ * typeahead letters stay the menu's and ⌘1–⌘9 still switch.
+ */
+export function SpaceMenu({
+  children,
+  ...popup
+}: SpaceMenuProps & { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Menu.Root open={open} onOpenChange={setOpen}>
+      {children}
+      <SpaceMenuPopup {...popup} onSwitched={() => setOpen(false)} />
+    </Menu.Root>
+  );
+}
+
+/** ⌘1–⌘9 while the menu is open: switch, then close it. */
+function MenuKeys({
+  spaces,
+  current,
+  route,
+  onSwitched,
+}: Pick<SpaceMenuProps, "spaces" | "current" | "route"> & {
+  onSwitched: () => void;
 }) {
+  const router = useRouter();
+  useHotkey("space.switch", (_, { index }) => {
+    const target = spaces[index];
+    if (!target) return false;
+    onSwitched();
+    if (target.slug !== current?.slug) router.push(switchHref(target, route));
+  });
+  return null;
+}
+
+/**
+ * Your spaces, then teams, each with its ⌘1–⌘9 key, a check on the
+ * current one and the waiting count on the others. Base UI's Menu gives
+ * it roving focus, typeahead and Escape.
+ */
+function SpaceMenuPopup({
+  spaces,
+  current,
+  route,
+  anchorOffset,
+  onSwitched,
+}: SpaceMenuProps & { onSwitched: () => void }) {
   const { t } = useLocale();
   const copy = t.ledger.app;
   const caps = useKeycaps("space.switch");
@@ -60,6 +102,14 @@ export function SpaceMenuPopup({
           className={styles.popup}
           aria-label={copy.frame.switchSpace}
         >
+          <KeyScopeBoundary name="spaces" modal>
+            <MenuKeys
+              spaces={spaces}
+              current={current}
+              route={route}
+              onSwitched={onSwitched}
+            />
+          </KeyScopeBoundary>
           {groups.map((group, g) => (
             <Menu.Group
               key={group.label}
@@ -75,6 +125,8 @@ export function SpaceMenuPopup({
                 return (
                   <Menu.LinkItem
                     key={space.slug}
+                    // Navigation is client-side: the page (and the menu) stay.
+                    closeOnClick
                     className={styles.item}
                     aria-current={isCurrent ? "true" : undefined}
                     render={<Link href={switchHref(space, route)} />}

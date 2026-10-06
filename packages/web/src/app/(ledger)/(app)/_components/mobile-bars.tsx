@@ -13,7 +13,7 @@ import { useLocale } from "@/i18n";
 import type { SpaceSummary, Viewer } from "@/lib/v2/data/types";
 import { placeHref, SETTINGS_HREF, type PlaceRoute } from "@/lib/v2/places";
 import { useCount } from "../_lib/frame-copy";
-import { SpaceMenuPopup } from "./space-menu";
+import { SpaceMenu } from "./space-menu";
 import styles from "./app-frame.module.css";
 
 /**
@@ -36,7 +36,7 @@ export function MobileTopBar({
   return (
     <header className={styles.topbar}>
       <Logo variant="mark" size={20} />
-      <Menu.Root>
+      <SpaceMenu spaces={spaces} current={space} route={route}>
         <Menu.Trigger
           className={styles.topbarSpace}
           aria-label={`${space.name}, ${t.ledger.app.frame.switchSpace}`}
@@ -44,8 +44,7 @@ export function MobileTopBar({
           {space.name}
           <Icon name="chevron-down" size={14} />
         </Menu.Trigger>
-        <SpaceMenuPopup spaces={spaces} current={space} route={route} />
-      </Menu.Root>
+      </SpaceMenu>
       {viewer ? (
         <Link
           href={SETTINGS_HREF}

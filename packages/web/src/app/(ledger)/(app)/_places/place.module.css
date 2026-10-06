@@ -92,4 +92,10 @@
   .column :global(.mx-page-actions) {
     flex-wrap: wrap;
   }
+
+  /* A phone has no keyboard to press them with (MobileToday.png). */
+  .column :global(.mx-btn-kbd),
+  .wide :global(.mx-btn-kbd) {
+    display: none;
+  }
 }

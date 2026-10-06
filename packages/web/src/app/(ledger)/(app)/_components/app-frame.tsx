@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu } from "@base-ui/react/menu";
 import { Shell } from "@memaxlabs/ledger";
 import { useAuth } from "@/lib/auth";
 import { isSpaceSlug } from "@/lib/ui-gate";
@@ -23,7 +22,7 @@ import { FrameFailed, FrameSkeleton } from "./frame-states";
 import { MobileTabBar, MobileTopBar } from "./mobile-bars";
 import { useRailProps } from "./rail-props";
 import { ShortcutsSheet } from "./shortcuts-sheet";
-import { SpaceMenuPopup } from "./space-menu";
+import { SpaceMenu } from "./space-menu";
 import { SpaceNotFound } from "./status";
 import { ToastProvider, ToastViewport } from "./toasts";
 import styles from "./app-frame.module.css";
@@ -153,7 +152,14 @@ function FrameReady({
         route={route}
         viewer={viewer}
       />
-      <Menu.Root>
+      {/* The rail's space name is the menu's trigger (NavRail spaceRender). */}
+      <SpaceMenu
+        spaces={spaces}
+        current={missing ? undefined : space}
+        route={route}
+        // Lines the card up with the rail's edge, as drawn.
+        anchorOffset={{ side: 8, align: -32 }}
+      >
         <Shell mainId="main" nav={nav}>
           {missing ? (
             <SpaceNotFound slug={missingSlug} fallback={space} />
@@ -161,14 +167,7 @@ function FrameReady({
             <SpaceViewContext value={view}>{children}</SpaceViewContext>
           )}
         </Shell>
-        <SpaceMenuPopup
-          spaces={spaces}
-          current={missing ? undefined : space}
-          route={route}
-          // Lines the card up with the rail's edge, as drawn.
-          anchorOffset={{ side: 8, align: -32 }}
-        />
-      </Menu.Root>
+      </SpaceMenu>
       <MobileTabBar
         space={space}
         route={route}

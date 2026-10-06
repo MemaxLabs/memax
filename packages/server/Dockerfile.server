@@ -1,4 +1,7 @@
-FROM golang:1.25-alpine AS build
+# Must satisfy go.mod's `go` line (1.26.0, required by River >= v0.45).
+# Official golang images set GOTOOLCHAIN=local, so an older image
+# fails the build instead of downloading a newer toolchain.
+FROM golang:1.26-alpine AS build
 WORKDIR /app
 COPY go.mod go.sum ./
 # Declared AFTER `go mod download` so a new COMMIT_SHA on every

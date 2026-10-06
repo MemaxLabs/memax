@@ -16,9 +16,9 @@ import (
 )
 
 // postgres_ops.go backs the admin ops dashboard. Queries here hit
-// River's own tables (river_job, river_client, river_client_queue,
-// river_leader) plus our app tables (memories) and project them into
-// product-framed shapes for the UI.
+// River's own tables (river_job, river_leader) plus our app tables
+// (memories, worker_heartbeats) and project them into product-framed
+// shapes for the UI.
 //
 // Rules:
 //   - Read-only. Destructive actions (retry / cancel) go through
@@ -30,13 +30,13 @@ import (
 //     River adding new states without a code deploy.
 
 const (
-	// opsWorkerHealthyWindow is how recently river_client.updated_at
-	// must have been for the client to count as healthy. River's
-	// default heartbeat is 5s; 60s = 12 missed heartbeats, which is
-	// past any transient DB/network jitter but still faster than
-	// River's own sweeper (~1 min to prune a dead row). An earlier
-	// 30s window tripped false "processing is stalled" banners on
-	// local dev where heartbeats land a bit later on cold start.
+	// opsWorkerHealthyWindow is how recently worker_heartbeats.updated_at
+	// must have been for the client to count as healthy. The worker
+	// heartbeat (workerapp/heartbeat.go) ticks every 15s; 60s = 4
+	// missed heartbeats, which is past any transient DB/network
+	// jitter. An earlier 30s window tripped false "processing is
+	// stalled" banners on local dev where heartbeats land a bit later
+	// on cold start.
 	opsWorkerHealthyWindow = 60 * time.Second
 
 	// opsPulseWindowMinutes is the default rolling window for
@@ -124,14 +124,15 @@ func (s *PostgresStore) getOpsWorkers(ctx context.Context) (model.OpsWorkers, er
 
 	// Leader election is the AUTHORITATIVE "worker alive" signal.
 	// River always writes river_leader when a client starts up;
-	// river_client / river_client_queue are feature-gated and may
-	// be empty even when a worker is running (observed on staging
-	// with River v0.32, default config). If we relied on
-	// river_client alone, we'd report "no workers registered"
-	// while the worker is fine and has even acquired the lease.
+	// worker_heartbeats is written by our own heartbeat and may be
+	// empty even when a worker is running (a worker predating the
+	// heartbeat writer, or the first moments after a deploy). If we
+	// relied on worker_heartbeats alone, we'd report "no workers
+	// registered" while the worker is fine and has even acquired
+	// the lease.
 	//
-	// We read both tables and reconcile: if river_client has rows
-	// we use them (richer queue info); if not but a valid leader
+	// We read both tables and reconcile: if worker_heartbeats has
+	// rows we use them (one per machine); if not but a valid leader
 	// lease exists, we synthesize one client row from the leader.
 	var leaderID string
 	var leaderElectedAt, leaderExpiresAt time.Time
@@ -143,42 +144,31 @@ func (s *PostgresStore) getOpsWorkers(ctx context.Context) (model.OpsWorkers, er
 	}
 	out.Leader = leaderID
 
-	// Per-client rows from river_client (when populated). LEFT
-	// JOIN against river_client_queue for queue subscriptions.
+	// Per-machine rows from our heartbeat writer. These used to be
+	// read from River's river_client (LEFT JOINed to
+	// river_client_queue for queue subscriptions); River v0.40
+	// dropped both tables. Nothing ever wrote river_client_queue,
+	// so Queues was always empty and stays empty here.
 	rows, err := s.pool.Query(ctx, `
-		SELECT
-			c.id,
-			c.updated_at,
-			COALESCE(
-				jsonb_agg(jsonb_build_object(
-					'queue', q.name,
-					'max_workers', q.max_workers
-				) ORDER BY q.name) FILTER (WHERE q.name IS NOT NULL),
-				'[]'::jsonb
-			) AS queues
-		FROM river_client c
-		LEFT JOIN river_client_queue q ON q.river_client_id = c.id
-		GROUP BY c.id, c.updated_at
-		ORDER BY c.updated_at DESC
+		SELECT id, updated_at
+		FROM worker_heartbeats
+		ORDER BY updated_at DESC
 	`)
 	if err != nil {
-		return out, fmt.Errorf("list river_client: %w", err)
+		return out, fmt.Errorf("list worker_heartbeats: %w", err)
 	}
 	defer rows.Close()
 
 	sawAnyClient := false
 	for rows.Next() {
-		var cli model.OpsWorkerClient
-		var queuesJSON []byte
-		if err := rows.Scan(&cli.ClientID, &cli.HeartbeatAt, &queuesJSON); err != nil {
-			return out, fmt.Errorf("scan river_client: %w", err)
-		}
-		if err := json.Unmarshal(queuesJSON, &cli.Queues); err != nil {
-			return out, fmt.Errorf("decode queues: %w", err)
+		cli := model.OpsWorkerClient{Queues: []model.OpsWorkerClientQueue{}}
+		if err := rows.Scan(&cli.ClientID, &cli.HeartbeatAt); err != nil {
+			return out, fmt.Errorf("scan worker_heartbeats: %w", err)
 		}
 		cli.AgeSeconds = int(now.Sub(cli.HeartbeatAt).Seconds())
 		cli.Healthy = cli.HeartbeatAt.After(healthyCutoff)
-		// River v0.32's leader_id format is `<machine_prefix>_<timestamp>`,
+		// River's leader_id format is `<machine_prefix>_<timestamp>`
+		// (unchanged from v0.32 through v0.49),
 		// while our own heartbeat writer (workerapp/heartbeat.go) uses the
 		// bare `<machine_prefix>` (FLY_MACHINE_ID) as the client_id. Match
 		// by prefix so the heartbeat row is labeled as the leader rather
@@ -194,14 +184,14 @@ func (s *PostgresStore) getOpsWorkers(ctx context.Context) (model.OpsWorkers, er
 		sawAnyClient = true
 	}
 	if err := rows.Err(); err != nil {
-		return out, fmt.Errorf("iter river_client: %w", err)
+		return out, fmt.Errorf("iter worker_heartbeats: %w", err)
 	}
 
-	// Synthesize from leader ONLY when river_client is entirely empty.
+	// Synthesize from leader ONLY when worker_heartbeats is entirely empty.
 	// Any heartbeat row is authoritative evidence a worker is alive, so
 	// we shouldn't invent a second synthetic row on top. This matters
 	// after our own heartbeat writer landed (workerapp/heartbeat.go):
-	// before that, river_client was always empty and the synthesis was
+	// before that, the client table was always empty and the synthesis was
 	// the only way to report the leader; now the synthesis is a
 	// fallback for older workers that predate the heartbeat writer.
 	if !sawAnyClient && leaderID != "" && !leaderExpiresAt.IsZero() && now.Before(leaderExpiresAt) {

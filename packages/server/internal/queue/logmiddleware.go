@@ -26,8 +26,12 @@ import (
 // specific job id in Grafana see the full story without needing
 // separate queries.
 type LoggerMiddleware struct {
-	river.WorkerMiddlewareDefaults
+	// MiddlewareDefaults replaces the deprecated WorkerMiddlewareDefaults.
+	// Work below implements rivertype.WorkerMiddleware.
+	river.MiddlewareDefaults
 }
+
+var _ rivertype.WorkerMiddleware = (*LoggerMiddleware)(nil)
 
 func NewLoggerMiddleware() *LoggerMiddleware { return &LoggerMiddleware{} }
 

@@ -432,31 +432,7 @@ func New(ctx context.Context) (*App, error) {
 	}
 
 	periodicJobs := configurePeriodicJobs(dreamEngine != nil)
-	riverClient, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
-		Logger: slog.Default(),
-		Queues: map[string]river.QueueConfig{
-			river.QueueDefault: {MaxWorkers: 20},
-			"dreams":           {MaxWorkers: 3},
-			// Phase 3.4a — chat queue. Higher concurrency than
-			// dreams because a chat turn is interactive (user is
-			// waiting); we want the worker pool deep enough to
-			// absorb a burst of concurrent sends without
-			// queueing latency. 8 is a starting point — tune
-			// alongside the per-process model client's rate
-			// limits.
-			"chat": {MaxWorkers: 8},
-		},
-		Workers: workers,
-		// Global worker middleware: every job's Work() runs inside a
-		// ctx pre-loaded with job_id/kind/queue/attempt as slog attrs.
-		// Paired with observability.NewCtxAttrsHandler on the default
-		// logger, any slog.InfoContext/ErrorContext call inside a job
-		// handler (or any code it transitively calls with the ctx)
-		// lands in Loki tagged with the job id — which is what the
-		// admin ops logs panel queries against.
-		Middleware:   []rivertype.Middleware{queue.NewLoggerMiddleware()},
-		PeriodicJobs: periodicJobs,
-	})
+	riverClient, err := river.NewClient(riverpgxv5.New(pool), workerRiverConfig(workers, periodicJobs))
 	if err != nil {
 		app.Shutdown(context.Background())
 		return nil, fmt.Errorf("create river client: %w", err)
@@ -1891,9 +1867,9 @@ func (a *App) Start(ctx context.Context) error {
 		"max_workers_dreams", 3,
 	)
 
-	// River v0.32 doesn't populate river_client, so the admin ops
-	// pulse has no way to count real worker machines. We write our
-	// own row per process; see workerapp/heartbeat.go for why.
+	// River keeps no per-client registry, so the admin ops pulse has
+	// no way to count real worker machines. We write our own row per
+	// process to worker_heartbeats; see workerapp/heartbeat.go.
 	heartbeatStop := startClientHeartbeat(ctx, a.pool)
 	a.addCleanup(heartbeatStop)
 
@@ -1927,6 +1903,49 @@ func (a *App) addClose(closeFn func()) {
 		closeFn()
 		return nil
 	})
+}
+
+// workerRiverConfig is the River client config for the worker
+// process. Split out of New so tests can build a client with the
+// exact production queues and middleware.
+//
+// SoftStopTimeout is deliberately left unset. The worker passes its
+// SIGTERM context to Client.Start, and without SoftStopTimeout a
+// cancelled Start context is a hard stop: running jobs see their ctx
+// cancelled, the attempt counts, and they retry with backoff (or are
+// discarded once MaxAttempts is used up). Setting SoftStopTimeout (or
+// calling StopAndCancel) switches River ≥ v0.44 to "interrupted"
+// semantics instead: the attempt is refunded and the job is made
+// available again immediately. That would let a deploy re-run
+// MaxAttempts=1 jobs (campaign_send, chat_message_run), so it needs
+// its own decision. TestWorkerRiverConfig_SignalStopCountsAttempt
+// pins the current behaviour.
+func workerRiverConfig(workers *river.Workers, periodicJobs []*river.PeriodicJob) *river.Config {
+	return &river.Config{
+		Logger: slog.Default(),
+		Queues: map[string]river.QueueConfig{
+			river.QueueDefault: {MaxWorkers: 20},
+			"dreams":           {MaxWorkers: 3},
+			// Phase 3.4a — chat queue. Higher concurrency than
+			// dreams because a chat turn is interactive (user is
+			// waiting); we want the worker pool deep enough to
+			// absorb a burst of concurrent sends without
+			// queueing latency. 8 is a starting point — tune
+			// alongside the per-process model client's rate
+			// limits.
+			"chat": {MaxWorkers: 8},
+		},
+		Workers: workers,
+		// Global worker middleware: every job's Work() runs inside a
+		// ctx pre-loaded with job_id/kind/queue/attempt as slog attrs.
+		// Paired with observability.NewCtxAttrsHandler on the default
+		// logger, any slog.InfoContext/ErrorContext call inside a job
+		// handler (or any code it transitively calls with the ctx)
+		// lands in Loki tagged with the job id — which is what the
+		// admin ops logs panel queries against.
+		Middleware:   []rivertype.Middleware{queue.NewLoggerMiddleware()},
+		PeriodicJobs: periodicJobs,
+	}
 }
 
 func configurePeriodicJobs(dreamsEnabled bool) []*river.PeriodicJob {

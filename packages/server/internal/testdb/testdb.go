@@ -203,7 +203,7 @@ func ensureTemplate(ctx context.Context) (string, error) {
 		}
 
 		// Also run River's own migrations so river_job /
-		// river_client / river_leader / etc. exist in the template.
+		// river_leader / river_queue / etc. exist in the template.
 		// Tests that query these tables (admin ops, queue readiness
 		// probes) would otherwise see "relation does not exist"
 		// errors. River migrations are idempotent + advisory-

@@ -16,9 +16,8 @@ import (
 // remote MCP, local MCP (via SDK → REST), and any future surface have
 // identical semantics.
 //
-// In spaces on the V2 record it still writes a board decision card: the
-// V2 gate (G-, v2.decision_gates) arrives with epic 1.11, which extracts
-// gates from board_slots.
+// In spaces on the V2 record it doesn't run: internal/mcpv2 asks a
+// decision gate (G-, v2.decision_gates) there instead (epic 1.11).
 func (h *MCPHandler) toolRequestDecision(r *http.Request, args json.RawMessage, ownerID string) *mcp.CallToolResult {
 	var a struct {
 		Question string   `json:"question"`

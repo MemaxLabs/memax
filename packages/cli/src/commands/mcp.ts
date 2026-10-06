@@ -35,6 +35,7 @@ import {
   v2State,
   v2Topics,
 } from "./mcp-v2.js";
+import { v2GateNews, v2RequestDecision } from "./mcp-v2-gates.js";
 
 // The local stdio MCP server: the same tools as the remote one
 // (mcp-tools.ts mirrors the remote catalogue; scripts/check-mcp-parity.mjs
@@ -162,6 +163,11 @@ async function recallTool(
       readable.length > 0
         ? await v2Recall(readable, query, limit, str(args.kind))
         : undefined;
+    // How the decisions this session asked for ended (recall only).
+    const news =
+      !search && readable.length > 0
+        ? await v2GateNews(readable, !query)
+        : undefined;
 
     // V1 hubs: the V1 recall, without the V1 memories (notes) of spaces on V2.
     let v1: RecalledMemory[] = [];
@@ -185,9 +191,11 @@ async function recallTool(
     const structured: Record<string, unknown> = { results };
     if (!search && v2?.proposals.length) structured.proposals = v2.proposals;
     if (!search && v2?.digest.length) structured.digest = v2.digest;
+    if (news?.gates.length) structured.gates = news.gates;
     if (v2) structured.lexical_only = true;
 
     let text = v2?.text ?? "";
+    if (news?.text) text = text ? `${text}\n\n${news.text}` : news.text;
     if (v1.length) {
       if (text) text += "\n\nFrom spaces not on V2 yet:\n";
       text += formatRecalled(v1);
@@ -587,6 +595,7 @@ function createServer(agentId: string = ""): Server {
           question: string;
           options?: string[];
           context?: string;
+          space_id?: string;
         };
         if (!typedArgs.question || (typedArgs.options?.length ?? 0) < 2) {
           return errorResult(
@@ -597,14 +606,24 @@ function createServer(agentId: string = ""): Server {
           // Resolve to a real hub UUID: the REST path is
           // /v1/hubs/{id}/… and the server's membership check can't
           // read an alias like "personal".
-          const hubId = await resolveHubReference(undefined);
-          const sp = await v2Space(hubId);
+          // space_id names a space on V2 to ask in; V1 has no such
+          // argument, so naming a V1 space leaves the default hub, as on
+          // the remote server.
+          const named = str(typedArgs.space_id);
+          const namedV2 = named
+            ? await v2Space(await resolveHubReference(named))
+            : undefined;
+          const hubId = namedV2?.id ?? (await resolveHubReference(undefined));
+          const sp = namedV2 ?? (await v2Space(hubId));
           if (sp) {
             const denied = await guardWrite(sp);
             if (denied) return denied;
+            return v2RequestDecision(sp, {
+              question: typedArgs.question,
+              options: typedArgs.options ?? [],
+              context: typedArgs.context,
+            });
           }
-          // On the V2 record too, this is a board decision card until
-          // decision gates (G-) land (epic 1.11).
           const { slot } = await getClient().boards.requestDecision(hubId, {
             question: typedArgs.question,
             options: typedArgs.options ?? [],

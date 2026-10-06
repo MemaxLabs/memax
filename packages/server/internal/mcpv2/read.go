@@ -162,6 +162,7 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 			fmt.Fprintf(&b, "%s\n\n", msg)
 		}
 	}
+	s.gateNews(ctx, p, scope, bySpace, query == "", &part, &b)
 	if ctx.Err() != nil {
 		part.out.Partial = true
 		b.WriteString("Some spaces didn't answer in time; results may be incomplete.\n")
@@ -176,7 +177,7 @@ func (s *Server) compose(part v2Part, v1 *mcp.CallToolResult, digest bool) *mcp.
 	out := part.out
 	text := part.text
 	if v1 != nil {
-		if v1.IsError && len(out.Results) == 0 && len(out.Proposals) == 0 {
+		if v1.IsError && len(out.Results) == 0 && len(out.Proposals) == 0 && len(out.Gates) == 0 {
 			return v1
 		}
 		if v1out, ok := v1.StructuredContent.(handler.MCPRecallOutput); ok {

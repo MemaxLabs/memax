@@ -68,12 +68,11 @@ func (s *Server) forget(ctx context.Context, c *handler.MCPToolCall, v *view) (*
 	return textResult(text, nil), true
 }
 
-// noteWrite is memax_capture and memax_request_decision in a space on V2.
-// Both keep V1's path, which writes raw material rather than the record:
-// a capture becomes notes for Dream to fold (never proposals, so Review
-// stays quiet), and a decision request a board decision card (decision
-// gates, G-, are epic 1.11). The agent must still be allowed to write in
-// the space, and a capture is scanned for credentials first.
+// noteWrite is memax_capture in a space on V2. It keeps V1's path, which
+// writes raw material rather than the record: a capture becomes notes for
+// Dream to fold (never proposals, so Review stays quiet). The agent must
+// still be allowed to write in the space, and a capture is scanned for
+// credentials first.
 //
 // TODO(v2 notes): v2.notes is a view over V1 memories until cutover
 // (plan §5.4), so V1's memory path is the note path. Write through the
@@ -98,15 +97,11 @@ func (s *Server) noteWrite(ctx context.Context, c *handler.MCPToolCall, v *view)
 	if res != nil {
 		return res, true
 	}
-	var texts []string
-	if c.Tool == "memax_capture" {
-		texts = append(texts, handler.MCPCaptureContent(c.Args))
-	}
-	if res := s.guardWrite(sp, p, texts...); res != nil {
+	if res := s.guardWrite(sp, p, handler.MCPCaptureContent(c.Args)); res != nil {
 		return res, true
 	}
 	out := c.RunV1(nil, nil)
-	if out == nil || out.IsError || c.Tool != "memax_capture" {
+	if out == nil || out.IsError {
 		return out, true
 	}
 	text := resultText(out)

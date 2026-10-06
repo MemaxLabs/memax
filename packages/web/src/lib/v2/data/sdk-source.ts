@@ -1,4 +1,6 @@
 import type { Memax } from "memax-sdk";
+import { createSdkMemories } from "./sdk-memories";
+import { createSdkReview } from "./sdk-review";
 import type { LedgerDataSource } from "./source";
 import type { AskEvent, KeepResult, SpaceOverview, Viewer } from "./types";
 
@@ -24,10 +26,13 @@ export function createSdkSource({
   /** From the session (AuthProvider); null while it loads. */
   viewer: Viewer | null;
 }): LedgerDataSource {
+  const viewerId = () => viewer?.id;
   return {
     kind: "sdk",
     now: () => new Date(),
     viewer,
+    review: createSdkReview(client, viewerId),
+    memories: createSdkMemories(client, viewerId),
     async spaces(signal) {
       const { items } = await client.v2.spaces.list({ signal });
       return items.map((space) => ({

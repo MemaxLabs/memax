@@ -91,6 +91,12 @@ var sampleRequests = map[string]struct {
 	"pullDrift":         {path: "/v2/targets/" + sampleID + "/drift:pull"},
 	"overwriteDrift":    {path: "/v2/targets/" + sampleID + "/drift:overwrite", body: `{"reason":"the record wins"}`},
 	"stopDrift":         {path: "/v2/targets/" + sampleID + "/drift:stop"},
+
+	"listGates":       {path: "/v2/spaces/memax-v2/gates?status=waiting&status=expired"},
+	"requestDecision": {path: "/v2/spaces/memax-v2/gates", body: `{"question":"Which deploy target?","options":[{"label":"Fly.io"},{"label":"Railway"}]}`},
+	"getGate":         {path: "/v2/gates/G-0012?space=memax-v2"},
+	"answerGate":      {path: "/v2/gates/G-0012:answer?space=memax-v2", body: `{"option":1}`, header: map[string]string{"If-Match": `"1"`}},
+	"withdrawGate":    {path: "/v2/gates/" + sampleID + ":withdraw"},
 }
 
 const sampleID = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
@@ -261,6 +267,9 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "ConflictChoice", specEnum(t, "ConflictChoice"), strs(ledger.ConflictChoices))
 	sameSet(t, "ConflictChange", specEnum(t, "ConflictChange"), ledger.ConflictChanges)
 	sameSet(t, "UndoRefusal", specEnum(t, "UndoRefusal"), ledger.UndoRefusals)
+
+	// Decision gates.
+	sameSet(t, "GateStatus", specEnum(t, "GateStatus"), strs(ledger.GateStatuses))
 }
 
 // stringConsts parses a Go file for string constants whose names start

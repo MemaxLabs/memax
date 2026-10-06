@@ -142,6 +142,7 @@ export const ledgerActivityEn = {
     agentsOne: "1 agent",
     moved: "{actor} moved a memory to another space.",
     answered: "{actor} answered a question.",
+    withdrawn: "{actor} withdrew a question ({ref}).",
     undid: "{actor} undid a change.",
     dream:
       "{actor} folded {notes} into {facts}, flagged {stale} stale and faded {faded}.",

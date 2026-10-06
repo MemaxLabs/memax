@@ -35,7 +35,8 @@ info:
 
     A command is a `POST` (or the `PATCH` that sets an agent's autonomy or
     changes a target) that changes the record: remember, keep, edit and
-    reject a memory; settle a conflict; undo a decision; pause, resume,
+    reject a memory; settle a conflict; undo a decision; ask, answer and
+    withdraw a decision gate; pause, resume,
     disconnect and set the autonomy of an agent; revise the Brief; add,
     change and compile a target; acknowledge a delivery, report a hand
     edit, and pull, overwrite or stop it. Every command:
@@ -110,11 +111,27 @@ info:
     the window has passed, it was already undone, a later change depends on
     it, or the receipt's command can't be undone (`details.reason`).
 
+    ## Decision gates
+
+    An agent that may propose can stop and ask a person to decide: a gate
+    (`G-`), with a question, its context and two to four options. A person
+    answers with one option, and the answer is kept, in the same command,
+    as a decision the person authored (a memory of kind `decision`), which
+    every target then compiles. Answering follows Keep's rules for a
+    decision: members and owners, and in spaces where decisions need a
+    person on the web (team spaces by default) only on the web, so the CLI
+    and in-agent answers are refused there and the gate keeps waiting. The
+    agent that asked, the person it works for, or anyone who could answer
+    may withdraw a waiting gate. A gate waits until its `expires_at`
+    (7 days unless the agent says otherwise), then reads as `expired`. The
+    agent hears how it ended in its next MCP recall.
+
     ## Display IDs
 
     `M-0219` is unique within a tenant, not across tenants, so a display ID
     always travels with its space: `GET /v2/memories/M-0219?space=memax-v2`.
-    A memory's uuid (`id`) needs no space.
+    A memory's uuid (`id`) needs no space. Gates work the same way
+    (`GET /v2/gates/G-0012?space=memax-v2`).
 
     ## Not found, never forbidden
 
@@ -142,7 +159,7 @@ info:
     | 403 | `surface_unverified` | A request claimed to come from the web app, and its signature didn't verify. |
     | 404 | `not_found` | No such space or memory in your spaces. |
     | 405 | `method_not_allowed` | The path exists, the method doesn't. |
-    | 409 | `invalid_transition` | The memory's (or target's) state doesn't allow the command. |
+    | 409 | `invalid_transition` | The memory's (or target's, or gate's) state doesn't allow the command. |
     | 409 | `undo_refused` | The command can't be undone; `details.reason` says why. |
     | 412 | `edit_clash` | `If-Match` is not the memory's current version. |
     | 422 | `idempotency_key_reused` | The key was used for a different command. |
@@ -170,6 +187,8 @@ tags:
     description: The Brief every agent reads, in versions.
   - name: targets
     description: Where a space compiles to, its compile runs, deliveries and hand edits.
+  - name: gates
+    description: Decisions agents ask people to make, and the answers, kept as decisions.
 paths:
   /v2/spaces:
     get:
@@ -1608,6 +1627,236 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/spaces/{space}/gates:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listGates
+      tags: [gates]
+      summary: List decision gates
+      description: |
+        The space's decision gates, newest first. Without `status`, every
+        status is listed. `waiting` are the ones an agent is waiting on (a
+        waiting gate past its `expires_at` is `expired`).
+      parameters:
+        - name: status
+          in: query
+          description: Only these statuses. Repeat for more than one.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/GateStatus'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of gates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatePageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    post:
+      operationId: requestDecision
+      tags: [gates]
+      summary: Ask a person to decide
+      description: |
+        An agent asks a question with two to four options, and the gate waits
+        for a person's answer. Only an agent connected to the space at
+        Propose or Write asks (an API key may: it proposes); a read-only or
+        paused one only reads, and a person remembers the decision instead
+        (403 `refused`). One agent has at most three decisions waiting in a
+        space (`gate_limit`). A question, its context or an option that
+        contains a credential is refused.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestDecisionRequest'
+      responses:
+        '201':
+          description: The gate is waiting.
+          headers:
+            ETag:
+              $ref: '#/components/headers/VersionETag'
+            Location:
+              $ref: '#/components/headers/GateLocation'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GateResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/gates/{ref}:
+    parameters:
+      - $ref: '#/components/parameters/GateRefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    get:
+      operationId: getGate
+      tags: [gates]
+      summary: Read one decision gate
+      description: The question, its options, and how it ended, if it has.
+      responses:
+        '200':
+          description: The gate.
+          headers:
+            ETag:
+              $ref: '#/components/headers/VersionETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GateEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/gates/{ref}:answer:
+    parameters:
+      - $ref: '#/components/parameters/GateRefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: answerGate
+      tags: [gates]
+      summary: Answer a decision gate
+      description: |
+        A person answers with one of the gate's options, and the answer is
+        kept, in the same command, as a decision they authored: `memory` in
+        the result, with a `kept` receipt, beside the gate's `answered`
+        receipt. It follows Keep's rules for a decision: only members and
+        owners (per the space's rules) answer, never an agent or an API key,
+        and where the space's decisions need a person on the web
+        (`gate.needs_web`) only a request from the web app answers; anything
+        else is refused (`decision_needs_web`) and the gate keeps waiting. A
+        gate answered, withdrawn or expired already is 409
+        `invalid_transition`, with `details.status`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchGate'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswerGateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GateResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/gates/{ref}:withdraw:
+    parameters:
+      - $ref: '#/components/parameters/GateRefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: withdrawGate
+      tags: [gates]
+      summary: Withdraw a decision gate
+      description: |
+        Takes a waiting gate's question back. The agent that asked may (and
+        then it knows already), and so may the person it works for and
+        anyone who could answer it (`not_your_gate` otherwise). A gate that
+        isn't waiting is 409 `invalid_transition`, with `details.status`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchGate'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GateResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
 components:
   securitySchemes:
     bearer:
@@ -1713,6 +1962,24 @@ components:
       schema:
         $ref: '#/components/schemas/Id'
 
+    GateRefPath:
+      name: ref
+      in: path
+      required: true
+      description: A gate's display ID (G-0012, with `?space=`) or its id.
+      schema:
+        $ref: '#/components/schemas/GateRef'
+    IfMatchGate:
+      name: If-Match
+      in: header
+      description: |
+        The gate's `ETag` (its version) you read, e.g. `"1"`. A gate's
+        version changes only when it ends: one that ended since is 409
+        `invalid_transition` (with `details.status`), and a version that
+        isn't the waiting gate's is 412 `edit_clash`.
+      schema:
+        $ref: '#/components/schemas/VersionTag'
+
     TargetPath:
       name: target
       in: path
@@ -1760,6 +2027,12 @@ components:
         $ref: '#/components/schemas/VersionTag'
     TargetLocation:
       description: The target's URL, by id.
+      required: true
+      schema:
+        type: string
+        format: uri-reference
+    GateLocation:
+      description: The gate's URL, by id.
       required: true
       schema:
         type: string
@@ -1832,7 +2105,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
     InvalidTransition:
-      description: "`invalid_transition`: the memory's or agent's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one)."
+      description: "`invalid_transition`: the memory's, agent's or gate's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one, answering a gate that was answered, withdrawn or expired)."
       content:
         application/json:
           schema:
@@ -1896,6 +2169,17 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/TargetResultEnvelope'
+    GateResult:
+      description: The gate after the command (and, for an answer, the decision it became).
+      headers:
+        ETag:
+          $ref: '#/components/headers/VersionETag'
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GateResultEnvelope'
     DriftResolution:
       description: The hand edits, resolved.
       headers:
@@ -2027,7 +2311,9 @@ components:
         delivered. The judge's (by Memax) are merged (a fold), linked (an
         update or explicit change), flagged (a conflict) and judged
         (nothing to do); settling a conflict writes resolved, kept,
-        rejected, edited, superseded or faded; Undo writes undid.
+        rejected, edited, superseded or faded; Undo writes undid. A decision
+        gate's (`gate`) are asked (by the agent), answered (by a person; the
+        kept decision it became has its own `kept` receipt) and withdrawn.
       type: string
       enum:
         - proposed
@@ -2062,6 +2348,8 @@ components:
         - judged
         - linked
         - superseded
+        - asked
+        - withdrawn
     ObjectKind:
       type: string
       enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space]
@@ -2085,7 +2373,12 @@ components:
         agent has no connection, or none to this space, so it only reads),
         agent_paused, brief_by_person (agents propose; people edit the
         Brief), targets_by_person, compile_by_memax, judge_by_memax,
-        undo_by_decider (only the person who decided can undo it). Refused changes to
+        undo_by_decider (only the person who decided can undo it). Refused
+        decision gates: gate_by_agent (agents ask; people decide directly),
+        person_must_answer (agents ask; people answer), gate_limit (the agent
+        already has 3 decisions waiting in the space), not_your_gate (only the
+        agent that asked, the person it works for, or someone who can answer
+        withdraws a question). Refused changes to
         agents: person_must_manage (only a person changes what an agent may
         do), not_your_agent, autonomy_not_allowed, key_max_propose,
         autonomy_needs_web (raising an agent needs a person on the web).
@@ -2123,6 +2416,10 @@ components:
         - compile_by_memax
         - judge_by_memax
         - undo_by_decider
+        - gate_by_agent
+        - person_must_answer
+        - gate_limit
+        - not_your_gate
         - viewer
         - owners_keep
         - decision_needs_web
@@ -2214,6 +2511,22 @@ components:
       description: Why an undo was refused.
       type: string
       enum: [window_passed, later_changes, already_undone, not_undoable]
+
+    GateRef:
+      description: A decision gate's display ID (G-0012) or its id.
+      type: string
+      pattern: '^(?:[Gg]-[0-9]{1,18}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$'
+    GateDisplayRef:
+      description: A decision gate's display ID, unique within its tenant.
+      type: string
+      pattern: '^G-[0-9]{4,18}$'
+    GateStatus:
+      description: |
+        `waiting` for a person; `answered` (kept as a decision); `withdrawn`
+        (the question was taken back); `expired` (it waited past
+        `expires_at`, and can't be answered).
+      type: string
+      enum: [waiting, answered, withdrawn, expired]
 
     BriefRef:
       description: A Brief version's display ID, unique within its tenant.
@@ -3839,6 +4152,177 @@ components:
             $ref: '#/components/schemas/Receipt'
 
     # ------------------------------------------------------------------
+    # Decision gates
+    # ------------------------------------------------------------------
+    GateOption:
+      type: object
+      additionalProperties: false
+      required: [label]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+        detail:
+          description: What choosing it means.
+          type: string
+          maxLength: 500
+
+    GateAnswer:
+      description: How a person answered, and the decision it became.
+      type: object
+      additionalProperties: false
+      required: [option, label, memory, answered_by, answered_at, assurance]
+      properties:
+        option:
+          description: The chosen option, counting from 1.
+          type: integer
+          minimum: 1
+          maximum: 4
+        label:
+          type: string
+        memory:
+          description: The kept decision the answer became.
+          $ref: '#/components/schemas/MemoryPointer'
+        answered_by:
+          description: The person who answered.
+          $ref: '#/components/schemas/Id'
+        answered_at:
+          $ref: '#/components/schemas/Timestamp'
+        assurance:
+          $ref: '#/components/schemas/Assurance'
+
+    GateWithdrawal:
+      description: Who took the question back, and when.
+      type: object
+      additionalProperties: false
+      required: [by_kind, by, at]
+      properties:
+        by_kind:
+          description: '`agent`: the one that asked. `person`: the person it works for, or someone who could answer.'
+          type: string
+          enum: [agent, person]
+        by:
+          description: The agent connection or the person.
+          $ref: '#/components/schemas/Id'
+        at:
+          $ref: '#/components/schemas/Timestamp'
+
+    Gate:
+      description: 'A decision gate (G-): a question an agent asked a person.'
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - ref
+        - space_id
+        - tenant_id
+        - question
+        - options
+        - status
+        - expires_at
+        - asked_by
+        - needs_web
+        - version
+        - created_receipt_id
+        - last_receipt_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        ref:
+          $ref: '#/components/schemas/GateDisplayRef'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        tenant_id:
+          $ref: '#/components/schemas/Id'
+        question:
+          description: One question, in the asking agent's words.
+          type: string
+        context:
+          description: Why it matters, from the agent.
+          type: string
+        options:
+          type: array
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/GateOption'
+        status:
+          $ref: '#/components/schemas/GateStatus'
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+        asked_by:
+          description: The agent connection that asked.
+          $ref: '#/components/schemas/Id'
+        agent:
+          description: The agent that asked, e.g. codex.
+          type: string
+        session_ref:
+          description: The agent session it asked from.
+          type: string
+        needs_web:
+          description: >-
+            Answering needs a person on the web: the space's rule for
+            decisions (team spaces by default). The CLI and in-agent answers
+            are refused.
+          type: boolean
+        answer:
+          $ref: '#/components/schemas/GateAnswer'
+        withdrawn:
+          $ref: '#/components/schemas/GateWithdrawal'
+        delivered_at:
+          description: When the agent that asked was told how it ended.
+          $ref: '#/components/schemas/Timestamp'
+        version:
+          description: Changes when the gate ends. Send it back as `If-Match`.
+          type: integer
+          minimum: 1
+        created_receipt_id:
+          $ref: '#/components/schemas/Id'
+        last_receipt_id:
+          $ref: '#/components/schemas/Id'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    GatePage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Gate'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+
+    GateResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, gate, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        gate:
+          $ref: '#/components/schemas/Gate'
+        memory:
+          description: For an answer, the kept decision it became.
+          $ref: '#/components/schemas/Memory'
+        receipts:
+          description: The receipts the command wrote, oldest first.
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    # ------------------------------------------------------------------
     # Requests
     # ------------------------------------------------------------------
     SourceInput:
@@ -3919,8 +4403,58 @@ components:
         session_ref:
           $ref: '#/components/schemas/SessionRef'
 
+    RequestDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [question, options]
+      properties:
+        question:
+          description: The decision, as one question.
+          type: string
+          minLength: 1
+          maxLength: 300
+        context:
+          description: Why it matters; the tradeoffs, and a recommendation if there is one.
+          type: string
+          maxLength: 2000
+        options:
+          description: Two to four different answers, in order.
+          type: array
+          minItems: 2
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/GateOption'
+        expires_at:
+          description: When the agent stops waiting. Defaults to 7 days from now; between 5 minutes and 30 days.
+          $ref: '#/components/schemas/Timestamp'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    AnswerGateRequest:
+      type: object
+      additionalProperties: false
+      required: [option]
+      properties:
+        option:
+          description: The chosen option, counting from 1.
+          type: integer
+          minimum: 1
+          maximum: 4
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
     ReviewRequest:
-      description: The body of keep, reject and compile. Every field is optional.
+      description: The body of keep, reject, compile and withdrawing a gate. Every field is optional.
       type: object
       additionalProperties: false
       properties:
@@ -4222,8 +4756,11 @@ components:
           description: The policy decision (`refused`).
           $ref: '#/components/schemas/PolicyDecision'
         ref:
-          description: The memory's display ID (`edit_clash`, `invalid_transition`), or what is in an undo's way (`undo_refused`).
+          description: The memory's or gate's display ID (`edit_clash`, `invalid_transition`), or what is in an undo's way (`undo_refused`).
           type: string
+        status:
+          description: The gate's status now (`invalid_transition` on a gate).
+          $ref: '#/components/schemas/GateStatus'
         reason:
           description: Why an undo was refused (`undo_refused`).
           $ref: '#/components/schemas/UndoRefusal'
@@ -4429,3 +4966,27 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/DriftResolutionResult'
+
+    GatePageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/GatePage'
+
+    GateEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Gate'
+
+    GateResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/GateResult'

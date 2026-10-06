@@ -34,12 +34,35 @@ const (
 
 // MCPRecallOutput is memax_recall's structured result.
 type MCPRecallOutput struct {
-	Results     []MCPItem        `json:"results"`
-	Proposals   []MCPItem        `json:"proposals,omitempty"`
-	Digest      []MCPSpaceDigest `json:"digest,omitempty"`
-	Notices     []MCPNotice      `json:"notices,omitempty"`
-	Partial     bool             `json:"partial,omitempty"`
-	LexicalOnly bool             `json:"lexical_only,omitempty"`
+	Results   []MCPItem        `json:"results"`
+	Proposals []MCPItem        `json:"proposals,omitempty"`
+	Digest    []MCPSpaceDigest `json:"digest,omitempty"`
+	Notices   []MCPNotice      `json:"notices,omitempty"`
+	// Gates are the decisions this connection asked for: how each ended
+	// (once), and without a query the ones still waiting.
+	Gates       []MCPGate `json:"gates,omitempty"`
+	Partial     bool      `json:"partial,omitempty"`
+	LexicalOnly bool      `json:"lexical_only,omitempty"`
+}
+
+// MCPGate is a decision gate (G-) in a result: memax_request_decision's
+// answer, and in recall how a gate the connection asked ended.
+type MCPGate struct {
+	ID       string `json:"id"`
+	SpaceID  string `json:"space_id"`
+	Space    string `json:"space,omitempty"`
+	Question string `json:"question"`
+	// Status is waiting, answered, withdrawn or expired.
+	Status string `json:"status"`
+	// Option and Answer are the chosen option (from 1) and its label, and
+	// Memory the kept decision it became.
+	Option    int    `json:"option,omitempty"`
+	Answer    string `json:"answer,omitempty"`
+	Memory    string `json:"memory,omitempty"`
+	ExpiresAt string `json:"expires_at,omitempty"`
+	URL       string `json:"url,omitempty"`
+	// Message is memax_request_decision's sentence; recall leaves it out.
+	Message string `json:"message,omitempty"`
 }
 
 // MCPSpaceDigest is one space's digest (memax_recall without a query).

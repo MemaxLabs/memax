@@ -1,5 +1,6 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`,
-// `.receipts` and `.agents`. Thin, typed wrappers over the shared
+// `.receipts`, `.agents`, `.briefs`, `.targets` and `.gates`. Thin, typed
+// wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
 // as on /v1.
 import { MemaxError } from "../errors.js";
@@ -24,6 +25,11 @@ import type {
   Drift,
   DriftResolutionResult,
   EditInput,
+  AnswerGateInput,
+  Gate,
+  GatePage,
+  GateResult,
+  GateStatus,
   MemoriesCommandResult,
   MemoryDetail,
   MemoryPage,
@@ -32,6 +38,7 @@ import type {
   PolicyDecision,
   ReceiptPage,
   RememberInput,
+  RequestDecisionInput,
   ResolveConflictInput,
   ResolveDriftInput,
   ReviewInput,
@@ -44,6 +51,7 @@ import type {
   TargetPreview,
   TargetResult,
   UndoInput,
+  WithdrawGateInput,
 } from "./types.js";
 
 /** Options every command takes. */
@@ -591,6 +599,102 @@ export class V2TargetsResource {
   }
 }
 
+export interface ListGatesOptions extends PageOptions {
+  /** Only these statuses. Without it, every gate. */
+  status?: GateStatus | GateStatus[];
+}
+
+/** How a gate is addressed: a display ID (`G-0012`) needs its space. */
+export interface GateRefOptions {
+  /** The space's id or slug. Required with a display ID; optional with a gate id. */
+  space?: string;
+}
+
+export interface GateCommandOptions extends CommandOptions, GateRefOptions {
+  /**
+   * The gate's version you read (its ETag). A gate that ended since throws
+   * `invalid_transition` (409); any other mismatch, `edit_clash` (412).
+   */
+  ifMatch?: number;
+}
+
+export class V2GatesResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /** The space's decision gates, newest first. */
+  async list(space: string, opts?: ListGatesOptions): Promise<GatePage> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/gates`, {
+      query: { ...pageQuery(opts), status: asList(opts?.status) },
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Ask a person to decide (an agent that may propose). The gate waits for
+   * an answer until `expires_at`. A refusal (a person asking, a read-only
+   * agent, three already waiting) throws a MemaxError `refused`.
+   */
+  async request(
+    space: string,
+    input: RequestDecisionInput,
+    opts: CommandOptions,
+  ): Promise<GateResult> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/gates`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** One gate, by display ID (with `space`) or id. */
+  async get(
+    ref: string,
+    opts?: GateRefOptions & { signal?: AbortSignal },
+  ): Promise<Gate> {
+    return this.req("GET", `/v2/gates/${seg(ref)}`, {
+      query: { space: opts?.space },
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Answer with one option (from 1). The answer is kept as a decision you
+   * authored: `memory` in the result. Where the space's decisions need a
+   * person on the web (`gate.needs_web`), only the web app can answer; a
+   * gate that ended already throws `invalid_transition` (409).
+   */
+  async answer(
+    ref: string,
+    input: AnswerGateInput,
+    opts: GateCommandOptions,
+  ): Promise<GateResult> {
+    return this.command(ref, "answer", input, opts);
+  }
+
+  /** Take a waiting gate's question back. */
+  async withdraw(
+    ref: string,
+    input: WithdrawGateInput,
+    opts: GateCommandOptions,
+  ): Promise<GateResult> {
+    return this.command(ref, "withdraw", input, opts);
+  }
+
+  private async command(
+    ref: string,
+    verb: "answer" | "withdraw",
+    input: AnswerGateInput | WithdrawGateInput,
+    opts: GateCommandOptions,
+  ): Promise<GateResult> {
+    return this.req("POST", `/v2/gates/${seg(ref)}:${verb}`, {
+      query: { space: opts.space },
+      body: input,
+      extraHeaders: commandHeaders(opts, opts.ifMatch),
+      signal: opts.signal,
+    });
+  }
+}
+
 /** `memax.v2`: the V2 record. */
 export class V2Resource {
   readonly spaces: V2SpacesResource;
@@ -600,6 +704,7 @@ export class V2Resource {
   readonly agents: V2AgentsResource;
   readonly briefs: V2BriefsResource;
   readonly targets: V2TargetsResource;
+  readonly gates: V2GatesResource;
 
   constructor(req: RequestFn) {
     this.spaces = new V2SpacesResource(req);
@@ -609,6 +714,7 @@ export class V2Resource {
     this.agents = new V2AgentsResource(req);
     this.briefs = new V2BriefsResource(req);
     this.targets = new V2TargetsResource(req);
+    this.gates = new V2GatesResource(req);
   }
 }
 

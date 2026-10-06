@@ -38,6 +38,10 @@ type writer struct {
 	undo            *undoJournal
 	undoWindow      time.Duration
 	judgeUndoWindow time.Duration
+
+	// now is the ledger's clock when the command began: when a gate
+	// expires, and whether it has.
+	now time.Time
 }
 
 // write is Remember and Propose.

@@ -136,6 +136,73 @@ func TestBriefTargetsMigrationStepsBack(t *testing.T) {
 	}
 }
 
+// decisionGatesVersion is migration 036 (decision gates).
+const decisionGatesVersion = 36
+
+// TestDecisionGatesMigrationStepsBack rolls back only 036 while a gate's
+// receipt exists: the table goes, the receipt stays (receipts are
+// append-only), and 035's action CHECK comes back NOT VALID, so a new
+// `asked` receipt is refused until 036 is applied again.
+func TestDecisionGatesMigrationStepsBack(t *testing.T) {
+	cs := withFreshDB(t)
+	if err := Run(cs, migrationsDir()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cs)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	asked := func(ref string, version int) error {
+		_, err := pool.Exec(ctx, `
+			INSERT INTO v2.receipts (id, tenant_id, space_id, object_kind, object_id, object_ref, action, actor_kind, actor_id, via, occurred_at, stream_id, stream_version)
+			VALUES (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222',
+			        'gate', '33333333-3333-3333-3333-333333333333', $1, 'asked', 'agent', gen_random_uuid(), 'mcp', now(),
+			        '33333333-3333-3333-3333-333333333333', $2)`, ref, version)
+		return err
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO users (id, email, name) VALUES ('11111111-1111-1111-1111-111111111111', 'rt@test', 'rt');
+		INSERT INTO hubs (id, name, slug, hub_type, owner_id) VALUES
+			('22222222-2222-2222-2222-222222222222', 'P', 'rt-p', 'personal', '11111111-1111-1111-1111-111111111111')`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := asked("G-0001", 1); err != nil {
+		t.Fatalf("an asked receipt after 036: %v", err)
+	}
+	gates := func() bool {
+		var ok bool
+		if err := pool.QueryRow(ctx, `SELECT to_regclass('v2.decision_gates') IS NOT NULL`).Scan(&ok); err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	m := newMigrator(t, cs)
+	if err := m.Migrate(decisionGatesVersion - 1); err != nil {
+		t.Fatalf("migrate down to %03d: %v", decisionGatesVersion-1, err)
+	}
+	if gates() {
+		t.Error("after down: v2.decision_gates remains")
+	}
+	var receipts int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM v2.receipts WHERE action = 'asked'`).Scan(&receipts); err != nil || receipts != 1 {
+		t.Errorf("the asked receipt: %d, %v; receipts are never dropped", receipts, err)
+	}
+	if err := asked("G-0002", 2); err == nil {
+		t.Error("035's action CHECK isn't back: a new 'asked' receipt was accepted")
+	}
+	if err := m.Up(); err != nil && !errors.Is(err, gomigrate.ErrNoChange) {
+		t.Fatalf("migrate up again: %v", err)
+	}
+	if !gates() {
+		t.Error("after second up: no v2.decision_gates")
+	}
+	if err := asked("G-0002", 2); err != nil {
+		t.Errorf("an asked receipt after 036 again: %v", err)
+	}
+}
+
 func newMigrator(t *testing.T, cs string) *gomigrate.Migrate {
 	t.Helper()
 	u, err := url.Parse(cs)

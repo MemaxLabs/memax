@@ -30,6 +30,11 @@
 //   - The judge: only Memax records its verdicts. Settling a conflict
 //     follows Keep's rules. Undo is the decider's own; any person who may
 //     keep can undo one of the judge's folds.
+//   - Decision gates: an agent that may propose asks (at most
+//     MaxWaitingGates waiting per agent and space); a person answers by
+//     Keep's rules for a decision, D15 included, and the answer is kept as
+//     a decision they authored; the asking agent, the person it works for,
+//     or anyone who could answer withdraws.
 //
 // Messages follow the product voice (sentence case, actionable, no
 // exclamation marks). Clients localise by Code; Message is the English
@@ -303,7 +308,23 @@ const (
 	ActionJudge           Action = "judge"            // record the judge's verdict on a memory (fold, link, flag)
 	ActionResolveConflict Action = "resolve_conflict" // settle a conflict: one side wins, both narrow, or it stays open
 	ActionUndo            Action = "undo"             // undo a person's last decision, or one of the judge's folds
+
+	// Decision gates (plan 25 §5.12, epic 1.11).
+	ActionRequestDecision Action = "request_decision" // an agent asks a person to decide (a G- gate)
+	ActionAnswerGate      Action = "answer_gate"      // a person answers; the answer is kept as their decision
+	ActionWithdrawGate    Action = "withdraw_gate"    // the question is taken back before anyone answers
 )
+
+// MaxWaitingGates is how many decisions one agent may have waiting on
+// people in one space at a time. V1 capped a board at three open decisions
+// for every agent together; per agent, a busy agent no longer blocks the
+// others, and a looping one still can't flood Review.
+//
+// It is a fair-use limit on every plan. D9 lists "handoffs and gates
+// between your own agents" under Pro, but the alpha is free, so no plan is
+// checked here yet: when V2 billing lands, the plan check for asking goes
+// in decideRequestDecision.
+const MaxWaitingGates = 3
 
 // Actor is everything Decide needs to know about who is acting.
 type Actor struct {
@@ -394,6 +415,12 @@ type Object struct {
 	PersonKept bool
 	// Secrets names any credential patterns found in the new words.
 	Secrets []string
+	// GateMine is set when the gate was asked by this agent, or by an agent
+	// working for this person (withdrawing it).
+	GateMine bool
+	// WaitingGates counts the decisions the asking agent already has
+	// waiting in the space (asking another).
+	WaitingGates int
 }
 
 // Space is the space the action happens in.
@@ -447,6 +474,12 @@ const (
 	CodeJudgeByMemax        = "judge_by_memax"
 	CodeUndoByDecider       = "undo_by_decider"
 
+	// Decision gates; all refusals.
+	CodeGateByAgent      = "gate_by_agent"      // agents ask; people decide directly
+	CodePersonMustAnswer = "person_must_answer" // agents ask; people answer
+	CodeGateLimit        = "gate_limit"         // the agent already has MaxWaitingGates waiting
+	CodeNotYourGate      = "not_your_gate"      // withdrawing someone else's question
+
 	// Changes to agent connections (DecideConnection); all refusals.
 	CodePersonMustManage   = "person_must_manage"
 	CodeNotYourAgent       = "not_your_agent"
@@ -481,7 +514,8 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 	if (a.Kind == ActorPerson || a.Kind == ActorAgent) && !slices.Contains([]Role{RoleOwner, RoleMember, RoleViewer}, a.Role) {
 		return refuse(CodeNotMember, fmt.Sprintf("Only members of %s can change its record.", spaceName(s)))
 	}
-	if len(o.Secrets) > 0 && (act == ActionRemember || act == ActionPropose || act == ActionEdit || act == ActionReviseBrief) {
+	if len(o.Secrets) > 0 && slices.Contains([]Action{ActionRemember, ActionPropose, ActionEdit, ActionReviseBrief,
+		ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate}, act) {
 		return refuse(CodeSecret, fmt.Sprintf(
 			"This looks like a credential (%s). Memax never stores secrets. Remove it and try again.",
 			strings.Join(o.Secrets, ", ")))
@@ -525,6 +559,12 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		}
 		return refuse(CodeTargetsByPerson,
 			"A person decides what happens to a hand edit. Resolve it on the web or with the CLI.")
+	case ActionRequestDecision:
+		return decideRequestDecision(a, o, s)
+	case ActionAnswerGate:
+		return decideAnswerGate(a, o, s)
+	case ActionWithdrawGate:
+		return decideWithdrawGate(a, o, s)
 	}
 	return refuse(CodeUnknownAction, fmt.Sprintf("Memax doesn't know how to %q.", act))
 }
@@ -758,6 +798,80 @@ func decideUndo(a Actor, o Object, s Space) Decision {
 		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners undo decisions in %s. Ask an owner.", spaceName(s)))
 	}
 	return apply()
+}
+
+// decideRequestDecision: an agent asks a person to decide (a G- gate).
+// Asking writes to the record (the gate and its receipt) and puts a
+// question in front of people, so it needs what proposing needs: an agent
+// connected to the space at Propose or Write, and not paused. A read-only
+// agent writes nothing (HANDOFF rule 2), so it may not ask; an API key may,
+// because it proposes. People don't ask: they remember the decision
+// themselves. Dream, Memax and the repository don't ask either. One agent
+// has at most MaxWaitingGates decisions waiting in a space.
+func decideRequestDecision(a Actor, o Object, s Space) Decision {
+	if a.Kind != ActorAgent {
+		return refuse(CodeGateByAgent, "Agents ask and people decide. Remember the decision instead.")
+	}
+	if a.autonomy() == AutonomyRead {
+		return refuseReadOnly(a, s)
+	}
+	if o.WaitingGates >= MaxWaitingGates {
+		return refuse(CodeGateLimit, fmt.Sprintf(
+			"%s already has %d decisions waiting on a person in %s. Carry on with other work; the answers come back in the next recall.",
+			actorName(a), MaxWaitingGates, spaceName(s)))
+	}
+	return apply()
+}
+
+// decideAnswerGate: a person answers a gate, and the answer is kept as a
+// decision they authored (HANDOFF "Decision gate"), so it follows Keep's
+// rules for a decision: a member or owner per the space's rules, never an
+// agent or an API key (agents ask, people answer), and a person on the web
+// where the space's decisions need one (D15). There a client-attested
+// answer (the CLI, an answer given inside the agent) is refused rather than
+// kept as a proposal: the gate stays waiting, so the agent that asked never
+// acts on an answer no person confirmed on the web.
+func decideAnswerGate(a Actor, o Object, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson:
+		return refuse(CodePersonMustAnswer, fmt.Sprintf(
+			"Agents ask and people answer. %s waits for a person in Review.", refOr(o, "This question")))
+	case a.Credential == CredentialAPIKey:
+		return refuse(CodeKeyCannotReview, "API keys can ask but never answer. Answer it in Review on the web.")
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf("Viewers can't answer decisions in %s. Ask a member.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules):
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners answer decisions in %s. Ask an owner.", spaceName(s)))
+	case s.Rules.DecisionsNeedPersonOnWeb(s.Kind) && a.Assurance() != AssuranceHumanWeb:
+		return refuse(CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web. Answer %s in Review at memax.app.", spaceName(s), refOr(o, "it")))
+	}
+	return apply()
+}
+
+// decideWithdrawGate: the agent that asked may take its question back (it
+// found the answer, or moved on), and so may the person it works for and
+// anyone who could answer it. Withdrawing keeps nothing, so it needs no
+// more assurance than the role. A paused or read-only agent only reads.
+func decideWithdrawGate(a Actor, o Object, s Space) Decision {
+	switch a.Kind {
+	case ActorAgent:
+		if a.autonomy() == AutonomyRead {
+			return refuseReadOnly(a, s)
+		}
+		if o.GateMine {
+			return apply()
+		}
+		return refuse(CodeNotYourGate, fmt.Sprintf(
+			"Only the agent that asked %s can withdraw it. A person can withdraw it in Review.", refOr(o, "this question")))
+	case ActorPerson:
+		if o.GateMine || (a.Credential != CredentialAPIKey && canKeep(a.Role, s.Rules)) {
+			return apply()
+		}
+	}
+	return refuse(CodeNotYourGate, fmt.Sprintf(
+		"Only the agent that asked %s, the person it works for, or someone who can answer it can withdraw it.",
+		refOr(o, "this question")))
 }
 
 // decideReviseBrief: people who may keep edit the Brief, and Dream

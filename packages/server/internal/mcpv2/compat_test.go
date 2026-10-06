@@ -127,6 +127,8 @@ func TestV1SpacesBehaveExactlyAsV1(t *testing.T) {
 			{"memax_hub_members", map[string]any{"hub_id": v1team.id.String()}},
 			{"memax_topics", map[string]any{"hub_id": v1team.id.String()}},
 			{"memax_push", map[string]any{"content": "Still a V1 push", "hub_id": v1team.id.String(), "hub_reason": "shared"}},
+			// space_id is new, for V2; naming a V1 space leaves V1's board card.
+			{"memax_request_decision", map[string]any{"question": "Which way?", "options": []string{"a", "b"}, "space_id": v1team.id.String()}},
 			{"memax_forget", map[string]any{"id": memID}},
 		})
 	})

@@ -104,7 +104,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     name: "memax_recall",
     title: "Recall memories",
     description:
-      "Returns the memories relevant to a query from the spaces this connection can read. In spaces on the V2 record it returns kept memories, plus this session's own pending proposals marked proposed; without a query it returns a digest of each space (its latest compiled file, or its top kept memories by section, and what changed since this connection was last seen). In other spaces it returns ranked excerpts of saved memories.",
+      "Returns the memories relevant to a query from the spaces this connection can read. In spaces on the V2 record it returns kept memories, plus this session's own pending proposals marked proposed, and how each decision this connection asked for ended (once); without a query it returns a digest of each space (its latest compiled file, or its top kept memories by section, what changed since this connection was last seen, and the decisions it is still waiting on). In other spaces it returns ranked excerpts of saved memories.",
     inputSchema: {
       type: "object",
       properties: {
@@ -241,6 +241,47 @@ export const MCP_TOOLS: McpToolDefinition[] = [
               },
             },
             required: ["kind", "message"],
+          },
+        },
+        gates: {
+          type: "array",
+          description:
+            "Decisions this connection asked for in spaces on the V2 record: each answered, withdrawn or expired one once, and without a query the ones still waiting.",
+          items: {
+            type: "object",
+            properties: {
+              id: {
+                type: "string",
+                description: "The gate's display ID, such as G-0012.",
+              },
+              space_id: { type: "string" },
+              space: { type: "string", description: "The space's name." },
+              question: { type: "string" },
+              status: {
+                type: "string",
+                enum: ["waiting", "answered", "withdrawn", "expired"],
+              },
+              option: {
+                type: "integer",
+                description: "The chosen option, counting from 1.",
+              },
+              answer: {
+                type: "string",
+                description: "The chosen option's label.",
+              },
+              memory: {
+                type: "string",
+                description:
+                  "The kept decision the answer became, such as M-0432.",
+              },
+              expires_at: { type: "string" },
+              url: {
+                type: "string",
+                description:
+                  "Where a person can answer it or open it in Memax.",
+              },
+            },
+            required: ["id", "space_id", "question", "status"],
           },
         },
         partial: {
@@ -778,7 +819,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     name: "memax_request_decision",
     title: "Ask a person to decide",
     description:
-      "Puts a decision in front of the person: a question with 2 to 4 options, shown in Memax with a notification. It returns at once with the request's ID; the person's answer is saved as a memory that later recalls return.",
+      "Puts a decision in front of the person: a question with 2 to 4 options, shown in Memax. It returns at once with the request's ID, and the person's answer is saved as a memory that later recalls return. In a space on the V2 record the request is a gate, such as G-0012, that waits up to 7 days: the answer is kept as the person's decision, and this connection's next memax_recall returns it once. A client that supports multi round-trip requests may also show the question to the person in the agent.",
     inputSchema: {
       type: "object",
       properties: {
@@ -797,6 +838,11 @@ export const MCP_TOOLS: McpToolDefinition[] = [
           type: "string",
           description:
             "Why it matters: tradeoffs, constraints, and a recommendation if there is one.",
+        },
+        space_id: {
+          type: "string",
+          description:
+            "The space to ask in, by ID or slug, when it is on the V2 record. Without it, the space this connection writes to by default.",
         },
       },
       required: ["question", "options"],

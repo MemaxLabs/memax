@@ -1,0 +1,54 @@
+{
+  "name": "@memaxlabs/compiler",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Compile a Memax Space's kept record into the files coding agents already read, and parse hand edits back",
+  "homepage": "https://memax.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MemaxLabs/memax.git",
+    "directory": "packages/compiler"
+  },
+  "bugs": {
+    "email": "support@memax.app"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "NOTICE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint . --max-warnings 0 && tsc --noEmit && tsc --noEmit -p test",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^25.5.0",
+    "@typescript-eslint/parser": "^8.20.0",
+    "eslint": "^9.18.0",
+    "prettier": "^3.5.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  },
+  "keywords": [
+    "memax",
+    "agents-md",
+    "claude-md",
+    "cursor-rules",
+    "context",
+    "compiler"
+  ],
+  "license": "Apache-2.0"
+}

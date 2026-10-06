@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "compile": { "id": "C-0900", "at": "2026-10-06T09:00:00Z" },
+  "space": {
+    "slug": "memax-v2",
+    "name": "Memax V2",
+    "kind": "project",
+    "url": "https://memax.app/memax-v2/brief"
+  },
+  "brief": {
+    "id": "B-0044",
+    "title": "Memax V2 engineering brief",
+    "sections": [
+      {
+        "key": "decisions",
+        "heading": "Decisions",
+        "items": [
+          { "ref": "M-0219" },
+          { "ref": "M-0187" },
+          { "ref": "M-0174" },
+          { "ref": "M-0300" },
+          { "ref": "M-0301" }
+        ]
+      },
+      {
+        "key": "open",
+        "heading": "Open",
+        "items": [
+          {
+            "text": "Fly.io or Railway for the v2 API is undecided. Ask before changing deploy config.",
+            "cites": ["M-0431", "M-0174"]
+          },
+          { "ref": "M-0302" }
+        ]
+      }
+    ]
+  },
+  "memories": [
+    {
+      "ref": "M-0219",
+      "statement": "Background jobs run on River, Postgres-backed. We do not use Temporal.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 41
+    },
+    {
+      "ref": "M-0187",
+      "statement": "Ask memax answers with the Haiku tier.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "flags": ["stale"],
+      "read_score": 12
+    },
+    {
+      "ref": "M-0174",
+      "statement": "Deploy the v2 API to Railway.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "flags": ["conflict"],
+      "read_score": 15
+    },
+    {
+      "ref": "M-0300",
+      "statement": "Pin Node 24 in CI until the October LTS lands.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "stale_after": "2026-10-01T00:00:00Z",
+      "read_score": 3
+    },
+    {
+      "ref": "M-0301",
+      "statement": "Freeze V1 routes until cutover.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "stale_after": "2026-12-31T00:00:00Z",
+      "read_score": 8
+    },
+    {
+      "ref": "M-0302",
+      "statement": "Should Dream run nightly on Free? Ask Ziyang before changing the cadence.",
+      "section": "open",
+      "kind": "fact",
+      "state": "open",
+      "read_score": 2
+    },
+    {
+      "ref": "M-0303",
+      "statement": "Is the 25% team-pull gate measured per space or per account?",
+      "section": "open",
+      "kind": "fact",
+      "state": "open",
+      "read_score": 1
+    }
+  ],
+  "targets": [
+    { "kind": "agents_md" },
+    { "kind": "agents_md", "path": "stale-omit/AGENTS.md", "stale": "omit" },
+    {
+      "kind": "agents_md",
+      "path": "kept-only/AGENTS.md",
+      "include": "kept_only"
+    }
+  ]
+}

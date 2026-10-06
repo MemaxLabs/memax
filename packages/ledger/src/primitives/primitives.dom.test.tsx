@@ -94,6 +94,41 @@ describe("Segmented", () => {
     ).toBe("true");
   });
 
+  it("keeps a disabled option with a reason hoverable, and ignores it", () => {
+    const onChange = vi.fn();
+    render(
+      <Segmented
+        label="Autonomy"
+        defaultValue="read"
+        options={[
+          { value: "read", label: "Read" },
+          { value: "propose", label: "Propose", disabled: true },
+          {
+            value: "write",
+            label: "Write",
+            disabled: true,
+            disabledReason: "API keys propose at most.",
+          },
+        ]}
+        onChange={onChange}
+      />,
+    );
+    const propose = screen.getByRole("radio", { name: "Propose" });
+    const write = screen.getByRole("radio", { name: "Write" });
+    // Without a reason: natively disabled. With one: aria-disabled and titled.
+    expect(propose.hasAttribute("disabled")).toBe(true);
+    expect(write.hasAttribute("disabled")).toBe(false);
+    expect(write.getAttribute("aria-disabled")).toBe("true");
+    expect(write.title).toBe("API keys propose at most.");
+    expect(write.tabIndex).toBe(-1);
+    fireEvent.click(write);
+    const read = screen.getByRole("radio", { name: "Read" });
+    read.focus();
+    fireEvent.keyDown(read, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(read);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("follows a controlled value and leaves it to the parent", () => {
     const onChange = vi.fn();
     const { rerender } = render(

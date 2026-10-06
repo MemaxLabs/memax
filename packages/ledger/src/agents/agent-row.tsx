@@ -10,18 +10,29 @@ import { AgentStamp } from "../provenance/agent-stamp";
 
 export interface AgentRowProps {
   agent: string;
+  /** The connection's name, when it differs from the registry's ("Codex (laptop)"). */
+  name?: string;
   /** Controlled. Read never writes; Propose sends writes to Review; Write keeps them, still receipted. */
   autonomy: Autonomy;
   /** Without it the autonomy control can't be changed. */
   onAutonomyChange?: (autonomy: Autonomy) => void;
-  /** Reads this week. */
-  reads: number;
-  /** Writes this week. */
-  writes: number;
+  /**
+   * Levels that can't be chosen, each with why ("API keys propose at most").
+   * They are greyed, skipped by the arrow keys, and keep the reason as their tooltip.
+   */
+  unavailable?: Partial<Record<Autonomy, string>>;
+  /** Reads this week; `null` when they aren't recorded yet (shown as "—"). */
+  reads: number | null;
+  /** Writes this week; `null` when they aren't recorded yet. */
+  writes: number | null;
   lastSeen?: string;
   /** The compiled file, if any ("CLAUDE.md"). */
   target?: string;
+  /** What to say when there is no target. Defaults to "MCP only". */
+  noTarget?: string;
   paused?: boolean;
+  /** Makes the stamp and name a link to the agent's page. */
+  href?: string;
   className?: string;
   ref?: Ref<HTMLDivElement>;
 }
@@ -33,20 +44,45 @@ export interface AgentRowProps {
  */
 export function AgentRow({
   agent,
+  name,
   autonomy,
   onAutonomyChange,
+  unavailable,
   reads,
   writes,
   lastSeen,
   target,
+  noTarget,
   paused,
+  href,
   className,
   ref,
 }: AgentRowProps) {
-  const { strings, agents, formatNumber } = useLedger();
+  const { strings, agents, formatNumber, Link } = useLedger();
   const a = strings.autonomy;
   const t = strings.agentList;
-  const who = resolveAgent(agents, { agent }, strings.agent.fallback);
+  const who = resolveAgent(agents, { agent, name }, strings.agent.fallback);
+  const level = (value: Autonomy, label: string, hint: string) => ({
+    value,
+    label,
+    hint,
+    disabled: unavailable?.[value] !== undefined,
+    disabledReason: unavailable?.[value],
+  });
+  const count = (label: string, n: number | null) => (
+    <span className="mx-agent-num">
+      <span className="mx-sr">{label} </span>
+      {n === null ? (
+        <>
+          <span aria-hidden="true">—</span>
+          <span className="mx-sr">{t.notRecorded}</span>
+        </>
+      ) : (
+        formatNumber(n)
+      )}
+    </span>
+  );
+  const stamp = <AgentStamp agent={agent} name={name} showName surface />;
   return (
     <div
       ref={ref}
@@ -55,7 +91,13 @@ export function AgentRow({
       aria-label={who.name}
     >
       <div className="mx-agent-id">
-        <AgentStamp agent={agent} showName surface />
+        {href !== undefined ? (
+          <Link className="mx-agent-link" href={href}>
+            {stamp}
+          </Link>
+        ) : (
+          stamp
+        )}
       </div>
       <Segmented<Autonomy>
         size="sm"
@@ -63,19 +105,13 @@ export function AgentRow({
         value={autonomy}
         onChange={onAutonomyChange}
         options={[
-          { value: "read", label: a.read, hint: a.readHint },
-          { value: "propose", label: a.propose, hint: a.proposeHint },
-          { value: "write", label: a.write, hint: a.writeHint },
+          level("read", a.read, a.readHint),
+          level("propose", a.propose, a.proposeHint),
+          level("write", a.write, a.writeHint),
         ]}
       />
-      <span className="mx-agent-num">
-        <span className="mx-sr">{t.readsLabel} </span>
-        {formatNumber(reads)}
-      </span>
-      <span className="mx-agent-num">
-        <span className="mx-sr">{t.writesLabel} </span>
-        {formatNumber(writes)}
-      </span>
+      {count(t.readsLabel, reads)}
+      {count(t.writesLabel, writes)}
       <span className="mx-agent-seen">
         {paused ? (
           <StateMark state="off" label={t.paused} />
@@ -98,7 +134,7 @@ export function AgentRow({
             <code className="mx-code">{target}</code>
           </>
         ) : (
-          <span className="mx-meta">{t.mcpOnly}</span>
+          <span className="mx-meta">{noTarget ?? t.mcpOnly}</span>
         )}
       </span>
     </div>

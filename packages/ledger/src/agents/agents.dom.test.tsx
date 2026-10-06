@@ -184,6 +184,58 @@ describe("AgentRow", () => {
       "—Not seen yet",
     );
   });
+
+  it("greys out levels it can't take, with the reason, and skips them", () => {
+    const onChange = vi.fn();
+    render(
+      <AgentRow
+        agent="codex"
+        autonomy="read"
+        onAutonomyChange={onChange}
+        unavailable={{ write: "API keys propose at most." }}
+        reads={3}
+        writes={1}
+      />,
+    );
+    const write = screen.getByRole("radio", { name: "Write" });
+    expect(write.getAttribute("aria-disabled")).toBe("true");
+    expect(write.hasAttribute("disabled")).toBe(false);
+    expect(write.title).toBe("API keys propose at most.");
+    fireEvent.click(write);
+    expect(onChange).not.toHaveBeenCalled();
+    const read = screen.getByRole("radio", { name: "Read" });
+    read.focus();
+    fireEvent.keyDown(read, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(
+      screen.getByRole("radio", { name: "Propose" }),
+    );
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+    // Past Propose the arrow wraps round to Read: Write is never focused or chosen.
+    expect(document.activeElement).toBe(read);
+    expect(onChange.mock.calls.map(([v]) => v)).toEqual(["propose"]);
+  });
+
+  it("links to the agent's page, names counts not recorded, and says why there's no file", () => {
+    const { container } = render(
+      <AgentRow
+        agent="cursor"
+        name="Cursor (laptop)"
+        autonomy="read"
+        reads={null}
+        writes={0}
+        href="/memax-v2/agents/c1"
+        noTarget="Not compiling yet"
+      />,
+    );
+    const link = screen.getByRole("link", { name: /Cursor \(laptop\)/ });
+    expect(link.getAttribute("href")).toBe("/memax-v2/agents/c1");
+    expect(link.className).toBe("mx-agent-link");
+    expect(container.querySelector(".mx-agent-num")?.textContent).toBe(
+      "Reads in 7 days: —Not recorded yet",
+    );
+    expect(screen.getByText("Not compiling yet")).toBeTruthy();
+    expect(screen.queryByText("MCP only")).toBeNull();
+  });
 });
 
 describe("SyncTarget", () => {

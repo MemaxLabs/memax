@@ -119,6 +119,8 @@ export interface LedgerStrings {
     mcpOnly: string;
     paused: string;
     notSeen: string;
+    /** A count the server doesn't record yet (shown as "—"). */
+    notRecorded: string;
   };
   sync: Record<SyncStatus, string>;
   gate: {
@@ -283,6 +285,7 @@ export const en: LedgerStrings = {
     mcpOnly: "MCP only",
     paused: "Paused",
     notSeen: "Not seen yet",
+    notRecorded: "Not recorded yet",
   },
   sync: {
     synced: "In sync",

@@ -179,7 +179,15 @@ func (s *Server) CallTool(ctx context.Context, c *handler.MCPToolCall) (*mcp.Cal
 // memax:propose (403 insufficient_scope). On V1 the V1 tools answer it as
 // before.
 func (s *Server) StepUp(ctx context.Context, c *handler.MCPToolCall) (string, bool) {
-	if s == nil || handler.GetGrant(c.HTTP).AutonomyCeiling() != "read" {
+	if s == nil {
+		return "", false
+	}
+	// A grant whose scope only reads, or an older grant (no recorded
+	// scope) without write access: re-authorizing can fix either.
+	g := handler.GetGrant(c.HTTP)
+	readOnly := g.AutonomyCeiling() == "read" ||
+		(g.PrincipalType == "oauth_grant" && g.AutonomyCeiling() == "" && !g.DefaultPermissions.Has(handler.PermMemoryWrite))
+	if !readOnly {
 		return "", false
 	}
 	if c.Tool != "memax_push" && c.Tool != "memax_capture" && c.Tool != "memax_request_decision" {

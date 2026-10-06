@@ -1,10 +1,11 @@
 import { MemaxError, type V2 } from "memax-sdk";
-import type {
-  BriefItem,
-  BriefRowReceipt,
-  BriefSource,
-  BriefStructure,
-  BriefVersionView,
+import {
+  briefRefs,
+  type BriefItem,
+  type BriefRowReceipt,
+  type BriefSource,
+  type BriefStructure,
+  type BriefVersionView,
 } from "./brief";
 import {
   buildBriefView,
@@ -135,6 +136,29 @@ async function listMemories(
   return all;
 }
 
+/** The most memories whose receipts one Brief read joins (see marginsToRead). */
+const MARGINS = 120;
+
+/**
+ * Which memories' receipts the margin reads. /v2 lists memories without
+ * receipts, so each one outside the latest page of the log costs a
+ * request: the ones the Brief places or cites and the proposals come
+ * first, then kept memories it doesn't place yet, up to MARGINS. The
+ * rest show their ID without a receipt (a server gap: an expanded Brief
+ * read would carry them).
+ */
+export function marginsToRead(
+  memories: readonly V2.Memory[],
+  structure: BriefStructure,
+): V2.Memory[] {
+  const mentioned = new Set(briefRefs(structure));
+  const first = memories.filter(
+    (m) => mentioned.has(m.ref) || m.lifecycle === "proposed",
+  );
+  const rest = memories.filter((m) => !first.includes(m));
+  return [...first, ...rest].slice(0, MARGINS);
+}
+
 export function createSdkBrief(
   client: V2Client,
   viewerId: () => string | undefined,
@@ -155,9 +179,14 @@ export function createSdkBrief(
           .versions(space.slug, { limit: VERSIONS, signal })
           .catch(() => null),
       ]);
-      const receipts = await receiptsFor(client, space.slug, memories, signal);
       const viewer = viewerId();
       const current = versionOf(brief, viewer);
+      const receipts = await receiptsFor(
+        client,
+        space.slug,
+        marginsToRead(memories, current.structure),
+        signal,
+      );
       return buildBriefView({
         id: brief.id,
         ref: brief.ref,

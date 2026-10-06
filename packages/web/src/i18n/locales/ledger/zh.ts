@@ -3,6 +3,9 @@
 // 不用"AI""智能""魔法""删除""保存""批准"，不用感叹号和表情。
 import type { Translations } from "../en";
 import { ledgerAppZh } from "./app-zh";
+import { ledgerMemoryZh } from "./memory-zh";
+import { ledgerRecordsZh } from "./records-zh";
+import { ledgerReviewZh } from "./review-zh";
 
 export const ledgerZh: Translations["ledger"] = {
   meta: {
@@ -28,6 +31,9 @@ export const ledgerZh: Translations["ledger"] = {
     digest: "错误 {digest}",
   },
   app: ledgerAppZh,
+  records: ledgerRecordsZh,
+  review: ledgerReviewZh,
+  memory: ledgerMemoryZh,
   devTokens: {
     breadcrumb: "Ledger · 开发样张",
     title: "设计令牌与字体",

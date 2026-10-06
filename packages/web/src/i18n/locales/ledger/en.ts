@@ -5,6 +5,9 @@
 // "AI", "magic", "smart", "delete", "save" or "approve"; no
 // exclamation marks or emoji. voice.test.ts checks both locales.
 import { ledgerAppEn } from "./app-en";
+import { ledgerMemoryEn } from "./memory-en";
+import { ledgerRecordsEn } from "./records-en";
+import { ledgerReviewEn } from "./review-en";
 
 export const ledgerEn = {
   meta: {
@@ -32,6 +35,9 @@ export const ledgerEn = {
     digest: "Error {digest}",
   },
   app: ledgerAppEn,
+  records: ledgerRecordsEn,
+  review: ledgerReviewEn,
+  memory: ledgerMemoryEn,
   devTokens: {
     breadcrumb: "Ledger · Dev fixture",
     title: "Tokens and type",

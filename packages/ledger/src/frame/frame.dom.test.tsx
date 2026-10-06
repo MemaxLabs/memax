@@ -214,6 +214,13 @@ describe("CommandBar", () => {
       "↵ open⌘↵ keep answer as memoryTab ask / rememberEscclose",
     );
   });
+
+  it("shows the platform's keep key in the legend", () => {
+    const { container } = render(<CommandBar keepShortcut="Ctrl+Enter" />);
+    expect(container.querySelector(".mx-cmd-foot")?.textContent).toBe(
+      "↵ openCtrl+Enter keep answer as memoryTab ask / rememberEscclose",
+    );
+  });
 });
 
 describe("CommandDialog", () => {

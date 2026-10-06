@@ -23,6 +23,49 @@ type Claims struct {
 	// (migration 030), set by the server when the login completes. Empty
 	// on tokens from before it existed, which count as the CLI.
 	Surface string `json:"surface,omitempty"`
+	// Iss is the issuer (the authorization server's base URL) and Aud the
+	// resources the token is for (RFC 8707): an MCP OAuth token works only
+	// at the MCP endpoint it was issued for. Older tokens carry neither.
+	Iss string   `json:"iss,omitempty"`
+	Aud Audience `json:"aud,omitempty"`
+}
+
+// Audience is a JWT aud claim: one string, or an array of them.
+type Audience []string
+
+// MarshalJSON writes one audience as a string, several as an array.
+func (a Audience) MarshalJSON() ([]byte, error) {
+	if len(a) == 1 {
+		return json.Marshal(a[0])
+	}
+	return json.Marshal([]string(a))
+}
+
+// UnmarshalJSON reads a string or an array.
+func (a *Audience) UnmarshalJSON(b []byte) error {
+	var one string
+	if err := json.Unmarshal(b, &one); err == nil {
+		*a = Audience{one}
+		return nil
+	}
+	var many []string
+	if err := json.Unmarshal(b, &many); err != nil {
+		return fmt.Errorf("aud: %w", err)
+	}
+	*a = many
+	return nil
+}
+
+// Contains reports whether resource is one of the audiences, ignoring a
+// trailing slash.
+func (a Audience) Contains(resource string) bool {
+	resource = strings.TrimRight(resource, "/")
+	for _, v := range a {
+		if strings.TrimRight(v, "/") == resource {
+			return true
+		}
+	}
+	return false
 }
 
 // The sign-in surfaces.
@@ -62,6 +105,12 @@ func SignAgentAccessToken(userID, agentName string, secret []byte, ttl time.Dura
 // The token stays small and revocation remains immediate because permissions
 // are resolved from the database on every authenticated request.
 func SignGrantAccessToken(userID, agentName, grantID string, secret []byte, ttl time.Duration) (string, error) {
+	return SignBoundGrantAccessToken(userID, agentName, grantID, "", nil, secret, ttl)
+}
+
+// SignBoundGrantAccessToken is SignGrantAccessToken with an issuer and the
+// resources the token is for (RFC 8707 audience binding, RFC 9068 iss).
+func SignBoundGrantAccessToken(userID, agentName, grantID, issuer string, audience []string, secret []byte, ttl time.Duration) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		Sub:       userID,
@@ -69,6 +118,8 @@ func SignGrantAccessToken(userID, agentName, grantID string, secret []byte, ttl 
 		Exp:       now.Add(ttl).Unix(),
 		AgentName: agentName,
 		GrantID:   grantID,
+		Iss:       issuer,
+		Aud:       audience,
 	}
 	return signJWT(claims, secret)
 }

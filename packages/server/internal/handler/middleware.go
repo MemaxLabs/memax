@@ -34,6 +34,9 @@ type APIKeyResult struct {
 	// owner's own. A key with neither an agent nor this flag has no
 	// author identity and cannot write memories.
 	KeyStandalone bool
+	// OAuthScope is an OAuth grant's granted scope ("memax:read
+	// memax:propose"), empty for API keys and older grants.
+	OAuthScope string
 }
 
 // APIKeyResolver resolves an API key string to a user ID and optional hub scope.
@@ -73,6 +76,7 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 			var agentName string      // agent identity from API key (e.g., "claude-code")
 			var impersonatorID string // set when JWT carries impersonator_id claim
 			var grant GrantContext
+			var audienceMismatch bool // an audience-bound token sent to another resource
 			if strings.HasPrefix(token, "mxk_") && keyResolver != nil {
 				// API key auth — resolves user, hub scope, and agent identity
 				result := keyResolver(token)
@@ -96,6 +100,13 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 			} else {
 				// JWT auth — also extract agent_name if present (MCP OAuth tokens)
 				claims := ClaimsFromRequest(r, jwtSecret)
+				// RFC 8707: a token bound to resources works only there. An MCP
+				// OAuth token names its MCP endpoint; anywhere else (another
+				// endpoint, the REST API) it is not a credential.
+				if claims != nil && len(claims.Aud) > 0 && !claims.Aud.Contains(mcpPublicBaseURL(r)+r.URL.Path) {
+					claims = nil
+					audienceMismatch = true
+				}
 				if claims != nil {
 					impersonatorID = claims.ImpersonatorID
 					if claims.GrantID != "" && grantResolver != nil {
@@ -113,6 +124,7 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 								DefaultPermissions: result.DefaultPermissions,
 								TrustLevel:         result.TrustLevel,
 								RateLimitTier:      result.RateLimitTier,
+								OAuthScope:         result.OAuthScope,
 							}
 						}
 					} else {
@@ -137,7 +149,14 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 				// For MCP endpoints, include WWW-Authenticate header for OAuth discovery
 				if strings.HasPrefix(r.URL.Path, "/mcp") {
 					message = "Authentication required. Authorize this MCP client via OAuth (for Codex: codex mcp login memax), or configure an API key with: memax setup --mcp --api-key"
-					w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer resource_metadata="%s"`, MCPResourceMetadataURL(r)))
+					challenge := fmt.Sprintf(`Bearer resource_metadata="%s"`, MCPResourceMetadataURL(r))
+					if audienceMismatch {
+						message = "This token was issued for another Memax endpoint. Authorize this MCP client again for this one."
+						challenge += `, error="invalid_token", error_description="the token's audience is another resource"`
+					}
+					w.Header().Set("WWW-Authenticate", challenge)
+				} else if audienceMismatch {
+					message = "This token is for a Memax MCP endpoint and can't be used here."
 				}
 				writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
 					Error: &model.Error{Code: "unauthorized", Message: message},

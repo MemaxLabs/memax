@@ -436,6 +436,8 @@ func registerAuthRoutes(root *http.ServeMux, protected *http.ServeMux, deps rout
 	root.Handle("/v1/auth/api-keys/", deps.authMiddleware(protected))
 
 	mcpOAuth := handler.NewMCPOAuthHandler(deps.auth)
+	// Consent connects the agent to the chosen spaces on the V2 record.
+	mcpOAuth.SetLedger(deps.v2.Ledger())
 	deps.auth.SetMCPOAuth(mcpOAuth)
 	root.HandleFunc("GET /.well-known/oauth-protected-resource", mcpOAuth.ProtectedResourceMetadata)
 	root.HandleFunc("GET /.well-known/oauth-protected-resource/", mcpOAuth.ProtectedResourceMetadata)

@@ -473,7 +473,9 @@ func (h *Handler) getDrift(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /v2/targets/{target}/drift:pull
-func (h *Handler) pullDrift(w http.ResponseWriter, r *http.Request) { h.resolveDrift(w, r, ledger.DriftPull) }
+func (h *Handler) pullDrift(w http.ResponseWriter, r *http.Request) {
+	h.resolveDrift(w, r, ledger.DriftPull)
+}
 
 // POST /v2/targets/{target}/drift:overwrite
 func (h *Handler) overwriteDrift(w http.ResponseWriter, r *http.Request) {
@@ -481,7 +483,9 @@ func (h *Handler) overwriteDrift(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /v2/targets/{target}/drift:stop
-func (h *Handler) stopDrift(w http.ResponseWriter, r *http.Request) { h.resolveDrift(w, r, ledger.DriftStop) }
+func (h *Handler) stopDrift(w http.ResponseWriter, r *http.Request) {
+	h.resolveDrift(w, r, ledger.DriftStop)
+}
 
 func (h *Handler) resolveDrift(w http.ResponseWriter, r *http.Request, mode ledger.DriftMode) {
 	p, key, e := h.commandStart(r)

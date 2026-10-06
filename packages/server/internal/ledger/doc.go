@@ -20,7 +20,7 @@
 // the commit if a projection row has no receipt from the same
 // transaction, receipts are append-only and content-free, a trigger
 // re-checks the lifecycle transition, and RLS policies hide every row
-// outside the scope (migrations 026–029).
+// outside the scope (migrations 026–029 and 031).
 //
 // # The Brief, targets and compiles
 //

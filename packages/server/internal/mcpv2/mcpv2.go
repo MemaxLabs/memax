@@ -20,8 +20,11 @@
 //     client that can't elicit gets the proposal's ID and the Review link.
 //   - memax_recall reads kept memories (lexically for now; plan §5.11),
 //     plus this session's own pending proposals, forget notices, and
-//     without a query a digest of each space.
-//   - memax_search searches kept memories and decisions.
+//     without a query a digest of each space. A decision a newer one
+//     superseded stays kept but is left out, as in the compiled files.
+//   - memax_search searches kept memories and decisions (the same).
+//   - memax_push says so when a write touches a decision in force and so
+//     waits for the judge in Review (policy touches_decision).
 //   - memax_get reads one memory with its receipts and sources.
 //   - memax_forget asks a person: an agent never forgets.
 //   - memax_capture writes notes (V1's note path), never proposals.

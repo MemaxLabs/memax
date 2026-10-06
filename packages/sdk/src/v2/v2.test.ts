@@ -481,3 +481,130 @@ describe("memax.v2.agents", () => {
     expect(refusalOf(err)?.code).toBe("autonomy_needs_web");
   });
 });
+
+describe("memax.v2 conflicts and undo", () => {
+  const flagged: V2.Memory = {
+    ...memory,
+    ref: "M-0431",
+    state: "conflict",
+    lifecycle: "proposed",
+    flags: ["conflict"],
+    links: [
+      {
+        id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a60",
+        kind: "conflicts_with",
+        direction: "out",
+        memory_id: memory.id,
+        ref: "M-0174",
+        receipt_id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a61",
+        created_at: "2026-10-06T09:31:00Z",
+      },
+    ],
+    judge: {
+      state: "judged",
+      version: 1,
+      verdict: "contradicts",
+      outcome: "flagged",
+      stage: "llm",
+      related: { id: memory.id, ref: "M-0174" },
+      confidence: 0.93,
+      tier: "strong",
+    },
+  };
+  const changes: V2.MemoriesCommandResult = {
+    outcome: "applied",
+    policy: { effect: "apply" },
+    memory: flagged,
+    memories: [flagged, memory],
+    receipts: [],
+  };
+
+  it("reads a conflict with its space and the other side", async () => {
+    const conflict: V2.Conflict = {
+      memory: flagged,
+      other: memory,
+      flagged_ref: "M-0431",
+      decision_ref: "M-0174",
+      link: flagged.links![0]!,
+      receipts: [],
+      options: [
+        {
+          choice: "keep_this",
+          allowed: true,
+          effects: [
+            { ref: "M-0431", change: "kept" },
+            { ref: "M-0174", change: "superseded" },
+          ],
+        },
+      ],
+    };
+    const { memax, call } = client(jsonResponse({ data: conflict }));
+    await expect(
+      memax.v2.memories.conflict("M-0431", {
+        space: "memax-v2",
+        with: "M-0174",
+      }),
+    ).resolves.toEqual(conflict);
+    expect(call().url).toBe(
+      "https://api.memax.app/v2/memories/M-0431/conflict?space=memax-v2&with=M-0174",
+    );
+    expect(call().method).toBe("GET");
+  });
+
+  it("settles a conflict as a command", async () => {
+    const { memax, call } = client(jsonResponse({ data: changes }));
+    const input: V2.ResolveConflictInput = {
+      choice: "keep_both",
+      statement: "Production runs on Fly.io.",
+      other_statement: "Previews run on Railway.",
+    };
+    await expect(
+      memax.v2.memories.resolveConflict("M-0431", input, {
+        space: "memax-v2",
+        idempotencyKey: "settle-1",
+        ifMatch: 1,
+      }),
+    ).resolves.toEqual(changes);
+    const c = call();
+    expect(c.url).toBe(
+      "https://api.memax.app/v2/memories/M-0431:resolve-conflict?space=memax-v2",
+    );
+    expect(c.method).toBe("POST");
+    expect(c.headers).toMatchObject({
+      "Idempotency-Key": "settle-1",
+      "If-Match": '"1"',
+    });
+    expect(c.body).toEqual(input);
+  });
+
+  it("undoes by receipt, and surfaces why an undo was refused", async () => {
+    const { memax, call } = client(jsonResponse({ data: changes }));
+    await memax.v2.receipts.undo(
+      "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a61",
+      { reason: "Kept the wrong card." },
+      { idempotencyKey: "undo-1" },
+    );
+    expect(call().url).toBe(
+      "https://api.memax.app/v2/receipts/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a61:undo",
+    );
+    expect(call().body).toEqual({ reason: "Kept the wrong card." });
+
+    const refused = client(
+      jsonResponse(
+        {
+          error: {
+            code: "undo_refused",
+            message: "This decision is too old to undo.",
+            details: { reason: "window_passed", ref: "M-0431" },
+          },
+        },
+        { status: 409 },
+      ),
+    );
+    const err = await refused.memax.v2.receipts
+      .undo("0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a61", {}, { idempotencyKey: "u" })
+      .catch((e: unknown) => e);
+    expect((err as MemaxError).code).toBe("undo_refused");
+    expect((err as MemaxError).details?.reason).toBe("window_passed");
+  });
+});

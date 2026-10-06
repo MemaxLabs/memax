@@ -255,6 +255,33 @@ describe("the CSV export", () => {
   });
 });
 
+describe("the judge's receipts", () => {
+  const cases: Array<[ActivityEntry["action"], string]> = [
+    ["judged", "You checked M-0431 for duplicates and conflicts."],
+    ["linked", "You linked M-0431 to the memory it updates."],
+    ["superseded", "You superseded M-0431 with a newer decision."],
+  ];
+
+  it.each(cases)("words %s in en and zh", (action, english) => {
+    const e = entry({
+      action,
+      object: { kind: "memory", ref: "M-0431", id: "m1" },
+    });
+    const say = (locale: "en" | "zh") =>
+      sentenceText(
+        activitySentences(
+          (locale === "en" ? en : zh).ledger.activity,
+          e,
+          names(locale),
+        ),
+        locale,
+      );
+    expect(say("en")).toBe(english);
+    expect(say("zh")).toContain("M-0431");
+    expect(say("zh")).not.toMatch(/[A-Za-z]{4,} [a-z]/); // no English left in zh
+  });
+});
+
 describe("the compile pipeline's receipts", () => {
   const cases: Array<[ActivityEntry["action"], string, string]> = [
     ["revised", "B-0043", "You revised the Brief (B-0043)."],

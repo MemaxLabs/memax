@@ -290,6 +290,38 @@ func Transition(from State, v Verb) (State, error) {
 	return refuse(fmt.Sprintf("unknown change %q", v))
 }
 
+// UndoAllowed reports whether Undo may move a memory from lifecycle
+// `from` back to `to` although no verb does: a kept memory back to a
+// proposal (undo a keep) and a rejected one back to a proposal (undo a
+// reject). It is the Go side of v2.lifecycle_undo_allowed; the database
+// admits these two only with an `undid` receipt (migration 035).
+func UndoAllowed(from, to Lifecycle) bool {
+	return to == Proposed && (from == Kept || from == Rejected)
+}
+
+// CanRestore checks that Undo may put a memory back into the state it was
+// in before a command: the state must be storable (flags only on proposed
+// and kept memories, stale only on kept ones), and the move must be one a
+// verb makes (merged → proposed, faded → kept, …) or an undo transition.
+func CanRestore(from, to State) error {
+	refuse := func(msg string) error { return &TransitionError{From: from, Verb: "undo", Message: msg} }
+	switch {
+	case from.Lifecycle == Forgotten:
+		return refuse("this memory is forgotten; nothing can change it")
+	case !to.Lifecycle.Valid():
+		return refuse(fmt.Sprintf("unknown lifecycle %q", to.Lifecycle))
+	case len(to.Flags) > 0 && to.Lifecycle != Proposed && to.Lifecycle != Kept:
+		return refuse("only kept memories and proposals carry flags")
+	case to.Flags.Has(Stale) && to.Lifecycle != Kept:
+		return refuse("only kept memories can be stale")
+	case from.Lifecycle == to.Lifecycle && (to.Lifecycle == Proposed || to.Lifecycle == Kept):
+		return nil
+	case Allowed(from.Lifecycle, to.Lifecycle) || UndoAllowed(from.Lifecycle, to.Lifecycle):
+		return nil
+	}
+	return refuse(fmt.Sprintf("a %s memory can't go back to %s", from.Lifecycle, to.Lifecycle))
+}
+
 // Allowed reports whether any verb moves a memory from lifecycle `from`
 // to lifecycle `to` (from None means creating it). It is the Go side of
 // v2.lifecycle_transition_allowed, which guards the same table in SQL.

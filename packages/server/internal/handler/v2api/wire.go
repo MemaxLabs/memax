@@ -124,6 +124,24 @@ type reviewRequest struct {
 	commandFields
 }
 
+type resolveConflictRequest struct {
+	Choice         ledger.ConflictChoice `json:"choice"`
+	Other          string                `json:"other"`
+	Statement      string                `json:"statement"`
+	OtherStatement string                `json:"other_statement"`
+	commandFields
+}
+
+// memoriesResult is a command that changed several memories (settling a
+// conflict, an undo).
+type memoriesResult struct {
+	Outcome  ledger.Outcome   `json:"outcome"`
+	Policy   policy.Decision  `json:"policy"`
+	Memory   *ledger.Memory   `json:"memory"`
+	Memories []ledger.Memory  `json:"memories"`
+	Receipts []ledger.Receipt `json:"receipts"`
+}
+
 // maxBody bounds a command body: 20 sources with 4000-character quotes
 // fit with room to spare.
 const maxBody = 1 << 20

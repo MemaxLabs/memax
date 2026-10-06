@@ -154,6 +154,7 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 - **Trust.** Agents propose and people keep. Autonomy (read / propose / write), roles, quarantine of external content and plan limits are decided in one place: `policy.Decide`. A memory's trust is the minimum of its sources, and Dream can't raise it.
 - **Agent connections.** Every API key and OAuth grant resolves to an agent connection (`v2.agent_connections`, migration 029) with autonomy per space; receipts name the connection. A credential with no connection, a paused one, or a space it isn't connected to only reads. Only people change connections (`policy.DecideConnection`), and raising autonomy needs `human_web`.
 - **Compiles.** A space's Brief (`B-`) and targets (`AGENTS.md`, the `CLAUDE.md` shim, scoped Cursor rules, the ChatGPT copy-out) live in migration 031. A command that changes what compiles bumps `targets.dirty_gen` and inserts the `compile_target` River jobs with `InsertManyTx` **in the command's transaction** (`internal/ledger/jobs.go` switches back to the login role for River's tables), so a failed insert rolls back the whole command. `internal/compile` runs the jobs against the stateless compile service (`packages/compile-service`, internal-only) and records each run (`C-`) through the ledger as Memax. Hand edits come back as proposals (`file:line` sources) through observations and `ResolveDrift`; a deleted line never forgets anything by itself.
+- **The judge.** Every proposal, and every memory a Write-level agent kept at once, is judged by the River job `judge_proposal` (`internal/judge`), enqueued in the command's transaction: repeats are folded, updates linked, and a contradiction of a decision in force is flagged as a conflict before anyone keeps it (rule 11). It acts only through `ledger.RecordVerdict`, as Memax. Model tiers are explicit config (`JUDGE_*`), never inferred from a model name. A person settles a conflict with `ResolveConflict`, and undoes their own decisions (and the judge's folds) with `Undo`, addressed by receipt.
 - **Assurance.** A person's Keep is `human_web` only when the session was issued to the web app (the token's `surface` claim, migration 030) **and** `/api/proxy` signed the request with `WEB_SURFACE_SECRET` (`internal/websurface`, which has the threat model). Everything else, the CLI included, is `client_attested`.
 
 **API, MCP and CLI**
@@ -521,6 +522,10 @@ pnpm --filter @memaxlabs/server migrate:new <slug>
 
 # Run the LoCoMo benchmark harness
 cd packages/server && go run ./cmd/locomo/ -dataset eval/locomo/data/locomo10.json
+
+# Judge eval (eval/judge/pairs.json): the set, stage 0 and the harness on a fake model;
+# JUDGE_EVAL_LIVE=1 also scores the real JUDGE_* tiers (needs ANTHROPIC_API_KEY)
+cd packages/server && go test ./eval/judge/ -v
 
 # Connect V1 API keys and OAuth grants to the V2 record as agent connections, at Propose
 # (idempotent; prefer -user for the people moving to V2)

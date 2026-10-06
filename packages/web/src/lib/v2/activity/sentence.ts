@@ -249,6 +249,12 @@ export function activitySentences(
       return [one(s.overwritten, { ref: text(entry.object.ref) })];
     case "stopped":
       return [one(s.stopped, { ref: text(entry.object.ref) })];
+    case "judged":
+      return [one(s.judged, { ref: text(entry.object.ref) })];
+    case "linked":
+      return [one(s.linked, { ref: text(entry.object.ref) })];
+    case "superseded":
+      return [one(s.superseded, { ref: text(entry.object.ref) })];
     default: {
       // Every verb the API can send has words above; this fails to compile
       // when the spec gains one. A newer server can still send a verb this

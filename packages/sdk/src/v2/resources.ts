@@ -17,12 +17,14 @@ import type {
   CommandResult,
   CompileRunPage,
   ConfigureTargetInput,
+  Conflict,
   CreateTargetInput,
   DeliveryInput,
   DeliveryResult,
   Drift,
   DriftResolutionResult,
   EditInput,
+  MemoriesCommandResult,
   MemoryDetail,
   MemoryPage,
   ObservationInput,
@@ -30,6 +32,7 @@ import type {
   PolicyDecision,
   ReceiptPage,
   RememberInput,
+  ResolveConflictInput,
   ResolveDriftInput,
   ReviewInput,
   ReviewPage,
@@ -40,6 +43,7 @@ import type {
   TargetList,
   TargetPreview,
   TargetResult,
+  UndoInput,
 } from "./types.js";
 
 /** Options every command takes. */
@@ -94,6 +98,11 @@ export interface ListReceiptsOptions extends PageOptions {
 
 export interface GetMemoryOptions extends MemoryRefOptions {
   signal?: AbortSignal;
+}
+
+export interface GetConflictOptions extends GetMemoryOptions {
+  /** The other side, when the memory has more than one conflict. */
+  with?: string;
 }
 
 function seg(value: string): string {
@@ -202,6 +211,37 @@ export class V2MemoriesResource {
     return this.command(ref, "edit", input, opts, opts.ifMatch);
   }
 
+  /**
+   * Both sides of one of this memory's conflicts, their latest receipts,
+   * and the four answers with what each does and whether you may take it
+   * (ReviewConflict).
+   */
+  async conflict(ref: string, opts?: GetConflictOptions): Promise<Conflict> {
+    return this.req("GET", `/v2/memories/${seg(ref)}/conflict`, {
+      query: { space: opts?.space, with: opts?.with },
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Settle a conflict. Relative to this memory: `keep_this`, `keep_other`,
+   * `keep_both` (with narrower `statement` / `other_statement`) or
+   * `leave_open`. Only a person who may keep can; an agent or API key gets
+   * a MemaxError `refused` (see {@link refusalOf}).
+   */
+  async resolveConflict(
+    ref: string,
+    input: ResolveConflictInput,
+    opts: ReviewOptions,
+  ): Promise<MemoriesCommandResult> {
+    return this.req("POST", `/v2/memories/${seg(ref)}:resolve-conflict`, {
+      query: { space: opts.space },
+      body: input,
+      extraHeaders: commandHeaders(opts, opts.ifMatch),
+      signal: opts.signal,
+    });
+  }
+
   private async command(
     ref: string,
     verb: "keep" | "reject" | "edit",
@@ -241,6 +281,26 @@ export class V2ReceiptsResource {
     return this.req("GET", `/v2/spaces/${seg(space)}/receipts`, {
       query: { ...pageQuery(opts), memory: opts?.memory },
       signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Undo the command that wrote this receipt (any of its receipts):
+   * Review's ⌘Z. A person undoes their own keep, reject, edit or conflict
+   * resolution within 10 minutes, and any person who may keep undoes one
+   * of the judge's folds. A refusal throws a MemaxError `undo_refused`
+   * whose `details.reason` is window_passed, later_changes,
+   * already_undone or not_undoable.
+   */
+  async undo(
+    receipt: string,
+    input: UndoInput,
+    opts: CommandOptions,
+  ): Promise<MemoriesCommandResult> {
+    return this.req("POST", `/v2/receipts/${seg(receipt)}:undo`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
     });
   }
 }

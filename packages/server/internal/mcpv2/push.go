@@ -239,6 +239,9 @@ func (s *Server) proposedResult(sp space, m *ledger.Memory, d policy.Decision, a
 	switch {
 	case d.Code == policy.CodeDecisionNeedsWeb:
 		fmt.Fprintf(&b, " Decisions in %s need a person on the web, so it can't be kept from the agent.", sp.Hub.Name)
+	case d.Code == policy.CodeTouchesDecision:
+		fmt.Fprintf(&b, " It touches a decision in force in %s, so it went to Review: Memax checks it against that decision, "+
+			"then a person keeps it or settles the conflict. Don't act on it as kept yet.", sp.Hub.Name)
 	case d.Quarantine:
 		b.WriteString(" It cites an outside source, so it is quarantined until a person keeps it on the web.")
 	case d.Message != "" && d.Code != policy.CodeAutonomyPropose:

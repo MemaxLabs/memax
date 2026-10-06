@@ -31,7 +31,20 @@ export type ReviewPage = Schemas["ReviewPage"];
 export type ReceiptPage = Schemas["ReceiptPage"];
 export type MemoryDetail = Schemas["MemoryDetail"];
 export type CommandResult = Schemas["CommandResult"];
+/** A command that changed several memories: settling a conflict, an undo. */
+export type MemoriesCommandResult = Schemas["MemoriesCommandResult"];
 export type ErrorBody = Schemas["Error"];
+
+// The judge, links and conflicts
+export type Link = Schemas["Link"];
+export type LinkedMemory = Schemas["LinkedMemory"];
+export type MemoryPointer = Schemas["MemoryPointer"];
+/** The judge's verdict on a memory's current version. */
+export type JudgeInfo = Schemas["JudgeInfo"];
+/** Both sides of a conflict and the four answers (ReviewConflict). */
+export type Conflict = Schemas["Conflict"];
+export type ConflictOption = Schemas["ConflictOption"];
+export type ConflictEffect = Schemas["ConflictEffect"];
 
 // The Brief, targets and compiles
 export type Brief = Schemas["Brief"];
@@ -89,6 +102,9 @@ export type TargetSettingsInput = Schemas["TargetSettingsInput"];
 export type ObservationInput = Schemas["ObservationRequest"];
 export type DeliveryInput = Schemas["DeliveryRequest"];
 export type ResolveDriftInput = Schemas["ResolveDriftRequest"];
+export type ResolveConflictInput = Schemas["ResolveConflictRequest"];
+/** The body of an undo: an optional reason, for the receipt. */
+export type UndoInput = Schemas["ReviewRequest"];
 
 // Vocabulary
 export type Section = Schemas["Section"];
@@ -126,5 +142,19 @@ export type PolicyEffect = Schemas["PolicyEffect"];
 /** Why policy decided what it did; localise by it. */
 export type PolicyCode = Schemas["PolicyCode"];
 export type ErrorCode = Schemas["ErrorCode"];
+export type LinkKind = Schemas["LinkKind"];
+export type LinkDirection = Schemas["LinkDirection"];
+/** duplicate, updates, extends, contradicts, unrelated or none. */
+export type Relation = Schemas["Relation"];
+export type JudgeStage = Schemas["JudgeStage"];
+export type VerdictOutcome = Schemas["VerdictOutcome"];
+/** working (not judged yet), judged or failed. */
+export type JudgeState = Schemas["JudgeState"];
+export type ModelTier = Schemas["ModelTier"];
+/** keep_this, keep_other, keep_both or leave_open. */
+export type ConflictChoice = Schemas["ConflictChoice"];
+export type ConflictChange = Schemas["ConflictChange"];
+/** Why an undo was refused (`details.reason` of `undo_refused`). */
+export type UndoRefusal = Schemas["UndoRefusal"];
 /** The surfaces a client may declare in `X-Memax-Via`. */
 export type ClientVia = components["parameters"]["Via"];

@@ -388,26 +388,37 @@ export function dayLabel(
   }).format(new Date(`${key}T12:00:00Z`));
 }
 
-/** "Times in Vancouver (PT)"; in Chinese, the zone's own name ("北美太平洋时间"). */
+/**
+ * "Times in Vancouver (PT)"; in Chinese, the zone's own name ("北美太平洋时间").
+ * Named as of `at`, the moment the times are read against: a zone's name
+ * can change with the date. When the short name needs a place to be
+ * unambiguous ("PT (Canada)": from November 2026 British Columbia stays
+ * on UTC−7 while the rest of Pacific Time goes back to UTC−8), the
+ * English label uses the offset instead ("GMT-7"), which is exact and
+ * doesn't nest parentheses.
+ */
 export function zoneLabel(
   copy: ActivityCopy,
   timeZone: string,
   locale: Locale,
+  at: Date = new Date(),
 ): string {
-  const zoneName = (style: "shortGeneric" | "longGeneric") =>
+  const zoneName = (style: "shortGeneric" | "longGeneric" | "shortOffset") =>
     new Intl.DateTimeFormat(DATE_TAGS[locale], {
       timeZone,
       timeZoneName: style,
     })
-      .formatToParts(new Date())
+      .formatToParts(at)
       .find((p) => p.type === "timeZoneName")?.value ?? timeZone;
   if (locale === "zh") {
     return interpolate(copy.timesIn, { zone: zoneName("longGeneric") });
   }
+  const generic = zoneName("shortGeneric");
+  const zone = generic.includes("(") ? zoneName("shortOffset") : generic;
   const city = timeZone.includes("/")
     ? timeZone.split("/").pop()!.replace(/_/g, " ")
     : null;
   return city
-    ? interpolate(copy.timesIn, { city, zone: zoneName("shortGeneric") })
-    : interpolate(copy.timesInZone, { zone: zoneName("shortGeneric") });
+    ? interpolate(copy.timesIn, { city, zone })
+    : interpolate(copy.timesInZone, { zone });
 }

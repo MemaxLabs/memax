@@ -142,7 +142,9 @@ export function ActivityLog({
           }))}
         />
         <span className={styles.grow} />
-        <span className="mx-meta">{zoneLabel(copy, timeZone, locale)}</span>
+        <span className="mx-meta">
+          {zoneLabel(copy, timeZone, locale, now)}
+        </span>
       </div>
 
       <section

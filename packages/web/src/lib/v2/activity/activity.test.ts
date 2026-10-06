@@ -177,12 +177,29 @@ describe("Activity days and zones", () => {
   });
 
   it("names the zone the times are in", () => {
-    expect(zoneLabel(en.ledger.activity, TZ, "en")).toBe(
+    expect(zoneLabel(en.ledger.activity, TZ, "en", NOW)).toBe(
       "Times in Vancouver (PT)",
     );
-    expect(zoneLabel(en.ledger.activity, "UTC", "en")).toMatch(/^Times in /);
-    expect(zoneLabel(zh.ledger.activity, TZ, "zh")).toBe(
+    expect(zoneLabel(en.ledger.activity, "UTC", "en", NOW)).toMatch(
+      /^Times in /,
+    );
+    expect(zoneLabel(zh.ledger.activity, TZ, "zh", NOW)).toBe(
       "时间按北美太平洋时间",
+    );
+  });
+
+  it("names the zone as of the times shown, with the offset when the name needs a place", () => {
+    // tzdata 2026c: from Nov 1, 2026 British Columbia stays on UTC−7, so
+    // in winter Vancouver's short name is "PT (Canada)".
+    const winter = new Date("2026-12-05T12:00:00Z");
+    expect(zoneLabel(en.ledger.activity, TZ, "en", winter)).toBe(
+      "Times in Vancouver (GMT-7)",
+    );
+    expect(
+      zoneLabel(en.ledger.activity, "America/Los_Angeles", "en", winter),
+    ).toBe("Times in Los Angeles (PT)");
+    expect(zoneLabel(zh.ledger.activity, TZ, "zh", winter)).toBe(
+      "时间按北美太平洋时间（加拿大）",
     );
   });
 });

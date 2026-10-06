@@ -1,5 +1,6 @@
 import type { V2 } from "memax-sdk";
 import type { AgentConnectionView, AgentsData } from "./agents";
+import { askingAgents, type GatesSource } from "./gates";
 import type { MemoryNote } from "./memories";
 import { receiptsFor, reviewItemOf, type V2Client } from "./sdk-records";
 import { startOfDay, type AgentToday, type TodaySource } from "./today";
@@ -7,10 +8,11 @@ import type { Viewer } from "./types";
 
 /**
  * Today through memax.v2: Review's queue (its counts and first items),
- * the space's agents and what each wrote today, from today's receipts,
- * and read today, from the space's reads (R-). What /v2 doesn't serve
- * is said so: Dream editions (unavailable), the Dream schedule and
- * handoffs (PLACEHOLDER) and decision gates (no questions yet).
+ * the decision gates waiting on an answer (the questions, and who asked
+ * them), the space's agents and what each wrote today, from today's
+ * receipts, and read today, from the space's reads (R-). What /v2
+ * doesn't serve is said so: Dream editions (unavailable), the Dream
+ * schedule and handoffs (PLACEHOLDER).
  */
 
 const QUEUE = 200;
@@ -95,18 +97,21 @@ export function createSdkToday({
   client,
   viewer,
   agents,
+  gates,
 }: {
   client: V2Client;
   viewer: Viewer | null;
   agents: Pick<AgentsData, "spaceAgents">;
+  gates: Pick<GatesSource, "waiting">;
 }): TodaySource {
   return {
     async get({ space, signal }) {
       const timeZone =
         viewer?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
       const dayStart = startOfDay(new Date(), timeZone);
-      const [queue, connections, log] = await Promise.all([
+      const [queue, asked, connections, log] = await Promise.all([
         client.v2.review.list(space.slug, { limit: QUEUE, signal }),
+        gates.waiting({ space, signal }),
         agents.spaceAgents(space, signal).catch(() => null),
         client.v2.receipts
           .list(space.slug, { limit: RECEIPTS, signal })
@@ -142,11 +147,11 @@ export function createSdkToday({
       return {
         waiting: {
           items,
-          total: queue.total,
+          gates: asked,
+          total: queue.total + asked.length,
           proposals: items.filter((i) => i.lifecycle === "proposed").length,
           stale: items.filter((i) => i.state === "stale").length + unseen,
-          // PLACEHOLDER: decision gates aren't served yet (epic 1.11).
-          questions: [],
+          questions: askingAgents(asked),
           notes,
         },
         // PLACEHOLDER: Dream editions aren't built yet (plan §5.10).

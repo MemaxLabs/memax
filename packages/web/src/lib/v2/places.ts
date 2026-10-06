@@ -76,6 +76,14 @@ export function placeHref(space: string, route: PlaceRoute): string {
 }
 
 /**
+ * Where a decision gate opens: Review, with its card selected. A gate
+ * that ended still opens there, saying how it ended.
+ */
+export function gateHref(space: string, ref: string): string {
+  return `${placeHref(space, "review")}?gate=${encodeURIComponent(ref)}`;
+}
+
+/**
  * Where ⌘1–⌘9 and the switcher land: the same place in the other space,
  * or its Today when it hasn't got one.
  */

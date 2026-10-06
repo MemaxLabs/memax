@@ -71,12 +71,14 @@ export const DEMO_SPACES: readonly SpaceSummary[] = [
     kept: 38,
     agents: 7,
     people: 2,
-    waiting: 2,
+    // Two proposals and two questions (gates-demo.ts).
+    waiting: 4,
   },
 ];
 
 const EMPTY: SpaceOverview = {
   waiting: 0,
+  gatesWaiting: 0,
   oldestWaitingAt: null,
   reviewFilters: { conflicts: 0, external: 0, stale: 0 },
   lastReview: null,
@@ -107,6 +109,9 @@ export const DEMO_OVERVIEWS: Readonly<Record<string, SpaceOverview>> = {
   },
   "memax-v2": {
     waiting: 5,
+    // Main.png's "question from Codex" is H-0093's: the boards name it
+    // without listing it in Review, so it isn't counted (gates-demo.ts).
+    gatesWaiting: 0,
     oldestWaitingAt: at("11:40"),
     reviewFilters: { conflicts: 1, external: 1, stale: 1 },
     lastReview: { at: at("09:41"), kept: 4, rejected: 1 },
@@ -130,8 +135,11 @@ export const DEMO_OVERVIEWS: Readonly<Record<string, SpaceOverview>> = {
   "memax-team": {
     ...EMPTY,
     waiting: 2,
+    // Ledger.png's two open questions (gates-demo.ts).
+    gatesWaiting: 2,
     oldestWaitingAt: at("13:20"),
     reviewFilters: { conflicts: 0, external: 0, stale: 0 },
+    // The questions' agents come from the gates themselves (demo-source.ts).
     waitingBreakdown: { proposals: 2, stale: 0, questions: [] },
     status: { kind: "in-sync", agents: 7 },
     memories: { any: true, kept: 38, forgotten: 0 },

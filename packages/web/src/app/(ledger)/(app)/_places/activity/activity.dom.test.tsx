@@ -189,6 +189,58 @@ describe("Activity", () => {
     expect(push).toHaveBeenCalledWith("/memax-v2/memories/M-0002");
   });
 
+  it("opens a decision gate's card in Review from its asked, answered and withdrawn rows", async () => {
+    const gate = (n: number, action: "asked" | "answered" | "withdrawn") =>
+      entry(n, {
+        actor:
+          action === "answered"
+            ? { kind: "you", initials: "ZZ" }
+            : { kind: "agent", agent: "codex" },
+        action,
+        object: { kind: "gate", ref: "G-0012", id: "g12" },
+        source:
+          action === "answered" ? { kind: "memory", ref: "M-0447" } : null,
+      });
+    source.activity.mockResolvedValue({
+      entries: [
+        gate(1, "answered"),
+        gate(2, "withdrawn"),
+        gate(3, "asked"),
+        // The board's handoff-era ID isn't a gate the API can address.
+        entry(4, {
+          actor: { kind: "agent", agent: "codex" },
+          action: "asked",
+          object: { kind: "gate", ref: "H-0093", id: "h93" },
+        }),
+      ],
+      nextCursor: null,
+      totals: null,
+    });
+    render(
+      <Frame>
+        <ActivityPlace />
+      </Frame>,
+    );
+    await screen.findByRole("list", { name: "Today" });
+    const links = screen
+      .getAllByRole("link", { name: "G-0012" })
+      .map((a) => a.getAttribute("href"));
+    expect(links).toEqual([
+      "/memax-v2/review?gate=G-0012",
+      "/memax-v2/review?gate=G-0012",
+      "/memax-v2/review?gate=G-0012",
+    ]);
+    const rows = screen.getAllByRole("listitem");
+    expect(rows[0]!.textContent).toContain("You answered a question.");
+    expect(rows[1]!.textContent).toContain(
+      "Codex withdrew a question (G-0012).",
+    );
+    expect(screen.queryByRole("link", { name: "H-0093" })).toBeNull();
+    rows[2]!.focus();
+    fireEvent.keyDown(rows[2]!, { key: "Enter" });
+    expect(push).toHaveBeenCalledWith("/memax-v2/review?gate=G-0012");
+  });
+
   it("filters what's loaded, and pages back by cursor", async () => {
     render(
       <Frame>

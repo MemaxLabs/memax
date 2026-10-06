@@ -80,6 +80,17 @@ export const KEYMAP = [
   // Undoes the last decision anywhere a toast offers Undo, not only in
   // Review; the sheet lists it under Review, as drawn.
   { id: "undo", keys: ["Mod+Z"], group: "review" },
+  // A decision gate in Review's queue: 1–4 chooses (or the arrows, inside
+  // the options), ↵ asks to confirm, ↵ again answers, Esc goes back. Only
+  // a gate's card handles them, so they share keys with the page keys.
+  {
+    id: "gate.choose",
+    keys: ["1", "2", "3", "4"],
+    group: "review",
+    display: "range",
+  },
+  { id: "gate.answer", keys: ["Enter"], group: "review" },
+  { id: "gate.cancel", keys: ["Escape"], group: "review" },
 
   // A memory or the Brief
   { id: "memory.edit", keys: ["E"], group: "memory" },

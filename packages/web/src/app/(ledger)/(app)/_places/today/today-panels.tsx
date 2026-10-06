@@ -12,17 +12,18 @@ import {
 } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { count, formatAge, formatClock } from "@/lib/v2/copy";
-import { noteText } from "@/lib/v2/records-copy";
+import { expiryText, noteText } from "@/lib/v2/records-copy";
 import type { ReviewItem } from "@/lib/v2/data/review";
 import type { TargetView } from "@/lib/v2/data/targets";
 import {
   activeToday,
-  pickWaiting,
+  pickToday,
   startOfDay,
   type TodayData,
 } from "@/lib/v2/data/today";
 import { agentDay, dreamDate } from "@/lib/v2/today-copy";
-import { placeHref } from "@/lib/v2/places";
+import { gateHref, placeHref } from "@/lib/v2/places";
+import { GateRow } from "../../_components/gate-row";
 import { StatementText } from "../../_components/statement-text";
 import { TargetRow } from "../../_components/target-row";
 import type { RecordsView } from "../records-view";
@@ -92,7 +93,10 @@ export function TodayDream({
   );
 }
 
-/** "Waiting on you": a few of Review's items, then "N more in Review". */
+/**
+ * "Waiting on you": the questions agents asked first (each opens in
+ * Review), then a few of Review's items, then "N more in Review".
+ */
 export function WaitingPanel({
   view,
   data,
@@ -100,12 +104,19 @@ export function WaitingPanel({
   view: RecordsView;
   data: TodayData;
 }) {
-  const { l, space, rc, agentName, timeZone, locale } = view;
+  const { l, space, rc, agentName, now, timeZone, locale } = view;
   const w = l.today.waiting;
   const waiting = data.waiting;
-  const shown = pickWaiting(waiting.items);
-  const more = Math.max(0, waiting.total - shown.length);
+  const picked = pickToday(waiting.gates, waiting.items);
+  const shown = picked.items;
+  const more = Math.max(
+    0,
+    waiting.total - picked.gates.length - picked.items.length,
+  );
   const meta = [
+    waiting.gates.length > 0
+      ? count(w.askedOne, w.asked, waiting.gates.length)
+      : null,
     waiting.proposals > 0
       ? count(w.proposalsOne, w.proposals, waiting.proposals)
       : null,
@@ -135,10 +146,20 @@ export function WaitingPanel({
         </h2>
         {meta ? <span className="mx-meta">{meta}</span> : null}
       </header>
-      {shown.length === 0 ? (
+      {shown.length === 0 && picked.gates.length === 0 ? (
         <p className={styles.panelNote}>{w.nothing}</p>
       ) : (
         <MemoryList>
+          {picked.gates.map((gate) => (
+            <GateRow
+              key={gate.ref}
+              view={view}
+              gate={gate}
+              space={space.name}
+              note={expiryText(rc, gate.expiresAt, now, timeZone, locale)}
+              href={gateHref(space.slug, gate.ref)}
+            />
+          ))}
           {shown.map((item) => {
             const stamp = view.stamp(item.by);
             const note = waiting.notes[item.ref];

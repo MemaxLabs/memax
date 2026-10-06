@@ -9,6 +9,8 @@ import type {
 } from "./activity";
 import { DEMO_AGENT_IDS } from "./agents-demo";
 import { DEMO_FOLD } from "./demo-review-data";
+import type { GateView } from "./gates";
+import { DEMO_GATES } from "./gates-demo";
 
 /**
  * Activity.png's receipts and reads for memax-v2, newest first, at Monday
@@ -175,9 +177,28 @@ const MEMAX_V2_READS: ActivityEntry[] = [
   }),
 ];
 
+/** The team space's two questions (gates-demo.ts), as their `asked` receipts. */
+const asked = (gate: GateView): ActivityEntry =>
+  entry({
+    at: gate.askedAt,
+    actor: agent(gate.agent),
+    action: "asked",
+    object: { kind: "gate", ref: gate.ref, id: gate.id },
+    via: [
+      { kind: "via", via: "mcp" },
+      ...(gate.session
+        ? [{ kind: "session" as const, ref: gate.session }]
+        : []),
+    ],
+    detail: { kind: "question", text: gate.question },
+  });
+const [TEAM_FIRST, TEAM_SECOND] = DEMO_GATES["memax-team"] ?? [];
+
 // The team space's receipts (no board draws them): the judge folding a
-// repeat into what's kept, with the receipt Undo addresses.
+// repeat into what's kept, with the receipt Undo addresses, and the two
+// questions agents asked.
 const MEMAX_TEAM: ActivityEntry[] = [
+  ...(TEAM_SECOND ? [asked(TEAM_SECOND)] : []),
   {
     ...entry({
       at: DEMO_FOLD.at,
@@ -200,6 +221,7 @@ const MEMAX_TEAM: ActivityEntry[] = [
       { kind: "session", ref: "4d1b" },
     ],
   }),
+  ...(TEAM_FIRST ? [asked(TEAM_FIRST)] : []),
 ];
 
 const PAGES: Readonly<Record<string, ActivityPage>> = {

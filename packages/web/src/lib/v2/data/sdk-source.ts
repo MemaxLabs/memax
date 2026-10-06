@@ -2,6 +2,8 @@ import type { Memax, V2 } from "memax-sdk";
 import { createSdkActivity } from "./activity-sdk";
 import { agentsOverview, createSdkAgents } from "./agents-sdk";
 import { createSdkBrief } from "./brief-sdk";
+import type { WebSession } from "./gates";
+import { createSdkGates } from "./gates-sdk";
 import { checkRememberOver } from "./remember-sdk";
 import { createSdkMemories } from "./sdk-memories";
 import { createSdkReview } from "./sdk-review";
@@ -14,13 +16,14 @@ import type { AskEvent, KeepResult, SpaceOverview, Viewer } from "./types";
 /**
  * The SDK source: memax.v2 for signed-in people.
  *
- * What /v2 serves today: the spaces list, Review's queue (its `total`
- * is the rail's ochre count), memories, receipts, agents, the Brief and
- * its compile targets (which feed the status line), and Remember's
- * near-duplicate check. Everything else the frame shows is marked
- * PLACEHOLDER below and returns "not served" (null) or a neutral value
- * until its endpoint lands: Handoffs, Dream and Ask. The demo source has
- * all of them, for comparison with the boards.
+ * What /v2 serves today: the spaces list, Review's queue and the
+ * decision gates waiting on an answer (together the rail's ochre count),
+ * memories, receipts, agents, the Brief and its compile targets (which
+ * feed the status line), and Remember's near-duplicate check. Everything
+ * else the frame shows is marked PLACEHOLDER below and returns "not
+ * served" (null) or a neutral value until its endpoint lands: Handoffs,
+ * Dream and Ask. The demo source has all of them, for comparison with
+ * the boards.
  */
 
 // `auth` for API keys (V1's auth.keys), until /v2 serves them.
@@ -29,13 +32,17 @@ type V2Client = Pick<Memax, "v2" | "auth">;
 export function createSdkSource({
   client,
   viewer,
+  webSession = () => null,
 }: {
   client: V2Client;
   /** From the session (AuthProvider); null while it loads. */
   viewer: Viewer | null;
+  /** Whether the session was issued to the web app (web-session.ts); null when unknown. */
+  webSession?: () => WebSession;
 }): LedgerDataSource {
   const viewerId = () => viewer?.id;
   const agents = createSdkAgents({ client, viewer });
+  const gates = createSdkGates({ client, viewerId, webSession });
   return {
     ...createSdkActivity({ client, viewer }),
     ...agents,
@@ -46,7 +53,8 @@ export function createSdkSource({
     memories: createSdkMemories(client, viewerId),
     brief: createSdkBrief(client, viewerId),
     targets: createSdkTargets(client),
-    today: createSdkToday({ client, viewer, agents }),
+    today: createSdkToday({ client, viewer, agents, gates }),
+    gates,
     async spaces(signal) {
       const { items } = await client.v2.spaces.list({ signal });
       return items.map((space) => ({
@@ -64,17 +72,22 @@ export function createSdkSource({
       }));
     },
     async overview(space, signal): Promise<SpaceOverview> {
-      const [review, memories, receipts, agents, targets] = await Promise.all([
-        client.v2.review.list(space.slug, { limit: 1, signal }),
-        client.v2.memories.list(space.slug, { limit: 1, signal }),
-        client.v2.receipts.list(space.slug, { limit: 1, signal }),
-        agentsOverview(client, space.slug, signal),
-        targetsOrNull(client, space.slug, signal),
-      ]);
+      const [review, memories, receipts, agents, targets, asked] =
+        await Promise.all([
+          client.v2.review.list(space.slug, { limit: 1, signal }),
+          client.v2.memories.list(space.slug, { limit: 1, signal }),
+          client.v2.receipts.list(space.slug, { limit: 1, signal }),
+          agentsOverview(client, space.slug, signal),
+          targetsOrNull(client, space.slug, signal),
+          // Not counted rather than failing the frame.
+          gates.waiting({ space, signal }).catch(() => null),
+        ]);
       const anyMemory = memories.items.length > 0;
       const line = targets ? syncLineOf(targets) : null;
       return {
         waiting: review.total,
+        // Review lists them first, and the rail counts them (waitingOnYou).
+        gatesWaiting: asked?.length ?? null,
         // Review lists oldest first, so the first item is the oldest.
         oldestWaitingAt: review.items[0]?.created_at ?? null,
         memories: { any: anyMemory, kept: null, forgotten: null },
@@ -98,6 +111,8 @@ export function createSdkSource({
         // PLACEHOLDER from here down: not served by /v2 yet.
         reviewFilters: null,
         lastReview: null,
+        // /v2 doesn't break Review's total down by kind. Today words its
+        // lede from its own read (TodayData.waiting), gates included.
         waitingBreakdown: null,
         openHandoffs: null,
         handoffs: null,

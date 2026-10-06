@@ -57,6 +57,61 @@ export const ledgerReviewEn = {
   edit: {
     title: "Editing a proposal",
   },
+  // A decision gate (G-) in the queue: an agent asked, and waits on the
+  // answer (HANDOFF "Decision gate"; the card is Ledger's DecisionGate).
+  gate: {
+    session: "Asked in session {session}",
+    confirm: "Answer “{label}”?",
+    confirmDetail:
+      "This becomes a kept decision by you, and compiles into every file.",
+    cancel: "Cancel",
+    answer: "Answer",
+    // D15: decisions in this space need a person on the web, and the
+    // frame knows this session wasn't issued to the web app.
+    needsWeb:
+      "Decisions in {space} are answered only on memax.app, and Memax can't confirm this session is. Sign in again here, then answer.",
+    needsWebReason: "Sign in again on memax.app to answer.",
+    signInAgain: "Sign in again",
+    viewer: "Viewers can read the question. A member answers it.",
+    withdraw: "Withdraw",
+    withdrawTitle: "Withdraw {ref}?",
+    withdrawDetail:
+      "{agent} hears that you took the question back on its next read. Nothing is kept.",
+    // The head once it isn't waiting.
+    answered: "You answered",
+    status: {
+      answered: "Answered",
+      withdrawn: "Withdrawn",
+      expired: "Expired",
+    },
+    // How it ended, in place of the footer.
+    ended: {
+      answeredByYou: "You answered it already: “{label}”, kept as {memory}.",
+      answeredBy:
+        "A teammate answered it already: “{label}”, kept as {memory}.",
+      answeredBare: "It was answered already.",
+      withdrawnByAgent: "{agent} took the question back.",
+      withdrawnByYou: "You took the question back.",
+      withdrawnBy: "A teammate took the question back.",
+      expired:
+        "It expired, so {agent} stopped waiting. It can't be answered now.",
+    },
+    kept: "Kept {memory} as your answer to {ref}",
+    keptRecompiled:
+      "Kept {memory} as your answer to {ref} · {n} files recompiled",
+    keptRecompiledOne:
+      "Kept {memory} as your answer to {ref} · 1 file recompiled",
+    openDecision: "Open {memory}",
+    withdrew: "Withdrew {ref}. {agent} hears it on its next read.",
+    notFound: "There's no question {ref} in {space}.",
+    failed: "The questions agents asked didn't load.",
+    retry: "Try again",
+    legend: {
+      choose: "choose",
+      answer: "answer",
+      cancel: "cancel",
+    },
+  },
   reject: {
     title: "Reject {ref}?",
     why: "Why, if you'd like to say",

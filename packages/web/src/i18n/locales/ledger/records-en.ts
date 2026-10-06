@@ -23,6 +23,9 @@ export const ledgerRecordsEn = {
     handed_off: "handed off",
     answered: "answered",
     undid: "undone",
+    // A decision gate's receipts.
+    asked: "asked",
+    withdrawn: "withdrawn",
     // Review's queue: a proposal that changes a kept memory, and the
     // one being edited (Review.png, ReviewEdit.png).
     updated: "update",
@@ -40,6 +43,13 @@ export const ledgerRecordsEn = {
     hoursAgo: "{n} h ago",
     justNow: "just now",
     dateTime: "{date}, {time}",
+  },
+  // When a decision gate stops waiting (Review's card, Today's row).
+  expires: {
+    minutes: "Expires in {n} min",
+    today: "Expires today at {time}",
+    tomorrow: "Expires tomorrow at {time}",
+    date: "Expires {date}",
   },
   // A session in a receipt ("session 3e1a").
   sessionRef: "session {session}",
@@ -104,6 +114,14 @@ export const ledgerRecordsEn = {
     reject: "{ref} wasn't rejected.",
     edit: "Your edit to {ref} wasn't kept.",
     resolve: "{ref} wasn't settled.",
+    answer: "{ref} wasn't answered.",
+    withdraw: "{ref} wasn't withdrawn.",
+    // A decision gate that ended before the command reached it (409 details.status).
+    ended: {
+      answered: "It was answered already.",
+      withdrawn: "{agent} took the question back.",
+      expired: "It expired, so {agent} stopped waiting.",
+    },
     unreachable: "It didn't reach Memax, so nothing changed. Try again.",
     busy: "Another change is holding it. Try again in a moment.",
     busyJudge:
@@ -140,9 +158,26 @@ export const ledgerRecordsEn = {
       unknown_actor: "Memax doesn't recognise this session. Sign in again.",
       undo_by_decider:
         "Only the person who decided {ref} can undo it. Change it instead, or ask them.",
+      person_must_answer:
+        "Only a person answers a question. Sign in as yourself, not with an agent's key.",
+      not_your_gate:
+        "Only the agent that asked, the person it works for, or someone who can answer it can withdraw it.",
       other: "Memax refused it: {message}",
       otherBare: "Memax refused it.",
     },
+    // Answering a decision gate follows Keep's rules for a decision; these
+    // codes read differently there (spec PolicyCode).
+    refusedAnswer: {
+      decision_needs_web:
+        "Decisions in {space} are answered only on memax.app, and Memax couldn't confirm this came from there. Sign in again here, then answer.",
+      viewer: "Viewers can read the question. A member answers it.",
+      owners_keep: "Only owners answer decisions in {space}. Ask an owner.",
+      key_cannot_review:
+        "API keys can ask but never answer. Answer it in Review on the web.",
+    },
+    needsWebDev:
+      "In local development, set WEB_SURFACE_SECRET for the web app and the API.",
+    signInAgain: "Sign in again",
   },
   // Undo (Review's ⌘Z, the toasts' Undo, a fold's Undo). Toasts about an
   // undo carry no state mark: nothing was kept, and nothing waits on you.

@@ -342,6 +342,9 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
       "brief.move": "下移、上移一条事实（编辑简报时）",
       "drift.choose": "选择怎么处理手动改动",
       "drift.confirm": "执行（处理手动改动时）",
+      "gate.choose": "给问题选一个回答",
+      "gate.answer": "回答问题，再确认",
+      "gate.cancel": "从确认退回",
     },
   },
   settings: {

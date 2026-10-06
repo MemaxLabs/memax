@@ -29,6 +29,11 @@ import (
 
 var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
 
+// sealWait bounds waiting for the watermark: any write transaction in
+// flight in the cluster holds it back, and under a full parallel test run
+// (every package on one Postgres) that can be many seconds.
+const sealWait = 90 * time.Second
+
 type fixture struct {
 	t      *testing.T
 	pool   *pgxpool.Pool
@@ -153,7 +158,7 @@ func (f *fixture) sealer(signer receiptchain.Signer, keys receiptchain.Keyring, 
 func (f *fixture) sealAll(s *sealer.Sealer) int {
 	f.t.Helper()
 	total := 0
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(sealWait)
 	for time.Now().Before(deadline) {
 		n, err := s.SealSpace(context.Background(), f.space)
 		total += n
@@ -175,10 +180,10 @@ func (f *fixture) sealAll(s *sealer.Sealer) int {
 
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(sealWait)
 	for !cond() {
 		if time.Now().After(deadline) {
-			t.Fatalf("%s: not within 20 s", what)
+			t.Fatalf("%s: not within %v", what, sealWait)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -279,8 +284,10 @@ func TestSealAndVerify(t *testing.T) {
 // first but commits last. While it is open, neither its receipt nor any
 // receipt after it is sealed (the sweep's cursor doesn't pass it either);
 // once it commits, both are sealed in (txid, seq) order, exactly once.
+//
+// Not parallel: its open transaction holds the cluster's watermark, so it
+// would stall every other test's sealing while it runs.
 func TestInFlightReceiptIsSealedInItsPlace(t *testing.T) {
-	t.Parallel()
 	f := newFixture(t)
 	ctx := context.Background()
 	signer, keys := keyed(t, 2)
@@ -623,6 +630,27 @@ func TestOnlyTheSealerWritesSeals(t *testing.T) {
 		_ = tx.Rollback(ctx)
 		if err == nil || !strings.Contains(err.Error(), "permission denied") {
 			t.Errorf("memax_v2 may %s: %v", name, err)
+		}
+	}
+	// The sweep's cross-space policy is the sealer's: memax_v2 setting the
+	// sweep's value itself still sees no receipt and no cursor.
+	for _, sweep := range []string{"unsealed_spaces", "receipt_spaces"} {
+		var receipts, cursors int
+		tx, err := f.pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = tx.Exec(ctx, `SELECT set_config('role', 'memax_v2', true), set_config('app.sweep', $1, true)`, sweep)
+		if err == nil {
+			err = tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM v2.receipts), (SELECT count(*) FROM v2.receipt_seal_cursor)`).
+				Scan(&receipts, &cursors)
+		}
+		_ = tx.Rollback(ctx)
+		if err == nil && (receipts != 0 || cursors != 0) {
+			t.Errorf("memax_v2 with app.sweep %q sees %d receipts and %d cursors", sweep, receipts, cursors)
+		}
+		if err != nil && !strings.Contains(err.Error(), "permission denied") {
+			t.Errorf("memax_v2 with app.sweep %q: %v", sweep, err)
 		}
 	}
 	// It reads them in scope.

@@ -488,10 +488,18 @@ func TestReadMetrics(t *testing.T) {
 	}
 	// The metric is computed across tenants, but only as counts: the app
 	// role sees no rows of either table outside the function.
-	var n int
-	if err := f.asV2(nil, nil, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `SELECT count(*) FROM v2.read_rollups`).Scan(&n)
-	}); err != nil || n != 0 {
-		t.Errorf("rollups outside v2.read_metrics: %d (%v)", n, err)
+	// Not even by setting the function's sweep value itself: the policies
+	// that admit rows inside v2.read_metrics apply to its owner only.
+	for _, sweep := range []string{"", "read_metrics", "prune_reads"} {
+		var rollups, reads, conns int
+		if err := f.asV2(nil, nil, func(tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, `SELECT set_config('app.sweep', $1, true)`, sweep); err != nil {
+				return err
+			}
+			return tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM v2.read_rollups), (SELECT count(*) FROM v2.reads),
+			                                (SELECT count(*) FROM v2.agent_connections)`).Scan(&rollups, &reads, &conns)
+		}); err != nil || rollups != 0 || reads != 0 || conns != 0 {
+			t.Errorf("memax_v2 with app.sweep %q sees %d rollups, %d reads, %d connections (%v)", sweep, rollups, reads, conns, err)
+		}
 	}
 }

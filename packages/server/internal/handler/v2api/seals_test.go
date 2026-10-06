@@ -71,7 +71,7 @@ func TestCheckpointEndpoint(t *testing.T) {
 
 	ctx := context.Background()
 	e.remember(tok, sp, "pnpm workspaces only.")
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(90 * time.Second) // the watermark is the cluster's
 	for {
 		res, err := e.ledger.SealSpace(ctx, sp.id, signer, 1)
 		if err != nil {

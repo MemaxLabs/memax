@@ -73,11 +73,14 @@
 --
 -- # Cross-space reads
 --
--- Like v2.dirty_targets (031), two functions read across spaces, each with
--- a function-level SET of app.sweep that a SELECT-only policy admits while
--- it runs, and each returns aggregates only:
+-- Two functions read across spaces, both SECURITY DEFINER with a
+-- function-level SET of app.sweep, and both return aggregates only:
 --   v2.read_metrics   the north star and its coverage (§5.18).
---   v2.prune_reads    (SECURITY DEFINER) the retention sweep.
+--   v2.prune_reads    the retention sweep.
+-- Their policies admit rows only to the function owner (the migrating
+-- role, `TO CURRENT_USER` here) while app.sweep has their value. Unlike
+-- v2.dirty_targets (031), memax_v2 can't borrow them by setting app.sweep
+-- itself: the policies don't apply to it.
 
 -- ---------------------------------------------------------------------
 -- Reads
@@ -268,7 +271,8 @@ COMMENT ON FUNCTION v2.prune_reads(timestamptz) IS
 CREATE FUNCTION v2.read_metrics(p_day date)
     RETURNS TABLE (spaces_read bigint, spaces_two_agents bigint, spaces_two_connections bigint,
                    spaces_hook_loads bigint, connections_reading bigint, connections_seen bigint)
-    LANGUAGE sql STABLE
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
     SET app.sweep = 'read_metrics'
     AS $$
     WITH week AS (
@@ -313,7 +317,7 @@ CREATE POLICY reads_space ON v2.reads
     USING (space_id = ANY ((SELECT v2.current_space_ids())::uuid[]))
     WITH CHECK (space_id = ANY ((SELECT v2.current_space_ids())::uuid[]));
 -- Read-only, and only inside v2.read_metrics (see the header).
-CREATE POLICY reads_metrics ON v2.reads FOR SELECT
+CREATE POLICY reads_metrics ON v2.reads FOR SELECT TO CURRENT_USER
     USING (current_setting('app.sweep', true) = 'read_metrics' AND kind = 'compile_load');
 
 ALTER TABLE v2.read_rollups ENABLE ROW LEVEL SECURITY;
@@ -321,17 +325,17 @@ ALTER TABLE v2.read_rollups FORCE ROW LEVEL SECURITY;
 CREATE POLICY read_rollups_space ON v2.read_rollups
     USING (space_id = ANY ((SELECT v2.current_space_ids())::uuid[]))
     WITH CHECK (space_id = ANY ((SELECT v2.current_space_ids())::uuid[]));
-CREATE POLICY read_rollups_metrics ON v2.read_rollups FOR SELECT
+CREATE POLICY read_rollups_metrics ON v2.read_rollups FOR SELECT TO CURRENT_USER
     USING (current_setting('app.sweep', true) = 'read_metrics');
 -- Retention's DELETE, only inside v2.prune_reads (memax_v2 has no DELETE
 -- privilege at all; the function's owner does). A DELETE with a WHERE
 -- clause needs the rows to be visible too, hence the SELECT policy.
-CREATE POLICY read_rollups_prune ON v2.read_rollups FOR DELETE
+CREATE POLICY read_rollups_prune ON v2.read_rollups FOR DELETE TO CURRENT_USER
     USING (current_setting('app.sweep', true) = 'prune_reads');
-CREATE POLICY read_rollups_prune_select ON v2.read_rollups FOR SELECT
+CREATE POLICY read_rollups_prune_select ON v2.read_rollups FOR SELECT TO CURRENT_USER
     USING (current_setting('app.sweep', true) = 'prune_reads');
 
-CREATE POLICY agent_connections_metrics ON v2.agent_connections FOR SELECT
+CREATE POLICY agent_connections_metrics ON v2.agent_connections FOR SELECT TO CURRENT_USER
     USING (current_setting('app.sweep', true) = 'read_metrics');
 
 -- ---------------------------------------------------------------------
@@ -346,4 +350,5 @@ REVOKE ALL ON FUNCTION v2.ensure_reads_partitions(timestamptz, integer) FROM PUB
 REVOKE ALL ON FUNCTION v2.prune_reads(timestamptz) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION v2.ensure_reads_partitions(timestamptz, integer) TO memax_v2;
 GRANT EXECUTE ON FUNCTION v2.prune_reads(timestamptz) TO memax_v2;
+REVOKE ALL ON FUNCTION v2.read_metrics(date) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION v2.read_metrics(date) TO memax_v2;

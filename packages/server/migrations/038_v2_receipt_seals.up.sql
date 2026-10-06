@@ -46,10 +46,12 @@
 --
 -- # Cross-space reads
 --
--- Like v2.dirty_targets (031): v2.unsealed_spaces (the sweep) and
--- v2.receipt_spaces (the nightly verifier) each SET app.sweep for their
--- own execution, a SELECT-only policy admits receipts while it is set, and
--- they return space ids only.
+-- v2.unsealed_spaces (the sweep) and v2.receipt_spaces (the nightly
+-- verifier) each SET app.sweep for their own execution, a SELECT-only
+-- policy admits receipts while it is set, and they return space ids only.
+-- Unlike v2.dirty_targets (031), the policies apply to memax_v2_sealer
+-- only, so memax_v2 (every request) can't borrow them by setting app.sweep
+-- itself.
 
 -- ---------------------------------------------------------------------
 -- The sealer's role
@@ -333,7 +335,7 @@ COMMENT ON FUNCTION v2.receipt_spaces() IS
 -- ---------------------------------------------------------------------
 
 -- Read-only, and only inside the two functions above (see the header).
-CREATE POLICY receipts_seal_sweep ON v2.receipts FOR SELECT
+CREATE POLICY receipts_seal_sweep ON v2.receipts FOR SELECT TO memax_v2_sealer
     USING (current_setting('app.sweep', true) IN ('unsealed_spaces', 'receipt_spaces'));
 
 ALTER TABLE v2.receipt_chain_heads ENABLE ROW LEVEL SECURITY;
@@ -350,7 +352,7 @@ CREATE POLICY receipt_checkpoints_space ON v2.receipt_checkpoints
 
 ALTER TABLE v2.receipt_seal_cursor ENABLE ROW LEVEL SECURITY;
 ALTER TABLE v2.receipt_seal_cursor FORCE ROW LEVEL SECURITY;
-CREATE POLICY receipt_seal_cursor_sweep ON v2.receipt_seal_cursor
+CREATE POLICY receipt_seal_cursor_sweep ON v2.receipt_seal_cursor TO memax_v2_sealer
     USING (current_setting('app.sweep', true) = 'unsealed_spaces')
     WITH CHECK (current_setting('app.sweep', true) = 'unsealed_spaces');
 

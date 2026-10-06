@@ -70,10 +70,16 @@ export function statusLabel(
   switch (line.kind) {
     case "in-sync":
       return count(s.inSyncOne, s.inSync, line.agents);
+    case "files-in-sync":
+      return count(s.filesInSyncOne, s.filesInSync, line.files);
     case "drifted":
-      return interpolate(s.drifted, { agent: agentName(line.agent) });
+      return line.agent
+        ? interpolate(s.drifted, { agent: agentName(line.agent) })
+        : interpolate(s.fileDrifted, { file: line.file ?? "" });
     case "compiling":
       return s.compiling;
+    case "waiting-delivery":
+      return count(s.waitingDeliveryOne, s.waitingDelivery, line.files);
     case "no-agents":
       return s.noAgents;
     case "not-compiling":
@@ -85,10 +91,12 @@ export function statusLabel(
 export function statusState(line: SyncLine) {
   switch (line.kind) {
     case "in-sync":
+    case "files-in-sync":
       return "kept" as const;
     case "drifted":
       return "proposed" as const;
     case "compiling":
+    case "waiting-delivery":
       return "working" as const;
     default:
       return "off" as const;

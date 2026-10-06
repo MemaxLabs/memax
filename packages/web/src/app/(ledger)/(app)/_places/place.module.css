@@ -16,24 +16,6 @@
   margin-bottom: var(--space-6);
 }
 
-/* The Brief's title is larger than a page title (Brief.dc.html, 40/46). */
-.briefHead :global(.mx-page-title) {
-  font-size: 40px;
-  line-height: 46px;
-  letter-spacing: -0.02em;
-}
-
-.briefHead :global(.mx-page-lede) {
-  max-width: 580px;
-}
-
-/* The Brief's article column beside its 320px side panels. */
-.briefGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 40px;
-}
-
 .command {
   display: flex;
   align-items: center;
@@ -58,12 +40,6 @@
   opacity: 0.6;
 }
 
-@media (max-width: 1023px) {
-  .briefGrid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 @media (max-width: 639px) {
   /* MobileToday.png's page gutters. */
   .column:global(.mx-page),
@@ -82,11 +58,6 @@
   .column :global(.mx-page-title) {
     font-size: 26px;
     line-height: 31px;
-  }
-
-  .briefHead :global(.mx-page-title) {
-    font-size: 30px;
-    line-height: 36px;
   }
 
   .column :global(.mx-page-actions) {

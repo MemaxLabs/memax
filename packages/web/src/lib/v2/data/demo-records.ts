@@ -53,12 +53,14 @@ export function createDemoRecords({
   const decided = new Map<string, Decided>();
   const edits = new Map<string, { statement: string; version: number }>();
   const replays = new Map<string, DecisionResult>();
+  // Proposals that arrived this session (a pulled hand edit), oldest first.
+  const arrived = new Map<string, ReviewItem[]>();
   let nextRef = 450;
   const id = (slug: string, ref: string) => `${slug}/${ref}`;
   const stamp = () => now().toISOString();
 
   function queueOf(slug: string): ReviewItem[] {
-    return (DEMO_QUEUES[slug] ?? [])
+    return [...(DEMO_QUEUES[slug] ?? []), ...(arrived.get(slug) ?? [])]
       .filter((item) => !decided.has(id(slug, item.ref)))
       .map((item) => {
         const edit = edits.get(id(slug, item.ref));
@@ -175,7 +177,7 @@ export function createDemoRecords({
   /** The frame's overview with this session's decisions taken out of it. */
   function overview(slug: string, base: SpaceOverview): SpaceOverview {
     const mine = [...decided.values()].filter((d) => d.slug === slug);
-    if (mine.length === 0) return base;
+    if (mine.length === 0 && !arrived.get(slug)?.length) return base;
     const left = queueOf(slug);
     const kept = mine.filter((d) => d.outcome === "kept").length;
     const was = (test: (i: ReviewItem) => boolean) =>
@@ -208,7 +210,10 @@ export function createDemoRecords({
         proposals: left.filter((i) => i.lifecycle === "proposed").length,
         stale: left.filter((i) => i.state === "stale").length,
       },
-      lastReview: { at: stamp(), kept, rejected: mine.length - kept },
+      lastReview:
+        mine.length > 0
+          ? { at: stamp(), kept, rejected: mine.length - kept }
+          : base.lastReview,
       memories: {
         ...base.memories,
         kept: base.memories.kept === null ? null : base.memories.kept + kept,
@@ -216,5 +221,17 @@ export function createDemoRecords({
     };
   }
 
-  return { review, memories, overview };
+  /** New proposals in a space's queue, after the boards' own (a pulled hand edit). */
+  function propose(slug: string, items: ReviewItem[]) {
+    arrived.set(slug, [...(arrived.get(slug) ?? []), ...items]);
+  }
+
+  /** What this session changed about a memory, for the demo's Brief. */
+  const session = {
+    edited: (slug: string, ref: string) => edits.get(id(slug, ref)),
+    decided: (slug: string, ref: string) => decided.get(id(slug, ref)),
+    arrived: (slug: string) => arrived.get(slug) ?? [],
+  };
+
+  return { review, memories, overview, propose, session };
 }

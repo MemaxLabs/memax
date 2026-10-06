@@ -5,6 +5,7 @@
  * where it has them; no words live here (the i18n catalogue builds
  * every sentence from these values).
  */
+import type { TargetView } from "./targets";
 
 /** Who a receipt names. */
 export type Actor =
@@ -56,16 +57,12 @@ export interface RailReceipt {
   at: string;
 }
 
-export type TargetStatus = "synced" | "drifted" | "pending" | "off";
-
-/** A compiled file: "Keeping recompiles" in Review, "Reaches" on a memory. */
-export interface TargetLine {
-  /** "CLAUDE.md", ".cursor/rules/memax.mdc", "ChatGPT project". */
-  path: string;
-  /** The tools that read it ("Codex · OpenCode"). Names, not copy. */
-  tool: string;
-  status: TargetStatus;
-}
+/**
+ * A compiled file: "Keeping recompiles" in Review, "Reaches" on a
+ * memory. The compile targets' own view (targets.ts), so every screen
+ * words a target's state the same way.
+ */
+export type TargetLine = TargetView;
 
 /** What keep, reject and edit return. */
 export interface DecisionResult {

@@ -14,7 +14,6 @@ import {
   answerNeedsWebHere,
   byExpiry,
   gateStatusAt,
-  waitingGates,
   type GateAnswerResult,
   type GateEnd,
   type GateView,
@@ -77,6 +76,7 @@ export function useGateCards({
   toasts,
   advanceMs,
   focus,
+  selected,
 }: {
   space: SpaceSummary;
   dispatch: Dispatch<ReviewAction>;
@@ -92,6 +92,8 @@ export function useGateCards({
   advanceMs: number;
   /** A gate to open (`?gate=` from Activity or Today), or null. */
   focus: string | null;
+  /** What Review has selected (null: its first row). */
+  selected: string | null;
 }) {
   const source = useSource();
   const query = useWaitingGates(space);
@@ -102,8 +104,6 @@ export function useGateCards({
   // from a link. Each leaves when the person moves away from it.
   const [lingering, setLingering] = useState<GateView[]>([]);
   const [left, setLeft] = useState<ReadonlySet<string>>(() => new Set());
-  const now = source.now();
-  const minute = Math.floor(now.getTime() / 60_000);
 
   const patch = useCallback(
     (ref: string, change: Partial<GateCardState>) =>
@@ -128,17 +128,59 @@ export function useGateCards({
     });
   }, []);
 
-  // The queue's gates: the waiting ones, and those lingering, in order. A
+  // The queue's gates: the listed ones, and those lingering, in order. A
   // lingering gate is what the server said last (it ended), so it wins
-  // over a list that hasn't caught up.
+  // over a list that hasn't caught up. One that expires on screen reads
+  // as expired (gateStatusAt) until the list catches up.
   const gates = useMemo(() => {
-    const at = new Date(minute * 60_000);
-    const waiting = waitingGates(query.data ?? [], at);
     const known = new Set(lingering.map((g) => g.ref));
-    return [...waiting.filter((g) => !known.has(g.ref)), ...lingering]
+    return [
+      ...(query.data ?? []).filter((g) => !known.has(g.ref)),
+      ...lingering,
+    ]
       .filter((g) => !done[g.ref] && !left.has(g.ref))
       .sort(byExpiry);
-  }, [done, left, lingering, minute, query.data]);
+  }, [done, left, lingering, query.data]);
+
+  // A gate that leaves the list while it's on screen (answered elsewhere,
+  // withdrawn, expired) stays, saying how it ended, until the person
+  // moves on. There are no gate events yet; the list's poll finds out.
+  const seen = useRef(new Map<string, GateView>());
+  const looking = useRef(new Set<string>());
+  // What was on screen as of the last render this saw (the order is
+  // already the new one by the time an effect runs).
+  const onScreen = useRef<string | null>(null);
+  useEffect(() => {
+    const list = query.data;
+    const ref = onScreen.current;
+    onScreen.current = selected ?? order.current?.[0] ?? null;
+    if (!list) return;
+    const before = ref ? seen.current.get(ref) : undefined;
+    for (const g of list) seen.current.set(g.ref, g);
+    if (!ref || !before || list.some((g) => g.ref === ref)) return;
+    if (done[ref] || left.has(ref) || looking.current.has(ref)) return;
+    if (lingering.some((g) => g.ref === ref)) return;
+    looking.current.add(ref);
+    void source.gates
+      .get({ space, ref })
+      .then((fresh) => {
+        if (fresh && gateStatusAt(fresh, source.now()) !== "waiting") {
+          linger(fresh);
+        }
+      })
+      .catch(() => {})
+      .finally(() => looking.current.delete(ref));
+  }, [
+    done,
+    left,
+    linger,
+    lingering,
+    order,
+    query.data,
+    selected,
+    source,
+    space,
+  ]);
 
   /** The person moved away from a gate: a lingering one leaves the queue, a confirmation goes back. */
   const leave = useCallback(

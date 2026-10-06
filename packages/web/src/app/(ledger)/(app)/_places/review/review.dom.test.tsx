@@ -125,6 +125,7 @@ function renderReview(space: SpaceSummary = v2) {
       </LocaleProvider>
     </QueryClientProvider>,
   );
+  return client;
 }
 
 const press = (key: string, init: Partial<KeyboardEventInit> = {}) =>
@@ -976,6 +977,52 @@ describe("Decision gates in Review", () => {
     press("ArrowDown");
     await screen.findByText("Memax team · 1 of 3");
     expect(within(card()).getByText("Codex is waiting on you")).toBeTruthy();
+  });
+
+  it("says so when a gate on screen is answered elsewhere, and lets it go when you move on", async () => {
+    let answeredElsewhere = false;
+    sourceWith((demo) => ({
+      gates: {
+        waiting: vi.fn(async (input) => {
+          const list = await demo.gates.waiting(input);
+          return answeredElsewhere
+            ? list.filter((g) => g.ref !== "G-0011")
+            : list;
+        }),
+        get: vi.fn(async (input) => {
+          const gate = await demo.gates.get(input);
+          return (
+            gate && {
+              ...gate,
+              status: "answered" as const,
+              version: 2,
+              answer: {
+                option: 0,
+                label: "Keep the ChatGPT names",
+                memory: "M-0450",
+                by: { kind: "person" as const, self: false },
+                at: DEMO_NOW,
+              },
+            }
+          );
+        }),
+      },
+    }));
+    const client = renderReview(team);
+    await teamReady();
+    answeredElsewhere = true;
+    await act(() => client.invalidateQueries());
+    await waitFor(() =>
+      expect(within(card()).getByText("Answered")).toBeTruthy(),
+    );
+    expect(card().textContent).toContain(
+      "A teammate answered it already: “Keep the ChatGPT names”, kept as M-0450.",
+    );
+    expect(
+      within(card()).getByRole("link", { name: "M-0450" }).getAttribute("href"),
+    ).toBe("/memax-team/memories/M-0450");
+    press("ArrowDown");
+    await screen.findByText("Memax team · 1 of 3");
   });
 
   it("retries a dropped answer with the same idempotency key", async () => {

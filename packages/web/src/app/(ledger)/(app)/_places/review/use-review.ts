@@ -141,6 +141,7 @@ export function useReview(
     toasts,
     advanceMs: ADVANCE_MS,
     focus: focusGate,
+    selected: state.selected,
   });
 
   const all = useMemo(

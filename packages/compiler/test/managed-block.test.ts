@@ -4,6 +4,8 @@ import {
   extractManagedBlock,
   findManagedBlock,
   isDrifted,
+  MANAGED_END,
+  MANAGED_START,
   ManagedBlockError,
   removeManagedBlock,
   upsertManagedBlock,
@@ -103,6 +105,32 @@ describe("removeManagedBlock and extractManagedBlock", () => {
     const file = "a\r\n<!-- memax:start -->\r\nx\r\n<!-- memax:end -->\r\nb";
     expect(removeManagedBlock(file)).toBe("a\r\nb");
     expect(removeManagedBlock("no block\n")).toBe("no block\n");
+  });
+
+  it.each([
+    ["LF", "\n"],
+    ["CRLF", "\r\n"],
+  ])("takes out the blank line adding the block put there (%s)", (_, eol) => {
+    const lines = (...l: string[]) => l.map((x) => x + eol).join("");
+    const mine = lines("# Mine", "", "Tabs.");
+    // Added, then removed: the file is as it was.
+    expect(removeManagedBlock(upsertManagedBlock(mine, BLOCK))).toBe(mine);
+    // Text the person wrote below the block stays, byte for byte.
+    const below = lines("", "## Below");
+    expect(removeManagedBlock(upsertManagedBlock(mine, BLOCK) + below)).toBe(
+      mine + below,
+    );
+    // A file without a final line break gets one: the only change.
+    expect(
+      removeManagedBlock(upsertManagedBlock(`# Mine${eol}Tabs.`, BLOCK)),
+    ).toBe(lines("# Mine", "Tabs."));
+    // Adding put no blank line here, so none goes.
+    for (const file of ["", lines(""), lines("# Mine", "", "")]) {
+      expect(removeManagedBlock(upsertManagedBlock(file, BLOCK))).toBe(file);
+    }
+    // A line of spaces is the person's.
+    const spaced = lines("a", "  ", ...[MANAGED_START, "x", MANAGED_END]);
+    expect(removeManagedBlock(spaced)).toBe(lines("a", "  "));
   });
 
   it("extracts the block with LF endings", () => {

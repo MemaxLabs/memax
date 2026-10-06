@@ -109,12 +109,27 @@ export function upsertManagedBlock(content: string, inner: string[]): string {
   return out + block.join(eol) + eol;
 }
 
-/** Removes the managed block, leaving everything else exactly as it was. */
+/**
+ * Removes the managed block, and the blank line adding it put before it,
+ * leaving everything else exactly as it was.
+ *
+ * Adding a block to a file whose last line isn't blank leaves a blank line
+ * before it (upsertManagedBlock), so that line goes with the block: an
+ * empty line right after a line with text. A blank line the person left
+ * there looks the same and goes too; any other blank line stays.
+ */
 export function removeManagedBlock(content: string): string {
   const lines = splitKeep(content);
   const at = locate(lines);
   if (!at) return content;
-  return [...lines.slice(0, at.start), ...lines.slice(at.end + 1)]
+  let start = at.start;
+  if (
+    start >= 2 &&
+    lines[start - 1].text === "" &&
+    lines[start - 2].text !== ""
+  )
+    start -= 1;
+  return [...lines.slice(0, start), ...lines.slice(at.end + 1)]
     .map((l) => l.text + l.eol)
     .join("");
 }

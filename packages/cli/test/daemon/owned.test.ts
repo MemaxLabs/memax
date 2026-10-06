@@ -58,12 +58,13 @@ describe("a user-owned CLAUDE.md", () => {
     expect(blockOf(updated)).toContain("use plan mode first");
     expect(h.fake.calls("POST", /\/observations$/)).toHaveLength(0);
 
-    // Stop compiling: the block goes, everything else stays exactly.
+    // Stop compiling: the block goes, with the blank line adding it put
+    // before it; everything the person wrote stays exactly.
     h.fake.setState(t.id, "off");
     await d.syncOnce();
     const removed = read();
     expect(blockOf(removed)).toBeNull();
-    expect(removed).toBe(BEFORE + "\r\n" + AFTER);
+    expect(removed).toBe(BEFORE + AFTER);
     expect(d.snapshot().repos[0].targets[0].state).toBe("off_block_removed");
     await d.syncOnce();
     expect(read()).toBe(removed);
@@ -141,5 +142,23 @@ describe("a target that stops compiling", () => {
       state: "off",
       detail: "stopped; the file stays where it is",
     });
+  });
+
+  it("gives a CLAUDE.md the person owns back as it was (LF)", async () => {
+    const t = setup();
+    const mine = "# Mine\n\nTabs, not spaces.\n";
+    writeFileSync(file(), mine);
+    h.fake.compile(t.id, { "CLAUDE.md": SHIM_1 });
+    const d = h.daemon();
+    await d.syncOnce();
+    expect(read()).toBe(
+      mine +
+        ["", "<!-- memax:start -->", ...SHIM_1, "<!-- memax:end -->", ""].join(
+          "\n",
+        ),
+    );
+    h.fake.setState(t.id, "off");
+    await d.syncOnce();
+    expect(read()).toBe(mine);
   });
 });

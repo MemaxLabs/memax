@@ -1,0 +1,69 @@
+/* A compiled file in a list (target-row.tsx). */
+
+.row {
+  color: var(--ink);
+  text-decoration: none;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.row:hover {
+  background: var(--hover);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* SyncTarget's compact row, with room for "Live over connector". */
+.compact:global(.mx-target.is-compact) {
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+}
+
+/* Main.png's "Compiled context": the file in mono, then a 116px status. */
+.plain {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 116px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.name {
+  display: flex;
+  min-width: 0;
+}
+
+.path {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A tool's name, where it writes no file of its own. */
+.tool {
+  font-family: var(--font-sans);
+}
+
+.status {
+  display: flex;
+  justify-content: flex-start;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.delivery {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-2);
+}

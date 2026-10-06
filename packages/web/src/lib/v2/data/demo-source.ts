@@ -9,8 +9,12 @@ import {
 } from "./demo-dataset";
 import { createDemoActivity } from "./activity-demo";
 import { createDemoAgents } from "./agents-demo";
+import { createDemoBrief } from "./brief-demo";
 import { createDemoRecords } from "./demo-records";
 import type { LedgerDataSource } from "./source";
+import { syncLineOf, targetStatus } from "./targets";
+import { createDemoTargets } from "./targets-demo";
+import { createDemoToday } from "./today-demo";
 import type { AskEvent, KeepResult, Section, SpaceOverview } from "./types";
 
 /**
@@ -49,36 +53,85 @@ function guessSection(statement: string): Section {
 export function createDemoSource({
   streamDelayMs = 14,
   commandDelayMs,
-}: { streamDelayMs?: number; commandDelayMs?: number } = {}): LedgerDataSource {
+  settleMs,
+}: {
+  streamDelayMs?: number;
+  commandDelayMs?: number;
+  /** How long a demo compile takes before its file reads in sync. */
+  settleMs?: number;
+} = {}): LedgerDataSource {
   let nextRef = DEMO_NEXT_REF;
+  const allocRef = () => `M-${String(nextRef++).padStart(4, "0")}`;
+  const now = () => new Date(DEMO_NOW);
   // Review and Memories (demo-records.ts); their decisions feed the overview.
-  const records = createDemoRecords({
-    now: () => new Date(DEMO_NOW),
+  const records = createDemoRecords({ now, commandDelayMs });
+  const agents = createDemoAgents();
+  const targets = createDemoTargets({
+    now,
     commandDelayMs,
+    settleMs,
+    nextRef: allocRef,
+    propose: records.propose,
+  });
+  const brief = createDemoBrief({
+    now,
+    session: records.session,
+    commandDelayMs,
+  });
+  const today = createDemoToday({
+    queue: (slug) => records.review.peekQueue?.(slug),
+    spaceAgents: (slug) => agents.agentsPeek?.spaceAgents(slug),
   });
   const overview = (slug: string): SpaceOverview | undefined => {
     const base = DEMO_OVERVIEWS[slug];
-    return base && records.overview(slug, base);
+    if (!base) return undefined;
+    const merged = records.overview(slug, base);
+    const list = targets.peekList?.(slug) ?? [];
+    if (list.length === 0) return merged;
+    // The status line follows the targets once this session changes
+    // them; the board's "5 agents in sync" stays while nothing drifted.
+    const line = syncLineOf(list);
+    return {
+      ...merged,
+      status:
+        line?.kind === "drifted" || base.status.kind !== "in-sync"
+          ? (line ?? base.status)
+          : base.status,
+      targets: {
+        total: list.filter((t) => t.syncState !== "off").length,
+        inSync: list.filter((t) => targetStatus(t).kind === "in_sync").length,
+      },
+    };
+  };
+  /** A Keep recompiles every file the space compiles to (not ChatGPT's copy-out). */
+  const files = (slug: string) => {
+    const list = targets.peekList?.(slug) ?? [];
+    if (list.length === 0) return overview(slug)?.targets?.inSync ?? null;
+    return list.filter((t) => t.delivery !== "copy" && t.syncState !== "off")
+      .length;
   };
   const kept = (ref: string, slug: string): KeepResult => ({
     ref,
     outcome: "kept",
-    recompiled: overview(slug)?.targets?.inSync ?? null,
+    recompiled: files(slug),
     undo: async () => {},
   });
 
   return {
     ...createDemoActivity(),
-    ...createDemoAgents(),
+    ...agents,
     kind: "demo",
     peek: {
       spaces: () => [...DEMO_SPACES],
       overview,
     },
-    now: () => new Date(DEMO_NOW),
+    now,
     viewer: DEMO_VIEWER,
     review: records.review,
     memories: records.memories,
+    brief,
+    targets,
+    today,
     spaces: async () => [...DEMO_SPACES],
     overview: async (space) => {
       const found = overview(space.slug);
@@ -122,8 +175,10 @@ export function createDemoSource({
         condition: duplicate ? DEMO_PNPM_PROPOSAL.condition : null,
       };
     },
-    async remember({ space }) {
-      const ref = `M-${String(nextRef++).padStart(4, "0")}`;
+    async remember({ space, statement, section }) {
+      const ref = allocRef();
+      // So the Brief places it, as the compiler does.
+      brief.remembered(space.slug, { ref, statement, section });
       return kept(ref, space.slug);
     },
     async keepProposal({ space, ref }) {

@@ -93,7 +93,20 @@ export const KEYMAP = [
   // One page or layer
   { id: "today.review", keys: ["R"], group: "pages" },
   { id: "memories.remember", keys: ["N"], group: "pages" },
+  // Keeps what's in front of you: Ask's answer, or the Brief's edits
+  // when you press Done.
   { id: "command.keep", keys: ["Mod+Enter"], group: "pages", inInput: true },
+  // Editing the Brief: the focused fact moves down or up, across
+  // section headings (regrouping it). ⌥, so plain arrows still scroll.
+  {
+    id: "brief.move",
+    keys: ["Alt+ArrowDown", "Alt+ArrowUp"],
+    group: "pages",
+    repeat: true,
+  },
+  // A hand edit (DriftResolve.png): 1, 2 or 3 chooses, ↵ does it.
+  { id: "drift.choose", keys: ["1", "2", "3"], group: "pages" },
+  { id: "drift.confirm", keys: ["Enter"], group: "pages" },
 ] as const satisfies readonly KeyBinding[];
 
 export type KeyActionId = (typeof KEYMAP)[number]["id"];

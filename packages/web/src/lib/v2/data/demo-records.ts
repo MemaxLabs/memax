@@ -118,6 +118,28 @@ export function createDemoRecords({
     return clock() - first < script.afterMs;
   }
 
+  /**
+   * Edit, then keep: whether the new words wait for the judge (they touch
+   * a decision in force, in the demo's script). If so, the judge starts
+   * checking the new version now, as the server's would.
+   */
+  function holdsForJudge(slug: string, ref: string): boolean {
+    if (judging[ref]?.touchesDecision !== true) return false;
+    seen.set(id(slug, ref), clock());
+    return true;
+  }
+
+  /** Keep on a flagged proposal, as the server refuses it. */
+  function inConflict(item: ReviewItem): MemaxError {
+    const other = item.conflictsWith;
+    return new MemaxError(
+      `${item.ref} contradicts ${other ?? "a decision in force"}, a decision in force, so it can't be kept as it is. Settle the conflict first: compare both sides and choose.`,
+      "in_conflict",
+      409,
+      other ? { ref: other } : {},
+    );
+  }
+
   function queueOf(slug: string): ReviewItem[] {
     const back =
       slug === DEMO_FOLD.slug && unfolded.has(id(slug, DEMO_FOLD.item.ref))
@@ -205,21 +227,14 @@ export function createDemoRecords({
       return command(idempotencyKey, (): DecisionResult => {
         const live = current(space.slug, item);
         // The server's answers, word for word where it has them.
-        if (live.state === "conflict") {
-          throw new MemaxError(
-            "this proposal conflicts with the record; resolve the conflict before keeping it",
-            "invalid_transition",
-            409,
-            { ref: live.ref },
-          );
-        }
+        if (live.state === "conflict") throw inConflict(live);
         if (
           live.judge === "working" &&
           judging[live.ref]?.touchesDecision === true
         ) {
           throw new MemaxError(
             `Memax is still checking ${live.ref} against the decisions in force. Try again in a moment.`,
-            "busy",
+            "judge_pending",
             503,
             { retry_after: 1, ref: live.ref },
             1,
@@ -326,6 +341,8 @@ export function createDemoRecords({
     queueOf,
     command,
     journal: { record },
+    holdsForJudge,
+    inConflict,
   });
 
   /** The frame's overview with this session's decisions taken out of it. */

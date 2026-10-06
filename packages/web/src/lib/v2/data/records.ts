@@ -82,4 +82,10 @@ export interface DecisionResult {
    * absent when the command can't be undone.
    */
   receipt?: string | null;
+  /**
+   * Edit, then keep, saved but not kept (policy `judge_pending`): the new
+   * words touch a decision in force, so they wait for the judge. `version`
+   * is the saved one; a plain Keep of it finishes the decision.
+   */
+  judgePending?: boolean;
 }

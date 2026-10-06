@@ -38,15 +38,30 @@ export function useUndoStack(): UndoStack {
 
 type QueueData = InfiniteData<ReviewQueue, string | undefined>;
 
-/** The queue with a decided card put back where it sat. */
+function inQueue(data: QueueData | undefined, ref: string): boolean {
+  return Boolean(data?.pages.some((p) => p.items.some((i) => i.ref === ref)));
+}
+
+/**
+ * The queue with a decided card put back where it sat, or, when it never
+ * left (an edit saved for the judge), with its row as it was.
+ */
 export function withRestored(
   data: QueueData | undefined,
   restore: NonNullable<UndoEntry["restore"]>,
 ): QueueData | undefined {
   const first = data?.pages[0];
   if (!data || !first) return data;
-  if (data.pages.some((p) => p.items.some((i) => i.ref === restore.item.ref))) {
-    return data;
+  if (inQueue(data, restore.item.ref)) {
+    return {
+      ...data,
+      pages: data.pages.map((p) => ({
+        ...p,
+        items: p.items.map((i) =>
+          i.ref === restore.item.ref ? restore.item : i,
+        ),
+      })),
+    };
   }
   const items = [...first.items];
   items.splice(Math.min(restore.index, items.length), 0, restore.item);
@@ -111,12 +126,11 @@ export function useUndo() {
       if (restore) {
         await queryClient.cancelQueries({ queryKey: queueKey, exact: true });
         previous = queryClient.getQueryData<QueueData>(queueKey);
+        returned =
+          previous !== undefined && !inQueue(previous, restore.item.ref);
         const next = withRestored(previous, restore);
-        returned = next !== previous;
-        if (returned) {
-          queryClient.setQueryData<QueueData>(queueKey, next);
-          waiting(1);
-        }
+        if (next) queryClient.setQueryData<QueueData>(queueKey, next);
+        if (returned) waiting(1);
         stack.emit({ type: "restore", entry });
       }
       try {
@@ -132,10 +146,8 @@ export function useUndo() {
       } catch (err) {
         const failure = toFailure(err);
         if (restore) {
-          if (returned && previous) {
-            queryClient.setQueryData(queueKey, previous);
-            waiting(-1);
-          }
+          if (previous) queryClient.setQueryData(queueKey, previous);
+          if (returned) waiting(-1);
           stack.emit({ type: "rollback", entry });
         }
         const retry = isRetryable(failure);

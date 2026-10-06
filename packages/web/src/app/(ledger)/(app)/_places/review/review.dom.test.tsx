@@ -353,7 +353,7 @@ const team = DEMO_SPACES.find((s) => s.slug === "memax-team")!;
 const busy = () =>
   new MemaxError(
     "Memax is still checking M-0430 against the decisions in force.",
-    "busy",
+    "judge_pending",
     503,
     { retry_after: 1, ref: "M-0430" },
     1,
@@ -448,9 +448,10 @@ describe("Review and the judge", () => {
           .mockImplementationOnce(async () => {
             flagged = true;
             throw new MemaxError(
-              "this proposal conflicts with the record",
-              "invalid_transition",
+              "M-0430 contradicts M-0102, a decision in force.",
+              "in_conflict",
               409,
+              { ref: "M-0102" },
             );
           }),
         item: vi.fn(async (input) => asConflict(await demo.review.item(input))),
@@ -469,14 +470,106 @@ describe("Review and the judge", () => {
         { timeout: 3000 },
       ),
     ).toBeTruthy();
-    // Still waiting on the person, now as a conflict with two sides.
-    expect(source.review.item).toHaveBeenCalled();
+    // Still waiting on the person, now as a conflict with two sides. The
+    // 409 names the decision, so Review doesn't ask for the memory again.
+    expect(source.review.item).not.toHaveBeenCalled();
     expect(screen.getByText("memax-v2 · 1 of 5")).toBeTruthy();
     const row = document.querySelector(".mx-row.is-selected .mx-state");
     expect(row?.className).toContain("mx-state--conflict");
     expect(
       screen.getByRole("link", { name: /Compare both sides/ }),
     ).toBeTruthy();
+  }, 10_000);
+
+  it("saves an edit, then keep, for the judge, then keeps the new version", async () => {
+    const words =
+      "MCP write tools ask for confirmation with input_required when a person is present.";
+    const source = sourceWith((demo) => ({
+      review: {
+        keep: vi
+          .fn(demo.review.keep)
+          .mockRejectedValueOnce(busy())
+          .mockResolvedValueOnce({
+            ref: "M-0430",
+            outcome: "kept",
+            version: 3,
+            recompiled: 3,
+            receipt: "r-keep",
+          }),
+      },
+      memories: {
+        edit: vi.fn().mockResolvedValue({
+          ref: "M-0430",
+          outcome: "edited",
+          version: 2,
+          recompiled: null,
+          receipt: "r-edit",
+          judgePending: true,
+        }),
+      },
+    }));
+    renderReview();
+    await ready();
+    press("e");
+    const field = await screen.findByRole("textbox", { name: "Statement" });
+    fireEvent.change(field, { target: { value: words } });
+    fireEvent.keyDown(field, { key: "Enter", ctrlKey: true });
+    // Saved, not kept: the card waits for the judge with the new words.
+    expect(
+      await screen.findByText(
+        "Checking it against the decision in force. It's kept once the check is done.",
+      ),
+    ).toBeTruthy();
+    expect(headMark()?.className).toContain("mx-state--working");
+    expect(seal()).toBeNull();
+    // Then a plain Keep of the saved version, with its own key, retried
+    // after Retry-After until the judge has looked.
+    expect(
+      await screen.findByText("Kept M-0430 · 3 files recompiled", undefined, {
+        timeout: 3000,
+      }),
+    ).toBeTruthy();
+    const edit = vi.mocked(source.memories.edit).mock.calls[0][0];
+    const keeps = vi.mocked(source.review.keep).mock.calls;
+    expect(keeps).toHaveLength(2);
+    expect(keeps[0][0].item).toMatchObject({ version: 2, statement: words });
+    expect(keeps[0][0].idempotencyKey).not.toBe(edit.idempotencyKey);
+    expect(keeps[1][0].idempotencyKey).toBe(keeps[0][0].idempotencyKey);
+    await screen.findByText("memax-v2 · 1 of 4", undefined, { timeout: 2000 });
+  }, 10_000);
+
+  it("leaves the saved edit when Esc stops waiting for the judge", async () => {
+    const words = "MCP write tools ask for confirmation with input_required.";
+    const source = sourceWith((demo) => ({
+      review: { keep: vi.fn(demo.review.keep).mockRejectedValue(busy()) },
+      memories: {
+        edit: vi.fn().mockResolvedValue({
+          ref: "M-0430",
+          outcome: "edited",
+          version: 2,
+          recompiled: null,
+          receipt: "r-edit",
+          judgePending: true,
+        }),
+      },
+    }));
+    renderReview();
+    await ready();
+    press("e");
+    const field = await screen.findByRole("textbox", { name: "Statement" });
+    fireEvent.change(field, { target: { value: words } });
+    fireEvent.keyDown(field, { key: "Enter", ctrlKey: true });
+    await screen.findByText(/kept once the check is done/);
+    press("Escape");
+    await waitFor(() =>
+      expect(screen.queryByText(/kept once the check is done/)).toBeNull(),
+    );
+    // Still in Review, with the saved words, and no error.
+    expect(screen.getByText("memax-v2 · 1 of 5")).toBeTruthy();
+    expect(screen.getAllByText(words).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/wasn't kept/)).toBeNull();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 1300)));
+    expect(source.review.keep).toHaveBeenCalledTimes(1);
   }, 10_000);
 
   it("stops waiting on Esc, and when you move to another card", async () => {

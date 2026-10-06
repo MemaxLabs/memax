@@ -38,6 +38,10 @@ export interface DemoStore {
   command: <T>(key: string, run: () => T) => Promise<T>;
   /** Undo's journal (demo-records.ts): each person's decision, to put back. */
   journal: DemoJournal;
+  /** Edit, then keep: whether the new words wait for the demo's judge. */
+  holdsForJudge: (slug: string, ref: string) => boolean;
+  /** Keep on a flagged proposal, as the server refuses it (409 in_conflict). */
+  inConflict: (item: ReviewItem) => Error;
 }
 
 const FILTER_STATES: Record<MemoryFilter, string[] | null> = {
@@ -65,6 +69,8 @@ export function createDemoMemories({
   queueOf,
   command,
   journal,
+  holdsForJudge,
+  inConflict,
 }: DemoStore): MemoriesSource {
   const isUnfolded = (slug: string, ref: string) => unfolded.has(id(slug, ref));
 
@@ -227,13 +233,14 @@ export function createDemoMemories({
         }
         // Like the server: a flagged proposal can't be kept until its
         // conflict is settled, edited or not.
-        if (keep && queued?.state === "conflict") {
-          throw new CommandFailedError({ kind: "decided" });
-        }
+        if (keep && queued?.state === "conflict") throw inConflict(queued);
         const key = id(space.slug, ref);
         const before = { edit: edits.get(key), decided: decided.get(key) };
+        // Edit, then keep, whose new words touch a decision in force: saved
+        // as the proposal's new version, judged, and not kept yet.
+        const held = Boolean(keep && queued && holdsForJudge(space.slug, ref));
         edits.set(key, { statement, version: version + 1 });
-        const keeps = Boolean(keep && queued);
+        const keeps = Boolean(keep && queued && !held);
         if (keeps && queued) {
           decided.set(key, {
             slug: space.slug,
@@ -256,8 +263,12 @@ export function createDemoMemories({
           ref,
           outcome: keeps ? "kept" : "edited",
           version: version + 1,
-          recompiled: DEMO_CARDS[ref]?.touches.targets?.length ?? null,
+          // Saved for the judge, nothing compiles yet.
+          recompiled: held
+            ? null
+            : (DEMO_CARDS[ref]?.touches.targets?.length ?? null),
           receipt,
+          ...(held ? { judgePending: true } : {}),
         };
       });
     },

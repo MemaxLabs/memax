@@ -247,12 +247,26 @@ describe("command failures", () => {
     [new MemaxError("x", "not_found", 404), { kind: "not-found" }],
     [new MemaxError("x", "network_error", 0), { kind: "unreachable" }],
     [
-      new MemaxError("x", "busy", 503, { retry_after: 2, ref: "M-0430" }, 2),
-      { kind: "busy", retryAfter: 2, ref: "M-0430" },
+      new MemaxError(
+        "x",
+        "judge_pending",
+        503,
+        { retry_after: 2, ref: "M-0430" },
+        2,
+      ),
+      { kind: "busy", retryAfter: 2, ref: "M-0430", judge: true },
     ],
     [
       new MemaxError("x", "busy", 503, { retry_after: 1 }),
-      { kind: "busy", retryAfter: 1, ref: null },
+      { kind: "busy", retryAfter: 1, ref: null, judge: false },
+    ],
+    [
+      new MemaxError("x", "in_conflict", 409, { ref: "M-0174" }),
+      { kind: "in-conflict", with: "M-0174" },
+    ],
+    [
+      new MemaxError("x", "in_conflict", 409),
+      { kind: "in-conflict", with: null },
     ],
     [
       new MemaxError("x", "undo_refused", 409, {
@@ -282,7 +296,9 @@ describe("command failures", () => {
     ).toBe(false);
     expect(isRetryable({ kind: "clash", currentVersion: 2 })).toBe(false);
     // Keep before the judge: the same command, after Retry-After.
-    expect(isRetryable({ kind: "busy", retryAfter: 2, ref: null })).toBe(true);
+    expect(
+      isRetryable({ kind: "busy", retryAfter: 2, ref: null, judge: true }),
+    ).toBe(true);
     expect(
       isRetryable({ kind: "undo-refused", reason: "window_passed", ref: null }),
     ).toBe(false);
@@ -968,5 +984,33 @@ describe("the SDK's Memories", () => {
     );
     const memories = createSdkMemories(client as never, () => ME);
     expect(await memories.get({ space: v2, ref: "M-9999" })).toBeNull();
+  });
+
+  it("reads an edit, then keep, saved for the judge (judge_pending)", async () => {
+    const client = fakeClient();
+    client.v2.memories.edit.mockResolvedValueOnce({
+      outcome: "proposed",
+      policy: { effect: "propose", code: "judge_pending", message: "Saved." },
+      memory: memory({ ref: "M-0430", version: 2 }),
+      receipts: [receipt({ id: "r-edit", action: "edited" })],
+    });
+    const memories = createSdkMemories(client as never, () => ME);
+    const saved = await memories.edit({
+      space: v2,
+      ref: "M-0430",
+      version: 1,
+      statement: "New words.",
+      keep: true,
+      idempotencyKey: "k5",
+    });
+    // Saved in place (not a new proposal), undoable as an edit, not kept.
+    expect(saved).toEqual({
+      ref: "M-0430",
+      outcome: "edited",
+      version: 2,
+      recompiled: null,
+      receipt: "r-edit",
+      judgePending: true,
+    });
   });
 });

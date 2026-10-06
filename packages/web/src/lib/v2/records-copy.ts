@@ -238,7 +238,12 @@ export function failureText(
           : f.rateLimitedSoon;
       break;
     case "busy":
-      reason = f.busy;
+      reason = failure.judge ? f.busyJudge : f.busy;
+      break;
+    case "in-conflict":
+      reason = failure.with
+        ? interpolate(f.inConflict, { with: failure.with })
+        : f.inConflictBare;
       break;
     case "unreachable":
       reason = f.unreachable;

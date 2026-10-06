@@ -187,12 +187,37 @@ describe("why a command didn't go through", () => {
     expect(
       failureText(
         EN,
-        { kind: "busy", retryAfter: 1, ref: "M-0430" },
+        { kind: "busy", retryAfter: 1, ref: "M-0430", judge: false },
         { ...ctx, command: "keep", locale: "en" },
       ),
     ).toBe(
       "M-0430 wasn't kept. Another change is holding it. Try again in a moment.",
     );
+    expect(
+      failureText(
+        EN,
+        { kind: "busy", retryAfter: 2, ref: "M-0430", judge: true },
+        { ...ctx, command: "keep", locale: "en" },
+      ),
+    ).toBe(
+      "M-0430 wasn't kept. Memax is still checking it against the decision in force. Try again in a moment.",
+    );
+    expect(
+      failureText(
+        EN,
+        { kind: "in-conflict", with: "M-0174" },
+        { ...ctx, command: "keep", locale: "en" },
+      ),
+    ).toBe(
+      "M-0430 wasn't kept. It contradicts M-0174, a decision in force. Compare both sides to settle it.",
+    );
+    expect(
+      failureText(
+        ZH,
+        { kind: "in-conflict", with: null },
+        { ...ctx, command: "keep", locale: "zh" },
+      ),
+    ).toBe("M-0430 没保留上。它和一条现行的决策矛盾。对比两边，定下来。");
     expect(
       failureText(
         ZH,

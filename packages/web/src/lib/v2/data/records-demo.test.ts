@@ -184,9 +184,25 @@ describe("the demo's Review", () => {
     const demo = fresh();
     const items = (await demo.review.queue({ space: v2 })).items;
     const conflict = items.find((i) => i.ref === "M-0431")!;
-    await expect(
-      demo.review.keep({ space: v2, item: conflict, idempotencyKey: "k" }),
-    ).rejects.toSatisfy((err) => toFailure(err).kind === "decided");
+    // In conflict, naming the decision in the way (409 in_conflict).
+    for (const attempt of [
+      () =>
+        demo.review.keep({ space: v2, item: conflict, idempotencyKey: "k" }),
+      () =>
+        demo.memories.edit({
+          space: v2,
+          ref: "M-0431",
+          version: 1,
+          statement: "Deploy the v2 API to Fly.io.",
+          keep: true,
+          idempotencyKey: "e",
+        }),
+    ]) {
+      expect(await attempt().catch((err: unknown) => toFailure(err))).toEqual({
+        kind: "in-conflict",
+        with: "M-0174",
+      });
+    }
     expect(await demo.review.item({ space: v2, ref: "M-0431" })).toMatchObject({
       state: "conflict",
       conflictsWith: "M-0174",
@@ -213,7 +229,12 @@ describe("the demo's judge", () => {
     const busy = await demo.review
       .keep({ space: team, item: working, idempotencyKey: "k" })
       .catch((err: unknown) => toFailure(err));
-    expect(busy).toEqual({ kind: "busy", retryAfter: 1, ref: "M-0445" });
+    expect(busy).toEqual({
+      kind: "busy",
+      retryAfter: 1,
+      ref: "M-0445",
+      judge: true,
+    });
     // The check lands: the same key keeps it.
     time = 6000;
     expect(
@@ -225,6 +246,44 @@ describe("the demo's judge", () => {
       idempotencyKey: "k",
     });
     expect(kept).toMatchObject({ ref: "M-0445", outcome: "kept" });
+  });
+
+  it("saves an edit, then keep, for the judge, as the server does", async () => {
+    let time = 10_000;
+    const demo = createDemoSource({
+      streamDelayMs: 0,
+      commandDelayMs: 0,
+      clock: () => time,
+    });
+    await demo.review.queue({ space: team });
+    // Past the first check: the agent's words were cleared.
+    time += 6000;
+    const saved = await demo.memories.edit({
+      space: team,
+      ref: "M-0445",
+      version: 1,
+      statement: "Release notes go out on Thursdays, after a two-day soak.",
+      keep: true,
+      idempotencyKey: "e",
+    });
+    expect(saved).toMatchObject({
+      outcome: "edited",
+      judgePending: true,
+      version: 2,
+      receipt: expect.stringMatching(/^demo-receipt-/),
+    });
+    // The new words wait for the judge: still in Review, being checked.
+    const item = await demo.review.item({ space: team, ref: "M-0445" });
+    expect(item).toMatchObject({ version: 2, judge: "working" });
+    expect(
+      await demo.review
+        .keep({ space: team, item: item!, idempotencyKey: "k" })
+        .catch((err: unknown) => toFailure(err)),
+    ).toMatchObject({ kind: "busy", judge: true });
+    time += 6000;
+    expect(
+      await demo.review.keep({ space: team, item: item!, idempotencyKey: "k" }),
+    ).toMatchObject({ outcome: "kept", version: 3 });
   });
 });
 

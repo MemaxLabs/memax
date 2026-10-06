@@ -17,11 +17,23 @@ export type CommandFailure =
   | { kind: "not-found" }
   | { kind: "rate-limited"; retryAfter: number | null }
   /**
-   * 503 `busy`: Memax is still checking a proposal that touches a decision
-   * in force (Keep before the judge, for at most 30 s), or another change
-   * holds the memory. Retry after `retryAfter` seconds with the same key.
+   * 503: Memax is still checking a proposal that touches a decision in
+   * force (`judge_pending`: Keep before the judge, for at most 30 s), or
+   * another change holds the memory (`busy`). Either way, retry after
+   * `retryAfter` seconds with the same key.
    */
-  | { kind: "busy"; retryAfter: number | null; ref: string | null }
+  | {
+      kind: "busy";
+      retryAfter: number | null;
+      ref: string | null;
+      /** `judge_pending` rather than another change holding it. */
+      judge: boolean;
+    }
+  /**
+   * 409 `in_conflict`: the judge flagged the proposal as contradicting a
+   * decision in force (`with`), so it is settled, not kept.
+   */
+  | { kind: "in-conflict"; with: string | null }
   /** 409 `undo_refused`: why an undo can't go through, and what's in its way (`ref`). */
   | { kind: "undo-refused"; reason: UndoRefusal; ref: string | null }
   /** The request didn't reach the server, or the server had a moment. Safe to retry with the same key. */
@@ -94,7 +106,7 @@ export function toFailure(err: unknown): CommandFailure {
         ref: typeof ref === "string" && ref ? ref : null,
       };
     }
-    if (err.code === "busy") {
+    if (err.code === "busy" || err.code === "judge_pending") {
       const seconds = detail(err, "retry_after");
       const ref = detail(err, "ref");
       return {
@@ -103,6 +115,14 @@ export function toFailure(err: unknown): CommandFailure {
           err.retryAfterSeconds ??
           (typeof seconds === "number" ? seconds : null),
         ref: typeof ref === "string" && ref ? ref : null,
+        judge: err.code === "judge_pending",
+      };
+    }
+    if (err.code === "in_conflict") {
+      const ref = detail(err, "ref");
+      return {
+        kind: "in-conflict",
+        with: typeof ref === "string" && ref ? ref : null,
       };
     }
     if (err.code === "invalid_transition") return { kind: "decided" };

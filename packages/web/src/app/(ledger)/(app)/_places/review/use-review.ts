@@ -154,8 +154,12 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
         const ref = event.entry.restore?.item.ref;
         if (!ref || event.entry.space.slug !== space.slug) return;
         if (event.entry.source !== source.kind) return;
-        if (event.type === "restore") dispatch({ type: "restore", ref });
-        else {
+        if (event.type === "restore") {
+          // Undoing an edit saved for the judge: its Keep stops waiting.
+          waitFor.current?.abort();
+          waitFor.current = null;
+          dispatch({ type: "restore", ref });
+        } else {
           dispatch({
             type: "decided",
             ref,
@@ -227,21 +231,20 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
   );
 
   /**
-   * Keep refused as already decided (409): if the judge flagged it in
-   * the meantime it's still waiting, as a conflict now. True when it is.
+   * Keep refused as in conflict (409 `in_conflict`): the judge flagged it,
+   * so it's still waiting, as a conflict with the decision the server
+   * names. Only without that name does Review ask for the memory again.
    */
   const settledAsConflict = useCallback(
-    async (item: ReviewItem): Promise<boolean> => {
-      const now = await source.review
-        .item({ space, ref: item.ref })
-        .catch(() => null);
-      if (!now) return false;
-      patchItem(now);
+    async (item: ReviewItem, other: string | null) => {
+      const now = other
+        ? { ...item, state: "conflict" as const, conflictsWith: other }
+        : await source.review.item({ space, ref: item.ref }).catch(() => null);
+      if (now) patchItem({ ...now, judge: null });
       afterDecision({ leftQueue: false });
-      if (now.state === "conflict" && now.conflictsWith) {
+      if (now?.conflictsWith) {
         toasts.nowConflict(now.ref, now.conflictsWith);
       }
-      return true;
     },
     [afterDecision, patchItem, source, space, toasts],
   );
@@ -307,8 +310,13 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
     [afterDecision, failed, keys, remember, source, space, stack, toasts, undo],
   );
 
+  /**
+   * Keep, waiting for the judge when the server says it hasn't looked yet.
+   * `afterEdit`: an edit, then keep, whose words were saved for the judge;
+   * the card starts in the working state rather than under the seal.
+   */
   const keep = useCallback(
-    async (item: ReviewItem) => {
+    async (item: ReviewItem, { afterEdit = false } = {}) => {
       if (!canDecide || item.lifecycle !== "proposed" || busy.current) return;
       if (item.state === "conflict" && item.conflictsWith) {
         return keepOver(item, item.conflictsWith);
@@ -319,8 +327,8 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
       const controller = new AbortController();
       waitFor.current = controller;
       let started = Date.now();
-      let waited = false;
-      dispatch({ type: "seal", ref: item.ref });
+      let waited = afterEdit;
+      dispatch({ type: afterEdit ? "waiting" : "seal", ref: item.ref });
       try {
         const deadline = Date.now() + JUDGE_WAIT_MS;
         let result: DecisionResult;
@@ -335,11 +343,15 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
           } catch (err) {
             const failure = toFailure(err);
             if (failure.kind !== "busy" || Date.now() > deadline) throw err;
-            // The judge hasn't looked yet: wait for it, with the working
-            // mark, and ask again with the same key.
             if (controller.signal.aborted) return;
-            waited = true;
-            dispatch({ type: "waiting", ref: item.ref });
+            // The judge hasn't looked yet (judge_pending): wait for it, with
+            // the working mark, and ask again with the same key. Another
+            // change holding the memory (busy) is a moment's wait under the
+            // seal.
+            if (failure.judge && !waited) {
+              waited = true;
+              dispatch({ type: "waiting", ref: item.ref });
+            }
             const go = await pause(
               judgeRetryMs(failure.retryAfter),
               controller.signal,
@@ -380,7 +392,8 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
         if (!isRetryable(failure)) keys.settle(intent);
         dispatch({ type: "unseal", ref: item.ref });
         dispatch({ type: "stopWaiting", ref: item.ref });
-        if (failure.kind === "decided" && (await settledAsConflict(item))) {
+        if (failure.kind === "in-conflict") {
+          await settledAsConflict(item, failure.with);
           return;
         }
         failed(failure, "keep", item, decidedOrder, () => void keep(item));
@@ -476,6 +489,8 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
       const intent = intentOf("edit", item.ref, mode.base.version, draft, why);
       const decidedOrder = order.current;
       const started = Date.now();
+      // An edit saved for the judge: Review keeps the new version next.
+      let saved: ReviewItem | null = null;
       dispatch({ type: "seal", ref: item.ref, statement: draft });
       try {
         const result = await source.memories.edit({
@@ -488,17 +503,37 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
           idempotencyKey: keys.keyFor(intent),
         });
         keys.settle(intent);
-        const entry = remember(result, "edit", item, result.outcome === "kept");
-        toasts.kept(result, entry ? () => void undo.run(entry) : undefined);
-        await wait(ADVANCE_MS - (Date.now() - started));
-        if (entry && stack.get(entry.id)?.status !== "done") return;
-        dispatch({
-          type: "decided",
-          ref: item.ref,
-          outcome: "kept",
-          order: decidedOrder,
-        });
-        afterDecision({ leftQueue: true });
+        if (result.judgePending) {
+          // Rule 11: the new words touch a decision in force, so the edit is
+          // saved (undoable as an edit) and the Keep waits for the judge.
+          remember(result, "edit", item);
+          saved = {
+            ...item,
+            statement: draft,
+            version: result.version ?? item.version + 1,
+            judge: "working",
+          };
+          patchItem(saved);
+          dispatch({ type: "waiting", ref: item.ref });
+        } else {
+          const entry = remember(
+            result,
+            "edit",
+            item,
+            result.outcome === "kept",
+          );
+          toasts.kept(result, entry ? () => void undo.run(entry) : undefined);
+          await wait(ADVANCE_MS - (Date.now() - started));
+          if (!entry || stack.get(entry.id)?.status === "done") {
+            dispatch({
+              type: "decided",
+              ref: item.ref,
+              outcome: "kept",
+              order: decidedOrder,
+            });
+            afterDecision({ leftQueue: true });
+          }
+        }
       } catch (err) {
         const failure = toFailure(err);
         if (!isRetryable(failure)) keys.settle(intent);
@@ -522,12 +557,16 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
       } finally {
         busy.current = null;
       }
+      // Then a plain Keep of the saved version, with its own key, waiting
+      // for the judge (Esc stops it; the edit stays saved).
+      if (saved) await keep(saved, { afterEdit: true });
     },
     [
       afterDecision,
       failed,
       keep,
       keys,
+      patchItem,
       remember,
       source,
       space,

@@ -252,7 +252,8 @@ export function commandReason(
     case "unavailable":
       return f.unavailable;
     case "busy":
-      return f.busy;
+      return failure.judge ? f.busyJudge : f.busy;
+    case "in-conflict":
     case "undo-refused":
       return f.unknown;
     case "unknown":

@@ -106,6 +106,12 @@ export const ledgerRecordsEn = {
     resolve: "{ref} wasn't settled.",
     unreachable: "It didn't reach Memax, so nothing changed. Try again.",
     busy: "Another change is holding it. Try again in a moment.",
+    busyJudge:
+      "Memax is still checking it against the decision in force. Try again in a moment.",
+    inConflict:
+      "It contradicts {with}, a decision in force. Compare both sides to settle it.",
+    inConflictBare:
+      "It contradicts a decision in force. Compare both sides to settle it.",
     rateLimited: "That was a lot at once. Wait {n} seconds, then try again.",
     rateLimitedSoon: "That was a lot at once. Wait a moment, then try again.",
     decided: "It was already decided, so it's gone from your queue.",

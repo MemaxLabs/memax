@@ -122,6 +122,27 @@ test("Review waits for the judge: the working mark, then the Keep", async ({
   await expect(checking).toHaveCount(0);
 });
 
+test("edit, then keep, waits for the judge when the words touch a decision", async ({
+  page,
+}) => {
+  await open(page, "/memax-team/review");
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByText(/· 2 of 2$/)).toBeVisible();
+  await page.keyboard.press("e");
+  const field = page.getByRole("textbox", { name: "Statement" });
+  await expect(field).toBeFocused();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Two days, not one.");
+  await page.keyboard.press("ControlOrMeta+Enter");
+  // Saved, not kept: the working mark and the line, then the Keep.
+  await expect(
+    page.getByText(
+      "Checking it against the decision in force. It's kept once the check is done.",
+    ),
+  ).toBeVisible();
+  await expect(toasts(page)).toContainText("Kept M-0445", { timeout: 15_000 });
+});
+
 test("? lists Review's keys", async ({ page }) => {
   await open(page, "/memax-v2/review");
   await page.keyboard.press("Shift+Slash");

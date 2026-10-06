@@ -172,10 +172,14 @@ export function createSdkMemories(
         idempotencyKey,
       });
       const kept = result.receipts.some((r) => r.action === "kept");
+      // Edit, then keep, whose words wait for the judge: the edit is saved
+      // in place (the proposal's new version), the Keep is still to come.
+      const judgePending = result.policy.code === "judge_pending";
       return {
         ref: result.memory.ref,
-        outcome:
-          result.outcome !== "applied"
+        outcome: judgePending
+          ? "edited"
+          : result.outcome !== "applied"
             ? "proposed"
             : keep && kept
               ? "kept"
@@ -183,12 +187,13 @@ export function createSdkMemories(
         version: result.memory.version,
         // PLACEHOLDER: compile runs aren't served yet.
         recompiled: null,
-        // A person's edit (and edit-then-keep) is undoable by its receipt;
-        // an edit sent to Review as a new proposal isn't.
+        // A person's edit (and edit-then-keep, kept or saved) is undoable
+        // by its receipt; an edit sent to Review as a new proposal isn't.
         receipt:
-          result.outcome === "applied"
+          result.outcome === "applied" || judgePending
             ? (result.receipts[0]?.id ?? null)
             : null,
+        ...(judgePending ? { judgePending } : {}),
       };
     },
   };

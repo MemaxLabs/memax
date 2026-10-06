@@ -56,7 +56,8 @@
  * no hover, and the ones not chosen step back. A notice (D15: answering needs the web)
  * sits on the ochre wash, like the quarantine notice. */
 .mx-gate { position: relative; }
-.mx-gate-seal { position: absolute; top: 10px; right: 18px; }
+/* As specific as .mx-seal.is-stamping, so the stamp stays where the time was. */
+.mx-gate > .mx-gate-seal { position: absolute; top: 10px; right: 18px; }
 .mx-gate.is-answered .mx-gate-head .mx-meta { visibility: hidden; }
 .mx-gate.is-answered .mx-gate-q { max-width: calc(100% - 72px); }
 .mx-gate.is-locked .mx-gate-who { color: var(--ink-2); }

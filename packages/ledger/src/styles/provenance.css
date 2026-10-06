@@ -1,0 +1,29 @@
+/* Memax Ledger · Provenance: agent stamp, receipt, cite and highlight.
+ * Verbatim from the V2 handoff (design-system/components/bundle.css, lines 71–95).
+ * Do not edit here: change the handoff, then re-copy. Production additions live in hardening.css. */
+
+/* ---------- stamp ---------- */
+.mx-stamp-wrap { display: inline-flex; align-items: center; gap: 8px; min-width: 0; vertical-align: middle; }
+.mx-stamp { display: inline-flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; width: 28px; height: 20px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-xs); background: var(--card); color: var(--ink-2); font-family: var(--font-mono); font-size: 11px; line-height: 1; font-weight: 500; letter-spacing: .02em; }
+.mx-stamp.is-wide { font-size: 10px; letter-spacing: 0; }
+.mx-stamp--sm { width: 24px; height: 16px; font-size: 10px; }
+.mx-stamp--sm.is-wide { font-size: 8.5px; }
+.mx-stamp--person { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.mx-stamp--dream { background: var(--night); color: var(--night-accent); border-color: var(--night-line); }
+.mx-stamp-gap { display: inline-block; width: 24px; flex: none; }
+.mx-stamp-name { display: inline-flex; align-items: baseline; gap: 6px; font-size: 14px; line-height: 20px; color: var(--ink); font-weight: 500; white-space: nowrap; }
+.mx-stamp-surface { font-size: 12px; font-weight: 400; color: var(--ink-3); }
+
+/* ---------- receipt ---------- */
+.mx-receipt { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0 6px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3); min-width: 0; }
+.mx-receipt > .mx-stamp-wrap { margin-right: 2px; }
+.mx-receipt-action { color: var(--ink-2); }
+.mx-receipt-id { font-family: var(--font-mono); font-weight: 500; color: var(--ink-2); }
+.mx-receipt-dot { opacity: .7; }
+.mx-receipt.is-night, .mx-receipt.is-night .mx-receipt-action, .mx-receipt.is-night .mx-receipt-id { color: var(--night-ink-2); }
+
+/* ---------- cite & highlight ---------- */
+.mx-cite-wrap { white-space: nowrap; }
+.mx-cite { display: inline; margin-left: 2px; padding: 1px 4px; border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: 10px; line-height: 1; font-weight: 500; color: var(--ink-2); background: var(--well); box-shadow: inset 0 0 0 1px var(--line); text-decoration: none; vertical-align: 0.5em; font-style: normal; }
+.mx-cite:hover { background: var(--ink); color: var(--on-ink); box-shadow: none; }
+.mx-hl { background: var(--highlight); color: var(--ink); border-radius: var(--radius-xs); padding: 0 2px; margin: 0 -2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }

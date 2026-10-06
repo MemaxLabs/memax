@@ -62,6 +62,8 @@ export type SyncLine =
    * agent owns it (AGENTS.md).
    */
   | { kind: "drifted"; agent?: string; file?: string }
+  /** A pulled hand edit holds its file until these proposals are kept or rejected. */
+  | { kind: "held"; proposals: number }
   | { kind: "compiling" }
   /** Compiled, but the CLI hasn't written these files to disk yet. */
   | { kind: "waiting-delivery"; files: number }

@@ -280,7 +280,7 @@ func (w *writer) resolveDrift(ctx context.Context, c *ResolveDrift) (Result, err
 			compileID = *delivered.CompileID
 		}
 		sha = delivered.SHA256
-		b, err := json.Marshal(nonNilSlice(delivered.Files))
+		b, err := json.Marshal(nonNilSlice(storedFiles(delivered.Files)))
 		if err != nil {
 			return Result{}, err
 		}

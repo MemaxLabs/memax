@@ -2,6 +2,10 @@
   "title": "CLI Reference",
   "pages": [
     "index",
+    "status",
+    "compile",
+    "link",
+    "daemon",
     "push",
     "recall",
     "list",

@@ -69,6 +69,9 @@ export const ledgerBriefEn = {
     drifted: "Drifted",
     localEdits: "{n} local edits",
     localEditsOne: "1 local edit",
+    held: "Held for Review",
+    holding: "Holding for {n} proposals in Review",
+    holdingOne: "Holding for 1 proposal in Review",
     off: "Off",
     live: "Live over connector",
     reads: "Reads {file}",
@@ -261,6 +264,10 @@ export const ledgerBriefEn = {
     openCanonical: "Open {file}",
     off: "Memax stopped compiling this file. Agents keep reading the space over MCP.",
     restart: "Compile it again",
+    held: "{file} keeps its pulled hand edit until {refs} are kept or rejected in Review. Then Memax writes it again.",
+    heldOne:
+      "{file} keeps its pulled hand edit until {refs} is kept or rejected in Review. Then Memax writes it again.",
+    openReview: "Open Review",
     settings: {
       title: "How this file is written",
       include: "Include",
@@ -353,6 +360,13 @@ export const ledgerBriefEn = {
       "{n} removed lines wait for you to forget or exclude their memories.",
     waitingOne: "1 removed line waits for you to forget or exclude its memory.",
     openReview: "Open Review",
+    heldNote: "{file} stays as you edited it until they are kept or rejected.",
+    heldNoteOne: "{file} stays as you edited it until it is kept or rejected.",
+    heldTitle: "{file} is held for Review",
+    heldDetail:
+      "The pulled edit stays in the file until {refs} are kept or rejected. Then Memax writes it again: kept lines stay, rejected ones go.",
+    heldDetailOne:
+      "The pulled edit stays in the file until {refs} is kept or rejected. Then Memax writes it again: a kept line stays, a rejected one goes.",
     none: "No hand edits are waiting on this file.",
     noneDetail:
       "It matches what Memax last wrote, or its hand edit was already pulled, overwritten or stopped.",

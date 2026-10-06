@@ -294,6 +294,13 @@ describe("targets from /v2", () => {
       edits: 2,
     });
     expect(
+      targetStatus({
+        ...base,
+        syncState: "held",
+        holding: ["M-0450", "M-0451"],
+      }),
+    ).toEqual({ kind: "held", proposals: 2 });
+    expect(
       targetSlug({ id: "x", kind: "claude_md" }, [
         { kind: "claude_md" },
         { kind: "claude_md" },
@@ -301,7 +308,7 @@ describe("targets from /v2", () => {
     ).toBe("x");
   });
 
-  it("feeds the rail: a drifted file first, then compiling, waiting, in sync", () => {
+  it("feeds the rail: a drifted file first, then a held one, compiling, waiting, in sync", () => {
     expect(syncLineOf(demoTargets)).toEqual({
       kind: "drifted",
       agent: "cursor",
@@ -322,6 +329,26 @@ describe("targets from /v2", () => {
         ),
       ),
     ).toEqual({ kind: "waiting-delivery", files: 1 });
+    // A pull holds its file: the proposals it waits on, counted once.
+    const held = calm.map((t, i) =>
+      i === 0
+        ? { ...t, syncState: "held" as const, holding: ["M-0450", "M-0451"] }
+        : i === 1
+          ? { ...t, syncState: "held" as const, holding: ["M-0451"] }
+          : t,
+    );
+    expect(syncLineOf(held)).toEqual({ kind: "held", proposals: 2 });
+    expect(
+      syncLineOf(
+        held.map((t, i) => (i === 2 ? { ...t, syncState: "compiling" } : t)),
+      ),
+    ).toEqual({ kind: "held", proposals: 2 });
+    expect(
+      syncLineOf([
+        { ...calm[0]!, syncState: "drifted", openDrift: 1 },
+        held[1]!,
+      ]),
+    ).toEqual({ kind: "drifted", file: "AGENTS.md" });
     expect(
       syncLineOf([{ ...calm[0]!, syncState: "drifted", openDrift: 1 }]),
     ).toEqual({ kind: "drifted", file: "AGENTS.md" });

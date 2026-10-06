@@ -98,7 +98,11 @@ function Drift({ view, target }: { view: RecordsView; target: TargetView }) {
 
   if (done) return <Done view={view} target={target} done={done} />;
   if (target.openDrift === 0 && !drift.data?.items.length) {
-    return <Nothing view={view} target={target} />;
+    return target.syncState === "held" ? (
+      <Held view={view} target={target} />
+    ) : (
+      <Nothing view={view} target={target} />
+    );
   }
   if (!drift.data) {
     if (drift.isError) {
@@ -254,6 +258,42 @@ function Nothing({ view, target }: { view: RecordsView; target: TargetView }) {
   );
 }
 
+/** A pulled edit stays in the file while its proposals wait in Review. */
+function Held({ view, target }: { view: RecordsView; target: TargetView }) {
+  const { space, l } = view;
+  const r = l.brief.resolve;
+  const file = targetName(target);
+  return (
+    <StatusPage
+      variant="sheet"
+      receipt={file}
+      title={interpolate(r.heldTitle, { file })}
+      description={interpolate(
+        target.holding.length === 1 ? r.heldDetailOne : r.heldDetail,
+        { refs: target.holding.join(", ") },
+      )}
+      actions={
+        <>
+          <Button
+            variant="primary"
+            size="sm"
+            href={placeHref(space.slug, "review")}
+          >
+            {r.openReview}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            href={targetHref(space.slug, target)}
+          >
+            {interpolate(r.openTarget, { file })}
+          </Button>
+        </>
+      }
+    />
+  );
+}
+
 /** After a choice: a pull's proposals wait in Review; otherwise, back to the file. */
 function Done({
   view,
@@ -295,6 +335,13 @@ function Done({
                 refs: refs.join(", "),
               },
             )}
+          </p>
+        ) : null}
+        {mode === "pull" && target.syncState === "held" ? (
+          <p>
+            {interpolate(refs.length === 1 ? r.heldNoteOne : r.heldNote, {
+              file: targetName(target),
+            })}
           </p>
         ) : null}
         {mode === "pull" && result.waiting > 0 ? (

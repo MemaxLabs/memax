@@ -19,6 +19,7 @@ let instance: Memax | null = null;
 let publicInstance: Memax | null = null;
 const seenWarnings = new Set<string>();
 let scopedAgentID = "";
+let fetchImpl: typeof globalThis.fetch | undefined;
 
 /** Get the shared SDK client instance (lazily created) */
 export function getClient(): Memax {
@@ -28,6 +29,7 @@ export function getClient(): Memax {
       apiUrl: config.api_url,
       auth: cliAuthProvider,
       onWarning: printApiWarning,
+      fetch: fetchImpl,
     });
   }
   return instance;
@@ -39,6 +41,7 @@ export function getPublicClient(): Memax {
     const config = loadConfig();
     publicInstance = new Memax({
       apiUrl: config.api_url,
+      fetch: fetchImpl,
     });
   }
   return publicInstance;
@@ -49,6 +52,15 @@ export function resetClient(): void {
   instance = null;
   publicInstance = null;
   seenWarnings.clear();
+}
+
+/**
+ * Sends every request through `f` from here on, token refreshes included
+ * (the daemon's lighter transport, lib/daemon/http.ts).
+ */
+export function setClientFetch(f: typeof globalThis.fetch): void {
+  fetchImpl = f;
+  resetClient();
 }
 
 export function setClientAgent(agentID?: string): void {

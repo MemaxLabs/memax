@@ -78,6 +78,7 @@ export function createDemoSource({
     settleMs,
     nextRef: allocRef,
     propose: records.propose,
+    decided: (slug, ref) => records.session.decided(slug, ref) !== undefined,
   });
   const brief = createDemoBrief({
     now,
@@ -95,12 +96,15 @@ export function createDemoSource({
     const list = targets.peekList?.(slug) ?? [];
     if (list.length === 0) return merged;
     // The status line follows the targets once this session changes
-    // them; the board's "5 agents in sync" stays while nothing drifted.
+    // them; the board's "5 agents in sync" stays while nothing drifted
+    // or is held.
     const line = syncLineOf(list);
     return {
       ...merged,
       status:
-        line?.kind === "drifted" || base.status.kind !== "in-sync"
+        line?.kind === "drifted" ||
+        line?.kind === "held" ||
+        base.status.kind !== "in-sync"
           ? (line ?? base.status)
           : base.status,
       targets: {

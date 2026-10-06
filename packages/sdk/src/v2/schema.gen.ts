@@ -780,7 +780,9 @@ export interface paths {
          *     the compiler's drift_sha256 of that file; for several, the sha256
          *     of `<path> NUL <drift_sha256> LF` lines sorted by path). A target is
          *     in sync once its latest run is delivered. Acknowledging the same run
-         *     again, or an older one, changes nothing.
+         *     again, or an older one, changes nothing. While a pull holds one of
+         *     the run's files (the target is `held`), nothing may be written over
+         *     it: 409.
          */
         post: operations["recordDelivery"];
         delete?: never;
@@ -834,9 +836,16 @@ export interface paths {
          *     external, when nobody is known), with a `file:line` source: a changed
          *     cited line proposes an edit of that memory, a new line a new memory.
          *     A removed cited line waits in the resolution for a person to forget
-         *     or exclude the memory; it is never forgotten automatically. The file
-         *     stays as it is until the next compile delivers over it. Any person
-         *     in the space may pull.
+         *     or exclude the memory; it is never forgotten automatically. Any
+         *     person in the space may pull.
+         *
+         *     The edited file stays as it is until its proposals are decided:
+         *     while any of them is still proposed, the target is `held` and
+         *     nothing is delivered over the file (see `holds` on the target).
+         *     Once each is kept or rejected, the latest compile is delivered over
+         *     it: kept lines come back compiled, rejected ones go. A pull that
+         *     writes no proposal holds nothing; the file stays until the next
+         *     compile delivers over it.
          */
         post: operations["pullDrift"];
         delete?: never;
@@ -1282,10 +1291,12 @@ export interface components {
          * @description `compiling`: a change hasn't compiled yet. `pending_delivery`: the
          *     latest compile isn't on disk yet. `in_sync`: it is (or, for MCP and
          *     copy-out, it compiled). `drifted`: a file was edited by hand.
+         *     `held`: a hand edit came back by a pull, and its proposals wait in
+         *     Review; the file stays as it is until they are kept or rejected.
          *     `off`: compiling is stopped.
          * @enum {string}
          */
-        SyncState: "in_sync" | "compiling" | "pending_delivery" | "drifted" | "off";
+        SyncState: "in_sync" | "compiling" | "pending_delivery" | "drifted" | "held" | "off";
         /** @enum {string} */
         IncludeMode: "kept_only" | "kept_and_open";
         /** @enum {string} */
@@ -1754,6 +1765,22 @@ export interface components {
             sha256: components["schemas"]["Sha256"];
             /** @description Set when the baseline is a hand edit Memax accepted (pulled or overwritten). */
             observation?: components["schemas"]["Id"];
+            /**
+             * @description Set with `observation`. True while the proposals of the pull that
+             *     accepted this edit wait in Review: nothing is written over the
+             *     file until they are kept or rejected.
+             */
+            held?: boolean;
+        };
+        /** @description A file a pull holds, and the proposals it waits for. */
+        TargetHold: {
+            /** @description The hand edit the pull accepted. */
+            observation: components["schemas"]["Id"];
+            path: components["schemas"]["RepoPath"];
+            /** @description The pull's proposals that are still proposed. */
+            proposals: components["schemas"]["DisplayRef"][];
+            /** @description When the pull was made. */
+            since: components["schemas"]["Timestamp"];
         };
         /** @description What Memax believes is on disk. */
         Delivered: {
@@ -1851,6 +1878,8 @@ export interface components {
             delivered?: components["schemas"]["Delivered"];
             /** @description Files with a hand edit waiting to be resolved. */
             open_drift: number;
+            /** @description The files a pull holds (the target is `held`); absent when none. */
+            holds?: components["schemas"]["TargetHold"][];
             created_receipt_id: components["schemas"]["Id"];
             last_receipt_id: components["schemas"]["Id"];
             created_at: components["schemas"]["Timestamp"];
@@ -3875,6 +3904,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
             422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];

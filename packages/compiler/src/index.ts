@@ -1,7 +1,7 @@
 /**
- * @memaxlabs/compiler: compile a Memax Space's kept record into the files AI
- * agents already read (AGENTS.md, a CLAUDE.md shim, scoped rules), and parse
- * hand edits of those files back into proposals.
+ * @memaxlabs/compiler: compile a Memax Space's kept record into the files
+ * coding agents already read (AGENTS.md, a CLAUDE.md shim, scoped rules), and
+ * parse hand edits of those files back into proposals.
  */
 export { compile, DEFAULT_BUDGET } from "./compile.js";
 export { parseBack, parseFile, isDrifted, driftHash } from "./parse.js";

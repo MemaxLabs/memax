@@ -2,7 +2,7 @@
   "name": "@memaxlabs/compiler",
   "version": "0.1.0",
   "private": true,
-  "description": "Compile a Memax Space's kept record into the files AI agents already read, and parse hand edits back",
+  "description": "Compile a Memax Space's kept record into the files coding agents already read, and parse hand edits back",
   "homepage": "https://memax.app",
   "repository": {
     "type": "git",

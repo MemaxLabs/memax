@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { CommandBar, CommandDialog, type CommandMode } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
 import { count } from "@/lib/v2/copy";
+import { IntentKeys } from "@/lib/v2/intent-keys";
 import type { KeepResult, SpaceSummary } from "@/lib/v2/data/types";
 import { KeyScopeBoundary, useHotkey, useKeycap } from "@/lib/v2/keymap/react";
 import { useSource, useViewer } from "../_lib/data";
@@ -15,6 +16,9 @@ import { AskPanel } from "./ask-panel";
 import { RememberPanel } from "./remember-panel";
 import { useToast, type ShowToast } from "./toasts";
 import styles from "./command-center.module.css";
+
+/** How long the seal shows after a Keep before the overlay closes (the stamp is 280 ms). */
+const SEAL_MS = 700;
 
 /**
  * ⌘K: Ask or remember (plan §6.4; Ask.png, Remember.png). One field;
@@ -113,6 +117,11 @@ function CommandBody({
   const [mode, setMode] = useState<CommandMode>(initialMode);
   const [query, setQuery] = useState(initialQuery);
   const [keepingAnswer, setKeepingAnswer] = useState(false);
+  const [keptAnswer, setKeptAnswer] = useState<{
+    ref: string;
+    at: Date;
+  } | null>(null);
+  const intents = useRef(new IntentKeys());
   const ask = useAsk(space);
   const draft = useRemember(mode === "remember" ? query : "", space);
   const keepKey = useKeycap("command.keep");
@@ -143,18 +152,35 @@ function CommandBody({
     }
   };
 
+  // ⌘↵ keeps the answer as the person's own memory, citing the memories
+  // it came from, so its trust is theirs (plan §5.11). One key per answer,
+  // so a retry after a dropped connection keeps it once.
   const keepAnswer = async () => {
-    if (ask.state.status !== "done" || keepingAnswer) return;
+    if (ask.state.status !== "done" || keepingAnswer || keptAnswer) return;
     const statement = answerText(ask.state.parts, false);
+    const cites = ask.state.sources.flatMap((s) =>
+      s.memory ? [s.memory] : [],
+    );
+    const intent = `ask-keep:${space.id}:${ask.state.question}:${statement}`;
     setKeepingAnswer(true);
     try {
-      const check = await source.checkRemember({ space, statement });
+      const section =
+        ask.state.sources.find((s) => s.section)?.section ??
+        (await source.checkRemember({ space, statement })).section ??
+        "decisions";
       const result = await source.remember({
         space,
         statement,
-        section: check.section ?? "decisions",
-        idempotencyKey: crypto.randomUUID(),
+        section,
+        idempotencyKey: intents.current.keyFor(intent),
+        cites,
       });
+      intents.current.settle(intent);
+      if (result.outcome === "kept") {
+        // The seal stamps where Keep was, then the overlay goes.
+        setKeptAnswer({ ref: result.ref, at: source.now() });
+        await new Promise((resolve) => setTimeout(resolve, SEAL_MS));
+      }
       close();
       notify.kept(result, space);
     } catch {
@@ -187,6 +213,12 @@ function CommandBody({
     else void keepDraft();
   });
 
+  // A new question starts clean: no seal from the last answer's Keep.
+  const askFresh = (text: string) => {
+    setKeptAnswer(null);
+    void ask.ask(text);
+  };
+
   const switchToRemember = () => {
     setMode("remember");
     if (ask.state.status !== "idle") setQuery(ask.state.question);
@@ -201,10 +233,12 @@ function CommandBody({
           viewer={viewer}
           keepKey={keepKey}
           keeping={keepingAnswer}
+          kept={keptAnswer}
           onKeep={() => void keepAnswer()}
           onCopy={() => void copyAnswer()}
           onRemember={switchToRemember}
-          onRetry={() => void ask.ask(query)}
+          onRetry={() => askFresh(query)}
+          onOpen={close}
         />
       )
     ) : (
@@ -229,7 +263,7 @@ function CommandBody({
       mode={mode}
       onModeChange={setMode}
       onSubmit={(text, current) => {
-        if (current === "ask") void ask.ask(text);
+        if (current === "ask") askFresh(text);
         else void keepDraft();
       }}
     >

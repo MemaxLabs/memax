@@ -212,6 +212,37 @@ describe("/api/proxy web-surface signing", () => {
     expect(res.headers.get("set-cookie")).toBeNull();
   });
 
+  it("streams the API's events through, and hangs up when the browser does", async () => {
+    const { POST } = await loadRoute(VECTOR.secret);
+    const calls = mockUpstream(
+      new Response("event: delta\ndata: {}\n\n", {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+    const browser = new AbortController();
+    const res = await POST(
+      new Request("https://memax.app/api/proxy/v2/spaces/memax-v2/ask", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${webToken}`,
+          "content-type": "application/json",
+          accept: "text/event-stream",
+        },
+        body: JSON.stringify({ question: "Why River?" }),
+        signal: browser.signal,
+      }),
+      params(["v2", "spaces", "memax-v2", "ask"]),
+    );
+    expect(res.headers.get("content-type")).toBe("text/event-stream");
+    expect(await res.text()).toBe("event: delta\ndata: {}\n\n");
+    expect(calls[0]?.init.headers.get("accept")).toBe("text/event-stream");
+    const upstreamSignal = calls[0]?.init.signal;
+    expect(upstreamSignal?.aborted).toBe(false);
+    browser.abort();
+    expect(upstreamSignal?.aborted).toBe(true);
+  });
+
   it("answers 502 when the API can't be reached", async () => {
     const { GET } = await loadRoute(VECTOR.secret);
     vi.stubGlobal(

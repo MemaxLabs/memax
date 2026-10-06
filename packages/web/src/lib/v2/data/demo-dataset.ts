@@ -158,6 +158,8 @@ export const DEMO_RIVER_ANSWER: { sources: AskSource[]; parts: AnswerPart[] } =
           at: "2026-10-02T10:12:00-07:00",
           ref: "M-0219",
         },
+        memory: "M-0219",
+        section: "decisions",
       },
       {
         n: 2,

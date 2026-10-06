@@ -135,15 +135,28 @@ export interface AskSource {
   /** Merged notes read quieter than kept memories. */
   state: "kept" | "merged";
   receipt: ReceiptLine;
+  /**
+   * The memory's display ID when the source is a kept memory: what a
+   * citation opens, and what keeping the answer cites (the demo's sources
+   * also include a note and a PR, which have none).
+   */
+  memory?: string;
+  /** Where the memory sits in the Brief, when known. */
+  section?: Section;
 }
 
 export type AskEvent =
+  /** The sources cited so far, numbered in citation order; replaces the last list. */
   | { type: "sources"; sources: AskSource[] }
   | { type: "part"; part: AnswerPart }
   | { type: "done" }
-  /** Nothing in the space answers it. */
+  /** Nothing in the space answers it (or the answer cited nothing it was given). */
   | { type: "none" }
-  /** PLACEHOLDER: the source can't ask yet (no /v2 ask endpoint). */
+  /** Answers are off on this server: the kept memories that match, and no answer. */
+  | { type: "off"; sources: AskSource[] }
+  /** The plan's asks this month are used up (D9); they start again at resetAt. */
+  | { type: "limit"; limit: number; resetAt: string }
+  /** The source can't ask at all (no /v2 Ask on this server). */
   | { type: "unavailable" };
 
 /** What Remember shows while the person types: the synchronous near-duplicate check (plan §5.8). */
@@ -174,6 +187,11 @@ export interface RememberInput {
   section: Section;
   /** One per intent; the same key on a retry (spec: Idempotency-Key). */
   idempotencyKey: string;
+  /**
+   * Memories the statement rests on (display IDs in this space): a kept
+   * Ask answer cites what it was answered from, so its trust is theirs.
+   */
+  cites?: string[];
 }
 
 export interface KeepResult {

@@ -146,11 +146,14 @@ async function proxy(req: Request, path: string[]): Promise<Response> {
       }
     }
 
+    // The browser going away aborts the upstream call too, so a stream
+    // (Ask) stops on the API, and its model call with it.
     const upstream = await fetch(upstreamURL.toString(), {
       method: req.method,
       headers,
       body,
       cache: "no-store",
+      signal: req.signal,
     });
 
     const responseHeaders = new Headers();

@@ -8,6 +8,24 @@ import type { RecordsView } from "../records-view";
 import type { ReviewController } from "./use-review";
 
 /**
+ * What the card says about the judge (plan §5.8): its neutral working
+ * mark while it checks the proposal or a Keep waits for it, and a quiet
+ * line saying so, or that it couldn't run. Undefined when there's
+ * nothing to say.
+ */
+export function judgeLine(
+  view: RecordsView,
+  item: ReviewItem,
+  waiting: boolean,
+): { working?: string; note?: string } {
+  const j = view.l.review.judge;
+  if (waiting) return { working: j.checking, note: j.waiting };
+  if (item.judge === "working") return { working: j.checking, note: j.working };
+  if (item.judge === "failed") return { note: j.failed };
+  return {};
+}
+
+/**
  * A proposal as Review.png draws it, through Ledger's controlled
  * ReviewCard: the italic claim, the proposer, the quarantine notice for
  * external content, the diff for an update, the evidence and the
@@ -69,16 +87,11 @@ export function ProposalCard({
       beforeId={card?.before?.ref}
       external={external}
       conflictWith={card?.conflict?.statement}
+      {...judgeLine(view, item, review.state.waiting === item.ref)}
       kept={sealed}
       pending={review.state.busy === item.ref}
       onKeep={() => void review.keep(item)}
-      onEdit={() =>
-        review.dispatch({
-          type: "edit",
-          ref: item.ref,
-          base: { version: item.version, statement: item.statement },
-        })
-      }
+      onEdit={() => review.edit(item)}
       onReject={() => review.dispatch({ type: "reject", ref: item.ref })}
       keepDisabledReason={review.canDecide ? undefined : r.viewer}
       keptBy={viewer?.initials}

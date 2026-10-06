@@ -6,6 +6,8 @@ import {
   dateTime,
   failureText,
   noteText,
+  undoFailureText,
+  undoneText,
   railTime,
   stampOf,
 } from "./records-copy";
@@ -179,5 +181,149 @@ describe("why a command didn't go through", () => {
     expect(
       failureText(EN, failure, { ...ctx, command: "reject", locale: "en" }),
     ).toBe(`M-0430 wasn't rejected. ${reason}`);
+  });
+
+  it("says why a busy Keep or a conflict settlement didn't go through", () => {
+    expect(
+      failureText(
+        EN,
+        { kind: "busy", retryAfter: 1, ref: "M-0430" },
+        { ...ctx, command: "keep", locale: "en" },
+      ),
+    ).toBe(
+      "M-0430 wasn't kept. Another change is holding it. Try again in a moment.",
+    );
+    expect(
+      failureText(
+        ZH,
+        { kind: "refused", code: "decision_needs_web", message: null },
+        { ref: "M-0431", space: "memax-v2", command: "resolve", locale: "zh" },
+      ),
+    ).toBe(
+      "M-0431 没裁定成。memax-v2 里的决策要在网页上登录才能保留。退出后在这个页面重新登录，再来保留。",
+    );
+  });
+});
+
+describe("what an undo says (no mark)", () => {
+  it.each([
+    [
+      "keep",
+      false,
+      "Undid the keep. M-0430 is back in Review.",
+      "已撤销保留。M-0430 回到了审阅。",
+    ],
+    [
+      "reject",
+      false,
+      "Undid the rejection. M-0430 is back in Review.",
+      "已撤销拒绝。M-0430 回到了审阅。",
+    ],
+    [
+      "edit",
+      true,
+      "Undid the edit and keep. M-0430 is back in Review.",
+      "已撤销编辑和保留。M-0430 回到了审阅。",
+    ],
+    [
+      "edit",
+      false,
+      "Undid your edit. M-0430 reads as it did before.",
+      "已撤销你的编辑。M-0430 恢复成原来的文字。",
+    ],
+    [
+      "resolve",
+      false,
+      "Undid the settlement. M-0430 is back in Review as a conflict.",
+      "已撤销这次裁定。M-0430 作为冲突回到了审阅。",
+    ],
+    [
+      "fold",
+      false,
+      "Unfolded M-0430. It's back in Review.",
+      "已取消合并 M-0430。它回到了审阅。",
+    ],
+  ] as const)("%s (kept %s)", (command, kept, english, chinese) => {
+    expect(undoneText(EN, command, "M-0430", { kept })).toBe(english);
+    expect(undoneText(ZH, command, "M-0430", { kept })).toBe(chinese);
+  });
+
+  const refused = (
+    reason:
+      | "window_passed"
+      | "already_undone"
+      | "not_undoable"
+      | "later_changes",
+    ref: string | null = "M-0430",
+  ) => ({ kind: "undo-refused", reason, ref }) as const;
+
+  it.each([
+    [
+      refused("window_passed"),
+      "keep",
+      "M-0430 was decided more than 10 minutes ago, so it can't be undone. Change it on its page instead.",
+    ],
+    [
+      refused("window_passed"),
+      "fold",
+      "M-0430 was folded more than 14 days ago, so it can't be unfolded. Change it on its page instead.",
+    ],
+    [
+      refused("already_undone"),
+      "keep",
+      "That was already undone. M-0430 is as it was before.",
+    ],
+    [
+      refused("not_undoable"),
+      "edit",
+      "That change to M-0430 can't be undone. Change it on its page instead.",
+    ],
+    [
+      refused("later_changes", "M-0431"),
+      "resolve",
+      "M-0431 changed after this, so undoing it would lose that change. Undo that first, or change M-0430 on its page.",
+    ],
+    [
+      refused("later_changes"),
+      "keep",
+      "M-0430 changed after this, so undoing it would lose that change. Change it on its page instead.",
+    ],
+    [
+      refused("later_changes", "B-0043"),
+      "keep",
+      "The Brief cites M-0430 now. Take it out of the Brief first, then undo.",
+    ],
+    [
+      { kind: "refused", code: "undo_by_decider", message: "Only…" } as const,
+      "keep",
+      "Only the person who decided M-0430 can undo it. Change it instead, or ask them.",
+    ],
+    [
+      {
+        kind: "refused",
+        code: "viewer",
+        message: "Viewers can't undo decisions.",
+      } as const,
+      "keep",
+      "Memax refused the undo: Viewers can't undo decisions.",
+    ],
+    [
+      { kind: "unreachable" } as const,
+      "keep",
+      "Undo didn't reach Memax, so nothing changed. Try again.",
+    ],
+    [
+      { kind: "not-found" } as const,
+      "keep",
+      "M-0430 isn't here anymore, so there's nothing to undo.",
+    ],
+  ] as const)("%j (%s)", (failure, command, english) => {
+    expect(undoFailureText(EN, failure, { command, ref: "M-0430" })).toBe(
+      english,
+    );
+    // Every refusal has its own Chinese.
+    const chinese = undoFailureText(ZH, failure, { command, ref: "M-0430" });
+    expect(chinese).not.toBe(english);
+    expect(chinese).toMatch(/[一-鿿]/);
   });
 });

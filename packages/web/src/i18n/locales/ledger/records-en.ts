@@ -103,7 +103,9 @@ export const ledgerRecordsEn = {
     keep: "{ref} wasn't kept.",
     reject: "{ref} wasn't rejected.",
     edit: "Your edit to {ref} wasn't kept.",
+    resolve: "{ref} wasn't settled.",
     unreachable: "It didn't reach Memax, so nothing changed. Try again.",
+    busy: "Another change is holding it. Try again in a moment.",
     rateLimited: "That was a lot at once. Wait {n} seconds, then try again.",
     rateLimitedSoon: "That was a lot at once. Wait a moment, then try again.",
     decided: "It was already decided, so it's gone from your queue.",
@@ -130,8 +132,46 @@ export const ledgerRecordsEn = {
         "It looks like a credential, and Memax never stores secrets. Remove it and try again.",
       not_member: "You're not a member of {space}. Ask an owner to invite you.",
       unknown_actor: "Memax doesn't recognise this session. Sign in again.",
+      undo_by_decider:
+        "Only the person who decided {ref} can undo it. Change it instead, or ask them.",
       other: "Memax refused it: {message}",
       otherBare: "Memax refused it.",
     },
+  },
+  // Undo (Review's ⌘Z, the toasts' Undo, a fold's Undo). Toasts about an
+  // undo carry no state mark: nothing was kept, and nothing waits on you.
+  undo: {
+    action: "Undo",
+    done: {
+      keep: "Undid the keep. {ref} is back in Review.",
+      reject: "Undid the rejection. {ref} is back in Review.",
+      edit: "Undid your edit. {ref} reads as it did before.",
+      editKeep: "Undid the edit and keep. {ref} is back in Review.",
+      resolve: "Undid the settlement. {ref} is back in Review as a conflict.",
+      fold: "Unfolded {ref}. It's back in Review.",
+    },
+    // Why an undo didn't go through, by spec UndoRefusal and policy code.
+    refused: {
+      window_passed:
+        "{ref} was decided more than 10 minutes ago, so it can't be undone. Change it on its page instead.",
+      window_passed_fold:
+        "{ref} was folded more than 14 days ago, so it can't be unfolded. Change it on its page instead.",
+      already_undone: "That was already undone. {ref} is as it was before.",
+      not_undoable:
+        "That change to {ref} can't be undone. Change it on its page instead.",
+      later_changes:
+        "{blocker} changed after this, so undoing it would lose that change. Undo that first, or change {ref} on its page.",
+      later_changes_self:
+        "{ref} changed after this, so undoing it would lose that change. Change it on its page instead.",
+      later_brief:
+        "The Brief cites {ref} now. Take it out of the Brief first, then undo.",
+      undo_by_decider:
+        "Only the person who decided {ref} can undo it. Change it instead, or ask them.",
+    },
+    unreachable: "Undo didn't reach Memax, so nothing changed. Try again.",
+    notFound: "{ref} isn't here anymore, so there's nothing to undo.",
+    other: "Memax refused the undo: {message}",
+    unknown:
+      "Undo didn't go through. Try again, and reload the page if it keeps happening.",
   },
 } as const;

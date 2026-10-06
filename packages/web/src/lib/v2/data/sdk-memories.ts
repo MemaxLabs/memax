@@ -1,6 +1,11 @@
 import { MemaxError, type V2 } from "memax-sdk";
-import type { MemoriesSource, MemoryFilter } from "./memories";
-import { recordOf } from "./sdk-record";
+import type {
+  MemoriesSource,
+  MemoryFilter,
+  MemoryRecord,
+  MergedNote,
+} from "./memories";
+import { foldUndo, recordOf, undoneIn } from "./sdk-record";
 import { actorOf, listItemOf, receiptsFor, type V2Client } from "./sdk-records";
 
 /**
@@ -12,6 +17,8 @@ import { actorOf, listItemOf, receiptsFor, type V2Client } from "./sdk-records";
  */
 
 const PAGE = 50;
+/** Folds read for a memory's page; the rest are counted. */
+const FOLDS_SHOWN = 10;
 
 const FILTER_STATES: Record<MemoryFilter, V2.State[] | undefined> = {
   all: undefined,
@@ -43,6 +50,49 @@ export function createSdkMemories(
     }
   }
 
+  /**
+   * The proposals the judge folded into a memory (its `merged_into`
+   * links in), each with its words and, inside the 14 days, the fold's
+   * Undo: the link names the receipt that made it. Null when there are
+   * none (Dream's notes aren't served yet).
+   */
+  async function foldsInto(
+    slug: string,
+    memory: V2.Memory,
+    now: Date,
+    signal?: AbortSignal,
+  ): Promise<MemoryRecord["merged"]> {
+    const links = (memory.links ?? [])
+      .filter((l) => l.kind === "merged_into" && l.direction === "in")
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+    if (links.length === 0) return null;
+    const shown = links.slice(0, FOLDS_SHOWN);
+    const folded = await Promise.all(
+      shown.map((l) => detail(slug, l.ref, signal)),
+    );
+    const notes = shown.flatMap((link, i): MergedNote[] => {
+      const found = folded[i];
+      if (!found) return [];
+      const receipts = found.receipts.items;
+      const created =
+        receipts.find((r) => r.id === found.memory.created_receipt_id) ??
+        [...receipts].sort((a, b) => a.seq - b.seq)[0];
+      const still =
+        found.memory.lifecycle === "merged" &&
+        !undoneIn(receipts, link.receipt_id);
+      return [
+        {
+          ref: found.memory.ref,
+          statement: found.memory.statement,
+          by: actorOf(created, viewerId()),
+          at: link.created_at,
+          undo: still ? foldUndo(link.receipt_id, link.created_at, now) : null,
+        },
+      ];
+    });
+    return { notes, total: links.length };
+  }
+
   return {
     async list({ space, filter, cursor, signal }) {
       const page = await client.v2.memories.list(space.slug, {
@@ -68,7 +118,12 @@ export function createSdkMemories(
 
     async get({ space, ref, signal }) {
       const found = await detail(space.slug, ref, signal);
-      return found ? recordOf(found, viewerId()) : null;
+      if (!found) return null;
+      const now = new Date();
+      return recordOf(found, viewerId(), {
+        merged: await foldsInto(space.slug, found.memory, now, signal),
+        now,
+      });
     },
 
     async latest({ space, ref, signal }) {
@@ -115,6 +170,12 @@ export function createSdkMemories(
         version: result.memory.version,
         // PLACEHOLDER: compile runs aren't served yet.
         recompiled: null,
+        // A person's edit (and edit-then-keep) is undoable by its receipt;
+        // an edit sent to Review as a new proposal isn't.
+        receipt:
+          result.outcome === "applied"
+            ? (result.receipts[0]?.id ?? null)
+            : null,
       };
     },
   };

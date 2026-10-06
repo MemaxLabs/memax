@@ -96,7 +96,9 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     keep: "{ref} 没保留上。",
     reject: "{ref} 没拒绝成。",
     edit: "你对 {ref} 的改动没保留上。",
+    resolve: "{ref} 没裁定成。",
     unreachable: "没连上 Memax，所以什么都没变。再试一次吧。",
+    busy: "另一个改动正占着它。稍等一下再试。",
     rateLimited: "一下子太多了。等 {n} 秒再试。",
     rateLimitedSoon: "一下子太多了。稍等一下再试。",
     decided: "它已经处理过了，所以从队列里拿掉了。",
@@ -122,8 +124,40 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
         "这看起来像是密钥之类的凭据，Memax 从不存这种东西。去掉之后再试。",
       not_member: "你不是 {space} 的成员。请所有者邀请你。",
       unknown_actor: "Memax 认不出这次登录。重新登录一下吧。",
+      undo_by_decider:
+        "只有当初处理 {ref} 的人才能撤销。可以直接改它，或者去问问对方。",
       other: "Memax 没接受：{message}",
       otherBare: "Memax 没接受。",
     },
+  },
+  undo: {
+    action: "撤销",
+    done: {
+      keep: "已撤销保留。{ref} 回到了审阅。",
+      reject: "已撤销拒绝。{ref} 回到了审阅。",
+      edit: "已撤销你的编辑。{ref} 恢复成原来的文字。",
+      editKeep: "已撤销编辑和保留。{ref} 回到了审阅。",
+      resolve: "已撤销这次裁定。{ref} 作为冲突回到了审阅。",
+      fold: "已取消合并 {ref}。它回到了审阅。",
+    },
+    refused: {
+      window_passed:
+        "{ref} 是 10 分钟之前处理的，已经不能撤销了。去它的页面上直接改吧。",
+      window_passed_fold:
+        "{ref} 是 14 天之前合并的，已经不能取消合并了。去它的页面上直接改吧。",
+      already_undone: "这已经撤销过了。{ref} 还是原来的样子。",
+      not_undoable: "对 {ref} 的这个改动不能撤销。去它的页面上直接改吧。",
+      later_changes:
+        "{blocker} 在这之后又改过，撤销会丢掉那次改动。先撤销那次，或者去 {ref} 的页面上直接改。",
+      later_changes_self:
+        "{ref} 在这之后又改过，撤销会丢掉那次改动。去它的页面上直接改吧。",
+      later_brief: "简报现在引用了 {ref}。先把它从简报里拿掉，再来撤销。",
+      undo_by_decider:
+        "只有当初处理 {ref} 的人才能撤销。可以直接改它，或者去问问对方。",
+    },
+    unreachable: "撤销没连上 Memax，所以什么都没变。再试一次吧。",
+    notFound: "{ref} 已经不在这儿了，没什么可撤销的。",
+    other: "Memax 没接受这次撤销：{message}",
+    unknown: "撤销没成功。再试一次；要是一直这样，刷新一下页面。",
   },
 };

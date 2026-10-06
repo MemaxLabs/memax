@@ -165,6 +165,10 @@ export interface KeepResult {
   outcome: "kept" | "proposed";
   /** Compiled files rewritten, when the source knows. */
   recompiled: number | null;
-  /** The inverse command, when there is one. */
-  undo?: () => Promise<void>;
+  /**
+   * The receipt Undo addresses, when the command can be undone: a Keep
+   * can. A person's own Remember can't (the server journals no undo for
+   * it), so it carries none.
+   */
+  receipt?: string | null;
 }

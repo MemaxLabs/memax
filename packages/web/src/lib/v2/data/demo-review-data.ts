@@ -55,6 +55,7 @@ const item = (
   session: null,
   updates: null,
   conflictsWith: null,
+  judge: null,
   intoSpace: null,
   ...fields,
 });
@@ -111,6 +112,9 @@ export const DEMO_QUEUES: Record<string, ReviewItem[]> = {
       at: at("03:12"),
     }),
   ],
+  // Not drawn on a board: the team space shows the judge at work. The
+  // judge couldn't run on M-0444, and is still checking M-0445, which
+  // touches a decision in force, so a Keep waits for it (DEMO_JUDGING).
   "memax-team": [
     item({
       ref: "M-0444",
@@ -120,6 +124,7 @@ export const DEMO_QUEUES: Record<string, ReviewItem[]> = {
       by: agent("claude-code"),
       at: at("14:35"),
       session: "71c0",
+      judge: "failed",
     }),
     item({
       ref: "M-0445",
@@ -127,8 +132,41 @@ export const DEMO_QUEUES: Record<string, ReviewItem[]> = {
       section: "decisions",
       by: agent("codex"),
       at: at("13:20"),
+      judge: "working",
     }),
   ],
+};
+
+/**
+ * One of the judge's folds, in the team space (no board draws one): a
+ * proposal folded into the kept memory it repeats. Its receipt is what
+ * Undo addresses; unfolded, it comes back to Review as this proposal.
+ */
+export const DEMO_FOLD = {
+  slug: "memax-team",
+  receipt: "0192a7c0-0000-7000-8000-f0000000f01d",
+  into: "M-0310",
+  at: at("14:33"),
+  item: item({
+    ref: "M-0446",
+    statement: "Reviews need a member who isn't the author.",
+    section: "decisions",
+    by: agent("codex"),
+    at: at("14:32"),
+    session: "4d1b",
+  }),
+} as const;
+
+/**
+ * The demo's judge: proposals it's still checking, how long the check
+ * takes from the first time the demo serves them, and whether they touch
+ * a decision in force (then Keep answers `busy` until the check is done).
+ */
+export const DEMO_JUDGING: Record<
+  string,
+  { afterMs: number; touchesDecision: boolean }
+> = {
+  "M-0445": { afterMs: 4000, touchesDecision: true },
 };
 
 export const M0156 = {
@@ -225,12 +263,21 @@ export const DEMO_CARDS: Record<string, ReviewCardData> = {
   },
 };
 
-/** ReviewConflict.png: M-0431 against M-0174. */
+const allowed = { allowed: true, refusal: null, narrowed: null } as const;
+
+/**
+ * ReviewConflict.png: M-0431 against M-0174, with the effects the server
+ * plans for each answer. "Both" narrows each side (the server's
+ * keep_both) rather than writing the board's third memory; its words are
+ * the board's decision, split between the two sides.
+ */
 export const DEMO_CONFLICTS: Record<string, ConflictData> = {
   "M-0431": {
     question: "Fly.io or Railway for the v2 API?",
+    area: "deploy target",
     kept: {
       ...M0174,
+      version: 1,
       why: "Simpler preview environments, one per pull request.",
       source: "A chat with Claude on Sep 18",
       reaches: { files: 4, reads: 61 },
@@ -239,6 +286,7 @@ export const DEMO_CONFLICTS: Record<string, ConflictData> = {
     },
     proposal: {
       ref: "M-0431",
+      version: 1,
       statement: "Deploy the v2 API to Fly.io in iad and ams.",
       by: agent("codex"),
       at: at("14:26"),
@@ -253,28 +301,51 @@ export const DEMO_CONFLICTS: Record<string, ConflictData> = {
     },
     options: [
       {
+        ...allowed,
         kind: "proposal",
         label: "Fly.io everywhere",
         detail: null,
+        effects: [
+          { ref: "M-0431", change: "kept" },
+          { ref: "M-0174", change: "superseded" },
+        ],
         decision: "Deploy the v2 API to Fly.io in iad and ams.",
       },
       {
+        ...allowed,
         kind: "kept",
         label: "Railway, as kept",
         detail: null,
+        effects: [
+          { ref: "M-0431", change: "rejected" },
+          { ref: "M-0174", change: "stays" },
+        ],
         decision: "Deploy the v2 API to Railway for its preview environments.",
       },
       {
+        ...allowed,
         kind: "both",
         label: "Both, each with its own scope",
         detail: "Production on Fly.io; previews on Railway.",
-        decision:
-          "The v2 API runs on Fly.io in iad and ams. Preview environments for pull requests run on Railway.",
+        effects: [
+          { ref: "M-0431", change: "kept" },
+          { ref: "M-0174", change: "stays" },
+        ],
+        decision: "",
+        narrowed: {
+          proposal: "The v2 API runs on Fly.io in iad and ams.",
+          kept: "Preview environments for pull requests run on Railway.",
+        },
       },
       {
+        ...allowed,
         kind: "open",
         label: null,
         detail: "Codex keeps both configs behind a flag.",
+        effects: [
+          { ref: "M-0431", change: "open" },
+          { ref: "M-0174", change: "open" },
+        ],
         decision: "",
       },
     ],

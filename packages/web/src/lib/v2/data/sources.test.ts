@@ -108,7 +108,8 @@ describe("the demo source", () => {
     });
     expect([first.ref, second.ref]).toEqual(["M-0439", "M-0440"]);
     expect(first).toMatchObject({ outcome: "kept", recompiled: 3 });
-    expect(first.undo).toBeTypeOf("function");
+    // A fresh Remember has no undo on the server, so none here either.
+    expect(first.receipt).toBeNull();
   });
 });
 
@@ -215,7 +216,12 @@ describe("the SDK source", () => {
       { statement: "River, not Temporal.", section: "decisions" },
       { idempotencyKey: "key-1" },
     );
-    expect(kept).toEqual({ ref: "M-0500", outcome: "kept", recompiled: null });
+    expect(kept).toEqual({
+      ref: "M-0500",
+      outcome: "kept",
+      recompiled: null,
+      receipt: null,
+    });
     const proposal = await source.keepProposal({
       space: v2,
       ref: "M-0432",
@@ -227,6 +233,33 @@ describe("the SDK source", () => {
       { space: "memax-v2", idempotencyKey: "key-2" },
     );
     expect(proposal.outcome).toBe("proposed");
+  });
+
+  it("carries a Keep's receipt for Undo, and undoes by receipt", async () => {
+    const { client, source } = setup();
+    client.v2.memories.keep.mockResolvedValueOnce({
+      outcome: "applied",
+      memory: { ref: "M-0432" },
+      receipts: [{ id: "r-keep" }],
+    });
+    const kept = await source.keepProposal({
+      space: v2,
+      ref: "M-0432",
+      idempotencyKey: "key-3",
+    });
+    expect(kept.receipt).toBe("r-keep");
+    const undo = vi.fn().mockResolvedValue({
+      memories: [{ ref: "M-0432" }],
+      receipts: [{ id: "r-undid" }],
+    });
+    (client.v2 as unknown as { receipts: Record<string, unknown> }).receipts = {
+      ...client.v2.receipts,
+      undo,
+    };
+    expect(
+      await source.undo({ space: v2, receipt: "r-keep", idempotencyKey: "u1" }),
+    ).toEqual({ refs: ["M-0432"] });
+    expect(undo).toHaveBeenCalledWith("r-keep", {}, { idempotencyKey: "u1" });
   });
 
   it("can't ask yet, and says so", async () => {

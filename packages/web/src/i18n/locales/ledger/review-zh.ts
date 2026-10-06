@@ -32,7 +32,18 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
     stopEditing: "不改了",
     confirmReject: "拒绝",
     cancel: "取消",
+    stopWaiting: "不等了",
   },
+  judge: {
+    checking: "检查中",
+    working:
+      "Memax 正在对照已保留的内容检查它，重复或冲突会在你决定之前显示出来。",
+    waiting: "正在对照现行的决策检查它。检查完就会保留。",
+    failed:
+      "Memax 没能对照已保留的内容检查它。照常审阅就行，Dream 今晚会再看一遍。",
+  },
+  keptOver: "已保留 {ref}，替换了 {other}",
+  nowConflict: "{ref} 和现行的决策 {other} 矛盾。对比两边，定下来。",
   edit: {
     title: "正在编辑提议",
   },
@@ -68,6 +79,8 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
   },
   compare: {
     eyebrow: "审阅 · 冲突 · {proposal} 对 {kept}",
+    titleArea: "{area}以哪一条为准？",
+    titleNone: "以哪一条为准？",
     lede: "{agent} 的提议和 {name} 在 {date} 保留的内容矛盾。要么一方让步，要么两边各自缩小范围、都成立。",
     ask: "问问 {name}",
     keptSide: "已保留 · 从 {date} 起生效",
@@ -85,6 +98,11 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
     changed: "，最后改动于 {date}",
     question: "每个 Agent 应该读到哪一个？",
     optionsLabel: "怎么定",
+    labels: {
+      proposal: "{agent} 的提议",
+      kept: "{ref}，照已保留的",
+      both: "两条都留，各管各的范围",
+    },
     proposalDetail: "保留 {agent} 的提议，替换 {ref}。",
     keptDetail: "拒绝 {agent} 的提议，并告诉 {agent} 原因。",
     bothDetail: "两条都成立。",
@@ -92,20 +110,30 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
     openDetail: "告诉各个 Agent 这事还没定。",
     openDetailWith: "告诉各个 Agent 这事还没定，{detail}",
     decision: "决策会这样写",
-    footer: {
-      proposal:
-        "作为你做的决策保留下来。它会取代 {kept}，重新编译 {files}，并告诉 {agents}。",
-      kept: "{proposal} 会被拒绝，{kept} 继续生效，并告诉 {agent} 原因。",
-      both: "作为你做的决策保留下来。它会取代 {kept}，了结 {proposal}，重新编译 {files}，并告诉 {agents}。",
-      open: "什么都不保留。告诉各个 Agent 这事还没定，{proposal} 留在审阅里。",
+    decisionBoth: "两边各会这样写",
+    side: "{ref} 会这样写",
+    openNote: "两条都变成待定问题，等有人来定。不会把哪条当作答案保留。",
+    choose: "选 1、2、3 或 4",
+    effects: {
+      kept: "{ref} 会被保留。",
+      rejected: "{ref} 会被拒绝。",
+      superseded: "{ref} 会被取代，不再编译。",
+      faded: "{ref} 会淡出。",
+      open: "{ref} 会变成待定问题。",
+      stays: "{ref} 保持不变。",
+      narrowed: "{ref} 会按缩小后的说法保留。",
     },
+    reach: "保留后会重新编译 {files}，并告诉 {agents}。",
+    reachFiles: "保留后会重新编译 {files}。",
     back: "回到队列",
     keep: "保留这个决策",
     needsWords: "把决策写成每个 Agent 该读到的样子。",
     kept: "已把 {ref} 作为决策保留",
     keptRecompiled: "已把 {ref} 作为决策保留 · 重新编译了 {n} 个文件",
     keptRecompiledOne: "已把 {ref} 作为决策保留 · 重新编译了 1 个文件",
-    leftOpen: "{ref} 先不定",
+    stays: "{kept} 继续生效。已拒绝 {proposal}",
+    keptBoth: "已保留 {proposal} 和 {kept}，各自缩小了范围",
+    leftOpen: "{proposal} 和 {kept} 先不定",
     nothing: {
       title: "{ref} 没有可以对比的东西。",
       detail:

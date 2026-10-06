@@ -1,6 +1,13 @@
+import { MemaxError } from "memax-sdk";
 import { CommandFailedError } from "./command-error";
 import { createDemoMemories } from "./demo-memories";
-import { DEMO_CARDS, DEMO_CONFLICTS, DEMO_QUEUES } from "./demo-review-data";
+import {
+  DEMO_CARDS,
+  DEMO_CONFLICTS,
+  DEMO_FOLD,
+  DEMO_JUDGING,
+  DEMO_QUEUES,
+} from "./demo-review-data";
 import type { DecisionResult } from "./records";
 import type {
   ReviewCardData,
@@ -9,6 +16,7 @@ import type {
   ReviewSource,
 } from "./review";
 import type { SpaceOverview } from "./types";
+import { undoWindowMs, type UndoCommand, type UndoSource } from "./undo";
 
 /**
  * The demo's Review and Memories: the boards' records behind the
@@ -17,6 +25,12 @@ import type { SpaceOverview } from "./types";
  * the rail's count drops and Memories shows it kept). Commands settle
  * after a short delay, so the optimistic seal is visible first, and
  * replay by idempotency key like the server does.
+ *
+ * It holds the server's contract where the boards meet the judge: a
+ * proposal the judge is still checking (DEMO_JUDGING) answers Keep with
+ * `busy` while it touches a decision in force, a flagged proposal can't
+ * be kept until its conflict is settled, and every person's decision is
+ * journalled so Undo can reverse it within its window.
  */
 
 export type Decided = {
@@ -43,26 +57,77 @@ function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+/** A decision Undo can reverse: what it was, when, and how to put it back. */
+interface Journalled {
+  slug: string;
+  command: UndoCommand;
+  ref: string;
+  /** Real time, like the server's window. */
+  at: number;
+  undone: boolean;
+  revert: () => void;
+}
+
+export interface DemoJournal {
+  /** Journals a decision; returns its receipt. */
+  record(entry: Omit<Journalled, "at" | "undone">): string;
+}
+
 export function createDemoRecords({
   now,
   commandDelayMs = 240,
+  judging = DEMO_JUDGING,
+  clock = () => Date.now(),
 }: {
   now: () => Date;
   commandDelayMs?: number;
+  /** The judge's script: how long each check takes once the demo serves it. */
+  judging?: typeof DEMO_JUDGING;
+  /** Real time, for the judge and the undo window (the demo's `now` is fixed). */
+  clock?: () => number;
 }) {
   const decided = new Map<string, Decided>();
   const edits = new Map<string, { statement: string; version: number }>();
-  const replays = new Map<string, DecisionResult>();
-  let nextRef = 450;
+  const replays = new Map<string, unknown>();
+  const journal = new Map<string, Journalled>();
+  const seen = new Map<string, number>();
+  /** Folds undone in this session: back in Review as proposals. */
+  const unfolded = new Set<string>();
+  let nextReceipt = 1;
   const id = (slug: string, ref: string) => `${slug}/${ref}`;
   const stamp = () => now().toISOString();
+  // The judge's fold in the team space, undoable like the server's.
+  journal.set(DEMO_FOLD.receipt, {
+    slug: DEMO_FOLD.slug,
+    command: "fold",
+    ref: DEMO_FOLD.item.ref,
+    at: clock(),
+    undone: false,
+    revert: () => unfolded.add(id(DEMO_FOLD.slug, DEMO_FOLD.item.ref)),
+  });
+
+  /** Whether the demo's judge is still checking it. */
+  function checking(slug: string, ref: string): boolean {
+    const script = judging[ref];
+    if (!script) return false;
+    const key = id(slug, ref);
+    const first = seen.get(key) ?? clock();
+    seen.set(key, first);
+    return clock() - first < script.afterMs;
+  }
 
   function queueOf(slug: string): ReviewItem[] {
-    return (DEMO_QUEUES[slug] ?? [])
+    const back =
+      slug === DEMO_FOLD.slug && unfolded.has(id(slug, DEMO_FOLD.item.ref))
+        ? [DEMO_FOLD.item]
+        : [];
+    return [...(DEMO_QUEUES[slug] ?? []), ...back]
       .filter((item) => !decided.has(id(slug, item.ref)))
       .map((item) => {
         const edit = edits.get(id(slug, item.ref));
-        return edit ? { ...item, ...edit } : item;
+        const next = edit ? { ...item, ...edit } : item;
+        if (!judging[item.ref]) return next;
+        return { ...next, judge: checking(slug, item.ref) ? "working" : null };
       });
   }
 
@@ -72,16 +137,39 @@ export function createDemoRecords({
   }
 
   /** Runs a command once per idempotency key, like the server. */
-  async function command(
-    key: string,
-    run: () => DecisionResult,
-  ): Promise<DecisionResult> {
+  async function command<T>(key: string, run: () => T): Promise<T> {
     await sleep(commandDelayMs);
-    const replay = replays.get(key);
-    if (replay) return replay;
+    if (replays.has(key)) return replays.get(key) as T;
     const result = run();
     replays.set(key, result);
     return result;
+  }
+
+  const record: DemoJournal["record"] = (entry) => {
+    const receipt = `demo-receipt-${nextReceipt++}`;
+    journal.set(receipt, { ...entry, at: clock(), undone: false });
+    return receipt;
+  };
+
+  /** Records a decision so Undo can put back what was there. */
+  function decide(
+    slug: string,
+    ref: string,
+    command: UndoCommand,
+    next: Decided,
+  ): string {
+    const key = id(slug, ref);
+    const before = decided.get(key);
+    decided.set(key, next);
+    return record({
+      slug,
+      command,
+      ref,
+      revert: () => {
+        if (before) decided.set(key, before);
+        else decided.delete(key);
+      },
+    });
   }
 
   function current(slug: string, item: ReviewItem): ReviewItem {
@@ -108,10 +196,34 @@ export function createDemoRecords({
     async card({ item }) {
       return DEMO_CARDS[item.ref] ?? EMPTY_CARD;
     },
+    async item({ space, ref }) {
+      return queueOf(space.slug).find((i) => i.ref === ref) ?? null;
+    },
     keep({ space, item, idempotencyKey }) {
-      return command(idempotencyKey, () => {
+      return command(idempotencyKey, (): DecisionResult => {
         const live = current(space.slug, item);
-        decided.set(id(space.slug, item.ref), {
+        // The server's answers, word for word where it has them.
+        if (live.state === "conflict") {
+          throw new MemaxError(
+            "this proposal conflicts with the record; resolve the conflict before keeping it",
+            "invalid_transition",
+            409,
+            { ref: live.ref },
+          );
+        }
+        if (
+          live.judge === "working" &&
+          judging[live.ref]?.touchesDecision === true
+        ) {
+          throw new MemaxError(
+            `Memax is still checking ${live.ref} against the decisions in force. Try again in a moment.`,
+            "busy",
+            503,
+            { retry_after: 1, ref: live.ref },
+            1,
+          );
+        }
+        const receipt = decide(space.slug, item.ref, "keep", {
           slug: space.slug,
           outcome: "kept",
           item: live,
@@ -121,13 +233,14 @@ export function createDemoRecords({
           outcome: "kept",
           version: live.version + 1,
           recompiled: DEMO_CARDS[item.ref]?.touches.targets?.length ?? null,
+          receipt,
         };
       });
     },
     reject({ space, item, idempotencyKey }) {
-      return command(idempotencyKey, () => {
+      return command(idempotencyKey, (): DecisionResult => {
         const live = current(space.slug, item);
-        decided.set(id(space.slug, item.ref), {
+        const receipt = decide(space.slug, item.ref, "reject", {
           slug: space.slug,
           outcome: "rejected",
           item: live,
@@ -137,6 +250,7 @@ export function createDemoRecords({
           outcome: "rejected",
           version: live.version + 1,
           recompiled: null,
+          receipt,
         };
       });
     },
@@ -144,38 +258,82 @@ export function createDemoRecords({
       if (decided.has(id(space.slug, ref))) return null;
       return DEMO_CONFLICTS[ref] ?? null;
     },
-    resolveConflict({ space, ref, idempotencyKey }) {
-      return command(idempotencyKey, () => {
+    resolveConflict({ space, ref, version, option, idempotencyKey }) {
+      return command(idempotencyKey, (): DecisionResult => {
         const item = queueOf(space.slug).find((i) => i.ref === ref);
         if (!item) throw new CommandFailedError({ kind: "decided" });
-        decided.set(id(space.slug, ref), {
+        if (item.version !== version) {
+          throw new CommandFailedError({
+            kind: "clash",
+            currentVersion: item.version,
+          });
+        }
+        // Every answer settles the flagged side: kept (as an open
+        // question when left open), or rejected when the decision stays.
+        const outcome = option === "kept" ? "rejected" : "kept";
+        const receipt = decide(space.slug, ref, "resolve", {
           slug: space.slug,
-          outcome: "kept",
+          outcome,
           item,
         });
         return {
-          ref: `M-${String(nextRef++).padStart(4, "0")}`,
-          outcome: "kept",
-          version: 1,
-          recompiled: DEMO_CONFLICTS[ref]?.recompiles ?? null,
+          ref,
+          outcome,
+          version: item.version + 1,
+          recompiled:
+            option === "kept"
+              ? null
+              : (DEMO_CONFLICTS[ref]?.recompiles ?? null),
+          receipt,
         };
       });
     },
   };
 
+  const undo: UndoSource["undo"] = ({ receipt, idempotencyKey }) =>
+    command(idempotencyKey, () => {
+      const entry = journal.get(receipt);
+      const refuse = (reason: string, ref: string | null) =>
+        new MemaxError(`undo refused: ${reason}`, "undo_refused", 409, {
+          reason,
+          ...(ref ? { ref } : {}),
+        });
+      if (!entry) throw refuse("not_undoable", null);
+      if (entry.undone) throw refuse("already_undone", entry.ref);
+      if (clock() - entry.at > undoWindowMs(entry.command)) {
+        throw refuse("window_passed", entry.ref);
+      }
+      // Journalled in order: anything after it on the same memory is a
+      // later change it would lose.
+      const entries = [...journal.values()];
+      const later = entries
+        .slice(entries.indexOf(entry) + 1)
+        .some((e) => !e.undone && e.slug === entry.slug && e.ref === entry.ref);
+      if (later) throw refuse("later_changes", entry.ref);
+      entry.revert();
+      entry.undone = true;
+      return { refs: [entry.ref] };
+    });
+
   const memories = createDemoMemories({
     decided,
     edits,
+    unfolded,
     id,
     stamp,
     queueOf,
     command,
+    journal: { record },
   });
 
   /** The frame's overview with this session's decisions taken out of it. */
   function overview(slug: string, base: SpaceOverview): SpaceOverview {
     const mine = [...decided.values()].filter((d) => d.slug === slug);
-    if (mine.length === 0) return base;
+    if (mine.length === 0) {
+      // Only an unfolded proposal back in Review.
+      const back = [...unfolded].filter((k) => k.startsWith(`${slug}/`));
+      return back.length ? { ...base, waiting: queueOf(slug).length } : base;
+    }
     const left = queueOf(slug);
     const kept = mine.filter((d) => d.outcome === "kept").length;
     const was = (test: (i: ReviewItem) => boolean) =>
@@ -216,5 +374,5 @@ export function createDemoRecords({
     };
   }
 
-  return { review, memories, overview };
+  return { review, memories, overview, undo, journal: { record } };
 }

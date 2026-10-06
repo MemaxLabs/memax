@@ -310,8 +310,6 @@ export const ledgerAppEn = {
     keptRecompiledOne: "Kept {ref} · 1 file recompiled",
     proposed: "Sent {ref} to Review",
     undo: "Undo",
-    undone: "Undone: {ref} isn't kept.",
-    undoFailed: "Undo didn't go through. {ref} is still kept.",
     failed: "That didn't go through. Nothing was kept.",
     copied: "Copied with citations",
     copiedCommand: "Copied the command",
@@ -352,6 +350,7 @@ export const ledgerAppEn = {
       "today.review": "Start review, on Today",
       "memories.remember": "Remember, on Memories",
       "command.keep": "Keep the answer, in Ask",
+      "review.stopWaiting": "Stop waiting for the check, in Review",
     },
   },
   settings: {

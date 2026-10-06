@@ -6,6 +6,7 @@ import type {
   ViaPart,
 } from "./activity";
 import { DEMO_AGENT_IDS } from "./agents-demo";
+import { DEMO_FOLD } from "./demo-review-data";
 
 /**
  * Activity.png's receipts for memax-v2, newest first, at Monday October 5
@@ -168,7 +169,35 @@ const MEMAX_V2: ActivityEntry[] = [
   }),
 ];
 
+// The team space's receipts (no board draws them): the judge folding a
+// repeat into what's kept, with the receipt Undo addresses.
+const MEMAX_TEAM: ActivityEntry[] = [
+  {
+    ...entry({
+      at: DEMO_FOLD.at,
+      actor: { kind: "memax" },
+      action: "merged",
+      object: { kind: "memory", ref: DEMO_FOLD.item.ref, id: uid() },
+      via: [{ kind: "via", via: "system" }],
+      source: { kind: "memory", ref: DEMO_FOLD.into },
+      reason: `A near-verbatim repeat of ${DEMO_FOLD.into}.`,
+    }),
+    id: DEMO_FOLD.receipt,
+  },
+  entry({
+    at: DEMO_FOLD.item.at,
+    actor: agent("codex"),
+    action: "proposed",
+    object: { kind: "memory", ref: DEMO_FOLD.item.ref, id: uid() },
+    via: [
+      { kind: "via", via: "mcp" },
+      { kind: "session", ref: "4d1b" },
+    ],
+  }),
+];
+
 const PAGES: Readonly<Record<string, ActivityPage>> = {
+  "memax-team": { entries: MEMAX_TEAM, nextCursor: null, totals: null },
   "memax-v2": {
     entries: MEMAX_V2,
     nextCursor: null,

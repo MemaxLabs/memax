@@ -3,6 +3,7 @@ import type { Actor } from "./records";
 import {
   agent,
   at,
+  DEMO_FOLD,
   DREAM,
   JY,
   M0071,
@@ -12,6 +13,8 @@ import {
   V2_REACHES,
   ZZ,
 } from "./demo-review-data";
+
+const MEMAX: Actor = { kind: "memax" };
 
 /**
  * The demo's Memories and Memory records (Memories.png, Memory.png), on
@@ -267,8 +270,22 @@ export const DEMO_MEMORY_PAGES: Record<string, MemoryListItem[][]> = {
         section: "decisions",
         ...kept(JY, at("10:20", "2026-09-22")),
       }),
+      row({
+        ref: DEMO_FOLD.item.ref,
+        statement: DEMO_FOLD.item.statement,
+        section: "decisions",
+        state: "merged",
+        receipt: { by: MEMAX, action: "merged", at: DEMO_FOLD.at },
+        note: { kind: "merged", into: DEMO_FOLD.into, by: MEMAX },
+      }),
     ],
   ],
+};
+
+/** The fold's Undo: the judge's folds can be undone for 14 days. */
+const FOLD_UNDO = {
+  receipt: DEMO_FOLD.receipt,
+  until: new Date(Date.parse(DEMO_FOLD.at) + 14 * 86_400_000).toISOString(),
 };
 
 /** Memories.png's section sizes, across the whole record. */
@@ -279,8 +296,47 @@ export const DEMO_SECTION_COUNTS: Record<string, Record<string, number>> = {
 /** Memories.png's "All 222": 214 kept, 5 waiting and 3 forgotten. */
 export const DEMO_TOTALS: Record<string, number> = { "memax-v2": 222 };
 
-/** Memory.png: M-0219 under its seal. */
+/** Memory.png: M-0219 under its seal; and the team space's fold, both ways. */
 export const DEMO_RECORDS: Record<string, Partial<MemoryRecord>> = {
+  [DEMO_FOLD.item.ref]: {
+    lifecycle: "merged",
+    lineage: [
+      {
+        key: "f1",
+        action: "proposed",
+        by: DEMO_FOLD.item.by,
+        at: DEMO_FOLD.item.at,
+        detail: null,
+        count: null,
+        to: null,
+      },
+      {
+        key: "f2",
+        action: "merged",
+        by: MEMAX,
+        at: DEMO_FOLD.at,
+        detail: `A near-verbatim repeat of ${DEMO_FOLD.into}.`,
+        count: null,
+        to: null,
+        into: DEMO_FOLD.into,
+        undo: FOLD_UNDO,
+      },
+    ],
+  },
+  [DEMO_FOLD.into]: {
+    merged: {
+      total: 1,
+      notes: [
+        {
+          ref: DEMO_FOLD.item.ref,
+          statement: DEMO_FOLD.item.statement,
+          by: DEMO_FOLD.item.by,
+          at: DEMO_FOLD.at,
+          undo: FOLD_UNDO,
+        },
+      ],
+    },
+  },
   "M-0219": {
     kept: { by: ZZ, at: at("10:58", "2026-10-02") },
     reads: 214,

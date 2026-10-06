@@ -94,6 +94,8 @@ export const KEYMAP = [
   { id: "today.review", keys: ["R"], group: "pages" },
   { id: "memories.remember", keys: ["N"], group: "pages" },
   { id: "command.keep", keys: ["Mod+Enter"], group: "pages", inInput: true },
+  // A Keep waiting for the judge (plan §5.8): Esc stops waiting.
+  { id: "review.stopWaiting", keys: ["Escape"], group: "pages" },
 ] as const satisfies readonly KeyBinding[];
 
 export type KeyActionId = (typeof KEYMAP)[number]["id"];

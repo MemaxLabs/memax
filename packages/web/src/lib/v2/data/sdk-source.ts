@@ -1,4 +1,4 @@
-import type { Memax } from "memax-sdk";
+import type { Memax, V2 } from "memax-sdk";
 import { createSdkActivity } from "./activity-sdk";
 import { agentsOverview, createSdkAgents } from "./agents-sdk";
 import { createSdkMemories } from "./sdk-memories";
@@ -102,7 +102,9 @@ export function createSdkSource({
         { statement, section },
         { idempotencyKey },
       );
-      return toKeepResult(result.memory.ref, result.outcome);
+      // The server journals no undo for a person's own Remember (its
+      // receipt answers 409 not_undoable), so the toast offers none.
+      return toKeepResult(result, false);
     },
     async keepProposal({ space, ref, idempotencyKey }) {
       const result = await client.v2.memories.keep(
@@ -110,17 +112,31 @@ export function createSdkSource({
         {},
         { space: space.slug, idempotencyKey },
       );
-      return toKeepResult(result.memory.ref, result.outcome);
+      return toKeepResult(result, true);
+    },
+    async undo({ receipt, idempotencyKey }) {
+      // The receipt names its space; the server finds it within the
+      // person's spaces (another space's receipt is 404).
+      const result = await client.v2.receipts.undo(
+        receipt,
+        {},
+        { idempotencyKey },
+      );
+      return { refs: result.memories.map((m) => m.ref) };
     },
   };
 }
 
-function toKeepResult(ref: string, outcome: string): KeepResult {
+export function toKeepResult(
+  result: V2.CommandResult,
+  undoable: boolean,
+): KeepResult {
+  const kept = result.outcome === "applied";
   return {
-    ref,
-    outcome: outcome === "applied" ? "kept" : "proposed",
-    // PLACEHOLDER: compile runs aren't served, and there is no inverse
-    // command for a keep yet, so no Undo.
+    ref: result.memory.ref,
+    outcome: kept ? "kept" : "proposed",
+    // PLACEHOLDER: compile runs aren't served to the frame yet.
     recompiled: null,
+    receipt: kept && undoable ? (result.receipts[0]?.id ?? null) : null,
   };
 }

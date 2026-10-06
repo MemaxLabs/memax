@@ -163,6 +163,9 @@ export const ledgerActivityEn = {
     pulled: "{actor} pulled the hand edit in {ref} into Review.",
     overwritten: "{actor} overwrote the hand edit in {ref}.",
     stopped: "{actor} stopped compiling {ref}.",
+    judged: "{actor} checked {ref} for duplicates and conflicts.",
+    linked: "{actor} linked {ref} to the memory it updates.",
+    superseded: "{actor} superseded {ref} with a newer decision.",
     other: "{actor} changed {ref}.",
   },
 } as const;

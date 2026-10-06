@@ -1,11 +1,11 @@
 "use client";
 
-import { Button, Receipt, Redaction, Seal, StateMark } from "@memaxlabs/ledger";
+import { Button, Receipt, Seal, StateMark } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
-import { count, formatAgo, formatShortDate } from "@/lib/v2/copy";
+import { formatAgo, formatShortDate } from "@/lib/v2/copy";
 import { clashTitle } from "@/lib/v2/records-copy";
 import type { MemoryRecord } from "@/lib/v2/data/memories";
-import { useAriaKeys, useHotkey, useKeycap } from "@/lib/v2/keymap/react";
+import { useHotkey, useKeycap } from "@/lib/v2/keymap/react";
 import { placeHref } from "@/lib/v2/places";
 import { EditClash } from "../../_components/edit-clash";
 import { HeaderSkeleton, PlaceSkeleton } from "../../_components/skeleton";
@@ -16,8 +16,8 @@ import { useToast } from "../../_components/toasts";
 import { StatusPage } from "../../../_components/status-page";
 import { useOverlays } from "../../_lib/overlays";
 import { useMemoryRecord } from "../../_lib/records";
-import { NotYetButton } from "../place";
 import { useRecordsView, type RecordsView } from "../records-view";
+import { MemoryHead } from "./memory-head";
 import { MemoryLineage } from "./memory-lineage";
 import { MemorySide } from "./memory-side";
 import { useMemoryEdit } from "./use-memory-edit";
@@ -89,8 +89,6 @@ function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {
   const p = l.memory.page;
   const toast = useToast();
   const edit = useMemoryEdit(space, record);
-  const editKey = useKeycap("memory.edit");
-  const citeKeys = useAriaKeys("memory.cite");
   const submitKey = useKeycap("command.keep");
   const forgotten = record.forgotten;
 
@@ -112,30 +110,6 @@ function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {
   });
   useHotkey("memory.cite", () => void cite(), { enabled: !forgotten });
 
-  // The Keep the seal is for, or the latest receipt while it isn't kept.
-  const receipt = record.kept
-    ? { ...record.kept, action: "kept" as const }
-    : record.latest;
-  const stamp = receipt ? view.stamp(receipt.by) : null;
-  const meta = [
-    record.reads === null ? null : count(p.readsOne, p.reads, record.reads),
-    record.reach
-      ? interpolate(p.reach, {
-          files: count(p.filesOne, p.files, record.reach.files),
-          agents: count(p.agentsOne, p.agents, record.reach.agents),
-        })
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  const stateClass =
-    record.state === "proposed" || record.state === "conflict"
-      ? styles.isProposed
-      : record.state === "stale"
-        ? styles.isStale
-        : record.state === "merged"
-          ? styles.isMerged
-          : "";
   const mode = edit.mode;
 
   let lead;
@@ -194,88 +168,12 @@ function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {
     );
   } else {
     lead = (
-      <>
-        {forgotten ? (
-          <Redaction
-            as="div"
-            className={styles.tombstone}
-            date={formatShortDate(new Date(forgotten.at), timeZone, locale)}
-            by={forgotten.by ?? undefined}
-            id={record.ref}
-            detail={forgotten.detail ?? undefined}
-          />
-        ) : (
-          <h1 className={`${styles.title} ${stateClass}`}>
-            <StatementText text={record.statement} />
-          </h1>
-        )}
-        <div className={styles.meta}>
-          {receipt ? (
-            <Receipt
-              {...(stamp ?? {})}
-              action={rc.verbs[receipt.action]}
-              time={view.dateTime(receipt.at)}
-              id={record.ref}
-            />
-          ) : null}
-          {meta ? (
-            <span className={`mx-meta ${styles.prose}`}>{meta}</span>
-          ) : null}
-        </div>
-        {record.lifecycle === "proposed" ? (
-          <p className={styles.waiting}>
-            {p.proposed}
-            <Button
-              variant="quiet"
-              size="sm"
-              href={placeHref(space.slug, "review")}
-            >
-              {p.openReview}
-            </Button>
-          </p>
-        ) : null}
-        {forgotten ? (
-          <p className={styles.waiting}>{p.forgotten}</p>
-        ) : (
-          <div className={`mx-inline ${styles.actions}`}>
-            <Button
-              variant="secondary"
-              icon="pencil"
-              kbd={editKey}
-              onClick={() => edit.start()}
-            >
-              {p.edit}
-            </Button>
-            <Button
-              variant="secondary"
-              icon="space"
-              disabled
-              disabledReason={p.moveLater}
-            >
-              {p.move}
-            </Button>
-            {/* Memory.png draws no keycap here; ⌘⇧C is on the ? sheet. */}
-            <Button
-              variant="quiet"
-              icon="link"
-              aria-keyshortcuts={citeKeys}
-              onClick={() => void cite()}
-            >
-              {p.cite}
-            </Button>
-            <span className={styles.spacer} />
-            {/* Forget has no key, on purpose (HANDOFF §7). */}
-            <Button
-              variant="danger"
-              icon="forget"
-              disabled
-              disabledReason={p.forgetLater}
-            >
-              {p.forget}
-            </Button>
-          </div>
-        )}
-      </>
+      <MemoryHead
+        view={view}
+        record={record}
+        onEdit={() => edit.start()}
+        onCite={() => void cite()}
+      />
     );
   }
 

@@ -1,12 +1,7 @@
 import { MemaxError, type V2 } from "memax-sdk";
 import type { MemoriesSource, MemoryFilter } from "./memories";
-import {
-  actorOf,
-  listItemOf,
-  receiptsFor,
-  recordOf,
-  type V2Client,
-} from "./sdk-records";
+import { recordOf } from "./sdk-record";
+import { actorOf, listItemOf, receiptsFor, type V2Client } from "./sdk-records";
 
 /**
  * Memories through memax.v2: the list (GET /v2/spaces/{space}/memories,

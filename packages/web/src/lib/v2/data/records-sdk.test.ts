@@ -3,13 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { CommandFailedError, isRetryable, toFailure } from "./command-error";
 import { DEMO_SPACES } from "./demo-dataset";
 import { createSdkMemories } from "./sdk-memories";
-import {
-  actorOf,
-  conditionsOf,
-  listItemOf,
-  recordOf,
-  reviewItemOf,
-} from "./sdk-records";
+import { conditionsOf, recordOf } from "./sdk-record";
+import { actorOf, listItemOf, reviewItemOf } from "./sdk-records";
 import { createSdkReview } from "./sdk-review";
 
 const v2 = DEMO_SPACES.find((s) => s.slug === "memax-v2")!;

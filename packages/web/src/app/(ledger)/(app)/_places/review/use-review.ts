@@ -8,19 +8,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { interpolate, useLocale } from "@/i18n";
-import { count } from "@/lib/v2/copy";
 import {
   isRetryable,
   toFailure,
   type CommandFailure,
 } from "@/lib/v2/data/command-error";
-import type { DecisionResult } from "@/lib/v2/data/records";
 import type { ReviewItem } from "@/lib/v2/data/review";
 import type { SpaceSummary } from "@/lib/v2/data/types";
 import { IntentKeys, intentOf } from "@/lib/v2/intent-keys";
-import { failureText, type FailedCommand } from "@/lib/v2/records-copy";
-import { useToast } from "../../_components/toasts";
+import type { FailedCommand } from "@/lib/v2/records-copy";
 import { useSource } from "../../_lib/data";
 import {
   useAfterDecision,
@@ -29,6 +25,7 @@ import {
   useReviewQueue,
 } from "../../_lib/records";
 import { INITIAL_REVIEW, reviewReducer, type ReviewMode } from "./review-state";
+import { useDecisionToasts } from "./use-decision-toasts";
 
 export const REVIEW_FILTERS = [
   "all",
@@ -72,8 +69,7 @@ type EditingMode = Extract<ReviewMode, { kind: "editing" }>;
  */
 export function useReview(space: SpaceSummary, filter: ReviewFilter) {
   const source = useSource();
-  const { t, locale } = useLocale();
-  const toast = useToast();
+  const toasts = useDecisionToasts(space);
   const afterDecision = useAfterDecision(space);
   const prefetch = usePrefetchCards(space);
   const [state, dispatch] = useReducer(reviewReducer, INITIAL_REVIEW);
@@ -102,37 +98,7 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
     if (index >= 0) prefetch(visible.slice(index + 1, index + 4));
   }, [index, visible, prefetch]);
 
-  const copy = t.ledger;
-
-  const showKept = useCallback(
-    (result: DecisionResult) => {
-      if (result.outcome === "proposed") {
-        toast({
-          state: "proposed",
-          text: interpolate(copy.app.toast.proposed, { ref: result.ref }),
-        });
-        return;
-      }
-      const text =
-        result.recompiled === null
-          ? interpolate(copy.app.toast.kept, { ref: result.ref })
-          : count(
-              copy.app.toast.keptRecompiledOne,
-              copy.app.toast.keptRecompiled,
-              result.recompiled,
-              { ref: result.ref },
-            );
-      // Undo shows only where the source returns an inverse command;
-      // none does yet (no server undo), so Review offers no Undo.
-      toast({
-        state: "kept",
-        text,
-        ...(result.undo ? { undo: result.undo, undoRef: result.ref } : {}),
-      });
-    },
-    [copy, toast],
-  );
-
+  /** A failure: drop what was decided elsewhere, refetch a clash, then say why. */
   const failed = useCallback(
     (
       failure: CommandFailure,
@@ -147,20 +113,9 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
       } else if (failure.kind === "clash") {
         afterDecision({ leftQueue: false });
       }
-      toast({
-        state: "proposed",
-        text: failureText(copy.records, failure, {
-          command,
-          ref: item.ref,
-          space: space.name,
-          locale,
-        }),
-        ...(isRetryable(failure)
-          ? { action: { label: copy.records.failure.retry, onClick: retry } }
-          : {}),
-      });
+      toasts.failed(failure, command, item.ref, retry);
     },
-    [afterDecision, copy, locale, space.name, toast],
+    [afterDecision, toasts],
   );
 
   const keep = useCallback(
@@ -178,7 +133,7 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
           idempotencyKey: keys.keyFor(intent),
         });
         keys.settle(intent);
-        showKept(result);
+        toasts.kept(result);
         await wait(ADVANCE_MS - (Date.now() - started));
         dispatch({ type: "decided", ref: item.ref, outcome: "kept", order });
         afterDecision({ leftQueue: true });
@@ -191,7 +146,7 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
         busy.current = null;
       }
     },
-    [afterDecision, canDecide, failed, keys, showKept, source, space, visible],
+    [afterDecision, canDecide, failed, keys, source, space, toasts, visible],
   );
 
   const reject = useCallback(
@@ -216,10 +171,7 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
           outcome: "rejected",
           order,
         });
-        toast({
-          state: "off",
-          text: interpolate(copy.records.toast.rejected, { ref: result.ref }),
-        });
+        toasts.rejected(result.ref);
         afterDecision({ leftQueue: true });
       } catch (err) {
         const failure = toFailure(err);
@@ -230,17 +182,7 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
         busy.current = null;
       }
     },
-    [
-      afterDecision,
-      canDecide,
-      copy,
-      failed,
-      keys,
-      source,
-      space,
-      toast,
-      visible,
-    ],
+    [afterDecision, canDecide, failed, keys, source, space, toasts, visible],
   );
 
   const submitEdit = useCallback(
@@ -270,7 +212,7 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
           idempotencyKey: keys.keyFor(intent),
         });
         keys.settle(intent);
-        showKept(result);
+        toasts.kept(result);
         await wait(ADVANCE_MS - (Date.now() - started));
         dispatch({ type: "decided", ref: item.ref, outcome: "kept", order });
         afterDecision({ leftQueue: true });
@@ -292,7 +234,7 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
         busy.current = null;
       }
     },
-    [afterDecision, failed, keep, keys, showKept, source, space, visible],
+    [afterDecision, failed, keep, keys, source, space, toasts, visible],
   );
 
   const keepMine = useCallback(

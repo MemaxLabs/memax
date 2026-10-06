@@ -272,6 +272,8 @@ export function DecisionGate({
             aria-keyshortcuts={locked ? undefined : String(i + 1)}
             className={cx("mx-gate-opt", choice === i && "is-on")}
             {...getItemProps(i)}
+            // Locked, the arrows are the page's again (a queue moves on).
+            {...(locked ? { onKeyDown: undefined } : {})}
           >
             <Kbd aria-hidden="true">{i + 1}</Kbd>
             <span className="mx-gate-opt-text">

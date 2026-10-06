@@ -54,9 +54,17 @@ export interface SpaceSummary {
 /** The rail's status line (plan §6.4): "5 agents in sync", "Cursor file drifted". */
 export type SyncLine =
   | { kind: "in-sync"; agents: number }
-  /** A compiled file was edited by hand; `agent` is a registry key ("cursor"). */
-  | { kind: "drifted"; agent: string }
+  /** From the compile targets: every file on disk matches its compile. */
+  | { kind: "files-in-sync"; files: number }
+  /**
+   * A compiled file was edited by hand: `agent` is the registry key of
+   * the tool it belongs to ("cursor"), or `file` names it when no one
+   * agent owns it (AGENTS.md).
+   */
+  | { kind: "drifted"; agent?: string; file?: string }
   | { kind: "compiling" }
+  /** Compiled, but the CLI hasn't written these files to disk yet. */
+  | { kind: "waiting-delivery"; files: number }
   | { kind: "no-agents" }
   /** PLACEHOLDER: the API serves no compile targets yet. */
   | { kind: "not-compiling" };

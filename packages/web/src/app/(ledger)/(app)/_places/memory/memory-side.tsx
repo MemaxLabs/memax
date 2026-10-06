@@ -1,9 +1,10 @@
 "use client";
 
-import { Icon, SyncTarget, type IconName } from "@memaxlabs/ledger";
+import { Icon, type IconName } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { count, formatWhen } from "@/lib/v2/copy";
 import type { MemoryRecord } from "@/lib/v2/data/memories";
+import { TargetRow } from "../../_components/target-row";
 import type { RecordsView } from "../records-view";
 import styles from "./memory.module.css";
 
@@ -78,18 +79,16 @@ export function MemorySide({
             </span>
           ) : null}
         </header>
-        {record.reaches ? (
+        {record.reaches?.length ? (
           record.reaches.map((target) => (
-            <SyncTarget
-              key={target.path}
-              compact
-              path={target.path}
-              tool={target.tool}
-              status={target.status}
+            <TargetRow
+              key={target.id}
+              space={view.space.slug}
+              target={target}
             />
           ))
         ) : (
-          // PLACEHOLDER: compile targets aren't served by /v2 yet.
+          // Nothing compiles it yet, or the targets didn't load.
           <p className={styles.note}>{p.reachesLater}</p>
         )}
       </section>

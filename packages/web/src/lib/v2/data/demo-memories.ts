@@ -6,6 +6,8 @@ import {
   DEMO_TOTALS,
 } from "./demo-memories-data";
 import { DEMO_CARDS, DEMO_FOLD, ZZ } from "./demo-review-data";
+import { DEMO_TARGETS } from "./demo-targets-data";
+import { reachesTarget } from "./targets";
 import type { Decided, DemoJournal } from "./demo-records";
 import type {
   MemoriesSource,
@@ -179,7 +181,13 @@ export function createDemoMemories({
         : [],
       merged: null,
       sources: [],
-      reaches: null,
+      // The demo's compiled files that hold its words, or read one that does.
+      reaches:
+        lifecycle === "kept"
+          ? (DEMO_TARGETS[slug] ?? []).filter((t) =>
+              reachesTarget(ref, t, DEMO_TARGETS[slug] ?? []),
+            )
+          : null,
       conditions: [],
       checked: null,
       forgotten: row.forgotten,

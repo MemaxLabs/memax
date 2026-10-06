@@ -1,3 +1,4 @@
+import { DEMO_TARGETS } from "./demo-targets-data";
 import type { Actor, TargetLine } from "./records";
 import type { ConflictData, ReviewCardData, ReviewItem } from "./review";
 
@@ -28,20 +29,13 @@ export const JY: Actor = {
 export const agent = (key: string): Actor => ({ kind: "agent", agent: key });
 export const DREAM: Actor = { kind: "dream" };
 
-/** Review.png's "Keeping recompiles". */
-const V2_TARGETS: TargetLine[] = [
-  { path: "CLAUDE.md", tool: "Claude Code", status: "synced" },
-  { path: "AGENTS.md", tool: "Codex · OpenCode", status: "synced" },
-  { path: ".cursor/rules/memax.mdc", tool: "Cursor", status: "drifted" },
-];
+/** Review.png's "Keeping recompiles": the files a Keep rewrites (ChatGPT's copy-out isn't one). */
+const V2_TARGETS: TargetLine[] = (DEMO_TARGETS["memax-v2"] ?? []).filter(
+  (t) => t.delivery !== "copy",
+);
 
-/** Memory.png's "Reaches". */
-export const V2_REACHES: TargetLine[] = [
-  { path: "CLAUDE.md", tool: "Claude Code", status: "synced" },
-  { path: "AGENTS.md", tool: "Codex", status: "synced" },
-  { path: ".cursor/rules/memax.mdc", tool: "Cursor", status: "drifted" },
-  { path: "ChatGPT project", tool: "ChatGPT", status: "synced" },
-];
+/** Memory.png's "Reaches" for M-0219: every target, ChatGPT included. */
+export const V2_REACHES: TargetLine[] = [...(DEMO_TARGETS["memax-v2"] ?? [])];
 
 const item = (
   fields: Partial<ReviewItem> &
@@ -246,10 +240,7 @@ export const DEMO_CARDS: Record<string, ReviewCardData> = {
       memories: [],
       basis: "section",
       replacesOnKeep: false,
-      targets: [
-        { path: "CLAUDE.md", tool: "Claude Code", status: "synced" },
-        { path: "AGENTS.md", tool: "Codex", status: "synced" },
-      ],
+      targets: [...(DEMO_TARGETS.personal ?? [])],
     },
   },
   "M-0187": {

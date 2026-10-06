@@ -93,6 +93,8 @@ export function createDemoRecords({
   const seen = new Map<string, number>();
   /** Folds undone in this session: back in Review as proposals. */
   const unfolded = new Set<string>();
+  // Proposals that arrived this session (a pulled hand edit), oldest first.
+  const arrived = new Map<string, ReviewItem[]>();
   let nextReceipt = 1;
   const id = (slug: string, ref: string) => `${slug}/${ref}`;
   const stamp = () => now().toISOString();
@@ -121,7 +123,7 @@ export function createDemoRecords({
       slug === DEMO_FOLD.slug && unfolded.has(id(slug, DEMO_FOLD.item.ref))
         ? [DEMO_FOLD.item]
         : [];
-    return [...(DEMO_QUEUES[slug] ?? []), ...back]
+    return [...(DEMO_QUEUES[slug] ?? []), ...(arrived.get(slug) ?? []), ...back]
       .filter((item) => !decided.has(id(slug, item.ref)))
       .map((item) => {
         const edit = edits.get(id(slug, item.ref));
@@ -329,11 +331,9 @@ export function createDemoRecords({
   /** The frame's overview with this session's decisions taken out of it. */
   function overview(slug: string, base: SpaceOverview): SpaceOverview {
     const mine = [...decided.values()].filter((d) => d.slug === slug);
-    if (mine.length === 0) {
-      // Only an unfolded proposal back in Review.
-      const back = [...unfolded].filter((k) => k.startsWith(`${slug}/`));
-      return back.length ? { ...base, waiting: queueOf(slug).length } : base;
-    }
+    // An unfolded proposal is back in Review, too.
+    const back = [...unfolded].some((k) => k.startsWith(`${slug}/`));
+    if (mine.length === 0 && !arrived.get(slug)?.length && !back) return base;
     const left = queueOf(slug);
     const kept = mine.filter((d) => d.outcome === "kept").length;
     const was = (test: (i: ReviewItem) => boolean) =>
@@ -366,7 +366,10 @@ export function createDemoRecords({
         proposals: left.filter((i) => i.lifecycle === "proposed").length,
         stale: left.filter((i) => i.state === "stale").length,
       },
-      lastReview: { at: stamp(), kept, rejected: mine.length - kept },
+      lastReview:
+        mine.length > 0
+          ? { at: stamp(), kept, rejected: mine.length - kept }
+          : base.lastReview,
       memories: {
         ...base.memories,
         kept: base.memories.kept === null ? null : base.memories.kept + kept,
@@ -374,5 +377,25 @@ export function createDemoRecords({
     };
   }
 
-  return { review, memories, overview, undo, journal: { record } };
+  /** New proposals in a space's queue, after the boards' own (a pulled hand edit). */
+  function propose(slug: string, items: ReviewItem[]) {
+    arrived.set(slug, [...(arrived.get(slug) ?? []), ...items]);
+  }
+
+  /** What this session changed about a memory, for the demo's Brief. */
+  const session = {
+    edited: (slug: string, ref: string) => edits.get(id(slug, ref)),
+    decided: (slug: string, ref: string) => decided.get(id(slug, ref)),
+    arrived: (slug: string) => arrived.get(slug) ?? [],
+  };
+
+  return {
+    review,
+    memories,
+    overview,
+    propose,
+    session,
+    undo,
+    journal: { record },
+  };
 }

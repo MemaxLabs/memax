@@ -1,21 +1,25 @@
 import type { Memax, V2 } from "memax-sdk";
 import { createSdkActivity } from "./activity-sdk";
 import { agentsOverview, createSdkAgents } from "./agents-sdk";
+import { createSdkBrief } from "./brief-sdk";
 import { createSdkMemories } from "./sdk-memories";
 import { createSdkReview } from "./sdk-review";
 import type { LedgerDataSource } from "./source";
+import { syncLineOf, targetStatus } from "./targets";
+import { createSdkTargets, targetsOrNull } from "./targets-sdk";
+import { createSdkToday } from "./today-sdk";
 import type { AskEvent, KeepResult, SpaceOverview, Viewer } from "./types";
 
 /**
  * The SDK source: memax.v2 for signed-in people.
  *
  * What /v2 serves today: the spaces list, Review's queue (its `total`
- * is the rail's ochre count), memories, and receipts. Everything else
- * the frame shows is marked PLACEHOLDER below and returns "not served"
- * (null) or a neutral value until its endpoint lands: Handoffs, agents,
- * compile targets and the status line, Dream, the near-duplicate check
- * and Ask. The demo source has all of them, for comparison with the
- * boards.
+ * is the rail's ochre count), memories, receipts, agents, the Brief and
+ * its compile targets (which feed the status line). Everything else the
+ * frame shows is marked PLACEHOLDER below and returns "not served"
+ * (null) or a neutral value until its endpoint lands: Handoffs, Dream,
+ * the near-duplicate check and Ask. The demo source has all of them,
+ * for comparison with the boards.
  */
 
 // `auth` for API keys (V1's auth.keys), until /v2 serves them.
@@ -30,14 +34,18 @@ export function createSdkSource({
   viewer: Viewer | null;
 }): LedgerDataSource {
   const viewerId = () => viewer?.id;
+  const agents = createSdkAgents({ client, viewer });
   return {
     ...createSdkActivity({ client, viewer }),
-    ...createSdkAgents({ client, viewer }),
+    ...agents,
     kind: "sdk",
     now: () => new Date(),
     viewer,
     review: createSdkReview(client, viewerId),
     memories: createSdkMemories(client, viewerId),
+    brief: createSdkBrief(client, viewerId),
+    targets: createSdkTargets(client),
+    today: createSdkToday({ client, viewer, agents }),
     async spaces(signal) {
       const { items } = await client.v2.spaces.list({ signal });
       return items.map((space) => ({
@@ -55,13 +63,15 @@ export function createSdkSource({
       }));
     },
     async overview(space, signal): Promise<SpaceOverview> {
-      const [review, memories, receipts, agents] = await Promise.all([
+      const [review, memories, receipts, agents, targets] = await Promise.all([
         client.v2.review.list(space.slug, { limit: 1, signal }),
         client.v2.memories.list(space.slug, { limit: 1, signal }),
         client.v2.receipts.list(space.slug, { limit: 1, signal }),
         agentsOverview(client, space.slug, signal),
+        targetsOrNull(client, space.slug, signal),
       ]);
       const anyMemory = memories.items.length > 0;
+      const line = targets ? syncLineOf(targets) : null;
       return {
         waiting: review.total,
         // Review lists oldest first, so the first item is the oldest.
@@ -71,10 +81,19 @@ export function createSdkSource({
         brief: anyMemory
           ? { title: null, facts: null, rewrittenAt: null }
           : null,
-        // The space's agents, and the status line where they settle it
-        // ("No agents yet"); with agents, "in sync" needs compile targets.
+        // The space's agents, and the status line (plan §6.4): a drifted
+        // file first, then "No agents yet", then what the targets say.
         agents: agents?.counts ?? null,
-        status: agents?.status ?? { kind: "not-compiling" },
+        status: (line?.kind === "drifted" ? line : null) ??
+          agents?.status ??
+          line ?? { kind: "not-compiling" },
+        targets: targets
+          ? {
+              total: targets.filter((t) => t.syncState !== "off").length,
+              inSync: targets.filter((t) => targetStatus(t).kind === "in_sync")
+                .length,
+            }
+          : null,
         // PLACEHOLDER from here down: not served by /v2 yet.
         reviewFilters: null,
         lastReview: null,
@@ -82,7 +101,6 @@ export function createSdkSource({
         openHandoffs: null,
         handoffs: null,
         dream: null,
-        targets: null,
         decisions: null,
       };
     },

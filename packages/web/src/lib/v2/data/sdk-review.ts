@@ -9,6 +9,7 @@ import {
   reviewItemOf,
   type V2Client,
 } from "./sdk-records";
+import { targetsOrNull } from "./targets-sdk";
 
 /**
  * Review through memax.v2: the queue (GET /v2/spaces/{space}/review),
@@ -119,10 +120,10 @@ export function createSdkReview(
     },
 
     async card({ space, item, signal }): Promise<ReviewCardData> {
-      const detail = await client.v2.memories.get(item.ref, {
-        space: space.slug,
-        signal,
-      });
+      const [detail, targets] = await Promise.all([
+        client.v2.memories.get(item.ref, { space: space.slug, signal }),
+        targetsOrNull(client, space.slug, signal),
+      ]);
       const memory = detail.memory;
       const sources = memory.sources ?? [];
       const quoted = sources.find((s) => s.quote);
@@ -190,8 +191,13 @@ export function createSdkReview(
           // stays kept, and a decision in force is superseded (it stays,
           // and stops compiling). So the card doesn't promise a merge.
           replacesOnKeep: false,
-          // PLACEHOLDER: compile targets aren't served to Review yet.
-          targets: null,
+          // A Keep recompiles every file the space compiles to (not
+          // ChatGPT's copy-out, nor a stopped target).
+          targets: targets
+            ? targets.filter(
+                (t) => t.delivery !== "copy" && t.syncState !== "off",
+              )
+            : null,
         },
       };
     },

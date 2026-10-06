@@ -7,6 +7,8 @@ import type {
 } from "./memories";
 import { foldUndo, recordOf, undoneIn } from "./sdk-record";
 import { actorOf, listItemOf, receiptsFor, type V2Client } from "./sdk-records";
+import { reachesTarget } from "./targets";
+import { targetsOrNull } from "./targets-sdk";
 
 /**
  * Memories through memax.v2: the list (GET /v2/spaces/{space}/memories,
@@ -117,13 +119,24 @@ export function createSdkMemories(
     },
 
     async get({ space, ref, signal }) {
-      const found = await detail(space.slug, ref, signal);
+      const [found, targets] = await Promise.all([
+        detail(space.slug, ref, signal),
+        targetsOrNull(client, space.slug, signal),
+      ]);
       if (!found) return null;
       const now = new Date();
-      return recordOf(found, viewerId(), {
+      const record = recordOf(found, viewerId(), {
         merged: await foldsInto(space.slug, found.memory, now, signal),
         now,
       });
+      if (!targets || record.lifecycle !== "kept") return record;
+      // "Reaches": the files that hold its words, or read one that does.
+      return {
+        ...record,
+        reaches: targets.filter(
+          (t) => t.syncState !== "off" && reachesTarget(record.ref, t, targets),
+        ),
+      };
     },
 
     async latest({ space, ref, signal }) {

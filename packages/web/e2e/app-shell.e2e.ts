@@ -199,7 +199,8 @@ test("settings switch Paper, Carbon and System", async ({ page }) => {
 
 // Self-baselines: the empty states of the demo's new project space.
 const SHOTS = [
-  { place: "today", heading: "Monday, October 5" },
+  // EmptySpace.png: a new space shows its three steps to a first compile.
+  { place: "today", heading: "Nothing here yet" },
   { place: "review", heading: "Review" },
   { place: "memories", heading: "Memories" },
 ] as const;

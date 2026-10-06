@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev --turbopack -p 3001",
     "build": "next build",
+    "postinstall": "fumadocs-mdx",
     "start": "next start",
     "lint": "tsc --noEmit",
     "clean": "rm -rf .next"

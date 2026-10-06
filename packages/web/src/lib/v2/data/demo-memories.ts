@@ -32,6 +32,8 @@ export interface DemoStore {
   edits: Map<string, { statement: string; version: number }>;
   /** Folds undone this session (the team space's DEMO_FOLD): proposals again. */
   unfolded: Set<string>;
+  /** Memories kept this session outside Review (a gate's answer), newest first, by space. */
+  added: Map<string, MemoryListItem[]>;
   id: (slug: string, ref: string) => string;
   stamp: () => string;
   queueOf: (slug: string) => ReviewItem[];
@@ -64,6 +66,7 @@ export function createDemoMemories({
   decided,
   edits,
   unfolded,
+  added,
   id,
   stamp,
   queueOf,
@@ -74,9 +77,17 @@ export function createDemoMemories({
 }: DemoStore): MemoriesSource {
   const isUnfolded = (slug: string, ref: string) => unfolded.has(id(slug, ref));
 
-  /** Every row of a space, with this session's decisions and edits. */
+  /** Every row of a space, with this session's decisions, edits and new memories (on the first page). */
   function rowsOf(slug: string): MemoryListItem[][] {
-    return (DEMO_MEMORY_PAGES[slug] ?? []).map((page) =>
+    const pages = DEMO_MEMORY_PAGES[slug] ?? [];
+    const fresh = added.get(slug) ?? [];
+    const withFresh =
+      fresh.length === 0
+        ? pages
+        : pages.length === 0
+          ? [fresh]
+          : [[...fresh, ...pages[0]!], ...pages.slice(1)];
+    return withFresh.map((page) =>
       page.flatMap((row): MemoryListItem[] => {
         const done = decided.get(id(slug, row.ref));
         const edit = edits.get(id(slug, row.ref));
@@ -132,7 +143,10 @@ export function createDemoMemories({
       items: pages[index] ?? [],
       nextCursor: index + 1 < pages.length ? String(index + 1) : null,
       sectionCounts: DEMO_SECTION_COUNTS[slug] ?? countSections(pages.flat()),
-      total: (DEMO_TOTALS[slug] ?? pages.flat().length) - rejected,
+      total:
+        (DEMO_TOTALS[slug] ?? pages.flat().length) -
+        rejected +
+        (DEMO_TOTALS[slug] === undefined ? 0 : (added.get(slug)?.length ?? 0)),
     };
   }
 

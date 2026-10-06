@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Shell } from "@memaxlabs/ledger";
 import { useAuth } from "@/lib/auth";
 import { isSpaceSlug } from "@/lib/ui-gate";
-import type { SpaceSummary } from "@/lib/v2/data/types";
+import { waitingOnYou, type SpaceSummary } from "@/lib/v2/data/types";
 import { KeymapProvider } from "@/lib/v2/keymap/react";
 import {
   LedgerDataProvider,
@@ -171,7 +171,7 @@ function FrameReady({
       <MobileTabBar
         space={space}
         route={route}
-        waiting={overview.data?.waiting ?? 0}
+        waiting={overview.data ? waitingOnYou(overview.data) : 0}
         onAsk={() => openCommand("ask")}
       />
       <CommandCenter space={space} spaces={spaces} />

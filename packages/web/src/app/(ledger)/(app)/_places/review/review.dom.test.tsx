@@ -369,7 +369,11 @@ describe("Review and the judge", () => {
       { judging: { "M-0445": { afterMs: 600, touchesDecision: true } } },
     );
     renderReview(team);
-    await screen.findByText(/· 1 of 2$/);
+    // The team space's two questions head the queue; M-0444 comes next.
+    await screen.findByText(/· 1 of 4$/);
+    press("ArrowDown");
+    press("ArrowDown");
+    await screen.findByText(/· 3 of 4$/);
     // M-0444's check couldn't run: an ordinary proposal, with a quiet line.
     expect(
       screen.getByText(
@@ -382,7 +386,7 @@ describe("Review and the judge", () => {
     expect(row.className).toContain("mx-state--working");
     expect(document.querySelector(".mx-glyph-arc")).not.toBeNull();
     press("ArrowDown");
-    await screen.findByText(/· 2 of 2$/);
+    await screen.findByText(/· 4 of 4$/);
     expect(headMark()?.className).toContain("mx-state--working");
     expect(headMark()?.textContent).toBe("Checking");
     // A second later Review asks again, and the verdict has landed.

@@ -28,6 +28,9 @@ export const ledgerTodayEn = {
     nothing: "Nothing is waiting on you.",
     question: "a question",
     questions: "{n} questions",
+    // The panel's count of questions agents asked (decision gates).
+    asked: "{n} questions",
+    askedOne: "1 question",
   },
   inFlight: {
     title: "In flight",

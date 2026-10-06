@@ -9,6 +9,7 @@
  * (plan §5.10), handoffs in flight (Phase 4) and reads. No words live
  * here.
  */
+import type { GateView } from "./gates";
 import type { MemoryNote } from "./memories";
 import type { ReviewItem } from "./review";
 import type { SpaceSummary } from "./types";
@@ -74,6 +75,9 @@ export interface TodayData {
   /** Review's first items, in its order, with the counts Today's lede and panel read. */
   waiting: {
     items: ReviewItem[];
+    /** The decision gates waiting on an answer, in Review's order (gates.ts). */
+    gates: GateView[];
+    /** Everything waiting: Review's memories and its gates. */
     total: number;
     proposals: number;
     stale: number;
@@ -140,4 +144,19 @@ export function pickWaiting(items: readonly ReviewItem[], n = 3): ReviewItem[] {
     if (!picked.includes(item)) picked.push(item);
   }
   return picked.slice(0, n);
+}
+
+/**
+ * The rows "Waiting on you" shows: every question an agent is waiting
+ * on first, as Review lists them, then Review's items (pickWaiting) to
+ * fill `n` rows, at least one of them when there are any.
+ */
+export function pickToday(
+  gates: readonly GateView[],
+  items: readonly ReviewItem[],
+  n = 3,
+): { gates: GateView[]; items: ReviewItem[] } {
+  const shown = gates.slice(0, n);
+  const room = Math.max(n - shown.length, items.length > 0 ? 1 : 0);
+  return { gates: shown, items: pickWaiting(items, room) };
 }

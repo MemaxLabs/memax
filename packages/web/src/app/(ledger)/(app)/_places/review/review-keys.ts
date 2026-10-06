@@ -68,4 +68,39 @@ export function useReviewKeys(review: ReviewController, space: SpaceSummary) {
     if (!review.state.waiting) return false;
     review.stopWaiting();
   });
+
+  // A decision gate's card: 1–4 choose, ↵ asks to confirm and ↵ again
+  // answers, Esc goes back. The arrows choose too, inside the options
+  // (DecisionGate's radio group); outside them they move the queue.
+  const gate = review.selectedGate;
+  const gates = review.gateCards;
+  const idle = !review.state.busy && !review.state.sealed;
+
+  useHotkey("gate.choose", (_, { index }) => {
+    if (!gate || !idle || !review.canDecide) return false;
+    if (!gates.choose(gate, index)) return false;
+  });
+
+  useHotkey("gate.answer", (event) => {
+    if (!gate || !idle || !review.canDecide) return false;
+    if (!answersHere(event.target)) return false;
+    const card = gates.cardOf(gate.ref);
+    // Withdrawing is confirmed with its own button, never a stray ↵.
+    if (card.choice < 0 || card.step === "withdraw") return false;
+    void gates.answer(gate);
+  });
+
+  useHotkey("gate.cancel", () => {
+    if (!gate || !gates.back(gate)) return false;
+  });
+}
+
+/**
+ * Whether ↵ here is the gate's: the page, an option, or a queue row. A
+ * focused button or field keeps its own ↵ (Cancel stays Cancel).
+ */
+function answersHere(target: unknown): boolean {
+  if (!(target instanceof HTMLElement)) return true;
+  if (target.closest(".mx-gate-opt, .mx-row-link")) return true;
+  return !target.closest("button, a, input, textarea, select, [role=menu]");
 }

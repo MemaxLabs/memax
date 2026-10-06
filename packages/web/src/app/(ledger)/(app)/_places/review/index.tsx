@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { count, formatWhen, joinSentences } from "@/lib/v2/copy";
+import { waitingOnYou } from "@/lib/v2/data/types";
 import { KeyScopeBoundary } from "@/lib/v2/keymap/react";
 import { placeHref } from "@/lib/v2/places";
 import { EmptyState } from "../../_components/empty-state";
@@ -30,13 +31,20 @@ export function ReviewPlace() {
   const filter = (REVIEW_FILTERS as readonly string[]).includes(asked)
     ? (asked as ReviewFilter)
     : "all";
+  // A decision gate to open (gateHref, from Today and Activity).
+  const gate = params.get("gate") || null;
   const onFilter = (next: ReviewFilter) => {
     const query = next === "all" ? "" : `?filter=${next}`;
     router.replace(`${pathname}${query}`, { scroll: false });
   };
   return (
     <KeyScopeBoundary name="review">
-      <ReviewScreen view={view} filter={filter} onFilter={onFilter} />
+      <ReviewScreen
+        view={view}
+        filter={filter}
+        gate={gate}
+        onFilter={onFilter}
+      />
     </KeyScopeBoundary>
   );
 }
@@ -44,16 +52,22 @@ export function ReviewPlace() {
 function ReviewScreen({
   view,
   filter,
+  gate,
   onFilter,
 }: {
   view: RecordsView;
   filter: ReviewFilter;
+  gate: string | null;
   onFilter: (filter: ReviewFilter) => void;
 }) {
-  const review = useReview(view.space, filter);
+  const review = useReview(view.space, filter, gate);
   useReviewKeys(review, view.space);
   const { queue } = review;
+  const gates = review.gateCards.query;
   const loaded = queue.data !== undefined;
+  // Unknown until the gates answer (a failed read counts as none: the
+  // queue says so).
+  const gatesKnown = gates.data !== undefined || gates.isError;
 
   if (!loaded && queue.isError) {
     return (
@@ -61,8 +75,12 @@ function ReviewScreen({
     );
   }
   const empty = loaded
-    ? review.all.length === 0 && !queue.hasNextPage
-    : view.overview?.waiting === 0;
+    ? review.all.length === 0 &&
+      !queue.hasNextPage &&
+      gatesKnown &&
+      review.gateCards.gates.length === 0 &&
+      !review.gateCards.finding
+    : view.overview !== undefined && waitingOnYou(view.overview) === 0;
   if (empty) return <ReviewEmpty view={view} />;
   return (
     <div className={styles.layout}>

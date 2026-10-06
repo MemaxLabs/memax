@@ -14,6 +14,7 @@ import {
   toFailure,
   type CommandFailure,
 } from "@/lib/v2/data/command-error";
+import type { GateView } from "@/lib/v2/data/gates";
 import type { DecisionResult } from "@/lib/v2/data/records";
 import type { ReviewItem } from "@/lib/v2/data/review";
 import type { SpaceSummary } from "@/lib/v2/data/types";
@@ -32,6 +33,7 @@ import { useUndo } from "../../_lib/undo";
 import { compareHref } from "./hrefs";
 import { INITIAL_REVIEW, reviewReducer, type ReviewMode } from "./review-state";
 import { useDecisionToasts } from "./use-decision-toasts";
+import { useGateCards } from "./use-gate-cards";
 
 export const REVIEW_FILTERS = [
   "all",
@@ -109,7 +111,12 @@ type EditingMode = Extract<ReviewMode, { kind: "editing" }>;
  * the conflict in its favour ("Keep, replace old"); E on one compares.
  * Every decision goes on the tab's undo stack with its receipt.
  */
-export function useReview(space: SpaceSummary, filter: ReviewFilter) {
+export function useReview(
+  space: SpaceSummary,
+  filter: ReviewFilter,
+  /** A decision gate to open (`?gate=`), or null. */
+  focusGate: string | null = null,
+) {
   const source = useSource();
   const router = useRouter();
   const toasts = useDecisionToasts(space);
@@ -123,6 +130,18 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
   const waitFor = useRef<AbortController | null>(null);
   const queue = useReviewQueue(space);
   const canDecide = space.role !== "viewer";
+  const order = useRef<readonly string[]>([]);
+  const gateCards = useGateCards({
+    space,
+    dispatch,
+    order,
+    busy,
+    done: state.done,
+    canDecide,
+    toasts,
+    advanceMs: ADVANCE_MS,
+    focus: focusGate,
+  });
 
   const all = useMemo(
     () =>
@@ -135,16 +154,36 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
     () => all.filter((item) => matchesFilter(item, filter)),
     [all, filter],
   );
-  const selected =
-    visible.find((item) => item.ref === state.selected) ?? visible[0];
-  const index = selected ? visible.indexOf(selected) : -1;
+  // Decision gates head the queue under All: an agent waits on each, and
+  // each expires. The filters are memory kinds, so they leave gates out.
+  const gates = useMemo(
+    () => (filter === "all" ? gateCards.gates : []),
+    [filter, gateCards.gates],
+  );
+  const entries = useMemo<QueueEntry[]>(
+    () => [
+      ...gates.map((gate) => ({ kind: "gate" as const, ref: gate.ref, gate })),
+      ...visible.map((item) => ({
+        kind: "memory" as const,
+        ref: item.ref,
+        item,
+      })),
+    ],
+    [gates, visible],
+  );
+  const current =
+    entries.find((entry) => entry.ref === state.selected) ?? entries[0];
+  const selected = current?.kind === "memory" ? current.item : undefined;
+  const selectedGate = current?.kind === "gate" ? current.gate : undefined;
+  const index = current ? entries.indexOf(current) : -1;
   const card = useReviewCard(space, selected);
-  const order = useRef<readonly string[]>([]);
-  order.current = visible.map((i) => i.ref);
+  order.current = entries.map((entry) => entry.ref);
 
+  // The next three memory cards, from where the selection is.
+  const nextMemory = selected ? visible.indexOf(selected) + 1 : 0;
   useEffect(() => {
-    if (index >= 0) prefetch(visible.slice(index + 1, index + 4));
-  }, [index, visible, prefetch]);
+    if (index >= 0) prefetch(visible.slice(nextMemory, nextMemory + 3));
+  }, [index, nextMemory, visible, prefetch]);
 
   // Undo puts a card back (and takes it out again if the undo fails).
   const { stack } = undo;
@@ -621,13 +660,20 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
     afterDecision({ leftQueue: false });
   }, [afterDecision]);
 
-  /** Selects a card; a Keep waiting for the judge stops waiting. */
+  /**
+   * Selects a card; a Keep waiting for the judge stops waiting, and a gate
+   * that ended leaves the queue once the person moves away from it.
+   */
+  const { leave } = gateCards;
+  const currentRef = current?.ref;
   const select = useCallback(
     (ref: string) => {
       stopWaiting();
+      const held = !state.waiting && (state.busy || state.sealed);
+      if (!held && currentRef && currentRef !== ref) leave(currentRef);
       dispatch({ type: "select", ref });
     },
-    [stopWaiting],
+    [currentRef, leave, state.busy, state.sealed, state.waiting, stopWaiting],
   );
 
   const move = useCallback(
@@ -639,19 +685,19 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
       ) {
         return false;
       }
-      const next = visible[index + delta];
+      const next = entries[index + delta];
       if (!next) return true;
       select(next.ref);
       return true;
     },
     [
+      entries,
       index,
       select,
       state.busy,
       state.mode.kind,
       state.sealed,
       state.waiting,
-      visible,
     ],
   );
 
@@ -659,7 +705,14 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
     queue,
     all,
     visible,
+    /** The decision gates in the queue, before the memories (under All). */
+    gates,
+    /** Everything the queue lists, in order: gates, then memories. */
+    entries,
+    /** The selected memory, when a memory is selected. */
     selected,
+    /** The selected decision gate, when a gate is selected. */
+    selectedGate,
     index,
     card,
     state,
@@ -675,7 +728,13 @@ export function useReview(space: SpaceSummary, filter: ReviewFilter) {
     move,
     stopWaiting,
     undo,
+    gateCards,
   };
 }
 
 export type ReviewController = ReturnType<typeof useReview>;
+
+/** One row of the queue: a decision gate or a memory. */
+export type QueueEntry =
+  | { kind: "gate"; ref: string; gate: GateView }
+  | { kind: "memory"; ref: string; item: ReviewItem };

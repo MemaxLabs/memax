@@ -47,6 +47,52 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
   edit: {
     title: "正在编辑提议",
   },
+  gate: {
+    session: "在会话 {session} 里提问",
+    confirm: "回答“{label}”？",
+    confirmDetail: "这会成为一条由你保留的决策，并编译进每个文件。",
+    cancel: "取消",
+    answer: "回答",
+    needsWeb:
+      "{space} 里的决策只能在 memax.app 上回答，Memax 没法确认这次登录是从那里来的。在这里重新登录，再来回答。",
+    needsWebReason: "在 memax.app 上重新登录后才能回答。",
+    signInAgain: "重新登录",
+    viewer: "查看者可以看问题，回答要由成员来。",
+    withdraw: "撤回",
+    withdrawTitle: "撤回 {ref}？",
+    withdrawDetail:
+      "{agent} 下次读取时会知道你撤回了这个问题。不会保留任何东西。",
+    answered: "你已回答",
+    status: {
+      answered: "已回答",
+      withdrawn: "已撤回",
+      expired: "已过期",
+    },
+    ended: {
+      answeredByYou: "你已经回答过了：“{label}”，保留为 {memory}。",
+      answeredBy: "一位队友已经回答了：“{label}”，保留为 {memory}。",
+      answeredBare: "它已经有人回答了。",
+      withdrawnByAgent: "{agent} 把这个问题撤回了。",
+      withdrawnByYou: "你撤回了这个问题。",
+      withdrawnBy: "一位队友撤回了这个问题。",
+      expired: "它已经过期，{agent} 不再等了。现在不能再回答。",
+    },
+    kept: "已把你对 {ref} 的回答保留为 {memory}",
+    keptRecompiled:
+      "已把你对 {ref} 的回答保留为 {memory} · 重新编译了 {n} 个文件",
+    keptRecompiledOne:
+      "已把你对 {ref} 的回答保留为 {memory} · 重新编译了 1 个文件",
+    openDecision: "打开 {memory}",
+    withdrew: "已撤回 {ref}。{agent} 下次读取时会知道。",
+    notFound: "{space} 里没有问题 {ref}。",
+    failed: "Agent 提的问题没加载出来。",
+    retry: "再试一次",
+    legend: {
+      choose: "选择",
+      answer: "回答",
+      cancel: "取消",
+    },
+  },
   reject: {
     title: "拒绝 {ref}？",
     why: "原因（想说就写）",

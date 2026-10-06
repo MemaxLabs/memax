@@ -461,12 +461,7 @@ paths:
               $ref: '#/components/schemas/AskRequest'
       responses:
         '200':
-          description: The answer, as a stream of AskEvent events.
-          headers:
-            Cache-Control:
-              description: '`no-cache`: every answer is new.'
-              schema:
-                type: string
+          description: 'The answer, as a stream of AskEvent events, sent with `Cache-Control: no-cache`.'
           content:
             text/event-stream:
               schema:

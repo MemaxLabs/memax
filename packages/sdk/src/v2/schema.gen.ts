@@ -3392,11 +3392,9 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The answer, as a stream of AskEvent events. */
+            /** @description The answer, as a stream of AskEvent events, sent with `Cache-Control: no-cache`. */
             200: {
                 headers: {
-                    /** @description `no-cache`: every answer is new. */
-                    "Cache-Control"?: string;
                     [name: string]: unknown;
                 };
                 content: {

@@ -11,6 +11,7 @@ export default defineConfig({
     // `// @vitest-environment jsdom` directive at the top of the test file
     // (convention: name them `*.dom.test.{ts,tsx}` for discoverability).
     environment: "node",
+    setupFiles: ["./vitest.setup.ts"],
   },
   // Use the automatic JSX runtime so React components imported from
   // @memaxlabs/ui (which don't import React explicitly, relying on the

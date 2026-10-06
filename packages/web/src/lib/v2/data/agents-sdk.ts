@@ -18,12 +18,11 @@ import type { SyncLine, Viewer } from "./types";
 
 /**
  * The agents domain over memax.v2.agents (and V1's auth keys for API
- * keys). What /v2 doesn't serve yet is marked PLACEHOLDER and comes back
- * as null or undefined, never as demo data:
+ * keys). Reads (R-, migration 038) come from the connection, each space,
+ * the week and each session as /v2 counts them. What /v2 doesn't serve
+ * yet is marked PLACEHOLDER and comes back as null or undefined, never
+ * as demo data:
  *
- * - reads: AgentConnection, AgentSpace, AgentWeek and AgentSession say
- *   "0 until reads are recorded", so a 0 can't be told from "unknown";
- *   they map to null and the UI shows "—".
  * - compile targets ("Compiles to"): built on another branch.
  * - the week's questions, handoffs received and held external writes.
  * - a space's rules (the autonomy new agents start at): Propose.
@@ -59,11 +58,10 @@ export function toConnection(
       name: s.name,
       kind: s.kind,
       autonomy: s.autonomy,
-      // PLACEHOLDER: reads aren't recorded yet (spec: 0 until they are).
-      reads7d: null,
+      reads7d: s.reads_7d,
       writes7d: s.writes_7d,
     })),
-    reads7d: null,
+    reads7d: c.reads_7d,
     writes7d: c.writes_7d,
     lastSeenAt: c.last_seen_at ?? null,
     connectedAt: c.created_at,
@@ -256,8 +254,7 @@ export function createSdkAgents({
       const view: AgentDetailView = {
         connection,
         week: {
-          // PLACEHOLDER: reads aren't recorded yet.
-          reads: null,
+          reads: week.reads,
           writes: week.writes,
           proposals: week.proposals,
           kept: week.kept,
@@ -273,7 +270,7 @@ export function createSdkAgents({
         ),
         sessions: detail.sessions.map((s) => ({
           ref: s.session_ref,
-          reads: null,
+          reads: s.reads,
           writes: s.writes,
           lastAt: s.last_at,
         })),

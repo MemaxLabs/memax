@@ -34,7 +34,7 @@ export interface AgentSpaceView {
   name: string;
   kind: SpaceKind;
   autonomy: Autonomy;
-  /** Null until reads are recorded (spec: 0 until then). */
+  /** Its reads (R-) of this space in the last 7 days; null when the source can't count them. */
   reads7d: number | null;
   writes7d: number;
 }
@@ -66,7 +66,7 @@ export interface AgentConnectionView {
   clientId: string | null;
   /** The spaces it's connected to, personal space first. */
   spaces: AgentSpaceView[];
-  /** Null until reads are recorded. */
+  /** Its reads (R-, one per space read) in the last 7 days; null when the source can't count them. */
   reads7d: number | null;
   writes7d: number;
   lastSeenAt: string | null;
@@ -116,7 +116,7 @@ export interface AgentSessionView {
   handoff?: string;
   /** Still running. */
   live?: boolean;
-  /** Null until reads are recorded. */
+  /** Its reads in that session (the last 30 days); null when the source can't count them. */
   reads: number | null;
   writes: number;
   lastAt: string;

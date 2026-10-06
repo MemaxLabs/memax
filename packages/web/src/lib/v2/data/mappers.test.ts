@@ -162,8 +162,19 @@ describe("receiptToEntry", () => {
 });
 
 describe("toConnection", () => {
-  it("maps a connection, with reads unknown and targets not served", () => {
-    const view = toConnection(connection(), viewer);
+  it("maps a connection, with its reads and targets not served", () => {
+    const view = toConnection(
+      connection({
+        reads_7d: 1204,
+        spaces: [
+          {
+            ...connection().spaces[0]!,
+            reads_7d: 1180,
+          },
+        ],
+      }),
+      viewer,
+    );
     expect(view).toMatchObject({
       id: "c1",
       agent: "gemini",
@@ -172,19 +183,66 @@ describe("toConnection", () => {
       maxAutonomy: "propose",
       mine: true,
       connectedBy: "memax",
-      reads7d: null,
+      reads7d: 1204,
       writes7d: 4,
     });
     expect(view.spaces[0]).toMatchObject({
       autonomy: "propose",
-      reads7d: null,
+      reads7d: 1180,
     });
+    // A 0 is a count now that reads are recorded, not "unknown".
+    expect(toConnection(connection(), viewer).reads7d).toBe(0);
     expect(view.target).toBeUndefined();
     expect(toConnection(connection({ person_id: "other" }), viewer).mine).toBe(
       false,
     );
     expect(toConnection(connection(), null).mine).toBe(false);
     expect(registryKey("other", "Aider")).toBe("Aider");
+  });
+
+  it("reads one agent's week and sessions, reads included", async () => {
+    const get = vi.fn().mockResolvedValue({
+      agent: connection({ reads_7d: 512 }),
+      this_week: {
+        reads: 512,
+        writes: 21,
+        proposals: 21,
+        kept: 14,
+        rejected: 3,
+        waiting: 4,
+      },
+      recent_writes: [],
+      sessions: [
+        {
+          session_ref: "9f1c",
+          reads: 38,
+          writes: 2,
+          last_at: "2026-10-05T14:21:00-07:00",
+        },
+        {
+          session_ref: "5b0e",
+          reads: 0,
+          writes: 4,
+          last_at: "2026-09-11T10:00:00-07:00",
+        },
+      ],
+    } satisfies V2.AgentDetail);
+    const agents = createSdkAgents({
+      client: { v2: { agents: { get } } } as never,
+      viewer,
+    });
+    const detail = await agents.agent("c1");
+    expect(detail?.connection.reads7d).toBe(512);
+    expect(detail?.week).toMatchObject({ reads: 512, writes: 21, waiting: 4 });
+    expect(detail?.sessions).toEqual([
+      {
+        ref: "9f1c",
+        reads: 38,
+        writes: 2,
+        lastAt: "2026-10-05T14:21:00-07:00",
+      },
+      { ref: "5b0e", reads: 0, writes: 4, lastAt: "2026-09-11T10:00:00-07:00" },
+    ]);
   });
 
   it("keeps a proposal a person kept, with the session it came from", () => {

@@ -59,6 +59,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/memories:near-duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Find what a draft repeats
+         * @description Remember's near-duplicate check: the kept memories and pending
+         *     proposals of the space that a draft statement repeats, best first,
+         *     so a person can keep an agent's proposal instead of writing the
+         *     same thing twice. `exact` is the same words (case, spacing and
+         *     punctuation aside); `near` is at least `floor` similar by embedding
+         *     (cosine). Superseded decisions are left out.
+         *
+         *     No model runs on this path. The draft is embedded (within about
+         *     120 ms) and compared exactly with the space's stored embeddings,
+         *     so it answers in under 150 ms. When embeddings are off on this
+         *     server, or the draft's embedding misses its deadline, only exact
+         *     repeats are checked and `semantic` is `false`.
+         *
+         *     It only reads, so any credential that reads the space may call it.
+         *     It is a `POST` so the draft travels in the body, never in a URL or
+         *     an access log, and it takes no `Idempotency-Key`. Clients call it
+         *     while a person types (debounced), and it is rate-limited per
+         *     caller: 429 `rate_limited` with `Retry-After`.
+         */
+        post: operations["findNearDuplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/spaces/{space}/review": {
         parameters: {
             query?: never;
@@ -2131,6 +2171,41 @@ export interface components {
             quote?: string;
             content_hash?: string;
         };
+        /** @description A draft statement to check before remembering it. */
+        NearDuplicatesRequest: {
+            /** @description The draft, as the person has typed it so far. */
+            statement: string;
+            /** @description The most repeats to return (default 3). */
+            limit?: number;
+        };
+        /** @description What a draft repeats. */
+        NearDuplicates: {
+            /** @description Best first. Exact repeats come before near ones. */
+            items: components["schemas"]["NearDuplicate"][];
+            /**
+             * @description The draft was compared by meaning. `false` when embeddings are
+             *     off on this server or the draft's embedding missed its deadline:
+             *     only exact repeats were checked.
+             */
+            semantic: boolean;
+            /** @description The least similarity a near repeat needed. */
+            floor: number;
+        };
+        /** @description A memory a draft repeats. */
+        NearDuplicate: {
+            /** @description A kept memory or a pending proposal (its `lifecycle` says which). */
+            memory: components["schemas"]["Memory"];
+            /** @description Cosine similarity of the draft and the memory; 1 for an exact repeat. */
+            similarity: number;
+            match: components["schemas"]["DuplicateMatch"];
+            /** @description The receipt that wrote the memory, so a client can say who proposed or kept it, through which agent, and when. */
+            created: components["schemas"]["Receipt"];
+        };
+        /**
+         * @description `exact`: the same words. `near`: the same thing by meaning.
+         * @enum {string}
+         */
+        DuplicateMatch: "exact" | "near";
         RememberRequest: {
             /** @description One fact, in your words. */
             statement: string;
@@ -2354,6 +2429,9 @@ export interface components {
         };
         CommandResultEnvelope: {
             data: components["schemas"]["CommandResult"];
+        };
+        NearDuplicatesEnvelope: {
+            data: components["schemas"]["NearDuplicates"];
         };
         MemoriesCommandResultEnvelope: {
             data: components["schemas"]["MemoriesCommandResult"];
@@ -2787,6 +2865,40 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    findNearDuplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NearDuplicatesRequest"];
+            };
+        };
+        responses: {
+            /** @description What the draft repeats, best first; none is an empty list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NearDuplicatesEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

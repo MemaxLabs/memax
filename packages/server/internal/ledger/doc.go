@@ -55,4 +55,14 @@
 // source's quote only in sources.quote, so Forget can purge the words
 // without rewriting history. Receipts, idempotency records and log lines
 // carry IDs, refs and policy codes, never the text.
+//
+// What Forget must purge, in its one transaction (plan 25 §5.13; the
+// command isn't built yet): the statement versions and source quotes;
+// receipt reasons (v2.redact_receipt_reasons); decision fields; the
+// derived columns the CHECK on memories names (search, content_sha256,
+// minhash_bands); the judge's rationales and merged statements on both
+// sides of a pair; the stored idempotency request hash; and the
+// embeddings, which go by trigger as soon as the words do (a memory moved
+// to forgotten, or a version's statement set to NULL; migration 037),
+// after which no index job can store one again.
 package ledger

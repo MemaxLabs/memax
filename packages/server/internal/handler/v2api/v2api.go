@@ -39,6 +39,10 @@ type Handler struct {
 	// web verifies the web app's signed requests; nil is disabled.
 	web       *websurface.Verifier
 	webWarned atomic.Int64
+	// drafts embeds Remember's draft for the near-duplicate check (near.go);
+	// nil checks exact repeats only. near rate-limits the check.
+	drafts DraftEmbedder
+	near   nearLimiter
 }
 
 // Option configures a Handler.
@@ -83,6 +87,7 @@ var routes = []Route{
 	{"GET", "/v2/spaces", "listSpaces", (*Handler).listSpaces},
 	{"POST", "/v2/spaces/{space}/memories", "rememberMemory", (*Handler).remember},
 	{"GET", "/v2/spaces/{space}/memories", "listMemories", (*Handler).listMemories},
+	{"POST", "/v2/spaces/{space}/memories:near-duplicates", "findNearDuplicates", (*Handler).findNearDuplicates},
 	{"GET", "/v2/spaces/{space}/review", "listReview", (*Handler).listReview},
 	{"GET", "/v2/spaces/{space}/receipts", "listReceipts", (*Handler).listReceipts},
 	{"GET", "/v2/memories/{ref}", "getMemory", (*Handler).getMemory},

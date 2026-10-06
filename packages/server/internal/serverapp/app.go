@@ -52,6 +52,8 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/rerank"
 	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
@@ -637,6 +639,7 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		}
 	}
 
+	v2h, v2Search := v2Handler(pool, queueClient, blobStore)
 	registerRoutes(mux, routeDeps{
 		memories:               memories,
 		uploads:                uploadsH,
@@ -683,8 +686,9 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		eventsBroker:           eventsBroker,
 		// /v2 on the V2 record. With no database the ledger is nil and
 		// every /v2 route answers 503 unavailable.
-		v2:  v2Handler(pool, queueClient, blobStore),
-		mcp: mcpDepsFromEnv(app, pool),
+		v2:       v2h,
+		v2Search: v2Search,
+		mcp:      mcpDepsFromEnv(app, pool),
 	})
 
 	configured = true
@@ -737,19 +741,63 @@ func webSurfaceFromEnv() *websurface.Verifier {
 // v2Handler builds /v2: the ledger, which enqueues compile jobs with
 // River's InsertTx when there is a queue (plan 25 §5.7), and the compile
 // coordinator for previews, hand edits and drift, which needs
-// COMPILE_SERVICE_URL and object storage (nil means disabled).
-func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store) *v2api.Handler {
+// COMPILE_SERVICE_URL and object storage (nil means disabled). It also
+// returns the searcher MCP v2's recall and search use: hybrid when V2
+// embeddings are configured (v2Retrieval), lexical otherwise.
+func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store) (*v2api.Handler, *v2recall.Searcher) {
+	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
 	var opts []ledger.Option
 	if queueClient != nil {
 		opts = append(opts, ledger.WithJobs(queueClient))
+		if embedCfg.Enabled() {
+			// Every searchable version queues its embedding (index_memory).
+			opts = append(opts, ledger.WithIndexJobs())
+		}
 	}
 	l := ledger.New(pool, opts...)
 	svc := compile.New(l, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL")), blobStore,
 		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
+	search, vectors := v2Retrieval(l, embedCfg)
 	if l != nil {
-		slog.Info("/v2 enabled", "compile_jobs", queueClient != nil, "compile_service", svc != nil)
+		slog.Info("/v2 enabled", "compile_jobs", queueClient != nil, "compile_service", svc != nil,
+			"vectors", vectors != nil)
 	}
-	return v2api.New(l, slog.Default(), v2api.WithWebSurface(webSurfaceFromEnv()), v2api.WithCompile(svc))
+	hopts := []v2api.Option{v2api.WithWebSurface(webSurfaceFromEnv()), v2api.WithCompile(svc)}
+	if vectors != nil {
+		hopts = append(hopts, v2api.WithDrafts(vectors))
+	}
+	return v2api.New(l, slog.Default(), hopts...), search
+}
+
+// v2Retrieval builds V2 recall and search (plan 25 §5.11) from the
+// embedding configuration, read once here: lexical lanes always; with
+// VOYAGE_API_KEY and V2_EMBED_MODEL, the query embedder (V2_EMBED_QUERY_MODEL)
+// and the vector lane over the index model's embeddings, with the floors
+// (V2_RECALL_VECTOR_FLOOR, V2_NEAR_DUPLICATE_FLOOR); and the Voyage
+// reranker (V2_RERANK_MODEL, default rerank-3-lite, "off" disables). Nil
+// pieces mean disabled: without a key everything stays lexical.
+func v2Retrieval(l *ledger.Ledger, embedCfg v2index.Config) (*v2recall.Searcher, *v2recall.Vectors) {
+	if l == nil {
+		return nil, nil
+	}
+	vectors := v2recall.NewVectors(l, embedCfg.QueryEmbedder(), embedCfg.IndexEmbedder(),
+		v2recall.VectorConfigFromEnv(os.LookupEnv, embedCfg.IndexModel))
+	search := v2recall.New(l).WithVectors(vectors)
+	rerankModel := strings.TrimSpace(os.Getenv("V2_RERANK_MODEL"))
+	var reranker *rerank.Voyage
+	if !strings.EqualFold(rerankModel, "off") && embedCfg.APIKey != "" {
+		reranker = rerank.NewVoyage(rerank.VoyageConfig{APIKey: embedCfg.APIKey, Model: rerankModel})
+	}
+	if reranker != nil {
+		search.WithReranker(reranker)
+	}
+	if vectors != nil {
+		slog.Info("V2 retrieval: hybrid", "index_model", embedCfg.IndexModel, "query_model", embedCfg.QueryModel,
+			"rerank", reranker != nil)
+	} else {
+		slog.Info("V2 retrieval: lexical only (set VOYAGE_API_KEY for vectors)")
+	}
+	return search, vectors
 }
 
 func configureStore(ctx context.Context, app *App) (store.Store, *pgxpool.Pool, error) {

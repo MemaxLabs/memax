@@ -19,6 +19,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
 )
 
 // These tests run a real River client built from workerRiverConfig
@@ -30,7 +31,7 @@ func TestWorkerRiverConfig_QueuesAndMiddleware(t *testing.T) {
 	cfg := workerRiverConfig(river.NewWorkers(), nil)
 
 	want := map[string]int{river.QueueDefault: 20, "dreams": 3, "chat": 8, ledger.QueueCompile: compile.MaxWorkers,
-		ledger.QueueJudge: judge.MaxWorkers}
+		ledger.QueueJudge: judge.MaxWorkers, ledger.QueueIndex: v2index.MaxWorkers}
 	if len(cfg.Queues) != len(want) {
 		t.Errorf("queues = %v, want %v", cfg.Queues, want)
 	}

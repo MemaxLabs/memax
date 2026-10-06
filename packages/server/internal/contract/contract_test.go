@@ -120,6 +120,46 @@ components:
 	}
 }
 
+// A POST marked x-memax-read only reads: it needs no Idempotency-Key, and
+// the mark is refused anywhere else.
+func TestLintReadPosts(t *testing.T) {
+	t.Parallel()
+	op := func(method, path, extra string) string {
+		return `
+  ` + path + `:
+    ` + method + `:
+      operationId: ` + strings.Trim(path, "/:") + `
+      summary: x
+      tags: [t]` + extra + `
+      responses:
+        '401': {description: x}
+        '429': {description: x}
+        '500': {description: x}
+        '503': {description: x}`
+	}
+	spec, err := contract.Load([]byte(`openapi: 3.1.1
+info: {title: x, version: '1'}
+tags: [{name: t}]
+paths:` + op("post", "/v2/read", "\n      x-memax-read: true") + op("get", "/v2/get", "\n      x-memax-read: true") +
+		op("post", "/v2/command", "")))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	var msgs []string
+	for _, err := range spec.Lint() {
+		msgs = append(msgs, err.Error())
+	}
+	all := strings.Join(msgs, "\n")
+	if strings.Contains(all, "POST /v2/read: commands require") {
+		t.Errorf("a read POST was asked for an Idempotency-Key:\n%s", all)
+	}
+	for _, want := range []string{"GET /v2/get: x-memax-read marks a POST", "POST /v2/command: commands require the Idempotency-Key"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("Lint missed %q:\n%s", want, all)
+		}
+	}
+}
+
 // TestValidatorCatchesDrift proves the checks the handler tests rely on
 // actually fire: each case breaks the contract in one way.
 func TestValidatorCatchesDrift(t *testing.T) {

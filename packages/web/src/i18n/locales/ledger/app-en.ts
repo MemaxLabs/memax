@@ -306,6 +306,10 @@ export const ledgerAppEn = {
     staysTrue: "Stays true while",
     duplicate:
       "{agent} proposed nearly the same thing {age} ({ref}). Keep that one instead, so its receipt and source stay with it.",
+    duplicateByPerson:
+      "Nearly the same thing was proposed {age} ({ref}). Keep that one instead, so its receipt and source stay with it.",
+    duplicateKept:
+      "Nearly the same thing was kept {age} ({ref}). Keeping this adds a second memory.",
     keepRef: "Keep {ref}",
     keep: "Keep",
     write: "Write what you want every agent to know.",

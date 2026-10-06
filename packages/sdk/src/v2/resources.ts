@@ -33,6 +33,8 @@ import type {
   MemoriesCommandResult,
   MemoryDetail,
   MemoryPage,
+  NearDuplicates,
+  NearDuplicatesInput,
   ObservationInput,
   ObservationResult,
   PolicyDecision,
@@ -166,6 +168,27 @@ export class V2MemoriesResource {
       extraHeaders: commandHeaders(opts),
       signal: opts.signal,
     });
+  }
+
+  /**
+   * Remember's near-duplicate check: the kept memories and pending
+   * proposals of the space that a draft repeats, best first (`exact`, the
+   * same words; `near`, the same thing by meaning). It only reads, so it
+   * takes no idempotency key; call it debounced while a person types (it
+   * is rate-limited per caller, `rate_limited` with `retryAfter`). When
+   * the server has no embeddings, or the draft's embedding was late, only
+   * exact repeats are checked and `semantic` is false.
+   */
+  async nearDuplicates(
+    space: string,
+    input: NearDuplicatesInput,
+    opts?: { signal?: AbortSignal },
+  ): Promise<NearDuplicates> {
+    return this.req(
+      "POST",
+      `/v2/spaces/${seg(space)}/memories:near-duplicates`,
+      { body: input, signal: opts?.signal },
+    );
   }
 
   /** A page of the space's memories, newest first. */

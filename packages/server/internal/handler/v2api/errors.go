@@ -35,6 +35,9 @@ const (
 	codeBusy                   = "busy"
 	codeJudgePending           = "judge_pending"
 	codeUnavailable            = "unavailable"
+	// codeRateLimited is the rate-limit middleware's code, which the
+	// near-duplicate check also answers with (near.go).
+	codeRateLimited = "rate_limited"
 )
 
 // apiError is an error response: a status, an ErrorCode and a sentence

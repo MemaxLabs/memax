@@ -53,6 +53,8 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/quota"
 	"github.com/MemaxLabs/memax/packages/server/internal/safefetch"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 )
 
 // App owns the worker process dependencies and River client.
@@ -229,20 +231,48 @@ func New(ctx context.Context) (*App, error) {
 	// storage; a periodic sweep re-enqueues anything left behind. Without
 	// COMPILE_SERVICE_URL or object storage nothing compiles (nil means
 	// disabled): compile jobs cancel with the reason, and no sweep runs.
-	v2Ledger := ledger.New(pool, ledger.WithJobs(insertClient))
+	// V2 embeddings (plan 25 §5.11): the models are explicit configuration,
+	// read here once (VOYAGE_API_KEY, V2_EMBED_MODEL, V2_EMBED_QUERY_MODEL).
+	// With them, commands enqueue index_memory for every searchable version,
+	// the index worker embeds them in batches, and a periodic sweep queues
+	// any version left without an embedding. Without them nothing is
+	// embedded and V2 retrieval stays lexical.
+	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
+	v2Opts := []ledger.Option{ledger.WithJobs(insertClient)}
+	if embedCfg.Enabled() {
+		v2Opts = append(v2Opts, ledger.WithIndexJobs())
+	}
+	v2Ledger := ledger.New(pool, v2Opts...)
 	compileSvc := compile.New(v2Ledger, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL")), blobStore,
 		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
 	logEnabled("V2 compile", compileSvc != nil)
 	compile.AddWorkers(workers, v2Ledger, compileSvc)
 
+	indexEmbedder := embedCfg.IndexEmbedder()
+	indexer := v2index.New(v2Ledger, indexEmbedder, embedCfg.IndexModel, embedCfg.Batch, slog.Default())
+	logEnabled("V2 embeddings", indexer != nil)
+	if indexer != nil {
+		slog.Info("V2 embedding models", "index", embedCfg.IndexModel, "query", embedCfg.QueryModel,
+			"batch", embedCfg.Batch, "sweep_every", embedCfg.SweepInterval.String())
+	}
+	v2index.AddWorkers(workers, indexer, v2Ledger)
+
 	// V2 judge (plan 25 §5.8): judge_proposal jobs, enqueued by the ledger
 	// with every proposal, fold duplicates and flag conflicts with decisions
 	// in force before anyone keeps them. The model tiers are explicit
 	// configuration, read here once. Without an LLM key the judge runs its
-	// no-model stage alone and never blocks a proposal.
+	// no-model stage alone and never blocks a proposal. With V2 embeddings,
+	// its hybrid candidates include the nearest kept memories by vector
+	// (JUDGE_VECTOR_FLOOR, 0.65).
 	judgeCfg := judge.ConfigFromEnv(os.LookupEnv)
-	v2Judge := judge.New(v2Ledger, judge.NewAnthropicModel(llm, judgeCfg.ZeroDataRetention), judgeCfg)
+	var judgeOpts []judge.Option
+	if vectors := v2recall.NewVectors(v2Ledger, indexEmbedder, indexEmbedder,
+		v2recall.VectorConfig{Model: embedCfg.IndexModel}); vectors != nil {
+		judgeOpts = append(judgeOpts, judge.WithVectors(vectors))
+	}
+	v2Judge := judge.New(v2Ledger, judge.NewAnthropicModel(llm, judgeCfg.ZeroDataRetention), judgeCfg, judgeOpts...)
 	logEnabled("V2 judge (model stage)", v2Judge.Stage1())
+	logEnabled("V2 judge (vector candidates)", len(judgeOpts) > 0)
 	if v2Judge.Stage1() {
 		slog.Info("V2 judge tiers", "primary", judgeCfg.Primary.Model, "fallback", judgeCfg.Fallback.Model,
 			"strong", judgeCfg.Strong.Model, "zdr", judgeCfg.ZeroDataRetention, "conditions", judgeCfg.Conditions)
@@ -465,6 +495,9 @@ func New(ctx context.Context) (*App, error) {
 	if compileSvc != nil {
 		periodicJobs = append(periodicJobs, compile.PeriodicJobs()...)
 		slog.Info("compile sweep scheduled", "every", compile.SweepInterval.String())
+	}
+	if indexer != nil {
+		periodicJobs = append(periodicJobs, v2index.PeriodicJobs(embedCfg)...)
 	}
 	riverClient, err := river.NewClient(riverpgxv5.New(pool), workerRiverConfig(workers, periodicJobs))
 	if err != nil {
@@ -1975,6 +2008,9 @@ func workerRiverConfig(workers *river.Workers, periodicJobs []*river.PeriodicJob
 			// The judge waits on the model; a dedicated queue keeps it from
 			// holding default-queue slots.
 			ledger.QueueJudge: {MaxWorkers: judge.MaxWorkers},
+			// V2 embeddings wait on Voyage; one job embeds its space's
+			// whole burst, so a few slots do.
+			ledger.QueueIndex: {MaxWorkers: v2index.MaxWorkers},
 		},
 		Workers: workers,
 		// Global worker middleware: every job's Work() runs inside a

@@ -67,6 +67,11 @@ type Config struct {
 	RejectedWithin time.Duration
 	// Candidates is how many kept memories the hybrid set holds (10).
 	Candidates int
+	// VectorFloor is the cosine similarity a vector candidate needs (plan
+	// §5.8: about 0.65; Graphiti uses a loose 0.6 before the model
+	// decides). Calibrate it on Voyage embeddings of eval/judge's pairs
+	// (TestVectorFloorCalibration, live). 0 is DefaultVectorFloor.
+	VectorFloor float64
 	// Thresholds default to DefaultThresholds.
 	Thresholds Thresholds
 	Log        *slog.Logger
@@ -80,6 +85,7 @@ const (
 	DefaultCallTimeout   = 12 * time.Second
 	DefaultCandidates    = 10
 	DefaultRejectWindow  = 90 * 24 * time.Hour
+	DefaultVectorFloor   = 0.65
 )
 
 func (c Config) withDefaults() Config {
@@ -91,6 +97,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.Candidates <= 0 {
 		c.Candidates = DefaultCandidates
+	}
+	if c.VectorFloor <= 0 {
+		c.VectorFloor = DefaultVectorFloor
 	}
 	if c.Thresholds == (Thresholds{}) {
 		c.Thresholds = DefaultThresholds
@@ -123,6 +132,7 @@ func (c Config) withDefaults() Config {
 //	JUDGE_ZDR             zero-data-retention routing (default true)
 //	JUDGE_CONDITIONS      propose "stays true while" conditions (default false)
 //	JUDGE_TIMEOUT_MS      one model call (default 12000)
+//	JUDGE_VECTOR_FLOOR    cosine similarity a vector candidate needs (default 0.65)
 func ConfigFromEnv(lookup func(string) (string, bool)) Config {
 	model := func(key, def string) string {
 		v, ok := lookup(key)
@@ -156,6 +166,11 @@ func ConfigFromEnv(lookup func(string) (string, bool)) Config {
 	if v, ok := lookup("JUDGE_TIMEOUT_MS"); ok {
 		if ms, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && ms > 0 {
 			c.CallTimeout = time.Duration(ms) * time.Millisecond
+		}
+	}
+	if v, ok := lookup("JUDGE_VECTOR_FLOOR"); ok {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil && f > 0 && f <= 1 {
+			c.VectorFloor = f
 		}
 	}
 	return c

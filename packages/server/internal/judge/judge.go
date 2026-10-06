@@ -145,6 +145,7 @@ func (j *Judge) Run(ctx context.Context, args ledger.JudgeArgs, opts RunOptions)
 				j.cfg.Log.WarnContext(ctx, "judge: vector candidates failed", "memory", m.Ref, "error", err)
 				vecs = nil
 			}
+			vecs = aboveFloor(vecs, j.cfg.VectorFloor)
 		}
 		cands := gather(m.Statement, area, snap, vecs, j.cfg.Candidates)
 		timings["candidates_ms"] = j.now().Sub(t1).Milliseconds()

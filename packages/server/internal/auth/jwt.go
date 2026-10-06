@@ -19,14 +19,35 @@ type Claims struct {
 	AgentName      string `json:"agent_name,omitempty"`      // agent identity (e.g., "claude-ai" for OAuth MCP)
 	GrantID        string `json:"grant_id,omitempty"`        // server-side OAuth grant reference
 	ImpersonatorID string `json:"impersonator_id,omitempty"` // dev who initiated impersonation
+	// Surface is the surface the sign-in was for, SurfaceWeb or SurfaceCLI
+	// (migration 030), set by the server when the login completes. Empty
+	// on tokens from before it existed, which count as the CLI.
+	Surface string `json:"surface,omitempty"`
 }
 
+// The sign-in surfaces.
+const (
+	// SurfaceWeb: the login's one-time code was delivered to the web app's
+	// origin, so the session lives in a browser on the web app.
+	SurfaceWeb = "web"
+	// SurfaceCLI: anything else (a loopback redirect, or tokens returned in
+	// the response).
+	SurfaceCLI = "cli"
+)
+
 func SignAccessToken(userID string, secret []byte, ttl time.Duration) (string, error) {
+	return SignSessionToken(userID, "", secret, ttl)
+}
+
+// SignSessionToken issues a person's access token for a sign-in surface
+// (SurfaceWeb, SurfaceCLI, or "" for none).
+func SignSessionToken(userID, surface string, secret []byte, ttl time.Duration) (string, error) {
 	now := time.Now()
 	claims := Claims{
-		Sub: userID,
-		Iat: now.Unix(),
-		Exp: now.Add(ttl).Unix(),
+		Sub:     userID,
+		Iat:     now.Unix(),
+		Exp:     now.Add(ttl).Unix(),
+		Surface: surface,
 	}
 	return signJWT(claims, secret)
 }

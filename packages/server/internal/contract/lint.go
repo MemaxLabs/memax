@@ -19,7 +19,7 @@ import (
 //   - Every response body is a named schema, so the SDK gets a named type.
 //     2xx bodies are envelopes with exactly `data`; 4xx and 5xx bodies are
 //     ErrorEnvelope. That is the model.ApiResponse contract in AGENTS.md.
-//   - Every POST requires Idempotency-Key (commands are retried).
+//   - Every POST and PATCH requires Idempotency-Key (commands are retried).
 //   - Every operation documents 401, 429, 500 and 503, which the middleware
 //     chain can answer for any route.
 //   - Operations have unique ids, a summary and a declared tag; path
@@ -63,7 +63,7 @@ func (s *Spec) Lint() []error {
 			}
 		}
 		errs = append(errs, s.lintPathParams(op)...)
-		if op.Method == "POST" && !op.hasRequiredHeader("Idempotency-Key") {
+		if (op.Method == "POST" || op.Method == "PATCH") && !op.hasRequiredHeader("Idempotency-Key") {
 			add("%s: commands require the Idempotency-Key header", where)
 		}
 		for _, code := range []int{401, 429, 500, 503} {

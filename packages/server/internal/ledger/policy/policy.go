@@ -17,6 +17,7 @@
 //     decision in a space where decisions need a person on the web.
 //   - Viewer: proposed. Member and owner: kept (and Review is theirs).
 //   - API key: read or propose only; never keeps, rejects or forgets.
+//   - An agent that isn't connected to the space, or is paused, only reads.
 //   - Dream, Memax and the repository: new statements are proposals.
 //   - Integrations (email, Slack, GitHub, Linear): proposed and external.
 //
@@ -92,6 +93,57 @@ const (
 func (a Autonomy) Valid() bool {
 	return a == AutonomyRead || a == AutonomyPropose || a == AutonomyWrite
 }
+
+// Autonomies lists the levels, lowest first.
+var Autonomies = []Autonomy{AutonomyRead, AutonomyPropose, AutonomyWrite}
+
+// rank orders the levels; unknown values rank below read.
+func (a Autonomy) rank() int {
+	switch a {
+	case AutonomyRead:
+		return 0
+	case AutonomyPropose:
+		return 1
+	case AutonomyWrite:
+		return 2
+	}
+	return -1
+}
+
+// Above reports whether a allows more than b.
+func (a Autonomy) Above(b Autonomy) bool { return a.rank() > b.rank() }
+
+// MinAutonomy returns the lowest of the levels. An unknown level counts
+// as read, and so does an empty list.
+func MinAutonomy(as ...Autonomy) Autonomy {
+	if len(as) == 0 {
+		return AutonomyRead
+	}
+	low := AutonomyWrite
+	for _, a := range as {
+		if !a.Valid() {
+			return AutonomyRead
+		}
+		if a.rank() < low.rank() {
+			low = a
+		}
+	}
+	return low
+}
+
+// AgentStatus is whether an agent is connected to a space (plan 25
+// §5.15: an agent connection is identity plus autonomy per space).
+type AgentStatus string
+
+// The statuses. The zero value means connected (or not an agent).
+const (
+	AgentConnected AgentStatus = ""
+	// AgentNotConnected: the credential has no connection, it was
+	// disconnected, or it isn't connected to this space. It only reads.
+	AgentNotConnected AgentStatus = "not_connected"
+	// AgentPaused: the person paused it. It only reads.
+	AgentPaused AgentStatus = "paused"
+)
 
 // Credential is how the actor authenticated. API keys are capped at
 // Propose whatever else is configured.
@@ -241,9 +293,12 @@ type Actor struct {
 	// CanForget carries V1's admin role (member + can_forget).
 	CanForget bool
 	// Autonomy applies to agents, and to API keys as the key's scope.
-	Autonomy   Autonomy
-	Credential Credential
-	Via        Via
+	Autonomy Autonomy
+	// AgentStatus says whether an agent is connected to the space; one
+	// that isn't, or is paused, only reads.
+	AgentStatus AgentStatus
+	Credential  Credential
+	Via         Via
 	// PersonPresent and CanElicit describe the agent's client: a person
 	// is at the keyboard, and the client supports MCP elicitation.
 	PersonPresent bool
@@ -280,6 +335,9 @@ func (a Actor) autonomy() Autonomy {
 		if level == AutonomyWrite {
 			level = AutonomyPropose
 		}
+	}
+	if a.Kind == ActorAgent && a.AgentStatus != AgentConnected {
+		level = AutonomyRead
 	}
 	if !level.Valid() {
 		return AutonomyRead
@@ -351,6 +409,15 @@ const (
 	CodeForgetNotAllowed    = "forget_not_allowed"
 	CodeExternalNeedsReview = "external_needs_review"
 	CodeProposalInReview    = "proposal_in_review"
+	CodeAgentNotConnected   = "agent_not_connected"
+	CodeAgentPaused         = "agent_paused"
+
+	// Changes to agent connections (DecideConnection); all refusals.
+	CodePersonMustManage   = "person_must_manage"
+	CodeNotYourAgent       = "not_your_agent"
+	CodeAutonomyNotAllowed = "autonomy_not_allowed"
+	CodeKeyMaxPropose      = "key_max_propose"
+	CodeAutonomyNeedsWeb   = "autonomy_needs_web"
 
 	CodeViewer           = "viewer"             // refused (keep, reject) or downgraded (write)
 	CodeOwnersKeep       = "owners_keep"        // refused (keep, reject) or downgraded (write)
@@ -614,6 +681,16 @@ func refuse(code, msg string) Decision {
 }
 
 func refuseReadOnly(a Actor, s Space) Decision {
+	if a.Kind == ActorAgent {
+		switch a.AgentStatus {
+		case AgentConnected:
+		case AgentPaused:
+			return refuse(CodeAgentPaused, fmt.Sprintf("%s is paused, so it can only read. Resume it in Agents.", actorName(a)))
+		default:
+			return refuse(CodeAgentNotConnected, fmt.Sprintf(
+				"%s isn't connected to %s, so it can only read. Connect it in Agents.", actorName(a), spaceName(s)))
+		}
+	}
 	if a.Credential == CredentialAPIKey {
 		return refuse(CodeKeyReadOnly, fmt.Sprintf(
 			"This API key can only read %s. Create a key that can propose in Settings.", spaceName(s)))

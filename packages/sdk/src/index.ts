@@ -47,6 +47,7 @@ export {
   V2MemoriesResource,
   V2ReviewResource,
   V2ReceiptsResource,
+  V2AgentsResource,
   refusalOf,
 } from "./v2/resources.js";
 export type {

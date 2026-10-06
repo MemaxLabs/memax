@@ -34,11 +34,23 @@ export type CommandResult = Schemas["CommandResult"];
 export type ErrorBody = Schemas["Error"];
 export type ErrorDetails = Schemas["ErrorDetails"];
 
+// Agents
+export type AgentConnection = Schemas["AgentConnection"];
+export type AgentSpace = Schemas["AgentSpace"];
+export type AgentCredential = Schemas["AgentCredential"];
+export type AgentList = Schemas["AgentList"];
+export type AgentDetail = Schemas["AgentDetail"];
+export type AgentWeek = Schemas["AgentWeek"];
+export type AgentSession = Schemas["AgentSession"];
+export type AgentCommandResult = Schemas["AgentCommandResult"];
+
 // Request bodies
 export type RememberInput = Schemas["RememberRequest"];
 export type EditInput = Schemas["EditRequest"];
 export type ReviewInput = Schemas["ReviewRequest"];
 export type SourceInput = Schemas["SourceInput"];
+export type AutonomyInput = Schemas["AutonomyRequest"];
+export type AgentCommandInput = Schemas["AgentCommandRequest"];
 
 // Vocabulary
 export type Section = Schemas["Section"];
@@ -50,6 +62,12 @@ export type Trust = Schemas["Trust"];
 export type SourceKind = Schemas["SourceKind"];
 export type SpaceKind = Schemas["SpaceKind"];
 export type Role = Schemas["Role"];
+/** What an agent may do in a space: read, propose or write. */
+export type Autonomy = Schemas["Autonomy"];
+export type AgentKind = Schemas["AgentKind"];
+export type AgentSurface = Schemas["AgentSurface"];
+export type AgentState = Schemas["AgentState"];
+export type CredentialKind = Schemas["CredentialKind"];
 export type ActorKind = Schemas["ActorKind"];
 export type Via = Schemas["Via"];
 export type Assurance = Schemas["Assurance"];

@@ -18,24 +18,47 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
+	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
 // Handler serves /v2.
 type Handler struct {
 	ledger *ledger.Ledger
 	log    *slog.Logger
+	now    func() time.Time
+	seen   seenTracker
+	// web verifies the web app's signed requests; nil is disabled.
+	web       *websurface.Verifier
+	webWarned atomic.Int64
 }
+
+// Option configures a Handler.
+type Option func(*Handler)
+
+// WithClock replaces time.Now (tests).
+func WithClock(now func() time.Time) Option { return func(h *Handler) { h.now = now } }
+
+// WithWebSurface lets requests signed by the web app's proxy count as made
+// on the web (assurance human_web). nil, the default, disables it: every
+// request is client-attested.
+func WithWebSurface(v *websurface.Verifier) Option { return func(h *Handler) { h.web = v } }
 
 // New returns the /v2 handler. A nil ledger (no database) is allowed:
 // every route then answers 503 unavailable, so the API says what is
 // missing instead of 404ing.
-func New(l *ledger.Ledger, log *slog.Logger) *Handler {
+func New(l *ledger.Ledger, log *slog.Logger, opts ...Option) *Handler {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Handler{ledger: l, log: log}
+	h := &Handler{ledger: l, log: log, now: time.Now}
+	for _, o := range opts {
+		o(h)
+	}
+	return h
 }
 
 // Route is one operation of v2.yaml.
@@ -57,6 +80,13 @@ var routes = []Route{
 	{"POST", "/v2/memories/{ref}:keep", "keepMemory", (*Handler).keep},
 	{"POST", "/v2/memories/{ref}:edit", "editMemory", (*Handler).edit},
 	{"POST", "/v2/memories/{ref}:reject", "rejectMemory", (*Handler).reject},
+	{"GET", "/v2/agents", "listAgents", (*Handler).listAgents},
+	{"GET", "/v2/spaces/{space}/agents", "listSpaceAgents", (*Handler).listSpaceAgents},
+	{"GET", "/v2/agents/{agent}", "getAgent", (*Handler).getAgent},
+	{"PATCH", "/v2/agents/{agent}/spaces/{space}", "setAgentAutonomy", (*Handler).setAgentAutonomy},
+	{"POST", "/v2/agents/{agent}:pause", "pauseAgent", (*Handler).pauseAgent},
+	{"POST", "/v2/agents/{agent}:resume", "resumeAgent", (*Handler).resumeAgent},
+	{"POST", "/v2/agents/{agent}:disconnect", "disconnectAgent", (*Handler).disconnectAgent},
 }
 
 // Routes lists every /v2 operation this package serves, named as in

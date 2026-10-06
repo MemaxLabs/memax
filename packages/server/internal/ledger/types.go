@@ -294,6 +294,9 @@ type Result struct {
 	// Memory is the memory's projection after the command: for an edit
 	// downgraded to a proposal, the new proposal. Nil when refused.
 	Memory *Memory `json:"memory,omitempty"`
+	// Connection is the agent connection's projection after an agent
+	// command. Nil when refused, and for memory commands.
+	Connection *Connection `json:"connection,omitempty"`
 	// Receipts are the receipts the command wrote, in order.
 	Receipts []Receipt `json:"receipts,omitempty"`
 	// Replayed is set when the idempotency key had already been applied:

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -97,6 +98,16 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.review(ctx, c.Memory, c.ExpectedVersion, CommandReject)
 	case *Edit:
 		res, err = w.edit(ctx, c)
+	case *ConnectAgent:
+		res, err = w.connect(ctx, c)
+	case *SetAutonomy:
+		res, err = w.setAutonomy(ctx, c)
+	case *PauseAgent:
+		res, err = w.changeConnection(ctx, c.Connection, CommandPauseAgent)
+	case *ResumeAgent:
+		res, err = w.changeConnection(ctx, c.Connection, CommandResumeAgent)
+	case *DisconnectAgent:
+		res, err = w.changeConnection(ctx, c.Connection, CommandDisconnectAgent)
 	}
 	if err != nil {
 		return Result{}, mapDBError(err)
@@ -114,6 +125,12 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		l.log.Info("ledger: applied",
 			"command", string(cmd.Name()), "outcome", string(res.Outcome), "policy", res.Policy.Code,
 			"memory", res.Memory.Ref, "space_id", res.Memory.SpaceID.String(),
+			"actor_kind", string(m.Actor.Kind), "via", string(m.Via), "receipts", len(res.Receipts))
+	}
+	if res.Connection != nil {
+		l.log.Info("ledger: applied",
+			"command", string(cmd.Name()), "outcome", string(res.Outcome), "connection", res.Connection.ID.String(),
+			"agent", string(res.Connection.Agent), "state", string(res.Connection.State),
 			"actor_kind", string(m.Actor.Kind), "via", string(m.Via), "receipts", len(res.Receipts))
 	}
 	return res, nil
@@ -138,6 +155,25 @@ func validateCommand(cmd Command) error {
 		}
 		c.Statement = strings.TrimSpace(c.Statement)
 		return checkText("statement", c.Statement, MaxStatementRunes, true)
+	case *ConnectAgent:
+		return c.validate()
+	case *SetAutonomy:
+		if err := validateConnectionTarget(c.Connection); err != nil {
+			return err
+		}
+		if c.SpaceID == uuid.Nil {
+			return invalid("space", "say which space")
+		}
+		if !c.Autonomy.Valid() {
+			return invalid("autonomy", "use read, propose or write")
+		}
+		return nil
+	case *PauseAgent:
+		return validateConnectionTarget(c.Connection)
+	case *ResumeAgent:
+		return validateConnectionTarget(c.Connection)
+	case *DisconnectAgent:
+		return validateConnectionTarget(c.Connection)
 	}
 	return invalid("command", "unknown command %T", cmd)
 }
@@ -169,12 +205,17 @@ func (l *Ledger) begin(ctx context.Context, scope Scope, mode pgx.TxAccessMode) 
 	if err != nil {
 		return nil, fmt.Errorf("ledger: begin: %w", err)
 	}
+	person := ""
+	if scope.PersonID != uuid.Nil {
+		person = scope.PersonID.String()
+	}
 	_, err = tx.Exec(ctx,
 		`SELECT set_config('role', $1, true),
 		        set_config('app.space_ids', $2, true),
 		        set_config('app.tenant_ids', $3, true),
-		        set_config('lock_timeout', $4, true)`,
-		DBRole, uuidArray(scope.SpaceIDs()), uuidArray(scope.TenantIDs()),
+		        set_config('app.person_id', $4, true),
+		        set_config('lock_timeout', $5, true)`,
+		DBRole, uuidArray(scope.SpaceIDs()), uuidArray(scope.TenantIDs()), person,
 		fmt.Sprintf("%dms", l.lockTimeout.Milliseconds()))
 	if err != nil {
 		_ = tx.Rollback(ctx)

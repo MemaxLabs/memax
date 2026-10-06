@@ -159,6 +159,10 @@ type GrantContext struct {
 	DefaultPermissions PermissionSet
 	TrustLevel         string
 	RateLimitTier      string
+	// Surface is a person's session token's sign-in surface (auth.SurfaceWeb
+	// or auth.SurfaceCLI; migration 030), set by the server at login. Empty
+	// for API keys, OAuth grants, impersonation and older tokens.
+	Surface string
 }
 
 type AuthContext struct {

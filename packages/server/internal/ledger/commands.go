@@ -44,7 +44,8 @@ const (
 )
 
 // Command is one change to the record. Pass a pointer to one of the
-// command structs (*Remember, *Propose, *Keep, *Edit, *Reject).
+// command structs (*Remember, *Propose, *Keep, *Edit, *Reject, and the
+// agent commands in agents.go).
 type Command interface {
 	envelope() *Meta
 	Name() CommandName
@@ -371,6 +372,26 @@ func requestHash(cmd Command) ([]byte, error) {
 		cp.Meta = strip
 		v = cp
 	case *Reject:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *ConnectAgent:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *SetAutonomy:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *PauseAgent:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *ResumeAgent:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *DisconnectAgent:
 		cp := *c
 		cp.Meta = strip
 		v = cp

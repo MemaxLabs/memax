@@ -751,10 +751,11 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var session model.Session
 	var agentName string
 	var grantID string
+	var surface string
 	err := h.pool.QueryRow(context.Background(),
-		`SELECT id, user_id, expires_at, COALESCE(agent_name, ''), COALESCE(grant_id::text, '')
+		`SELECT id, user_id, expires_at, COALESCE(agent_name, ''), COALESCE(grant_id::text, ''), COALESCE(surface, '')
 		FROM sessions WHERE refresh_token = $1`,
-		req.RefreshToken).Scan(&session.ID, &session.UserID, &session.ExpiresAt, &agentName, &grantID)
+		req.RefreshToken).Scan(&session.ID, &session.UserID, &session.ExpiresAt, &agentName, &grantID, &surface)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
 			Error: &model.Error{Code: "invalid_token", Message: "Invalid refresh token."},
@@ -785,7 +786,8 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	} else if agentName != "" {
 		accessToken, err = auth.SignAgentAccessToken(session.UserID, agentName, h.jwtSecret, time.Hour)
 	} else {
-		accessToken, err = auth.SignAccessToken(session.UserID, h.jwtSecret, time.Hour)
+		// A refreshed token keeps the surface its sign-in was for.
+		accessToken, err = auth.SignSessionToken(session.UserID, surface, h.jwtSecret, time.Hour)
 	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, model.ApiResponse{
@@ -820,9 +822,10 @@ func (h *AuthHandler) ExchangeCode(w http.ResponseWriter, r *http.Request) {
 	var expiresAt time.Time
 	var used bool
 	var grantID string
+	var surface string
 	err := h.pool.QueryRow(context.Background(),
-		`SELECT user_id, expires_at, used, COALESCE(grant_id::text, '') FROM auth_codes WHERE code = $1`, req.Code,
-	).Scan(&userID, &expiresAt, &used, &grantID)
+		`SELECT user_id, expires_at, used, COALESCE(grant_id::text, ''), COALESCE(surface, '') FROM auth_codes WHERE code = $1`, req.Code,
+	).Scan(&userID, &expiresAt, &used, &grantID, &surface)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
 			Error: &model.Error{Code: "invalid_code", Message: "Invalid authorization code."},
@@ -848,7 +851,12 @@ func (h *AuthHandler) ExchangeCode(w http.ResponseWriter, r *http.Request) {
 	// Mark as used
 	h.pool.Exec(context.Background(), `UPDATE auth_codes SET used = true WHERE code = $1`, req.Code)
 
-	tokens, err := h.issueTokens(userID)
+	// The session is for the surface the code was delivered to (migration
+	// 030); a code from before that counts as the CLI.
+	if surface != auth.SurfaceWeb {
+		surface = auth.SurfaceCLI
+	}
+	tokens, err := h.issueSessionTokens(userID, surface)
 	if err != nil {
 		slog.Error("token issuance failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, model.ApiResponse{
@@ -1862,8 +1870,17 @@ func (h *AuthHandler) ensurePersonalHub(user *model.User) {
 	slog.Info("personal hub created", "user_id", user.ID, "hub_id", hub.ID)
 }
 
+// issueTokens issues a person's token pair returned directly in a
+// response, which is the CLI's way (tokens for the web app always go
+// through a redirected one-time code; see redirectSurface).
 func (h *AuthHandler) issueTokens(userID string) (*model.TokenPair, error) {
-	return h.issueAgentTokens(userID, "")
+	return h.issueSessionTokens(userID, auth.SurfaceCLI)
+}
+
+// issueSessionTokens issues a person's token pair for a sign-in surface.
+// The session remembers the surface, so refreshed tokens keep it.
+func (h *AuthHandler) issueSessionTokens(userID, surface string) (*model.TokenPair, error) {
+	return h.issueTokenPair(userID, "", "", surface, 30*24*time.Hour)
 }
 
 // issueAgentTokens issues a token pair with optional agent identity embedded in the JWT.
@@ -1872,6 +1889,10 @@ func (h *AuthHandler) issueAgentTokens(userID, agentName string) (*model.TokenPa
 }
 
 func (h *AuthHandler) issueAgentGrantTokens(userID, agentName, grantID string, refreshTTL time.Duration) (*model.TokenPair, error) {
+	return h.issueTokenPair(userID, agentName, grantID, "", refreshTTL)
+}
+
+func (h *AuthHandler) issueTokenPair(userID, agentName, grantID, surface string, refreshTTL time.Duration) (*model.TokenPair, error) {
 	var accessToken string
 	var err error
 	if grantID != "" {
@@ -1879,7 +1900,7 @@ func (h *AuthHandler) issueAgentGrantTokens(userID, agentName, grantID string, r
 	} else if agentName != "" {
 		accessToken, err = auth.SignAgentAccessToken(userID, agentName, h.jwtSecret, time.Hour)
 	} else {
-		accessToken, err = auth.SignAccessToken(userID, h.jwtSecret, time.Hour)
+		accessToken, err = auth.SignSessionToken(userID, surface, h.jwtSecret, time.Hour)
 	}
 	if err != nil {
 		return nil, err
@@ -1889,9 +1910,9 @@ func (h *AuthHandler) issueAgentGrantTokens(userID, agentName, grantID string, r
 	expiresAt := time.Now().Add(refreshTTL)
 
 	_, err = h.pool.Exec(context.Background(),
-		`INSERT INTO sessions (user_id, refresh_token, expires_at, agent_name, grant_id)
-		VALUES ($1, $2, $3, $4, NULLIF($5, '')::uuid)`,
-		userID, refreshToken, expiresAt, agentName, grantID)
+		`INSERT INTO sessions (user_id, refresh_token, expires_at, agent_name, grant_id, surface)
+		VALUES ($1, $2, $3, $4, NULLIF($5, '')::uuid, NULLIF($6, ''))`,
+		userID, refreshToken, expiresAt, agentName, grantID, surface)
 	if err != nil {
 		return nil, err
 	}

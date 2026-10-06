@@ -2591,8 +2591,9 @@ export interface components {
         GateRefPath: components["schemas"]["GateRef"];
         /**
          * @description The gate's `ETag` (its version) you read, e.g. `"1"`. A gate's
-         *     version changes only when it ends, so a stale one means someone
-         *     answered or withdrew it first (412 `edit_clash`).
+         *     version changes only when it ends: one that ended since is 409
+         *     `invalid_transition` (with `details.status`), and a version that
+         *     isn't the waiting gate's is 412 `edit_clash`.
          */
         IfMatchGate: components["schemas"]["VersionTag"];
         /** @description The target's id. */
@@ -4157,8 +4158,9 @@ export interface operations {
                 "Idempotency-Key": components["parameters"]["IdempotencyKey"];
                 /**
                  * @description The gate's `ETag` (its version) you read, e.g. `"1"`. A gate's
-                 *     version changes only when it ends, so a stale one means someone
-                 *     answered or withdrew it first (412 `edit_clash`).
+                 *     version changes only when it ends: one that ended since is 409
+                 *     `invalid_transition` (with `details.status`), and a version that
+                 *     isn't the waiting gate's is 412 `edit_clash`.
                  */
                 "If-Match"?: components["parameters"]["IfMatchGate"];
                 /**
@@ -4212,8 +4214,9 @@ export interface operations {
                 "Idempotency-Key": components["parameters"]["IdempotencyKey"];
                 /**
                  * @description The gate's `ETag` (its version) you read, e.g. `"1"`. A gate's
-                 *     version changes only when it ends, so a stale one means someone
-                 *     answered or withdrew it first (412 `edit_clash`).
+                 *     version changes only when it ends: one that ended since is 409
+                 *     `invalid_transition` (with `details.status`), and a version that
+                 *     isn't the waiting gate's is 412 `edit_clash`.
                  */
                 "If-Match"?: components["parameters"]["IfMatchGate"];
                 /**

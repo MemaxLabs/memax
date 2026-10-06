@@ -112,17 +112,18 @@ func (w *writer) answerGate(ctx context.Context, c *AnswerGate) (Result, error) 
 	if replay != nil {
 		return w.replayGate(ctx, replay, sp)
 	}
-	if c.ExpectedVersion != 0 && c.ExpectedVersion != g.Version {
-		return Result{}, &EditClashError{Ref: g.Ref, Expected: c.ExpectedVersion, Current: g.Version}
-	}
 	pa := w.policyActor(grant)
 	dec := policy.Decide(pa, policy.ActionAnswerGate,
 		policy.Object{Ref: g.Ref, Decision: true, Secrets: findSecrets(w.meta.Reason)}, sp.policy())
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
 	}
+	// A gate that ended says how (409) before a stale version would (412).
 	if err := g.waiting(CommandAnswerGate); err != nil {
 		return Result{}, err
+	}
+	if c.ExpectedVersion != 0 && c.ExpectedVersion != g.Version {
+		return Result{}, &EditClashError{Ref: g.Ref, Expected: c.ExpectedVersion, Current: g.Version}
 	}
 	if c.Option < 1 || c.Option > len(g.Options) {
 		return Result{}, invalid("option", "choose one of the %d options of %s, counting from 1", len(g.Options), g.Ref)
@@ -192,9 +193,6 @@ func (w *writer) withdrawGate(ctx context.Context, c *WithdrawGate) (Result, err
 	if replay != nil {
 		return w.replayGate(ctx, replay, sp)
 	}
-	if c.ExpectedVersion != 0 && c.ExpectedVersion != g.Version {
-		return Result{}, &EditClashError{Ref: g.Ref, Expected: c.ExpectedVersion, Current: g.Version}
-	}
 	mine, err := w.gateMine(ctx, g)
 	if err != nil {
 		return Result{}, err
@@ -206,6 +204,9 @@ func (w *writer) withdrawGate(ctx context.Context, c *WithdrawGate) (Result, err
 	}
 	if err := g.waiting(CommandWithdrawGate); err != nil {
 		return Result{}, err
+	}
+	if c.ExpectedVersion != 0 && c.ExpectedVersion != g.Version {
+		return Result{}, &EditClashError{Ref: g.Ref, Expected: c.ExpectedVersion, Current: g.Version}
 	}
 	if !GateTransitionAllowed(g.stored, GateWithdrawn) {
 		return Result{}, &GateStateError{Ref: g.Ref, Status: g.Status, Command: CommandWithdrawGate}

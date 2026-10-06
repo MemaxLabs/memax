@@ -349,6 +349,11 @@ func TestAnswerGateKeepsADecision(t *testing.T) {
 	}
 	_, err := f.l.Apply(context.Background(), answer(person(zz), f.scope(zz), policy.ViaWeb, g.Ref, 2))
 	gateStateIs(t, err, ledger.GateAnswered)
+	// Sent with the version the person read, it still says why (not 412).
+	stale := answer(person(zz), f.scope(zz), policy.ViaWeb, g.Ref, 2)
+	stale.ExpectedVersion = 1
+	_, err = f.l.Apply(context.Background(), stale)
+	gateStateIs(t, err, ledger.GateAnswered)
 	if n := f.count(`SELECT count(*) FROM v2.memories WHERE kind = 'decision'`); n != 1 {
 		t.Errorf("%d decisions, want 1", n)
 	}

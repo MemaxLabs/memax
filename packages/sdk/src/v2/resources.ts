@@ -611,7 +611,10 @@ export interface GateRefOptions {
 }
 
 export interface GateCommandOptions extends CommandOptions, GateRefOptions {
-  /** The gate's version you read (its ETag); a newer one throws `edit_clash` (412). */
+  /**
+   * The gate's version you read (its ETag). A gate that ended since throws
+   * `invalid_transition` (409); any other mismatch, `edit_clash` (412).
+   */
   ifMatch?: number;
 }
 

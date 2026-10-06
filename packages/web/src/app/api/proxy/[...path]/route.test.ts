@@ -155,14 +155,15 @@ describe("/api/proxy web-surface signing", () => {
     expect(calls[0]!.init.headers.get("x-memax-surface-signature")).toBeNull();
   });
 
-  it("doesn't sign /v1, which doesn't read it", async () => {
+  it("doesn't sign V1 paths, which don't read it", async () => {
     const { GET } = await loadRoute(VECTOR.secret);
     const calls = mockUpstream();
+    const v1Path = ["v1", "memories"];
     await GET(
-      new Request("https://memax.app/api/proxy/v1/memories", {
+      new Request(`https://memax.app/api/proxy/${v1Path.join("/")}`, {
         headers: { authorization: `Bearer ${webToken}` },
       }),
-      params(["v1", "memories"]),
+      params(v1Path),
     );
     expect(calls[0]!.init.headers.get("x-memax-surface")).toBeNull();
   });

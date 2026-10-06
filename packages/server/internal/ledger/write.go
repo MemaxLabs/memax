@@ -32,6 +32,12 @@ type writer struct {
 	finishers []Finisher
 	inserter  Jobs
 	loginRole string
+
+	// undo collects the command's inverse when it is undoable (undo.go),
+	// with the windows the ledger was configured with.
+	undo            *undoJournal
+	undoWindow      time.Duration
+	judgeUndoWindow time.Duration
 }
 
 // write is Remember and Propose.
@@ -62,12 +68,28 @@ func (w *writer) write(ctx context.Context, nm NewMemory, propose bool) (Result,
 	if propose {
 		action = policy.ActionPropose
 	}
-	dec := policy.Decide(w.policyActor(grant), action, policy.Object{
+	obj := policy.Object{
 		Decision:            nm.Kind == KindDecision,
 		External:            trust.External(),
 		ContradictsDecision: nm.ContradictsDecision,
 		Secrets:             findSecrets(texts...),
-	}, sp.policy())
+	}
+	dec := policy.Decide(w.policyActor(grant), action, obj, sp.policy())
+	// A Write-level agent's statement is kept at once, unless it touches a
+	// decision in force: then it waits for the judge and a person (rule 11;
+	// the judge itself takes seconds, which a write can't wait for).
+	if dec.Effect == policy.EffectApply && w.meta.Actor.Kind == policy.ActorAgent {
+		area := ""
+		if nm.Decision != nil {
+			area = nm.Decision.Area
+		}
+		if obj.TouchesDecision, err = w.touchesDecision(ctx, sp.ID, uuid.Nil, nm.Statement, area); err != nil {
+			return Result{}, err
+		}
+		if obj.TouchesDecision {
+			dec = policy.Decide(w.policyActor(grant), action, obj, sp.policy())
+		}
+	}
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
 	}
@@ -124,18 +146,70 @@ func (w *writer) review(ctx context.Context, ref string, expected int, cmd Comma
 	if err != nil {
 		return Result{}, err
 	}
+	if w.meta.Actor.Kind == policy.ActorPerson {
+		kind := UndoKeep
+		if cmd == CommandReject {
+			kind = UndoReject
+		}
+		w.startUndo(kind, w.undoWindow)
+		w.undo.touch(mem)
+	}
 	rc, err := w.changeState(ctx, sp, grant, mem, next, receiptAction, mem.streamVersion+1, w.meta.Reason)
 	if err != nil {
 		return Result{}, err
 	}
+	receipts := []Receipt{rc}
 	// A Keep changes the kept set, so every target recompiles. A Reject
 	// takes a proposal out of Review, and proposals never compile.
 	if next.Lifecycle == lifecycle.Kept {
+		mem.Lifecycle, mem.Flags, mem.streamVersion = next.Lifecycle, next.Flags, rc.StreamVersion
+		if receipts, err = w.supersedeOnKeep(ctx, sp, mem, receipts); err != nil {
+			return Result{}, err
+		}
 		if err := w.markDirty(ctx, sp.ID); err != nil {
 			return Result{}, err
 		}
 	}
-	return w.finish(ctx, Result{Outcome: OutcomeApplied, Policy: dec, Receipts: []Receipt{rc}}, mem.ID)
+	if err := w.writeUndo(ctx, sp, receipts); err != nil {
+		return Result{}, err
+	}
+	return w.finish(ctx, Result{Outcome: OutcomeApplied, Policy: dec, Receipts: receipts}, mem.ID)
+}
+
+// supersedeOnKeep: keeping a memory that supersedes a decision in force
+// (an explicit change the judge linked, or an edit sent to Review)
+// supersedes that decision (TEPA's keyed update). The decision stays kept,
+// with its history, and stops compiling.
+func (w *writer) supersedeOnKeep(ctx context.Context, sp spaceRow, kept *Memory, receipts []Receipt) ([]Receipt, error) {
+	links, err := activeLinks(ctx, w.tx, []uuid.UUID{kept.ID})
+	if err != nil {
+		return nil, err
+	}
+	var ids []uuid.UUID
+	for _, l := range links[kept.ID] {
+		if l.Kind == LinkSupersedes && l.Direction == LinkOut {
+			ids = append(ids, l.MemoryID)
+		}
+	}
+	if len(ids) == 0 {
+		return receipts, nil
+	}
+	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, ids, "FOR UPDATE")
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		d := locked[id]
+		if d == nil || !d.inForce() {
+			continue
+		}
+		rc, err := w.supersedeDecision(ctx, sp, d, kept)
+		if err != nil {
+			return nil, err
+		}
+		receipts = append(receipts, rc)
+	}
+	return receipts, nil
 }
 
 // edit writes a new version, or, when policy downgrades it, a new
@@ -167,6 +241,14 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 	actorTrust := policy.ActorTrust(w.meta.Actor.Kind, w.meta.Via)
 	trust := policy.MinTrust(mem.Trust, actorTrust)
 
+	if dec.Effect == policy.EffectApply && w.meta.Actor.Kind == policy.ActorAgent {
+		if obj.TouchesDecision, err = w.touchesDecision(ctx, sp.ID, mem.ID, statement, mem.area()); err != nil {
+			return Result{}, err
+		}
+		if obj.TouchesDecision {
+			dec = policy.Decide(pa, policy.ActionEdit, obj, sp.policy())
+		}
+	}
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
 	}
@@ -198,34 +280,52 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 		}
 	}
 
+	if w.meta.Actor.Kind == policy.ActorPerson {
+		w.startUndo(UndoEdit, w.undoWindow)
+		w.undo.touch(mem)
+	}
 	rc := w.receipt(sp, mem.ID, mem.Ref, ActionEdited, mem.streamVersion+1, w.meta.Reason)
 	if err := insertReceipt(ctx, w.tx, &rc); err != nil {
 		return Result{}, err
 	}
-	version := mem.Version + 1
+	// Undo can move current_version back, so the next version counts from
+	// the highest stored.
+	version, err := w.nextVersion(ctx, mem.ID)
+	if err != nil {
+		return Result{}, err
+	}
 	if _, err := w.tx.Exec(ctx, `
 		INSERT INTO v2.memory_versions (memory_id, version, space_id, statement, receipt_id, last_receipt_id)
 		VALUES ($1, $2, $3, $4, $5, $5)`, mem.ID, version, sp.ID, statement, rc.ID); err != nil {
 		return Result{}, fmt.Errorf("ledger: write version: %w", err)
 	}
+	hash, bands := signature(statement)
 	if _, err := w.tx.Exec(ctx, fmt.Sprintf(`
 		UPDATE v2.memories
-		   SET section = $2, current_version = $3, trust = $4, search = %s,
+		   SET section = $2, current_version = $3, trust = $4, search = %s, content_sha256 = $11, minhash_bands = $12,
 		       lifecycle = $6, flags = $7, stream_version = $8, last_receipt_id = $9, updated_at = now()
 		 WHERE id = $1 AND space_id = $10`, fmt.Sprintf(searchExpr, "$5::text")),
 		mem.ID, string(section), version, string(trust), statement,
-		string(next.Lifecycle), next.Flags.Strings(), rc.StreamVersion, rc.ID, sp.ID); err != nil {
+		string(next.Lifecycle), next.Flags.Strings(), rc.StreamVersion, rc.ID, sp.ID, hash, bands); err != nil {
 		return Result{}, fmt.Errorf("ledger: update memory: %w", err)
 	}
 	receipts := []Receipt{rc}
 	wasKept := mem.Lifecycle == lifecycle.Kept
+	mem.Lifecycle, mem.Flags, mem.streamVersion = next.Lifecycle, next.Flags, rc.StreamVersion
 	if keep {
-		mem.Lifecycle, mem.Flags, mem.streamVersion = next.Lifecycle, next.Flags, rc.StreamVersion
 		krc, err := w.changeState(ctx, sp, grant, mem, kept, ActionKept, rc.StreamVersion+1, "")
 		if err != nil {
 			return Result{}, err
 		}
 		receipts = append(receipts, krc)
+		mem.Lifecycle, mem.Flags, mem.streamVersion = kept.Lifecycle, kept.Flags, krc.StreamVersion
+		if receipts, err = w.supersedeOnKeep(ctx, sp, mem, receipts); err != nil {
+			return Result{}, err
+		}
+	} else {
+		// New words for a proposal (or for an agent's kept memory) are
+		// judged again.
+		w.judgeAfterWrite(sp.ID, mem.ID, version, next.Lifecycle)
 	}
 	// New words for a kept memory, or a proposal edited and kept, change
 	// what compiles.
@@ -233,6 +333,9 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 		if err := w.markDirty(ctx, sp.ID); err != nil {
 			return Result{}, err
 		}
+	}
+	if err := w.writeUndo(ctx, sp, receipts); err != nil {
+		return Result{}, err
 	}
 	return w.finish(ctx, Result{Outcome: OutcomeApplied, Policy: dec, Receipts: receipts}, mem.ID)
 }
@@ -249,10 +352,8 @@ func (w *writer) supersede(ctx context.Context, sp spaceRow, grant SpaceGrant, o
 	if err != nil {
 		return Result{}, err
 	}
-	if _, err := w.tx.Exec(ctx, `
-		INSERT INTO v2.memory_links (id, space_id, kind, from_memory_id, to_memory_id, receipt_id)
-		VALUES ($1, $2, 'supersedes', $3, $4, $5)`, newID(), sp.ID, id, old.ID, rc.ID); err != nil {
-		return Result{}, fmt.Errorf("ledger: link proposal: %w", err)
+	if _, err := w.insertLink(ctx, sp.ID, LinkSupersedes, id, old.ID, rc.ID); err != nil {
+		return Result{}, err
 	}
 	return w.finish(ctx, Result{Outcome: outcomeFor(dec.Effect), Policy: dec, Receipts: []Receipt{rc}}, id)
 }
@@ -322,17 +423,19 @@ func (w *writer) insertMemory(ctx context.Context, sp spaceRow, grant SpaceGrant
 		}
 		decision = b
 	}
+	hash, bands := signature(row.Statement)
 	if _, err := w.tx.Exec(ctx, fmt.Sprintf(`
 		INSERT INTO v2.memories (id, tenant_id, space_id, seq, section, kind, lifecycle, flags, trust,
 		                         current_version, stream_version, stale_after, conditions, decision, scope,
-		                         valid_from, valid_to, search, created_receipt_id, last_receipt_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, 1, $10, $11, $12, $13, $14, $15, %s, $17, $17)`,
+		                         valid_from, valid_to, search, content_sha256, minhash_bands, created_receipt_id, last_receipt_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, 1, $10, $11, $12, $13, $14, $15, %s, $18, $19, $17, $17)`,
 		fmt.Sprintf(searchExpr, "$16::text")),
 		id, sp.TenantID, sp.ID, seq, string(row.Section), string(row.Kind), string(state.Lifecycle),
 		state.Flags.Strings(), string(row.Trust), row.StaleAfter, []byte(row.Conditions), decision,
-		[]byte(row.Applies), row.ValidFrom, row.ValidTo, row.Statement, rc.ID); err != nil {
+		[]byte(row.Applies), row.ValidFrom, row.ValidTo, row.Statement, rc.ID, hash, bands); err != nil {
 		return uuid.Nil, Receipt{}, fmt.Errorf("ledger: write memory: %w", err)
 	}
+	w.judgeAfterWrite(sp.ID, id, 1, state.Lifecycle)
 	if _, err := w.tx.Exec(ctx, `
 		INSERT INTO v2.memory_versions (memory_id, version, space_id, statement, receipt_id, last_receipt_id)
 		VALUES ($1, 1, $2, $3, $4, $4)`, id, sp.ID, row.Statement, rc.ID); err != nil {
@@ -430,14 +533,18 @@ func (w *writer) objectReceipt(sp spaceRow, kind string, objectID uuid.UUID, ref
 // status there (SpaceGrant, from WithConnection), falling back to
 // Actor.Autonomy.
 func (w *writer) policyActor(g SpaceGrant) policy.Actor {
-	a := w.meta.Actor
+	return toPolicyActor(w.meta.Actor, w.meta.Via, g)
+}
+
+// toPolicyActor is an actor as policy sees it in one space (policyActor).
+func toPolicyActor(a Actor, via policy.Via, g SpaceGrant) policy.Actor {
 	autonomy := a.Autonomy
 	if g.Autonomy != "" {
 		autonomy = g.Autonomy
 	}
 	return policy.Actor{
 		Kind: a.Kind, Name: a.Name, Role: g.Role, CanForget: g.CanForget,
-		Autonomy: autonomy, AgentStatus: g.AgentStatus, Credential: a.Credential, Via: w.meta.Via,
+		Autonomy: autonomy, AgentStatus: g.AgentStatus, Credential: a.Credential, Via: via,
 		PersonPresent: a.PersonPresent, CanElicit: a.CanElicit,
 	}
 }
@@ -485,6 +592,9 @@ func (w *writer) claim(ctx context.Context, spaceID uuid.UUID) (*Result, error) 
 			return nil, err
 		}
 		if res.Memory.Sources, err = loadSources(ctx, w.tx, *c.objectID); err != nil {
+			return nil, err
+		}
+		if err := attachDetails(ctx, w.tx, []*Memory{res.Memory}); err != nil {
 			return nil, err
 		}
 	}
@@ -589,6 +699,9 @@ func (w *writer) finish(ctx context.Context, res Result, memoryID uuid.UUID) (Re
 		return Result{}, err
 	}
 	if res.Memory.Sources, err = loadSources(ctx, w.tx, memoryID); err != nil {
+		return Result{}, err
+	}
+	if err := attachDetails(ctx, w.tx, []*Memory{res.Memory}); err != nil {
 		return Result{}, err
 	}
 	return res, nil

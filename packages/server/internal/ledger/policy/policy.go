@@ -13,7 +13,8 @@
 //     can elicit, NeedsConfirmation (an accepted confirmation is a Keep by
 //     that person, "via" the agent).
 //   - Agent at Write: kept, unless a source is external, it contradicts a
-//     decision in force, it edits a memory a person kept, or it is a
+//     decision in force, it touches one (the ledger's inline pre-check; the
+//     judge decides after), it edits a memory a person kept, or it is a
 //     decision in a space where decisions need a person on the web.
 //   - Viewer: proposed. Member and owner: kept (and Review is theirs).
 //   - API key: read or propose only; never keeps, rejects or forgets.
@@ -26,6 +27,9 @@
 //     space may ask for a compile (not a read-only agent), any person may
 //     pull a hand edit back as proposals, devices and the repository
 //     report deliveries and hand edits, and only Memax records compiles.
+//   - The judge: only Memax records its verdicts. Settling a conflict
+//     follows Keep's rules. Undo is the decider's own; any person who may
+//     keep can undo one of the judge's folds.
 //
 // Messages follow the product voice (sentence case, actionable, no
 // exclamation marks). Clients localise by Code; Message is the English
@@ -294,6 +298,11 @@ const (
 	ActionRecordCompile   Action = "record_compile"   // record a compile run
 	ActionReport          Action = "report"           // report a delivery or a hand edit from a device or GitHub
 	ActionPullDrift       Action = "pull_drift"       // turn a hand edit into proposals
+
+	// The judge and Review (plan 25 §5.8, epics 1.3 and 1.4).
+	ActionJudge           Action = "judge"            // record the judge's verdict on a memory (fold, link, flag)
+	ActionResolveConflict Action = "resolve_conflict" // settle a conflict: one side wins, both narrow, or it stays open
+	ActionUndo            Action = "undo"             // undo a person's last decision, or one of the judge's folds
 )
 
 // Actor is everything Decide needs to know about who is acting.
@@ -371,9 +380,16 @@ type Object struct {
 	// External is set when any source (or the memory's trust) is external.
 	External bool
 	// ContradictsDecision is the judge's verdict: the statement
-	// contradicts a decision in force (rule 11). Until the judge ships
-	// (epic 1.3) callers pass it in.
+	// contradicts a decision in force (rule 11).
 	ContradictsDecision bool
+	// TouchesDecision is the ledger's inline check for a Write-level
+	// agent: the statement names or overlaps a decision in force, so it
+	// waits for the judge and a person instead of being kept at once.
+	TouchesDecision bool
+	// UndoOwn is set when the actor made the decision being undone;
+	// UndoSystem when Memax did (one of the judge's folds).
+	UndoOwn    bool
+	UndoSystem bool
 	// PersonKept is set when a person kept or edited the memory.
 	PersonKept bool
 	// Secrets names any credential patterns found in the new words.
@@ -428,6 +444,8 @@ const (
 	CodeBriefByPerson       = "brief_by_person"
 	CodeTargetsByPerson     = "targets_by_person"
 	CodeCompileByMemax      = "compile_by_memax"
+	CodeJudgeByMemax        = "judge_by_memax"
+	CodeUndoByDecider       = "undo_by_decider"
 
 	// Changes to agent connections (DecideConnection); all refusals.
 	CodePersonMustManage   = "person_must_manage"
@@ -443,6 +461,7 @@ const (
 	CodeAPIKey          = "api_key"
 	CodeExternalSource  = "external_source"
 	CodeContradicts     = "contradicts_decision"
+	CodeTouchesDecision = "touches_decision"
 	CodeEditsPersonKept = "edits_person_kept"
 	CodeAutonomyPropose = "autonomy_propose"
 	CodeIntegration     = "integration"
@@ -491,6 +510,15 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return refuse(CodeCompileByMemax, "Only Memax records compiles. Ask for one with Compile now.")
 	case ActionReport:
 		return decideReport(a, s)
+	case ActionJudge:
+		if a.Kind == ActorMemax {
+			return apply()
+		}
+		return refuse(CodeJudgeByMemax, "Only Memax records the judge's verdicts.")
+	case ActionResolveConflict:
+		return decideResolve(a, o, s)
+	case ActionUndo:
+		return decideUndo(a, o, s)
 	case ActionPullDrift:
 		if a.Kind == ActorPerson {
 			return apply()
@@ -543,6 +571,8 @@ func decideWrite(a Actor, act Action, o Object, s Space) Decision {
 		switch {
 		case o.ContradictsDecision:
 			return propose(CodeContradicts)
+		case o.TouchesDecision:
+			return propose(CodeTouchesDecision)
 		case needsWeb:
 			return propose(CodeDecisionNeedsWeb)
 		}
@@ -589,6 +619,8 @@ func decideEdit(a Actor, o Object, s Space) Decision {
 			d = propose(CodeEditsPersonKept)
 		case o.ContradictsDecision:
 			d = propose(CodeContradicts)
+		case o.TouchesDecision:
+			d = propose(CodeTouchesDecision)
 		case needsWeb:
 			d = propose(CodeDecisionNeedsWeb)
 		default:
@@ -674,6 +706,52 @@ func decideForget(a Actor, o Object, s Space) Decision {
 		}
 	}
 	return refuse(CodePersonMustForget, "Forget needs a person. Forget it on the web.")
+}
+
+// decideResolve: settling a conflict is a person's Keep of one answer
+// (rule 11: one answer must win), so it follows Keep's rules: members and
+// owners per the space's rules, a person on the web for decisions where
+// the space needs one, and for keeping a quarantined side.
+func decideResolve(a Actor, o Object, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson:
+		return refuse(CodePersonMustReview, fmt.Sprintf(
+			"Agents propose and people settle conflicts. %s waits in Review.", refOr(o, "This conflict")))
+	case a.Credential == CredentialAPIKey:
+		return refuse(CodeKeyCannotReview, "API keys can propose but never settle a conflict. Settle it in Review on the web.")
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf("Viewers can't settle conflicts in %s. Ask a member.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules):
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners settle conflicts in %s. Ask an owner.", spaceName(s)))
+	case o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) && a.Assurance() != AssuranceHumanWeb:
+		return refuse(CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web. Settle it in Review.", spaceName(s)))
+	case o.External && a.Assurance() != AssuranceHumanWeb:
+		return refuse(CodeExternalNeedsReview, fmt.Sprintf(
+			"%s comes from an outside source. Settle it in Review on the web.", refOr(o, "This proposal")))
+	}
+	return apply()
+}
+
+// decideUndo: a person undoes their own decision (Review's ⌘Z), and any
+// person who may keep can undo one of the judge's folds. Undo only puts
+// back what was there, so it needs no more assurance than the person's
+// role; Forget is never undoable and never reaches here.
+func decideUndo(a Actor, o Object, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson:
+		return refuse(CodePersonMustReview, "Only a person can undo a decision. Undo it in Review.")
+	case a.Credential == CredentialAPIKey:
+		return refuse(CodeKeyCannotReview, "API keys can't undo decisions. Undo it in Review.")
+	case !o.UndoOwn && !o.UndoSystem:
+		return refuse(CodeUndoByDecider, fmt.Sprintf(
+			"Only the person who decided %s can undo it. Change it instead, or ask them.", refOr(o, "this")))
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf("Viewers can't undo decisions in %s.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules):
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners undo decisions in %s. Ask an owner.", spaceName(s)))
+	}
+	return apply()
 }
 
 // decideReviseBrief: people who may keep edit the Brief, and Dream
@@ -821,6 +899,8 @@ func downgrade(code string, a Actor, o Object, s Space, quarantine bool) Decisio
 		msg = "Sent to Review: it cites an outside source."
 	case CodeContradicts:
 		msg = "Sent to Review: it contradicts a decision in force."
+	case CodeTouchesDecision:
+		msg = "Sent to Review: it touches a decision in force, so a person checks it first."
 	case CodeEditsPersonKept:
 		msg = fmt.Sprintf("Sent to Review: a person kept %s, so changes to it need a person.", refOr(o, "this memory"))
 	case CodeAutonomyPropose:

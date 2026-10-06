@@ -870,10 +870,13 @@ export interface components {
          *     paused, resumed and disconnected. A Brief's (`brief`) are revised; a
          *     target's (`target`) configured, requested, observed, pulled,
          *     overwritten and stopped; a compile run's (`compile`) compiled and
-         *     delivered.
+         *     delivered. The judge's (by Memax) are merged (a fold), linked (an
+         *     update or explicit change), flagged (a conflict) and judged
+         *     (nothing to do); settling a conflict writes resolved, kept,
+         *     rejected, edited, superseded or faded; Undo writes undid.
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space";
         /**
@@ -893,20 +896,67 @@ export interface components {
          *     external_needs_review, proposal_in_review, agent_not_connected (the
          *     agent has no connection, or none to this space, so it only reads),
          *     agent_paused, brief_by_person (agents propose; people edit the
-         *     Brief), targets_by_person, compile_by_memax. Refused changes to
+         *     Brief), targets_by_person, compile_by_memax, judge_by_memax,
+         *     undo_by_decider (only the person who decided can undo it). Refused changes to
          *     agents: person_must_manage (only a person changes what an agent may
          *     do), not_your_agent, autonomy_not_allowed, key_max_propose,
          *     autonomy_needs_web (raising an agent needs a person on the web).
          *     Refused or sent to Review:
          *     viewer, owners_keep, decision_needs_web. Sent to Review: api_key,
-         *     external_source, contradicts_decision, edits_person_kept,
+         *     external_source, contradicts_decision, touches_decision (a
+         *     Write-level agent's write that touches a decision in force waits for
+         *     the judge and a person), edits_person_kept,
          *     autonomy_propose, integration, import, system_proposes, repository,
          *     person_proposed. Confirmation: confirm_in_agent.
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "confirm_in_agent";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "confirm_in_agent";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "unavailable";
+        /**
+         * @description A typed edge between two memories. merged_into: folded into another
+         *     memory (a duplicate, or a repeat of a rejection). supersedes: replaces
+         *     (or, as a proposal, would replace) another. conflicts_with:
+         *     contradicts a decision in force. closes: settles another.
+         * @enum {string}
+         */
+        LinkKind: "merged_into" | "supersedes" | "conflicts_with" | "closes";
+        /**
+         * @description `out`: from this memory to the other; `in`: from the other to this one.
+         * @enum {string}
+         */
+        LinkDirection: "out" | "in";
+        /**
+         * @description How the judge found a memory relates to another; `none` when it compared nothing.
+         * @enum {string}
+         */
+        Relation: "duplicate" | "updates" | "extends" | "contradicts" | "unrelated" | "none";
+        /**
+         * @description What decided the verdict: `exact` (the same words), `near` (a
+         *     near-verbatim repeat), `reproposal` (a repeat of a rejection),
+         *     `llm` (the model), `none` (nothing to compare, or no model).
+         * @enum {string}
+         */
+        JudgeStage: "exact" | "near" | "reproposal" | "llm" | "none";
+        /**
+         * @description What the verdict did: folded, suppressed (folded into a rejection),
+         *     linked (an update), superseding (an explicit change of a decision in
+         *     force, which keeping it supersedes), flagged (a conflict), none,
+         *     failed (no usable answer from the model; nothing flagged) or skipped
+         *     (what it pointed at changed first).
+         * @enum {string}
+         */
+        VerdictOutcome: "folded" | "suppressed" | "linked" | "superseding" | "flagged" | "none" | "failed" | "skipped";
+        /**
+         * @description `working`: not judged yet (Review's neutral mark). `judged`. `failed`: reviewed as usual.
+         * @enum {string}
+         */
+        JudgeState: "working" | "judged" | "failed";
+        /**
+         * @description The judge's model tier whose answer counted.
+         * @enum {string}
+         */
+        ModelTier: "primary" | "fallback" | "strong";
         /** @description A Brief version's display ID, unique within its tenant. */
         BriefRef: string;
         /** @description A compile run's display ID, unique within its tenant. */
@@ -1046,6 +1096,62 @@ export interface components {
             updated_at: components["schemas"]["Timestamp"];
             /** @description Present when one memory is read and it cites sources. */
             sources?: components["schemas"]["Source"][];
+            /** @description Its active links, both ways. Absent when it has none. */
+            links?: components["schemas"]["Link"][];
+            /**
+             * @description The memory this one would replace (it has a `supersedes` link to
+             *     it), with its current words, so Review can show the pair as a
+             *     diff ("Updates M-0156").
+             */
+            updates?: components["schemas"]["LinkedMemory"];
+            /**
+             * @description The judge's verdict on the current version; for a proposal not
+             *     judged yet, `state: working`. Absent for memories the judge
+             *     doesn't look at (a person's own keep).
+             */
+            judge?: components["schemas"]["JudgeInfo"];
+        };
+        /** @description An active link, seen from one memory. */
+        Link: {
+            id: components["schemas"]["Id"];
+            kind: components["schemas"]["LinkKind"];
+            direction: components["schemas"]["LinkDirection"];
+            /** @description The other memory. */
+            memory_id: components["schemas"]["Id"];
+            ref: components["schemas"]["DisplayRef"];
+            /** @description The receipt that made the link. */
+            receipt_id: components["schemas"]["Id"];
+            created_at: components["schemas"]["Timestamp"];
+        };
+        /** @description The other side of a link, with its current words. */
+        LinkedMemory: {
+            id: components["schemas"]["Id"];
+            ref: components["schemas"]["DisplayRef"];
+            version: number;
+            statement: string;
+            lifecycle: components["schemas"]["Lifecycle"];
+        };
+        MemoryPointer: {
+            id: components["schemas"]["Id"];
+            ref: components["schemas"]["DisplayRef"];
+        };
+        /** @description The judge's verdict on a memory's current version. */
+        JudgeInfo: {
+            state: components["schemas"]["JudgeState"];
+            /** @description The version judged (or waiting to be). */
+            version: number;
+            verdict?: components["schemas"]["Relation"];
+            outcome?: components["schemas"]["VerdictOutcome"];
+            stage?: components["schemas"]["JudgeStage"];
+            /** @description The memory the verdict is about. */
+            related?: components["schemas"]["MemoryPointer"];
+            confidence?: number;
+            /** @description One line from the model, in English. Purged if either memory is forgotten. */
+            rationale?: string;
+            /** @description The model's merged wording, for Review to offer. */
+            merged_statement?: string;
+            tier?: components["schemas"]["ModelTier"];
+            judged_at?: components["schemas"]["Timestamp"];
         };
         /** @description One version of a memory's statement. */
         MemoryVersion: {

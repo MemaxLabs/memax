@@ -16,6 +16,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/compile/compiletest"
+	"github.com/MemaxLabs/memax/packages/server/internal/judge"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore/mockobjectstore"
@@ -66,6 +67,8 @@ func newFixture(t *testing.T, o fixtureOpts) *fixture {
 	if o.workers {
 		workers := river.NewWorkers()
 		compile.AddWorkers(workers, f.l, f.svc)
+		// Proposals enqueue judge jobs too; nothing works them here.
+		judge.AddWorkers(workers, nil)
 		rc.Workers = workers
 		rc.Queues = map[string]river.QueueConfig{ledger.QueueCompile: {MaxWorkers: compile.MaxWorkers}}
 	}

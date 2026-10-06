@@ -42,6 +42,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/link"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/summarize"
 	ingesttitle "github.com/MemaxLabs/memax/packages/server/internal/ingest/title"
+	"github.com/MemaxLabs/memax/packages/server/internal/judge"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/meter"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
@@ -233,6 +234,20 @@ func New(ctx context.Context) (*App, error) {
 		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
 	logEnabled("V2 compile", compileSvc != nil)
 	compile.AddWorkers(workers, v2Ledger, compileSvc)
+
+	// V2 judge (plan 25 §5.8): judge_proposal jobs, enqueued by the ledger
+	// with every proposal, fold duplicates and flag conflicts with decisions
+	// in force before anyone keeps them. The model tiers are explicit
+	// configuration, read here once. Without an LLM key the judge runs its
+	// no-model stage alone and never blocks a proposal.
+	judgeCfg := judge.ConfigFromEnv(os.LookupEnv)
+	v2Judge := judge.New(v2Ledger, judge.NewAnthropicModel(llm, judgeCfg.ZeroDataRetention), judgeCfg)
+	logEnabled("V2 judge (model stage)", v2Judge.Stage1())
+	if v2Judge.Stage1() {
+		slog.Info("V2 judge tiers", "primary", judgeCfg.Primary.Model, "fallback", judgeCfg.Fallback.Model,
+			"strong", judgeCfg.Strong.Model, "zdr", judgeCfg.ZeroDataRetention, "conditions", judgeCfg.Conditions)
+	}
+	judge.AddWorkers(workers, v2Judge)
 
 	river.AddWorker(workers, &queue.MemoryProcessWorker{
 		Store:         s,
@@ -1957,6 +1972,9 @@ func workerRiverConfig(workers *river.Workers, periodicJobs []*river.PeriodicJob
 			// the quiet window (§5.7), so a handful of slots covers many
 			// targets compiling at once.
 			ledger.QueueCompile: {MaxWorkers: compile.MaxWorkers},
+			// The judge waits on the model; a dedicated queue keeps it from
+			// holding default-queue slots.
+			ledger.QueueJudge: {MaxWorkers: judge.MaxWorkers},
 		},
 		Workers: workers,
 		// Global worker middleware: every job's Work() runs inside a

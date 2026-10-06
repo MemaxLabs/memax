@@ -89,9 +89,11 @@ type NewMemory struct {
 	Applies   json.RawMessage
 	ValidFrom *time.Time
 	ValidTo   *time.Time
-	// ContradictsDecision is the judge's verdict that the statement
-	// contradicts a decision in force. Until the judge ships (epic 1.3)
-	// the caller supplies it.
+	// ContradictsDecision says the statement contradicts a decision in
+	// force, when the caller already knows (an import that found the
+	// conflict). The judge finds it otherwise, after the write, and a
+	// Write-level agent's write that touches a decision in force waits for
+	// it (policy.CodeTouchesDecision).
 	ContradictsDecision bool
 }
 
@@ -417,6 +419,18 @@ func requestHash(cmd Command) ([]byte, error) {
 		cp.Meta = strip
 		v = cp
 	case *ResolveDrift:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *RecordVerdict:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *ResolveConflict:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *Undo:
 		cp := *c
 		cp.Meta = strip
 		v = cp

@@ -83,6 +83,7 @@ func TestInsertClient_InsertsEveryKindOnItsQueue(t *testing.T) {
 		{BoardRefreshArgs{HubID: "h1"}, "dreams", 2},
 		{ledger.CompileTargetArgs{TargetID: uuid.New(), SpaceID: uuid.New()}, ledger.QueueCompile, 5},
 		{compile.SweepArgs{}, ledger.QueueCompile, 1},
+		{ledger.JudgeArgs{MemoryID: uuid.New(), SpaceID: uuid.New(), Version: 1, Mode: ledger.JudgeProposal}, ledger.QueueJudge, 3},
 	}
 
 	expected := make([]rivertest.ExpectedJob, 0, len(cases))

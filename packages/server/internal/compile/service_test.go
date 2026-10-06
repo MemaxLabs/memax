@@ -430,4 +430,39 @@ func TestBuildInputDropsWhatTheCompilerRefuses(t *testing.T) {
 	}
 }
 
+// A decision that a newer one superseded stays kept, and stops compiling.
+func TestSupersededDecisionsDontCompile(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, fixtureOpts{})
+	s := f.seed()
+	old := f.apply(&ledger.Remember{Meta: f.meta(s.owner, policy.ViaWeb), NewMemory: ledger.NewMemory{
+		SpaceID: s.space, Statement: "Deploy the v2 API to Railway.", Section: ledger.SectionDecisions, Kind: ledger.KindDecision,
+		Decision: &ledger.DecisionFields{Area: "deploy target"}}}).Memory
+	tg := s.targets[ledger.TargetAgentsMD]
+	f.run(tg)
+	if !slices.ContainsFunc(f.fake.LastInput().Memories, func(m compile.InputMemory) bool { return m.Ref == old.Ref }) {
+		t.Fatal("the decision in force didn't compile")
+	}
+	// An explicit change, linked by the judge (as Memax), then kept.
+	p := f.apply(&ledger.Propose{Meta: f.meta(s.owner, policy.ViaWeb), NewMemory: ledger.NewMemory{
+		SpaceID: s.space, Statement: "We moved the v2 API from Railway to Fly.io.", Section: ledger.SectionDecisions,
+		Kind: ledger.KindDecision, Decision: &ledger.DecisionFields{Area: "deploy target"}}}).Memory
+	scope, err := f.l.SpaceScope(context.Background(), s.space)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.apply(&ledger.RecordVerdict{Meta: ledger.Meta{Actor: ledger.Actor{Kind: policy.ActorMemax}, Scope: scope, Via: policy.ViaSystem,
+		IdempotencyKey: "judge-test"}, Memory: p.ID, Version: 1, Mode: ledger.JudgeProposal, Outcome: ledger.OutcomeSuperseding,
+		Target: old.ID, Verdict: ledger.Verdict{Stage: ledger.StageLLM, Relation: ledger.RelationUpdates, Related: old.ID}})
+	f.apply(&ledger.Keep{Meta: f.meta(s.owner, policy.ViaWeb), Memory: p.Ref})
+	f.run(tg)
+	refs := []string{}
+	for _, m := range f.fake.LastInput().Memories {
+		refs = append(refs, m.Ref)
+	}
+	if slices.Contains(refs, old.Ref) || !slices.Contains(refs, p.Ref) {
+		t.Errorf("compiled %v: want %s and not %s", refs, p.Ref, old.Ref)
+	}
+}
+
 func ptr[T any](v T) *T { return &v }

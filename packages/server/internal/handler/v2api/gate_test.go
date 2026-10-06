@@ -35,6 +35,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/devseed"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
+	"github.com/MemaxLabs/memax/packages/server/internal/judge"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore/mockobjectstore"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
@@ -70,6 +71,7 @@ func newGateEnv(t *testing.T) (*env, string) {
 		compile.Config{AppBaseURL: "https://memax.app", Log: quiet})
 	workers := river.NewWorkers()
 	compile.AddWorkers(workers, e.ledger, e.svc)
+	judge.AddWorkers(workers, nil)
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Logger: quiet, Workers: workers,
 		Queues: map[string]river.QueueConfig{ledger.QueueCompile: {MaxWorkers: compile.MaxWorkers}},

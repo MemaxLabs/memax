@@ -225,6 +225,16 @@ type CompleteRequest struct {
 	ParentID   string         // optional — parent span ID for tree views
 	DistinctID string         // optional — PostHog distinct ID, defaults to "server"
 	Metadata   map[string]any // optional — extra non-sensitive properties
+
+	// OutputSchema, when set, asks for strict structured output: the
+	// response's text is JSON valid against this JSON Schema
+	// (output_config.format, json_schema). Only models with structured
+	// outputs honour it (Claude); for others, validate the text yourself.
+	OutputSchema json.RawMessage
+	// ZeroDataRetention routes the request only to providers that retain
+	// nothing (OpenRouter's provider.zdr, plan 25 D14). Leave it off for
+	// gateways that don't take OpenRouter's provider routing.
+	ZeroDataRetention bool
 }
 
 // CompleteResponse is the output of a single LLM completion call.
@@ -268,6 +278,14 @@ func (c *Client) Complete(ctx context.Context, req CompleteRequest) (*CompleteRe
 	}
 	if thinking := thinkingDisabledFor(req.Model); thinking != nil {
 		body["thinking"] = thinking
+	}
+	if len(req.OutputSchema) > 0 {
+		body["output_config"] = map[string]any{
+			"format": map[string]any{"type": "json_schema", "schema": req.OutputSchema},
+		}
+	}
+	if req.ZeroDataRetention {
+		body["provider"] = map[string]any{"zdr": true}
 	}
 
 	reqBody, err := json.Marshal(body)

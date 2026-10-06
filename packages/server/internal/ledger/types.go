@@ -168,6 +168,16 @@ type Memory struct {
 	UpdatedAt        time.Time       `json:"updated_at"`
 	// Sources is filled by GetMemory and Apply, not by ListMemories.
 	Sources []Source `json:"sources,omitempty"`
+	// Links are the memory's active links, both ways: what it was folded
+	// into, what it supersedes or conflicts with, and what points at it.
+	Links []Link `json:"links,omitempty"`
+	// Updates is the memory this one would replace (an active
+	// `supersedes` link from it), with its current words: Review renders
+	// the pair as a diff ("Updates M-0156").
+	Updates *LinkedMemory `json:"updates,omitempty"`
+	// Judge is the judge's verdict on the current version, or, for a
+	// proposal it hasn't judged yet, state "working".
+	Judge *JudgeInfo `json:"judge,omitempty"`
 
 	seq           int64
 	streamVersion int
@@ -223,6 +233,17 @@ const (
 	ActionPulled      Action = "pulled"      // a target: a hand edit turned into proposals
 	ActionOverwritten Action = "overwritten" // a target: a hand edit overwritten
 	ActionStopped     Action = "stopped"     // a target: compiling stopped
+
+	// The judge, conflicts and Undo (migration 035; merged, flagged,
+	// resolved, faded and undid were in 028's list).
+	ActionMerged     Action = "merged"     // a proposal folded into another memory (a duplicate, a re-proposal)
+	ActionFlagged    Action = "flagged"    // the conflict flag set
+	ActionLinked     Action = "linked"     // linked to the memory it updates or supersedes
+	ActionJudged     Action = "judged"     // the judge's verdict, when it changed nothing
+	ActionResolved   Action = "resolved"   // a conflict settled
+	ActionSuperseded Action = "superseded" // a kept decision gave way to a newer one
+	ActionFaded      Action = "faded"      // a kept memory faded (here: a fact that lost a conflict)
+	ActionUndid      Action = "undid"      // a command undone; source names the receipt
 )
 
 // The receipts.object_kind values this package writes.
@@ -330,6 +351,9 @@ type Result struct {
 	Observations []Observation `json:"observations,omitempty"`
 	// Proposals are the memories a drift pull proposed, in file order.
 	Proposals []Memory `json:"proposals,omitempty"`
+	// Memories are every memory a conflict resolution or an undo changed,
+	// this side first.
+	Memories []Memory `json:"memories,omitempty"`
 	// Unchanged is set when the command found nothing to do (an
 	// observation that matches what was delivered, a delivery already
 	// acknowledged): nothing was written and no receipt exists.

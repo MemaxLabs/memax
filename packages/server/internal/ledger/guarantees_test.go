@@ -531,7 +531,13 @@ func TestLifecycleGuardInSQL(t *testing.T) {
 	if err := move(`UPDATE v2.memories SET lifecycle = 'proposed', last_receipt_id = $2, stream_version = $3 WHERE id = $1`, 2); sqlstate(err) != "MXL01" {
 		t.Errorf("kept → proposed: %v, want MXL01", err)
 	}
-	if err := move(`UPDATE v2.memories SET lifecycle = 'forgotten', last_receipt_id = $2, stream_version = $3, search = NULL WHERE id = $1`, 2); err != nil {
+	// Forget purges every derived copy of the words: the search vector and
+	// the judge's fingerprints (migration 035).
+	if err := move(`UPDATE v2.memories SET lifecycle = 'forgotten', last_receipt_id = $2, stream_version = $3, search = NULL WHERE id = $1`, 2); sqlstate(err) != "23514" {
+		t.Errorf("forgetting without purging the fingerprints: %v, want a check violation", err)
+	}
+	if err := move(`UPDATE v2.memories SET lifecycle = 'forgotten', last_receipt_id = $2, stream_version = $3, search = NULL,
+	                       content_sha256 = NULL, minhash_bands = NULL WHERE id = $1`, 2); err != nil {
 		t.Fatalf("kept → forgotten: %v", err)
 	}
 	if err := move(`UPDATE v2.memories SET section = 'decisions', last_receipt_id = $2, stream_version = $3 WHERE id = $1`, 3); sqlstate(err) != "MXL01" {

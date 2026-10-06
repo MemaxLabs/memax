@@ -246,6 +246,15 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "ChangeKind", specEnum(t, "ChangeKind"), []string{ledger.ChangeEdit, ledger.ChangeNew, ledger.ChangeRemove})
 	sameSet(t, "ChangeOutcome", specEnum(t, "ChangeOutcome"),
 		[]string{ledger.OutcomeChangeProposed, ledger.OutcomeChangeReview, ledger.OutcomeChangeSkipped})
+
+	// The judge and links.
+	sameSet(t, "LinkKind", specEnum(t, "LinkKind"), strs(ledger.LinkKinds))
+	sameSet(t, "LinkDirection", specEnum(t, "LinkDirection"), []string{ledger.LinkOut, ledger.LinkIn})
+	sameSet(t, "Relation", specEnum(t, "Relation"), strs(ledger.Relations))
+	sameSet(t, "JudgeStage", specEnum(t, "JudgeStage"), strs(ledger.JudgeStages))
+	sameSet(t, "VerdictOutcome", specEnum(t, "VerdictOutcome"), strs(ledger.VerdictOutcomes))
+	sameSet(t, "JudgeState", specEnum(t, "JudgeState"), []string{ledger.JudgeWorking, ledger.JudgeJudged, ledger.JudgeFailed})
+	sameSet(t, "ModelTier", specEnum(t, "ModelTier"), []string{ledger.TierPrimary, ledger.TierFallback, ledger.TierStrong})
 }
 
 // stringConsts parses a Go file for string constants whose names start
@@ -321,4 +330,8 @@ func TestReceiptEnumsMatchTheSchema(t *testing.T) {
 	}
 	sameSet(t, "ReceiptAction", specEnum(t, "ReceiptAction"), check("receipts_action_check"))
 	sameSet(t, "ObjectKind", specEnum(t, "ObjectKind"), check("receipts_object_kind_check"))
+	// The judge's verdicts (migration 035).
+	sameSet(t, "JudgeStage", specEnum(t, "JudgeStage"), check("judge_verdicts_stage_check"))
+	sameSet(t, "Relation", specEnum(t, "Relation"), check("judge_verdicts_verdict_check"))
+	sameSet(t, "VerdictOutcome", specEnum(t, "VerdictOutcome"), check("judge_verdicts_outcome_check"))
 }

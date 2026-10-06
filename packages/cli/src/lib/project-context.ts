@@ -1,5 +1,11 @@
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  realpathSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import type { Scope } from "memax-sdk";
 
@@ -36,6 +42,8 @@ export function normalizeRepoUrl(url: string): string {
 export interface MemaxYmlConfig {
   hub?: string;
   project_id?: string;
+  /** The V2 space the repository compiles from (`memax link`). */
+  space?: string;
 }
 
 export type ProjectScope = Scope | "project";
@@ -90,6 +98,7 @@ export function readMemaxYmlConfig(dir?: string): MemaxYmlConfig | undefined {
     const content = readFileSync(ymlPath, "utf-8");
     const hubMatch = content.match(/^hub:\s*(.+)$/m);
     const projectMatch = content.match(/^project_id:\s*(.+)$/m);
+    const spaceMatch = content.match(SPACE_LINE);
 
     const cfg: MemaxYmlConfig = {};
     if (hubMatch) {
@@ -98,7 +107,10 @@ export function readMemaxYmlConfig(dir?: string): MemaxYmlConfig | undefined {
     if (projectMatch) {
       cfg.project_id = normalizeProjectID(projectMatch[1].trim());
     }
-    if (!cfg.hub && !cfg.project_id) {
+    if (spaceMatch) {
+      cfg.space = unquote(spaceMatch[1].trim());
+    }
+    if (!cfg.hub && !cfg.project_id && !cfg.space) {
       return undefined;
     }
     return cfg;
@@ -247,4 +259,75 @@ export function detectProjectContext(dir?: string): Record<string, string> {
 /** Walk up from cwd looking for .memax.yml with a hub field. */
 export function readMemaxYmlHub(): string | undefined {
   return readMemaxYmlConfig()?.hub;
+}
+
+// =============================================================================
+// V2: the space a repository is linked to (`space:` in .memax.yml)
+// =============================================================================
+
+const SPACE_LINE = /^space:\s*(.+?)\s*$/m;
+const SPACE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+function unquote(v: string): string {
+  const m = v.match(/^(["'])(.*)\1$/);
+  return m ? m[2] : v;
+}
+
+/** The repository's root: git's top level, as a real path; null outside git. */
+export function gitRoot(dir?: string): string | null {
+  try {
+    const root = execSync("git rev-parse --show-toplevel", {
+      cwd: dir ?? process.cwd(),
+      encoding: "utf-8",
+      timeout: 2000,
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    return root ? realpathSync(root) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sets `space:` in `<root>/.memax.yml`, keeping every other line. Returns
+ * whether the file changed.
+ */
+export function writeMemaxYmlSpace(root: string, space: string): boolean {
+  if (!SPACE_VALUE.test(space)) {
+    throw new Error(
+      `can't write ${JSON.stringify(space)} as a space in .memax.yml`,
+    );
+  }
+  const path = join(root, ".memax.yml");
+  const before = existsSync(path) ? readFileSync(path, "utf-8") : "";
+  const line = `space: ${space}`;
+  let after: string;
+  if (SPACE_LINE.test(before)) {
+    after = before.replace(SPACE_LINE, line);
+  } else if (before === "") {
+    after = `# The Memax space this repository compiles from (memax link).\n${line}\n`;
+  } else {
+    after = before + (before.endsWith("\n") ? "" : "\n") + line + "\n";
+  }
+  if (after === before) return false;
+  writeFileSync(path, after);
+  return true;
+}
+
+/**
+ * Takes `space:` out of `<root>/.memax.yml`, and the file with it when
+ * nothing but comments would be left. Returns whether anything changed.
+ */
+export function removeMemaxYmlSpace(root: string): boolean {
+  const path = join(root, ".memax.yml");
+  if (!existsSync(path)) return false;
+  const before = readFileSync(path, "utf-8");
+  if (!SPACE_LINE.test(before)) return false;
+  const after = before.replace(/^space:.*(\r?\n|$)/m, "");
+  const meaningful = after
+    .split(/\r?\n/)
+    .some((l) => l.trim() !== "" && !l.trim().startsWith("#"));
+  if (meaningful) writeFileSync(path, after);
+  else unlinkSync(path);
+  return true;
 }

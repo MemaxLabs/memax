@@ -38,7 +38,7 @@ export const ledgerBriefZh: Translations["ledger"]["brief"] = {
     readThisWeek: "本周读取",
     reads: "{n} 次读取",
     readsOne: "1 次读取",
-    readsLater: "等 Agent 报告它们读了什么，这里就会显示。",
+    readsLater: "简报的读取还没按 Agent 统计。每次读取都列在动态里。",
     sources: "来源",
     noSources: "还没有引用任何记忆。",
   },

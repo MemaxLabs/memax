@@ -165,10 +165,13 @@ export function activitySentences(
       if (d?.kind !== "read") {
         return [one(s.other, { ref: text(entry.object.ref) })];
       }
+      // A compile read (a session-start digest or load) is the Brief.
       const template = d.brief
-        ? d.memories === 1
-          ? s.readBriefOne
-          : s.readBrief
+        ? d.memories === 0
+          ? s.readBriefOnly
+          : d.memories === 1
+            ? s.readBriefOne
+            : s.readBrief
         : d.memories === 1
           ? s.readOne
           : s.read;

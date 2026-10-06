@@ -43,7 +43,15 @@ export const ledgerMemoryEn = {
     forgetLater: "Forget arrives with propagation",
     reads: "Read {n} times",
     readsOne: "Read once",
+    readsNone: "Not read yet",
+    // In a compiled file whose loads Memax can't see: the count is a floor.
+    readsAtLeast: "Read at least {n} times",
+    readsAtLeastOne: "Read at least once",
+    readsNoneCounted: "No reads counted yet",
+    readsUnobserved:
+      "It's in a compiled file agents load without telling Memax, so it may be read more than this.",
     reach: "reaches {files} and {agents}",
+    reachOnly: "reaches {what}",
     files: "{n} files",
     filesOne: "1 file",
     agents: "{n} agents",

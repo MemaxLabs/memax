@@ -100,7 +100,11 @@ export interface BriefView {
   memories: Record<string, BriefMemory>;
   /** Short titles for the Sources panel, where the source has them (the demo). */
   titles: Record<string, string>;
-  /** PLACEHOLDER: "Read this week" by agent; null until reads are recorded. */
+  /**
+   * PLACEHOLDER: "Read this week" by agent. Reads are recorded (R-), but
+   * /v2 serves no count of the Brief's (its compiles') reads by agent, so
+   * the SDK source leaves this null; only the demo has it.
+   */
   reads: { total: number; agents: { agent: string; reads: number }[] } | null;
 }
 

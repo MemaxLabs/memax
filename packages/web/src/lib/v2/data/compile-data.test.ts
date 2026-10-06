@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { V2 } from "memax-sdk";
 import { blocksOf, factCount, numberSources } from "./brief";
 import {
@@ -19,7 +19,7 @@ import {
 } from "./targets";
 import { compileOf, driftItemOf, targetOf } from "./targets-sdk";
 import { pickWaiting, startOfDay } from "./today";
-import { agentsTodayOf } from "./today-sdk";
+import { agentsTodayOf, readsToday } from "./today-sdk";
 import type { ReviewItem } from "./review";
 
 const v2 = DEMO_SPACES.find((s) => s.slug === "memax-v2")!;
@@ -642,5 +642,79 @@ describe("Today", () => {
       proposed: 2,
       kept: 0,
     });
+    // With today's reads counted: each agent's, and 0 for one that read nothing.
+    const counted = agentsTodayOf(
+      connections,
+      [],
+      day,
+      new Map([[codex.id, 18]]),
+    );
+    expect(counted.find((r) => r.id === codex.id)?.reads).toBe(18);
+    expect(counted.find((r) => r.id !== codex.id)?.reads).toBe(0);
+  });
+
+  it("counts today's reads by agent from the reads list, a page at a time", async () => {
+    const read = (connection: string | undefined, at: string): V2.Read => ({
+      id: `${connection}-${at}`,
+      ref: "R-0001",
+      space_id: "s1",
+      reader_kind: connection ? "agent" : "person",
+      connection_id: connection,
+      person_id: "p1",
+      agent: "codex",
+      kind: "search",
+      via: "mcp",
+      memories: 3,
+      memory_refs: [],
+      read_at: at,
+      recorded_at: at,
+    });
+    const day = new Date("2026-10-05T07:00:00Z");
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        items: [
+          read("cx", "2026-10-05T21:00:00Z"),
+          read("cc", "2026-10-05T20:00:00Z"),
+          // A person's CLI reporting a load: no connection to count it under.
+          read(undefined, "2026-10-05T19:00:00Z"),
+        ],
+        has_more: true,
+        next_cursor: "R2",
+        reads_7d: 9,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          read("cx", "2026-10-05T08:00:00Z"),
+          // Yesterday: the count stops here.
+          read("cx", "2026-10-05T06:59:00Z"),
+        ],
+        has_more: true,
+        next_cursor: "R3",
+        reads_7d: 9,
+      });
+    const counts = await readsToday(
+      { v2: { reads: { list } } } as never,
+      "memax-v2",
+      day,
+    );
+    expect(Object.fromEntries(counts!)).toEqual({ cx: 2, cc: 1 });
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(list).toHaveBeenLastCalledWith("memax-v2", {
+      cursor: "R2",
+      limit: 200,
+      signal: undefined,
+    });
+    // More reads today than Today pages through: not counted.
+    const busy = vi.fn().mockResolvedValue({
+      items: [read("cx", "2026-10-05T21:00:00Z")],
+      has_more: true,
+      next_cursor: "more",
+      reads_7d: 9,
+    });
+    expect(
+      await readsToday({ v2: { reads: { list: busy } } } as never, "x", day),
+    ).toBeNull();
+    expect(busy).toHaveBeenCalledTimes(5);
   });
 });

@@ -86,7 +86,7 @@ export function BriefSide({
             ))}
           </div>
         ) : (
-          // PLACEHOLDER: reads aren't recorded yet.
+          // PLACEHOLDER: /v2 doesn't count the Brief's reads by agent.
           <p className={styles.panelNote}>{s.readsLater}</p>
         )}
       </section>

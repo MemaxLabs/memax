@@ -15,10 +15,12 @@ export interface CountedWeek {
 /**
  * This week's totals counted from the receipts the page has loaded: the
  * last 7 days, as the API's AgentWeek counts them. A stand-in until /v2
- * serves a space's totals (PLACEHOLDER in activity-sdk.ts).
+ * serves a space's receipt totals (PLACEHOLDER in activity-sdk.ts).
  *
- * `readsListed` says whether reads appear in the list at all; receipts
- * never include them (plan §5.3), so with the SDK source they're null.
+ * `readsListed` says whether `entries` holds every read of the week.
+ * Receipts never include reads (plan §5.3), and the reads list counts
+ * its own week (ReadsPage.week), so Activity passes false and takes the
+ * reads from there.
  */
 export function countWeek(
   entries: readonly ActivityEntry[],

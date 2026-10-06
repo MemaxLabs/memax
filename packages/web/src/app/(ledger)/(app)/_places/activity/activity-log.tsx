@@ -29,6 +29,16 @@ interface Group {
   entries: ActivityEntry[];
 }
 
+/** Older rows for what the filter shows: which stream they come from, and loading them. */
+export interface OlderRows {
+  /** "all" pages the receipts and the reads together. */
+  stream: "all" | "receipts" | "reads";
+  more: boolean;
+  loading: boolean;
+  failed: boolean;
+  load: () => void;
+}
+
 function groupByDay(entries: ActivityEntry[], timeZone: string): Group[] {
   const groups: Group[] = [];
   for (const entry of entries) {
@@ -41,8 +51,9 @@ function groupByDay(entries: ActivityEntry[], timeZone: string): Group[] {
 }
 
 /**
- * The log: the board's filters and zone line, then every receipt by
- * day, newest first, and older pages on request. One tab stop: ↓ and ↑
+ * The log: the board's filters and zone line, then every receipt (and,
+ * under All and Reads, every read) by day, newest first, and older
+ * pages on request. One tab stop: ↓ and ↑
  * (Home, End) move between rows, and Enter opens what a row points at.
  * The keys are the list's own (a composite widget, like Segmented's
  * arrows), not app shortcuts, so they aren't in the keymap registry.
@@ -53,10 +64,8 @@ export function ActivityLog({
   names,
   now,
   timeZone,
-  hasMore,
-  loadingMore,
-  moreFailed,
-  onMore,
+  older,
+  readsFailed,
   filter,
   onFilter,
 }: {
@@ -65,10 +74,9 @@ export function ActivityLog({
   names: Names;
   now: Date;
   timeZone: string;
-  hasMore: boolean;
-  loadingMore: boolean;
-  moreFailed: boolean;
-  onMore: () => void;
+  older: OlderRows;
+  /** The reads didn't load: Reads says so, with this to try again. */
+  readsFailed?: () => void;
   filter: ActivityFilter;
   onFilter: (filter: ActivityFilter) => void;
 }) {
@@ -112,6 +120,11 @@ export function ActivityLog({
   let index = -1;
   const tabStop = Math.min(active, Math.max(0, shown.length - 1));
   const filterName = copy.filters[filter];
+  const olderCopy = {
+    all: [copy.moreAll, copy.loadingMoreAll, copy.moreAllFailed],
+    receipts: [copy.more, copy.loadingMore, copy.moreFailed],
+    reads: [copy.moreReads, copy.loadingMoreReads, copy.moreReadsFailed],
+  }[older.stream];
   return (
     <div className={styles.log}>
       <div className={styles.bar}>
@@ -136,18 +149,31 @@ export function ActivityLog({
         className="mx-panel"
         aria-label={interpolate(copy.listLabel, { space: space.name })}
       >
-        {groups.length === 0 ? (
+        {readsFailed ? (
+          <div className={styles.none} role="alert">
+            <p className={styles.noneTitle}>{copy.readsFailed}</p>
+            <span>
+              <Button variant="secondary" size="sm" onClick={readsFailed}>
+                {copy.retry}
+              </Button>
+            </span>
+          </div>
+        ) : groups.length === 0 ? (
           <div className={styles.none}>
             <p className={styles.noneTitle}>
               {interpolate(copy.emptyFilter.title, {
                 filter: locale === "zh" ? filterName : filterName.toLowerCase(),
               })}
             </p>
-            {filter === "reads" ? (
+            {filter === "reads" && !older.more ? (
               <p className={styles.noneDetail}>{copy.emptyFilter.reads}</p>
             ) : null}
-            {hasMore ? (
-              <p className={styles.noneDetail}>{copy.emptyFilter.more}</p>
+            {older.more ? (
+              <p className={styles.noneDetail}>
+                {filter === "reads"
+                  ? copy.emptyFilter.moreReads
+                  : copy.emptyFilter.more}
+              </p>
             ) : null}
           </div>
         ) : (
@@ -199,20 +225,20 @@ export function ActivityLog({
         )}
       </section>
 
-      {hasMore ? (
+      {older.more && !readsFailed ? (
         <div className={styles.more}>
           <Button
             variant="quiet"
             size="sm"
             icon="chevron-down"
-            pending={loadingMore}
-            onClick={onMore}
+            pending={older.loading}
+            onClick={older.load}
           >
-            {loadingMore ? copy.loadingMore : copy.more}
+            {older.loading ? olderCopy[1] : olderCopy[0]}
           </Button>
-          {moreFailed ? (
+          {older.failed ? (
             <span className={styles.moreFailed} role="alert">
-              {copy.moreFailed}
+              {olderCopy[2]}
             </span>
           ) : null}
         </div>

@@ -5,6 +5,8 @@ import { createDemoActivity } from "../data/activity-demo";
 import { activityCategory, type ActivityEntry } from "../data/activity";
 import { DEMO_SPACES } from "../data/demo-dataset";
 import { activityCsv, activityCsvName, csvCell } from "./csv";
+import { mergeLog } from "./merge";
+import { sealSentences } from "./seal";
 import {
   activitySentences,
   dayKey,
@@ -33,6 +35,18 @@ const names = (locale: "en" | "zh"): Names => ({
 const v2 = DEMO_SPACES.find((s) => s.slug === "memax-v2")!;
 const demo = createDemoActivity();
 
+/** The board's log: the demo's receipts and reads, merged as "All" shows them. */
+async function boardLog(): Promise<ActivityEntry[]> {
+  const [receipts, reads] = await Promise.all([
+    demo.activity({ space: v2 }),
+    demo.reads({ space: v2 }),
+  ]);
+  return mergeLog(
+    { entries: receipts.entries, hasMore: false },
+    { entries: reads.entries, hasMore: false },
+  ).entries;
+}
+
 function entry(over: Partial<ActivityEntry>): ActivityEntry {
   return {
     id: "r1",
@@ -51,8 +65,7 @@ function entry(over: Partial<ActivityEntry>): ActivityEntry {
 
 describe("Activity sentences", () => {
   it("reproduce the board's rows word for word", async () => {
-    const page = await demo.activity({ space: v2 });
-    const rows = page.entries.map((e) => [
+    const rows = (await boardLog()).map((e) => [
       sentenceText(activitySentences(en.ledger.activity, e, names("en")), "en"),
       viaText(en.ledger.activity, e.via, names("en")),
     ]);
@@ -126,7 +139,7 @@ describe("Activity sentences", () => {
   });
 
   it("speak Chinese with every placeholder filled", async () => {
-    const page = await demo.activity({ space: v2 });
+    const page = { entries: await boardLog() };
     for (const e of page.entries) {
       const text = sentenceText(
         activitySentences(zh.ledger.activity, e, names("zh")),
@@ -176,7 +189,7 @@ describe("Activity days and zones", () => {
 
 describe("weekly totals from what's loaded", () => {
   it("counts the last 7 days, and says when the week isn't all loaded", async () => {
-    const page = await demo.activity({ space: v2 });
+    const page = { entries: await boardLog() };
     const counted = countWeek(page.entries, {
       now: NOW,
       hasMore: false,
@@ -225,7 +238,9 @@ describe("the CSV export", () => {
   });
 
   it("writes one line per receipt, with the API's field names and no memory text", async () => {
+    // Receipts only: reads aren't receipts, and stay out of the file.
     const page = await demo.activity({ space: v2 });
+    expect(page.entries.some((e) => e.action === "read")).toBe(false);
     const csv = activityCsv(page.entries);
     expect(csv.startsWith("﻿")).toBe(true);
     const lines = csv.slice(1).trimEnd().split("\r\n");
@@ -236,8 +251,8 @@ describe("the CSV export", () => {
     expect(lines[1]).toMatch(
       /^2026-10-05T14:40:00-07:00,agent,codex,asked,gate,H-0093,,9f1c,,,/,
     );
-    expect(lines[7]).toContain(",person,ZZ,rejected,memory,M-0429,review,");
-    expect(lines[7]).toContain("superseded by M-0219.");
+    expect(lines[6]).toContain(",person,ZZ,rejected,memory,M-0429,review,");
+    expect(lines[6]).toContain("superseded by M-0219.");
     // Receipts never hold the words, and neither does the export.
     expect(csv).not.toContain("Use Temporal");
     expect(activityCsvName("memax-v2", NOW)).toBe(
@@ -356,5 +371,164 @@ describe("the compile pipeline's receipts", () => {
         action === "revised" ? "writes" : "compiles",
       );
     }
+  });
+});
+
+describe("reads in the log", () => {
+  const at = (iso: string, n: number, over: Partial<ActivityEntry> = {}) =>
+    entry({ id: `x${n}`, at: iso, ...over });
+  const read = (iso: string, n: number) =>
+    at(iso, n, {
+      action: "read",
+      object: { kind: "read", ref: `R-${5500 + n}`, id: `d${n}` },
+      detail: { kind: "read", memories: 3, brief: false },
+    });
+
+  it("merges receipts and reads by time, a receipt first on a tie", () => {
+    const merged = mergeLog(
+      {
+        entries: [at("2026-10-05T14:00:00Z", 1), at("2026-10-05T12:00:00Z", 2)],
+        hasMore: false,
+      },
+      {
+        entries: [
+          read("2026-10-05T14:00:00Z", 3),
+          read("2026-10-05T13:00:00Z", 4),
+        ],
+        hasMore: false,
+      },
+    );
+    expect(merged.entries.map((e) => e.id)).toEqual(["x1", "x3", "x4", "x2"]);
+    expect(merged.next).toEqual([]);
+  });
+
+  it("stops where the stream that reaches least far back stops, and loads that one", () => {
+    // Receipts reach back to Oct 1; the reads, only to 13:00 today.
+    const receipts = {
+      entries: [at("2026-10-05T14:00:00Z", 1), at("2026-10-01T10:00:00Z", 2)],
+      hasMore: true,
+    };
+    const reads = {
+      entries: [
+        read("2026-10-05T14:30:00Z", 3),
+        read("2026-10-05T13:00:00Z", 4),
+      ],
+      hasMore: true,
+    };
+    const merged = mergeLog(receipts, reads);
+    // Oct 1's receipt waits until the reads before it are loaded.
+    expect(merged.entries.map((e) => e.id)).toEqual(["x3", "x1", "x4"]);
+    expect(merged.next).toEqual(["reads"]);
+    // The reads at their end: everything shows, and only receipts load.
+    const done = mergeLog(receipts, { ...reads, hasMore: false });
+    expect(done.entries.map((e) => e.id)).toEqual(["x3", "x1", "x4", "x2"]);
+    expect(done.next).toEqual(["receipts"]);
+    // Without the reads (they didn't load): the receipts as they are.
+    expect(mergeLog(receipts, null)).toEqual({
+      entries: receipts.entries,
+      next: ["receipts"],
+    });
+  });
+
+  it("words a compile read as the Brief, in en and zh", () => {
+    const say = (e: ActivityEntry, locale: "en" | "zh") =>
+      sentenceText(
+        activitySentences(
+          (locale === "en" ? en : zh).ledger.activity,
+          e,
+          names(locale),
+        ),
+        locale,
+      );
+    const r = (memories: number, brief: boolean) =>
+      entry({
+        actor: { kind: "agent", agent: "codex" },
+        action: "read",
+        object: { kind: "read", ref: "R-5512", id: "d1" },
+        detail: { kind: "read", memories, brief },
+      });
+    expect(say(r(12, true), "en")).toBe(
+      "Codex read 12 memories and the Brief.",
+    );
+    expect(say(r(0, true), "en")).toBe("Codex read the Brief.");
+    expect(say(r(1, false), "en")).toBe("Codex read 1 memory.");
+    expect(say(r(0, true), "zh")).toBe("Codex 读了简报。");
+    expect(activityCategory(r(3, false))).toBe("reads");
+  });
+});
+
+describe("the seal line", () => {
+  const opts = { now: NOW, timeZone: TZ, locale: "en" as const };
+  const say = (
+    seal: Parameters<typeof sealSentences>[2],
+    locale: "en" | "zh" = "en",
+  ) =>
+    sealSentences(
+      (locale === "en" ? en : zh).ledger.activity,
+      (locale === "en" ? en : zh).ledger.app,
+      seal,
+      { ...opts, locale },
+    );
+  const sealed = {
+    sealed: 1284,
+    sealedAt: "2026-10-05T14:02:00-07:00",
+    unsealed: 2,
+    signed: true,
+    verified: null,
+  };
+
+  it("says how far the receipts are sealed, and when the chain was checked", async () => {
+    expect(say(sealed)).toEqual([
+      { text: "Sealed through receipt 1,284, today at 14:02." },
+    ]);
+    expect(
+      say({
+        ...sealed,
+        verified: { at: "2026-10-05T03:00:00-07:00", problems: 0 },
+      }).map((s) => s.text),
+    ).toEqual([
+      "Sealed through receipt 1,284, today at 14:02.",
+      "Verified from the first receipt today at 03:00.",
+    ]);
+    expect(
+      say(
+        {
+          ...sealed,
+          verified: { at: "2026-10-04T03:00:00-07:00", problems: 0 },
+        },
+        "zh",
+      ).map((s) => s.text),
+    ).toEqual([
+      "已封存到第 1,284 条收据，今天 14:02。",
+      "10月4日 03:00 从第一条收据起核对过。",
+    ]);
+    // The demo's memax-v2: sealed through its newest receipt, verified overnight.
+    const demoSeal = await demo.seal({ space: v2 });
+    expect(say(demoSeal).map((s) => s.text)).toEqual([
+      "Sealed through receipt 1,284, today at 14:40.",
+      "Verified from the first receipt today at 03:00.",
+    ]);
+  });
+
+  it("says plainly when checkpoints are unsigned, nothing is sealed, or the check found a problem", () => {
+    expect(say({ ...sealed, signed: false }).map((s) => s.text)).toEqual([
+      "Sealed through receipt 1,284, today at 14:02.",
+      "Its checkpoints aren't signed: this server has no signing key.",
+    ]);
+    expect(
+      say({ ...sealed, sealed: 0, sealedAt: null, signed: null, unsealed: 1 }),
+    ).toEqual([{ text: "1 receipt waits to be sealed." }]);
+    expect(
+      say({ ...sealed, sealed: 0, sealedAt: null, signed: null, unsealed: 0 }),
+    ).toEqual([]);
+    expect(
+      say({
+        ...sealed,
+        verified: { at: "2026-10-05T03:00:00-07:00", problems: 2 },
+      })[1],
+    ).toEqual({
+      text: "The check from the first receipt today at 03:00 found 2 problems.",
+      problem: true,
+    });
   });
 });

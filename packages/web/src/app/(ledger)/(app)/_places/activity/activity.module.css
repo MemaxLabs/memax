@@ -228,6 +228,11 @@ a.ref:hover {
   margin: 0;
 }
 
+/* The seal line's one alarm: the check found the chain changed. */
+.problem {
+  color: var(--vermilion);
+}
+
 @media (max-width: 1023px) {
   .grid {
     grid-template-columns: minmax(0, 1fr);

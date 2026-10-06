@@ -6,8 +6,7 @@
  * `source.targets`, and the space's counts from the overview.
  *
  * What /v2 doesn't serve yet is said so, never invented: Dream editions
- * (plan §5.10), handoffs in flight (Phase 4) and reads. No words live
- * here.
+ * (plan §5.10) and handoffs in flight (Phase 4). No words live here.
  */
 import type { GateView } from "./gates";
 import type { MemoryNote } from "./memories";
@@ -64,7 +63,7 @@ export interface AgentToday {
   /** Registry key. */
   agent: string;
   name: string;
-  /** Null until reads are recorded. */
+  /** Its reads (R-) here since the start of the viewer's day; null when they weren't counted. */
   reads: number | null;
   kept: number;
   proposed: number;

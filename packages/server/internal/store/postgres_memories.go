@@ -1179,7 +1179,7 @@ func (s *PostgresStore) ListOwnerMemoryAttachments(ownerID string) ([]model.Memo
 }
 
 // DeleteAllUserData purges all user data in a single transaction: memories (cascades to
-// chunks + memory_topics), topics, agent configs, dream runs + actions, and reviews.
+// chunks + memory_topics), topics, agent configs, and dream runs + actions.
 
 func (s *PostgresStore) DeleteAllUserData(ownerID string) error {
 	ctx := context.Background()
@@ -1192,7 +1192,6 @@ func (s *PostgresStore) DeleteAllUserData(ownerID string) error {
 	// Order matters: delete children before parents to respect FK constraints.
 	// chunks + memory_topics cascade from memories, dream_actions cascade from dream_runs.
 	queries := []string{
-		`DELETE FROM reviews WHERE hub_id IN (SELECT id FROM hubs WHERE owner_id = $1::uuid AND hub_type = 'personal')`,
 		`DELETE FROM dream_actions WHERE run_id IN (SELECT id FROM dream_runs WHERE hub_id IN (SELECT id FROM hubs WHERE owner_id = $1::uuid AND hub_type = 'personal'))`,
 		`DELETE FROM dream_runs WHERE hub_id IN (SELECT id FROM hubs WHERE owner_id = $1::uuid AND hub_type = 'personal')`,
 		`DELETE FROM agent_config_tombstones WHERE owner_id = $1::uuid`,

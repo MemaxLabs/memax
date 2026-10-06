@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -136,23 +137,7 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 				// For MCP endpoints, include WWW-Authenticate header for OAuth discovery
 				if strings.HasPrefix(r.URL.Path, "/mcp") {
 					message = "Authentication required. Authorize this MCP client via OAuth (for Codex: codex mcp login memax), or configure an API key with: memax setup --mcp --api-key"
-					baseURL := os.Getenv("API_BASE_URL")
-					if baseURL == "" {
-						scheme := "https"
-						if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
-							scheme = "http"
-						}
-						baseURL = fmt.Sprintf("%s://%s", scheme, r.Host)
-					}
-					resourcePath := "/.well-known/oauth-protected-resource"
-					if r.URL.Path != "" && r.URL.Path != "/" {
-						resourcePath += r.URL.Path
-					}
-					w.Header().Set("WWW-Authenticate", fmt.Sprintf(
-						`Bearer resource_metadata="%s%s"`,
-						baseURL,
-						resourcePath,
-					))
+					w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer resource_metadata="%s"`, MCPResourceMetadataURL(r)))
 				}
 				writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
 					Error: &model.Error{Code: "unauthorized", Message: message},
@@ -189,6 +174,37 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// MCPResourceMetadataURL is the protected-resource metadata URL (RFC 9728)
+// for the MCP endpoint a request was sent to, as WWW-Authenticate
+// challenges name it.
+func MCPResourceMetadataURL(r *http.Request) string {
+	resourcePath := "/.well-known/oauth-protected-resource"
+	if r.URL.Path != "" && r.URL.Path != "/" {
+		resourcePath += r.URL.Path
+	}
+	return mcpPublicBaseURL(r) + resourcePath
+}
+
+// mcpPublicBaseURL is the API's public origin: API_BASE_URL, or the
+// request's own host. A request to MCP_BASE_URL's host (the mcp.memax.app
+// alias of the same app) is answered as that host, so the client sees the
+// resource it connected to.
+func mcpPublicBaseURL(r *http.Request) string {
+	if alias := strings.TrimRight(os.Getenv("MCP_BASE_URL"), "/"); alias != "" {
+		if u, err := url.Parse(alias); err == nil && strings.EqualFold(u.Host, r.Host) {
+			return alias
+		}
+	}
+	if baseURL := strings.TrimRight(os.Getenv("API_BASE_URL"), "/"); baseURL != "" {
+		return baseURL
+	}
+	scheme := "https"
+	if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://%s", scheme, r.Host)
 }
 
 // GetUserID extracts the authenticated user ID from request context.

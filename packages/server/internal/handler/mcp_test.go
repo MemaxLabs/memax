@@ -58,13 +58,19 @@ func TestChatGPTMCPToolsListUsesReviewFriendlySurface(t *testing.T) {
 
 func TestChatGPTMCPInitializeUsesChatGPTServerInfo(t *testing.T) {
 	h := NewChatGPTMCPHandler(nil, nil, nil, nil)
-	req := httptest.NewRequest(http.MethodPost, "/mcp/chatgpt", strings.NewReader(`{"jsonrpc":"2.0","id":"init","method":"initialize"}`))
+	// V1 accepted an initialize with no params; the go-sdk requires the
+	// params every client sends.
+	req := httptest.NewRequest(http.MethodPost, "/mcp/chatgpt", strings.NewReader(`{"jsonrpc":"2.0","id":"init","method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"ChatGPT","version":"1"}}}`))
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
 
-	if got := w.Header().Get("Mcp-Session-Id"); got == "" {
-		t.Fatalf("Mcp-Session-Id header missing")
+	// V1 minted an Mcp-Session-Id here and never checked it. The go-sdk
+	// server opens a session only for a client that advertises
+	// elicitation (it needs one to send elicitation/create); everything
+	// else is served statelessly (TestMCPLegacySessionOnlyForElicitation).
+	if got := w.Header().Get("Mcp-Session-Id"); got != "" {
+		t.Fatalf("Mcp-Session-Id = %q for a client without elicitation, want none", got)
 	}
 
 	var resp struct {

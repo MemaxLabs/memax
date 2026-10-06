@@ -178,6 +178,23 @@ describe("MemoryRow", () => {
     );
   });
 
+  it("can wear another mark than its state's, keeping the state's type", () => {
+    const { container } = render(
+      <MemoryRow state="proposed" mark="working" markLabel="Checking">
+        x
+      </MemoryRow>,
+    );
+    const mark = screen.getByRole("img", { name: "Checking" });
+    expect(mark.className).toContain("mx-state--working");
+    expect(mark.getAttribute("title")).toBe("Checking");
+    const row = container.querySelector(".mx-row")!;
+    expect(row.className).toContain("is-proposed");
+    expect(row.className).toContain("is-unconfirmed");
+    expect(
+      container.querySelector(".mx-row-text")?.getAttribute("aria-describedby"),
+    ).toBe(mark.id);
+  });
+
   it("uses the state's word when no action is given", () => {
     const { container } = render(<MemoryRow state="merged">x</MemoryRow>);
     expect(container.querySelector(".mx-receipt-action")?.textContent).toBe(

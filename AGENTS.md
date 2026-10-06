@@ -156,6 +156,11 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 **API, MCP and CLI**
 
 - **API.** New endpoints go under `/v2`, spec-first in `packages/server/openapi/v2.yaml`. SDK types are generated from that spec. The `model.ApiResponse` envelope still applies. Commands need an `Idempotency-Key`, and edits need `If-Match`. `/v1` is frozen for old CLIs, and retired `/v1` routes answer 410 with a pointer.
+- **The `/v2` contract workflow.** The spec is written first and the build holds everything else to it:
+  1. Change `packages/server/openapi/v2.yaml` (OpenAPI 3.1, Apache-2.0 so the SDK can carry its types). Close every object (`additionalProperties: false`) and name every response schema; `internal/contract` lints these rules.
+  2. Implement the handler in `packages/server/internal/handler/v2api` and add the route to `v2api.routes` (the route table must equal the spec, and nothing else in `serverapp` may register a `/v2` path). Handlers call only `internal/ledger`. A credential becomes a ledger actor in one place, `principalFor`.
+  3. Test through `env.do` in `v2api`'s tests: every request and response runs through the spec, so an undocumented status, header or field fails, and the run fails if any operation lacks a 2xx test.
+  4. Regenerate the SDK types (`pnpm --filter memax-sdk gen:v2`), add the typed method under `memax.v2`, and commit the spec, server, SDK and `src/v2/schema.gen.ts` together. `pnpm lint` fails when the generated types are stale.
 - **MCP.** All 17 V1 tool names keep working (both profiles), and remote and stdio parity still applies.
 - **CLI.** The install command is `npx memax-cli init`; the binary is `memax`.
 
@@ -481,6 +486,15 @@ pnpm --filter @memaxlabs/server migrate:new <slug>
 
 # Run the LoCoMo benchmark harness
 cd packages/server && go run ./cmd/locomo/ -dataset eval/locomo/data/locomo10.json
+
+# /v2 contract: run the spec, handler and parity tests
+cd packages/server && go test ./internal/contract/ ./internal/handler/v2api/ ./internal/serverapp/
+
+# /v2 contract: regenerate the SDK's types after changing openapi/v2.yaml
+pnpm --filter memax-sdk gen:v2
+
+# /v2 contract: check the committed SDK types match the spec (part of pnpm lint)
+pnpm check:v2-types
 ```
 
 Migrations use a single shared sequence. Don't hand-pick version numbers — always use `migrate:new`. CI enforces sequential numbering (`internal/migrate/migrate_test.go`) and rejects gaps, duplicates, orphan up/down files, and non-padded versions.

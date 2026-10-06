@@ -23,7 +23,6 @@ memax import status
 
 | Flag                     | Description                                                                                                                                                                                  | Default   |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| `-w, --watch`            | Watch for changes after initial import (experimental)                                                                                                                                        | off       |
 | `-b, --boundary <level>` | Accepted for forward compatibility; **recorded locally** in the sync-source status only. Does not currently change server-side visibility (the server writes `boundary=private` regardless). | `private` |
 | `--ignore <patterns>`    | Additional comma-separated **directory names** to skip                                                                                                                                       | —         |
 | `-y, --yes`              | Skip the confirmation prompt when importing more than 10 files                                                                                                                               | off       |
@@ -103,6 +102,3 @@ memax import status
   default write target (normally the personal hub). To route
   specific content into a team hub, use [`memax push`](/cli/push)
   with `--hub <slug>` per file.
-- **Watch mode is experimental.** `--watch` is plumbed but the
-  `--help` text flags it as "coming soon" while the UX is being
-  validated.

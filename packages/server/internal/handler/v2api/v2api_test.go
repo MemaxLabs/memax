@@ -310,6 +310,10 @@ func TestSpacesDontLeak(t *testing.T) {
 	if len(spaces.Items) != 1 || spaces.Items[0].ID != aSpace.id {
 		t.Errorf("scoped key spaces = %+v", spaces.Items)
 	}
+	// So does an old key bound to one hub without the allowlist mode.
+	legacy, _ := e.apiKey(a, keyOpts{legacyHub: &aSpace.id})
+	e.do(call{method: "GET", path: memoriesPath(other), token: legacy}).fails(404, "not_found")
+	e.do(call{method: "GET", path: memoriesPath(aSpace), token: legacy}).ok(200, nil)
 }
 
 func TestListMemories(t *testing.T) {

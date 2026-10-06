@@ -60,7 +60,10 @@ func (h *Handler) principalFor(r *http.Request) (*principal, *apiError) {
 	if err != nil {
 		return nil, h.fromLedger(r, err)
 	}
-	if grant.HubScopeMode == handler.HubScopeAllowlist {
+	// A credential that names hubs is limited to them. That includes an
+	// old key bound to one hub (api_keys.hub_id) whose scope mode was never
+	// set to the allowlist: it fails closed here.
+	if grant.HubScopeMode == handler.HubScopeAllowlist || len(grant.ScopedHubIDs) > 0 {
 		scope = scope.Narrow(parseIDs(grant.ScopedHubIDs)...)
 	}
 

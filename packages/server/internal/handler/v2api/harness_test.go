@@ -174,6 +174,9 @@ type keyOpts struct {
 	perms []string
 	agent string
 	hubs  []uuid.UUID // a hub allowlist; empty means every hub
+	// legacyHub binds the key the old way: api_keys.hub_id set, scope
+	// mode left at all_accessible.
+	legacyHub *uuid.UUID
 }
 
 // apiKey creates an API key for the user and returns it with its id.
@@ -192,9 +195,9 @@ func (e *env) apiKey(user uuid.UUID, o keyOpts) (string, uuid.UUID) {
 	if o.hubs == nil {
 		o.hubs = []uuid.UUID{} // the column is NOT NULL
 	}
-	e.exec(`INSERT INTO api_keys (id, user_id, name, key_hash, prefix, agent_name, hub_scope_mode, hub_ids, default_permissions)
-	        VALUES ($1, $2, 'test', $3, $4, $5, $6, $7, $8)`,
-		id, user, hex.EncodeToString(sum[:]), key[:12], o.agent, mode, o.hubs, o.perms)
+	e.exec(`INSERT INTO api_keys (id, user_id, name, key_hash, prefix, agent_name, hub_scope_mode, hub_ids, default_permissions, hub_id)
+	        VALUES ($1, $2, 'test', $3, $4, $5, $6, $7, $8, $9)`,
+		id, user, hex.EncodeToString(sum[:]), key[:12], o.agent, mode, o.hubs, o.perms, o.legacyHub)
 	return key, id
 }
 

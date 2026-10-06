@@ -66,4 +66,6 @@ export interface DaemonSnapshot {
   version: string;
   api_url: string;
   repos: RepoSnapshot[];
+  /** Set while `memax compile` delivers in place of a daemon. */
+  oneshot?: boolean;
 }

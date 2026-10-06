@@ -5,9 +5,6 @@
 // command set pulls in the MCP SDK and friends, about 30 MB of memory a
 // process that runs all day shouldn't carry. So no commander here: only
 // the daemon and the CLI's auth (lib/client.ts).
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { getClient, setClientFetch } from "./lib/client.js";
 import { lightFetch } from "./lib/daemon/http.js";
 import { getOrCreateDeviceID, loadConfig } from "./lib/config.js";
@@ -16,6 +13,7 @@ import { AlreadyRunningError } from "./lib/daemon/control.js";
 import { Daemon } from "./lib/daemon/daemon.js";
 import { fileLogger } from "./lib/daemon/log.js";
 import { daemonPaths, ensureDaemonDir } from "./lib/daemon/paths.js";
+import { cliVersion } from "./lib/version.js";
 
 const USAGE = `Usage: memax daemon run
 
@@ -24,19 +22,6 @@ files into the repositories linked on this machine (memax link), and
 reports hand edits to them. Logs go to ~/.memax/daemon/daemon.log.
 Stop it with Ctrl-C, SIGTERM, or memax daemon stop.
 `;
-
-function cliVersion(): string {
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    return (
-      JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8")) as {
-        version: string;
-      }
-    ).version;
-  } catch {
-    return "unknown";
-  }
-}
 
 export async function runDaemon(argv: string[]): Promise<number> {
   if (argv.includes("--help") || argv.includes("-h")) {

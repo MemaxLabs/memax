@@ -87,7 +87,12 @@ function launchDetached(paths: DaemonPaths): void {
 }
 
 export async function startDaemon(d: StartDeps): Promise<number> {
-  const running = await status(d.paths);
+  let running = await status(d.paths);
+  // `memax compile` holds the lock while it writes files; wait for it.
+  for (let i = 0; running?.oneshot && i < 200; i++) {
+    await sleep(150);
+    running = await status(d.paths, 500);
+  }
   if (running) {
     d.out(
       `  ${chalk.green("●")} The Memax daemon is already running · pid ${running.pid}`,

@@ -12,7 +12,15 @@ import type {
   TargetSnapshot,
 } from "../lib/daemon/snapshot.js";
 import { DeviceState } from "../lib/daemon/state.js";
-import { clock, MARK, pad, syncMark, syncWord, tildify } from "./v2-output.js";
+import {
+  clock,
+  MARK,
+  order,
+  pad,
+  syncMark,
+  syncWord,
+  tildify,
+} from "./v2-output.js";
 
 export interface DaemonStatus {
   running: boolean;
@@ -157,7 +165,9 @@ export function renderDaemonStatus(
       lines.push(chalk.gray("    Nothing written here yet."));
     }
     const width = Math.max(14, ...r.targets.map((t) => t.label.length + 2));
-    for (const t of r.targets) {
+    for (const t of [...r.targets].sort(
+      (a, b) => order(a) - order(b) || a.label.localeCompare(b.label),
+    )) {
       const word =
         t.state === "remote" ? syncWord(t.sync_state) : WORD[t.state];
       const where = s.running

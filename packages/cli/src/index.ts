@@ -23,6 +23,8 @@ import { registerCaptureSessionCommand } from "./commands/capture.js";
 import { registerDreamsCommands } from "./commands/dreams.js";
 import { registerLinkCommands } from "./commands/link.js";
 import { registerDaemonCommands } from "./commands/daemon.js";
+import { registerStatusCommand } from "./commands/status.js";
+import { registerCompileCommand } from "./commands/compile.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(
@@ -38,6 +40,8 @@ program
 
 // --- Command registration (order defines help layout) ---
 
+registerStatusCommand(program);
+registerCompileCommand(program);
 registerLinkCommands(program);
 registerDaemonCommands(program);
 registerPushCommand(program);

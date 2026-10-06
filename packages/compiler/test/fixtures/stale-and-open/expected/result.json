@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "compile_id": "C-0900",
+  "compiled_at": "2026-10-06T09:00:00Z",
+  "brief_id": "B-0044",
+  "space": "memax-v2",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "target": "agents_md",
+      "bytes": 988,
+      "lines": 20,
+      "sha256": "19ba961db52ff995305dff7bf944bba0c8886ef4fe59996a858ec69b146b1314",
+      "refs": [
+        "M-0174",
+        "M-0187",
+        "M-0219",
+        "M-0300",
+        "M-0301",
+        "M-0302",
+        "M-0303"
+      ],
+      "cites": [
+        "M-0174",
+        "M-0187",
+        "M-0219",
+        "M-0300",
+        "M-0301",
+        "M-0302",
+        "M-0303",
+        "M-0431"
+      ],
+      "dropped_for_budget": [],
+      "drift_sha256": "19ba961db52ff995305dff7bf944bba0c8886ef4fe59996a858ec69b146b1314",
+      "user_owned": false
+    },
+    {
+      "path": "kept-only/AGENTS.md",
+      "target": "agents_md",
+      "bytes": 721,
+      "lines": 15,
+      "sha256": "fce61dc9ddfd7ca996ce044de6c657576d0346d445328444a43e333aa93d634e",
+      "refs": ["M-0174", "M-0187", "M-0219", "M-0300", "M-0301"],
+      "cites": ["M-0174", "M-0187", "M-0219", "M-0300", "M-0301"],
+      "dropped_for_budget": [],
+      "drift_sha256": "fce61dc9ddfd7ca996ce044de6c657576d0346d445328444a43e333aa93d634e",
+      "user_owned": false
+    },
+    {
+      "path": "stale-omit/AGENTS.md",
+      "target": "agents_md",
+      "bytes": 846,
+      "lines": 18,
+      "sha256": "521056ac1b4763c7101eb5adb482322b308606d978ef4391a7f4a0bc74855b33",
+      "refs": ["M-0174", "M-0219", "M-0301", "M-0302", "M-0303"],
+      "cites": ["M-0174", "M-0219", "M-0301", "M-0302", "M-0303", "M-0431"],
+      "dropped_for_budget": [],
+      "drift_sha256": "521056ac1b4763c7101eb5adb482322b308606d978ef4391a7f4a0bc74855b33",
+      "user_owned": false
+    }
+  ],
+  "copies": [],
+  "targets": [
+    {
+      "kind": "agents_md",
+      "path": "AGENTS.md",
+      "delivery": "file",
+      "reads": null,
+      "files": ["AGENTS.md"],
+      "refs": [
+        "M-0174",
+        "M-0187",
+        "M-0219",
+        "M-0300",
+        "M-0301",
+        "M-0302",
+        "M-0303"
+      ],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "agents_md",
+      "path": "kept-only/AGENTS.md",
+      "delivery": "file",
+      "reads": null,
+      "files": ["kept-only/AGENTS.md"],
+      "refs": ["M-0174", "M-0187", "M-0219", "M-0300", "M-0301"],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "agents_md",
+      "path": "stale-omit/AGENTS.md",
+      "delivery": "file",
+      "reads": null,
+      "files": ["stale-omit/AGENTS.md"],
+      "refs": ["M-0174", "M-0219", "M-0301", "M-0302", "M-0303"],
+      "dropped_for_budget": []
+    }
+  ],
+  "warnings": []
+}

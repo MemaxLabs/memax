@@ -1,0 +1,320 @@
+{
+  "version": 1,
+  "compile": {
+    "id": "C-0930",
+    "at": "2026-10-06T12:00:00Z"
+  },
+  "space": {
+    "slug": "memax-v2",
+    "name": "Memax V2",
+    "kind": "project",
+    "url": "https://memax.app/memax-v2/brief"
+  },
+  "brief": {
+    "id": "B-0046",
+    "title": "Memax V2 engineering brief",
+    "summary": "What every agent on this project reads before it writes code.",
+    "sections": [
+      {
+        "key": "decisions",
+        "heading": "Decisions",
+        "items": [
+          {
+            "text": "These hold for the v2 API and worker.",
+            "cites": ["M-0100", "M-0105"]
+          },
+          {
+            "ref": "M-0100"
+          },
+          {
+            "ref": "M-0101"
+          },
+          {
+            "ref": "M-0102"
+          },
+          {
+            "ref": "M-0103"
+          },
+          {
+            "ref": "M-0104"
+          },
+          {
+            "ref": "M-0105"
+          },
+          {
+            "ref": "M-0106"
+          },
+          {
+            "ref": "M-0107"
+          },
+          {
+            "ref": "M-0108"
+          },
+          {
+            "ref": "M-0109"
+          },
+          {
+            "ref": "M-0110"
+          },
+          {
+            "ref": "M-0111"
+          }
+        ]
+      },
+      {
+        "key": "conventions",
+        "heading": "Conventions",
+        "items": [
+          {
+            "ref": "M-0200"
+          },
+          {
+            "ref": "M-0201"
+          },
+          {
+            "ref": "M-0202"
+          },
+          {
+            "ref": "M-0203"
+          },
+          {
+            "ref": "M-0204"
+          },
+          {
+            "ref": "M-0205"
+          },
+          {
+            "ref": "M-0206"
+          },
+          {
+            "ref": "M-0207"
+          },
+          {
+            "ref": "M-0208"
+          },
+          {
+            "ref": "M-0209"
+          },
+          {
+            "ref": "M-0210"
+          },
+          {
+            "ref": "M-0211"
+          }
+        ]
+      }
+    ]
+  },
+  "memories": [
+    {
+      "ref": "M-0100",
+      "statement": "Background jobs run on River, Postgres-backed. We do not use Temporal.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 41
+    },
+    {
+      "ref": "M-0101",
+      "statement": "Remote MCP is stateless streamable HTTP with OAuth 2.1, per spec 2026-07-28.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 30
+    },
+    {
+      "ref": "M-0102",
+      "statement": "API errors are RFC 9457 problem+json, never bare strings.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 24
+    },
+    {
+      "ref": "M-0103",
+      "statement": "New endpoints go under /v2, spec-first in openapi/v2.yaml.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 18
+    },
+    {
+      "ref": "M-0104",
+      "statement": "Display IDs are per-tenant counters; internal keys are uuidv7.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 9
+    },
+    {
+      "ref": "M-0105",
+      "statement": "Every write to the record goes through Ledger.Apply.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 33
+    },
+    {
+      "ref": "M-0106",
+      "statement": "Receipts never hold memory text, so Forget can purge words.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 12
+    },
+    {
+      "ref": "M-0107",
+      "statement": "Row-level security is on for every space-scoped table.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 27
+    },
+    {
+      "ref": "M-0108",
+      "statement": "Embeddings come from Voyage; reranking from Cohere.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 3
+    },
+    {
+      "ref": "M-0109",
+      "statement": "The compile service is TypeScript, stateless, on the private network.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 15
+    },
+    {
+      "ref": "M-0110",
+      "statement": "Sessions see their own proposals in recall; others do not.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 6
+    },
+    {
+      "ref": "M-0111",
+      "statement": "API keys can read or propose, never keep or forget.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 21
+    },
+    {
+      "ref": "M-0200",
+      "statement": "pnpm workspaces only. Never run `npm install` at the root.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 33
+    },
+    {
+      "ref": "M-0201",
+      "statement": "Every write tool returns a receipt ID the caller can cite.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 12
+    },
+    {
+      "ref": "M-0202",
+      "statement": "Run `pnpm format && pnpm lint` before every commit.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 27
+    },
+    {
+      "ref": "M-0203",
+      "statement": "Go tests are table-driven; database tests use testcontainers.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 3
+    },
+    {
+      "ref": "M-0204",
+      "statement": "Every user-facing string goes through i18n, in en and zh.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 15
+    },
+    {
+      "ref": "M-0205",
+      "statement": "Use sentence case. No exclamation marks in product copy.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 6
+    },
+    {
+      "ref": "M-0206",
+      "statement": "Commands need an Idempotency-Key; edits need If-Match.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 21
+    },
+    {
+      "ref": "M-0207",
+      "statement": "Nil means disabled: New() returns nil without its key.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 41
+    },
+    {
+      "ref": "M-0208",
+      "statement": "Read env vars once at startup, then inject dependencies.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 30
+    },
+    {
+      "ref": "M-0209",
+      "statement": "Every colour in the Ledger tree is a token, never a literal.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 24
+    },
+    {
+      "ref": "M-0210",
+      "statement": "Prefer small focused functions over large ones.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 18
+    },
+    {
+      "ref": "M-0211",
+      "statement": "Error messages tell the user what to do next.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 9
+    },
+    {
+      "ref": "M-0250",
+      "statement": "Agents propose; people keep.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 50
+    }
+  ],
+  "targets": [
+    {
+      "kind": "agents_md",
+      "size_budget": 2048
+    },
+    {
+      "kind": "chatgpt",
+      "size_budget": 1536
+    }
+  ]
+}

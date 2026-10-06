@@ -1,0 +1,13 @@
+Compiled by Memax from memax-v2 at 2026-10-06 10:15 UTC (C-0910). Edit it at https://memax.app/memax-v2/brief.
+
+Memax V2 engineering brief
+Every line cites a memory.
+
+Decisions
+- Background jobs run on River, Postgres-backed. We do not use Temporal. [M-0219]
+
+Conventions
+- pnpm workspaces only. Never run `npm install` at the root. [M-0071]
+
+Live context
+Use the memax connector for anything not here: search_memories, get_memory. Propose new memories with save_memory.

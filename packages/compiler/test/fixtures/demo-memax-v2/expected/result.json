@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "compile_id": "C-0881",
+  "compiled_at": "2026-10-05T14:31:00Z",
+  "brief_id": "B-0043",
+  "space": "memax-v2",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "target": "agents_md",
+      "bytes": 1104,
+      "lines": 23,
+      "sha256": "8407c4b8cf877936a1977e8c82e9179e21a5f0692379b52887d2095597f7c09a",
+      "refs": [
+        "M-0071",
+        "M-0098",
+        "M-0102",
+        "M-0112",
+        "M-0187",
+        "M-0219",
+        "M-0436"
+      ],
+      "cites": [
+        "M-0071",
+        "M-0098",
+        "M-0102",
+        "M-0112",
+        "M-0174",
+        "M-0187",
+        "M-0219",
+        "M-0431",
+        "M-0436"
+      ],
+      "dropped_for_budget": [],
+      "drift_sha256": "8407c4b8cf877936a1977e8c82e9179e21a5f0692379b52887d2095597f7c09a",
+      "user_owned": false
+    },
+    {
+      "path": "CLAUDE.md",
+      "target": "claude_md",
+      "bytes": 166,
+      "lines": 2,
+      "sha256": "2543a4b1cfcdb31ed765bf2e1d940f1534b485c08eb93c9e778b73e4711bc747",
+      "refs": [],
+      "cites": [],
+      "dropped_for_budget": [],
+      "drift_sha256": "2543a4b1cfcdb31ed765bf2e1d940f1534b485c08eb93c9e778b73e4711bc747",
+      "user_owned": false
+    }
+  ],
+  "copies": [
+    {
+      "label": "ChatGPT project instructions",
+      "target": "chatgpt",
+      "bytes": 1005,
+      "lines": 22,
+      "sha256": "da9649eeae90b275dda95295943a6abd8b644044fc531b1125c6b2b3fcd0b3d0",
+      "refs": [
+        "M-0071",
+        "M-0098",
+        "M-0102",
+        "M-0112",
+        "M-0187",
+        "M-0219",
+        "M-0436"
+      ],
+      "cites": [
+        "M-0071",
+        "M-0098",
+        "M-0102",
+        "M-0112",
+        "M-0174",
+        "M-0187",
+        "M-0219",
+        "M-0431",
+        "M-0436"
+      ],
+      "dropped_for_budget": []
+    }
+  ],
+  "targets": [
+    {
+      "kind": "agents_md",
+      "path": "AGENTS.md",
+      "delivery": "file",
+      "reads": null,
+      "files": ["AGENTS.md"],
+      "refs": [
+        "M-0071",
+        "M-0098",
+        "M-0102",
+        "M-0112",
+        "M-0187",
+        "M-0219",
+        "M-0436"
+      ],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "claude_md",
+      "path": "CLAUDE.md",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": ["CLAUDE.md"],
+      "refs": [],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "cursor_mdc",
+      "path": ".cursor/rules",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": [],
+      "refs": [],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "chatgpt",
+      "path": null,
+      "delivery": "copy",
+      "reads": null,
+      "files": [],
+      "refs": [
+        "M-0071",
+        "M-0098",
+        "M-0102",
+        "M-0112",
+        "M-0187",
+        "M-0219",
+        "M-0436"
+      ],
+      "dropped_for_budget": []
+    }
+  ],
+  "warnings": []
+}

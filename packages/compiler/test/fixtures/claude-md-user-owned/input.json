@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "compile": { "id": "C-0920", "at": "2026-10-06T11:00:00Z" },
+  "space": {
+    "slug": "memax-v2",
+    "name": "Memax V2",
+    "kind": "project",
+    "url": "https://memax.app/memax-v2/brief"
+  },
+  "brief": {
+    "id": "B-0045",
+    "title": "Memax V2 engineering brief",
+    "sections": [
+      {
+        "key": "conventions",
+        "heading": "Conventions",
+        "items": [{ "ref": "M-0071" }]
+      }
+    ]
+  },
+  "memories": [
+    {
+      "ref": "M-0071",
+      "statement": "pnpm workspaces only. Never run `npm install` at the root.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept"
+    },
+    {
+      "ref": "M-0460",
+      "statement": "Hand work to Codex with the memax plugin's handoff skill.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "scope": { "agents": ["claude-code"] }
+    }
+  ],
+  "targets": [
+    {
+      "kind": "claude_md",
+      "user_owned": true,
+      "current": "# My project\n\nUse tabs, not spaces.  \nRun `make check` before pushing."
+    },
+    {
+      "kind": "claude_md",
+      "path": "packages/web/CLAUDE.md",
+      "user_owned": true,
+      "current": "# Web\r\n\r\n<!-- memax:start -->\r\n## Memax — Persistent Memory\r\nUse memax_recall at session start.\r\n<!-- memax:end -->\r\n\r\nKeep components small.\r\n"
+    },
+    { "kind": "agents_md" }
+  ]
+}

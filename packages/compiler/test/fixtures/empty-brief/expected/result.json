@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "compile_id": "C-0001",
+  "compiled_at": "2026-10-05T08:00:00Z",
+  "brief_id": "B-0001",
+  "space": "memax-web",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "target": "agents_md",
+      "bytes": 376,
+      "lines": 8,
+      "sha256": "c786a1654373bb413fc1a6db5ba0eb21f7e71b149927d74fba8b973056efef52",
+      "refs": [],
+      "cites": [],
+      "dropped_for_budget": [],
+      "drift_sha256": "c786a1654373bb413fc1a6db5ba0eb21f7e71b149927d74fba8b973056efef52",
+      "user_owned": false
+    },
+    {
+      "path": "CLAUDE.md",
+      "target": "claude_md",
+      "bytes": 168,
+      "lines": 2,
+      "sha256": "2c28385202928674a4361bcf558c2b0a9da0e6b1a47faf74fc58d8f17f27be83",
+      "refs": [],
+      "cites": [],
+      "dropped_for_budget": [],
+      "drift_sha256": "2c28385202928674a4361bcf558c2b0a9da0e6b1a47faf74fc58d8f17f27be83",
+      "user_owned": false
+    },
+    {
+      "path": "GEMINI.md",
+      "target": "gemini_md",
+      "bytes": 170,
+      "lines": 2,
+      "sha256": "70dd77ee1cf63a82e2783f86f513096d43e7d7405f841a5a307b174673cf541e",
+      "refs": [],
+      "cites": [],
+      "dropped_for_budget": [],
+      "drift_sha256": "70dd77ee1cf63a82e2783f86f513096d43e7d7405f841a5a307b174673cf541e",
+      "user_owned": false
+    }
+  ],
+  "copies": [
+    {
+      "label": "ChatGPT project instructions",
+      "target": "chatgpt",
+      "bytes": 286,
+      "lines": 7,
+      "sha256": "acd3c1ba34aed6354efc8e3b29eb241a4f848ea920b57a726ccf4db5b2e7a966",
+      "refs": [],
+      "cites": [],
+      "dropped_for_budget": []
+    }
+  ],
+  "targets": [
+    {
+      "kind": "agents_md",
+      "path": "AGENTS.md",
+      "delivery": "file",
+      "reads": null,
+      "files": ["AGENTS.md"],
+      "refs": [],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "claude_md",
+      "path": "CLAUDE.md",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": ["CLAUDE.md"],
+      "refs": [],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "cursor_mdc",
+      "path": ".cursor/rules",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": [],
+      "refs": [],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "chatgpt",
+      "path": null,
+      "delivery": "copy",
+      "reads": null,
+      "files": [],
+      "refs": [],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "gemini_md",
+      "path": "GEMINI.md",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": ["GEMINI.md"],
+      "refs": [],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "copilot",
+      "path": ".github/instructions",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": [],
+      "refs": [],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "windsurf",
+      "path": ".devin/rules",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": [],
+      "refs": [],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "claude_rules",
+      "path": ".claude/rules",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": [],
+      "refs": [],
+      "dropped_for_budget": []
+    }
+  ],
+  "warnings": []
+}

@@ -1,0 +1,49 @@
+/* Document base for the (ledger) root layout. Loaded after
+ * @memaxlabs/ledger-tokens; tokens only, never a literal colour.
+ * Component styles come from @memaxlabs/ledger (mx- classes); page
+ * styles live in CSS modules next to their page. */
+
+/* Point the tokens' font stacks at the next/font faces from
+ * _lib/fonts.ts. html:root outranks tokens.css's :root, whatever order
+ * the stylesheets load in. */
+html:root {
+  --font-serif: var(--ledger-face-serif);
+  --font-sans: var(--ledger-face-sans);
+  --font-mono: var(--ledger-face-mono);
+  --font-brand: var(--ledger-face-brand);
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html {
+  background: var(--paper);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Default keyboard focus: a 2px focus ring with a 2px gap. Components
+ * that need the exact paper gap draw their own. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

@@ -223,6 +223,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.4)
+      '@memaxlabs/ledger-tokens':
+        specifier: workspace:*
+        version: link:../ledger-tokens
       '@memaxlabs/ui':
         specifier: workspace:*
         version: link:../ui

@@ -1,0 +1,74 @@
+/* The not-found and error pages of the (ledger) tree, after the
+ * "Not found" state on the States2 board: a receipt line, one serif
+ * sentence, one line of explanation and the actions. Buttons are
+ * local until @memaxlabs/ledger's Button replaces them. */
+
+.page {
+  box-sizing: border-box;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  background: var(--paper);
+}
+
+.panel {
+  max-width: 440px;
+}
+
+.receipt {
+  margin: 0 0 var(--space-3);
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+.title {
+  margin: 0 0 var(--space-3);
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.description {
+  margin: 0;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+
+.action {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-md);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.action:hover {
+  background: var(--hover);
+}
+
+.primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.primary:hover {
+  background: var(--ink);
+  opacity: 0.88;
+}

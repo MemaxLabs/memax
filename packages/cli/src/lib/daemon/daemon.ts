@@ -227,12 +227,13 @@ export class Daemon {
   }
 
   /**
-   * One pass without the loop: poll every space once and deliver. For
+   * One pass without the loop: poll every space (or only one) and deliver. For
    * `memax compile` when no daemon runs, and for tests.
    */
-  async syncOnce(): Promise<DaemonSnapshot> {
+  async syncOnce(only?: string): Promise<DaemonSnapshot> {
     this.reload();
     for (const [spaceId, space] of this.spaces) {
+      if (only && spaceId !== only) continue;
       try {
         const targets = await this.o.api.listTargets(spaceId);
         for (const root of space.roots) {

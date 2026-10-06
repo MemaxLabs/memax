@@ -44,6 +44,17 @@ function socketPath(dir: string): string {
   return join("/tmp", `memax-daemon-${tag}.sock`);
 }
 
+/**
+ * Why the daemon can't run on this platform, or null when it can. It needs
+ * a Unix socket for its lock and control, which Windows doesn't offer
+ * the same way (named pipes): a follow-up.
+ */
+export function daemonUnsupported(platform = process.platform): string | null {
+  return platform === "win32"
+    ? "The Memax daemon doesn't run on Windows yet. Your agents still read the space over MCP."
+    : null;
+}
+
 /** Creates the daemon directory, readable by this user only. */
 export function ensureDaemonDir(paths: DaemonPaths): void {
   mkdirSync(paths.dir, { recursive: true, mode: 0o700 });

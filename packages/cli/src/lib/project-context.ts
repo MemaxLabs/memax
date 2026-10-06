@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import {
   existsSync,
+  lstatSync,
   readFileSync,
   realpathSync,
   unlinkSync,
@@ -289,6 +290,26 @@ export function gitRoot(dir?: string): string | null {
 }
 
 /**
+ * `<root>/.memax.yml`, refusing anything but a regular file there: a
+ * symlink could point out of the repository, and Memax writes only inside it.
+ */
+function memaxYmlPath(root: string): string {
+  const path = join(root, ".memax.yml");
+  let st;
+  try {
+    st = lstatSync(path);
+  } catch {
+    return path; // absent
+  }
+  if (!st.isFile()) {
+    throw new Error(
+      `${path} isn't a regular file (a symlink?). Memax writes only a plain .memax.yml at the repository's root; replace it with one.`,
+    );
+  }
+  return path;
+}
+
+/**
  * Sets `space:` in `<root>/.memax.yml`, keeping every other line. Returns
  * whether the file changed.
  */
@@ -298,7 +319,7 @@ export function writeMemaxYmlSpace(root: string, space: string): boolean {
       `can't write ${JSON.stringify(space)} as a space in .memax.yml`,
     );
   }
-  const path = join(root, ".memax.yml");
+  const path = memaxYmlPath(root);
   const before = existsSync(path) ? readFileSync(path, "utf-8") : "";
   const line = `space: ${space}`;
   let after: string;
@@ -319,7 +340,7 @@ export function writeMemaxYmlSpace(root: string, space: string): boolean {
  * nothing but comments would be left. Returns whether anything changed.
  */
 export function removeMemaxYmlSpace(root: string): boolean {
-  const path = join(root, ".memax.yml");
+  const path = memaxYmlPath(root);
   if (!existsSync(path)) return false;
   const before = readFileSync(path, "utf-8");
   if (!SPACE_LINE.test(before)) return false;

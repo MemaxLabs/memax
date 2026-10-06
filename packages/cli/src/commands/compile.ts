@@ -12,7 +12,11 @@ import { sdkDaemonApi } from "../lib/daemon/api.js";
 import { controlRequest } from "../lib/daemon/control.js";
 import { fileLogger } from "../lib/daemon/log.js";
 import { OneShotDelivery } from "../lib/daemon/oneshot.js";
-import { daemonPaths, type DaemonPaths } from "../lib/daemon/paths.js";
+import {
+  daemonPaths,
+  daemonUnsupported,
+  type DaemonPaths,
+} from "../lib/daemon/paths.js";
 import { findLinkedRepo } from "../lib/daemon/registry.js";
 import { resolveSpace, SpaceChoiceError } from "../lib/v2-space.js";
 import { cliVersion } from "../lib/version.js";
@@ -123,7 +127,7 @@ export async function compile(
     !!root && findLinkedRepo(d.paths, root)?.space_id === space.id;
   let writer: CompileReport["writer"] = daemon ? "daemon" : null;
   let local: OneShotDelivery | null = null;
-  if (!daemon && linkedHere) {
+  if (!daemon && linkedHere && !daemonUnsupported()) {
     local = await (d.oneShot ?? (() => openOneShot(d)))();
     writer = local ? "compile" : "daemon";
   }
@@ -132,7 +136,7 @@ export async function compile(
   let timedOut = false;
   try {
     for (;;) {
-      if (local) await local.sync();
+      if (local) await local.sync(space.id);
       targets = (await d.memax.v2.targets.list(space.id)).items;
       const delivering = writer !== null && linkedHere;
       if (

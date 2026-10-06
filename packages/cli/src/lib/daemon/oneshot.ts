@@ -35,9 +35,9 @@ export class OneShotDelivery {
     }
   }
 
-  /** One pass: poll every linked space once and deliver. */
-  sync(): Promise<DaemonSnapshot> {
-    return this.daemon.syncOnce();
+  /** One pass: poll the space once and deliver to its linked repositories. */
+  sync(spaceId: string): Promise<DaemonSnapshot> {
+    return this.daemon.syncOnce(spaceId);
   }
 
   async close(): Promise<void> {

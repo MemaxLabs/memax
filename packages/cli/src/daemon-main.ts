@@ -12,7 +12,11 @@ import { sdkDaemonApi } from "./lib/daemon/api.js";
 import { AlreadyRunningError } from "./lib/daemon/control.js";
 import { Daemon } from "./lib/daemon/daemon.js";
 import { fileLogger } from "./lib/daemon/log.js";
-import { daemonPaths, ensureDaemonDir } from "./lib/daemon/paths.js";
+import {
+  daemonPaths,
+  daemonUnsupported,
+  ensureDaemonDir,
+} from "./lib/daemon/paths.js";
 import { cliVersion } from "./lib/version.js";
 
 const USAGE = `Usage: memax daemon run
@@ -34,6 +38,11 @@ export async function runDaemon(argv: string[]): Promise<number> {
       `memax daemon run takes no arguments (got ${unknown.join(" ")}).\n\n${USAGE}`,
     );
     return 2;
+  }
+  const unsupported = daemonUnsupported();
+  if (unsupported) {
+    process.stderr.write(`${unsupported}\n`);
+    return 1;
   }
   const paths = daemonPaths();
   ensureDaemonDir(paths);

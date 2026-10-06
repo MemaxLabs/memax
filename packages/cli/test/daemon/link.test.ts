@@ -1,8 +1,15 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { link, unlink, type LinkDeps } from "../../src/commands/link.js";
+import { daemonUnsupported } from "../../src/lib/daemon/paths.js";
 import { readRegistry } from "../../src/lib/daemon/registry.js";
 import { readMemaxYmlConfig } from "../../src/lib/project-context.js";
 import { harness, type Harness } from "./harness.js";
@@ -118,6 +125,25 @@ describe("memax link", () => {
     await expect(link({ space: "nope" }, deps())).rejects.toThrow(
       /nope isn't one of your spaces/,
     );
+  });
+
+  it("never writes through a symlinked .memax.yml", async () => {
+    const space = h.fake.addSpace("memax-v2");
+    const outside = join(h.home, "bashrc");
+    mkdirSync(h.home, { recursive: true });
+    writeFileSync(outside, "export X=1\n");
+    symlinkSync(outside, join(h.repo, ".memax.yml"));
+    await expect(link({ space: space.slug }, deps())).rejects.toThrow(
+      /isn't a regular file/,
+    );
+    expect(readFileSync(outside, "utf8")).toBe("export X=1\n");
+    expect(readRegistry(h.paths)).toEqual([]);
+  });
+
+  it("says the daemon doesn't run on Windows yet", () => {
+    expect(daemonUnsupported("win32")).toContain("doesn't run on Windows yet");
+    expect(daemonUnsupported("linux")).toBeNull();
+    expect(daemonUnsupported("darwin")).toBeNull();
   });
 
   it("refuses outside a git repository", async () => {

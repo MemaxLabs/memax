@@ -14,6 +14,7 @@ import chalk from "chalk";
 import { controlRequest } from "../lib/daemon/control.js";
 import {
   daemonPaths,
+  daemonUnsupported,
   ensureDaemonDir,
   type DaemonPaths,
 } from "../lib/daemon/paths.js";
@@ -87,6 +88,11 @@ function launchDetached(paths: DaemonPaths): void {
 }
 
 export async function startDaemon(d: StartDeps): Promise<number> {
+  const unsupported = daemonUnsupported();
+  if (unsupported) {
+    d.out(chalk.yellow(`  ${unsupported}`));
+    return 1;
+  }
   let running = await status(d.paths);
   // `memax compile` holds the lock while it writes files; wait for it.
   for (let i = 0; running?.oneshot && i < 200; i++) {

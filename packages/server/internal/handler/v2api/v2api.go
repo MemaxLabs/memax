@@ -97,7 +97,10 @@ func (h *Handler) routes() *http.ServeMux {
 		verbs[pattern][verb] = rt
 	}
 	for pattern, byVerb := range verbs {
-		mux.HandleFunc(pattern, h.dispatch(byVerb))
+		path := strings.TrimPrefix(pattern, "POST ")
+		param := path[strings.LastIndexByte(path, '{')+1 : len(path)-1]
+		others := slices.DeleteFunc(slices.Clone(allowed[path]), func(m string) bool { return m == http.MethodPost })
+		mux.HandleFunc(pattern, h.dispatch(param, others, byVerb))
 	}
 	for path, methods := range allowed {
 		mux.HandleFunc(path, methodNotAllowed(methods))
@@ -120,21 +123,23 @@ func (h *Handler) serve(rt Route) http.HandlerFunc {
 	}
 }
 
-// dispatch serves the custom methods of one pattern: it splits
-// "M-0219:keep" into the ref and the verb.
-func (h *Handler) dispatch(byVerb map[string]Route) http.HandlerFunc {
+// dispatch serves the custom methods of one pattern: it splits the
+// wildcard ("M-0219:keep") into the value and the verb. A POST with no
+// verb is 405, allowing the path's other methods.
+func (h *Handler) dispatch(param string, others []string, byVerb map[string]Route) http.HandlerFunc {
 	verbs := make([]string, 0, len(byVerb))
 	for v := range byVerb {
 		verbs = append(verbs, ":"+v)
 	}
 	slices.Sort(verbs)
+	slices.Sort(others)
 	return func(w http.ResponseWriter, r *http.Request) {
-		raw := r.PathValue("ref")
+		raw := r.PathValue(param)
 		i := strings.LastIndexByte(raw, ':')
 		if i < 0 {
-			w.Header().Set("Allow", "GET")
+			w.Header().Set("Allow", strings.Join(others, ", "))
 			writeError(w, &apiError{status: http.StatusMethodNotAllowed, code: codeMethodNotAllowed,
-				message: "To change a memory, POST one of its commands: " + strings.Join(verbs, ", ") + "."})
+				message: "POST one of its commands instead: " + strings.Join(verbs, ", ") + "."})
 			return
 		}
 		rt, ok := byVerb[raw[i+1:]]
@@ -143,7 +148,7 @@ func (h *Handler) dispatch(byVerb map[string]Route) http.HandlerFunc {
 				message: "Unknown command " + raw[i:] + ". Use " + strings.Join(verbs, ", ") + "."})
 			return
 		}
-		r.SetPathValue("ref", raw[:i])
+		r.SetPathValue(param, raw[:i])
 		h.serve(rt)(w, r)
 	}
 }

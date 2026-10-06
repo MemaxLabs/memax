@@ -48,6 +48,9 @@ export function useBriefDone(space: SpaceSummary, brief: BriefView) {
       setFailure(null);
       const plan = donePlan(state);
       const refs = new Map<string, string>();
+      // Every step's key lives until the whole Done lands: pressed again
+      // after a failure, a step that already went through replays.
+      const intents: string[] = [];
       let kept = 0;
       try {
         for (const fact of plan.remember) {
@@ -63,7 +66,7 @@ export function useBriefDone(space: SpaceSummary, brief: BriefView) {
             section: fact.section,
             idempotencyKey: keys.keyFor(intent),
           });
-          keys.settle(intent);
+          intents.push(intent);
           kept += 1;
           // Only a kept memory can be placed; a viewer's goes to Review.
           if (result.outcome === "kept") refs.set(fact.key, result.ref);
@@ -82,7 +85,7 @@ export function useBriefDone(space: SpaceSummary, brief: BriefView) {
             statement: edit.statement,
             idempotencyKey: keys.keyFor(intent),
           });
-          keys.settle(intent);
+          intents.push(intent);
         }
         const structure = plan.structure(refs);
         const intent = intentOf(
@@ -97,7 +100,7 @@ export function useBriefDone(space: SpaceSummary, brief: BriefView) {
           structure,
           idempotencyKey: keys.keyFor(intent),
         });
-        keys.settle(intent);
+        for (const step of [...intents, intent]) keys.settle(step);
         afterCompile();
         toast({
           state: "kept",

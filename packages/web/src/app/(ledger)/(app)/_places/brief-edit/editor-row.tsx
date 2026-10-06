@@ -362,8 +362,8 @@ function sectionKeyOf(el: HTMLElement): string {
 
 function focusRow(key: string) {
   requestAnimationFrame(() => {
-    document
-      .querySelector<HTMLElement>(`[data-fact="${CSS.escape(key)}"]`)
+    [...document.querySelectorAll<HTMLElement>("[data-fact]")]
+      .find((row) => row.dataset.fact === key)
       ?.focus();
   });
 }

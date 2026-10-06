@@ -110,6 +110,7 @@ export function createDemoSource({
     return list.filter((t) => t.delivery !== "copy" && t.syncState !== "off")
       .length;
   };
+  const remembered = new Map<string, KeepResult>();
   const kept = (ref: string, slug: string): KeepResult => ({
     ref,
     outcome: "kept",
@@ -175,11 +176,16 @@ export function createDemoSource({
         condition: duplicate ? DEMO_PNPM_PROPOSAL.condition : null,
       };
     },
-    async remember({ space, statement, section }) {
+    async remember({ space, statement, section, idempotencyKey }) {
+      // The same key is the same command, as on the server.
+      const replay = remembered.get(idempotencyKey);
+      if (replay) return replay;
       const ref = allocRef();
       // So the Brief places it, as the compiler does.
       brief.remembered(space.slug, { ref, statement, section });
-      return kept(ref, space.slug);
+      const result = kept(ref, space.slug);
+      remembered.set(idempotencyKey, result);
+      return result;
     },
     async keepProposal({ space, ref }) {
       return kept(ref, space.slug);

@@ -199,12 +199,17 @@ function FileSide({
   if (lines[lines.length - 1] === "") lines.pop();
   let front = lines[0] === "---";
   return (
-    <section className={`mx-panel ${styles.filePanel}`} aria-label={title}>
+    <section className={`mx-panel ${styles.filePanel}`}>
       <header className="mx-panel-head">
         <h2 className={`mx-panel-title ${styles.fileTitle}`}>{title}</h2>
         {meta ? <span className="mx-meta">{meta}</span> : null}
       </header>
-      <pre className={styles.code} tabIndex={0} aria-label={title}>
+      <pre
+        className={styles.code}
+        tabIndex={0}
+        role="region"
+        aria-label={title}
+      >
         <code className={styles.lines}>
           {lines.map((line, i) => {
             const quiet = front || line.startsWith("<!--");

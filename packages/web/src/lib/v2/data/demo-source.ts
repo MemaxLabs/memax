@@ -166,8 +166,10 @@ export function createDemoSource({
         space.slug === "memax-v2" && DEMO_PNPM_PROPOSAL.matches.test(statement)
           ? {
               ref: DEMO_PNPM_PROPOSAL.ref,
+              lifecycle: "proposed" as const,
               agent: DEMO_PNPM_PROPOSAL.agent,
-              proposedAt: DEMO_PNPM_PROPOSAL.proposedAt,
+              writtenAt: DEMO_PNPM_PROPOSAL.proposedAt,
+              match: "near" as const,
             }
           : null;
       return {

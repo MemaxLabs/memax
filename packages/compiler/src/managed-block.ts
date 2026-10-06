@@ -97,9 +97,12 @@ export function upsertManagedBlock(content: string, inner: string[]): string {
     return before + block.join(eol) + lines[at.end].eol + after;
   }
   if (content === "") return block.join(eol) + eol;
+  // End the last line, then leave a blank one before the block. Look at
+  // the lines, not the last characters: `\r\n` is one line break, not two.
+  const last = lines[lines.length - 1];
   let out = content;
-  if (!/(\r\n|\r|\n)$/.test(out)) out += eol;
-  if (!/(\r\n|\r|\n)(\r\n|\r|\n)$/.test(out)) out += eol;
+  if (last.eol === "") out += eol;
+  if (last.text !== "") out += eol;
   return out + block.join(eol) + eol;
 }
 

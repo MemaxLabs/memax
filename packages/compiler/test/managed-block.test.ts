@@ -29,6 +29,23 @@ describe("upsertManagedBlock", () => {
     );
   });
 
+  it("appends after a blank line in a CRLF file too", () => {
+    // `\r\n` is one line break: the file doesn't end with a blank line yet.
+    const mine = "# Mine\r\n\r\nTabs.\r\n";
+    const out = upsertManagedBlock(mine, BLOCK);
+    expect(out).toBe(
+      `${mine}\r\n<!-- memax:start -->\r\n<!-- header -->\r\n@AGENTS.md\r\n<!-- memax:end -->\r\n`,
+    );
+    expect(upsertManagedBlock(out, BLOCK)).toBe(out);
+    // A file that already ends with a blank line gets no second one.
+    expect(upsertManagedBlock("top\r\n\r\n", BLOCK)).toBe(
+      "top\r\n\r\n<!-- memax:start -->\r\n<!-- header -->\r\n@AGENTS.md\r\n<!-- memax:end -->\r\n",
+    );
+    expect(upsertManagedBlock("old mac\r\r", BLOCK)).toBe(
+      "old mac\r\r<!-- memax:start -->\r<!-- header -->\r@AGENTS.md\r<!-- memax:end -->\r",
+    );
+  });
+
   it("adds a line break when the file doesn't end with one", () => {
     expect(upsertManagedBlock("No newline", BLOCK)).toBe(
       "No newline\n\n<!-- memax:start -->\n<!-- header -->\n@AGENTS.md\n<!-- memax:end -->\n",

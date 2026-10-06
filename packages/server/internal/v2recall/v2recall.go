@@ -286,7 +286,7 @@ func (Trigram) Rank(ctx context.Context, tx pgx.Tx, q Query, limit int) ([]uuid.
 		return nil, nil
 	}
 	// The <% operator is word similarity at the transaction's threshold,
-	// and memory_versions_trgm_idx (migration 033) serves it, so only
+	// and memory_versions_trgm_idx (migration 034) serves it, so only
 	// statements that share trigrams with the query are scored.
 	if _, err := tx.Exec(ctx, `SELECT set_config('pg_trgm.word_similarity_threshold', $1, true)`,
 		fmt.Sprintf("%g", trigramThreshold)); err != nil {

@@ -1,7 +1,7 @@
 // Package spacemode decides, per space, whether a surface behaves as V1
 // or on the V2 record (plan 25 §10: each space switches to V2 on its own).
 //
-// The switch is hubs.v2_enabled_at (migration 032). A space without it is
+// The switch is hubs.v2_enabled_at (migration 033). A space without it is
 // on V1, and every surface keeps V1's behaviour and response shapes there;
 // a space with it is served through internal/ledger. This package is the
 // one place that reads the switch, so every surface (MCP today, the /v1

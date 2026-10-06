@@ -164,7 +164,7 @@ type GrantContext struct {
 	// or auth.SurfaceCLI; migration 030), set by the server at login. Empty
 	// for API keys, OAuth grants, impersonation and older tokens.
 	Surface string
-	// OAuthScope is an OAuth grant's granted scope (migration 031), empty
+	// OAuthScope is an OAuth grant's granted scope (migration 032), empty
 	// for API keys and grants from before it was recorded.
 	OAuthScope string
 }

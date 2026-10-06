@@ -84,6 +84,21 @@ jobs:
           go-version: "1.26"
           cache-dependency-path: packages/server/go.sum
 
+      # The compile pipeline's integration tests start the real Node
+      # compile service (packages/compile-service, built from source by
+      # internal/compile/compiletest). Install its workspace deps so those
+      # tests run instead of skipping.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install compile-service dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile --filter @memaxlabs/compile-service...
+
       - run: go vet ./...
       - run: go build ./cmd/server ./cmd/worker
 
@@ -99,7 +114,11 @@ jobs:
       # store / dreams / handler packages. The `-tags=integration`
       # flag additionally pulls in the full 5-phase dream cycle
       # test in internal/dreams/integration_test.go.
+      # MEMAX_REQUIRE_COMPILE_SERVICE turns a missing Node or compile
+      # service into a failure, so the compile pipeline can't silently skip.
       - run: go test -tags=integration ./...
+        env:
+          MEMAX_REQUIRE_COMPILE_SERVICE: "1"
 
   eval:
     name: Retrieval eval

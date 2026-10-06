@@ -10,9 +10,14 @@ directory.
 | memax-cli            | `packages/cli`        | Apache License 2.0               |
 | memax-sdk            | `packages/sdk`        | Apache License 2.0               |
 | Developer Hub (docs) | `packages/docs-site`  | Apache License 2.0               |
+| Ledger tokens        | `packages/ledger-tokens` | Apache License 2.0 (fonts: SIL OFL 1.1) |
+| Compiler             | `packages/compiler`   | Apache License 2.0               |
+| `/v2` API contract   | `packages/server/openapi/v2.yaml` | Apache License 2.0   |
 | API server & worker  | `packages/server`     | GNU Affero General Public License v3.0 |
 | Design system (UI)   | `packages/ui`         | GNU Affero General Public License v3.0 |
 | Web app              | `packages/web`        | GNU Affero General Public License v3.0 |
+| Ledger components    | `packages/ledger`     | GNU Affero General Public License v3.0 |
+| Compile service      | `packages/compile-service` | GNU Affero General Public License v3.0 |
 
 The full text of each license is available at the repository root for
 convenience:
@@ -22,7 +27,10 @@ convenience:
 
 When you use, copy, modify, or distribute any package, the license in that
 package's directory governs. The Apache-2.0 packages (`cli`, `sdk`,
-`docs-site`) do not depend on any AGPL-licensed package in this repository, so
-they may be used independently under Apache-2.0 terms.
+`docs-site`, `ledger-tokens`, `compiler`) do not depend on any AGPL-licensed
+package in this repository, so they may be used independently under Apache-2.0
+terms. The `/v2` API contract, `packages/server/openapi/v2.yaml`, is
+Apache-2.0 inside the AGPL server package so that the Apache-2.0 SDK can carry
+the types generated from it.
 
 Copyright 2026 MemaxLabs, Inc. See `NOTICE` for attribution details.

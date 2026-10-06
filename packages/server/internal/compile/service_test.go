@@ -251,13 +251,20 @@ func TestQuietWindow(t *testing.T) {
 	ctx := context.Background()
 	args := ledger.CompileTargetArgs{TargetID: tg.ID, SpaceID: s.space}
 
-	// Waits for the quiet window after the last change.
+	// Waits for the quiet window after the last change. The window is
+	// measured from the target's last change (dirty_at, set while
+	// seeding), not from when the job starts: under load the seed's tail
+	// can eat into the window, so timing from start was flaky.
+	lastChange := f.get(s.owner, tg.ID).DirtyAt
 	start := time.Now()
 	if _, err := f.svc.Run(ctx, args, compile.RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if d := time.Since(start); d < 300*time.Millisecond || d > 1500*time.Millisecond {
-		t.Errorf("quiet run took %v, want about the 400ms window", d)
+	if quiet := time.Since(lastChange); quiet < 400*time.Millisecond-20*time.Millisecond {
+		t.Errorf("compiled %v after the last change, want at least the 400ms quiet window", quiet)
+	}
+	if d := time.Since(start); d > 1500*time.Millisecond {
+		t.Errorf("quiet run took %v, want no more than the 1.5s cap", d)
 	}
 	// Under constant change, waits no longer than the cap.
 	f.apply(&ledger.RequestCompile{Meta: f.meta(s.owner, policy.ViaWeb), Target: tg.ID})

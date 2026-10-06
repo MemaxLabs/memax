@@ -1,11 +1,11 @@
 "use client";
 
 import { Button, Receipt, Redaction } from "@memaxlabs/ledger";
-import { interpolate } from "@/i18n";
-import { count, formatShortDate } from "@/lib/v2/copy";
+import { formatShortDate } from "@/lib/v2/copy";
 import type { MemoryRecord } from "@/lib/v2/data/memories";
 import { useAriaKeys, useKeycap } from "@/lib/v2/keymap/react";
 import { placeHref } from "@/lib/v2/places";
+import { memoryReadsText, reachText } from "@/lib/v2/reads-copy";
 import { StatementText } from "../../_components/statement-text";
 import type { RecordsView } from "../records-view";
 import styles from "./memory.module.css";
@@ -38,13 +38,8 @@ export function MemoryHead({
     : record.latest;
   const stamp = receipt ? view.stamp(receipt.by) : null;
   const meta = [
-    record.reads === null ? null : count(p.readsOne, p.reads, record.reads),
-    record.reach
-      ? interpolate(p.reach, {
-          files: count(p.filesOne, p.files, record.reach.files),
-          agents: count(p.agentsOne, p.agents, record.reach.agents),
-        })
-      : null,
+    memoryReadsText(p, record, locale),
+    reachText(p, record.reach, locale),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -83,7 +78,12 @@ export function MemoryHead({
           />
         ) : null}
         {meta ? (
-          <span className={`mx-meta ${styles.prose}`}>{meta}</span>
+          <span
+            className={`mx-meta ${styles.prose}`}
+            title={record.readsUnobserved ? p.readsUnobserved : undefined}
+          >
+            {meta}
+          </span>
         ) : null}
       </div>
       {record.lifecycle === "proposed" ? (

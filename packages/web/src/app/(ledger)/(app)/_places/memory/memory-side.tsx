@@ -2,8 +2,9 @@
 
 import { Icon, type IconName } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
-import { count, formatWhen } from "@/lib/v2/copy";
+import { formatWhen } from "@/lib/v2/copy";
 import type { MemoryRecord } from "@/lib/v2/data/memories";
+import { reachMeta } from "@/lib/v2/reads-copy";
 import { TargetRow } from "../../_components/target-row";
 import type { RecordsView } from "../records-view";
 import styles from "./memory.module.css";
@@ -29,7 +30,7 @@ export function MemorySide({
 }) {
   const { l, rc, copy, now, timeZone, locale } = view;
   const p = l.memory.page;
-  const reach = record.reach;
+  const reach = reachMeta(p, record.reach, locale);
   return (
     <aside className={styles.side}>
       <section className="mx-panel">
@@ -70,14 +71,7 @@ export function MemorySide({
       <section className="mx-panel">
         <header className="mx-panel-head">
           <h2 className="mx-panel-title">{p.reaches}</h2>
-          {reach ? (
-            <span className="mx-meta">
-              {interpolate(p.reachesMeta, {
-                files: count(p.filesOne, p.files, reach.files),
-                agents: count(p.agentsOne, p.agents, reach.agents),
-              })}
-            </span>
-          ) : null}
+          {reach ? <span className="mx-meta">{reach}</span> : null}
         </header>
         {record.reaches?.length ? (
           record.reaches.map((target) => (

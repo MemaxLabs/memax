@@ -153,10 +153,12 @@ export function recordOf(
         ? { by: actorOf(keptReceipt, viewerId), at: keptReceipt.occurred_at }
         : null,
     latest: railOf(newest[0], viewerId),
-    // PLACEHOLDER: reads, reach and compiled files aren't served by /v2
-    // yet. What was folded into it comes from its links (the caller).
-    reads: null,
-    reach: null,
+    // Its reads and the agents they came from (absent when the counts
+    // couldn't be read). The files it reaches come from the targets, and
+    // what was folded into it from its links: both the caller's.
+    reads: detail.reads?.reads ?? null,
+    ...(detail.reads?.unobserved_target ? { readsUnobserved: true } : {}),
+    reach: detail.reads ? { files: null, agents: detail.reads.agents } : null,
     merged,
     reaches: null,
     lineage: lineageOf(receipts, viewerId, {

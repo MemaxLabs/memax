@@ -254,3 +254,44 @@ describe("the CSV export", () => {
     );
   });
 });
+
+describe("the compile pipeline's receipts", () => {
+  const cases: Array<[ActivityEntry["action"], string, string]> = [
+    ["revised", "B-0043", "You revised the Brief (B-0043)."],
+    ["configured", "AGENTS.md", "You changed how AGENTS.md is written."],
+    ["requested", "AGENTS.md", "You asked for AGENTS.md to be compiled."],
+    ["delivered", "AGENTS.md", "You wrote AGENTS.md to disk."],
+    ["observed", "AGENTS.md", "You found a hand edit in AGENTS.md."],
+    [
+      "pulled",
+      "AGENTS.md",
+      "You pulled the hand edit in AGENTS.md into Review.",
+    ],
+    ["overwritten", "AGENTS.md", "You overwrote the hand edit in AGENTS.md."],
+    ["stopped", "AGENTS.md", "You stopped compiling AGENTS.md."],
+  ];
+
+  it.each(cases)("words %s in en and zh", (action, ref, english) => {
+    const e = entry({ action, object: { kind: "target", ref, id: "t1" } });
+    const say = (locale: "en" | "zh") =>
+      sentenceText(
+        activitySentences(
+          (locale === "en" ? en : zh).ledger.activity,
+          e,
+          names(locale),
+        ),
+        locale,
+      );
+    expect(say("en")).toBe(english);
+    expect(say("zh")).toContain(ref);
+    expect(say("zh")).not.toMatch(/[A-Za-z]{4,} [a-z]/); // no English left in zh
+  });
+
+  it("files compile-pipeline receipts under compiles, a Brief revision under writes", () => {
+    for (const [action] of cases) {
+      expect(activityCategory(entry({ action }))).toBe(
+        action === "revised" ? "writes" : "compiles",
+      );
+    }
+  });
+});

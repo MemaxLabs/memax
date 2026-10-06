@@ -9,32 +9,19 @@
  * only a source that has them can give (the demo's quotes, a compile's
  * targets). No words live here: activity-copy.ts builds the sentences.
  */
+import type { V2 } from "memax-sdk";
 import type { Autonomy } from "./agents";
 import type { SpaceSummary } from "./types";
 
-/** The receipt verbs (spec ReceiptAction), plus reads, which are not receipts (plan §5.3). */
+/**
+ * The receipt verbs, derived from the spec's ReceiptAction through the
+ * generated SDK types, so a verb added to the API breaks the build in
+ * sentence.ts until it has words. Plus three entries that aren't receipt
+ * verbs: reads (not receipts, plan §5.3), a gate an agent raised, and a
+ * compiled file edited outside Memax.
+ */
 export type ActivityAction =
-  | "proposed"
-  | "kept"
-  | "edited"
-  | "rejected"
-  | "merged"
-  | "flagged"
-  | "resolved"
-  | "verified"
-  | "faded"
-  | "restored"
-  | "forgot"
-  | "moved"
-  | "compiled"
-  | "handed_off"
-  | "answered"
-  | "undid"
-  | "connected"
-  | "autonomy_changed"
-  | "paused"
-  | "resumed"
-  | "disconnected"
+  | V2.ReceiptAction
   | "read"
   /** A decision gate an agent raised (H-…). */
   | "asked"
@@ -200,6 +187,13 @@ export function activityCategory(
       return "reads";
     case "compiled":
     case "drifted":
+    case "configured":
+    case "requested":
+    case "delivered":
+    case "observed":
+    case "pulled":
+    case "overwritten":
+    case "stopped":
       return "compiles";
     case "forgot":
       return "forgets";

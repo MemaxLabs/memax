@@ -233,8 +233,30 @@ export function activitySentences(
       return [one(s.resumed, { agent: agentObject })];
     case "disconnected":
       return [one(s.disconnected, { agent: agentObject })];
-    default:
+    case "revised":
+      return [one(s.revised, { ref: text(entry.object.ref) })];
+    case "configured":
+      return [one(s.configured, { ref: text(entry.object.ref) })];
+    case "requested":
+      return [one(s.requested, { ref: text(entry.object.ref) })];
+    case "delivered":
+      return [one(s.delivered, { ref: text(entry.object.ref) })];
+    case "observed":
+      return [one(s.observed, { ref: text(entry.object.ref) })];
+    case "pulled":
+      return [one(s.pulled, { ref: text(entry.object.ref) })];
+    case "overwritten":
+      return [one(s.overwritten, { ref: text(entry.object.ref) })];
+    case "stopped":
+      return [one(s.stopped, { ref: text(entry.object.ref) })];
+    default: {
+      // Every verb the API can send has words above; this fails to compile
+      // when the spec gains one. A newer server can still send a verb this
+      // client predates, so the runtime fallback stays.
+      const unhandled: never = entry.action;
+      void unhandled;
       return [one(s.other, { ref: text(entry.object.ref) })];
+    }
   }
 }
 

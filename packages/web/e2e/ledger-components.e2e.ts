@@ -19,23 +19,23 @@ import {
 // checkout, this file skips.
 //
 // Threshold. The handoff PNGs were rendered by the design canvas, not
-// by this build's Chromium, so glyph edges never match exactly. Phase
-// 0 measured 0.15–3.3% of pixels differing across the 54 previews
-// (plan §12, Phase 0 log), all antialiasing. Playwright's comparator
-// already ignores pixels it classifies as antialiased and tolerates a
-// per-pixel colour distance of 0.2 (YIQ); on top of that we allow 4% of
-// an artboard to differ: above the worst preview's 3.3% with a margin
-// for font hinting, and far below what a moved control, a changed
-// colour token or a missing element produces (each of those touches a
-// solid region well over 5% of these small artboards). Override with
-// E2E_HANDOFF_MAX_RATIO (0 prints every preview's measured ratio).
+// by this build's Chromium, so text never lands on exactly the same
+// subpixels: glyph edges differ, and long lines drift by a pixel as
+// advances round differently. Phase 0 measured 0.15–3.3% of pixels
+// differing across the 54 previews (plan §12, Phase 0 log). Through
+// Playwright's comparator (which skips pixels it classifies as
+// antialiased, with a per-pixel YIQ tolerance of 0.2) this gallery
+// measures 0.07–2.16%, mean 0.93% (Cite and Diff, long serif lines, are
+// the worst). We allow 3.5% of an artboard: just above the worst
+// either measurement saw, and well under what a changed colour token or
+// a moved panel produces. It's a check against the design, not the
+// regression guard; component tests and the shell's self-baselines are.
+// E2E_HANDOFF_MAX_RATIO overrides it (0 prints every preview's count).
 
 skipWithoutBrowser();
 
-const MAX_RATIO = Number(process.env.E2E_HANDOFF_MAX_RATIO ?? 0.04);
+const MAX_RATIO = Number(process.env.E2E_HANDOFF_MAX_RATIO ?? 0.035);
 const dir = handoffPreviewsDir();
-
-test.describe.configure({ mode: "serial" });
 
 test.beforeAll(() => {
   test.skip(!dir, HANDOFF_MISSING);

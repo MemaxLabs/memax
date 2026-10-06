@@ -2,6 +2,22 @@
 
 All notable changes to `memax-sdk` are documented here.
 
+## Unreleased
+
+- Added `memax.v2`, the first resources on the `/v2` API (the V2
+  record): `spaces.list`, `memories.remember` / `list` / `get` /
+  `keep` / `edit` / `reject`, `review.list` and `receipts.list`.
+  Commands take a required `idempotencyKey`; `edit` takes the
+  `ifMatch` version it started from. `refusalOf(err)` returns the
+  policy decision behind a 403 `refused`.
+- Added the `V2` type namespace (`V2.Memory`, `V2.CommandResult`,
+  `V2.PolicyCode`, …), generated from
+  `packages/server/openapi/v2.yaml` into `src/v2/schema.gen.ts`
+  (`pnpm gen:v2`).
+- `extraHeaders` moved from `StreamOptions` to `RequestOptions`, so
+  every request can carry per-call headers (`StreamOptions` still
+  inherits it). V1 resources are unchanged.
+
 ## 0.5.0 - 2026-04-28
 
 - Added `chats` resource for plan 24's Agent Chat surface:

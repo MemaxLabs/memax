@@ -35,6 +35,30 @@ export {
 // Admin APIs are an internal, web-only surface and are intentionally not
 // exported by this public SDK.
 export { MemaxError } from "./errors.js";
+
+// /v2 — the V2 record. Types are generated from
+// packages/server/openapi/v2.yaml; use them as `V2.Memory`, `V2.PolicyCode`…
+// (`export * as`, not `export type * as`, so the .d.ts parses on
+// TypeScript before 5.0; the module holds only types.)
+export * as V2 from "./v2/types.js";
+export {
+  V2Resource,
+  V2SpacesResource,
+  V2MemoriesResource,
+  V2ReviewResource,
+  V2ReceiptsResource,
+  refusalOf,
+} from "./v2/resources.js";
+export type {
+  CommandOptions as V2CommandOptions,
+  MemoryRefOptions as V2MemoryRefOptions,
+  ReviewOptions as V2ReviewOptions,
+  EditOptions as V2EditOptions,
+  PageOptions as V2PageOptions,
+  ListMemoriesOptions as V2ListMemoriesOptions,
+  ListReceiptsOptions as V2ListReceiptsOptions,
+  GetMemoryOptions as V2GetMemoryOptions,
+} from "./v2/resources.js";
 export type {
   // Config
   MemaxConfig,

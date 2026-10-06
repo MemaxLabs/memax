@@ -18,6 +18,7 @@ import { AccountResource } from "./resources/account.js";
 import { EventsResource } from "./resources/events.js";
 import { BarResource } from "./resources/bar.js";
 import { ChatsResource } from "./resources/chats.js";
+import { V2Resource } from "./v2/resources.js";
 
 export class Memax {
   readonly memories: MemoriesResource;
@@ -38,6 +39,11 @@ export class Memax {
   readonly events: EventsResource;
   readonly bar: BarResource;
   readonly chats: ChatsResource;
+  /**
+   * The /v2 API: the V2 record (spaces, memories, Review, receipts).
+   * Types are under the `V2` namespace export.
+   */
+  readonly v2: V2Resource;
 
   constructor(config: MemaxConfig) {
     const transport = new ApiTransport(config);
@@ -68,6 +74,7 @@ export class Memax {
     this.events = new EventsResource(stream);
     this.bar = new BarResource(req);
     this.chats = new ChatsResource(req, stream);
+    this.v2 = new V2Resource(req);
   }
 
   async push(...args: Parameters<MemoriesResource["push"]>) {

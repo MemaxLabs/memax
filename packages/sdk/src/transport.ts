@@ -37,19 +37,20 @@ export interface RequestOptions {
    * cancellation; we never wrap them as `network_error`.
    */
   signal?: AbortSignal;
-}
-
-export interface StreamOptions extends RequestOptions {
-  onEvent: (event: string, data: unknown) => void;
-  onClose?: () => void;
   /**
    * Per-call header overrides. Use cases:
+   *   - /v2 commands send `Idempotency-Key` and `If-Match`.
    *   - Chat stream resume sends `Last-Event-ID` so the server
    *     replays only events past the last seq the client saw.
    * Static `headers` on `MemaxConfig` are still merged; this map
    * overrides per-request without mutating the transport singleton.
    */
   extraHeaders?: Record<string, string>;
+}
+
+export interface StreamOptions extends RequestOptions {
+  onEvent: (event: string, data: unknown) => void;
+  onClose?: () => void;
 }
 
 export interface DownloadOptions {
@@ -234,10 +235,13 @@ export class ApiTransport {
       }
 
       const authHeaders = await this.getAuth();
+      // Built per attempt from the same options, so a retried command
+      // carries the same Idempotency-Key.
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         ...this.headers,
         ...authHeaders,
+        ...(options?.extraHeaders ?? {}),
       };
       if (options?.hubId) {
         headers["X-Hub-ID"] = options.hubId;

@@ -214,6 +214,15 @@ describe("ledger CSS", () => {
     expect(rule?.[1]).toContain("color: var(--ink-2)");
   });
 
+  it("keeps a clickable stale row's dotted underline on its button", () => {
+    // Decorations don't propagate into atomic inline boxes such as a
+    // button, so MemoryRow onClick would lose the stale state's mark.
+    const hardening = stripComments(read(join(SRC, "styles/hardening.css")));
+    expect(hardening).toMatch(
+      /\.mx-row\.is-stale button\.mx-row-link \{ text-decoration: inherit; \}/,
+    );
+  });
+
   it("never wraps the terminal mid-token", () => {
     const body = declarations(join(SRC, "styles/hardening.css")).filter((d) =>
       ["white-space", "overflow-x"].includes(d.property),

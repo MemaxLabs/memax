@@ -5,7 +5,15 @@
 // so stopping one never signals a pid that may have been reused.
 //
 // One request per connection: a JSON line in, a JSON line out.
-import { closeSync, openSync, statSync, unlinkSync, writeSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import {
+  closeSync,
+  openSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeSync,
+} from "node:fs";
 import { createConnection, createServer, type Server } from "node:net";
 import { isCode } from "./fs-atomic.js";
 import { ensureDaemonDir, type DaemonPaths } from "./paths.js";
@@ -19,11 +27,15 @@ export type ControlRequest =
 export type ControlHandler = (req: ControlRequest) => Promise<unknown>;
 
 export class AlreadyRunningError extends Error {
-  constructor(readonly pid: number | undefined) {
+  constructor(
+    readonly pid: number | undefined,
+    message?: string,
+  ) {
     super(
-      pid
-        ? `the Memax daemon is already running (pid ${pid})`
-        : "the Memax daemon is already running",
+      message ??
+        (pid
+          ? `the Memax daemon is already running (pid ${pid})`
+          : "the Memax daemon is already running"),
     );
     this.name = "AlreadyRunningError";
   }
@@ -35,6 +47,8 @@ export class ControlServer {
   private constructor(
     private readonly server: Server,
     private readonly path: string,
+    /** The socket file's inode, so close() removes only its own. */
+    private readonly ino: number,
   ) {}
 
   /** Listens on the socket, or throws AlreadyRunningError. */
@@ -68,11 +82,13 @@ export class ControlServer {
       });
     });
     await takeOver(paths, server);
-    return new ControlServer(server, paths.socket);
+    return new ControlServer(server, paths.socket, inode(paths.socket));
   }
 
   async close(): Promise<void> {
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
+    // Another daemon may have taken the path over meanwhile; leave its socket.
+    if (inode(this.path) !== this.ino) return;
     try {
       unlinkSync(this.path);
     } catch {
@@ -113,10 +129,61 @@ async function takeOver(paths: DaemonPaths, server: Server): Promise<void> {
     }
     const answer = await controlRequest(paths, { cmd: "status" }, 2_000);
     if (answer) throw new AlreadyRunningError((answer as { pid?: number }).pid);
+    // Nobody answered. A daemon that is alive but stopped (Ctrl-Z) or stuck
+    // still holds the lock: never take over from it.
+    const holder = liveDaemonPid(paths.pid);
+    if (holder) {
+      throw new AlreadyRunningError(
+        holder,
+        `the Memax daemon (pid ${holder}) holds the lock but isn't answering; resume it (fg) or end it (kill ${holder})`,
+      );
+    }
     unlinkSync(paths.socket);
     await listenOn(server, paths.socket);
   } finally {
     lock();
+  }
+}
+
+function inode(path: string): number {
+  try {
+    return statSync(path).ino;
+  } catch {
+    return -1;
+  }
+}
+
+/** The pid in the pid file, if that process is alive and runs a daemon. */
+export function liveDaemonPid(pidFile: string): number | null {
+  let pid: number;
+  try {
+    pid = Number(readFileSync(pidFile, "utf8").trim());
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) return null;
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return null; // gone, or not ours to signal
+  }
+  // A pid can be reused: it counts only if that process runs `daemon run`.
+  return /\bdaemon run\b/.test(commandOf(pid)) ? pid : null;
+}
+
+function commandOf(pid: number): string {
+  try {
+    if (process.platform === "linux") {
+      return readFileSync(`/proc/${pid}/cmdline`, "utf8")
+        .split("\u0000")
+        .join(" ");
+    }
+    return execFileSync("ps", ["-p", String(pid), "-o", "command="], {
+      encoding: "utf8",
+      timeout: 2_000,
+    });
+  } catch {
+    return "";
   }
 }
 

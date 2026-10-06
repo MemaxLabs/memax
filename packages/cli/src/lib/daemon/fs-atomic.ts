@@ -25,7 +25,9 @@ export type Disk =
     }
   | { kind: "symlink" }
   | { kind: "other" }
-  | { kind: "too_large"; size: number };
+  | { kind: "too_large"; size: number }
+  /** Not UTF-8 text (or holds NUL): read lossily, a rewrite would corrupt it. */
+  | { kind: "not_text" };
 
 /** Compiled files are tens of KiB; anything near this isn't one. */
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -57,7 +59,12 @@ export async function readDisk(abs: string): Promise<Disk> {
     const fst = await fh.stat();
     if (!fst.isFile()) return { kind: "other" };
     if (fst.size > MAX_FILE_BYTES) return { kind: "too_large", size: fst.size };
-    const content = (await fh.readFile()).toString("utf8");
+    const bytes = await fh.readFile();
+    const content = bytes.toString("utf8");
+    // Only text that survives the round trip is safe to edit and write back.
+    if (bytes.includes(0) || !Buffer.from(content, "utf8").equals(bytes)) {
+      return { kind: "not_text" };
+    }
     return {
       kind: "file",
       content,

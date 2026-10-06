@@ -8,6 +8,7 @@ import {
   deliverRun,
   hasBaseline,
   judgeFile,
+  userOwned,
   type DeliverDeps,
 } from "./deliver.js";
 import { readDisk, type FsHooks } from "./fs-atomic.js";
@@ -42,7 +43,7 @@ export class RepoDelivery {
   private queue: Promise<unknown> = Promise.resolve();
   private retryAt = new Map<
     string,
-    { at: number; failures: number; blocked: boolean }
+    { at: number; failures: number; blocked: boolean; version: number }
   >();
   private goodOf = new Map<string, { failed: string; good: string }>();
   private polledAt?: string;
@@ -95,7 +96,7 @@ export class RepoDelivery {
           busy = (await this.syncTarget(t)) || busy;
         } catch (err) {
           const f = failureOf(err);
-          this.backoff(t.id);
+          this.backoff(t);
           this.note(t, {
             state: "error",
             detail: `couldn't deliver (${f.code})`,
@@ -149,9 +150,11 @@ export class RepoDelivery {
     }
     // Backing off after a failure: wait it out. A file the daemon won't
     // write (a symlink, say) waits for a person, so it never asks the feed
-    // to poll fast; it is tried again on the next full poll after the wait.
+    // to poll fast; it is tried again on the next full poll after the wait,
+    // or at once when the target changes (a person resolved something).
     const retry = this.retryAt.get(t.id);
-    if (retry && Date.now() < retry.at) return inFlight && !retry.blocked;
+    if (retry && retry.version !== t.version) this.retryAt.delete(t.id);
+    else if (retry && Date.now() < retry.at) return inFlight && !retry.blocked;
 
     const p = await this.d.api.preview(t.id);
     if (!p.compile) {
@@ -161,17 +164,25 @@ export class RepoDelivery {
     if (last.status === "failed")
       this.goodOf.set(t.id, { failed: last.ref, good: p.compile.ref });
     const res = await deliverRun(this.d, t, p);
-    const blocked = res.state === "blocked";
-    if (res.retry || blocked) this.backoff(t.id, blocked);
+    // Held for a person: a file it won't write, or a hand edit (the server
+    // turns the target drifted; if it didn't agree, don't loop on it).
+    const blocked = res.state === "blocked" || res.state === "hand_edit";
+    if (res.retry || blocked) this.backoff(t, blocked);
     else this.retryAt.delete(t.id);
     this.note(t, res);
     return !blocked && (inFlight || res.state === "pending");
   }
 
-  private backoff(id: string, blocked = false): void {
-    const failures = (this.retryAt.get(id)?.failures ?? 0) + 1;
+  private backoff(t: V2.Target, blocked = false): void {
+    const prev = this.retryAt.get(t.id);
+    const failures = (prev?.version === t.version ? prev.failures : 0) + 1;
     const ms = Math.min(5 * 60_000, 2_000 * 2 ** (failures - 1));
-    this.retryAt.set(id, { at: Date.now() + ms, failures, blocked });
+    this.retryAt.set(t.id, {
+      at: Date.now() + ms,
+      failures,
+      blocked,
+      version: t.version,
+    });
   }
 
   /** Checks one file after a watcher event or a rescan. */
@@ -208,7 +219,13 @@ export class RepoDelivery {
       if (!j) return; // couldn't ask the runs; the next rescan tries again
       if (j.kind === "hand_edit" && disk.kind === "file") {
         this.fileNotes.set(path, { path, state: "hand_edit" });
-        await this.d.reporter.report(t, path, disk.content, j.hash);
+        await this.d.reporter.report(
+          t,
+          path,
+          disk.content,
+          j.hash,
+          userOwned(t),
+        );
         return;
       }
       const notes: Partial<Record<typeof j.kind, FileSnapshot>> = {

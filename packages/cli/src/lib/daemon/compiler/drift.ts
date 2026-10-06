@@ -29,6 +29,16 @@ export function driftHash(content: string): string {
   return sha256Hex(block ?? normalized);
 }
 
+/**
+ * The whole file's hash, line endings and a BOM aside: what a file Memax
+ * owns is judged by. (driftHash looks only at a managed block when there
+ * is one, which is right for a file the person owns and wrong for any
+ * other: the text around the block would go unnoticed.)
+ */
+export function wholeHash(content: string): string {
+  return sha256Hex(normalize(content));
+}
+
 /** Whether a file holds a managed block: none, one, or broken markers. */
 export function blockState(content: string): "none" | "present" | "broken" {
   try {

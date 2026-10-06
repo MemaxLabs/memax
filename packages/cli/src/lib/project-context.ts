@@ -266,8 +266,13 @@ export function readMemaxYmlHub(): string | undefined {
 // V2: the space a repository is linked to (`space:` in .memax.yml)
 // =============================================================================
 
-const SPACE_LINE = /^space:\s*(.+?)\s*$/m;
+/** A `space:` line with a value (never reading on into the next line). */
+const SPACE_LINE = /^space:[ \t]*(\S[^\r\n]*?)[ \t]*$/m;
+/** Any `space:` line, empty or not, with its line break. */
+const SPACE_KEY = /^space:[^\r\n]*(\r?\n|$)/m;
 const SPACE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const LINK_COMMENT =
+  "# The Memax space this repository compiles from (memax link).";
 
 function unquote(v: string): string {
   const m = v.match(/^(["'])(.*)\1$/);
@@ -323,10 +328,11 @@ export function writeMemaxYmlSpace(root: string, space: string): boolean {
   const before = existsSync(path) ? readFileSync(path, "utf-8") : "";
   const line = `space: ${space}`;
   let after: string;
-  if (SPACE_LINE.test(before)) {
-    after = before.replace(SPACE_LINE, line);
+  const existing = before.match(SPACE_KEY);
+  if (existing) {
+    after = before.replace(SPACE_KEY, line + (existing[1] || ""));
   } else if (before === "") {
-    after = `# The Memax space this repository compiles from (memax link).\n${line}\n`;
+    after = `${LINK_COMMENT}\n${line}\n`;
   } else {
     after = before + (before.endsWith("\n") ? "" : "\n") + line + "\n";
   }
@@ -337,18 +343,19 @@ export function writeMemaxYmlSpace(root: string, space: string): boolean {
 
 /**
  * Takes `space:` out of `<root>/.memax.yml`, and the file with it when
- * nothing but comments would be left. Returns whether anything changed.
+ * nothing but `memax link`'s own comment would be left (a person's
+ * comments keep it). Returns whether anything changed.
  */
 export function removeMemaxYmlSpace(root: string): boolean {
   const path = memaxYmlPath(root);
   if (!existsSync(path)) return false;
   const before = readFileSync(path, "utf-8");
-  if (!SPACE_LINE.test(before)) return false;
-  const after = before.replace(/^space:.*(\r?\n|$)/m, "");
-  const meaningful = after
+  if (!SPACE_KEY.test(before)) return false;
+  const after = before.replace(SPACE_KEY, "");
+  const left = after
     .split(/\r?\n/)
-    .some((l) => l.trim() !== "" && !l.trim().startsWith("#"));
-  if (meaningful) writeFileSync(path, after);
+    .some((l) => l.trim() !== "" && l.trim() !== LINK_COMMENT);
+  if (left) writeFileSync(path, after);
   else unlinkSync(path);
   return true;
 }

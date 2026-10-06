@@ -14,6 +14,7 @@ import {
 import type { KnownCompiles } from "./known.js";
 import type { Logger } from "./log.js";
 import {
+  fileHash,
   judge,
   planFrom,
   settleUnknown,
@@ -63,8 +64,16 @@ export function knownHashes(
   path: string,
 ): Set<string> {
   const set = new Set(d.state.written(d.root, t.id, path));
-  const base = t.delivered?.files.find((f) => f.path === path)?.sha256;
-  if (base) set.add(base);
+  const base = t.delivered?.files.find((f) => f.path === path);
+  if (base) set.add(base.sha256);
+  // A hand edit a person accepted (pulled or overwrote) is the baseline
+  // under the server's hash, which can differ from the one the daemon
+  // judges by. If it is the edit this device reported, its own hash is
+  // known too.
+  const local = d.state.peek(d.root, t.id)?.files[path];
+  if (base?.observation && local?.reported && local.observed === base.sha256) {
+    set.add(local.reported);
+  }
   const latest = t.last_compile?.files.find(
     (f) => f.path === path,
   )?.drift_sha256;
@@ -184,7 +193,13 @@ export async function deliverRun(
   if (files.some((f) => f.plan.kind === "hand_edit")) {
     for (const f of files) {
       if (f.plan.kind === "hand_edit" && f.disk.kind === "file") {
-        await d.reporter.report(t, f.out.path, f.disk.content, f.plan.hash);
+        await d.reporter.report(
+          t,
+          f.out.path,
+          f.disk.content,
+          f.plan.hash,
+          owned,
+        );
       }
     }
     return handEdit(files);
@@ -242,7 +257,7 @@ export async function deliverRun(
       const disk = await readDisk(f.abs);
       const again = await judgeFile(d, t, f.out.path, disk, f.out.drift_sha256);
       if (again?.kind === "hand_edit" && disk.kind === "file") {
-        await d.reporter.report(t, f.out.path, disk.content, again.hash);
+        await d.reporter.report(t, f.out.path, disk.content, again.hash, owned);
         f.plan = again;
         return handEdit(files);
       }
@@ -323,7 +338,7 @@ async function removeDropped(
     const disk = await readDisk(abs);
     if (
       disk.kind === "file" &&
-      knownHashes(d, t, path).has(driftHash(disk.content))
+      knownHashes(d, t, path).has(fileHash(disk.content, false))
     ) {
       if ((await removeIfUnchanged(abs, disk.content)) === "removed") {
         d.log.info("removed a file the target no longer writes", {

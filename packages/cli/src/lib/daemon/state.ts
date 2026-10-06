@@ -10,8 +10,12 @@ export interface FileLocal {
   sha?: string;
   /** Earlier hashes it wrote there, newest first. */
   history: string[];
-  /** The drift hash of the hand edit last reported for the path. */
+  /** The hash of the hand edit last reported for the path. */
   reported?: string;
+  /** The target's version after that report: it moves when a person resolves it. */
+  reported_version?: number;
+  /** The hash the server recorded for that report (its own drift hash). */
+  observed?: string;
   written_at?: string;
 }
 
@@ -90,6 +94,8 @@ export class DeviceState {
     f.sha = sha;
     f.written_at = at.toISOString();
     f.reported = undefined;
+    f.reported_version = undefined;
+    f.observed = undefined;
     this.changed();
   }
 
@@ -120,8 +126,17 @@ export class DeviceState {
     return { ...(this.data.repos[root]?.targets ?? {}) };
   }
 
-  reported(root: string, targetId: string, path: string, sha: string): void {
-    this.file(root, targetId, path).reported = sha;
+  reported(
+    root: string,
+    targetId: string,
+    path: string,
+    sha: string,
+    meta: { version: number; observed?: string },
+  ): void {
+    const f = this.file(root, targetId, path);
+    f.reported = sha;
+    f.reported_version = meta.version;
+    f.observed = meta.observed;
     this.changed();
   }
 

@@ -1,10 +1,17 @@
 // Reporting a hand edit (POST /v2/targets/{target}/observations): the file
-// as it is on disk, once per distinct content, at most once every few
-// seconds per file so an editor's autosave doesn't flood Review. The server
-// keeps the content and marks the target drifted; a person pulls it back
-// as proposals, overwrites it or stops compiling it (DriftResolve).
+// as it is on disk, once per distinct content until a person resolves it,
+// at most once every few seconds per file so an editor's autosave doesn't
+// flood Review. The server keeps the content and marks the target drifted;
+// a person pulls it back as proposals, overwrites it or stops compiling it
+// (DriftResolve).
+//
+// For a file the person owns (a user-owned CLAUDE.md, or CLAUDE.local.md),
+// only Memax's block is sent: the rest is theirs, and it would land in a
+// space other people may read. With no block left (or broken markers),
+// the report is empty, which the server reads as the block removed.
 import type { V2 } from "memax-sdk";
 import { commandKey, failureOf, type DaemonApi } from "./api.js";
+import { extractManagedBlock } from "./compiler/managed-block.js";
 import type { Logger } from "./log.js";
 import type { DeviceState } from "./state.js";
 
@@ -30,6 +37,15 @@ export interface ReporterDeps {
   now?: () => number;
 }
 
+/** What is sent for a file the person owns: Memax's block, or nothing. */
+export function managedRegion(content: string): string {
+  try {
+    return extractManagedBlock(content) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export class HandEditReporter {
   private last = new Map<string, number>();
   private pending = new Map<string, NodeJS.Timeout>();
@@ -46,25 +62,31 @@ export class HandEditReporter {
     path: string,
     content: string,
     hash: string,
+    userOwned: boolean,
   ): Promise<ReportOutcome> {
     const { state, root } = this.d;
-    if (state.peek(root, t.id)?.files[path]?.reported === hash)
+    const f = state.peek(root, t.id)?.files[path];
+    // Reported already, and not resolved since: the target is still
+    // drifted, or still at the version the report left it at.
+    if (
+      f?.reported === hash &&
+      (t.sync_state === "drifted" || f.reported_version === t.version)
+    ) {
       return "already";
+    }
     const since = this.now() - (this.last.get(path) ?? -Infinity);
     if (since < this.gap) {
       this.defer(path, this.gap - since);
       return "deferred";
     }
-    if (content.length > MAX_REPORT_CHARS || content.includes("\u0000")) {
-      // Not text Memax compiles; say so once, and stop asking.
-      state.reported(root, t.id, path, hash);
-      this.d.log.warn(
-        "hand edit not reported: the file isn't text Memax can read back",
-        {
-          target: t.label,
-          path,
-        },
-      );
+    const body = userOwned ? managedRegion(content) : content;
+    if (body.length > MAX_REPORT_CHARS) {
+      // Far beyond any compiled file; say so once per version, and stop.
+      state.reported(root, t.id, path, hash, { version: t.version });
+      this.d.log.warn("hand edit not reported: the file is too large", {
+        target: t.label,
+        path,
+      });
       return "unreportable";
     }
     this.last.set(path, this.now());
@@ -72,10 +94,13 @@ export class HandEditReporter {
     try {
       const res = await this.d.api.observe(
         t.id,
-        { path, content, device_id: this.d.deviceId },
+        { path, content: body, device_id: this.d.deviceId },
         key,
       );
-      state.reported(root, t.id, path, hash);
+      state.reported(root, t.id, path, hash, {
+        version: res.target.version,
+        observed: res.observation?.observed_sha256,
+      });
       this.d.log.info(
         res.drifted
           ? "reported a hand edit"
@@ -91,7 +116,8 @@ export class HandEditReporter {
     } catch (err) {
       const f = failureOf(err);
       if (f.status === 400 || f.status === 422) {
-        state.reported(root, t.id, path, hash); // the same content would fail again
+        // The same content would fail again: not until the target changes.
+        state.reported(root, t.id, path, hash, { version: t.version });
       } else {
         this.defer(path, Math.max(this.gap, f.retryAfterMs ?? 0));
       }

@@ -10,7 +10,7 @@
 //   - every directory on the way resolves inside the repository, so a
 //     symlinked `.cursor` can't lead out of it.
 import { lstat, mkdir, realpath } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { join, relative, sep } from "node:path";
 import type { V2 } from "memax-sdk";
 
 const REPO_PATH = /^[A-Za-z0-9._/-]+$/;
@@ -94,8 +94,12 @@ export class UnsafePathError extends Error {
   }
 }
 
+/** Inside the repository, and not inside its `.git` (a symlink could lead there). */
 function inside(root: string, real: string): boolean {
-  return real === root || real.startsWith(root + sep);
+  if (real !== root && !real.startsWith(root + sep)) return false;
+  return !relative(root, real)
+    .split(sep)
+    .some((s) => s.toLowerCase() === ".git");
 }
 
 /**
@@ -126,7 +130,7 @@ export async function resolveInRepo(
       if (!real || !inside(rootReal, real)) {
         throw new UnsafePathError(
           rel,
-          "a directory on the way leads outside the repository",
+          "a directory on the way leads outside the repository (or into .git)",
         );
       }
       continue;
@@ -159,7 +163,7 @@ export async function ensureParents(
     if (!inside(rootReal, real)) {
       throw new UnsafePathError(
         rel,
-        "a directory on the way leads outside the repository",
+        "a directory on the way leads outside the repository (or into .git)",
       );
     }
   }

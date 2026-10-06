@@ -1,7 +1,7 @@
 // The daemon: one feed per linked space, one RepoDelivery and watcher per
 // linked repository, the control socket, the pid file and the state file.
 import { watch, type FSWatcher } from "node:fs";
-import { unlinkSync, writeFileSync } from "node:fs";
+import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { failureOf, type DaemonApi } from "./api.js";
 import { ControlServer, type ControlRequest } from "./control.js";
@@ -288,12 +288,19 @@ export class Daemon {
     await Promise.all([...this.repos.values()].map((r) => r.delivery.idle()));
     this.state.flush();
     if (this.control) {
-      await this.control.close();
+      // The pid file first, then the socket: once nothing answers, no pid
+      // file names this process.
       try {
-        unlinkSync(this.o.paths.pid);
+        // Only our own: a daemon that took over writes its pid here.
+        if (
+          readFileSync(this.o.paths.pid, "utf8").trim() === String(process.pid)
+        ) {
+          unlinkSync(this.o.paths.pid);
+        }
       } catch {
         // gone
       }
+      await this.control.close();
     }
     this.o.log.info("stopped");
   }

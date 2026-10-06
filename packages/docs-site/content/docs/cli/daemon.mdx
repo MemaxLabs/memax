@@ -68,8 +68,10 @@ For each run it hasn't written yet, the daemon reads the file on disk:
 | What Memax last delivered, or an earlier compile  | Writes over it. A `git pull` or a branch switch is fine. |
 | Anything else: a hand edit                        | Leaves it and reports it. The target shows drifted.      |
 | A symlink, a directory, or a path out of the repo | Leaves it, and holds the target.                         |
+| A file that isn't UTF-8 text                      | Leaves it byte for byte, and holds the target.           |
 
-Every write goes to a temp file next to the target and is renamed into
+A file Memax owns is judged as a whole: text you add anywhere in it is a
+hand edit. Every write goes to a temp file next to the target and is renamed into
 place, so agents never read half a file. Right before the rename the
 daemon reads the file once more; if you saved in the meantime, your edit
 stays and the write is dropped.
@@ -102,7 +104,10 @@ while it still holds exactly what Memax wrote.
 The daemon watches the directories of the files it wrote, and rescans
 them every 30 seconds to catch anything a watcher misses. When a file
 changes into something Memax didn't write, the daemon reports it once,
-with its content, and the target drifts. Its own writes never count.
+with its content, and the target drifts. Its own writes never count. For
+a `CLAUDE.md` you own, it sends only Memax's block: the rest of the file
+never leaves your machine. After you resolve an edit, or stop and restart
+the target, an edit that is still there is reported again.
 
 Resolve a drifted target in the app:
 

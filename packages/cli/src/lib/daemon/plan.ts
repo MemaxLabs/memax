@@ -9,9 +9,15 @@
 //
 // A file the person owns (a user-owned CLAUDE.md) is judged by its managed
 // block alone, and only the block is replaced: every byte outside the
-// markers stays as it is.
+// markers stays as it is. Any other file is judged whole. A file that
+// isn't UTF-8 text is never touched: it couldn't be written back intact.
 import { upsertManagedBlock } from "./compiler/managed-block.js";
-import { blockState, driftHash, managedInner } from "./compiler/drift.js";
+import {
+  blockState,
+  driftHash,
+  managedInner,
+  wholeHash,
+} from "./compiler/drift.js";
 import type { Disk, Expect } from "./fs-atomic.js";
 
 /** What a file on disk is, relative to what Memax wrote there. */
@@ -57,6 +63,11 @@ export function judge(i: JudgeInput): Judgement {
         kind: "skip",
         reason: "is over 2 MiB, too large to be a compiled file",
       };
+    case "not_text":
+      return {
+        kind: "skip",
+        reason: "isn't UTF-8 text; Memax leaves it as it is",
+      };
   }
   if (i.userOwned) {
     const blocks = blockState(d.content);
@@ -64,11 +75,21 @@ export function judge(i: JudgeInput): Judgement {
       return { kind: "hand_edit", hash: driftHash(d.content) };
     if (blocks === "none" && !i.hasBaseline) return { kind: "fresh" };
   }
-  const h = driftHash(d.content);
+  // A file the person owns is judged by its block; any other by all of it.
+  const h = fileHash(d.content, i.userOwned);
   if (h === i.latest) return { kind: "current" };
   return i.known.has(h)
     ? { kind: "ours", hash: h }
     : { kind: "unknown", hash: h };
+}
+
+/**
+ * The hash a file is judged by: its managed block's when the person owns
+ * it, otherwise the whole file's (line endings and a BOM aside), so text
+ * around a stray block is never mistaken for Memax's.
+ */
+export function fileHash(content: string, userOwned: boolean): string {
+  return userOwned ? driftHash(content) : wholeHash(content);
 }
 
 /** After the runs were asked about an unknown hash. */

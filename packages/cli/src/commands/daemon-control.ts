@@ -11,7 +11,7 @@ import {
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import chalk from "chalk";
-import { controlRequest } from "../lib/daemon/control.js";
+import { controlRequest, liveDaemonPid } from "../lib/daemon/control.js";
 import {
   daemonPaths,
   daemonUnsupported,
@@ -38,6 +38,28 @@ export const DAEMON_NODE_FLAGS = [
 ];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Whether a process runs (a daemon in this process doesn't count, nor one
+ * that has exited and waits to be reaped).
+ */
+function alive(pid: number): boolean {
+  if (pid === process.pid) return false;
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+  if (process.platform !== "linux") return true;
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    return (
+      stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3) !== "Z"
+    );
+  } catch {
+    return false;
+  }
+}
 
 async function status(
   paths: DaemonPaths,
@@ -133,6 +155,15 @@ export async function stopDaemon(d: {
 }): Promise<number> {
   const running = await status(d.paths);
   if (!running) {
+    const holder = liveDaemonPid(d.paths.pid);
+    if (holder) {
+      d.out(
+        chalk.yellow(
+          `  The Memax daemon (pid ${holder}) isn't answering. If it's stopped (Ctrl-Z), resume it with fg; otherwise end it: kill ${holder}`,
+        ),
+      );
+      return 1;
+    }
     if (existsSync(d.paths.pid)) unlinkSync(d.paths.pid); // left by a crash
     d.out(chalk.gray("  The Memax daemon isn't running."));
     return 0;
@@ -140,7 +171,9 @@ export async function stopDaemon(d: {
   await controlRequest(d.paths, { cmd: "stop" }, 3_000);
   let deadline = Date.now() + (d.waitMs ?? 10_000);
   let signalled = false;
-  while ((await status(d.paths, 300)) !== null) {
+  // Stopped once it neither answers nor runs: it closes its socket a moment
+  // before the process ends.
+  while ((await status(d.paths, 300)) !== null || alive(running.pid)) {
     if (Date.now() > deadline) {
       if (signalled) {
         d.out(

@@ -24,7 +24,8 @@ export interface Stack {
 const freePort = () =>
   new Promise<number>((resolve, reject) => {
     const s = createNetServer();
-    s.listen(0, "127.0.0.1", () => {
+    // The wildcard address, as the Go server binds it (":PORT").
+    s.listen(0, () => {
       const port = (s.address() as AddressInfo).port;
       s.close(() => resolve(port));
     });

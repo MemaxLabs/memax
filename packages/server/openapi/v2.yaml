@@ -886,9 +886,12 @@ components:
     Space:
       type: object
       additionalProperties: false
-      required: [id, slug, name, kind, role, can_forget]
+      required: [id, tenant_id, slug, name, kind, role]
       properties:
         id:
+          $ref: '#/components/schemas/Id'
+        tenant_id:
+          description: Who owns the space's record. Display IDs are unique per tenant.
           $ref: '#/components/schemas/Id'
         slug:
           type: string
@@ -898,9 +901,6 @@ components:
           $ref: '#/components/schemas/SpaceKind'
         role:
           $ref: '#/components/schemas/Role'
-        can_forget:
-          description: Whether you may forget memories here.
-          type: boolean
         repository:
           description: The repository the space compiles for, if any.
           type: string

@@ -221,6 +221,11 @@ func (n *NewMemory) validate() error {
 	if n.Decision != nil && n.Kind != KindDecision {
 		return invalid("decision", "only a decision has decision fields; set kind to decision")
 	}
+	if n.Decision != nil {
+		if err := n.Decision.validate(); err != nil {
+			return err
+		}
+	}
 	if len(n.Sources) > MaxSources {
 		return invalid("sources", "cite at most %d sources", MaxSources)
 	}
@@ -238,6 +243,41 @@ func (n *NewMemory) validate() error {
 	}
 	if n.ValidFrom != nil && n.ValidTo != nil && n.ValidTo.Before(*n.ValidFrom) {
 		return invalid("valid_to", "must not be before valid_from")
+	}
+	return nil
+}
+
+// validate bounds the decision fields like the other free text, so a NUL
+// byte or a novel-length "why" is a clear 400 rather than a database
+// error.
+func (d *DecisionFields) validate() error {
+	for _, f := range []struct {
+		field, value string
+		max          int
+	}{
+		{"decision.why", d.Why, MaxReasonRunes},
+		{"decision.consequences", d.Consequences, MaxReasonRunes},
+		{"decision.area", d.Area, MaxSourceRefRunes},
+	} {
+		if err := checkText(f.field, f.value, f.max, false); err != nil {
+			return err
+		}
+	}
+	switch d.Status {
+	case "", DecisionInForce, DecisionSuperseded, DecisionOpen:
+	default:
+		return invalid("decision.status", "use in_force, superseded or open")
+	}
+	if len(d.Options) > MaxSources {
+		return invalid("decision.options", "list at most %d options", MaxSources)
+	}
+	for _, o := range d.Options {
+		if err := checkText("decision.options.label", strings.TrimSpace(o.Label), MaxSourceRefRunes, true); err != nil {
+			return err
+		}
+		if err := checkText("decision.options.detail", o.Detail, MaxReasonRunes, false); err != nil {
+			return err
+		}
 	}
 	return nil
 }

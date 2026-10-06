@@ -125,7 +125,7 @@ components:
 func TestValidatorCatchesDrift(t *testing.T) {
 	t.Parallel()
 	spec := loadV2(t)
-	space := `{"id":"0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b","slug":"memax-v2","name":"memax-v2","kind":"project","role":"owner","can_forget":true}`
+	space := `{"id":"0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b","tenant_id":"0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c","slug":"memax-v2","name":"memax-v2","kind":"project","role":"owner"}`
 	jsonHeader := http.Header{"Content-Type": {"application/json"}}
 
 	t.Run("valid exchange", func(t *testing.T) {

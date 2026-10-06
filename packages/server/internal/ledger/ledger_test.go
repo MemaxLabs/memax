@@ -705,6 +705,20 @@ func TestValidation(t *testing.T) {
 		"source without ref": func(c *ledger.Remember) { c.Sources = []ledger.SourceInput{{Kind: ledger.SourceFile}} },
 		"future occurred_at": func(c *ledger.Remember) { c.OccurredAt = time.Now().Add(time.Hour) },
 		"no space":           func(c *ledger.Remember) { c.SpaceID = uuid.Nil },
+		"bad decision status": func(c *ledger.Remember) {
+			c.Kind, c.Decision = ledger.KindDecision, &ledger.DecisionFields{Status: "maybe"}
+		},
+		"option without label": func(c *ledger.Remember) {
+			c.Kind, c.Decision = ledger.KindDecision, &ledger.DecisionFields{Options: []ledger.DecisionOption{{Detail: "x"}}}
+		},
+		"NUL in decision": func(c *ledger.Remember) {
+			c.Kind, c.Decision = ledger.KindDecision, &ledger.DecisionFields{Why: "a\x00b"}
+		},
+		// Valid JSON, but jsonb can't store \u0000: the database refuses it
+		// and the ledger reports a validation error, not a failure.
+		"NUL in a locator": func(c *ledger.Remember) {
+			c.Sources = []ledger.SourceInput{{Kind: ledger.SourceFile, Ref: "go.mod", Locator: []byte(`{"path":"a\u0000b"}`)}}
+		},
 	}
 	for name, mutate := range cases {
 		cmd := ok()

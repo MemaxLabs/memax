@@ -56,6 +56,13 @@ type DecisionOption struct {
 	Detail string `json:"detail,omitempty"`
 }
 
+// The decision statuses.
+const (
+	DecisionInForce    = "in_force"
+	DecisionSuperseded = "superseded"
+	DecisionOpen       = "open"
+)
+
 // SourceKind is what a source points at.
 type SourceKind string
 
@@ -168,6 +175,27 @@ type Memory struct {
 
 func (m *Memory) state() lifecycle.State {
 	return lifecycle.State{Lifecycle: m.Lifecycle, Flags: m.Flags}
+}
+
+// MemoryVersion is one version of a memory's statement.
+type MemoryVersion struct {
+	Version int `json:"version"`
+	// Statement is empty once the memory is forgotten.
+	Statement string    `json:"statement"`
+	ReceiptID uuid.UUID `json:"receipt_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Space is a space in a scope, with the scope's role in it.
+type Space struct {
+	ID       uuid.UUID        `json:"id"`
+	TenantID uuid.UUID        `json:"tenant_id"`
+	Slug     string           `json:"slug"`
+	Name     string           `json:"name"`
+	Kind     policy.SpaceKind `json:"kind"`
+	Role     policy.Role      `json:"role"`
+	// Repository is the repository the space compiles for, if any.
+	Repository string `json:"repository,omitempty"`
 }
 
 // Action is the past-tense verb a receipt records.

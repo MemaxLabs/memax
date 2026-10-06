@@ -1,10 +1,11 @@
 "use client";
 
-import { MemoryList, MemoryRow, SyncTarget } from "@memaxlabs/ledger";
+import { MemoryList, MemoryRow } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { count } from "@/lib/v2/copy";
 import type { ReviewCardData, ReviewItem } from "@/lib/v2/data/review";
 import { StatementText } from "../../_components/statement-text";
+import { TargetRow } from "../../_components/target-row";
 import type { RecordsView } from "../records-view";
 import styles from "./review.module.css";
 
@@ -85,18 +86,12 @@ export function Touches({
           <div className={styles.recompiles}>
             <p className="mx-section-label">{t.recompiles}</p>
           </div>
-          {targets ? (
+          {targets?.length ? (
             targets.map((target) => (
-              <SyncTarget
-                key={target.path}
-                compact
-                path={target.path}
-                tool={target.tool}
-                status={target.status}
-              />
+              <TargetRow key={target.id} space={space.slug} target={target} />
             ))
           ) : (
-            // PLACEHOLDER: compile targets aren't served by /v2 yet.
+            // Nothing compiles yet, or the targets didn't load.
             <p className={styles.panelNote}>{t.targetsLater}</p>
           )}
         </>

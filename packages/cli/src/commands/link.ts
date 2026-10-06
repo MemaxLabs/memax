@@ -2,7 +2,6 @@
 // daemon writes the space's compiled files into it.
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import chalk from "chalk";
 import type { Command } from "commander";
@@ -19,7 +18,7 @@ import {
 } from "../lib/project-context.js";
 import { confirmDefault } from "../lib/prompt.js";
 import { resolveSpace, SpaceChoiceError } from "../lib/v2-space.js";
-import { apiFailureMessage } from "./v2-output.js";
+import { apiFailureMessage, tildify } from "./v2-output.js";
 
 export interface LinkOptions {
   space?: string;
@@ -33,14 +32,6 @@ export interface LinkDeps {
   out: (line: string) => void;
   /** Whether to ask before changing a target (a TTY). */
   interactive: boolean;
-}
-
-/** `~/code/memax` for a path under home. */
-export function tildify(path: string): string {
-  const home = homedir();
-  return path === home || path.startsWith(home + "/")
-    ? "~" + path.slice(home.length)
-    : path;
 }
 
 const NOT_IN_GIT =

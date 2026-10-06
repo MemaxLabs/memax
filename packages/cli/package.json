@@ -16,7 +16,7 @@
   },
   "type": "module",
   "bin": {
-    "memax": "./dist/index.js"
+    "memax": "./dist/bin.js"
   },
   "exports": {
     ".": {

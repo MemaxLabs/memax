@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Memax } from "memax-sdk";
 import { sdkDaemonApi, type DaemonApi } from "../../src/lib/daemon/api.js";
+import { lightFetch } from "../../src/lib/daemon/http.js";
 import { Daemon, type DaemonOptions } from "../../src/lib/daemon/daemon.js";
 import { memoryLogger } from "../../src/lib/daemon/log.js";
 import { daemonPaths, type DaemonPaths } from "../../src/lib/daemon/paths.js";
@@ -35,6 +36,8 @@ export async function harness(): Promise<Harness> {
     apiUrl: fake.url,
     apiKey: "test-token",
     maxRetries: 0,
+    // The daemon's own transport, so every test exercises it.
+    fetch: lightFetch,
   });
   const api = sdkDaemonApi(memax);
   const log = memoryLogger();

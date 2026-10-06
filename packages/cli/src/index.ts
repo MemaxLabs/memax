@@ -22,6 +22,7 @@ import { registerTopicCommands } from "./commands/topic.js";
 import { registerCaptureSessionCommand } from "./commands/capture.js";
 import { registerDreamsCommands } from "./commands/dreams.js";
 import { registerLinkCommands } from "./commands/link.js";
+import { registerDaemonCommands } from "./commands/daemon.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(
@@ -38,6 +39,7 @@ program
 // --- Command registration (order defines help layout) ---
 
 registerLinkCommands(program);
+registerDaemonCommands(program);
 registerPushCommand(program);
 registerRecallCommand(program);
 registerAskCommand(program);

@@ -1,6 +1,7 @@
 // The marks and words the V2 commands print, as on the Cli board:
 // ● kept or in sync, ○ waiting on you, ✓ done, ▬ forgotten. In-flight
 // work (compiling, not written yet) is ◌, and a stopped target is -.
+import { homedir } from "node:os";
 import chalk from "chalk";
 import type { V2 } from "memax-sdk";
 
@@ -84,4 +85,12 @@ export function agentMark(agent: V2.AgentKind, name: string): string {
 /** Pads to `width` visible characters (marks are one column wide). */
 export function pad(s: string, width: number): string {
   return s.length >= width ? s + " " : s + " ".repeat(width - s.length);
+}
+
+/** `~/code/memax` for a path under home. */
+export function tildify(path: string): string {
+  const home = homedir();
+  return path === home || path.startsWith(home + "/")
+    ? "~" + path.slice(home.length)
+    : path;
 }

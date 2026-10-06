@@ -260,7 +260,7 @@ export async function deliverRun(
 
   const key = commandKey("dlv", d.deviceId, t.id, t.version, run.ref, sha);
   await d.api.deliver(t.id, { compile: run.ref, sha256: sha }, key);
-  d.state.acked(d.root, t.id, run.ref);
+  d.state.acked(d.root, t.id, run.ref, { kind: t.kind, label: t.label });
   if (written > 0) {
     d.log.info("delivered", {
       target: t.label,

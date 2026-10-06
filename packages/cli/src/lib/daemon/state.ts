@@ -19,6 +19,9 @@ export interface TargetLocal {
   /** The run (C-) this device last wrote and acknowledged. */
   compile?: string;
   acked_at?: string;
+  /** What `memax daemon status` shows while no daemon runs. */
+  kind?: string;
+  label?: string;
   files: Record<string, FileLocal>;
 }
 
@@ -101,12 +104,20 @@ export class DeviceState {
     root: string,
     targetId: string,
     compile: string,
+    meta: { kind: string; label: string },
     at = new Date(),
   ): void {
     const t = this.target(root, targetId);
     t.compile = compile;
     t.acked_at = at.toISOString();
+    t.kind = meta.kind;
+    t.label = meta.label;
     this.changed();
+  }
+
+  /** Every target this device keeps state for in a repository. */
+  targetsOf(root: string): Record<string, TargetLocal> {
+    return { ...(this.data.repos[root]?.targets ?? {}) };
   }
 
   reported(root: string, targetId: string, path: string, sha: string): void {

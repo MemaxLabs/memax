@@ -103,6 +103,108 @@ describe("DecisionGate", () => {
     );
     expect(screen.getByText("你的回答会以你的名义保留。")).toBeTruthy();
   });
+
+  it("holds Answer with a reason, shows a notice and quiet actions beside it", () => {
+    const onAnswer = vi.fn();
+    render(
+      <DecisionGate
+        agent="codex"
+        question="Which deploy target should the v2 API use?"
+        options={OPTIONS}
+        defaultSelected={0}
+        onAnswer={onAnswer}
+        answerDisabledReason="Answer it on memax.app."
+        notice={<span>Decisions here are answered on the web.</span>}
+        actions={<button type="button">Withdraw</button>}
+      />,
+    );
+    const answer = screen.getByRole("button", { name: "Answer" });
+    expect(answer.getAttribute("aria-disabled")).toBe("true");
+    expect(answer.title).toBe("Answer it on memax.app.");
+    fireEvent.click(answer);
+    expect(onAnswer).not.toHaveBeenCalled();
+    expect(screen.getByRole("note").textContent).toBe(
+      "Decisions here are answered on the web.",
+    );
+    expect(screen.getByRole("button", { name: "Withdraw" })).toBeTruthy();
+  });
+
+  it("swaps the footer for a confirmation while it waits", () => {
+    render(
+      <DecisionGate
+        agent="codex"
+        question="Which deploy target should the v2 API use?"
+        options={OPTIONS}
+        defaultSelected={1}
+        footer={<span>This becomes a kept decision by you.</span>}
+      />,
+    );
+    expect(
+      screen.getByText("This becomes a kept decision by you."),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Answer" })).toBeNull();
+  });
+
+  it("answered: locks the options on the answer, stamps the seal and shows the receipt", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <DecisionGate
+        agent="codex"
+        question="Which deploy target should the v2 API use?"
+        options={OPTIONS}
+        selected={0}
+        onSelect={onSelect}
+        time="2 min ago"
+      />,
+    );
+    expect(document.querySelector(".mx-seal")).toBeNull();
+    rerender(
+      <DecisionGate
+        agent="codex"
+        question="Which deploy target should the v2 API use?"
+        options={OPTIONS}
+        selected={0}
+        onSelect={onSelect}
+        time="2 min ago"
+        status="You answered"
+        answered={{ id: "M-0447", date: "Oct 5", by: "ZZ" }}
+      />,
+    );
+    const gate = document.querySelector(".mx-gate");
+    expect(gate?.className).toContain("is-answered");
+    expect(screen.getByText("You answered")).toBeTruthy();
+    expect(document.querySelector(".mx-gate-seal")).not.toBeNull();
+    const receipt = document.querySelector(".mx-gate-foot .mx-receipt");
+    expect(receipt?.textContent).toContain("kept");
+    expect(receipt?.textContent).toContain("M-0447");
+    expect(screen.queryByRole("button", { name: "Answer" })).toBeNull();
+    const radios = screen.getAllByRole("radio");
+    expect(radios[0]?.getAttribute("aria-checked")).toBe("true");
+    expect(radios[0]?.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(radios[1]!);
+    fireEvent.keyDown(radios[0]!, { key: "2" });
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("ended elsewhere: says how in place of the footer, with no seal", () => {
+    render(
+      <DecisionGate
+        agent="codex"
+        question="Which deploy target should the v2 API use?"
+        options={OPTIONS}
+        status="Withdrawn"
+        ended="Codex took the question back."
+      />,
+    );
+    expect(screen.getByText("Withdrawn")).toBeTruthy();
+    expect(screen.queryByText("Codex is waiting on you")).toBeNull();
+    expect(screen.getByText("Codex took the question back.")).toBeTruthy();
+    expect(document.querySelector(".mx-gate-seal")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Answer" })).toBeNull();
+    expect(screen.getByRole("radiogroup").getAttribute("aria-readonly")).toBe(
+      "true",
+    );
+  });
 });
 
 describe("AgentRow", () => {

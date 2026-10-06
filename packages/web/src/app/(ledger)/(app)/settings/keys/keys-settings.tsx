@@ -138,7 +138,9 @@ export function KeysSettings() {
           <h2 id="keys-connections" className="mx-panel-title">
             {copy.connections.title}
           </h2>
-          <span className="mx-meta">{copy.connections.meta}</span>
+          <span className={`mx-meta ${styles.plain}`}>
+            {copy.connections.meta}
+          </span>
         </header>
         <div className={`${styles.row} ${styles.th}`} aria-hidden="true">
           <span>{copy.connections.agent}</span>

@@ -244,3 +244,10 @@ a.ref:hover {
     text-align: left;
   }
 }
+
+/* .mx-meta's look for prose: its tabular figures widen "." and "," in
+ * Schibsted Grotesk, which reads as a space before them (design review §2). */
+:global(.mx-meta).plain,
+.plain {
+  font-variant-numeric: normal;
+}

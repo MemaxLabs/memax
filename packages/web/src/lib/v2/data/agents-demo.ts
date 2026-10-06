@@ -78,7 +78,7 @@ const AGENTS: readonly AgentConnectionView[] = [
     credential: oauth,
     maxAutonomy: "write",
     mine: true,
-    clientId: "https://chatgpt.com/codex/oauth-client.json",
+    clientId: null,
     spaces: [inV2("propose", 512, 21)],
     reads7d: 512,
     writes7d: 21,
@@ -116,7 +116,7 @@ const AGENTS: readonly AgentConnectionView[] = [
     credential: oauth,
     maxAutonomy: "write",
     mine: true,
-    clientId: "https://chatgpt.com/connector/oauth-client.json",
+    clientId: null,
     spaces: [
       inV2("propose", 64, 5),
       { ...space("personal"), autonomy: "propose", reads7d: 22, writes7d: 1 },
@@ -138,7 +138,7 @@ const AGENTS: readonly AgentConnectionView[] = [
     credential: oauth,
     maxAutonomy: "write",
     mine: true,
-    clientId: "https://claude.ai/oauth/claude-client.json",
+    clientId: null,
     spaces: [
       { ...space("personal"), autonomy: "propose", reads7d: 30, writes7d: 1 },
       inV2("propose", 41, 2),

@@ -13,10 +13,9 @@
 
 .row {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(
-      0,
-      1fr
-    ) 96px 72px;
+  grid-template-columns:
+    minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr)
+    96px 72px;
   align-items: center;
   gap: 12px;
   padding: 11px 16px;
@@ -203,4 +202,11 @@
     grid-row: auto;
     flex-wrap: wrap;
   }
+}
+
+/* .mx-meta's look for prose: its tabular figures widen "." and "," in
+ * Schibsted Grotesk, which reads as a space before them (design review §2). */
+:global(.mx-meta).plain,
+.plain {
+  font-variant-numeric: normal;
 }

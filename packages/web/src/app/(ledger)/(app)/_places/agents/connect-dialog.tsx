@@ -256,7 +256,7 @@ function ConnectBody({
                       )
                     }
                   />
-                  <p className="mx-meta">
+                  <p className={`mx-meta ${styles.plain}`}>
                     {interpolate(copy.chat, { agent: name })}
                   </p>
                 </>
@@ -272,7 +272,7 @@ function ConnectBody({
                       )
                     }
                   />
-                  <p className="mx-meta">
+                  <p className={`mx-meta ${styles.plain}`}>
                     {formatNodes(copy.byHand, {
                       url: <code className="mx-code">{MCP_URL}</code>,
                     })}

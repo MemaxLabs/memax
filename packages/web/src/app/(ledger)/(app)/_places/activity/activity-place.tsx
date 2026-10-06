@@ -234,7 +234,9 @@ export function ActivityPlace() {
               ))}
             </dl>
           </section>
-          <p className={`mx-meta ${styles.note}`}>{a.retention}</p>
+          <p className={`mx-meta ${styles.note} ${styles.plain}`}>
+            {a.retention}
+          </p>
         </aside>
       </div>
     </PlaceColumn>

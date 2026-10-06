@@ -133,7 +133,7 @@ export function NewKey({
         </div>
       </div>
       <div className={styles.formFoot}>
-        <span className="mx-meta">
+        <span className={`mx-meta ${styles.plain}`}>
           {interpolate(copy.space, { space: space.name })}
         </span>
         <span className={styles.grow} />

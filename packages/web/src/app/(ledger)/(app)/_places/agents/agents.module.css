@@ -80,33 +80,37 @@
   }
 
   .table :global(.mx-agent) {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "id seg"
-      "meta meta";
-    row-gap: 8px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    row-gap: 6px;
     column-gap: 12px;
   }
 
   .table :global(.mx-agent-id) {
-    grid-area: id;
+    grid-column: 1;
+    grid-row: 1;
     min-width: 0;
+    margin-bottom: 4px;
   }
 
   .table :global(.mx-agent .mx-seg) {
-    grid-area: seg;
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    margin-bottom: 4px;
   }
 
+  /* Reads beside writes, then last seen beside the file. */
   .table :global(.mx-agent-num),
   .table :global(.mx-agent-seen),
   .table :global(.mx-agent-target) {
-    grid-column: 1 / -1;
     display: flex;
     gap: 6px;
     justify-content: flex-start;
+    min-width: 0;
     font-size: 12px;
     line-height: 16px;
     text-align: left;
+    font-variant-numeric: normal;
   }
 
   /* The column names, read on screen here since there is no head. */

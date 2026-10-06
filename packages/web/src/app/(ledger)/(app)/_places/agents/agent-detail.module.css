@@ -5,10 +5,12 @@
   max-width: 360px;
 }
 
+/* The stamp beside the title, inside the title's own line box. */
 .titleRow {
   display: inline-flex;
   align-items: center;
   gap: 12px;
+  vertical-align: top;
 }
 
 .grid {

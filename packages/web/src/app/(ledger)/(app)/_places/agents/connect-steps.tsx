@@ -173,8 +173,10 @@ export function ReadsStep({
                   if (!last) onToggle(space.slug);
                 }}
               />
-              <span className={styles.spaceName}>{space.name}</span>
-              <span className="mx-meta">{kinds[space.kind]}</span>
+              <span className={styles.spaceName} title={kinds[space.kind]}>
+                {space.name}
+              </span>
+              <span className="mx-sr">{kinds[space.kind]}</span>
             </label>
           );
         })}
@@ -201,7 +203,7 @@ export function ReadsStep({
           <Icon name="globe" />
         </span>
         <span>{copy.connect.live[autonomy]}</span>
-        <span className="mx-meta">{copy.connect.oauth}</span>
+        <span className={`mx-meta ${styles.plain}`}>{copy.connect.oauth}</span>
       </div>
       {/* The level's word, for anyone reading the live line on its own. */}
       <span className="mx-sr">{strings.autonomy[autonomy]}</span>

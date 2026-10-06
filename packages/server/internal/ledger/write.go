@@ -78,7 +78,7 @@ func (w *writer) write(ctx context.Context, nm NewMemory, propose bool) (Result,
 	// A Write-level agent's statement is kept at once, unless it touches a
 	// decision in force: then it waits for the judge and a person (rule 11;
 	// the judge itself takes seconds, which a write can't wait for).
-	if dec.Effect == policy.EffectApply && w.meta.Actor.Kind == policy.ActorAgent {
+	if (dec.Effect == policy.EffectApply || dec.Effect == policy.EffectConfirm) && w.meta.Actor.Kind == policy.ActorAgent {
 		area := ""
 		if nm.Decision != nil {
 			area = nm.Decision.Area
@@ -141,6 +141,11 @@ func (w *writer) review(ctx context.Context, ref string, expected int, cmd Comma
 	dec := policy.Decide(w.policyActor(grant), action, w.object(mem, false), sp.policy())
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
+	}
+	if cmd == CommandKeep {
+		if err := w.awaitJudge(ctx, mem); err != nil {
+			return Result{}, err
+		}
 	}
 	next, err := transition(mem, verb)
 	if err != nil {

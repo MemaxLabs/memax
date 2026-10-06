@@ -425,7 +425,11 @@ paths:
       description: |
         Keeps a proposal. Only a person who is a member or owner can keep
         (per the space's rules); agents and API keys are refused. Send
-        `If-Match` with the version you reviewed.
+        `If-Match` with the version you reviewed. A proposal the judge has
+        flagged as a conflict can't be kept until it is settled (409
+        `invalid_transition`), and one that touches a decision in force
+        can't be kept before the judge has looked at it (about 5 s, at most
+        30 s): until then Keep answers 503 `busy` with `Retry-After`.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/IfMatchOptional'

@@ -71,10 +71,13 @@ func newGateEnv(t *testing.T) (*env, string) {
 		compile.Config{AppBaseURL: "https://memax.app", Log: quiet})
 	workers := river.NewWorkers()
 	compile.AddWorkers(workers, e.ledger, e.svc)
-	judge.AddWorkers(workers, nil)
+	// The judge works its queue too, as in production; no model is
+	// configured, so it runs stage 0 alone.
+	judge.AddWorkers(workers, judge.New(e.ledger, nil, judge.Config{Log: quiet}))
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Logger: quiet, Workers: workers,
-		Queues: map[string]river.QueueConfig{ledger.QueueCompile: {MaxWorkers: compile.MaxWorkers}},
+		Queues: map[string]river.QueueConfig{ledger.QueueCompile: {MaxWorkers: compile.MaxWorkers},
+			ledger.QueueJudge: {MaxWorkers: judge.MaxWorkers}},
 	})
 	if err != nil {
 		t.Fatal(err)

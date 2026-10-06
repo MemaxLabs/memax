@@ -133,6 +133,13 @@ func TestConflictFlaggedSettledAndUndone(t *testing.T) {
 		t.Fatalf("review before = %+v", before.Items)
 	}
 
+	// It touches a decision in force, so a Keep before the judge is busy.
+	if r := e.do(call{method: "POST", path: memoryPath(fly.Memory, ":keep"), token: owner}); r.header.Get("Retry-After") == "" {
+		t.Errorf("no Retry-After: %v", r.header)
+	} else {
+		r.fails(503, "busy")
+	}
+
 	e.judgeAll(j)
 	var review page[judged]
 	e.do(call{method: "GET", path: "/v2/spaces/" + sp.slug + "/review", token: owner}).ok(200, &review)

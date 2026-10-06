@@ -649,6 +649,53 @@ func TestEveryJudgeWriteIsReceipted(t *testing.T) {
 	}
 }
 
+// Rule 11 holds against the two ways a Keep could beat the judge: a
+// confirmation in the agent, and a person's Keep right after the proposal.
+func TestKeepWaitsForTheJudge(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	zz := f.user("zz")
+	sp := f.space(zz, "memax-v2")
+	railway := f.kept(zz, sp, decision("Deploy the v2 API to Railway for its preview environments.", "deploy target"))
+	present := agent(policy.AutonomyPropose)
+	present.PersonPresent, present.CanElicit = true, true
+	ask := func(nm ledger.NewMemory) ledger.Result {
+		nm.SpaceID = sp
+		return f.apply(&ledger.Propose{Meta: meta(present, f.scope(zz), policy.ViaMCP), NewMemory: nm})
+	}
+	if res := ask(fact("Workers must be idempotent.")); res.Outcome != ledger.OutcomeNeedsConfirmation {
+		t.Errorf("unrelated: %s %s", res.Outcome, res.Policy.Code)
+	}
+	touching := ask(decision("Deploy the v2 API to Fly.io.", "deploy target"))
+	if touching.Outcome != ledger.OutcomeProposed || touching.Policy.Code != policy.CodeTouchesDecision {
+		t.Fatalf("touching: %s %s; it must wait for the judge, not be confirmed in the agent", touching.Outcome, touching.Policy.Code)
+	}
+	// Keeping it before the judge has run is busy, not done.
+	_, err := f.l.Apply(f.ctx, &ledger.Keep{Meta: meta(person(zz), f.scope(zz), policy.ViaWeb), Memory: touching.Memory.Ref})
+	var pending *ledger.JudgePendingError
+	if !errors.As(err, &pending) || !errors.Is(err, ledger.ErrBusy) {
+		t.Fatalf("early keep = %v", err)
+	}
+	// Once judged (and flagged), it's a conflict to settle.
+	j := withModel(f, &fakeModel{answer: oracle(map[string]verdict{railway.Ref: {ledger.RelationContradicts, 0.9, false, ""}})}, tiers(false, false))
+	f.run(j, touching.Memory)
+	_, err = f.l.Apply(f.ctx, &ledger.Keep{Meta: meta(person(zz), f.scope(zz), policy.ViaWeb), Memory: touching.Memory.Ref})
+	if !errors.Is(err, ledger.ErrInvalidTransition) {
+		t.Errorf("keep of the flagged proposal = %v", err)
+	}
+	// A proposal that touches no decision is kept at once.
+	plain := f.propose(zz, sp, fact("Use tabs in Go files."))
+	if res := f.apply(&ledger.Keep{Meta: meta(person(zz), f.scope(zz), policy.ViaWeb), Memory: plain.Ref}); res.Memory.Lifecycle != lifecycle.Kept {
+		t.Errorf("plain keep = %s", res.Memory.Lifecycle)
+	}
+	// So is a touching one the judge cleared.
+	other := f.propose(zz, sp, fact("Preview environments for the v2 API need seed data."))
+	f.run(withModel(f, &fakeModel{answer: oracle(map[string]verdict{railway.Ref: {ledger.RelationExtends, 0.9, false, ""}})}, tiers(false, false)), other)
+	if res := f.apply(&ledger.Keep{Meta: meta(person(zz), f.scope(zz), policy.ViaWeb), Memory: other.Ref}); res.Memory.Lifecycle != lifecycle.Kept {
+		t.Errorf("cleared keep = %s", res.Memory.Lifecycle)
+	}
+}
+
 // The judge's own latency, with an instant model: a verdict is well inside
 // the 5 s budget (the model's own time comes on top).
 func TestJudgeIsFast(t *testing.T) {

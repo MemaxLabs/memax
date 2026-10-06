@@ -724,7 +724,8 @@ func (l *Ledger) JudgeSnapshot(ctx context.Context, scope Scope, args JudgeArgs,
 			want = lifecycle.Kept
 		}
 		s.Eligible = m.Version == args.Version && m.Lifecycle == want &&
-			(maxRound == nil || (args.Force && *maxRound < args.Round))
+			(maxRound == nil || (args.Force && *maxRound < args.Round)) &&
+			!(args.Mode == JudgeKept && m.Flags.Has(lifecycle.Conflict))
 		if !s.Eligible {
 			out = s
 			return nil
@@ -871,6 +872,51 @@ func Touches(statement, area string, decisions []JudgeCandidate) []DecisionTouch
 		}
 	}
 	return out
+}
+
+// JudgeGrace is how long Keep waits for the judge on a proposal that
+// touches a decision in force: within it, a Keep of words the judge hasn't
+// looked at yet is refused as busy (try again in a moment), so a conflict
+// is flagged before anyone keeps it (rule 11). After it, Keep goes ahead:
+// a judge that is down must never block Review.
+const JudgeGrace = 30 * time.Second
+
+// JudgePendingError: Keep came before the judge, on a proposal that
+// touches a decision in force. Retry in a moment.
+type JudgePendingError struct{ Ref string }
+
+func (e *JudgePendingError) Error() string {
+	return fmt.Sprintf("Memax is still checking %s against the decisions in force. Try again in a moment.", e.Ref)
+}
+
+// Is makes errors.Is(err, ErrBusy) match.
+func (e *JudgePendingError) Is(target error) bool { return target == ErrBusy }
+
+// awaitJudge refuses a Keep that came before the judge (JudgeGrace).
+func (w *writer) awaitJudge(ctx context.Context, mem *Memory) error {
+	if mem.Lifecycle != lifecycle.Proposed {
+		return nil
+	}
+	var pending bool
+	if err := w.tx.QueryRow(ctx, `
+		SELECT v.created_at > now() - make_interval(secs => $3)
+		       AND NOT EXISTS (SELECT 1 FROM v2.judge_verdicts j WHERE j.memory_id = $1 AND j.version = $2)
+		  FROM v2.memory_versions v WHERE v.memory_id = $1 AND v.version = $2`,
+		mem.ID, mem.Version, JudgeGrace.Seconds()).Scan(&pending); err != nil {
+		return fmt.Errorf("ledger: read verdicts: %w", err)
+	}
+	if !pending {
+		return nil
+	}
+	area := ""
+	if mem.Decision != nil {
+		area = mem.Decision.Area
+	}
+	touches, err := w.touchesDecision(ctx, mem.SpaceID, mem.ID, mem.Statement, area)
+	if err != nil || !touches {
+		return err
+	}
+	return &JudgePendingError{Ref: mem.Ref}
 }
 
 // touchesDecision is the inline pre-check for a Write-level agent's

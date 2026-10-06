@@ -112,8 +112,9 @@ func conflictStateError(ref, msg string) error {
 	return &TransitionError{Ref: ref, Err: &lifecycle.TransitionError{Verb: "resolve_conflict", Message: msg}}
 }
 
-// findConflict picks this side's conflict (with other, when named).
-func findConflict(ctx context.Context, tx pgx.Tx, scope Scope, this *Memory, other string) (conflictPair, error) {
+// findConflict picks this side's conflict (with other, when named; field
+// is what the caller calls other, for the error).
+func findConflict(ctx context.Context, tx pgx.Tx, scope Scope, this *Memory, other, field string) (conflictPair, error) {
 	links, err := activeLinks(ctx, tx, []uuid.UUID{this.ID})
 	if err != nil {
 		return conflictPair{}, err
@@ -142,7 +143,7 @@ func findConflict(ctx context.Context, tx pgx.Tx, scope Scope, this *Memory, oth
 		for i, l := range cands {
 			refs[i] = l.Ref
 		}
-		return conflictPair{}, invalid("other", "%s conflicts with %s; say which one with other", this.Ref, strings.Join(refs, " and "))
+		return conflictPair{}, invalid(field, "%s conflicts with %s; say which one with %s", this.Ref, strings.Join(refs, " and "), field)
 	}
 	return conflictPair{this: this, link: cands[0]}, nil
 }
@@ -246,7 +247,7 @@ func (w *writer) resolveConflict(ctx context.Context, c *ResolveConflict) (Resul
 	if c.ExpectedVersion != 0 && c.ExpectedVersion != this.Version {
 		return Result{}, &EditClashError{Ref: this.Ref, Expected: c.ExpectedVersion, Current: this.Version}
 	}
-	p, err := findConflict(ctx, w.tx, w.meta.Scope, this, c.Other)
+	p, err := findConflict(ctx, w.tx, w.meta.Scope, this, c.Other, "other")
 	if err != nil {
 		return Result{}, err
 	}
@@ -594,7 +595,7 @@ func (l *Ledger) GetConflict(ctx context.Context, scope Scope, actor Actor, via 
 		if err != nil {
 			return err
 		}
-		p, err := findConflict(ctx, tx, scope, this, other)
+		p, err := findConflict(ctx, tx, scope, this, other, "with")
 		if err != nil {
 			return err
 		}

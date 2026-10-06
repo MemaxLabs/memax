@@ -578,6 +578,12 @@ func decideWrite(a Actor, act Action, o Object, s Space) Decision {
 		}
 		return apply()
 	}
+	// A write that touches a decision in force waits for the judge in
+	// Review; a confirmation in the agent would keep it before the judge
+	// could flag it.
+	if o.TouchesDecision {
+		return propose(CodeTouchesDecision)
+	}
 	if a.PersonPresent && a.CanElicit && !o.ContradictsDecision && !needsWeb {
 		return Decision{Effect: EffectConfirm, Code: CodeConfirm, Message: fmt.Sprintf("Keep this in %s?", spaceName(s))}
 	}

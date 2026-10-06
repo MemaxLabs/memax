@@ -158,6 +158,8 @@ func TestDecide(t *testing.T) {
 		{"agent at write touches a decision → proposal", agent(RoleOwner, AutonomyWrite), ActionPropose, Object{TouchesDecision: true}, project, EffectPropose, CodeTouchesDecision, false, "touches a decision"},
 		{"agent at write edit touches a decision → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, Object{Ref: "M-1", Lifecycle: lifecycle.Kept, TouchesDecision: true}, project, EffectPropose, CodeTouchesDecision, false, ""},
 		{"a person's write isn't pre-checked", person(RoleMember, ViaWeb), ActionRemember, Object{TouchesDecision: true}, project, EffectApply, "", false, ""},
+		{"no in-agent confirmation for a write that touches a decision", with(agent(RoleOwner, AutonomyPropose), func(a *Actor) { a.PersonPresent, a.CanElicit = true, true }),
+			ActionPropose, Object{TouchesDecision: true}, project, EffectPropose, CodeTouchesDecision, false, ""},
 		// --- the judge ---
 		{"Memax records verdicts", Actor{Kind: ActorMemax}, ActionJudge, proposal, project, EffectApply, "", false, ""},
 		{"an agent can't record a verdict", agent(RoleOwner, AutonomyWrite), ActionJudge, proposal, project, EffectRefuse, CodeJudgeByMemax, false, ""},

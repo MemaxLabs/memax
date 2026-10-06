@@ -104,7 +104,7 @@ export function TokenSpecimen({ data }: { data: SpecimenData }) {
                       <span className={`receipt-strong ${styles.tokenName}`}>
                         {style.name}
                       </span>
-                      <span className={`receipt ${styles.tokenValue}`}>
+                      <span className={`receipt ${styles.metrics}`}>
                         {style.metrics}
                       </span>
                     </span>

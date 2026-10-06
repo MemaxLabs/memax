@@ -190,7 +190,7 @@
 
 .typeRow {
   display: grid;
-  grid-template-columns: 148px minmax(0, 1fr);
+  grid-template-columns: var(--receipt-rail) minmax(0, 1fr);
   gap: var(--space-4);
   align-items: baseline;
   padding: var(--space-3) 0;
@@ -205,6 +205,10 @@
 .typeMeta {
   display: flex;
   flex-direction: column;
+}
+
+.metrics {
+  color: var(--ink-3);
 }
 
 .typeSample {

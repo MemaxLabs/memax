@@ -130,10 +130,11 @@ function ConnectBody({
   const copyText = async (text: string, done: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      toast({ state: "proposed", text: done });
+      // Waiting on the agent to connect: the neutral working mark.
+      toast({ state: "working", text: done });
       return true;
     } catch {
-      toast({ state: "off", text: copy.copyFailed });
+      toast({ text: copy.copyFailed });
       return false;
     }
   };

@@ -87,10 +87,7 @@ export function ActivityPlace() {
 
   const exportCsv = () => {
     download(activityCsvName(space.slug, now), activityCsv(loaded));
-    toast({
-      state: "off",
-      text: count(a.export.doneOne, a.export.done, loaded.length),
-    });
+    toast({ text: count(a.export.doneOne, a.export.done, loaded.length) });
   };
   const exportLabel = hasMore
     ? count(a.export.loadedOne, a.export.loaded, loaded.length)

@@ -190,9 +190,9 @@ function NoAgents({ slug }: { slug: string }) {
   const copyCommand = async () => {
     try {
       await navigator.clipboard.writeText(command);
-      toast({ state: "kept", text: copy.toast.copiedCommand });
+      toast({ text: copy.toast.copiedCommand });
     } catch {
-      toast({ state: "off", text: copy.toast.failed });
+      toast({ text: copy.toast.failed });
     }
   };
   return (

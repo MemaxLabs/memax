@@ -74,10 +74,9 @@ export function NewKey({
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(secret.value);
-                toast({ state: "off", text: copy.copied });
+                toast({ text: copy.copied });
               } catch {
                 toast({
-                  state: "off",
                   text: t.ledger.agents.connect.copyFailed,
                 });
               }

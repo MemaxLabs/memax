@@ -78,10 +78,10 @@ function useKeptToast() {
       toast(toastOptions);
     },
     failed() {
-      toast({ state: "off", text: copy.failed });
+      toast({ text: copy.failed });
     },
     copied() {
-      toast({ state: "kept", text: copy.copied });
+      toast({ text: copy.copied });
     },
   };
 }

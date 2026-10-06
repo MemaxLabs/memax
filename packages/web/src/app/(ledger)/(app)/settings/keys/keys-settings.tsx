@@ -265,7 +265,6 @@ export function KeysSettings() {
                       });
                     } catch {
                       toast({
-                        state: "proposed",
                         text: interpolate(copy.revokeFailed, {
                           name: key.name,
                         }),

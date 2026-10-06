@@ -112,10 +112,7 @@ export function useAutonomy({
     });
     if (!raising) {
       patchAgent(queryClient, source.kind, withLevel(to));
-      toast({
-        state: to === "read" ? "off" : "proposed",
-        text: changedText(copy, to, vars),
-      });
+      toast({ text: changedText(copy, to, vars) });
     }
 
     source
@@ -131,10 +128,7 @@ export function useAutonomy({
         patchAgent(queryClient, source.kind, next);
         refreshAfterAgentCommand(queryClient, source.kind);
         if (raising) {
-          toast({
-            state: now === "write" ? "kept" : "proposed",
-            text: changedText(copy, now, vars),
-          });
+          toast({ text: changedText(copy, now, vars) });
         }
       })
       .catch((err: unknown) => {
@@ -150,7 +144,8 @@ export function useAutonomy({
           dev: DEV,
         });
         toast({
-          state: "proposed",
+          // Ochre only when it waits on the person (sign in again).
+          state: signIn ? "proposed" : undefined,
           text,
           action: signIn
             ? { label: copy.refused.signInAgain, onClick: signInAgain }
@@ -204,7 +199,8 @@ export function useAgentCommand(space: SpaceSummary) {
           disconnect: copy.changed.disconnected,
         }[command];
         toast({
-          state: "off",
+          // Paused and disconnected are "off"; resuming is neutral news.
+          state: command === "resume" ? undefined : "off",
           text: interpolate(said, vars),
         });
         return true;
@@ -219,7 +215,8 @@ export function useAgentCommand(space: SpaceSummary) {
           dev: DEV,
         });
         toast({
-          state: "proposed",
+          // Ochre only when it waits on the person (sign in again).
+          state: signIn ? "proposed" : undefined,
           text,
           action: signIn
             ? { label: copy.refused.signInAgain, onClick: signInAgain }

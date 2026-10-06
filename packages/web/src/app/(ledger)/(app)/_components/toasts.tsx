@@ -13,7 +13,13 @@ import styles from "./toasts.module.css";
 // to dismiss); the look is the States2 board's.
 
 interface ToastData {
-  state: MarkState;
+  /**
+   * The state mark, only when the toast means one (Ledger's colours mean
+   * something): kept for a Keep, proposed (ochre) when it waits on the
+   * person, working when it waits on an agent, off for paused or revoked.
+   * Leave it out for neutral news such as "Copied" or a level change.
+   */
+  state?: MarkState;
   /** The display ID an Undo reverses, for the "Undone" line. */
   undoRef?: string;
   undo?: () => Promise<void>;
@@ -65,12 +71,12 @@ function ToastItem({ toast }: { toast: Toast.Root.ToastObject<ToastData> }) {
       await data.undo();
       manager.add<ToastData>({
         title: interpolate(copy.undone, { ref }),
-        data: { state: "off" },
+        data: {},
       });
     } catch {
       manager.add<ToastData>({
         title: interpolate(copy.undoFailed, { ref }),
-        data: { state: "proposed" },
+        data: {},
       });
     }
   }, [data, manager, toast.id, copy]);
@@ -82,7 +88,7 @@ function ToastItem({ toast }: { toast: Toast.Root.ToastObject<ToastData> }) {
 
   return (
     <Toast.Root toast={toast} className={styles.toast} swipeDirection="left">
-      <StateMark state={data?.state ?? "kept"} label={false} />
+      {data?.state ? <StateMark state={data.state} label={false} /> : null}
       <Toast.Title className={styles.text}>{toast.title}</Toast.Title>
       {data?.undo ? (
         <Button variant="quiet" size="sm" kbd={undoKey} onClick={runUndo}>

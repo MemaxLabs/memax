@@ -1,0 +1,1491 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The /v2 contract. This file is the source of truth: the Go handlers are
+# tested against it (internal/contract), and the SDK's v2 types are generated
+# from it (packages/sdk, `pnpm --filter memax-sdk gen:v2`). It is licensed
+# Apache-2.0, unlike the rest of packages/server, so the Apache-2.0 SDK and
+# CLI can carry types generated from it.
+#
+# Conventions the contract tests enforce (internal/contract/lint.go):
+#   - every object schema with properties sets additionalProperties: false;
+#   - every response body is a named schema: an envelope with `data`, or
+#     ErrorEnvelope for 4xx and 5xx;
+#   - every POST requires Idempotency-Key;
+#   - every operation documents 401, 429, 500 and 503.
+openapi: 3.1.1
+info:
+  title: Memax API v2
+  version: 2.0.0-alpha.1
+  summary: The record your agents read from, with a receipt for every change.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+  description: |
+    The `/v2` API reads and changes the V2 record: memories, their versions,
+    sources and receipts, in the spaces you belong to.
+
+    ## Envelope
+
+    Every response is JSON. A success carries `{"data": …}`. An error carries
+    `{"error": {"code", "message", "details"}}`. `code` is stable and
+    machine-readable; `message` is an English sentence that says what to do.
+
+    ## Commands
+
+    A command is a `POST` that changes the record: remember, keep, edit and
+    reject. Every command:
+
+    - needs an `Idempotency-Key` header (1 to 255 characters). Retrying a
+      command with the same key returns the original result and writes
+      nothing; the response then carries `Idempotent-Replayed: true`. A key
+      reused for a different command or different content is refused with
+      422 `idempotency_key_reused`.
+    - writes one or more receipts in the same transaction. A receipt never
+      holds the memory's words.
+    - is decided by policy, not by the client. A person who is a member or
+      owner keeps what they remember; a viewer's words, an agent's and an API
+      key's go to Review as proposals. `policy` in the result says why.
+      Agents propose and people keep: an API key can never keep or reject.
+
+    A refusal is 403 `refused` with `details.policy`; clients localise by
+    `details.policy.code` and fall back to `details.policy.message`.
+
+    ## Versions and If-Match
+
+    A memory's `version` is the version of its statement. Reads return it in
+    the body and in the `ETag` header (`"3"`). Edits require
+    `If-Match: "<version>"`; a stale version is 412 `edit_clash`. Keep and
+    reject accept `If-Match` too, so a person never keeps words they haven't
+    seen.
+
+    ## Display IDs
+
+    `M-0219` is unique within a tenant, not across tenants, so a display ID
+    always travels with its space: `GET /v2/memories/M-0219?space=memax-v2`.
+    A memory's uuid (`id`) needs no space.
+
+    ## Not found, never forbidden
+
+    A space or memory outside your spaces is 404, the same as one that doesn't
+    exist, so the API never confirms that something exists.
+
+    ## Pagination
+
+    Lists return `{"items", "has_more", "next_cursor"}`, newest first unless
+    the operation says otherwise. Pass `next_cursor` back as `cursor`.
+    Cursors are opaque and belong to the list that issued them.
+
+    ## Errors
+
+    | Status | Code | When |
+    | --- | --- | --- |
+    | 400 | `invalid_request` | The request is malformed; `details.field` names the field. |
+    | 400 | `idempotency_key_required` | A command came without `Idempotency-Key`. |
+    | 400 | `space_required` | A display ID came without `?space=`. |
+    | 400 | `ambiguous_ref` | A display ID matches memories in more than one space. |
+    | 401 | `unauthorized` | No valid credential. |
+    | 403 | `refused` | Policy refused the command; see `details.policy`. |
+    | 403 | `permission_denied` | The credential can't read memories at all. |
+    | 403 | `impersonation_read_only` | An impersonated session tried a command. |
+    | 404 | `not_found` | No such space or memory in your spaces. |
+    | 405 | `method_not_allowed` | The path exists, the method doesn't. |
+    | 409 | `invalid_transition` | The memory's state doesn't allow the command. |
+    | 412 | `edit_clash` | `If-Match` is not the memory's current version. |
+    | 422 | `idempotency_key_reused` | The key was used for a different command. |
+    | 428 | `precondition_required` | An edit came without `If-Match`. |
+    | 429 | `rate_limited` | Too many requests; see `Retry-After`. |
+    | 500 | `internal_error` | Something failed on our side. |
+    | 503 | `busy` | Another change holds the memory; see `Retry-After`. |
+    | 503 | `unavailable` | The record is not configured on this server. |
+servers:
+  - url: https://api.memax.app
+security:
+  - bearer: []
+tags:
+  - name: spaces
+    description: The spaces you belong to.
+  - name: memories
+    description: One statement each, under a seal.
+  - name: review
+    description: What needs a person.
+  - name: activity
+    description: The receipts of every change.
+paths:
+  /v2/spaces:
+    get:
+      operationId: listSpaces
+      tags: [spaces]
+      summary: List your spaces
+      description: Every space you belong to, with your role in it. Not paginated.
+      responses:
+        '200':
+          description: Your spaces.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpaceListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/memories:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    post:
+      operationId: rememberMemory
+      tags: [memories]
+      summary: Remember a statement
+      description: |
+        Writes one statement to the space. Policy decides what happens: a
+        member or owner keeps it (`outcome: applied`); a viewer, an agent or
+        an API key proposes it (`outcome: proposed`), and it waits in Review.
+        Statements that cite an external source are always proposed and
+        quarantined. Statements that contain a credential are refused.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RememberRequest'
+      responses:
+        '201':
+          description: The memory was written, kept or proposed.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Location:
+              $ref: '#/components/headers/Location'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    get:
+      operationId: listMemories
+      tags: [memories]
+      summary: List memories
+      description: |
+        The space's memories, newest first. Without `state`, every state
+        except `rejected` is listed. Sources are not included; read one
+        memory for its sources.
+      parameters:
+        - name: state
+          in: query
+          description: Only these displayed states. Repeat for more than one.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/State'
+        - name: section
+          in: query
+          description: Only these sections. Repeat for more than one.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/Section'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of memories.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/review:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listReview
+      tags: [review]
+      summary: List what needs a person
+      description: |
+        Review's queue: every proposal, then kept memories flagged as a
+        conflict, then kept memories flagged as stale. Within each group the
+        oldest comes first, so the queue drains in the order things arrived.
+        `total` counts the whole queue, not just this page.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of the queue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/receipts:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listReceipts
+      tags: [activity]
+      summary: List receipts
+      description: |
+        The space's Activity: every receipt, newest first. Receipts name the
+        actor, the action and the object; they never hold the memory's words.
+        Pass `memory` for one memory's history.
+      parameters:
+        - name: memory
+          in: query
+          description: Only this memory's receipts, by display ID (M-0219) or id.
+          schema:
+            $ref: '#/components/schemas/MemoryRef'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of receipts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    get:
+      operationId: getMemory
+      tags: [memories]
+      summary: Read one memory
+      description: |
+        One memory with its sources, every version of its statement (newest
+        first) and its latest receipts. `receipts.next_cursor` continues on
+        `GET /v2/spaces/{space}/receipts?memory={id}`.
+      responses:
+        '200':
+          description: The memory and its history.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryDetailEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}:keep:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: keepMemory
+      tags: [review]
+      summary: Keep a proposal
+      description: |
+        Keeps a proposal. Only a person who is a member or owner can keep
+        (per the space's rules); agents and API keys are refused. Send
+        `If-Match` with the version you reviewed.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchOptional'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/CommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}:edit:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: editMemory
+      tags: [memories]
+      summary: Edit a memory
+      description: |
+        Writes a new version of the statement, and optionally moves it to
+        another section. `If-Match` is required. When policy sends the edit
+        to Review (an agent editing what a person kept, for example), the
+        result is a new proposal that supersedes the memory, and the memory
+        itself is unchanged. `keep: true` keeps a proposal after editing it.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/CommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}:reject:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: rejectMemory
+      tags: [review]
+      summary: Reject a proposal
+      description: |
+        Rejects a proposal. Only a person who is a member or owner can
+        reject. `reason` goes into the receipt.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchOptional'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/CommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: |
+        A signed-in session token, an OAuth access token, or an API key
+        (`mxk_…`). A session acts as the person. An API key or an OAuth
+        grant acts as an agent working for the person, at Propose autonomy
+        when it has write access and Read otherwise.
+
+  parameters:
+    SpacePath:
+      name: space
+      in: path
+      required: true
+      description: The space's id or slug.
+      schema:
+        $ref: '#/components/schemas/SpaceKey'
+    SpaceContext:
+      name: space
+      in: query
+      description: |
+        The space a display ID belongs to, by id or slug. Required with a
+        display ID; optional with a memory id, where it must match.
+      schema:
+        $ref: '#/components/schemas/SpaceKey'
+    RefPath:
+      name: ref
+      in: path
+      required: true
+      description: A display ID (M-0219, with `?space=`) or a memory id.
+      schema:
+        $ref: '#/components/schemas/MemoryRef'
+    Cursor:
+      name: cursor
+      in: query
+      description: The `next_cursor` of the previous page.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+    Limit:
+      name: limit
+      in: query
+      description: Page size. Larger values are capped at 200.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        A key you choose for this command, such as a uuid. Send the same key
+        when you retry; send a new key for a new command.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: The `ETag` (memory version) you started from, e.g. `"3"`.
+      schema:
+        $ref: '#/components/schemas/VersionTag'
+    IfMatchOptional:
+      name: If-Match
+      in: header
+      description: The `ETag` (memory version) you reviewed, e.g. `"3"`.
+      schema:
+        $ref: '#/components/schemas/VersionTag'
+    Via:
+      name: X-Memax-Via
+      in: header
+      description: |
+        The surface the command came through, for its receipt. Defaults to
+        `api`. Every value here records a client-attested change; Memax
+        records a change as made by a person on the web only when it can
+        tell.
+      schema:
+        type: string
+        enum: [api, cli, mcp]
+
+  headers:
+    ETag:
+      description: The memory's version, quoted. Send it back as `If-Match`.
+      required: true
+      schema:
+        $ref: '#/components/schemas/VersionTag'
+    Location:
+      description: The memory's URL, by id.
+      required: true
+      schema:
+        type: string
+        format: uri-reference
+    IdempotentReplayed:
+      description: Set to `true` when the Idempotency-Key was already applied and nothing new was written.
+      schema:
+        type: string
+        enum: ['true']
+    RetryAfter:
+      description: Seconds to wait before retrying.
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+
+  responses:
+    CommandResult:
+      description: The command was applied, or sent to Review.
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CommandResultEnvelope'
+    BadRequest:
+      description: |
+        `invalid_request`, `idempotency_key_required`, `space_required` or
+        `ambiguous_ref`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unauthorized:
+      description: '`unauthorized`: sign in again or check the API key.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Forbidden:
+      description: |
+        `refused` (policy; see `details.policy`), `permission_denied` or
+        `impersonation_read_only`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: '`not_found`: no such space or memory in your spaces.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    InvalidTransition:
+      description: "`invalid_transition`: the memory's state doesn't allow this command."
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    EditClash:
+      description: '`edit_clash`: the memory changed since you read it. Reload and try again.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    IdempotencyKeyReused:
+      description: '`idempotency_key_reused`: send a new key for a new command.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    PreconditionRequired:
+      description: '`precondition_required`: send `If-Match` with the version you started from.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    RateLimited:
+      description: '`rate_limited`: wait for `Retry-After` seconds.'
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    InternalError:
+      description: '`internal_error`.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unavailable:
+      description: |
+        `busy` (another change holds the memory; `Retry-After` is set) or
+        `unavailable` (the record is not configured on this server).
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying; set for `busy`.
+          schema:
+            type: string
+            pattern: '^[0-9]+$'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+  schemas:
+    # ------------------------------------------------------------------
+    # Scalars
+    # ------------------------------------------------------------------
+    Id:
+      type: string
+      format: uuid
+    Timestamp:
+      type: string
+      format: date-time
+    SpaceKey:
+      description: A space's id or slug.
+      type: string
+      minLength: 1
+      maxLength: 255
+    MemoryRef:
+      description: A display ID (M-0219) or a memory id.
+      type: string
+      pattern: '^(?:[Mm]-[0-9]{1,18}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$'
+    DisplayRef:
+      description: A memory's display ID, unique within its tenant.
+      type: string
+      pattern: '^M-[0-9]{4,18}$'
+    VersionTag:
+      description: A memory version as an entity tag, `"3"`. A bare `3` is accepted too.
+      type: string
+      pattern: '^(?:"[0-9]{1,9}"|[0-9]{1,9})$'
+    Cursor:
+      description: Opaque. Pass it back as `cursor`.
+      type: string
+    Reason:
+      description: Why. It goes into the receipt, and is redacted if the memory is forgotten.
+      type: string
+      maxLength: 2000
+    SessionRef:
+      description: The agent session the command came from, if any.
+      type: string
+      maxLength: 255
+    Section:
+      description: Where a memory sits in the Brief.
+      type: string
+      enum: [decisions, conventions, preferences, open_question]
+    MemoryKind:
+      type: string
+      enum: [fact, decision]
+    State:
+      description: |
+        The one state people see, derived from `lifecycle` and `flags`:
+        forgotten > conflict > stale > proposed > merged > faded > kept.
+        `rejected` is internal and carries no mark.
+      type: string
+      enum: [proposed, kept, merged, stale, conflict, faded, forgotten, rejected]
+    Lifecycle:
+      type: string
+      enum: [proposed, kept, merged, faded, forgotten, rejected]
+    Flag:
+      type: string
+      enum: [conflict, stale]
+    Trust:
+      description: |
+        The class of a source, and of a memory (the lowest of its sources),
+        highest first. `external` is quarantined.
+      type: string
+      enum: [person, agent_own_work, repository, external]
+    SourceKind:
+      type: string
+      enum: [session, pr, file, url, issue, email, note, import]
+    SpaceKind:
+      type: string
+      enum: [personal, project, team]
+    Role:
+      type: string
+      enum: [owner, member, viewer]
+    ActorKind:
+      type: string
+      enum: [person, agent, dream, memax, repository]
+    Via:
+      description: The surface a change came through.
+      type: string
+      enum: [web, cli, mcp, review, api, email, slack, github, linear, import, system]
+    Assurance:
+      description: |
+        For keeps: `human_web` when a person kept it on the web or in Review,
+        `client_attested` when a client (the CLI, an agent) says a person did.
+      type: string
+      enum: [human_web, client_attested]
+    ReceiptAction:
+      description: The past-tense verb a receipt records.
+      type: string
+      enum:
+        - proposed
+        - kept
+        - edited
+        - rejected
+        - merged
+        - flagged
+        - resolved
+        - verified
+        - faded
+        - restored
+        - forgot
+        - moved
+        - compiled
+        - handed_off
+        - answered
+        - undid
+    ObjectKind:
+      type: string
+      enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space]
+    Outcome:
+      description: |
+        What a command did. `applied`: it took effect as asked. `proposed`:
+        it went to Review. `needs_confirmation`: it went to Review, and the
+        agent should ask the person to keep it.
+      type: string
+      enum: [applied, proposed, needs_confirmation]
+    PolicyEffect:
+      type: string
+      enum: [apply, propose, confirm, refuse]
+    PolicyCode:
+      description: |
+        Why policy decided what it did. Stable; clients localise by it.
+        Refusals: unknown_actor, unknown_action, secret_detected, not_member,
+        read_only, key_read_only, key_cannot_review, key_cannot_forget,
+        person_must_review, person_must_forget, forget_not_allowed,
+        external_needs_review, proposal_in_review. Refused or sent to Review:
+        viewer, owners_keep, decision_needs_web. Sent to Review: api_key,
+        external_source, contradicts_decision, edits_person_kept,
+        autonomy_propose, integration, import, system_proposes, repository,
+        person_proposed. Confirmation: confirm_in_agent.
+      type: string
+      enum:
+        - unknown_actor
+        - unknown_action
+        - secret_detected
+        - not_member
+        - read_only
+        - key_read_only
+        - key_cannot_review
+        - key_cannot_forget
+        - person_must_review
+        - person_must_forget
+        - forget_not_allowed
+        - external_needs_review
+        - proposal_in_review
+        - viewer
+        - owners_keep
+        - decision_needs_web
+        - api_key
+        - external_source
+        - contradicts_decision
+        - edits_person_kept
+        - autonomy_propose
+        - integration
+        - import
+        - system_proposes
+        - repository
+        - person_proposed
+        - confirm_in_agent
+    ErrorCode:
+      type: string
+      enum:
+        - invalid_request
+        - idempotency_key_required
+        - space_required
+        - ambiguous_ref
+        - unauthorized
+        - refused
+        - permission_denied
+        - impersonation_read_only
+        - not_found
+        - method_not_allowed
+        - invalid_transition
+        - edit_clash
+        - idempotency_key_reused
+        - precondition_required
+        - rate_limited
+        - internal_error
+        - busy
+        - unavailable
+
+    # ------------------------------------------------------------------
+    # Objects
+    # ------------------------------------------------------------------
+    Space:
+      type: object
+      additionalProperties: false
+      required: [id, slug, name, kind, role, can_forget]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        slug:
+          type: string
+        name:
+          type: string
+        kind:
+          $ref: '#/components/schemas/SpaceKind'
+        role:
+          $ref: '#/components/schemas/Role'
+        can_forget:
+          description: Whether you may forget memories here.
+          type: boolean
+        repository:
+          description: The repository the space compiles for, if any.
+          type: string
+
+    DecisionOption:
+      type: object
+      additionalProperties: false
+      required: [label]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 500
+        detail:
+          type: string
+          maxLength: 2000
+
+    Decision:
+      description: The extra fields of a memory of kind `decision`.
+      type: object
+      additionalProperties: false
+      properties:
+        why:
+          type: string
+          maxLength: 2000
+        options:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/DecisionOption'
+        consequences:
+          type: string
+          maxLength: 2000
+        area:
+          type: string
+          maxLength: 500
+        status:
+          type: string
+          enum: [in_force, superseded, open]
+
+    Source:
+      description: Where a memory came from.
+      type: object
+      additionalProperties: false
+      required: [id, kind, ref, locator, external, trust, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        kind:
+          $ref: '#/components/schemas/SourceKind'
+        ref:
+          description: What people see, e.g. "PR #212" or "go.mod:14".
+          type: string
+        uri:
+          description: The machine locator, e.g. a URL or a repository path.
+          type: string
+        locator:
+          description: Structured position data, e.g. {path, line, commit}.
+          type: object
+          additionalProperties: true
+        external:
+          description: Third-party content, quarantined to Review.
+          type: boolean
+        trust:
+          $ref: '#/components/schemas/Trust'
+        quote:
+          description: The supporting excerpt. Purged when the memory is forgotten.
+          type: string
+        content_hash:
+          type: string
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    Memory:
+      description: One statement and its state.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - ref
+        - space_id
+        - tenant_id
+        - statement
+        - section
+        - kind
+        - state
+        - lifecycle
+        - flags
+        - trust
+        - version
+        - conditions
+        - scope
+        - created_receipt_id
+        - last_receipt_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        ref:
+          $ref: '#/components/schemas/DisplayRef'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        tenant_id:
+          $ref: '#/components/schemas/Id'
+        statement:
+          description: The current version's words. Empty once forgotten.
+          type: string
+          maxLength: 2000
+        section:
+          $ref: '#/components/schemas/Section'
+        kind:
+          $ref: '#/components/schemas/MemoryKind'
+        state:
+          $ref: '#/components/schemas/State'
+        lifecycle:
+          $ref: '#/components/schemas/Lifecycle'
+        flags:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Flag'
+        trust:
+          $ref: '#/components/schemas/Trust'
+        version:
+          description: The statement's version; also the `ETag`.
+          type: integer
+          minimum: 1
+        stale_after:
+          $ref: '#/components/schemas/Timestamp'
+        conditions:
+          description: '"Stays true while" conditions.'
+          type: array
+          items: true
+        decision:
+          $ref: '#/components/schemas/Decision'
+        scope:
+          description: 'Where it applies, e.g. {"paths": ["packages/web/**"]}.'
+          type: object
+          additionalProperties: true
+        valid_from:
+          $ref: '#/components/schemas/Timestamp'
+        valid_to:
+          $ref: '#/components/schemas/Timestamp'
+        created_receipt_id:
+          $ref: '#/components/schemas/Id'
+        last_receipt_id:
+          $ref: '#/components/schemas/Id'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+        sources:
+          description: Present when one memory is read and it cites sources.
+          type: array
+          items:
+            $ref: '#/components/schemas/Source'
+
+    MemoryVersion:
+      description: One version of a memory's statement.
+      type: object
+      additionalProperties: false
+      required: [version, statement, receipt_id, created_at]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        statement:
+          description: Empty once the memory is forgotten.
+          type: string
+        receipt_id:
+          description: The receipt that wrote this version.
+          $ref: '#/components/schemas/Id'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    ReceiptSource:
+      description: Where a change came from. A pointer, never a quote.
+      type: object
+      additionalProperties: false
+      required: [kind, ref]
+      properties:
+        kind:
+          type: string
+        ref:
+          type: string
+
+    Receipt:
+      description: One entry of the append-only log. Never holds memory text.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - seq
+        - tenant_id
+        - space_id
+        - object_kind
+        - object_id
+        - object_ref
+        - action
+        - actor_kind
+        - via
+        - occurred_at
+        - recorded_at
+        - stream_id
+        - stream_version
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        seq:
+          description: Position in the log.
+          type: integer
+          format: int64
+          minimum: 1
+        tenant_id:
+          $ref: '#/components/schemas/Id'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        object_kind:
+          $ref: '#/components/schemas/ObjectKind'
+        object_id:
+          $ref: '#/components/schemas/Id'
+        object_ref:
+          type: string
+        action:
+          $ref: '#/components/schemas/ReceiptAction'
+        actor_kind:
+          $ref: '#/components/schemas/ActorKind'
+        actor_id:
+          description: The person, or the agent's credential. Absent for Dream, Memax and the repository.
+          $ref: '#/components/schemas/Id'
+        agent:
+          description: The agent the change came through, e.g. claude-code.
+          type: string
+        via:
+          $ref: '#/components/schemas/Via'
+        assurance:
+          $ref: '#/components/schemas/Assurance'
+        session_ref:
+          type: string
+        source:
+          $ref: '#/components/schemas/ReceiptSource'
+        reason:
+          description: Why, if given. Redacted when the memory is forgotten.
+          type: string
+        occurred_at:
+          description: When it happened on the client.
+          $ref: '#/components/schemas/Timestamp'
+        recorded_at:
+          description: When the server recorded it.
+          $ref: '#/components/schemas/Timestamp'
+        stream_id:
+          $ref: '#/components/schemas/Id'
+        stream_version:
+          type: integer
+          minimum: 1
+
+    PolicyDecision:
+      description: Why a command had the outcome it did.
+      type: object
+      additionalProperties: false
+      required: [effect]
+      properties:
+        effect:
+          $ref: '#/components/schemas/PolicyEffect'
+        code:
+          $ref: '#/components/schemas/PolicyCode'
+        message:
+          description: An English sentence; localise by `code`.
+          type: string
+        quarantine:
+          description: External content, held with the ochre notice.
+          type: boolean
+
+    CommandResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, memory, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        memory:
+          description: |
+            The memory's current projection. For an edit sent to Review, the
+            new proposal.
+          $ref: '#/components/schemas/Memory'
+        receipts:
+          description: The receipts the command wrote, oldest first.
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    MemoryDetail:
+      type: object
+      additionalProperties: false
+      required: [memory, versions, receipts]
+      properties:
+        memory:
+          $ref: '#/components/schemas/Memory'
+        versions:
+          description: Every version of the statement, newest first.
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryVersion'
+        receipts:
+          $ref: '#/components/schemas/ReceiptPage'
+
+    SpaceList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Space'
+
+    MemoryPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+
+    ReviewPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+        total:
+          description: How many memories are waiting, across every page.
+          type: integer
+          minimum: 0
+
+    ReceiptPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+
+    # ------------------------------------------------------------------
+    # Requests
+    # ------------------------------------------------------------------
+    SourceInput:
+      description: A source a new memory cites.
+      type: object
+      additionalProperties: false
+      required: [kind, ref]
+      properties:
+        kind:
+          $ref: '#/components/schemas/SourceKind'
+        ref:
+          description: What people see, e.g. "PR #212".
+          type: string
+          minLength: 1
+          maxLength: 500
+        uri:
+          type: string
+          maxLength: 2048
+        locator:
+          type: object
+          additionalProperties: true
+        external:
+          description: |
+            Third-party content. URL, email and issue sources are external
+            whatever this says.
+          type: boolean
+        quote:
+          description: The supporting excerpt.
+          type: string
+          maxLength: 4000
+        content_hash:
+          type: string
+          maxLength: 255
+
+    RememberRequest:
+      type: object
+      additionalProperties: false
+      required: [statement, section]
+      properties:
+        statement:
+          description: One fact, in your words.
+          type: string
+          minLength: 1
+          maxLength: 2000
+        section:
+          $ref: '#/components/schemas/Section'
+        kind:
+          description: Defaults to fact.
+          $ref: '#/components/schemas/MemoryKind'
+        decision:
+          description: Only for kind decision.
+          $ref: '#/components/schemas/Decision'
+        sources:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/SourceInput'
+        stale_after:
+          description: When it should be verified again.
+          $ref: '#/components/schemas/Timestamp'
+        conditions:
+          description: '"Stays true while" conditions.'
+          type: array
+          items: true
+        scope:
+          description: 'Where it applies, e.g. {"paths": ["packages/web/**"]}.'
+          type: object
+          additionalProperties: true
+        valid_from:
+          $ref: '#/components/schemas/Timestamp'
+        valid_to:
+          $ref: '#/components/schemas/Timestamp'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    ReviewRequest:
+      description: The body of keep and reject. Every field is optional.
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    EditRequest:
+      type: object
+      additionalProperties: false
+      required: [statement]
+      properties:
+        statement:
+          description: The new words.
+          type: string
+          minLength: 1
+          maxLength: 2000
+        section:
+          description: Moves the memory; omit to leave it where it is.
+          $ref: '#/components/schemas/Section'
+        keep:
+          description: Also keep a proposal after editing it (Review's edit and keep).
+          type: boolean
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    # ------------------------------------------------------------------
+    # Envelopes
+    # ------------------------------------------------------------------
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          description: What went wrong and what to do, in English.
+          type: string
+        details:
+          $ref: '#/components/schemas/ErrorDetails'
+
+    ErrorDetails:
+      description: Machine-readable context; which keys appear depends on `code`.
+      type: object
+      additionalProperties: false
+      properties:
+        field:
+          description: The field that is wrong (`invalid_request`).
+          type: string
+        policy:
+          description: The policy decision (`refused`).
+          $ref: '#/components/schemas/PolicyDecision'
+        ref:
+          description: The memory's display ID (`edit_clash`, `invalid_transition`).
+          type: string
+        expected_version:
+          description: The version you sent (`edit_clash`).
+          type: integer
+        current_version:
+          description: The memory's version now (`edit_clash`).
+          type: integer
+        retry_after:
+          description: Seconds to wait (`rate_limited`, `busy`).
+          type: integer
+        limit:
+          description: The rate limit (`rate_limited`).
+          type: integer
+        current:
+          description: Requests counted so far (`rate_limited`).
+          type: integer
+        reset_at:
+          description: When the window resets (`rate_limited`).
+          $ref: '#/components/schemas/Timestamp'
+
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/Error'
+
+    SpaceListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SpaceList'
+
+    MemoryPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/MemoryPage'
+
+    ReviewPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ReviewPage'
+
+    ReceiptPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ReceiptPage'
+
+    MemoryDetailEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/MemoryDetail'
+
+    CommandResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/CommandResult'

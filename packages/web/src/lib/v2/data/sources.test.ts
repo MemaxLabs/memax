@@ -90,7 +90,12 @@ describe("the demo source", () => {
       space: v2,
       statement: "Pin shared dependency versions with the pnpm catalog.",
     });
-    expect(check.duplicate).toMatchObject({ ref: "M-0432", agent: "codex" });
+    expect(check.duplicate).toMatchObject({
+      ref: "M-0432",
+      agent: "codex",
+      lifecycle: "proposed",
+      match: "near",
+    });
     expect(check.condition?.subject).toBe("pnpm-workspace.yaml");
     const none = await demo.checkRemember({ space: v2, statement: "Tabs." });
     expect(none.duplicate).toBeNull();
@@ -108,7 +113,8 @@ describe("the demo source", () => {
     });
     expect([first.ref, second.ref]).toEqual(["M-0439", "M-0440"]);
     expect(first).toMatchObject({ outcome: "kept", recompiled: 3 });
-    expect(first.undo).toBeTypeOf("function");
+    // A fresh Remember has no undo on the server, so none here either.
+    expect(first.receipt).toBeNull();
   });
 });
 
@@ -138,6 +144,26 @@ function fakeClient() {
         }),
       },
       memories: {
+        nearDuplicates: vi.fn().mockResolvedValue({
+          items: [
+            {
+              memory: {
+                ref: "M-0432",
+                lifecycle: "proposed",
+                section: "conventions",
+              },
+              similarity: 0.95,
+              match: "near",
+              created: {
+                actor_kind: "agent",
+                agent: "codex",
+                occurred_at: "2026-10-05T14:18:00Z",
+              },
+            },
+          ],
+          semantic: true,
+          floor: 0.9,
+        }),
         list: vi.fn().mockResolvedValue({ items: [{}], has_more: false }),
         remember: vi.fn().mockResolvedValue({
           outcome: "applied",
@@ -215,7 +241,12 @@ describe("the SDK source", () => {
       { statement: "River, not Temporal.", section: "decisions" },
       { idempotencyKey: "key-1" },
     );
-    expect(kept).toEqual({ ref: "M-0500", outcome: "kept", recompiled: null });
+    expect(kept).toEqual({
+      ref: "M-0500",
+      outcome: "kept",
+      recompiled: null,
+      receipt: null,
+    });
     const proposal = await source.keepProposal({
       space: v2,
       ref: "M-0432",
@@ -227,6 +258,129 @@ describe("the SDK source", () => {
       { space: "memax-v2", idempotencyKey: "key-2" },
     );
     expect(proposal.outcome).toBe("proposed");
+  });
+
+  it("carries a Keep's receipt for Undo, and undoes by receipt", async () => {
+    const { client, source } = setup();
+    client.v2.memories.keep.mockResolvedValueOnce({
+      outcome: "applied",
+      memory: { ref: "M-0432" },
+      receipts: [{ id: "r-keep" }],
+    });
+    const kept = await source.keepProposal({
+      space: v2,
+      ref: "M-0432",
+      idempotencyKey: "key-3",
+    });
+    expect(kept.receipt).toBe("r-keep");
+    const undo = vi.fn().mockResolvedValue({
+      memories: [{ ref: "M-0432" }],
+      receipts: [{ id: "r-undid" }],
+    });
+    (client.v2 as unknown as { receipts: Record<string, unknown> }).receipts = {
+      ...client.v2.receipts,
+      undo,
+    };
+    expect(
+      await source.undo({ space: v2, receipt: "r-keep", idempotencyKey: "u1" }),
+    ).toEqual({ refs: ["M-0432"] });
+    expect(undo).toHaveBeenCalledWith("r-keep", {}, { idempotencyKey: "u1" });
+  });
+
+  it("checks Remember's draft with memax.v2.memories.nearDuplicates", async () => {
+    const { client, source } = setup();
+    const controller = new AbortController();
+    const check = await source.checkRemember({
+      space: v2,
+      statement: "  Pin shared dependency versions with the pnpm catalog. ",
+      signal: controller.signal,
+    });
+    expect(client.v2.memories.nearDuplicates).toHaveBeenCalledWith(
+      "memax-v2",
+      {
+        statement: "Pin shared dependency versions with the pnpm catalog.",
+        limit: 1,
+      },
+      { signal: controller.signal },
+    );
+    expect(check).toEqual({
+      duplicate: {
+        ref: "M-0432",
+        lifecycle: "proposed",
+        agent: "codex",
+        writtenAt: "2026-10-05T14:18:00Z",
+        match: "near",
+      },
+      section: "conventions",
+      condition: null,
+    });
+    // An empty draft asks nothing.
+    client.v2.memories.nearDuplicates.mockClear();
+    expect(await source.checkRemember({ space: v2, statement: " " })).toEqual({
+      duplicate: null,
+      section: null,
+      condition: null,
+    });
+    expect(client.v2.memories.nearDuplicates).not.toHaveBeenCalled();
+  });
+
+  it("maps a kept repeat a person wrote, and offers no open-question section", async () => {
+    const { rememberCheckOf } = await import("./remember-sdk");
+    const check = rememberCheckOf({
+      items: [
+        {
+          memory: {
+            ref: "M-0219",
+            lifecycle: "kept",
+            section: "open_question",
+          },
+          similarity: 1,
+          match: "exact",
+          created: {
+            actor_kind: "person",
+            occurred_at: "2026-10-01T09:00:00Z",
+          },
+        },
+      ],
+      semantic: false,
+      floor: 0.9,
+    } as never);
+    expect(check.duplicate).toEqual({
+      ref: "M-0219",
+      lifecycle: "kept",
+      agent: null,
+      writtenAt: "2026-10-01T09:00:00Z",
+      match: "exact",
+    });
+    expect(check.section).toBeNull();
+    expect(
+      rememberCheckOf({ items: [], semantic: true, floor: 0.9 }).duplicate,
+    ).toBeNull();
+  });
+
+  it("lets Keep go ahead when the check fails, but not when it was aborted", async () => {
+    const { client, source } = setup();
+    const { MemaxError } = await import("memax-sdk");
+    client.v2.memories.nearDuplicates.mockRejectedValueOnce(
+      new MemaxError("Too many", "rate_limited", 429),
+    );
+    expect(await source.checkRemember({ space: v2, statement: "x" })).toEqual({
+      duplicate: null,
+      section: null,
+      condition: null,
+    });
+    const controller = new AbortController();
+    controller.abort();
+    client.v2.memories.nearDuplicates.mockRejectedValueOnce(
+      new DOMException("aborted", "AbortError"),
+    );
+    await expect(
+      source.checkRemember({
+        space: v2,
+        statement: "x",
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("aborted");
   });
 
   it("can't ask yet, and says so", async () => {

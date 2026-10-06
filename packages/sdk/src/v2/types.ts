@@ -33,6 +33,11 @@ export type MemoryDetail = Schemas["MemoryDetail"];
 export type CommandResult = Schemas["CommandResult"];
 /** A command that changed several memories: settling a conflict, an undo. */
 export type MemoriesCommandResult = Schemas["MemoriesCommandResult"];
+/** What a draft repeats: Remember's near-duplicate check. */
+export type NearDuplicates = Schemas["NearDuplicates"];
+export type NearDuplicate = Schemas["NearDuplicate"];
+/** `exact`: the same words. `near`: the same thing by meaning. */
+export type DuplicateMatch = Schemas["DuplicateMatch"];
 export type ErrorBody = Schemas["Error"];
 
 // The judge, links and conflicts
@@ -58,6 +63,8 @@ export type TargetList = Schemas["TargetList"];
 export type TargetResult = Schemas["TargetResult"];
 export type Delivered = Schemas["Delivered"];
 export type DeliveredFile = Schemas["DeliveredFile"];
+/** A file a pull holds, and the proposals it waits for. */
+export type TargetHold = Schemas["TargetHold"];
 export type CompileRun = Schemas["CompileRun"];
 export type CompileRunPage = Schemas["CompileRunPage"];
 export type CompiledOutput = Schemas["CompiledOutput"];
@@ -115,6 +122,7 @@ export type AgentCommandResult = Schemas["AgentCommandResult"];
 
 // Request bodies
 export type RememberInput = Schemas["RememberRequest"];
+export type NearDuplicatesInput = Schemas["NearDuplicatesRequest"];
 export type EditInput = Schemas["EditRequest"];
 export type ReviewInput = Schemas["ReviewRequest"];
 export type SourceInput = Schemas["SourceInput"];

@@ -156,15 +156,17 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 - **Compiles.** A space's Brief (`B-`) and targets (`AGENTS.md`, the `CLAUDE.md` shim, scoped Cursor rules, the ChatGPT copy-out) live in migration 031. A command that changes what compiles bumps `targets.dirty_gen` and inserts the `compile_target` River jobs with `InsertManyTx` **in the command's transaction** (`internal/ledger/jobs.go` switches back to the login role for River's tables), so a failed insert rolls back the whole command. `internal/compile` runs the jobs against the stateless compile service (`packages/compile-service`, internal-only) and records each run (`C-`) through the ledger as Memax. Hand edits come back as proposals (`file:line` sources) through observations and `ResolveDrift`; a deleted line never forgets anything by itself.
 - **The judge.** Every proposal, and every memory a Write-level agent kept at once, is judged by the River job `judge_proposal` (`internal/judge`), enqueued in the command's transaction: repeats are folded, updates linked, and a contradiction of a decision in force is flagged as a conflict before anyone keeps it (rule 11). It acts only through `ledger.RecordVerdict`, as Memax. Model tiers are explicit config (`JUDGE_*`), never inferred from a model name. A person settles a conflict with `ResolveConflict`, and undoes their own decisions (and the judge's folds) with `Undo`, addressed by receipt.
 - **Assurance.** A person's Keep is `human_web` only when the session was issued to the web app (the token's `surface` claim, migration 030) **and** `/api/proxy` signed the request with `WEB_SURFACE_SECRET` (`internal/websurface`, which has the threat model). Everything else, the CLI included, is `client_attested`.
-- **Sealed receipts.** The worker's sealer (`internal/sealer`, migration 038) chains each space's receipts off the write path: a `seal_sweep` every `SEALER_INTERVAL` (10–60 s) moves a cursor over receipts whose transactions have ended (txid below the snapshot's xmin, so an in-flight receipt is sealed in its place once it commits) and queues a `seal_space` job per space; each cuts a checkpoint (`v2.receipt_checkpoints`: range, RFC 6962 Merkle root, chain hash, Ed25519 signature from `RECEIPT_SIGNING_KEY`) and copies it to object storage, best-effort. The encoding is `internal/receiptchain` (format 1, length-prefixed binary; the SDK's `verifyReceiptChain` implements it byte for byte, and golden vectors in both test suites keep them equal: never change format 1, add a format). A receipt commits to its reason as `reason_sha256 = SHA-256(salt ‖ reason)`, written by the database; Forget's redaction nulls the reason and the salt and keeps the commitment, so the chain survives it. Seals carry no receipts (a seal receipt would need sealing, forever); only the role `memax_v2_sealer` writes them, and `memax_v2` only reads them. `receipts_verify` recomputes every chain from genesis nightly; mismatches log at error level with `metric: receipt_chain_mismatch`.
-- **Reads are not receipts.** An agent read (`R-`, migration 037) goes to `v2.reads`: append-only for `memax_v2`, partitioned by UTC month (created ahead by `v2.ensure_reads_partitions`; 13 months kept, pruned by the worker's daily `reads_maintain`), with counters in `v2.read_rollups` per space, subject (a memory, or a compile run), UTC day and reader. Read paths hand a `ledger.ReadEvent` to the process's `internal/reads` recorder **after** the response, from the result's items (never inside query code): a bounded buffer flushed every 250 ms through `Ledger.RecordReads`, which drops and counts (`memax.reads.dropped`) rather than block. A session-start hook reports the compile it loaded with `POST /v2/spaces/{space}/compile-loads` (written at once, idempotent, decided by `policy.Decide(ActionRead)`: an agent counts reads only where it's connected); it counts as a read of every fact in the compile, resolved through `compile_runs.refs` when counted. A read never holds memory text or query text. Fading asks `Ledger.ReadStatus` (last read by any observed path, and whether the memory is in a file whose loads Memax can't see); the north star is `Ledger.GetReadMetrics`.
+- **Embeddings.** The current version of every proposal and kept memory is embedded whole into `v2.memory_embeddings` (migration 037: one `halfvec(1024)` per memory, version and model, PLAIN storage, a `(space_id, model)` btree and no HNSW; memax_v2 may only SELECT and INSERT). Every command that writes a searchable version enqueues `index_memory` in its transaction (`ledger.WithIndexJobs`). `internal/v2index` embeds each space's waiting versions in one Voyage request, and a periodic sweep queues any version left without an embedding of the index model. Forget's purge of the words takes the vectors with it, by trigger. Models are explicit config (`V2_EMBED_MODEL` voyage-4, `V2_EMBED_QUERY_MODEL` voyage-4-lite), eval-gated. Without `VOYAGE_API_KEY` nothing is embedded and retrieval stays lexical.
+- **Recall and search.** `internal/v2recall` runs the lexical lanes and embeds the query in parallel, then an exact, space-scoped KNN (`ledger.Nearest`), weighted RRF with V1's constants, and Voyage `rerank-3-lite` on more than 8 candidates within 150 ms (`V2_RERANK_MODEL`). A query embedding that misses 120 ms answers lexically, and MCP says so in `_meta["app.memax/retrieval"]` beside `lexical_only`. The judge's vector candidates come from the same embeddings (`JUDGE_VECTOR_FLOOR`, 0.65), and so does Remember's near-duplicate check (`V2_NEAR_DUPLICATE_FLOOR`, 0.90).
+- **Sealed receipts.** The worker's sealer (`internal/sealer`, migration 039) chains each space's receipts off the write path: a `seal_sweep` every `SEALER_INTERVAL` (10–60 s) moves a cursor over receipts whose transactions have ended (txid below the snapshot's xmin, so an in-flight receipt is sealed in its place once it commits) and queues a `seal_space` job per space; each cuts a checkpoint (`v2.receipt_checkpoints`: range, RFC 6962 Merkle root, chain hash, Ed25519 signature from `RECEIPT_SIGNING_KEY`) and copies it to object storage, best-effort. The encoding is `internal/receiptchain` (format 1, length-prefixed binary; the SDK's `verifyReceiptChain` implements it byte for byte, and golden vectors in both test suites keep them equal: never change format 1, add a format). A receipt commits to its reason as `reason_sha256 = SHA-256(salt ‖ reason)`, written by the database; Forget's redaction nulls the reason and the salt and keeps the commitment, so the chain survives it. Seals carry no receipts (a seal receipt would need sealing, forever); only the role `memax_v2_sealer` writes them, and `memax_v2` only reads them. `receipts_verify` recomputes every chain from genesis nightly; mismatches log at error level with `metric: receipt_chain_mismatch`.
+- **Reads are not receipts.** An agent read (`R-`, migration 038) goes to `v2.reads`: append-only for `memax_v2`, partitioned by UTC month (created ahead by `v2.ensure_reads_partitions`; 13 months kept, pruned by the worker's daily `reads_maintain`), with counters in `v2.read_rollups` per space, subject (a memory, or a compile run), UTC day and reader. Read paths hand a `ledger.ReadEvent` to the process's `internal/reads` recorder **after** the response, from the result's items (never inside query code): a bounded buffer flushed every 250 ms through `Ledger.RecordReads`, which drops and counts (`memax.reads.dropped`) rather than block. A session-start hook reports the compile it loaded with `POST /v2/spaces/{space}/compile-loads` (written at once, idempotent, decided by `policy.Decide(ActionRead)`: an agent counts reads only where it's connected); it counts as a read of every fact in the compile, resolved through `compile_runs.refs` when counted. A read never holds memory text or query text. Fading asks `Ledger.ReadStatus` (last read by any observed path, and whether the memory is in a file whose loads Memax can't see); the north star is `Ledger.GetReadMetrics`.
 
 **API, MCP and CLI**
 
-- **API.** New endpoints go under `/v2`, spec-first in `packages/server/openapi/v2.yaml`. SDK types are generated from that spec. The `model.ApiResponse` envelope still applies. Commands need an `Idempotency-Key`, and edits need `If-Match`. `/v1` is frozen for old CLIs, and retired `/v1` routes answer 410 with a pointer.
+- **API.** New endpoints go under `/v2`, spec-first in `packages/server/openapi/v2.yaml`. SDK types are generated from that spec. The `model.ApiResponse` envelope still applies. Commands need an `Idempotency-Key`, and edits need `If-Match`. A read that is a `POST` to keep its input out of URLs (the near-duplicate check) is marked `x-memax-read: true` and takes none. `/v1` is frozen for old CLIs, and retired `/v1` routes answer 410 with a pointer.
 - **The `/v2` contract workflow.** The spec is written first and the build holds everything else to it:
   1. Change `packages/server/openapi/v2.yaml` (OpenAPI 3.1, Apache-2.0 so the SDK can carry its types). Close every object (`additionalProperties: false`) and name every response schema; `internal/contract` lints these rules.
-  2. Implement the handler in `packages/server/internal/handler/v2api` and add the route to `v2api.routes` (the route table must equal the spec, and nothing else in `serverapp` may register a `/v2` path). Handlers call only `internal/ledger` (and `internal/compile` for compiled words: the preview, observations, the drift view). A credential becomes a ledger actor in one place, `principalFor`.
+  2. Implement the handler in `packages/server/internal/handler/v2api` and add the route to `v2api.routes` (the route table must equal the spec, and nothing else in `serverapp` may register a `/v2` path). Handlers call only `internal/ledger` (and `internal/compile` for compiled words: the preview, observations, the drift view; and the draft embedder, `v2api.WithDrafts`, for the near-duplicate check). A credential becomes a ledger actor in one place, `principalFor`.
   3. Test through `env.do` in `v2api`'s tests: every request and response runs through the spec, so an undocumented status, header or field fails, and the run fails if any operation lacks a 2xx test.
   4. Regenerate the SDK types (`pnpm --filter memax-sdk gen:v2`), add the typed method under `memax.v2`, and commit the spec, server, SDK and `src/v2/schema.gen.ts` together. `pnpm lint` fails when the generated types are stale.
 - **MCP.** All 17 V1 tool names keep working (both profiles), and remote and stdio parity still applies.
@@ -222,7 +224,7 @@ memax/
     ui/              # @memaxlabs/ui shared design system (Tailwind + Radix) — AGPL-3.0
     docs-site/       # Fumadocs developer hub (docs.memax.app) — Apache-2.0
     sdk/             # memax-sdk — TypeScript client, published to npm — Apache-2.0
-    cli/             # memax-cli — Commander.js CLI, published to npm — Apache-2.0
+    cli/             # memax-cli — Commander.js CLI and the local daemon (link, daemon, status, compile), published to npm — Apache-2.0
     ledger-tokens/   # V2 Ledger tokens, type styles, fonts, marks (@memaxlabs/ledger-tokens) — Apache-2.0
     ledger/          # V2 Ledger React components, mx- styles, en/zh strings, previews (@memaxlabs/ledger) — AGPL-3.0
     compiler/        # V2 compiler: kept record → AGENTS.md, CLAUDE.md shim, scoped rules; parse-back (@memaxlabs/compiler) — Apache-2.0
@@ -488,6 +490,7 @@ Package-specific commands are in each package's README.
 - **App frame.** `(ledger)/(app)/` wraps every place (`/[space]/…`) and `/settings/…` in Ledger's `Shell`: the rail, the space switcher, ⌘K, the `?` sheet and toasts. Place pages are in `(app)/_places/`.
 - **Data.** The frame reads one interface, `src/lib/v2/data/source.ts`, with two sources: `sdk-source.ts` (`memax.v2`, for a browser with a session) and `demo-source.ts` (the handoff's demo dataset, for dev fixtures and Playwright). `(app)/layout.tsx` picks one per request (`lib/v2/data/mode.ts`). Without a session and with dev fixtures on, you get the demo; `memax_v2_data=demo` forces it when signed in. What `/v2` doesn't serve yet is a `PLACEHOLDER` in the SDK source, never demo data.
 - **Records (Review, Memories, a memory's page).** Each domain has its own module on the interface (`data/review.ts` as `source.review`, `data/memories.ts` as `source.memories`), with `sdk-review.ts`/`sdk-memories.ts` and the demo's session store (`demo-records.ts`, `demo-memories.ts`). Commands take one idempotency key per user action, reused across retries (`lib/v2/intent-keys.ts`), and errors normalise to `CommandFailure` (`data/command-error.ts`), worded by policy code in `lib/v2/records-copy.ts`.
+- **The Brief, targets and Today.** `data/brief.ts` (`source.brief`: the current version as the page shows it, built by the compiler's placement rules in `brief-view.ts`; versions; revise with If-Match), `data/targets.ts` (`source.targets`: list, preview, drift, Compile now, settings, pull/overwrite/stop; `targetStatus` words D2/D3, so ChatGPT is "live over connector" and a Cursor with nothing scoped "reads AGENTS.md"), and `data/today.ts` (`source.today`). The rail's status line comes from the targets (`syncLineOf`). The demo's compiled files in `data/demo-compiled.ts` are `@memaxlabs/compiler`'s own output for the demo Brief; regenerate them when the demo record changes.
 - **Keyboard.** Every binding is declared once in `src/lib/v2/keymap/registry.ts`, and the `?` sheet is generated from it. Screens handle a binding with `useHotkey(id, …)`; never add a `window` key listener. Forget has no key.
 - **Specimen and gallery.** `/dev/ledger/tokens` shows every token and type style in Paper and Carbon. `/dev/ledger/components` mounts every `@memaxlabs/ledger` preview at its artboard size in both themes.
 
@@ -525,9 +528,19 @@ pnpm --filter @memaxlabs/server migrate:new <slug>
 # Run the LoCoMo benchmark harness
 cd packages/server && go run ./cmd/locomo/ -dataset eval/locomo/data/locomo10.json
 
-# Judge eval (eval/judge/pairs.json): the set, stage 0 and the harness on a fake model;
-# JUDGE_EVAL_LIVE=1 also scores the real JUDGE_* tiers (needs ANTHROPIC_API_KEY)
+# Judge eval (eval/judge/pairs.json): the set, stage 0, the harness on a fake model and the
+# candidate sets (fake embedder); JUDGE_EVAL_LIVE=1 also scores the real JUDGE_* tiers (needs
+# ANTHROPIC_API_KEY), and V2_EVAL_LIVE=1 the candidates and floors on Voyage (needs VOYAGE_API_KEY)
 cd packages/server && go test ./eval/judge/ -v
+
+# V2 embeddings and hybrid retrieval: indexing, the vector lane, fusion, rerank and deadline
+# fallbacks, the judge's vectors, and the near-duplicate check (mock embedders, real Postgres)
+cd packages/server && go test ./internal/v2index/ ./internal/v2recall/ ./internal/judge/ && go test ./internal/handler/v2api/ -run NearDuplicates
+cd packages/server && go test ./internal/mcpv2/ -run 'RecallByMeaning|FallsBackLexically|HybridLatency' -v
+
+# V2 retrieval eval: lexical vs hybrid on a fake embedder; V2_EVAL_LIVE=1 adds voyage-4/-lite and
+# rerank-3-lite (needs VOYAGE_API_KEY). The model defaults ship only if this doesn't regress
+cd packages/server && go test ./eval/v2/ -v
 
 # Connect V1 API keys and OAuth grants to the V2 record as agent connections, at Propose
 # (idempotent; prefer -user for the people moving to V2)
@@ -579,6 +592,28 @@ PORT=8090 pnpm --filter @memaxlabs/compile-service start
 
 # Deploy to Fly.io from the REPOSITORY ROOT (staging; swap to fly.compile.production.toml for prod)
 fly deploy . -c packages/compile-service/fly/fly.compile.staging.toml
+```
+
+### CLI: link, the daemon, status and compile (V2 local delivery)
+
+The daemon (`packages/cli/src/lib/daemon/`) writes each space's compiled files into the repositories linked on the machine and reports hand edits; it never writes over one (rule 6). Its state, log, pid and control socket live in `~/.memax/daemon/`. `memax daemon run` is reached through `src/bin.ts` without loading the rest of the CLI (the MCP SDK alone is ~30 MB of memory), and it talks to `/v2` over `node:http(s)` (`lib/daemon/http.ts`), not `fetch`. The CLI carries a verbatim copy of the compiler's managed block (`lib/daemon/compiler/`) because `@memaxlabs/compiler` isn't published yet; edit the compiler, then re-copy.
+
+```bash
+# Point the CLI at a local server, sign in, link a repository and run the daemon in the foreground
+MEMAX_API_URL=http://localhost:8080 memax login
+memax link --space memax-v2 && memax daemon run        # or: memax daemon start | stop | status
+memax status && memax compile
+
+# Re-copy the compiler's managed block into the CLI after changing it (lint checks the copy)
+node packages/cli/scripts/sync-compiler.mjs
+
+# Daemon tests (a fake /v2 server built on the real compiler)
+pnpm --filter memax-cli exec vitest run test/daemon
+
+# End to end against the real stack: a fresh database (needs psql and a role that can CREATE
+# DATABASE), migrations, devseed, the compile service, the worker and the API server. Skipped
+# without the flag. MEMAX_E2E_BIN can point at prebuilt server, worker, migrate and devseed.
+MEMAX_E2E_SERVER=1 pnpm --filter memax-cli exec vitest run test/daemon/e2e-server.test.ts
 ```
 
 Migrations use a single shared sequence. Don't hand-pick version numbers — always use `migrate:new`. CI enforces sequential numbering (`internal/migrate/migrate_test.go`) and rejects gaps, duplicates, orphan up/down files, and non-padded versions.

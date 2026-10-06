@@ -33,6 +33,8 @@ type readArgs struct {
 type v2Part struct {
 	out  handler.MCPRecallOutput
 	text string
+	// retrieval is how the query ran (_meta), when there was one.
+	retrieval *v2recall.Retrieval
 }
 
 // readTarget narrows a read to the space it names, when that space is on
@@ -125,6 +127,9 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 			s.logReadError(ctx, "search", err)
 		}
 		part.out.LexicalOnly = found.LexicalOnly
+		if err == nil {
+			part.retrieval = &found.Retrieval
+		}
 		for _, h := range found.Hits {
 			part.out.Results = append(part.out.Results, s.hitItem(bySpace[h.SpaceID], h))
 		}
@@ -201,7 +206,7 @@ func (s *Server) compose(part v2Part, v1 *mcp.CallToolResult, digest bool) *mcp.
 			text = "No results found."
 		}
 	}
-	return textResult(text, out)
+	return withRetrieval(textResult(text, out), part.retrieval, out.LexicalOnly)
 }
 
 // searchTool is memax_search when any reachable space is on V2.
@@ -235,6 +240,7 @@ func (s *Server) searchTool(ctx context.Context, c *handler.MCPToolCall, v *view
 	}
 	out := handler.MCPSearchOutput{Results: []handler.MCPItem{}, LexicalOnly: true}
 	var b strings.Builder
+	var retrieval *v2recall.Retrieval
 	if len(spaces) > 0 {
 		sctx, cancel := context.WithTimeout(ctx, 2*s.recallBudget)
 		found, err := s.search.Search(sctx, v.p.Scope.Narrow(ids(spaces)...), v2recall.Query{
@@ -243,6 +249,8 @@ func (s *Server) searchTool(ctx context.Context, c *handler.MCPToolCall, v *view
 		if err != nil {
 			out.Partial = true
 			s.logReadError(ctx, "search", err)
+		} else {
+			out.LexicalOnly, retrieval = found.LexicalOnly, &found.Retrieval
 		}
 		bySpace := map[uuid.UUID]space{}
 		for _, sp := range spaces {
@@ -270,7 +278,7 @@ func (s *Server) searchTool(ctx context.Context, c *handler.MCPToolCall, v *view
 	if text == "" {
 		text = "No results found."
 	}
-	return textResult(text, out), true
+	return withRetrieval(textResult(text, out), retrieval, out.LexicalOnly), true
 }
 
 // get is memax_get (and get_memory) when any reachable space is on V2.

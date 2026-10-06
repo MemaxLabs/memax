@@ -280,8 +280,14 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 			return Result{}, ErrNotFound
 		}
 		if m.streamVersion != um.AfterStreamVersion {
-			return Result{}, &UndoError{Reason: UndoLaterChanges, Ref: m.Ref, Message: fmt.Sprintf(
-				"%s changed after this, so undoing it would lose that change. Undo the later change first, or change %s directly.", m.Ref, m.Ref)}
+			later, err := w.changedSince(ctx, e.spaceID, m.ID, um.AfterStreamVersion)
+			if err != nil {
+				return Result{}, err
+			}
+			if later {
+				return Result{}, &UndoError{Reason: UndoLaterChanges, Ref: m.Ref, Message: fmt.Sprintf(
+					"%s changed after this, so undoing it would lose that change. Undo the later change first, or change %s directly.", m.Ref, m.Ref)}
+			}
 		}
 	}
 	if err := w.checkUndoLinks(ctx, e); err != nil {
@@ -350,6 +356,11 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 			before.HasDecision, before.DecisionStatus, statement, hash, bands, rc.StreamVersion, rc.ID, sp.ID); err != nil {
 			return Result{}, fmt.Errorf("ledger: undo %s: %w", m.Ref, err)
 		}
+		if to.Lifecycle == lifecycle.Proposed || to.Lifecycle == lifecycle.Kept {
+			// The restored version is searchable again; its job is a no-op
+			// when its embedding is still stored.
+			w.indexVersion(sp.ID, m.ID, before.Version)
+		}
 		if m.Lifecycle == lifecycle.Kept || to.Lifecycle == lifecycle.Kept {
 			dirty = true
 		}
@@ -397,6 +408,30 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 		err = w.loadMemories(ctx, &res, e.memoryIDs)
 	}
 	return res, err
+}
+
+// changedSince reports whether a memory changed after the given stream
+// version in a way an undo would lose. Two kinds of later receipt don't
+// count: the judge's `judged` (a verdict that changed nothing, which every
+// proposal edit gets within seconds), and a later command that was itself
+// undone, with its `undid` receipts: undoing the later change first, as
+// the refusal says to, puts the memory back where this command left it.
+func (w *writer) changedSince(ctx context.Context, spaceID, memoryID uuid.UUID, version int) (bool, error) {
+	var later bool
+	if err := w.tx.QueryRow(ctx, `
+		SELECT EXISTS (
+		  SELECT 1 FROM v2.receipts r
+		   WHERE r.stream_id = $1 AND r.space_id = $2 AND r.stream_version > $3
+		     AND r.action <> 'judged'
+		     AND NOT EXISTS (
+		       SELECT 1 FROM v2.undo_entries u
+		        WHERE u.space_id = $2 AND u.undone_receipt_id IS NOT NULL
+		          AND (r.id = ANY (u.receipt_ids)
+		               OR (r.action = 'undid' AND r.source->>'kind' = 'receipt' AND r.source->>'ref' = u.receipt_id::text))))`,
+		memoryID, spaceID, version).Scan(&later); err != nil {
+		return false, fmt.Errorf("ledger: undo: read later changes: %w", err)
+	}
+	return later, nil
 }
 
 func undoNoun(k UndoKind) string {

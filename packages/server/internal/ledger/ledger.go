@@ -32,6 +32,9 @@ type Ledger struct {
 	// inserter enqueues follow-up jobs in the command's transaction
 	// (WithJobs); nil enqueues nothing.
 	inserter Jobs
+	// indexJobs enqueues index_memory with every new version
+	// (WithIndexJobs, embeddings.go).
+	indexJobs bool
 	// The undo windows (WithUndoWindows).
 	undoWindow      time.Duration
 	judgeUndoWindow time.Duration
@@ -98,7 +101,7 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	w := &writer{tx: tx, meta: m, command: cmd.Name(), hash: hash, inserter: l.inserter, loginRole: loginRole,
-		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, now: now}
+		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, now: now, indexJobs: l.indexJobs}
 	var res Result
 	switch c := cmd.(type) {
 	case *Remember:

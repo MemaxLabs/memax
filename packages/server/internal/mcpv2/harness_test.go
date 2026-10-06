@@ -89,9 +89,19 @@ func (r *recordedReads) all() []ledger.ReadEvent {
 
 func newEnv(t *testing.T) *env { return buildEnv(t, true) }
 
-func buildEnv(t *testing.T, withV2 bool) *env {
+// envOption changes the V2 tool surface's options (the hybrid searcher).
+type envOption func(*env, *mcpv2.Options)
+
+func buildEnv(t *testing.T, withV2 bool, opts ...envOption) *env {
 	t.Helper()
 	st, pool := testdb.Acquire(t)
+	return buildEnvOn(t, st, pool, withV2, opts...)
+}
+
+// buildEnvOn builds the servers on an acquired database (a second server
+// on the same data compares configurations).
+func buildEnvOn(t *testing.T, st store.Store, pool *pgxpool.Pool, withV2 bool, opts ...envOption) *env {
+	t.Helper()
 	authH, err := handler.NewAuthHandler(pool)
 	if err != nil {
 		t.Fatalf("NewAuthHandler: %v", err)
@@ -109,8 +119,12 @@ func buildEnv(t *testing.T, withV2 bool) *env {
 		e.compile = compile.New(e.ledger, &compiletest.Fake{}, mockobjectstore.New(), compile.Config{Log: quiet})
 		v2h := v2api.New(e.ledger, quiet, v2api.WithCompile(e.compile))
 		t.Cleanup(v2h.Wait)
-		srv := mcpv2.New(mcpv2.Options{V2: v2h, Spaces: e.spaces, StateSecret: []byte(testSecret),
-			AppBaseURL: "https://memax.test", Reads: tee{e.reads, e.recorder}, Logger: quiet, Compile: v2h.Compile()})
+		o := mcpv2.Options{V2: v2h, Spaces: e.spaces, StateSecret: []byte(testSecret),
+			AppBaseURL: "https://memax.test", Reads: tee{e.reads, e.recorder}, Logger: quiet, Compile: v2h.Compile()}
+		for _, opt := range opts {
+			opt(e, &o)
+		}
+		srv := mcpv2.New(o)
 		agentH.SetV2(srv)
 		chatH.SetV2(srv)
 	}

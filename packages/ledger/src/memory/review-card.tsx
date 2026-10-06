@@ -44,6 +44,14 @@ export interface ReviewCardProps {
   external?: ReactNode;
   /** The statement of the kept memory this contradicts. */
   conflictWith?: ReactNode;
+  /**
+   * Memax is still checking it (the judge hasn't answered, or Keep waits for
+   * it): the head wears the neutral working mark with this word instead of
+   * the proposal's. Never a spinner.
+   */
+  working?: string;
+  /** A quiet line under the statement: what the check is doing, or why it couldn't run. */
+  note?: ReactNode;
   /** The card in focus in Review gets the stronger edge. */
   focused?: boolean;
   /**
@@ -116,6 +124,8 @@ export function ReviewCard({
   beforeId,
   external,
   conflictWith,
+  working,
+  note,
   focused = true,
   kept,
   pending: pendingProp,
@@ -185,9 +195,18 @@ export function ReviewCard({
     ? keptByName
       ? format(s.keptBy, { name: keptByName })
       : s.keptByYou
-    : conflictWith
-      ? s.conflict
-      : strings.state.proposed;
+    : working
+      ? working
+      : conflictWith
+        ? s.conflict
+        : strings.state.proposed;
+  const headState = kept
+    ? "kept"
+    : working
+      ? "working"
+      : conflictWith
+        ? "conflict"
+        : "proposed";
   const pendingReceipt = [id, space ? format(s.into, { space }) : null, source]
     .filter(Boolean)
     .join(" · ");
@@ -207,7 +226,7 @@ export function ReviewCard({
       <header className="mx-review-head">
         <StateMark
           id={stateId}
-          state={kept ? "kept" : conflictWith ? "conflict" : "proposed"}
+          state={headState}
           label={headLabel}
           aria-live="polite"
         />
@@ -265,6 +284,7 @@ export function ReviewCard({
           })}
         </p>
       ) : null}
+      {note != null && !kept ? <p className="mx-review-note">{note}</p> : null}
       {conflictWith != null && !kept ? (
         <div className="mx-review-conflict">
           <span className="mx-review-conflict-label">{s.keptNow}</span>

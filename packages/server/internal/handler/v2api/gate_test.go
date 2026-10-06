@@ -187,7 +187,7 @@ func (d *daemon) edit(path, content string) {
 func (d *daemon) sync(targets []gateTarget) {
 	d.e.t.Helper()
 	for _, tg := range targets {
-		if tg.Delivery != "local" || tg.SyncState == "drifted" || tg.SyncState == "off" || tg.LastCompile == nil ||
+		if tg.Delivery != "local" || tg.SyncState == "drifted" || tg.SyncState == "held" || tg.SyncState == "off" || tg.LastCompile == nil ||
 			(tg.Delivered != nil && tg.Delivered.Compile == tg.LastCompile.Ref) {
 			continue
 		}
@@ -453,14 +453,31 @@ func TestPhase1Gate(t *testing.T) {
 	if m112.Memory.State != "kept" {
 		t.Errorf("M-0112 is %s: a deleted line must never forget", m112.Memory.State)
 	}
-	if pull.Target.SyncState != "in_sync" || d.file("AGENTS.md") != edited {
-		t.Errorf("after the pull the file stays as edited: %s", pull.Target.SyncState)
+	// The file stays as it is until both proposals are decided: the target
+	// is held, and a Keep elsewhere compiles but isn't delivered over it.
+	if pull.Target.SyncState != "held" || d.file("AGENTS.md") != edited {
+		t.Errorf("after the pull the file is held as edited: %s", pull.Target.SyncState)
+	}
+	e.do(call{method: "POST", path: "/v2/memories/" + editP.ID.String() + ":keep", token: zz}).ok(http.StatusOK, nil)
+	held := time.Now()
+	for time.Since(held) < 3*time.Second {
+		ts := e.targets(zz)
+		d.sync(ts)
+		time.Sleep(50 * time.Millisecond)
+	}
+	if d.file("AGENTS.md") != edited {
+		t.Errorf("a held file was written over:\n%s", d.file("AGENTS.md"))
+	}
+	for _, tg := range e.targets(zz) {
+		if tg.ID == agentsID && tg.SyncState != "held" {
+			t.Errorf("with one proposal kept and one waiting, AGENTS.md is %s", tg.SyncState)
+		}
 	}
 
-	// Keeping the pulled edit recompiles the file, now over the accepted
-	// baseline.
-	e.do(call{method: "POST", path: "/v2/memories/" + editP.ID.String() + ":keep", token: zz}).ok(http.StatusOK, nil)
-	d.await(10*time.Second, "keeping the pulled edit")
+	// Rejecting the other lifts the hold: the latest compile is delivered
+	// over the accepted edit, with the kept line and without the rejected.
+	e.do(call{method: "POST", path: "/v2/memories/" + newP.ID.String() + ":reject", token: zz}).ok(http.StatusOK, nil)
+	d.await(10*time.Second, "deciding the pulled proposals")
 	after := d.file("AGENTS.md")
 	if !strings.Contains(after, "or `yarn` anywhere. ["+editP.Ref+"]") || strings.Contains(after, "Prefer named exports") {
 		t.Errorf("AGENTS.md after keeping the pulled edit:\n%s", after)

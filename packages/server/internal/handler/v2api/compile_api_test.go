@@ -2,6 +2,7 @@ package v2api_test
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -63,7 +64,11 @@ type target struct {
 	DirtyGen    int64     `json:"dirty_gen"`
 	CompiledGen int64     `json:"compiled_gen"`
 	OpenDrift   int       `json:"open_drift"`
-	Settings    struct {
+	Holds       []struct {
+		Path      string   `json:"path"`
+		Proposals []string `json:"proposals"`
+	} `json:"holds"`
+	Settings struct {
 		Include    string `json:"include"`
 		SizeBudget int    `json:"size_budget"`
 	} `json:"settings"`
@@ -328,8 +333,13 @@ func TestTargetEndpoints(t *testing.T) {
 	}
 	var res resolution
 	e.do(call{method: "POST", path: targetPath(agents, "/drift:pull"), token: tok}).ok(http.StatusOK, &res)
-	if len(res.Proposals) != 2 || res.Observations[0].Status != "pulled" || res.Target.SyncState != "in_sync" || res.Receipts[0].Action != "pulled" {
+	// The pulled file is held until both proposals are decided.
+	if len(res.Proposals) != 2 || res.Observations[0].Status != "pulled" || res.Target.SyncState != "held" || res.Receipts[0].Action != "pulled" {
 		t.Fatalf("pull = %+v", res)
+	}
+	if len(res.Target.Holds) != 1 || res.Target.Holds[0].Path != "AGENTS.md" ||
+		!slices.Equal(res.Target.Holds[0].Proposals, []string{res.Proposals[0].Ref, res.Proposals[1].Ref}) {
+		t.Errorf("holds = %+v", res.Target.Holds)
 	}
 	for _, p := range res.Proposals {
 		if p.State != "proposed" || len(p.Sources) != 1 || !strings.HasPrefix(p.Sources[0].Ref, "AGENTS.md:") {

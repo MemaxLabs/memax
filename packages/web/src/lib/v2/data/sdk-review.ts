@@ -1,18 +1,22 @@
 import { MemaxError, type V2 } from "memax-sdk";
-import { CommandFailedError } from "./command-error";
 import type { DecisionResult } from "./records";
 import type { ReviewCardData, ReviewSource, TouchedMemory } from "./review";
+import { choiceFor, conflictOf } from "./sdk-conflict";
 import {
   actorOf,
+  conflictPartnerOf,
   receiptsFor,
   reviewItemOf,
   type V2Client,
 } from "./sdk-records";
+import { targetsOrNull } from "./targets-sdk";
 
 /**
  * Review through memax.v2: the queue (GET /v2/spaces/{space}/review),
- * one memory for the card, and keep / reject with If-Match and the
- * caller's idempotency key. What /v2 doesn't serve yet is marked
+ * one memory for the card with what the judge linked to it (`updates`,
+ * `conflicts_with`), keep / reject with If-Match and the caller's
+ * idempotency key, the conflict compare (GET …/conflict) and its answer
+ * (POST …:resolve-conflict). What /v2 doesn't serve yet is marked
  * PLACEHOLDER and returns "not served", never demo data.
  */
 
@@ -26,17 +30,42 @@ function isNotFound(err: unknown): boolean {
   );
 }
 
+/** The compare has nothing to show: the memory has no conflict (409), or is gone. */
+function noConflict(err: unknown): boolean {
+  return (
+    isNotFound(err) ||
+    (err instanceof MemaxError && err.code === "invalid_transition")
+  );
+}
+
 function decision(
-  result: V2.CommandResult,
+  result: V2.CommandResult | V2.MemoriesCommandResult,
   done: "kept" | "rejected",
 ): DecisionResult {
   return {
     ref: result.memory.ref,
     outcome: result.outcome === "applied" ? done : "proposed",
     version: result.memory.version,
-    // PLACEHOLDER: compile runs aren't served, and there is no inverse
-    // command for a decision yet, so no Undo.
+    // PLACEHOLDER: compile runs aren't served to Review yet.
     recompiled: null,
+    // Undo addresses the command by any of its receipts.
+    receipt:
+      result.outcome === "applied" ? (result.receipts[0]?.id ?? null) : null,
+  };
+}
+
+/** A linked memory as "This touches" lists it: its Keep, else its latest receipt. */
+function touchedOf(
+  detail: V2.MemoryDetail,
+  viewerId: string | undefined,
+): TouchedMemory {
+  const newest = [...detail.receipts.items].sort((a, b) => b.seq - a.seq);
+  const receipt = newest.find((r) => r.action === "kept") ?? newest[0];
+  return {
+    ref: detail.memory.ref,
+    statement: detail.memory.statement,
+    by: actorOf(receipt, viewerId),
+    at: receipt?.occurred_at ?? detail.memory.updated_at,
   };
 }
 
@@ -61,6 +90,15 @@ export function createSdkReview(
     });
   }
 
+  async function detailOf(slug: string, ref: string, signal?: AbortSignal) {
+    try {
+      return await client.v2.memories.get(ref, { space: slug, signal });
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    }
+  }
+
   return {
     async queue({ space, cursor, signal }) {
       const page = await client.v2.review.list(space.slug, {
@@ -82,64 +120,104 @@ export function createSdkReview(
     },
 
     async card({ space, item, signal }): Promise<ReviewCardData> {
-      const [detail, before] = await Promise.all([
+      const [detail, targets] = await Promise.all([
         client.v2.memories.get(item.ref, { space: space.slug, signal }),
-        item.updates
-          ? client.v2.memories
-              .get(item.updates, { space: space.slug, signal })
-              .catch((err: unknown) => {
-                if (isNotFound(err)) return null;
-                throw err;
-              })
-          : Promise.resolve(null),
+        targetsOrNull(client, space.slug, signal),
       ]);
-      const sources = detail.memory.sources ?? [];
+      const memory = detail.memory;
+      const sources = memory.sources ?? [];
       const quoted = sources.find((s) => s.quote);
       const external = sources.find((s) => s.external);
       const linked = sources.find((s) => s.uri && /^https?:\/\//i.test(s.uri));
 
-      // "This touches": the memory an update replaces when there is one.
-      // Otherwise kept memories in the same section, the only relation
-      // /v2 serves until the judge relates memories (plan §5.8).
-      let related: V2.Memory[];
+      // What the judge linked: the memory an update replaces, and the
+      // decision in force a conflict contradicts.
+      const updates = memory.updates?.ref ?? item.updates;
+      const partner =
+        memory.state === "conflict"
+          ? (conflictPartnerOf(memory) ?? item.conflictsWith)
+          : null;
+      const refs = [...new Set([updates, partner].filter(Boolean))] as string[];
+      const details = (
+        await Promise.all(refs.map((ref) => detailOf(space.slug, ref, signal)))
+      ).filter((d): d is V2.MemoryDetail => d !== null);
+      const statementOf = (ref: string | null) =>
+        ref
+          ? (details.find((d) => d.memory.ref === ref)?.memory.statement ??
+            null)
+          : null;
+
+      let memories: TouchedMemory[];
       let basis: "links" | "section";
-      if (before) {
-        related = [before.memory];
+      if (details.length > 0) {
+        memories = details.map((d) => touchedOf(d, viewerId()));
         basis = "links";
       } else {
+        // Nothing linked: kept memories in the same section.
         const page = await client.v2.memories.list(space.slug, {
           state: "kept",
           section: item.section,
           limit: TOUCHED + 1,
           signal,
         });
-        related = page.items
+        const related = page.items
           .filter((m) => m.ref !== item.ref)
           .slice(0, TOUCHED);
+        memories = await touched(space.slug, related, signal);
         basis = "section";
       }
 
+      const beforeStatement =
+        memory.updates?.statement ?? statementOf(updates ?? null);
+      const conflictStatement = statementOf(partner);
       return {
-        before: before
-          ? { ref: before.memory.ref, statement: before.memory.statement }
-          : null,
-        // PLACEHOLDER: no memory links in /v2, so no conflict partner.
-        conflict: null,
+        before:
+          updates && beforeStatement
+            ? { ref: updates, statement: beforeStatement }
+            : null,
+        conflict:
+          partner && conflictStatement
+            ? { ref: partner, statement: conflictStatement }
+            : null,
         evidence: quoted?.quote
           ? { quote: quoted.quote, source: quoted.ref }
           : null,
         readFrom: external?.ref ?? null,
         sourceUrl: linked?.uri ?? null,
         touches: {
-          memories: await touched(space.slug, related, signal),
+          memories,
           basis,
-          // The server keeps an update without merging the memory it
-          // supersedes (yet), so the card doesn't promise it.
+          // Keeping an update doesn't merge the memory it replaces: a fact
+          // stays kept, and a decision in force is superseded (it stays,
+          // and stops compiling). So the card doesn't promise a merge.
           replacesOnKeep: false,
-          // PLACEHOLDER: compile targets aren't served by /v2 yet.
-          targets: null,
+          // A Keep recompiles every file the space compiles to (not
+          // ChatGPT's copy-out, nor a stopped target).
+          targets: targets
+            ? targets.filter(
+                (t) => t.delivery !== "copy" && t.syncState !== "off",
+              )
+            : null,
         },
       };
+    },
+
+    async item({ space, ref, signal }) {
+      const detail = await detailOf(space.slug, ref, signal);
+      if (!detail) return null;
+      const memory = detail.memory;
+      const waiting =
+        memory.lifecycle === "proposed" ||
+        memory.state === "conflict" ||
+        memory.state === "stale";
+      if (!waiting) return null;
+      const receipts = new Map(detail.receipts.items.map((r) => [r.id, r]));
+      // The receipt page is newest first and may not reach the proposal.
+      if (!receipts.has(memory.created_receipt_id)) {
+        const joined = await receiptsFor(client, space.slug, [memory], signal);
+        for (const [id, r] of joined) receipts.set(id, r);
+      }
+      return reviewItemOf(memory, receipts, viewerId());
     },
 
     // No X-Memax-Via: the server decides whether a keep is a person's
@@ -162,13 +240,45 @@ export function createSdkReview(
       return decision(result, "rejected");
     },
 
-    // PLACEHOLDER: the judge that links conflicts doesn't exist, so
-    // there is never a conflict to compare, and no resolve command.
-    async conflict() {
-      return null;
+    async conflict({ space, ref, signal }) {
+      try {
+        const found = await client.v2.memories.conflict(ref, {
+          space: space.slug,
+          signal,
+        });
+        return conflictOf(found, viewerId());
+      } catch (err) {
+        if (noConflict(err)) return null;
+        throw err;
+      }
     },
-    async resolveConflict() {
-      throw new CommandFailedError({ kind: "unavailable" });
+
+    async resolveConflict({
+      space,
+      ref,
+      other,
+      version,
+      option,
+      statement,
+      otherStatement,
+      idempotencyKey,
+    }) {
+      const body: V2.ResolveConflictInput = {
+        choice: choiceFor(option),
+        other,
+      };
+      if (option === "both") {
+        if (statement) body.statement = statement;
+        if (otherStatement) body.other_statement = otherStatement;
+      }
+      const result = await client.v2.memories.resolveConflict(ref, body, {
+        space: space.slug,
+        idempotencyKey,
+        ifMatch: version,
+      });
+      // Every answer settles the flagged side: kept (as an open question
+      // when left open), or rejected when the decision in force stays.
+      return decision(result, option === "kept" ? "rejected" : "kept");
     },
   };
 }

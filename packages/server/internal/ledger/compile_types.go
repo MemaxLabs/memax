@@ -153,10 +153,18 @@ const (
 	SyncPendingDelivery SyncState = "pending_delivery"
 	SyncDrifted         SyncState = "drifted"
 	SyncOff             SyncState = "off"
+	// SyncHeld is shown, never stored: a hand edit came back by a pull,
+	// and the proposals it wrote wait in Review. The file stays as it is
+	// until each is kept or rejected (holds.go).
+	SyncHeld SyncState = "held"
 )
 
-// SyncStates lists every state.
+// SyncStates lists every state a target row stores.
 var SyncStates = []SyncState{SyncInSync, SyncCompiling, SyncPendingDelivery, SyncDrifted, SyncOff}
+
+// ShownSyncStates lists every state the API shows: the stored ones, and
+// held.
+var ShownSyncStates = append(slices.Clone(SyncStates), SyncHeld)
 
 // IncludeMode is whether open questions compile.
 type IncludeMode string
@@ -214,6 +222,18 @@ type DeliveredFile struct {
 	Path        string     `json:"path"`
 	SHA256      string     `json:"sha256"`
 	Observation *uuid.UUID `json:"observation,omitempty"`
+	// Held is shown with Observation, never stored: true while the
+	// proposals of the pull that accepted this edit wait in Review.
+	Held *bool `json:"held,omitempty"`
+}
+
+// TargetHold is one file a pull holds: the observation it accepted, and
+// the proposals it wrote that still wait in Review.
+type TargetHold struct {
+	Observation uuid.UUID `json:"observation"`
+	Path        string    `json:"path"`
+	Proposals   []string  `json:"proposals"`
+	Since       time.Time `json:"since"`
 }
 
 // Delivered is what Memax believes is on disk for a target.
@@ -248,13 +268,18 @@ type Target struct {
 	LastCompile *CompileRun `json:"last_compile,omitempty"`
 	Delivered   *Delivered  `json:"delivered,omitempty"`
 	// OpenDrift counts files with a hand edit waiting to be resolved.
-	OpenDrift        int       `json:"open_drift"`
-	CreatedReceiptID uuid.UUID `json:"created_receipt_id"`
-	LastReceiptID    uuid.UUID `json:"last_receipt_id"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	OpenDrift int `json:"open_drift"`
+	// Holds lists the files a pull holds (shown, never stored).
+	Holds            []TargetHold `json:"holds,omitempty"`
+	CreatedReceiptID uuid.UUID    `json:"created_receipt_id"`
+	LastReceiptID    uuid.UUID    `json:"last_receipt_id"`
+	CreatedAt        time.Time    `json:"created_at"`
+	UpdatedAt        time.Time    `json:"updated_at"`
 
 	lastCompileID *uuid.UUID
+	// shown is the state the API shows when it differs from the stored
+	// SyncState (held, or a delivery due once a hold lifted).
+	shown SyncState
 }
 
 // CompileStatus is a compile run's status.

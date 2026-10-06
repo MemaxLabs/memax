@@ -47,8 +47,15 @@ export const ledgerAppEn = {
     status: {
       inSync: "{n} agents in sync",
       inSyncOne: "1 agent in sync",
+      filesInSync: "{n} files in sync",
+      filesInSyncOne: "1 file in sync",
       drifted: "{agent} file drifted",
+      fileDrifted: "{file} drifted",
+      held: "Holding for {n} proposals in Review",
+      heldOne: "Holding for 1 proposal in Review",
       compiling: "Compiling",
+      waitingDelivery: "{n} files waiting for the CLI",
+      waitingDeliveryOne: "1 file waiting for the CLI",
       noAgents: "No agents yet",
       notCompiling: "Not compiling yet",
     },
@@ -299,6 +306,10 @@ export const ledgerAppEn = {
     staysTrue: "Stays true while",
     duplicate:
       "{agent} proposed nearly the same thing {age} ({ref}). Keep that one instead, so its receipt and source stay with it.",
+    duplicateByPerson:
+      "Nearly the same thing was proposed {age} ({ref}). Keep that one instead, so its receipt and source stay with it.",
+    duplicateKept:
+      "Nearly the same thing was kept {age} ({ref}). Keeping this adds a second memory.",
     keepRef: "Keep {ref}",
     keep: "Keep",
     write: "Write what you want every agent to know.",
@@ -310,8 +321,6 @@ export const ledgerAppEn = {
     keptRecompiledOne: "Kept {ref} · 1 file recompiled",
     proposed: "Sent {ref} to Review",
     undo: "Undo",
-    undone: "Undone: {ref} isn't kept.",
-    undoFailed: "Undo didn't go through. {ref} is still kept.",
     failed: "That didn't go through. Nothing was kept.",
     copied: "Copied with citations",
     copiedCommand: "Copied the command",
@@ -351,7 +360,11 @@ export const ledgerAppEn = {
       "memory.forget": "Forget",
       "today.review": "Start review, on Today",
       "memories.remember": "Remember, on Memories",
-      "command.keep": "Keep the answer, in Ask",
+      "command.keep": "Keep the answer in Ask, or your Brief edits",
+      "review.stopWaiting": "Stop waiting for the check, in Review",
+      "brief.move": "Move a fact down, up, editing the Brief",
+      "drift.choose": "Choose what happens to a hand edit",
+      "drift.confirm": "Do it, on a hand edit",
     },
   },
   settings: {

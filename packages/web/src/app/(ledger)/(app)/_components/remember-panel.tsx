@@ -9,7 +9,12 @@ import {
 } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
 import { formatAgo } from "@/lib/v2/copy";
-import type { Section, SpaceSummary, Viewer } from "@/lib/v2/data/types";
+import type {
+  RememberCheck,
+  Section,
+  SpaceSummary,
+  Viewer,
+} from "@/lib/v2/data/types";
 import { useSource } from "../_lib/data";
 import type { useRemember } from "../_lib/use-remember";
 import styles from "./command-center.module.css";
@@ -50,6 +55,23 @@ export function RememberPanel({
   if (!draft.text) {
     return <p className={styles.hint}>{copy.write}</p>;
   }
+
+  // What the draft repeats: an agent's proposal (as drawn), a person's
+  // proposal, or a memory that's already kept.
+  const duplicateText = (d: NonNullable<RememberCheck["duplicate"]>) => {
+    const age = formatAgo(t.ledger.app, d.writtenAt, source.now());
+    if (d.lifecycle === "kept") {
+      return interpolate(copy.duplicateKept, { age, ref: d.ref });
+    }
+    if (!d.agent) {
+      return interpolate(copy.duplicateByPerson, { age, ref: d.ref });
+    }
+    return interpolate(copy.duplicate, {
+      agent: agents[d.agent]?.name ?? d.agent,
+      age,
+      ref: d.ref,
+    });
+  };
 
   // The space ⌘K opened in comes first, as drawn; then the others.
   const home = spaces.find((s) => s.slug === homeSlug) ?? draft.space;
@@ -104,25 +126,19 @@ export function RememberPanel({
             <StateMark state="merged" label={false} />
           </span>
           <span className={styles.duplicateText}>
-            {interpolate(copy.duplicate, {
-              agent:
-                agents[draft.duplicate.agent]?.name ?? draft.duplicate.agent,
-              age: formatAgo(
-                t.ledger.app,
-                draft.duplicate.proposedAt,
-                source.now(),
-              ),
-              ref: draft.duplicate.ref,
-            })}
+            {duplicateText(draft.duplicate)}
           </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            pending={draft.pending}
-            onClick={onKeepDuplicate}
-          >
-            {interpolate(copy.keepRef, { ref: draft.duplicate.ref })}
-          </Button>
+          {/* A proposal can be kept instead; a kept memory already is. */}
+          {draft.duplicate.lifecycle === "proposed" ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              pending={draft.pending}
+              onClick={onKeepDuplicate}
+            >
+              {interpolate(copy.keepRef, { ref: draft.duplicate.ref })}
+            </Button>
+          ) : null}
         </div>
       ) : null}
       <div className={styles.keepRow}>

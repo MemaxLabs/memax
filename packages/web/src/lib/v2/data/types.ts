@@ -54,9 +54,19 @@ export interface SpaceSummary {
 /** The rail's status line (plan §6.4): "5 agents in sync", "Cursor file drifted". */
 export type SyncLine =
   | { kind: "in-sync"; agents: number }
-  /** A compiled file was edited by hand; `agent` is a registry key ("cursor"). */
-  | { kind: "drifted"; agent: string }
+  /** From the compile targets: every file on disk matches its compile. */
+  | { kind: "files-in-sync"; files: number }
+  /**
+   * A compiled file was edited by hand: `agent` is the registry key of
+   * the tool it belongs to ("cursor"), or `file` names it when no one
+   * agent owns it (AGENTS.md).
+   */
+  | { kind: "drifted"; agent?: string; file?: string }
+  /** A pulled hand edit holds its file until these proposals are kept or rejected. */
+  | { kind: "held"; proposals: number }
   | { kind: "compiling" }
+  /** Compiled, but the CLI hasn't written these files to disk yet. */
+  | { kind: "waiting-delivery"; files: number }
   | { kind: "no-agents" }
   /** PLACEHOLDER: the API serves no compile targets yet. */
   | { kind: "not-compiling" };
@@ -140,9 +150,17 @@ export type AskEvent =
 export interface RememberCheck {
   duplicate: {
     ref: string;
-    /** Registry key of the agent that proposed it. */
-    agent: string;
-    proposedAt: string;
+    /**
+     * `proposed`: a proposal waiting in Review, which Remember offers to
+     * keep instead. `kept`: it's already kept, so keeping adds a second.
+     */
+    lifecycle: "proposed" | "kept";
+    /** Registry key of the agent that wrote it; null when a person did. */
+    agent: string | null;
+    /** When it was proposed or kept. */
+    writtenAt: string;
+    /** `exact`: the same words. `near`: the same thing by meaning. */
+    match: "exact" | "near";
   } | null;
   /** The section the check suggests. */
   section: Section | null;
@@ -165,6 +183,10 @@ export interface KeepResult {
   outcome: "kept" | "proposed";
   /** Compiled files rewritten, when the source knows. */
   recompiled: number | null;
-  /** The inverse command, when there is one. */
-  undo?: () => Promise<void>;
+  /**
+   * The receipt Undo addresses, when the command can be undone: a Keep
+   * can. A person's own Remember can't (the server journals no undo for
+   * it), so it carries none.
+   */
+  receipt?: string | null;
 }

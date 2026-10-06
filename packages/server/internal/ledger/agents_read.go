@@ -134,7 +134,7 @@ func fillConnections(ctx context.Context, tx pgx.Tx, scope Scope, cs []*Connecti
 		return fmt.Errorf("ledger: count agent writes: %w", err)
 	}
 
-	// Reads (R-, migration 037): one per read of a space.
+	// Reads (R-, migration 038): one per read of a space.
 	rows, err = tx.Query(ctx, `
 		SELECT connection_id, space_id, count(*)
 		  FROM v2.reads

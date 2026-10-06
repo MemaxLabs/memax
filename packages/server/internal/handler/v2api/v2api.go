@@ -44,6 +44,10 @@ type Handler struct {
 	reads ledger.ReadRecorder
 	// receiptKeys are the public keys checkpoints are signed with.
 	receiptKeys receiptchain.Keyring
+	// drafts embeds Remember's draft for the near-duplicate check (near.go);
+	// nil checks exact repeats only. near rate-limits the check.
+	drafts DraftEmbedder
+	near   nearLimiter
 }
 
 // Option configures a Handler.
@@ -88,6 +92,7 @@ var routes = []Route{
 	{"GET", "/v2/spaces", "listSpaces", (*Handler).listSpaces},
 	{"POST", "/v2/spaces/{space}/memories", "rememberMemory", (*Handler).remember},
 	{"GET", "/v2/spaces/{space}/memories", "listMemories", (*Handler).listMemories},
+	{"POST", "/v2/spaces/{space}/memories:near-duplicates", "findNearDuplicates", (*Handler).findNearDuplicates},
 	{"GET", "/v2/spaces/{space}/review", "listReview", (*Handler).listReview},
 	{"GET", "/v2/spaces/{space}/receipts", "listReceipts", (*Handler).listReceipts},
 	{"GET", "/v2/spaces/{space}/checkpoints", "listCheckpoints", (*Handler).listCheckpoints},

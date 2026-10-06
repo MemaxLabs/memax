@@ -48,19 +48,26 @@ func match(c ledger.JudgeCandidate, stage ledger.JudgeStage) Match {
 	return m
 }
 
-// Vectors finds kept memories close to a statement by embedding: the seam
-// for vector candidates once V2 memories are embedded (plan 25 §5.11).
-// Implementations return memories of the space at or above CosineFloor,
-// best first; the judge fuses them with the lexical lanes by RRF. Nil
-// means lexical candidates only.
+// Vectors finds kept memories close to a statement by embedding (plan 25
+// §5.11; v2recall.Vectors over the V2 memory embeddings). Implementations
+// return the k nearest kept memories of the space other than the one
+// judged, best first, with Score set to the cosine similarity; the judge
+// keeps those at or above Config.VectorFloor and fuses them with the
+// lexical lanes by RRF. Nil means lexical candidates only.
 type Vectors interface {
 	Similar(ctx context.Context, scope ledger.Scope, spaceID, memoryID uuid.UUID, statement string, k int) ([]ledger.JudgeCandidate, error)
 }
 
-// CosineFloor is the similarity a vector candidate needs: about 0.65 for
-// Voyage embeddings (Graphiti uses a loose 0.6 floor before the model
-// decides). Calibrate it on our own embeddings when they exist.
-const CosineFloor = 0.65
+// aboveFloor keeps the vector candidates at or above the floor.
+func aboveFloor(cands []ledger.JudgeCandidate, floor float64) []ledger.JudgeCandidate {
+	out := cands[:0:0]
+	for _, c := range cands {
+		if c.Score >= floor {
+			out = append(out, c)
+		}
+	}
+	return out
+}
 
 // rrfK is the reciprocal-rank-fusion constant (as in V1's retrieval).
 const rrfK = 60

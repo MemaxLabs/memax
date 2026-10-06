@@ -16,7 +16,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 )
 
-// The receipt hash chain (plan 25 §5.3, migration 038). Sealing is
+// The receipt hash chain (plan 25 §5.3, migration 039). Sealing is
 // bookkeeping about receipts, not a command: it writes no receipt (a seal
 // receipt would need sealing in turn, forever), never goes through Apply,
 // and runs as its own role, memax_v2_sealer, which reads receipts under the
@@ -33,7 +33,7 @@ import (
 // skipped, and the head row (locked FOR UPDATE) makes two sealers of one
 // space take turns: each receipt is sealed exactly once.
 
-// SealerRole is the role seals are written as (migration 038).
+// SealerRole is the role seals are written as (migration 039).
 const SealerRole = "memax_v2_sealer"
 
 // QueueSeal is the River queue the sealer's jobs run on.

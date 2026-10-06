@@ -68,6 +68,35 @@ export function actorName(
   }
 }
 
+/** One of the judge's folds: a `merged` receipt by Memax, pointing at the kept memory. */
+export function isFold(entry: ActivityEntry): boolean {
+  return (
+    entry.action === "merged" &&
+    entry.actor.kind === "memax" &&
+    entry.source?.kind === "memory"
+  );
+}
+
+/**
+ * Whether a fold in the loaded log can still be undone: inside its 14
+ * days, and no `undid` receipt cites it.
+ */
+export function foldUndoable(
+  entry: ActivityEntry,
+  entries: readonly ActivityEntry[],
+  now: Date,
+  windowMs: number,
+): boolean {
+  if (!isFold(entry)) return false;
+  if (Date.parse(entry.at) + windowMs <= now.getTime()) return false;
+  return !entries.some(
+    (e) =>
+      e.action === "undid" &&
+      e.source?.kind === "receipt" &&
+      e.source.ref === entry.id,
+  );
+}
+
 function pick(one: string, other: string, n: number) {
   return interpolate(n === 1 ? one : other, { n });
 }
@@ -176,6 +205,15 @@ export function activitySentences(
             facts: text(pick(s.factsOne, s.facts, d.facts)),
             stale: text(d.stale),
             faded: text(d.faded),
+          }),
+        ];
+      }
+      // One of the judge's folds: Memax merged a proposal into a kept memory.
+      if (isFold(entry)) {
+        return [
+          one(s.folded, {
+            ref: text(entry.object.ref),
+            into: text(entry.source!.ref),
           }),
         ];
       }

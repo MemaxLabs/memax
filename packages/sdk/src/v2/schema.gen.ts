@@ -59,6 +59,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/memories:near-duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Find what a draft repeats
+         * @description Remember's near-duplicate check: the kept memories and pending
+         *     proposals of the space that a draft statement repeats, best first,
+         *     so a person can keep an agent's proposal instead of writing the
+         *     same thing twice. `exact` is the same words (case, spacing and
+         *     punctuation aside); `near` is at least `floor` similar by embedding
+         *     (cosine). Superseded decisions are left out.
+         *
+         *     No model runs on this path. The draft is embedded (within about
+         *     120 ms) and compared exactly with the space's stored embeddings,
+         *     so it answers in under 150 ms. When embeddings are off on this
+         *     server, or the draft's embedding misses its deadline, only exact
+         *     repeats are checked and `semantic` is `false`.
+         *
+         *     It only reads, so any credential that reads the space may call it.
+         *     It is a `POST` so the draft travels in the body, never in a URL or
+         *     an access log, and it takes no `Idempotency-Key`. Clients call it
+         *     while a person types (debounced), and it is rate-limited per
+         *     caller: 429 `rate_limited` with `Retry-After`.
+         */
+        post: operations["findNearDuplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/spaces/{space}/review": {
         parameters: {
             query?: never;
@@ -252,10 +292,14 @@ export interface paths {
          * @description Keeps a proposal. Only a person who is a member or owner can keep
          *     (per the space's rules); agents and API keys are refused. Send
          *     `If-Match` with the version you reviewed. A proposal the judge has
-         *     flagged as a conflict can't be kept until it is settled (409
-         *     `invalid_transition`), and one that touches a decision in force
-         *     can't be kept before the judge has looked at it (about 5 s, at most
-         *     30 s): until then Keep answers 503 `busy` with `Retry-After`.
+         *     flagged as a conflict can't be kept until it is settled: 409
+         *     `in_conflict`, whose `details.ref` is the decision in force in the
+         *     way (settle it with `:resolve-conflict`). One that touches a
+         *     decision in force can't be kept before the judge has looked at it
+         *     (about 5 s, at most 30 s): until then Keep answers 503
+         *     `judge_pending` with `Retry-After`, and the same Keep, with the same
+         *     `Idempotency-Key`, goes through once it has. (503 `busy` is another
+         *     change holding the memory.)
          */
         post: operations["keepMemory"];
         delete?: never;
@@ -288,7 +332,18 @@ export interface paths {
          *     another section. `If-Match` is required. When policy sends the edit
          *     to Review (an agent editing what a person kept, for example), the
          *     result is a new proposal that supersedes the memory, and the memory
-         *     itself is unchanged. `keep: true` keeps a proposal after editing it.
+         *     itself is unchanged. `keep: true` keeps a proposal after editing it,
+         *     except when a person's new words touch a decision in force and the
+         *     judge hasn't seen them (rule 11): then the edit is saved as the
+         *     proposal's new version, judged like any proposal's, and not kept.
+         *     The result is `outcome: proposed` with policy code `judge_pending`
+         *     and the new `version`; keep it with `:keep` on that version, which
+         *     answers 503 `judge_pending` with `Retry-After` until the judge has
+         *     looked, and then keeps it (or 409 `in_conflict` if the judge flagged
+         *     it). This 200 sets no `Retry-After`: the judge may answer within
+         *     milliseconds, and the Keep's 503 says exactly how long to wait. The
+         *     saved edit is undoable as an edit. A flagged proposal can't be kept
+         *     this way either (409 `in_conflict`).
          */
         post: operations["editMemory"];
         delete?: never;
@@ -853,7 +908,9 @@ export interface paths {
          *     the compiler's drift_sha256 of that file; for several, the sha256
          *     of `<path> NUL <drift_sha256> LF` lines sorted by path). A target is
          *     in sync once its latest run is delivered. Acknowledging the same run
-         *     again, or an older one, changes nothing.
+         *     again, or an older one, changes nothing. While a pull holds one of
+         *     the run's files (the target is `held`), nothing may be written over
+         *     it: 409.
          */
         post: operations["recordDelivery"];
         delete?: never;
@@ -907,9 +964,16 @@ export interface paths {
          *     external, when nobody is known), with a `file:line` source: a changed
          *     cited line proposes an edit of that memory, a new line a new memory.
          *     A removed cited line waits in the resolution for a person to forget
-         *     or exclude the memory; it is never forgotten automatically. The file
-         *     stays as it is until the next compile delivers over it. Any person
-         *     in the space may pull.
+         *     or exclude the memory; it is never forgotten automatically. Any
+         *     person in the space may pull.
+         *
+         *     The edited file stays as it is until its proposals are decided:
+         *     while any of them is still proposed, the target is `held` and
+         *     nothing is delivered over the file (see `holds` on the target).
+         *     Once each is kept or rejected, the latest compile is delivered over
+         *     it: kept lines come back compiled, rejected ones go. A pull that
+         *     writes no proposal holds nothing; the file stays until the next
+         *     compile delivers over it.
          */
         post: operations["pullDrift"];
         delete?: never;
@@ -1245,12 +1309,15 @@ export interface components {
          *     Write-level agent's write that touches a decision in force waits for
          *     the judge and a person), edits_person_kept,
          *     autonomy_propose, integration, import, system_proposes, repository,
-         *     person_proposed. Confirmation: confirm_in_agent.
+         *     person_proposed. Saved, not kept: judge_pending (a person's edit,
+         *     then keep, whose new words touch a decision in force: the edit is
+         *     the proposal's new version, and Keep waits for the judge).
+         *     Confirmation: confirm_in_agent.
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "confirm_in_agent";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent";
         /** @enum {string} */
-        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "unavailable";
+        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable";
         /**
          * @description A typed edge between two memories. merged_into: folded into another
          *     memory (a duplicate, or a repeat of a rejection). supersedes: replaces
@@ -1352,10 +1419,12 @@ export interface components {
          * @description `compiling`: a change hasn't compiled yet. `pending_delivery`: the
          *     latest compile isn't on disk yet. `in_sync`: it is (or, for MCP and
          *     copy-out, it compiled). `drifted`: a file was edited by hand.
+         *     `held`: a hand edit came back by a pull, and its proposals wait in
+         *     Review; the file stays as it is until they are kept or rejected.
          *     `off`: compiling is stopped.
          * @enum {string}
          */
-        SyncState: "in_sync" | "compiling" | "pending_delivery" | "drifted" | "off";
+        SyncState: "in_sync" | "compiling" | "pending_delivery" | "drifted" | "held" | "off";
         /** @enum {string} */
         IncludeMode: "kept_only" | "kept_and_open";
         /** @enum {string} */
@@ -2002,6 +2071,22 @@ export interface components {
             sha256: components["schemas"]["Sha256"];
             /** @description Set when the baseline is a hand edit Memax accepted (pulled or overwritten). */
             observation?: components["schemas"]["Id"];
+            /**
+             * @description Set with `observation`. True while the proposals of the pull that
+             *     accepted this edit wait in Review: nothing is written over the
+             *     file until they are kept or rejected.
+             */
+            held?: boolean;
+        };
+        /** @description A file a pull holds, and the proposals it waits for. */
+        TargetHold: {
+            /** @description The hand edit the pull accepted. */
+            observation: components["schemas"]["Id"];
+            path: components["schemas"]["RepoPath"];
+            /** @description The pull's proposals that are still proposed. */
+            proposals: components["schemas"]["DisplayRef"][];
+            /** @description When the pull was made. */
+            since: components["schemas"]["Timestamp"];
         };
         /** @description What Memax believes is on disk. */
         Delivered: {
@@ -2099,6 +2184,8 @@ export interface components {
             delivered?: components["schemas"]["Delivered"];
             /** @description Files with a hand edit waiting to be resolved. */
             open_drift: number;
+            /** @description The files a pull holds (the target is `held`); absent when none. */
+            holds?: components["schemas"]["TargetHold"][];
             created_receipt_id: components["schemas"]["Id"];
             last_receipt_id: components["schemas"]["Id"];
             created_at: components["schemas"]["Timestamp"];
@@ -2350,6 +2437,41 @@ export interface components {
             quote?: string;
             content_hash?: string;
         };
+        /** @description A draft statement to check before remembering it. */
+        NearDuplicatesRequest: {
+            /** @description The draft, as the person has typed it so far. */
+            statement: string;
+            /** @description The most repeats to return (default 3). */
+            limit?: number;
+        };
+        /** @description What a draft repeats. */
+        NearDuplicates: {
+            /** @description Best first. Exact repeats come before near ones. */
+            items: components["schemas"]["NearDuplicate"][];
+            /**
+             * @description The draft was compared by meaning. `false` when embeddings are
+             *     off on this server or the draft's embedding missed its deadline:
+             *     only exact repeats were checked.
+             */
+            semantic: boolean;
+            /** @description The least similarity a near repeat needed. */
+            floor: number;
+        };
+        /** @description A memory a draft repeats. */
+        NearDuplicate: {
+            /** @description A kept memory or a pending proposal (its `lifecycle` says which). */
+            memory: components["schemas"]["Memory"];
+            /** @description Cosine similarity of the draft and the memory; 1 for an exact repeat. */
+            similarity: number;
+            match: components["schemas"]["DuplicateMatch"];
+            /** @description The receipt that wrote the memory, so a client can say who proposed or kept it, through which agent, and when. */
+            created: components["schemas"]["Receipt"];
+        };
+        /**
+         * @description `exact`: the same words. `near`: the same thing by meaning.
+         * @enum {string}
+         */
+        DuplicateMatch: "exact" | "near";
         RememberRequest: {
             /** @description One fact, in your words. */
             statement: string;
@@ -2534,7 +2656,7 @@ export interface components {
             field?: string;
             /** @description The policy decision (`refused`). */
             policy?: components["schemas"]["PolicyDecision"];
-            /** @description The memory's or gate's display ID (`edit_clash`, `invalid_transition`), or what is in an undo's way (`undo_refused`). */
+            /** @description The memory's or gate's display ID (`edit_clash`, `invalid_transition`, `judge_pending`), the decision in force a flagged proposal contradicts (`in_conflict`), or what is in an undo's way (`undo_refused`). */
             ref?: string;
             /** @description The gate's status now (`invalid_transition` on a gate). */
             status?: components["schemas"]["GateStatus"];
@@ -2544,7 +2666,7 @@ export interface components {
             expected_version?: number;
             /** @description The memory's version now (`edit_clash`). */
             current_version?: number;
-            /** @description Seconds to wait (`rate_limited`, `busy`). */
+            /** @description Seconds to wait (`rate_limited`, `busy`, `judge_pending`). */
             retry_after?: number;
             /** @description The rate limit (`rate_limited`). */
             limit?: number;
@@ -2573,6 +2695,9 @@ export interface components {
         };
         CommandResultEnvelope: {
             data: components["schemas"]["CommandResult"];
+        };
+        NearDuplicatesEnvelope: {
+            data: components["schemas"]["NearDuplicates"];
         };
         MemoriesCommandResultEnvelope: {
             data: components["schemas"]["MemoriesCommandResult"];
@@ -2725,7 +2850,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
-        /** @description `invalid_transition`: the memory's, agent's or gate's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one, answering a gate that was answered, withdrawn or expired). */
+        /** @description `invalid_transition`: the memory's, agent's or gate's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one, answering a gate that was answered, withdrawn or expired). `in_conflict` (Keep, and edit then keep): the judge flagged the proposal as contradicting a decision in force; `details.ref` is that decision, and the conflict is settled with `:resolve-conflict`. */
         InvalidTransition: {
             headers: {
                 [name: string]: unknown;
@@ -2781,12 +2906,16 @@ export interface components {
             };
         };
         /**
-         * @description `busy` (another change holds the memory; `Retry-After` is set) or
-         *     `unavailable` (the record is not configured on this server).
+         * @description `busy` (another change holds the memory; `Retry-After` is set),
+         *     `judge_pending` (Keep: the judge hasn't looked at these words yet,
+         *     on a proposal that touches a decision in force; `Retry-After` is set
+         *     and `details.ref` names the memory; the same Keep goes through once
+         *     it has, or after at most 30 s) or `unavailable` (the record is not
+         *     configured on this server).
          */
         Unavailable: {
             headers: {
-                /** @description Seconds to wait before retrying; set for `busy`. */
+                /** @description Seconds to wait before retrying; set for `busy` and `judge_pending`. */
                 "Retry-After"?: string;
                 [name: string]: unknown;
             };
@@ -3021,6 +3150,40 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    findNearDuplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NearDuplicatesRequest"];
+            };
+        };
+        responses: {
+            /** @description What the draft repeats, best first; none is an empty list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NearDuplicatesEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];
@@ -4249,6 +4412,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
             422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];

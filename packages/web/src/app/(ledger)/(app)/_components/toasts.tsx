@@ -3,7 +3,7 @@
 import { useCallback, type ReactNode } from "react";
 import { Toast } from "@base-ui/react/toast";
 import { Button, StateMark, type MarkState } from "@memaxlabs/ledger";
-import { interpolate, useLocale } from "@/i18n";
+import { useLocale } from "@/i18n";
 import { useHotkey, useKeycap } from "@/lib/v2/keymap/react";
 import styles from "./toasts.module.css";
 
@@ -20,9 +20,12 @@ interface ToastData {
    * Leave it out for neutral news such as "Copied" or a level change.
    */
   state?: MarkState;
-  /** The display ID an Undo reverses, for the "Undone" line. */
-  undoRef?: string;
-  undo?: () => Promise<void>;
+  /**
+   * Undoes the toast's command (its button and ⌘Z while it shows). The
+   * toast closes; the undo says what happened in a toast of its own, with
+   * no mark (`(app)/_lib/undo.tsx`).
+   */
+  undo?: () => void;
   action?: { label: string; onClick: () => void };
 }
 
@@ -63,26 +66,14 @@ function ToastItem({ toast }: { toast: Toast.Root.ToastObject<ToastData> }) {
   const undoKey = useKeycap("undo");
   const data = toast.data;
 
-  const runUndo = useCallback(async () => {
+  const runUndo = useCallback(() => {
     if (!data?.undo) return;
     manager.close(toast.id);
-    const ref = data.undoRef ?? "";
-    try {
-      await data.undo();
-      manager.add<ToastData>({
-        title: interpolate(copy.undone, { ref }),
-        data: {},
-      });
-    } catch {
-      manager.add<ToastData>({
-        title: interpolate(copy.undoFailed, { ref }),
-        data: {},
-      });
-    }
-  }, [data, manager, toast.id, copy]);
+    data.undo();
+  }, [data, manager, toast.id]);
 
   // ⌘Z undoes the toast's command while it shows (registry: "undo").
-  useHotkey("undo", () => void runUndo(), {
+  useHotkey("undo", () => runUndo(), {
     enabled: Boolean(data?.undo) && toast.transitionStatus !== "ending",
   });
 

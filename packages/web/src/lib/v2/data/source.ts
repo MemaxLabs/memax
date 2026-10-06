@@ -1,7 +1,11 @@
 import type { ActivityData } from "./activity";
 import type { AgentsData } from "./agents";
+import type { BriefSource } from "./brief";
 import type { MemoriesSource } from "./memories";
 import type { ReviewSource } from "./review";
+import type { TargetsSource } from "./targets";
+import type { TodaySource } from "./today";
+import type { UndoSource } from "./undo";
 import type {
   AskEvent,
   KeepResult,
@@ -24,9 +28,9 @@ import type {
  * implementing it in both.
  *
  * Each domain declares its part in its own module and is mixed in here:
- * activity.ts (Activity), agents.ts (Agents, keys).
+ * activity.ts (Activity), agents.ts (Agents, keys), undo.ts (Undo).
  */
-export interface LedgerDataSource extends ActivityData, AgentsData {
+export interface LedgerDataSource extends ActivityData, AgentsData, UndoSource {
   readonly kind: "sdk" | "demo";
   /**
    * Data the source already holds, for the first render (server and
@@ -68,4 +72,10 @@ export interface LedgerDataSource extends ActivityData, AgentsData {
   readonly review: ReviewSource;
   /** Memories, one memory and editing (memories.ts). */
   readonly memories: MemoriesSource;
+  /** The Brief, its versions and revising it (brief.ts). */
+  readonly brief: BriefSource;
+  /** Where the Brief compiles to: the files, settings and drift (targets.ts). */
+  readonly targets: TargetsSource;
+  /** Today's waiting items, Dream, what's in flight and the agents' day (today.ts). */
+  readonly today: TodaySource;
 }

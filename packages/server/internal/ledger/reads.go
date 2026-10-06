@@ -30,7 +30,7 @@ import (
 //     key, and is decided by policy (ActionRead), so a credential can't
 //     count reads in a space its agent isn't connected to.
 //
-// Both run as memax_v2 under the spaces they write (migration 037), and
+// Both run as memax_v2 under the spaces they write (migration 038), and
 // allocate R- numbers from the tenant's counter in the same transaction.
 // Neither stores memory text or query text.
 

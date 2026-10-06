@@ -1,0 +1,83 @@
+---
+title: memax link
+description: Link a repository to a space, so the daemon writes the space's compiled files into it.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+A space compiles to the files your agents already read: `AGENTS.md`, a
+`CLAUDE.md` that imports it, and path-scoped Cursor rules.
+`memax link` tells this machine which repository a space compiles into.
+From then on, [the daemon](/cli/daemon) writes each compile there within
+seconds of a Keep.
+
+## Usage
+
+```bash
+memax link [--space <slug>] [--yes]
+memax unlink
+```
+
+| Flag             | Description                                                                         |
+| ---------------- | ----------------------------------------------------------------------------------- |
+| `--space <slug>` | The space to link, by slug or id.                                                   |
+| `-y, --yes`      | If you already have a `CLAUDE.md`, let Memax manage one block in it without asking. |
+
+Run it anywhere inside a git repository. It works on the repository's
+root (`git rev-parse --show-toplevel`), whatever directory you're in.
+
+```text
+› memax link --space memax-v2
+
+  ● Linked ~/code/memax to memax-v2.
+
+  .memax.yml  space: memax-v2
+  Writes      AGENTS.md · CLAUDE.md · .cursor/rules
+
+  The daemon writes them here within seconds of each compile.
+```
+
+## What it changes
+
+- **`.memax.yml`** at the repository's root gets a `space:` line. Other
+  lines (`hub:`, `project_id:`) stay as they are. Commit it, so everyone
+  who clones the repository links to the same space.
+- **`~/.memax/daemon/repos.json`** records the link on this machine: the
+  space's id and slug, the repository's root and when you linked it.
+
+Nothing else is written. A running daemon picks the link up at once;
+otherwise start one with `memax daemon start`.
+
+## Which space
+
+Without `--space`, `memax link` uses, in order:
+
+1. the `space:` already in `.memax.yml`;
+2. the space whose repository matches the git remote `origin`;
+3. a choice from your project spaces, when you run it in a terminal.
+
+## Files that are already there
+
+Memax never writes over a file it didn't write.
+
+- **A `CLAUDE.md` of your own.** Memax offers to manage one marked block
+  in it (`<!-- memax:start -->` … `<!-- memax:end -->`) and leave every
+  other line alone. With `--yes` it does so without asking. The choice is
+  the space's: everyone's daemon then treats `CLAUDE.md` the same way. A
+  block the V1 CLI wrote is replaced in place. Until you choose, the
+  daemon leaves a `CLAUDE.md` with a Memax block in it alone.
+- **An `AGENTS.md` Memax didn't write.** The daemon leaves it and reports
+  it as a hand edit. In the app you can pull its lines in as proposals,
+  overwrite it with the compiled Brief, or stop compiling it. If it holds
+  a Memax block, the daemon leaves it alone until you take the block out.
+
+## memax unlink
+
+`memax unlink` takes the `space:` line out of `.memax.yml` (and the file
+with it, if `memax link` created it) and drops the link from this machine.
+The files Memax wrote stay as they are.
+
+<Callout type="info">
+  `memax link` refuses a `.memax.yml` that is a symlink: Memax writes only
+  inside the repository, and a link could point anywhere.
+</Callout>

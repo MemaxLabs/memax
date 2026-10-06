@@ -92,6 +92,54 @@ describe("memax.v2.memories", () => {
     expect(c.body).toEqual(input);
   });
 
+  it("checks a draft for near-duplicates without an Idempotency-Key", async () => {
+    const found: V2.NearDuplicates = {
+      items: [
+        {
+          memory: { ...memory, lifecycle: "proposed", state: "proposed" },
+          similarity: 0.94,
+          match: "near",
+          created: {
+            id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5e",
+            seq: 7,
+            tenant_id: memory.tenant_id,
+            space_id: memory.space_id,
+            object_kind: "memory",
+            object_id: memory.id,
+            object_ref: memory.ref,
+            action: "proposed",
+            actor_kind: "agent",
+            agent: "codex",
+            via: "mcp",
+            occurred_at: "2026-10-06T09:12:00Z",
+            recorded_at: "2026-10-06T09:12:00Z",
+            stream_id: memory.id,
+            stream_version: 1,
+          },
+        },
+      ],
+      semantic: true,
+      floor: 0.9,
+    };
+    const { memax, call } = client(jsonResponse({ data: found }));
+    const controller = new AbortController();
+
+    const got = await memax.v2.memories.nearDuplicates(
+      "memax v2",
+      { statement: "River is our queue", limit: 2 },
+      { signal: controller.signal },
+    );
+
+    expect(got).toEqual(found);
+    const c = call();
+    expect(c.url).toBe(
+      "https://api.memax.app/v2/spaces/memax%20v2/memories:near-duplicates",
+    );
+    expect(c.method).toBe("POST");
+    expect(c.headers["Idempotency-Key"]).toBeUndefined();
+    expect(c.body).toEqual({ statement: "River is our queue", limit: 2 });
+  });
+
   it("lists with repeated filters and a cursor", async () => {
     const page: V2.MemoryPage = { items: [memory], has_more: false };
     const { memax, call } = client(jsonResponse({ data: page }));
@@ -290,6 +338,48 @@ describe("/v2 errors", () => {
 
     expect((err as MemaxError).code).toBe("busy");
     expect((err as MemaxError).retryAfterSeconds).toBe(1);
+  });
+
+  it("tells waiting for the judge from a conflict on Keep", async () => {
+    const answers = [
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "judge_pending",
+            message: "Memax is still checking M-0430.",
+            details: { ref: "M-0430", retry_after: 2 },
+          },
+        }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json", "Retry-After": "2" },
+        },
+      ),
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "in_conflict",
+            message: "M-0430 contradicts M-0174, a decision in force.",
+            details: { ref: "M-0174" },
+          },
+        }),
+        { status: 409, headers: { "Content-Type": "application/json" } },
+      ),
+    ];
+    const { memax } = client(() => answers.shift()!);
+    const keep = () =>
+      memax.v2.memories
+        .keep("M-0430", {}, { space: "memax-v2", idempotencyKey: "k" })
+        .catch((e: unknown) => e as MemaxError);
+
+    const pending = await keep();
+    expect(pending.code).toBe("judge_pending");
+    expect(pending.retryAfterSeconds).toBe(2);
+    expect(pending.details?.ref).toBe("M-0430");
+    const conflict = await keep();
+    expect(conflict.code).toBe("in_conflict");
+    expect(conflict.status).toBe(409);
+    expect(conflict.details?.ref).toBe("M-0174");
   });
 });
 

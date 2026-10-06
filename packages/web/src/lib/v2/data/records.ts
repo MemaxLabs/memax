@@ -5,6 +5,7 @@
  * where it has them; no words live here (the i18n catalogue builds
  * every sentence from these values).
  */
+import type { TargetView } from "./targets";
 
 /** Who a receipt names. */
 export type Actor =
@@ -56,16 +57,12 @@ export interface RailReceipt {
   at: string;
 }
 
-export type TargetStatus = "synced" | "drifted" | "pending" | "off";
-
-/** A compiled file: "Keeping recompiles" in Review, "Reaches" on a memory. */
-export interface TargetLine {
-  /** "CLAUDE.md", ".cursor/rules/memax.mdc", "ChatGPT project". */
-  path: string;
-  /** The tools that read it ("Codex · OpenCode"). Names, not copy. */
-  tool: string;
-  status: TargetStatus;
-}
+/**
+ * A compiled file: "Keeping recompiles" in Review, "Reaches" on a
+ * memory. The compile targets' own view (targets.ts), so every screen
+ * words a target's state the same way.
+ */
+export type TargetLine = TargetView;
 
 /** What keep, reject and edit return. */
 export interface DecisionResult {
@@ -80,9 +77,15 @@ export interface DecisionResult {
   /** Compiled files rewritten, when the source knows. */
   recompiled: number | null;
   /**
-   * The inverse command. No source has one yet (the server has no undo
-   * command for Keep or Reject), so Review hides Undo; the hook stays
-   * typed so Undo appears the day a source returns it.
+   * The command's receipt, which Undo addresses (spec: POST
+   * /v2/receipts/{receipt}:undo, any of the command's receipts). Null or
+   * absent when the command can't be undone.
    */
-  undo?: () => Promise<void>;
+  receipt?: string | null;
+  /**
+   * Edit, then keep, saved but not kept (policy `judge_pending`): the new
+   * words touch a decision in force, so they wait for the judge. `version`
+   * is the saved one; a plain Keep of it finishes the decision.
+   */
+  judgePending?: boolean;
 }

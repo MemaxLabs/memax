@@ -2,8 +2,9 @@
 // proposal/candidate pairs (plan 25 §11: contradicts precision ≥ 0.90,
 // recall ≥ 0.75).
 //
-//	go test ./eval/judge/ -v                      # the set, stage 0, and the harness on a fake model
+//	go test ./eval/judge/ -v                      # the set, stage 0, the harness on a fake model, the candidate sets (fake embedder)
 //	JUDGE_EVAL_LIVE=1 go test ./eval/judge/ -v    # also the real model tiers (needs ANTHROPIC_API_KEY)
+//	V2_EVAL_LIVE=1 go test ./eval/judge/ -run Candidates -v   # candidates and floors on voyage-4 (needs VOYAGE_API_KEY)
 //
 // The live run reads the same JUDGE_* configuration as the worker
 // (judge.ConfigFromEnv) and scores each pair's relation, plus the outcome

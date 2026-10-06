@@ -78,6 +78,17 @@ export interface LineageEntry {
   count: number | null;
   /** `handed_off`: the agent it went to and the handoff. */
   to: { agent: string; ref: string } | null;
+  /** `merged` by the judge: the memory it was folded into. */
+  into?: string | null;
+  /** One of the judge's folds, still undoable: its receipt, and until when. */
+  undo?: FoldUndo | null;
+}
+
+/** Undo for one of the judge's folds (14 days, by anyone who may keep). */
+export interface FoldUndo {
+  receipt: string;
+  /** When the window closes (ISO). */
+  until: string;
 }
 
 export interface SourceLine {
@@ -103,6 +114,8 @@ export interface MergedNote {
   statement: string;
   by: Actor | null;
   at: string;
+  /** A proposal the judge folded into this one, still undoable. */
+  undo?: FoldUndo | null;
 }
 
 export interface MemoryRecord {
@@ -121,7 +134,7 @@ export interface MemoryRecord {
   /** How far it reaches, when compile targets are served. */
   reach: { files: number; agents: number } | null;
   lineage: LineageEntry[];
-  /** Null until /v2 serves links; the notes Dream merged into it. */
+  /** What was merged into it: Dream's notes, the judge's folds. Null when the source can't say. */
   merged: { notes: MergedNote[]; total: number } | null;
   sources: SourceLine[];
   /** Null until compile targets are served (PLACEHOLDER in the SDK). */

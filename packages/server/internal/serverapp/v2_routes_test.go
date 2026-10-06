@@ -96,12 +96,14 @@ func TestV2RoutesOnlyComeFromV2API(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// v2Handler builds the handler on the ledger (with River, the compile
-	// coordinator and the read recorder around it).
-	if !regexp.MustCompile(`v2h, readRecorder := v2Handler\(pool, `).Match(app) ||
+	// v2Handler builds the handler on the ledger (with River and the
+	// compile coordinator around it), the searcher MCP v2 reads with, and
+	// the read recorder.
+	if !regexp.MustCompile(`v2h, v2Search, readRecorder := v2Handler\(pool, `).Match(app) ||
 		!regexp.MustCompile(`v2:\s+v2h,`).Match(app) ||
+		!regexp.MustCompile(`v2Search:\s+v2Search,`).Match(app) ||
 		!regexp.MustCompile(`l := ledger\.New\(pool, opts\.\.\.\)`).Match(app) ||
 		!regexp.MustCompile(`return v2api\.New\(l, `).Match(app) {
-		t.Error("app.go must pass v2: v2Handler(pool, …) to registerRoutes, and v2Handler must return v2api.New(ledger.New(pool, …), …)")
+		t.Error("app.go must pass v2 and v2Search from v2Handler(pool, …) to registerRoutes, and v2Handler must return v2api.New(ledger.New(pool, …), …)")
 	}
 }

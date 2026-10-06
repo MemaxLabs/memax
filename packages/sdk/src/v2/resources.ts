@@ -36,6 +36,8 @@ import type {
   MemoriesCommandResult,
   MemoryDetail,
   MemoryPage,
+  NearDuplicates,
+  NearDuplicatesInput,
   ObservationInput,
   ObservationResult,
   PolicyDecision,
@@ -172,6 +174,27 @@ export class V2MemoriesResource {
     });
   }
 
+  /**
+   * Remember's near-duplicate check: the kept memories and pending
+   * proposals of the space that a draft repeats, best first (`exact`, the
+   * same words; `near`, the same thing by meaning). It only reads, so it
+   * takes no idempotency key; call it debounced while a person types (it
+   * is rate-limited per caller, `rate_limited` with `retryAfter`). When
+   * the server has no embeddings, or the draft's embedding was late, only
+   * exact repeats are checked and `semantic` is false.
+   */
+  async nearDuplicates(
+    space: string,
+    input: NearDuplicatesInput,
+    opts?: { signal?: AbortSignal },
+  ): Promise<NearDuplicates> {
+    return this.req(
+      "POST",
+      `/v2/spaces/${seg(space)}/memories:near-duplicates`,
+      { body: input, signal: opts?.signal },
+    );
+  }
+
   /** A page of the space's memories, newest first. */
   async list(space: string, opts?: ListMemoriesOptions): Promise<MemoryPage> {
     return this.req("GET", `/v2/spaces/${seg(space)}/memories`, {
@@ -192,7 +215,14 @@ export class V2MemoriesResource {
     });
   }
 
-  /** Keep a proposal. Only a person who is a member or owner can. */
+  /**
+   * Keep a proposal. Only a person who is a member or owner can. Before
+   * the judge has looked at a proposal that touches a decision in force,
+   * this throws a MemaxError `judge_pending` (503, `retryAfterSeconds`
+   * set): send the same Keep, with the same key, after that. A proposal
+   * the judge flagged throws `in_conflict` (409; `details.ref` is the
+   * decision in force): settle it with {@link resolveConflict}.
+   */
   async keep(
     ref: string,
     input: ReviewInput,
@@ -213,7 +243,10 @@ export class V2MemoriesResource {
   /**
    * Write a new version of the statement. `opts.ifMatch` is the version
    * you started from; if the memory changed since, this throws a
-   * MemaxError with code `edit_clash` (412).
+   * MemaxError with code `edit_clash` (412). With `keep: true`, new words
+   * that touch a decision in force are saved but not kept until the judge
+   * has looked: the result is `outcome: "proposed"` with policy code
+   * `judge_pending`, and {@link keep} on the returned version finishes it.
    */
   async edit(
     ref: string,

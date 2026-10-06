@@ -43,7 +43,7 @@
 //
 // The reason itself is never encoded, only its salted commitment
 // (reason_sha256 = SHA-256(salt ‖ utf8(reason)), written by the database
-// with the receipt, migration 038). Forget redacts the reason and its salt
+// with the receipt, migration 039). Forget redacts the reason and its salt
 // and keeps the commitment, so a redaction never changes a sealed leaf, and
 // the forgot receipt that authorises it is sealed like any other. txid is
 // not encoded either: it orders the chain, but a logical restore assigns
@@ -244,7 +244,7 @@ func MerkleRoot(leaves []Hash) Hash {
 }
 
 // ReasonCommitment is SHA-256(salt ‖ utf8(reason)), as the database
-// computes it (migration 038).
+// computes it (migration 039).
 func ReasonCommitment(salt []byte, reason string) Hash {
 	h := sha256.New()
 	h.Write(salt)

@@ -521,6 +521,7 @@ func (w *writer) writeVersion(ctx context.Context, sp spaceRow, m *Memory, state
 		VALUES ($1, $2, $3, $4, $5, $5)`, m.ID, version, sp.ID, statement, rc.ID); err != nil {
 		return Receipt{}, fmt.Errorf("ledger: write version: %w", err)
 	}
+	w.indexVersion(sp.ID, m.ID, version)
 	hash, bands := signature(statement)
 	if _, err := w.tx.Exec(ctx, fmt.Sprintf(`
 		UPDATE v2.memories

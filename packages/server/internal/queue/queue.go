@@ -21,6 +21,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/judge"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
 )
 
 // Client wraps river.Client for job insertion. Used by the API server.
@@ -280,10 +281,12 @@ func InsertClient(pool *pgxpool.Pool) (*Client, error) {
 	river.AddWorker(workers, &stubCopySeedMemoriesWorker{})
 	river.AddWorker(workers, &stubBoardSweepWorker{})
 	river.AddWorker(workers, &stubBoardRefreshWorker{})
-	// V2 compile path and judge: the ledger InsertTx-es compile_target and
-	// judge_proposal jobs through this client (ledger.WithJobs).
+	// V2 compile path, judge and embeddings: the ledger InsertTx-es
+	// compile_target, judge_proposal and index_memory jobs through this
+	// client (ledger.WithJobs).
 	compile.AddWorkers(workers, nil, nil)
 	judge.AddWorkers(workers, nil)
+	v2index.AddWorkers(workers, nil, nil)
 
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Logger:  slog.Default(),

@@ -32,8 +32,15 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
     status: {
       inSync: "{n} 个 Agent 已同步",
       inSyncOne: "1 个 Agent 已同步",
+      filesInSync: "{n} 个文件已同步",
+      filesInSyncOne: "1 个文件已同步",
       drifted: "{agent} 的文件被改动了",
+      fileDrifted: "{file} 被改动了",
+      held: "等审阅里的 {n} 条提议",
+      heldOne: "等审阅里的 1 条提议",
       compiling: "编译中",
+      waitingDelivery: "{n} 个文件等 CLI 写入",
+      waitingDeliveryOne: "1 个文件等 CLI 写入",
       noAgents: "还没有 Agent",
       notCompiling: "还没开始编译",
     },
@@ -276,6 +283,10 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
     staysTrue: "成立的前提",
     duplicate:
       "{agent} {age}提议过几乎一样的内容（{ref}）。保留那一条吧，这样它的收据和来源都在。",
+    duplicateByPerson:
+      "{age}有人提议过几乎一样的内容（{ref}）。保留那一条吧，这样它的收据和来源都在。",
+    duplicateKept:
+      "几乎一样的内容{age}已经保留了（{ref}）。再保留会多出一条记忆。",
     keepRef: "保留 {ref}",
     keep: "保留",
     write: "写下你想让每个 Agent 都知道的事。",
@@ -287,8 +298,6 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
     keptRecompiledOne: "已保留 {ref} · 重新编译了 1 个文件",
     proposed: "{ref} 已送去审阅",
     undo: "撤销",
-    undone: "已撤销：{ref} 不再保留。",
-    undoFailed: "没能撤销，{ref} 还在保留中。",
     failed: "没成功，什么都没保留。",
     copied: "已连同引用一起复制",
     copiedCommand: "命令已复制",
@@ -328,7 +337,11 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
       "memory.forget": "忘记",
       "today.review": "开始审阅（今天页）",
       "memories.remember": "记住（记忆页）",
-      "command.keep": "保留回答（提问时）",
+      "command.keep": "保留回答（提问时）或简报的修改",
+      "review.stopWaiting": "不再等检查（审阅时）",
+      "brief.move": "下移、上移一条事实（编辑简报时）",
+      "drift.choose": "选择怎么处理手动改动",
+      "drift.confirm": "执行（处理手动改动时）",
     },
   },
   settings: {

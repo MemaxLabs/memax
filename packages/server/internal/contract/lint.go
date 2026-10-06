@@ -19,7 +19,9 @@ import (
 //   - Every response body is a named schema, so the SDK gets a named type.
 //     2xx bodies are envelopes with exactly `data`; 4xx and 5xx bodies are
 //     ErrorEnvelope. That is the model.ApiResponse contract in AGENTS.md.
-//   - Every POST and PATCH requires Idempotency-Key (commands are retried).
+//   - Every POST and PATCH requires Idempotency-Key (commands are retried),
+//     except a POST marked x-memax-read: true, which only reads and is a
+//     POST to keep its input out of URLs (the near-duplicate check).
 //   - Every operation documents 401, 429, 500 and 503, which the middleware
 //     chain can answer for any route.
 //   - Operations have unique ids, a summary and a declared tag; path
@@ -63,7 +65,13 @@ func (s *Spec) Lint() []error {
 			}
 		}
 		errs = append(errs, s.lintPathParams(op)...)
-		if (op.Method == "POST" || op.Method == "PATCH") && !op.hasRequiredHeader("Idempotency-Key") {
+		readOnly, _ := raw["x-memax-read"].(bool)
+		switch {
+		case readOnly && op.Method != "POST":
+			add("%s: x-memax-read marks a POST that only reads; drop it from %s", where, op.Method)
+		case readOnly && op.hasRequiredHeader("Idempotency-Key"):
+			add("%s: a read (x-memax-read) takes no Idempotency-Key", where)
+		case (op.Method == "POST" || op.Method == "PATCH") && !readOnly && !op.hasRequiredHeader("Idempotency-Key"):
 			add("%s: commands require the Idempotency-Key header", where)
 		}
 		for _, code := range []int{401, 429, 500, 503} {

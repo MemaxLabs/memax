@@ -12,8 +12,9 @@ import { useToast } from "../../_components/toasts";
 /**
  * What a decision says when it lands (States2 toasts, bottom left, one
  * at a time): "Kept M-0430 · 3 files recompiled" when the file count is
- * known, "Kept M-0430" when it isn't, and why it didn't go through, with
- * Try again (the same command, the same key) when a retry is safe.
+ * known, "Kept M-0430" when it isn't, with Undo (⌘Z) when the decision
+ * can be undone; and why it didn't go through, with Try again (the same
+ * command, the same key) when a retry is safe.
  */
 export function useDecisionToasts(space: SpaceSummary) {
   const { t, locale } = useLocale();
@@ -21,7 +22,7 @@ export function useDecisionToasts(space: SpaceSummary) {
   const copy = t.ledger;
 
   const kept = useCallback(
-    (result: DecisionResult) => {
+    (result: DecisionResult, undo?: () => void) => {
       if (result.outcome === "proposed") {
         toast({
           state: "proposed",
@@ -38,22 +39,38 @@ export function useDecisionToasts(space: SpaceSummary) {
               result.recompiled,
               { ref: result.ref },
             );
-      // Undo shows only where the source returns an inverse command;
-      // none does yet (no server undo), so Review offers no Undo.
-      toast({
-        state: "kept",
-        text,
-        ...(result.undo ? { undo: result.undo, undoRef: result.ref } : {}),
-      });
+      toast({ state: "kept", text, ...(undo ? { undo } : {}) });
     },
     [copy, toast],
   );
 
+  /** A conflict settled from the card: the proposal replaces the decision in force. */
+  const keptOver = useCallback(
+    (ref: string, other: string, undo?: () => void) =>
+      toast({
+        state: "kept",
+        text: interpolate(copy.review.keptOver, { ref, other }),
+        ...(undo ? { undo } : {}),
+      }),
+    [copy, toast],
+  );
+
   const rejected = useCallback(
-    (ref: string) =>
+    (ref: string, undo?: () => void) =>
       toast({
         state: "off",
         text: interpolate(copy.records.toast.rejected, { ref }),
+        ...(undo ? { undo } : {}),
+      }),
+    [copy, toast],
+  );
+
+  /** Keep found the judge had flagged it: it waits as a conflict now. */
+  const nowConflict = useCallback(
+    (ref: string, other: string) =>
+      toast({
+        state: "proposed",
+        text: interpolate(copy.review.nowConflict, { ref, other }),
       }),
     [copy, toast],
   );
@@ -80,5 +97,8 @@ export function useDecisionToasts(space: SpaceSummary) {
     [copy, locale, space.name, toast],
   );
 
-  return useMemo(() => ({ kept, rejected, failed }), [kept, rejected, failed]);
+  return useMemo(
+    () => ({ kept, keptOver, rejected, nowConflict, failed }),
+    [kept, keptOver, rejected, nowConflict, failed],
+  );
 }

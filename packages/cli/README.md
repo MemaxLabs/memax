@@ -54,6 +54,37 @@ memax ask "How do we handle breaking schema changes?"
 memax setup
 ```
 
+## Compiled files: the record on your disk
+
+A Memax space compiles to the files your agents already read: `AGENTS.md`, a `CLAUDE.md` that imports it, and path-scoped Cursor rules. Link a repository once, and a small daemon writes each compile into it within seconds of a Keep. It never writes over a hand edit: it reports the edit, and you pull it in, overwrite it or stop compiling the file in the app. A pulled edit stays in the file until its proposals are kept or rejected in Review.
+
+```bash
+memax link --space memax-v2   # writes space: memax-v2 to .memax.yml, links this repository here
+memax daemon start            # writes the compiled files, and reports hand edits
+memax status                  # the space, its files and agents, and what's waiting on you
+memax compile                 # compile every target now and wait for the files
+```
+
+```text
+› memax status
+
+  memax-v2 · Project · 214 kept · 5 waiting on you
+
+  ● AGENTS.md        in sync          14:31
+  ● CLAUDE.md        in sync          14:31
+  ○ .cursor/rules    drifted          1 local edit
+  ● ChatGPT project  in sync          copy it from the app
+
+  CC write · CX propose · CU read · GPT propose · CL propose · GM paused
+```
+
+- **`memax link` / `unlink`**: tie a repository to a space (`.memax.yml` at the git root, and `~/.memax/daemon/repos.json` on this machine). A `CLAUDE.md` you already have can stay yours, with one Memax block in it.
+- **`memax daemon start | stop | status | run`**: one daemon per user. `run` is the foreground loop for service managers; `install` / `uninstall` start it at login with launchd or systemd, after showing what they write. Logs are in `~/.memax/daemon/daemon.log` and never hold file contents. macOS and Linux.
+- **`memax status [--format json]`**: the marks are the app's: ● in sync, ○ waiting on you, ◌ in flight, - stopped.
+- **`memax compile [--via pr]`**: without a running daemon it writes the files itself, in a linked repository. Pull requests (`--via pr`) aren't available yet.
+
+The daemon writes a file only when it is absent, already holds the run, or holds something Memax wrote (an earlier compile after a `git pull` is fine). Writes are atomic and the file is read again right before the rename, so a save in between is never lost. It never follows a symlink out of the repository and never touches `.git`. Idle, it polls each space with a 600-byte probe every few seconds and uses well under 1% CPU.
+
 ## What it does
 
 - **`memax push`** — save a thought, file, URL, or piped stdin

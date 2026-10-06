@@ -188,9 +188,16 @@ func loadTarget(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID, lock 
 	return t, nil
 }
 
-// fillTargets loads the targets' latest runs and names their delivered
-// runs.
+// fillTargets loads the targets' latest runs, names their delivered runs,
+// and works out what a pull holds (holds.go).
 func fillTargets(ctx context.Context, tx pgx.Tx, scope Scope, targets []*Target) error {
+	if err := fillRuns(ctx, tx, scope, targets); err != nil {
+		return err
+	}
+	return fillHolds(ctx, tx, targets)
+}
+
+func fillRuns(ctx context.Context, tx pgx.Tx, scope Scope, targets []*Target) error {
 	var ids []uuid.UUID
 	for _, t := range targets {
 		if t.lastCompileID != nil {

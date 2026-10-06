@@ -40,6 +40,8 @@
 
 .meta {
   margin: 16px 0 0;
+  /* A sentence: tabular figures set its commas tabular-wide too. */
+  font-variant-numeric: normal;
 }
 
 @media (max-width: 639px) {

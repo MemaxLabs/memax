@@ -90,6 +90,7 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
     bothDetail: "两条都成立。",
     open: "先不定",
     openDetail: "告诉各个 Agent 这事还没定。",
+    openDetailWith: "告诉各个 Agent 这事还没定，{detail}",
     decision: "决策会这样写",
     footer: {
       proposal:

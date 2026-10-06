@@ -54,7 +54,7 @@ export function EditClash({
         <p className={styles.diff}>
           <Diff before={before} after={theirs} />
         </p>
-        <span className="mx-meta">{yours}</span>
+        <span className={`mx-meta ${styles.yours}`}>{yours}</span>
       </div>
       <div className={styles.actions}>
         <Button

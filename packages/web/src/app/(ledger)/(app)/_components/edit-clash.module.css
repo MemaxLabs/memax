@@ -42,3 +42,8 @@
   background: var(--sheet);
   border-top: 1px solid var(--line);
 }
+
+/* "Yours: “…”" is a sentence: proportional figures and punctuation. */
+.yours {
+  font-variant-numeric: normal;
+}

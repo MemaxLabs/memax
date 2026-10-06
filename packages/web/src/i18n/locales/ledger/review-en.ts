@@ -96,6 +96,7 @@ export const ledgerReviewEn = {
     bothDetail: "Both stay true.",
     open: "Leave it open",
     openDetail: "Agents are told it's undecided.",
+    openDetailWith: "Agents are told it's undecided, and {detail}",
     decision: "The decision, as it will read",
     footer: {
       proposal:

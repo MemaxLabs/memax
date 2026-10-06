@@ -345,7 +345,12 @@ export function createDemoRecords({
     return {
       ...base,
       waiting: left.length,
-      oldestWaitingAt: left.map((i) => i.at).sort()[0] ?? null,
+      // The oldest proposal, as the server's overview counts it.
+      oldestWaitingAt:
+        left
+          .filter((i) => i.lifecycle === "proposed")
+          .map((i) => i.at)
+          .sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? null,
       reviewFilters: base.reviewFilters && {
         conflicts: Math.max(
           0,

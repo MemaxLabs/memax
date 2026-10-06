@@ -51,8 +51,13 @@ export function Queue({
         stale: all.filter((i) => matchesFilter(i, "stale")).length,
       }
     : (overview?.reviewFilters ?? null);
+  // "Oldest" is the oldest proposal still waiting (Review.png: "oldest
+  // 3 h"); a kept memory Dream flagged overnight isn't a proposal's wait.
   const oldest = complete
-    ? (all.map((i) => i.at).sort()[0] ?? null)
+    ? (all
+        .filter((i) => i.lifecycle === "proposed")
+        .map((i) => i.at)
+        .sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? null)
     : (overview?.oldestWaitingAt ?? null);
 
   let meta = "";

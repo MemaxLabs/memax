@@ -3145,6 +3145,13 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	WriteError(w, status, code, message)
 }
 
+// WriteJSON is writeJSON for handler packages outside this one (the /v2
+// handlers in internal/handler/v2api). It keeps the compile-time
+// guarantee: only a model.ApiResponse can be written.
+func WriteJSON(w http.ResponseWriter, status int, v model.ApiResponse) {
+	writeJSON(w, status, v)
+}
+
 // WriteError writes a standard error response using the ApiResponse envelope.
 // Exported for use by middleware packages (e.g., meter) that need to write
 // error responses consistent with the handler conventions.

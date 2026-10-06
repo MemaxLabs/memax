@@ -89,6 +89,9 @@ const (
 	sqlstateLifecycle        = "MXL01"
 	sqlstateUniqueViolation  = "23505"
 	sqlstateLockNotAvailable = "55P03"
+	// jsonb refuses \u0000, and text refuses bytes outside the encoding.
+	sqlstateUntranslatable = "22P05"
+	sqlstateNotInRepertory = "22021"
 )
 
 // mapDBError turns database refusals into the package's errors.
@@ -106,6 +109,10 @@ func mapDBError(err error) error {
 		return fmt.Errorf("%w: %s", ErrInvalidTransition, pg.Message)
 	case sqlstateLockNotAvailable:
 		return fmt.Errorf("%w: try again in a moment", ErrBusy)
+	case sqlstateUntranslatable, sqlstateNotInRepertory:
+		// A NUL (\u0000) inside a JSON field (a source's locator, the
+		// conditions, the scope) reaches jsonb, which can't store it.
+		return invalid("body", "contains a character that can't be stored (such as \\u0000); remove it and try again")
 	case sqlstateUniqueViolation:
 		if pg.ConstraintName == "receipts_stream_version_key" {
 			return fmt.Errorf("%w: another change landed first; reload and try again", ErrEditClash)

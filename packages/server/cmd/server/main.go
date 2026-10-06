@@ -167,12 +167,20 @@ func main() {
 	slog.Info("memax API server stopped cleanly")
 }
 
+// The /v2 headers come from openapi/v2.yaml: request header parameters
+// must be allowed and documented response headers exposed, or browsers
+// drop them (TestCORSCoversTheV2Contract).
+const (
+	corsAllowHeaders  = "Content-Type, Authorization, X-Hub-ID, X-Timezone, Mcp-Session-Id, Idempotency-Key, If-Match, X-Memax-Via"
+	corsExposeHeaders = "Mcp-Session-Id, WWW-Authenticate, ETag, Location, Idempotent-Replayed, Retry-After"
+)
+
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Hub-ID, X-Timezone, Mcp-Session-Id")
-		w.Header().Set("Access-Control-Expose-Headers", "Mcp-Session-Id, WWW-Authenticate")
+		w.Header().Set("Access-Control-Allow-Headers", corsAllowHeaders)
+		w.Header().Set("Access-Control-Expose-Headers", corsExposeHeaders)
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)

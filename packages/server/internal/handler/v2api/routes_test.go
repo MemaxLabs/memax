@@ -1,0 +1,266 @@
+package v2api_test
+
+import (
+	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"regexp"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+)
+
+// TestRoutesMatchSpec holds the Go route table and v2.yaml equal: every
+// operation in the spec is served, and nothing is served that the spec
+// doesn't describe.
+func TestRoutesMatchSpec(t *testing.T) {
+	t.Parallel()
+	served := map[string]string{}
+	for _, rt := range v2api.Routes() {
+		served[rt.Method+" "+rt.Path] = rt.OperationID
+	}
+	documented := map[string]string{}
+	for _, op := range spec.Operations() {
+		documented[op.Method+" "+op.Path] = op.ID
+	}
+	for k, id := range documented {
+		if got, ok := served[k]; !ok {
+			t.Errorf("%s (%s) is in v2.yaml but not served: add it to v2api.routes", k, id)
+		} else if got != id {
+			t.Errorf("%s is %s in v2.yaml but %s in v2api.routes", k, id, got)
+		}
+	}
+	for k := range served {
+		if _, ok := documented[k]; !ok {
+			t.Errorf("%s is served but not in v2.yaml: write the spec first", k)
+		}
+	}
+}
+
+// sampleRequests is one valid request per operation. A new operation
+// needs one here, so TestEveryRouteIsServed can prove it is reachable.
+var sampleRequests = map[string]struct {
+	path   string
+	body   string
+	header map[string]string
+}{
+	"listSpaces":     {path: "/v2/spaces"},
+	"rememberMemory": {path: "/v2/spaces/memax-v2/memories", body: `{"statement":"x","section":"decisions"}`},
+	"listMemories":   {path: "/v2/spaces/memax-v2/memories?state=kept&state=proposed&limit=10"},
+	"listReview":     {path: "/v2/spaces/memax-v2/review"},
+	"listReceipts":   {path: "/v2/spaces/memax-v2/receipts?memory=M-0001"},
+	"getMemory":      {path: "/v2/memories/M-0001?space=memax-v2"},
+	"keepMemory":     {path: "/v2/memories/M-0001:keep?space=memax-v2", header: map[string]string{"If-Match": `"1"`}},
+	"editMemory":     {path: "/v2/memories/M-0001:edit?space=memax-v2", body: `{"statement":"y"}`, header: map[string]string{"If-Match": `"1"`}},
+	"rejectMemory":   {path: "/v2/memories/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:reject", body: `{"reason":"duplicate"}`},
+}
+
+// TestEveryRouteIsServed sends a valid request for every operation to a
+// /v2 handler with no ledger. Each must reach its handler (503
+// unavailable, documented for every operation) rather than fall through
+// to 404 or 405 in the router.
+func TestEveryRouteIsServed(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	v2api.New(nil, quiet).Mount(mux, func(h http.Handler) http.Handler { return h })
+	srv := spec.Handler(t, mux)
+	for _, op := range spec.Operations() {
+		sample, ok := sampleRequests[op.ID]
+		if !ok {
+			t.Errorf("%s has no sample request in sampleRequests", op.ID)
+			continue
+		}
+		r := httptest.NewRequest(op.Method, sample.path, strings.NewReader(sample.body))
+		if sample.body != "" {
+			r.Header.Set("Content-Type", "application/json")
+		}
+		if op.Method == http.MethodPost {
+			r.Header.Set("Idempotency-Key", "k-"+op.ID)
+		}
+		for k, v := range sample.header {
+			r.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, r)
+		if code := errorCode(t, rec.Body.Bytes()); rec.Code != http.StatusServiceUnavailable || code != "unavailable" {
+			t.Errorf("%s %s = %d %s, want 503 unavailable from its handler", op.Method, sample.path, rec.Code, code)
+		}
+	}
+}
+
+// TestRoutingErrorsUseTheEnvelope: the router's own answers (unknown
+// paths, methods and commands) are JSON errors like everything else.
+func TestRoutingErrorsUseTheEnvelope(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	v2api.New(nil, quiet).Mount(mux, func(h http.Handler) http.Handler { return h })
+	cases := []struct {
+		method, path string
+		status       int
+		code, allow  string
+	}{
+		{"GET", "/v2/nowhere", 404, "not_found", ""},
+		{"DELETE", "/v2/spaces", 405, "method_not_allowed", "GET"},
+		{"PUT", "/v2/spaces/x/memories", 405, "method_not_allowed", "GET, POST"},
+		{"POST", "/v2/memories/M-0001", 405, "method_not_allowed", "GET"},
+		{"POST", "/v2/memories/M-0001:forget", 404, "not_found", ""},
+	}
+	for _, c := range cases {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(c.method, c.path, nil))
+		if code := errorCode(t, rec.Body.Bytes()); rec.Code != c.status || code != c.code {
+			t.Errorf("%s %s = %d %s, want %d %s", c.method, c.path, rec.Code, code, c.status, c.code)
+		}
+		if got := rec.Header().Get("Allow"); got != c.allow {
+			t.Errorf("%s %s: Allow = %q, want %q", c.method, c.path, got, c.allow)
+		}
+		if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("%s %s: Content-Type %q", c.method, c.path, ct)
+		}
+	}
+}
+
+func errorCode(t *testing.T, body []byte) string {
+	t.Helper()
+	var env struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		t.Errorf("not a JSON error envelope: %s", body)
+	}
+	return env.Error.Code
+}
+
+// specEnum returns the enum of a component schema.
+func specEnum(t *testing.T, name string) []string {
+	t.Helper()
+	schemas, _ := spec.Doc()["components"].(map[string]any)["schemas"].(map[string]any)
+	sch, ok := schemas[name].(map[string]any)
+	if !ok {
+		t.Fatalf("v2.yaml has no schema %s", name)
+	}
+	var out []string
+	for _, v := range sch["enum"].([]any) {
+		out = append(out, v.(string))
+	}
+	return out
+}
+
+func strs[T ~string](vs []T) []string {
+	out := make([]string, len(vs))
+	for i, v := range vs {
+		out[i] = string(v)
+	}
+	return out
+}
+
+func sameSet(t *testing.T, what string, spec, code []string) {
+	t.Helper()
+	a, b := slices.Clone(spec), slices.Clone(code)
+	sort.Strings(a)
+	sort.Strings(b)
+	if !slices.Equal(a, b) {
+		t.Errorf("%s: v2.yaml has %v, the code has %v", what, a, b)
+	}
+}
+
+// TestEnumsMatchTheLedger keeps every enum in v2.yaml equal to the Go
+// vocabulary it mirrors, so a new state or source kind can't reach the
+// wire undocumented (or be documented and never sent).
+func TestEnumsMatchTheLedger(t *testing.T) {
+	t.Parallel()
+	sameSet(t, "Section", specEnum(t, "Section"), strs(ledger.Sections))
+	sameSet(t, "MemoryKind", specEnum(t, "MemoryKind"), []string{string(ledger.KindFact), string(ledger.KindDecision)})
+	sameSet(t, "State", specEnum(t, "State"), strs(lifecycle.Marks))
+	sameSet(t, "Lifecycle", specEnum(t, "Lifecycle"), strs(lifecycle.Lifecycles))
+	sameSet(t, "Flag", specEnum(t, "Flag"), strs(lifecycle.AllFlags))
+	sameSet(t, "Trust", specEnum(t, "Trust"), strs(policy.Trusts))
+	sameSet(t, "SourceKind", specEnum(t, "SourceKind"), strs(ledger.SourceKinds))
+	sameSet(t, "ActorKind", specEnum(t, "ActorKind"), strs(policy.ActorKinds))
+	sameSet(t, "Via", specEnum(t, "Via"), strs(policy.Vias))
+	sameSet(t, "Assurance", specEnum(t, "Assurance"), []string{string(policy.AssuranceHumanWeb), string(policy.AssuranceClientAttested)})
+	sameSet(t, "SpaceKind", specEnum(t, "SpaceKind"), []string{string(policy.SpacePersonal), string(policy.SpaceProject), string(policy.SpaceTeam)})
+	sameSet(t, "Role", specEnum(t, "Role"), []string{string(policy.RoleOwner), string(policy.RoleMember), string(policy.RoleViewer)})
+	sameSet(t, "Outcome", specEnum(t, "Outcome"), []string{string(ledger.OutcomeApplied), string(ledger.OutcomeProposed), string(ledger.OutcomeNeedsConfirmation)})
+	sameSet(t, "PolicyEffect", specEnum(t, "PolicyEffect"),
+		[]string{string(policy.EffectApply), string(policy.EffectPropose), string(policy.EffectConfirm), string(policy.EffectRefuse)})
+	sameSet(t, "PolicyCode", specEnum(t, "PolicyCode"), stringConsts(t, "../../ledger/policy/policy.go", "Code"))
+	// rate_limited comes from the rate-limit middleware in front of /v2.
+	sameSet(t, "ErrorCode", specEnum(t, "ErrorCode"), append(stringConsts(t, "errors.go", "code"), "rate_limited"))
+}
+
+// stringConsts parses a Go file for string constants whose names start
+// with prefix: the policy codes and the error codes are plain constants,
+// not lists, so the test reads them from the source.
+func stringConsts(t *testing.T, path, prefix string) []string {
+	t.Helper()
+	f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	var out []string
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
+			continue
+		}
+		for _, s := range gd.Specs {
+			vs := s.(*ast.ValueSpec)
+			for i, name := range vs.Names {
+				if !strings.HasPrefix(name.Name, prefix) || i >= len(vs.Values) {
+					continue
+				}
+				lit, ok := vs.Values[i].(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					continue
+				}
+				v, err := strconv.Unquote(lit.Value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				out = append(out, v)
+			}
+		}
+	}
+	if len(out) == 0 {
+		t.Fatalf("no %s* constants in %s", prefix, path)
+	}
+	return out
+}
+
+// TestReceiptEnumsMatchTheSchema keeps ReceiptAction and ObjectKind equal
+// to the CHECK constraints on v2.receipts, which admit the verbs of
+// commands later epics add.
+func TestReceiptEnumsMatchTheSchema(t *testing.T) {
+	t.Parallel()
+	sql, err := os.ReadFile("../../../migrations/028_v2_ledger.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(constraint string) []string {
+		m := regexp.MustCompile(`(?s)CONSTRAINT ` + constraint + ` CHECK \(\w+ IN\s*\((.*?)\)\)`).FindSubmatch(sql)
+		if m == nil {
+			t.Fatalf("no %s in migration 028", constraint)
+		}
+		var out []string
+		for _, q := range regexp.MustCompile(`'([a-z_]+)'`).FindAllSubmatch(m[1], -1) {
+			out = append(out, string(q[1]))
+		}
+		return out
+	}
+	sameSet(t, "ReceiptAction", specEnum(t, "ReceiptAction"), check("receipts_action_check"))
+	sameSet(t, "ObjectKind", specEnum(t, "ObjectKind"), check("receipts_object_kind_check"))
+}

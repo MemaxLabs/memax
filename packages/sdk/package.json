@@ -33,10 +33,12 @@
     "dev": "tsc --watch",
     "lint": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
+    "gen:v2": "node scripts/gen-v2-types.mjs",
     "clean": "rm -rf dist"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "openapi-typescript": "^7.13.0",
     "typescript": "^5.8.0",
     "vitest": "^3.0.0"
   },

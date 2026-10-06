@@ -289,6 +289,14 @@ func grantFromRequest(r *http.Request) GrantContext {
 	return defaultGrantContext(GetUserID(r))
 }
 
+// GetGrant returns the credential RequireAuth resolved for the request:
+// who it acts for, its principal type (user, api_key, oauth_grant), its
+// agent identity, its own permissions (before any hub role is applied)
+// and its hub scope. The /v2 handlers map it onto a ledger actor.
+func GetGrant(r *http.Request) GrantContext {
+	return grantFromRequest(r)
+}
+
 func GetAuthContext(r *http.Request) *AuthContext {
 	if v, ok := r.Context().Value(authContextKey).(*AuthContext); ok {
 		return v

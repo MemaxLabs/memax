@@ -19,6 +19,9 @@ package-lock.json
 .turbo/
 .vercel/
 .fly/
+# Generated from packages/server/openapi/v2.yaml; `pnpm lint` compares it
+# byte for byte with a fresh generation, so it must not be reformatted.
+packages/sdk/src/v2/schema.gen.ts
 
 # Binary / media
 *.png

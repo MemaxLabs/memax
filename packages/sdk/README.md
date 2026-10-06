@@ -79,6 +79,54 @@ for (const c of citations) {
 - **Typed errors** — `MemaxError` with `code`, `status`, `retryable` for clean client handling
 - **Runtime-portable** — works wherever `fetch` works
 
+## V2 API (preview)
+
+`memax.v2` talks to the `/v2` API, the V2 record: every change is a
+command with a receipt, agents propose and people keep. Its types are
+generated from the API contract and live under the `V2` namespace.
+
+```ts
+import { Memax, refusalOf, type V2 } from "memax-sdk";
+
+const memax = new Memax({ apiKey: process.env.MEMAX_API_KEY });
+
+// Commands need an Idempotency-Key: choose one per intent, reuse it on retry.
+const res: V2.CommandResult = await memax.v2.memories.remember(
+  "memax-v2", // space id or slug
+  { statement: "River is our queue, not Kafka.", section: "decisions" },
+  { idempotencyKey: crypto.randomUUID() },
+);
+res.outcome; // "applied" for a member or owner, "proposed" for an API key
+
+// Display IDs repeat across tenants, so they travel with their space.
+const { memory, versions, receipts } = await memax.v2.memories.get("M-0219", {
+  space: "memax-v2",
+});
+
+// Edits send the version they started from; a newer one is 412 edit_clash.
+await memax.v2.memories.edit(
+  memory.id,
+  { statement: "River is our only queue." },
+  { idempotencyKey: crypto.randomUUID(), ifMatch: memory.version },
+);
+
+try {
+  await memax.v2.memories.keep(
+    "M-0220",
+    {},
+    { space: "memax-v2", idempotencyKey: crypto.randomUUID() },
+  );
+} catch (err) {
+  refusalOf(err)?.code; // "person_must_review": API keys never keep
+}
+
+const queue = await memax.v2.review.list("memax-v2"); // queue.total waiting
+const activity = await memax.v2.receipts.list("memax-v2", { limit: 50 });
+```
+
+The types are regenerated from `packages/server/openapi/v2.yaml` with
+`pnpm --filter memax-sdk gen:v2`; `pnpm lint` fails when they are stale.
+
 ## Authentication
 
 Get an API key at [memax.app → Settings → API Keys](https://memax.app/settings/api-keys). For browser / user-session auth (OAuth flow), pass a bearer token instead:

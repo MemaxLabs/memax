@@ -5,6 +5,8 @@ import type { Memax, V2 } from "memax-sdk";
 
 export interface DaemonApi {
   listTargets(space: string, signal?: AbortSignal): Promise<V2.Target[]>;
+  /** The id of the space's newest receipt: it moves whenever the space changes. */
+  changeToken(space: string, signal?: AbortSignal): Promise<string>;
   preview(target: string, signal?: AbortSignal): Promise<V2.TargetPreview>;
   runs(
     target: string,
@@ -39,6 +41,13 @@ export function sdkDaemonApi(memax: Memax): DaemonApi {
   return {
     async listTargets(space, signal) {
       return (await t.list(space, { signal: timed(signal) })).items;
+    },
+    async changeToken(space, signal) {
+      const page = await memax.v2.receipts.list(space, {
+        limit: 1,
+        signal: timed(signal),
+      });
+      return page.items[0]?.id ?? "";
     },
     preview: (target, signal) => t.preview(target, { signal: timed(signal) }),
     async runs(target, limit, signal) {

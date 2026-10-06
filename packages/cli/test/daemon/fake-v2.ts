@@ -63,6 +63,8 @@ export class FakeV2 {
   readonly agents: V2.AgentConnection[] = [];
   reviewTotal = 0;
   keptCount = 0;
+  /** Receipts written, as the server writes them (compile runs write none). */
+  receipts = 0;
   private server: Server | null = null;
   private seq = 880;
   private keys = new Map<string, { status: number; body: unknown }>();
@@ -235,6 +237,7 @@ export class FakeV2 {
 
   /** Marks the target changed but not yet compiled (a Keep). */
   dirty(id: string): void {
+    this.receipts++;
     const t = this.entry(id).target;
     t.dirty_gen++;
     if (t.sync_state !== "off" && t.sync_state !== "drifted")
@@ -348,7 +351,7 @@ export class FakeV2 {
       return { status: 200, data: { items: this.spaces } };
     if (
       (m = path.match(
-        /^\/v2\/spaces\/([^/]+)\/(targets|review|memories|agents)$/,
+        /^\/v2\/spaces\/([^/]+)\/(targets|review|memories|agents|receipts)$/,
       ))
     ) {
       const sp = this.space(m[1]);
@@ -363,6 +366,14 @@ export class FakeV2 {
         return {
           status: 200,
           data: { items: [], has_more: false, total: this.reviewTotal },
+        };
+      if (m[2] === "receipts")
+        return {
+          status: 200,
+          data: {
+            items: this.receipts ? [{ id: `r-${this.receipts}` }] : [],
+            has_more: false,
+          },
         };
       if (m[2] === "agents")
         return { status: 200, data: { items: this.agents } };
@@ -392,6 +403,7 @@ export class FakeV2 {
     const op = m[2] ?? m[3] ?? "";
     switch (`${method} ${op}`) {
       case "PATCH ": {
+        this.receipts++;
         const input = body as V2.ConfigureTargetInput;
         t.settings = { ...t.settings, ...input.settings };
         if (input.enabled === false) t.sync_state = "off";
@@ -495,6 +507,7 @@ export class FakeV2 {
       e.runs.findIndex((x) => x.run.id === t.delivered!.compile_id) <
         e.runs.indexOf(r);
     if (!already && !older) {
+      this.receipts++;
       r.run.status = "delivered";
       r.run.delivered_at = now();
       t.delivered = {
@@ -547,6 +560,7 @@ export class FakeV2 {
       ...(base ? { base_sha256: base.sha256 } : {}),
     };
     e.observations.push(o);
+    this.receipts++;
     (o as V2.Observation & { content?: string }).content = input.content;
     t.sync_state = "drifted";
     t.open_drift = e.observations.filter((x) => x.status === "open").length;
@@ -595,6 +609,7 @@ export class FakeV2 {
       }
     }
     t.open_drift = 0;
+    this.receipts++;
     t.version++;
     if (mode === "stop") {
       t.sync_state = "off";

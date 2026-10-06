@@ -176,6 +176,7 @@ export class Daemon {
     return new PollingFeed(
       {
         fetch: (signal) => this.o.api.listTargets(spaceId, signal),
+        probe: (signal) => this.o.api.changeToken(spaceId, signal),
         onTargets: async (targets) => {
           this.reload();
           const space = this.spaces.get(spaceId);

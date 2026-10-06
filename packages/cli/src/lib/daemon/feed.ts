@@ -1,14 +1,22 @@
 // How the daemon learns that a space's targets changed. Today that is a
-// poll of GET /v2/spaces/{space}/targets: every couple of seconds while a
-// compile or a delivery is in flight, slower when nothing moves, backing
-// off on errors, with jitter so devices don't poll in step. When /v2
-// serves `target.changed` over SSE, a feed that listens to it replaces
-// PollingFeed behind the same interface.
+// poll: every couple of seconds while a compile or a delivery is in flight,
+// slower when nothing moves, backing off on errors, with jitter so devices
+// don't poll in step. When /v2 serves `target.changed` over SSE, a feed
+// that listens to it replaces PollingFeed behind the same interface.
+//
+// An idle poll is a probe: the space's newest receipt (about 1 KB), not
+// its targets (about 9 KB, uncompressed). Every change that matters here
+// writes a receipt (a Keep, a Brief revision, a target change, a request,
+// a delivery, a hand edit), so the targets are fetched only when the probe
+// moves, while something is in flight (a compile run writes no receipt),
+// after a wake, and every few minutes regardless.
 import type { V2 } from "memax-sdk";
 import { failureOf } from "./api.js";
 
 export interface FeedHandlers {
   fetch(signal: AbortSignal): Promise<V2.Target[]>;
+  /** A cheap token that changes whenever the space does. */
+  probe?(signal: AbortSignal): Promise<string>;
   /** Handles one list; `busy` asks for the next one soon. */
   onTargets(targets: V2.Target[]): Promise<{ busy: boolean }>;
   onError(err: unknown, retryInMs: number): void;
@@ -33,6 +41,8 @@ export interface Cadence {
   stuckAfterMs: number;
   errorBaseMs: number;
   errorMaxMs: number;
+  /** Fetch the targets at least this often, whatever the probe says. */
+  fullEveryMs: number;
   /** ± this fraction of every delay. */
   jitter: number;
 }
@@ -48,6 +58,7 @@ export const DEFAULT_CADENCE: Cadence = {
   stuckAfterMs: 2 * 60_000,
   errorBaseMs: 2_000,
   errorMaxMs: 5 * 60_000,
+  fullEveryMs: 10 * 60_000,
   jitter: 0.2,
 };
 
@@ -85,6 +96,11 @@ export class PollingFeed implements TargetFeed {
   private failures = 0;
   private lastSig = "";
   private lastChange = Date.now();
+  /** Fetch the targets on the next tick (start, wake, busy, an error). */
+  private needFull = true;
+  private lastFull = 0;
+  private lastToken: string | null = null;
+  private lastBusy = false;
 
   constructor(
     private readonly h: FeedHandlers,
@@ -104,6 +120,7 @@ export class PollingFeed implements TargetFeed {
   wake(): void {
     if (this.stopped) return;
     this.lastChange = Date.now();
+    this.needFull = true;
     if (this.running) {
       this.woken = true; // poll again as soon as this one ends
       return;
@@ -133,13 +150,36 @@ export class PollingFeed implements TargetFeed {
   private async tick(): Promise<void> {
     let delay: number;
     try {
-      const targets = await this.h.fetch(this.abort.signal);
-      const { busy } = await this.h.onTargets(targets);
+      const signal = this.abort.signal;
+      const now = Date.now();
+      let token: string | null = null;
+      let full =
+        this.needFull ||
+        this.lastBusy ||
+        !this.h.probe ||
+        now - this.lastFull > this.c.fullEveryMs;
+      if (!full && this.h.probe) {
+        token = await this.h.probe(signal);
+        full = token !== this.lastToken;
+      }
+      if (full) {
+        this.needFull = false;
+        const targets = await this.h.fetch(signal);
+        const { busy } = await this.h.onTargets(targets);
+        this.lastFull = Date.now();
+        this.lastBusy = busy;
+        // The token read before this list, or none: the next probe then
+        // refetches once and settles.
+        this.lastToken = token;
+        delay = this.nextDelay(targets, busy);
+      } else {
+        delay = this.idleDelay(Date.now());
+      }
       this.failures = 0;
-      delay = this.nextDelay(targets, busy);
     } catch (err) {
       if (this.stopped) return;
       this.failures++;
+      this.needFull = true;
       delay = errorDelay(err, this.failures, this.c);
       this.h.onError(err, delay);
     }
@@ -163,6 +203,10 @@ export class PollingFeed implements TargetFeed {
       const stuck = now - this.lastChange > this.c.stuckAfterMs;
       return stuck ? this.c.idleMs : this.c.busyMs;
     }
+    return this.idleDelay(now);
+  }
+
+  private idleDelay(now: number): number {
     return now - this.lastChange > this.c.slowAfterMs
       ? this.c.slowMs
       : this.c.idleMs;

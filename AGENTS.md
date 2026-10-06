@@ -376,7 +376,7 @@ If you find yourself tempted to put admin code in the SDK, stop and ask why. The
 - **Liquid glass surfaces** — use `glass`, `glass-subtle`, `glass-strong` instead of flat `bg-card`
 - **Colored shadows** — use `shadow-glow`, `shadow-premium` instead of Tailwind's generic `shadow-md`
 - **Spring easing** — use `var(--ease-spring)` for all transitions, never `ease-in-out`
-- **Display typography** — headings use `text-display-*` classes (Inter, tight letter-spacing); code blocks use JetBrains Mono. Both load via `next/font/google` in `app/layout.tsx`.
+- **Display typography** — headings use `text-display-*` classes (Inter, tight letter-spacing); code blocks use JetBrains Mono. Both load via `next/font/google` in `app/(v1)/v1-fonts.ts`.
 - **No sidebar layout** — the app uses a floating dock at bottom center. No sidebar. No top bar.
 - **Centered modals** — all overlays (search, capture) are centered glass panels, not Sheet/sidebar drawers
 - **Entrance animations** — every section uses `animate-fade-up` with `stagger-1` through `stagger-5`
@@ -461,6 +461,24 @@ pnpm lint
 ```
 
 Package-specific commands are in each package's README.
+
+### Web: V1 and the V2 Ledger UI side by side
+
+`packages/web/src/app` has two root layouts: `(v1)/` is the frozen V1 app (every V1 route group, `globals.css`, Tailwind) and `(ledger)/` is the V2 Ledger UI (only `@memaxlabs/ledger-tokens`). `api/`, `dev/ui/`, `global-error.tsx` and `global-not-found.tsx` sit outside both. Moving between the trees is a full page load, and `(ledger)/isolation.test.ts` keeps V1 styles out of `(ledger)`.
+
+- **V2 routes** are defined once, in `src/lib/ui-gate.ts` (plan §6.3): `/[space]/<place>/…` (today, review, brief, memories, handoffs, agents, decisions, dream, activity, search, settings), `/setup/…`, `/signin`, `/device`, `/settings/…` (V1 keeps the bare `/settings`), `/join/…` and the `/dev/ledger…` fixtures. Every new top-level route must be added to `RESERVED_SPACE_SLUGS`, or a test fails.
+- **`memax_ui` cookie.** `memax_ui=v2` opts a browser into V2. Without it, `src/proxy.ts` redirects V2 paths to the V1 home. In dev, `/dev/ui?v=2` sets it and opens `/dev/ledger/tokens`, and `/dev/ui?v=1` clears it; both take `&next=/path` and are a 404 in production unless `NEXT_PUBLIC_DEV_FIXTURES=1`.
+- **Theme.** `memax_theme=light|dark` (no cookie means follow the system) becomes `data-theme` on `<html>` before first paint.
+- **Specimen.** `/dev/ledger/tokens` shows every token and type style in Paper and Carbon. It is the first visual-regression fixture.
+
+```bash
+# Playwright (Chromium) against a production build that keeps the /dev fixtures.
+# Not part of `pnpm test`. CI also needs the browser's system libraries (--with-deps, root).
+pnpm --filter @memaxlabs/web exec playwright install --with-deps chromium
+pnpm --filter @memaxlabs/web test:e2e
+pnpm --filter @memaxlabs/web test:e2e:update      # rewrite the screenshot baselines
+E2E_BASE_URL=http://localhost:3100 pnpm --filter @memaxlabs/web test:e2e   # reuse a running server
+```
 
 ### Server-specific commands
 

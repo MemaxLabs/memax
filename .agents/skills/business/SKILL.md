@@ -13,15 +13,15 @@ They must be accurate, internally consistent, investor-compelling, and grounded 
 
 All paths below are relative to the sibling-clone location (`../internal-docs/`). If your working tree has a different layout, adjust accordingly — the filenames themselves are stable.
 
-| File                          | Purpose                                               | Key Numbers                                 |
-| ----------------------------- | ----------------------------------------------------- | ------------------------------------------- |
-| `01-business-model.md`        | Pricing tiers, unit economics, revenue projections    | Free/Pro $9/Pro+ $19/Team $15/seat          |
-| `02-go-to-market.md`          | Launch strategy, channels, phase targets              | User growth by phase                        |
-| `03-competitive-landscape.md` | Every competitor, positioning, response playbook      | Funding, pricing, features per competitor   |
-| `04-growth-engine.md`         | PLG loops, activation, conversion triggers, retention | Free tier math, conversion rates, K-factors |
-| `05-partnerships.md`          | Platform partnerships, ecosystem strategy             | Tier 1-3 partners                           |
-| `06-fundraising.md`           | Seed ask, pitch, milestone triggers, investor list    | $1.5-2.5M seed, $500K ARR target            |
-| `07-cost-analysis.md`         | Per-operation costs, infra at scale, OpEx, margins    | COGS + OpEx per user per tier               |
+| File                          | Purpose                                                                                   | Key Numbers                                                                                                                  |
+| ----------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `01-business-model.md`        | Scope and sizing, plans, value metric, unit economics, projection                         | Free $0 / Pro $12 or $120/yr / Team $20/seat or $192/yr / Enterprise custom; founding $96/yr; Month 24 base case $37,210 MRR |
+| `02-go-to-market.md`          | `npx memax-cli init` wedge, launch phases and gates, distribution order                   | Phases 0–4 and their gates; active free users by month (projection)                                                          |
+| `03-competitive-landscape.md` | Platform memory, memory APIs, cross-tool MCP memory, translators; positioning             | Dated funding, pricing and capabilities per competitor (Oct 2026)                                                            |
+| `04-growth-engine.md`         | North star, funnel targets, loops, upgrade triggers, retention                            | Activation 60%, week-4 retention 40%, team pull 25% in 60 days, conversion 5% in 90 days                                     |
+| `05-partnerships.md`          | Directories and registries, agent platforms, AAIF record schema                           | The 8-step distribution order (master plan §4.5)                                                                             |
+| `06-fundraising.md`           | Stage, seed ask, raise triggers, burn, pitch, risks                                       | $1.5–2.5M seed; ~$730/mo pre-seed burn; ~$39–45K/mo post-seed gross burn                                                     |
+| `07-cost-analysis.md`         | Unit prices, per-operation costs, COGS per tier, fixed infra, payments, OpEx, sensitivity | Pro $1.14 variable / $2.03 total / 83%; Team seat 84–86%; Free $0.10–0.21 variable; ~$650 fixed at 10k MAU                   |
 
 ## Before Writing or Revising
 
@@ -41,24 +41,29 @@ Never write business claims without verifying them. For every number, ask: "Wher
 
 - Cite sources for TAM/SAM numbers (CB Insights, Gartner, Stack Overflow surveys)
 - Include the year and source for every market size claim
-- If a number is an estimate, say so explicitly: "~$412M (estimated: 30M devs x 55% adoption x $25/yr)"
+- If a number is an estimate, say so explicitly: "~$263M/yr (estimate: ~2.19M developers likely to buy a second, self-paid AI tool x $120/yr)"
 
 **Our own numbers:**
 
-- Per-operation costs must match actual API pricing pages (Anthropic, Voyage AI, Fly.io, Neon, etc.)
+- Per-operation costs must match actual API pricing pages (OpenRouter and the zero-data-retention hosts, Anthropic, OpenAI, Voyage AI, Fly.io, Neon, Upstash, R2, Stripe, etc.)
 - If API pricing changed, update ALL references across ALL docs (not just one file)
-- Cross-check MRR calculations: (Pro count x $9) + (Pro+ count x $19) + (Team seats x $15) = stated MRR
+- Cross-check MRR calculations: (founding Pro x $8) + (list Pro x $11.20 blended ARPU) + (discounted Team seats x their price) + (Team seats x $18 blended ARPU) = stated MRR. The blends are 60% monthly / 40% annual for Pro ($12 / $10) and 50/50 for Team ($20 / $16)
 - Verify ARR = MRR x 12
 
 ### 2. Internal Consistency Check
 
 Before committing changes to ANY business doc, verify consistency across ALL 7 files:
 
-**Pricing numbers must match everywhere:**
+**Pricing numbers must match everywhere** (master plan D9, accepted Oct 6, 2026):
 
-- Free tier limits: 300 memories, 200 pushes/mo, 500 recalls/mo, 10 asks/mo, unlimited agents
-- Pro: $9/mo, Pro+: $19/mo, Team: $15/seat/mo
-- These appear in: 01 (tiers), 03 (comparison table), 04 (conversion triggers), 07 (recommended tiers)
+- Free $0: every compile adapter, 1 personal + 1 project Space, 3 agent kinds, Write autonomy, Dream weekly, Ask 50/month, 30-day activity
+- Pro $12/mo or $120/yr: unlimited Spaces and agents, cloud agents, Dream nightly on the 5 busiest Spaces, source-watched stale detection, handoffs and gates between your own agents, 3 free viewers, 90-day activity, Ask 1,000/month
+- Team $20/seat/mo or $192/seat/yr: members billed, viewers free, no seat minimum, 14-day trial, decision ledger + ADR export, routing to teammates, Slack/Linear/webhooks, 1-year audit history
+- Enterprise custom: SSO/SCIM, EU residency, supported self-hosting (indicative floor $30/seat, 20 seats, an estimate)
+- Launch: alpha free; founding $96/yr, held while subscribed, until GA or the first 1,000 subscribers; V1 `early_access` gets Pro free until 3 months after GA, then $96/yr
+- Programmes: students Pro free; Team free for public OSS repos; startups 50% off Team for year one
+- COGS (07): Free $0.10 / $0.21 variable; typical Pro $1.14 variable, $2.03 total, 83%; heavy Pro $5.51; Team seat $1.69 variable, 84–86%; fixed infra ~$650 at 10k MAU
+- These appear in: 01 (plans, unit economics, projection), 02 (launch phases), 03 (pricing comparison), 04 (free tier, upgrade triggers), 06 (projection, pitch), 07 (COGS, margins)
 - If you change a number in one file, grep for it across all 7 and update every occurrence
 
 **Growth projections must be consistent:**
@@ -77,19 +82,32 @@ Before committing changes to ANY business doc, verify consistency across ALL 7 f
 **Run this consistency check:**
 
 ```bash
-# Grep for key numbers across all business docs
-grep -n "300 memor\|500 recall\|200 push\|\$9/\|\$19/\|\$15/seat\|0\.65\|68%\|74%" ../internal-docs/*.md
+# 1. Key numbers: each should appear in the files listed above, with the same value
+grep -n '\$12\b\|\$120\|\$20/seat\|\$192\|\$96\|3 agent kinds\|1 personal + 1 project\|Ask 50\|\$1\.14\|\$2\.03\|83%\|\$5\.51\|\$1\.69\|\$37,210' ../internal-docs/*.md
+
+# 2. Retired numbers: every hit must be a competitor's price or a dated market fact, never a Memax price or limit
+grep -n '\$9/\|Pro+\|\$15/seat\|300 memor\|200 push\|500 recall\|10 asks\|unlimited agents\|0\.65\|68%\|74%\|Haiku only\|seat minimum of 3\|minimum 3 seats' ../internal-docs/*.md
 ```
+
+Expected hits in grep 2 today: Basic Memory's "$15/seat" (03) and the stride.page "74%" repo statistic (02, 03, 04).
 
 ### 3. Avoid These Mistakes
 
-**Unenforceable limits:** Don't propose limits that can't be technically enforced. Example: "agent integrations: 2 agents" is unenforceable when we expose MCP and REST API — any agent can connect with any API key. Gate on measurable operations (recalls, pushes, asks), not on identity.
+**Soft limits and load-bearing gates:** A soft limit is acceptable as an upgrade prompt when circumventing it costs us nothing and degrades the circumventer's own product. Example: the Free plan's 3-agent cap counts distinct agent kinds (claude-code, codex, cursor, chatgpt, …); the same agent on two laptops counts once, API keys count, and tools that only read compiled files don't. Sharing one key across Cursor and Codex dodges the cap, but it mislabels every receipt, collapses per-agent autonomy and breaks cross-agent read counts, while a read costs us about $0.00002. So the agent cap is a fence, not a wall. **Load-bearing gates** (the ones revenue depends on: Spaces, nightly Dream, source-watched stale detection, member seats, Ask caps) must be enforced server-side, through the plan rows and `policy.Decide`. Never make a soft limit load-bearing (for example an agent ladder of 3 / 10 / unlimited), and never gate reads, compiles, export or Forget.
 
 **Stale competitor data:** Competitors ship fast. Mem0's pricing, Zep's features, QMD's star count — all change. Date-stamp competitor data: "Mem0: $24M raised (Oct 2025)" so reviewers know when it was verified.
 
-**Aspirational projections presented as plans:** "$1.2M ARR by Month 24" is a projection, not a commitment. Always label projections as such and state the assumptions underneath (conversion rate, growth rate, viral coefficient). Never present projections without assumptions.
+**Aspirational projections presented as plans:** "$446.5K ARR by Month 24" is a projection, not a commitment. Always label projections as such and state the assumptions underneath (conversion rate, growth rate, viral coefficient). Never present projections without assumptions.
 
-**Inconsistent terminology:** Use the same terms everywhere. "Memories" not "notes" (we renamed). "Hubs" not "workspaces" in business docs (internal term). "Push" not "save" (API term). "Recall" not "search" (product term).
+**Inconsistent terminology:** Use the V2 nouns everywhere, the same ones the product, CLI and MCP use:
+
+- **Space** (personal, project or team), not "hub" or "workspace". "Hub" appears only when naming a V1 table or plan.
+- **Memory**: one reviewed statement with a state, a receipt and sources. A **note** is raw captured text (V1 memories become notes).
+- **Propose** (what agents do) and **Keep** (what a person does), not "push", "save" or "approve". `memax_push` is a V1 tool name that now proposes.
+- **Review** (the queue of proposals), **Brief** (one per Space, the readable face of its kept memories), **Dream** (the weekly or nightly edition), **Receipt**, **Handoff**, **Decision gate**, **Compile** and **target**, **Verify**, **Forget** (never "delete").
+- **Ask** is the cited answer; recall and search are MCP reads.
+- **Member** (billed, can keep) vs **viewer** (free); **agent kind** for the agent count.
+- When quoting product copy, follow the V2 copy rules in `AGENTS.md`: sentence case, and no "AI", "magic", "smart" or "delete".
 
 ## When Writing New Content
 
@@ -116,7 +134,7 @@ If changing ANY pricing (tier limits, prices, features per tier):
 2. Model the revenue impact: how does this affect conversion and MRR?
 3. Update ALL 7 docs (use grep to find every reference)
 4. Update `.env.example` if the change affects rate limiting env vars
-5. Update the server code if limits are enforced server-side
+5. Update the server plan rows and `policy.Decide` if limits are enforced server-side
 
 ### Fundraising Content Standards
 
@@ -151,8 +169,10 @@ pnpm prettier --write "../internal-docs/*.md"
 
 After any change to business docs, check that plan docs still reference correct information:
 
-- `docs/plans/01-vision-and-strategy.md` references competitive positioning
-- `docs/plans/07-team-hubs.md` references pricing tiers for hub conversion
+- `docs/plans/25-memax-v2.md` (branch `v2` of `memax-internal`): D9 pricing, §4 positioning, §5.17 cost model and §12 phase gates
+- `docs/v2/research/pricing-2026-10.md`: the source for plans, COGS and sensitivity
+- `docs/plans/01-vision-and-strategy.md` references competitive positioning (V1)
+- `docs/plans/07-team-hubs.md` references pricing tiers for hub conversion (V1)
 - `AGENTS.md` lists all business doc descriptions
 
 ### Decision Logging

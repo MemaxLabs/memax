@@ -50,9 +50,9 @@ Business documents live in a separate private repository: [`MemaxLabs/internal-d
 
 Read these before making pricing, cost, or go-to-market decisions:
 
-- `../internal-docs/01-business-model.md` — pricing tiers (Free/$9/$19/$15), revenue model, unit economics
+- `../internal-docs/01-business-model.md` — pricing tiers (Free/Pro $12 or $120/yr/Team $20/seat or $192/yr/Enterprise custom), revenue model, unit economics
 - `../internal-docs/02-go-to-market.md` — launch strategy, channels, growth loops
-- `../internal-docs/03-competitive-landscape.md` — competitors (Mem0, QMD, memsearch), positioning
+- `../internal-docs/03-competitive-landscape.md` — competitors (platform memory, memory APIs, cross-tool MCP memory, config translators), positioning
 - `../internal-docs/04-growth-engine.md` — PLG mechanics, conversion funnels, virality
 - `../internal-docs/05-partnerships.md` — agent platform partnerships, integration strategy
 - `../internal-docs/06-fundraising.md` — fundraising strategy, investor targeting

@@ -31,6 +31,11 @@ export interface CommandBarProps {
   children?: ReactNode;
   /** The key legend. */
   footer?: boolean;
+  /**
+   * The keycap for "keep answer as memory" in the legend. ⌘↵ as drawn;
+   * pass the platform's own ("Ctrl+Enter") off a Mac.
+   */
+  keepShortcut?: string;
   /** Extra attributes for the field (combobox wiring, aria-controls…). */
   inputProps?: Omit<
     InputHTMLAttributes<HTMLInputElement>,
@@ -58,6 +63,7 @@ export function CommandBar({
   tabSwitchesMode = true,
   children,
   footer = true,
+  keepShortcut = "⌘↵",
   inputProps,
   inputRef,
   className,
@@ -122,7 +128,7 @@ export function CommandBar({
             <Kbd>↵</Kbd> {c.open}
           </span>
           <span>
-            <Kbd>⌘↵</Kbd> {c.keepAnswer}
+            <Kbd>{keepShortcut}</Kbd> {c.keepAnswer}
           </span>
           <span>
             <Kbd>Tab</Kbd> {c.switchMode}

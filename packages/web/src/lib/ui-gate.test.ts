@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  bareSpaceSlug,
   decideUiGate,
   hasV2Opt,
   isSpaceSlug,
@@ -185,6 +186,38 @@ describe("decideUiGate", () => {
     for (const value of [undefined, "", "V2", "v2 ", "1", "true"]) {
       expect(hasV2Opt(value)).toBe(false);
     }
+  });
+
+  it("opens a bare /[space] on its Today, for V2 browsers only", () => {
+    expect(
+      decideUiGate({ pathname: "/memax-v2", uiCookie: "v2", hasSession: true }),
+    ).toEqual({ action: "redirect", pathname: "/memax-v2/today" });
+    expect(
+      decideUiGate({
+        pathname: "/memax-v2/",
+        uiCookie: "v2",
+        hasSession: false,
+      }),
+    ).toEqual({ action: "redirect", pathname: "/memax-v2/today" });
+    expect(
+      decideUiGate({
+        pathname: "/memax-v2",
+        uiCookie: undefined,
+        hasSession: true,
+      }),
+    ).toEqual({ action: "continue" });
+    // Reserved words are V1 routes, never spaces.
+    expect(
+      decideUiGate({ pathname: "/home", uiCookie: "v2", hasSession: true }),
+    ).toEqual({ action: "continue" });
+  });
+
+  it("names the space of a bare /[space] only", () => {
+    expect(bareSpaceSlug("/memax-v2")).toBe("memax-v2");
+    expect(bareSpaceSlug("/memax-v2/today")).toBeNull();
+    expect(bareSpaceSlug("/settings")).toBeNull();
+    expect(bareSpaceSlug("/Memax")).toBeNull();
+    expect(bareSpaceSlug("/")).toBeNull();
   });
 
   it("picks the V1 home from the session", () => {

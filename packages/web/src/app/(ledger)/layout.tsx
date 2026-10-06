@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
+// Stylesheets in the order @memaxlabs/ledger's README gives: the
+// tokens (custom properties, type styles, @font-face), then the
+// components' mx- classes, then this tree's document base.
 import "@memaxlabs/ledger-tokens";
+import "@memaxlabs/ledger/ledger.css";
 import "./ledger.css";
 import tokens from "@memaxlabs/ledger-tokens/tokens.json";
 import { en } from "@/i18n/locales/en";
@@ -10,8 +14,8 @@ import { LedgerProviders } from "./providers";
 // Root layout of the V2 Ledger UI (plan E1, §6.1). A second root
 // layout next to (v1), so neither tree loads the other's CSS: only
 // @memaxlabs/ledger-tokens, ledger.css and the next/font faces load
-// here. No Tailwind, no globals.css, no next-themes
-// (isolation.test.ts enforces it).
+// here, plus @memaxlabs/ledger's component styles. No Tailwind, no
+// globals.css, no next-themes (isolation.test.ts enforces it).
 //
 // The layout reads no cookies or headers, so (ledger) pages stay
 // eligible for static rendering (§6.9 wants static public pages).

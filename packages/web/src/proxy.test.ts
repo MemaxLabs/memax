@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { NextRequest } from "next/server";
 import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { config, proxy } from "./proxy";
-import { isV2Path, V2_SPACE_PLACES } from "./lib/ui-gate";
+import { isV2Path, RESERVED_SPACE_SLUGS, V2_SPACE_PLACES } from "./lib/ui-gate";
 
 function makeRequest(
   pathname: string,
@@ -107,6 +107,56 @@ describe("proxy V2 gating", () => {
       makeRequest("/signin", { sessionPresence: true, ui: "v2" }),
     );
     expect(res.status).toBe(200);
+  });
+});
+
+describe("proxy bare /[space]", () => {
+  it("opens a space on its Today for a V2 browser", () => {
+    const res = proxy(makeRequest("/memax-v2", { ui: "v2" }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      "https://memax.app/memax-v2/today",
+    );
+  });
+
+  it("leaves it to V1's 404 without the opt-in", () => {
+    const res = proxy(makeRequest("/memax-v2"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it.each(["/memax-v2", "/personal", "/a", "/memax-team", "/x1"])(
+    "runs the proxy for %s",
+    (path) => {
+      expect(unstable_doesMiddlewareMatch({ config, url: path })).toBe(true);
+    },
+  );
+
+  it("never matches a reserved slug as a space", () => {
+    // The matcher without its bare-space entry: /login, /memories and
+    // the V2 areas (/signin…) run the proxy for their own rules.
+    const others = {
+      matcher: config.matcher.filter((m) => !m.startsWith("/:space((")),
+    };
+    expect(others.matcher).toHaveLength(config.matcher.length - 1);
+    const leaks = [...RESERVED_SPACE_SLUGS].filter(
+      (slug) =>
+        unstable_doesMiddlewareMatch({ config, url: `/${slug}` }) &&
+        !unstable_doesMiddlewareMatch({ config: others, url: `/${slug}` }),
+    );
+    expect(leaks, "list the slug in the bare-space matcher").toEqual([]);
+    for (const slug of RESERVED_SPACE_SLUGS) {
+      const location = proxy(makeRequest(`/${slug}`, { ui: "v2" })).headers.get(
+        "location",
+      );
+      expect(location ?? "", slug).not.toMatch(/\/today$/);
+    }
+  });
+
+  it("skips files and other shapes", () => {
+    for (const path of ["/favicon.svg", "/robots.txt", "/Memax"]) {
+      expect(unstable_doesMiddlewareMatch({ config, url: path })).toBe(false);
+    }
   });
 });
 

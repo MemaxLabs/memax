@@ -1,0 +1,74 @@
+/* Loading, after the States board: hairline rows at the real row
+ * heights, no spinner and no shimmer. */
+
+.bar {
+  display: block;
+  height: 10px;
+  border-radius: var(--radius-xs);
+  background: var(--well);
+}
+
+/* A memory row: 16px mark, statement, the 208px receipt rail. */
+.row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) var(--receipt-rail);
+  column-gap: 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-top: 6px;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-self: stretch;
+  padding: 4px 0 0 14px;
+  border-left: 1px solid var(--line);
+}
+
+.panel {
+  min-height: 380px;
+}
+
+/* The frame before the spaces arrive. */
+.railBars {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 8px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: var(--space-8);
+}
+
+.titleBar {
+  height: 26px;
+  width: 280px;
+  max-width: 70%;
+}
+
+@media (max-width: 639px) {
+  .row {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+
+  .rail {
+    display: none;
+  }
+}

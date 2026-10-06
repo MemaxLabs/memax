@@ -134,7 +134,10 @@ export function proxy(request: NextRequest) {
 // else (/h/*, /brain, /agents, /pulse, /register, /api/*, _next, …)
 // skips the proxy entirely so it stays cheap.
 //
-// The space pattern lists lib/ui-gate's V2_SPACE_PLACES.
+// The space pattern lists lib/ui-gate's V2_SPACE_PLACES. The bare
+// /[space] pattern (redirected to its Today) leaves out every reserved
+// slug in lib/ui-gate's RESERVED_SPACE_SLUGS, so V1's own one-segment
+// routes (/home, /brain, /settings…) still skip the proxy.
 export const config = {
   matcher: [
     // V1: signed-out entry surfaces and the legacy /memories tree
@@ -151,5 +154,7 @@ export const config = {
     "/dev/ledger/:path*",
     // V2 spaces: /[space]/<place>/…
     "/:space/:place(today|review|brief|memories|handoffs|agents|decisions|dream|activity|search|settings)/:path*",
+    // A bare /[space], which opens on its Today
+    "/:space((?!(?:account|admin|agents|api|assets|auth|billing|blog|brain|changelog|dev|device|discover|docs|download|dreams|h|help|home|images|inbox|invite|join|legal|login|logout|mcp|memories|oauth|pricing|privacy|public|pulse|register|security|settings|setup|share|signin|signout|signup|static|status|support|terms|v1|v2|waitlist)(?:/|$))[a-z0-9][a-z0-9-]*)",
   ],
 };

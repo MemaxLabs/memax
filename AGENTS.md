@@ -472,20 +472,27 @@ Package-specific commands are in each package's README.
 
 ### Web: V1 and the V2 Ledger UI side by side
 
-`packages/web/src/app` has two root layouts: `(v1)/` is the frozen V1 app (every V1 route group, `globals.css`, Tailwind) and `(ledger)/` is the V2 Ledger UI (only `@memaxlabs/ledger-tokens`). `api/`, `dev/ui/`, `global-error.tsx` and `global-not-found.tsx` sit outside both. Moving between the trees is a full page load, and `(ledger)/isolation.test.ts` keeps V1 styles out of `(ledger)`.
+`packages/web/src/app` has two root layouts: `(v1)/` is the frozen V1 app (every V1 route group, `globals.css`, Tailwind) and `(ledger)/` is the V2 Ledger UI (only `@memaxlabs/ledger-tokens` and `@memaxlabs/ledger`). `api/`, `dev/ui/`, `global-error.tsx` and `global-not-found.tsx` sit outside both. Moving between the trees is a full page load, and `(ledger)/isolation.test.ts` keeps V1 styles out of `(ledger)`.
 
 - **V2 routes** are defined once, in `src/lib/ui-gate.ts` (plan §6.3): `/[space]/<place>/…` (today, review, brief, memories, handoffs, agents, decisions, dream, activity, search, settings), `/setup/…`, `/signin`, `/device`, `/settings/…` (V1 keeps the bare `/settings`), `/join/…` and the `/dev/ledger…` fixtures. Every new top-level route must be added to `RESERVED_SPACE_SLUGS`, or a test fails.
 - **`memax_ui` cookie.** `memax_ui=v2` opts a browser into V2. Without it, `src/proxy.ts` redirects V2 paths to the V1 home. In dev, `/dev/ui?v=2` sets it and opens `/dev/ledger/tokens`, and `/dev/ui?v=1` clears it; both take `&next=/path` and are a 404 in production unless `NEXT_PUBLIC_DEV_FIXTURES=1`.
 - **Theme.** `memax_theme=light|dark` (no cookie means follow the system) becomes `data-theme` on `<html>` before first paint.
-- **Specimen.** `/dev/ledger/tokens` shows every token and type style in Paper and Carbon. It is the first visual-regression fixture.
+- **App frame.** `(ledger)/(app)/` wraps every place (`/[space]/…`) and `/settings/…` in Ledger's `Shell`: the rail, the space switcher, ⌘K, the `?` sheet and toasts. Place pages are in `(app)/_places/`.
+- **Data.** The frame reads one interface, `src/lib/v2/data/source.ts`, with two sources: `sdk-source.ts` (`memax.v2`, for a browser with a session) and `demo-source.ts` (the handoff's demo dataset, for dev fixtures and Playwright). `(app)/layout.tsx` picks one per request (`lib/v2/data/mode.ts`). Without a session and with dev fixtures on, you get the demo; `memax_v2_data=demo` forces it when signed in. What `/v2` doesn't serve yet is a `PLACEHOLDER` in the SDK source, never demo data.
+- **Keyboard.** Every binding is declared once in `src/lib/v2/keymap/registry.ts`, and the `?` sheet is generated from it. Screens handle a binding with `useHotkey(id, …)`; never add a `window` key listener. Forget has no key.
+- **Specimen and gallery.** `/dev/ledger/tokens` shows every token and type style in Paper and Carbon. `/dev/ledger/components` mounts every `@memaxlabs/ledger` preview at its artboard size in both themes.
 
 ```bash
 # Playwright (Chromium) against a production build that keeps the /dev fixtures.
 # Not part of `pnpm test`. CI also needs the browser's system libraries (--with-deps, root).
 pnpm --filter @memaxlabs/web exec playwright install --with-deps chromium
 pnpm --filter @memaxlabs/web test:e2e
-pnpm --filter @memaxlabs/web test:e2e:update      # rewrite the screenshot baselines
+pnpm --filter @memaxlabs/web test:e2e:update      # rewrite this repo's screenshot baselines
 E2E_BASE_URL=http://localhost:3100 pnpm --filter @memaxlabs/web test:e2e   # reuse a running server
+# The "handoff" project compares the gallery with the private handoff PNGs, read in
+# place from ../memax-internal (or MEMAX_INTERNAL_DIR); it skips without that checkout
+# and never writes those PNGs. E2E_HANDOFF_MAX_RATIO=0 prints every preview's difference.
+pnpm --filter @memaxlabs/web test:e2e --project=handoff
 ```
 
 ### Server-specific commands

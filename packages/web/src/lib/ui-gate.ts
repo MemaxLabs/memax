@@ -27,8 +27,8 @@ const V2_SUBPATH_AREAS = new Set(["settings"]);
 /**
  * What can follow a space slug, /[space]/<place>/…: the six places,
  * Decisions for team spaces, and the detail routes (§6.3). A bare
- * /[space] is not a V2 route yet, so a mistyped V1 URL still gets V1's
- * 404 rather than a redirect.
+ * /[space] is not a V2 page: with memax_ui=v2 it redirects to its Today
+ * (decideUiGate), and without it a mistyped V1 URL still gets V1's 404.
  */
 export const V2_SPACE_PLACES = [
   "today",
@@ -169,6 +169,13 @@ export function parseUiToggle(
   };
 }
 
+/** The space a bare /[space] names, or null for any other path. */
+export function bareSpaceSlug(pathname: string): string | null {
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length !== 1) return null;
+  return isSpaceSlug(segments[0]) ? segments[0] : null;
+}
+
 export type UiGateDecision =
   | { action: "continue" }
   | { action: "redirect"; pathname: string };
@@ -182,6 +189,13 @@ export function decideUiGate({
   uiCookie: string | undefined;
   hasSession: boolean;
 }): UiGateDecision {
+  const bare = bareSpaceSlug(pathname);
+  if (bare !== null) {
+    // A space opens on its Today, for V2 browsers only.
+    return hasV2Opt(uiCookie)
+      ? { action: "redirect", pathname: `/${bare}/today` }
+      : { action: "continue" };
+  }
   if (!isV2Path(pathname) || hasV2Opt(uiCookie)) {
     return { action: "continue" };
   }

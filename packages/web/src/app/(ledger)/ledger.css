@@ -42,8 +42,10 @@ body {
 }
 
 /* Default keyboard focus: a 2px focus ring with a 2px gap. Components
- * that need the exact paper gap draw their own. */
-:focus-visible {
+ * that need the exact paper gap draw their own. Zero specificity, so a
+ * component that draws focus another way (the ⌘K field sits inside its
+ * card) keeps its own rule. */
+:where(:focus-visible) {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }

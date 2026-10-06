@@ -844,11 +844,15 @@ type DecisionTouch struct {
 }
 
 // The overlap a write must have with a decision in force to be held for
-// the judge: at least two shared content words, covering at least half of
-// the shorter statement.
+// the judge: three shared content words, or two that cover at least half
+// of the shorter statement. "Deploy the v2 API to Fly.io in iad and ams"
+// against "Deploy the v2 API to Railway for its preview environments"
+// shares three (deploy, v2, api) of seven. A needless hold costs a Review
+// card, never a false conflict; eval/judge reports both rates.
 const (
 	touchMinShared = 2
 	touchMinCoeff  = 0.5
+	touchShared    = 3
 )
 
 // Touches reports which decisions in force a statement touches: the same
@@ -867,7 +871,7 @@ func Touches(statement, area string, decisions []JudgeCandidate) []DecisionTouch
 			out = append(out, DecisionTouch{Decision: d, Why: "area"})
 		case d.Area != "" && textsig.Mentions(statement, d.Area):
 			out = append(out, DecisionTouch{Decision: d, Why: "mentions"})
-		case shared >= touchMinShared && coeff >= touchMinCoeff:
+		case shared >= touchShared || (shared >= touchMinShared && coeff >= touchMinCoeff):
 			out = append(out, DecisionTouch{Decision: d, Why: "overlap"})
 		}
 	}

@@ -219,12 +219,18 @@ func loadHits(ctx context.Context, tx pgx.Tx, spaces, ids []uuid.UUID) ([]Hit, e
 }
 
 // filterSQL is the WHERE clause every lane shares, from $2 on: spaces,
-// lifecycle, kind, proposer, session.
-const filterSQL = `m.space_id = ANY($2) AND m.lifecycle = $3 AND ($4 = '' OR m.kind = $4)
+// lifecycle, kind, proposer, session. A superseded decision stays kept,
+// with its history, but is no longer in force, so recall and search leave
+// it out, as the compiled files do (see notSuperseded).
+const filterSQL = `m.space_id = ANY($2) AND m.lifecycle = $3 AND ($4 = '' OR m.kind = $4) AND ` + notSuperseded + `
 	AND ($5::uuid IS NULL OR EXISTS (
 	      SELECT 1 FROM v2.receipts r
 	       WHERE r.id = m.created_receipt_id AND r.space_id = m.space_id
 	         AND r.actor_kind = 'agent' AND r.actor_id = $5 AND r.session_ref = $6))`
+
+// notSuperseded excludes kept decisions that a newer decision superseded
+// (the judge's explicit changes, a settled conflict).
+const notSuperseded = `NOT (m.kind = 'decision' AND COALESCE(m.decision ->> 'status', '') = 'superseded')`
 
 func filterArgs(f Filter) []any {
 	lifecycle := f.Lifecycle
@@ -400,7 +406,7 @@ func (s *Searcher) Digest(ctx context.Context, scope ledger.Scope, spaces []uuid
 			               row_number() OVER (PARTITION BY m.space_id, m.section ORDER BY m.updated_at DESC, m.seq DESC) AS n
 			          FROM v2.memories m
 			          LEFT JOIN v2.memory_versions v ON v.memory_id = m.id AND v.version = m.current_version
-			         WHERE m.space_id = ANY($1) AND m.lifecycle = 'kept') ranked
+			         WHERE m.space_id = ANY($1) AND m.lifecycle = 'kept' AND `+notSuperseded+`) ranked
 			 WHERE n <= $2
 			 ORDER BY space_id, section, n`, spaces, perSection)
 		if err != nil {

@@ -222,6 +222,7 @@ memax/
     ledger-tokens/   # V2 Ledger tokens, type styles, fonts, marks (@memaxlabs/ledger-tokens) — Apache-2.0
     ledger/          # V2 Ledger React components, mx- styles, en/zh strings, previews (@memaxlabs/ledger) — AGPL-3.0
     compiler/        # V2 compiler: kept record → AGENTS.md, CLAUDE.md shim, scoped rules; parse-back (@memaxlabs/compiler) — Apache-2.0
+    compile-service/ # V2 compile service: the compiler over HTTP (node:http), internal on Fly (@memaxlabs/compile-service) — AGPL-3.0
 
 # Design docs (docs/plans, docs/infra, docs/design, ...) live in the sibling
 # private repo MemaxLabs/memax-internal — clone alongside this repo.
@@ -245,8 +246,9 @@ memax/
 | LLM (distillation + classification)   | DeepSeek V4 Flash via OpenRouter (Anthropic-compatible Messages API)      |
 | LLM (answer synthesis + agent/dreams) | DeepSeek V4.1 Flash via OpenRouter (Anthropic-compatible Messages API)    |
 | Queue                                 | River (Postgres-backed, Go)                                               |
+| Compile service (V2)                  | Node 24, `node:http`, `@memaxlabs/compiler` (`packages/compile-service`)  |
 | Auth                                  | OAuth2 (GitHub/Google)                                                    |
-| Deployment                            | Fly.io (API + worker), Vercel (web)                                       |
+| Deployment                            | Fly.io (API + worker + compile service), Vercel (web)                     |
 | CI/CD                                 | GitHub Actions                                                            |
 | Package Manager                       | pnpm (workspaces)                                                         |
 | Monorepo                              | Turborepo                                                                 |
@@ -528,6 +530,27 @@ pnpm --filter memax-sdk gen:v2
 
 # /v2 contract: check the committed SDK types match the spec (part of pnpm lint)
 pnpm check:v2-types
+
+# V2 compile path: ledger commands, the coordinator (fake compiler) and, with Node,
+# the real compile service and the Phase 1 gate test
+cd packages/server && go test ./internal/ledger/ ./internal/compile/...
+
+# Seed the memax-v2 demo space (refuses MEMAX_ENV=production)
+cd packages/server && go run ./cmd/devseed
+```
+
+### Compile service
+
+```bash
+# Build (it imports the built compiler) and test
+pnpm --filter @memaxlabs/compiler build && pnpm --filter @memaxlabs/compile-service build
+pnpm --filter @memaxlabs/compile-service test
+
+# Run it locally; point the server and worker at it with COMPILE_SERVICE_URL=http://localhost:8090
+PORT=8090 pnpm --filter @memaxlabs/compile-service start
+
+# Deploy to Fly.io from the REPOSITORY ROOT (staging; swap to fly.compile.production.toml for prod)
+fly deploy . -c packages/compile-service/fly/fly.compile.staging.toml
 ```
 
 Migrations use a single shared sequence. Don't hand-pick version numbers — always use `migrate:new`. CI enforces sequential numbering (`internal/migrate/migrate_test.go`) and rejects gaps, duplicates, orphan up/down files, and non-padded versions.
@@ -538,6 +561,7 @@ Migrations use a single shared sequence. Don't hand-pick version numbers — alw
   - API server (`fly.server.{staging,production}.toml`, `Dockerfile.server`) — serves HTTP, insert-only queue client
   - Worker (`fly.worker.{staging,production}.toml`, `Dockerfile.worker`) — processes River jobs (memory processing, dreams)
   - Prod tomls allocate bigger VMs (shared-cpu-2x, 1gb) and `min_machines_running ≥ 1` for HA; staging stays cheap (1x, 256mb)
+- `packages/compile-service/` deploys to Fly.io as an internal-only app (`fly.compile.{staging,production}.toml`, `Dockerfile` built from the repo root): no `[http_service]`, no public IPs, reached by the API server and worker at `http://memax-compile-{staging,production}.internal:8080` (`COMPILE_SERVICE_URL`). Run 2 machines in production
 - `packages/web/` deploys to Vercel (`memax.app`)
 - `packages/docs-site/` deploys to Vercel (`docs.memax.app`)
 - This repo publishes `memax-sdk` and `memax-cli` to npm

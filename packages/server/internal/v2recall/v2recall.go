@@ -245,11 +245,11 @@ func (s *Searcher) Search(ctx context.Context, scope ledger.Scope, q Query) (Res
 		if err := s.ledger.Read(ctx, scope, lexical); err != nil {
 			return Result{}, err
 		}
-		vec, status, took := pending.wait()
+		vec, status, took, embedErr := pending.wait()
 		res.Retrieval.Vector, res.Retrieval.EmbedMS = status, took.Milliseconds()
 		if status != StageOK {
 			s.vectors.cfg.Log.WarnContext(ctx, "v2recall: answering lexically", "metric", "v2_recall_lexical_fallback",
-				"reason", status, "embed_ms", took.Milliseconds(), "error", pending.err)
+				"reason", status, "embed_ms", took.Milliseconds(), "error", embedErr)
 		}
 		if err := s.ledger.Read(ctx, scope, func(tx pgx.Tx) error {
 			if vec != nil {

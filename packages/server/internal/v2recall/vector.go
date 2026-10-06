@@ -183,25 +183,27 @@ func (v *Vectors) startQuery(ctx context.Context, text string) *pendingQuery {
 }
 
 // wait returns the embedding, or why there is none: timeout when it missed
-// its deadline (or the caller's ran out), error otherwise. It never waits
-// past the deadline, even for an embedder that ignores its context.
-func (p *pendingQuery) wait() ([]float32, string, time.Duration) {
+// its deadline (or the caller's ran out), error otherwise, with the
+// embedder's error when it answered. It never waits past the deadline,
+// even for an embedder that ignores its context; the goroutine's fields
+// are read only once it is done.
+func (p *pendingQuery) wait() ([]float32, string, time.Duration, error) {
 	timer := time.NewTimer(time.Until(p.deadline))
 	defer timer.Stop()
 	select {
 	case <-p.done:
 	case <-timer.C:
-		return nil, StageTimeout, time.Since(p.start)
+		return nil, StageTimeout, time.Since(p.start), context.DeadlineExceeded
 	case <-p.parent.Done():
-		return nil, StageTimeout, time.Since(p.start)
+		return nil, StageTimeout, time.Since(p.start), p.parent.Err()
 	}
 	switch {
 	case p.err == nil:
-		return p.vec, StageOK, p.took
+		return p.vec, StageOK, p.took, nil
 	case errors.Is(p.err, context.DeadlineExceeded) || errors.Is(p.err, context.Canceled):
-		return nil, StageTimeout, p.took
+		return nil, StageTimeout, p.took, p.err
 	}
-	return nil, StageError, p.took
+	return nil, StageError, p.took, p.err
 }
 
 // EmbedDraft embeds Remember's draft for the near-duplicate check, within

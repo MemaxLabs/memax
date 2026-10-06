@@ -273,9 +273,15 @@ func (s *Server) ledgerError(ctx context.Context, err error) *mcp.CallToolResult
 	var ve *ledger.ValidationError
 	var te *ledger.TransitionError
 	var clash *ledger.EditClashError
+	var jp *ledger.JudgePendingError
+	var ic *ledger.InConflictError
 	switch {
 	case errors.As(err, &ve):
 		return errorResult(ve.Error())
+	case errors.As(err, &jp):
+		return errorResult(jp.Error())
+	case errors.As(err, &ic):
+		return errorResult(ic.Error())
 	case errors.As(err, &clash):
 		return errorResult(clash.Error())
 	case errors.As(err, &te):

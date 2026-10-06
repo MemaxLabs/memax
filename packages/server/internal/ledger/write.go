@@ -147,6 +147,11 @@ func (w *writer) review(ctx context.Context, ref string, expected int, cmd Comma
 		return refused(dec), nil
 	}
 	if cmd == CommandKeep {
+		// A flagged proposal is settled, not kept: say so, and name the
+		// decision in the way, rather than a bare invalid transition.
+		if mem.Lifecycle == lifecycle.Proposed && mem.Flags.Has(lifecycle.Conflict) {
+			return Result{}, w.inConflict(ctx, mem)
+		}
 		if err := w.awaitJudge(ctx, mem); err != nil {
 			return Result{}, err
 		}
@@ -281,6 +286,21 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 		if kd := policy.Decide(pa, policy.ActionKeep, obj, sp.policy()); kd.Effect == policy.EffectRefuse {
 			return refused(kd), nil
 		}
+		if mem.Flags.Has(lifecycle.Conflict) {
+			return Result{}, w.inConflict(ctx, mem)
+		}
+	}
+	// Rule 11 for "edit, then keep": new words that touch a decision in
+	// force are saved as the proposal's new version and judged like any
+	// proposal's, but not kept until the judge has looked (Keep waits for
+	// it, 503 judge_pending). Refusing the whole edit instead would roll
+	// the words back, so the judge would never see them.
+	var held bool
+	if keep {
+		if held, err = w.holdEditForJudge(ctx, mem, statement); err != nil {
+			return Result{}, err
+		}
+		keep = !held
 	}
 	var kept lifecycle.State
 	if keep {
@@ -345,6 +365,10 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 	}
 	if err := w.writeUndo(ctx, sp, receipts); err != nil {
 		return Result{}, err
+	}
+	if held {
+		// The edit is applied (and undoable as an edit); the Keep waits.
+		return w.finish(ctx, Result{Outcome: OutcomeProposed, Policy: heldForJudge(mem.Ref), Receipts: receipts}, mem.ID)
 	}
 	return w.finish(ctx, Result{Outcome: OutcomeApplied, Policy: dec, Receipts: receipts}, mem.ID)
 }

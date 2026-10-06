@@ -282,7 +282,9 @@ func TestKeepRejectAndTransitions(t *testing.T) {
 	c := propose("Deploy on Fridays.")
 	f.flag(c, "conflict")
 	_, err = f.l.Apply(ctx, &ledger.Keep{Meta: meta(person(zz), scope, policy.ViaReview), Memory: c.Ref})
-	if !errors.As(err, &te) {
+	// In conflict (settled, not kept), and still the lifecycle's refusal.
+	var ic *ledger.InConflictError
+	if !errors.As(err, &ic) || ic.Ref != c.Ref || !errors.Is(err, ledger.ErrInvalidTransition) {
 		t.Fatalf("keep a conflicted proposal: %v", err)
 	}
 	if rejected := f.apply(&ledger.Reject{Meta: meta(person(zz), scope, policy.ViaReview), Memory: c.Ref}); len(rejected.Memory.Flags) != 0 {

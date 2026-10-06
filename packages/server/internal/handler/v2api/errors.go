@@ -26,12 +26,14 @@ const (
 	codeNotFound               = "not_found"
 	codeMethodNotAllowed       = "method_not_allowed"
 	codeInvalidTransition      = "invalid_transition"
+	codeInConflict             = "in_conflict"
 	codeUndoRefused            = "undo_refused"
 	codeEditClash              = "edit_clash"
 	codeKeyReused              = "idempotency_key_reused"
 	codePreconditionRequired   = "precondition_required"
 	codeInternal               = "internal_error"
 	codeBusy                   = "busy"
+	codeJudgePending           = "judge_pending"
 	codeUnavailable            = "unavailable"
 )
 
@@ -94,14 +96,21 @@ func (h *Handler) fromLedger(r *http.Request, err error) *apiError {
 	var tse *ledger.TargetStateError
 	var ue *ledger.UndoError
 	var jp *ledger.JudgePendingError
+	var ic *ledger.InConflictError
 	var ge *ledger.GateStateError
 	switch {
 	case errors.As(err, &ge):
 		return &apiError{status: http.StatusConflict, code: codeInvalidTransition, message: ge.Error(),
 			details: &errorDetails{Ref: ge.Ref, Status: ge.Status}}
 	case errors.As(err, &jp):
-		return &apiError{status: http.StatusServiceUnavailable, code: codeBusy, retryAfter: 2, message: jp.Error(),
+		// Not "another change holds it" (busy): the judge hasn't looked at
+		// these words yet. The same Keep goes through once it has.
+		return &apiError{status: http.StatusServiceUnavailable, code: codeJudgePending, retryAfter: 2, message: jp.Error(),
 			details: &errorDetails{RetryAfter: 2, Ref: jp.Ref}}
+	case errors.As(err, &ic):
+		// Settled, not kept: details.ref is the decision in force in the way.
+		return &apiError{status: http.StatusConflict, code: codeInConflict, message: ic.Error(),
+			details: &errorDetails{Ref: ic.With}}
 	case errors.As(err, &ue):
 		return &apiError{status: http.StatusConflict, code: codeUndoRefused, message: ue.Error(),
 			details: &errorDetails{Reason: ue.Reason, Ref: ue.Ref}}

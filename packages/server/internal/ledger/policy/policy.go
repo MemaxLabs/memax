@@ -495,6 +495,12 @@ const (
 	CodeExternalSource  = "external_source"
 	CodeContradicts     = "contradicts_decision"
 	CodeTouchesDecision = "touches_decision"
+	// CodeJudgePending: a person's edit-then-keep whose new words touch a
+	// decision in force is saved as the proposal's new version and not
+	// kept, until the judge has looked at the words (rule 11). The ledger
+	// sets it, not Decide: it depends on the judge's progress, not on who
+	// asks.
+	CodeJudgePending = "judge_pending"
 	CodeEditsPersonKept = "edits_person_kept"
 	CodeAutonomyPropose = "autonomy_propose"
 	CodeIntegration     = "integration"

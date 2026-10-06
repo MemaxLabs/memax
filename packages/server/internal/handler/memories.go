@@ -2181,7 +2181,7 @@ func (h *MemoriesHandler) BatchMove(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// DeleteAllData purges all user data: memories, topics, configs, dreams, reviews.
+// DeleteAllData purges all user data: memories, topics, configs, dreams.
 // DELETE /v1/account/data
 func (h *MemoriesHandler) DeleteAllData(w http.ResponseWriter, r *http.Request) {
 	ownerID := GetUserID(r)

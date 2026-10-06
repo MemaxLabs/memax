@@ -249,7 +249,7 @@ type Store interface {
 	BatchAttributeMemories(ids []string, ownerID string, agentSlug string, displayName string) (*model.BatchAttributeResult, error)
 	BatchMoveToTopic(ids []string, topicID string, hubID string, confidence float64) (int, error) // returns count moved, single transaction
 	BatchMoveToHub(ids []string, targetHubID string, ownerID string) (int, error)                 // returns count moved, single transaction
-	DeleteAllUserData(ownerID string) error                                                       // purge all user data (memories, topics, configs, dreams, reviews)
+	DeleteAllUserData(ownerID string) error                                                       // purge all user data (memories, topics, configs, dreams)
 	ListArchiveCandidates(ownerID string, minAgeDays int, limit int) ([]model.Memory, error)      // pre-filtered candidates for archival
 	// ListSeedMemoryTemplates returns active seed-memory templates from
 	// the system tutorial hub (memories with source_kind =

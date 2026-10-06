@@ -83,6 +83,7 @@
 .mx-review.is-kept .mx-review-statement.is-proposed { opacity: 0; transform: translateY(-3px); filter: blur(1px); }
 .mx-review.is-kept .mx-review-statement.is-kept { opacity: 1; transform: none; }
 .mx-review-updates { margin: -8px 0 0; font-size: 12px; line-height: 16px; color: var(--ink-3); }
+.mx-review-note { margin: -8px 0 0; font-size: 13px; line-height: 18px; color: var(--ink-2); text-wrap: pretty; }
 .mx-review-conflict { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: baseline; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--vermilion-wash); }
 .mx-review-conflict-label { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--vermilion); }
 .mx-review-conflict-text { font-family: var(--font-serif); font-size: 16px; line-height: 24px; color: var(--ink); }

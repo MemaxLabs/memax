@@ -3,26 +3,19 @@
 import { AgentStamp, Button, Receipt } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { formatAgo } from "@/lib/v2/copy";
-import type { ReviewItem } from "@/lib/v2/data/review";
 import { useKeycap } from "@/lib/v2/keymap/react";
 import { clashTitle } from "@/lib/v2/records-copy";
 import { EditClash } from "../../_components/edit-clash";
 import { StatementEditor } from "../../_components/statement-editor";
 import type { RecordsView } from "../records-view";
 import { FlagCard } from "./flag-card";
+import { compareHref } from "./hrefs";
 import { ProposalCard } from "./proposal-card";
 import { RejectPanel } from "./reject-panel";
 import { CardSkeleton } from "./skeleton";
 import { Touches } from "./touches";
 import type { ReviewController } from "./use-review";
 import styles from "./review.module.css";
-
-export function compareHref(slug: string, item: ReviewItem): string | null {
-  // Only a conflict the judge linked to a kept memory has two sides.
-  return item.conflictsWith
-    ? `/${encodeURIComponent(slug)}/review/${encodeURIComponent(item.ref)}/compare`
-    : null;
-}
 
 /**
  * Review.png's right column: where you are in the queue, the card (a

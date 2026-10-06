@@ -7,6 +7,14 @@
 import type { Actor, DecisionResult, TargetLine } from "./records";
 import type { Section, SpaceSummary } from "./types";
 
+/**
+ * Where the judge is with a proposal (plan §5.8): still checking it
+ * (`working`, Review's neutral mark) or it couldn't (`failed`: reviewed
+ * as usual, and Dream catches what it missed). Null once judged, and for
+ * what the judge doesn't look at (a person's own keep).
+ */
+export type JudgeMark = "working" | "failed" | null;
+
 /** One memory waiting on a person, as the queue lists it. */
 export interface ReviewItem {
   /** Display ID ("M-0430"); commands address it with the space. */
@@ -33,11 +41,11 @@ export interface ReviewItem {
   /** The kept memory this proposal would change ("Updates M-0156"). */
   updates: string | null;
   /**
-   * The kept memory this contradicts. Only the judge links conflicts,
-   * and it doesn't exist yet, so only the demo sets it; without it
-   * there is nothing to compare.
+   * The decision in force this contradicts: the judge's `conflicts_with`
+   * link. Without it there is nothing to compare.
    */
   conflictsWith: string | null;
+  judge: JudgeMark;
   /** The space it goes into when that isn't the one being reviewed. */
   intoSpace: string | null;
 }
@@ -72,9 +80,9 @@ export interface ReviewCardData {
   touches: {
     memories: TouchedMemory[];
     /**
-     * Why these: `links` (the memory an update replaces) or `section`
-     * (kept memories in the same section, the only signal /v2 serves
-     * until the judge relates memories).
+     * Why these: `links` (what the judge linked: the memory an update
+     * replaces, the decision a conflict contradicts) or `section` (kept
+     * memories in the same section, when nothing is linked).
      */
     basis: "links" | "section";
     /** Keeping an update merges the memory it replaces into it. */
@@ -87,6 +95,8 @@ export interface ReviewCardData {
 /** One side of a conflict (ReviewConflict.png). */
 export interface ConflictSide {
   ref: string;
+  /** Its version now: the If-Match of the answer, for the flagged side. */
+  version: number;
   statement: string;
   by: Actor | null;
   at: string;
@@ -100,26 +110,54 @@ export interface ConflictSide {
   session: string | null;
 }
 
+/**
+ * ReviewConflict's answers, relative to the flagged side: `proposal`
+ * wins (spec keep_this), `kept` stays (keep_other), `both` stand, each
+ * narrowed (keep_both), or it stays `open` (leave_open).
+ */
 export type ConflictOptionKind = "proposal" | "kept" | "both" | "open";
+
+/** What an answer does to one side (spec ConflictChange). */
+export type ConflictChange =
+  | "kept"
+  | "rejected"
+  | "superseded"
+  | "faded"
+  | "open"
+  | "stays";
 
 export interface ConflictOption {
   kind: ConflictOptionKind;
-  /** The judge's short answer ("Fly.io everywhere"); `open` has none. */
+  /** A short answer someone wrote ("Fly.io everywhere"); the catalogue's otherwise. */
   label: string | null;
-  /** The judge's own line, when it wrote one; the catalogue's otherwise. */
+  /** A line someone wrote about it; the catalogue's otherwise. */
   detail: string | null;
-  /** The decision as it will read when this option is chosen. */
+  /** What it does to each side, the flagged side first. */
+  effects: { ref: string; change: ConflictChange }[];
+  /** Whether the person may take it. */
+  allowed: boolean;
+  /** Why not, when policy says so: a policy code and the server's English. */
+  refusal: { code: string | null; message: string | null } | null;
+  /** The decision as it will read: the side that stands. Empty for `both` and `open`. */
   decision: string;
+  /**
+   * `both`: each side's words, to narrow before keeping. The server
+   * narrows both sides rather than writing a third memory.
+   */
+  narrowed: { proposal: string; kept: string } | null;
 }
 
 export interface ConflictData {
-  /** The judge's question ("Fly.io or Railway for the v2 API?"). */
-  question: string;
+  /** A question someone wrote ("Fly.io or Railway for the v2 API?"); null when there's none. */
+  question: string | null;
+  /** The decision's area ("deploy target"), to ask by when there's no question. */
+  area: string | null;
   kept: ConflictSide;
   proposal: ConflictSide;
+  /** In the board's order: proposal, kept, both, open. */
   options: ConflictOption[];
-  /** The option the judge suggests, preselected. */
-  suggested: number;
+  /** The option someone suggests, preselected; null when nobody does. */
+  suggested: number | null;
   /** Compiled files and the agents told, for the footer. */
   recompiles: number | null;
   tells: string[];
@@ -140,6 +178,18 @@ export interface ReviewSource {
     item: ReviewItem;
     signal?: AbortSignal;
   }): Promise<ReviewCardData>;
+  /** One memory as the queue would list it now; null once nothing waits on it. */
+  item(input: {
+    space: SpaceSummary;
+    ref: string;
+    signal?: AbortSignal;
+  }): Promise<ReviewItem | null>;
+  /**
+   * Keeps a proposal. Before the judge has looked at one that touches a
+   * decision in force, this throws `busy` (CommandFailure) with the
+   * seconds to wait; a proposal the judge flagged throws `decided` (409
+   * invalid_transition) until its conflict is settled.
+   */
   keep(input: {
     space: SpaceSummary;
     item: ReviewItem;
@@ -157,12 +207,19 @@ export interface ReviewSource {
     ref: string;
     signal?: AbortSignal;
   }): Promise<ConflictData | null>;
-  /** Keeps the person's answer as a decision. PLACEHOLDER in the SDK (no resolve command). */
+  /** Settles a conflict with the person's answer, through the ledger. */
   resolveConflict(input: {
     space: SpaceSummary;
+    /** The flagged side: every answer is relative to it. */
     ref: string;
+    /** The decision in force on the other side. */
+    other: string;
+    /** The flagged side's version the person compared (If-Match). */
+    version: number;
     option: ConflictOptionKind;
-    decision: string;
+    /** `both`: the narrower words for the flagged side, and for the other. */
+    statement?: string;
+    otherStatement?: string;
     idempotencyKey: string;
   }): Promise<DecisionResult>;
 }

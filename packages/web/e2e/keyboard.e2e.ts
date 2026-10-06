@@ -112,9 +112,7 @@ test("the rail's field opens ⌘K as well", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("Ask streams a cited answer; ⌘↵ keeps it and ⌘Z undoes", async ({
-  page,
-}) => {
+test("Ask streams a cited answer; ⌘↵ keeps it", async ({ page }) => {
   await openFrame(page, "/memax-v2/today");
   await page.keyboard.press("ControlOrMeta+k");
   await page.keyboard.type("Why did we pick River over Temporal?");
@@ -133,8 +131,8 @@ test("Ask streams a cited answer; ⌘↵ keeps it and ⌘Z undoes", async ({
   await expect(dialog).toBeHidden();
   const toasts = page.getByRole("region", { name: "Notifications" });
   await expect(toasts).toContainText("Kept M-0439 · 3 files recompiled");
-  await page.keyboard.press("ControlOrMeta+z");
-  await expect(toasts).toContainText("Undone: M-0439 isn't kept.");
+  // A person's own Remember has no undo on the server, so none is offered.
+  await expect(toasts.getByRole("button", { name: "Undo" })).toHaveCount(0);
 });
 
 test("Remember shows the near-duplicate, then keeps on Enter", async ({
@@ -157,6 +155,28 @@ test("Remember shows the near-duplicate, then keeps on Enter", async ({
   await expect(
     page.getByRole("region", { name: "Notifications" }),
   ).toContainText(/Kept M-04\d\d · 3 files recompiled/);
+});
+
+test("keeping the near-duplicate is a Keep, and ⌘Z undoes it", async ({
+  page,
+}) => {
+  await openFrame(page, "/memax-v2/today");
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.keyboard.press("Tab");
+  const dialog = page.getByRole("dialog", { name: "Ask or remember" });
+  await page.keyboard.type(
+    "Pin shared dependency versions with the pnpm catalog.",
+  );
+  await dialog.getByRole("button", { name: "Keep M-0432" }).click();
+  await expect(dialog).toBeHidden();
+  const toasts = page.getByRole("region", { name: "Notifications" });
+  await expect(toasts).toContainText("Kept M-0432 · 3 files recompiled");
+  await expect(toasts.getByRole("button", { name: "Undo" })).toHaveCount(1);
+  await page.locator("#main").focus();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(toasts).toContainText(
+    "Undid the keep. M-0432 is back in Review.",
+  );
 });
 
 test("⌘1–⌘9 switch space", async ({ page }) => {

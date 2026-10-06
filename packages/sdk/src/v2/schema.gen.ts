@@ -164,10 +164,14 @@ export interface paths {
          * @description Keeps a proposal. Only a person who is a member or owner can keep
          *     (per the space's rules); agents and API keys are refused. Send
          *     `If-Match` with the version you reviewed. A proposal the judge has
-         *     flagged as a conflict can't be kept until it is settled (409
-         *     `invalid_transition`), and one that touches a decision in force
-         *     can't be kept before the judge has looked at it (about 5 s, at most
-         *     30 s): until then Keep answers 503 `busy` with `Retry-After`.
+         *     flagged as a conflict can't be kept until it is settled: 409
+         *     `in_conflict`, whose `details.ref` is the decision in force in the
+         *     way (settle it with `:resolve-conflict`). One that touches a
+         *     decision in force can't be kept before the judge has looked at it
+         *     (about 5 s, at most 30 s): until then Keep answers 503
+         *     `judge_pending` with `Retry-After`, and the same Keep, with the same
+         *     `Idempotency-Key`, goes through once it has. (503 `busy` is another
+         *     change holding the memory.)
          */
         post: operations["keepMemory"];
         delete?: never;
@@ -200,7 +204,18 @@ export interface paths {
          *     another section. `If-Match` is required. When policy sends the edit
          *     to Review (an agent editing what a person kept, for example), the
          *     result is a new proposal that supersedes the memory, and the memory
-         *     itself is unchanged. `keep: true` keeps a proposal after editing it.
+         *     itself is unchanged. `keep: true` keeps a proposal after editing it,
+         *     except when a person's new words touch a decision in force and the
+         *     judge hasn't seen them (rule 11): then the edit is saved as the
+         *     proposal's new version, judged like any proposal's, and not kept.
+         *     The result is `outcome: proposed` with policy code `judge_pending`
+         *     and the new `version`; keep it with `:keep` on that version, which
+         *     answers 503 `judge_pending` with `Retry-After` until the judge has
+         *     looked, and then keeps it (or 409 `in_conflict` if the judge flagged
+         *     it). This 200 sets no `Retry-After`: the judge may answer within
+         *     milliseconds, and the Keep's 503 says exactly how long to wait. The
+         *     saved edit is undoable as an edit. A flagged proposal can't be kept
+         *     this way either (409 `in_conflict`).
          */
         post: operations["editMemory"];
         delete?: never;
@@ -1166,12 +1181,15 @@ export interface components {
          *     Write-level agent's write that touches a decision in force waits for
          *     the judge and a person), edits_person_kept,
          *     autonomy_propose, integration, import, system_proposes, repository,
-         *     person_proposed. Confirmation: confirm_in_agent.
+         *     person_proposed. Saved, not kept: judge_pending (a person's edit,
+         *     then keep, whose new words touch a decision in force: the edit is
+         *     the proposal's new version, and Keep waits for the judge).
+         *     Confirmation: confirm_in_agent.
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "confirm_in_agent";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent";
         /** @enum {string} */
-        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "unavailable";
+        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable";
         /**
          * @description A typed edge between two memories. merged_into: folded into another
          *     memory (a duplicate, or a repeat of a rejection). supersedes: replaces
@@ -2297,7 +2315,7 @@ export interface components {
             field?: string;
             /** @description The policy decision (`refused`). */
             policy?: components["schemas"]["PolicyDecision"];
-            /** @description The memory's or gate's display ID (`edit_clash`, `invalid_transition`), or what is in an undo's way (`undo_refused`). */
+            /** @description The memory's or gate's display ID (`edit_clash`, `invalid_transition`, `judge_pending`), the decision in force a flagged proposal contradicts (`in_conflict`), or what is in an undo's way (`undo_refused`). */
             ref?: string;
             /** @description The gate's status now (`invalid_transition` on a gate). */
             status?: components["schemas"]["GateStatus"];
@@ -2307,7 +2325,7 @@ export interface components {
             expected_version?: number;
             /** @description The memory's version now (`edit_clash`). */
             current_version?: number;
-            /** @description Seconds to wait (`rate_limited`, `busy`). */
+            /** @description Seconds to wait (`rate_limited`, `busy`, `judge_pending`). */
             retry_after?: number;
             /** @description The rate limit (`rate_limited`). */
             limit?: number;
@@ -2479,7 +2497,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
-        /** @description `invalid_transition`: the memory's, agent's or gate's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one, answering a gate that was answered, withdrawn or expired). */
+        /** @description `invalid_transition`: the memory's, agent's or gate's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one, answering a gate that was answered, withdrawn or expired). `in_conflict` (Keep, and edit then keep): the judge flagged the proposal as contradicting a decision in force; `details.ref` is that decision, and the conflict is settled with `:resolve-conflict`. */
         InvalidTransition: {
             headers: {
                 [name: string]: unknown;
@@ -2535,12 +2553,16 @@ export interface components {
             };
         };
         /**
-         * @description `busy` (another change holds the memory; `Retry-After` is set) or
-         *     `unavailable` (the record is not configured on this server).
+         * @description `busy` (another change holds the memory; `Retry-After` is set),
+         *     `judge_pending` (Keep: the judge hasn't looked at these words yet,
+         *     on a proposal that touches a decision in force; `Retry-After` is set
+         *     and `details.ref` names the memory; the same Keep goes through once
+         *     it has, or after at most 30 s) or `unavailable` (the record is not
+         *     configured on this server).
          */
         Unavailable: {
             headers: {
-                /** @description Seconds to wait before retrying; set for `busy`. */
+                /** @description Seconds to wait before retrying; set for `busy` and `judge_pending`. */
                 "Retry-After"?: string;
                 [name: string]: unknown;
             };

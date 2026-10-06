@@ -45,6 +45,12 @@ export interface ReviewState {
   sealed: { ref: string; statement: string | null; restore: ReviewMode } | null;
   /** The memory with a command in flight. */
   busy: string | null;
+  /**
+   * A Keep waiting for the judge (503 `busy`): the card wears the working
+   * mark instead of the seal until the check is done. Moving away, or
+   * Esc, stops waiting.
+   */
+  waiting: string | null;
   mode: ReviewMode;
 }
 
@@ -54,6 +60,11 @@ export type ReviewAction =
   | { type: "unseal"; ref: string }
   | { type: "busy"; ref: string }
   | { type: "settled"; ref: string }
+  /** Keep answered `busy`: wait for the judge, without the seal. */
+  | { type: "waiting"; ref: string }
+  | { type: "stopWaiting"; ref: string }
+  /** Undo put a decided card back in the queue: select it, as it was. */
+  | { type: "restore"; ref: string }
   | {
       type: "decided";
       ref: string;
@@ -76,6 +87,7 @@ export const INITIAL_REVIEW: ReviewState = {
   done: {},
   sealed: null,
   busy: null,
+  waiting: null,
   mode: { kind: "browse" },
 };
 
@@ -98,6 +110,17 @@ export function reviewReducer(
 ): ReviewState {
   switch (action.type) {
     case "select":
+      // Moving away stops a Keep that waits for the judge (the hook
+      // cancels its retry first).
+      if (state.waiting) {
+        return {
+          ...state,
+          selected: action.ref,
+          waiting: null,
+          busy: state.busy === state.waiting ? null : state.busy,
+          mode: BROWSE,
+        };
+      }
       // Never while a command is in flight: the seal stays on its card.
       if (state.busy || state.sealed) return state;
       return { ...state, selected: action.ref, mode: BROWSE };
@@ -108,11 +131,44 @@ export function reviewReducer(
         sealed: {
           ref: action.ref,
           statement: action.statement ?? null,
-          restore: state.mode,
+          restore:
+            state.sealed?.ref === action.ref
+              ? state.sealed.restore
+              : state.mode,
         },
         busy: action.ref,
+        waiting: null,
         mode: BROWSE,
       };
+    case "waiting":
+      return {
+        ...state,
+        selected: action.ref,
+        sealed: null,
+        busy: action.ref,
+        waiting: action.ref,
+        mode: BROWSE,
+      };
+    case "stopWaiting":
+      if (state.waiting !== action.ref) return state;
+      return {
+        ...state,
+        waiting: null,
+        busy: state.busy === action.ref ? null : state.busy,
+      };
+    case "restore": {
+      const done = { ...state.done };
+      delete done[action.ref];
+      return {
+        ...state,
+        done,
+        selected: action.ref,
+        sealed: state.sealed?.ref === action.ref ? null : state.sealed,
+        busy: state.busy === action.ref ? null : state.busy,
+        waiting: state.waiting === action.ref ? null : state.waiting,
+        mode: BROWSE,
+      };
+    }
     case "unseal":
       if (state.sealed?.ref !== action.ref) return state;
       return {
@@ -136,6 +192,7 @@ export function reviewReducer(
           : state.selected,
         sealed: state.sealed?.ref === action.ref ? null : state.sealed,
         busy: state.busy === action.ref ? null : state.busy,
+        waiting: state.waiting === action.ref ? null : state.waiting,
         mode: BROWSE,
       };
     }

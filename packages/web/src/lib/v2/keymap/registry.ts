@@ -96,6 +96,8 @@ export const KEYMAP = [
   // Keeps what's in front of you: Ask's answer, or the Brief's edits
   // when you press Done.
   { id: "command.keep", keys: ["Mod+Enter"], group: "pages", inInput: true },
+  // A Keep waiting for the judge (plan §5.8): Esc stops waiting.
+  { id: "review.stopWaiting", keys: ["Escape"], group: "pages" },
   // Editing the Brief: the focused fact moves down or up, across
   // section headings (regrouping it). ⌥, so plain arrows still scroll.
   {

@@ -3,7 +3,7 @@ import { useLedger } from "../i18n/provider";
 import { resolveAgent } from "../lib/agents";
 import { cx } from "../lib/cx";
 import { format } from "../lib/format";
-import type { StatementState } from "../lib/types";
+import type { MarkState, StatementState } from "../lib/types";
 import { AgentStamp } from "../provenance/agent-stamp";
 import { StateMark } from "./state-mark";
 
@@ -12,6 +12,13 @@ export interface MemoryRowProps {
   children: ReactNode;
   /** Kept rows carry no mark. A forgotten memory has no words left: render `Redaction`. */
   state?: StatementState;
+  /**
+   * The mark to draw instead of the state's, while the type still follows
+   * `state`: a proposal Memax is still checking wears `working`.
+   */
+  mark?: MarkState;
+  /** The mark's word for assistive technology and the tooltip, when it isn't the state's. */
+  markLabel?: string;
   agent?: string;
   /** A person's initials. */
   person?: string;
@@ -58,6 +65,8 @@ export interface MemoryRowProps {
 export function MemoryRow({
   children,
   state = "kept",
+  mark,
+  markLabel,
   agent,
   person,
   name,
@@ -89,7 +98,8 @@ export function MemoryRow({
     ? resolveAgent(agents, { agent, person, name }, strings.agent.fallback)
     : undefined;
   const verb = action ?? strings.receiptVerb[state];
-  const marked = state !== "kept";
+  const shown = mark ?? state;
+  const marked = shown !== "kept";
   // Line two: the ID, which never truncates, then "space · source" in one box
   // that ends in an ellipsis, so the source is cut first and then the space.
   const rest = [space, source].filter(Boolean).join(" · ");
@@ -142,7 +152,16 @@ export function MemoryRow({
       aria-current={selected ? "true" : undefined}
     >
       <div className="mx-row-mark">
-        {marked ? <StateMark id={markId} state={state} label={false} /> : null}
+        {marked ? (
+          <StateMark
+            id={markId}
+            state={shown}
+            label={false}
+            {...(markLabel
+              ? { "aria-label": markLabel, title: markLabel }
+              : {})}
+          />
+        ) : null}
       </div>
       <div className="mx-row-body">
         <p

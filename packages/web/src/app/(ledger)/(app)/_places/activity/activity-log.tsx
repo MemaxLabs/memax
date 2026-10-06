@@ -13,11 +13,14 @@ import {
 import {
   dayKey,
   dayLabel,
+  foldUndoable,
   zoneLabel,
   type Names,
 } from "@/lib/v2/activity/sentence";
 import { isComposing } from "@/lib/v2/keymap/keymap";
 import type { SpaceSummary } from "@/lib/v2/data/types";
+import { FOLD_UNDO_WINDOW_MS } from "@/lib/v2/data/undo";
+import { useUndo } from "../../_lib/undo";
 import { ActivityRow } from "./activity-row";
 import styles from "./activity.module.css";
 
@@ -72,6 +75,9 @@ export function ActivityLog({
   const { t, locale } = useLocale();
   const copy = t.ledger.activity;
   const router = useRouter();
+  const undo = useUndo();
+  // Anyone who may keep can undo one of the judge's folds, for 14 days.
+  const canUnfold = space.role !== "viewer";
   const shown = entries.filter((e) => matchesFilter(e, filter));
   const groups = groupByDay(shown, timeZone);
   const [active, setActive] = useState(0);
@@ -172,6 +178,17 @@ export function ActivityLog({
                         focusable={i === tabStop}
                         onFocus={() => setActive(i)}
                         onKeyDown={(event, href) => onKeyDown(i, event, href)}
+                        onUnfold={
+                          canUnfold &&
+                          foldUndoable(entry, entries, now, FOLD_UNDO_WINDOW_MS)
+                            ? () =>
+                                void undo.unfold(
+                                  space,
+                                  entry.object.ref,
+                                  entry.id,
+                                )
+                            : undefined
+                        }
                       />
                     );
                   })}

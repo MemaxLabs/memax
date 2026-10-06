@@ -574,6 +574,7 @@ describe("Today", () => {
     session: null,
     updates: null,
     conflictsWith: null,
+    judge: null,
     intoSpace: null,
   });
 

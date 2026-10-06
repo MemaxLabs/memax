@@ -56,33 +56,91 @@ test("Review by keyboard: move, keep, edit then keep, reject", async ({
   await expect(reviewLink(page)).toHaveAccessibleName(
     "Review 4 waiting on you",
   );
-  // No inverse command for a Keep yet, so no Undo.
+  // The Keep has a receipt, so it can be undone.
   await expect(toasts(page).getByRole("button", { name: "Undo" })).toHaveCount(
-    0,
+    1,
   );
 
-  // E: the statement field takes focus; typed keys are text, not shortcuts.
+  // ⌘Z: the card comes back as it was, and the toast says so.
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(toasts(page)).toContainText(
+    "Undid the keep. M-0430 is back in Review.",
+  );
+  await expect(page.getByText("memax-v2 · 1 of 5")).toBeVisible();
+  await expect(reviewLink(page)).toHaveAccessibleName(
+    "Review 5 waiting on you",
+  );
+  await page.keyboard.press("k");
+  await expect(page.getByText("memax-v2 · 1 of 4")).toBeVisible();
+
+  // M-0431 is a conflict (its E compares); E on the next proposal: the
+  // statement field takes focus, and typed keys are text, not shortcuts.
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByText("memax-v2 · 2 of 4")).toBeVisible();
   await page.keyboard.press("e");
   const field = page.getByRole("textbox", { name: "Statement" });
   await expect(field).toBeFocused();
   await page.keyboard.press("End");
-  await page.keyboard.type(" Keep the preview configs too.");
-  await expect(page.getByText("memax-v2 · 1 of 4 · editing")).toBeVisible();
+  await page.keyboard.type(" Keep the catalog in the root.");
+  await expect(page.getByText("memax-v2 · 2 of 4 · editing")).toBeVisible();
   await page.keyboard.press("ControlOrMeta+Enter");
-  await expect(toasts(page)).toContainText("Kept M-0431");
-  await expect(page.getByText("memax-v2 · 1 of 3")).toBeVisible();
+  await expect(toasts(page)).toContainText("Kept M-0432");
+  await expect(page.getByText("memax-v2 · 2 of 3")).toBeVisible();
 
   // X: an optional reason, then ↵.
   await page.keyboard.press("x");
   const why = page.getByRole("textbox", { name: "Why, if you'd like to say" });
   await expect(why).toBeFocused();
-  await page.keyboard.type("We pin in the root package.json.");
+  await page.keyboard.type("It belongs in the personal space.");
   await page.keyboard.press("Enter");
-  await expect(toasts(page)).toContainText("Rejected M-0432");
-  await expect(page.getByText("memax-v2 · 1 of 2")).toBeVisible();
+  await expect(toasts(page)).toContainText("Rejected M-0433");
+  await expect(page.getByText("memax-v2 · 2 of 2")).toBeVisible();
   await expect(reviewLink(page)).toHaveAccessibleName(
     "Review 2 waiting on you",
   );
+});
+
+test("Review waits for the judge: the working mark, then the Keep", async ({
+  page,
+}) => {
+  // The team space's M-0445 touches a decision in force, and the demo's
+  // judge takes a few seconds with it.
+  await open(page, "/memax-team/review");
+  const checking = page.getByRole("img", { name: "Checking" });
+  await expect(checking).toHaveCount(1);
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByText(/· 2 of 2$/)).toBeVisible();
+  await page.keyboard.press("k");
+  await expect(
+    page.getByText(
+      "Checking it against the decision in force. It's kept once the check is done.",
+    ),
+  ).toBeVisible();
+  // No spinner: the static working arc, and no error.
+  await expect(toasts(page)).not.toContainText("wasn't kept");
+  await expect(toasts(page)).toContainText("Kept M-0445", { timeout: 15_000 });
+  await expect(checking).toHaveCount(0);
+});
+
+test("edit, then keep, waits for the judge when the words touch a decision", async ({
+  page,
+}) => {
+  await open(page, "/memax-team/review");
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByText(/· 2 of 2$/)).toBeVisible();
+  await page.keyboard.press("e");
+  const field = page.getByRole("textbox", { name: "Statement" });
+  await expect(field).toBeFocused();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Two days, not one.");
+  await page.keyboard.press("ControlOrMeta+Enter");
+  // Saved, not kept: the working mark and the line, then the Keep.
+  await expect(
+    page.getByText(
+      "Checking it against the decision in force. It's kept once the check is done.",
+    ),
+  ).toBeVisible();
+  await expect(toasts(page)).toContainText("Kept M-0445", { timeout: 15_000 });
 });
 
 test("? lists Review's keys", async ({ page }) => {
@@ -124,12 +182,19 @@ test("filters in the URL; C compares a conflict and keeps one answer", async ({
   await expect(
     page.getByRole("textbox", { name: "The decision, as it will read" }),
   ).toHaveValue("Deploy the v2 API to Fly.io in iad and ams.");
+  // "Both" narrows each side, as the server does: two fields.
   await page.keyboard.press("3");
+  await expect(
+    page.getByRole("textbox", { name: "M-0431, as it will read" }),
+  ).toHaveValue("The v2 API runs on Fly.io in iad and ams.");
   await page.keyboard.press("Enter");
   await expect(toasts(page)).toContainText(
-    "as the decision · 4 files recompiled",
+    "Kept M-0431 and M-0174, each narrowed",
   );
   await expect(page).toHaveURL("/memax-v2/review");
+  await expect(toasts(page).getByRole("button", { name: "Undo" })).toHaveCount(
+    1,
+  );
 });
 
 test("an empty queue is one panel across the sheet", async ({ page }) => {

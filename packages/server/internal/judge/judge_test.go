@@ -390,9 +390,9 @@ func TestContradictionIsFlaggedBeforeKeep(t *testing.T) {
 		t.Fatalf("review = %+v", page.Memories)
 	}
 	_, err = f.l.Apply(f.ctx, &ledger.Keep{Meta: meta(person(zz), f.scope(zz), policy.ViaWeb), Memory: fly.Ref})
-	var te *ledger.TransitionError
-	if err == nil || !errors.As(err, &te) {
-		t.Errorf("keep of a conflict = %v, want a transition error", err)
+	var ic *ledger.InConflictError
+	if !errors.As(err, &ic) || ic.With != railway.Ref || !errors.Is(err, ledger.ErrInvalidTransition) {
+		t.Errorf("keep of a conflict = %v, want in conflict with %s", err, railway.Ref)
 	}
 	// The decision shows the incoming conflict.
 	if d := f.get(zz, railway.ID); link(d, ledger.LinkConflictsWith, ledger.LinkIn) == nil {

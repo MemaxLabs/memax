@@ -3,6 +3,7 @@ package v2api_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 	"testing"
@@ -137,7 +138,7 @@ func TestConflictFlaggedSettledAndUndone(t *testing.T) {
 	if r := e.do(call{method: "POST", path: memoryPath(fly.Memory, ":keep"), token: owner}); r.header.Get("Retry-After") == "" {
 		t.Errorf("no Retry-After: %v", r.header)
 	} else {
-		r.fails(503, "busy")
+		r.fails(503, "judge_pending")
 	}
 
 	e.judgeAll(j)
@@ -151,7 +152,11 @@ func TestConflictFlaggedSettledAndUndone(t *testing.T) {
 		len(item.Links) != 1 || item.Links[0].Kind != "conflicts_with" || item.Links[0].Ref != railway.Memory.Ref {
 		t.Fatalf("review item = %+v %+v", item.memory, item.Links)
 	}
-	e.do(call{method: "POST", path: memoryPath(fly.Memory, ":keep"), token: owner}).fails(409, "invalid_transition")
+	// Keep says it's in conflict, and names the decision in the way.
+	if got := e.do(call{method: "POST", path: memoryPath(fly.Memory, ":keep"), token: owner}).
+		fails(409, "in_conflict"); got.Details.Ref != railway.Memory.Ref {
+		t.Errorf("in_conflict names %q, want %s", got.Details.Ref, railway.Memory.Ref)
+	}
 
 	// ReviewConflict.
 	var cf struct {
@@ -248,6 +253,92 @@ func TestConflictFlaggedSettledAndUndone(t *testing.T) {
 	e.do(call{method: "GET", path: memoryPath(fly.Memory, "/conflict"), token: owner}).fails(409, "invalid_transition")
 	e.do(call{method: "POST", path: memoryPath(fly.Memory, ":resolve-conflict"), token: owner,
 		body: map[string]any{"choice": "sideways"}, invalid: true}).fails(400, "invalid_request")
+}
+
+// Rule 11 for "edit, then keep", over /v2: a person's new words that touch
+// a decision in force are saved as the proposal's new version and not kept
+// (200, outcome proposed, policy judge_pending); Keep on that version waits
+// for the judge (503 judge_pending), then keeps it, or says it's in
+// conflict. The saved edit is undoable as an edit.
+func TestEditThenKeepWaitsForTheJudge(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	zz := e.user("zz")
+	sp := e.space(zz, policy.SpaceProject, "memax-v2")
+	owner := e.session(zz)
+	key, _ := e.apiKey(zz, keyOpts{agent: "codex"})
+	var railway result
+	e.do(call{method: "POST", path: memoriesPath(sp), token: owner,
+		body: decisionBody("Deploy the v2 API to Railway for its preview environments.", "deploy target")}).ok(201, &railway)
+	propose := func(statement string) memory {
+		var p result
+		e.do(call{method: "POST", path: memoriesPath(sp), token: key, body: decisionBody(statement, "deploy target")}).ok(201, &p)
+		return p.Memory
+	}
+	editKeep := func(m memory, statement string) *resp {
+		return e.do(call{method: "POST", path: memoryPath(m, ":edit"), token: owner,
+			header: map[string]string{"If-Match": `"1"`}, body: map[string]any{"statement": statement, "keep": true}})
+	}
+	keep := func(m memory, version int) *resp {
+		return e.do(call{method: "POST", path: memoryPath(m, ":keep"), token: owner,
+			header: map[string]string{"If-Match": fmt.Sprintf(`"%d"`, version)}})
+	}
+
+	// Saved, not kept.
+	fly := propose("Deploy the v2 API to Fly.io.")
+	var held result
+	editKeep(fly, "Deploy the v2 API to Fly.io in iad.").ok(200, &held)
+	if held.Outcome != "proposed" || held.Policy.Code != "judge_pending" || held.Policy.Effect != "propose" ||
+		held.Memory.Lifecycle != "proposed" || held.Memory.Version != 2 || held.Memory.Statement != "Deploy the v2 API to Fly.io in iad." {
+		t.Fatalf("held = %+v", held)
+	}
+	if len(held.Receipts) != 1 || held.Receipts[0].Action != "edited" {
+		t.Errorf("held receipts = %+v", held.Receipts)
+	}
+	// Keep on the new version waits for the judge, with Retry-After.
+	r := keep(fly, 2)
+	if r.header.Get("Retry-After") == "" {
+		t.Errorf("no Retry-After: %v", r.header)
+	}
+	if got := r.fails(503, "judge_pending"); got.Details.Ref != fly.Ref {
+		t.Errorf("judge_pending names %q", got.Details.Ref)
+	}
+	// The judge flags it: Keep says it's in conflict, naming the decision.
+	e.judgeAll(judge.New(e.ledger, contradicting{}, judge.Config{Primary: judge.Tier{Model: "fake"}, Log: quiet}))
+	if got := keep(fly, 2).fails(409, "in_conflict"); got.Details.Ref != railway.Memory.Ref {
+		t.Errorf("in_conflict names %q", got.Details.Ref)
+	}
+
+	// A check that clears it: the same Keep goes through.
+	other := propose("Preview environments for the v2 API need seed data on Railway.")
+	editKeep(other, "Preview environments for the v2 API need seed data on Railway, refreshed nightly.").ok(200, &held)
+	if held.Policy.Code != "judge_pending" {
+		t.Fatalf("held = %+v", held)
+	}
+	e.judgeAll(judge.New(e.ledger, nil, judge.Config{Log: quiet}))
+	var kept result
+	keep(other, 2).ok(200, &kept)
+	if kept.Outcome != "applied" || kept.Memory.Lifecycle != "kept" {
+		t.Errorf("kept = %+v", kept)
+	}
+	// Undo the Keep, then the saved edit: back to the agent's words.
+	e.do(call{method: "POST", path: "/v2/receipts/" + kept.Receipts[0].ID.String() + ":undo", token: owner}).ok(200, nil)
+	var undone changes
+	e.do(call{method: "POST", path: "/v2/receipts/" + held.Receipts[0].ID.String() + ":undo", token: owner}).ok(200, &undone)
+	if undone.Memory.Lifecycle != "proposed" || undone.Memory.Version != 1 ||
+		undone.Memory.Statement != "Preview environments for the v2 API need seed data on Railway." {
+		t.Errorf("after undoing the edit: %+v", undone.Memory)
+	}
+
+	// Words that touch no decision are kept at once, as before.
+	var p result
+	e.do(call{method: "POST", path: memoriesPath(sp), token: key,
+		body: map[string]any{"statement": "Workers must be idempotent.", "section": "conventions"}}).ok(201, &p)
+	plain := p.Memory
+	editKeep(plain, "Workers must be idempotent and retry safely.").ok(200, &kept)
+	if kept.Outcome != "applied" || kept.Memory.Lifecycle != "kept" || kept.Policy.Code == "judge_pending" {
+		t.Errorf("plain edit then keep = %+v", kept)
+	}
 }
 
 // A keep through /v2 is undoable by the person who kept it, and the undo

@@ -59,6 +59,8 @@ export const ledgerMemoryEn = {
       merged: "{name} merged {n} notes into it",
       mergedOne: "{name} merged 1 note into it",
       mergedSome: "Merged by {name}",
+      // One of the judge's folds, on the proposal it folded.
+      folded: "{name} folded it into {ref}",
       flagged: "Flagged stale by {name}",
       resolved: "Settled by {name}",
       verified: "Checked against the code",
@@ -73,6 +75,11 @@ export const ledgerMemoryEn = {
       undid: "Undone by {name}",
     },
     mergedInto: "Merged into this",
+    // Undo on one of the judge's folds: 14 days, by anyone who may keep.
+    unfold: "Undo",
+    unfoldFor: "Undo the fold of {ref}",
+    foldedNote: "Folded into {ref}",
+    foldedUntil: "Undo until {date}",
     moreNotes: "{n} more notes",
     moreNotesOne: "1 more note",
     fewerNotes: "Show fewer notes",

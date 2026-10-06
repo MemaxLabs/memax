@@ -2,8 +2,8 @@
 
 import type { KeyboardEvent, Ref } from "react";
 import Link from "next/link";
-import { AgentStamp, Icon, formatNodes } from "@memaxlabs/ledger";
-import { useLocale } from "@/i18n";
+import { AgentStamp, Button, Icon, formatNodes } from "@memaxlabs/ledger";
+import { interpolate, useLocale } from "@/i18n";
 import { formatClock } from "@/lib/v2/copy";
 import type { ActivityEntry } from "@/lib/v2/data/activity";
 import {
@@ -59,6 +59,7 @@ export function ActivityRow({
   focusable,
   onFocus,
   onKeyDown,
+  onUnfold,
   ref,
 }: {
   entry: ActivityEntry;
@@ -68,6 +69,8 @@ export function ActivityRow({
   focusable: boolean;
   onFocus: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLLIElement>, href: string | null) => void;
+  /** One of the judge's folds, still undoable: its Undo. */
+  onUnfold?: () => void;
   ref?: Ref<HTMLLIElement>;
 }) {
   const { t, locale } = useLocale();
@@ -114,6 +117,23 @@ export function ActivityRow({
           </span>
         ))}
         {href ? <span className="mx-sr"> {copy.opens}</span> : null}
+        {onUnfold ? (
+          <>
+            {" "}
+            <Button
+              className={styles.unfold}
+              variant="quiet"
+              size="sm"
+              tabIndex={focusable ? 0 : -1}
+              aria-label={interpolate(copy.unfoldFor, {
+                ref: entry.object.ref,
+              })}
+              onClick={onUnfold}
+            >
+              {copy.unfold}
+            </Button>
+          </>
+        ) : null}
       </span>
       <span className={styles.via}>{viaText(copy, entry.via, names)}</span>
       {ref_ && href ? (

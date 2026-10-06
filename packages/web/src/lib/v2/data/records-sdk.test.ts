@@ -2,9 +2,15 @@ import { MemaxError, type V2 } from "memax-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { CommandFailedError, isRetryable, toFailure } from "./command-error";
 import { DEMO_SPACES } from "./demo-dataset";
+import { choiceFor, conflictOf } from "./sdk-conflict";
 import { createSdkMemories } from "./sdk-memories";
 import { conditionsOf, recordOf } from "./sdk-record";
-import { actorOf, listItemOf, reviewItemOf } from "./sdk-records";
+import {
+  actorOf,
+  conflictPartnerOf,
+  listItemOf,
+  reviewItemOf,
+} from "./sdk-records";
 import { createSdkReview } from "./sdk-review";
 
 const v2 = DEMO_SPACES.find((s) => s.slug === "memax-v2")!;
@@ -93,8 +99,9 @@ describe("mapping /v2 records", () => {
       action: "updated",
       updates: "M-0156",
       session: "3e1a",
-      // No links in /v2: nothing to compare.
+      // Not flagged: nothing to compare, and the judge has had its say.
       conflictsWith: null,
+      judge: null,
     });
   });
 
@@ -239,7 +246,39 @@ describe("command failures", () => {
     [new MemaxError("x", "invalid_transition", 409), { kind: "decided" }],
     [new MemaxError("x", "not_found", 404), { kind: "not-found" }],
     [new MemaxError("x", "network_error", 0), { kind: "unreachable" }],
-    [new MemaxError("x", "busy", 503), { kind: "unreachable" }],
+    [
+      new MemaxError(
+        "x",
+        "judge_pending",
+        503,
+        { retry_after: 2, ref: "M-0430" },
+        2,
+      ),
+      { kind: "busy", retryAfter: 2, ref: "M-0430", judge: true },
+    ],
+    [
+      new MemaxError("x", "busy", 503, { retry_after: 1 }),
+      { kind: "busy", retryAfter: 1, ref: null, judge: false },
+    ],
+    [
+      new MemaxError("x", "in_conflict", 409, { ref: "M-0174" }),
+      { kind: "in-conflict", with: "M-0174" },
+    ],
+    [
+      new MemaxError("x", "in_conflict", 409),
+      { kind: "in-conflict", with: null },
+    ],
+    [
+      new MemaxError("x", "undo_refused", 409, {
+        reason: "later_changes",
+        ref: "B-0043",
+      }),
+      { kind: "undo-refused", reason: "later_changes", ref: "B-0043" },
+    ],
+    [
+      new MemaxError("x", "undo_refused", 409, { reason: "sideways" }),
+      { kind: "undo-refused", reason: "not_undoable", ref: null },
+    ],
     [
       new MemaxError("x", "rate_limited", 429, undefined, 7),
       { kind: "rate-limited", retryAfter: 7 },
@@ -256,6 +295,13 @@ describe("command failures", () => {
       isRetryable({ kind: "refused", code: "viewer", message: null }),
     ).toBe(false);
     expect(isRetryable({ kind: "clash", currentVersion: 2 })).toBe(false);
+    // Keep before the judge: the same command, after Retry-After.
+    expect(
+      isRetryable({ kind: "busy", retryAfter: 2, ref: null, judge: true }),
+    ).toBe(true);
+    expect(
+      isRetryable({ kind: "undo-refused", reason: "window_passed", ref: null }),
+    ).toBe(false);
   });
 });
 
@@ -330,6 +376,17 @@ function fakeClient() {
         keep: vi.fn().mockResolvedValue(command("M-0430")),
         reject: vi.fn().mockResolvedValue(command("M-0430")),
         edit: vi.fn().mockResolvedValue(command("M-0430")),
+        // No conflict to compare (spec: 409 invalid_transition).
+        conflict: vi
+          .fn()
+          .mockRejectedValue(
+            new MemaxError("no conflict", "invalid_transition", 409),
+          ),
+        resolveConflict: vi.fn().mockResolvedValue({
+          ...command("M-0431"),
+          memories: [memory({ ref: "M-0431" }), memory({ ref: "M-0174" })],
+          receipts: [receipt({ id: "r-resolved", action: "resolved" })],
+        }),
       },
     },
   };
@@ -375,8 +432,9 @@ describe("the SDK's Review", () => {
       outcome: "kept",
       version: 2,
       recompiled: null,
+      // Undo addresses the command by its receipt.
+      receipt: "r1",
     });
-    expect(kept.undo).toBeUndefined();
     await review.reject({
       space: v2,
       item: items[0],
@@ -403,16 +461,490 @@ describe("the SDK's Review", () => {
     expect(card.evidence?.quote).toContain("input_required");
     expect(card.readFrom).toBe("modelcontextprotocol.io · spec 2026-07-28");
     expect(card.touches).toMatchObject({ basis: "links", targets: null });
+    // A memory with no conflict has nothing to compare (409 → null).
     expect(await review.conflict({ space: v2, ref: "M-0430" })).toBeNull();
-    await expect(
-      review.resolveConflict({
+  });
+
+  it("settles a conflict through the ledger: the answer as the server's choice", async () => {
+    const client = fakeClient();
+    const review = createSdkReview(client as never, () => ME);
+    const result = await review.resolveConflict({
+      space: v2,
+      ref: "M-0431",
+      other: "M-0174",
+      version: 3,
+      option: "both",
+      statement: "The v2 API runs on Fly.io.",
+      otherStatement: "Previews run on Railway.",
+      idempotencyKey: "k3",
+    });
+    expect(client.v2.memories.resolveConflict).toHaveBeenCalledWith(
+      "M-0431",
+      {
+        choice: "keep_both",
+        other: "M-0174",
+        statement: "The v2 API runs on Fly.io.",
+        other_statement: "Previews run on Railway.",
+      },
+      { space: "memax-v2", idempotencyKey: "k3", ifMatch: 3 },
+    );
+    expect(result).toMatchObject({
+      ref: "M-0431",
+      outcome: "kept",
+      receipt: "r-resolved",
+    });
+    for (const [option, choice] of [
+      ["proposal", "keep_this"],
+      ["kept", "keep_other"],
+      ["open", "leave_open"],
+    ] as const) {
+      await review.resolveConflict({
         space: v2,
-        ref: "M-0430",
-        option: "both",
-        decision: "x",
-        idempotencyKey: "k3",
+        ref: "M-0431",
+        other: "M-0174",
+        version: 3,
+        option,
+        // Ignored outside "both".
+        statement: "x",
+        idempotencyKey: option,
+      });
+      expect(client.v2.memories.resolveConflict).toHaveBeenLastCalledWith(
+        "M-0431",
+        { choice, other: "M-0174" },
+        expect.objectContaining({ ifMatch: 3 }),
+      );
+    }
+  });
+});
+
+describe("mapping what the judge said", () => {
+  const link = (fields: Partial<V2.Link>): V2.Link => ({
+    id: "l1",
+    kind: "conflicts_with",
+    direction: "out",
+    memory_id: "m2",
+    ref: "M-0174",
+    receipt_id: "r-judge",
+    created_at: "2026-10-05T21:26:30Z",
+    ...fields,
+  });
+
+  it("puts the working mark on a proposal the judge hasn't checked, and not on one it couldn't", () => {
+    const receipts = new Map([["r1", receipt()]]);
+    const working = memory({ judge: { state: "working", version: 1 } });
+    expect(reviewItemOf(working, receipts, ME).judge).toBe("working");
+    const failed = memory({
+      judge: { state: "failed", version: 1, outcome: "failed" },
+    });
+    expect(reviewItemOf(failed, receipts, ME)).toMatchObject({
+      judge: "failed",
+      state: "proposed",
+      conflictsWith: null,
+    });
+    const judged = memory({
+      judge: { state: "judged", version: 1, verdict: "unrelated" },
+    });
+    expect(reviewItemOf(judged, receipts, ME).judge).toBeNull();
+  });
+
+  it("reads a flagged proposal's partner from its link, and keeps its proposer", () => {
+    const flagged = receipt({
+      id: "r2",
+      seq: 2,
+      action: "flagged",
+      actor_kind: "memax",
+      agent: undefined,
+      via: "system",
+      source: { kind: "memory", ref: "M-0174" },
+    });
+    const item = reviewItemOf(
+      memory({
+        ref: "M-0431",
+        state: "conflict",
+        flags: ["conflict"],
+        last_receipt_id: "r2",
+        links: [link({})],
+        judge: { state: "judged", version: 1, verdict: "contradicts" },
       }),
-    ).rejects.toBeInstanceOf(CommandFailedError);
+      new Map([
+        ["r1", receipt({ agent: "codex" })],
+        ["r2", flagged],
+      ]),
+      ME,
+    );
+    expect(item).toMatchObject({
+      state: "conflict",
+      conflictsWith: "M-0174",
+      judge: null,
+      // Review.png's M-0431: "CX proposed", not "Memax flagged".
+      by: { kind: "agent", agent: "codex" },
+      action: "proposed",
+    });
+    // Without a link, the verdict still names it.
+    expect(
+      conflictPartnerOf(
+        memory({
+          state: "conflict",
+          judge: {
+            state: "judged",
+            version: 1,
+            verdict: "contradicts",
+            related: { id: "m2", ref: "M-0174" },
+          },
+        }),
+      ),
+    ).toBe("M-0174");
+  });
+
+  it("reads an update from the judge's link, with the words to diff", async () => {
+    const updates = {
+      id: "m0",
+      ref: "M-0156",
+      version: 1,
+      statement: "Old.",
+      lifecycle: "kept" as const,
+    };
+    const item = reviewItemOf(
+      memory({ updates, links: [link({ kind: "supersedes", ref: "M-0156" })] }),
+      new Map([["r1", receipt()]]),
+      ME,
+    );
+    expect(item).toMatchObject({ updates: "M-0156", action: "updated" });
+    const client = fakeClient();
+    client.v2.memories.get.mockImplementation((ref: string) =>
+      Promise.resolve({
+        memory: memory({
+          ref,
+          updates: ref === "M-0430" ? updates : undefined,
+        }),
+        versions: [],
+        receipts: { items: [], has_more: false },
+      }),
+    );
+    const card = await createSdkReview(client as never, () => ME).card({
+      space: v2,
+      item,
+    });
+    expect(card.before).toEqual({ ref: "M-0156", statement: "Old." });
+    expect(card.touches.basis).toBe("links");
+    expect(card.touches.memories.map((m) => m.ref)).toEqual(["M-0156"]);
+  });
+
+  it("builds the card's conflict line from the decision it contradicts", async () => {
+    const client = fakeClient();
+    client.v2.memories.get.mockImplementation((ref: string) =>
+      Promise.resolve({
+        memory:
+          ref === "M-0431"
+            ? memory({
+                ref,
+                state: "conflict",
+                flags: ["conflict"],
+                links: [link({})],
+              })
+            : memory({
+                ref,
+                state: "kept",
+                lifecycle: "kept",
+                statement: "Deploy the v2 API to Railway.",
+              }),
+        versions: [],
+        receipts: { items: [], has_more: false },
+      }),
+    );
+    const review = createSdkReview(client as never, () => ME);
+    const card = await review.card({
+      space: v2,
+      item: {
+        ...reviewItemOf(
+          memory({ ref: "M-0431", state: "conflict", links: [link({})] }),
+          new Map([["r1", receipt()]]),
+          ME,
+        ),
+      },
+    });
+    expect(card.conflict).toEqual({
+      ref: "M-0174",
+      statement: "Deploy the v2 API to Railway.",
+    });
+    expect(card.touches.memories.map((m) => m.ref)).toEqual(["M-0174"]);
+  });
+
+  it("maps the conflict endpoint onto ReviewConflict, from either side", () => {
+    const fly = memory({
+      id: "m1",
+      ref: "M-0431",
+      statement: "Deploy the v2 API to Fly.io in iad and ams.",
+      state: "conflict",
+      version: 2,
+      kind: "decision",
+      decision: { why: "The API already runs there.", area: "deploy target" },
+      sources: [
+        {
+          id: "s1",
+          kind: "file",
+          ref: "infra/fly/api.toml",
+          locator: {},
+          external: false,
+          trust: "repository",
+          created_at: "2026-10-01T16:10:00Z",
+        },
+      ],
+    });
+    const railway = memory({
+      id: "m2",
+      ref: "M-0174",
+      statement: "Deploy the v2 API to Railway for its preview environments.",
+      state: "kept",
+      lifecycle: "kept",
+      kind: "decision",
+      decision: { why: "Simpler previews.", area: "deploy target" },
+      created_receipt_id: "r-railway",
+    });
+    const proposed = receipt({
+      id: "r1",
+      object_id: "m1",
+      agent: "codex",
+      session_ref: "9f1c",
+    });
+    const keptBy = receipt({
+      id: "r-kept",
+      object_id: "m2",
+      action: "kept",
+      actor_kind: "person",
+      actor_id: "jy",
+      agent: undefined,
+      occurred_at: "2026-09-18T22:05:00Z",
+    });
+    const options: V2.ConflictOption[] = [
+      {
+        choice: "keep_this",
+        effects: [
+          { ref: "M-0431", change: "kept" },
+          { ref: "M-0174", change: "superseded" },
+        ],
+        allowed: true,
+      },
+      {
+        choice: "keep_other",
+        effects: [
+          { ref: "M-0431", change: "rejected" },
+          { ref: "M-0174", change: "stays" },
+        ],
+        allowed: true,
+      },
+      {
+        choice: "keep_both",
+        effects: [
+          { ref: "M-0431", change: "kept" },
+          { ref: "M-0174", change: "stays" },
+        ],
+        allowed: false,
+        policy: {
+          effect: "refuse",
+          code: "decision_needs_web",
+          message: "Decisions in memax-v2 need a person on the web.",
+        },
+      },
+      {
+        choice: "leave_open",
+        effects: [
+          { ref: "M-0431", change: "open" },
+          { ref: "M-0174", change: "open" },
+        ],
+        allowed: true,
+      },
+    ];
+    const fromFlagged = conflictOf(
+      {
+        memory: fly,
+        other: railway,
+        flagged_ref: "M-0431",
+        decision_ref: "M-0174",
+        link: link({}),
+        receipts: [proposed, keptBy],
+        options,
+      },
+      ME,
+    );
+    expect(fromFlagged).toMatchObject({
+      question: null,
+      area: "deploy target",
+      suggested: null,
+      recompiles: null,
+      kept: {
+        ref: "M-0174",
+        version: 1,
+        why: "Simpler previews.",
+        by: { kind: "person", self: false },
+        at: "2026-09-18T22:05:00Z",
+      },
+      proposal: {
+        ref: "M-0431",
+        version: 2,
+        by: { kind: "agent", agent: "codex" },
+        evidence: { code: "infra/fly/api.toml" },
+        session: "9f1c",
+      },
+    });
+    expect(fromFlagged.options.map((o) => [o.kind, o.allowed])).toEqual([
+      ["proposal", true],
+      ["kept", true],
+      ["both", false],
+      ["open", true],
+    ]);
+    expect(fromFlagged.options[0].decision).toBe(fly.statement);
+    expect(fromFlagged.options[2]).toMatchObject({
+      refusal: { code: "decision_needs_web" },
+      narrowed: { proposal: fly.statement, kept: railway.statement },
+    });
+    // Asked from the decision's side, keep_this means the decision stays.
+    const fromKept = conflictOf(
+      {
+        memory: railway,
+        other: fly,
+        flagged_ref: "M-0431",
+        decision_ref: "M-0174",
+        link: link({ direction: "in", ref: "M-0431" }),
+        receipts: [proposed, keptBy],
+        options: [
+          { ...options[1], choice: "keep_this" },
+          { ...options[0], choice: "keep_other" },
+          options[2],
+          options[3],
+        ],
+      },
+      ME,
+    );
+    expect(fromKept.kept.ref).toBe("M-0174");
+    expect(fromKept.options[0]).toMatchObject({
+      kind: "proposal",
+      effects: [
+        { ref: "M-0431", change: "kept" },
+        { ref: "M-0174", change: "superseded" },
+      ],
+    });
+    expect(choiceFor("proposal")).toBe("keep_this");
+  });
+});
+
+describe("the judge's folds on a memory's page", () => {
+  const NOW = new Date("2026-10-05T22:00:00Z");
+  const fold = receipt({
+    id: "r-fold",
+    seq: 2,
+    action: "merged",
+    actor_kind: "memax",
+    agent: undefined,
+    via: "system",
+    occurred_at: "2026-10-05T21:33:00Z",
+    source: { kind: "memory", ref: "M-0310" },
+    reason: "A near-verbatim repeat of M-0310.",
+  });
+
+  it("says what it was folded into, with Undo inside the 14 days", () => {
+    const record = recordOf(
+      {
+        memory: memory({ ref: "M-0446", state: "merged", lifecycle: "merged" }),
+        versions: [],
+        receipts: { items: [fold, receipt()], has_more: false },
+      },
+      ME,
+      { now: NOW },
+    );
+    expect(record.lineage.at(-1)).toMatchObject({
+      action: "merged",
+      into: "M-0310",
+      by: { kind: "memax" },
+      undo: { receipt: "r-fold", until: "2026-10-19T21:33:00.000Z" },
+    });
+    // Fourteen days on, it can't be undone.
+    const late = recordOf(
+      {
+        memory: memory({ ref: "M-0446", state: "merged", lifecycle: "merged" }),
+        versions: [],
+        receipts: { items: [fold], has_more: false },
+      },
+      ME,
+      { now: new Date("2026-10-20T00:00:00Z") },
+    );
+    expect(late.lineage.at(-1)?.undo).toBeNull();
+  });
+
+  it("offers no Undo once the fold was undone", () => {
+    const undid = receipt({
+      id: "r-undid",
+      seq: 3,
+      action: "undid",
+      actor_kind: "person",
+      actor_id: ME,
+      source: { kind: "receipt", ref: "r-fold" },
+    });
+    const record = recordOf(
+      {
+        memory: memory({ ref: "M-0446" }),
+        versions: [],
+        receipts: { items: [undid, fold, receipt()], has_more: false },
+      },
+      ME,
+      { now: NOW },
+    );
+    expect(record.lineage.find((e) => e.action === "merged")?.undo).toBeNull();
+  });
+
+  it("lists what the judge folded into a kept memory, from its links", async () => {
+    const client = fakeClient();
+    client.v2.memories.get.mockImplementation((ref: string) =>
+      Promise.resolve(
+        ref === "M-0310"
+          ? {
+              memory: memory({
+                ref,
+                state: "kept",
+                lifecycle: "kept",
+                links: [
+                  {
+                    id: "l1",
+                    kind: "merged_into",
+                    direction: "in",
+                    memory_id: "m-fold",
+                    ref: "M-0446",
+                    receipt_id: "r-fold",
+                    created_at: new Date().toISOString(),
+                  },
+                ],
+              }),
+              versions: [],
+              receipts: { items: [], has_more: false },
+            }
+          : {
+              memory: memory({
+                ref,
+                statement: "Reviews need a member who isn't the author.",
+                state: "merged",
+                lifecycle: "merged",
+              }),
+              versions: [],
+              receipts: {
+                items: [receipt({ agent: "codex" }), fold],
+                has_more: false,
+              },
+            },
+      ),
+    );
+    const memories = createSdkMemories(client as never, () => ME);
+    const record = await memories.get({ space: v2, ref: "M-0310" });
+    expect(record?.merged).toMatchObject({
+      total: 1,
+      notes: [
+        {
+          ref: "M-0446",
+          statement: "Reviews need a member who isn't the author.",
+          by: { kind: "agent", agent: "codex" },
+          undo: { receipt: "r-fold" },
+        },
+      ],
+    });
   });
 });
 
@@ -452,5 +984,33 @@ describe("the SDK's Memories", () => {
     );
     const memories = createSdkMemories(client as never, () => ME);
     expect(await memories.get({ space: v2, ref: "M-9999" })).toBeNull();
+  });
+
+  it("reads an edit, then keep, saved for the judge (judge_pending)", async () => {
+    const client = fakeClient();
+    client.v2.memories.edit.mockResolvedValueOnce({
+      outcome: "proposed",
+      policy: { effect: "propose", code: "judge_pending", message: "Saved." },
+      memory: memory({ ref: "M-0430", version: 2 }),
+      receipts: [receipt({ id: "r-edit", action: "edited" })],
+    });
+    const memories = createSdkMemories(client as never, () => ME);
+    const saved = await memories.edit({
+      space: v2,
+      ref: "M-0430",
+      version: 1,
+      statement: "New words.",
+      keep: true,
+      idempotencyKey: "k5",
+    });
+    // Saved in place (not a new proposal), undoable as an edit, not kept.
+    expect(saved).toEqual({
+      ref: "M-0430",
+      outcome: "edited",
+      version: 2,
+      recompiled: null,
+      receipt: "r-edit",
+      judgePending: true,
+    });
   });
 });

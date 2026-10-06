@@ -196,13 +196,18 @@ func (s *Server) applyAnswer(ctx context.Context, sp space, p *v2api.Principal, 
 	}
 	out, err := s.ledger.Apply(ctx, cmd)
 	var te *ledger.TransitionError
+	var ic *ledger.InConflictError
 	switch {
-	case errors.As(err, &te), errors.Is(err, ledger.ErrEditClash):
+	case errors.As(err, &te), errors.As(err, &ic), errors.Is(err, ledger.ErrEditClash):
 		return leave(": it changed in Review in the meantime")
 	case err != nil:
 		return s.ledgerError(ctx, err)
 	case out.Outcome == ledger.OutcomeRefused:
 		return leave(". " + strings.TrimSuffix(out.Policy.Message, "."))
+	case out.Policy.Code == policy.CodeJudgePending:
+		// The person's new words touch a decision in force: saved, and
+		// left for Review once Memax has checked them (rule 11).
+		return leave(": your edit is saved, and Memax checks it against the decision in force before anyone keeps it")
 	}
 	who := "you"
 	if p.Connection != nil {

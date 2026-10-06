@@ -3,6 +3,7 @@
 // memax 是一个有温度的记忆伙伴，不是冰冷的数据库
 // 语气：温暖、简洁、稍微俏皮
 import type { Translations } from "./en";
+import { ledgerZh } from "./ledger/zh";
 
 export const zh: Translations = {
   common: {
@@ -3663,4 +3664,5 @@ export const zh: Translations = {
       },
     },
   },
+  ledger: ledgerZh,
 };

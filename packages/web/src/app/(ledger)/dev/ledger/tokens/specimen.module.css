@@ -1,0 +1,289 @@
+/* /dev/ledger/tokens: the token and type specimen. Tokens only. */
+
+.page {
+  box-sizing: border-box;
+  min-height: 100dvh;
+  padding: var(--space-2);
+  background: var(--paper);
+}
+
+.sheet {
+  box-sizing: border-box;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: var(--space-12) var(--space-8) var(--space-16);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--sheet);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-10);
+}
+
+.breadcrumb {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-3);
+}
+
+.title {
+  margin: 0 0 var(--space-2);
+  color: var(--ink);
+}
+
+.lede {
+  max-width: var(--measure);
+  margin: 0;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--well);
+}
+
+.segment {
+  box-sizing: border-box;
+  height: var(--control-sm);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.segment:hover {
+  background: var(--hover);
+}
+
+.segment[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--ink);
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-sm);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.link:hover {
+  background: var(--hover);
+}
+
+.section {
+  margin-top: var(--space-12);
+}
+
+.sectionTitle {
+  margin: 0 0 var(--space-4);
+  color: var(--ink);
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-6);
+}
+
+.panel {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--sheet);
+  color: var(--ink);
+}
+
+.panelLabel {
+  margin: 0 0 var(--space-4);
+  color: var(--ink-3);
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.swatchRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.swatch {
+  flex: none;
+  width: var(--control-md);
+  height: var(--control-md);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.tokenText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tokenName {
+  color: var(--ink);
+}
+
+.tokenValue {
+  overflow: hidden;
+  color: var(--ink-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shadows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.shadowCard {
+  box-sizing: border-box;
+  width: 200px;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+
+.typeList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.typeRow {
+  display: grid;
+  grid-template-columns: var(--receipt-rail) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: baseline;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.typeRow:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.typeMeta {
+  display: flex;
+  flex-direction: column;
+}
+
+.metrics {
+  color: var(--ink-3);
+}
+
+.typeSample {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.scales {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-6);
+}
+
+.scaleList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scaleRow {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.bar {
+  height: var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--ink-3);
+}
+
+.radiusBox {
+  width: 64px;
+  height: var(--control-lg);
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+}
+
+.controlBox {
+  box-sizing: border-box;
+  width: 120px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.measures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+.states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-8);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink);
+}
+
+.note {
+  margin: 0;
+  color: var(--ink-3);
+}

@@ -1,19 +1,17 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { Inter, JetBrains_Mono } from "next/font/google";
 import { cn } from "@memaxlabs/ui/utils";
 import { Providers } from "./providers";
 
-// Inter (sans) + JetBrains Mono (mono). Loaded via next/font/google so they
-// land in the initial HTML without FOUT. The :root fallback chain in
-// globals.css kicks in only if these fail to load. See kitchen §12 Typography.
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-});
+// The V1 document: <html>/<body>, globals.css, metadata and the V1
+// providers. Shared by the (v1) root layout and by
+// app/global-not-found.tsx, which renders unmatched URLs outside every
+// root layout and so has to bring its own document. The fonts are passed
+// in (v1-fonts.ts for the layout, not-found-fonts.ts for the 404) so
+// this module imports no next/font. Frozen with the rest of V1; deleted
+// at cutover.
 
-export const viewport: Viewport = {
+export const v1Viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -22,7 +20,7 @@ export const viewport: Viewport = {
   themeColor: "#FAFAFA",
 };
 
-export const metadata: Metadata = {
+export const v1Metadata: Metadata = {
   title: "memax — your memory, every AI",
   description:
     "Save what you learn. Search what you know. memax makes your memory portable across every AI agent — shared, team-ready, always available.",
@@ -38,15 +36,18 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export function V1Document({
+  fontVariables,
   children,
 }: {
+  /** next/font variable classes for --font-sans and --font-mono. */
+  fontVariables: string;
   children: React.ReactNode;
 }) {
   return (
     <html
       lang="en"
-      className={cn("font-sans", inter.variable, jetbrainsMono.variable)}
+      className={cn("font-sans", fontVariables)}
       suppressHydrationWarning
     >
       <body

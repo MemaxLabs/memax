@@ -1,5 +1,11 @@
 /**
- * Next.js middleware — legacy path normalization.
+ * Next.js proxy (Next 16's name for middleware): V1/V2 UI gating plus
+ * V1 legacy path normalization.
+ *
+ * V2 gating (see lib/ui-gate.ts, the single definition of the V2 path
+ * set): requests for V2 Ledger paths without the `memax_ui=v2` cookie
+ * redirect to the V1 home. Every other path falls through to the V1
+ * rules below unchanged.
  *
  * Plan 24 phase 4b retired v1 across the board. Legacy `/memories`
  * paths now unconditionally redirect to their v2 equivalents so URLs
@@ -13,6 +19,9 @@
  *                              isn't server-readable, so redirecting
  *                              here could only guess `personal`)
  *   /brain, /agents, …        (unchanged — not hub-scoped)
+ *
+ * (Plan 24's "v1"/"v2" are the old hub-shell versions, not the Memax
+ * V2 Ledger UI gated above.)
  *
  * `personal` is the safe default redirect target because every user
  * has a personal hub (auto-created at signup). Last-active-hub-aware
@@ -33,17 +42,18 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { decideUiGate, UI_COOKIE } from "@/lib/ui-gate";
 
-// Path predicates — minimal regex set (don't import lib/route-helpers
-// because middleware runs in the Edge runtime which has a tighter
-// import surface and we want this file to be self-contained / cheap).
+// Path predicates — minimal regex set. Keep this file cheap: it runs
+// before every matched request. (lib/ui-gate is pure and
+// dependency-free for the same reason.)
 const V1_MEMORIES_OVERVIEW_RE = /^\/memories\/?$/;
 const V1_MEMORIES_TOPIC_RE = /^\/memories\/topics\/([^/]+)\/?$/;
 
 // Session-presence fast path (see lib/session-presence.ts). Name is
-// duplicated here rather than imported to keep the middleware
-// self-contained for the Edge runtime; lib/session-presence.ts and
-// middleware.test.ts both pin it.
+// duplicated here rather than imported to keep the proxy
+// self-contained; lib/session-presence.ts and proxy.test.ts both pin
+// it.
 //
 // /register is deliberately NOT in this set: invite links arrive as
 // /register?invite=TOKEN and a redirect would swallow the token
@@ -67,8 +77,23 @@ function v1ToV2Path(pathname: string): string | null {
   return null;
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const hasSession =
+    request.cookies.get(SESSION_PRESENCE_COOKIE)?.value === "1";
+
+  // V2 gating first: a V2 path without the opt-in cookie goes to the
+  // V1 home. Query strings are dropped; they belong to the V2 route.
+  const gate = decideUiGate({
+    pathname,
+    uiCookie: request.cookies.get(UI_COOKIE)?.value,
+    hasSession,
+  });
+  if (gate.action === "redirect") {
+    return NextResponse.redirect(
+      new URL(gate.pathname, request.nextUrl.origin),
+    );
+  }
 
   // Silent session restore. When the session-presence cookie says this
   // browser already has a session (see lib/session-presence.ts), the
@@ -84,7 +109,7 @@ export function middleware(request: NextRequest) {
   if (
     SIGNED_OUT_ENTRY_PATHS.has(pathname) &&
     request.nextUrl.search === "" &&
-    request.cookies.get(SESSION_PRESENCE_COOKIE)?.value === "1"
+    hasSession
   ) {
     return NextResponse.redirect(new URL("/home", request.nextUrl.origin));
   }
@@ -103,10 +128,28 @@ export function middleware(request: NextRequest) {
   return NextResponse.redirect(redirectUrl);
 }
 
-// Match the legacy /memories tree plus the signed-out entry surfaces
-// (/, /login) for the session-presence fast path. Other paths (/h/*,
-// /brain, /agents, /pulse, /register, /api/*, _next, etc.) skip the
-// middleware entirely so it stays cheap.
+// Static on purpose (Next reads it at build time, so it can't import
+// lib/ui-gate). It matches the V1 paths above plus every V2 path in
+// lib/ui-gate.ts; proxy.test.ts fails if the two drift. Everything
+// else (/h/*, /brain, /agents, /pulse, /register, /api/*, _next, …)
+// skips the proxy entirely so it stays cheap.
+//
+// The space pattern lists lib/ui-gate's V2_SPACE_PLACES.
 export const config = {
-  matcher: ["/", "/login", "/memories", "/memories/:path*"],
+  matcher: [
+    // V1: signed-out entry surfaces and the legacy /memories tree
+    "/",
+    "/login",
+    "/memories",
+    "/memories/:path*",
+    // V2 Ledger areas
+    "/signin/:path*",
+    "/device/:path*",
+    "/setup/:path*",
+    "/join/:path*",
+    "/settings/:path+",
+    "/dev/ledger/:path*",
+    // V2 spaces: /[space]/<place>/…
+    "/:space/:place(today|review|brief|memories|handoffs|agents|decisions|dream|activity|search|settings)/:path*",
+  ],
 };

@@ -1,4 +1,5 @@
 // English — source of truth. All keys must exist in every locale.
+import { ledgerEn } from "./ledger/en";
 export const en = {
   common: {
     retry: "Retry",
@@ -3948,6 +3949,8 @@ export const en = {
       },
     },
   },
+  // V2 (Ledger) namespaces live in ./ledger/ so V1 can be deleted at cutover.
+  ledger: ledgerEn,
 } as const;
 
 // Recursively widen string literals to `string` so other locales can use different values

@@ -4,7 +4,12 @@ import { Menu } from "@base-ui/react/menu";
 import type { NavItem, NavRailProps } from "@memaxlabs/ledger";
 import { useLocale } from "@/i18n";
 import { statusLabel, statusState } from "@/lib/v2/copy";
-import type { SpaceOverview, SpaceSummary, Viewer } from "@/lib/v2/data/types";
+import {
+  waitingOnYou,
+  type SpaceOverview,
+  type SpaceSummary,
+  type Viewer,
+} from "@/lib/v2/data/types";
 import { useKeycap } from "@/lib/v2/keymap/react";
 import {
   placeHref,
@@ -55,10 +60,12 @@ export function useRailProps({
       id: place,
       href: placeHref(space.slug, routeOfRail(place)),
     };
-    if (place === "review" && overview?.waiting) {
-      item.count = overview.waiting;
+    // Review's memories and the questions agents wait on, both in Review.
+    const waiting = overview ? waitingOnYou(overview) : 0;
+    if (place === "review" && waiting) {
+      item.count = waiting;
       item.tone = "pending";
-      item.countLabel = reviewLabel(overview.waiting);
+      item.countLabel = reviewLabel(waiting);
     }
     if (place === "handoffs" && overview?.openHandoffs) {
       item.count = overview.openHandoffs;

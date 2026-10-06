@@ -1,4 +1,5 @@
 import { MemaxError, refusalOf } from "memax-sdk";
+import { GATE_ENDS, type GateEnd } from "./gates";
 
 /**
  * Why a command (keep, reject, edit) didn't go through, normalised from
@@ -12,8 +13,11 @@ export type CommandFailure =
   | { kind: "refused"; code: string | null; message: string | null }
   /** 412 `edit_clash`: the memory changed since the person read it. */
   | { kind: "clash"; currentVersion: number | null }
-  /** 409 `invalid_transition`: already decided, elsewhere or just now. */
-  | { kind: "decided" }
+  /**
+   * 409 `invalid_transition`: already decided, elsewhere or just now. A
+   * decision gate that ended says how (`details.status`).
+   */
+  | { kind: "decided"; status?: GateEnd }
   | { kind: "not-found" }
   | { kind: "rate-limited"; retryAfter: number | null }
   /**
@@ -125,7 +129,12 @@ export function toFailure(err: unknown): CommandFailure {
         with: typeof ref === "string" && ref ? ref : null,
       };
     }
-    if (err.code === "invalid_transition") return { kind: "decided" };
+    if (err.code === "invalid_transition") {
+      const status = detail(err, "status");
+      return GATE_ENDS.includes(status as GateEnd)
+        ? { kind: "decided", status: status as GateEnd }
+        : { kind: "decided" };
+    }
     if (err.code === "not_found" || err.status === 404) {
       return { kind: "not-found" };
     }

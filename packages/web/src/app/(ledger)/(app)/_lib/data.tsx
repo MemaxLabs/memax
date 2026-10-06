@@ -2,12 +2,13 @@
 
 import { createContext, use, useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useAuth, type User } from "@/lib/auth";
+import { getAccessToken, useAuth, type User } from "@/lib/auth";
 import { getMemaxClient } from "@/lib/memax-client";
 import { demoSource } from "@/lib/v2/data/demo-source";
 import { createSdkSource } from "@/lib/v2/data/sdk-source";
 import type { LedgerDataSource } from "@/lib/v2/data/source";
 import type { SpaceSummary, Viewer } from "@/lib/v2/data/types";
+import { webSessionOf } from "@/lib/v2/web-session";
 
 /**
  * Which source the frame reads (decided once, in (app)/layout.tsx):
@@ -52,6 +53,8 @@ export function LedgerDataProvider({
         : createSdkSource({
             client: getMemaxClient(),
             viewer: user ? viewerFromUser(user) : null,
+            // D15: whether this session was issued to the web app.
+            webSession: () => webSessionOf(getAccessToken()),
           }),
     [mode, user],
   );

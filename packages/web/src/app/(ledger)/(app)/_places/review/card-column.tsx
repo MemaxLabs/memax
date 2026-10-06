@@ -3,12 +3,14 @@
 import { AgentStamp, Button, Receipt } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { formatAgo } from "@/lib/v2/copy";
+import { gateStatusAt } from "@/lib/v2/data/gates";
 import { useKeycap } from "@/lib/v2/keymap/react";
-import { clashTitle } from "@/lib/v2/records-copy";
+import { clashTitle, expiryText } from "@/lib/v2/records-copy";
 import { EditClash } from "../../_components/edit-clash";
 import { StatementEditor } from "../../_components/statement-editor";
 import type { RecordsView } from "../records-view";
 import { FlagCard } from "./flag-card";
+import { GateCard } from "./gate-card";
 import { compareHref } from "./hrefs";
 import { ProposalCard } from "./proposal-card";
 import { RejectPanel } from "./reject-panel";
@@ -31,14 +33,67 @@ export function CardColumn({
 }) {
   const { l, rc, space, viewer, copy, now } = view;
   const r = l.review;
-  const { selected: item, index, visible, card, state } = review;
+  const { selected: item, index, entries, card, state } = review;
   const keepChord = useKeycap("command.keep");
 
-  if (review.queue.data === undefined) {
+  if (review.queue.data === undefined || review.gatesLoading) {
     return (
       <section className={styles.cardPane} aria-busy="true">
         <div className={styles.cardColumn}>
           <CardSkeleton />
+        </div>
+      </section>
+    );
+  }
+  const position = (editing: boolean) =>
+    interpolate(editing ? r.positionEditing : r.position, {
+      space: space.name,
+      n: index + 1,
+      total: entries.length,
+    });
+  const pager = (
+    <div className={styles.pager}>
+      <Button
+        variant="quiet"
+        size="sm"
+        disabled={index <= 0}
+        onClick={() => review.move(-1)}
+      >
+        {r.previous}
+      </Button>
+      <Button
+        variant="quiet"
+        size="sm"
+        disabled={index >= entries.length - 1}
+        onClick={() => review.move(1)}
+      >
+        {r.next}
+      </Button>
+    </div>
+  );
+
+  const gate = review.selectedGate;
+  if (gate) {
+    const waiting = gateStatusAt(gate, now) === "waiting";
+    const asked = [
+      gate.session
+        ? interpolate(r.gate.session, { session: gate.session })
+        : null,
+      waiting
+        ? expiryText(rc, gate.expiresAt, now, view.timeZone, view.locale)
+        : null,
+    ].filter(Boolean);
+    return (
+      <section className={styles.cardPane} aria-label={copy.review.title}>
+        <div className={styles.cardColumn}>
+          <div className={styles.metaRow}>
+            <span className="mx-meta">{position(false)}</span>
+            {asked.length > 0 ? (
+              <span className="mx-meta">{asked.join(" · ")}</span>
+            ) : null}
+          </div>
+          <GateCard key={gate.ref} view={view} review={review} gate={gate} />
+          {pager}
         </div>
       </section>
     );
@@ -53,11 +108,6 @@ export function CardColumn({
     mode.kind === "rejecting" && mode.ref === item.ref ? mode : null;
   const href = compareHref(space.slug, item);
   const name = view.name(item.by);
-  const position = interpolate(editing ? r.positionEditing : r.position, {
-    space: space.name,
-    n: index + 1,
-    total: visible.length,
-  });
   const stamp = view.stamp(item.by);
 
   let body;
@@ -163,7 +213,7 @@ export function CardColumn({
     <section className={styles.cardPane} aria-label={copy.review.title}>
       <div className={styles.cardColumn}>
         <div className={styles.metaRow}>
-          <span className="mx-meta">{position}</span>
+          <span className="mx-meta">{position(Boolean(editing))}</span>
           {item.session && item.action !== "flagged" ? (
             <span className="mx-meta">
               {interpolate(r.session, { session: item.session })}
@@ -171,24 +221,7 @@ export function CardColumn({
           ) : null}
         </div>
         {body}
-        <div className={styles.pager}>
-          <Button
-            variant="quiet"
-            size="sm"
-            disabled={index <= 0}
-            onClick={() => review.move(-1)}
-          >
-            {r.previous}
-          </Button>
-          <Button
-            variant="quiet"
-            size="sm"
-            disabled={index >= visible.length - 1}
-            onClick={() => review.move(1)}
-          >
-            {r.next}
-          </Button>
-        </div>
+        {pager}
         <Touches
           view={view}
           item={item}

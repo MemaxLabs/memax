@@ -135,6 +135,32 @@ export function railTime(
   return formatShortDate(then, timeZone, locale);
 }
 
+/**
+ * When a decision gate stops waiting: "Expires in 12 min" within the
+ * hour, "Expires today at 18:00", "Expires tomorrow at 13:40", then
+ * "Expires Oct 12", in the viewer's zone.
+ */
+export function expiryText(
+  copy: RecordsCopy,
+  iso: string,
+  now: Date,
+  timeZone: string,
+  locale: Locale,
+): string {
+  const e = copy.expires;
+  const then = new Date(iso);
+  const minutes = Math.ceil((then.getTime() - now.getTime()) / 60000);
+  if (minutes < 60) return interpolate(e.minutes, { n: Math.max(1, minutes) });
+  const time = formatClock(iso, timeZone, locale);
+  if (sameDay(then, now, timeZone)) return interpolate(e.today, { time });
+  if (sameDay(then, new Date(now.getTime() + 86_400_000), timeZone)) {
+    return interpolate(e.tomorrow, { time });
+  }
+  return interpolate(e.date, {
+    date: formatShortDate(then, timeZone, locale),
+  });
+}
+
 /** "Oct 2, 10:41" / "10月2日 10:41": lineage and the kept receipt. */
 export function dateTime(
   copy: RecordsCopy,
@@ -184,8 +210,14 @@ export function noteText(
   }
 }
 
-/** Which command failed, for the first sentence. */
-export type FailedCommand = "keep" | "reject" | "edit" | "resolve";
+/** Which command failed, for the first sentence. `answer` and `withdraw` are a decision gate's. */
+export type FailedCommand =
+  | "keep"
+  | "reject"
+  | "edit"
+  | "resolve"
+  | "answer"
+  | "withdraw";
 
 function refusalReason(
   refused: Record<string, string>,
@@ -216,21 +248,40 @@ export function failureText(
     command,
     ref,
     space,
+    agent,
     locale,
-  }: { command: FailedCommand; ref: string; space: string; locale: Locale },
+  }: {
+    command: FailedCommand;
+    ref: string;
+    space: string;
+    /** A decision gate's: the agent that asked, by name. */
+    agent?: string;
+    locale: Locale;
+  },
 ): string {
   const f = copy.failure;
   const lead = interpolate(f[command], { ref });
+  const who = agent ?? copy.actor.teammate;
   let reason: string;
   switch (failure.kind) {
-    case "refused":
-      reason = refusalReason(
-        f.refused as Record<string, string>,
-        failure,
-        { space, ref },
-        f.refused,
-      );
+    case "refused": {
+      // Answering follows Keep's rules for a decision, worded for answering.
+      const answerCode =
+        command === "answer" && failure.code ? failure.code : null;
+      const answering =
+        answerCode && answerCode in f.refusedAnswer
+          ? f.refusedAnswer[answerCode as keyof typeof f.refusedAnswer]
+          : null;
+      reason = answering
+        ? interpolate(answering, { space, ref })
+        : refusalReason(
+            f.refused as Record<string, string>,
+            failure,
+            { space, ref },
+            f.refused,
+          );
       break;
+    }
     case "rate-limited":
       reason =
         failure.retryAfter !== null
@@ -249,7 +300,10 @@ export function failureText(
       reason = f.unreachable;
       break;
     case "decided":
-      reason = f.decided;
+      // A decision gate says how it ended.
+      reason = failure.status
+        ? interpolate(f.ended[failure.status], { agent: who })
+        : f.decided;
       break;
     case "not-found":
       reason = f.notFound;

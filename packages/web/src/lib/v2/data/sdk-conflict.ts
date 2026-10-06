@@ -80,7 +80,8 @@ function sideOf(
     at: receipt?.occurred_at ?? memory.created_at,
     why: memory.decision?.why?.trim() || null,
     source: role === "kept" ? (sources[0]?.ref ?? null) : null,
-    // PLACEHOLDER: reach (files and reads) isn't served yet.
+    // PLACEHOLDER: the conflict carries no reach (files and reads); the
+    // kept side's reads are on its own GET /v2/memories/{ref}.
     reaches: null,
     evidence:
       role === "proposal" && file

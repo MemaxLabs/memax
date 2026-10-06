@@ -41,7 +41,8 @@ export const ledgerBriefEn = {
     readThisWeek: "Read this week",
     reads: "{n} reads",
     readsOne: "1 read",
-    readsLater: "Reads show here once agents report what they load.",
+    readsLater:
+      "Reads of the Brief aren't counted by agent yet. Activity lists every read.",
     sources: "Sources",
     noSources: "Nothing is cited yet.",
   },

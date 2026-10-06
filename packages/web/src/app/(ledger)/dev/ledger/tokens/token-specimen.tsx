@@ -3,7 +3,8 @@
 import type { Translations } from "@/i18n/locales/en";
 import { useLocale } from "@/i18n";
 import type { Theme } from "../../../_lib/theme";
-import { ThemeControl } from "./theme-control";
+import { Button } from "@memaxlabs/ledger";
+import { ThemeControl } from "../../../_components/theme-control";
 import styles from "./specimen.module.css";
 
 type DevTokensCopy = Translations["ledger"]["devTokens"];
@@ -43,10 +44,11 @@ export function TokenSpecimen({ data }: { data: SpecimenData }) {
             <p className={`ui ${styles.lede}`}>{copy.lede}</p>
           </div>
           <div className={styles.controls}>
-            <ThemeControl />
-            <a href="/dev/ui?v=1" className={`ui-sm ${styles.link}`}>
+            <ThemeControl size="sm" />
+            {/* A plain anchor: /dev/ui is a route handler, not a page. */}
+            <Button size="sm" render={<a href="/dev/ui?v=1" />}>
               {copy.switchToV1}
-            </a>
+            </Button>
           </div>
         </header>
 

@@ -8,7 +8,7 @@ import {
 
 // Keyboard smoke test of the dev UI toggle: the memax_ui gate, the
 // /dev/ui switch, and the specimen's theme control and V1 link, driven
-// with Tab, Enter and Space only.
+// with Tab, the arrow keys and Enter only.
 
 skipWithoutBrowser();
 
@@ -31,23 +31,27 @@ test("switch to V2, change theme and switch back, by keyboard", async ({
     page.getByRole("heading", { level: 1, name: "Tokens and type" }),
   ).toBeVisible();
 
+  // Paper / Carbon / System is a Ledger Segmented: one tab stop (the
+  // checked option), arrow keys to choose.
   const html = page.locator("html");
-  const carbon = page.getByRole("button", { name: "Carbon" });
-  await tabTo(page, carbon);
-  await page.keyboard.press("Enter");
+  const carbon = page.getByRole("radio", { name: "Carbon" });
+  const system = page.getByRole("radio", { name: "System" });
+  await expect(system).toHaveAttribute("aria-checked", "true");
+  await tabTo(page, system);
+  await page.keyboard.press("ArrowLeft");
+  await expect(carbon).toBeFocused();
   await expect(html).toHaveAttribute("data-theme", "dark");
-  await expect(carbon).toHaveAttribute("aria-pressed", "true");
+  await expect(carbon).toHaveAttribute("aria-checked", "true");
   expect(await cookieValue(page, "memax_theme")).toBe("dark");
 
   // The choice survives a reload, applied before hydration.
   await page.reload();
   await expect(html).toHaveAttribute("data-theme", "dark");
-  await expect(carbon).toHaveAttribute("aria-pressed", "true");
+  await expect(carbon).toHaveAttribute("aria-checked", "true");
 
-  const system = page.getByRole("button", { name: "System" });
-  await tabTo(page, system);
-  await page.keyboard.press("Space");
-  await expect(system).toHaveAttribute("aria-pressed", "true");
+  await tabTo(page, carbon);
+  await page.keyboard.press("ArrowRight");
+  await expect(system).toHaveAttribute("aria-checked", "true");
   await expect(html).toHaveAttribute("data-theme", "light");
   expect(await cookieValue(page, "memax_theme")).toBeUndefined();
 

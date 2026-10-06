@@ -56,6 +56,13 @@ const FORBIDDEN_IMPORTS: [RegExp, string][] = [
   [/\(v1\)/, "the (v1) tree"],
 ];
 
+// @memaxlabs/ledger's own stylesheets: the components, and the preview
+// helpers (the /dev/ledger/components gallery only).
+const LEDGER_COMPONENT_CSS = new Set([
+  "@memaxlabs/ledger/ledger.css",
+  "@memaxlabs/ledger/previews.css",
+]);
+
 // Literal colours, written as hex, a colour function or a CSS name.
 const HEX_COLOUR =
   /(?<![\w&])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b/;
@@ -87,9 +94,24 @@ describe("(ledger) imports", () => {
       expect(
         spec.startsWith("./") ||
           spec.startsWith("../") ||
-          spec.startsWith("@memaxlabs/ledger-tokens"),
+          spec.startsWith("@memaxlabs/ledger-tokens") ||
+          LEDGER_COMPONENT_CSS.has(spec),
         spec,
       ).toBe(true);
+    }
+  });
+
+  it("only the component gallery imports the Ledger previews", () => {
+    // The previews are demo compositions (ledger README): never product code.
+    const users = ledgerCode.filter((file) =>
+      importSpecifiers(readFileSync(file, "utf8")).some((spec) =>
+        spec.startsWith("@memaxlabs/ledger/previews"),
+      ),
+    );
+    const gallery = path.join(ledgerDir, "dev", "ledger", "components");
+    expect(users.length).toBeGreaterThan(0);
+    for (const file of users) {
+      expect(file.startsWith(gallery + path.sep), rel(file)).toBe(true);
     }
   });
 });
@@ -131,7 +153,25 @@ describe("(ledger) TSX", () => {
       ),
     ])
     .map((m) => m[1]);
-  const allowed = new Set([...typeClasses, ...globalLedgerClasses]);
+  // State modifiers of mx- components ("mx-count is-pending"), as
+  // @memaxlabs/ledger's own stylesheets define them.
+  const ledgerStylesDir = path.join(
+    path.dirname(require.resolve("@memaxlabs/ledger/ledger.css")),
+    "styles",
+  );
+  const ledgerModifiers = readdirSync(ledgerStylesDir)
+    .filter((f) => f.endsWith(".css"))
+    .flatMap((f) => [
+      ...stripComments(
+        readFileSync(path.join(ledgerStylesDir, f), "utf8"),
+      ).matchAll(/\.(is-[a-z-]+)/g),
+    ])
+    .map((m) => m[1]);
+  const allowed = new Set([
+    ...typeClasses,
+    ...globalLedgerClasses,
+    ...ledgerModifiers,
+  ]);
 
   function staticClassNames(source: string): string[] {
     const chunks: string[] = [];
@@ -159,9 +199,12 @@ describe("(ledger) TSX", () => {
     expect(code).not.toMatch(V1_LOOK);
   });
 
-  it("knows the type styles (sanity)", () => {
+  it("knows the type styles and Ledger's state modifiers (sanity)", () => {
     expect(typeClasses).toEqual(
       expect.arrayContaining(["memory", "memory-proposed", "receipt", "ui"]),
+    );
+    expect(ledgerModifiers).toEqual(
+      expect.arrayContaining(["is-pending", "is-active"]),
     );
   });
 });

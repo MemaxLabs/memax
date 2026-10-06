@@ -975,6 +975,11 @@ export interface components {
             role: components["schemas"]["Role"];
             /** @description The repository the space compiles for, if any. */
             repository?: string;
+            /**
+             * Format: date-time
+             * @description When the space switched to the V2 record. Absent while it is on V1: there, agents' writes go to the V1 memory API, and V1 behaviour applies to every surface.
+             */
+            v2_enabled_at?: string;
         };
         DecisionOption: {
             label: string;

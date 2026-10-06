@@ -2054,6 +2054,13 @@ components:
         repository:
           description: The repository the space compiles for, if any.
           type: string
+        v2_enabled_at:
+          description: >-
+            When the space switched to the V2 record. Absent while it is on
+            V1: there, agents' writes go to the V1 memory API, and V1
+            behaviour applies to every surface.
+          type: string
+          format: date-time
 
     DecisionOption:
       type: object

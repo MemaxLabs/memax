@@ -1,0 +1,29 @@
+{
+  "name": "@memaxlabs/ledger-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Memax Ledger design tokens, type styles, fonts and marks",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": "./index.css",
+    "./index.css": "./index.css",
+    "./tokens.css": "./tokens.css",
+    "./type.css": "./type.css",
+    "./tokens.json": "./tokens.json",
+    "./fonts/*": "./fonts/*",
+    "./assets/*": "./assets/*"
+  },
+  "files": [
+    "index.css",
+    "tokens.css",
+    "type.css",
+    "tokens.json",
+    "fonts",
+    "assets",
+    "NOTICE"
+  ]
+}

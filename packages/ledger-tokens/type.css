@@ -1,0 +1,136 @@
+/* Memax Ledger type styles. Serif = what is remembered; sans = the interface; mono = receipts and IDs only; Gloock = the name only. */
+.wordmark {
+  font-family: var(--font-brand);
+  font-size: 48px;
+  line-height: 48px;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  font-style: normal;
+}
+.display {
+  font-family: var(--font-serif);
+  font-size: 56px;
+  line-height: 60px;
+  font-weight: 380;
+  letter-spacing: -0.022em;
+  font-style: normal;
+  font-variation-settings: "opsz" 72;
+}
+.title {
+  font-family: var(--font-serif);
+  font-size: 32px;
+  line-height: 38px;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  font-style: normal;
+  font-variation-settings: "opsz" 48;
+}
+.heading {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  font-style: normal;
+  font-variation-settings: "opsz" 24;
+}
+.memory-lg {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  line-height: 30px;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-style: normal;
+  font-variation-settings: "opsz" 20;
+}
+.memory {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-style: normal;
+  font-variation-settings: "opsz" 16;
+}
+.memory-proposed {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-style: italic;
+  font-variation-settings: "opsz" 16;
+}
+.prose {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 28px;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-style: normal;
+  font-variation-settings: "opsz" 17;
+}
+.ui-title {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  font-style: normal;
+}
+.ui {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-style: normal;
+}
+.ui-strong {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 550;
+  letter-spacing: 0;
+  font-style: normal;
+}
+.ui-sm {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-style: normal;
+}
+.label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  font-style: normal;
+}
+.receipt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-style: normal;
+}
+.receipt-strong {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+  font-style: normal;
+}
+.code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-style: normal;
+}

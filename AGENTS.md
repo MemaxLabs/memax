@@ -36,6 +36,7 @@ Read these before making architectural decisions or starting new features:
 - `docs/plans/09-config-sync.md` — agent config sync, knowledge extraction
 - `docs/plans/10-dreams-and-knowledge.md` — dream engine, knowledge organization, topics
 - `docs/plans/11-roadmap.md` — phased implementation roadmap with status
+- `docs/plans/25-memax-v2.md` — **V2 master plan** (on the `v2` branch of `memax-internal`). Read it before any V2 work. The V2 design handoff (PRD, Ledger design system, screens) is in `docs/v2/handoff/`, and the index is `docs/v2/README.md`
 
 ## Business Documents
 
@@ -139,6 +140,38 @@ When responding with project-specific claims, annotate source:
 - **Fallback (own knowledge)** — may be stale, will push to memax after
 - **Unknown** — need to read code or ask user
 
+## V2 (branch `v2`)
+
+V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2.md` (in `memax-internal`, branch `v2`) before any V2 work.** The founders accepted its decisions D1–D15 on 2026-10-06. Work follows the phases in its §12 and stops at each gate. The rules below override the V1 conventions for V2 code. V1 code is frozen (bug fixes only) and keeps its V1 rules until it is deleted at cutover.
+
+**The record**
+
+- **One write path.** Every change to the V2 record goes through `internal/ledger` (`Ledger.Apply(ctx, Command)`). No handler, worker, MCP tool or Dream phase writes V2 record tables directly.
+- **Receipts.** Every write carries a receipt in the same transaction, or the database refuses it (a deferred constraint trigger). Receipts never contain memory text, so Forget can purge words without rewriting history.
+- **Schema.** V2 tables live in the Postgres schema `v2`, with row-level security on every space-scoped table. The app role sets `app.space_ids` / `app.tenant_ids` per transaction, and explicit `space_id` filters stay as defence in depth.
+- **States.** A memory has a lifecycle (`proposed | kept | merged | faded | forgotten | rejected`) plus flags (`stale`, `conflict`). The displayed state is derived from both.
+- **IDs.** Display IDs (`M-0219`, `N-`, `H-`, `C-`, `R-`, `D-`, `B-`, `G-`) are per-tenant counters. Internal keys are uuidv7.
+- **Trust.** Agents propose and people keep. Autonomy (read / propose / write), roles, quarantine of external content and plan limits are decided in one place: `policy.Decide`. A memory's trust is the minimum of its sources, and Dream can't raise it.
+
+**API, MCP and CLI**
+
+- **API.** New endpoints go under `/v2`, spec-first in `packages/server/openapi/v2.yaml`. SDK types are generated from that spec. The `model.ApiResponse` envelope still applies. Commands need an `Idempotency-Key`, and edits need `If-Match`. `/v1` is frozen for old CLIs, and retired `/v1` routes answer 410 with a pointer.
+- **MCP.** All 17 V1 tool names keep working (both profiles), and remote and stdio parity still applies.
+- **CLI.** The install command is `npx memax-cli init`; the binary is `memax`.
+
+**UI (Ledger)**
+
+- **Where it lives.** V2 UI lives in `packages/web/src/app/(ledger)` and is built only from `packages/ledger` (components, `mx-` classes) and `packages/ledger-tokens` (tokens, fonts; Apache-2.0).
+- **Visual rules.**
+  - Every colour is a token (`var(--seal)`), never a literal.
+  - No Tailwind, glass, blur, gradients, sparkles or spinners in the `(ledger)` tree.
+  - Base UI (`@base-ui/react`) is allowed only as unstyled behaviour under `mx-` components.
+  - Fonts: Newsreader for memory text, Schibsted Grotesk for UI, IBM Plex Mono for receipts and IDs only, Gloock for the wordmark only.
+- **Copy.** Sentence case. No "AI", "magic", "smart", "delete", exclamation marks or emoji. The verbs are Keep, Edit, Reject, Forget, Remember, Review, Hand off, Compile and Verify. Every string goes through i18n, with `en` and `zh` both required.
+- **Spec.** The visual spec is the V2 handoff in `memax-internal/docs/v2/handoff/`: PNGs are the target, and the `.dc.html` files are the exact spec. Hardening notes are in `docs/v2/design-review.md`.
+
+**Local database without Docker.** Any Postgres 17 with pgvector, pg_trgm, pgcrypto and unaccent works. Point `TEST_DATABASE_URL` at a role that can `CREATE DATABASE`; `internal/testdb` clones a migrated template per test.
+
 ## Working in This Repo
 
 - This is a Turborepo monorepo. Changes often span multiple packages.
@@ -179,6 +212,7 @@ memax/
     docs-site/       # Fumadocs developer hub (docs.memax.app) — Apache-2.0
     sdk/             # memax-sdk — TypeScript client, published to npm — Apache-2.0
     cli/             # memax-cli — Commander.js CLI, published to npm — Apache-2.0
+    ledger-tokens/   # V2 Ledger tokens, type styles, fonts, marks (@memaxlabs/ledger-tokens) — Apache-2.0
 
 # Design docs (docs/plans, docs/infra, docs/design, ...) live in the sibling
 # private repo MemaxLabs/memax-internal — clone alongside this repo.
@@ -333,6 +367,8 @@ If you find yourself tempted to put admin code in the SDK, stop and ask why. The
 - **Nil means disabled** — if a dependency is nil (e.g., no API key set), the module's `New()` returns nil. Callers check for nil before using. This provides graceful degradation without feature flags.
 
 ### CSS / Styling & Design Language
+
+> **V1 only.** These rules apply to the frozen V1 web app. V2 UI follows the Ledger rules in the "V2 (branch `v2`)" section above.
 
 - **Read `docs/design/design-system.md` before writing ANY frontend code.** The Memax design language is specific and intentional — not generic shadcn.
 - Uses `@base-ui/react` primitives (NOT Radix), Tailwind CSS 4.0, oklch color tokens

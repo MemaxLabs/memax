@@ -19,6 +19,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
 )
 
 // These tests run the insert-only client and River's own migrations
@@ -84,6 +85,8 @@ func TestInsertClient_InsertsEveryKindOnItsQueue(t *testing.T) {
 		{ledger.CompileTargetArgs{TargetID: uuid.New(), SpaceID: uuid.New()}, ledger.QueueCompile, 5},
 		{compile.SweepArgs{}, ledger.QueueCompile, 1},
 		{ledger.JudgeArgs{MemoryID: uuid.New(), SpaceID: uuid.New(), Version: 1, Mode: ledger.JudgeProposal}, ledger.QueueJudge, 3},
+		{ledger.IndexArgs{MemoryID: uuid.New(), SpaceID: uuid.New(), Version: 1}, ledger.QueueIndex, 10},
+		{v2index.SweepArgs{}, ledger.QueueIndex, 1},
 	}
 
 	expected := make([]rivertest.ExpectedJob, 0, len(cases))

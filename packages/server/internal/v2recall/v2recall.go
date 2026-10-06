@@ -8,14 +8,17 @@
 //
 // # Lanes and fusion
 //
-// A query runs on lanes, each returning memory IDs in rank order, and the
-// lanes are fused with reciprocal rank fusion. Today the lanes are lexical:
-// full-text search over memories.search, and trigram word similarity over
-// the statement, so typos and partial words still match. Embeddings for
-// V2 memories aren't indexed yet; a vector lane plugs in as one more Lane
-// (exact, space-filtered KNN over memories.embedding), and a Reranker runs
-// after fusion when one is configured. The LLM query distiller is never on
-// this path.
+// A query runs on lanes, each returning memory IDs in rank order, fused
+// with weighted reciprocal rank fusion (V1's constants, fuse.go). The
+// lexical lanes are full-text search over memories.search, and trigram
+// word similarity over the statement, so typos and partial words still
+// match. With vectors (WithVectors), the query is embedded while the
+// lexical lanes run, and the vector lane is an exact, space-filtered KNN
+// over the memories' embeddings (ledger.Nearest); a query embedding that
+// misses its 120 ms deadline leaves the answer lexical, flagged in
+// Result.Retrieval. A reranker (WithReranker) reorders more than 8
+// candidates within 150 ms, else the RRF order stands. The LLM query
+// distiller is never on this path.
 package v2recall
 
 import (
@@ -33,6 +36,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
+	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/rerank"
 )
 
 // Hit is one memory a read returns.
@@ -72,11 +77,6 @@ type Lane interface {
 	Rank(ctx context.Context, tx pgx.Tx, q Query, limit int) ([]uuid.UUID, error)
 }
 
-// Reranker reorders fused hits, within its own deadline. Nil means none.
-type Reranker interface {
-	Rerank(ctx context.Context, query string, hits []Hit) ([]Hit, error)
-}
-
 // Query is a search.
 type Query struct {
 	Text   string
@@ -89,13 +89,28 @@ type Result struct {
 	Hits []Hit
 	// LexicalOnly: no lane matched by meaning.
 	LexicalOnly bool
+	// Retrieval says how the query path went (MCP's _meta).
+	Retrieval Retrieval
+}
+
+// Retrieval is what the with-query path did: whether the vector lane ran
+// (StageOK), was off, or fell back to lexical only because the query
+// embedding missed its deadline (StageTimeout) or failed (StageError); and
+// whether the reranker reordered, was skipped, off, or timed out and left
+// the RRF order.
+type Retrieval struct {
+	Vector string
+	Rerank string
+	// EmbedMS is how long the query embedding took (or waited).
+	EmbedMS int64
 }
 
 // Searcher runs queries on the ledger.
 type Searcher struct {
-	ledger *ledger.Ledger
-	lanes  []Lane
-	rerank Reranker
+	ledger  *ledger.Ledger
+	lanes   []Lane
+	vectors *Vectors
+	rerank  rerank.Reranker
 }
 
 // New returns a Searcher with the lexical lanes, or nil without a ledger.
@@ -106,11 +121,35 @@ func New(l *ledger.Ledger) *Searcher {
 	return &Searcher{ledger: l, lanes: []Lane{FullText{}, Trigram{}}}
 }
 
-// WithLane adds a lane (the vector lane, when V2 embeddings are indexed).
+// WithLane adds a lane.
 func (s *Searcher) WithLane(l Lane) *Searcher { s.lanes = append(s.lanes, l); return s }
 
-// WithReranker sets the reranker.
-func (s *Searcher) WithReranker(r Reranker) *Searcher { s.rerank = r; return s }
+// WithVectors adds the vector lane (nil: lexical only).
+func (s *Searcher) WithVectors(v *Vectors) *Searcher { s.vectors = v; return s }
+
+// WithReranker sets the reranker, V1's interface (nil: none).
+func (s *Searcher) WithReranker(r rerank.Reranker) *Searcher {
+	if isNilReranker(r) {
+		r = nil
+	}
+	s.rerank = r
+	return s
+}
+
+// isNilReranker catches a typed nil (a *rerank.Voyage that is nil because
+// it has no key) inside the interface.
+func isNilReranker(r rerank.Reranker) bool {
+	if r == nil {
+		return true
+	}
+	switch x := r.(type) {
+	case *rerank.Voyage:
+		return x == nil
+	case *rerank.Cohere:
+		return x == nil
+	}
+	return false
+}
 
 // MaxLimit bounds a query's results.
 const MaxLimit = 50
@@ -131,44 +170,48 @@ func (s *Searcher) Search(ctx context.Context, scope ledger.Scope, q Query) (Res
 	}
 	q.Limit = min(q.Limit, MaxLimit)
 	pool := max(q.Limit*4, 40)
-	var res Result
-	res.LexicalOnly = true
-	err := s.ledger.Read(ctx, scope, func(tx pgx.Tx) error {
-		scores := map[uuid.UUID]float64{}
+	res := Result{LexicalOnly: true, Retrieval: Retrieval{Vector: StageOff, Rerank: StageOff}}
+	if s.rerank != nil {
+		res.Retrieval.Rerank = StageSkipped
+	}
+	// The query embedding runs while the lexical lanes do (§5.11).
+	var pending *pendingQuery
+	if s.vectors != nil && q.Filter.Proposer == uuid.Nil {
+		pending = s.vectors.startQuery(ctx, q.Text)
+	}
+	var rankings []ranking
+	lexical := func(tx pgx.Tx) error {
+		found := map[uuid.UUID]bool{}
 		for _, lane := range s.lanes {
 			// A fallback lane (trigrams, for typos) runs only when the lanes
 			// before it found fewer than the results asked for: scoring
 			// every statement's trigrams is the expensive part of a recall.
-			if fb, ok := lane.(interface{ Fallback() bool }); ok && fb.Fallback() && len(scores) >= q.Limit {
+			if fb, ok := lane.(interface{ Fallback() bool }); ok && fb.Fallback() && len(found) >= q.Limit {
 				continue
 			}
 			ids, err := lane.Rank(ctx, tx, q, pool)
 			if err != nil {
 				return fmt.Errorf("v2recall: %s lane: %w", lane.Name(), err)
 			}
-			if lane.Name() == "vector" && len(ids) > 0 {
-				res.LexicalOnly = false
+			for _, id := range ids {
+				found[id] = true
 			}
-			for i, id := range ids {
-				scores[id] += 1 / float64(rrfK+i+1)
-			}
+			rankings = append(rankings, ranking{lane: lane.Name(), ids: ids})
 		}
-		if len(scores) == 0 {
+		return nil
+	}
+	// load fuses the lanes and reads the best hits: q.Limit of them, or
+	// the reranker's pool when it may rerank.
+	load := func(tx pgx.Tx) error {
+		ids, scores := fuse(rankings)
+		if len(ids) == 0 {
 			return nil
 		}
-		ids := make([]uuid.UUID, 0, len(scores))
-		for id := range scores {
-			ids = append(ids, id)
+		n := q.Limit
+		if s.rerank != nil && len(ids) > rerankMin {
+			n = max(n, s.rerank.TopN())
 		}
-		sort.Slice(ids, func(i, j int) bool {
-			if scores[ids[i]] != scores[ids[j]] {
-				return scores[ids[i]] > scores[ids[j]]
-			}
-			return ids[i].String() > ids[j].String() // uuidv7: newer first on ties
-		})
-		if len(ids) > q.Limit {
-			ids = ids[:q.Limit]
-		}
+		ids = ids[:min(n, len(ids))]
 		hits, err := loadHits(ctx, tx, q.Filter.Spaces, ids)
 		if err != nil {
 			return err
@@ -176,19 +219,73 @@ func (s *Searcher) Search(ctx context.Context, scope ledger.Scope, q Query) (Res
 		for i := range hits {
 			hits[i].Score = scores[hits[i].ID]
 		}
-		sort.SliceStable(hits, func(i, j int) bool { return hits[i].Score > hits[j].Score })
+		sort.SliceStable(hits, func(i, j int) bool {
+			if hits[i].Score != hits[j].Score {
+				return hits[i].Score > hits[j].Score
+			}
+			return hits[i].ID.String() > hits[j].ID.String()
+		})
 		res.Hits = hits
 		return nil
-	})
-	if err != nil {
-		return Result{}, err
 	}
-	if s.rerank != nil && len(res.Hits) > 8 {
-		if reranked, err := s.rerank.Rerank(ctx, q.Text, res.Hits); err == nil {
-			res.Hits = reranked
+
+	if pending == nil {
+		// Lexical only: one transaction, as before vectors existed.
+		if err := s.ledger.Read(ctx, scope, func(tx pgx.Tx) error {
+			if err := lexical(tx); err != nil {
+				return err
+			}
+			return load(tx)
+		}); err != nil {
+			return Result{}, err
+		}
+	} else {
+		// Two transactions, so no pooled connection sits idle in one while
+		// the embedding is on its way.
+		if err := s.ledger.Read(ctx, scope, lexical); err != nil {
+			return Result{}, err
+		}
+		vec, status, took := pending.wait()
+		res.Retrieval.Vector, res.Retrieval.EmbedMS = status, took.Milliseconds()
+		if status != StageOK {
+			s.vectors.cfg.Log.WarnContext(ctx, "v2recall: answering lexically", "metric", "v2_recall_lexical_fallback",
+				"reason", status, "embed_ms", took.Milliseconds(), "error", pending.err)
+		}
+		if err := s.ledger.Read(ctx, scope, func(tx pgx.Tx) error {
+			if vec != nil {
+				near, err := ledger.Nearest(ctx, tx, ledger.NearestQuery{Spaces: q.Filter.Spaces, Model: s.vectors.cfg.Model,
+					Vector: vec, Lifecycles: filterLifecycles(q.Filter), Kind: q.Filter.Kind, SkipSuperseded: true,
+					K: pool, Floor: s.vectors.cfg.Floor})
+				if err != nil {
+					return fmt.Errorf("v2recall: vector lane: %w", err)
+				}
+				ids := make([]uuid.UUID, len(near))
+				for i, n := range near {
+					ids[i] = n.ID
+				}
+				rankings = append(rankings, ranking{lane: laneVector, ids: ids})
+				res.LexicalOnly = len(ids) == 0
+			}
+			return load(tx)
+		}); err != nil {
+			return Result{}, err
 		}
 	}
+	if s.rerank != nil {
+		res.Hits, res.Retrieval.Rerank = rerankHits(ctx, s.rerank, q.Text, res.Hits)
+	}
+	if len(res.Hits) > q.Limit {
+		res.Hits = res.Hits[:q.Limit]
+	}
 	return res, nil
+}
+
+// filterLifecycles is the lifecycle a filter reads, for the vector lane.
+func filterLifecycles(f Filter) []lifecycle.Lifecycle {
+	if f.Lifecycle == "" {
+		return []lifecycle.Lifecycle{lifecycle.Kept}
+	}
+	return []lifecycle.Lifecycle{lifecycle.Lifecycle(f.Lifecycle)}
 }
 
 const hitSelect = `

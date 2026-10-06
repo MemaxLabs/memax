@@ -295,7 +295,8 @@ export interface components {
          */
         Via: "web" | "cli" | "mcp" | "review" | "api" | "email" | "slack" | "github" | "linear" | "import" | "system";
         /**
-         * @description For keeps: `human_web` when a person kept it on the web or in Review,
+         * @description For keeps, and a person's changes to an agent connection:
+         *     `human_web` when Memax verified the person was on the web app,
          *     `client_attested` when a client (the CLI, an agent) says a person did.
          * @enum {string}
          */
@@ -337,7 +338,7 @@ export interface components {
          */
         PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "confirm_in_agent";
         /** @enum {string} */
-        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "not_found" | "method_not_allowed" | "invalid_transition" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "unavailable";
+        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "unavailable";
         Space: {
             id: components["schemas"]["Id"];
             /** @description Who owns the space's record. Display IDs are unique per tenant. */
@@ -651,8 +652,8 @@ export interface components {
             };
         };
         /**
-         * @description `refused` (policy; see `details.policy`), `permission_denied` or
-         *     `impersonation_read_only`.
+         * @description `refused` (policy; see `details.policy`), `permission_denied`,
+         *     `impersonation_read_only` or `surface_unverified`.
          */
         Forbidden: {
             headers: {
@@ -767,8 +768,9 @@ export interface components {
         /**
          * @description The surface the command came through, for its receipt. Defaults to
          *     `api`. Every value here records a client-attested change; Memax
-         *     records a change as made by a person on the web only when it can
-         *     tell.
+         *     records a change as made by a person on the web (`via: web`) only
+         *     when the web app's proxy signed the request for a session issued to
+         *     the web app.
          */
         Via: "api" | "cli" | "mcp";
     };
@@ -863,8 +865,9 @@ export interface operations {
                 /**
                  * @description The surface the command came through, for its receipt. Defaults to
                  *     `api`. Every value here records a client-attested change; Memax
-                 *     records a change as made by a person on the web only when it can
-                 *     tell.
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
             };
@@ -1031,8 +1034,9 @@ export interface operations {
                 /**
                  * @description The surface the command came through, for its receipt. Defaults to
                  *     `api`. Every value here records a client-attested change; Memax
-                 *     records a change as made by a person on the web only when it can
-                 *     tell.
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
             };
@@ -1081,8 +1085,9 @@ export interface operations {
                 /**
                  * @description The surface the command came through, for its receipt. Defaults to
                  *     `api`. Every value here records a client-attested change; Memax
-                 *     records a change as made by a person on the web only when it can
-                 *     tell.
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
             };
@@ -1132,8 +1137,9 @@ export interface operations {
                 /**
                  * @description The surface the command came through, for its receipt. Defaults to
                  *     `api`. Every value here records a client-attested change; Memax
-                 *     records a change as made by a person on the web only when it can
-                 *     tell.
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
             };

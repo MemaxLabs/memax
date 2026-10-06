@@ -49,6 +49,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/distill"
 	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/rerank"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
 // App owns the long-lived dependencies for the API process.
@@ -679,11 +680,29 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		eventsBroker:           eventsBroker,
 		// /v2 on the V2 record. With no database the ledger is nil and
 		// every /v2 route answers 503 unavailable.
-		v2: v2api.New(ledger.New(pool), slog.Default()),
+		v2: v2api.New(ledger.New(pool), slog.Default(), v2api.WithWebSurface(webSurfaceFromEnv())),
 	})
 
 	configured = true
 	return app, nil
+}
+
+// webSurfaceFromEnv reads WEB_SURFACE_SECRET once, at startup: the secret
+// the web app's proxy signs /v2 requests with, so a person's keeps there
+// carry assurance human_web (internal/websurface). Unset or unusable means
+// disabled, said loudly: web keeps are then client_attested.
+func webSurfaceFromEnv() *websurface.Verifier {
+	v, err := websurface.New(os.Getenv("WEB_SURFACE_SECRET"))
+	switch {
+	case err != nil:
+		slog.Error("web surface verification disabled: WEB_SURFACE_SECRET is unusable", "error", err)
+	case v == nil:
+		slog.Warn("web surface verification disabled: WEB_SURFACE_SECRET is not set. Keeps on the web count as " +
+			"client_attested, so quarantined proposals and team-space decisions can't be kept through /v2.")
+	default:
+		slog.Info("web surface verification enabled")
+	}
+	return v
 }
 
 func configureStore(ctx context.Context, app *App) (store.Store, *pgxpool.Pool, error) {

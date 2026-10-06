@@ -275,6 +275,9 @@ type call struct {
 	// invalid marks a request that breaks the spec on purpose (a missing
 	// header, an unknown field), so only its response is checked.
 	invalid bool
+	// sign, when set, signs the finished request the way the web app's
+	// proxy does (see webSigned).
+	sign func(r *http.Request, body []byte)
 }
 
 type resp struct {
@@ -287,13 +290,15 @@ type resp struct {
 func (e *env) do(c call) *resp {
 	e.t.Helper()
 	var body io.Reader
+	var raw []byte
 	switch b := c.body.(type) {
 	case nil:
 	case string:
+		raw = []byte(b)
 		body = strings.NewReader(b)
 	default:
-		raw, err := json.Marshal(b)
-		if err != nil {
+		var err error
+		if raw, err = json.Marshal(b); err != nil {
 			e.t.Fatal(err)
 		}
 		body = bytes.NewReader(raw)
@@ -305,7 +310,7 @@ func (e *env) do(c call) *resp {
 	if c.token != "" {
 		r.Header.Set("Authorization", "Bearer "+c.token)
 	}
-	if c.method == http.MethodPost {
+	if c.method == http.MethodPost || c.method == http.MethodPatch {
 		r.Header.Set("Idempotency-Key", uuid.NewString())
 	}
 	for k, v := range c.header {
@@ -314,6 +319,9 @@ func (e *env) do(c call) *resp {
 			continue
 		}
 		r.Header.Set(k, v)
+	}
+	if c.sign != nil {
+		c.sign(r, raw)
 	}
 	if c.invalid {
 		r = contract.ExpectInvalidRequest(r)

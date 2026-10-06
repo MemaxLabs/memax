@@ -121,6 +121,9 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 						if agentName != "" {
 							grant.AgentName = agentName
 						}
+						if agentName == "" && claims.ImpersonatorID == "" {
+							grant.Surface = claims.Surface
+						}
 					}
 				}
 			}

@@ -392,8 +392,8 @@ func (h *AuthHandler) VerifyEmailOTP(w http.ResponseWriter, r *http.Request) {
 	if row.ClientRedirect != "" {
 		authCode := generateToken()
 		if _, err := h.pool.Exec(ctx,
-			`INSERT INTO auth_codes (code, user_id, expires_at) VALUES ($1, $2, $3)`,
-			authCode, user.ID, time.Now().Add(60*time.Second)); err != nil {
+			`INSERT INTO auth_codes (code, user_id, expires_at, surface) VALUES ($1, $2, $3, $4)`,
+			authCode, user.ID, time.Now().Add(60*time.Second), h.redirectSurface(row.ClientRedirect)); err != nil {
 			slog.Error("failed to store auth code for email otp", "error", err)
 			writeError(w, http.StatusInternalServerError, "internal", "Failed to issue auth code.")
 			return

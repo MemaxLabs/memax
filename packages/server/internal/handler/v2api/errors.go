@@ -20,6 +20,7 @@ const (
 	codeUnauthorized           = "unauthorized"
 	codeRefused                = "refused"
 	codePermissionDenied       = "permission_denied"
+	codeSurfaceUnverified      = "surface_unverified"
 	codeImpersonation          = "impersonation_read_only"
 	codeNotFound               = "not_found"
 	codeMethodNotAllowed       = "method_not_allowed"

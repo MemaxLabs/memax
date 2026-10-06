@@ -2,6 +2,7 @@ package v2api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -9,9 +10,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/auth"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
 // principal is the caller as the ledger sees them.
@@ -47,10 +50,11 @@ type principal struct {
 //     which say where to fix it.
 //   - A credential without memory:read can't use /v2 at all.
 //   - The surface (via) is what the client says, from X-Memax-Via, but
-//     only among api, cli and mcp. Those are all client-attested; the web
-//     and Review, which give a keep human_web assurance, need a session
-//     the server can tell apart from the CLI's, which doesn't exist yet
-//     (plan 25 §5.12, §5.15). Until then nothing on /v2 is human_web.
+//     only among api, cli and mcp, all client-attested. It is the web
+//     (assurance human_web for a person's keep) only when the server can
+//     tell: the session was issued to the web app and the web app's proxy
+//     signed the request (webSurface, internal/websurface). A request that
+//     claims the web and fails that check is refused.
 func (h *Handler) principalFor(r *http.Request) (*principal, *apiError) {
 	userID, err := uuid.Parse(handler.GetUserID(r))
 	if err != nil {
@@ -81,6 +85,9 @@ func (h *Handler) principalFor(r *http.Request) (*principal, *apiError) {
 	isAgent := grant.PrincipalType == "api_key" || grant.PrincipalType == "oauth_grant" || grant.AgentName != ""
 	if !isAgent {
 		p.actor = ledger.Actor{Kind: policy.ActorPerson, ID: userID, Credential: policy.CredentialSession}
+		if e := h.webSurface(r, userID, grant, p); e != nil {
+			return nil, e
+		}
 		return p, nil
 	}
 
@@ -115,6 +122,55 @@ func (h *Handler) principalFor(r *http.Request) (*principal, *apiError) {
 	}
 	p.scope = scope.WithConnection(p.connection, limit)
 	return p, nil
+}
+
+// webSurface makes a person's request come through the web (via web, so a
+// keep is human_web) when both halves of internal/websurface hold: the
+// session token was issued to the web app (its surface claim), and the web
+// app's proxy signed this request for this user. A request that claims the
+// web but whose signature doesn't verify is refused: nothing legitimate
+// sends one. A valid signature on a session the web app didn't get (a CLI
+// login sent through the public proxy) stays client-attested, and so does
+// everything when the mechanism is disabled (no WEB_SURFACE_SECRET).
+func (h *Handler) webSurface(r *http.Request, userID uuid.UUID, grant handler.GrantContext, p *principal) *apiError {
+	if !websurface.Claimed(r) {
+		return nil
+	}
+	if h.web == nil {
+		h.warnWebDisabled()
+		return nil
+	}
+	err := h.web.Verify(r, userID.String())
+	var we *websurface.Error
+	if errors.As(err, &we) {
+		h.log.WarnContext(r.Context(), "v2: refused a request that claims the web app", "reason", we.Reason,
+			"method", r.Method, "path", r.URL.Path, "user_id", userID.String())
+		return &apiError{status: http.StatusForbidden, code: codeSurfaceUnverified,
+			message: "This request says it comes from the Memax web app, but Memax couldn't verify that. Reload the page and try again; if it keeps happening, contact support@memax.app."}
+	}
+	if err != nil {
+		return nil
+	}
+	if grant.Surface != auth.SurfaceWeb || p.impersonated {
+		h.log.InfoContext(r.Context(), "v2: a signed web request on a session the web app wasn't issued counts as client-attested",
+			"user_id", userID.String(), "session_surface", grant.Surface)
+		return nil
+	}
+	p.via = policy.ViaWeb
+	return nil
+}
+
+// warnWebDisabled logs, at most every few minutes, that the web app's
+// requests can't be verified.
+func (h *Handler) warnWebDisabled() {
+	now := h.now().Unix()
+	last := h.webWarned.Load()
+	if now-last < 300 || !h.webWarned.CompareAndSwap(last, now) {
+		return
+	}
+	h.log.Warn("v2: a request claims the web app, but WEB_SURFACE_SECRET is not set, so it counts as client-attested. " +
+		"Keeps of quarantined proposals and of team-space decisions need a person on the web and will be refused. " +
+		"Set the same WEB_SURFACE_SECRET on the API and the web app.")
 }
 
 // clientVias are the surfaces a client may declare.

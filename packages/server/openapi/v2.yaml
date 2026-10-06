@@ -58,6 +58,20 @@ info:
     reject accept `If-Match` too, so a person never keeps words they haven't
     seen.
 
+    ## Who made a change, and how sure Memax is
+
+    A session token acts as the person; an API key or OAuth grant acts as
+    the agent connection it is bound to. A person's keep records an
+    assurance: `human_web` when Memax can tell the person was on the web
+    app, `client_attested` otherwise (the CLI, an agent, any other client).
+    Memax tells by two things together: the session was issued to the web
+    app, and the web app's server-side proxy signed the request
+    (`X-Memax-Surface-*` headers). Other clients must not send those
+    headers; a request that carries them and doesn't verify is refused
+    with 403 `surface_unverified`. Quarantined proposals, decisions in
+    spaces where they need a person on the web (team spaces by default),
+    and raising what an agent may do all need `human_web`.
+
     ## Display IDs
 
     `M-0219` is unique within a tenant, not across tenants, so a display ID
@@ -87,6 +101,7 @@ info:
     | 403 | `refused` | Policy refused the command; see `details.policy`. |
     | 403 | `permission_denied` | The credential can't read memories at all. |
     | 403 | `impersonation_read_only` | An impersonated session tried a command. |
+    | 403 | `surface_unverified` | A request claimed to come from the web app, and its signature didn't verify. |
     | 404 | `not_found` | No such space or memory in your spaces. |
     | 405 | `method_not_allowed` | The path exists, the method doesn't. |
     | 409 | `invalid_transition` | The memory's state doesn't allow the command. |
@@ -578,8 +593,9 @@ components:
       description: |
         The surface the command came through, for its receipt. Defaults to
         `api`. Every value here records a client-attested change; Memax
-        records a change as made by a person on the web only when it can
-        tell.
+        records a change as made by a person on the web (`via: web`) only
+        when the web app's proxy signed the request for a session issued to
+        the web app.
       schema:
         type: string
         enum: [api, cli, mcp]
@@ -636,8 +652,8 @@ components:
             $ref: '#/components/schemas/ErrorEnvelope'
     Forbidden:
       description: |
-        `refused` (policy; see `details.policy`), `permission_denied` or
-        `impersonation_read_only`.
+        `refused` (policy; see `details.policy`), `permission_denied`,
+        `impersonation_read_only` or `surface_unverified`.
       content:
         application/json:
           schema:
@@ -784,7 +800,8 @@ components:
       enum: [web, cli, mcp, review, api, email, slack, github, linear, import, system]
     Assurance:
       description: |
-        For keeps: `human_web` when a person kept it on the web or in Review,
+        For keeps, and a person's changes to an agent connection:
+        `human_web` when Memax verified the person was on the web app,
         `client_attested` when a client (the CLI, an agent) says a person did.
       type: string
       enum: [human_web, client_attested]
@@ -892,6 +909,7 @@ components:
         - refused
         - permission_denied
         - impersonation_read_only
+        - surface_unverified
         - not_found
         - method_not_allowed
         - invalid_transition

@@ -11,9 +11,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/auth"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
@@ -42,6 +44,18 @@ func redirectOrigin(raw string) (string, bool) {
 		return "", false
 	}
 	return u.Scheme + "://" + u.Host, true
+}
+
+// redirectSurface is the sign-in surface of a login whose one-time code
+// is redirected to clientRedirect (migration 030): the web app when that
+// is the web app's origin (APP_BASE_URL, the one non-loopback origin the
+// allowlist admits), so only a browser there receives the code; the CLI
+// for anything else, a loopback redirect included.
+func (h *AuthHandler) redirectSurface(clientRedirect string) string {
+	if origin, ok := redirectOrigin(clientRedirect); ok && slices.Contains(h.redirectAllowlist, origin) {
+		return auth.SurfaceWeb
+	}
+	return auth.SurfaceCLI
 }
 
 func (h *AuthHandler) isAllowedRedirect(raw string) bool {
@@ -1046,8 +1060,8 @@ func (h *AuthHandler) completeLogin(w http.ResponseWriter, r *http.Request, user
 	if clientRedirect != "" {
 		authCode := generateToken()
 		_, err := h.pool.Exec(context.Background(),
-			`INSERT INTO auth_codes (code, user_id, expires_at) VALUES ($1, $2, $3)`,
-			authCode, user.ID, time.Now().Add(60*time.Second))
+			`INSERT INTO auth_codes (code, user_id, expires_at, surface) VALUES ($1, $2, $3, $4)`,
+			authCode, user.ID, time.Now().Add(60*time.Second), h.redirectSurface(clientRedirect))
 		if err != nil {
 			slog.Error("failed to store auth code", "error", err)
 			writeJSON(w, http.StatusInternalServerError, model.ApiResponse{

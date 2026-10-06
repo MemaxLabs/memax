@@ -18,9 +18,11 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
+	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
 // Handler serves /v2.
@@ -29,6 +31,9 @@ type Handler struct {
 	log    *slog.Logger
 	now    func() time.Time
 	seen   seenTracker
+	// web verifies the web app's signed requests; nil is disabled.
+	web       *websurface.Verifier
+	webWarned atomic.Int64
 }
 
 // Option configures a Handler.
@@ -36,6 +41,11 @@ type Option func(*Handler)
 
 // WithClock replaces time.Now (tests).
 func WithClock(now func() time.Time) Option { return func(h *Handler) { h.now = now } }
+
+// WithWebSurface lets requests signed by the web app's proxy count as made
+// on the web (assurance human_web). nil, the default, disables it: every
+// request is client-attested.
+func WithWebSurface(v *websurface.Verifier) Option { return func(h *Handler) { h.web = v } }
 
 // New returns the /v2 handler. A nil ledger (no database) is allowed:
 // every route then answers 503 unavailable, so the API says what is

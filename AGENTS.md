@@ -152,6 +152,8 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 - **States.** A memory has a lifecycle (`proposed | kept | merged | faded | forgotten | rejected`) plus flags (`stale`, `conflict`). The displayed state is derived from both.
 - **IDs.** Display IDs (`M-0219`, `N-`, `H-`, `C-`, `R-`, `D-`, `B-`, `G-`) are per-tenant counters. Internal keys are uuidv7.
 - **Trust.** Agents propose and people keep. Autonomy (read / propose / write), roles, quarantine of external content and plan limits are decided in one place: `policy.Decide`. A memory's trust is the minimum of its sources, and Dream can't raise it.
+- **Agent connections.** Every API key and OAuth grant resolves to an agent connection (`v2.agent_connections`, migration 029) with autonomy per space; receipts name the connection. A credential with no connection, a paused one, or a space it isn't connected to only reads. Only people change connections (`policy.DecideConnection`), and raising autonomy needs `human_web`.
+- **Assurance.** A person's Keep is `human_web` only when the session was issued to the web app (the token's `surface` claim, migration 030) **and** `/api/proxy` signed the request with `WEB_SURFACE_SECRET` (`internal/websurface`, which has the threat model). Everything else, the CLI included, is `client_attested`.
 
 **API, MCP and CLI**
 
@@ -506,6 +508,10 @@ pnpm --filter @memaxlabs/server migrate:new <slug>
 
 # Run the LoCoMo benchmark harness
 cd packages/server && go run ./cmd/locomo/ -dataset eval/locomo/data/locomo10.json
+
+# Connect V1 API keys and OAuth grants to the V2 record as agent connections, at Propose
+# (idempotent; prefer -user for the people moving to V2)
+cd packages/server && go run ./cmd/v2-backfill-agents -user <uuid>
 
 # /v2 contract: run the spec, handler and parity tests
 cd packages/server && go test ./internal/contract/ ./internal/handler/v2api/ ./internal/serverapp/

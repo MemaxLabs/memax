@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLedger } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
@@ -20,6 +19,7 @@ import {
 } from "@/lib/v2/data/agents";
 import type { SpaceSummary } from "@/lib/v2/data/types";
 import { useSource } from "../../_lib/data";
+import { useSignInAgain } from "../../_lib/sign-in";
 import { useToast } from "../../_components/toasts";
 import { patchAgent, refreshAfterAgentCommand } from "./queries";
 
@@ -32,16 +32,6 @@ function newKey(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-/** Sends the person to sign in again and back here: a fresh web session. */
-function useSignInAgain() {
-  const router = useRouter();
-  const pathname = usePathname();
-  return useCallback(
-    () => router.push(`/login?returnTo=${encodeURIComponent(pathname ?? "/")}`),
-    [router, pathname],
-  );
 }
 
 /**

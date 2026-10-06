@@ -50,6 +50,29 @@
 .mx-list { list-style: none; margin: 0; padding: 0; }
 .mx-panel > .mx-list:last-child > :last-child { border-bottom: 0; }
 
+/* ---------- decision gate: answered, ended, notices ---------- */
+/* Answered, the seal stamps where the time was, as on a kept ReviewCard. Ended any other
+ * way, the head stops being ochre (nothing waits on you) and the options read as a record:
+ * no hover, and the ones not chosen step back. A notice (D15: answering needs the web)
+ * sits on the ochre wash, like the quarantine notice. */
+.mx-gate { position: relative; }
+/* As specific as .mx-seal.is-stamping, so the stamp stays where the time was. */
+.mx-gate > .mx-gate-seal { position: absolute; top: 10px; right: 18px; }
+.mx-gate.is-answered .mx-gate-head .mx-meta { visibility: hidden; }
+.mx-gate.is-answered .mx-gate-q { max-width: calc(100% - 72px); }
+.mx-gate.is-locked .mx-gate-who { color: var(--ink-2); }
+.mx-gate.is-locked .mx-gate-opt { cursor: default; }
+.mx-gate.is-locked .mx-gate-opt:hover { background: var(--card); }
+.mx-gate.is-locked .mx-gate-opt.is-on:hover { background: var(--select); }
+.mx-gate.is-locked .mx-gate-opt:not(.is-on) { color: var(--ink-2); }
+.mx-gate-notice { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--ochre-wash); color: var(--ink); font-size: 13px; line-height: 18px; text-wrap: pretty; }
+.mx-gate-actions { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
+.mx-gate-foot { flex-wrap: wrap; min-height: var(--control-sm); }
+/* A phone: the card keeps its edge, with less padding, and the footer wraps under. */
+@media (max-width: 639px) {
+  .mx-gate { padding: var(--space-4); }
+}
+
 /* ---------- memory row: the statement as a link or button ---------- */
 /* With href or onClick the statement becomes the row's one control, stretched over the
  * whole row, so the row is a single tab stop and its actions stay separate buttons. */

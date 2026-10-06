@@ -6,6 +6,8 @@ import { AgentStamp, Button, Icon, formatNodes } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
 import { formatClock } from "@/lib/v2/copy";
 import type { ActivityEntry } from "@/lib/v2/data/activity";
+import { isGateRef } from "@/lib/v2/data/gates";
+import { gateHref } from "@/lib/v2/places";
 import {
   activitySentences,
   viaText,
@@ -13,7 +15,11 @@ import {
 } from "@/lib/v2/activity/sentence";
 import styles from "./activity.module.css";
 
-/** Where Enter takes a row: a memory's page (or its tombstone), an agent's page. */
+/**
+ * Where Enter takes a row: a memory's page (or its tombstone), an agent's
+ * page, or a decision gate's card in Review (asked, answered, withdrawn;
+ * the card says how it ended). A gate is linked by its G- ref.
+ */
 export function entryHref(space: string, entry: ActivityEntry): string | null {
   const s = encodeURIComponent(space);
   if (entry.object.kind === "memory") {
@@ -21,6 +27,9 @@ export function entryHref(space: string, entry: ActivityEntry): string | null {
   }
   if (entry.object.kind === "agent") {
     return `/${s}/agents/${encodeURIComponent(entry.object.id)}`;
+  }
+  if (entry.object.kind === "gate" && isGateRef(entry.object.ref)) {
+    return gateHref(space, entry.object.ref);
   }
   return null;
 }

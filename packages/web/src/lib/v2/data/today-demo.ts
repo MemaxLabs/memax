@@ -1,13 +1,14 @@
 import type { AgentConnectionView } from "./agents";
 import { JY, at } from "./demo-review-data";
+import { askingAgents, type GateView } from "./gates";
 import type { MemoryNote } from "./memories";
 import type { ReviewQueue } from "./review";
 import type { AgentToday, DreamEdition, TodayData, TodaySource } from "./today";
 
 /**
  * The demo's Today (Main.png): Dream's edition No. 214, Review's queue
- * as this session left it, H-0093 in flight, and the agents' day. Data,
- * not copy.
+ * and the decision gates as this session left them, H-0093 in flight,
+ * and the agents' day. Data, not copy.
  */
 
 const NB = "‑";
@@ -91,26 +92,34 @@ const NOTES: Record<string, MemoryNote> = {
 
 export function createDemoToday({
   queue,
+  gates,
   spaceAgents,
 }: {
   /** Review's queue as this session left it. */
   queue: (slug: string) => ReviewQueue | undefined;
+  /** The gates still waiting, as this session left them (gates-demo.ts). */
+  gates: (slug: string) => GateView[] | undefined;
   spaceAgents: (slug: string) => AgentConnectionView[] | undefined;
 }): TodaySource {
   function today(slug: string): TodayData {
     const items = queue(slug)?.items ?? [];
+    const asked = gates(slug) ?? [];
     const v2 = slug === "memax-v2";
     const connections = (spaceAgents(slug) ?? []).filter(
       (c) => c.state !== "disconnected",
     );
+    // Main.png's lede names Codex's deploy-target question from H-0093
+    // while M-0431 waits; the handoff's gate isn't listed (Phase 4).
+    const handoffQuestion =
+      v2 && items.some((i) => i.ref === "M-0431") ? ["codex"] : [];
     return {
       waiting: {
         items,
-        total: items.length,
+        gates: asked,
+        total: items.length + asked.length,
         proposals: items.filter((i) => i.lifecycle === "proposed").length,
         stale: items.filter((i) => i.state === "stale").length,
-        // Codex's deploy-target question (H-0093), while M-0431 waits.
-        questions: items.some((i) => i.ref === "M-0431") ? ["codex"] : [],
+        questions: [...new Set([...handoffQuestion, ...askingAgents(asked)])],
         notes: NOTES,
       },
       dream: v2 ? { kind: "edition", edition: EDITION_214 } : { kind: "quiet" },

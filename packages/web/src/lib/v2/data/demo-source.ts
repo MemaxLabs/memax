@@ -11,6 +11,8 @@ import { createDemoActivity } from "./activity-demo";
 import { createDemoAgents } from "./agents-demo";
 import { createDemoBrief } from "./brief-demo";
 import { createDemoRecords } from "./demo-records";
+import { askingAgents, type WebSession } from "./gates";
+import { createDemoGates } from "./gates-demo";
 import type { LedgerDataSource } from "./source";
 import { syncLineOf, targetStatus } from "./targets";
 import { createDemoTargets } from "./targets-demo";
@@ -56,6 +58,7 @@ export function createDemoSource({
   settleMs,
   judging,
   clock,
+  webSession = true,
 }: {
   streamDelayMs?: number;
   commandDelayMs?: number;
@@ -65,6 +68,8 @@ export function createDemoSource({
   judging?: Parameters<typeof createDemoRecords>[0]["judging"];
   /** Real time for the judge and Undo's window, for tests. */
   clock?: () => number;
+  /** The demo plays the web app; tests set false to see D15's notice. */
+  webSession?: WebSession;
 } = {}): LedgerDataSource {
   let nextRef = DEMO_NEXT_REF;
   const allocRef = () => `M-${String(nextRef++).padStart(4, "0")}`;
@@ -85,13 +90,34 @@ export function createDemoSource({
     session: records.session,
     commandDelayMs,
   });
+  // A gate's answer is kept as the viewer's decision: Memories lists it
+  // and the Brief places it, as the compiler does.
+  const gates = createDemoGates({
+    now,
+    commandDelayMs,
+    webSession,
+    nextRef: allocRef,
+    kept: (slug, { ref, statement, gate }) => {
+      records.keptElsewhere(slug, {
+        ref,
+        statement,
+        section: "decisions",
+        source: gate,
+      });
+      brief.remembered(slug, { ref, statement, section: "decisions" });
+    },
+    recompiled: (slug) => files(slug),
+  });
   const today = createDemoToday({
     queue: (slug) => records.review.peekQueue?.(slug),
+    gates: (slug) => gates.peekWaiting?.(slug),
     spaceAgents: (slug) => agents.agentsPeek?.spaceAgents(slug),
   });
-  const overview = (slug: string): SpaceOverview | undefined => {
-    const base = DEMO_OVERVIEWS[slug];
-    if (!base) return undefined;
+  /** Review's records and the compile targets, as this session left them. */
+  const recordsOverview = (
+    slug: string,
+    base: SpaceOverview,
+  ): SpaceOverview => {
     const merged = records.overview(slug, base);
     const list = targets.peekList?.(slug) ?? [];
     if (list.length === 0) return merged;
@@ -111,6 +137,31 @@ export function createDemoSource({
         total: list.filter((t) => t.syncState !== "off").length,
         inSync: list.filter((t) => targetStatus(t).kind === "in_sync").length,
       },
+    };
+  };
+  const overview = (slug: string): SpaceOverview | undefined => {
+    const base = DEMO_OVERVIEWS[slug];
+    if (!base) return undefined;
+    const merged = recordsOverview(slug, base);
+    // The questions still waiting, and the decisions answers kept.
+    const waiting = gates.peekWaiting?.(slug) ?? [];
+    const answered = gates.answeredCount(slug);
+    return {
+      ...merged,
+      gatesWaiting: waiting.length,
+      waitingBreakdown: merged.waitingBreakdown && {
+        ...merged.waitingBreakdown,
+        questions: [
+          ...new Set([
+            ...merged.waitingBreakdown.questions,
+            ...askingAgents(waiting),
+          ]),
+        ],
+      },
+      memories:
+        answered > 0 && merged.memories.kept !== null
+          ? { ...merged.memories, kept: merged.memories.kept + answered }
+          : merged.memories,
     };
   };
   /** A Keep recompiles every file the space compiles to (not ChatGPT's copy-out). */
@@ -145,6 +196,7 @@ export function createDemoSource({
     brief,
     targets,
     today,
+    gates,
     spaces: async () => [...DEMO_SPACES],
     overview: async (space) => {
       const found = overview(space.slug);

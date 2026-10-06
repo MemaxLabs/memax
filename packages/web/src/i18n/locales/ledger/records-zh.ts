@@ -21,6 +21,8 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     handed_off: "交接",
     answered: "回答",
     undid: "撤销",
+    asked: "提问",
+    withdrawn: "撤回",
     updated: "更新",
     editing: "编辑中",
   },
@@ -36,6 +38,12 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     hoursAgo: "{n} 小时前",
     justNow: "刚刚",
     dateTime: "{date} {time}",
+  },
+  expires: {
+    minutes: "{n} 分钟后过期",
+    today: "今天 {time} 过期",
+    tomorrow: "明天 {time} 过期",
+    date: "{date} 过期",
   },
   sessionRef: "会话 {session}",
   sections: {
@@ -97,6 +105,13 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     reject: "{ref} 没拒绝成。",
     edit: "你对 {ref} 的改动没保留上。",
     resolve: "{ref} 没裁定成。",
+    answer: "{ref} 没回答上。",
+    withdraw: "{ref} 没撤回成。",
+    ended: {
+      answered: "它已经有人回答了。",
+      withdrawn: "{agent} 把这个问题撤回了。",
+      expired: "它已经过期，{agent} 不再等了。",
+    },
     unreachable: "没连上 Memax，所以什么都没变。再试一次吧。",
     busy: "另一个改动正占着它。稍等一下再试。",
     busyJudge: "Memax 还在对照现行的决策检查它。稍等一下再试。",
@@ -129,9 +144,22 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
       unknown_actor: "Memax 认不出这次登录。重新登录一下吧。",
       undo_by_decider:
         "只有当初处理 {ref} 的人才能撤销。可以直接改它，或者去问问对方。",
+      person_must_answer:
+        "问题只能由真人回答。用你自己的账号登录，别用 Agent 的密钥。",
+      not_your_gate:
+        "只有提问的 Agent、它所属的人，或者能回答的人，才能撤回这个问题。",
       other: "Memax 没接受：{message}",
       otherBare: "Memax 没接受。",
     },
+    refusedAnswer: {
+      decision_needs_web:
+        "{space} 里的决策只能在 memax.app 上回答，Memax 没法确认这次是从那里来的。在这里重新登录，再来回答。",
+      viewer: "查看者可以看问题，回答要由成员来。",
+      owners_keep: "在 {space} 里只有所有者能回答决策。请所有者来回答吧。",
+      key_cannot_review: "API 密钥只能提问，不能回答。在网页上的审阅里回答吧。",
+    },
+    needsWebDev: "本地开发时，给网页端和 API 都配上 WEB_SURFACE_SECRET。",
+    signInAgain: "重新登录",
   },
   undo: {
     action: "撤销",

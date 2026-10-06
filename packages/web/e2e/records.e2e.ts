@@ -108,8 +108,11 @@ test("Review waits for the judge: the working mark, then the Keep", async ({
   await open(page, "/memax-team/review");
   const checking = page.getByRole("img", { name: "Checking" });
   await expect(checking).toHaveCount(1);
+  // Past the team's two questions (gates.e2e.ts) and M-0444.
   await page.keyboard.press("ArrowDown");
-  await expect(page.getByText(/· 2 of 2$/)).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByText(/· 4 of 4$/)).toBeVisible();
   await page.keyboard.press("k");
   await expect(
     page.getByText(
@@ -127,7 +130,9 @@ test("edit, then keep, waits for the judge when the words touch a decision", asy
 }) => {
   await open(page, "/memax-team/review");
   await page.keyboard.press("ArrowDown");
-  await expect(page.getByText(/· 2 of 2$/)).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByText(/· 4 of 4$/)).toBeVisible();
   await page.keyboard.press("e");
   const field = page.getByRole("textbox", { name: "Statement" });
   await expect(field).toBeFocused();

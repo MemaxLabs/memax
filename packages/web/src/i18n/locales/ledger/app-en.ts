@@ -375,6 +375,9 @@ export const ledgerAppEn = {
       "brief.move": "Move a fact down, up, editing the Brief",
       "drift.choose": "Choose what happens to a hand edit",
       "drift.confirm": "Do it, on a hand edit",
+      "gate.choose": "Choose an answer to a question",
+      "gate.answer": "Answer a question, then confirm",
+      "gate.cancel": "Go back from the confirmation",
     },
   },
   settings: {

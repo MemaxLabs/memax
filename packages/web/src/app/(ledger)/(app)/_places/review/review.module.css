@@ -173,6 +173,35 @@
   gap: 8px;
 }
 
+/* ---------- A decision gate (DecisionGate) ---------- */
+/* The confirmation that names what an answer, or a withdrawal, does: in
+ * the footer's place, in ink, so it reads as a question to you. */
+.gateConfirm {
+  flex: 1 1 280px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.gateConfirm strong {
+  font-weight: 600;
+}
+
+/* The queue couldn't read the gates: one quiet line above the rows. */
+.gatesFailed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
 /* ---------- A kept memory flagged stale, or in conflict ---------- */
 .flagNote {
   margin: -8px 0 0;

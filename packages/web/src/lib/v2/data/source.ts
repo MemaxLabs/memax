@@ -1,6 +1,7 @@
 import type { ActivityData } from "./activity";
 import type { AgentsData } from "./agents";
 import type { BriefSource } from "./brief";
+import type { GatesSource } from "./gates";
 import type { MemoriesSource } from "./memories";
 import type { ReviewSource } from "./review";
 import type { TargetsSource } from "./targets";
@@ -28,7 +29,9 @@ import type {
  * implementing it in both.
  *
  * Each domain declares its part in its own module and is mixed in here:
- * activity.ts (Activity), agents.ts (Agents, keys), undo.ts (Undo).
+ * activity.ts (Activity), agents.ts (Agents, keys), undo.ts (Undo), or
+ * hangs off it as a member (review, memories, brief, targets, today,
+ * gates).
  */
 export interface LedgerDataSource extends ActivityData, AgentsData, UndoSource {
   readonly kind: "sdk" | "demo";
@@ -78,4 +81,6 @@ export interface LedgerDataSource extends ActivityData, AgentsData, UndoSource {
   readonly targets: TargetsSource;
   /** Today's waiting items, Dream, what's in flight and the agents' day (today.ts). */
   readonly today: TodaySource;
+  /** Decision gates: what agents asked, answering and withdrawing (gates.ts). */
+  readonly gates: GatesSource;
 }

@@ -73,8 +73,17 @@ export type SyncLine =
 
 /** Everything the frame and the page headers show about one space. */
 export interface SpaceOverview {
-  /** Waiting on the viewer: Review's total, and the rail's ochre count. */
+  /**
+   * Memories waiting on the viewer: Review's queue of proposals,
+   * conflicts and stale facts. The rail's ochre count adds the decision
+   * gates (`gatesWaiting`), which Review lists first.
+   */
   waiting: number;
+  /**
+   * Decision gates (G-) waiting on the viewer's answer, or null when the
+   * source couldn't read them. Not memories, so Memories never counts them.
+   */
+  gatesWaiting: number | null;
   /** When the oldest item in Review arrived. */
   oldestWaitingAt: string | null;
   /** Review's filter counts, when served. */
@@ -207,4 +216,9 @@ export interface KeepResult {
    * it), so it carries none.
    */
   receipt?: string | null;
+}
+
+/** Everything waiting on the viewer in a space: Review's memories and its decision gates (the rail's ochre count). */
+export function waitingOnYou(overview: SpaceOverview): number {
+  return overview.waiting + (overview.gatesWaiting ?? 0);
 }

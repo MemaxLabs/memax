@@ -26,6 +26,8 @@ export const ledgerTodayZh: Translations["ledger"]["today"] = {
     nothing: "没有在等你的事。",
     question: "一个问题",
     questions: "{n} 个问题",
+    asked: "{n} 个问题",
+    askedOne: "1 个问题",
   },
   inFlight: {
     title: "进行中",

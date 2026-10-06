@@ -7,7 +7,9 @@ import {
   DEMO_FOLD,
   DEMO_JUDGING,
   DEMO_QUEUES,
+  ZZ,
 } from "./demo-review-data";
+import type { MemoryListItem } from "./memories";
 import type { DecisionResult } from "./records";
 import type {
   ReviewCardData,
@@ -15,7 +17,7 @@ import type {
   ReviewQueue,
   ReviewSource,
 } from "./review";
-import type { SpaceOverview } from "./types";
+import type { Section, SpaceOverview } from "./types";
 import { undoWindowMs, type UndoCommand, type UndoSource } from "./undo";
 
 /**
@@ -332,10 +334,13 @@ export function createDemoRecords({
       return { refs: [entry.ref] };
     });
 
+  // Memories kept outside Review this session (a gate's answer), newest first.
+  const added = new Map<string, MemoryListItem[]>();
   const memories = createDemoMemories({
     decided,
     edits,
     unfolded,
+    added,
     id,
     stamp,
     queueOf,
@@ -399,6 +404,29 @@ export function createDemoRecords({
     arrived.set(slug, [...(arrived.get(slug) ?? []), ...items]);
   }
 
+  /** A decision the viewer kept outside Review (a gate's answer): Memories lists it, kept by them. */
+  function keptElsewhere(
+    slug: string,
+    memory: {
+      ref: string;
+      statement: string;
+      section: Section;
+      source: string;
+    },
+  ) {
+    const row: MemoryListItem = {
+      ref: memory.ref,
+      statement: memory.statement,
+      section: memory.section,
+      state: "kept",
+      receipt: { by: ZZ, action: "kept", at: stamp() },
+      source: memory.source,
+      note: null,
+      forgotten: null,
+    };
+    added.set(slug, [row, ...(added.get(slug) ?? [])]);
+  }
+
   /** What this session changed about a memory, for the demo's Brief. */
   const session = {
     edited: (slug: string, ref: string) => edits.get(id(slug, ref)),
@@ -411,6 +439,7 @@ export function createDemoRecords({
     memories,
     overview,
     propose,
+    keptElsewhere,
     session,
     undo,
     journal: { record },

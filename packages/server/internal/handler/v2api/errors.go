@@ -85,7 +85,10 @@ func (h *Handler) fromLedger(r *http.Request, err error) *apiError {
 	var ve *ledger.ValidationError
 	var clash *ledger.EditClashError
 	var te *ledger.TransitionError
+	var ce *ledger.ConnectionStateError
 	switch {
+	case errors.As(err, &ce):
+		return &apiError{status: http.StatusConflict, code: codeInvalidTransition, message: ce.Error()}
 	case errors.As(err, &ve):
 		return invalidRequest(ve.Field, ve.Error())
 	case errors.Is(err, ledger.ErrNotFound):

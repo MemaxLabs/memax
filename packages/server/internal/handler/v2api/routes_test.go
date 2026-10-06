@@ -56,15 +56,22 @@ var sampleRequests = map[string]struct {
 	body   string
 	header map[string]string
 }{
-	"listSpaces":     {path: "/v2/spaces"},
-	"rememberMemory": {path: "/v2/spaces/memax-v2/memories", body: `{"statement":"x","section":"decisions"}`},
-	"listMemories":   {path: "/v2/spaces/memax-v2/memories?state=kept&state=proposed&limit=10"},
-	"listReview":     {path: "/v2/spaces/memax-v2/review"},
-	"listReceipts":   {path: "/v2/spaces/memax-v2/receipts?memory=M-0001"},
-	"getMemory":      {path: "/v2/memories/M-0001?space=memax-v2"},
-	"keepMemory":     {path: "/v2/memories/M-0001:keep?space=memax-v2", header: map[string]string{"If-Match": `"1"`}},
-	"editMemory":     {path: "/v2/memories/M-0001:edit?space=memax-v2", body: `{"statement":"y"}`, header: map[string]string{"If-Match": `"1"`}},
-	"rejectMemory":   {path: "/v2/memories/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:reject", body: `{"reason":"duplicate"}`},
+	"listSpaces":       {path: "/v2/spaces"},
+	"rememberMemory":   {path: "/v2/spaces/memax-v2/memories", body: `{"statement":"x","section":"decisions"}`},
+	"listMemories":     {path: "/v2/spaces/memax-v2/memories?state=kept&state=proposed&limit=10"},
+	"listReview":       {path: "/v2/spaces/memax-v2/review"},
+	"listReceipts":     {path: "/v2/spaces/memax-v2/receipts?memory=M-0001"},
+	"getMemory":        {path: "/v2/memories/M-0001?space=memax-v2"},
+	"keepMemory":       {path: "/v2/memories/M-0001:keep?space=memax-v2", header: map[string]string{"If-Match": `"1"`}},
+	"editMemory":       {path: "/v2/memories/M-0001:edit?space=memax-v2", body: `{"statement":"y"}`, header: map[string]string{"If-Match": `"1"`}},
+	"rejectMemory":     {path: "/v2/memories/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:reject", body: `{"reason":"duplicate"}`},
+	"listAgents":       {path: "/v2/agents"},
+	"listSpaceAgents":  {path: "/v2/spaces/memax-v2/agents"},
+	"getAgent":         {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"},
+	"setAgentAutonomy": {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/spaces/memax-v2", body: `{"autonomy":"write"}`},
+	"pauseAgent":       {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:pause"},
+	"resumeAgent":      {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:resume", body: `{"reason":"done testing"}`},
+	"disconnectAgent":  {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:disconnect"},
 }
 
 // TestEveryRouteIsServed sends a valid request for every operation to a
@@ -86,7 +93,7 @@ func TestEveryRouteIsServed(t *testing.T) {
 		if sample.body != "" {
 			r.Header.Set("Content-Type", "application/json")
 		}
-		if op.Method == http.MethodPost {
+		if op.Method == http.MethodPost || op.Method == http.MethodPatch {
 			r.Header.Set("Idempotency-Key", "k-"+op.ID)
 		}
 		for k, v := range sample.header {
@@ -195,6 +202,11 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "Assurance", specEnum(t, "Assurance"), []string{string(policy.AssuranceHumanWeb), string(policy.AssuranceClientAttested)})
 	sameSet(t, "SpaceKind", specEnum(t, "SpaceKind"), []string{string(policy.SpacePersonal), string(policy.SpaceProject), string(policy.SpaceTeam)})
 	sameSet(t, "Role", specEnum(t, "Role"), []string{string(policy.RoleOwner), string(policy.RoleMember), string(policy.RoleViewer)})
+	sameSet(t, "Autonomy", specEnum(t, "Autonomy"), strs(policy.Autonomies))
+	sameSet(t, "AgentKind", specEnum(t, "AgentKind"), strs(ledger.AgentKinds))
+	sameSet(t, "AgentSurface", specEnum(t, "AgentSurface"), strs(ledger.AgentSurfaces))
+	sameSet(t, "AgentState", specEnum(t, "AgentState"), strs(ledger.ConnectionStates))
+	sameSet(t, "CredentialKind", specEnum(t, "CredentialKind"), strs(ledger.CredentialKinds))
 	sameSet(t, "Outcome", specEnum(t, "Outcome"), []string{string(ledger.OutcomeApplied), string(ledger.OutcomeProposed), string(ledger.OutcomeNeedsConfirmation)})
 	sameSet(t, "PolicyEffect", specEnum(t, "PolicyEffect"),
 		[]string{string(policy.EffectApply), string(policy.EffectPropose), string(policy.EffectConfirm), string(policy.EffectRefuse)})

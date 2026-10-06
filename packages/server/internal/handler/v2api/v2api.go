@@ -80,6 +80,13 @@ var routes = []Route{
 	{"POST", "/v2/memories/{ref}:keep", "keepMemory", (*Handler).keep},
 	{"POST", "/v2/memories/{ref}:edit", "editMemory", (*Handler).edit},
 	{"POST", "/v2/memories/{ref}:reject", "rejectMemory", (*Handler).reject},
+	{"GET", "/v2/agents", "listAgents", (*Handler).listAgents},
+	{"GET", "/v2/spaces/{space}/agents", "listSpaceAgents", (*Handler).listSpaceAgents},
+	{"GET", "/v2/agents/{agent}", "getAgent", (*Handler).getAgent},
+	{"PATCH", "/v2/agents/{agent}/spaces/{space}", "setAgentAutonomy", (*Handler).setAgentAutonomy},
+	{"POST", "/v2/agents/{agent}:pause", "pauseAgent", (*Handler).pauseAgent},
+	{"POST", "/v2/agents/{agent}:resume", "resumeAgent", (*Handler).resumeAgent},
+	{"POST", "/v2/agents/{agent}:disconnect", "disconnectAgent", (*Handler).disconnectAgent},
 }
 
 // Routes lists every /v2 operation this package serves, named as in

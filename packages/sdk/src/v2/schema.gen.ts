@@ -235,6 +235,189 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List your agents
+         * @description Your agent connections, oldest first: each one's autonomy in every
+         *     space of yours it is connected to, when it was last seen, and its
+         *     writes in the last 7 days. Disconnected agents are left out. With an
+         *     agent's own credential, only that agent is listed. Not paginated.
+         */
+        get: operations["listAgents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the agents in a space
+         * @description Every agent connected to the space, whoever it works for, oldest
+         *     first, with its autonomy there and its writes there in the last 7
+         *     days. Of other people's agents you see only the spaces you share.
+         *     Disconnected agents are left out. Not paginated.
+         */
+        get: operations["listSpaceAgents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/agents/{agent}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent connection's id. */
+                agent: components["parameters"]["AgentPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read one agent
+         * @description One agent connection with what it did this week, its latest writes
+         *     (receipts, which never hold the words) and its latest sessions, in
+         *     your spaces. Disconnected agents can still be read.
+         */
+        get: operations["getAgent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/agents/{agent}/spaces/{space}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent connection's id. */
+                agent: components["parameters"]["AgentPath"];
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set what an agent may do in a space
+         * @description Sets the agent's autonomy in the space, connecting it there if it
+         *     isn't yet. Only a person changes what an agent may do, never an
+         *     agent. Lowering is always allowed for your own agent, and a space's
+         *     owners may lower anyone's agent there. Raising needs you on the web
+         *     (assurance `human_web`), so an agent driving the CLI with your login
+         *     can't raise itself; connecting at no more than the space's default
+         *     (Propose unless its rules say otherwise) is the exception. Write
+         *     needs you to be able to keep in the space, and an API key's agent
+         *     proposes at most. The same level again writes nothing.
+         */
+        patch: operations["setAgentAutonomy"];
+        trace?: never;
+    };
+    "/v2/agents/{agent}:pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent connection's id. */
+                agent: components["parameters"]["AgentPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause an agent
+         * @description Stops the agent writing anywhere until it is resumed; it can still
+         *     read. Only the person it works for can pause it. The receipt goes to
+         *     every space it is connected to.
+         */
+        post: operations["pauseAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/agents/{agent}:resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent connection's id. */
+                agent: components["parameters"]["AgentPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume a paused agent
+         * @description Lets a paused agent write again, at the autonomy it had. Resuming is
+         *     raising, so it needs you on the web (assurance `human_web`): an agent
+         *     can't resume itself.
+         */
+        post: operations["resumeAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/agents/{agent}:disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent connection's id. */
+                agent: components["parameters"]["AgentPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disconnect an agent
+         * @description Ends the connection for good and revokes its credential (the API key
+         *     or OAuth grant) in the same transaction, so the agent stops working
+         *     at once. Only the person it works for can disconnect it. To use the
+         *     agent again, connect it again.
+         */
+        post: operations["disconnectAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -287,6 +470,31 @@ export interface components {
         SpaceKind: "personal" | "project" | "team";
         /** @enum {string} */
         Role: "owner" | "member" | "viewer";
+        /**
+         * @description What an agent may do in a space. `read` writes nothing; `propose`
+         *     sends its writes to Review; `write` keeps them, still with a
+         *     receipt (and still proposes what cites an outside source).
+         * @enum {string}
+         */
+        Autonomy: "read" | "propose" | "write";
+        /**
+         * @description Which agent a connection is. `other` is any agent Memax doesn't know by name.
+         * @enum {string}
+         */
+        AgentKind: "claude-code" | "codex" | "cursor" | "chatgpt" | "claude" | "gemini-cli" | "copilot" | "opencode" | "windsurf" | "other";
+        /**
+         * @description Where the agent runs.
+         * @enum {string}
+         */
+        AgentSurface: "cli" | "ide" | "cloud" | "chat";
+        /**
+         * @description `active`; `paused` (it only reads until resumed); `disconnected`
+         *     (for good, its credential revoked).
+         * @enum {string}
+         */
+        AgentState: "active" | "paused" | "disconnected";
+        /** @enum {string} */
+        CredentialKind: "api_key" | "oauth_grant";
         /** @enum {string} */
         ActorKind: "person" | "agent" | "dream" | "memax" | "repository";
         /**
@@ -508,6 +716,119 @@ export interface components {
             has_more: boolean;
             next_cursor?: components["schemas"]["Cursor"];
         };
+        /** @description The credential a connection is bound to. */
+        AgentCredential: {
+            kind: components["schemas"]["CredentialKind"];
+            /** @description The API key's or OAuth grant's id. */
+            id: components["schemas"]["Id"];
+            /** @description False once the credential is revoked, expired or deleted. */
+            active: boolean;
+        };
+        /** @description A connection's autonomy in one space, and its use there. */
+        AgentSpace: {
+            space_id: components["schemas"]["Id"];
+            slug: string;
+            name: string;
+            kind: components["schemas"]["SpaceKind"];
+            autonomy: components["schemas"]["Autonomy"];
+            /** @description Reads in the last 7 days. 0 until reads are recorded. */
+            reads_7d: number;
+            /** @description Memories it proposed, kept or edited in the last 7 days. */
+            writes_7d: number;
+            /** @description When its autonomy here last changed. */
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        /**
+         * @description An agent working for a person through one credential: the identity
+         *     its receipts name, and its autonomy in each space.
+         */
+        AgentConnection: {
+            /** @description The connection's id; receipts of its writes carry it as `actor_id`. */
+            id: components["schemas"]["Id"];
+            /** @description The person it works for. */
+            person_id: components["schemas"]["Id"];
+            agent: components["schemas"]["AgentKind"];
+            display_name: string;
+            surface: components["schemas"]["AgentSurface"];
+            credential: components["schemas"]["AgentCredential"];
+            /**
+             * @description The most its credential allows: an API key proposes at most, and
+             *     a credential without write access (or one no longer active) only
+             *     reads.
+             */
+            max_autonomy: components["schemas"]["Autonomy"];
+            /** @description The OAuth client's Client ID Metadata Document URL, when it has one. */
+            client_id?: string;
+            state: components["schemas"]["AgentState"];
+            /**
+             * @description The spaces of yours it is connected to, personal space first. In a
+             *     space it isn't connected to, it only reads.
+             */
+            spaces: components["schemas"]["AgentSpace"][];
+            /** @description Reads in the last 7 days, in those spaces. 0 until reads are recorded. */
+            reads_7d: number;
+            /** @description Writes in the last 7 days, in those spaces. */
+            writes_7d: number;
+            /** @description When it last used Memax (updated at most once a minute). */
+            last_seen_at?: components["schemas"]["Timestamp"];
+            /** @description Who connected it (`memax` for a V1 credential carried over), when you can see that receipt. */
+            connected_by_kind?: components["schemas"]["ActorKind"];
+            /** @description The person who connected it. */
+            connected_by?: components["schemas"]["Id"];
+            disconnected_at?: components["schemas"]["Timestamp"];
+            created_receipt_id: components["schemas"]["Id"];
+            last_receipt_id: components["schemas"]["Id"];
+            /** @description When it was connected. */
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        AgentList: {
+            items: components["schemas"]["AgentConnection"][];
+        };
+        /**
+         * @description What the agent did in the last 7 days, in your spaces: its writes,
+         *     and what became of the memories it wrote.
+         */
+        AgentWeek: {
+            /** @description 0 until reads are recorded. */
+            reads: number;
+            /** @description Memories it proposed, kept or edited. */
+            writes: number;
+            /** @description Memories it wrote that went to Review. */
+            proposals: number;
+            /** @description Memories it wrote that are kept now. */
+            kept: number;
+            rejected: number;
+            /** @description Memories it wrote that are still waiting in Review. */
+            waiting: number;
+        };
+        /** @description One of the agent's sessions, from the session on its receipts. */
+        AgentSession: {
+            session_ref: components["schemas"]["SessionRef"];
+            /** @description 0 until reads are recorded. */
+            reads: number;
+            writes: number;
+            last_at: components["schemas"]["Timestamp"];
+        };
+        AgentDetail: {
+            agent: components["schemas"]["AgentConnection"];
+            this_week: components["schemas"]["AgentWeek"];
+            /** @description Its latest receipts on memories, newest first (at most 10). Read a memory for its words. */
+            recent_writes: components["schemas"]["Receipt"][];
+            /** @description Its latest sessions, most recent first (at most 10). */
+            sessions: components["schemas"]["AgentSession"][];
+        };
+        AgentCommandResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            /** @description The connection after the change. */
+            agent: components["schemas"]["AgentConnection"];
+            /**
+             * @description The receipts the command wrote, oldest first: one per space the
+             *     change applies to, or none when there was nothing to change.
+             */
+            receipts: components["schemas"]["Receipt"][];
+        };
         /** @description A source a new memory cites. */
         SourceInput: {
             kind: components["schemas"]["SourceKind"];
@@ -556,6 +877,18 @@ export interface components {
             /** @description When it happened on the client; offline queues keep the original time. */
             occurred_at?: components["schemas"]["Timestamp"];
             session_ref?: components["schemas"]["SessionRef"];
+        };
+        AutonomyRequest: {
+            autonomy: components["schemas"]["Autonomy"];
+            reason?: components["schemas"]["Reason"];
+            /** @description When it happened on the client; offline queues keep the original time. */
+            occurred_at?: components["schemas"]["Timestamp"];
+        };
+        /** @description The body of pause, resume and disconnect. Every field is optional. */
+        AgentCommandRequest: {
+            reason?: components["schemas"]["Reason"];
+            /** @description When it happened on the client; offline queues keep the original time. */
+            occurred_at?: components["schemas"]["Timestamp"];
         };
         EditRequest: {
             /** @description The new words. */
@@ -617,6 +950,15 @@ export interface components {
         CommandResultEnvelope: {
             data: components["schemas"]["CommandResult"];
         };
+        AgentListEnvelope: {
+            data: components["schemas"]["AgentList"];
+        };
+        AgentDetailEnvelope: {
+            data: components["schemas"]["AgentDetail"];
+        };
+        AgentCommandResultEnvelope: {
+            data: components["schemas"]["AgentCommandResult"];
+        };
     };
     responses: {
         /** @description The command was applied, or sent to Review. */
@@ -628,6 +970,16 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["CommandResultEnvelope"];
+            };
+        };
+        /** @description The change to the agent was applied (or there was nothing to change). */
+        AgentCommandResult: {
+            headers: {
+                "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["AgentCommandResultEnvelope"];
             };
         };
         /**
@@ -672,7 +1024,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
-        /** @description `invalid_transition`: the memory's state doesn't allow this command. */
+        /** @description `invalid_transition`: the memory's or agent's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one). */
         InvalidTransition: {
             headers: {
                 [name: string]: unknown;
@@ -752,6 +1104,8 @@ export interface components {
         SpaceContext: components["schemas"]["SpaceKey"];
         /** @description A display ID (M-0219, with `?space=`) or a memory id. */
         RefPath: components["schemas"]["MemoryRef"];
+        /** @description The agent connection's id. */
+        AgentPath: components["schemas"]["Id"];
         /** @description The `next_cursor` of the previous page. */
         Cursor: string;
         /** @description Page size. Larger values are capped at 200. */
@@ -1162,6 +1516,260 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["InvalidTransition"];
             412: components["responses"]["EditClash"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listAgents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your agents. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentListEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listSpaceAgents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The space's agents. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentListEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    getAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent connection's id. */
+                agent: components["parameters"]["AgentPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The agent. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentDetailEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    setAgentAutonomy: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The agent connection's id. */
+                agent: components["parameters"]["AgentPath"];
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutonomyRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["AgentCommandResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    pauseAgent: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The agent connection's id. */
+                agent: components["parameters"]["AgentPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AgentCommandRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["AgentCommandResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    resumeAgent: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The agent connection's id. */
+                agent: components["parameters"]["AgentPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AgentCommandRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["AgentCommandResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    disconnectAgent: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The agent connection's id. */
+                agent: components["parameters"]["AgentPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AgentCommandRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["AgentCommandResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
             422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];

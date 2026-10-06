@@ -10,7 +10,7 @@
 #   - every object schema with properties sets additionalProperties: false;
 #   - every response body is a named schema: an envelope with `data`, or
 #     ErrorEnvelope for 4xx and 5xx;
-#   - every POST requires Idempotency-Key;
+#   - every POST and PATCH requires Idempotency-Key;
 #   - every operation documents 401, 429, 500 and 503.
 openapi: 3.1.1
 info:
@@ -32,8 +32,10 @@ info:
 
     ## Commands
 
-    A command is a `POST` that changes the record: remember, keep, edit and
-    reject. Every command:
+    A command is a `POST` (or the `PATCH` that sets an agent's autonomy)
+    that changes the record: remember, keep, edit and reject a memory;
+    pause, resume, disconnect and set the autonomy of an agent. Every
+    command:
 
     - needs an `Idempotency-Key` header (1 to 255 characters). Retrying a
       command with the same key returns the original result and writes
@@ -125,6 +127,8 @@ tags:
     description: What needs a person.
   - name: activity
     description: The receipts of every change.
+  - name: agents
+    description: The agents connected to your spaces, and what each may do in each.
 paths:
   /v2/spaces:
     get:
@@ -510,6 +514,275 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/agents:
+    get:
+      operationId: listAgents
+      tags: [agents]
+      summary: List your agents
+      description: |
+        Your agent connections, oldest first: each one's autonomy in every
+        space of yours it is connected to, when it was last seen, and its
+        writes in the last 7 days. Disconnected agents are left out. With an
+        agent's own credential, only that agent is listed. Not paginated.
+      responses:
+        '200':
+          description: Your agents.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/agents:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listSpaceAgents
+      tags: [agents]
+      summary: List the agents in a space
+      description: |
+        Every agent connected to the space, whoever it works for, oldest
+        first, with its autonomy there and its writes there in the last 7
+        days. Of other people's agents you see only the spaces you share.
+        Disconnected agents are left out. Not paginated.
+      responses:
+        '200':
+          description: The space's agents.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/agents/{agent}:
+    parameters:
+      - $ref: '#/components/parameters/AgentPath'
+    get:
+      operationId: getAgent
+      tags: [agents]
+      summary: Read one agent
+      description: |
+        One agent connection with what it did this week, its latest writes
+        (receipts, which never hold the words) and its latest sessions, in
+        your spaces. Disconnected agents can still be read.
+      responses:
+        '200':
+          description: The agent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDetailEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/agents/{agent}/spaces/{space}:
+    parameters:
+      - $ref: '#/components/parameters/AgentPath'
+      - $ref: '#/components/parameters/SpacePath'
+    patch:
+      operationId: setAgentAutonomy
+      tags: [agents]
+      summary: Set what an agent may do in a space
+      description: |
+        Sets the agent's autonomy in the space, connecting it there if it
+        isn't yet. Only a person changes what an agent may do, never an
+        agent. Lowering is always allowed for your own agent, and a space's
+        owners may lower anyone's agent there. Raising needs you on the web
+        (assurance `human_web`), so an agent driving the CLI with your login
+        can't raise itself; connecting at no more than the space's default
+        (Propose unless its rules say otherwise) is the exception. Write
+        needs you to be able to keep in the space, and an API key's agent
+        proposes at most. The same level again writes nothing.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutonomyRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/AgentCommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/agents/{agent}:pause:
+    parameters:
+      - $ref: '#/components/parameters/AgentPath'
+    post:
+      operationId: pauseAgent
+      tags: [agents]
+      summary: Pause an agent
+      description: |
+        Stops the agent writing anywhere until it is resumed; it can still
+        read. Only the person it works for can pause it. The receipt goes to
+        every space it is connected to.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCommandRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/AgentCommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/agents/{agent}:resume:
+    parameters:
+      - $ref: '#/components/parameters/AgentPath'
+    post:
+      operationId: resumeAgent
+      tags: [agents]
+      summary: Resume a paused agent
+      description: |
+        Lets a paused agent write again, at the autonomy it had. Resuming is
+        raising, so it needs you on the web (assurance `human_web`): an agent
+        can't resume itself.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCommandRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/AgentCommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/agents/{agent}:disconnect:
+    parameters:
+      - $ref: '#/components/parameters/AgentPath'
+    post:
+      operationId: disconnectAgent
+      tags: [agents]
+      summary: Disconnect an agent
+      description: |
+        Ends the connection for good and revokes its credential (the API key
+        or OAuth grant) in the same transaction, so the agent stops working
+        at once. Only the person it works for can disconnect it. To use the
+        agent again, connect it again.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCommandRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/AgentCommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
 components:
   securitySchemes:
     bearer:
@@ -546,6 +819,13 @@ components:
       description: A display ID (M-0219, with `?space=`) or a memory id.
       schema:
         $ref: '#/components/schemas/MemoryRef'
+    AgentPath:
+      name: agent
+      in: path
+      required: true
+      description: The agent connection's id.
+      schema:
+        $ref: '#/components/schemas/Id'
     Cursor:
       name: cursor
       in: query
@@ -636,6 +916,15 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/CommandResultEnvelope'
+    AgentCommandResult:
+      description: The change to the agent was applied (or there was nothing to change).
+      headers:
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AgentCommandResultEnvelope'
     BadRequest:
       description: |
         `invalid_request`, `idempotency_key_required`, `space_required` or
@@ -665,7 +954,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
     InvalidTransition:
-      description: "`invalid_transition`: the memory's state doesn't allow this command."
+      description: "`invalid_transition`: the memory's or agent's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one)."
       content:
         application/json:
           schema:
@@ -791,6 +1080,30 @@ components:
     Role:
       type: string
       enum: [owner, member, viewer]
+    Autonomy:
+      description: |
+        What an agent may do in a space. `read` writes nothing; `propose`
+        sends its writes to Review; `write` keeps them, still with a
+        receipt (and still proposes what cites an outside source).
+      type: string
+      enum: [read, propose, write]
+    AgentKind:
+      description: Which agent a connection is. `other` is any agent Memax doesn't know by name.
+      type: string
+      enum: [claude-code, codex, cursor, chatgpt, claude, gemini-cli, copilot, opencode, windsurf, other]
+    AgentSurface:
+      description: Where the agent runs.
+      type: string
+      enum: [cli, ide, cloud, chat]
+    AgentState:
+      description: |
+        `active`; `paused` (it only reads until resumed); `disconnected`
+        (for good, its credential revoked).
+      type: string
+      enum: [active, paused, disconnected]
+    CredentialKind:
+      type: string
+      enum: [api_key, oauth_grant]
     ActorKind:
       type: string
       enum: [person, agent, dream, memax, repository]
@@ -1308,6 +1621,233 @@ components:
         next_cursor:
           $ref: '#/components/schemas/Cursor'
 
+    AgentCredential:
+      description: The credential a connection is bound to.
+      type: object
+      additionalProperties: false
+      required: [kind, id, active]
+      properties:
+        kind:
+          $ref: '#/components/schemas/CredentialKind'
+        id:
+          description: The API key's or OAuth grant's id.
+          $ref: '#/components/schemas/Id'
+        active:
+          description: False once the credential is revoked, expired or deleted.
+          type: boolean
+
+    AgentSpace:
+      description: A connection's autonomy in one space, and its use there.
+      type: object
+      additionalProperties: false
+      required: [space_id, slug, name, kind, autonomy, reads_7d, writes_7d, updated_at]
+      properties:
+        space_id:
+          $ref: '#/components/schemas/Id'
+        slug:
+          type: string
+        name:
+          type: string
+        kind:
+          $ref: '#/components/schemas/SpaceKind'
+        autonomy:
+          $ref: '#/components/schemas/Autonomy'
+        reads_7d:
+          description: Reads in the last 7 days. 0 until reads are recorded.
+          type: integer
+          minimum: 0
+        writes_7d:
+          description: Memories it proposed, kept or edited in the last 7 days.
+          type: integer
+          minimum: 0
+        updated_at:
+          description: When its autonomy here last changed.
+          $ref: '#/components/schemas/Timestamp'
+
+    AgentConnection:
+      description: |
+        An agent working for a person through one credential: the identity
+        its receipts name, and its autonomy in each space.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - person_id
+        - agent
+        - display_name
+        - surface
+        - credential
+        - max_autonomy
+        - state
+        - spaces
+        - reads_7d
+        - writes_7d
+        - created_receipt_id
+        - last_receipt_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          description: The connection's id; receipts of its writes carry it as `actor_id`.
+          $ref: '#/components/schemas/Id'
+        person_id:
+          description: The person it works for.
+          $ref: '#/components/schemas/Id'
+        agent:
+          $ref: '#/components/schemas/AgentKind'
+        display_name:
+          type: string
+        surface:
+          $ref: '#/components/schemas/AgentSurface'
+        credential:
+          $ref: '#/components/schemas/AgentCredential'
+        max_autonomy:
+          description: |
+            The most its credential allows: an API key proposes at most, and
+            a credential without write access (or one no longer active) only
+            reads.
+          $ref: '#/components/schemas/Autonomy'
+        client_id:
+          description: The OAuth client's Client ID Metadata Document URL, when it has one.
+          type: string
+        state:
+          $ref: '#/components/schemas/AgentState'
+        spaces:
+          description: |
+            The spaces of yours it is connected to, personal space first. In a
+            space it isn't connected to, it only reads.
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentSpace'
+        reads_7d:
+          description: Reads in the last 7 days, in those spaces. 0 until reads are recorded.
+          type: integer
+          minimum: 0
+        writes_7d:
+          description: Writes in the last 7 days, in those spaces.
+          type: integer
+          minimum: 0
+        last_seen_at:
+          description: When it last used Memax (updated at most once a minute).
+          $ref: '#/components/schemas/Timestamp'
+        connected_by_kind:
+          description: Who connected it (`memax` for a V1 credential carried over), when you can see that receipt.
+          $ref: '#/components/schemas/ActorKind'
+        connected_by:
+          description: The person who connected it.
+          $ref: '#/components/schemas/Id'
+        disconnected_at:
+          $ref: '#/components/schemas/Timestamp'
+        created_receipt_id:
+          $ref: '#/components/schemas/Id'
+        last_receipt_id:
+          $ref: '#/components/schemas/Id'
+        created_at:
+          description: When it was connected.
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    AgentList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentConnection'
+
+    AgentWeek:
+      description: |
+        What the agent did in the last 7 days, in your spaces: its writes,
+        and what became of the memories it wrote.
+      type: object
+      additionalProperties: false
+      required: [reads, writes, proposals, kept, rejected, waiting]
+      properties:
+        reads:
+          description: 0 until reads are recorded.
+          type: integer
+          minimum: 0
+        writes:
+          description: Memories it proposed, kept or edited.
+          type: integer
+          minimum: 0
+        proposals:
+          description: Memories it wrote that went to Review.
+          type: integer
+          minimum: 0
+        kept:
+          description: Memories it wrote that are kept now.
+          type: integer
+          minimum: 0
+        rejected:
+          type: integer
+          minimum: 0
+        waiting:
+          description: Memories it wrote that are still waiting in Review.
+          type: integer
+          minimum: 0
+
+    AgentSession:
+      description: One of the agent's sessions, from the session on its receipts.
+      type: object
+      additionalProperties: false
+      required: [session_ref, reads, writes, last_at]
+      properties:
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+        reads:
+          description: 0 until reads are recorded.
+          type: integer
+          minimum: 0
+        writes:
+          type: integer
+          minimum: 0
+        last_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    AgentDetail:
+      type: object
+      additionalProperties: false
+      required: [agent, this_week, recent_writes, sessions]
+      properties:
+        agent:
+          $ref: '#/components/schemas/AgentConnection'
+        this_week:
+          $ref: '#/components/schemas/AgentWeek'
+        recent_writes:
+          description: Its latest receipts on memories, newest first (at most 10). Read a memory for its words.
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+        sessions:
+          description: Its latest sessions, most recent first (at most 10).
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentSession'
+
+    AgentCommandResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, agent, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        agent:
+          description: The connection after the change.
+          $ref: '#/components/schemas/AgentConnection'
+        receipts:
+          description: |
+            The receipts the command wrote, oldest first: one per space the
+            change applies to, or none when there was nothing to change.
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+
     # ------------------------------------------------------------------
     # Requests
     # ------------------------------------------------------------------
@@ -1401,6 +1941,30 @@ components:
           $ref: '#/components/schemas/Timestamp'
         session_ref:
           $ref: '#/components/schemas/SessionRef'
+
+    AutonomyRequest:
+      type: object
+      additionalProperties: false
+      required: [autonomy]
+      properties:
+        autonomy:
+          $ref: '#/components/schemas/Autonomy'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+
+    AgentCommandRequest:
+      description: The body of pause, resume and disconnect. Every field is optional.
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
 
     EditRequest:
       type: object
@@ -1530,3 +2094,27 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/CommandResult'
+
+    AgentListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/AgentList'
+
+    AgentDetailEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/AgentDetail'
+
+    AgentCommandResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/AgentCommandResult'

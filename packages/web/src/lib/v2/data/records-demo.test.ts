@@ -215,7 +215,7 @@ describe("the demo's judge", () => {
       .catch((err: unknown) => toFailure(err));
     expect(busy).toEqual({ kind: "busy", retryAfter: 1, ref: "M-0445" });
     // The check lands: the same key keeps it.
-    time = 4000;
+    time = 6000;
     expect(
       (await demo.review.item({ space: team, ref: "M-0445" }))?.judge,
     ).toBe(null);

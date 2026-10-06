@@ -105,13 +105,18 @@ export function useUndo() {
           (o) => o && { ...o, waiting: Math.max(0, o.waiting + delta) },
         );
       let previous: QueueData | undefined;
+      // Whether the card had already left the cached queue (undone after
+      // the seal, not during it): only then does the count go back up.
+      let returned = false;
       if (restore) {
         await queryClient.cancelQueries({ queryKey: queueKey, exact: true });
         previous = queryClient.getQueryData<QueueData>(queueKey);
-        queryClient.setQueryData<QueueData>(queueKey, (data) =>
-          withRestored(data, restore),
-        );
-        waiting(1);
+        const next = withRestored(previous, restore);
+        returned = next !== previous;
+        if (returned) {
+          queryClient.setQueryData<QueueData>(queueKey, next);
+          waiting(1);
+        }
         stack.emit({ type: "restore", entry });
       }
       try {
@@ -127,8 +132,10 @@ export function useUndo() {
       } catch (err) {
         const failure = toFailure(err);
         if (restore) {
-          if (previous) queryClient.setQueryData(queueKey, previous);
-          waiting(-1);
+          if (returned && previous) {
+            queryClient.setQueryData(queueKey, previous);
+            waiting(-1);
+          }
           stack.emit({ type: "rollback", entry });
         }
         const retry = isRetryable(failure);

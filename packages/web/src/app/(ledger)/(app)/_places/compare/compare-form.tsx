@@ -303,7 +303,7 @@ export function Compare({
   if (option?.kind === "both") {
     words = (
       <fieldset className={styles.decision}>
-        <legend className={styles.label}>{c.decisionBoth}</legend>
+        <legend className="mx-sr">{c.decisionBoth}</legend>
         {(["proposal", "kept"] as const).map((side) => (
           <div key={side} className={styles.decision}>
             <label className={styles.label} htmlFor={`${id}-${side}`}>

@@ -168,18 +168,14 @@
   margin-top: 6px;
 }
 
-/* "Both": each side's words, in one group. */
+/* "Both": each side's words, in one group (its legend is for screen
+ * readers; each field names its side, as the board's one field does). */
 fieldset.decision {
   min-width: 0;
   margin: 6px 0 0;
   padding: 0;
   border: 0;
   gap: 10px;
-}
-
-fieldset.decision > legend {
-  margin-bottom: 6px;
-  padding: 0;
 }
 
 fieldset.decision > .decision {

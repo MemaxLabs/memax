@@ -166,7 +166,7 @@ export const DEMO_JUDGING: Record<
   string,
   { afterMs: number; touchesDecision: boolean }
 > = {
-  "M-0445": { afterMs: 4000, touchesDecision: true },
+  "M-0445": { afterMs: 6000, touchesDecision: true },
 };
 
 export const M0156 = {

@@ -51,8 +51,11 @@ type tamper struct {
 }
 
 // webSigned signs the request the way the web app's proxy does, for user.
-func webSigned(user uuid.UUID, t tamper) func(*http.Request, []byte) {
+// Each request it signs gets a fresh nonce and time unless tamper fixes
+// them.
+func webSigned(user uuid.UUID, fixed tamper) func(*http.Request, []byte) {
 	return func(r *http.Request, body []byte) {
+		t := fixed
 		if t.secret == "" {
 			t.secret = surfaceSecret
 		}

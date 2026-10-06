@@ -40,6 +40,8 @@ export interface GateCardState {
   answered: GateAnswerResult | null;
   /** Answering was refused because it needs the web (D15): the card says so from then on. */
   needsWeb: boolean;
+  /** How many times the person went back from a confirmation (Esc, Cancel): the chosen option takes the focus. */
+  backs: number;
 }
 
 export const INITIAL_GATE_CARD: GateCardState = {
@@ -48,6 +50,7 @@ export const INITIAL_GATE_CARD: GateCardState = {
   pending: null,
   answered: null,
   needsWeb: false,
+  backs: 0,
 };
 
 const wait = (ms: number) =>
@@ -125,12 +128,14 @@ export function useGateCards({
     });
   }, []);
 
-  // The queue's gates: the waiting ones, and those lingering, in order.
+  // The queue's gates: the waiting ones, and those lingering, in order. A
+  // lingering gate is what the server said last (it ended), so it wins
+  // over a list that hasn't caught up.
   const gates = useMemo(() => {
     const at = new Date(minute * 60_000);
     const waiting = waitingGates(query.data ?? [], at);
-    const fresh = new Set(waiting.map((g) => g.ref));
-    return [...waiting, ...lingering.filter((g) => !fresh.has(g.ref))]
+    const known = new Set(lingering.map((g) => g.ref));
+    return [...waiting.filter((g) => !known.has(g.ref)), ...lingering]
       .filter((g) => !done[g.ref] && !left.has(g.ref))
       .sort(byExpiry);
   }, [done, left, lingering, minute, query.data]);
@@ -360,7 +365,7 @@ export function useGateCards({
     (gate: GateView): boolean => {
       const card = cardOf(gate.ref);
       if (card.step === "choose" || card.pending) return false;
-      patch(gate.ref, { step: "choose" });
+      patch(gate.ref, { step: "choose", backs: card.backs + 1 });
       return true;
     },
     [cardOf, patch],

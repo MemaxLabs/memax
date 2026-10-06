@@ -50,12 +50,27 @@ export function GateCard({
   const answerRef = useRef<HTMLElement>(null);
   const cancelRef = useRef<HTMLElement>(null);
 
-  // The confirmation takes the focus where ↵ answers; withdrawing's
-  // goes to Cancel, the safe default.
+  // The confirmation takes the focus to its Answer, where ↵ answers (the
+  // keymap's, so it never answers twice); withdrawing's goes to Cancel,
+  // the safe default.
   useEffect(() => {
     if (card.step === "confirm") answerRef.current?.focus();
     else if (card.step === "withdraw") cancelRef.current?.focus();
   }, [card.step]);
+
+  // Back from a confirmation (Esc, Cancel), the chosen option takes the
+  // focus, if it was in the card or fell out of it.
+  const articleRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (card.backs === 0) return;
+    const active = document.activeElement;
+    const article = articleRef.current;
+    if (!article) return;
+    if (active && active !== document.body && !article.contains(active)) {
+      return;
+    }
+    article.querySelector<HTMLElement>(".mx-gate-opt.is-on")?.focus();
+  }, [card.backs]);
 
   const label = gate.options[card.choice]?.label ?? "";
   const pending = card.pending !== null;
@@ -78,6 +93,7 @@ export function GateCard({
           </Button>
           <Button
             ref={answerRef}
+            data-gate-answer=""
             variant="keep"
             size="sm"
             kbd="↵"
@@ -135,6 +151,7 @@ export function GateCard({
     <DecisionGate
       // A new card for a new gate: a choice or the seal never carries over.
       key={gate.ref}
+      ref={articleRef}
       agent={gate.agent}
       question={gate.question}
       context={gate.context ?? undefined}

@@ -36,7 +36,7 @@ export function CardColumn({
   const { selected: item, index, entries, card, state } = review;
   const keepChord = useKeycap("command.keep");
 
-  if (review.queue.data === undefined) {
+  if (review.queue.data === undefined || review.gatesLoading) {
     return (
       <section className={styles.cardPane} aria-busy="true">
         <div className={styles.cardColumn}>

@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemaxError } from "memax-sdk";
@@ -29,7 +30,10 @@ import { SpaceViewContext } from "../../_lib/space-context";
 import { UndoStackProvider } from "../../_lib/undo";
 import { ReviewPlace } from "./index";
 
-const h = vi.hoisted(() => ({ source: null as LedgerDataSource | null }));
+const h = vi.hoisted(() => ({
+  source: null as LedgerDataSource | null,
+  params: null as URLSearchParams | null,
+}));
 
 vi.mock("@/lib/v2/data/demo-source", async (load) => {
   const actual = await load<typeof import("@/lib/v2/data/demo-source")>();
@@ -47,7 +51,7 @@ vi.mock("@/lib/memax-client", () => ({ getMemaxClient: () => ({}) }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/memax-v2/review",
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => h.params ?? new URLSearchParams(),
 }));
 
 // jsdom has no layout: the queue scrolls its selected row into view.
@@ -56,6 +60,7 @@ Element.prototype.scrollIntoView = () => {};
 afterEach(() => {
   cleanup();
   h.source = null;
+  h.params = null;
 });
 
 const v2 = DEMO_SPACES.find((s) => s.slug === "memax-v2")!;
@@ -65,6 +70,7 @@ function sourceWith(
   change: (demo: LedgerDataSource) => {
     review?: Partial<LedgerDataSource["review"]>;
     memories?: Partial<LedgerDataSource["memories"]>;
+    gates?: Partial<LedgerDataSource["gates"]>;
     undo?: LedgerDataSource["undo"];
   },
   options: Parameters<typeof createDemoSource>[0] = {},
@@ -79,6 +85,7 @@ function sourceWith(
     ...demo,
     review: { ...demo.review, ...parts.review },
     memories: { ...demo.memories, ...parts.memories },
+    gates: { ...demo.gates, ...parts.gates },
     undo: parts.undo ?? demo.undo,
   };
   h.source = source;
@@ -719,5 +726,343 @@ describe("Undo in Review", () => {
     await screen.findByText("memax-v2 · 1 of 4");
     // A refusal is final: no Try again, and ⌘Z has nothing left.
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+});
+
+describe("Decision gates in Review", () => {
+  const card = () => document.querySelector(".mx-gate") as HTMLElement;
+  /** Waits for the team space's queue, a question first. */
+  async function teamReady() {
+    await screen.findByText("Memax team · 1 of 4");
+    await act(async () => {});
+  }
+  const confirmation = () =>
+    within(card()).queryByRole("status")?.textContent ?? null;
+
+  it("lists the questions agents asked first, with the agent, the session and the options", async () => {
+    sourceWith(() => ({}));
+    renderReview(team);
+    await teamReady();
+    const queue = screen.getByRole("complementary", { name: "Waiting on you" });
+    const rows = within(queue).getAllByRole("listitem");
+    expect(
+      rows.map((r) => r.querySelector(".mx-row-rail-id")?.textContent),
+    ).toEqual(["G-0011", "G-0012", "M-0444", "M-0445"]);
+    expect(rows[0]!.textContent).toContain("asked");
+    expect(within(queue).getByText("4 waiting · oldest 1 h")).toBeTruthy();
+    expect(
+      screen.getByText("Asked in session 3e1a · Expires tomorrow at 13:40"),
+    ).toBeTruthy();
+    const gate = card();
+    expect(
+      within(gate).getByText("Claude Code is waiting on you"),
+    ).toBeTruthy();
+    expect(
+      within(gate).getByRole("radiogroup", {
+        name: "Keep the ChatGPT tool names, or align them with the core set?",
+      }),
+    ).toBeTruthy();
+    expect(within(gate).getAllByRole("radio")).toHaveLength(3);
+    expect(
+      within(gate).getByText(
+        "The seven aliases stay; nothing changes for ChatGPT.",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(gate).getByText(
+        "Your answer is kept in Memax team, authored by you.",
+      ),
+    ).toBeTruthy();
+    // The legend follows the card: digits choose, ↵ answers.
+    const legend = screen.getByRole("group", { name: "Review keys" });
+    expect(legend.textContent).toContain("1–3 choose");
+    expect(legend.textContent).toContain("↵ answer");
+    expect(legend.textContent).not.toContain("keep");
+  });
+
+  it("answers by keyboard: a digit, ↵ to confirm, ↵ again, and the seal with the decision", async () => {
+    const source = sourceWith((demo) => ({
+      gates: { answer: vi.fn(demo.gates.answer) },
+    }));
+    renderReview(team);
+    await teamReady();
+    press("2");
+    const radios = within(card()).getAllByRole("radio");
+    expect(radios[1]?.getAttribute("aria-checked")).toBe("true");
+    press("Enter");
+    expect(confirmation()).toBe(
+      "Answer “Align with the core set”? This becomes a kept decision by you, and compiles into every file.",
+    );
+    expect(source.gates.answer).not.toHaveBeenCalled();
+    press("Enter");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("img", { name: /^Kept, Oct 5, M-0439/ }),
+      ).not.toBeNull(),
+    );
+    expect(within(card()).getByText("You answered")).toBeTruthy();
+    expect(source.gates.answer).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(source.gates.answer).mock.calls[0]![0]).toMatchObject({
+      option: 1,
+      gate: expect.objectContaining({ ref: "G-0011", version: 1 }),
+      idempotencyKey: expect.any(String),
+    });
+    expect(
+      await screen.findByText(/^Kept M-0439 as your answer to G-0011/),
+    ).toBeTruthy();
+    // A link to the decision, and no Undo: answers can't be undone yet.
+    expect(screen.getByRole("button", { name: "Open M-0439" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    // Then the next card: Codex's question.
+    await screen.findByText("Memax team · 1 of 3", undefined, {
+      timeout: 2000,
+    });
+    expect(within(card()).getByText("Codex is waiting on you")).toBeTruthy();
+  });
+
+  it("Esc goes back from the confirmation, and a digit chooses again", async () => {
+    sourceWith(() => ({}));
+    renderReview(team);
+    await teamReady();
+    press("1");
+    press("Enter");
+    expect(confirmation()).toContain("Keep the ChatGPT names");
+    press("Escape");
+    expect(confirmation()).toBeNull();
+    // Back to choosing, the focus is on the option chosen.
+    expect(document.activeElement?.getAttribute("role")).toBe("radio");
+    press("3");
+    press("Enter");
+    expect(confirmation()).toContain("Decide later");
+  });
+
+  it("says before you try when answering needs the web and this session isn't (D15)", async () => {
+    const source = sourceWith(
+      (demo) => ({ gates: { answer: vi.fn(demo.gates.answer) } }),
+      { webSession: false },
+    );
+    renderReview(team);
+    await teamReady();
+    const note = within(card()).getByRole("note");
+    expect(note.textContent).toContain(
+      "Decisions in Memax team are answered only on memax.app, and Memax can't confirm this session is. Sign in again here, then answer.",
+    );
+    expect(
+      within(note).getByRole("button", { name: "Sign in again" }),
+    ).toBeTruthy();
+    press("1");
+    const answer = within(card()).getByRole("button", { name: "Answer" });
+    expect(answer.getAttribute("aria-disabled")).toBe("true");
+    expect(answer.title).toBe("Sign in again on memax.app to answer.");
+    press("Enter");
+    expect(confirmation()).toBeNull();
+    expect(source.gates.answer).not.toHaveBeenCalled();
+  });
+
+  it("words D15's refusal with Sign in again, and says so on the card from then on", async () => {
+    const source = sourceWith(() => ({
+      gates: {
+        answer: vi.fn().mockRejectedValue(
+          new MemaxError("needs the web", "refused", 403, {
+            policy: {
+              effect: "refuse",
+              code: "decision_needs_web",
+              message: "Decisions in Memax team need a person on the web.",
+            },
+          }),
+        ),
+      },
+    }));
+    renderReview(team);
+    await teamReady();
+    press("1");
+    press("Enter");
+    press("Enter");
+    expect(
+      await screen.findByText(
+        /^G-0011 wasn't answered\. Decisions in Memax team are answered only on memax\.app, and Memax couldn't confirm this came from there\. Sign in again here, then answer\./,
+      ),
+    ).toBeTruthy();
+    const toasts = screen.getByRole("region", { name: "Notifications" });
+    expect(
+      within(toasts).getByRole("button", { name: "Sign in again" }),
+    ).toBeTruthy();
+    expect(
+      within(toasts).queryByRole("button", { name: "Try again" }),
+    ).toBeNull();
+    // The gate keeps waiting, and the card now says why it can't be answered here.
+    expect(within(card()).getByRole("note").textContent).toContain(
+      "answered only on memax.app",
+    );
+    expect(source.gates.answer).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Memax team · 1 of 4")).toBeTruthy();
+  });
+
+  it("withdraws quietly, confirmed inline", async () => {
+    const source = sourceWith((demo) => ({
+      gates: { withdraw: vi.fn(demo.gates.withdraw) },
+    }));
+    renderReview(team);
+    await teamReady();
+    fireEvent.click(within(card()).getByRole("button", { name: "Withdraw" }));
+    expect(confirmation()).toBe(
+      "Withdraw G-0011? Claude Code hears that you took the question back on its next read. Nothing is kept.",
+    );
+    // Cancel is the safe default, and Esc backs out.
+    expect(document.activeElement?.textContent).toContain("Cancel");
+    press("Escape");
+    expect(confirmation()).toBeNull();
+    expect(source.gates.withdraw).not.toHaveBeenCalled();
+    fireEvent.click(within(card()).getByRole("button", { name: "Withdraw" }));
+    fireEvent.click(within(card()).getByRole("button", { name: "Withdraw" }));
+    expect(
+      await screen.findByText(
+        "Withdrew G-0011. Claude Code hears it on its next read.",
+      ),
+    ).toBeTruthy();
+    expect(source.gates.withdraw).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gate: expect.objectContaining({ ref: "G-0011", version: 1 }),
+        idempotencyKey: expect.any(String),
+      }),
+    );
+    await screen.findByText("Memax team · 1 of 3");
+  });
+
+  it("says how a gate ended when a 409 meets it, and lets it leave the queue", async () => {
+    sourceWith((demo) => ({
+      gates: {
+        answer: vi.fn().mockRejectedValue(
+          new MemaxError("withdrawn", "invalid_transition", 409, {
+            ref: "G-0011",
+            status: "withdrawn",
+          }),
+        ),
+        get: vi.fn(async (input) => {
+          const gate = await demo.gates.get(input);
+          return (
+            gate && {
+              ...gate,
+              status: "withdrawn" as const,
+              version: 2,
+              withdrawn: {
+                by: { kind: "agent" as const, agent: "claude-code" },
+                at: DEMO_NOW,
+              },
+            }
+          );
+        }),
+      },
+    }));
+    renderReview(team);
+    await teamReady();
+    press("1");
+    press("Enter");
+    press("Enter");
+    expect(
+      await screen.findByText(
+        "G-0011 wasn't answered. Claude Code took the question back.",
+      ),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(within(card()).getByText("Withdrawn")).toBeTruthy(),
+    );
+    expect(
+      within(card()).getByText("Claude Code took the question back."),
+    ).toBeTruthy();
+    expect(within(card()).queryByRole("button", { name: "Answer" })).toBeNull();
+    // It stays on screen until you move on, then leaves the queue.
+    expect(screen.getByText("Memax team · 1 of 4")).toBeTruthy();
+    press("ArrowDown");
+    await screen.findByText("Memax team · 1 of 3");
+    expect(within(card()).getByText("Codex is waiting on you")).toBeTruthy();
+  });
+
+  it("retries a dropped answer with the same idempotency key", async () => {
+    const source = sourceWith((demo) => ({
+      gates: {
+        answer: vi
+          .fn(demo.gates.answer)
+          .mockRejectedValueOnce(new MemaxError("down", "network_error", 0)),
+      },
+    }));
+    renderReview(team);
+    await teamReady();
+    press("2");
+    press("Enter");
+    press("Enter");
+    expect(
+      await screen.findByText(
+        "G-0011 wasn't answered. It didn't reach Memax, so nothing changed. Try again.",
+      ),
+    ).toBeTruthy();
+    // Still asking to confirm the same answer.
+    expect(confirmation()).toContain("Align with the core set");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(source.gates.answer).toHaveBeenCalledTimes(2));
+    const [first, second] = vi.mocked(source.gates.answer).mock.calls;
+    expect(second![0].idempotencyKey).toBe(first![0].idempotencyKey);
+    expect(second![0].option).toBe(1);
+    expect(
+      await screen.findByText(/^Kept M-0439 as your answer to G-0011/),
+    ).toBeTruthy();
+  });
+
+  it("opens a gate from a link, and says so when the space has none by that ref", async () => {
+    h.params = new URLSearchParams("gate=G-0012");
+    sourceWith(() => ({}));
+    renderReview(team);
+    await screen.findByText("Memax team · 2 of 4");
+    expect(within(card()).getByText("Codex is waiting on you")).toBeTruthy();
+    cleanup();
+    h.params = new URLSearchParams("gate=G-0099");
+    sourceWith(() => ({}));
+    renderReview(team);
+    expect(
+      await screen.findByText("There's no question G-0099 in Memax team."),
+    ).toBeTruthy();
+    expect(screen.getByText("Memax team · 1 of 4")).toBeTruthy();
+  });
+
+  it("waits for the questions before the first card, and says so when they don't load", async () => {
+    let fail!: (err: unknown) => void;
+    sourceWith(() => ({
+      gates: {
+        peekWaiting: undefined,
+        waiting: vi.fn(
+          () =>
+            new Promise<never>((_, reject) => {
+              fail = reject;
+            }),
+        ),
+      },
+    }));
+    renderReview(team);
+    // Loading: the queue's skeleton at its rows' heights, and the card's.
+    expect(
+      await screen.findByRole("status", { name: "Loading the queue" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/^Memax team · 1 of/)).toBeNull();
+    await act(async () => fail(new MemaxError("down", "network_error", 0)));
+    // The memories still review; one quiet line says the questions didn't load.
+    expect(
+      await screen.findByText("The questions agents asked didn't load."),
+    ).toBeTruthy();
+    expect(screen.getByText("Memax team · 1 of 2")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
+  it("keeps a viewer to reading: Answer says why, and there's no Withdraw", async () => {
+    sourceWith(() => ({}));
+    renderReview({ ...team, role: "viewer" });
+    await teamReady();
+    const answer = within(card()).getByRole("button", { name: "Answer" });
+    expect(answer.getAttribute("aria-disabled")).toBe("true");
+    expect(answer.title).toBe(
+      "Viewers can read the question. A member answers it.",
+    );
+    expect(
+      within(card()).queryByRole("button", { name: "Withdraw" }),
+    ).toBeNull();
   });
 });

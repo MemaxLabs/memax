@@ -4,6 +4,7 @@ import { zh } from "@/i18n/locales/zh";
 import {
   actorName,
   dateTime,
+  expiryText,
   failureText,
   noteText,
   undoFailureText,
@@ -227,6 +228,74 @@ describe("why a command didn't go through", () => {
     ).toBe(
       "M-0431 没裁定成。memax-v2 里的决策要在网页上登录才能保留。退出后在这个页面重新登录，再来保留。",
     );
+  });
+
+  it("words a decision gate's answer: D15 for answering, and how it ended", () => {
+    const gate = {
+      command: "answer" as const,
+      ref: "G-0012",
+      space: "Memax team",
+      agent: "Codex",
+    };
+    expect(
+      failureText(
+        EN,
+        { kind: "refused", code: "decision_needs_web", message: null },
+        { ...gate, locale: "en" },
+      ),
+    ).toBe(
+      "G-0012 wasn't answered. Decisions in Memax team are answered only on memax.app, and Memax couldn't confirm this came from there. Sign in again here, then answer.",
+    );
+    expect(
+      failureText(
+        ZH,
+        { kind: "refused", code: "decision_needs_web", message: null },
+        { ...gate, locale: "zh" },
+      ),
+    ).toBe(
+      "G-0012 没回答上。Memax team 里的决策只能在 memax.app 上回答，Memax 没法确认这次是从那里来的。在这里重新登录，再来回答。",
+    );
+    expect(
+      failureText(
+        EN,
+        { kind: "refused", code: "viewer", message: null },
+        { ...gate, locale: "en" },
+      ),
+    ).toBe(
+      "G-0012 wasn't answered. Viewers can read the question. A member answers it.",
+    );
+    const ended = (status: "answered" | "withdrawn" | "expired") =>
+      failureText(EN, { kind: "decided", status }, { ...gate, locale: "en" });
+    expect(ended("answered")).toBe(
+      "G-0012 wasn't answered. It was answered already.",
+    );
+    expect(ended("withdrawn")).toBe(
+      "G-0012 wasn't answered. Codex took the question back.",
+    );
+    expect(ended("expired")).toBe(
+      "G-0012 wasn't answered. It expired, so Codex stopped waiting.",
+    );
+    expect(
+      failureText(
+        EN,
+        { kind: "refused", code: "not_your_gate", message: null },
+        { ...gate, command: "withdraw", locale: "en" },
+      ),
+    ).toBe(
+      "G-0012 wasn't withdrawn. Only the agent that asked, the person it works for, or someone who can answer it can withdraw it.",
+    );
+  });
+});
+
+describe("when a decision gate expires", () => {
+  it.each([
+    [at("14:52"), "Expires in 12 min", "12 分钟后过期"],
+    [at("18:00"), "Expires today at 18:00", "今天 18:00 过期"],
+    [at("13:40", "2026-10-06"), "Expires tomorrow at 13:40", "明天 13:40 过期"],
+    [at("14:38", "2026-10-12"), "Expires Oct 12", "10月12日 过期"],
+  ])("%s", (iso, english, chinese) => {
+    expect(expiryText(EN, iso, NOW, TZ, "en")).toBe(english);
+    expect(expiryText(ZH, iso, NOW, TZ, "zh")).toBe(chinese);
   });
 });
 

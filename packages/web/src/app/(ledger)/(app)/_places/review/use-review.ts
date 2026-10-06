@@ -707,6 +707,15 @@ export function useReview(
     visible,
     /** The decision gates in the queue, before the memories (under All). */
     gates,
+    /**
+     * The gates haven't answered yet: the queue and the card stay in their
+     * loading state, so the first card doesn't change under the person.
+     * A failed read doesn't hold Review (the queue says so instead).
+     */
+    gatesLoading:
+      filter === "all" &&
+      gateCards.query.data === undefined &&
+      !gateCards.query.isError,
     /** Everything the queue lists, in order: gates, then memories. */
     entries,
     /** The selected memory, when a memory is selected. */

@@ -136,7 +136,7 @@ export function Queue({
             </Button>
           </div>
         ) : null}
-        {queue.data === undefined ? (
+        {queue.data === undefined || review.gatesLoading ? (
           <QueueSkeleton label={l.review.loading} />
         ) : visible.length === 0 && gates.length === 0 ? (
           <div className={styles.filterEmpty}>

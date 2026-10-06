@@ -96,11 +96,14 @@ export function useReviewKeys(review: ReviewController, space: SpaceSummary) {
 }
 
 /**
- * Whether ↵ here is the gate's: the page, an option, or a queue row. A
- * focused button or field keeps its own ↵ (Cancel stays Cancel).
+ * Whether ↵ here is the gate's: the page, an option, a queue row, or the
+ * confirmation's Answer. Any other focused button or field keeps its own
+ * ↵ (Cancel stays Cancel).
  */
 function answersHere(target: unknown): boolean {
   if (!(target instanceof HTMLElement)) return true;
-  if (target.closest(".mx-gate-opt, .mx-row-link")) return true;
+  if (target.closest(".mx-gate-opt, .mx-row-link, [data-gate-answer]")) {
+    return true;
+  }
   return !target.closest("button, a, input, textarea, select, [role=menu]");
 }

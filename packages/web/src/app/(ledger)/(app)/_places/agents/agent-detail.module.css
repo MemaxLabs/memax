@@ -1,0 +1,248 @@
+/* One agent's page, after AgentDetail.dc.html: the main column beside a
+ * 340px aside, 24px apart. */
+
+.head :global(.mx-page-lede) {
+  max-width: 360px;
+}
+
+.titleRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: start;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+.aside {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* What it may do. */
+.may {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.levels {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.level,
+.levelOn {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.level dt {
+  color: var(--ink-3);
+}
+
+.level dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.levelOn dt {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.levelOn dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.quarantine {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--sheet);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.quarantineIcon {
+  display: flex;
+  padding-top: 1px;
+  color: var(--ink-3);
+}
+
+.empty {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.all {
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+}
+
+/* Sessions: name, reads, writes, when. */
+.sessions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.session {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 72px 120px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.session:last-child {
+  border-bottom: 0;
+}
+
+.sessionName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+/* The aside's key and value lists. */
+.kv {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.kv dt {
+  color: var(--ink-3);
+}
+
+.kv dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--ink);
+}
+
+.client {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Disconnect, confirmed inline (States: "Forget · confirm inline"). */
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 24px;
+  padding: 16px 20px;
+  background: var(--vermilion-wash);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.confirmTitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.confirmBody {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.confirmActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* A credential V1 revoked: the agent stays listed, and refused. */
+.revoked {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 10px;
+  margin-bottom: 24px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.revokedIcon {
+  display: flex;
+  padding-top: 1px;
+  color: var(--vermilion);
+}
+
+.revokedTitle {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+@media (max-width: 1023px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .session {
+    grid-template-columns: minmax(0, 1fr) 40px 40px auto;
+  }
+}

@@ -16,7 +16,7 @@ const ITEMS = [
 ] as const;
 
 /** Pages built so far; the others are listed, as drawn, and arrive in Phase 2. */
-const BUILT = new Set<string>(["account"]);
+const BUILT = new Set<string>(["account", "keys"]);
 
 export function SettingsFrame({ children }: { children: React.ReactNode }) {
   const { t } = useLocale();

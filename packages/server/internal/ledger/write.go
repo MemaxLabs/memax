@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
@@ -24,6 +25,12 @@ type writer struct {
 	command CommandName
 	hash    []byte
 	space   uuid.UUID // the space the idempotency key was claimed in
+
+	// The follow-up jobs the command queued (jobs.go), and how to insert
+	// them: River, as the role the transaction began with.
+	jobs      []river.InsertManyParams
+	inserter  Jobs
+	loginRole string
 }
 
 // write is Remember and Propose.
@@ -87,6 +94,11 @@ func (w *writer) write(ctx context.Context, nm NewMemory, propose bool) (Result,
 	if err := w.insertSources(ctx, sp.ID, id, rc.ID, srcs); err != nil {
 		return Result{}, err
 	}
+	if state.Lifecycle == lifecycle.Kept {
+		if err := w.markDirty(ctx, sp.ID); err != nil {
+			return Result{}, err
+		}
+	}
 	return w.finish(ctx, Result{Outcome: outcomeFor(dec.Effect), Policy: dec, Receipts: []Receipt{rc}}, id)
 }
 
@@ -114,6 +126,13 @@ func (w *writer) review(ctx context.Context, ref string, expected int, cmd Comma
 	rc, err := w.changeState(ctx, sp, grant, mem, next, receiptAction, mem.streamVersion+1, w.meta.Reason)
 	if err != nil {
 		return Result{}, err
+	}
+	// A Keep changes the kept set, so every target recompiles. A Reject
+	// takes a proposal out of Review, and proposals never compile.
+	if next.Lifecycle == lifecycle.Kept {
+		if err := w.markDirty(ctx, sp.ID); err != nil {
+			return Result{}, err
+		}
 	}
 	return w.finish(ctx, Result{Outcome: OutcomeApplied, Policy: dec, Receipts: []Receipt{rc}}, mem.ID)
 }
@@ -198,6 +217,7 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 		return Result{}, fmt.Errorf("ledger: update memory: %w", err)
 	}
 	receipts := []Receipt{rc}
+	wasKept := mem.Lifecycle == lifecycle.Kept
 	if keep {
 		mem.Lifecycle, mem.Flags, mem.streamVersion = next.Lifecycle, next.Flags, rc.StreamVersion
 		krc, err := w.changeState(ctx, sp, grant, mem, kept, ActionKept, rc.StreamVersion+1, "")
@@ -205,6 +225,13 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 			return Result{}, err
 		}
 		receipts = append(receipts, krc)
+	}
+	// New words for a kept memory, or a proposal edited and kept, change
+	// what compiles.
+	if wasKept || keep {
+		if err := w.markDirty(ctx, sp.ID); err != nil {
+			return Result{}, err
+		}
 	}
 	return w.finish(ctx, Result{Outcome: OutcomeApplied, Policy: dec, Receipts: receipts}, mem.ID)
 }
@@ -378,10 +405,15 @@ func (w *writer) changeState(ctx context.Context, sp spaceRow, grant SpaceGrant,
 }
 
 func (w *writer) receipt(sp spaceRow, objectID uuid.UUID, ref string, action Action, version int, reason string) Receipt {
+	return w.objectReceipt(sp, ObjectMemory, objectID, ref, action, version, reason)
+}
+
+// objectReceipt is a receipt by the command's actor about any object.
+func (w *writer) objectReceipt(sp spaceRow, kind string, objectID uuid.UUID, ref string, action Action, version int, reason string) Receipt {
 	a := w.meta.Actor
 	rc := Receipt{
 		ID: newID(), TenantID: sp.TenantID, SpaceID: sp.ID,
-		ObjectKind: ObjectMemory, ObjectID: objectID, ObjectRef: ref, Action: action,
+		ObjectKind: kind, ObjectID: objectID, ObjectRef: ref, Action: action,
 		ActorKind: a.Kind, Agent: a.Agent, Via: w.meta.Via, SessionRef: w.meta.SessionRef, Reason: reason,
 		OccurredAt: w.meta.OccurredAt, StreamID: objectID, StreamVersion: version,
 	}
@@ -433,6 +465,56 @@ func (w *writer) personKept(ctx context.Context, id uuid.UUID) (bool, error) {
 // key is taken and claim returns the original result (Replayed). A key
 // reused for different content is ErrIdempotencyKeyReused.
 func (w *writer) claim(ctx context.Context, spaceID uuid.UUID) (*Result, error) {
+	c, err := w.claimKey(ctx, spaceID)
+	if err != nil || c == nil {
+		return nil, err
+	}
+	res, err := c.result(ctx, w)
+	if err != nil {
+		return nil, err
+	}
+	if c.objectID != nil && isAgentCommand(w.command) {
+		if res.Connection, err = loadConnection(ctx, w.tx, w.meta.Scope, *c.objectID); err != nil {
+			return nil, err
+		}
+		return &res, nil
+	}
+	if c.objectID != nil {
+		if res.Memory, err = loadMemory(ctx, w.tx, w.meta.Scope, *c.objectID, false); err != nil {
+			return nil, err
+		}
+		if res.Memory.Sources, err = loadSources(ctx, w.tx, *c.objectID); err != nil {
+			return nil, err
+		}
+	}
+	return &res, nil
+}
+
+// claimed is an idempotency key that was already applied.
+type claimed struct {
+	outcome    Outcome
+	policy     []byte
+	objectID   *uuid.UUID
+	receiptIDs []uuid.UUID
+}
+
+// result is the replayed result: the original outcome, policy and
+// receipts. The caller loads the object's projection.
+func (c *claimed) result(ctx context.Context, w *writer) (Result, error) {
+	res := Result{Outcome: c.outcome, Replayed: true}
+	if err := json.Unmarshal(c.policy, &res.Policy); err != nil {
+		return Result{}, fmt.Errorf("ledger: read idempotency key: %w", err)
+	}
+	var err error
+	if res.Receipts, err = loadReceipts(ctx, w.tx, w.meta.Scope, c.receiptIDs); err != nil {
+		return Result{}, err
+	}
+	return res, nil
+}
+
+// claimKey takes the key, returning nil, or the record of its earlier
+// application.
+func (w *writer) claimKey(ctx context.Context, spaceID uuid.UUID) (*claimed, error) {
 	w.space = spaceID
 	actorID := w.actorID()
 	tag, err := w.tx.Exec(ctx, `
@@ -448,16 +530,15 @@ func (w *writer) claim(ctx context.Context, spaceID uuid.UUID) (*Result, error) 
 	}
 
 	var command string
-	var hash, policyJSON []byte
+	var hash []byte
 	var outcome *string
-	var objectID *uuid.UUID
-	var receiptIDs []uuid.UUID
+	c := &claimed{}
 	err = w.tx.QueryRow(ctx, `
 		SELECT command, request_hash, outcome, policy, object_id, receipt_ids
 		  FROM v2.command_keys
 		 WHERE space_id = $1 AND actor_kind = $2 AND actor_id IS NOT DISTINCT FROM $3 AND idempotency_key = $4`,
 		spaceID, string(w.meta.Actor.Kind), actorID, w.meta.IdempotencyKey,
-	).Scan(&command, &hash, &outcome, &policyJSON, &objectID, &receiptIDs)
+	).Scan(&command, &hash, &outcome, &c.policy, &c.objectID, &c.receiptIDs)
 	if err != nil {
 		return nil, fmt.Errorf("ledger: read idempotency key: %w", err)
 	}
@@ -468,32 +549,11 @@ func (w *writer) claim(ctx context.Context, spaceID uuid.UUID) (*Result, error) 
 	if outcome == nil {
 		return nil, errors.New("ledger: idempotency record without an outcome")
 	}
-	res := Result{Outcome: Outcome(*outcome), Replayed: true}
-	if err := json.Unmarshal(policyJSON, &res.Policy); err != nil {
-		return nil, fmt.Errorf("ledger: read idempotency key: %w", err)
-	}
-	if res.Receipts, err = loadReceipts(ctx, w.tx, w.meta.Scope, receiptIDs); err != nil {
-		return nil, err
-	}
-	if objectID != nil && isAgentCommand(w.command) {
-		if res.Connection, err = loadConnection(ctx, w.tx, w.meta.Scope, *objectID); err != nil {
-			return nil, err
-		}
-		return &res, nil
-	}
-	if objectID != nil {
-		if res.Memory, err = loadMemory(ctx, w.tx, w.meta.Scope, *objectID, false); err != nil {
-			return nil, err
-		}
-		if res.Memory.Sources, err = loadSources(ctx, w.tx, *objectID); err != nil {
-			return nil, err
-		}
-	}
-	return &res, nil
+	c.outcome = Outcome(*outcome)
+	return c, nil
 }
 
-// record stores the result against the idempotency key, so a retry
-// returns it (claim).
+// record stores the result against the idempotency key.
 func (w *writer) record(ctx context.Context, res Result, objectID uuid.UUID) error {
 	ids := make([]uuid.UUID, 0, len(res.Receipts))
 	for _, rc := range res.Receipts {
@@ -503,11 +563,15 @@ func (w *writer) record(ctx context.Context, res Result, objectID uuid.UUID) err
 	if err != nil {
 		return err
 	}
+	var object *uuid.UUID
+	if objectID != uuid.Nil {
+		object = &objectID
+	}
 	if _, err := w.tx.Exec(ctx, `
 		UPDATE v2.command_keys SET outcome = $5, policy = $6, object_id = $7, receipt_ids = $8
 		 WHERE space_id = $1 AND actor_kind = $2 AND actor_id IS NOT DISTINCT FROM $3 AND idempotency_key = $4`,
 		w.space, string(w.meta.Actor.Kind), w.actorID(), w.meta.IdempotencyKey,
-		string(res.Outcome), policyJSON, objectID, ids); err != nil {
+		string(res.Outcome), policyJSON, object, ids); err != nil {
 		return fmt.Errorf("ledger: record idempotency key: %w", err)
 	}
 	return nil
@@ -516,10 +580,10 @@ func (w *writer) record(ctx context.Context, res Result, objectID uuid.UUID) err
 // finish records the result against the idempotency key and loads the
 // memory's new projection.
 func (w *writer) finish(ctx context.Context, res Result, memoryID uuid.UUID) (Result, error) {
-	err := w.record(ctx, res, memoryID)
-	if err != nil {
+	if err := w.record(ctx, res, memoryID); err != nil {
 		return Result{}, err
 	}
+	var err error
 	if res.Memory, err = loadMemory(ctx, w.tx, w.meta.Scope, memoryID, false); err != nil {
 		return Result{}, err
 	}

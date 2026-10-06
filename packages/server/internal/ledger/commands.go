@@ -392,6 +392,31 @@ func requestHash(cmd Command) ([]byte, error) {
 		cp.Meta = strip
 		v = cp
 	case *DisconnectAgent:
+	case *ReviseBrief:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *ConfigureTarget:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *RequestCompile:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *RecordCompile:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *RecordDelivery:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *RecordObservation:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *ResolveDrift:
 		cp := *c
 		cp.Meta = strip
 		v = cp

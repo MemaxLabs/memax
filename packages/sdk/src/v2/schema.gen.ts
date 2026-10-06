@@ -512,10 +512,13 @@ export interface components {
         /**
          * @description The past-tense verb a receipt records. An agent connection's
          *     receipts (`object_kind: agent`) are connected, autonomy_changed,
-         *     paused, resumed and disconnected.
+         *     paused, resumed and disconnected. A Brief's (`brief`) are revised; a
+         *     target's (`target`) configured, requested, observed, pulled,
+         *     overwritten and stopped; a compile run's (`compile`) compiled and
+         *     delivered.
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space";
         /**
@@ -534,17 +537,19 @@ export interface components {
          *     person_must_review, person_must_forget, forget_not_allowed,
          *     external_needs_review, proposal_in_review, agent_not_connected (the
          *     agent has no connection, or none to this space, so it only reads),
-         *     agent_paused. Refused changes to agents: person_must_manage (only a
-         *     person changes what an agent may do), not_your_agent,
-         *     autonomy_not_allowed, key_max_propose, autonomy_needs_web (raising
-         *     an agent needs a person on the web). Refused or sent to Review:
+         *     agent_paused, brief_by_person (agents propose; people edit the
+         *     Brief), targets_by_person, compile_by_memax. Refused changes to
+         *     agents: person_must_manage (only a person changes what an agent may
+         *     do), not_your_agent, autonomy_not_allowed, key_max_propose,
+         *     autonomy_needs_web (raising an agent needs a person on the web).
+         *     Refused or sent to Review:
          *     viewer, owners_keep, decision_needs_web. Sent to Review: api_key,
          *     external_source, contradicts_decision, edits_person_kept,
          *     autonomy_propose, integration, import, system_proposes, repository,
          *     person_proposed. Confirmation: confirm_in_agent.
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "confirm_in_agent";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "confirm_in_agent";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "unavailable";
         Space: {

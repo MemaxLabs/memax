@@ -209,10 +209,26 @@ const (
 	ActionKept     Action = "kept"
 	ActionEdited   Action = "edited"
 	ActionRejected Action = "rejected"
+
+	// The Brief, target and compile verbs (migration 029).
+	ActionRevised     Action = "revised"     // a Brief: a new version
+	ActionConfigured  Action = "configured"  // a target: added or changed
+	ActionRequested   Action = "requested"   // a target: a compile asked for
+	ActionCompiled    Action = "compiled"    // a compile run: recorded
+	ActionDelivered   Action = "delivered"   // a compile run: on disk or merged
+	ActionObserved    Action = "observed"    // a target: a hand edit seen
+	ActionPulled      Action = "pulled"      // a target: a hand edit turned into proposals
+	ActionOverwritten Action = "overwritten" // a target: a hand edit overwritten
+	ActionStopped     Action = "stopped"     // a target: compiling stopped
 )
 
-// ObjectMemory is the receipts.object_kind of a memory.
-const ObjectMemory = "memory"
+// The receipts.object_kind values this package writes.
+const (
+	ObjectMemory  = "memory"
+	ObjectBrief   = "brief"
+	ObjectTarget  = "target"
+	ObjectCompile = "compile"
+)
 
 // ReceiptSource is a receipt's reference to where a change came from.
 // It is a pointer, never a quote.
@@ -302,6 +318,19 @@ type Result struct {
 	// Replayed is set when the idempotency key had already been applied:
 	// nothing new was written, and Receipts are the original ones.
 	Replayed bool `json:"replayed,omitempty"`
+
+	// The Brief, target and compile commands set these.
+	Brief   *Brief      `json:"brief,omitempty"`
+	Target  *Target     `json:"target,omitempty"`
+	Compile *CompileRun `json:"compile,omitempty"`
+	// Observations are the hand edits a command recorded or resolved.
+	Observations []Observation `json:"observations,omitempty"`
+	// Proposals are the memories a drift pull proposed, in file order.
+	Proposals []Memory `json:"proposals,omitempty"`
+	// Unchanged is set when the command found nothing to do (an
+	// observation that matches what was delivered, a delivery already
+	// acknowledged): nothing was written and no receipt exists.
+	Unchanged bool `json:"unchanged,omitempty"`
 }
 
 func outcomeFor(e policy.Effect) Outcome {

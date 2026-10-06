@@ -179,6 +179,33 @@ func TestDecide(t *testing.T) {
 		{"member's agent can't forget", with(agent(RoleMember, AutonomyWrite), func(a *Actor) { a.PersonPresent, a.CanElicit = true, true }), ActionForget, kept, project, EffectRefuse, CodeForgetNotAllowed, false, ""},
 		{"agent at read can't forget", agent(RoleOwner, AutonomyRead), ActionForget, kept, project, EffectRefuse, CodeReadOnly, false, ""},
 		{"repository can't forget", Actor{Kind: ActorRepository, Via: ViaGitHub}, ActionForget, kept, project, EffectRefuse, CodePersonMustForget, false, ""},
+
+		// --- the Brief ---
+		{"owner revises the Brief", person(RoleOwner, ViaWeb), ActionReviseBrief, newFact, project, EffectApply, "", false, ""},
+		{"member revises the Brief", person(RoleMember, ViaCLI), ActionReviseBrief, newFact, project, EffectApply, "", false, ""},
+		{"viewer can't revise the Brief", person(RoleViewer, ViaWeb), ActionReviseBrief, newFact, project, EffectRefuse, CodeViewer, false, "Ask a member"},
+		{"members in an owners-keep space can't revise", person(RoleMember, ViaWeb), ActionReviseBrief, newFact, ownersKeep, EffectRefuse, CodeOwnersKeep, false, ""},
+		{"Dream rewrites the Brief", Actor{Kind: ActorDream, Via: ViaSystem}, ActionReviseBrief, newFact, project, EffectApply, "", false, ""},
+		{"an agent at Write can't revise the Brief", agent(RoleOwner, AutonomyWrite), ActionReviseBrief, newFact, project, EffectRefuse, CodeBriefByPerson, false, "people edit the Brief"},
+		{"a secret in the Brief is refused", person(RoleOwner, ViaWeb), ActionReviseBrief, Object{Secrets: []string{"GitHub token"}}, project, EffectRefuse, CodeSecret, false, ""},
+
+		// --- targets and compiles ---
+		{"member configures a target", person(RoleMember, ViaWeb), ActionConfigureTarget, newFact, project, EffectApply, "", false, ""},
+		{"viewer can't configure a target", person(RoleViewer, ViaWeb), ActionConfigureTarget, newFact, project, EffectRefuse, CodeViewer, false, ""},
+		{"members in an owners-keep space can't configure", person(RoleMember, ViaWeb), ActionConfigureTarget, newFact, ownersKeep, EffectRefuse, CodeOwnersKeep, false, ""},
+		{"an agent can't configure a target", agent(RoleOwner, AutonomyWrite), ActionConfigureTarget, newFact, project, EffectRefuse, CodeTargetsByPerson, false, ""},
+		{"viewer asks for a compile", person(RoleViewer, ViaWeb), ActionRequestCompile, newFact, project, EffectApply, "", false, ""},
+		{"agent asks for a compile", agent(RoleOwner, AutonomyPropose), ActionRequestCompile, newFact, project, EffectApply, "", false, ""},
+		{"read-only agent can't ask for a compile", agent(RoleOwner, AutonomyRead), ActionRequestCompile, newFact, project, EffectRefuse, CodeReadOnly, false, ""},
+		{"Memax records compiles", Actor{Kind: ActorMemax, Via: ViaSystem}, ActionRecordCompile, newFact, project, EffectApply, "", false, ""},
+		{"a person can't record a compile", person(RoleOwner, ViaWeb), ActionRecordCompile, newFact, project, EffectRefuse, CodeCompileByMemax, false, ""},
+		{"a device reports", person(RoleViewer, ViaCLI), ActionReport, newFact, project, EffectApply, "", false, ""},
+		{"the repository reports", Actor{Kind: ActorRepository, Via: ViaGitHub}, ActionReport, newFact, project, EffectApply, "", false, ""},
+		{"a read-only key can't report", with(agent(RoleOwner, AutonomyRead), func(a *Actor) { a.Credential = CredentialAPIKey }), ActionReport, newFact, project, EffectRefuse, CodeKeyReadOnly, false, ""},
+		{"Dream doesn't report", Actor{Kind: ActorDream, Via: ViaSystem}, ActionReport, newFact, project, EffectRefuse, CodeTargetsByPerson, false, ""},
+		{"a viewer pulls a hand edit", person(RoleViewer, ViaWeb), ActionPullDrift, newFact, project, EffectApply, "", false, ""},
+		{"an agent can't pull a hand edit", agent(RoleOwner, AutonomyWrite), ActionPullDrift, newFact, project, EffectRefuse, CodeTargetsByPerson, false, ""},
+		{"non-member can't pull", person(RoleNone, ViaWeb), ActionPullDrift, newFact, project, EffectRefuse, CodeNotMember, false, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

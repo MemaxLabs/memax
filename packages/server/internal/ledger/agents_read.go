@@ -349,7 +349,7 @@ func (l *Ledger) TouchConnection(ctx context.Context, personID, id uuid.UUID, at
 	if l == nil {
 		return ErrDisabled
 	}
-	tx, err := l.begin(ctx, Scope{PersonID: personID}, pgx.ReadWrite)
+	tx, _, err := l.begin(ctx, Scope{PersonID: personID}, pgx.ReadWrite)
 	if err != nil {
 		return err
 	}

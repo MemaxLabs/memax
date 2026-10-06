@@ -176,6 +176,25 @@ describe("memax link", () => {
     expect(h.fake.calls("PATCH", new RegExp(agents.id))).toHaveLength(0);
   });
 
+  it("offers to manage the block in a CLAUDE.md that holds V1's block", async () => {
+    const space = h.fake.addSpace("memax-v2");
+    const claude = h.fake.addTarget(space, "claude_md");
+    h.fake.addTarget(space, "agents_md");
+    writeFileSync(
+      join(h.repo, "CLAUDE.md"),
+      "# Mine\n\n<!-- memax:start -->\nV1\n<!-- memax:end -->\n",
+    );
+    writeFileSync(
+      join(h.repo, "AGENTS.md"),
+      "<!-- Compiled by Memax --> \n<!-- memax:start -->\nV1\n<!-- memax:end -->\n",
+    );
+    await link({ space: space.slug, yes: true }, deps());
+    expect(h.fake.entry(claude.id).target.settings.user_owned).toBe(true);
+    expect(text()).toContain(
+      "AGENTS.md has a Memax block in it, so Memax leaves the file alone.",
+    );
+  });
+
   it("says how to sign in when signed out", async () => {
     h.fake.addSpace("memax-v2");
     const { Memax } = await import("memax-sdk");

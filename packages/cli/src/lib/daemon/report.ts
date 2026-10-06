@@ -97,10 +97,7 @@ export class HandEditReporter {
         { path, content: body, device_id: this.d.deviceId },
         key,
       );
-      state.reported(root, t.id, path, hash, {
-        version: res.target.version,
-        observed: res.observation?.observed_sha256,
-      });
+      state.reported(root, t.id, path, hash, { version: res.target.version });
       this.d.log.info(
         res.drifted
           ? "reported a hand edit"

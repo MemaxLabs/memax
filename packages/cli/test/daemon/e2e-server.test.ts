@@ -37,6 +37,8 @@ if (!enabled) {
 
 const CLI = join(import.meta.dirname, "..", "..");
 const BIN = join(CLI, "dist", "bin.js");
+/** How long the idle measurement runs (MEMAX_E2E_IDLE_MS, default a minute). */
+const IDLE_MS = Number(process.env.MEMAX_E2E_IDLE_MS ?? 60_000);
 
 describe.skipIf(!enabled)("the daemon against the real server", () => {
   let stack: Stack;
@@ -275,60 +277,63 @@ describe.skipIf(!enabled)("the daemon against the real server", () => {
     ).toBe(true);
   }, 60_000);
 
-  it("shows it all in memax status and memax daemon status, then stops", async () => {
-    const status = JSON.parse(cli("status", "--format", "json"));
-    expect(status.space.slug).toBe("memax-v2");
-    expect(status.daemon).toEqual({ running: true, linked_here: true });
-    expect(status.agents.map((a: { mark: string }) => a.mark)).toEqual(
-      expect.arrayContaining(["CC", "CX"]),
-    );
-    const ds = JSON.parse(cli("daemon", "status", "--format", "json"));
-    expect(ds.running).toBe(true);
-    expect(
-      ds.repos[0].targets.find((t: { kind: string }) => t.kind === "agents_md")
-        .state,
-    ).toBe("in_sync");
-
-    // What one idle poll costs on the wire.
-    const auth = { headers: { Authorization: `Bearer ${stack.token}` } };
-    const list = await fetch(
-      `${stack.apiUrl}/v2/spaces/memax-v2/targets`,
-      auth,
-    );
-    const probe = await fetch(
-      `${stack.apiUrl}/v2/spaces/memax-v2/receipts?limit=1`,
-      auth,
-    );
-    console.log(
-      `targets list: ${(await list.arrayBuffer()).byteLength} bytes; idle probe: ${(await probe.arrayBuffer()).byteLength} bytes`,
-    );
-
-    // Idle cost: memory and CPU over a quiet minute.
-    const pid = daemon.pid!;
-    const stat = () =>
-      readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1].split(" ");
-    const mem = () => {
-      const s = readFileSync(`/proc/${pid}/status`, "utf8");
-      const g = (k: string) =>
-        Number(s.match(new RegExp(`^${k}:\\s+(\\d+) kB`, "m"))?.[1] ?? 0) /
-        1024;
-      return `rss ${g("VmRSS").toFixed(1)} MiB (anon ${g("RssAnon").toFixed(1)}, file ${g("RssFile").toFixed(1)})`;
-    };
-    if (process.platform === "linux") {
-      const s1 = stat();
-      const t1 = Date.now();
-      await new Promise((r) =>
-        setTimeout(r, Number(process.env.MEMAX_E2E_IDLE_MS ?? 60_000)),
+  it(
+    "shows it all in memax status and memax daemon status, then stops",
+    async () => {
+      const status = JSON.parse(cli("status", "--format", "json"));
+      expect(status.space.slug).toBe("memax-v2");
+      expect(status.daemon).toEqual({ running: true, linked_here: true });
+      expect(status.agents.map((a: { mark: string }) => a.mark)).toEqual(
+        expect.arrayContaining(["CC", "CX"]),
       );
-      const s2 = stat();
-      const ticks =
-        Number(s2[11]) + Number(s2[12]) - Number(s1[11]) - Number(s1[12]);
-      const cpu = (ticks / 100 / ((Date.now() - t1) / 1000)) * 100;
+      const ds = JSON.parse(cli("daemon", "status", "--format", "json"));
+      expect(ds.running).toBe(true);
+      expect(
+        ds.repos[0].targets.find(
+          (t: { kind: string }) => t.kind === "agents_md",
+        ).state,
+      ).toBe("in_sync");
+
+      // What one idle poll costs on the wire.
+      const auth = { headers: { Authorization: `Bearer ${stack.token}` } };
+      const list = await fetch(
+        `${stack.apiUrl}/v2/spaces/memax-v2/targets`,
+        auth,
+      );
+      const probe = await fetch(
+        `${stack.apiUrl}/v2/spaces/memax-v2/receipts?limit=1`,
+        auth,
+      );
       console.log(
-        `daemon idle: ${mem()}, cpu ${cpu.toFixed(2)}% over ${Math.round((Date.now() - t1) / 1000)} s`,
+        `targets list: ${(await list.arrayBuffer()).byteLength} bytes; idle probe: ${(await probe.arrayBuffer()).byteLength} bytes`,
       );
-      expect(cpu).toBeLessThan(1);
-    }
-    expect(cli("daemon", "stop")).toContain("Stopped the Memax daemon.");
-  }, 180_000);
+
+      // Idle cost: memory and CPU over a quiet minute.
+      const pid = daemon.pid!;
+      const stat = () =>
+        readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1].split(" ");
+      const mem = () => {
+        const s = readFileSync(`/proc/${pid}/status`, "utf8");
+        const g = (k: string) =>
+          Number(s.match(new RegExp(`^${k}:\\s+(\\d+) kB`, "m"))?.[1] ?? 0) /
+          1024;
+        return `rss ${g("VmRSS").toFixed(1)} MiB (anon ${g("RssAnon").toFixed(1)}, file ${g("RssFile").toFixed(1)})`;
+      };
+      if (process.platform === "linux") {
+        const s1 = stat();
+        const t1 = Date.now();
+        await new Promise((r) => setTimeout(r, IDLE_MS));
+        const s2 = stat();
+        const ticks =
+          Number(s2[11]) + Number(s2[12]) - Number(s1[11]) - Number(s1[12]);
+        const cpu = (ticks / 100 / ((Date.now() - t1) / 1000)) * 100;
+        console.log(
+          `daemon idle: ${mem()}, cpu ${cpu.toFixed(2)}% over ${Math.round((Date.now() - t1) / 1000)} s`,
+        );
+        expect(cpu).toBeLessThan(1);
+      }
+      expect(cli("daemon", "stop")).toContain("Stopped the Memax daemon.");
+    },
+    120_000 + IDLE_MS,
+  );
 });

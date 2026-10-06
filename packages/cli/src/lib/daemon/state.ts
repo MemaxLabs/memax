@@ -14,8 +14,6 @@ export interface FileLocal {
   reported?: string;
   /** The target's version after that report: it moves when a person resolves it. */
   reported_version?: number;
-  /** The hash the server recorded for that report (its own drift hash). */
-  observed?: string;
   written_at?: string;
 }
 
@@ -95,7 +93,6 @@ export class DeviceState {
     f.written_at = at.toISOString();
     f.reported = undefined;
     f.reported_version = undefined;
-    f.observed = undefined;
     this.changed();
   }
 
@@ -131,12 +128,11 @@ export class DeviceState {
     targetId: string,
     path: string,
     sha: string,
-    meta: { version: number; observed?: string },
+    meta: { version: number },
   ): void {
     const f = this.file(root, targetId, path);
     f.reported = sha;
     f.reported_version = meta.version;
-    f.observed = meta.observed;
     this.changed();
   }
 

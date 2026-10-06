@@ -45,29 +45,67 @@ describe("a file Memax owns is judged whole", () => {
     });
     await d.syncOnce();
     expect(readFileSync(file("CLAUDE.md"), "utf8")).toBe(mine);
-    expect(observations()).toHaveLength(1);
+    // Held, not reported: the person's notes never leave the machine.
+    expect(observations()).toHaveLength(0);
     expect(deliveries()).toHaveLength(1);
+    expect(d.snapshot().repos[0].targets[0]).toMatchObject({
+      state: "blocked",
+    });
+    expect(d.snapshot().repos[0].targets[0].detail).toContain(
+      "memax link --yes",
+    );
   });
 
-  it("writes over a file with a V1 block once the person chose Overwrite", async () => {
+  it("holds a CLAUDE.md with a V1 block until Memax manages just the block", async () => {
     const space = h.fake.addSpace("memax-v2");
     const t = h.fake.addTarget(space, "claude_md");
     h.link(space);
     const v1 =
-      "# Repo\n\n<!-- memax:start -->\n## Memax\nUse memax_recall.\n<!-- memax:end -->\n";
+      "# Repo\n\n<!-- memax:start -->\n## Memax\nUse memax_recall.\n<!-- memax:end -->\n\nMine.\n";
     writeFileSync(file("CLAUDE.md"), v1);
     h.fake.compile(t.id, { "CLAUDE.md": "@AGENTS.md\n" });
     const d = h.daemon();
     await d.syncOnce();
-    expect(readFileSync(file("CLAUDE.md"), "utf8")).toBe(v1);
-    expect(observations()).toHaveLength(1);
-
-    // Overwrite: the accepted baseline is the server's (block) hash of the
-    // edit this device reported.
-    await h.memax.v2.targets.overwrite(t.id, {}, { idempotencyKey: "ow-1" });
     await d.syncOnce();
-    expect(readFileSync(file("CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
+    expect(readFileSync(file("CLAUDE.md"), "utf8")).toBe(v1);
+    expect(observations()).toHaveLength(0);
+    expect(h.fake.calls("GET", /\/preview$/)).toHaveLength(1); // held, not polled
+
+    // The target becomes the person's (memax link --yes): V2's block
+    // replaces V1's in place, and the rest stays.
+    await h.memax.v2.targets.update(
+      t.id,
+      { settings: { user_owned: true } },
+      { idempotencyKey: "own-1" },
+    );
+    h.fake.compile(t.id, { "CLAUDE.md": ["@AGENTS.md"] });
+    await d.syncOnce();
+    expect(readFileSync(file("CLAUDE.md"), "utf8")).toBe(
+      "# Repo\n\n<!-- memax:start -->\n@AGENTS.md\n<!-- memax:end -->\n\nMine.\n",
+    );
     expect(h.fake.entry(t.id).target.sync_state).toBe("in_sync");
+  });
+
+  it("never mistakes two devices' notes around the same block for an accepted edit", async () => {
+    const space = h.fake.addSpace("memax-v2");
+    const t = h.fake.addTarget(space, "claude_md");
+    const other = join(h.home, "worktree");
+    mkdirSync(other, { recursive: true });
+    h.link(space);
+    h.link(space, other);
+    const block = "<!-- memax:start -->\nV1\n<!-- memax:end -->\n";
+    writeFileSync(file("CLAUDE.md"), "# A's notes\n" + block);
+    writeFileSync(join(other, "CLAUDE.md"), "# B's notes\n" + block);
+    h.fake.compile(t.id, { "CLAUDE.md": "@AGENTS.md\n" });
+    const d = h.daemon();
+    await d.syncOnce();
+    expect(readFileSync(file("CLAUDE.md"), "utf8")).toBe(
+      "# A's notes\n" + block,
+    );
+    expect(readFileSync(join(other, "CLAUDE.md"), "utf8")).toBe(
+      "# B's notes\n" + block,
+    );
+    expect(observations()).toHaveLength(0);
   });
 });
 
@@ -121,29 +159,23 @@ describe("reporting a hand edit", () => {
     expect(h.fake.entry(t.id).target.sync_state).toBe("drifted");
   });
 
-  it("holds, without polling the preview or reporting again, when the server disagrees", async () => {
+  it("holds a hand edit without polling the preview while its report keeps failing", async () => {
     const space = h.fake.addSpace("memax-v2");
     const t = h.fake.addTarget(space, "agents_md");
     h.link(space);
-    // A compiled file that is itself a marked block: the server judges a
-    // file by its block, the daemon a file Memax owns by all of it.
-    const block = "<!-- memax:start -->\n- x [M-1]\n<!-- memax:end -->\n";
-    h.fake.compile(t.id, { "AGENTS.md": block });
+    h.fake.compile(t.id, { "AGENTS.md": "# Brief\n" });
     const d = h.daemon();
     await d.syncOnce();
-    writeFileSync(file("AGENTS.md"), "# Mine, above it\n\n" + block);
-    h.fake.compile(t.id, { "AGENTS.md": block + "- y [M-2]\n" });
+    writeFileSync(file("AGENTS.md"), "# Mine\n");
+    h.fake.fail(/\/observations$/, 500, "internal_error", 10);
+    h.fake.compile(t.id, { "AGENTS.md": "# Brief 2\n" });
     await d.syncOnce();
-    expect(observations()).toHaveLength(1);
-    expect(observations()[0].status).toBe(200); // drifted: false
     const previews = h.fake.calls("GET", /\/preview$/).length;
     await d.syncOnce();
     await d.syncOnce();
     expect(h.fake.calls("GET", /\/preview$/)).toHaveLength(previews);
-    expect(observations()).toHaveLength(1);
-    expect(readFileSync(file("AGENTS.md"), "utf8")).toContain(
-      "# Mine, above it",
-    );
+    expect(readFileSync(file("AGENTS.md"), "utf8")).toBe("# Mine\n");
+    expect(deliveries()).toHaveLength(1);
   });
 
   it("sends only Memax's block for a file the person owns", async () => {

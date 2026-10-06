@@ -63,10 +63,13 @@ Memax never writes over a file it didn't write.
 - **A `CLAUDE.md` of your own.** Memax offers to manage one marked block
   in it (`<!-- memax:start -->` … `<!-- memax:end -->`) and leave every
   other line alone. With `--yes` it does so without asking. The choice is
-  the space's: everyone's daemon then treats `CLAUDE.md` the same way.
+  the space's: everyone's daemon then treats `CLAUDE.md` the same way. A
+  block the V1 CLI wrote is replaced in place. Until you choose, the
+  daemon leaves a `CLAUDE.md` with a Memax block in it alone.
 - **An `AGENTS.md` Memax didn't write.** The daemon leaves it and reports
   it as a hand edit. In the app you can pull its lines in as proposals,
-  overwrite it with the compiled Brief, or stop compiling it.
+  overwrite it with the compiled Brief, or stop compiling it. If it holds
+  a Memax block, the daemon leaves it alone until you take the block out.
 
 ## memax unlink
 

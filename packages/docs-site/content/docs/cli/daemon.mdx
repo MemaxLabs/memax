@@ -69,6 +69,7 @@ For each run it hasn't written yet, the daemon reads the file on disk:
 | Anything else: a hand edit                        | Leaves it and reports it. The target shows drifted.      |
 | A symlink, a directory, or a path out of the repo | Leaves it, and holds the target.                         |
 | A file that isn't UTF-8 text                      | Leaves it byte for byte, and holds the target.           |
+| A Memax block in a file Memax owns whole          | Leaves it and holds the target: the file is yours.       |
 
 A file Memax owns is judged as a whole: text you add anywhere in it is a
 hand edit. Every write goes to a temp file next to the target and is renamed into

@@ -69,11 +69,23 @@ export function judge(i: JudgeInput): Judgement {
         reason: "isn't UTF-8 text; Memax leaves it as it is",
       };
   }
+  const blocks = blockState(d.content);
   if (i.userOwned) {
-    const blocks = blockState(d.content);
     if (blocks === "broken")
       return { kind: "hand_edit", hash: driftHash(d.content) };
-    if (blocks === "none" && !i.hasBaseline) return { kind: "fresh" };
+    // Before V2 ever wrote here: no block yet, or V1's block, which V2
+    // replaces in place (the compiler reuses V1's markers for that).
+    if (!i.hasBaseline) return { kind: "fresh" };
+  } else if (blocks !== "none") {
+    // A Memax block in a file Memax owns whole means the file is someone's
+    // own (a V1 block, or a target no longer user-owned). The server judges
+    // such a file by its block and this daemon by all of it, so neither
+    // writing nor reporting it is safe: hold it, and say how to settle it.
+    return {
+      kind: "skip",
+      reason:
+        "has a <!-- memax:start --> block, so it is a file you own; let Memax manage just the block (memax link --yes) or take the block out",
+    };
   }
   // A file the person owns is judged by its block; any other by all of it.
   const h = fileHash(d.content, i.userOwned);

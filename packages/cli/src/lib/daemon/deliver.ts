@@ -64,16 +64,12 @@ export function knownHashes(
   path: string,
 ): Set<string> {
   const set = new Set(d.state.written(d.root, t.id, path));
+  // The server's hash and the daemon's agree for every file it judges: a
+  // file the person owns by its block on both sides, any other whole (one
+  // with a block is held, see plan.ts). So an accepted hand edit's hash
+  // is known as it is.
   const base = t.delivered?.files.find((f) => f.path === path);
   if (base) set.add(base.sha256);
-  // A hand edit a person accepted (pulled or overwrote) is the baseline
-  // under the server's hash, which can differ from the one the daemon
-  // judges by. If it is the edit this device reported, its own hash is
-  // known too.
-  const local = d.state.peek(d.root, t.id)?.files[path];
-  if (base?.observation && local?.reported && local.observed === base.sha256) {
-    set.add(local.reported);
-  }
   const latest = t.last_compile?.files.find(
     (f) => f.path === path,
   )?.drift_sha256;

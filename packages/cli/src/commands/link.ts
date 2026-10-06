@@ -117,11 +117,11 @@ async function checkExisting(
   } catch {
     return;
   }
-  if (
-    content.includes("Compiled by Memax") ||
-    content.includes("<!-- memax:start -->")
-  )
-    return;
+  // A whole compile Memax wrote is its own. A file with a Memax block (V1's
+  // instructions, say) is the person's: the daemon holds it until Memax
+  // manages just the block.
+  const block = content.includes("<!-- memax:start -->");
+  if (content.includes("Compiled by Memax") && !block) return;
   const shim = t.kind === "claude_md" || t.kind === "gemini_md";
   if (shim && !t.settings.user_owned) {
     d.out(
@@ -159,7 +159,13 @@ async function checkExisting(
     d.out("");
     return;
   }
-  if (!shim) {
+  if (!shim && block) {
+    d.out(
+      `  ${chalk.yellow("○")} ${t.path} has a Memax block in it, so Memax leaves the file alone.`,
+    );
+    d.out(chalk.gray(`    Take the block out to let Memax compile ${t.path}.`));
+    d.out("");
+  } else if (!shim) {
     d.out(
       `  ${chalk.yellow("○")} ${t.path} is already here and Memax didn't write it. Memax won't overwrite it:`,
     );

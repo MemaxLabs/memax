@@ -48,6 +48,8 @@ export {
   V2ReviewResource,
   V2ReceiptsResource,
   V2AgentsResource,
+  V2BriefsResource,
+  V2TargetsResource,
   refusalOf,
 } from "./v2/resources.js";
 export type {
@@ -56,6 +58,7 @@ export type {
   ReviewOptions as V2ReviewOptions,
   EditOptions as V2EditOptions,
   PageOptions as V2PageOptions,
+  VersionedCommandOptions as V2VersionedCommandOptions,
   ListMemoriesOptions as V2ListMemoriesOptions,
   ListReceiptsOptions as V2ListReceiptsOptions,
   GetMemoryOptions as V2GetMemoryOptions,

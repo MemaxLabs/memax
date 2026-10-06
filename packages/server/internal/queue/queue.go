@@ -17,6 +17,9 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
+	"github.com/riverqueue/river/rivertype"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 )
 
 // Client wraps river.Client for job insertion. Used by the API server.
@@ -276,6 +279,9 @@ func InsertClient(pool *pgxpool.Pool) (*Client, error) {
 	river.AddWorker(workers, &stubCopySeedMemoriesWorker{})
 	river.AddWorker(workers, &stubBoardSweepWorker{})
 	river.AddWorker(workers, &stubBoardRefreshWorker{})
+	// V2 compile path: the ledger InsertTx-es compile_target jobs through
+	// this client (ledger.WithJobs).
+	compile.AddWorkers(workers, nil, nil)
 
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Logger:  slog.Default(),
@@ -294,6 +300,13 @@ func InsertClient(pool *pgxpool.Pool) (*Client, error) {
 func (c *Client) Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) error {
 	_, err := c.river.Insert(ctx, args, opts)
 	return err
+}
+
+// InsertManyTx enqueues jobs inside the caller's transaction, so they
+// exist if and only if it commits. The V2 ledger uses it (ledger.Jobs)
+// to enqueue compile jobs with the command that dirties the targets.
+func (c *Client) InsertManyTx(ctx context.Context, tx pgx.Tx, params []river.InsertManyParams) ([]*rivertype.JobInsertResult, error) {
+	return c.river.InsertManyTx(ctx, tx, params)
 }
 
 // JobRetry re-schedules a non-running job for immediate execution.

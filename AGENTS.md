@@ -153,6 +153,7 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 - **IDs.** Display IDs (`M-0219`, `N-`, `H-`, `C-`, `R-`, `D-`, `B-`, `G-`) are per-tenant counters. Internal keys are uuidv7.
 - **Trust.** Agents propose and people keep. Autonomy (read / propose / write), roles, quarantine of external content and plan limits are decided in one place: `policy.Decide`. A memory's trust is the minimum of its sources, and Dream can't raise it.
 - **Agent connections.** Every API key and OAuth grant resolves to an agent connection (`v2.agent_connections`, migration 029) with autonomy per space; receipts name the connection. A credential with no connection, a paused one, or a space it isn't connected to only reads. Only people change connections (`policy.DecideConnection`), and raising autonomy needs `human_web`.
+- **Compiles.** A space's Brief (`B-`) and targets (`AGENTS.md`, the `CLAUDE.md` shim, scoped Cursor rules, the ChatGPT copy-out) live in migration 031. A command that changes what compiles bumps `targets.dirty_gen` and inserts the `compile_target` River jobs with `InsertManyTx` **in the command's transaction** (`internal/ledger/jobs.go` switches back to the login role for River's tables), so a failed insert rolls back the whole command. `internal/compile` runs the jobs against the stateless compile service (`packages/compile-service`, internal-only) and records each run (`C-`) through the ledger as Memax. Hand edits come back as proposals (`file:line` sources) through observations and `ResolveDrift`; a deleted line never forgets anything by itself.
 - **Assurance.** A person's Keep is `human_web` only when the session was issued to the web app (the token's `surface` claim, migration 030) **and** `/api/proxy` signed the request with `WEB_SURFACE_SECRET` (`internal/websurface`, which has the threat model). Everything else, the CLI included, is `client_attested`.
 
 **API, MCP and CLI**
@@ -160,7 +161,7 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 - **API.** New endpoints go under `/v2`, spec-first in `packages/server/openapi/v2.yaml`. SDK types are generated from that spec. The `model.ApiResponse` envelope still applies. Commands need an `Idempotency-Key`, and edits need `If-Match`. `/v1` is frozen for old CLIs, and retired `/v1` routes answer 410 with a pointer.
 - **The `/v2` contract workflow.** The spec is written first and the build holds everything else to it:
   1. Change `packages/server/openapi/v2.yaml` (OpenAPI 3.1, Apache-2.0 so the SDK can carry its types). Close every object (`additionalProperties: false`) and name every response schema; `internal/contract` lints these rules.
-  2. Implement the handler in `packages/server/internal/handler/v2api` and add the route to `v2api.routes` (the route table must equal the spec, and nothing else in `serverapp` may register a `/v2` path). Handlers call only `internal/ledger`. A credential becomes a ledger actor in one place, `principalFor`.
+  2. Implement the handler in `packages/server/internal/handler/v2api` and add the route to `v2api.routes` (the route table must equal the spec, and nothing else in `serverapp` may register a `/v2` path). Handlers call only `internal/ledger` (and `internal/compile` for compiled words: the preview, observations, the drift view). A credential becomes a ledger actor in one place, `principalFor`.
   3. Test through `env.do` in `v2api`'s tests: every request and response runs through the spec, so an undocumented status, header or field fails, and the run fails if any operation lacks a 2xx test.
   4. Regenerate the SDK types (`pnpm --filter memax-sdk gen:v2`), add the typed method under `memax.v2`, and commit the spec, server, SDK and `src/v2/schema.gen.ts` together. `pnpm lint` fails when the generated types are stale.
 - **MCP.** All 17 V1 tool names keep working (both profiles), and remote and stdio parity still applies.
@@ -222,6 +223,7 @@ memax/
     ledger-tokens/   # V2 Ledger tokens, type styles, fonts, marks (@memaxlabs/ledger-tokens) — Apache-2.0
     ledger/          # V2 Ledger React components, mx- styles, en/zh strings, previews (@memaxlabs/ledger) — AGPL-3.0
     compiler/        # V2 compiler: kept record → AGENTS.md, CLAUDE.md shim, scoped rules; parse-back (@memaxlabs/compiler) — Apache-2.0
+    compile-service/ # V2 compile service: the compiler over HTTP (node:http), internal on Fly (@memaxlabs/compile-service) — AGPL-3.0
 
 # Design docs (docs/plans, docs/infra, docs/design, ...) live in the sibling
 # private repo MemaxLabs/memax-internal — clone alongside this repo.
@@ -245,8 +247,9 @@ memax/
 | LLM (distillation + classification)   | DeepSeek V4 Flash via OpenRouter (Anthropic-compatible Messages API)      |
 | LLM (answer synthesis + agent/dreams) | DeepSeek V4.1 Flash via OpenRouter (Anthropic-compatible Messages API)    |
 | Queue                                 | River (Postgres-backed, Go)                                               |
+| Compile service (V2)                  | Node 24, `node:http`, `@memaxlabs/compiler` (`packages/compile-service`)  |
 | Auth                                  | OAuth2 (GitHub/Google)                                                    |
-| Deployment                            | Fly.io (API + worker), Vercel (web)                                       |
+| Deployment                            | Fly.io (API + worker + compile service), Vercel (web)                     |
 | CI/CD                                 | GitHub Actions                                                            |
 | Package Manager                       | pnpm (workspaces)                                                         |
 | Monorepo                              | Turborepo                                                                 |
@@ -528,6 +531,28 @@ pnpm --filter memax-sdk gen:v2
 
 # /v2 contract: check the committed SDK types match the spec (part of pnpm lint)
 pnpm check:v2-types
+
+# V2 compile path: ledger commands and the coordinator (fake compiler) and, with Node,
+# the real compile service; then the Phase 1 gate end to end (real service, River, /v2)
+cd packages/server && go test ./internal/ledger/ ./internal/compile/...
+cd packages/server && go test ./internal/handler/v2api/ -run TestPhase1Gate -v
+
+# Seed the memax-v2 demo space (refuses MEMAX_ENV=production)
+cd packages/server && go run ./cmd/devseed
+```
+
+### Compile service
+
+```bash
+# Build (it imports the built compiler) and test
+pnpm --filter @memaxlabs/compiler build && pnpm --filter @memaxlabs/compile-service build
+pnpm --filter @memaxlabs/compile-service test
+
+# Run it locally; point the server and worker at it with COMPILE_SERVICE_URL=http://localhost:8090
+PORT=8090 pnpm --filter @memaxlabs/compile-service start
+
+# Deploy to Fly.io from the REPOSITORY ROOT (staging; swap to fly.compile.production.toml for prod)
+fly deploy . -c packages/compile-service/fly/fly.compile.staging.toml
 ```
 
 Migrations use a single shared sequence. Don't hand-pick version numbers — always use `migrate:new`. CI enforces sequential numbering (`internal/migrate/migrate_test.go`) and rejects gaps, duplicates, orphan up/down files, and non-padded versions.
@@ -538,6 +563,7 @@ Migrations use a single shared sequence. Don't hand-pick version numbers — alw
   - API server (`fly.server.{staging,production}.toml`, `Dockerfile.server`) — serves HTTP, insert-only queue client
   - Worker (`fly.worker.{staging,production}.toml`, `Dockerfile.worker`) — processes River jobs (memory processing, dreams)
   - Prod tomls allocate bigger VMs (shared-cpu-2x, 1gb) and `min_machines_running ≥ 1` for HA; staging stays cheap (1x, 256mb)
+- `packages/compile-service/` deploys to Fly.io as an internal-only app (`fly.compile.{staging,production}.toml`, `Dockerfile` built from the repo root): no `[http_service]`, no public IPs, reached by the API server and worker at `http://memax-compile-{staging,production}.internal:8080` (`COMPILE_SERVICE_URL`). Run 2 machines in production
 - `packages/web/` deploys to Vercel (`memax.app`)
 - `packages/docs-site/` deploys to Vercel (`docs.memax.app`)
 - This repo publishes `memax-sdk` and `memax-cli` to npm

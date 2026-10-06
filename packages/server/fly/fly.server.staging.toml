@@ -10,6 +10,8 @@ primary_region = "sjc"
   dockerfile = "../Dockerfile.server"
 
 [env]
+  # V2 compile service, internal only (packages/compile-service/fly).
+  COMPILE_SERVICE_URL = "http://memax-compile-staging.internal:8080"
   PORT = "8080"
   # Trust header source for per-IP rate limiting (see
   # ratelimit/iplimiter.go). Valid: none|cloudflare|fly|xff.

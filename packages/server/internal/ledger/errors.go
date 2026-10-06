@@ -38,7 +38,22 @@ var (
 	ErrReceiptRequired = errors.New("ledger: write refused without a receipt")
 	// ErrAlreadyConnected: the credential already has an agent connection.
 	ErrAlreadyConnected = errors.New("ledger: the credential is already connected")
+	// ErrBehind: RecordCompile or SettleUnchanged found the target dirtied
+	// again after the compiled generation; compile again (§5.7 step 3).
+	ErrBehind = errors.New("ledger: the target changed while it compiled")
 )
+
+// TargetStateError is returned when a target's state doesn't allow the
+// command: it is stopped, or it has no hand edit to resolve.
+type TargetStateError struct {
+	Ref     string
+	Message string
+}
+
+func (e *TargetStateError) Error() string { return e.Ref + ": " + e.Message }
+
+// Is makes errors.Is(err, ErrInvalidTransition) match.
+func (e *TargetStateError) Is(target error) bool { return target == ErrInvalidTransition }
 
 // ValidationError says which field is wrong and how to fix it.
 type ValidationError struct {
@@ -122,6 +137,10 @@ func mapDBError(err error) error {
 			return fmt.Errorf("%w: another change landed first; reload and try again", ErrEditClash)
 		case "agent_connections_credential_key":
 			return ErrAlreadyConnected
+		case "targets_path_key":
+			return invalid("path", "the space already compiles to that path; change the existing target instead")
+		case "briefs_space_key":
+			return fmt.Errorf("%w: another Brief was written first; reload it and try again", ErrEditClash)
 		}
 	}
 	return err

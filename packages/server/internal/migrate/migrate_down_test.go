@@ -71,6 +71,71 @@ func TestV2MigrationsRoundTrip(t *testing.T) {
 	}
 }
 
+// briefTargetsVersion is migration 031 (the Brief, targets and compile
+// runs).
+const briefTargetsVersion = 31
+
+// TestBriefTargetsMigrationStepsBack rolls back only 031 while receipts
+// written by its commands exist: receipts are append-only, so the down
+// migration keeps them, and restores 029's action CHECK as NOT VALID.
+func TestBriefTargetsMigrationStepsBack(t *testing.T) {
+	cs := withFreshDB(t)
+	if err := Run(cs, migrationsDir()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cs)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO users (id, email, name) VALUES ('11111111-1111-1111-1111-111111111111', 'rt@test', 'rt');
+		INSERT INTO hubs (id, name, slug, hub_type, owner_id) VALUES
+			('22222222-2222-2222-2222-222222222222', 'P', 'rt-p', 'personal', '11111111-1111-1111-1111-111111111111');
+		INSERT INTO v2.receipts (id, tenant_id, space_id, object_kind, object_id, object_ref, action, actor_kind, via, occurred_at, stream_id, stream_version)
+		VALUES (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222',
+		        'brief', '33333333-3333-3333-3333-333333333333', 'B-0001', 'revised', 'memax', 'system', now(),
+		        '33333333-3333-3333-3333-333333333333', 1)`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	tables := func() int {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_tables WHERE schemaname = 'v2'
+		    AND tablename IN ('briefs', 'brief_versions', 'targets', 'compile_runs', 'target_observations')`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if n := tables(); n != 5 {
+		t.Fatalf("after up: %d of the 031 tables", n)
+	}
+	m := newMigrator(t, cs)
+	if err := m.Migrate(briefTargetsVersion - 1); err != nil {
+		t.Fatalf("migrate down to %03d: %v", briefTargetsVersion-1, err)
+	}
+	if n := tables(); n != 0 {
+		t.Errorf("after down: %d of the 031 tables remain", n)
+	}
+	var receipts int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM v2.receipts WHERE action = 'revised'`).Scan(&receipts); err != nil || receipts != 1 {
+		t.Errorf("the revised receipt: %d, %v; receipts are never dropped", receipts, err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO v2.receipts (id, tenant_id, space_id, object_kind, object_id, object_ref, action, actor_kind, via, occurred_at, stream_id, stream_version)
+		VALUES (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222',
+		        'brief', '33333333-3333-3333-3333-333333333333', 'B-0002', 'revised', 'memax', 'system', now(),
+		        '33333333-3333-3333-3333-333333333333', 2)`); err == nil {
+		t.Error("029's action CHECK isn't back: a new 'revised' receipt was accepted")
+	}
+	if err := m.Up(); err != nil && !errors.Is(err, gomigrate.ErrNoChange) {
+		t.Fatalf("migrate up again: %v", err)
+	}
+	if n := tables(); n != 5 {
+		t.Errorf("after second up: %d of the 031 tables", n)
+	}
+}
+
 func newMigrator(t *testing.T, cs string) *gomigrate.Migrate {
 	t.Helper()
 	u, err := url.Parse(cs)

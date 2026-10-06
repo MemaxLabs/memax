@@ -20,6 +20,12 @@
 //   - An agent that isn't connected to the space, or is paused, only reads.
 //   - Dream, Memax and the repository: new statements are proposals.
 //   - Integrations (email, Slack, GitHub, Linear): proposed and external.
+//   - The Brief: people who may keep edit it, and Dream rewrites it;
+//     agents never do. Targets: people who may keep configure them,
+//     overwrite a hand edit or stop compiling; anyone who can see the
+//     space may ask for a compile (not a read-only agent), any person may
+//     pull a hand edit back as proposals, devices and the repository
+//     report deliveries and hand edits, and only Memax records compiles.
 //
 // Messages follow the product voice (sentence case, actionable, no
 // exclamation marks). Clients localise by Code; Message is the English
@@ -280,6 +286,14 @@ const (
 	ActionEdit     Action = "edit"
 	ActionReject   Action = "reject"
 	ActionForget   Action = "forget"
+
+	// The Brief and compile actions (plan 25 §5.7).
+	ActionReviseBrief     Action = "revise_brief"     // write a new Brief version
+	ActionConfigureTarget Action = "configure_target" // add a target, change it, overwrite a hand edit, stop compiling
+	ActionRequestCompile  Action = "request_compile"  // ask for a fresh compile
+	ActionRecordCompile   Action = "record_compile"   // record a compile run
+	ActionReport          Action = "report"           // report a delivery or a hand edit from a device or GitHub
+	ActionPullDrift       Action = "pull_drift"       // turn a hand edit into proposals
 )
 
 // Actor is everything Decide needs to know about who is acting.
@@ -411,6 +425,9 @@ const (
 	CodeProposalInReview    = "proposal_in_review"
 	CodeAgentNotConnected   = "agent_not_connected"
 	CodeAgentPaused         = "agent_paused"
+	CodeBriefByPerson       = "brief_by_person"
+	CodeTargetsByPerson     = "targets_by_person"
+	CodeCompileByMemax      = "compile_by_memax"
 
 	// Changes to agent connections (DecideConnection); all refusals.
 	CodePersonMustManage   = "person_must_manage"
@@ -445,7 +462,7 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 	if (a.Kind == ActorPerson || a.Kind == ActorAgent) && !slices.Contains([]Role{RoleOwner, RoleMember, RoleViewer}, a.Role) {
 		return refuse(CodeNotMember, fmt.Sprintf("Only members of %s can change its record.", spaceName(s)))
 	}
-	if len(o.Secrets) > 0 && (act == ActionRemember || act == ActionPropose || act == ActionEdit) {
+	if len(o.Secrets) > 0 && (act == ActionRemember || act == ActionPropose || act == ActionEdit || act == ActionReviseBrief) {
 		return refuse(CodeSecret, fmt.Sprintf(
 			"This looks like a credential (%s). Memax never stores secrets. Remove it and try again.",
 			strings.Join(o.Secrets, ", ")))
@@ -461,6 +478,25 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideReject(a, o, s)
 	case ActionForget:
 		return decideForget(a, o, s)
+	case ActionReviseBrief:
+		return decideReviseBrief(a, s)
+	case ActionConfigureTarget:
+		return decideConfigureTarget(a, s)
+	case ActionRequestCompile:
+		return decideRequestCompile(a, s)
+	case ActionRecordCompile:
+		if a.Kind == ActorMemax {
+			return apply()
+		}
+		return refuse(CodeCompileByMemax, "Only Memax records compiles. Ask for one with Compile now.")
+	case ActionReport:
+		return decideReport(a, s)
+	case ActionPullDrift:
+		if a.Kind == ActorPerson {
+			return apply()
+		}
+		return refuse(CodeTargetsByPerson,
+			"A person decides what happens to a hand edit. Resolve it on the web or with the CLI.")
 	}
 	return refuse(CodeUnknownAction, fmt.Sprintf("Memax doesn't know how to %q.", act))
 }
@@ -638,6 +674,70 @@ func decideForget(a Actor, o Object, s Space) Decision {
 		}
 	}
 	return refuse(CodePersonMustForget, "Forget needs a person. Forget it on the web.")
+}
+
+// decideReviseBrief: people who may keep edit the Brief, and Dream
+// rewrites it in the open (plan 25 §5.6). Agents propose memories; they
+// never edit the Brief.
+func decideReviseBrief(a Actor, s Space) Decision {
+	switch a.Kind {
+	case ActorPerson:
+		switch {
+		case a.Role == RoleViewer:
+			return refuse(CodeViewer, fmt.Sprintf(
+				"Viewers can read the Brief but not edit it in %s. Ask a member to edit it.", spaceName(s)))
+		case !canKeep(a.Role, s.Rules):
+			return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners edit the Brief in %s. Ask an owner.", spaceName(s)))
+		}
+		return apply()
+	case ActorDream:
+		return apply()
+	}
+	return refuse(CodeBriefByPerson,
+		"Agents propose memories and people edit the Brief. Edit it on the web or with the CLI.")
+}
+
+// decideConfigureTarget: people who may keep decide where a space
+// compiles, overwrite a hand edit, or stop compiling a file.
+func decideConfigureTarget(a Actor, s Space) Decision {
+	if a.Kind != ActorPerson {
+		return refuse(CodeTargetsByPerson, fmt.Sprintf(
+			"Only people change where %s compiles. Change it on the web or with the CLI.", spaceName(s)))
+	}
+	switch {
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf(
+			"Viewers can't change where %s compiles. Ask a member.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules):
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners change where %s compiles. Ask an owner.", spaceName(s)))
+	}
+	return apply()
+}
+
+// decideRequestCompile: a compile changes no words, so anyone who can see
+// the space may ask for one, except an agent or key that can only read.
+func decideRequestCompile(a Actor, s Space) Decision {
+	if a.Kind == ActorAgent && a.autonomy() == AutonomyRead {
+		return refuseReadOnly(a, s)
+	}
+	return apply()
+}
+
+// decideReport: a device (the person's daemon, or an agent's key it runs
+// with) or the repository reports what it wrote or what it saw. Reports
+// change no words: a hand edit becomes proposals only when a person pulls
+// it.
+func decideReport(a Actor, s Space) Decision {
+	switch a.Kind {
+	case ActorPerson, ActorRepository, ActorMemax:
+		return apply()
+	case ActorAgent:
+		if a.autonomy() == AutonomyRead {
+			return refuseReadOnly(a, s)
+		}
+		return apply()
+	}
+	return refuse(CodeTargetsByPerson, "Deliveries and hand edits are reported by a device or the repository.")
 }
 
 // keepCap is why a person (or the agent working for them) can't keep at

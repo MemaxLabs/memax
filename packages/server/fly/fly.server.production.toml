@@ -15,6 +15,8 @@ swap_size_mb = 512
   dockerfile = "../Dockerfile.server"
 
 [env]
+  # V2 compile service, internal only (packages/compile-service/fly).
+  COMPILE_SERVICE_URL = "http://memax-compile-production.internal:8080"
   PORT = "8080"
   # Trust header source for per-IP rate limiting. Valid: none|cloudflare|fly|xff.
   #

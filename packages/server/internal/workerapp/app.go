@@ -30,6 +30,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	"github.com/MemaxLabs/memax/packages/server/internal/cache"
 	"github.com/MemaxLabs/memax/packages/server/internal/chatstream"
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/dreams"
 	"github.com/MemaxLabs/memax/packages/server/internal/email"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
@@ -41,6 +42,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/link"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/summarize"
 	ingesttitle "github.com/MemaxLabs/memax/packages/server/internal/ingest/title"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/meter"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore"
@@ -219,6 +221,19 @@ func New(ctx context.Context) (*App, error) {
 	}
 
 	workers := river.NewWorkers()
+
+	// V2 compile path (plan 25 §5.7): compile_target jobs, enqueued by the
+	// ledger with each change that affects a target, run the coordinator,
+	// which calls the compile service and stores artifacts in object
+	// storage; a periodic sweep re-enqueues anything left behind. Without
+	// COMPILE_SERVICE_URL or object storage nothing compiles (nil means
+	// disabled): compile jobs cancel with the reason, and no sweep runs.
+	v2Ledger := ledger.New(pool, ledger.WithJobs(insertClient))
+	compileSvc := compile.New(v2Ledger, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL")), blobStore,
+		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
+	logEnabled("V2 compile", compileSvc != nil)
+	compile.AddWorkers(workers, v2Ledger, compileSvc)
+
 	river.AddWorker(workers, &queue.MemoryProcessWorker{
 		Store:         s,
 		Events:        eventsPublisher,
@@ -432,6 +447,10 @@ func New(ctx context.Context) (*App, error) {
 	}
 
 	periodicJobs := configurePeriodicJobs(dreamEngine != nil)
+	if compileSvc != nil {
+		periodicJobs = append(periodicJobs, compile.PeriodicJobs()...)
+		slog.Info("compile sweep scheduled", "every", compile.SweepInterval.String())
+	}
 	riverClient, err := river.NewClient(riverpgxv5.New(pool), workerRiverConfig(workers, periodicJobs))
 	if err != nil {
 		app.Shutdown(context.Background())
@@ -1934,6 +1953,10 @@ func workerRiverConfig(workers *river.Workers, periodicJobs []*river.PeriodicJob
 			// alongside the per-process model client's rate
 			// limits.
 			"chat": {MaxWorkers: 8},
+			// V2 compile path. A compile job spends most of its time in
+			// the quiet window (§5.7), so a handful of slots covers many
+			// targets compiling at once.
+			ledger.QueueCompile: {MaxWorkers: compile.MaxWorkers},
 		},
 		Workers: workers,
 		// Global worker middleware: every job's Work() runs inside a

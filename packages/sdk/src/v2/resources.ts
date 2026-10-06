@@ -10,19 +10,36 @@ import type {
   AgentDetail,
   AgentList,
   AutonomyInput,
+  Brief,
+  BriefResult,
+  BriefVersionPage,
   ClientVia,
   CommandResult,
+  CompileRunPage,
+  ConfigureTargetInput,
+  CreateTargetInput,
+  DeliveryInput,
+  DeliveryResult,
+  Drift,
+  DriftResolutionResult,
   EditInput,
   MemoryDetail,
   MemoryPage,
+  ObservationInput,
+  ObservationResult,
   PolicyDecision,
   ReceiptPage,
   RememberInput,
+  ResolveDriftInput,
   ReviewInput,
   ReviewPage,
+  ReviseBriefInput,
   Section,
   SpaceList,
   State,
+  TargetList,
+  TargetPreview,
+  TargetResult,
 } from "./types.js";
 
 /** Options every command takes. */
@@ -322,6 +339,198 @@ export class V2AgentsResource {
   }
 }
 
+export interface VersionedCommandOptions extends CommandOptions {
+  /**
+   * The version you started from (the Brief's or the target's ETag). A
+   * Brief revision needs it once the space has a Brief; a newer version
+   * throws a MemaxError `edit_clash` (412).
+   */
+  ifMatch?: number;
+}
+
+export class V2BriefsResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /** The space's current Brief version. Throws `not_found` when it has none. */
+  async get(space: string, opts?: { signal?: AbortSignal }): Promise<Brief> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/brief`, {
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Write a new version of the Brief. Memory items must be kept memories
+   * of the space, and prose must cite at least one. Every target of the
+   * space recompiles.
+   */
+  async revise(
+    space: string,
+    input: ReviseBriefInput,
+    opts: VersionedCommandOptions,
+  ): Promise<BriefResult> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/brief`, {
+      body: input,
+      extraHeaders: commandHeaders(opts, opts.ifMatch),
+      signal: opts.signal,
+    });
+  }
+
+  /** Every version of the Brief, newest first, with who wrote it and why. */
+  async versions(space: string, opts?: PageOptions): Promise<BriefVersionPage> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/brief/versions`, {
+      query: pageQuery(opts),
+      signal: opts?.signal,
+    });
+  }
+}
+
+export class V2TargetsResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /** Where the space compiles to, each target with its sync state. */
+  async list(
+    space: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<TargetList> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/targets`, {
+      signal: opts?.signal,
+    });
+  }
+
+  /** Add a target (the kind's defaults fill the rest) and compile it. */
+  async create(
+    space: string,
+    input: CreateTargetInput,
+    opts: CommandOptions,
+  ): Promise<TargetResult> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/targets`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** Change a target's path, settings or delivery, or stop or restart it. */
+  async update(
+    target: string,
+    input: ConfigureTargetInput,
+    opts: VersionedCommandOptions,
+  ): Promise<TargetResult> {
+    return this.req("PATCH", `/v2/targets/${seg(target)}`, {
+      body: input,
+      extraHeaders: commandHeaders(opts, opts.ifMatch),
+      signal: opts.signal,
+    });
+  }
+
+  /** Compile now. The compile is queued: the target answers `compiling`. */
+  async compile(
+    target: string,
+    input: ReviewInput,
+    opts: CommandOptions,
+  ): Promise<TargetResult> {
+    return this.req("POST", `/v2/targets/${seg(target)}:compile`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** The latest compiled content, with the run's metadata. */
+  async preview(
+    target: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<TargetPreview> {
+    return this.req("GET", `/v2/targets/${seg(target)}/preview`, {
+      signal: opts?.signal,
+    });
+  }
+
+  /** The target's compile runs, newest first. */
+  async runs(target: string, opts?: PageOptions): Promise<CompileRunPage> {
+    return this.req("GET", `/v2/targets/${seg(target)}/runs`, {
+      query: pageQuery(opts),
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Report a target's file as it is on disk (the daemon). `drifted` says
+   * whether it was a hand edit, now waiting for a person.
+   */
+  async observe(
+    target: string,
+    input: ObservationInput,
+    opts: CommandOptions,
+  ): Promise<ObservationResult> {
+    return this.req("POST", `/v2/targets/${seg(target)}/observations`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** Acknowledge that a compile run's output is on disk. */
+  async deliver(
+    target: string,
+    input: DeliveryInput,
+    opts: CommandOptions,
+  ): Promise<DeliveryResult> {
+    return this.req("POST", `/v2/targets/${seg(target)}/deliveries`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** The target's open hand edits: both sides of each, and the changes. */
+  async drift(target: string, opts?: { signal?: AbortSignal }): Promise<Drift> {
+    return this.req("GET", `/v2/targets/${seg(target)}/drift`, {
+      signal: opts?.signal,
+    });
+  }
+
+  /** Turn the hand edits into proposals; removed lines wait for a person. */
+  async pull(
+    target: string,
+    input: ResolveDriftInput,
+    opts: CommandOptions,
+  ): Promise<DriftResolutionResult> {
+    return this.resolve(target, "pull", input, opts);
+  }
+
+  /** Write the compiled file over the hand edits. */
+  async overwrite(
+    target: string,
+    input: ResolveDriftInput,
+    opts: CommandOptions,
+  ): Promise<DriftResolutionResult> {
+    return this.resolve(target, "overwrite", input, opts);
+  }
+
+  /** Stop compiling the target; the file stays as it is. */
+  async stop(
+    target: string,
+    input: ResolveDriftInput,
+    opts: CommandOptions,
+  ): Promise<DriftResolutionResult> {
+    return this.resolve(target, "stop", input, opts);
+  }
+
+  private async resolve(
+    target: string,
+    mode: "pull" | "overwrite" | "stop",
+    input: ResolveDriftInput,
+    opts: CommandOptions,
+  ): Promise<DriftResolutionResult> {
+    return this.req("POST", `/v2/targets/${seg(target)}/drift:${mode}`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+}
+
 /** `memax.v2`: the V2 record. */
 export class V2Resource {
   readonly spaces: V2SpacesResource;
@@ -329,6 +538,8 @@ export class V2Resource {
   readonly review: V2ReviewResource;
   readonly receipts: V2ReceiptsResource;
   readonly agents: V2AgentsResource;
+  readonly briefs: V2BriefsResource;
+  readonly targets: V2TargetsResource;
 
   constructor(req: RequestFn) {
     this.spaces = new V2SpacesResource(req);
@@ -336,6 +547,8 @@ export class V2Resource {
     this.review = new V2ReviewResource(req);
     this.receipts = new V2ReceiptsResource(req);
     this.agents = new V2AgentsResource(req);
+    this.briefs = new V2BriefsResource(req);
+    this.targets = new V2TargetsResource(req);
   }
 }
 

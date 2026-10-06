@@ -1,0 +1,48 @@
+# Memax compile service — PRODUCTION
+# Deploy from the REPOSITORY ROOT (the image builds packages/compiler too):
+#   fly deploy . -c packages/compile-service/fly/fly.compile.production.toml
+#
+# Internal only. There is no [http_service] and no [[services]], so Fly's
+# proxy never routes public traffic here; never run `fly ips allocate` on
+# this app. The API server and the worker reach it over the private
+# network at http://memax-compile-production.internal:8080
+# (COMPILE_SERVICE_URL in packages/server/fly/*.production.toml).
+#
+# Run two machines so a deploy or a host failure never leaves the worker
+# without a compiler (the .internal name resolves to every machine, and
+# the Go client retries the next attempt):
+#   fly scale count 2 -a memax-compile-production
+#
+# Sister file: fly.compile.staging.toml.
+app = "memax-compile-production"
+primary_region = "sjc"
+kill_signal = "SIGTERM"
+kill_timeout = "15s"
+
+[build]
+  dockerfile = "../Dockerfile"
+  ignorefile = "../Dockerfile.dockerignore"
+
+[env]
+  PORT = "8080"
+  HOST = "::"
+  SHUTDOWN_GRACE_MS = "10000"
+
+[deploy]
+  strategy = "rolling"
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 8080
+    path = "/health"
+    method = "get"
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "5s"
+
+[[vm]]
+  # Compiles are CPU-bound and short (about 10 ms for 400 facts across
+  # every adapter); memory holds one request at a time per connection.
+  size = "shared-cpu-1x"
+  memory = "512mb"

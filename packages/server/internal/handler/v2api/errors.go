@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
@@ -86,9 +87,17 @@ func (h *Handler) fromLedger(r *http.Request, err error) *apiError {
 	var clash *ledger.EditClashError
 	var te *ledger.TransitionError
 	var ce *ledger.ConnectionStateError
+	var tse *ledger.TargetStateError
 	switch {
 	case errors.As(err, &ce):
 		return &apiError{status: http.StatusConflict, code: codeInvalidTransition, message: ce.Error()}
+	case errors.As(err, &tse):
+		return &apiError{status: http.StatusConflict, code: codeInvalidTransition, message: tse.Error(),
+			details: &errorDetails{Ref: tse.Ref}}
+	case errors.Is(err, compile.ErrUnavailable):
+		h.log.WarnContext(r.Context(), "v2: compile service unavailable", "path", r.URL.Path, "error", err)
+		return &apiError{status: http.StatusServiceUnavailable, code: codeUnavailable, retryAfter: 5,
+			message: "The compile service didn't answer. Try again in a moment.", details: &errorDetails{RetryAfter: 5}}
 	case errors.As(err, &ve):
 		return invalidRequest(ve.Field, ve.Error())
 	case errors.Is(err, ledger.ErrNotFound):

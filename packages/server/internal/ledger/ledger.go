@@ -28,6 +28,9 @@ type Ledger struct {
 	now         func() time.Time
 	lockTimeout time.Duration
 	log         *slog.Logger
+	// inserter enqueues follow-up jobs in the command's transaction
+	// (WithJobs); nil enqueues nothing.
+	inserter Jobs
 }
 
 // Option configures a Ledger.
@@ -79,13 +82,13 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		return Result{}, err
 	}
 
-	tx, err := l.begin(ctx, m.Scope, pgx.ReadWrite)
+	tx, loginRole, err := l.begin(ctx, m.Scope, pgx.ReadWrite)
 	if err != nil {
 		return Result{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	w := &writer{tx: tx, meta: m, command: cmd.Name(), hash: hash}
+	w := &writer{tx: tx, meta: m, command: cmd.Name(), hash: hash, inserter: l.inserter, loginRole: loginRole}
 	var res Result
 	switch c := cmd.(type) {
 	case *Remember:
@@ -108,24 +111,51 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.changeConnection(ctx, c.Connection, CommandResumeAgent)
 	case *DisconnectAgent:
 		res, err = w.changeConnection(ctx, c.Connection, CommandDisconnectAgent)
+	case *ReviseBrief:
+		res, err = w.reviseBrief(ctx, c)
+	case *ConfigureTarget:
+		res, err = w.configureTarget(ctx, c)
+	case *RequestCompile:
+		res, err = w.requestCompile(ctx, c)
+	case *RecordCompile:
+		res, err = w.recordCompile(ctx, c)
+	case *RecordDelivery:
+		res, err = w.recordDelivery(ctx, c)
+	case *RecordObservation:
+		res, err = w.recordObservation(ctx, c)
+	case *ResolveDrift:
+		res, err = w.resolveDrift(ctx, c)
 	}
 	if err != nil {
 		return Result{}, mapDBError(err)
 	}
-	// Refusals and replays wrote nothing worth keeping: the deferred
-	// rollback discards the idempotency claim, so a refused command is
-	// decided afresh when retried.
-	if res.Outcome == OutcomeRefused || res.Replayed {
+	// Refusals, replays and no-ops wrote nothing worth keeping: the
+	// deferred rollback discards the idempotency claim, so a refused
+	// command is decided afresh when retried.
+	if res.Outcome == OutcomeRefused || res.Replayed || res.Unchanged {
 		return res, nil
+	}
+	// The follow-up jobs go out last, right before COMMIT (jobs.go).
+	if err := w.flush(ctx); err != nil {
+		return Result{}, mapDBError(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Result{}, mapDBError(fmt.Errorf("ledger: commit %s: %w", cmd.Name(), err))
 	}
-	if res.Memory != nil {
+	switch {
+	case res.Memory != nil:
 		l.log.Info("ledger: applied",
 			"command", string(cmd.Name()), "outcome", string(res.Outcome), "policy", res.Policy.Code,
 			"memory", res.Memory.Ref, "space_id", res.Memory.SpaceID.String(),
-			"actor_kind", string(m.Actor.Kind), "via", string(m.Via), "receipts", len(res.Receipts))
+			"actor_kind", string(m.Actor.Kind), "via", string(m.Via), "receipts", len(res.Receipts),
+			"jobs", len(w.jobs))
+	case len(res.Receipts) > 0:
+		rc := res.Receipts[0]
+		l.log.Info("ledger: applied",
+			"command", string(cmd.Name()), "outcome", string(res.Outcome), "policy", res.Policy.Code,
+			"object", rc.ObjectRef, "object_kind", rc.ObjectKind, "space_id", rc.SpaceID.String(),
+			"actor_kind", string(m.Actor.Kind), "via", string(m.Via), "receipts", len(res.Receipts),
+			"jobs", len(w.jobs))
 	}
 	if res.Connection != nil {
 		l.log.Info("ledger: applied",
@@ -138,6 +168,20 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 
 func validateCommand(cmd Command) error {
 	switch c := cmd.(type) {
+	case *ReviseBrief:
+		return c.validate()
+	case *ConfigureTarget:
+		return c.validate()
+	case *RequestCompile:
+		return c.validate()
+	case *RecordCompile:
+		return c.validate()
+	case *RecordDelivery:
+		return c.validate()
+	case *RecordObservation:
+		return c.validate()
+	case *ResolveDrift:
+		return c.validate()
 	case *Remember:
 		return c.NewMemory.validate()
 	case *Propose:
@@ -185,7 +229,20 @@ func (l *Ledger) Read(ctx context.Context, scope Scope, fn func(pgx.Tx) error) e
 	if l == nil {
 		return ErrDisabled
 	}
-	tx, err := l.begin(ctx, scope, pgx.ReadOnly)
+	return l.read(ctx, scope, pgx.ReadCommitted, fn)
+}
+
+// readSnapshot is Read at REPEATABLE READ: every query in fn sees the same
+// snapshot of the record (a compile input built from one moment).
+func (l *Ledger) readSnapshot(ctx context.Context, scope Scope, fn func(pgx.Tx) error) error {
+	if l == nil {
+		return ErrDisabled
+	}
+	return l.read(ctx, scope, pgx.RepeatableRead, fn)
+}
+
+func (l *Ledger) read(ctx context.Context, scope Scope, iso pgx.TxIsoLevel, fn func(pgx.Tx) error) error {
+	tx, _, err := l.beginTx(ctx, scope, pgx.TxOptions{AccessMode: pgx.ReadOnly, IsoLevel: iso})
 	if err != nil {
 		return err
 	}
@@ -199,29 +256,43 @@ func (l *Ledger) Read(ctx context.Context, scope Scope, fn func(pgx.Tx) error) e
 // begin opens a transaction, switches it to memax_v2 and sets the scope.
 // set_config(..., true) is SET LOCAL: it ends with the transaction, so
 // pooled connections (including Neon's transaction pooling) never carry
-// a scope into the next transaction.
-func (l *Ledger) begin(ctx context.Context, scope Scope, mode pgx.TxAccessMode) (pgx.Tx, error) {
-	tx, err := l.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: mode})
+// a scope into the next transaction. It also returns the role the
+// transaction began with, which the River insert switches back to for
+// its one statement (jobs.go).
+func (l *Ledger) begin(ctx context.Context, scope Scope, mode pgx.TxAccessMode) (pgx.Tx, string, error) {
+	return l.beginTx(ctx, scope, pgx.TxOptions{AccessMode: mode})
+}
+
+func (l *Ledger) beginTx(ctx context.Context, scope Scope, opts pgx.TxOptions) (pgx.Tx, string, error) {
+	tx, err := l.pool.BeginTx(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("ledger: begin: %w", err)
+		return nil, "", fmt.Errorf("ledger: begin: %w", err)
 	}
 	person := ""
 	if scope.PersonID != uuid.Nil {
 		person = scope.PersonID.String()
 	}
-	_, err = tx.Exec(ctx,
-		`SELECT set_config('role', $1, true),
+	// The login role is read before the switch: Postgres evaluates a
+	// SELECT's target list left to right.
+	var loginRole string
+	err = tx.QueryRow(ctx,
+		`SELECT current_setting('role'),
+		        set_config('role', $1, true),
 		        set_config('app.space_ids', $2, true),
 		        set_config('app.tenant_ids', $3, true),
 		        set_config('app.person_id', $4, true),
 		        set_config('lock_timeout', $5, true)`,
 		DBRole, uuidArray(scope.SpaceIDs()), uuidArray(scope.TenantIDs()), person,
-		fmt.Sprintf("%dms", l.lockTimeout.Milliseconds()))
+		fmt.Sprintf("%dms", l.lockTimeout.Milliseconds())).Scan(&loginRole, nil, nil, nil, nil, nil)
 	if err != nil {
 		_ = tx.Rollback(ctx)
-		return nil, fmt.Errorf("ledger: switch to %s: %w", DBRole, err)
+		return nil, "", fmt.Errorf("ledger: switch to %s: %w", DBRole, err)
 	}
-	return tx, nil
+	if loginRole == DBRole {
+		_ = tx.Rollback(ctx)
+		return nil, "", fmt.Errorf("ledger: the connection already runs as %s; connect as the app's login role", DBRole)
+	}
+	return tx, loginRole, nil
 }
 
 // errNoRows reports whether err is pgx's "no rows".

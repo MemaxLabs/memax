@@ -20,7 +20,22 @@
 // the commit if a projection row has no receipt from the same
 // transaction, receipts are append-only and content-free, a trigger
 // re-checks the lifecycle transition, and RLS policies hide every row
-// outside the scope (migrations 026–028).
+// outside the scope (migrations 026–029 and 031).
+//
+// # The Brief, targets and compiles
+//
+// ReviseBrief writes a Brief version (B-). ConfigureTarget adds or
+// changes a compile target, RequestCompile asks for a fresh compile, and
+// the compile coordinator (internal/compile) records each run with
+// RecordCompile, as Memax. RecordDelivery acknowledges a run on disk,
+// RecordObservation reports a hand edit, and ResolveDrift pulls it back
+// as proposals, overwrites it or stops the target (plan 25 §5.7).
+//
+// Every command that changes what compiles (a kept memory, new words for
+// one, a Brief version, a target's settings) bumps the generation of the
+// space's targets and inserts their compile_target jobs with River's
+// InsertTx, in the command's transaction; see jobs.go for the role switch
+// that needs.
 //
 // # Postgres only, on purpose
 //

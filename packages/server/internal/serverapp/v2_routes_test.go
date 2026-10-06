@@ -96,7 +96,11 @@ func TestV2RoutesOnlyComeFromV2API(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !regexp.MustCompile(`v2:\s+v2api\.New\(ledger\.New\(pool\)`).Match(app) {
-		t.Error("app.go must pass v2: v2api.New(ledger.New(pool), …) to registerRoutes")
+	// v2Handler builds the handler on the ledger (with River and the
+	// compile coordinator around it).
+	if !regexp.MustCompile(`v2:\s+v2Handler\(pool, `).Match(app) ||
+		!regexp.MustCompile(`l := ledger\.New\(pool, opts\.\.\.\)`).Match(app) ||
+		!regexp.MustCompile(`return v2api\.New\(l, `).Match(app) {
+		t.Error("app.go must pass v2: v2Handler(pool, …) to registerRoutes, and v2Handler must return v2api.New(ledger.New(pool, …), …)")
 	}
 }

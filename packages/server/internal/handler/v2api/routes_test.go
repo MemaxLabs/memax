@@ -72,7 +72,25 @@ var sampleRequests = map[string]struct {
 	"pauseAgent":       {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:pause"},
 	"resumeAgent":      {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:resume", body: `{"reason":"done testing"}`},
 	"disconnectAgent":  {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:disconnect"},
+
+	"getBrief":          {path: "/v2/spaces/memax-v2/brief"},
+	"reviseBrief":       {path: "/v2/spaces/memax-v2/brief", body: `{"title":"Brief","sections":[{"key":"decisions","heading":"Decisions","items":[{"ref":"M-0219"}]}]}`, header: map[string]string{"If-Match": `"1"`}},
+	"listBriefVersions": {path: "/v2/spaces/memax-v2/brief/versions?limit=5"},
+	"listTargets":       {path: "/v2/spaces/memax-v2/targets"},
+	"createTarget":      {path: "/v2/spaces/memax-v2/targets", body: `{"kind":"agents_md"}`},
+	"configureTarget":   {path: "/v2/targets/" + sampleID, body: `{"enabled":false}`, header: map[string]string{"Idempotency-Key": "k-configure"}},
+	"compileTarget":     {path: "/v2/targets/" + sampleID + ":compile"},
+	"getTargetPreview":  {path: "/v2/targets/" + sampleID + "/preview"},
+	"listCompileRuns":   {path: "/v2/targets/" + sampleID + "/runs"},
+	"recordObservation": {path: "/v2/targets/" + sampleID + "/observations", body: `{"path":"AGENTS.md","content":"# Brief\n"}`},
+	"recordDelivery":    {path: "/v2/targets/" + sampleID + "/deliveries", body: `{"compile":"C-0881","sha256":"` + strings.Repeat("a", 64) + `"}`},
+	"getDrift":          {path: "/v2/targets/" + sampleID + "/drift"},
+	"pullDrift":         {path: "/v2/targets/" + sampleID + "/drift:pull"},
+	"overwriteDrift":    {path: "/v2/targets/" + sampleID + "/drift:overwrite", body: `{"reason":"the record wins"}`},
+	"stopDrift":         {path: "/v2/targets/" + sampleID + "/drift:stop"},
 }
+
+const sampleID = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
 
 // TestEveryRouteIsServed sends a valid request for every operation to a
 // /v2 handler with no ledger. Each must reach its handler (503
@@ -213,6 +231,21 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "PolicyCode", specEnum(t, "PolicyCode"), stringConsts(t, "../../ledger/policy/policy.go", "Code"))
 	// rate_limited comes from the rate-limit middleware in front of /v2.
 	sameSet(t, "ErrorCode", specEnum(t, "ErrorCode"), append(stringConsts(t, "errors.go", "code"), "rate_limited"))
+
+	// The Brief, targets and compiles.
+	sameSet(t, "TargetKind", specEnum(t, "TargetKind"), strs(ledger.TargetKinds))
+	sameSet(t, "Delivery", specEnum(t, "Delivery"), strs(ledger.Deliveries))
+	sameSet(t, "SyncState", specEnum(t, "SyncState"), strs(ledger.SyncStates))
+	sameSet(t, "IncludeMode", specEnum(t, "IncludeMode"), strs([]ledger.IncludeMode{ledger.IncludeKeptOnly, ledger.IncludeKeptAndOpen}))
+	sameSet(t, "StaleMode", specEnum(t, "StaleMode"), strs([]ledger.StaleMode{ledger.StaleMark, ledger.StaleOmit}))
+	sameSet(t, "ScopedMode", specEnum(t, "ScopedMode"), strs([]ledger.ScopedMode{ledger.ScopedInline, ledger.ScopedOmit}))
+	sameSet(t, "CompileStatus", specEnum(t, "CompileStatus"), strs(ledger.CompileStatuses))
+	sameSet(t, "ObservationStatus", specEnum(t, "ObservationStatus"), strs(ledger.ObservationStatuses))
+	sameSet(t, "ObserverKind", specEnum(t, "ObserverKind"), []string{ledger.ObserverDevice, ledger.ObserverGitHub})
+	sameSet(t, "DriftMode", specEnum(t, "DriftMode"), strs([]ledger.DriftMode{ledger.DriftPull, ledger.DriftOverwrite, ledger.DriftStop}))
+	sameSet(t, "ChangeKind", specEnum(t, "ChangeKind"), []string{ledger.ChangeEdit, ledger.ChangeNew, ledger.ChangeRemove})
+	sameSet(t, "ChangeOutcome", specEnum(t, "ChangeOutcome"),
+		[]string{ledger.OutcomeChangeProposed, ledger.OutcomeChangeReview, ledger.OutcomeChangeSkipped})
 }
 
 // stringConsts parses a Go file for string constants whose names start

@@ -28,7 +28,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && tsc --noEmit -p test && node scripts/sync-compiler.mjs --check",
     "test": "vitest run --passWithNoTests",
     "clean": "rm -rf dist"
   },

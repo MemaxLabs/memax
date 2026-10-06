@@ -201,6 +201,8 @@ export function activitySentences(
       return [one(s.moved)];
     case "answered":
       return [one(s.answered)];
+    case "withdrawn":
+      return [one(s.withdrawn, { ref: text(entry.object.ref) })];
     case "undid":
       return [one(s.undid)];
     case "drifted":

@@ -16,15 +16,17 @@ import type { SpaceSummary } from "./types";
 /**
  * The receipt verbs, derived from the spec's ReceiptAction through the
  * generated SDK types, so a verb added to the API breaks the build in
- * sentence.ts until it has words. Plus three entries that aren't receipt
- * verbs: reads (not receipts, plan §5.3), a gate an agent raised, and a
- * compiled file edited outside Memax.
+ * sentence.ts until it has words. Plus entries the demo shows that aren't
+ * receipt verbs (reads, plan §5.3, and a compiled file edited outside
+ * Memax), and the decision-gate verbs, which the demo shows too.
  */
 export type ActivityAction =
   | V2.ReceiptAction
   | "read"
-  /** A decision gate an agent raised (H-…). */
+  /** An agent asked a person to decide: a decision gate (G-…). */
   | "asked"
+  /** A decision gate's question taken back before anyone answered. */
+  | "withdrawn"
   /** A compiled file edited by hand outside Memax. */
   | "drifted";
 

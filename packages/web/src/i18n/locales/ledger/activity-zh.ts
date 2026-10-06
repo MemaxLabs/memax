@@ -132,6 +132,7 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     agentsOne: "1 个 Agent",
     moved: "{actor}把一条记忆移到了别的空间。",
     answered: "{actor}回答了一个问题。",
+    withdrawn: "{actor}撤回了一个问题（{ref}）。",
     undid: "{actor}撤销了一次改动。",
     dream:
       "{actor}把 {notes}合并成 {facts}，标出 {stale} 条过时，淡出 {faded} 条。",

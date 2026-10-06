@@ -1,0 +1,68 @@
+/* Memax Ledger · Frame: command bar, rail, shell and page, terminal.
+ * Verbatim from the V2 handoff (design-system/components/bundle.css, lines 282–345).
+ * Do not edit here: change the handoff, then re-copy. Production additions live in hardening.css. */
+
+/* ---------- command bar ---------- */
+.mx-cmd { display: flex; flex-direction: column; width: 100%; max-width: 680px; background: var(--card); border: 1px solid var(--line-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-float); overflow: hidden; }
+.mx-cmd-input { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--line); color: var(--ink-3); }
+.mx-cmd-input .mx-seg { align-self: center; }
+.mx-cmd-field { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 16px; line-height: 24px; }
+.mx-cmd-field::placeholder { color: var(--ink-3); }
+.mx-cmd-body { padding: var(--space-5) var(--space-5) var(--space-4); max-height: 520px; overflow: auto; }
+.mx-cmd-foot { display: flex; align-items: center; gap: var(--space-4); padding: 8px 16px; border-top: 1px solid var(--line); background: var(--sheet); font-size: 12px; line-height: 16px; color: var(--ink-3); }
+.mx-cmd-foot span { display: inline-flex; align-items: center; gap: 6px; }
+.mx-cmd-foot-end { margin-left: auto; }
+.mx-answer { margin: 0; font-family: var(--font-serif); font-size: 17px; line-height: 28px; color: var(--ink); text-wrap: pretty; }
+.mx-section-label { margin: 0 0 8px; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .01em; color: var(--ink-3); }
+
+/* ---------- rail ---------- */
+.mx-rail { display: flex; flex-direction: column; gap: var(--space-4); width: var(--rail); box-sizing: border-box; padding: 14px 12px 12px; background: var(--paper); height: 100%; }
+.mx-rail-top { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
+.mx-rail-space { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 6px; margin-right: -6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); font: inherit; cursor: pointer; text-align: left; }
+.mx-rail-space:hover { background: var(--hover); }
+.mx-rail-space-name { font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: -0.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-rail-space-kind { font-size: 12px; color: var(--ink-3); margin-right: auto; }
+.mx-rail-space .mx-icon { color: var(--ink-3); }
+.mx-rail-ask { display: flex; align-items: center; gap: 8px; height: var(--control-md); padding: 0 6px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--card); color: var(--ink-3); font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+.mx-rail-ask span { flex: 1; }
+.mx-rail-ask:hover { color: var(--ink-2); }
+.mx-rail-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.mx-rail-item { display: flex; align-items: center; gap: 10px; height: var(--control-md); padding: 0 10px; border-radius: var(--radius-sm); color: var(--ink-2); text-decoration: none; font-size: 14px; line-height: 20px; transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+.mx-rail-item:hover { background: var(--hover); color: var(--ink); }
+.mx-rail-item.is-active { background: var(--select); color: var(--ink); font-weight: 550; }
+.mx-rail-label { flex: 1; }
+.mx-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 6px; box-sizing: border-box; border-radius: var(--radius-pill); background: var(--well); color: var(--ink-2); font-size: 11px; line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mx-count.is-pending { background: var(--ochre-fill); color: var(--on-ochre); }
+.mx-rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: var(--space-3); }
+.mx-rail-me { display: flex; flex-direction: column; gap: 6px; padding: 10px 10px 2px; border-top: 1px solid var(--line); }
+.mx-rail-sync .mx-state-label { font-weight: 400; color: var(--ink-3); }
+
+/* ---------- shell & page ---------- */
+.mx-shell { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); height: 100vh; min-height: 640px; background: var(--paper); box-sizing: border-box; }
+.mx-sheet { margin: var(--space-2) var(--space-2) var(--space-2) 0; background: var(--sheet); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: auto; min-width: 0; }
+.mx-page { padding: var(--space-10) var(--space-10) var(--space-12); max-width: 1120px; box-sizing: border-box; }
+.mx-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6); margin-bottom: var(--space-8); }
+.mx-page-head-text { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.mx-page-eyebrow { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--ink-3); letter-spacing: .01em; }
+.mx-page-title { margin: 0; font-family: var(--font-serif); font-size: 32px; line-height: 38px; font-weight: 400; letter-spacing: -0.015em; color: var(--ink); text-wrap: balance; }
+.mx-page-lede { margin: 0; font-family: var(--font-serif); font-size: 17px; line-height: 26px; color: var(--ink-2); max-width: 58ch; text-wrap: balance; }
+.mx-page-actions { display: flex; gap: var(--space-2); flex: none; }
+.mx-panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
+.mx-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 44px; padding: 8px var(--space-4); box-sizing: border-box; border-bottom: 1px solid var(--line); }
+.mx-panel-title { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.005em; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.mx-panel-head > .mx-meta { margin-left: auto; }
+.mx-panel > :last-child { border-bottom: 0; }
+
+/* ---------- terminal ---------- */
+.mx-term { background: var(--night); color: var(--night-ink); border: 1px solid var(--night-line); border-radius: var(--radius-md); overflow: hidden; }
+.mx-term-bar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--night-line); }
+.mx-term-dots { display: inline-flex; gap: 6px; }
+.mx-term-dots i { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--night-line); display: block; }
+.mx-term-title { font-family: var(--font-mono); font-size: 12px; color: var(--night-ink-2); }
+.mx-term-body { margin: 0; padding: 14px 16px 16px; font-family: var(--font-mono); font-size: 13px; line-height: 21px; white-space: pre-wrap; }
+.mx-term-line.is-dim { color: var(--night-ink-2); }
+.mx-term-line.is-cmd { color: var(--night-ink); font-weight: 500; }
+.mx-term-glyph { color: var(--night-ink-2); }
+.mx-term-line.is-cmd .mx-term-glyph, .mx-term-line.is-kept .mx-term-glyph { color: var(--night-accent); }
+.mx-term-line.is-proposed .mx-term-glyph, .mx-term-line.is-warn .mx-term-glyph { color: var(--night-ochre); }
+.mx-term-line.is-ok .mx-term-glyph { color: var(--night-ink); }

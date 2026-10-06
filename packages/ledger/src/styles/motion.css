@@ -1,0 +1,10 @@
+/* Memax Ledger · Motion: shared keyframes and the reduced-motion switch.
+ * Verbatim from the V2 handoff (design-system/components/bundle.css, lines 347–352).
+ * Do not edit here: change the handoff, then re-copy. Production additions live in hardening.css. */
+
+/* ---------- motion ---------- */
+@keyframes mx-fade-in { from { opacity: 0; } }
+@keyframes mx-dots-in { from { text-decoration-color: transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  .mx-shell *, .mx-stage *, .mx-seal, .mx-row, .mx-redaction-bar, .mx-redaction-cap, .mx-dream-facts li, .mx-dream-notes span { animation: none !important; transition: none !important; }
+}

@@ -1,0 +1,63 @@
+/* Memax Ledger · Agents: handoff slip, agent row, sync target, decision gate.
+ * Verbatim from the V2 handoff (design-system/components/bundle.css, lines 222–280).
+ * Do not edit here: change the handoff, then re-copy. Production additions live in hardening.css. */
+
+/* ---------- handoff slip ---------- */
+.mx-slip { position: relative; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5) var(--space-6) var(--space-4); background: var(--card); border: 1px solid var(--line); border-top: 1px dashed var(--line-strong); border-radius: 0 0 var(--radius-md) var(--radius-md); }
+.mx-slip-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.mx-slip-route { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mx-slip-arrow { color: var(--ink-3); }
+.mx-slip-surface { font-size: 12px; color: var(--ink-3); }
+.mx-slip-title { margin: 0; font-family: var(--font-serif); font-size: 22px; line-height: 28px; font-weight: 500; letter-spacing: -0.01em; color: var(--ink); text-wrap: balance; }
+.mx-slip-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-6); }
+.mx-slip-label { margin: 0 0 6px; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .01em; color: var(--ink-3); }
+.mx-slip-list { margin: 0; padding: 0 0 0 16px; font-family: var(--font-serif); font-size: 15px; line-height: 22px; color: var(--ink); text-wrap: pretty; }
+.mx-slip-list li { margin-bottom: 4px; padding-left: 2px; }
+.mx-slip-list li::marker { color: var(--ink-3); }
+.mx-slip-sec.is-questions { padding: 12px 14px; border-radius: var(--radius-sm); background: var(--well); }
+.mx-slip-sec.is-questions .mx-slip-list { list-style: none; padding-left: 18px; }
+.mx-slip-sec.is-questions li { position: relative; }
+.mx-slip-sec.is-questions li::before { content: "?"; position: absolute; left: -18px; top: 1px; font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.mx-slip-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); flex-wrap: wrap; }
+.mx-slip-actions { display: flex; gap: var(--space-2); }
+
+/* ---------- agent row ---------- */
+.mx-agent, .mx-agent-head { display: grid; grid-template-columns: minmax(200px, 1.4fr) 184px 80px 80px 120px minmax(150px, 1fr); align-items: center; column-gap: var(--space-5); padding: 12px var(--space-4); border-bottom: 1px solid var(--line); }
+.mx-agent:hover { background: var(--hover); }
+.mx-agent.is-paused .mx-stamp-name { color: var(--ink-3); }
+.mx-agent .mx-seg { align-self: center; }
+.mx-agent-num { font-size: 13px; line-height: 18px; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
+.mx-agent-seen { font-size: 13px; line-height: 18px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.mx-agent-target { min-width: 0; overflow: hidden; }
+.mx-agent-head { padding: 8px var(--space-4); font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .01em; color: var(--ink-3); }
+.mx-agent-head .is-num { text-align: right; }
+
+/* ---------- sync target ---------- */
+.mx-target { display: grid; grid-template-columns: 16px minmax(0, 1fr) 168px 72px auto; align-items: center; column-gap: var(--space-3); padding: 10px var(--space-4); border-bottom: 1px solid var(--line); }
+.mx-target-icon { color: var(--ink-3); }
+.mx-target-id { display: flex; flex-direction: column; min-width: 0; }
+.mx-target-path { font-family: var(--font-mono); font-size: 13px; line-height: 18px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-target-tool { font-size: 12px; line-height: 16px; color: var(--ink-3); }
+.mx-target-status { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mx-target-detail { font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.mx-target-time { white-space: nowrap; text-align: right; }
+.mx-target-action { justify-self: end; }
+.mx-target.is-compact { grid-template-columns: 16px minmax(0, 1fr) 84px; }
+.mx-target.is-compact .mx-target-tool, .mx-target.is-compact .mx-target-time, .mx-target.is-compact > :last-child:not(.mx-target-status), .mx-target.is-compact .mx-target-detail { display: none; }
+
+/* ---------- decision gate ---------- */
+.mx-gate { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5) var(--space-6); background: var(--card); border: 1px solid var(--line-strong); border-radius: var(--radius-md); }
+.mx-gate-head { display: flex; align-items: center; gap: 8px; }
+.mx-gate-who { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ochre); }
+.mx-gate-head .mx-meta { margin-left: auto; }
+.mx-gate-q { margin: 0; font-family: var(--font-serif); font-size: 20px; line-height: 30px; color: var(--ink); text-wrap: pretty; }
+.mx-gate-ctx { margin: -8px 0 0; font-size: 13px; line-height: 18px; color: var(--ink-2); text-wrap: pretty; }
+.mx-gate-opts { display: flex; flex-direction: column; gap: 6px; }
+.mx-gate-opt { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; text-align: left; background: var(--card); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink); font: inherit; cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard); }
+.mx-gate-opt:hover { background: var(--hover); }
+.mx-gate-opt.is-on { border-color: var(--ink); background: var(--select); box-shadow: inset 0 0 0 1px var(--ink); }
+.mx-gate-opt .mx-kbd { margin-top: 1px; }
+.mx-gate-opt-text { display: flex; flex-direction: column; gap: 2px; }
+.mx-gate-opt-label { font-size: 14px; line-height: 20px; font-weight: 550; }
+.mx-gate-opt-detail { font-size: 13px; line-height: 18px; color: var(--ink-2); }
+.mx-gate-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--line); }

@@ -1,3 +1,5 @@
+import type { ActivityData } from "./activity";
+import type { AgentsData } from "./agents";
 import type {
   AskEvent,
   KeepResult,
@@ -18,8 +20,11 @@ import type {
  * The app picks one in exactly one place, (ledger)/(app)/layout.tsx;
  * nothing else knows which is in use. Adding an endpoint means
  * implementing it in both.
+ *
+ * Each domain declares its part in its own module and is mixed in here:
+ * activity.ts (Activity), agents.ts (Agents, keys).
  */
-export interface LedgerDataSource {
+export interface LedgerDataSource extends ActivityData, AgentsData {
   readonly kind: "sdk" | "demo";
   /**
    * Data the source already holds, for the first render (server and

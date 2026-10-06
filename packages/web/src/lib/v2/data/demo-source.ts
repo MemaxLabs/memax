@@ -7,6 +7,8 @@ import {
   DEMO_SPACES,
   DEMO_VIEWER,
 } from "./demo-dataset";
+import { createDemoActivity } from "./activity-demo";
+import { createDemoAgents } from "./agents-demo";
 import type { LedgerDataSource } from "./source";
 import type { AskEvent, KeepResult, Section, SpaceOverview } from "./types";
 
@@ -57,6 +59,8 @@ export function createDemoSource({
   });
 
   return {
+    ...createDemoActivity(),
+    ...createDemoAgents(),
     kind: "demo",
     peek: {
       spaces: () => [...DEMO_SPACES],

@@ -19,6 +19,7 @@ export const DEMO_NOW = "2026-10-05T14:40:00-07:00";
 const at = (time: string) => `2026-10-05T${time}:00-07:00`;
 
 export const DEMO_VIEWER: Viewer = {
+  id: "0192a7c0-0000-7000-8000-0000000000a1",
   initials: "ZZ",
   name: "Ziyang Zeng",
   timeZone: "America/Vancouver",

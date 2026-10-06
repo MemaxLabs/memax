@@ -30,6 +30,7 @@ function initials(name: string): string {
 function viewerFromUser(user: User): Viewer {
   const name = user.display_name || user.name || user.email;
   return {
+    id: user.id,
     initials: initials(name),
     name,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,

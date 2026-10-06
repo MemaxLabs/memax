@@ -1,4 +1,6 @@
 import type { Memax } from "memax-sdk";
+import { createSdkActivity } from "./activity-sdk";
+import { agentsOverview, createSdkAgents } from "./agents-sdk";
 import type { LedgerDataSource } from "./source";
 import type { AskEvent, KeepResult, SpaceOverview, Viewer } from "./types";
 
@@ -14,7 +16,8 @@ import type { AskEvent, KeepResult, SpaceOverview, Viewer } from "./types";
  * boards.
  */
 
-type V2Client = Pick<Memax, "v2">;
+// `auth` for API keys (V1's auth.keys), until /v2 serves them.
+type V2Client = Pick<Memax, "v2" | "auth">;
 
 export function createSdkSource({
   client,
@@ -25,6 +28,8 @@ export function createSdkSource({
   viewer: Viewer | null;
 }): LedgerDataSource {
   return {
+    ...createSdkActivity({ client, viewer }),
+    ...createSdkAgents({ client, viewer }),
     kind: "sdk",
     now: () => new Date(),
     viewer,
@@ -45,10 +50,11 @@ export function createSdkSource({
       }));
     },
     async overview(space, signal): Promise<SpaceOverview> {
-      const [review, memories, receipts] = await Promise.all([
+      const [review, memories, receipts, agents] = await Promise.all([
         client.v2.review.list(space.slug, { limit: 1, signal }),
         client.v2.memories.list(space.slug, { limit: 1, signal }),
         client.v2.receipts.list(space.slug, { limit: 1, signal }),
+        agentsOverview(client, space.slug, signal),
       ]);
       const anyMemory = memories.items.length > 0;
       return {
@@ -60,15 +66,17 @@ export function createSdkSource({
         brief: anyMemory
           ? { title: null, facts: null, rewrittenAt: null }
           : null,
+        // The space's agents, and the status line where they settle it
+        // ("No agents yet"); with agents, "in sync" needs compile targets.
+        agents: agents?.counts ?? null,
+        status: agents?.status ?? { kind: "not-compiling" },
         // PLACEHOLDER from here down: not served by /v2 yet.
         reviewFilters: null,
         lastReview: null,
         waitingBreakdown: null,
         openHandoffs: null,
         handoffs: null,
-        status: { kind: "not-compiling" },
         dream: null,
-        agents: null,
         targets: null,
         decisions: null,
       };

@@ -8,11 +8,15 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Menu } from "@base-ui/react/menu";
+import { NavRail } from "@memaxlabs/ledger";
 import { CommandFailedError } from "@/lib/v2/data/command-error";
 import { createDemoSource } from "@/lib/v2/data/demo-source";
 import type { LedgerDataSource } from "@/lib/v2/data/source";
 import type { TargetsSource } from "@/lib/v2/data/targets";
-import { renderPlace } from "../test-frame";
+import { useRailProps } from "../../_components/rail-props";
+import { useOverview } from "../../_lib/data";
+import { renderPlace, TEST_SPACE } from "../test-frame";
 import { DriftPlace } from "../drift";
 import { TargetPlace } from "./index";
 
@@ -64,6 +68,23 @@ function withTargets(
   };
   h.source = source;
   return source;
+}
+
+/** The rail as the frame draws it, over the source's overview. */
+function Rail() {
+  const overview = useOverview(TEST_SPACE);
+  const nav = useRailProps({
+    space: TEST_SPACE,
+    overview: overview.data,
+    route: undefined,
+    inSettings: false,
+    viewer: null,
+  });
+  return (
+    <Menu.Root>
+      <NavRail {...nav} />
+    </Menu.Root>
+  );
 }
 
 const checked = (group: HTMLElement) =>
@@ -255,5 +276,105 @@ describe("a hand edit", () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText("Pulled into Review")).toBeNull();
+  });
+});
+
+describe("a pulled hand edit", () => {
+  const RULE = ".cursor/rules/memax-packages-web.mdc";
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it("holds the file until its proposals are kept or rejected, and says so", async () => {
+    const source = withTargets();
+    renderPlace(<DriftPlace segment="cursor-mdc" />);
+    await screen.findByRole("heading", {
+      name: "Cursor's rules file has a hand edit",
+    });
+    await act(async () => {});
+    fireEvent.keyDown(document.body, { key: "1", code: "Digit1" });
+    fireEvent.keyDown(document.body, { key: "Enter", code: "Enter" });
+    expect(await screen.findByText("Pulled into Review")).toBeTruthy();
+    expect(
+      screen.getByText(
+        `${RULE} stays as you edited it until they are kept or rejected.`,
+      ),
+    ).toBeTruthy();
+
+    // Back on the drift screen: nothing to resolve, and the hold says why.
+    cleanup();
+    renderPlace(<DriftPlace segment="cursor-mdc" />);
+    expect(await screen.findByText(`${RULE} is held for Review`)).toBeTruthy();
+    expect(
+      screen.getByText(
+        "The pulled edit stays in the file until M-0439, M-0440 are kept or rejected. Then Memax writes it again: kept lines stay, rejected ones go.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Open Review" }).getAttribute("href"),
+    ).toBe("/memax-v2/review");
+    expect(
+      screen.queryByText("No hand edits are waiting on this file."),
+    ).toBeNull();
+
+    // The file's page and the rail.
+    cleanup();
+    renderPlace(
+      <>
+        <TargetPlace segment="cursor-mdc" />
+        <Rail />
+      </>,
+    );
+    expect(
+      await screen.findByText(
+        `${RULE} keeps its pulled hand edit until M-0439, M-0440 are kept or rejected in Review. Then Memax writes it again.`,
+      ),
+    ).toBeTruthy();
+    expect(screen.getAllByText("Held for Review").length).toBeGreaterThan(0);
+    expect(screen.getByRole("status").textContent).toBe(
+      "Holding for 2 proposals in Review",
+    );
+
+    // Keep one: the other still holds it.
+    const queue = () => source.review.peekQueue?.("memax-v2")?.items ?? [];
+    const item = (ref: string) => queue().find((i) => i.ref === ref)!;
+    await source.review.keep({
+      space: TEST_SPACE,
+      item: item("M-0439"),
+      idempotencyKey: "keep-0439",
+    });
+    cleanup();
+    renderPlace(
+      <>
+        <TargetPlace segment="cursor-mdc" />
+        <Rail />
+      </>,
+    );
+    expect(
+      await screen.findByText(
+        `${RULE} keeps its pulled hand edit until M-0440 is kept or rejected in Review. Then Memax writes it again.`,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe(
+      "Holding for 1 proposal in Review",
+    );
+
+    // Reject the other: the hold lifts, and the file compiles again.
+    await source.review.reject({
+      space: TEST_SPACE,
+      item: item("M-0440"),
+      idempotencyKey: "reject-0440",
+    });
+    await source.targets.list({ space: TEST_SPACE });
+    await sleep(20);
+    cleanup();
+    renderPlace(
+      <>
+        <TargetPlace segment="cursor-mdc" />
+        <Rail />
+      </>,
+    );
+    await screen.findByRole("heading", { name: RULE });
+    expect(screen.queryByText("Held for Review")).toBeNull();
+    expect(screen.queryByText(/keeps its pulled hand edit/)).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("3 files in sync");
   });
 });

@@ -11,6 +11,7 @@ import {
   type Disk,
   type FsHooks,
 } from "./fs-atomic.js";
+import { heldPaths, holdDetail } from "./holds.js";
 import type { KnownCompiles } from "./known.js";
 import type { Logger } from "./log.js";
 import {
@@ -138,6 +139,12 @@ export async function deliverRun(
 ): Promise<DeliverResult> {
   const run = p.compile!;
   const owned = userOwned(t);
+  // Never write a file a pull holds, whatever the rest of the run says.
+  // The preview's target is the freshest word on it.
+  const held = new Set([...heldPaths(t), ...heldPaths(p.target)]);
+  if (p.files.some((f) => f.path && held.has(f.path))) {
+    return { state: "held", detail: holdDetail(p.target), files: [] };
+  }
   const files: Planned[] = [];
   for (const out of p.files) {
     const refusal = out.path ? outputRefusal(t, out.path) : "has no path";

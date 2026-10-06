@@ -20,10 +20,11 @@ export function targetHref(space: string, target: TargetView): string {
 
 /**
  * A target's state as a mark and its word (D2/D3): in sync, compiling,
- * waiting for the CLI, drifted, off; ChatGPT is "live over connector"
- * (its connector, never "in sync"), and a scoped tool with nothing
- * scoped "reads AGENTS.md". The last two describe delivery, not a
- * state, so they're words without a state mark.
+ * waiting for the CLI, drifted, held for Review (a pulled hand edit
+ * whose proposals wait), off; ChatGPT is "live over connector" (its
+ * connector, never "in sync"), and a scoped tool with nothing scoped
+ * "reads AGENTS.md". The last two describe delivery, not a state, so
+ * they're words without a state mark.
  */
 export function TargetStatus({
   target,
@@ -51,6 +52,17 @@ export function TargetStatus({
             edits === "count"
               ? count(s.localEditsOne, s.localEdits, status.edits)
               : s.drifted
+          }
+        />
+      );
+    case "held":
+      return (
+        <StateMark
+          state="proposed"
+          label={
+            edits === "count"
+              ? count(s.holdingOne, s.holding, status.proposals)
+              : s.held
           }
         />
       );

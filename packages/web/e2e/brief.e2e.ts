@@ -158,7 +158,15 @@ test("a hand edit: 2 asks to overwrite, 1 then ↵ pulls it into Review", async 
     page.getByRole("heading", { name: "Pulled into Review" }),
   ).toBeVisible();
   await expect(toasts(page)).toContainText("Pulled 2 edits into Review");
-  await expect(rail(page).getByRole("status")).toHaveText("3 files in sync");
+  // The file stays as edited until Review decides both proposals.
+  await expect(
+    page.getByText(
+      ".cursor/rules/memax-packages-web.mdc stays as you edited it until they are kept or rejected.",
+    ),
+  ).toBeVisible();
+  await expect(rail(page).getByRole("status")).toHaveText(
+    "Holding for 2 proposals in Review",
+  );
 
   const review = page.getByRole("link", { name: "Open Review" }).first();
   await tabTo(page, review, 60);

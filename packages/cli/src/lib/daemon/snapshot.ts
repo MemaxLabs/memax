@@ -10,6 +10,8 @@ export type LocalState =
   | "pending"
   /** A person edited a file; Memax won't write over it. */
   | "hand_edit"
+  /** A pulled hand edit's proposals wait in Review; the file stays as it is. */
+  | "held"
   /** Delivered, but a file isn't on disk; the next compile writes it again. */
   | "missing"
   /** An earlier compile is on disk (a pull or a branch switch). */

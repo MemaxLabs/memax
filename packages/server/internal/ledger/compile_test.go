@@ -722,8 +722,12 @@ func TestDeliveryDriftAndResolution(t *testing.T) {
 	if m, _ := f.l.GetMemory(ctx, f.scope(zz), receipt.ID.String()); m.Lifecycle != lifecycle.Kept {
 		t.Errorf("the removed line's memory is %s", m.Lifecycle)
 	}
-	// The hand-edited file is the baseline now; the target is in sync with it.
+	// The hand-edited file is the baseline now; the target is in sync with
+	// it, and held until both proposals are decided (holds_test.go).
 	pt := pull.Target
+	if pt.ShownState() != ledger.SyncHeld {
+		t.Errorf("after pull the target shows %s, want held", pt.ShownState())
+	}
 	if pt.SyncState != ledger.SyncInSync || pt.OpenDrift != 0 || pt.Delivered.SHA256 != obs.ObservedSHA ||
 		pt.Delivered.Files[0].Observation == nil || *pt.Delivered.Files[0].Observation != obs.ID || pt.Delivered.Compile != run.Ref {
 		t.Errorf("after pull: %+v %+v", pt, pt.Delivered)

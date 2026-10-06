@@ -86,9 +86,10 @@ const WORD: Record<LocalState, string> = {
   in_sync: "in sync",
   pending: "writing",
   hand_edit: "drifted",
+  held: "held",
   missing: "missing",
   older: "older",
-  blocked: "held",
+  blocked: "left alone",
   off: "off",
   off_block_removed: "off",
   off_block_kept: "off",
@@ -102,6 +103,7 @@ function mark(t: TargetSnapshot): string {
     case "in_sync":
       return chalk.green(MARK.kept);
     case "hand_edit":
+    case "held":
       return chalk.yellow(MARK.waiting);
     case "blocked":
     case "error":

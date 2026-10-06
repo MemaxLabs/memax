@@ -64,7 +64,12 @@ function settled(t: V2.Target, gen: number, delivering: boolean): boolean {
   if (t.compiled_gen < gen) return false;
   if (t.last_compile?.status === "failed") return true;
   if (t.delivery !== "local" || !delivering) return true;
-  return t.sync_state === "in_sync" || t.sync_state === "drifted";
+  // A hand edit, or a pull that holds the file, waits for a person.
+  return (
+    t.sync_state === "in_sync" ||
+    t.sync_state === "drifted" ||
+    t.sync_state === "held"
+  );
 }
 
 export async function compile(
@@ -209,6 +214,14 @@ export function renderCompile(
     lines.push(
       chalk.red(
         `  ✗ ${t.label}: the last compile failed${t.last_compile?.error ? ` (${t.last_compile.error})` : ""}; the one before stays.`,
+      ),
+    );
+  }
+  if (targets.some((t) => t.sync_state === "held")) {
+    lines.push(
+      "",
+      chalk.gray(
+        "  A pulled edit stays as it is until its proposals are kept or rejected in Review.",
       ),
     );
   }

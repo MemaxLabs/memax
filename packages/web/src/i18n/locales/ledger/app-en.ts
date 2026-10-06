@@ -51,6 +51,8 @@ export const ledgerAppEn = {
       filesInSyncOne: "1 file in sync",
       drifted: "{agent} file drifted",
       fileDrifted: "{file} drifted",
+      held: "Holding for {n} proposals in Review",
+      heldOne: "Holding for 1 proposal in Review",
       compiling: "Compiling",
       waitingDelivery: "{n} files waiting for the CLI",
       waitingDeliveryOne: "1 file waiting for the CLI",

@@ -43,9 +43,10 @@ already running and exits.
 ```
 
 Each line is a target as it stands on this machine: `●` in sync, `○` a
-hand edit waiting on you, `◌` being written, `-` stopped, `✗` held (for
-example, the file is a symlink). When the daemon isn't running, `status`
-shows the last delivery to each repository instead.
+hand edit waiting on you (drifted, or held while a pulled edit's
+proposals wait in Review), `◌` being written, `-` stopped, `✗` left alone
+(for example, the file is a symlink). When the daemon isn't running,
+`status` shows the last delivery to each repository instead.
 
 ### install
 
@@ -70,6 +71,7 @@ For each run it hasn't written yet, the daemon reads the file on disk:
 | A symlink, a directory, or a path out of the repo | Leaves it, and holds the target.                         |
 | A file that isn't UTF-8 text                      | Leaves it byte for byte, and holds the target.           |
 | A Memax block in a file Memax owns whole          | Leaves it and holds the target: the file is yours.       |
+| A pulled edit whose proposals wait in Review      | Leaves it. The target shows held until they're decided.  |
 
 A file Memax owns is judged as a whole: text you add anywhere in it is a
 hand edit. Every write goes to a temp file next to the target and is renamed into
@@ -112,9 +114,16 @@ the target, an edit that is still there is reported again.
 
 Resolve a drifted target in the app:
 
-- **Pull** turns each changed line into a proposal in Review.
+- **Pull** turns each changed line into a proposal in Review. The file
+  stays as you edited it, and the target shows held, until each proposal
+  is kept or rejected. Then the daemon writes the file again: kept lines
+  stay, compiled, and rejected ones go. An Undo that puts a proposal back
+  in Review holds the file again, until the next write.
 - **Overwrite** writes the compiled file over the edit.
 - **Stop compiling** leaves the file to you.
+
+Against a server that doesn't say whether a pulled edit is held, the
+daemon treats it as held and leaves the file alone.
 
 ## Resources
 

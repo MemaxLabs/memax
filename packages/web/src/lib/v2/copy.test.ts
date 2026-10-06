@@ -121,6 +121,17 @@ describe("the frame's lines", () => {
     expect(statusLabel(EN, { kind: "no-agents" }, agentName)).toBe(
       "No agents yet",
     );
+    // A pulled hand edit holds its file until Review decides.
+    expect(statusLabel(EN, { kind: "held", proposals: 2 }, agentName)).toBe(
+      "Holding for 2 proposals in Review",
+    );
+    expect(statusLabel(EN, { kind: "held", proposals: 1 }, agentName)).toBe(
+      "Holding for 1 proposal in Review",
+    );
+    expect(statusLabel(ZH, { kind: "held", proposals: 2 }, agentName)).toBe(
+      "等审阅里的 2 条提议",
+    );
+    expect(statusState({ kind: "held", proposals: 2 })).toBe("proposed");
     expect(statusState({ kind: "drifted", agent: "cursor" })).toBe("proposed");
     expect(statusState({ kind: "in-sync", agents: 5 })).toBe("kept");
     expect(statusState({ kind: "no-agents" })).toBe("off");

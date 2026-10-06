@@ -23,12 +23,16 @@ export type TargetKind =
   | "windsurf"
   | "claude_rules";
 
-/** in_sync, compiling, pending_delivery (not on disk yet), drifted (a hand edit) or off. */
+/**
+ * in_sync, compiling, pending_delivery (not on disk yet), drifted (a hand
+ * edit), held (a pulled hand edit whose proposals wait in Review) or off.
+ */
 export type SyncState =
   | "in_sync"
   | "compiling"
   | "pending_delivery"
   | "drifted"
+  | "held"
   | "off";
 
 /** local (the CLI writes it), pr (a pull request), mcp, or copy (ChatGPT). */
@@ -82,6 +86,12 @@ export interface TargetView {
   version: number;
   /** Files with a hand edit waiting on a person. */
   openDrift: number;
+  /**
+   * The proposals a pulled hand edit wrote that still wait in Review.
+   * While any does, the file stays as edited (`held`); once each is kept
+   * or rejected, Memax writes it again.
+   */
+  holding: string[];
   /** The latest run, whatever its status; null before the first compile. */
   lastCompile: CompileSummary | null;
 }
@@ -93,6 +103,8 @@ export type TargetStatus =
   /** Compiled, but the CLI hasn't written it to disk yet. */
   | { kind: "pending" }
   | { kind: "drifted"; edits: number }
+  /** A pulled hand edit stays in the file until its proposals are decided. */
+  | { kind: "held"; proposals: number }
   | { kind: "off" }
   /** ChatGPT: read live over its connector, copied out by a person (D3). */
   | { kind: "live" }
@@ -104,6 +116,9 @@ export function targetStatus(target: TargetView): TargetStatus {
   if (target.syncState === "compiling") return { kind: "compiling" };
   if (target.syncState === "drifted") {
     return { kind: "drifted", edits: Math.max(1, target.openDrift) };
+  }
+  if (target.syncState === "held") {
+    return { kind: "held", proposals: Math.max(1, target.holding.length) };
   }
   if (target.delivery === "copy" || target.kind === "chatgpt") {
     return { kind: "live" };
@@ -177,8 +192,9 @@ export function findTarget(
 
 /**
  * The rail's status line from the targets (plan §6.4): a drifted file
- * first ("Cursor file drifted"), then anything compiling or waiting for
- * the CLI, then "N files in sync". ChatGPT and stopped targets don't
+ * first ("Cursor file drifted"), then a file a pull holds ("Holding for
+ * 2 proposals in Review"), then anything compiling or waiting for the
+ * CLI, then "N files in sync". ChatGPT and stopped targets don't
  * count: nothing is on disk to be in sync. Null with no targets.
  */
 export function syncLineOf(targets: readonly TargetView[]): SyncLine | null {
@@ -190,6 +206,11 @@ export function syncLineOf(targets: readonly TargetView[]): SyncLine | null {
     return agent
       ? { kind: "drifted", agent }
       : { kind: "drifted", file: targetName(drifted) };
+  }
+  const held = active.filter((t) => t.syncState === "held");
+  if (held.length > 0) {
+    const refs = new Set(held.flatMap((t) => t.holding));
+    return { kind: "held", proposals: Math.max(1, refs.size) };
   }
   if (active.some((t) => t.syncState === "compiling")) {
     return { kind: "compiling" };

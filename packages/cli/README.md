@@ -56,7 +56,7 @@ memax setup
 
 ## Compiled files: the record on your disk
 
-A Memax space compiles to the files your agents already read: `AGENTS.md`, a `CLAUDE.md` that imports it, and path-scoped Cursor rules. Link a repository once, and a small daemon writes each compile into it within seconds of a Keep. It never writes over a hand edit: it reports the edit, and you pull it in, overwrite it or stop compiling the file in the app.
+A Memax space compiles to the files your agents already read: `AGENTS.md`, a `CLAUDE.md` that imports it, and path-scoped Cursor rules. Link a repository once, and a small daemon writes each compile into it within seconds of a Keep. It never writes over a hand edit: it reports the edit, and you pull it in, overwrite it or stop compiling the file in the app. A pulled edit stays in the file until its proposals are kept or rejected in Review.
 
 ```bash
 memax link --space memax-v2   # writes space: memax-v2 to .memax.yml, links this repository here

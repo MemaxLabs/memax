@@ -228,20 +228,56 @@ describe.skipIf(!enabled)("the daemon against the real server", () => {
     ]);
     expect(pull.proposals.every((p) => p.state === "proposed")).toBe(true);
     expect(agentsMd()).toBe(edited);
+    const [editP, newP] = pull.proposals;
 
-    // The next compile delivers over the accepted edit, with the Keep.
-    await memax.v2.memories.keep(
-      pull.proposals[0].id,
+    // Held: the file stays as it is until both are decided, even with the
+    // Keep made while it was drifted compiled and waiting.
+    expect(pull.target.sync_state).toBe("held");
+    expect(pull.target.holds?.[0].proposals).toEqual([editP.ref, newP.ref]);
+    await memax.v2.memories.reject(
+      newP.id,
+      {},
+      { space: "memax-v2", idempotencyKey: randomUUID() },
+    );
+    await new Promise((r) => setTimeout(r, 5_000));
+    expect(agentsMd()).toBe(edited);
+    expect((await target("agents_md")).sync_state).toBe("held");
+
+    // Keeping the last one lifts the hold; undoing that Keep at once holds
+    // the file again, before anything is delivered over the edit.
+    const kept = await memax.v2.memories.keep(
+      editP.id,
+      {},
+      { space: "memax-v2", idempotencyKey: randomUUID() },
+    );
+    await memax.v2.receipts.undo(
+      kept.receipts[0].id,
       {},
       { idempotencyKey: randomUUID() },
     );
+    expect((await target("agents_md")).sync_state).toBe("held");
+    await new Promise((r) => setTimeout(r, 5_000));
+    expect(agentsMd()).toBe(edited);
+
+    // Kept for good: the file comes back compiled, with the kept line and
+    // the held Keep, and without the rejected line.
+    await memax.v2.memories.keep(
+      editP.id,
+      {},
+      { space: "memax-v2", idempotencyKey: randomUUID() },
+    );
     await until(
-      has(`or \`yarn\` anywhere. [${pull.proposals[0].ref}]`),
+      has(`or \`yarn\` anywhere. [${editP.ref}]`),
       15_000,
       "the pulled edit compiled back",
     );
     await until(has(statement), 15_000, "the held Keep delivered");
     expect(agentsMd()).not.toContain("Prefer named exports");
+    await until(
+      async () => (await target("agents_md")).sync_state === "in_sync",
+      15_000,
+      "AGENTS.md in sync",
+    );
   }, 120_000);
 
   it("compiles on request with memax compile, and the daemon writes it", async () => {

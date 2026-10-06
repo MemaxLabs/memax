@@ -244,6 +244,28 @@ export class FakeV2 {
       t.sync_state = "compiling";
   }
 
+  /** A pull's proposals wait in Review: the server holds the file. */
+  hold(id: string, proposals: string[]): void {
+    const t = this.entry(id).target;
+    const f = t.delivered?.files.find((x) => x.observation);
+    if (!f || !f.observation) throw new Error("hold: no accepted edit to hold");
+    f.held = true;
+    t.holds = [
+      { observation: f.observation, path: f.path, proposals, since: now() },
+    ];
+    t.sync_state = "held";
+    this.receipts++;
+  }
+
+  /** The pull's proposals are decided: the latest run is due over the edit. */
+  lift(id: string): void {
+    const t = this.entry(id).target;
+    for (const f of t.delivered?.files ?? []) if (f.observation) f.held = false;
+    delete t.holds;
+    t.sync_state = "pending_delivery";
+    this.receipts++;
+  }
+
   setState(id: string, state: V2.SyncState): void {
     const t = this.entry(id).target;
     t.sync_state = state;
@@ -492,6 +514,15 @@ export class FakeV2 {
         error: "invalid_request",
         message: "That run failed.",
       };
+    if (
+      (t.holds ?? []).some((h) => r.run.files.some((f) => f.path === h.path))
+    ) {
+      return {
+        status: 409,
+        error: "invalid_transition",
+        message: "The file is held until its proposals are decided.",
+      };
+    }
     if (input.sha256 !== r.run.drift_sha256) {
       return {
         status: 400,
@@ -595,10 +626,13 @@ export class FakeV2 {
             : "stopped";
       if (mode !== "stop") {
         const i = files.findIndex((f) => f.path === o.path);
+        // As the server shows it: `held` with every accepted edit (this
+        // fake's pulls write no proposals; hold() makes one wait).
         const f = {
           path: o.path,
           sha256: o.observed_sha256,
           observation: o.id,
+          held: false,
         };
         if (i >= 0) files[i] = f;
         else files.push(f);

@@ -4,6 +4,7 @@
 import { homedir } from "node:os";
 import chalk from "chalk";
 import type { V2 } from "memax-sdk";
+import { holdDetail } from "../lib/daemon/holds.js";
 
 export const MARK = {
   kept: "●",
@@ -19,6 +20,7 @@ export function syncMark(state: V2.SyncState): string {
     case "in_sync":
       return chalk.green(MARK.kept);
     case "drifted":
+    case "held":
       return chalk.yellow(MARK.waiting);
     case "off":
       return chalk.gray(MARK.off);
@@ -33,6 +35,7 @@ export function syncWord(state: V2.SyncState): string {
     compiling: "compiling",
     pending_delivery: "not written yet",
     drifted: "drifted",
+    held: "held",
     off: "off",
   }[state];
 }
@@ -47,6 +50,8 @@ export function targetNote(t: V2.Target, now = new Date()): string {
     case "in_sync":
       if (t.delivery === "copy") return "copy it from the app";
       return clock(t.delivered?.at ?? t.last_compile?.compiled_at, now);
+    case "held":
+      return holdDetail(t);
     case "pending_delivery":
       return t.delivery === "pr" ? "pull requests aren't available yet" : "";
     default:

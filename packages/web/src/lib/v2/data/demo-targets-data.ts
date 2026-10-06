@@ -70,6 +70,7 @@ export const DEMO_TARGETS: Readonly<Record<string, readonly TargetView[]>> = {
       settings: DEMO_SETTINGS,
       version: 4,
       openDrift: 0,
+      holding: [],
       lastCompile: demoRun("C-0881", DEMO_AGENTS_MD["kept_and_open:mark"], [
         "AGENTS.md",
       ]),
@@ -86,6 +87,7 @@ export const DEMO_TARGETS: Readonly<Record<string, readonly TargetView[]>> = {
       settings: DEMO_SETTINGS,
       version: 2,
       openDrift: 0,
+      holding: [],
       lastCompile: demoRun("C-0882", DEMO_CLAUDE_MD, ["CLAUDE.md"]),
     },
     {
@@ -100,6 +102,7 @@ export const DEMO_TARGETS: Readonly<Record<string, readonly TargetView[]>> = {
       settings: DEMO_SETTINGS,
       version: 2,
       openDrift: 1,
+      holding: [],
       lastCompile: {
         ...demoRun("C-0883", DEMO_CURSOR_FILE, [DEMO_CURSOR_FILE.path]),
         // It compiled, but Memax won't write over the hand edit.
@@ -118,6 +121,7 @@ export const DEMO_TARGETS: Readonly<Record<string, readonly TargetView[]>> = {
       settings: DEMO_SETTINGS,
       version: 1,
       openDrift: 0,
+      holding: [],
       lastCompile: demoRun("C-0884", DEMO_CHATGPT["kept_and_open:mark"], []),
     },
   ],
@@ -135,6 +139,7 @@ export const DEMO_TARGETS: Readonly<Record<string, readonly TargetView[]>> = {
       settings: DEMO_SETTINGS,
       version: 1,
       openDrift: 0,
+      holding: [],
       lastCompile: null,
     },
     {
@@ -149,6 +154,7 @@ export const DEMO_TARGETS: Readonly<Record<string, readonly TargetView[]>> = {
       settings: DEMO_SETTINGS,
       version: 1,
       openDrift: 0,
+      holding: [],
       lastCompile: null,
     },
   ],

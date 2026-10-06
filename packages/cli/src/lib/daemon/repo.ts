@@ -12,6 +12,7 @@ import {
   type DeliverDeps,
 } from "./deliver.js";
 import { readDisk, type FsHooks } from "./fs-atomic.js";
+import { heldPaths, holdDetail } from "./holds.js";
 import { KnownCompiles } from "./known.js";
 import type { Logger } from "./log.js";
 import { settleOff } from "./off.js";
@@ -131,6 +132,11 @@ export class RepoDelivery {
       });
       return false;
     }
+    // A pull holds the file until its proposals are kept or rejected.
+    if (heldPaths(t).length > 0) {
+      this.note(t, { state: "held", detail: holdDetail(t) });
+      return false;
+    }
     const last = t.last_compile;
     if (!last) {
       this.note(t, { state: "waiting", detail: "nothing compiled yet" });
@@ -144,7 +150,14 @@ export class RepoDelivery {
       want = g && g.failed === last.ref ? g.good : undefined;
     }
     const here = this.d.state.peek(this.link.root, t.id)?.compile;
-    if (want && here === want && t.delivered?.compile === want) {
+    // Nothing to write, unless the server says a delivery is due anyway
+    // (a hold lifted by rejects alone: the same run, over the edit).
+    if (
+      want &&
+      here === want &&
+      t.delivered?.compile === want &&
+      t.sync_state !== "pending_delivery"
+    ) {
       this.note(t, this.noteFromFiles(t, { state: "in_sync" }));
       return false;
     }

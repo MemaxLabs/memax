@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MemaxError, type V2 } from "memax-sdk";
 import { createSdkBrief, marginsToRead } from "./brief-sdk";
 import type { V2Client } from "./sdk-records";
-import { createSdkTargets } from "./targets-sdk";
+import { createSdkTargets, targetOf } from "./targets-sdk";
 import type { TargetView } from "./targets";
 import type { SpaceSummary } from "./types";
 
@@ -228,6 +228,7 @@ describe("targets through memax.v2.targets", () => {
     settings: { include: "kept_and_open", stale: "mark", sizeBudget: 25600 },
     version: 4,
     openDrift: 0,
+    holding: [],
     lastCompile: null,
   } satisfies TargetView;
   const answer: V2.Target = {
@@ -321,5 +322,40 @@ describe("targets through memax.v2.targets", () => {
       skipped: 1,
       target: { syncState: "pending_delivery" },
     });
+  });
+
+  it("maps a pull's hold: held, and the proposals it waits on", async () => {
+    const preview = vi.fn().mockResolvedValue({
+      target: {
+        ...answer,
+        sync_state: "held",
+        holds: [
+          {
+            observation: "o1",
+            path: "AGENTS.md",
+            proposals: ["M-0450", "M-0451"],
+            since: "x",
+          },
+          {
+            observation: "o2",
+            path: "AGENTS.md",
+            proposals: ["M-0451"],
+            since: "x",
+          },
+        ],
+      },
+      files: [],
+      copies: [],
+    });
+    const client = fakeClient({ targets: { preview } });
+    const shown = await createSdkTargets(client).preview({
+      space: SPACE,
+      target,
+    });
+    expect(shown.target).toMatchObject({
+      syncState: "held",
+      holding: ["M-0450", "M-0451"],
+    });
+    expect(targetOf(answer, [answer]).holding).toEqual([]);
   });
 });

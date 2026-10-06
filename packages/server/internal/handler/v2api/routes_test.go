@@ -244,7 +244,7 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	// The Brief, targets and compiles.
 	sameSet(t, "TargetKind", specEnum(t, "TargetKind"), strs(ledger.TargetKinds))
 	sameSet(t, "Delivery", specEnum(t, "Delivery"), strs(ledger.Deliveries))
-	sameSet(t, "SyncState", specEnum(t, "SyncState"), strs(ledger.SyncStates))
+	sameSet(t, "SyncState", specEnum(t, "SyncState"), strs(ledger.ShownSyncStates))
 	sameSet(t, "IncludeMode", specEnum(t, "IncludeMode"), strs([]ledger.IncludeMode{ledger.IncludeKeptOnly, ledger.IncludeKeptAndOpen}))
 	sameSet(t, "StaleMode", specEnum(t, "StaleMode"), strs([]ledger.StaleMode{ledger.StaleMark, ledger.StaleOmit}))
 	sameSet(t, "ScopedMode", specEnum(t, "ScopedMode"), strs([]ledger.ScopedMode{ledger.ScopedInline, ledger.ScopedOmit}))

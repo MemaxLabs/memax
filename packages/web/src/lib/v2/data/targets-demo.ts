@@ -21,9 +21,11 @@ import type {
 /**
  * The demo's targets: the boards' four files behind TargetsSource, with
  * this browser session's commands applied. Compile now, a settings
- * change, a pull and an overwrite go through `compiling`, then settle
- * in sync after `settleMs`, as if the CLI had written the file. Commands
- * replay by idempotency key like the server does.
+ * change and an overwrite go through `compiling`, then settle in sync
+ * after `settleMs`, as if the CLI had written the file. A pull holds the
+ * file until each proposal it wrote is kept or rejected in Review, then
+ * compiles it the same way. Commands replay by idempotency key like the
+ * server does.
  */
 
 const PERSON = {
@@ -92,6 +94,7 @@ export function createDemoTargets({
   settleMs = 1200,
   nextRef,
   propose,
+  decided = () => false,
 }: {
   now: () => Date;
   commandDelayMs?: number;
@@ -101,6 +104,8 @@ export function createDemoTargets({
   nextRef: () => string;
   /** Puts new proposals in a space's Review queue. */
   propose: (slug: string, items: ReviewItem[]) => void;
+  /** Whether a proposal was kept or rejected this session. */
+  decided?: (slug: string, ref: string) => boolean;
 }): TargetsSource {
   const lists = new Map<string, TargetView[]>(
     Object.entries(DEMO_TARGETS).map(([slug, list]) => [slug, [...list]]),
@@ -125,13 +130,31 @@ export function createDemoTargets({
     return next;
   };
 
+  /**
+   * The space's targets after this session's decisions: a hold whose
+   * proposals were all kept or rejected lifts, and the file compiles.
+   */
+  function fresh(slug: string): TargetView[] {
+    for (const t of listOf(slug)) {
+      if (t.syncState !== "held") continue;
+      const holding = t.holding.filter((ref) => !decided(slug, ref));
+      if (holding.length === t.holding.length) continue;
+      if (holding.length > 0) put(slug, { ...t, holding });
+      else recompile(slug, { ...t, holding, syncState: "in_sync" });
+    }
+    return listOf(slug);
+  }
+
   /** Starts a compile of the target, and settles it after settleMs. */
   function recompile(slug: string, target: TargetView): TargetView {
     const ref = `C-${String(runs++).padStart(4, "0")}`;
     const at = now().toISOString();
     const compiling = put(slug, {
       ...target,
-      syncState: target.syncState === "drifted" ? "drifted" : "compiling",
+      syncState:
+        target.syncState === "drifted" || target.syncState === "held"
+          ? target.syncState
+          : "compiling",
       lastCompile: target.lastCompile && {
         ...target.lastCompile,
         ref,
@@ -146,11 +169,12 @@ export function createDemoTargets({
       // A newer command took over, or compiling was stopped meanwhile.
       if (!live || latest.get(target.id) !== token || live.syncState === "off")
         return;
-      const drifted = live.syncState === "drifted";
+      // A hand edit, or a pull's hold, keeps the file as it is.
+      const drifted = live.syncState === "drifted" || live.syncState === "held";
       const run = live.lastCompile;
       put(slug, {
         ...live,
-        syncState: drifted ? "drifted" : "in_sync",
+        syncState: drifted ? live.syncState : "in_sync",
         lastCompile: run && {
           ...demoRun(ref, compiledFor(live), run.files, at),
           status: drifted ? "compiled" : "delivered",
@@ -169,7 +193,7 @@ export function createDemoTargets({
   }
 
   function preview(slug: string, id: string): TargetPreviewView | undefined {
-    const target = listOf(slug).find((t) => t.id === id);
+    const target = fresh(slug).find((t) => t.id === id);
     if (!target) return undefined;
     const run = target.lastCompile;
     if (!run) {
@@ -193,14 +217,14 @@ export function createDemoTargets({
   }
 
   return {
-    peekList: (slug) => listOf(slug),
+    peekList: (slug) => fresh(slug),
     peekPreview: preview,
     peekDrift: (slug, id) => {
-      const target = listOf(slug).find((t) => t.id === id);
+      const target = fresh(slug).find((t) => t.id === id);
       return target ? { target, items: drift.get(id) ?? [] } : undefined;
     },
     async list({ space }) {
-      return listOf(space.slug);
+      return fresh(space.slug);
     },
     async preview({ space, target }) {
       const found = preview(space.slug, target.id);
@@ -208,6 +232,7 @@ export function createDemoTargets({
       return found;
     },
     async drift({ space, target }) {
+      fresh(space.slug);
       const found = find(space.slug, target.id);
       return { target: found, items: drift.get(target.id) ?? [] };
     },
@@ -266,6 +291,7 @@ export function createDemoTargets({
           return {
             target: recompile(space.slug, {
               ...cleared,
+              holding: [],
               syncState: "in_sync",
             }),
             proposals: [],
@@ -301,8 +327,14 @@ export function createDemoTargets({
           });
         }
         propose(space.slug, proposals);
+        // The file stays as edited until each proposal is decided.
+        const holding = proposals.map((p) => p.ref);
         return {
-          target: put(space.slug, { ...cleared, syncState: "in_sync" }),
+          target: put(space.slug, {
+            ...cleared,
+            holding,
+            syncState: holding.length > 0 ? "held" : "in_sync",
+          }),
           proposals: proposals.map((p) => ({
             ref: p.ref,
             statement: p.statement,

@@ -58,6 +58,8 @@ export type TargetList = Schemas["TargetList"];
 export type TargetResult = Schemas["TargetResult"];
 export type Delivered = Schemas["Delivered"];
 export type DeliveredFile = Schemas["DeliveredFile"];
+/** A file a pull holds, and the proposals it waits for. */
+export type TargetHold = Schemas["TargetHold"];
 export type CompileRun = Schemas["CompileRun"];
 export type CompileRunPage = Schemas["CompileRunPage"];
 export type CompiledOutput = Schemas["CompiledOutput"];

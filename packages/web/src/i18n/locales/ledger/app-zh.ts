@@ -36,6 +36,8 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
       filesInSyncOne: "1 个文件已同步",
       drifted: "{agent} 的文件被改动了",
       fileDrifted: "{file} 被改动了",
+      held: "等审阅里的 {n} 条提议",
+      heldOne: "等审阅里的 1 条提议",
       compiling: "编译中",
       waitingDelivery: "{n} 个文件等 CLI 写入",
       waitingDeliveryOne: "1 个文件等 CLI 写入",

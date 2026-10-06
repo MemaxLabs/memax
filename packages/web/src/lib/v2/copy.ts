@@ -76,6 +76,8 @@ export function statusLabel(
       return line.agent
         ? interpolate(s.drifted, { agent: agentName(line.agent) })
         : interpolate(s.fileDrifted, { file: line.file ?? "" });
+    case "held":
+      return count(s.heldOne, s.held, line.proposals);
     case "compiling":
       return s.compiling;
     case "waiting-delivery":
@@ -94,6 +96,7 @@ export function statusState(line: SyncLine) {
     case "files-in-sync":
       return "kept" as const;
     case "drifted":
+    case "held":
       return "proposed" as const;
     case "compiling":
     case "waiting-delivery":

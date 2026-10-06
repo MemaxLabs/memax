@@ -4,6 +4,12 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { cn } from "@memaxlabs/ui/utils";
 import { Providers } from "./providers";
 
+// The V1 document: <html>/<body>, globals.css, fonts and the V1
+// providers. Shared by the (v1) root layout and by
+// app/global-not-found.tsx, which renders unmatched URLs outside every
+// root layout and so has to bring its own document. Frozen with the
+// rest of V1; deleted at cutover.
+
 // Inter (sans) + JetBrains Mono (mono). Loaded via next/font/google so they
 // land in the initial HTML without FOUT. The :root fallback chain in
 // globals.css kicks in only if these fail to load. See kitchen §12 Typography.
@@ -13,7 +19,7 @@ const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono",
 });
 
-export const viewport: Viewport = {
+export const v1Viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -22,7 +28,7 @@ export const viewport: Viewport = {
   themeColor: "#FAFAFA",
 };
 
-export const metadata: Metadata = {
+export const v1Metadata: Metadata = {
   title: "memax — your memory, every AI",
   description:
     "Save what you learn. Search what you know. memax makes your memory portable across every AI agent — shared, team-ready, always available.",
@@ -38,11 +44,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function V1Document({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"

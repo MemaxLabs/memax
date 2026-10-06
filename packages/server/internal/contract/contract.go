@@ -588,6 +588,7 @@ func ExpectInvalidRequest(r *http.Request) *http.Request {
 // undocumented path, method, status, header or field.
 func (s *Spec) Handler(t Reporter, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Helper()
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Errorf("contract: read request body: %v", err)

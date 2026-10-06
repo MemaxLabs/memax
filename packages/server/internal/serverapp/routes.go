@@ -7,6 +7,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/billing"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
+	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
 	"github.com/MemaxLabs/memax/packages/server/internal/meter"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/plans"
@@ -68,6 +69,7 @@ type routeDeps struct {
 	hubMiddleware          func(http.Handler) http.Handler
 	store                  store.Store
 	eventsBroker           events.Publisher
+	v2                     *v2api.Handler
 }
 
 // ipLimitFactory returns a helper that wraps a handler with a per-IP
@@ -87,10 +89,12 @@ func ipLimitFactory(deps routeDeps) func(ratelimit.EndpointLimit, http.HandlerFu
 	return deps.rateLimiter.WrapIP
 }
 
-func registerRoutes(mux *http.ServeMux, deps routeDeps) {
-	// Middleware chain (execution order, outermost first):
-	//   RequireAuth → HubContext → AuthorizeHTTP → RateLimit → Meter → Handler
-	withAuth := func(h http.Handler) http.Handler {
+// authChain is the middleware chain every authenticated route sits
+// behind (execution order, outermost first):
+//
+//	RequireAuth → HubContext → AuthorizeHTTP → RateLimit → Meter → Handler
+func authChain(deps routeDeps) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
 		inner := h
 		if deps.meter != nil {
 			inner = deps.meter.Middleware()(inner)
@@ -101,6 +105,10 @@ func registerRoutes(mux *http.ServeMux, deps routeDeps) {
 		inner = handler.AuthorizeHTTP(inner)
 		return deps.authMiddleware(deps.hubMiddleware(inner))
 	}
+}
+
+func registerRoutes(mux *http.ServeMux, deps routeDeps) {
+	withAuth := authChain(deps)
 
 	protected := http.NewServeMux()
 	registerMemoryRoutes(protected, deps)
@@ -117,6 +125,7 @@ func registerRoutes(mux *http.ServeMux, deps routeDeps) {
 	registerWebhookRoutes(mux, deps)
 	registerUnsubscribeRoute(mux, deps)
 	registerPlansRoutes(mux, deps)
+	registerV2Routes(mux, withAuth, deps)
 
 	// GET /v1/attachments/view is deliberately unauthenticated at the
 	// middleware layer — the HMAC signature on the query string IS
@@ -672,4 +681,15 @@ func registerPlansRoutes(root *http.ServeMux, deps routeDeps) {
 	}
 	// Public endpoint — no auth required (for pricing page, CLI, web app)
 	root.HandleFunc("GET /v1/plans", deps.plansH.List)
+}
+
+// registerV2Routes mounts /v2. Every /v2 route comes from
+// v2api.Routes(), which TestV2RoutesMatchSpec holds equal to
+// openapi/v2.yaml; nothing else in this file registers a /v2 path
+// (TestV2RoutesOnlyComeFromV2API).
+func registerV2Routes(root *http.ServeMux, withAuth func(http.Handler) http.Handler, deps routeDeps) {
+	if deps.v2 == nil {
+		return
+	}
+	deps.v2.Mount(root, withAuth)
 }

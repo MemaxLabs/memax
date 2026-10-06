@@ -26,6 +26,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/email"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
+	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/categorize"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/embed"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/extract"
@@ -34,6 +35,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/link"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/summarize"
 	ingesttitle "github.com/MemaxLabs/memax/packages/server/internal/ingest/title"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/meter"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore"
@@ -675,6 +677,9 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		planRegistry:           planRegistry,
 		store:                  s,
 		eventsBroker:           eventsBroker,
+		// /v2 on the V2 record. With no database the ledger is nil and
+		// every /v2 route answers 503 unavailable.
+		v2: v2api.New(ledger.New(pool), slog.Default()),
 	})
 
 	configured = true

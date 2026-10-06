@@ -291,6 +291,35 @@ describe("ReviewCard", () => {
     expect(screen.getByText("spec 2026-07-28").tagName).toBe("FIGCAPTION");
   });
 
+  it("shows a viewer why Keep is unavailable, with no Edit or Reject", () => {
+    const onKeep = vi.fn();
+    const reason = "Viewers can propose and comment. A member keeps.";
+    render(
+      <ReviewCard
+        {...BASE}
+        kept={false}
+        onKeep={onKeep}
+        onEdit={() => {}}
+        onReject={() => {}}
+        keepDisabledReason={reason}
+      />,
+    );
+    const keep = screen.getByRole("button", { name: "Keep" });
+    // Still focusable, with the reason as its tooltip, and inert.
+    expect(keep.getAttribute("aria-disabled")).toBe("true");
+    expect(keep.hasAttribute("disabled")).toBe(false);
+    expect(keep.getAttribute("title")).toBe(reason);
+    fireEvent.click(keep);
+    expect(onKeep).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
+    // The reason takes the receipt's place in the footer.
+    expect(screen.getByText(reason)).toBeTruthy();
+    expect(
+      screen.queryByText("M-0432 · into memax-v2 · session 8f2c"),
+    ).toBeNull();
+  });
+
   it("names another keeper, and speaks Chinese", () => {
     render(
       <LedgerProvider locale="zh">

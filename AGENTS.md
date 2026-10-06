@@ -154,6 +154,7 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 - **Trust.** Agents propose and people keep. Autonomy (read / propose / write), roles, quarantine of external content and plan limits are decided in one place: `policy.Decide`. A memory's trust is the minimum of its sources, and Dream can't raise it.
 - **Agent connections.** Every API key and OAuth grant resolves to an agent connection (`v2.agent_connections`, migration 029) with autonomy per space; receipts name the connection. A credential with no connection, a paused one, or a space it isn't connected to only reads. Only people change connections (`policy.DecideConnection`), and raising autonomy needs `human_web`.
 - **Compiles.** A space's Brief (`B-`) and targets (`AGENTS.md`, the `CLAUDE.md` shim, scoped Cursor rules, the ChatGPT copy-out) live in migration 031. A command that changes what compiles bumps `targets.dirty_gen` and inserts the `compile_target` River jobs with `InsertManyTx` **in the command's transaction** (`internal/ledger/jobs.go` switches back to the login role for River's tables), so a failed insert rolls back the whole command. `internal/compile` runs the jobs against the stateless compile service (`packages/compile-service`, internal-only) and records each run (`C-`) through the ledger as Memax. Hand edits come back as proposals (`file:line` sources) through observations and `ResolveDrift`; a deleted line never forgets anything by itself.
+- **The judge.** Every proposal, and every memory a Write-level agent kept at once, is judged by the River job `judge_proposal` (`internal/judge`), enqueued in the command's transaction: repeats are folded, updates linked, and a contradiction of a decision in force is flagged as a conflict before anyone keeps it (rule 11). It acts only through `ledger.RecordVerdict`, as Memax. Model tiers are explicit config (`JUDGE_*`), never inferred from a model name. A person settles a conflict with `ResolveConflict`, and undoes their own decisions (and the judge's folds) with `Undo`, addressed by receipt.
 - **Assurance.** A person's Keep is `human_web` only when the session was issued to the web app (the token's `surface` claim, migration 030) **and** `/api/proxy` signed the request with `WEB_SURFACE_SECRET` (`internal/websurface`, which has the threat model). Everything else, the CLI included, is `client_attested`.
 
 **API, MCP and CLI**
@@ -338,9 +339,11 @@ If you find yourself tempted to put admin code in the SDK, stop and ask why. The
 
 **The CLI MCP server and Go server MCP handler must expose identical tools.** Both implementations serve the same purpose (giving AI agents access to Memax), and agents should get the same capabilities regardless of which MCP endpoint they connect to.
 
-**The two files:** `packages/server/internal/handler/mcp.go` (Go, remote) and `packages/cli/src/commands/mcp.ts` (TypeScript, local) — both now in this repo.
+**The two catalogues:** `packages/server/internal/handler/mcp_tools.json` (Go, remote; served by `mcp.go` on the official go-sdk, both profiles) and `packages/cli/src/commands/mcp-tools.ts` (TypeScript, local; served by `mcp.ts`). Each holds every tool's name, title, description, input schema, output schema and annotations, plus the server instructions.
 
-**The rule:** When adding or modifying an MCP tool (name, description, parameters), update BOTH files in the same commit. Current tools (10): `memax_recall`, `memax_push`, `memax_get`, `memax_list`, `memax_hubs`, `memax_hub_members`, `memax_forget`, `memax_capture`, `memax_topics`, `memax_request_decision`.
+**The rule:** When adding or modifying an MCP tool, update BOTH catalogues in the same commit. `node scripts/check-mcp-parity.mjs` (part of `pnpm lint`) compares them field by field and fails on any difference. Descriptions say what a tool does, never how an agent should behave ("ALWAYS call …" fails directory review; that guidance belongs in the Claude Code plugin's skill and hooks). Current tools (11): the 10 V1 tools `memax_recall`, `memax_push`, `memax_get`, `memax_list`, `memax_hubs`, `memax_hub_members`, `memax_forget`, `memax_capture`, `memax_topics`, `memax_request_decision`, plus `memax_search`. The ChatGPT profile (`/mcp/chatgpt`, remote only) has 7 aliases that map onto the same handlers.
+
+**V1 and V2 per space.** A space whose `hubs.v2_enabled_at` is set (`internal/spacemode`) is served through the ledger by `internal/mcpv2`; every other space keeps the V1 tools exactly (`TestV1SpacesBehaveExactlyAsV1` holds them byte-for-byte equal). `go run ./cmd/v2-switch-space -space <uuid>` switches one for development.
 
 **Why this exists:** We added `memax_topics` and `hint`/`project_context` params to the Go server MCP but forgot the CLI MCP. Agents connecting locally via `memax mcp serve` got different (fewer) capabilities than agents connecting to the remote server.
 
@@ -482,6 +485,7 @@ Package-specific commands are in each package's README.
 - **Theme.** `memax_theme=light|dark` (no cookie means follow the system) becomes `data-theme` on `<html>` before first paint.
 - **App frame.** `(ledger)/(app)/` wraps every place (`/[space]/…`) and `/settings/…` in Ledger's `Shell`: the rail, the space switcher, ⌘K, the `?` sheet and toasts. Place pages are in `(app)/_places/`.
 - **Data.** The frame reads one interface, `src/lib/v2/data/source.ts`, with two sources: `sdk-source.ts` (`memax.v2`, for a browser with a session) and `demo-source.ts` (the handoff's demo dataset, for dev fixtures and Playwright). `(app)/layout.tsx` picks one per request (`lib/v2/data/mode.ts`). Without a session and with dev fixtures on, you get the demo; `memax_v2_data=demo` forces it when signed in. What `/v2` doesn't serve yet is a `PLACEHOLDER` in the SDK source, never demo data.
+- **Records (Review, Memories, a memory's page).** Each domain has its own module on the interface (`data/review.ts` as `source.review`, `data/memories.ts` as `source.memories`), with `sdk-review.ts`/`sdk-memories.ts` and the demo's session store (`demo-records.ts`, `demo-memories.ts`). Commands take one idempotency key per user action, reused across retries (`lib/v2/intent-keys.ts`), and errors normalise to `CommandFailure` (`data/command-error.ts`), worded by policy code in `lib/v2/records-copy.ts`.
 - **Keyboard.** Every binding is declared once in `src/lib/v2/keymap/registry.ts`, and the `?` sheet is generated from it. Screens handle a binding with `useHotkey(id, …)`; never add a `window` key listener. Forget has no key.
 - **Specimen and gallery.** `/dev/ledger/tokens` shows every token and type style in Paper and Carbon. `/dev/ledger/components` mounts every `@memaxlabs/ledger` preview at its artboard size in both themes.
 
@@ -519,9 +523,20 @@ pnpm --filter @memaxlabs/server migrate:new <slug>
 # Run the LoCoMo benchmark harness
 cd packages/server && go run ./cmd/locomo/ -dataset eval/locomo/data/locomo10.json
 
+# Judge eval (eval/judge/pairs.json): the set, stage 0 and the harness on a fake model;
+# JUDGE_EVAL_LIVE=1 also scores the real JUDGE_* tiers (needs ANTHROPIC_API_KEY)
+cd packages/server && go test ./eval/judge/ -v
+
 # Connect V1 API keys and OAuth grants to the V2 record as agent connections, at Propose
 # (idempotent; prefer -user for the people moving to V2)
 cd packages/server && go run ./cmd/v2-backfill-agents -user <uuid>
+
+# Move a space to the V2 record (or back with -off), for dev and dogfooding until
+# the "Switch to V2" step ships; MCP then serves it through the ledger
+cd packages/server && go run ./cmd/v2-switch-space -space <uuid>
+
+# MCP v2: protocol, OAuth, V2 tool and V1-compatibility tests (real Postgres)
+cd packages/server && go test ./internal/handler/ -run 'MCP|ChatGPT' && go test ./internal/mcpv2/ ./internal/v2recall/ ./internal/spacemode/
 
 # /v2 contract: run the spec, handler and parity tests
 cd packages/server && go test ./internal/contract/ ./internal/handler/v2api/ ./internal/serverapp/

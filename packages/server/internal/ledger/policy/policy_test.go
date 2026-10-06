@@ -40,6 +40,9 @@ var (
 	propExt     = Object{Ref: "M-0219", Lifecycle: lifecycle.Proposed, External: true}
 	propDec     = Object{Ref: "M-0219", Lifecycle: lifecycle.Proposed, Decision: true}
 	keptDec     = Object{Ref: "M-0219", Lifecycle: lifecycle.Kept, Decision: true}
+	newGate     = Object{}
+	gate        = Object{Ref: "G-0012", Decision: true}
+	mineGate    = Object{Ref: "G-0012", Decision: true, GateMine: true}
 )
 
 func TestDecide(t *testing.T) {
@@ -154,6 +157,31 @@ func TestDecide(t *testing.T) {
 		{"agent at write edits person-kept → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, personKept, project, EffectPropose, CodeEditsPersonKept, false, "a person kept M-0219"},
 		{"agent at write edits external → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, keptExt, project, EffectPropose, CodeExternalSource, true, ""},
 		{"agent at write edit contradicts → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, Object{Ref: "M-1", Lifecycle: lifecycle.Kept, ContradictsDecision: true}, project, EffectPropose, CodeContradicts, false, ""},
+		// --- the Write-level pre-check (a write that touches a decision in force) ---
+		{"agent at write touches a decision → proposal", agent(RoleOwner, AutonomyWrite), ActionPropose, Object{TouchesDecision: true}, project, EffectPropose, CodeTouchesDecision, false, "touches a decision"},
+		{"agent at write edit touches a decision → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, Object{Ref: "M-1", Lifecycle: lifecycle.Kept, TouchesDecision: true}, project, EffectPropose, CodeTouchesDecision, false, ""},
+		{"a person's write isn't pre-checked", person(RoleMember, ViaWeb), ActionRemember, Object{TouchesDecision: true}, project, EffectApply, "", false, ""},
+		{"no in-agent confirmation for a write that touches a decision", with(agent(RoleOwner, AutonomyPropose), func(a *Actor) { a.PersonPresent, a.CanElicit = true, true }),
+			ActionPropose, Object{TouchesDecision: true}, project, EffectPropose, CodeTouchesDecision, false, ""},
+		// --- the judge ---
+		{"Memax records verdicts", Actor{Kind: ActorMemax}, ActionJudge, proposal, project, EffectApply, "", false, ""},
+		{"an agent can't record a verdict", agent(RoleOwner, AutonomyWrite), ActionJudge, proposal, project, EffectRefuse, CodeJudgeByMemax, false, ""},
+		{"a person can't record a verdict", person(RoleOwner, ViaWeb), ActionJudge, proposal, project, EffectRefuse, CodeJudgeByMemax, false, ""},
+		// --- settling a conflict (Keep's rules) ---
+		{"member settles a conflict", person(RoleMember, ViaCLI), ActionResolveConflict, propDec, project, EffectApply, "", false, ""},
+		{"agent can't settle", agent(RoleOwner, AutonomyWrite), ActionResolveConflict, propDec, project, EffectRefuse, CodePersonMustReview, false, ""},
+		{"API key can't settle", with(person(RoleOwner, ViaAPI), func(a *Actor) { a.Credential = CredentialAPIKey }), ActionResolveConflict, propDec, project, EffectRefuse, CodeKeyCannotReview, false, ""},
+		{"viewer can't settle", person(RoleViewer, ViaWeb), ActionResolveConflict, propDec, project, EffectRefuse, CodeViewer, false, ""},
+		{"members in an owners-keep space can't settle", person(RoleMember, ViaWeb), ActionResolveConflict, propDec, ownersKeep, EffectRefuse, CodeOwnersKeep, false, ""},
+		{"team decision conflict from the CLI → refused (D15)", person(RoleMember, ViaCLI), ActionResolveConflict, propDec, team, EffectRefuse, CodeDecisionNeedsWeb, false, ""},
+		{"team decision conflict on the web", person(RoleMember, ViaWeb), ActionResolveConflict, propDec, team, EffectApply, "", false, ""},
+		{"keeping a quarantined side needs the web", person(RoleOwner, ViaCLI), ActionResolveConflict, propExt, project, EffectRefuse, CodeExternalNeedsReview, false, ""},
+		// --- undo ---
+		{"a person undoes their own decision", person(RoleMember, ViaCLI), ActionUndo, Object{Ref: "M-1", UndoOwn: true}, project, EffectApply, "", false, ""},
+		{"a member undoes the judge's fold", person(RoleMember, ViaWeb), ActionUndo, Object{Ref: "M-1", UndoSystem: true}, project, EffectApply, "", false, ""},
+		{"someone else's decision", person(RoleOwner, ViaWeb), ActionUndo, Object{Ref: "M-1"}, project, EffectRefuse, CodeUndoByDecider, false, "M-1"},
+		{"an agent can't undo", agent(RoleOwner, AutonomyWrite), ActionUndo, Object{Ref: "M-1", UndoSystem: true}, project, EffectRefuse, CodePersonMustReview, false, ""},
+		{"a viewer can't undo a fold", person(RoleViewer, ViaWeb), ActionUndo, Object{Ref: "M-1", UndoSystem: true}, project, EffectRefuse, CodeViewer, false, ""},
 		{"agent at write edits team decision → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, keptDec, team, EffectPropose, CodeDecisionNeedsWeb, false, ""},
 		{"agent at propose edit → proposal", agent(RoleOwner, AutonomyPropose), ActionEdit, kept, project, EffectPropose, CodeAutonomyPropose, false, ""},
 		{"agent can't edit a proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, proposal, project, EffectRefuse, CodeProposalInReview, false, "M-0219 is waiting in Review"},
@@ -206,6 +234,46 @@ func TestDecide(t *testing.T) {
 		{"a viewer pulls a hand edit", person(RoleViewer, ViaWeb), ActionPullDrift, newFact, project, EffectApply, "", false, ""},
 		{"an agent can't pull a hand edit", agent(RoleOwner, AutonomyWrite), ActionPullDrift, newFact, project, EffectRefuse, CodeTargetsByPerson, false, ""},
 		{"non-member can't pull", person(RoleNone, ViaWeb), ActionPullDrift, newFact, project, EffectRefuse, CodeNotMember, false, ""},
+
+		// --- decision gates: asking ---
+		{"agent at propose asks", agent(RoleOwner, AutonomyPropose), ActionRequestDecision, newGate, project, EffectApply, "", false, ""},
+		{"agent at write asks", agent(RoleMember, AutonomyWrite), ActionRequestDecision, newGate, team, EffectApply, "", false, ""},
+		{"a viewer's agent asks", agent(RoleViewer, AutonomyPropose), ActionRequestDecision, newGate, project, EffectApply, "", false, ""},
+		{"an agent on an API key asks", with(agent(RoleOwner, AutonomyPropose), func(a *Actor) { a.Credential = CredentialAPIKey }), ActionRequestDecision, newGate, project, EffectApply, "", false, ""},
+		{"a read-only agent can't ask", agent(RoleOwner, AutonomyRead), ActionRequestDecision, newGate, project, EffectRefuse, CodeReadOnly, false, "read-only in memax-v2"},
+		{"a paused agent can't ask", with(agent(RoleOwner, AutonomyWrite), func(a *Actor) { a.AgentStatus = AgentPaused }), ActionRequestDecision, newGate, project, EffectRefuse, CodeAgentPaused, false, ""},
+		{"an agent not connected here can't ask", with(agent(RoleOwner, AutonomyWrite), func(a *Actor) { a.AgentStatus = AgentNotConnected }), ActionRequestDecision, newGate, project, EffectRefuse, CodeAgentNotConnected, false, ""},
+		{"a read-only key can't ask", with(agent(RoleOwner, AutonomyRead), func(a *Actor) { a.Credential = CredentialAPIKey }), ActionRequestDecision, newGate, project, EffectRefuse, CodeKeyReadOnly, false, ""},
+		{"a fourth waiting question is refused", agent(RoleOwner, AutonomyWrite), ActionRequestDecision, Object{WaitingGates: MaxWaitingGates}, project, EffectRefuse, CodeGateLimit, false, "3 decisions waiting"},
+		{"two waiting questions leave room", agent(RoleOwner, AutonomyWrite), ActionRequestDecision, Object{WaitingGates: MaxWaitingGates - 1}, project, EffectApply, "", false, ""},
+		{"a secret in a question is refused", agent(RoleOwner, AutonomyWrite), ActionRequestDecision, Object{Secrets: []string{"AWS access key"}}, project, EffectRefuse, CodeSecret, false, ""},
+		{"a person doesn't ask", person(RoleOwner, ViaWeb), ActionRequestDecision, newGate, project, EffectRefuse, CodeGateByAgent, false, "Remember the decision"},
+		{"Dream doesn't ask", Actor{Kind: ActorDream, Via: ViaSystem}, ActionRequestDecision, newGate, project, EffectRefuse, CodeGateByAgent, false, ""},
+		{"an agent for a non-member can't ask", agent(RoleNone, AutonomyWrite), ActionRequestDecision, newGate, project, EffectRefuse, CodeNotMember, false, ""},
+
+		// --- decision gates: answering (Keep's rules for a decision, D15) ---
+		{"owner answers on the web", person(RoleOwner, ViaWeb), ActionAnswerGate, gate, project, EffectApply, "", false, ""},
+		{"member answers from the CLI in a project space", person(RoleMember, ViaCLI), ActionAnswerGate, gate, project, EffectApply, "", false, ""},
+		{"member answers in the agent in a personal space", person(RoleOwner, ViaMCP), ActionAnswerGate, gate, personal, EffectApply, "", false, ""},
+		{"team answer on the web", person(RoleMember, ViaReview), ActionAnswerGate, gate, team, EffectApply, "", false, ""},
+		{"team answer from the CLI refused (D15)", person(RoleMember, ViaCLI), ActionAnswerGate, gate, team, EffectRefuse, CodeDecisionNeedsWeb, false, "Answer G-0012 in Review"},
+		{"team answer in the agent refused (D15)", person(RoleOwner, ViaMCP), ActionAnswerGate, gate, team, EffectRefuse, CodeDecisionNeedsWeb, false, ""},
+		{"team rule off → CLI answer", person(RoleMember, ViaCLI), ActionAnswerGate, gate, teamNoWeb, EffectApply, "", false, ""},
+		{"viewer can't answer", person(RoleViewer, ViaWeb), ActionAnswerGate, gate, project, EffectRefuse, CodeViewer, false, "Ask a member"},
+		{"members can't answer where owners keep", person(RoleMember, ViaWeb), ActionAnswerGate, gate, ownersKeep, EffectRefuse, CodeOwnersKeep, false, ""},
+		{"an agent can't answer", agent(RoleOwner, AutonomyWrite), ActionAnswerGate, gate, project, EffectRefuse, CodePersonMustAnswer, false, "G-0012 waits for a person"},
+		{"an API key can't answer", with(person(RoleOwner, ViaAPI), func(a *Actor) { a.Credential = CredentialAPIKey }), ActionAnswerGate, gate, project, EffectRefuse, CodeKeyCannotReview, false, ""},
+		{"a non-member can't answer", person(RoleNone, ViaWeb), ActionAnswerGate, gate, project, EffectRefuse, CodeNotMember, false, ""},
+		{"a secret in the answer's reason is refused", person(RoleOwner, ViaWeb), ActionAnswerGate, Object{Ref: "G-0012", Secrets: []string{"JWT"}}, project, EffectRefuse, CodeSecret, false, ""},
+
+		// --- decision gates: withdrawing ---
+		{"the asking agent withdraws", agent(RoleOwner, AutonomyPropose), ActionWithdrawGate, mineGate, project, EffectApply, "", false, ""},
+		{"another agent can't withdraw", agent(RoleOwner, AutonomyWrite), ActionWithdrawGate, gate, project, EffectRefuse, CodeNotYourGate, false, "Only the agent that asked G-0012"},
+		{"a paused asking agent can't withdraw", with(agent(RoleOwner, AutonomyWrite), func(a *Actor) { a.AgentStatus = AgentPaused }), ActionWithdrawGate, mineGate, project, EffectRefuse, CodeAgentPaused, false, ""},
+		{"the person the agent works for withdraws", person(RoleViewer, ViaCLI), ActionWithdrawGate, mineGate, project, EffectApply, "", false, ""},
+		{"a member withdraws anyone's question", person(RoleMember, ViaCLI), ActionWithdrawGate, gate, project, EffectApply, "", false, ""},
+		{"a viewer can't withdraw someone else's", person(RoleViewer, ViaWeb), ActionWithdrawGate, gate, project, EffectRefuse, CodeNotYourGate, false, ""},
+		{"a member can't withdraw where owners keep", person(RoleMember, ViaWeb), ActionWithdrawGate, gate, ownersKeep, EffectRefuse, CodeNotYourGate, false, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -286,6 +354,82 @@ func TestDecideMatrix(t *testing.T) {
 										}
 										if role == RoleNone && (kind == ActorPerson || kind == ActorAgent) {
 											check(d.Effect == EffectRefuse, "non-member not refused")
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if n == 0 {
+		t.Fatal("matrix is empty")
+	}
+}
+
+// TestGateMatrix walks the gate actions over every combination and checks
+// what must hold whatever it is: only an agent that may propose asks; only
+// a person who may keep answers, and in a space whose decisions need the
+// web only on the web; an agent withdraws only its own question; and every
+// refusal explains itself in the product voice.
+func TestGateMatrix(t *testing.T) {
+	t.Parallel()
+	roles := []Role{RoleNone, RoleOwner, RoleMember, RoleViewer}
+	levels := []Autonomy{"", AutonomyRead, AutonomyPropose, AutonomyWrite}
+	statuses := []AgentStatus{AgentConnected, AgentPaused, AgentNotConnected}
+	creds := []Credential{CredentialSession, CredentialOAuth, CredentialAPIKey}
+	objects := []Object{newGate, gate, mineGate, {WaitingGates: MaxWaitingGates}, {Secrets: []string{"JWT"}}}
+	spaces := []Space{project, personal, team, ownersKeep, teamNoWeb}
+	banned := []string{"!", " AI", "magic", "smart", "delete", "Delete"}
+	n := 0
+	for _, kind := range ActorKinds {
+		for _, role := range roles {
+			for _, level := range levels {
+				for _, status := range statuses {
+					for _, cred := range creds {
+						for _, via := range Vias {
+							a := Actor{Kind: kind, Role: role, Autonomy: level, AgentStatus: status, Credential: cred, Via: via}
+							for _, act := range []Action{ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate} {
+								for _, o := range objects {
+									for _, s := range spaces {
+										n++
+										d := Decide(a, act, o, s)
+										check := func(ok bool, what string) {
+											if !ok {
+												t.Fatalf("%s: %+v %s %+v %+v → %+v", what, a, act, o, s, d)
+											}
+										}
+										check(d.Effect == EffectApply || d.Effect == EffectRefuse, "a gate action is applied or refused, never proposed")
+										if d.Effect == EffectRefuse {
+											check(d.Code != "" && d.Message != "", "refusal without code and message")
+										}
+										for _, b := range banned {
+											check(!strings.Contains(d.Message, b), "message breaks the voice rules ("+b+")")
+										}
+										if d.Effect != EffectApply {
+											continue
+										}
+										check(len(o.Secrets) == 0, "words with a secret applied")
+										check(role != RoleNone, "applied for a non-member")
+										switch act {
+										case ActionRequestDecision:
+											check(kind == ActorAgent && status == AgentConnected &&
+												(level == AutonomyPropose || level == AutonomyWrite), "asked by something other than a connected agent that may propose")
+											check(o.WaitingGates < MaxWaitingGates, "asked past the limit")
+										case ActionAnswerGate:
+											check(kind == ActorPerson && cred != CredentialAPIKey && (role == RoleOwner || role == RoleMember),
+												"answered by something other than a person who may keep")
+											if s.Rules.DecisionsNeedPersonOnWeb(s.Kind) {
+												check(via == ViaWeb || via == ViaReview, "a decision that needs the web answered off the web (D15)")
+											}
+										case ActionWithdrawGate:
+											if kind == ActorAgent {
+												check(o.GateMine && status == AgentConnected, "an agent withdrew a question it didn't ask")
+											} else {
+												check(kind == ActorPerson, "withdrawn by a system actor")
+											}
 										}
 									}
 								}

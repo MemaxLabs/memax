@@ -1,5 +1,7 @@
 import type { ActivityData } from "./activity";
 import type { AgentsData } from "./agents";
+import type { MemoriesSource } from "./memories";
+import type { ReviewSource } from "./review";
 import type {
   AskEvent,
   KeepResult,
@@ -62,4 +64,8 @@ export interface LedgerDataSource extends ActivityData, AgentsData {
     ref: string;
     idempotencyKey: string;
   }): Promise<KeepResult>;
+  /** Review's queue, cards and decisions (review.ts). */
+  readonly review: ReviewSource;
+  /** Memories, one memory and editing (memories.ts). */
+  readonly memories: MemoriesSource;
 }

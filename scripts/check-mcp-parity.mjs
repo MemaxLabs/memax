@@ -1,136 +1,40 @@
 #!/usr/bin/env node
 /**
- * MCP parity check (F4) — the Go remote MCP and the CLI local MCP must
- * expose the same canonical memax_* tools with the same parameter
- * sets. This rule lived only in AGENTS.md and was violated twice
- * (memax_topics + hint/project_context missing on one side; the
- * source_agent schema divergence that silently lost claude.ai pushes).
- * A rule that only exists as prose is a rule that gets violated —
- * this script makes the drift a lint failure.
+ * MCP parity check — the Go remote MCP server and the CLI's local stdio
+ * MCP server must expose the same tools: the same names, titles,
+ * descriptions, input schemas, output schemas and annotations, and the
+ * same server instructions. The rule lived only in AGENTS.md and was
+ * violated twice (memax_topics + hint/project_context missing on one
+ * side; the source_agent schema divergence that silently lost claude.ai
+ * pushes), so it is a lint failure.
  *
- * Method: extract tool name → property-key set from both files.
- *   - Go: InputSchema is a JSON string literal — parsed properly.
- *   - CLI: inputSchema is an object literal — brace-scanned for the
- *     `properties` block's top-level keys. Fragile by construction,
- *     so the script FAILS LOUDLY if it extracts zero tools from
- *     either side (a refactor that breaks extraction must break lint,
- *     not silently pass).
+ * Both sides are data, not prose to scrape:
+ *   - Go: packages/server/internal/handler/mcp_tools.json (embedded and
+ *     served by mcp_catalog.go), profiles "agent" and "chatgpt".
+ *   - CLI: packages/cli/src/commands/mcp-tools.ts, imported here with
+ *     Node's type stripping (erasable TypeScript only).
+ * The comparison is on the served form: "#item" references expanded, and
+ * output schemas that name another tool resolved, as both servers do.
  *
- * Known asymmetries (allow-listed, with reasons):
- *   - Go additionally exposes ChatGPT-alias names (search_memories,
- *     save_memory, …) — connector requirement, remote-only.
- *   - source_agent: parsed by the Go server for the API-key TOFU
- *     claim path but deliberately NOT advertised in either schema.
+ * Known asymmetries:
+ *   - The ChatGPT profile (search_memories, save_memory, …) is remote
+ *     only. Each of its tools must alias an agent-profile tool.
+ *   - source_agent: parsed by the Go server for the API-key claim path
+ *     but deliberately NOT advertised in either schema.
  */
 
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const goSrc = readFileSync(
-  resolve(root, "packages/server/internal/handler/mcp.go"),
-  "utf8",
+const goCatalogPath = resolve(
+  root,
+  "packages/server/internal/handler/mcp_tools.json",
 );
-const cliSrc = readFileSync(
-  resolve(root, "packages/cli/src/commands/mcp.ts"),
-  "utf8",
-);
-
-/** Go side: `Name: "memax_x"` … `InputSchema: json.RawMessage(`{…}`)` */
-function extractGoTools(src) {
-  const tools = new Map();
-  const re =
-    /Name:\s+"(memax_[a-z_]+)",[\s\S]*?InputSchema:\s*json\.RawMessage\(`([\s\S]*?)`\)/g;
-  for (const m of src.matchAll(re)) {
-    const [, name, schemaText] = m;
-    let props = [];
-    try {
-      const schema = JSON.parse(schemaText);
-      props = Object.keys(schema.properties ?? {});
-    } catch (err) {
-      fail(`Go InputSchema for ${name} is not valid JSON: ${err.message}`);
-    }
-    tools.set(name, new Set(props));
-  }
-  return tools;
-}
-
-/** CLI side: `name: "memax_x"` … `inputSchema: { … properties: { … } }`
- *  via brace scanning from the properties block. */
-function extractCliTools(src) {
-  const tools = new Map();
-  const nameRe = /name:\s*"(memax_[a-z_]+)"/g;
-  const nameHits = [...src.matchAll(nameRe)];
-  for (let i = 0; i < nameHits.length; i++) {
-    const name = nameHits[i][1];
-    const start = nameHits[i].index;
-    const end = i + 1 < nameHits.length ? nameHits[i + 1].index : src.length;
-    let block = src.slice(start, end);
-    // Indirection: `inputSchema: someSharedSchema` — resolve the
-    // identifier to its `const someSharedSchema = {...}` definition
-    // and scan that instead of the (absent) inline object.
-    const indirect = block.match(/inputSchema:\s*([A-Za-z_$][\w$]*)\s*[,}]/);
-    if (indirect) {
-      const defRe = new RegExp(`const\\s+${indirect[1]}\\s*=`);
-      const defMatch = src.match(defRe);
-      if (!defMatch) {
-        fail(`CLI tool ${name}: inputSchema references ${indirect[1]} but no const definition found`);
-        tools.set(name, new Set());
-        continue;
-      }
-      block = src.slice(defMatch.index, defMatch.index + 4000);
-    }
-    const propsIdx = block.indexOf("properties:");
-    if (propsIdx === -1) {
-      tools.set(name, new Set());
-      continue;
-    }
-    const open = block.indexOf("{", propsIdx);
-    let depth = 0;
-    let close = open;
-    for (let j = open; j < block.length; j++) {
-      if (block[j] === "{") depth++;
-      else if (block[j] === "}") {
-        depth--;
-        if (depth === 0) {
-          close = j;
-          break;
-        }
-      }
-    }
-    const propsBlock = block.slice(open + 1, close);
-    // Top-level keys of the properties object = identifiers followed
-    // by ":" at brace depth 0 within the block.
-    const keys = new Set();
-    depth = 0;
-    for (const line of splitTopLevel(propsBlock)) {
-      const km = line.match(/^\s*(\w+)\s*:/);
-      if (km) keys.add(km[1]);
-    }
-    tools.set(name, keys);
-  }
-  return tools;
-}
-
-/** Split an object body into top-level entries by tracking depth. */
-function splitTopLevel(body) {
-  const entries = [];
-  let depth = 0;
-  let current = "";
-  for (const ch of body) {
-    if (ch === "{" || ch === "[" || ch === "(") depth++;
-    if (ch === "}" || ch === "]" || ch === ")") depth--;
-    if (ch === "," && depth === 0) {
-      entries.push(current);
-      current = "";
-    } else {
-      current += ch;
-    }
-  }
-  if (current.trim()) entries.push(current);
-  return entries;
-}
+const cliCatalogPath = resolve(root, "packages/cli/src/commands/mcp-tools.ts");
+const cliServerPath = resolve(root, "packages/cli/src/commands/mcp.ts");
 
 let failed = false;
 function fail(msg) {
@@ -138,42 +42,131 @@ function fail(msg) {
   failed = true;
 }
 
-const goTools = extractGoTools(goSrc);
-const cliTools = extractCliTools(cliSrc);
-
-// Extraction sanity — a refactor that breaks parsing must break lint.
-if (goTools.size === 0) fail("extracted ZERO tools from Go mcp.go — extractor broken?");
-if (cliTools.size === 0) fail("extracted ZERO tools from CLI mcp.ts — extractor broken?");
-
-for (const [name, goProps] of goTools) {
-  if (!cliTools.has(name)) {
-    fail(`tool ${name} exists in Go remote MCP but not in CLI local MCP`);
-    continue;
+/** Replace {"$ref": "#item"} with the item schema, as the servers do. */
+function expand(schema, item) {
+  if (Array.isArray(schema)) return schema.map((s) => expand(s, item));
+  if (schema && typeof schema === "object") {
+    const keys = Object.keys(schema);
+    if (keys.length === 1 && schema.$ref === "#item") return item;
+    return Object.fromEntries(
+      Object.entries(schema).map(([k, v]) => [k, expand(v, item)]),
+    );
   }
-  const cliProps = cliTools.get(name);
-  for (const p of goProps) {
-    if (!cliProps.has(p)) {
-      fail(`tool ${name}: param "${p}" in Go but missing in CLI`);
+  return schema;
+}
+
+function servedGoProfiles(catalog) {
+  const agentOutputs = new Map();
+  const out = {};
+  for (const name of ["agent", "chatgpt"]) {
+    const profile = catalog.profiles?.[name];
+    if (!profile) {
+      fail(`mcp_tools.json has no "${name}" profile`);
+      continue;
     }
+    out[name] = {
+      ...profile,
+      tools: profile.tools.map((t) => {
+        let outputSchema = t.outputSchema;
+        if (typeof outputSchema === "string") {
+          outputSchema = agentOutputs.get(outputSchema);
+          if (!outputSchema)
+            fail(
+              `${t.name} names output schema "${t.outputSchema}", which isn't defined`,
+            );
+        }
+        if (outputSchema) outputSchema = expand(outputSchema, catalog.item);
+        if (name === "agent" && outputSchema)
+          agentOutputs.set(t.name, outputSchema);
+        return { ...t, outputSchema, canonical: t.canonical ?? t.name };
+      }),
+    };
   }
-  for (const p of cliProps) {
-    if (!goProps.has(p)) {
-      fail(`tool ${name}: param "${p}" in CLI but missing in Go`);
-    }
+  return out;
+}
+
+// --- Load both sides ---
+
+const goCatalog = JSON.parse(readFileSync(goCatalogPath, "utf8"));
+const go = servedGoProfiles(goCatalog);
+const cli = await import(pathToFileURL(cliCatalogPath).href);
+const cliTools = cli.servedTools();
+const cliServer = readFileSync(cliServerPath, "utf8");
+
+if (!go.agent?.tools?.length)
+  fail("extracted ZERO agent tools from mcp_tools.json");
+if (!cliTools.length) fail("extracted ZERO tools from the CLI's mcp-tools.ts");
+
+// The CLI server must serve the catalogue, not a copy of its own.
+for (const symbol of ["servedTools()", "MCP_INSTRUCTIONS"]) {
+  if (!cliServer.includes(symbol)) {
+    fail(
+      `packages/cli/src/commands/mcp.ts doesn't use ${symbol} from mcp-tools.ts`,
+    );
   }
 }
-for (const name of cliTools.keys()) {
-  if (!goTools.has(name)) {
-    fail(`tool ${name} exists in CLI local MCP but not in Go remote MCP`);
+
+// --- Compare the agent profile with the CLI, field by field ---
+
+const fields = [
+  "title",
+  "description",
+  "inputSchema",
+  "outputSchema",
+  "annotations",
+];
+const goByName = new Map(go.agent.tools.map((t) => [t.name, t]));
+const cliByName = new Map(cliTools.map((t) => [t.name, t]));
+
+for (const [name, goTool] of goByName) {
+  const cliTool = cliByName.get(name);
+  if (!cliTool) {
+    fail(
+      `tool ${name} exists in the Go remote MCP but not in the CLI local MCP`,
+    );
+    continue;
   }
+  for (const field of fields) {
+    if (!isDeepStrictEqual(goTool[field] ?? null, cliTool[field] ?? null)) {
+      fail(
+        `tool ${name}: ${field} differs\n    go:  ${JSON.stringify(goTool[field])}\n    cli: ${JSON.stringify(cliTool[field])}`,
+      );
+    }
+  }
+  if (goTool.inputSchema?.properties?.source_agent) {
+    fail(`tool ${name} advertises source_agent; the grant carries the agent`);
+  }
+}
+for (const name of cliByName.keys()) {
+  if (!goByName.has(name))
+    fail(
+      `tool ${name} exists in the CLI local MCP but not in the Go remote MCP`,
+    );
+}
+if (go.agent.instructions !== cli.MCP_INSTRUCTIONS)
+  fail(
+    "the server instructions differ between mcp_tools.json and mcp-tools.ts",
+  );
+if (go.agent.server !== cli.MCP_SERVER_NAME)
+  fail("the server name differs between mcp_tools.json and mcp-tools.ts");
+
+// --- The ChatGPT profile aliases agent tools ---
+
+for (const t of go.chatgpt?.tools ?? []) {
+  if (!goByName.has(t.canonical))
+    fail(
+      `ChatGPT tool ${t.name} aliases ${t.canonical}, which the agent profile doesn't have`,
+    );
+  if (!t.title || !t.annotations || t.annotations.openWorldHint !== false)
+    fail(`ChatGPT tool ${t.name} needs a title and openWorldHint: false`);
 }
 
 if (failed) {
   console.error(
-    "\nMCP tool surfaces have drifted. Fix BOTH packages/server/internal/handler/mcp.go and packages/cli/src/commands/mcp.ts in the same commit (AGENTS.md: MCP Tool Parity).",
+    "\nMCP tool surfaces have drifted. Change BOTH packages/server/internal/handler/mcp_tools.json and packages/cli/src/commands/mcp-tools.ts in the same commit (AGENTS.md: MCP Tool Parity).",
   );
   process.exit(1);
 }
 console.log(
-  `✓ mcp-parity: ${goTools.size} canonical tools match across Go remote and CLI local MCP`,
+  `✓ mcp-parity: ${goByName.size} tools match across the Go remote and CLI local MCP (names, titles, descriptions, input and output schemas, annotations); ${go.chatgpt.tools.length} ChatGPT aliases map onto them`,
 );

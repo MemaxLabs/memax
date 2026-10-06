@@ -14,11 +14,17 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/MemaxLabs/memax/packages/server/internal/auth"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
+	"github.com/MemaxLabs/memax/packages/server/internal/safefetch"
 )
 
 // MCPOAuthHandler implements the MCP-spec OAuth 2.0 authorization flow.
@@ -31,13 +37,29 @@ type MCPOAuthHandler struct {
 	authH      *AuthHandler
 	baseURL    string // e.g. "https://staging-api.memaxlabs.com"
 	appBaseURL string // e.g. "https://staging-app.memaxlabs.com"
+	// mcpAlias is a second public origin for the MCP endpoints
+	// (MCP_BASE_URL, e.g. https://mcp.memax.app); its resources are valid
+	// audiences too.
+	mcpAlias string
+	// ledger connects the agent to the chosen spaces when consent
+	// completes (plan 25 §5.15). Nil (no database) skips it.
+	ledger *ledger.Ledger
+	// fetchMetadata fetches a Client ID Metadata Document. Tests replace it.
+	fetchMetadata func(ctx context.Context, url string) (*safefetch.FetchResult, error)
 }
 
 func NewMCPOAuthHandler(authH *AuthHandler) *MCPOAuthHandler {
 	baseURL := strings.TrimRight(os.Getenv("API_BASE_URL"), "/")
 	appBaseURL := strings.TrimRight(os.Getenv("APP_BASE_URL"), "/")
-	return &MCPOAuthHandler{authH: authH, baseURL: baseURL, appBaseURL: appBaseURL}
+	return &MCPOAuthHandler{
+		authH: authH, baseURL: baseURL, appBaseURL: appBaseURL,
+		mcpAlias:      strings.TrimRight(os.Getenv("MCP_BASE_URL"), "/"),
+		fetchMetadata: defaultMetadataFetcher().Fetch,
+	}
 }
+
+// SetLedger lets consent connect the agent on the V2 record.
+func (h *MCPOAuthHandler) SetLedger(l *ledger.Ledger) { h.ledger = l }
 
 // resolveBaseURL returns the base URL, falling back to deriving it from the request.
 func (h *MCPOAuthHandler) resolveBaseURL(r *http.Request) string {
@@ -99,14 +121,53 @@ func (h *MCPOAuthHandler) consentSubmitURL(r *http.Request) string {
 // This tells MCP clients where to find the authorization server.
 func (h *MCPOAuthHandler) ProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
 	base := h.resolveBaseURL(r)
-	resource := h.protectedResourceURL(base, r)
+	// The resource is the endpoint the client connected to, on whichever
+	// public origin it used (api.memax.app or the mcp.memax.app alias);
+	// the authorization server is always the API's.
+	resourceBase := base
+	if h.mcpAlias != "" {
+		if u, err := url.Parse(h.mcpAlias); err == nil && strings.EqualFold(u.Host, r.Host) {
+			resourceBase = h.mcpAlias
+		}
+	}
+	resource := h.protectedResourceURL(resourceBase, r)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"resource":                 resource,
 		"authorization_servers":    []string{base},
-		"scopes_supported":         []string{"memax:read", "memax:write"},
+		"scopes_supported":         []string{ScopeRead, ScopePropose, ScopeWrite},
 		"bearer_methods_supported": []string{"header"},
+		"resource_name":            "Memax",
 	})
+}
+
+// mcpResources are the MCP endpoints a token may be issued for: /mcp and
+// /mcp/chatgpt on the API's origin and on the MCP alias.
+func (h *MCPOAuthHandler) mcpResources(r *http.Request) []string {
+	bases := []string{h.resolveBaseURL(r)}
+	if h.mcpAlias != "" && h.mcpAlias != bases[0] {
+		bases = append(bases, h.mcpAlias)
+	}
+	out := make([]string, 0, 2*len(bases))
+	for _, b := range bases {
+		out = append(out, b+"/mcp", b+"/mcp/chatgpt")
+	}
+	return out
+}
+
+// validResource reports whether a requested resource (RFC 8707) is one of
+// the MCP endpoints, ignoring a trailing slash.
+func (h *MCPOAuthHandler) validResource(r *http.Request, resource string) bool {
+	return auth.Audience(h.mcpResources(r)).Contains(resource)
+}
+
+// audienceFor is the aud of a grant's tokens: the resource it was issued
+// for, or every MCP endpoint for a grant whose client named none.
+func (h *MCPOAuthHandler) audienceFor(r *http.Request, resource string) []string {
+	if resource != "" {
+		return []string{strings.TrimRight(resource, "/")}
+	}
+	return h.mcpResources(r)
 }
 
 func (h *MCPOAuthHandler) protectedResourceURL(base string, r *http.Request) string {
@@ -127,15 +188,20 @@ func (h *MCPOAuthHandler) AuthorizationServerMetadata(w http.ResponseWriter, r *
 	base := h.resolveBaseURL(r)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"issuer":                                base,
-		"authorization_endpoint":                base + "/oauth/authorize",
-		"token_endpoint":                        base + "/oauth/token",
-		"registration_endpoint":                 base + "/oauth/register",
-		"scopes_supported":                      []string{"memax:read", "memax:write"},
-		"response_types_supported":              []string{"code"},
-		"grant_types_supported":                 []string{"authorization_code", "refresh_token"},
-		"token_endpoint_auth_methods_supported": []string{"none"},
-		"code_challenge_methods_supported":      []string{"S256"},
+		"issuer":                 base,
+		"authorization_endpoint": base + "/oauth/authorize",
+		"token_endpoint":         base + "/oauth/token",
+		// Dynamic registration is deprecated in MCP 2026-07-28 but Cursor
+		// and older clients still use it; newer clients send a Client ID
+		// Metadata Document URL as their client_id instead.
+		"registration_endpoint":                          base + "/oauth/register",
+		"client_id_metadata_document_supported":          true,
+		"authorization_response_iss_parameter_supported": true,
+		"scopes_supported":                               []string{ScopeRead, ScopePropose, ScopeWrite},
+		"response_types_supported":                       []string{"code"},
+		"grant_types_supported":                          []string{"authorization_code", "refresh_token"},
+		"token_endpoint_auth_methods_supported":          []string{"none"},
+		"code_challenge_methods_supported":               []string{"S256"},
 	})
 }
 
@@ -226,8 +292,18 @@ func (h *MCPOAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := h.loadOAuthClient(r.Context(), clientID)
-	if err != nil {
+	var client oauthClient
+	var err error
+	if isMetadataClientID(clientID) {
+		// A Client ID Metadata Document: the client_id is a URL to the
+		// client's metadata, fetched and checked here (mcp_cimd.go).
+		client, err = h.resolveMetadataClient(r.Context(), clientID, redirectURI)
+		if err != nil {
+			slog.Warn("MCP OAuth: client metadata document refused", "client_id", clientID, "error", err)
+			http.Error(w, "The client's metadata document can't be used: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	} else if client, err = h.loadOAuthClient(r.Context(), clientID); err != nil {
 		http.Error(w, "Unknown OAuth client", http.StatusBadRequest)
 		return
 	}
@@ -235,13 +311,20 @@ func (h *MCPOAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "redirect_uri is not registered for this client", http.StatusBadRequest)
 		return
 	}
+	iss := h.resolveBaseURL(r)
 	if codeChallenge == "" || codeChallengeMethod != "S256" {
-		redirectOAuthError(w, r, redirectURI, state, "invalid_request", "PKCE S256 is required")
+		redirectOAuthErrorIss(w, r, redirectURI, state, iss, "invalid_request", "PKCE S256 is required")
+		return
+	}
+	// RFC 8707: the token will be bound to this resource, so it must be one
+	// of ours. A client that names none gets a token for the MCP endpoints.
+	if resource != "" && !h.validResource(r, resource) {
+		redirectOAuthErrorIss(w, r, redirectURI, state, iss, "invalid_target", "resource must be this server's MCP endpoint")
 		return
 	}
 	requestedPermissions, normalizedScope, invalidScopes := oauthPermissionsFromScope(scope)
 	if len(invalidScopes) > 0 || len(requestedPermissions) == 0 {
-		redirectOAuthError(w, r, redirectURI, state, "invalid_scope", "Unsupported Memax OAuth scope")
+		redirectOAuthErrorIss(w, r, redirectURI, state, iss, "invalid_scope", "Unsupported Memax OAuth scope")
 		return
 	}
 
@@ -268,7 +351,7 @@ func (h *MCPOAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		slog.Error("failed to store MCP OAuth authorization request", "error", err)
-		redirectOAuthError(w, r, redirectURI, state, "server_error", "Failed to start authorization")
+		redirectOAuthErrorIss(w, r, redirectURI, state, iss, "server_error", "Failed to start authorization")
 		return
 	}
 	// Redirect to GitHub OAuth, passing our session ID as the state
@@ -359,8 +442,12 @@ func (h *MCPOAuthHandler) tokenAuthCode(w http.ResponseWriter, r *http.Request) 
 		oauthError(w, "invalid_grant", "Authorization grant is no longer valid")
 		return
 	}
+	aud, ok := h.tokenAudience(w, r, grantID)
+	if !ok {
+		return
+	}
 
-	tokens, err := h.authH.issueAgentGrantTokens(userID, grant.AgentName, grantID, 30*24*time.Hour)
+	tokens, err := h.authH.issueBoundGrantTokens(userID, grant.AgentName, grantID, h.resolveBaseURL(r), aud, 30*24*time.Hour)
 	if err != nil {
 		slog.Error("MCP OAuth token issuance failed", "error", err)
 		oauthError(w, "server_error", "Failed to issue tokens")
@@ -373,8 +460,60 @@ func (h *MCPOAuthHandler) tokenAuthCode(w http.ResponseWriter, r *http.Request) 
 		"token_type":    "Bearer",
 		"expires_in":    tokens.ExpiresIn,
 		"refresh_token": tokens.RefreshToken,
-		"scope":         oauthScopeFromPermissions(grant.DefaultPermissions),
+		"scope":         grantScope(grant),
 	})
+}
+
+// tokenAudience is the aud of a grant's tokens. A token request that names
+// a resource (RFC 8707) must name the grant's, or one of the MCP endpoints
+// for a grant that has none; otherwise it fails with invalid_target.
+func (h *MCPOAuthHandler) tokenAudience(w http.ResponseWriter, r *http.Request, grantID string) ([]string, bool) {
+	var resource string
+	if err := h.authH.pool.QueryRow(r.Context(),
+		`SELECT COALESCE(resource, '') FROM oauth_grants WHERE id = $1::uuid`, grantID).Scan(&resource); err != nil {
+		oauthError(w, "invalid_grant", "Authorization grant is no longer valid")
+		return nil, false
+	}
+	if asked := strings.TrimSpace(r.FormValue("resource")); asked != "" {
+		switch {
+		case resource != "" && !auth.Audience{resource}.Contains(asked):
+			oauthError(w, "invalid_target", "resource doesn't match the authorization")
+			return nil, false
+		case resource == "" && !h.validResource(r, asked):
+			oauthError(w, "invalid_target", "resource must be this server's MCP endpoint")
+			return nil, false
+		case resource == "":
+			resource = asked
+		}
+	}
+	return h.audienceFor(r, resource), true
+}
+
+// grantScope is the scope a grant's tokens carry: the scope the person
+// granted, or (for grants from before it was recorded) the scope its
+// permissions amount to.
+func grantScope(grant APIKeyResult) string {
+	if grant.OAuthScope != "" {
+		return grant.OAuthScope
+	}
+	return oauthScopeFromPermissions(grant.DefaultPermissions)
+}
+
+// issueBoundGrantTokens issues an MCP OAuth grant's access token, bound to
+// its audience and naming the issuer, and a refresh token.
+func (h *AuthHandler) issueBoundGrantTokens(userID, agentName, grantID, issuer string, aud []string, refreshTTL time.Duration) (*model.TokenPair, error) {
+	accessToken, err := auth.SignBoundGrantAccessToken(userID, agentName, grantID, issuer, aud, h.jwtSecret, time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	refreshToken := generateToken()
+	if _, err := h.pool.Exec(context.Background(),
+		`INSERT INTO sessions (user_id, refresh_token, expires_at, agent_name, grant_id)
+		VALUES ($1, $2, $3, $4, NULLIF($5, '')::uuid)`,
+		userID, refreshToken, time.Now().Add(refreshTTL), agentName, grantID); err != nil {
+		return nil, err
+	}
+	return &model.TokenPair{AccessToken: accessToken, RefreshToken: refreshToken, ExpiresIn: 3600}, nil
 }
 
 func (h *MCPOAuthHandler) tokenRefresh(w http.ResponseWriter, r *http.Request) {
@@ -409,7 +548,11 @@ func (h *MCPOAuthHandler) tokenRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := auth.SignGrantAccessToken(session.UserID, grant.AgentName, grantID, h.authH.jwtSecret, time.Hour)
+	aud, ok := h.tokenAudience(w, r, grantID)
+	if !ok {
+		return
+	}
+	accessToken, err := auth.SignBoundGrantAccessToken(session.UserID, grant.AgentName, grantID, h.resolveBaseURL(r), aud, h.authH.jwtSecret, time.Hour)
 	if err != nil {
 		oauthError(w, "server_error", "Failed to issue access token")
 		return
@@ -429,7 +572,7 @@ func (h *MCPOAuthHandler) tokenRefresh(w http.ResponseWriter, r *http.Request) {
 		"token_type":    "Bearer",
 		"expires_in":    3600,
 		"refresh_token": newRefreshToken,
-		"scope":         oauthScopeFromPermissions(grant.DefaultPermissions),
+		"scope":         grantScope(grant),
 	})
 }
 
@@ -536,9 +679,10 @@ func (h *MCPOAuthHandler) Consent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	iss := h.resolveBaseURL(r)
 	if consentDecisionDenied(r.FormValue("decision")) {
 		h.deleteOAuthAuthorizationRequest(session.id)
-		redirectOAuthError(w, r, session.redirectURI, session.state, "access_denied", "The authorization request was canceled")
+		redirectOAuthErrorIss(w, r, session.redirectURI, session.state, iss, "access_denied", "The authorization request was canceled")
 		return
 	}
 
@@ -553,6 +697,7 @@ func (h *MCPOAuthHandler) Consent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	selectedPermissions = selectedPermissions.Intersect(session.requestedPermissions)
+	grantedScope := intersectScopes(session.requestedScope, selectedScope)
 	if len(selectedPermissions) == 0 {
 		h.renderConsent(w, r, session, "Select at least one capability.")
 		return
@@ -570,12 +715,13 @@ func (h *MCPOAuthHandler) Consent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	grantID, err := h.createOAuthGrant(r.Context(), session, validHubIDs, selectedPermissions)
+	grantID, err := h.createOAuthGrant(r.Context(), session, validHubIDs, selectedPermissions, grantedScope)
 	if err != nil {
 		slog.Error("failed to create MCP OAuth grant", "error", err)
 		http.Error(w, "Failed to create authorization grant", http.StatusInternalServerError)
 		return
 	}
+	h.connectAgent(r.Context(), session, grantID, validHubIDs, grantedScope)
 
 	authCode := generateOAuthSession()
 	_, err = h.authH.pool.Exec(context.Background(),
@@ -588,7 +734,86 @@ func (h *MCPOAuthHandler) Consent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.deleteOAuthAuthorizationRequest(session.id)
-	redirectWithCode(w, r, session.redirectURI, session.state, authCode)
+	redirectWithCodeIss(w, r, session.redirectURI, session.state, iss, authCode)
+}
+
+// intersectScopes is the scope the person granted: the requested scope's
+// tokens they kept checked (all of them when the form sent none, as V1's
+// consent did for an unchanged form).
+func intersectScopes(requested, selected string) string {
+	_, req, _ := oauthPermissionsFromScope(requested)
+	if strings.TrimSpace(selected) == "" {
+		return req
+	}
+	sel := strings.Fields(selected)
+	var out []string
+	for _, s := range strings.Fields(req) {
+		if slices.Contains(sel, s) {
+			out = append(out, s)
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+// connectAgent connects the new grant's agent to the chosen spaces on the
+// V2 record (plan 25 §5.15), at each space's default autonomy, capped by
+// the granted scope. A space whose default for new agents is above
+// Propose would need a person on the web to raise it, so the agent is
+// connected at Propose there and the person raises it in Agents. A failure
+// leaves the V1 grant working; the agent then only reads on V2 until it is
+// connected (cmd/v2-backfill-agents does it too).
+func (h *MCPOAuthHandler) connectAgent(ctx context.Context, session oauthPendingSession, grantID string, hubIDs []string, scope string) {
+	if h.ledger == nil {
+		return
+	}
+	userID, err1 := uuid.Parse(session.userID)
+	credID, err2 := uuid.Parse(grantID)
+	if err1 != nil || err2 != nil {
+		return
+	}
+	userScope, err := h.ledger.UserScope(ctx, userID)
+	if err != nil {
+		slog.Warn("MCP OAuth: can't connect the agent on the V2 record", "grant_id", grantID, "error", err)
+		return
+	}
+	spaces := make([]ledger.SpaceAutonomy, 0, len(hubIDs))
+	var ids []uuid.UUID
+	for _, h := range hubIDs {
+		if id, err := uuid.Parse(h); err == nil {
+			spaces = append(spaces, ledger.SpaceAutonomy{SpaceID: id})
+			ids = append(ids, id)
+		}
+	}
+	if len(spaces) == 0 {
+		return
+	}
+	agentSlug := agentNameFromClientName(session.clientName)
+	clientID := ""
+	if isMetadataClientID(session.clientID) {
+		clientID = session.clientID // the CIMD URL: the agent's verifiable identity
+	}
+	cmd := &ledger.ConnectAgent{
+		Meta: ledger.Meta{
+			Actor: ledger.Actor{Kind: policy.ActorPerson, ID: userID, Credential: policy.CredentialSession},
+			Scope: userScope.Narrow(ids...), Via: policy.ViaMCP,
+			IdempotencyKey: "oauth-consent:" + grantID,
+		},
+		Person: userID, Credential: ledger.CredentialOAuthGrant, CredentialID: credID,
+		Agent: ledger.AgentFromV1(agentSlug), DisplayName: connectionDisplayName(session.clientName),
+		ClientID: clientID, Spaces: spaces, Cap: policy.Autonomy(scopeCeiling(scope)),
+	}
+	res, err := h.ledger.Apply(ctx, cmd)
+	if err == nil && res.Outcome == ledger.OutcomeRefused && res.Policy.Code == policy.CodeAutonomyNeedsWeb {
+		cmd.Cap = policy.MinAutonomy(cmd.Cap, policy.AutonomyPropose)
+		cmd.IdempotencyKey = "oauth-consent-propose:" + grantID
+		res, err = h.ledger.Apply(ctx, cmd)
+	}
+	switch {
+	case err != nil:
+		slog.Warn("MCP OAuth: can't connect the agent on the V2 record", "grant_id", grantID, "error", err)
+	case res.Outcome == ledger.OutcomeRefused:
+		slog.Warn("MCP OAuth: connecting the agent was refused", "grant_id", grantID, "policy", res.Policy.Code)
+	}
 }
 
 func consentDecisionDenied(decision string) bool {
@@ -689,7 +914,7 @@ func (h *MCPOAuthHandler) validConsentHubIDs(userID string, selectedHubIDs []str
 	return out, nil
 }
 
-func (h *MCPOAuthHandler) createOAuthGrant(ctx context.Context, session oauthPendingSession, hubIDs []string, permissions PermissionSet) (string, error) {
+func (h *MCPOAuthHandler) createOAuthGrant(ctx context.Context, session oauthPendingSession, hubIDs []string, permissions PermissionSet, scope string) (string, error) {
 	agentName := agentNameFromClientName(session.clientName)
 	if agentName == "" {
 		agentName = "unknown"
@@ -699,9 +924,10 @@ func (h *MCPOAuthHandler) createOAuthGrant(ctx context.Context, session oauthPen
 	err := h.authH.pool.QueryRow(ctx,
 		`INSERT INTO oauth_grants (
 			user_id, client_id, agent_name, hub_scope_mode, hub_ids,
-			default_permissions, trust_level, rate_limit_tier, expires_at
+			default_permissions, trust_level, rate_limit_tier, expires_at,
+			resource, scope
 		)
-		VALUES ($1::uuid, $2, $3, $4, $5::text[]::uuid[], $6::text[], $7, $8, $9)
+		VALUES ($1::uuid, $2, $3, $4, $5::text[]::uuid[], $6::text[], $7, $8, $9, NULLIF($10, ''), NULLIF($11, ''))
 		RETURNING id`,
 		session.userID,
 		session.clientID,
@@ -712,6 +938,8 @@ func (h *MCPOAuthHandler) createOAuthGrant(ctx context.Context, session oauthPen
 		TrustStandard,
 		TrustStandard,
 		expiresAt,
+		strings.TrimRight(session.resource, "/"),
+		scope,
 	).Scan(&grantID)
 	if err == nil {
 		EnsureConnectedAgent(h.authH.store, session.userID, agentName)
@@ -793,7 +1021,7 @@ func (h *MCPOAuthHandler) buildConsentData(r *http.Request, session oauthPending
 		SubmitURL:    h.consentSubmitURL(r),
 		ExpiresAt:    session.expiresAt,
 		Hubs:         consentHubs,
-		Permissions:  consentPermissions(session.requestedPermissions),
+		Permissions:  consentPermissions(session.requestedPermissions, session.requestedScope),
 		NotRequested: consentNotRequested(session.requestedPermissions),
 		Error:        message,
 	}, nil
@@ -813,8 +1041,19 @@ func (h *MCPOAuthHandler) renderConsent(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
-func consentPermissions(requested PermissionSet) []oauthConsentPermission {
+func consentPermissions(requested PermissionSet, scope string) []oauthConsentPermission {
 	var out []oauthConsentPermission
+	fields := strings.Fields(scope)
+	if slices.Contains(fields, ScopePropose) && !slices.Contains(fields, ScopeWrite) {
+		out = append(out, consentPermissions(requested.Intersect(NewPermissionSet(PermMemoryRead)), ScopeRead)...)
+		out = append(out, oauthConsentPermission{
+			Value:       ScopePropose,
+			Label:       "Propose memories",
+			Description: "Save memories into selected hubs. In spaces on the V2 record they wait for you in Review.",
+			Checked:     true,
+		})
+		return out
+	}
 	if requested.Has(PermMemoryRead) {
 		out = append(out, oauthConsentPermission{
 			Value:       "memax:read",
@@ -902,14 +1141,21 @@ func oauthPermissionsFromScope(scope string) (PermissionSet, string, []string) {
 	if strings.TrimSpace(scope) == "" {
 		scope = "memax:read memax:write"
 	}
-	fields := strings.Fields(scope)
+	var fields []string
 	out := PermissionSet{}
 	var invalid []string
-	for _, field := range fields {
+	for _, field := range strings.Fields(scope) {
+		if slices.Contains(fields, field) {
+			continue
+		}
+		fields = append(fields, field)
 		switch field {
-		case "memax:read":
+		case ScopeRead:
 			out = out.Union(NewPermissionSet(PermMemoryRead, PermTopicRead, PermDreamRead, PermHubRead, PermHubMembersRead))
-		case "memax:write":
+		case ScopePropose, ScopeWrite:
+			// Both write to the record. On V2 the grant's scope caps the
+			// agent's autonomy: propose never keeps (GrantContext
+			// .AutonomyCeiling).
 			out = out.Union(NewPermissionSet(PermMemoryWrite))
 		default:
 			invalid = append(invalid, field)
@@ -930,6 +1176,13 @@ func oauthScopeFromPermissions(perms PermissionSet) string {
 }
 
 func redirectWithCode(w http.ResponseWriter, r *http.Request, redirectURI string, state string, code string) {
+	redirectWithCodeIss(w, r, redirectURI, state, "", code)
+}
+
+// redirectWithCodeIss sends the authorization response with the issuer
+// (RFC 9207), so a client talking to several authorization servers can
+// tell which one answered (mix-up attacks).
+func redirectWithCodeIss(w http.ResponseWriter, r *http.Request, redirectURI, state, iss, code string) {
 	u, err := url.Parse(redirectURI)
 	if err != nil {
 		http.Error(w, "Invalid redirect URI", http.StatusInternalServerError)
@@ -940,11 +1193,20 @@ func redirectWithCode(w http.ResponseWriter, r *http.Request, redirectURI string
 	if state != "" {
 		q.Set("state", state)
 	}
+	if iss != "" {
+		q.Set("iss", iss)
+	}
 	u.RawQuery = q.Encode()
 	http.Redirect(w, r, u.String(), http.StatusSeeOther)
 }
 
 func redirectOAuthError(w http.ResponseWriter, r *http.Request, redirectURI string, state string, code string, desc string) {
+	redirectOAuthErrorIss(w, r, redirectURI, state, "", code, desc)
+}
+
+// redirectOAuthErrorIss is an authorization error response with the
+// issuer (RFC 9207 covers error responses too).
+func redirectOAuthErrorIss(w http.ResponseWriter, r *http.Request, redirectURI, state, iss, code, desc string) {
 	u, err := url.Parse(redirectURI)
 	if err != nil {
 		oauthError(w, code, desc)
@@ -955,6 +1217,9 @@ func redirectOAuthError(w http.ResponseWriter, r *http.Request, redirectURI stri
 	q.Set("error_description", desc)
 	if state != "" {
 		q.Set("state", state)
+	}
+	if iss != "" {
+		q.Set("iss", iss)
 	}
 	u.RawQuery = q.Encode()
 	http.Redirect(w, r, u.String(), http.StatusSeeOther)

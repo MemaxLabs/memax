@@ -1,0 +1,236 @@
+/* Comparing a conflict, after ReviewConflict.dc.html: both sides on
+ * card, then one answer for every agent to read. */
+
+.page {
+  max-width: 1160px;
+  margin: 0 auto;
+}
+
+.head {
+  margin-bottom: 28px;
+}
+
+.head :global(.mx-page-lede) {
+  max-width: 440px;
+}
+
+.sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 20px 24px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.proposalSide {
+  border-color: var(--line-strong);
+}
+
+.statement {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 21px;
+  line-height: 30px;
+  color: var(--ink);
+}
+
+.proposalSide .statement {
+  font-style: italic;
+  color: var(--ink-2);
+}
+
+.proposalSide .statement:lang(zh) {
+  font-style: normal;
+  font-synthesis: none;
+  padding-left: 8px;
+  border-left: 2px solid var(--ochre);
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.kv dt {
+  color: var(--ink-3);
+}
+
+.kv dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.answer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 20px 24px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.question {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.option {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.option:hover {
+  background: var(--hover);
+}
+
+.option[aria-checked="true"] {
+  border-color: var(--ink);
+  background: var(--select);
+  box-shadow: inset 0 0 0 0.5px var(--ink);
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.option :global(.mx-kbd) {
+  margin-top: 2px;
+}
+
+.optionTitle {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 550;
+}
+
+.optionDetail {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.decision {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 27px;
+  resize: vertical;
+}
+
+.textarea:focus {
+  border-color: var(--ink);
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--vermilion);
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* A sentence: proportional figures, or the font's tabular full stops and
+ * commas read as a space before the punctuation. */
+.footText {
+  max-width: 560px;
+  font-variant-numeric: normal;
+}
+
+.spacer {
+  flex: 1;
+}
+
+@media (max-width: 1023px) {
+  .sides {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .page:global(.mx-page) {
+    padding: 20px 16px 24px;
+  }
+
+  .head:global(.mx-page-head) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .side,
+  .answer {
+    padding: 16px;
+  }
+}

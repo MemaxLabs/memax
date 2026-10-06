@@ -27,6 +27,8 @@ import (
 //   - quarantined memories (trust external) never compile, kept or not:
 //     the compiler refuses them, and leaving them out is how they stay
 //     live over MCP only;
+//   - superseded decisions don't compile: they stay kept, with their
+//     history, and the decision that replaced them compiles instead;
 //   - read scores are 0 until R- reads land (epic 1.7);
 //   - scope globs and agents the compiler would refuse are dropped, with a
 //     warning, rather than failing the whole file.
@@ -90,6 +92,11 @@ func buildInput(s *ledger.CompileSnapshot, appBase string, at time.Time) (*built
 	b.input.Memories = []InputMemory{}
 	for _, m := range s.Kept {
 		if m.Lifecycle != lifecycle.Kept || m.Trust.External() {
+			continue
+		}
+		// A superseded decision keeps its history in the record but is no
+		// longer in force: agents read the one that replaced it.
+		if m.Decision != nil && m.Decision.Status == ledger.DecisionSuperseded {
 			continue
 		}
 		if utf16Len(m.Statement) > maxStatementUnits {

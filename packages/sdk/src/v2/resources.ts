@@ -1,5 +1,6 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`,
-// `.receipts` and `.agents`. Thin, typed wrappers over the shared
+// `.receipts`, `.agents`, `.briefs`, `.targets` and `.gates`. Thin, typed
+// wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
 // as on /v1.
 import { MemaxError } from "../errors.js";
@@ -17,12 +18,19 @@ import type {
   CommandResult,
   CompileRunPage,
   ConfigureTargetInput,
+  Conflict,
   CreateTargetInput,
   DeliveryInput,
   DeliveryResult,
   Drift,
   DriftResolutionResult,
   EditInput,
+  AnswerGateInput,
+  Gate,
+  GatePage,
+  GateResult,
+  GateStatus,
+  MemoriesCommandResult,
   MemoryDetail,
   MemoryPage,
   ObservationInput,
@@ -30,6 +38,8 @@ import type {
   PolicyDecision,
   ReceiptPage,
   RememberInput,
+  RequestDecisionInput,
+  ResolveConflictInput,
   ResolveDriftInput,
   ReviewInput,
   ReviewPage,
@@ -40,6 +50,8 @@ import type {
   TargetList,
   TargetPreview,
   TargetResult,
+  UndoInput,
+  WithdrawGateInput,
 } from "./types.js";
 
 /** Options every command takes. */
@@ -94,6 +106,11 @@ export interface ListReceiptsOptions extends PageOptions {
 
 export interface GetMemoryOptions extends MemoryRefOptions {
   signal?: AbortSignal;
+}
+
+export interface GetConflictOptions extends GetMemoryOptions {
+  /** The other side, when the memory has more than one conflict. */
+  with?: string;
 }
 
 function seg(value: string): string {
@@ -202,6 +219,37 @@ export class V2MemoriesResource {
     return this.command(ref, "edit", input, opts, opts.ifMatch);
   }
 
+  /**
+   * Both sides of one of this memory's conflicts, their latest receipts,
+   * and the four answers with what each does and whether you may take it
+   * (ReviewConflict).
+   */
+  async conflict(ref: string, opts?: GetConflictOptions): Promise<Conflict> {
+    return this.req("GET", `/v2/memories/${seg(ref)}/conflict`, {
+      query: { space: opts?.space, with: opts?.with },
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Settle a conflict. Relative to this memory: `keep_this`, `keep_other`,
+   * `keep_both` (with narrower `statement` / `other_statement`) or
+   * `leave_open`. Only a person who may keep can; an agent or API key gets
+   * a MemaxError `refused` (see {@link refusalOf}).
+   */
+  async resolveConflict(
+    ref: string,
+    input: ResolveConflictInput,
+    opts: ReviewOptions,
+  ): Promise<MemoriesCommandResult> {
+    return this.req("POST", `/v2/memories/${seg(ref)}:resolve-conflict`, {
+      query: { space: opts.space },
+      body: input,
+      extraHeaders: commandHeaders(opts, opts.ifMatch),
+      signal: opts.signal,
+    });
+  }
+
   private async command(
     ref: string,
     verb: "keep" | "reject" | "edit",
@@ -241,6 +289,26 @@ export class V2ReceiptsResource {
     return this.req("GET", `/v2/spaces/${seg(space)}/receipts`, {
       query: { ...pageQuery(opts), memory: opts?.memory },
       signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Undo the command that wrote this receipt (any of its receipts):
+   * Review's ⌘Z. A person undoes their own keep, reject, edit or conflict
+   * resolution within 10 minutes, and any person who may keep undoes one
+   * of the judge's folds. A refusal throws a MemaxError `undo_refused`
+   * whose `details.reason` is window_passed, later_changes,
+   * already_undone or not_undoable.
+   */
+  async undo(
+    receipt: string,
+    input: UndoInput,
+    opts: CommandOptions,
+  ): Promise<MemoriesCommandResult> {
+    return this.req("POST", `/v2/receipts/${seg(receipt)}:undo`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
     });
   }
 }
@@ -531,6 +599,102 @@ export class V2TargetsResource {
   }
 }
 
+export interface ListGatesOptions extends PageOptions {
+  /** Only these statuses. Without it, every gate. */
+  status?: GateStatus | GateStatus[];
+}
+
+/** How a gate is addressed: a display ID (`G-0012`) needs its space. */
+export interface GateRefOptions {
+  /** The space's id or slug. Required with a display ID; optional with a gate id. */
+  space?: string;
+}
+
+export interface GateCommandOptions extends CommandOptions, GateRefOptions {
+  /**
+   * The gate's version you read (its ETag). A gate that ended since throws
+   * `invalid_transition` (409); any other mismatch, `edit_clash` (412).
+   */
+  ifMatch?: number;
+}
+
+export class V2GatesResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /** The space's decision gates, newest first. */
+  async list(space: string, opts?: ListGatesOptions): Promise<GatePage> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/gates`, {
+      query: { ...pageQuery(opts), status: asList(opts?.status) },
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Ask a person to decide (an agent that may propose). The gate waits for
+   * an answer until `expires_at`. A refusal (a person asking, a read-only
+   * agent, three already waiting) throws a MemaxError `refused`.
+   */
+  async request(
+    space: string,
+    input: RequestDecisionInput,
+    opts: CommandOptions,
+  ): Promise<GateResult> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/gates`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** One gate, by display ID (with `space`) or id. */
+  async get(
+    ref: string,
+    opts?: GateRefOptions & { signal?: AbortSignal },
+  ): Promise<Gate> {
+    return this.req("GET", `/v2/gates/${seg(ref)}`, {
+      query: { space: opts?.space },
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Answer with one option (from 1). The answer is kept as a decision you
+   * authored: `memory` in the result. Where the space's decisions need a
+   * person on the web (`gate.needs_web`), only the web app can answer; a
+   * gate that ended already throws `invalid_transition` (409).
+   */
+  async answer(
+    ref: string,
+    input: AnswerGateInput,
+    opts: GateCommandOptions,
+  ): Promise<GateResult> {
+    return this.command(ref, "answer", input, opts);
+  }
+
+  /** Take a waiting gate's question back. */
+  async withdraw(
+    ref: string,
+    input: WithdrawGateInput,
+    opts: GateCommandOptions,
+  ): Promise<GateResult> {
+    return this.command(ref, "withdraw", input, opts);
+  }
+
+  private async command(
+    ref: string,
+    verb: "answer" | "withdraw",
+    input: AnswerGateInput | WithdrawGateInput,
+    opts: GateCommandOptions,
+  ): Promise<GateResult> {
+    return this.req("POST", `/v2/gates/${seg(ref)}:${verb}`, {
+      query: { space: opts.space },
+      body: input,
+      extraHeaders: commandHeaders(opts, opts.ifMatch),
+      signal: opts.signal,
+    });
+  }
+}
+
 /** `memax.v2`: the V2 record. */
 export class V2Resource {
   readonly spaces: V2SpacesResource;
@@ -540,6 +704,7 @@ export class V2Resource {
   readonly agents: V2AgentsResource;
   readonly briefs: V2BriefsResource;
   readonly targets: V2TargetsResource;
+  readonly gates: V2GatesResource;
 
   constructor(req: RequestFn) {
     this.spaces = new V2SpacesResource(req);
@@ -549,6 +714,7 @@ export class V2Resource {
     this.agents = new V2AgentsResource(req);
     this.briefs = new V2BriefsResource(req);
     this.targets = new V2TargetsResource(req);
+    this.gates = new V2GatesResource(req);
   }
 }
 

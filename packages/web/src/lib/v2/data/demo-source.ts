@@ -9,6 +9,7 @@ import {
 } from "./demo-dataset";
 import { createDemoActivity } from "./activity-demo";
 import { createDemoAgents } from "./agents-demo";
+import { createDemoRecords } from "./demo-records";
 import type { LedgerDataSource } from "./source";
 import type { AskEvent, KeepResult, Section, SpaceOverview } from "./types";
 
@@ -47,10 +48,18 @@ function guessSection(statement: string): Section {
 
 export function createDemoSource({
   streamDelayMs = 14,
-}: { streamDelayMs?: number } = {}): LedgerDataSource {
+  commandDelayMs,
+}: { streamDelayMs?: number; commandDelayMs?: number } = {}): LedgerDataSource {
   let nextRef = DEMO_NEXT_REF;
-  const overview = (slug: string): SpaceOverview | undefined =>
-    DEMO_OVERVIEWS[slug];
+  // Review and Memories (demo-records.ts); their decisions feed the overview.
+  const records = createDemoRecords({
+    now: () => new Date(DEMO_NOW),
+    commandDelayMs,
+  });
+  const overview = (slug: string): SpaceOverview | undefined => {
+    const base = DEMO_OVERVIEWS[slug];
+    return base && records.overview(slug, base);
+  };
   const kept = (ref: string, slug: string): KeepResult => ({
     ref,
     outcome: "kept",
@@ -68,6 +77,8 @@ export function createDemoSource({
     },
     now: () => new Date(DEMO_NOW),
     viewer: DEMO_VIEWER,
+    review: records.review,
+    memories: records.memories,
     spaces: async () => [...DEMO_SPACES],
     overview: async (space) => {
       const found = overview(space.slug);

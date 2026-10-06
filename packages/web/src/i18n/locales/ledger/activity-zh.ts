@@ -132,6 +132,7 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     agentsOne: "1 个 Agent",
     moved: "{actor}把一条记忆移到了别的空间。",
     answered: "{actor}回答了一个问题。",
+    withdrawn: "{actor}撤回了一个问题（{ref}）。",
     undid: "{actor}撤销了一次改动。",
     dream:
       "{actor}把 {notes}合并成 {facts}，标出 {stale} 条过时，淡出 {faded} 条。",
@@ -156,6 +157,9 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     pulled: "{actor}把 {ref} 里的手动改动拉进了审阅。",
     overwritten: "{actor}覆盖了 {ref} 里的手动改动。",
     stopped: "{actor}停止编译 {ref}。",
+    judged: "{actor}检查了 {ref} 是否重复或冲突。",
+    linked: "{actor}把 {ref} 关联到它更新的记忆。",
+    superseded: "{actor}用新的决定取代了 {ref}。",
     other: "{actor}改动了 {ref}。",
   },
 };

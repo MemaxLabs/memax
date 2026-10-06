@@ -65,6 +65,9 @@ var sampleRequests = map[string]struct {
 	"keepMemory":       {path: "/v2/memories/M-0001:keep?space=memax-v2", header: map[string]string{"If-Match": `"1"`}},
 	"editMemory":       {path: "/v2/memories/M-0001:edit?space=memax-v2", body: `{"statement":"y"}`, header: map[string]string{"If-Match": `"1"`}},
 	"rejectMemory":     {path: "/v2/memories/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:reject", body: `{"reason":"duplicate"}`},
+	"getConflict":      {path: "/v2/memories/M-0431/conflict?space=memax-v2&with=M-0174"},
+	"resolveConflict":  {path: "/v2/memories/M-0431:resolve-conflict?space=memax-v2", body: `{"choice":"keep_this"}`},
+	"undoReceipt":      {path: "/v2/receipts/" + sampleID + ":undo"},
 	"listAgents":       {path: "/v2/agents"},
 	"listSpaceAgents":  {path: "/v2/spaces/memax-v2/agents"},
 	"getAgent":         {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"},
@@ -88,6 +91,12 @@ var sampleRequests = map[string]struct {
 	"pullDrift":         {path: "/v2/targets/" + sampleID + "/drift:pull"},
 	"overwriteDrift":    {path: "/v2/targets/" + sampleID + "/drift:overwrite", body: `{"reason":"the record wins"}`},
 	"stopDrift":         {path: "/v2/targets/" + sampleID + "/drift:stop"},
+
+	"listGates":       {path: "/v2/spaces/memax-v2/gates?status=waiting&status=expired"},
+	"requestDecision": {path: "/v2/spaces/memax-v2/gates", body: `{"question":"Which deploy target?","options":[{"label":"Fly.io"},{"label":"Railway"}]}`},
+	"getGate":         {path: "/v2/gates/G-0012?space=memax-v2"},
+	"answerGate":      {path: "/v2/gates/G-0012:answer?space=memax-v2", body: `{"option":1}`, header: map[string]string{"If-Match": `"1"`}},
+	"withdrawGate":    {path: "/v2/gates/" + sampleID + ":withdraw"},
 }
 
 const sampleID = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
@@ -246,6 +255,21 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "ChangeKind", specEnum(t, "ChangeKind"), []string{ledger.ChangeEdit, ledger.ChangeNew, ledger.ChangeRemove})
 	sameSet(t, "ChangeOutcome", specEnum(t, "ChangeOutcome"),
 		[]string{ledger.OutcomeChangeProposed, ledger.OutcomeChangeReview, ledger.OutcomeChangeSkipped})
+
+	// The judge, links, conflicts and Undo.
+	sameSet(t, "LinkKind", specEnum(t, "LinkKind"), strs(ledger.LinkKinds))
+	sameSet(t, "LinkDirection", specEnum(t, "LinkDirection"), []string{ledger.LinkOut, ledger.LinkIn})
+	sameSet(t, "Relation", specEnum(t, "Relation"), strs(ledger.Relations))
+	sameSet(t, "JudgeStage", specEnum(t, "JudgeStage"), strs(ledger.JudgeStages))
+	sameSet(t, "VerdictOutcome", specEnum(t, "VerdictOutcome"), strs(ledger.VerdictOutcomes))
+	sameSet(t, "JudgeState", specEnum(t, "JudgeState"), []string{ledger.JudgeWorking, ledger.JudgeJudged, ledger.JudgeFailed})
+	sameSet(t, "ModelTier", specEnum(t, "ModelTier"), []string{ledger.TierPrimary, ledger.TierFallback, ledger.TierStrong})
+	sameSet(t, "ConflictChoice", specEnum(t, "ConflictChoice"), strs(ledger.ConflictChoices))
+	sameSet(t, "ConflictChange", specEnum(t, "ConflictChange"), ledger.ConflictChanges)
+	sameSet(t, "UndoRefusal", specEnum(t, "UndoRefusal"), ledger.UndoRefusals)
+
+	// Decision gates.
+	sameSet(t, "GateStatus", specEnum(t, "GateStatus"), strs(ledger.GateStatuses))
 }
 
 // stringConsts parses a Go file for string constants whose names start
@@ -321,4 +345,8 @@ func TestReceiptEnumsMatchTheSchema(t *testing.T) {
 	}
 	sameSet(t, "ReceiptAction", specEnum(t, "ReceiptAction"), check("receipts_action_check"))
 	sameSet(t, "ObjectKind", specEnum(t, "ObjectKind"), check("receipts_object_kind_check"))
+	// The judge's verdicts (migration 035).
+	sameSet(t, "JudgeStage", specEnum(t, "JudgeStage"), check("judge_verdicts_stage_check"))
+	sameSet(t, "Relation", specEnum(t, "Relation"), check("judge_verdicts_verdict_check"))
+	sameSet(t, "VerdictOutcome", specEnum(t, "VerdictOutcome"), check("judge_verdicts_outcome_check"))
 }

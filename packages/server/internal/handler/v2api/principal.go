@@ -99,6 +99,11 @@ func (h *Handler) principalFor(r *http.Request) (*principal, *apiError) {
 	if grant.DefaultPermissions.Has(handler.PermMemoryWrite) {
 		limit = policy.AutonomyWrite
 	}
+	// An OAuth grant's scope caps it too: memax:propose never keeps, and
+	// memax:read never writes, whatever the connection says (plan 25 §5.15).
+	if ceiling := grant.AutonomyCeiling(); ceiling != "" {
+		limit = policy.MinAutonomy(limit, policy.Autonomy(ceiling))
+	}
 	name := grant.AgentName
 	if k := ledger.AgentFromV1(name); k != ledger.AgentOther {
 		name = k.Name()

@@ -1,0 +1,285 @@
+import type { Actor, TargetLine } from "./records";
+import type { ConflictData, ReviewCardData, ReviewItem } from "./review";
+
+/**
+ * The handoff's demo records for Review (screens/INDEX.md › Demo data,
+ * and the Review, ReviewEdit and ReviewConflict boards), so those
+ * screens reproduce the boards. Memories' rows are in
+ * demo-memories-data.ts. Data, not copy: it stays in English like the
+ * boards' own content.
+ */
+
+/** A time on the boards' Monday (Vancouver), or on another day. */
+export const at = (time: string, day = "2026-10-05") =>
+  `${day}T${time}:00-07:00`;
+
+export const ZZ: Actor = {
+  kind: "person",
+  self: true,
+  initials: "ZZ",
+  name: "Ziyang",
+};
+export const JY: Actor = {
+  kind: "person",
+  self: false,
+  initials: "JY",
+  name: "Jiahao",
+};
+export const agent = (key: string): Actor => ({ kind: "agent", agent: key });
+export const DREAM: Actor = { kind: "dream" };
+
+/** Review.png's "Keeping recompiles". */
+const V2_TARGETS: TargetLine[] = [
+  { path: "CLAUDE.md", tool: "Claude Code", status: "synced" },
+  { path: "AGENTS.md", tool: "Codex · OpenCode", status: "synced" },
+  { path: ".cursor/rules/memax.mdc", tool: "Cursor", status: "drifted" },
+];
+
+/** Memory.png's "Reaches". */
+export const V2_REACHES: TargetLine[] = [
+  { path: "CLAUDE.md", tool: "Claude Code", status: "synced" },
+  { path: "AGENTS.md", tool: "Codex", status: "synced" },
+  { path: ".cursor/rules/memax.mdc", tool: "Cursor", status: "drifted" },
+  { path: "ChatGPT project", tool: "ChatGPT", status: "synced" },
+];
+
+const item = (
+  fields: Partial<ReviewItem> &
+    Pick<ReviewItem, "ref" | "statement" | "section" | "by" | "at">,
+): ReviewItem => ({
+  version: 1,
+  state: "proposed",
+  lifecycle: "proposed",
+  external: false,
+  action: "proposed",
+  session: null,
+  updates: null,
+  conflictsWith: null,
+  intoSpace: null,
+  ...fields,
+});
+
+/** Review.png's queue, in the board's order. */
+export const DEMO_QUEUES: Record<string, ReviewItem[]> = {
+  "memax-v2": [
+    item({
+      ref: "M-0430",
+      statement:
+        "MCP write tools must ask for confirmation with input_required.",
+      section: "conventions",
+      external: true,
+      by: agent("claude-code"),
+      action: "updated",
+      at: at("13:40"),
+      session: "3e1a",
+      updates: "M-0156",
+    }),
+    item({
+      ref: "M-0431",
+      statement: "Deploy the v2 API to Fly.io in iad and ams.",
+      section: "decisions",
+      state: "conflict",
+      by: agent("codex"),
+      at: at("14:26"),
+      session: "9f1c",
+      conflictsWith: "M-0174",
+    }),
+    item({
+      ref: "M-0432",
+      statement: "Pin shared dependency versions with the pnpm catalog.",
+      section: "conventions",
+      by: agent("codex"),
+      at: at("14:18"),
+      session: "8f2c",
+    }),
+    item({
+      ref: "M-0433",
+      statement: "Prefers diffs over prose summaries in code review.",
+      section: "preferences",
+      by: agent("chatgpt"),
+      at: at("11:40"),
+      intoSpace: "Personal",
+    }),
+    item({
+      ref: "M-0187",
+      statement: "Ask memax answers with the Haiku tier.",
+      section: "conventions",
+      state: "stale",
+      lifecycle: "kept",
+      by: DREAM,
+      action: "flagged",
+      at: at("03:12"),
+    }),
+  ],
+  "memax-team": [
+    item({
+      ref: "M-0444",
+      statement:
+        "The web app reads feature flags from the API, never from env vars.",
+      section: "conventions",
+      by: agent("claude-code"),
+      at: at("14:35"),
+      session: "71c0",
+    }),
+    item({
+      ref: "M-0445",
+      statement: "Release notes go out on Thursdays, after the staging soak.",
+      section: "decisions",
+      by: agent("codex"),
+      at: at("13:20"),
+    }),
+  ],
+};
+
+export const M0156 = {
+  ref: "M-0156",
+  statement: "MCP write tools must ask for confirmation through elicitation.",
+  by: ZZ,
+  at: at("10:02", "2026-08-14"),
+};
+export const M0102 = {
+  ref: "M-0102",
+  statement: "Remote MCP is stateless streamable HTTP with OAuth 2.1.",
+  by: ZZ,
+  at: at("16:20", "2026-09-30"),
+};
+export const M0174 = {
+  ref: "M-0174",
+  statement: "Deploy the v2 API to Railway for its preview environments.",
+  by: JY,
+  at: at("15:05", "2026-09-18"),
+};
+export const M0071 = {
+  ref: "M-0071",
+  statement: "pnpm workspaces only. Never run `npm install` at the root.",
+  by: JY,
+  at: at("11:30", "2026-08-29"),
+};
+
+const none = {
+  before: null,
+  conflict: null,
+  evidence: null,
+  readFrom: null,
+  sourceUrl: null,
+};
+
+/** What each card shows beyond its queue row. */
+export const DEMO_CARDS: Record<string, ReviewCardData> = {
+  "M-0430": {
+    before: { ref: M0156.ref, statement: M0156.statement },
+    conflict: null,
+    evidence: {
+      quote:
+        "“A server that needs input returns an input_required result, and the client retries with the answer.”",
+      source: "modelcontextprotocol.io · spec 2026‑07‑28",
+    },
+    readFrom: "the MCP specification",
+    sourceUrl: "https://modelcontextprotocol.io/specification/2026-07-28",
+    touches: {
+      memories: [M0156, M0102],
+      basis: "links",
+      replacesOnKeep: true,
+      targets: V2_TARGETS,
+    },
+  },
+  "M-0431": {
+    ...none,
+    conflict: { ref: M0174.ref, statement: M0174.statement },
+    touches: {
+      memories: [M0174],
+      basis: "links",
+      replacesOnKeep: false,
+      targets: V2_TARGETS,
+    },
+  },
+  "M-0432": {
+    ...none,
+    touches: {
+      memories: [M0071],
+      basis: "section",
+      replacesOnKeep: false,
+      targets: V2_TARGETS,
+    },
+  },
+  "M-0433": {
+    ...none,
+    touches: {
+      memories: [],
+      basis: "section",
+      replacesOnKeep: false,
+      targets: [
+        { path: "CLAUDE.md", tool: "Claude Code", status: "synced" },
+        { path: "AGENTS.md", tool: "Codex", status: "synced" },
+      ],
+    },
+  },
+  "M-0187": {
+    ...none,
+    touches: {
+      memories: [],
+      basis: "section",
+      replacesOnKeep: false,
+      targets: V2_TARGETS,
+    },
+  },
+};
+
+/** ReviewConflict.png: M-0431 against M-0174. */
+export const DEMO_CONFLICTS: Record<string, ConflictData> = {
+  "M-0431": {
+    question: "Fly.io or Railway for the v2 API?",
+    kept: {
+      ...M0174,
+      why: "Simpler preview environments, one per pull request.",
+      source: "A chat with Claude on Sep 18",
+      reaches: { files: 4, reads: 61 },
+      evidence: null,
+      session: null,
+    },
+    proposal: {
+      ref: "M-0431",
+      statement: "Deploy the v2 API to Fly.io in iad and ams.",
+      by: agent("codex"),
+      at: at("14:26"),
+      why: "The current API and workers already run on Fly.io in iad and ams, next to Postgres.",
+      source: null,
+      reaches: null,
+      evidence: {
+        code: "infra/fly/api.toml",
+        changedAt: at("09:10", "2026-10-01"),
+      },
+      session: "Cloud task 9f1c, during handoff H-0093",
+    },
+    options: [
+      {
+        kind: "proposal",
+        label: "Fly.io everywhere",
+        detail: null,
+        decision: "Deploy the v2 API to Fly.io in iad and ams.",
+      },
+      {
+        kind: "kept",
+        label: "Railway, as kept",
+        detail: null,
+        decision: "Deploy the v2 API to Railway for its preview environments.",
+      },
+      {
+        kind: "both",
+        label: "Both, each with its own scope",
+        detail: "Production on Fly.io; previews on Railway.",
+        decision:
+          "The v2 API runs on Fly.io in iad and ams. Preview environments for pull requests run on Railway.",
+      },
+      {
+        kind: "open",
+        label: null,
+        detail: "Codex keeps both configs behind a flag.",
+        decision: "",
+      },
+    ],
+    suggested: 2,
+    recompiles: 4,
+    tells: ["codex", "cursor", "claude-code"],
+  },
+};

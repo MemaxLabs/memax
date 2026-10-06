@@ -188,6 +188,47 @@ func TestAllowedMatchesTransitions(t *testing.T) {
 	}
 }
 
+func TestUndoTransitions(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		from, to Lifecycle
+		want     bool
+	}{
+		{Kept, Proposed, true}, {Rejected, Proposed, true},
+		{Merged, Proposed, false}, {Kept, Rejected, false}, {Forgotten, Proposed, false}, {Proposed, Kept, false},
+	} {
+		if got := UndoAllowed(c.from, c.to); got != c.want {
+			t.Errorf("UndoAllowed(%s, %s) = %v, want %v", c.from, c.to, got, c.want)
+		}
+	}
+	ok := []struct{ from, to State }{
+		{st(Kept), st(Proposed)},
+		{st(Rejected), st(Proposed, Conflict)},
+		{st(Merged), st(Proposed)},
+		{st(Faded), st(Kept, Conflict)},
+		{st(Kept), st(Kept, Stale)},
+		{st(Proposed), st(Proposed, Conflict)},
+	}
+	for _, c := range ok {
+		if err := CanRestore(c.from, c.to); err != nil {
+			t.Errorf("CanRestore(%v → %v): %v", c.from, c.to, err)
+		}
+	}
+	bad := []struct{ from, to State }{
+		{st(Forgotten), st(Kept)},
+		{st(Kept), st(Merged)},
+		{st(Proposed), st(Proposed, Stale)},
+		{st(Faded), st(Faded, Conflict)},
+		{st(Kept), State{Lifecycle: "archived"}},
+	}
+	for _, c := range bad {
+		var te *TransitionError
+		if err := CanRestore(c.from, c.to); !errors.As(err, &te) {
+			t.Errorf("CanRestore(%v → %v) = %v, want a TransitionError", c.from, c.to, err)
+		}
+	}
+}
+
 func TestFlagsNormalize(t *testing.T) {
 	t.Parallel()
 	got := NewFlags(Stale, Conflict, Stale)

@@ -89,6 +89,9 @@ var routes = []Route{
 	{"POST", "/v2/memories/{ref}:keep", "keepMemory", (*Handler).keep},
 	{"POST", "/v2/memories/{ref}:edit", "editMemory", (*Handler).edit},
 	{"POST", "/v2/memories/{ref}:reject", "rejectMemory", (*Handler).reject},
+	{"GET", "/v2/memories/{ref}/conflict", "getConflict", (*Handler).getConflict},
+	{"POST", "/v2/memories/{ref}:resolve-conflict", "resolveConflict", (*Handler).resolveConflict},
+	{"POST", "/v2/receipts/{receipt}:undo", "undoReceipt", (*Handler).undoReceipt},
 	{"GET", "/v2/agents", "listAgents", (*Handler).listAgents},
 	{"GET", "/v2/spaces/{space}/agents", "listSpaceAgents", (*Handler).listSpaceAgents},
 	{"GET", "/v2/agents/{agent}", "getAgent", (*Handler).getAgent},
@@ -111,6 +114,11 @@ var routes = []Route{
 	{"POST", "/v2/targets/{target}/drift:pull", "pullDrift", (*Handler).pullDrift},
 	{"POST", "/v2/targets/{target}/drift:overwrite", "overwriteDrift", (*Handler).overwriteDrift},
 	{"POST", "/v2/targets/{target}/drift:stop", "stopDrift", (*Handler).stopDrift},
+	{"GET", "/v2/spaces/{space}/gates", "listGates", (*Handler).listGates},
+	{"POST", "/v2/spaces/{space}/gates", "requestDecision", (*Handler).requestDecision},
+	{"GET", "/v2/gates/{ref}", "getGate", (*Handler).getGate},
+	{"POST", "/v2/gates/{ref}:answer", "answerGate", (*Handler).answerGate},
+	{"POST", "/v2/gates/{ref}:withdraw", "withdrawGate", (*Handler).withdrawGate},
 }
 
 // Routes lists every /v2 operation this package serves, named as in

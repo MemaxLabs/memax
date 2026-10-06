@@ -1,0 +1,284 @@
+/* Review, after Review.dc.html and ReviewEdit.dc.html: a 400px queue on
+ * card with its head, list and key legend, and the card column (720px)
+ * beside it. Below 1024px it becomes one column and the card replaces
+ * the queue (HANDOFF §7). */
+
+.layout {
+  display: grid;
+  grid-template-columns: 400px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.queue {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--card);
+}
+
+.queueHead {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 32px 16px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.queueHead :global(.mx-seg) {
+  align-self: flex-start;
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.list :global(.mx-row) {
+  scroll-margin: 8px;
+}
+
+.more {
+  padding: 8px 12px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--sheet);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.allKeys {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.allKeys:hover {
+  color: var(--ink-2);
+}
+
+.allKeys:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.cardPane {
+  min-height: 0;
+  overflow: auto;
+}
+
+.cardColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 32px 48px;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: -8px;
+}
+
+.pager {
+  display: none;
+}
+
+.compare {
+  align-self: flex-start;
+  margin-top: -8px;
+}
+
+.filterEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px 16px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+/* The empty queue: one panel spanning the sheet (States board). */
+.emptySheet {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 24px;
+}
+
+.emptySheet > * {
+  flex: 1;
+}
+
+/* ---------- Reject, with an optional reason ---------- */
+.reject {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.rejectTitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rejectActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---------- A kept memory flagged stale, or in conflict ---------- */
+.flagNote {
+  margin: -8px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+/* ---------- This touches ---------- */
+.recompiles {
+  padding: 12px 16px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.recompiles :global(.mx-section-label) {
+  margin: 0;
+}
+
+.panelNote {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+/* ---------- Loading: hairline rows at the queue's real heights ---------- */
+.bar {
+  display: block;
+  height: 10px;
+  border-radius: var(--radius-xs);
+  background: var(--well);
+}
+
+.skRow {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  column-gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.skLines {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-top: 7px;
+}
+
+.skRail {
+  display: flex;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.skCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 300px;
+  padding: 20px 24px;
+  box-sizing: border-box;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 1023px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .queue {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* The card replaces the queue: the list and its legend step aside. */
+  .list,
+  .legend {
+    display: none;
+  }
+
+  .pager {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 639px) {
+  .queueHead {
+    padding: 20px 16px 16px;
+  }
+
+  .cardColumn {
+    padding: 20px 16px 24px;
+  }
+
+  .emptySheet {
+    padding: 16px;
+  }
+
+  /* A phone has no keyboard to press them with (MobileReview.png). */
+  .cardColumn :global(.mx-btn-kbd) {
+    display: none;
+  }
+}

@@ -3,6 +3,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 
@@ -163,6 +164,40 @@ type GrantContext struct {
 	// or auth.SurfaceCLI; migration 030), set by the server at login. Empty
 	// for API keys, OAuth grants, impersonation and older tokens.
 	Surface string
+	// OAuthScope is an OAuth grant's granted scope (migration 032), empty
+	// for API keys and grants from before it was recorded.
+	OAuthScope string
+}
+
+// The MCP OAuth scopes (plan 25 §5.15): autonomy maps onto them.
+const (
+	ScopeRead    = "memax:read"
+	ScopePropose = "memax:propose"
+	ScopeWrite   = "memax:write"
+)
+
+// AutonomyCeiling is the most an OAuth grant's scope lets its agent do in
+// any space: "write", "propose" or "read". It is "" when the scope doesn't
+// say (API keys, sessions, grants from before the scope was recorded),
+// and then the permissions decide (v2api principalFor). memax:propose
+// never keeps; memax:read never writes.
+func (g GrantContext) AutonomyCeiling() string {
+	if g.PrincipalType != "oauth_grant" || strings.TrimSpace(g.OAuthScope) == "" {
+		return ""
+	}
+	return scopeCeiling(g.OAuthScope)
+}
+
+// scopeCeiling is the autonomy a scope string allows.
+func scopeCeiling(scope string) string {
+	fields := strings.Fields(scope)
+	switch {
+	case slices.Contains(fields, ScopeWrite):
+		return "write"
+	case slices.Contains(fields, ScopePropose):
+		return "propose"
+	}
+	return "read"
 }
 
 type AuthContext struct {

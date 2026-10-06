@@ -31,6 +31,9 @@ type Ledger struct {
 	// inserter enqueues follow-up jobs in the command's transaction
 	// (WithJobs); nil enqueues nothing.
 	inserter Jobs
+	// The undo windows (WithUndoWindows).
+	undoWindow      time.Duration
+	judgeUndoWindow time.Duration
 }
 
 // Option configures a Ledger.
@@ -51,7 +54,8 @@ func New(pool *pgxpool.Pool, opts ...Option) *Ledger {
 	if pool == nil {
 		return nil
 	}
-	l := &Ledger{pool: pool, now: time.Now, lockTimeout: DefaultLockTimeout, log: slog.Default()}
+	l := &Ledger{pool: pool, now: time.Now, lockTimeout: DefaultLockTimeout, log: slog.Default(),
+		undoWindow: DefaultUndoWindow, judgeUndoWindow: DefaultJudgeUndoWindow}
 	for _, o := range opts {
 		o(l)
 	}
@@ -71,7 +75,8 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		return Result{}, invalid("command", "is missing")
 	}
 	m := cmd.envelope()
-	if err := validateMeta(m, l.now()); err != nil {
+	now := l.now()
+	if err := validateMeta(m, now); err != nil {
 		return Result{}, err
 	}
 	if err := validateCommand(cmd); err != nil {
@@ -88,7 +93,8 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	w := &writer{tx: tx, meta: m, command: cmd.Name(), hash: hash, inserter: l.inserter, loginRole: loginRole}
+	w := &writer{tx: tx, meta: m, command: cmd.Name(), hash: hash, inserter: l.inserter, loginRole: loginRole,
+		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, now: now}
 	var res Result
 	switch c := cmd.(type) {
 	case *Remember:
@@ -125,6 +131,18 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.recordObservation(ctx, c)
 	case *ResolveDrift:
 		res, err = w.resolveDrift(ctx, c)
+	case *RecordVerdict:
+		res, err = w.recordVerdict(ctx, c)
+	case *ResolveConflict:
+		res, err = w.resolveConflict(ctx, c)
+	case *Undo:
+		res, err = w.undoCommand(ctx, c)
+	case *RequestDecision:
+		res, err = w.requestDecision(ctx, c)
+	case *AnswerGate:
+		res, err = w.answerGate(ctx, c)
+	case *WithdrawGate:
+		res, err = w.withdrawGate(ctx, c)
 	}
 	if err != nil {
 		return Result{}, mapDBError(err)
@@ -182,6 +200,21 @@ func validateCommand(cmd Command) error {
 		return c.validate()
 	case *ResolveDrift:
 		return c.validate()
+	case *RecordVerdict:
+		return c.validate()
+	case *ResolveConflict:
+		return c.validate()
+	case *Undo:
+		if c.Receipt == uuid.Nil {
+			return invalid("receipt", "say which receipt to undo")
+		}
+		return nil
+	case *RequestDecision:
+		return c.validate()
+	case *AnswerGate:
+		return validateGateTarget(c.Gate, c.ExpectedVersion)
+	case *WithdrawGate:
+		return validateGateTarget(c.Gate, c.ExpectedVersion)
 	case *Remember:
 		return c.NewMemory.validate()
 	case *Propose:

@@ -97,6 +97,44 @@ func TestCompleteHappyPath(t *testing.T) {
 	}
 }
 
+// A strict schema goes out as output_config.format, and zero data
+// retention as OpenRouter's provider.zdr; neither is sent by default.
+func TestCompleteSendsStructuredOutputAndZDR(t *testing.T) {
+	t.Parallel()
+	var bodies []map[string]any
+	srv := fakeAnthropic(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		bodies = append(bodies, body)
+		successResponse(w, `{"ok":true}`)
+	})
+	c := New("k", srv.URL)
+	schema := json.RawMessage(`{"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"],"additionalProperties":false}`)
+	if _, err := c.Complete(context.Background(), CompleteRequest{
+		Model: "anthropic/claude-haiku-4.5", MaxTokens: 50, Prompt: "p", OutputSchema: schema, ZeroDataRetention: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Complete(context.Background(), CompleteRequest{Model: "m", MaxTokens: 50, Prompt: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	format, _ := bodies[0]["output_config"].(map[string]any)["format"].(map[string]any)
+	if format["type"] != "json_schema" || format["schema"] == nil {
+		t.Errorf("output_config = %v", bodies[0]["output_config"])
+	}
+	if p, _ := bodies[0]["provider"].(map[string]any); p["zdr"] != true {
+		t.Errorf("provider = %v", bodies[0]["provider"])
+	}
+	if _, ok := bodies[1]["output_config"]; ok {
+		t.Error("output_config sent without a schema")
+	}
+	if _, ok := bodies[1]["provider"]; ok {
+		t.Error("provider sent without zero data retention")
+	}
+}
+
 func TestCompleteReturnsErrorOn5xx(t *testing.T) {
 	t.Parallel()
 	srv := fakeAnthropic(t, func(w http.ResponseWriter, r *http.Request) {

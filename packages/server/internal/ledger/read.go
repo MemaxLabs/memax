@@ -46,6 +46,9 @@ func (l *Ledger) GetMemory(ctx context.Context, scope Scope, ref string) (*Memor
 		if m.Sources, err = loadSources(ctx, tx, m.ID); err != nil {
 			return err
 		}
+		if err := attachDetails(ctx, tx, []*Memory{m}); err != nil {
+			return err
+		}
 		out = m
 		return nil
 	})
@@ -132,7 +135,7 @@ func (l *Ledger) ListMemories(ctx context.Context, scope Scope, q MemoryQuery) (
 			return fmt.Errorf("ledger: list memories: %w", err)
 		}
 		page.Memories = ms
-		return nil
+		return attachDetails(ctx, tx, pointers(page.Memories))
 	})
 	if err != nil {
 		return MemoryPage{}, err
@@ -225,7 +228,7 @@ func (l *Ledger) ListSpaces(ctx context.Context, scope Scope) ([]Space, error) {
 	var out []Space
 	err := l.Read(ctx, scope, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-			SELECT id, tenant_id, slug, name, kind, COALESCE(repository, '')
+			SELECT id, tenant_id, slug, name, kind, COALESCE(repository, ''), v2_enabled_at
 			  FROM v2.spaces
 			 WHERE id = ANY($1)
 			 ORDER BY kind = 'personal' DESC, lower(name), id`, scope.SpaceIDs())
@@ -234,7 +237,7 @@ func (l *Ledger) ListSpaces(ctx context.Context, scope Scope) ([]Space, error) {
 		}
 		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Space, error) {
 			var sp Space
-			err := r.Scan(&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository)
+			err := r.Scan(&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository, &sp.V2EnabledAt)
 			return sp, err
 		})
 		if err != nil {
@@ -278,6 +281,9 @@ func (l *Ledger) GetMemoryHistory(ctx context.Context, scope Scope, ref string) 
 			return err
 		}
 		if m.Sources, err = loadSources(ctx, tx, m.ID); err != nil {
+			return err
+		}
+		if err := attachDetails(ctx, tx, []*Memory{m}); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `
@@ -367,6 +373,9 @@ func (l *Ledger) ReviewQueue(ctx context.Context, scope Scope, q ReviewQuery) (R
 		if err != nil {
 			return fmt.Errorf("ledger: review queue: %w", err)
 		}
+		if err := attachDetails(ctx, tx, pointers(page.Memories)); err != nil {
+			return err
+		}
 		err = tx.QueryRow(ctx, `SELECT count(*) FROM v2.memories m
 			 WHERE m.space_id = $1 AND m.space_id = ANY($2) AND `+reviewWaiting,
 			q.SpaceID, scope.SpaceIDs()).Scan(&page.Total)
@@ -385,6 +394,15 @@ func (l *Ledger) ReviewQueue(ctx context.Context, scope Scope, q ReviewQuery) (R
 		page.NextCursor = encodeReviewCursor(reviewGroupOf(&last), last.seq)
 	}
 	return page, nil
+}
+
+// pointers points at each element of ms, for the batch loaders.
+func pointers(ms []Memory) []*Memory {
+	out := make([]*Memory, len(ms))
+	for i := range ms {
+		out[i] = &ms[i]
+	}
+	return out
 }
 
 func reviewGroupOf(m *Memory) int {

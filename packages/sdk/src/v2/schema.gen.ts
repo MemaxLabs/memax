@@ -163,7 +163,11 @@ export interface paths {
          * Keep a proposal
          * @description Keeps a proposal. Only a person who is a member or owner can keep
          *     (per the space's rules); agents and API keys are refused. Send
-         *     `If-Match` with the version you reviewed.
+         *     `If-Match` with the version you reviewed. A proposal the judge has
+         *     flagged as a conflict can't be kept until it is settled (409
+         *     `invalid_transition`), and one that touches a decision in force
+         *     can't be kept before the judge has looked at it (about 5 s, at most
+         *     30 s): until then Keep answers 503 `busy` with `Retry-After`.
          */
         post: operations["keepMemory"];
         delete?: never;
@@ -229,6 +233,111 @@ export interface paths {
          *     reject. `reason` goes into the receipt.
          */
         post: operations["rejectMemory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/memories/{ref}/conflict": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Compare a conflict
+         * @description ReviewConflict: both sides of one of this memory's conflicts (the
+         *     flagged memory and the decision in force it contradicts), each with
+         *     its sources, links and the judge's verdict; their latest receipts;
+         *     and the four answers with what each does and whether you may take
+         *     it. Pass `with` when the memory has more than one conflict. A memory
+         *     with no conflict is 409 `invalid_transition`.
+         */
+        get: operations["getConflict"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/memories/{ref}:resolve-conflict": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle a conflict
+         * @description One answer must win (rule 11). Relative to this memory:
+         *     `keep_this` keeps it and the other side gives way, `keep_other` the
+         *     reverse (a proposal that gives way is rejected; a kept decision is
+         *     superseded and stops compiling; a kept fact fades), `keep_both`
+         *     keeps both, usually with narrower words (`statement`,
+         *     `other_statement`), and `leave_open` makes it an open question,
+         *     setting a decision in force on either side to open. The flag is
+         *     cleared, every change has its receipt, and the whole resolution can
+         *     be undone. Only a person who may keep can settle a conflict, on the
+         *     web where the space needs one for decisions.
+         */
+        post: operations["resolveConflict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/receipts/{receipt}:undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A receipt's id. */
+                receipt: components["parameters"]["ReceiptPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo a decision
+         * @description Undoes the command that wrote this receipt (any of its receipts):
+         *     Review's ⌘Z. A person undoes their own keep, reject, edit or
+         *     conflict resolution within 10 minutes; any person who may keep
+         *     undoes one of the judge's folds within 14 days. Each memory gets an
+         *     `undid` receipt whose `source` names the receipt undone
+         *     (`{"kind": "receipt", "ref": <id>}`), and targets recompile when the
+         *     kept set changes. Refused with 409 `undo_refused` when the window
+         *     has passed (`window_passed`), it was already undone
+         *     (`already_undone`), a later change depends on it (`later_changes`,
+         *     `details.ref` names what is in the way), or the receipt's command
+         *     can't be undone (`not_undoable`). Forget can never be undone.
+         */
+        post: operations["undoReceipt"];
         delete?: never;
         options?: never;
         head?: never;
@@ -773,6 +882,140 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/gates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List decision gates
+         * @description The space's decision gates, newest first. Without `status`, every
+         *     status is listed. `waiting` are the ones an agent is waiting on (a
+         *     waiting gate past its `expires_at` is `expired`).
+         */
+        get: operations["listGates"];
+        put?: never;
+        /**
+         * Ask a person to decide
+         * @description An agent asks a question with two to four options, and the gate waits
+         *     for a person's answer. Only an agent connected to the space at
+         *     Propose or Write asks (an API key may: it proposes); a read-only or
+         *     paused one only reads, and a person remembers the decision instead
+         *     (403 `refused`). One agent has at most three decisions waiting in a
+         *     space (`gate_limit`). A question, its context or an option that
+         *     contains a credential is refused.
+         */
+        post: operations["requestDecision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/gates/{ref}": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A gate's display ID (G-0012, with `?space=`) or its id. */
+                ref: components["parameters"]["GateRefPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read one decision gate
+         * @description The question, its options, and how it ended, if it has.
+         */
+        get: operations["getGate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/gates/{ref}:answer": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A gate's display ID (G-0012, with `?space=`) or its id. */
+                ref: components["parameters"]["GateRefPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer a decision gate
+         * @description A person answers with one of the gate's options, and the answer is
+         *     kept, in the same command, as a decision they authored: `memory` in
+         *     the result, with a `kept` receipt, beside the gate's `answered`
+         *     receipt. It follows Keep's rules for a decision: only members and
+         *     owners (per the space's rules) answer, never an agent or an API key,
+         *     and where the space's decisions need a person on the web
+         *     (`gate.needs_web`) only a request from the web app answers; anything
+         *     else is refused (`decision_needs_web`) and the gate keeps waiting. A
+         *     gate answered, withdrawn or expired already is 409
+         *     `invalid_transition`, with `details.status`.
+         */
+        post: operations["answerGate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/gates/{ref}:withdraw": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A gate's display ID (G-0012, with `?space=`) or its id. */
+                ref: components["parameters"]["GateRefPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw a decision gate
+         * @description Takes a waiting gate's question back. The agent that asked may (and
+         *     then it knows already), and so may the person it works for and
+         *     anyone who could answer it (`not_your_gate` otherwise). A gate that
+         *     isn't waiting is 409 `invalid_transition`, with `details.status`.
+         */
+        post: operations["withdrawGate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -870,10 +1113,15 @@ export interface components {
          *     paused, resumed and disconnected. A Brief's (`brief`) are revised; a
          *     target's (`target`) configured, requested, observed, pulled,
          *     overwritten and stopped; a compile run's (`compile`) compiled and
-         *     delivered.
+         *     delivered. The judge's (by Memax) are merged (a fold), linked (an
+         *     update or explicit change), flagged (a conflict) and judged
+         *     (nothing to do); settling a conflict writes resolved, kept,
+         *     rejected, edited, superseded or faded; Undo writes undid. A decision
+         *     gate's (`gate`) are asked (by the agent), answered (by a person; the
+         *     kept decision it became has its own `kept` receipt) and withdrawn.
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space";
         /**
@@ -893,20 +1141,98 @@ export interface components {
          *     external_needs_review, proposal_in_review, agent_not_connected (the
          *     agent has no connection, or none to this space, so it only reads),
          *     agent_paused, brief_by_person (agents propose; people edit the
-         *     Brief), targets_by_person, compile_by_memax. Refused changes to
+         *     Brief), targets_by_person, compile_by_memax, judge_by_memax,
+         *     undo_by_decider (only the person who decided can undo it). Refused
+         *     decision gates: gate_by_agent (agents ask; people decide directly),
+         *     person_must_answer (agents ask; people answer), gate_limit (the agent
+         *     already has 3 decisions waiting in the space), not_your_gate (only the
+         *     agent that asked, the person it works for, or someone who can answer
+         *     withdraws a question). Refused changes to
          *     agents: person_must_manage (only a person changes what an agent may
          *     do), not_your_agent, autonomy_not_allowed, key_max_propose,
          *     autonomy_needs_web (raising an agent needs a person on the web).
          *     Refused or sent to Review:
          *     viewer, owners_keep, decision_needs_web. Sent to Review: api_key,
-         *     external_source, contradicts_decision, edits_person_kept,
+         *     external_source, contradicts_decision, touches_decision (a
+         *     Write-level agent's write that touches a decision in force waits for
+         *     the judge and a person), edits_person_kept,
          *     autonomy_propose, integration, import, system_proposes, repository,
          *     person_proposed. Confirmation: confirm_in_agent.
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "confirm_in_agent";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "confirm_in_agent";
         /** @enum {string} */
-        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "unavailable";
+        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "unavailable";
+        /**
+         * @description A typed edge between two memories. merged_into: folded into another
+         *     memory (a duplicate, or a repeat of a rejection). supersedes: replaces
+         *     (or, as a proposal, would replace) another. conflicts_with:
+         *     contradicts a decision in force. closes: settles another.
+         * @enum {string}
+         */
+        LinkKind: "merged_into" | "supersedes" | "conflicts_with" | "closes";
+        /**
+         * @description `out`: from this memory to the other; `in`: from the other to this one.
+         * @enum {string}
+         */
+        LinkDirection: "out" | "in";
+        /**
+         * @description How the judge found a memory relates to another; `none` when it compared nothing.
+         * @enum {string}
+         */
+        Relation: "duplicate" | "updates" | "extends" | "contradicts" | "unrelated" | "none";
+        /**
+         * @description What decided the verdict: `exact` (the same words), `near` (a
+         *     near-verbatim repeat), `reproposal` (a repeat of a rejection),
+         *     `llm` (the model), `none` (nothing to compare, or no model).
+         * @enum {string}
+         */
+        JudgeStage: "exact" | "near" | "reproposal" | "llm" | "none";
+        /**
+         * @description What the verdict did: folded, suppressed (folded into a rejection),
+         *     linked (an update), superseding (an explicit change of a decision in
+         *     force, which keeping it supersedes), flagged (a conflict), none,
+         *     failed (no usable answer from the model; nothing flagged) or skipped
+         *     (what it pointed at changed first).
+         * @enum {string}
+         */
+        VerdictOutcome: "folded" | "suppressed" | "linked" | "superseding" | "flagged" | "none" | "failed" | "skipped";
+        /**
+         * @description `working`: not judged yet (Review's neutral mark). `judged`. `failed`: reviewed as usual.
+         * @enum {string}
+         */
+        JudgeState: "working" | "judged" | "failed";
+        /**
+         * @description The judge's model tier whose answer counted.
+         * @enum {string}
+         */
+        ModelTier: "primary" | "fallback" | "strong";
+        /**
+         * @description ReviewConflict's answers, relative to the memory in the path.
+         * @enum {string}
+         */
+        ConflictChoice: "keep_this" | "keep_other" | "keep_both" | "leave_open";
+        /**
+         * @description What an answer does to one side.
+         * @enum {string}
+         */
+        ConflictChange: "kept" | "rejected" | "superseded" | "faded" | "open" | "stays";
+        /**
+         * @description Why an undo was refused.
+         * @enum {string}
+         */
+        UndoRefusal: "window_passed" | "later_changes" | "already_undone" | "not_undoable";
+        /** @description A decision gate's display ID (G-0012) or its id. */
+        GateRef: string;
+        /** @description A decision gate's display ID, unique within its tenant. */
+        GateDisplayRef: string;
+        /**
+         * @description `waiting` for a person; `answered` (kept as a decision); `withdrawn`
+         *     (the question was taken back); `expired` (it waited past
+         *     `expires_at`, and can't be answered).
+         * @enum {string}
+         */
+        GateStatus: "waiting" | "answered" | "withdrawn" | "expired";
         /** @description A Brief version's display ID, unique within its tenant. */
         BriefRef: string;
         /** @description A compile run's display ID, unique within its tenant. */
@@ -975,6 +1301,11 @@ export interface components {
             role: components["schemas"]["Role"];
             /** @description The repository the space compiles for, if any. */
             repository?: string;
+            /**
+             * Format: date-time
+             * @description When the space switched to the V2 record. Absent while it is on V1: there, agents' writes go to the V1 memory API, and V1 behaviour applies to every surface.
+             */
+            v2_enabled_at?: string;
         };
         DecisionOption: {
             label: string;
@@ -1041,6 +1372,62 @@ export interface components {
             updated_at: components["schemas"]["Timestamp"];
             /** @description Present when one memory is read and it cites sources. */
             sources?: components["schemas"]["Source"][];
+            /** @description Its active links, both ways. Absent when it has none. */
+            links?: components["schemas"]["Link"][];
+            /**
+             * @description The memory this one would replace (it has a `supersedes` link to
+             *     it), with its current words, so Review can show the pair as a
+             *     diff ("Updates M-0156").
+             */
+            updates?: components["schemas"]["LinkedMemory"];
+            /**
+             * @description The judge's verdict on the current version; for a proposal not
+             *     judged yet, `state: working`. Absent for memories the judge
+             *     doesn't look at (a person's own keep).
+             */
+            judge?: components["schemas"]["JudgeInfo"];
+        };
+        /** @description An active link, seen from one memory. */
+        Link: {
+            id: components["schemas"]["Id"];
+            kind: components["schemas"]["LinkKind"];
+            direction: components["schemas"]["LinkDirection"];
+            /** @description The other memory. */
+            memory_id: components["schemas"]["Id"];
+            ref: components["schemas"]["DisplayRef"];
+            /** @description The receipt that made the link. */
+            receipt_id: components["schemas"]["Id"];
+            created_at: components["schemas"]["Timestamp"];
+        };
+        /** @description The other side of a link, with its current words. */
+        LinkedMemory: {
+            id: components["schemas"]["Id"];
+            ref: components["schemas"]["DisplayRef"];
+            version: number;
+            statement: string;
+            lifecycle: components["schemas"]["Lifecycle"];
+        };
+        MemoryPointer: {
+            id: components["schemas"]["Id"];
+            ref: components["schemas"]["DisplayRef"];
+        };
+        /** @description The judge's verdict on a memory's current version. */
+        JudgeInfo: {
+            state: components["schemas"]["JudgeState"];
+            /** @description The version judged (or waiting to be). */
+            version: number;
+            verdict?: components["schemas"]["Relation"];
+            outcome?: components["schemas"]["VerdictOutcome"];
+            stage?: components["schemas"]["JudgeStage"];
+            /** @description The memory the verdict is about. */
+            related?: components["schemas"]["MemoryPointer"];
+            confidence?: number;
+            /** @description One line from the model, in English. Purged if either memory is forgotten. */
+            rationale?: string;
+            /** @description The model's merged wording, for Review to offer. */
+            merged_statement?: string;
+            tier?: components["schemas"]["ModelTier"];
+            judged_at?: components["schemas"]["Timestamp"];
         };
         /** @description One version of a memory's statement. */
         MemoryVersion: {
@@ -1107,6 +1494,45 @@ export interface components {
             memory: components["schemas"]["Memory"];
             /** @description The receipts the command wrote, oldest first. */
             receipts: components["schemas"]["Receipt"][];
+        };
+        /** @description A command that changed several memories (settling a conflict, an undo). */
+        MemoriesCommandResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            /** @description The memory the command named (for an undo, the first it restored). */
+            memory: components["schemas"]["Memory"];
+            /** @description Every memory the command changed, that one first. */
+            memories: components["schemas"]["Memory"][];
+            /** @description The receipts the command wrote, oldest first. */
+            receipts: components["schemas"]["Receipt"][];
+        };
+        ConflictEffect: {
+            ref: components["schemas"]["DisplayRef"];
+            change: components["schemas"]["ConflictChange"];
+        };
+        ConflictOption: {
+            choice: components["schemas"]["ConflictChoice"];
+            /** @description What it does to each side, this memory first. */
+            effects: components["schemas"]["ConflictEffect"][];
+            /** @description Whether you may take it. */
+            allowed: boolean;
+            /** @description Why you may not, when policy says so. */
+            policy?: components["schemas"]["PolicyDecision"];
+        };
+        /** @description Both sides of a conflict, for ReviewConflict. */
+        Conflict: {
+            /** @description This side, with its sources, links and verdict. */
+            memory: components["schemas"]["Memory"];
+            other: components["schemas"]["Memory"];
+            /** @description The side carrying the conflict flag. */
+            flagged_ref: components["schemas"]["DisplayRef"];
+            /** @description The decision in force it contradicts. */
+            decision_ref: components["schemas"]["DisplayRef"];
+            /** @description The conflicts_with link, seen from this side. */
+            link: components["schemas"]["Link"];
+            /** @description Both sides' latest receipts, newest first. */
+            receipts: components["schemas"]["Receipt"][];
+            options: components["schemas"]["ConflictOption"][];
         };
         MemoryDetail: {
             memory: components["schemas"]["Memory"];
@@ -1566,6 +1992,80 @@ export interface components {
             proposals: components["schemas"]["Memory"][];
             receipts: components["schemas"]["Receipt"][];
         };
+        GateOption: {
+            label: string;
+            /** @description What choosing it means. */
+            detail?: string;
+        };
+        /** @description How a person answered, and the decision it became. */
+        GateAnswer: {
+            /** @description The chosen option, counting from 1. */
+            option: number;
+            label: string;
+            /** @description The kept decision the answer became. */
+            memory: components["schemas"]["MemoryPointer"];
+            /** @description The person who answered. */
+            answered_by: components["schemas"]["Id"];
+            answered_at: components["schemas"]["Timestamp"];
+            assurance: components["schemas"]["Assurance"];
+        };
+        /** @description Who took the question back, and when. */
+        GateWithdrawal: {
+            /**
+             * @description `agent`: the one that asked. `person`: the person it works for, or someone who could answer.
+             * @enum {string}
+             */
+            by_kind: "agent" | "person";
+            /** @description The agent connection or the person. */
+            by: components["schemas"]["Id"];
+            at: components["schemas"]["Timestamp"];
+        };
+        /** @description A decision gate (G-): a question an agent asked a person. */
+        Gate: {
+            id: components["schemas"]["Id"];
+            ref: components["schemas"]["GateDisplayRef"];
+            space_id: components["schemas"]["Id"];
+            tenant_id: components["schemas"]["Id"];
+            /** @description One question, in the asking agent's words. */
+            question: string;
+            /** @description Why it matters, from the agent. */
+            context?: string;
+            options: components["schemas"]["GateOption"][];
+            status: components["schemas"]["GateStatus"];
+            expires_at: components["schemas"]["Timestamp"];
+            /** @description The agent connection that asked. */
+            asked_by: components["schemas"]["Id"];
+            /** @description The agent that asked, e.g. codex. */
+            agent?: string;
+            /** @description The agent session it asked from. */
+            session_ref?: string;
+            /** @description Answering needs a person on the web: the space's rule for decisions (team spaces by default). The CLI and in-agent answers are refused. */
+            needs_web: boolean;
+            answer?: components["schemas"]["GateAnswer"];
+            withdrawn?: components["schemas"]["GateWithdrawal"];
+            /** @description When the agent that asked was told how it ended. */
+            delivered_at?: components["schemas"]["Timestamp"];
+            /** @description Changes when the gate ends. Send it back as `If-Match`. */
+            version: number;
+            created_receipt_id: components["schemas"]["Id"];
+            last_receipt_id: components["schemas"]["Id"];
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        GatePage: {
+            items: components["schemas"]["Gate"][];
+            has_more: boolean;
+            next_cursor?: components["schemas"]["Cursor"];
+        };
+        GateResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            gate: components["schemas"]["Gate"];
+            /** @description For an answer, the kept decision it became. */
+            memory?: components["schemas"]["Memory"];
+            /** @description The receipts the command wrote, oldest first. */
+            receipts: components["schemas"]["Receipt"][];
+        };
         /** @description A source a new memory cites. */
         SourceInput: {
             kind: components["schemas"]["SourceKind"];
@@ -1608,8 +2108,43 @@ export interface components {
             occurred_at?: components["schemas"]["Timestamp"];
             session_ref?: components["schemas"]["SessionRef"];
         };
-        /** @description The body of keep, reject and compile. Every field is optional. */
+        RequestDecisionRequest: {
+            /** @description The decision, as one question. */
+            question: string;
+            /** @description Why it matters; the tradeoffs, and a recommendation if there is one. */
+            context?: string;
+            /** @description Two to four different answers, in order. */
+            options: components["schemas"]["GateOption"][];
+            /** @description When the agent stops waiting. Defaults to 7 days from now; between 5 minutes and 30 days. */
+            expires_at?: components["schemas"]["Timestamp"];
+            reason?: components["schemas"]["Reason"];
+            /** @description When it happened on the client; offline queues keep the original time. */
+            occurred_at?: components["schemas"]["Timestamp"];
+            session_ref?: components["schemas"]["SessionRef"];
+        };
+        AnswerGateRequest: {
+            /** @description The chosen option, counting from 1. */
+            option: number;
+            reason?: components["schemas"]["Reason"];
+            /** @description When it happened on the client; offline queues keep the original time. */
+            occurred_at?: components["schemas"]["Timestamp"];
+            session_ref?: components["schemas"]["SessionRef"];
+        };
+        /** @description The body of keep, reject, compile and withdrawing a gate. Every field is optional. */
         ReviewRequest: {
+            reason?: components["schemas"]["Reason"];
+            /** @description When it happened on the client; offline queues keep the original time. */
+            occurred_at?: components["schemas"]["Timestamp"];
+            session_ref?: components["schemas"]["SessionRef"];
+        };
+        ResolveConflictRequest: {
+            choice: components["schemas"]["ConflictChoice"];
+            /** @description The other side, by display ID or id, when this memory has more than one conflict. */
+            other?: components["schemas"]["MemoryRef"];
+            /** @description keep_both only. Narrower words for this memory. */
+            statement?: string;
+            /** @description keep_both only. Narrower words for the other side. */
+            other_statement?: string;
             reason?: components["schemas"]["Reason"];
             /** @description When it happened on the client; offline queues keep the original time. */
             occurred_at?: components["schemas"]["Timestamp"];
@@ -1733,8 +2268,12 @@ export interface components {
             field?: string;
             /** @description The policy decision (`refused`). */
             policy?: components["schemas"]["PolicyDecision"];
-            /** @description The memory's display ID (`edit_clash`, `invalid_transition`). */
+            /** @description The memory's or gate's display ID (`edit_clash`, `invalid_transition`), or what is in an undo's way (`undo_refused`). */
             ref?: string;
+            /** @description The gate's status now (`invalid_transition` on a gate). */
+            status?: components["schemas"]["GateStatus"];
+            /** @description Why an undo was refused (`undo_refused`). */
+            reason?: components["schemas"]["UndoRefusal"];
             /** @description The version you sent (`edit_clash`). */
             expected_version?: number;
             /** @description The memory's version now (`edit_clash`). */
@@ -1768,6 +2307,12 @@ export interface components {
         };
         CommandResultEnvelope: {
             data: components["schemas"]["CommandResult"];
+        };
+        MemoriesCommandResultEnvelope: {
+            data: components["schemas"]["MemoriesCommandResult"];
+        };
+        ConflictEnvelope: {
+            data: components["schemas"]["Conflict"];
         };
         AgentListEnvelope: {
             data: components["schemas"]["AgentList"];
@@ -1811,6 +2356,15 @@ export interface components {
         DriftResolutionEnvelope: {
             data: components["schemas"]["DriftResolutionResult"];
         };
+        GatePageEnvelope: {
+            data: components["schemas"]["GatePage"];
+        };
+        GateEnvelope: {
+            data: components["schemas"]["Gate"];
+        };
+        GateResultEnvelope: {
+            data: components["schemas"]["GateResult"];
+        };
     };
     responses: {
         /** @description The command was applied, or sent to Review. */
@@ -1822,6 +2376,26 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["CommandResultEnvelope"];
+            };
+        };
+        /** @description The command was applied; `memories` are every memory it changed. */
+        MemoriesCommandResult: {
+            headers: {
+                ETag: components["headers"]["ETag"];
+                "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["MemoriesCommandResultEnvelope"];
+            };
+        };
+        /** @description `undo_refused`: see `details.reason`, and `details.ref` for what is in the way. */
+        UndoRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
         /** @description The change to the agent was applied (or there was nothing to change). */
@@ -1876,7 +2450,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
-        /** @description `invalid_transition`: the memory's or agent's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one). */
+        /** @description `invalid_transition`: the memory's, agent's or gate's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one, answering a gate that was answered, withdrawn or expired). */
         InvalidTransition: {
             headers: {
                 [name: string]: unknown;
@@ -1956,6 +2530,17 @@ export interface components {
                 "application/json": components["schemas"]["TargetResultEnvelope"];
             };
         };
+        /** @description The gate after the command (and, for an answer, the decision it became). */
+        GateResult: {
+            headers: {
+                ETag: components["headers"]["VersionETag"];
+                "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["GateResultEnvelope"];
+            };
+        };
         /** @description The hand edits, resolved. */
         DriftResolution: {
             headers: {
@@ -2000,6 +2585,17 @@ export interface components {
          *     the web app.
          */
         Via: "api" | "cli" | "mcp";
+        /** @description A receipt's id. */
+        ReceiptPath: components["schemas"]["Id"];
+        /** @description A gate's display ID (G-0012, with `?space=`) or its id. */
+        GateRefPath: components["schemas"]["GateRef"];
+        /**
+         * @description The gate's `ETag` (its version) you read, e.g. `"1"`. A gate's
+         *     version changes only when it ends: one that ended since is 409
+         *     `invalid_transition` (with `details.status`), and a version that
+         *     isn't the waiting gate's is 412 `edit_clash`.
+         */
+        IfMatchGate: components["schemas"]["VersionTag"];
         /** @description The target's id. */
         TargetPath: components["schemas"]["Id"];
         /**
@@ -2022,6 +2618,8 @@ export interface components {
         VersionETag: components["schemas"]["VersionTag"];
         /** @description The target's URL, by id. */
         TargetLocation: string;
+        /** @description The gate's URL, by id. */
+        GateLocation: string;
     };
     pathItems: never;
 }
@@ -2400,6 +2998,138 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["InvalidTransition"];
             412: components["responses"]["EditClash"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    getConflict: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+                /** @description The other side, by display ID or id, when there is more than one. */
+                with?: components["schemas"]["MemoryRef"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The conflict. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    resolveConflict: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description The `ETag` (memory version) you reviewed, e.g. `"3"`. */
+                "If-Match"?: components["parameters"]["IfMatchOptional"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveConflictRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["MemoriesCommandResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            412: components["responses"]["EditClash"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    undoReceipt: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description A receipt's id. */
+                receipt: components["parameters"]["ReceiptPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["MemoriesCommandResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["UndoRefused"];
             422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
@@ -3279,6 +4009,244 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listGates: {
+        parameters: {
+            query?: {
+                /** @description Only these statuses. Repeat for more than one. */
+                status?: components["schemas"]["GateStatus"][];
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size. Larger values are capped at 200. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of gates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatePageEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    requestDecision: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description The gate is waiting. */
+            201: {
+                headers: {
+                    ETag: components["headers"]["VersionETag"];
+                    Location: components["headers"]["GateLocation"];
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GateResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    getGate: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A gate's display ID (G-0012, with `?space=`) or its id. */
+                ref: components["parameters"]["GateRefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The gate. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["VersionETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GateEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    answerGate: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The gate's `ETag` (its version) you read, e.g. `"1"`. A gate's
+                 *     version changes only when it ends: one that ended since is 409
+                 *     `invalid_transition` (with `details.status`), and a version that
+                 *     isn't the waiting gate's is 412 `edit_clash`.
+                 */
+                "If-Match"?: components["parameters"]["IfMatchGate"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description A gate's display ID (G-0012, with `?space=`) or its id. */
+                ref: components["parameters"]["GateRefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerGateRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["GateResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            412: components["responses"]["EditClash"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    withdrawGate: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The gate's `ETag` (its version) you read, e.g. `"1"`. A gate's
+                 *     version changes only when it ends: one that ended since is 409
+                 *     `invalid_transition` (with `details.status`), and a version that
+                 *     isn't the waiting gate's is 412 `edit_clash`.
+                 */
+                "If-Match"?: components["parameters"]["IfMatchGate"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description A gate's display ID (G-0012, with `?space=`) or its id. */
+                ref: components["parameters"]["GateRefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["GateResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            412: components["responses"]["EditClash"];
             422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];

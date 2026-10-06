@@ -1570,6 +1570,7 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 	var trustLevel string
 	var rateLimitTier *string
 	var expiresAt *time.Time
+	var scope string
 	err := h.pool.QueryRow(context.Background(),
 		`SELECT user_id, COALESCE(agent_name, ''),
 			COALESCE(hub_scope_mode, 'hub_allowlist'),
@@ -1577,11 +1578,12 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 			COALESCE(default_permissions, ARRAY[]::text[]),
 			COALESCE(trust_level, 'standard'),
 			rate_limit_tier,
-			expires_at
+			expires_at,
+			COALESCE(scope, '')
 		FROM oauth_grants
 		WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL`,
 		grantID, userID,
-	).Scan(&resolvedUserID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &expiresAt)
+	).Scan(&resolvedUserID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &expiresAt, &scope)
 	if err != nil {
 		return APIKeyResult{}
 	}
@@ -1605,6 +1607,7 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 		DefaultPermissions: perms,
 		TrustLevel:         trustLevel,
 		AgentName:          agentName,
+		OAuthScope:         scope,
 	}
 	if len(hubIDs) == 1 {
 		result.HubID = hubIDs[0]

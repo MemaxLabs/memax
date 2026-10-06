@@ -255,6 +255,69 @@ describe("the CSV export", () => {
   });
 });
 
+describe("the judge's receipts", () => {
+  const cases: Array<[ActivityEntry["action"], string]> = [
+    ["judged", "You checked M-0431 for duplicates and conflicts."],
+    ["linked", "You linked M-0431 to the memory it updates."],
+    ["superseded", "You superseded M-0431 with a newer decision."],
+  ];
+
+  it.each(cases)("words %s in en and zh", (action, english) => {
+    const e = entry({
+      action,
+      object: { kind: "memory", ref: "M-0431", id: "m1" },
+    });
+    const say = (locale: "en" | "zh") =>
+      sentenceText(
+        activitySentences(
+          (locale === "en" ? en : zh).ledger.activity,
+          e,
+          names(locale),
+        ),
+        locale,
+      );
+    expect(say("en")).toBe(english);
+    expect(say("zh")).toContain("M-0431");
+    expect(say("zh")).not.toMatch(/[A-Za-z]{4,} [a-z]/); // no English left in zh
+  });
+});
+
+describe("decision gate receipts", () => {
+  const say = (e: ActivityEntry, locale: "en" | "zh") =>
+    sentenceText(
+      activitySentences(
+        (locale === "en" ? en : zh).ledger.activity,
+        e,
+        names(locale),
+      ),
+      locale,
+    );
+  const gate = { kind: "gate" as const, ref: "G-0012", id: "g1" };
+
+  it("words an agent's question, an answer and a withdrawal in en and zh", () => {
+    const asked = entry({
+      action: "asked",
+      actor: { kind: "agent", agent: "codex" },
+      object: gate,
+    });
+    const answered = entry({ action: "answered", object: gate });
+    const withdrawn = entry({
+      action: "withdrawn",
+      actor: { kind: "agent", agent: "codex" },
+      object: gate,
+    });
+    expect(say(asked, "en")).toBe("Codex asked you a question.");
+    expect(say(answered, "en")).toBe("You answered a question.");
+    expect(say(withdrawn, "en")).toBe("Codex withdrew a question (G-0012).");
+    expect(say(asked, "zh")).toBe("Codex 问了你一个问题。");
+    expect(say(withdrawn, "zh")).toBe("Codex 撤回了一个问题（G-0012）。");
+    for (const e of [asked, answered, withdrawn]) {
+      expect(say(e, "zh")).not.toMatch(/[A-Za-z]{4,} [a-z]/); // no English left in zh
+      expect(activityCategory(e)).toBe("writes");
+    }
+  });
+});
+
 describe("the compile pipeline's receipts", () => {
   const cases: Array<[ActivityEntry["action"], string, string]> = [
     ["revised", "B-0043", "You revised the Brief (B-0043)."],

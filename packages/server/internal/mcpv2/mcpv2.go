@@ -87,8 +87,12 @@ type Options struct {
 	StateSecret []byte
 	// AppBaseURL is the web app (https://memax.app), for Review links.
 	AppBaseURL string
-	// Digest builds recall's digest; nil uses the lexical digest.
+	// Digest builds recall's digest. Nil uses the compiled digest when
+	// Compile is set (each space's latest compiled file, with the lexical
+	// digest for spaces not compiled yet), and the lexical one otherwise.
 	Digest Digester
+	// Compile reads compiled artifacts (compile.Service); nil means none.
+	Compile Previewer
 	// Reads records agent reads (R-); nil uses the no-op hook.
 	Reads  ReadRecorder
 	Logger *slog.Logger
@@ -116,6 +120,9 @@ func New(o Options) *Server {
 	}
 	if s.digest == nil {
 		s.digest = lexicalDigest{search: s.search}
+		if o.Compile != nil && !isNilPreviewer(o.Compile) {
+			s.digest = newCompiledDigest(s.ledger, o.Compile, s.digest, s.log)
+		}
 	}
 	if s.reads == nil {
 		s.reads = noReads{}

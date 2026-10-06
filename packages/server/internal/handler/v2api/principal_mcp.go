@@ -3,6 +3,7 @@ package v2api
 import (
 	"net/http"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
@@ -54,4 +55,13 @@ func (h *Handler) Ledger() *ledger.Ledger {
 		return nil
 	}
 	return h.ledger
+}
+
+// Compile is the compile service behind the Brief and target endpoints
+// (nil when there is none), for MCP's compiled digest.
+func (h *Handler) Compile() *compile.Service {
+	if h == nil {
+		return nil
+	}
+	return h.compile
 }

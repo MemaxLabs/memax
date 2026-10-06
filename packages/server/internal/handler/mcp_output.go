@@ -51,6 +51,18 @@ type MCPSpaceDigest struct {
 	Changed         int                `json:"changed,omitempty"`
 	WaitingInReview int                `json:"waiting_in_review,omitempty"`
 	ReviewURL       string             `json:"review_url,omitempty"`
+	// Compiled is the space's latest compiled file, when it has one; its
+	// sections are then left empty (the file is the curated context).
+	Compiled *MCPCompiled `json:"compiled,omitempty"`
+}
+
+// MCPCompiled is a compile run's output (C-), as a digest serves it.
+type MCPCompiled struct {
+	Ref        string `json:"ref"`
+	Target     string `json:"target"`
+	CompiledAt string `json:"compiled_at"`
+	Content    string `json:"content"`
+	Truncated  bool   `json:"truncated,omitempty"`
 }
 
 // MCPDigestSection is one section of a digest.

@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
@@ -218,6 +219,61 @@ func TestRecallLatency(t *testing.T) {
 	t.Logf("recall over %d kept memories: p50 %v, p95 %v, max %v; digest %v", n, p50, p95, took[len(took)-1], digest)
 	if p95 > 100*time.Millisecond {
 		t.Errorf("recall p95 %v, want well under 300 ms", p95)
+	}
+}
+
+// Once a space has compiled, recall without a query serves its latest
+// compile (AGENTS.md here) instead of the lexical sections, with what
+// waits in Review; a space not compiled yet keeps the lexical digest.
+func TestRecallDigestServesTheCompiledFile(t *testing.T) {
+	e, f := newFixture(t, policy.AutonomyPropose)
+	m := e.keep(f.user, f.sp, "Background jobs run on River", ledger.SectionDecisions)
+	ctx := context.Background()
+	scope, err := e.ledger.UserScope(ctx, f.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := func() ledger.Meta {
+		return ledger.Meta{Actor: ledger.Actor{Kind: policy.ActorPerson, ID: f.user}, Scope: scope, Via: policy.ViaWeb, IdempotencyKey: uuid.NewString()}
+	}
+	if _, err := e.ledger.Apply(ctx, &ledger.ReviseBrief{Meta: meta(), SpaceID: f.sp.id, Title: "memax-v2 brief",
+		Sections: []ledger.BriefSection{{Key: "decisions", Heading: "Decisions", Items: []ledger.BriefItem{{Ref: m.Ref}}}}}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.ledger.Apply(ctx, &ledger.ConfigureTarget{Meta: meta(), SpaceID: f.sp.id, Kind: ledger.TargetAgentsMD})
+	if err != nil || res.Target == nil {
+		t.Fatalf("configure target: %v %+v", err, res.Policy)
+	}
+	if _, err := e.compile.Run(ctx, ledger.CompileTargetArgs{TargetID: res.Target.ID, SpaceID: f.sp.id}, compile.RunOptions{NoWait: true}); err != nil {
+		t.Fatal(err)
+	}
+	other := e.space(f.user, policy.SpaceProject, "not-compiled")
+	e.toV2(other)
+	e.keep(f.user, other, "Nothing compiles here yet", ledger.SectionConventions)
+
+	cs := e.connectClient(f.token, "/mcp", modern, nil)
+	call(t, cs, "memax_push", push("A pending idea", f.sp))
+	out := call(t, cs, "memax_recall", map[string]any{"hub_id": f.sp.id.String()})
+	validates(t, "agent", "memax_recall", out)
+	digest := structured[handler.MCPRecallOutput](t, out).Digest
+	if len(digest) != 1 || digest[0].Compiled == nil || len(digest[0].Sections) != 0 || digest[0].WaitingInReview != 1 {
+		t.Fatalf("digest = %+v", digest)
+	}
+	c := digest[0].Compiled
+	if !strings.HasPrefix(c.Ref, "C-") || c.Target != "AGENTS.md" || !strings.Contains(c.Content, "Background jobs run on River") ||
+		!strings.Contains(c.Content, m.Ref) {
+		t.Errorf("compiled = %+v", c)
+	}
+	mustContain(t, text(out), "Compiled "+c.Ref+" · AGENTS.md", "1 waiting in Review")
+
+	// The space with no compile yet: lexical sections.
+	tok2, g2 := e.grant(f.user, "claude-code", "memax:read memax:write")
+	e.connect(f.user, g2, ledger.AgentClaudeCode, policy.AutonomyPropose, other)
+	cs2 := e.connectClient(tok2, "/mcp", legacy, nil)
+	out = call(t, cs2, "memax_recall", map[string]any{"hub_id": other.id.String()})
+	digest = structured[handler.MCPRecallOutput](t, out).Digest
+	if len(digest) != 1 || digest[0].Compiled != nil || len(digest[0].Sections) != 1 {
+		t.Errorf("uncompiled digest = %+v", digest)
 	}
 }
 

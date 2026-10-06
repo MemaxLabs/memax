@@ -352,6 +352,45 @@ export interface V2ReadPart {
   text: string;
 }
 
+const MAX_COMPILED = 32 * 1024;
+
+/**
+ * A space's latest compiled file: the target delivered over MCP, else
+ * AGENTS.md, else the ChatGPT copy-out (as the remote server picks it).
+ */
+interface CompiledDigest {
+  [key: string]: unknown;
+  ref: string;
+  target: string;
+  compiled_at: string;
+  content: string;
+  truncated?: boolean;
+}
+
+async function latestCompiled(
+  sp: V2.Space,
+): Promise<CompiledDigest | undefined> {
+  const client = getClient();
+  const { items } = await client.v2.targets.list(sp.id);
+  const live = items.filter((t) => t.sync_state !== "off");
+  const target =
+    live.find((t) => t.delivery === "mcp") ??
+    live.find((t) => t.kind === "agents_md") ??
+    live.find((t) => t.kind === "chatgpt");
+  if (!target) return undefined;
+  const preview = await client.v2.targets.preview(target.id);
+  const output = preview.files[0] ?? preview.copies[0];
+  if (!preview.compile || !output) return undefined;
+  const truncated = output.content.length > MAX_COMPILED;
+  return {
+    ref: preview.compile.ref,
+    target: target.label,
+    compiled_at: preview.compile.compiled_at,
+    content: truncated ? output.content.slice(0, MAX_COMPILED) : output.content,
+    ...(truncated ? { truncated: true } : {}),
+  };
+}
+
 /** The V2 part of a recall or search over the readable spaces. */
 export async function v2Recall(
   spaces: V2.Space[],
@@ -364,8 +403,28 @@ export async function v2Recall(
   const client = getClient();
   if (query.trim() === "") {
     for (const sp of spaces) {
-      const kept = await keptIn(sp);
       const waiting = (await client.v2.review.list(sp.id, { limit: 1 })).total;
+      // The space's latest compile, when it has one, is the digest.
+      const compiled = await latestCompiled(sp).catch(() => undefined);
+      if (compiled) {
+        part.digest.push({
+          space_id: sp.id,
+          space: sp.name,
+          sections: [],
+          ...(waiting ? { waiting_in_review: waiting } : {}),
+          compiled,
+        });
+        lines.push(`## ${sp.name}`);
+        if (waiting) lines.push(`${waiting} waiting in Review`);
+        lines.push(
+          `Compiled ${compiled.ref} · ${compiled.target} · ${compiled.compiled_at}`,
+          "",
+          compiled.content.trim(),
+          "",
+        );
+        continue;
+      }
+      const kept = await keptIn(sp);
       const sections = SECTIONS.map((section) => ({
         section,
         memories: kept

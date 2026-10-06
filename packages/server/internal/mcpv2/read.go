@@ -580,6 +580,12 @@ func writeDigest(b *strings.Builder, d handler.MCPSpaceDigest) {
 	if len(facts) > 0 {
 		fmt.Fprintf(b, "%s\n", strings.Join(facts, " · "))
 	}
+	if c := d.Compiled; c != nil {
+		fmt.Fprintf(b, "Compiled %s · %s · %s\n\n%s\n", c.Ref, c.Target, c.CompiledAt, strings.TrimSpace(c.Content))
+		if c.Truncated {
+			b.WriteString("(Truncated: the whole file is in the repository or in Memax.)\n")
+		}
+	}
 	for _, sec := range d.Sections {
 		if len(sec.Memories) == 0 {
 			continue

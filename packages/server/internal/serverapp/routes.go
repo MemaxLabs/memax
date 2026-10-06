@@ -397,6 +397,8 @@ func registerMCPRoutes(root *http.ServeMux, withAuth func(http.Handler) http.Han
 	if v2 := mcpv2.New(mcpv2.Options{
 		V2: deps.v2, Spaces: deps.mcp.spaces, StateSecret: deps.mcp.stateSecret,
 		AppBaseURL: deps.mcp.appBaseURL, Reads: deps.mcp.reads,
+		// The digest at session start is the space's latest compile.
+		Compile: deps.v2.Compile(),
 	}); v2 != nil {
 		mcpH.SetV2(v2)
 		chatGPTH.SetV2(v2)

@@ -52,7 +52,7 @@
         {
           "name": "memax_recall",
           "title": "Recall memories",
-          "description": "Returns the memories relevant to a query from the spaces this connection can read. In spaces on the V2 record it returns kept memories, plus this session's own pending proposals marked proposed; without a query it returns a digest of each space (its top kept memories by section and what changed since this connection was last seen). In other spaces it returns ranked excerpts of saved memories.",
+          "description": "Returns the memories relevant to a query from the spaces this connection can read. In spaces on the V2 record it returns kept memories, plus this session's own pending proposals marked proposed; without a query it returns a digest of each space (its latest compiled file, or its top kept memories by section, and what changed since this connection was last seen). In other spaces it returns ranked excerpts of saved memories.",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -120,7 +120,22 @@
                     "changed_since": { "type": "string" },
                     "changed": { "type": "integer" },
                     "waiting_in_review": { "type": "integer" },
-                    "review_url": { "type": "string" }
+                    "review_url": { "type": "string" },
+                    "compiled": {
+                      "type": "object",
+                      "description": "The space's latest compiled file (AGENTS.md, or the target delivered over MCP); sections are empty when it is present.",
+                      "properties": {
+                        "ref": {
+                          "type": "string",
+                          "description": "The compile run, such as C-0881."
+                        },
+                        "target": { "type": "string" },
+                        "compiled_at": { "type": "string" },
+                        "content": { "type": "string" },
+                        "truncated": { "type": "boolean" }
+                      },
+                      "required": ["ref", "target", "compiled_at", "content"]
+                    }
                   },
                   "required": ["space_id", "space", "sections"]
                 }

@@ -12,9 +12,10 @@ import (
 )
 
 // Digester builds what memax_recall returns without a query (session
-// start, plan 25 §5.11): each space's digest. The compiled digest (the
-// MCP-format compile artifact, served from cache; epic 1.5) replaces the
-// lexical one below once targets exist: wire it through Options.Digest.
+// start, plan 25 §5.11): each space's digest. The compiled digest
+// (compiled.go: each space's latest compile, through compile.Service's
+// preview) is the default when there is a compile service; the lexical
+// one below serves spaces that haven't compiled yet.
 type Digester interface {
 	Digest(ctx context.Context, scope ledger.Scope, spaces []SpaceRef, since *time.Time) (Digest, error)
 }

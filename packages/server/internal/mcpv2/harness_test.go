@@ -19,11 +19,14 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/auth"
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
+	"github.com/MemaxLabs/memax/packages/server/internal/compile/compiletest"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/mcpv2"
+	"github.com/MemaxLabs/memax/packages/server/internal/objectstore/mockobjectstore"
 	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
@@ -41,13 +44,14 @@ func TestMain(m *testing.M) {
 // env is one database behind the real auth middleware and both MCP
 // profiles, with V2 wired (unless built withoutV2).
 type env struct {
-	t      *testing.T
-	pool   *pgxpool.Pool
-	st     store.Store
-	ledger *ledger.Ledger
-	spaces *spacemode.Resolver
-	srv    *httptest.Server
-	reads  *recordedReads
+	t       *testing.T
+	pool    *pgxpool.Pool
+	st      store.Store
+	ledger  *ledger.Ledger
+	spaces  *spacemode.Resolver
+	srv     *httptest.Server
+	reads   *recordedReads
+	compile *compile.Service
 }
 
 type recordedReads struct{ reads []mcpv2.Read }
@@ -69,10 +73,13 @@ func buildEnv(t *testing.T, withV2 bool) *env {
 	agentH := handler.NewMCPHandler(st, recallH, nil, nil)
 	chatH := handler.NewChatGPTMCPHandler(st, recallH, nil, nil)
 	if withV2 {
-		v2h := v2api.New(e.ledger, quiet)
+		// The compile pipeline with the in-process compiler: the digest
+		// serves a space's latest compile once it has one.
+		e.compile = compile.New(e.ledger, &compiletest.Fake{}, mockobjectstore.New(), compile.Config{Log: quiet})
+		v2h := v2api.New(e.ledger, quiet, v2api.WithCompile(e.compile))
 		t.Cleanup(v2h.Wait)
 		srv := mcpv2.New(mcpv2.Options{V2: v2h, Spaces: e.spaces, StateSecret: []byte(testSecret),
-			AppBaseURL: "https://memax.test", Reads: e.reads, Logger: quiet})
+			AppBaseURL: "https://memax.test", Reads: e.reads, Logger: quiet, Compile: v2h.Compile()})
 		agentH.SetV2(srv)
 		chatH.SetV2(srv)
 	}

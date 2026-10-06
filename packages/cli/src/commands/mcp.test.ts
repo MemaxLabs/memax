@@ -9,6 +9,7 @@ const state = {
   autonomy: "propose",
   remembered: [] as unknown[],
   pushed: [] as unknown[],
+  compiled: false,
 };
 
 const V1_HUB = "11111111-1111-4111-8111-111111111111";
@@ -164,6 +165,33 @@ const fakeClient = {
     review: {
       list: vi.fn(async () => ({ items: [], has_more: false, total: 2 })),
     },
+    targets: {
+      list: vi.fn(async (spaceId: string) => ({
+        items:
+          state.compiled && spaceId === V2_CONNECTED
+            ? [
+                {
+                  id: "target-1",
+                  kind: "agents_md",
+                  label: "AGENTS.md",
+                  delivery: "local",
+                  sync_state: "in_sync",
+                },
+              ]
+            : [],
+      })),
+      preview: vi.fn(async () => ({
+        target: {},
+        compile: { ref: "C-0881", compiled_at: "2026-10-06T14:31:00Z" },
+        files: [
+          {
+            path: "AGENTS.md",
+            content: "# memax-v2\n- We chose Postgres [M-0220]",
+          },
+        ],
+        copies: [],
+      })),
+    },
   },
 };
 
@@ -201,6 +229,7 @@ beforeEach(() => {
   state.autonomy = "propose";
   state.remembered = [];
   state.pushed = [];
+  state.compiled = false;
   resetV2StateForTest();
 });
 
@@ -305,6 +334,20 @@ describe("the stdio MCP server", () => {
     expect(textOf(res)).toContain("## memax-v2");
     expect(textOf(res)).toContain("2 waiting in Review");
     expect(textOf(res)).toContain("### Decisions");
+  });
+
+  it("serves the latest compile as the digest once the space has one", async () => {
+    state.compiled = true;
+    const client = await connect();
+    const res = await client.callTool({ name: "memax_recall", arguments: {} });
+    expect(textOf(res)).toContain("Compiled C-0881 · AGENTS.md");
+    expect(textOf(res)).toContain("We chose Postgres [M-0220]");
+    expect(textOf(res)).not.toContain("### Decisions");
+    const out = res.structuredContent as {
+      digest: { compiled?: { ref: string }; sections: unknown[] }[];
+    };
+    expect(out.digest[0].compiled?.ref).toBe("C-0881");
+    expect(out.digest[0].sections).toEqual([]);
   });
 
   it("never forgets in a space on V2", async () => {

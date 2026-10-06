@@ -35,6 +35,8 @@
 //     Keep's rules for a decision, D15 included, and the answer is kept as
 //     a decision they authored; the asking agent, the person it works for,
 //     or anyone who could answer withdraws.
+//   - Ask: a signed-in person in the space asks, at any role, until their
+//     plan's asks this month are used up (D9); agents read over MCP.
 //
 // Messages follow the product voice (sentence case, actionable, no
 // exclamation marks). Clients localise by Code; Message is the English
@@ -318,7 +320,19 @@ const (
 	// one is decided here too, so a read can't count for a space the
 	// reader can't read.
 	ActionRead Action = "read" // read a space, or report a compile an agent loaded at session start
+
+	// Ask (plan 25 §5.11, epic 1.10): a cited answer from the space's kept
+	// memories. A read that writes nothing; decided here for who may ask and
+	// the plan's monthly limit (D9).
+	ActionAsk Action = "ask"
 )
+
+// FreeAskLimit is how many asks a month Free answers (D9: "Ask 50/mo").
+// Pro and Team have no Ask limit. The plan a person is on is the caller's
+// to say (Object.AskLimit): during the free alpha no V2 plan exists yet,
+// so the API counts asks and passes no limit unless ASK_MONTHLY_LIMIT
+// sets one (internal/ask).
+const FreeAskLimit = 50
 
 // MaxWaitingGates is how many decisions one agent may have waiting on
 // people in one space at a time. V1 capped a board at three open decisions
@@ -426,6 +440,10 @@ type Object struct {
 	// WaitingGates counts the decisions the asking agent already has
 	// waiting in the space (asking another).
 	WaitingGates int
+	// AsksBefore counts the person's asks this month before this one, and
+	// AskLimit is their plan's monthly limit (0: none).
+	AsksBefore int
+	AskLimit   int
 }
 
 // Space is the space the action happens in.
@@ -484,6 +502,10 @@ const (
 	CodePersonMustAnswer = "person_must_answer" // agents ask; people answer
 	CodeGateLimit        = "gate_limit"         // the agent already has MaxWaitingGates waiting
 	CodeNotYourGate      = "not_your_gate"      // withdrawing someone else's question
+
+	// Ask; both refusals.
+	CodeAskByPerson = "ask_by_person" // agents read over MCP (recall, search); Ask is for people
+	CodeAskLimit    = "ask_limit"     // the plan's asks this month are used up
 
 	// Changes to agent connections (DecideConnection); all refusals.
 	CodePersonMustManage   = "person_must_manage"
@@ -578,6 +600,8 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideWithdrawGate(a, o, s)
 	case ActionRead:
 		return decideRead(a, s)
+	case ActionAsk:
+		return decideAsk(a, o)
 	}
 	return refuse(CodeUnknownAction, fmt.Sprintf("Memax doesn't know how to %q.", act))
 }
@@ -590,6 +614,23 @@ func decideRead(a Actor, s Space) Decision {
 	if a.Kind == ActorAgent && a.AgentStatus == AgentNotConnected {
 		return refuse(CodeAgentNotConnected, fmt.Sprintf(
 			"%s isn't connected to %s, so it can't read it. Connect it in Agents.", actorName(a), spaceName(s)))
+	}
+	return apply()
+}
+
+// decideAsk: a person who may read the space asks, any role (a viewer
+// reads what a member does). Agents and API keys don't: they read the
+// record themselves over MCP, and an answer synthesised for an agent would
+// be words no person kept. Past the plan's monthly limit, nobody asks.
+func decideAsk(a Actor, o Object) Decision {
+	if a.Kind != ActorPerson || a.Credential != CredentialSession {
+		return refuse(CodeAskByPerson,
+			"Ask answers people. Agents read the record over MCP with memax_recall and memax_search.")
+	}
+	if o.AskLimit > 0 && o.AsksBefore >= o.AskLimit {
+		return refuse(CodeAskLimit, fmt.Sprintf(
+			"You've asked %d questions this month, all your plan answers. Asks start again on the 1st; Pro answers as many as you like.",
+			o.AskLimit))
 	}
 	return apply()
 }

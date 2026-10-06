@@ -465,6 +465,23 @@ func (c *Client) CompleteMessages(ctx context.Context, model string, maxTokens i
 // CompleteStream sends a streaming completion request. It calls onDelta for each text chunk
 // as it arrives from the Anthropic API. Returns the total output token count.
 func (c *Client) CompleteStream(ctx context.Context, req CompleteRequest, onDelta func(text string)) (int, error) {
+	usage, err := c.CompleteStreamUsage(ctx, req, onDelta)
+	return usage.OutputTokens, err
+}
+
+// StreamUsage is what a streamed completion used, from the stream's
+// message_start (input) and message_delta (output, stop reason) events.
+type StreamUsage struct {
+	InputTokens  int
+	OutputTokens int
+	StopReason   string
+}
+
+// CompleteStreamUsage is CompleteStream that also reports the input
+// tokens and the stop reason. It honours ZeroDataRetention as Complete
+// does (OutputSchema doesn't apply to a stream). Cancelling ctx aborts
+// the upstream request, and the call returns ctx's error.
+func (c *Client) CompleteStreamUsage(ctx context.Context, req CompleteRequest, onDelta func(text string)) (StreamUsage, error) {
 	req, budget := FitCompleteRequest(req)
 	input := c.captureCompleteInput(req)
 	ctxTracking := trackingFromContext(ctx)
@@ -498,17 +515,21 @@ func (c *Client) CompleteStream(ctx context.Context, req CompleteRequest, onDelt
 	if thinking := thinkingDisabledFor(req.Model); thinking != nil {
 		body["thinking"] = thinking
 	}
+	if req.ZeroDataRetention {
+		body["provider"] = map[string]any{"zdr": true}
+	}
 
+	var usage StreamUsage
 	reqBody, err := json.Marshal(body)
 	if err != nil {
 		c.trackLLMGeneration(tracking.withError(start, 0, fmt.Errorf("marshal request: %w", err)))
-		return 0, fmt.Errorf("marshal request: %w", err)
+		return usage, fmt.Errorf("marshal request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/messages", bytes.NewReader(reqBody))
 	if err != nil {
 		c.trackLLMGeneration(tracking.withError(start, 0, fmt.Errorf("create request: %w", err)))
-		return 0, fmt.Errorf("create request: %w", err)
+		return usage, fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-api-key", c.apiKey)
@@ -517,19 +538,18 @@ func (c *Client) CompleteStream(ctx context.Context, req CompleteRequest, onDelt
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		c.trackLLMGeneration(tracking.withError(start, 0, fmt.Errorf("anthropic API call: %w", err)))
-		return 0, fmt.Errorf("anthropic API call: %w", err)
+		return usage, fmt.Errorf("anthropic API call: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		c.trackLLMGeneration(tracking.withError(start, resp.StatusCode, fmt.Errorf("anthropic API error %d", resp.StatusCode)))
-		return 0, fmt.Errorf("anthropic API error %d: %s", resp.StatusCode, respBody)
+		return usage, fmt.Errorf("anthropic API error %d: %s", resp.StatusCode, respBody)
 	}
 
 	// Parse SSE stream from Anthropic
 	scanner := bufio.NewScanner(resp.Body)
-	outputTokens := 0
 	var firstTokenAt time.Time
 	var capturedOutput strings.Builder
 
@@ -546,10 +566,17 @@ func (c *Client) CompleteStream(ctx context.Context, req CompleteRequest, onDelt
 		var event struct {
 			Type  string `json:"type"`
 			Delta struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
+				Type       string `json:"type"`
+				Text       string `json:"text"`
+				StopReason string `json:"stop_reason"`
 			} `json:"delta"`
+			Message struct {
+				Usage struct {
+					InputTokens int `json:"input_tokens"`
+				} `json:"usage"`
+			} `json:"message"`
 			Usage struct {
+				InputTokens  int `json:"input_tokens"`
 				OutputTokens int `json:"output_tokens"`
 			} `json:"usage"`
 		}
@@ -558,6 +585,8 @@ func (c *Client) CompleteStream(ctx context.Context, req CompleteRequest, onDelt
 		}
 
 		switch event.Type {
+		case "message_start":
+			usage.InputTokens = event.Message.Usage.InputTokens
 		case "content_block_delta":
 			if event.Delta.Text != "" {
 				if firstTokenAt.IsZero() {
@@ -568,22 +597,36 @@ func (c *Client) CompleteStream(ctx context.Context, req CompleteRequest, onDelt
 			}
 		case "message_delta":
 			if event.Usage.OutputTokens > 0 {
-				outputTokens = event.Usage.OutputTokens
+				usage.OutputTokens = event.Usage.OutputTokens
+			}
+			if event.Usage.InputTokens > 0 {
+				usage.InputTokens = event.Usage.InputTokens
+			}
+			if event.Delta.StopReason != "" {
+				usage.StopReason = event.Delta.StopReason
 			}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		c.trackLLMGeneration(tracking.withError(start, resp.StatusCode, err))
-		return outputTokens, err
+		return usage, err
 	}
-	tracking.outputTokens = outputTokens
+	if err := ctx.Err(); err != nil {
+		// A cancelled body can end the scan without an error of its own.
+		c.trackLLMGeneration(tracking.withError(start, resp.StatusCode, err))
+		return usage, err
+	}
+	if usage.InputTokens > 0 {
+		tracking.inputTokens = usage.InputTokens
+	}
+	tracking.outputTokens = usage.OutputTokens
 	if !firstTokenAt.IsZero() {
 		tracking.timeToFirstToken = firstTokenAt.Sub(start).Seconds()
 	}
 	tracking.output = c.captureOutput(capturedOutput.String())
 	c.trackLLMGeneration(tracking.withSuccess(start, resp.StatusCode))
-	return outputTokens, nil
+	return usage, nil
 }
 
 type llmTracking struct {

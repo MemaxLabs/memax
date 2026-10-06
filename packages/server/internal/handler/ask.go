@@ -198,7 +198,10 @@ func NewAskHandler(recall *RecallHandler, s store.Store, client *anthropic.Clien
 func (h *AskHandler) resolveModel(requested string) string {
 	switch requested {
 	case "sonnet", "auto", "":
-		if model := strings.TrimSpace(os.Getenv("ASK_MODEL")); model != "" {
+		// V2's Ask reads ASK_MODEL too, where "off" turns its answers off
+		// (internal/ask); V1 keeps answering with its default then.
+		if model := strings.TrimSpace(os.Getenv("ASK_MODEL")); model != "" &&
+			!strings.EqualFold(model, "off") && !strings.EqualFold(model, "none") {
 			return model
 		}
 		return anthropic.StrongModel

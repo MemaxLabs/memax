@@ -110,11 +110,20 @@ type env struct {
 	srv    http.Handler
 	svc    *compile.Service
 	store  *mockobjectstore.Store
+	// server is the real HTTP server live requests go to, made on first use.
+	server *httptest.Server
 }
 
 // newEnv builds the env. The compile coordinator is on unless opts turn
 // it off (v2api.WithCompile(nil)).
 func newEnv(t *testing.T, opts ...v2api.Option) *env {
+	t.Helper()
+	return newEnvWith(t, func(*env) []v2api.Option { return opts })
+}
+
+// newEnvWith is newEnv with options built from the env (its ledger), for
+// services that sit on the same ledger (Ask).
+func newEnvWith(t *testing.T, more func(*env) []v2api.Option) *env {
 	t.Helper()
 	st, pool := testdb.Acquire(t)
 	dbTests.Add(1)
@@ -137,7 +146,7 @@ func newEnv(t *testing.T, opts ...v2api.Option) *env {
 	e.ledger = ledger.New(pool, ledger.WithLogger(quiet), ledger.WithJobs(jobs))
 	e.svc = compile.New(e.ledger, &compiletest.Fake{}, e.store, compile.Config{Log: quiet})
 	mux := http.NewServeMux()
-	h := v2api.New(e.ledger, quiet, append([]v2api.Option{v2api.WithCompile(e.svc)}, opts...)...)
+	h := v2api.New(e.ledger, quiet, append([]v2api.Option{v2api.WithCompile(e.svc)}, more(e)...)...)
 	// Last-seen updates run in the background; let them finish before the
 	// database goes away (cleanups run last-registered first).
 	t.Cleanup(h.Wait)
@@ -313,6 +322,8 @@ type call struct {
 	// sign, when set, signs the finished request the way the web app's
 	// proxy does (see webSigned).
 	sign func(r *http.Request, body []byte)
+	// ctx, when set, is the request's context.
+	ctx context.Context
 }
 
 type resp struct {
@@ -323,6 +334,45 @@ type resp struct {
 }
 
 func (e *env) do(c call) *resp {
+	e.t.Helper()
+	r := e.request(c)
+	rec := httptest.NewRecorder()
+	e.srv.ServeHTTP(rec, r)
+	return &resp{t: e.t, status: rec.Code, header: rec.Header(), body: rec.Body.Bytes()}
+}
+
+// live sends c to a real HTTP server around the same spec-checked handler
+// and returns the response unread, so a test can read an event stream as
+// it arrives, or hang up partway. c.ctx, when set, is the client's.
+func (e *env) live(c call) *http.Response {
+	e.t.Helper()
+	if e.server == nil {
+		e.server = httptest.NewServer(e.srv)
+		e.t.Cleanup(e.server.Close)
+	}
+	built := e.request(call{method: c.method, path: c.path, token: c.token, body: c.body, header: c.header})
+	raw, err := io.ReadAll(built.Body)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	ctx := c.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	r, err := http.NewRequestWithContext(ctx, c.method, e.server.URL+built.URL.RequestURI(), bytes.NewReader(raw))
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	r.Header = built.Header
+	res, err := e.server.Client().Do(r)
+	if err != nil {
+		e.t.Fatalf("live %s %s: %v", c.method, c.path, err)
+	}
+	return res
+}
+
+// request builds c's request.
+func (e *env) request(c call) *http.Request {
 	e.t.Helper()
 	var body io.Reader
 	var raw []byte
@@ -358,12 +408,14 @@ func (e *env) do(c call) *resp {
 	if c.sign != nil {
 		c.sign(r, raw)
 	}
+	if c.ctx != nil {
+		// The request's context: cancelling it is the client going away.
+		r = r.WithContext(c.ctx)
+	}
 	if c.invalid {
 		r = contract.ExpectInvalidRequest(r)
 	}
-	rec := httptest.NewRecorder()
-	e.srv.ServeHTTP(rec, r)
-	return &resp{t: e.t, status: rec.Code, header: rec.Header(), body: rec.Body.Bytes()}
+	return r
 }
 
 // ok asserts the status and decodes data into v.

@@ -75,6 +75,13 @@ export type DownloadFn = (
   options?: DownloadOptions,
 ) => Promise<Response>;
 
+/** Opens an event stream; see {@link ApiTransport.open}. */
+export type OpenFn = (
+  method: string,
+  path: string,
+  options?: RequestOptions,
+) => Promise<Response>;
+
 function resolveFetch(config: MemaxConfig): typeof globalThis.fetch {
   if (config.fetch) {
     return config.fetch;
@@ -360,6 +367,95 @@ export class ApiTransport {
     }
 
     throw lastErr;
+  }
+
+  /**
+   * Opens a server-sent event stream (`Accept: text/event-stream`) and
+   * returns the response once its status is a success, body unread. An
+   * error response is JSON, as on every other call, and throws the same
+   * MemaxError `request` would; an abort throws an AbortError.
+   */
+  async open(
+    method: string,
+    path: string,
+    options?: RequestOptions,
+  ): Promise<Response> {
+    const url = `${this.apiUrl}${path}${buildQueryString(options?.query)}`;
+    if (options?.signal?.aborted) throw signalAbortError(options.signal);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      ...this.headers,
+      ...(await this.getAuth()),
+      ...(options?.extraHeaders ?? {}),
+    };
+    if (options?.hubId) headers["X-Hub-ID"] = options.hubId;
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz) headers["X-Timezone"] = tz;
+    } catch {
+      // Intl not available — skip
+    }
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        method,
+        headers,
+        body:
+          options?.body !== undefined
+            ? JSON.stringify(options.body)
+            : undefined,
+        signal: options?.signal,
+        cache: "no-store",
+      });
+    } catch (error) {
+      if (options?.signal?.aborted) throw signalAbortError(options.signal);
+      if (isAbortShaped(error)) throw error;
+      throw new MemaxError(
+        `Cannot reach API at ${url} — is the server running?`,
+        "network_error",
+        0,
+      );
+    }
+    if (res.ok && res.body) return res;
+    const text = await res.text().catch(() => "");
+    let json:
+      | {
+          error?: {
+            code: string;
+            message: string;
+            details?: Record<string, unknown>;
+          };
+        }
+      | undefined;
+    try {
+      json = text ? JSON.parse(text) : undefined;
+    } catch {
+      json = undefined;
+    }
+    const retryAfter =
+      res.status === 429 || res.status === 503
+        ? parseRetryAfter(res.headers.get("Retry-After"))
+        : undefined;
+    if (json?.error) {
+      throw new MemaxError(
+        json.error.message,
+        json.error.code,
+        res.status,
+        json.error.details,
+        retryAfter,
+      );
+    }
+    const preview = summarizeResponseText(text);
+    throw new MemaxError(
+      preview
+        ? `${formatRequestLabel(method, url)} returned ${res.status}: ${preview}`
+        : `${formatRequestLabel(method, url)} returned ${res.status} without a stream`,
+      res.status === 401 ? "unauthorized" : "invalid_response",
+      res.status,
+      undefined,
+      retryAfter,
+    );
   }
 
   async download(path: string, options?: DownloadOptions): Promise<Response> {

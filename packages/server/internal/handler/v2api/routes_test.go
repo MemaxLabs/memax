@@ -60,6 +60,7 @@ var sampleRequests = map[string]struct {
 	"rememberMemory":     {path: "/v2/spaces/memax-v2/memories", body: `{"statement":"x","section":"decisions"}`},
 	"listMemories":       {path: "/v2/spaces/memax-v2/memories?state=kept&state=proposed&limit=10"},
 	"findNearDuplicates": {path: "/v2/spaces/memax-v2/memories:near-duplicates", body: `{"statement":"Use pnpm catalogs"}`},
+	"askSpace":           {path: "/v2/spaces/memax-v2/ask", body: `{"question":"Why River?"}`},
 	"listReview":         {path: "/v2/spaces/memax-v2/review"},
 	"listReceipts":       {path: "/v2/spaces/memax-v2/receipts?memory=M-0001"},
 	"listReads":          {path: "/v2/spaces/memax-v2/reads"},

@@ -76,10 +76,14 @@ const (
 	SourceEmail   SourceKind = "email"
 	SourceNote    SourceKind = "note"
 	SourceImport  SourceKind = "import"
+	// SourceMemory cites a memory in the same space ("M-0219"): a kept
+	// Ask answer cites the memories it came from. Its trust is the cited
+	// memory's, whatever the caller says (migration 041).
+	SourceMemory SourceKind = "memory"
 )
 
 // SourceKinds lists every source kind.
-var SourceKinds = []SourceKind{SourceSession, SourcePR, SourceFile, SourceURL, SourceIssue, SourceEmail, SourceNote, SourceImport}
+var SourceKinds = []SourceKind{SourceSession, SourcePR, SourceFile, SourceURL, SourceIssue, SourceEmail, SourceNote, SourceImport, SourceMemory}
 
 // Valid reports whether k is a known source kind.
 func (k SourceKind) Valid() bool { return slices.Contains(SourceKinds, k) }

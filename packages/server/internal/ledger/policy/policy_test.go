@@ -445,6 +445,51 @@ func TestGateMatrix(t *testing.T) {
 	}
 }
 
+// TestAskMatrix: only a signed-in person who is in the space asks, at any
+// role; agents and API keys never do; and the plan's monthly limit holds
+// at exactly its number (D9: Free answers 50).
+func TestAskMatrix(t *testing.T) {
+	t.Parallel()
+	roles := []Role{RoleNone, RoleOwner, RoleMember, RoleViewer}
+	creds := []Credential{CredentialSession, CredentialOAuth, CredentialAPIKey}
+	objects := []Object{{}, {AsksBefore: 12}, {AsksBefore: FreeAskLimit - 1, AskLimit: FreeAskLimit},
+		{AsksBefore: FreeAskLimit, AskLimit: FreeAskLimit}, {AsksBefore: 900, AskLimit: FreeAskLimit}}
+	banned := []string{"!", " AI", "magic", "smart", "delete", "Delete"}
+	for _, kind := range ActorKinds {
+		for _, role := range roles {
+			for _, cred := range creds {
+				for _, via := range Vias {
+					for _, o := range objects {
+						a := Actor{Kind: kind, Role: role, Credential: cred, Via: via, Autonomy: AutonomyWrite}
+						d := Decide(a, ActionAsk, o, project)
+						if d.Effect != EffectApply && d.Effect != EffectRefuse {
+							t.Fatalf("%+v %+v: ask is applied or refused, got %+v", a, o, d)
+						}
+						for _, b := range banned {
+							if strings.Contains(d.Message, b) {
+								t.Fatalf("message breaks the voice rules (%s): %s", b, d.Message)
+							}
+						}
+						member := role != RoleNone || (kind != ActorPerson && kind != ActorAgent)
+						want := kind == ActorPerson && cred == CredentialSession && member &&
+							(o.AskLimit == 0 || o.AsksBefore < o.AskLimit)
+						if (d.Effect == EffectApply) != want {
+							t.Fatalf("%+v %+v → %+v, want apply=%v", a, o, d, want)
+						}
+					}
+				}
+			}
+		}
+	}
+	limit := Decide(person(RoleViewer, ViaWeb), ActionAsk, Object{AsksBefore: 50, AskLimit: 50}, project)
+	if limit.Code != CodeAskLimit || !strings.Contains(limit.Message, "50") {
+		t.Errorf("at the limit: %+v", limit)
+	}
+	if d := Decide(agent(RoleOwner, AutonomyWrite), ActionAsk, Object{}, project); d.Code != CodeAskByPerson {
+		t.Errorf("agent: %+v", d)
+	}
+}
+
 func TestRules(t *testing.T) {
 	t.Parallel()
 	var zero Rules

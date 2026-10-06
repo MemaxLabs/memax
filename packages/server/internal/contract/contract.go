@@ -97,6 +97,9 @@ type requestBody struct {
 type response struct {
 	schema  *jsonschema.Schema // nil: no body
 	headers map[string]*header // canonical names
+	// stream marks a text/event-stream response: schema then describes
+	// each event as {"event", "data"} (see ValidateResponse).
+	stream bool
 }
 
 type header struct {
@@ -311,10 +314,16 @@ func (s *Spec) indexResponses(op *Operation, raw map[string]any) error {
 		}
 		resp := &response{headers: map[string]*header{}}
 		if content := mapAt(obj, "content"); len(content) > 0 {
-			if _, ok := content["application/json"]; !ok || len(content) != 1 {
-				return fmt.Errorf("contract: %s %s: responses must be application/json only", op.ID, code)
+			_, isJSON := content["application/json"]
+			_, isStream := content[EventStream]
+			if len(content) != 1 || (!isJSON && !isStream) {
+				return fmt.Errorf("contract: %s %s: a response is application/json or %s, and only one", op.ID, code, EventStream)
 			}
-			if resp.schema, err = s.compile(ptr + "/content/application~1json/schema"); err != nil {
+			media := "application~1json"
+			if isStream {
+				media, resp.stream = "text~1event-stream", true
+			}
+			if resp.schema, err = s.compile(ptr + "/content/" + media + "/schema"); err != nil {
 				return err
 			}
 		}
@@ -536,6 +545,11 @@ func (s *Spec) ValidateResponse(op *Operation, status int, h http.Header, body [
 	switch {
 	case resp.schema == nil && len(bytes.TrimSpace(body)) > 0:
 		errs = append(errs, fmt.Errorf("%s %d: documented without a body, got %d bytes", op.ID, status, len(body)))
+	case resp.stream:
+		if ct := h.Get("Content-Type"); !isEventStream(ct) {
+			errs = append(errs, fmt.Errorf("%s %d: Content-Type is %q, want %s", op.ID, status, ct, EventStream))
+		}
+		errs = append(errs, checkEvents(resp.schema, body, fmt.Sprintf("%s %d", op.ID, status)))
 	case resp.schema != nil:
 		if ct := h.Get("Content-Type"); !isJSON(ct) {
 			errs = append(errs, fmt.Errorf("%s %d: Content-Type is %q, want application/json", op.ID, status, ct))
@@ -602,12 +616,15 @@ func (s *Spec) Handler(t Reporter, next http.Handler) http.Handler {
 		case reqErr == nil && expectInvalid:
 			t.Errorf("contract: request %s %s was marked invalid but matches the spec", r.Method, r.URL)
 		}
-		rec := &recorder{header: http.Header{}, status: http.StatusOK}
+		rec := &recorder{header: http.Header{}, status: http.StatusOK, out: w}
 		next.ServeHTTP(rec, r)
 		if op != nil {
 			if err := s.ValidateResponse(op, rec.status, rec.header, rec.body.Bytes()); err != nil {
 				t.Errorf("contract: response to %s %s breaks the spec: %v\nbody: %s", r.Method, r.URL, err, rec.body.String())
 			}
+		}
+		if rec.streaming {
+			return // already passed through as it was written
 		}
 		for k, v := range rec.header {
 			w.Header()[k] = v
@@ -617,24 +634,160 @@ func (s *Spec) Handler(t Reporter, next http.Handler) http.Handler {
 	})
 }
 
+// recorder keeps a response to check it. A JSON response is held until
+// the handler returns; an event stream passes through as it is written
+// and flushed (so a client sees each event when the handler sends it, and
+// a write to a client that left fails as it would without the check),
+// and is checked whole at the end.
 type recorder struct {
 	header      http.Header
 	body        bytes.Buffer
 	status      int
 	wroteHeader bool
+	out         http.ResponseWriter
+	streaming   bool
 }
 
 func (r *recorder) Header() http.Header { return r.header }
 
 func (r *recorder) WriteHeader(code int) {
-	if !r.wroteHeader {
-		r.status, r.wroteHeader = code, true
+	if r.wroteHeader {
+		return
+	}
+	r.status, r.wroteHeader = code, true
+	if isEventStream(r.header.Get("Content-Type")) && r.out != nil {
+		r.streaming = true
+		for k, v := range r.header {
+			r.out.Header()[k] = v
+		}
+		r.out.WriteHeader(code)
 	}
 }
 
 func (r *recorder) Write(b []byte) (int, error) {
 	r.WriteHeader(http.StatusOK)
-	return r.body.Write(b)
+	r.body.Write(b)
+	if r.streaming {
+		return r.out.Write(b)
+	}
+	return len(b), nil
+}
+
+// FlushError flushes a stream through to the client (http.ResponseController).
+func (r *recorder) FlushError() error {
+	r.WriteHeader(http.StatusOK)
+	if !r.streaming {
+		return nil
+	}
+	return http.NewResponseController(r.out).Flush()
+}
+
+// Flush implements http.Flusher.
+func (r *recorder) Flush() { _ = r.FlushError() }
+
+// EventStream is the media type of a server-sent event stream.
+const EventStream = "text/event-stream"
+
+func isEventStream(contentType string) bool {
+	mt, _, _ := strings.Cut(contentType, ";")
+	return strings.TrimSpace(strings.ToLower(mt)) == EventStream
+}
+
+// Event is one server-sent event: its name ("message" when the stream
+// gives none), its data lines joined by newlines, and its id, if any.
+type Event struct {
+	Name string
+	Data string
+	ID   string
+	// Retry is the retry field, as sent.
+	Retry string
+}
+
+// ParseEvents reads a server-sent event stream (the WHATWG HTML event
+// stream format: CR, LF or CRLF line ends; comments; multi-line data). It
+// fails if the stream ends inside an event, which a complete response
+// never does.
+func ParseEvents(body []byte) ([]Event, error) {
+	text := strings.TrimPrefix(string(body), "\ufeff")
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	var (
+		events []Event
+		cur    Event
+		data   []string
+		open   bool
+	)
+	lines := strings.Split(text, "\n")
+	// A stream that ends in a line break leaves one empty string after it.
+	last := len(lines) - 1
+	for i, line := range lines {
+		if i == last && line == "" {
+			break
+		}
+		if line == "" {
+			if len(data) > 0 {
+				cur.Data = strings.Join(data, "\n")
+				if cur.Name == "" {
+					cur.Name = "message"
+				}
+				events = append(events, cur)
+			}
+			cur, data, open = Event{}, nil, false
+			continue
+		}
+		open = true
+		if strings.HasPrefix(line, ":") {
+			continue
+		}
+		field, value, _ := strings.Cut(line, ":")
+		value = strings.TrimPrefix(value, " ")
+		switch field {
+		case "event":
+			cur.Name = value
+		case "data":
+			data = append(data, value)
+		case "id":
+			cur.ID = value
+		case "retry":
+			cur.Retry = value
+		}
+	}
+	if open {
+		return events, errors.New("the stream ends inside an event (no blank line after it)")
+	}
+	return events, nil
+}
+
+// checkEvents checks every event of a stream against the schema of one
+// event: an object with the event's name as `event` and its data, parsed
+// as JSON, as `data` (plus `id` and `retry` when sent, so an undocumented
+// field fails a closed schema). This is what OpenAPI 3.2 calls the
+// media type's itemSchema; in 3.1 the stream's schema says it.
+func checkEvents(sch *jsonschema.Schema, body []byte, what string) error {
+	events, err := ParseEvents(body)
+	if err != nil {
+		return fmt.Errorf("%s: %w", what, err)
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("%s: the stream has no events", what)
+	}
+	var errs []error
+	for i, e := range events {
+		data, err := jsonschema.UnmarshalJSON(strings.NewReader(e.Data))
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: event %d (%s): data is not JSON: %w", what, i, e.Name, err))
+			continue
+		}
+		v := map[string]any{"event": e.Name, "data": data}
+		if e.ID != "" {
+			v["id"] = e.ID
+		}
+		if e.Retry != "" {
+			v["retry"] = e.Retry
+		}
+		errs = append(errs, check(sch, v, fmt.Sprintf("%s: event %d (%s)", what, i, e.Name)))
+	}
+	return errors.Join(errs...)
 }
 
 func check(sch *jsonschema.Schema, v any, what string) error {

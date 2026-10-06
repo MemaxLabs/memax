@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/ask"
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
@@ -48,6 +49,8 @@ type Handler struct {
 	// nil checks exact repeats only. near rate-limits the check.
 	drafts DraftEmbedder
 	near   nearLimiter
+	// asker answers ⌘K Ask (ask.go); nil answers 503.
+	asker *ask.Service
 }
 
 // Option configures a Handler.
@@ -93,6 +96,7 @@ var routes = []Route{
 	{"POST", "/v2/spaces/{space}/memories", "rememberMemory", (*Handler).remember},
 	{"GET", "/v2/spaces/{space}/memories", "listMemories", (*Handler).listMemories},
 	{"POST", "/v2/spaces/{space}/memories:near-duplicates", "findNearDuplicates", (*Handler).findNearDuplicates},
+	{"POST", "/v2/spaces/{space}/ask", "askSpace", (*Handler).askSpace},
 	{"GET", "/v2/spaces/{space}/review", "listReview", (*Handler).listReview},
 	{"GET", "/v2/spaces/{space}/receipts", "listReceipts", (*Handler).listReceipts},
 	{"GET", "/v2/spaces/{space}/checkpoints", "listCheckpoints", (*Handler).listCheckpoints},

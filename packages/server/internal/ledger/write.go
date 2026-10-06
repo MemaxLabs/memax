@@ -62,6 +62,9 @@ func (w *writer) write(ctx context.Context, nm NewMemory, propose bool) (Result,
 
 	actorTrust := policy.ActorTrust(w.meta.Actor.Kind, w.meta.Via)
 	srcs := resolveSources(nm.Sources, actorTrust)
+	if srcs, err = w.resolveMemorySources(ctx, sp.ID, srcs, actorTrust); err != nil {
+		return Result{}, err
+	}
 	trusts := []policy.Trust{actorTrust}
 	texts := []string{nm.Statement, w.meta.Reason}
 	for _, s := range srcs {

@@ -219,7 +219,7 @@ memax/
     ui/              # @memaxlabs/ui shared design system (Tailwind + Radix) — AGPL-3.0
     docs-site/       # Fumadocs developer hub (docs.memax.app) — Apache-2.0
     sdk/             # memax-sdk — TypeScript client, published to npm — Apache-2.0
-    cli/             # memax-cli — Commander.js CLI, published to npm — Apache-2.0
+    cli/             # memax-cli — Commander.js CLI and the local daemon (link, daemon, status, compile), published to npm — Apache-2.0
     ledger-tokens/   # V2 Ledger tokens, type styles, fonts, marks (@memaxlabs/ledger-tokens) — Apache-2.0
     ledger/          # V2 Ledger React components, mx- styles, en/zh strings, previews (@memaxlabs/ledger) — AGPL-3.0
     compiler/        # V2 compiler: kept record → AGENTS.md, CLAUDE.md shim, scoped rules; parse-back (@memaxlabs/compiler) — Apache-2.0
@@ -553,6 +553,28 @@ PORT=8090 pnpm --filter @memaxlabs/compile-service start
 
 # Deploy to Fly.io from the REPOSITORY ROOT (staging; swap to fly.compile.production.toml for prod)
 fly deploy . -c packages/compile-service/fly/fly.compile.staging.toml
+```
+
+### CLI: link, the daemon, status and compile (V2 local delivery)
+
+The daemon (`packages/cli/src/lib/daemon/`) writes each space's compiled files into the repositories linked on the machine and reports hand edits; it never writes over one (rule 6). Its state, log, pid and control socket live in `~/.memax/daemon/`. `memax daemon run` is reached through `src/bin.ts` without loading the rest of the CLI (the MCP SDK alone is ~30 MB of memory), and it talks to `/v2` over `node:http(s)` (`lib/daemon/http.ts`), not `fetch`. The CLI carries a verbatim copy of the compiler's managed block (`lib/daemon/compiler/`) because `@memaxlabs/compiler` isn't published yet; edit the compiler, then re-copy.
+
+```bash
+# Point the CLI at a local server, sign in, link a repository and run the daemon in the foreground
+MEMAX_API_URL=http://localhost:8080 memax login
+memax link --space memax-v2 && memax daemon run        # or: memax daemon start | stop | status
+memax status && memax compile
+
+# Re-copy the compiler's managed block into the CLI after changing it (lint checks the copy)
+node packages/cli/scripts/sync-compiler.mjs
+
+# Daemon tests (a fake /v2 server built on the real compiler)
+pnpm --filter memax-cli exec vitest run test/daemon
+
+# End to end against the real stack: a fresh database (needs psql and a role that can CREATE
+# DATABASE), migrations, devseed, the compile service, the worker and the API server. Skipped
+# without the flag. MEMAX_E2E_BIN can point at prebuilt server, worker, migrate and devseed.
+MEMAX_E2E_SERVER=1 pnpm --filter memax-cli exec vitest run test/daemon/e2e-server.test.ts
 ```
 
 Migrations use a single shared sequence. Don't hand-pick version numbers — always use `migrate:new`. CI enforces sequential numbering (`internal/migrate/migrate_test.go`) and rejects gaps, duplicates, orphan up/down files, and non-padded versions.

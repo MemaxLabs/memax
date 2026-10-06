@@ -1,0 +1,83 @@
+---
+title: memax compile
+description: Compile every target of the space now, and wait for the files to reach this machine.
+---
+
+A space compiles on its own whenever you keep, edit or forget something.
+`memax compile` asks for a compile now, then waits until each target has
+compiled and its files are on disk here.
+
+## Usage
+
+```bash
+memax compile [--space <slug>] [--timeout <seconds>] [--format json]
+```
+
+| Flag                  | Description                                                           |
+| --------------------- | --------------------------------------------------------------------- |
+| `--space <slug>`      | The space. Defaults to this repository's (`.memax.yml`, or its link). |
+| `--timeout <seconds>` | How long to wait. Default 30.                                         |
+| `--format <fmt>`      | `text` (default) or `json`.                                           |
+| `--via pr`            | Through a pull request. Not available yet.                            |
+
+```text
+› memax compile
+
+  ✓ memax-v2 is compiled into 4 files.
+
+  ● AGENTS.md        in sync          14:31
+  ● CLAUDE.md        in sync          14:31
+  ● .cursor/rules    in sync          14:31
+  ● ChatGPT project  in sync          copy it from the app
+
+  Written here by the daemon. Commit them to share them with your team and your cloud agents.
+```
+
+Stopped targets aren't compiled. A target with a hand edit compiles, but
+its file stays as you left it; resolve it in the app.
+
+## Who writes the files
+
+- **The daemon**, when it runs: `memax compile` wakes it, so it writes at
+  once.
+- **`memax compile` itself**, when no daemon runs and this repository is
+  [linked](/cli/link). It follows the same rules as the daemon and never
+  writes over a hand edit.
+- **Nobody**, when this repository isn't linked. The targets still
+  compile, and agents read them over MCP.
+
+Commit the files to reach cloud agents and your team: a cloud sandbox
+reads the repository's `AGENTS.md` and `CLAUDE.md` after it clones.
+
+## Exit codes
+
+| Code | Meaning                                                                                      |
+| ---- | -------------------------------------------------------------------------------------------- |
+| 0    | Every target compiled, and in a linked repository its files are on disk here.                |
+| 1    | Still compiling after `--timeout`, `--via pr`, a space with no targets, or a failed request. |
+| 2    | A `--via` it doesn't take.                                                                   |
+
+## JSON
+
+```json
+{
+  "space": "memax-v2",
+  "requested": ["…", "…"],
+  "writer": "daemon",
+  "timed_out": false,
+  "targets": [
+    {
+      "id": "…",
+      "label": "AGENTS.md",
+      "kind": "agents_md",
+      "delivery": "local",
+      "sync_state": "in_sync",
+      "compile": "C-0884",
+      "status": "delivered",
+      "files": ["AGENTS.md"]
+    }
+  ]
+}
+```
+
+`writer` is `daemon`, `compile`, or `null` when nothing was written here.

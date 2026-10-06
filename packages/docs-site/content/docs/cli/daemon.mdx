@@ -1,0 +1,138 @@
+---
+title: memax daemon
+description: The small background process that writes compiled files into linked repositories and reports hand edits.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+The daemon puts each compile on disk. When you keep a memory, the space
+recompiles its targets, and the daemon writes the new `AGENTS.md`,
+`CLAUDE.md` and Cursor rules into every repository you
+[linked](/cli/link) on this machine, usually within two seconds. When you
+edit one of those files by hand, it tells Memax, and you choose what
+happens in the app.
+
+**It never writes over a hand edit.**
+
+## Commands
+
+```bash
+memax daemon start                 # run it in the background
+memax daemon stop
+memax daemon status [--format json]
+memax daemon run                   # in the foreground, for service managers
+memax daemon install [--yes]       # start it at login
+memax daemon uninstall [--yes]
+```
+
+One daemon runs per user. A second `start` or `run` says the first is
+already running and exits.
+
+### status
+
+```text
+› memax daemon status
+
+  ● The Memax daemon is running · pid 41822 · since 09:12
+
+  ~/code/memax → memax-v2 · checked 14:31
+    ● AGENTS.md        in sync   C-0882 · 14:31
+    ● CLAUDE.md        in sync   C-0883 · 14:31
+    ○ .cursor/rules    drifted   1 local edit
+    ● ChatGPT project  in sync   copied out from the app
+```
+
+Each line is a target as it stands on this machine: `●` in sync, `○` a
+hand edit waiting on you, `◌` being written, `-` stopped, `✗` held (for
+example, the file is a symlink). When the daemon isn't running, `status`
+shows the last delivery to each repository instead.
+
+### install
+
+`memax daemon install` starts the daemon at login with your system's own
+service manager: a launchd agent on macOS
+(`~/Library/LaunchAgents/app.memax.daemon.plist`) or a systemd user unit
+on Linux (`~/.config/systemd/user/memax-daemon.service`). It shows the
+file and the commands it will run, and writes nothing until you say yes.
+Install `memax-cli` globally first (`npm install -g memax-cli`), so the
+service has a path that stays put.
+
+## When it writes
+
+For each run it hasn't written yet, the daemon reads the file on disk:
+
+| On disk                                           | The daemon                                               |
+| ------------------------------------------------- | -------------------------------------------------------- |
+| Nothing                                           | Writes the file.                                         |
+| This run's output (line endings aside)            | Leaves it, and acknowledges the run.                     |
+| What Memax last delivered, or an earlier compile  | Writes over it. A `git pull` or a branch switch is fine. |
+| Anything else: a hand edit                        | Leaves it and reports it. The target shows drifted.      |
+| A symlink, a directory, or a path out of the repo | Leaves it, and holds the target.                         |
+
+Every write goes to a temp file next to the target and is renamed into
+place, so agents never read half a file. Right before the rename the
+daemon reads the file once more; if you saved in the meantime, your edit
+stays and the write is dropped.
+
+Once a run is on disk, the daemon acknowledges it with the run's hash,
+and the target is in sync.
+
+### A CLAUDE.md you own
+
+If `CLAUDE.md` is yours (see [`memax link`](/cli/link)), Memax manages
+one marked block in it. The daemon replaces only that block, and judges
+hand edits by that block only: every byte outside the markers stays
+exactly as you wrote it, line endings included.
+
+### Stop compiling
+
+When a target is stopped, the daemon stops writing it. A file Memax owns
+stays where it is; remove it yourself if you no longer want it. In a
+`CLAUDE.md` you own, the daemon takes its own block out, unless you edited
+the block, which it then leaves.
+
+### Files a compile no longer writes
+
+When the facts behind a scoped Cursor rule are forgotten, the next compile
+no longer writes that rule. The daemon takes the old file out, but only
+while it still holds exactly what Memax wrote.
+
+## Hand edits
+
+The daemon watches the directories of the files it wrote, and rescans
+them every 30 seconds to catch anything a watcher misses. When a file
+changes into something Memax didn't write, the daemon reports it once,
+with its content, and the target drifts. Its own writes never count.
+
+Resolve a drifted target in the app:
+
+- **Pull** turns each changed line into a proposal in Review.
+- **Overwrite** writes the compiled file over the edit.
+- **Stop compiling** leaves the file to you.
+
+## Resources
+
+The daemon polls each linked space: every 2 seconds while a compile or a
+write is in flight, and every 5 seconds otherwise (15 seconds after half
+an hour without changes). An idle poll reads only the space's newest
+receipt, about 600 bytes, and fetches the targets when it moves. Errors
+back off up to 5 minutes. When idle it uses well under 1% CPU and about
+20 MB of its own memory; the rest of its resident size is the Node.js
+binary, shared with every other Node process.
+
+## Its files
+
+Everything lives in `~/.memax/daemon/`, readable by you only:
+
+| File          | Holds                                                                  |
+| ------------- | ---------------------------------------------------------------------- |
+| `repos.json`  | The linked repositories.                                               |
+| `state.json`  | What this machine wrote: run IDs and file hashes, never content.       |
+| `daemon.log`  | What happened to which file, rotated at 1 MB. Never content or tokens. |
+| `daemon.pid`  | The running daemon's process ID.                                       |
+| `daemon.sock` | The socket `status`, `stop` and `link` talk to; it is also the lock.   |
+
+<Callout type="info">
+  The daemon runs on macOS and Linux. On Windows it doesn't run yet; your agents
+  still read the space over MCP.
+</Callout>

@@ -14,7 +14,7 @@ export type AdminOpsJobState =
   | "retryable"
   | "pending";
 
-/** Worker client row from river_client joined with river_client_queue. */
+/** One live worker process, from the worker_heartbeats table (see packages/server/internal/workerapp/heartbeat.go). */
 export interface AdminOpsWorkerClient {
   client_id: string;
   queues: Array<{ queue: string; max_workers: number }>;

@@ -146,8 +146,9 @@ paths:
         Writes one statement to the space. Policy decides what happens: a
         member or owner keeps it (`outcome: applied`); a viewer, an agent or
         an API key proposes it (`outcome: proposed`), and it waits in Review.
-        Statements that cite an external source are always proposed and
-        quarantined. Statements that contain a credential are refused.
+        An agent's statement that cites an external source is always
+        proposed and quarantined (`policy.quarantine`). A statement that
+        contains a credential is refused.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/Via'

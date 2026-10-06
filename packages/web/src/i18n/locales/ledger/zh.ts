@@ -2,6 +2,8 @@
 // 语气：平实、准确、冷静。产品名写作 "Memax"（V2 规则）。
 // 不用"AI""智能""魔法""删除""保存""批准"，不用感叹号和表情。
 import type { Translations } from "../en";
+import { ledgerActivityZh } from "./activity-zh";
+import { ledgerAgentsZh } from "./agents-zh";
 import { ledgerAppZh } from "./app-zh";
 
 export const ledgerZh: Translations["ledger"] = {
@@ -28,6 +30,8 @@ export const ledgerZh: Translations["ledger"] = {
     digest: "错误 {digest}",
   },
   app: ledgerAppZh,
+  activity: ledgerActivityZh,
+  agents: ledgerAgentsZh,
   devTokens: {
     breadcrumb: "Ledger · 开发样张",
     title: "设计令牌与字体",

@@ -10,6 +10,12 @@ export interface SegmentedOption<V extends string = string> {
   /** Shown as the option's tooltip and read as its description. */
   hint?: string;
   disabled?: boolean;
+  /**
+   * Why a disabled option can't be chosen ("API keys propose at most"). The
+   * option then stays hoverable (aria-disabled) and shows this as its tooltip
+   * and description, so the state never relies on colour alone.
+   */
+  disabledReason?: string;
 }
 
 export interface SegmentedProps<V extends string = string> {
@@ -69,20 +75,27 @@ export function Segmented<V extends string = string>({
       aria-label={label}
       aria-disabled={disabled || undefined}
     >
-      {options.map((option, i) => (
-        <button
-          key={option.value}
-          type="button"
-          role="radio"
-          aria-checked={i === selected}
-          title={option.hint}
-          disabled={disabled || option.disabled}
-          className={cx("mx-seg-opt", i === selected && "is-on")}
-          {...getItemProps(i)}
-        >
-          {option.label}
-        </button>
-      ))}
+      {options.map((option, i) => {
+        const off = disabled || Boolean(option.disabled);
+        // With a reason, the option stays hoverable so its tooltip shows;
+        // the roving focus still skips it and presses are ignored.
+        const reason = off ? option.disabledReason : undefined;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={i === selected}
+            title={reason ?? option.hint}
+            disabled={off && !reason}
+            aria-disabled={reason ? true : undefined}
+            className={cx("mx-seg-opt", i === selected && "is-on")}
+            {...getItemProps(i)}
+          >
+            {option.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

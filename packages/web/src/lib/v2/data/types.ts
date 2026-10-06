@@ -23,6 +23,8 @@ export type Section =
 
 /** The signed-in person. */
 export interface Viewer {
+  /** Their user id: receipts and agent connections that name it are "you". */
+  id?: string;
   /** What their receipts show ("ZZ"). */
   initials: string;
   name: string;

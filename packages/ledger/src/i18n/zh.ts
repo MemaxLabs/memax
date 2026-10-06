@@ -129,6 +129,7 @@ export const zh: LedgerStrings = {
     mcpOnly: "仅 MCP",
     paused: "已暂停",
     notSeen: "还没有活动",
+    notRecorded: "还没开始记录",
   },
   sync: {
     synced: "已同步",

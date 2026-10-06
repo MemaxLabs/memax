@@ -163,8 +163,9 @@ func TestMixedRecall(t *testing.T) {
 	if records["v2"] != 1 || records["v1"] != 1 {
 		t.Errorf("results by record = %v", records)
 	}
-	if len(e.reads.reads) == 0 || len(e.reads.reads[len(e.reads.reads)-1].Memories[onV2.id]) != 1 {
-		t.Errorf("the read wasn't recorded: %+v", e.reads.reads)
+	reads := e.reads.all()
+	if len(reads) != 1 || reads[0].SpaceID != onV2.id || len(reads[0].Memories) != 1 || reads[0].Kind != ledger.ReadRecall {
+		t.Errorf("the read wasn't recorded once, for the space on V2: %+v", reads)
 	}
 }
 
@@ -221,6 +222,15 @@ func TestRecallLatency(t *testing.T) {
 	t.Logf("recall over %d kept memories: p50 %v, p95 %v, max %v; digest %v", n, p50, p95, took[len(took)-1], digest)
 	if p95 > 100*time.Millisecond {
 		t.Errorf("recall p95 %v, want well under 300 ms", p95)
+	}
+	// Every one of those reads went through the production recorder,
+	// off the request path, and reached v2.reads once Close flushed.
+	e.recorder.Close()
+	if st := e.recorder.Stats(); st.Written != int64(len(took)+1) || st.Dropped() != 0 {
+		t.Errorf("reads written %d, dropped %d; want %d and none", st.Written, st.Dropped(), len(took)+1)
+	}
+	if got := e.count(`SELECT count(*) FROM v2.reads WHERE space_id = $1`, f.sp.id); got != len(took)+1 {
+		t.Errorf("v2.reads holds %d reads of the space, want %d", got, len(took)+1)
 	}
 }
 

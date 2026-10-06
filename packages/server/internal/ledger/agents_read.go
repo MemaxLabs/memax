@@ -133,6 +133,32 @@ func fillConnections(ctx context.Context, tx pgx.Tx, scope Scope, cs []*Connecti
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("ledger: count agent writes: %w", err)
 	}
+
+	// Reads (R-, migration 037): one per read of a space.
+	rows, err = tx.Query(ctx, `
+		SELECT connection_id, space_id, count(*)
+		  FROM v2.reads
+		 WHERE connection_id = ANY($1) AND read_at > now() - interval '7 days' AND space_id = ANY($2)
+		 GROUP BY connection_id, space_id`, ids, scope.SpaceIDs())
+	if err != nil {
+		return fmt.Errorf("ledger: count agent reads: %w", err)
+	}
+	for rows.Next() {
+		var conn, space uuid.UUID
+		var n int
+		if err := rows.Scan(&conn, &space, &n); err != nil {
+			rows.Close()
+			return fmt.Errorf("ledger: count agent reads: %w", err)
+		}
+		c := byID[conn]
+		c.ReadsWeek += n
+		if i, ok := at[spaceRef{conn, space}]; ok {
+			c.Spaces[i].ReadsWeek = n
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("ledger: count agent reads: %w", err)
+	}
 	return nil
 }
 
@@ -188,9 +214,9 @@ func (l *Ledger) ListConnections(ctx context.Context, scope Scope, q ConnectionQ
 }
 
 // AgentWeek is what an agent did in the last 7 days, in the reader's
-// spaces: its writes (proposed, kept or edited), and what became of the
-// memories it wrote (kept, rejected, still waiting in Review). Reads are
-// 0 until reads are recorded.
+// spaces: its reads (R-, one per space read), its writes (proposed, kept
+// or edited), and what became of the memories it wrote (kept, rejected,
+// still waiting in Review).
 type AgentWeek struct {
 	Reads     int `json:"reads"`
 	Writes    int `json:"writes"`
@@ -201,7 +227,7 @@ type AgentWeek struct {
 }
 
 // AgentSession is one of an agent's sessions, from the session_ref on its
-// receipts.
+// receipts and its reads (reads of the last 30 days).
 type AgentSession struct {
 	SessionRef string    `json:"session_ref"`
 	Reads      int       `json:"reads"`
@@ -231,7 +257,7 @@ func (l *Ledger) GetConnection(ctx context.Context, scope Scope, id uuid.UUID) (
 		if err != nil {
 			return err
 		}
-		d := &ConnectionDetail{Connection: c, Week: AgentWeek{Writes: c.WritesWeek}}
+		d := &ConnectionDetail{Connection: c, Week: AgentWeek{Reads: c.ReadsWeek, Writes: c.WritesWeek}}
 		rows, err := tx.Query(ctx, `
 			SELECT m.lifecycle, r.action, count(*)
 			  FROM v2.memories m
@@ -277,18 +303,26 @@ func (l *Ledger) GetConnection(ctx context.Context, scope Scope, id uuid.UUID) (
 		}
 
 		rows, err = tx.Query(ctx, `
-			SELECT session_ref, count(*), max(recorded_at)
-			  FROM v2.receipts
-			 WHERE actor_kind = 'agent' AND actor_id = $1 AND session_ref IS NOT NULL AND space_id = ANY($2)
+			SELECT session_ref, sum(writes)::int, sum(reads)::int, max(last_at)
+			  FROM (SELECT session_ref, count(*) AS writes, 0 AS reads, max(recorded_at) AS last_at
+			          FROM v2.receipts
+			         WHERE actor_kind = 'agent' AND actor_id = $1 AND session_ref IS NOT NULL AND space_id = ANY($2)
+			         GROUP BY session_ref
+			        UNION ALL
+			        SELECT session_ref, 0, count(*), max(read_at)
+			          FROM v2.reads
+			         WHERE connection_id = $1 AND session_ref IS NOT NULL AND space_id = ANY($2)
+			           AND read_at > now() - interval '30 days'
+			         GROUP BY session_ref) s
 			 GROUP BY session_ref
-			 ORDER BY max(recorded_at) DESC
+			 ORDER BY max(last_at) DESC, session_ref
 			 LIMIT $3`, c.ID, scope.SpaceIDs(), DetailLimit)
 		if err != nil {
 			return fmt.Errorf("ledger: agent sessions: %w", err)
 		}
 		d.Sessions, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (AgentSession, error) {
 			var s AgentSession
-			err := r.Scan(&s.SessionRef, &s.Writes, &s.LastAt)
+			err := r.Scan(&s.SessionRef, &s.Writes, &s.Reads, &s.LastAt)
 			return s, err
 		})
 		if err != nil {

@@ -126,6 +126,18 @@ info:
     (7 days unless the agent says otherwise), then reads as `expired`. The
     agent hears how it ended in its next MCP recall.
 
+    ## Reads
+
+    What agents read is recorded as reads (`R-`), not receipts: a read
+    changes nothing. Memax records them after the response, in batches, so
+    reading is never slower for it, and under heavy load a read may go
+    uncounted rather than wait. A read holds who read, which memories or
+    which compile, how, and when; never the memories' words or the query.
+    A session-start hook reports the compile its agent loaded natively
+    (`POST /v2/spaces/{space}/compile-loads`), which counts as a read of
+    every fact in it. A memory's `reads` say how often it was read and by
+    which agents, and whether it is in a file whose loads Memax can't see.
+
     ## Display IDs
 
     `M-0219` is unique within a tenant, not across tenants, so a display ID
@@ -189,6 +201,8 @@ tags:
     description: Where a space compiles to, its compile runs, deliveries and hand edits.
   - name: gates
     description: Decisions agents ask people to make, and the answers, kept as decisions.
+  - name: reads
+    description: What agents read (R-). Reads are not receipts.
 paths:
   /v2/spaces:
     get:
@@ -389,6 +403,91 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/reads:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listReads
+      tags: [reads]
+      summary: List reads
+      description: |
+        What agents read in the space, newest first: one read (`R-`) per
+        recall, search, get, list or digest that returned something here, and
+        one per session-start compile load. `reads_7d` counts the last 7
+        days. Reads hold memory refs and compile refs, never words.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of reads.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/compile-loads:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    post:
+      operationId: recordCompileLoad
+      tags: [reads]
+      summary: Report a compile an agent loaded
+      description: |
+        A session-start hook (or the daemon) reports that its agent loaded a
+        compiled file natively: the compile run (`C-`) it found in the file.
+        It counts as a read of every fact in that compile, and it is how
+        Memax knows a file's loads are observed (a fact in a file whose loads
+        nobody reports never fades). Reading is enough: an agent connected to
+        the space reports its own loads (a paused one too); an agent that
+        isn't connected here is refused with 403 `refused`
+        (`agent_not_connected`), so a credential can't count reads in a space
+        it can't read. A person's session (the CLI the hook runs under) names
+        the agent. Report a load within a day of it (`loaded_at`); the same
+        `Idempotency-Key` records it once.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompileLoadRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/CompileLoadRecorded'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -2169,6 +2268,15 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/TargetResultEnvelope'
+    CompileLoadRecorded:
+      description: The load, recorded as a read (or already recorded under this key).
+      headers:
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CompileLoadResultEnvelope'
     GateResult:
       description: The gate after the command (and, for an answer, the decision it became).
       headers:
@@ -3135,6 +3243,188 @@ components:
             $ref: '#/components/schemas/MemoryVersion'
         receipts:
           $ref: '#/components/schemas/ReceiptPage'
+        reads:
+          description: How agents read it. Absent when the counts couldn't be read.
+          $ref: '#/components/schemas/MemoryReads'
+
+    MemoryReads:
+      description: |
+        How a memory has been read: directly (recall, search, get, list) and
+        in every compile that contained it (a session-start digest, a
+        reported load), over the last 13 months.
+      type: object
+      additionalProperties: false
+      required: [reads, reads_7d, agents, readers, unobserved_target]
+      properties:
+        reads:
+          description: Reads of it in the last 13 months.
+          type: integer
+          minimum: 0
+        reads_7d:
+          description: Reads of it in the last 7 days.
+          type: integer
+          minimum: 0
+        last_read_at:
+          description: Its latest read; absent if it was never read.
+          $ref: '#/components/schemas/Timestamp'
+        agents:
+          description: How many agents read it ("reaches 5 agents").
+          type: integer
+          minimum: 0
+        readers:
+          description: Who read it, most recent first (at most 20).
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/MemoryReader'
+        unobserved_target:
+          description: |
+            It is in a compiled file whose loads Memax can't see (agents read
+            the file natively and no hook reports the loads), so it may be
+            read more than counted, and it never fades.
+          type: boolean
+
+    MemoryReader:
+      description: One reader of a memory.
+      type: object
+      additionalProperties: false
+      required: [reader_kind, person_id, reads, reads_7d, last_read_at]
+      properties:
+        reader_kind:
+          $ref: '#/components/schemas/ReaderKind'
+        connection_id:
+          description: The agent connection, for an agent.
+          $ref: '#/components/schemas/Id'
+        person_id:
+          description: The person, or the person the agent works for.
+          $ref: '#/components/schemas/Id'
+        agent:
+          $ref: '#/components/schemas/AgentKind'
+        display_name:
+          description: The agent connection's name, when you can see the connection.
+          type: string
+        reads:
+          type: integer
+          minimum: 1
+        reads_7d:
+          type: integer
+          minimum: 0
+        last_read_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    ReaderKind:
+      description: '`agent` (an agent connection) or `person` (a person''s CLI reporting their agent''s session start).'
+      type: string
+      enum: [agent, person]
+
+    ReadKind:
+      description: |
+        What a read went through: `recall` (with a query), `search`, `get`
+        (one memory), `list` (a page of kept memories), `digest` (recall
+        without a query, at session start), or `compile_load` (a hook
+        reported the compile its agent loaded natively).
+      type: string
+      enum: [recall, search, get, list, digest, compile_load]
+
+    ReadVia:
+      description: The surface a read came through.
+      type: string
+      enum: [mcp, api, cli]
+
+    ReadRef:
+      description: A read's display ID, unique within its tenant.
+      type: string
+      pattern: '^R-[0-9]{4,18}$'
+
+    Read:
+      description: One read of one space (R-). It never holds memory text or the query.
+      type: object
+      additionalProperties: false
+      required: [id, ref, space_id, reader_kind, person_id, kind, via, memories, memory_refs, read_at, recorded_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        ref:
+          $ref: '#/components/schemas/ReadRef'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        reader_kind:
+          $ref: '#/components/schemas/ReaderKind'
+        connection_id:
+          description: The agent connection, for an agent.
+          $ref: '#/components/schemas/Id'
+        person_id:
+          description: The person, or the person the agent works for.
+          $ref: '#/components/schemas/Id'
+        agent:
+          $ref: '#/components/schemas/AgentKind'
+        kind:
+          $ref: '#/components/schemas/ReadKind'
+        via:
+          $ref: '#/components/schemas/ReadVia'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+        compile:
+          description: The compile run read, for a compiled digest or a compile load.
+          $ref: '#/components/schemas/CompileRef'
+        memories:
+          description: How many memories it covered; for a compile, every fact in it.
+          type: integer
+          minimum: 0
+        memory_refs:
+          description: The memories it returned directly, in display order (at most 200).
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        read_at:
+          $ref: '#/components/schemas/Timestamp'
+        recorded_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    ReadPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more, reads_7d]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Read'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+        reads_7d:
+          description: The space's reads in the last 7 days.
+          type: integer
+          minimum: 0
+
+    CompileLoadRequest:
+      type: object
+      additionalProperties: false
+      required: [compile]
+      properties:
+        compile:
+          description: The compile run the agent loaded, by display ID (C-0012) or id, from the compiled file's header.
+          type: string
+          pattern: '^(?:[Cc]-[0-9]{1,18}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$'
+        agent:
+          description: The agent whose session loaded it. Ignored for an agent's own credential, which is always its agent.
+          $ref: '#/components/schemas/AgentKind'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+        loaded_at:
+          description: When the session loaded it; defaults to now, and must be within the last day.
+          $ref: '#/components/schemas/Timestamp'
+
+    CompileLoadResult:
+      type: object
+      additionalProperties: false
+      required: [read]
+      properties:
+        read:
+          $ref: '#/components/schemas/Read'
 
     SpaceList:
       type: object
@@ -3224,7 +3514,7 @@ components:
         autonomy:
           $ref: '#/components/schemas/Autonomy'
         reads_7d:
-          description: Reads in the last 7 days. 0 until reads are recorded.
+          description: Its reads (R-) of this space in the last 7 days.
           type: integer
           minimum: 0
         writes_7d:
@@ -3291,7 +3581,7 @@ components:
           items:
             $ref: '#/components/schemas/AgentSpace'
         reads_7d:
-          description: Reads in the last 7 days, in those spaces. 0 until reads are recorded.
+          description: Its reads (R-, one per space read) in the last 7 days, in those spaces.
           type: integer
           minimum: 0
         writes_7d:
@@ -3331,14 +3621,14 @@ components:
 
     AgentWeek:
       description: |
-        What the agent did in the last 7 days, in your spaces: its writes,
-        and what became of the memories it wrote.
+        What the agent did in the last 7 days, in your spaces: its reads, its
+        writes, and what became of the memories it wrote.
       type: object
       additionalProperties: false
       required: [reads, writes, proposals, kept, rejected, waiting]
       properties:
         reads:
-          description: 0 until reads are recorded.
+          description: Its reads (R-, one per space read).
           type: integer
           minimum: 0
         writes:
@@ -3362,7 +3652,7 @@ components:
           minimum: 0
 
     AgentSession:
-      description: One of the agent's sessions, from the session on its receipts.
+      description: One of the agent's sessions, from the session on its receipts and on its reads of the last 30 days.
       type: object
       additionalProperties: false
       required: [session_ref, reads, writes, last_at]
@@ -3370,7 +3660,7 @@ components:
         session_ref:
           $ref: '#/components/schemas/SessionRef'
         reads:
-          description: 0 until reads are recorded.
+          description: Its reads in that session, in the last 30 days.
           type: integer
           minimum: 0
         writes:
@@ -4990,3 +5280,19 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/GateResult'
+
+    ReadPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ReadPage'
+
+    CompileLoadResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/CompileLoadResult'

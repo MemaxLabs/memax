@@ -110,6 +110,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/reads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List reads
+         * @description What agents read in the space, newest first: one read (`R-`) per
+         *     recall, search, get, list or digest that returned something here, and
+         *     one per session-start compile load. `reads_7d` counts the last 7
+         *     days. Reads hold memory refs and compile refs, never words.
+         */
+        get: operations["listReads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/compile-loads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a compile an agent loaded
+         * @description A session-start hook (or the daemon) reports that its agent loaded a
+         *     compiled file natively: the compile run (`C-`) it found in the file.
+         *     It counts as a read of every fact in that compile, and it is how
+         *     Memax knows a file's loads are observed (a fact in a file whose loads
+         *     nobody reports never fades). Reading is enough: an agent connected to
+         *     the space reports its own loads (a paused one too); an agent that
+         *     isn't connected here is refused with 403 `refused`
+         *     (`agent_not_connected`), so a credential can't count reads in a space
+         *     it can't read. A person's session (the CLI the hook runs under) names
+         *     the agent. Report a load within a day of it (`loaded_at`); the same
+         *     `Idempotency-Key` records it once.
+         */
+        post: operations["recordCompileLoad"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/memories/{ref}": {
         parameters: {
             query?: {
@@ -1539,6 +1598,107 @@ export interface components {
             /** @description Every version of the statement, newest first. */
             versions: components["schemas"]["MemoryVersion"][];
             receipts: components["schemas"]["ReceiptPage"];
+            /** @description How agents read it. Absent when the counts couldn't be read. */
+            reads?: components["schemas"]["MemoryReads"];
+        };
+        /**
+         * @description How a memory has been read: directly (recall, search, get, list) and
+         *     in every compile that contained it (a session-start digest, a
+         *     reported load), over the last 13 months.
+         */
+        MemoryReads: {
+            /** @description Reads of it in the last 13 months. */
+            reads: number;
+            /** @description Reads of it in the last 7 days. */
+            reads_7d: number;
+            /** @description Its latest read; absent if it was never read. */
+            last_read_at?: components["schemas"]["Timestamp"];
+            /** @description How many agents read it ("reaches 5 agents"). */
+            agents: number;
+            /** @description Who read it, most recent first (at most 20). */
+            readers: components["schemas"]["MemoryReader"][];
+            /**
+             * @description It is in a compiled file whose loads Memax can't see (agents read
+             *     the file natively and no hook reports the loads), so it may be
+             *     read more than counted, and it never fades.
+             */
+            unobserved_target: boolean;
+        };
+        /** @description One reader of a memory. */
+        MemoryReader: {
+            reader_kind: components["schemas"]["ReaderKind"];
+            /** @description The agent connection, for an agent. */
+            connection_id?: components["schemas"]["Id"];
+            /** @description The person, or the person the agent works for. */
+            person_id: components["schemas"]["Id"];
+            agent?: components["schemas"]["AgentKind"];
+            /** @description The agent connection's name, when you can see the connection. */
+            display_name?: string;
+            reads: number;
+            reads_7d: number;
+            last_read_at: components["schemas"]["Timestamp"];
+        };
+        /**
+         * @description `agent` (an agent connection) or `person` (a person's CLI reporting their agent's session start).
+         * @enum {string}
+         */
+        ReaderKind: "agent" | "person";
+        /**
+         * @description What a read went through: `recall` (with a query), `search`, `get`
+         *     (one memory), `list` (a page of kept memories), `digest` (recall
+         *     without a query, at session start), or `compile_load` (a hook
+         *     reported the compile its agent loaded natively).
+         * @enum {string}
+         */
+        ReadKind: "recall" | "search" | "get" | "list" | "digest" | "compile_load";
+        /**
+         * @description The surface a read came through.
+         * @enum {string}
+         */
+        ReadVia: "mcp" | "api" | "cli";
+        /** @description A read's display ID, unique within its tenant. */
+        ReadRef: string;
+        /** @description One read of one space (R-). It never holds memory text or the query. */
+        Read: {
+            id: components["schemas"]["Id"];
+            ref: components["schemas"]["ReadRef"];
+            space_id: components["schemas"]["Id"];
+            reader_kind: components["schemas"]["ReaderKind"];
+            /** @description The agent connection, for an agent. */
+            connection_id?: components["schemas"]["Id"];
+            /** @description The person, or the person the agent works for. */
+            person_id: components["schemas"]["Id"];
+            agent?: components["schemas"]["AgentKind"];
+            kind: components["schemas"]["ReadKind"];
+            via: components["schemas"]["ReadVia"];
+            session_ref?: components["schemas"]["SessionRef"];
+            /** @description The compile run read, for a compiled digest or a compile load. */
+            compile?: components["schemas"]["CompileRef"];
+            /** @description How many memories it covered; for a compile, every fact in it. */
+            memories: number;
+            /** @description The memories it returned directly, in display order (at most 200). */
+            memory_refs: components["schemas"]["DisplayRef"][];
+            read_at: components["schemas"]["Timestamp"];
+            recorded_at: components["schemas"]["Timestamp"];
+        };
+        ReadPage: {
+            items: components["schemas"]["Read"][];
+            has_more: boolean;
+            next_cursor?: components["schemas"]["Cursor"];
+            /** @description The space's reads in the last 7 days. */
+            reads_7d: number;
+        };
+        CompileLoadRequest: {
+            /** @description The compile run the agent loaded, by display ID (C-0012) or id, from the compiled file's header. */
+            compile: string;
+            /** @description The agent whose session loaded it. Ignored for an agent's own credential, which is always its agent. */
+            agent?: components["schemas"]["AgentKind"];
+            session_ref?: components["schemas"]["SessionRef"];
+            /** @description When the session loaded it; defaults to now, and must be within the last day. */
+            loaded_at?: components["schemas"]["Timestamp"];
+        };
+        CompileLoadResult: {
+            read: components["schemas"]["Read"];
         };
         SpaceList: {
             items: components["schemas"]["Space"][];
@@ -1575,7 +1735,7 @@ export interface components {
             name: string;
             kind: components["schemas"]["SpaceKind"];
             autonomy: components["schemas"]["Autonomy"];
-            /** @description Reads in the last 7 days. 0 until reads are recorded. */
+            /** @description Its reads (R-) of this space in the last 7 days. */
             reads_7d: number;
             /** @description Memories it proposed, kept or edited in the last 7 days. */
             writes_7d: number;
@@ -1609,7 +1769,7 @@ export interface components {
              *     space it isn't connected to, it only reads.
              */
             spaces: components["schemas"]["AgentSpace"][];
-            /** @description Reads in the last 7 days, in those spaces. 0 until reads are recorded. */
+            /** @description Its reads (R-, one per space read) in the last 7 days, in those spaces. */
             reads_7d: number;
             /** @description Writes in the last 7 days, in those spaces. */
             writes_7d: number;
@@ -1630,11 +1790,11 @@ export interface components {
             items: components["schemas"]["AgentConnection"][];
         };
         /**
-         * @description What the agent did in the last 7 days, in your spaces: its writes,
-         *     and what became of the memories it wrote.
+         * @description What the agent did in the last 7 days, in your spaces: its reads, its
+         *     writes, and what became of the memories it wrote.
          */
         AgentWeek: {
-            /** @description 0 until reads are recorded. */
+            /** @description Its reads (R-, one per space read). */
             reads: number;
             /** @description Memories it proposed, kept or edited. */
             writes: number;
@@ -1646,10 +1806,10 @@ export interface components {
             /** @description Memories it wrote that are still waiting in Review. */
             waiting: number;
         };
-        /** @description One of the agent's sessions, from the session on its receipts. */
+        /** @description One of the agent's sessions, from the session on its receipts and on its reads of the last 30 days. */
         AgentSession: {
             session_ref: components["schemas"]["SessionRef"];
-            /** @description 0 until reads are recorded. */
+            /** @description Its reads in that session, in the last 30 days. */
             reads: number;
             writes: number;
             last_at: components["schemas"]["Timestamp"];
@@ -2365,6 +2525,12 @@ export interface components {
         GateResultEnvelope: {
             data: components["schemas"]["GateResult"];
         };
+        ReadPageEnvelope: {
+            data: components["schemas"]["ReadPage"];
+        };
+        CompileLoadResultEnvelope: {
+            data: components["schemas"]["CompileLoadResult"];
+        };
     };
     responses: {
         /** @description The command was applied, or sent to Review. */
@@ -2528,6 +2694,16 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["TargetResultEnvelope"];
+            };
+        };
+        /** @description The load, recorded as a read (or already recorded under this key). */
+        CompileLoadRecorded: {
+            headers: {
+                "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["CompileLoadResultEnvelope"];
             };
         };
         /** @description The gate after the command (and, for an answer, the decision it became). */
@@ -2808,6 +2984,82 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listReads: {
+        parameters: {
+            query?: {
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size. Larger values are capped at 200. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of reads. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadPageEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    recordCompileLoad: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompileLoadRequest"];
+            };
+        };
+        responses: {
+            201: components["responses"]["CompileLoadRecorded"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

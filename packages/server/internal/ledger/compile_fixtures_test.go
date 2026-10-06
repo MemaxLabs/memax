@@ -81,8 +81,8 @@ func (f *fixture) jobs(target uuid.UUID) int {
 }
 
 // compiled records a compile of the target's current generation, as
-// Memax, with a one-file output.
-func (f *fixture) compiled(t *ledger.Target, content string) *ledger.CompileRun {
+// Memax, with a one-file output carrying the given memory refs.
+func (f *fixture) compiled(t *ledger.Target, content string, refs ...string) *ledger.CompileRun {
 	f.t.Helper()
 	ctx := context.Background()
 	scope, err := f.l.SpaceScope(ctx, t.SpaceID)
@@ -102,7 +102,7 @@ func (f *fixture) compiled(t *ledger.Target, content string) *ledger.CompileRun 
 		f.t.Fatal(err)
 	}
 	out := ledger.CompiledOutput{Path: t.Path, SHA256: sha(content), DriftSHA256: sha(content), Bytes: len(content),
-		Lines: strings.Count(content, "\n"), Refs: []string{}, Cites: []string{}, DroppedForBudget: []string{}}
+		Lines: strings.Count(content, "\n"), Refs: append([]string{}, refs...), Cites: []string{}, DroppedForBudget: []string{}}
 	if t.Kind == ledger.TargetChatGPT {
 		out.Path, out.Label = "", "ChatGPT project instructions"
 	}
@@ -112,7 +112,7 @@ func (f *fixture) compiled(t *ledger.Target, content string) *ledger.CompileRun 
 		Meta:   ledger.Meta{Actor: ledger.Actor{Kind: policy.ActorMemax}, Scope: scope, Via: policy.ViaSystem, IdempotencyKey: uuid.NewString()},
 		Target: t.ID, Ref: ref, Generation: cur.DirtyGen, BriefID: brief.ID, BriefVersion: brief.Version,
 		InputSHA256: sha("input " + content), OutputSHA256: outSHA, DriftSHA256: drift,
-		ArtifactKey: "test/" + ref, Bytes: out.Bytes, Lines: out.Lines, Files: []ledger.CompiledOutput{out},
+		ArtifactKey: "test/" + ref, Bytes: out.Bytes, Lines: out.Lines, Files: []ledger.CompiledOutput{out}, Refs: refs,
 		EnqueuedAt: cur.DirtyAt, StartedAt: now, CompiledAt: now,
 	})
 	if res.Compile == nil {

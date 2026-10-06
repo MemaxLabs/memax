@@ -3,6 +3,8 @@ package v2api
 import (
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 )
@@ -42,6 +44,13 @@ func (h *Handler) listMemories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, http.StatusOK, memoryPage{Items: nonNil(res.Memories), HasMore: res.HasMore, NextCursor: res.NextCursor})
+	ids := make([]uuid.UUID, 0, len(res.Memories))
+	for _, m := range res.Memories {
+		ids = append(ids, m.ID)
+	}
+	if len(ids) > 0 {
+		h.recordRead(p, sp, ledger.ReadList, ids)
+	}
 }
 
 // GET /v2/spaces/{space}/review
@@ -121,8 +130,19 @@ func (h *Handler) getMemory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, h.fromLedger(r, err))
 		return
 	}
-	setETag(w, hist.Memory)
+	m := hist.Memory
+	// The counts are an extra the page can live without: a failure leaves
+	// them out rather than failing the read.
+	reads, err := h.ledger.GetMemoryReads(r.Context(), scope.Narrow(m.SpaceID), m.ID)
+	if err != nil {
+		h.log.WarnContext(r.Context(), "v2: a memory's reads couldn't be read", "memory", m.Ref, "error", err)
+		reads = nil
+	}
+	setETag(w, m)
 	writeData(w, http.StatusOK, memoryDetail{
-		Memory: hist.Memory, Versions: nonNil(hist.Versions), Receipts: toReceiptPage(hist.Receipts),
+		Memory: m, Versions: nonNil(hist.Versions), Receipts: toReceiptPage(hist.Receipts), Reads: reads,
 	})
+	if g, ok := p.scope.Grant(m.SpaceID); ok {
+		h.recordRead(p, g, ledger.ReadGet, []uuid.UUID{m.ID})
+	}
 }

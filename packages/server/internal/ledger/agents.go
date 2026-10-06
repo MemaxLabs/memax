@@ -204,8 +204,8 @@ type Connection struct {
 	State       ConnectionState `json:"state"`
 	// Spaces are the spaces in the reader's scope it is connected to.
 	Spaces []ConnectionSpace `json:"spaces"`
-	// ReadsWeek and WritesWeek count the last 7 days in those spaces.
-	// Reads are 0 until reads are recorded (plan 25 §5.3).
+	// ReadsWeek and WritesWeek count the last 7 days in those spaces:
+	// reads (R-, one per space read) and writes.
 	ReadsWeek  int        `json:"reads_7d"`
 	WritesWeek int        `json:"writes_7d"`
 	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`

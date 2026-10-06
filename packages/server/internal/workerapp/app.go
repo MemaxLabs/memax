@@ -51,6 +51,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
 	"github.com/MemaxLabs/memax/packages/server/internal/quota"
+	"github.com/MemaxLabs/memax/packages/server/internal/reads"
 	"github.com/MemaxLabs/memax/packages/server/internal/safefetch"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
@@ -248,6 +249,11 @@ func New(ctx context.Context) (*App, error) {
 			"strong", judgeCfg.Strong.Model, "zdr", judgeCfg.ZeroDataRetention, "conditions", judgeCfg.Conditions)
 	}
 	judge.AddWorkers(workers, v2Judge)
+
+	// V2 reads (plan 25 §5.3): the API records them; the worker keeps the
+	// monthly partitions ahead, prunes past retention and reports the north
+	// star, once a day.
+	reads.AddWorkers(workers, v2Ledger)
 
 	river.AddWorker(workers, &queue.MemoryProcessWorker{
 		Store:         s,
@@ -462,6 +468,7 @@ func New(ctx context.Context) (*App, error) {
 	}
 
 	periodicJobs := configurePeriodicJobs(dreamEngine != nil)
+	periodicJobs = append(periodicJobs, reads.PeriodicJobs()...)
 	if compileSvc != nil {
 		periodicJobs = append(periodicJobs, compile.PeriodicJobs()...)
 		slog.Info("compile sweep scheduled", "every", compile.SweepInterval.String())

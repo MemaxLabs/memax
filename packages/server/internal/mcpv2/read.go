@@ -168,7 +168,11 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 		b.WriteString("Some spaces didn't answer in time; results may be incomplete.\n")
 	}
 	part.text = strings.TrimSpace(b.String())
-	s.recordRead(p, c.Tool, sessionRef, spaces, part.out)
+	kind := ledger.ReadRecall
+	if query == "" {
+		kind = ledger.ReadDigest
+	}
+	s.recordRead(p, kind, sessionRef, spaces, part.out)
 	return part
 }
 
@@ -248,7 +252,7 @@ func (s *Server) searchTool(ctx context.Context, c *handler.MCPToolCall, v *view
 			out.Results = append(out.Results, s.hitItem(bySpace[h.SpaceID], h))
 		}
 		writeItems(&b, "Kept", out.Results)
-		s.recordRead(v.p, c.Tool, "", spaces, handler.MCPRecallOutput{Results: out.Results})
+		s.recordRead(v.p, ledger.ReadSearch, sessionRefOf(c, a.SessionRef), spaces, handler.MCPRecallOutput{Results: out.Results})
 	}
 	wg.Wait()
 	text := strings.TrimSpace(b.String())
@@ -359,7 +363,7 @@ func (s *Server) get(ctx context.Context, c *handler.MCPToolCall, v *view) (*mcp
 			b.WriteString(line + "\n")
 		}
 	}
-	s.recordRead(v.p, c.Tool, "", []space{sp}, handler.MCPRecallOutput{Results: []handler.MCPItem{{ID: m.ID.String(), Ref: m.Ref, Record: handler.MCPRecordV2, SpaceID: sp.ID.String(), Text: ""}}})
+	s.recordRead(v.p, ledger.ReadGet, sessionRefOf(c, ""), []space{sp}, handler.MCPRecallOutput{Results: []handler.MCPItem{{ID: m.ID.String(), Ref: m.Ref, Record: handler.MCPRecordV2, SpaceID: sp.ID.String()}}})
 	return textResult(strings.TrimSpace(b.String()), handler.MCPGetOutput{Memory: detail}), true
 }
 
@@ -426,7 +430,7 @@ func (s *Server) list(ctx context.Context, c *handler.MCPToolCall, v *view) (*mc
 	if page.HasMore {
 		fmt.Fprintf(&b, " More available — pass cursor: \"%s\" for next page.", page.NextCursor)
 	}
-	s.recordRead(v.p, c.Tool, "", []space{sp}, handler.MCPRecallOutput{Results: out.Memories})
+	s.recordRead(v.p, ledger.ReadList, sessionRefOf(c, ""), []space{sp}, handler.MCPRecallOutput{Results: out.Memories})
 	return textResult(b.String(), out), true
 }
 
@@ -609,7 +613,9 @@ func spaceOf(spaces []space, id uuid.UUID) space {
 }
 
 // lastSeen is when the agent's connection was last seen before this
-// request: the stand-in for its last read until reads are recorded.
+// request: what "changes since your last read" counts from. (Its last
+// recorded read would be the same moment give or take a minute, and
+// last_seen_at is already on the connection the request resolved.)
 func lastSeen(p *v2api.Principal) *time.Time {
 	if p == nil || p.Connection == nil || p.Connection.LastSeenAt == nil {
 		return nil

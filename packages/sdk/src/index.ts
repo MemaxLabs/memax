@@ -47,6 +47,7 @@ export {
   V2MemoriesResource,
   V2ReviewResource,
   V2ReceiptsResource,
+  V2ReadsResource,
   V2AgentsResource,
   V2BriefsResource,
   V2TargetsResource,

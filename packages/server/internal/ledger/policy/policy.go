@@ -313,6 +313,11 @@ const (
 	ActionRequestDecision Action = "request_decision" // an agent asks a person to decide (a G- gate)
 	ActionAnswerGate      Action = "answer_gate"      // a person answers; the answer is kept as their decision
 	ActionWithdrawGate    Action = "withdraw_gate"    // the question is taken back before anyone answers
+
+	// Reads (plan 25 §5.3): not writes to the record, but who may report
+	// one is decided here too, so a read can't count for a space the
+	// reader can't read.
+	ActionRead Action = "read" // read a space, or report a compile an agent loaded at session start
 )
 
 // MaxWaitingGates is how many decisions one agent may have waiting on
@@ -500,7 +505,7 @@ const (
 	// kept, until the judge has looked at the words (rule 11). The ledger
 	// sets it, not Decide: it depends on the judge's progress, not on who
 	// asks.
-	CodeJudgePending = "judge_pending"
+	CodeJudgePending    = "judge_pending"
 	CodeEditsPersonKept = "edits_person_kept"
 	CodeAutonomyPropose = "autonomy_propose"
 	CodeIntegration     = "integration"
@@ -571,8 +576,22 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideAnswerGate(a, o, s)
 	case ActionWithdrawGate:
 		return decideWithdrawGate(a, o, s)
+	case ActionRead:
+		return decideRead(a, s)
 	}
 	return refuse(CodeUnknownAction, fmt.Sprintf("Memax doesn't know how to %q.", act))
+}
+
+// decideRead: people read the spaces they belong to, and system actors
+// the spaces they act on. An agent reads only the spaces it is connected
+// to (decided Oct 6); a paused agent still reads. Autonomy doesn't matter:
+// Read is enough.
+func decideRead(a Actor, s Space) Decision {
+	if a.Kind == ActorAgent && a.AgentStatus == AgentNotConnected {
+		return refuse(CodeAgentNotConnected, fmt.Sprintf(
+			"%s isn't connected to %s, so it can't read it. Connect it in Agents.", actorName(a), spaceName(s)))
+	}
+	return apply()
 }
 
 func decideWrite(a Actor, act Action, o Object, s Space) Decision {

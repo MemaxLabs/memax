@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -37,6 +38,9 @@ type Ledger struct {
 	// The undo windows (WithUndoWindows).
 	undoWindow      time.Duration
 	judgeUndoWindow time.Duration
+	// readMonths are the months whose reads partitions this process has
+	// ensured (reads.go).
+	readMonths sync.Map
 }
 
 // Option configures a Ledger.

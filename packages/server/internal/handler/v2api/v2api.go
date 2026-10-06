@@ -23,6 +23,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
+	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
@@ -39,6 +40,10 @@ type Handler struct {
 	// web verifies the web app's signed requests; nil is disabled.
 	web       *websurface.Verifier
 	webWarned atomic.Int64
+	// reads records agents' reads off the request path; nil records none.
+	reads ledger.ReadRecorder
+	// receiptKeys are the public keys checkpoints are signed with.
+	receiptKeys receiptchain.Keyring
 	// drafts embeds Remember's draft for the near-duplicate check (near.go);
 	// nil checks exact repeats only. near rate-limits the check.
 	drafts DraftEmbedder
@@ -90,6 +95,9 @@ var routes = []Route{
 	{"POST", "/v2/spaces/{space}/memories:near-duplicates", "findNearDuplicates", (*Handler).findNearDuplicates},
 	{"GET", "/v2/spaces/{space}/review", "listReview", (*Handler).listReview},
 	{"GET", "/v2/spaces/{space}/receipts", "listReceipts", (*Handler).listReceipts},
+	{"GET", "/v2/spaces/{space}/checkpoints", "listCheckpoints", (*Handler).listCheckpoints},
+	{"GET", "/v2/spaces/{space}/reads", "listReads", (*Handler).listReads},
+	{"POST", "/v2/spaces/{space}/compile-loads", "recordCompileLoad", (*Handler).recordCompileLoad},
 	{"GET", "/v2/memories/{ref}", "getMemory", (*Handler).getMemory},
 	{"POST", "/v2/memories/{ref}:keep", "keepMemory", (*Handler).keep},
 	{"POST", "/v2/memories/{ref}:edit", "editMemory", (*Handler).edit},

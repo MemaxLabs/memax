@@ -97,8 +97,9 @@ func TestV2RoutesOnlyComeFromV2API(t *testing.T) {
 		t.Fatal(err)
 	}
 	// v2Handler builds the handler on the ledger (with River and the
-	// compile coordinator around it), and the searcher MCP v2 reads with.
-	if !regexp.MustCompile(`v2h, v2Search := v2Handler\(pool, `).Match(app) ||
+	// compile coordinator around it), the searcher MCP v2 reads with, and
+	// the read recorder.
+	if !regexp.MustCompile(`v2h, v2Search, readRecorder := v2Handler\(pool, `).Match(app) ||
 		!regexp.MustCompile(`v2:\s+v2h,`).Match(app) ||
 		!regexp.MustCompile(`v2Search:\s+v2Search,`).Match(app) ||
 		!regexp.MustCompile(`l := ledger\.New\(pool, opts\.\.\.\)`).Match(app) ||

@@ -37,7 +37,6 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/summarize"
 	ingesttitle "github.com/MemaxLabs/memax/packages/server/internal/ingest/title"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
-	"github.com/MemaxLabs/memax/packages/server/internal/mcpv2"
 	"github.com/MemaxLabs/memax/packages/server/internal/meter"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore"
@@ -48,6 +47,8 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
 	"github.com/MemaxLabs/memax/packages/server/internal/quota"
 	"github.com/MemaxLabs/memax/packages/server/internal/ratelimit"
+	"github.com/MemaxLabs/memax/packages/server/internal/reads"
+	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/distill"
 	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/rerank"
 	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
@@ -639,7 +640,13 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		}
 	}
 
-	v2h, v2Search := v2Handler(pool, queueClient, blobStore)
+	// Reads (R-) are recorded off the request path by one recorder per
+	// process, shared by /v2 and MCP; it flushes what is buffered at
+	// shutdown, after the HTTP server has drained and before the pool
+	// closes (cleanups run last-registered first).
+	v2h, v2Search, readRecorder := v2Handler(pool, queueClient, blobStore)
+	app.addClose(readRecorder.Close)
+
 	registerRoutes(mux, routeDeps{
 		memories:               memories,
 		uploads:                uploadsH,
@@ -688,7 +695,7 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		// every /v2 route answers 503 unavailable.
 		v2:       v2h,
 		v2Search: v2Search,
-		mcp:      mcpDepsFromEnv(app, pool),
+		mcp:      mcpDepsFromEnv(pool, readRecorder),
 	})
 
 	configured = true
@@ -699,8 +706,9 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 // are on the V2 record (from the database), the key that signs multi
 // round-trip confirmations (MCP_STATE_SECRET, else derived from
 // JWT_SECRET, so every machine verifies every other's), the web app for
-// Review links, and this machine's ID for legacy session affinity.
-func mcpDepsFromEnv(app *App, pool *pgxpool.Pool) mcpDeps {
+// Review links, this machine's ID for legacy session affinity, and the
+// process's read recorder (nil without a database).
+func mcpDepsFromEnv(pool *pgxpool.Pool, rec *reads.Recorder) mcpDeps {
 	d := mcpDeps{appBaseURL: os.Getenv("APP_BASE_URL"), instance: os.Getenv("FLY_MACHINE_ID")}
 	if pool == nil {
 		return d
@@ -713,10 +721,9 @@ func mcpDepsFromEnv(app *App, pool *pgxpool.Pool) mcpDeps {
 	if len(d.stateSecret) == 0 {
 		slog.Warn("MCP_STATE_SECRET and JWT_SECRET are unset: in-agent confirmations only verify on the machine that asked")
 	}
-	// TODO(reads table): give NewReads a sink that writes v2.reads.
-	reads := mcpv2.NewReads(nil, 4096, 250*time.Millisecond, slog.Default())
-	app.addClose(reads.Close)
-	d.reads = reads
+	if rec != nil {
+		d.reads = rec
+	}
 	return d
 }
 
@@ -742,9 +749,10 @@ func webSurfaceFromEnv() *websurface.Verifier {
 // River's InsertTx when there is a queue (plan 25 §5.7), and the compile
 // coordinator for previews, hand edits and drift, which needs
 // COMPILE_SERVICE_URL and object storage (nil means disabled). It also
-// returns the searcher MCP v2's recall and search use: hybrid when V2
-// embeddings are configured (v2Retrieval), lexical otherwise.
-func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store) (*v2api.Handler, *v2recall.Searcher) {
+// returns the searcher MCP v2's recall and search use (hybrid when V2
+// embeddings are configured, v2Retrieval; lexical otherwise), and the
+// process's read recorder, shared with MCP.
+func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
 	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
 	var opts []ledger.Option
 	if queueClient != nil {
@@ -758,15 +766,31 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 	svc := compile.New(l, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL")), blobStore,
 		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
 	search, vectors := v2Retrieval(l, embedCfg)
+	// Nil without a database: nothing records reads.
+	rec := reads.New(l, reads.Options{})
 	if l != nil {
 		slog.Info("/v2 enabled", "compile_jobs", queueClient != nil, "compile_service", svc != nil,
-			"vectors", vectors != nil)
+			"vectors", vectors != nil, "reads", rec != nil)
 	}
-	hopts := []v2api.Option{v2api.WithWebSurface(webSurfaceFromEnv()), v2api.WithCompile(svc)}
+	hopts := []v2api.Option{v2api.WithWebSurface(webSurfaceFromEnv()), v2api.WithCompile(svc),
+		v2api.WithReads(rec), v2api.WithReceiptKeys(receiptKeysFromEnv())}
 	if vectors != nil {
 		hopts = append(hopts, v2api.WithDrafts(vectors))
 	}
-	return v2api.New(l, slog.Default(), hopts...), search
+	return v2api.New(l, slog.Default(), hopts...), search, rec
+}
+
+// receiptKeysFromEnv reads the public keys receipt checkpoints are signed
+// with, to serve beside them: RECEIPT_VERIFY_KEYS (and the signing key's
+// public half, if RECEIPT_SIGNING_KEY happens to be set here too; the API
+// never signs). A bad value is logged, and no keys are served.
+func receiptKeysFromEnv() receiptchain.Keyring {
+	_, keys, err := receiptchain.FromEnv(os.Getenv)
+	if err != nil {
+		slog.Error("receipt checkpoint keys: unusable; serving none", "error", err)
+		return receiptchain.Keyring{}
+	}
+	return keys
 }
 
 // v2Retrieval builds V2 recall and search (plan 25 §5.11) from the

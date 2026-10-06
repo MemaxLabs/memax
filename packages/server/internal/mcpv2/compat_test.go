@@ -163,8 +163,9 @@ func TestMixedRecall(t *testing.T) {
 	if records["v2"] != 1 || records["v1"] != 1 {
 		t.Errorf("results by record = %v", records)
 	}
-	if len(e.reads.reads) == 0 || len(e.reads.reads[len(e.reads.reads)-1].Memories[onV2.id]) != 1 {
-		t.Errorf("the read wasn't recorded: %+v", e.reads.reads)
+	reads := e.reads.all()
+	if len(reads) != 1 || reads[0].SpaceID != onV2.id || len(reads[0].Memories) != 1 || reads[0].Kind != ledger.ReadRecall {
+		t.Errorf("the read wasn't recorded once, for the space on V2: %+v", reads)
 	}
 }
 
@@ -203,9 +204,11 @@ func TestRecallLatency(t *testing.T) {
 	// recall's, so the bound holds if any of three rounds meets it: a real
 	// regression fails all three.
 	const bound = 100 * time.Millisecond
+	recalls := 0
 	round := func() (p50, p95, worst time.Duration) {
 		var took []time.Duration
 		for i := range 60 {
+			recalls++
 			q := queries[i%len(queries)]
 			start := time.Now()
 			// The space on V2 alone: the V1 pipeline that serves V1 hubs in a
@@ -236,6 +239,15 @@ func TestRecallLatency(t *testing.T) {
 	t.Logf("digest %v", time.Since(digestStart))
 	if best > bound {
 		t.Errorf("recall p95 %v in its best of three rounds, want at most %v (N2 is 300 ms)", best, bound)
+	}
+	// Every one of those reads went through the production recorder,
+	// off the request path, and reached v2.reads once Close flushed.
+	e.recorder.Close()
+	if st := e.recorder.Stats(); st.Written != int64(recalls+1) || st.Dropped() != 0 {
+		t.Errorf("reads written %d, dropped %d; want %d and none", st.Written, st.Dropped(), recalls+1)
+	}
+	if got := e.count(`SELECT count(*) FROM v2.reads WHERE space_id = $1`, f.sp.id); got != recalls+1 {
+		t.Errorf("v2.reads holds %d reads of the space, want %d", got, recalls+1)
 	}
 }
 

@@ -52,6 +52,7 @@ type memoryDetail struct {
 	Memory   *ledger.Memory         `json:"memory"`
 	Versions []ledger.MemoryVersion `json:"versions"`
 	Receipts receiptPage            `json:"receipts"`
+	Reads    *ledger.MemoryReads    `json:"reads,omitempty"`
 }
 
 // commandResult is ledger.Result without Replayed: a replay returns the

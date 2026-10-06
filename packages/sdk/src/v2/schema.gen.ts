@@ -150,6 +150,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/checkpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List receipt checkpoints
+         * @description The space's sealed receipt chain, newest checkpoint first: each
+         *     checkpoint's range of receipts (positions in the chain, from 1), the
+         *     chain hash before and after it, the Merkle root of its receipts and
+         *     its signature. `seal` says how far the chain is sealed ("sealed
+         *     through receipt 1,284 at 14:02"), how many receipts wait to be sealed
+         *     and when the chain was last verified; `keys` are the public keys
+         *     checkpoints are signed with, current and retired.
+         */
+        get: operations["listCheckpoints"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/reads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List reads
+         * @description What agents read in the space, newest first: one read (`R-`) per
+         *     recall, search, get, list or digest that returned something here, and
+         *     one per session-start compile load. `reads_7d` counts the last 7
+         *     days. Reads hold memory refs and compile refs, never words.
+         */
+        get: operations["listReads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/compile-loads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a compile an agent loaded
+         * @description A session-start hook (or the daemon) reports that its agent loaded a
+         *     compiled file natively: the compile run (`C-`) it found in the file.
+         *     It counts as a read of every fact in that compile, and it is how
+         *     Memax knows a file's loads are observed (a fact in a file whose loads
+         *     nobody reports never fades). Reading is enough: an agent connected to
+         *     the space reports its own loads (a paused one too); an agent that
+         *     isn't connected here is refused with 403 `refused`
+         *     (`agent_not_connected`), so a credential can't count reads in a space
+         *     it can't read. A person's session (the CLI the hook runs under) names
+         *     the agent. Report a load within a day of it (`loaded_at`); the same
+         *     `Idempotency-Key` records it once.
+         */
+        post: operations["recordCompileLoad"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/memories/{ref}": {
         parameters: {
             query?: {
@@ -1608,6 +1696,184 @@ export interface components {
             /** @description Every version of the statement, newest first. */
             versions: components["schemas"]["MemoryVersion"][];
             receipts: components["schemas"]["ReceiptPage"];
+            /** @description How agents read it. Absent when the counts couldn't be read. */
+            reads?: components["schemas"]["MemoryReads"];
+        };
+        /**
+         * @description How a memory has been read: directly (recall, search, get, list) and
+         *     in every compile that contained it (a session-start digest, a
+         *     reported load), over the last 13 months.
+         */
+        MemoryReads: {
+            /** @description Reads of it in the last 13 months. */
+            reads: number;
+            /** @description Reads of it in the last 7 days. */
+            reads_7d: number;
+            /** @description Its latest read; absent if it was never read. */
+            last_read_at?: components["schemas"]["Timestamp"];
+            /** @description How many agents read it ("reaches 5 agents"). */
+            agents: number;
+            /** @description Who read it, most recent first (at most 20). */
+            readers: components["schemas"]["MemoryReader"][];
+            /**
+             * @description It is in a compiled file whose loads Memax can't see (agents read
+             *     the file natively and no hook reports the loads), so it may be
+             *     read more than counted, and it never fades.
+             */
+            unobserved_target: boolean;
+        };
+        /** @description One reader of a memory. */
+        MemoryReader: {
+            reader_kind: components["schemas"]["ReaderKind"];
+            /** @description The agent connection, for an agent. */
+            connection_id?: components["schemas"]["Id"];
+            /** @description The person, or the person the agent works for. */
+            person_id: components["schemas"]["Id"];
+            agent?: components["schemas"]["AgentKind"];
+            /** @description The agent connection's name, when you can see the connection. */
+            display_name?: string;
+            reads: number;
+            reads_7d: number;
+            last_read_at: components["schemas"]["Timestamp"];
+        };
+        /**
+         * @description One signed checkpoint of a space's receipt chain. Its signature is
+         *     Ed25519 over the checkpoint statement (receiptchain format 1: the
+         *     magic `memax.checkpoint.v1`, then the length-prefixed space_id,
+         *     tenant_id, number, position_from, position_to, first and last
+         *     receipt ids, last_seq, prev_sha256, chain_sha256, merkle_root,
+         *     sealed_at in microseconds and key_id).
+         */
+        Checkpoint: {
+            id: components["schemas"]["Id"];
+            space_id: components["schemas"]["Id"];
+            tenant_id: components["schemas"]["Id"];
+            /** @description 1, 2, 3 … in the space. */
+            number: number;
+            /** @description The first receipt's position in the space's chain, from 1. */
+            position_from: number;
+            position_to: number;
+            receipts: number;
+            first_receipt_id: components["schemas"]["Id"];
+            last_receipt_id: components["schemas"]["Id"];
+            /** @description The last receipt's `seq`. */
+            last_seq: number;
+            /** @description The chain hash before the range (the space's genesis hash for the first checkpoint). */
+            prev_sha256: components["schemas"]["Sha256"];
+            /** @description The chain hash after the range. */
+            chain_sha256: components["schemas"]["Sha256"];
+            /** @description The RFC 6962 Merkle root of the range's receipt leaves. */
+            merkle_root: components["schemas"]["Sha256"];
+            /**
+             * @description The receipts' canonical encoding version.
+             * @enum {integer}
+             */
+            format: 1;
+            /** @description False when the server had no signing key; the checkpoint still chains. */
+            signed: boolean;
+            /** @description The signing key, as in `keys`. */
+            key_id?: string;
+            /** @description The Ed25519 signature, base64. */
+            signature?: string;
+            sealed_at: components["schemas"]["Timestamp"];
+            /** @description When its copy reached object storage; absent until then. */
+            stored_at?: components["schemas"]["Timestamp"];
+        };
+        /** @description How far a space's receipt chain is sealed and verified. */
+        SealStatus: {
+            /** @description Receipts sealed so far. */
+            sealed_receipts: number;
+            /** @description The last sealed receipt's `seq`. */
+            sealed_through_seq?: number;
+            sealed_through_receipt_id?: components["schemas"]["Id"];
+            /** @description The chain hash after the last sealed receipt. */
+            head_sha256?: components["schemas"]["Sha256"];
+            checkpoints: number;
+            sealed_at?: components["schemas"]["Timestamp"];
+            /** @description Receipts written but not sealed yet (counted up to 10,000). */
+            unsealed: number;
+            /** @description When the chain was last verified from its first receipt. */
+            verified_at?: components["schemas"]["Timestamp"];
+            verified_receipts?: number;
+            /** @description What the last verification found wrong; 0 means the chain verified. */
+            verify_problems?: number;
+        };
+        /** @description A public key checkpoints are signed with. */
+        SigningKey: {
+            key_id: string;
+            /** @enum {string} */
+            algorithm: "ed25519";
+            /** @description The raw 32-byte public key, base64. */
+            public_key: string;
+        };
+        CheckpointPage: {
+            items: components["schemas"]["Checkpoint"][];
+            has_more: boolean;
+            next_cursor?: components["schemas"]["Cursor"];
+            seal: components["schemas"]["SealStatus"];
+            keys: components["schemas"]["SigningKey"][];
+        };
+        /**
+         * @description `agent` (an agent connection) or `person` (a person's CLI reporting their agent's session start).
+         * @enum {string}
+         */
+        ReaderKind: "agent" | "person";
+        /**
+         * @description What a read went through: `recall` (with a query), `search`, `get`
+         *     (one memory), `list` (a page of kept memories), `digest` (recall
+         *     without a query, at session start), or `compile_load` (a hook
+         *     reported the compile its agent loaded natively).
+         * @enum {string}
+         */
+        ReadKind: "recall" | "search" | "get" | "list" | "digest" | "compile_load";
+        /**
+         * @description The surface a read came through.
+         * @enum {string}
+         */
+        ReadVia: "mcp" | "api" | "cli";
+        /** @description A read's display ID, unique within its tenant. */
+        ReadRef: string;
+        /** @description One read of one space (R-). It never holds memory text or the query. */
+        Read: {
+            id: components["schemas"]["Id"];
+            ref: components["schemas"]["ReadRef"];
+            space_id: components["schemas"]["Id"];
+            reader_kind: components["schemas"]["ReaderKind"];
+            /** @description The agent connection, for an agent. */
+            connection_id?: components["schemas"]["Id"];
+            /** @description The person, or the person the agent works for. */
+            person_id: components["schemas"]["Id"];
+            agent?: components["schemas"]["AgentKind"];
+            kind: components["schemas"]["ReadKind"];
+            via: components["schemas"]["ReadVia"];
+            session_ref?: components["schemas"]["SessionRef"];
+            /** @description The compile run read, for a compiled digest or a compile load. */
+            compile?: components["schemas"]["CompileRef"];
+            /** @description How many memories it covered; for a compile, every fact in it. */
+            memories: number;
+            /** @description The memories it returned directly, in display order (at most 200). */
+            memory_refs: components["schemas"]["DisplayRef"][];
+            read_at: components["schemas"]["Timestamp"];
+            recorded_at: components["schemas"]["Timestamp"];
+        };
+        ReadPage: {
+            items: components["schemas"]["Read"][];
+            has_more: boolean;
+            next_cursor?: components["schemas"]["Cursor"];
+            /** @description The space's reads in the last 7 days. */
+            reads_7d: number;
+        };
+        CompileLoadRequest: {
+            /** @description The compile run the agent loaded, by display ID (C-0012) or id, from the compiled file's header. */
+            compile: string;
+            /** @description The agent whose session loaded it. Ignored for an agent's own credential, which is always its agent. */
+            agent?: components["schemas"]["AgentKind"];
+            session_ref?: components["schemas"]["SessionRef"];
+            /** @description When the session loaded it; defaults to now, and must be within the last day. */
+            loaded_at?: components["schemas"]["Timestamp"];
+        };
+        CompileLoadResult: {
+            read: components["schemas"]["Read"];
         };
         SpaceList: {
             items: components["schemas"]["Space"][];
@@ -1644,7 +1910,7 @@ export interface components {
             name: string;
             kind: components["schemas"]["SpaceKind"];
             autonomy: components["schemas"]["Autonomy"];
-            /** @description Reads in the last 7 days. 0 until reads are recorded. */
+            /** @description Its reads (R-) of this space in the last 7 days. */
             reads_7d: number;
             /** @description Memories it proposed, kept or edited in the last 7 days. */
             writes_7d: number;
@@ -1678,7 +1944,7 @@ export interface components {
              *     space it isn't connected to, it only reads.
              */
             spaces: components["schemas"]["AgentSpace"][];
-            /** @description Reads in the last 7 days, in those spaces. 0 until reads are recorded. */
+            /** @description Its reads (R-, one per space read) in the last 7 days, in those spaces. */
             reads_7d: number;
             /** @description Writes in the last 7 days, in those spaces. */
             writes_7d: number;
@@ -1699,11 +1965,11 @@ export interface components {
             items: components["schemas"]["AgentConnection"][];
         };
         /**
-         * @description What the agent did in the last 7 days, in your spaces: its writes,
-         *     and what became of the memories it wrote.
+         * @description What the agent did in the last 7 days, in your spaces: its reads, its
+         *     writes, and what became of the memories it wrote.
          */
         AgentWeek: {
-            /** @description 0 until reads are recorded. */
+            /** @description Its reads (R-, one per space read). */
             reads: number;
             /** @description Memories it proposed, kept or edited. */
             writes: number;
@@ -1715,10 +1981,10 @@ export interface components {
             /** @description Memories it wrote that are still waiting in Review. */
             waiting: number;
         };
-        /** @description One of the agent's sessions, from the session on its receipts. */
+        /** @description One of the agent's sessions, from the session on its receipts and on its reads of the last 30 days. */
         AgentSession: {
             session_ref: components["schemas"]["SessionRef"];
-            /** @description 0 until reads are recorded. */
+            /** @description Its reads in that session, in the last 30 days. */
             reads: number;
             writes: number;
             last_at: components["schemas"]["Timestamp"];
@@ -2490,6 +2756,15 @@ export interface components {
         GateResultEnvelope: {
             data: components["schemas"]["GateResult"];
         };
+        ReadPageEnvelope: {
+            data: components["schemas"]["ReadPage"];
+        };
+        CompileLoadResultEnvelope: {
+            data: components["schemas"]["CompileLoadResult"];
+        };
+        CheckpointPageEnvelope: {
+            data: components["schemas"]["CheckpointPage"];
+        };
     };
     responses: {
         /** @description The command was applied, or sent to Review. */
@@ -2657,6 +2932,16 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["TargetResultEnvelope"];
+            };
+        };
+        /** @description The load, recorded as a read (or already recorded under this key). */
+        CompileLoadRecorded: {
+            headers: {
+                "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["CompileLoadResultEnvelope"];
             };
         };
         /** @description The gate after the command (and, for an answer, the decision it became). */
@@ -2971,6 +3256,117 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listCheckpoints: {
+        parameters: {
+            query?: {
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size. Larger values are capped at 200. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of checkpoints. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckpointPageEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listReads: {
+        parameters: {
+            query?: {
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size. Larger values are capped at 200. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of reads. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadPageEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    recordCompileLoad: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompileLoadRequest"];
+            };
+        };
+        responses: {
+            201: components["responses"]["CompileLoadRecorded"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

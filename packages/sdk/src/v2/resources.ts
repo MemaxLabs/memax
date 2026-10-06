@@ -1,5 +1,5 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`,
-// `.receipts`, `.agents`, `.briefs`, `.targets` and `.gates`. Thin, typed
+// `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets` and `.gates`. Thin, typed
 // wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
 // as on /v1.
@@ -11,11 +11,14 @@ import type {
   AgentDetail,
   AgentList,
   AutonomyInput,
+  CheckpointPage,
   Brief,
   BriefResult,
   BriefVersionPage,
   ClientVia,
   CommandResult,
+  CompileLoadInput,
+  CompileLoadResult,
   CompileRunPage,
   ConfigureTargetInput,
   Conflict,
@@ -38,6 +41,7 @@ import type {
   ObservationInput,
   ObservationResult,
   PolicyDecision,
+  ReadPage,
   ReceiptPage,
   RememberInput,
   RequestDecisionInput,
@@ -326,6 +330,22 @@ export class V2ReceiptsResource {
   }
 
   /**
+   * The space's sealed receipt chain, newest checkpoint first, with how
+   * far it is sealed and verified (`seal`) and the public keys checkpoints
+   * are signed with. Check an export against them with
+   * {@link verifyReceiptChain}, pinning the keys you trust.
+   */
+  async checkpoints(
+    space: string,
+    opts?: PageOptions,
+  ): Promise<CheckpointPage> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/checkpoints`, {
+      query: pageQuery(opts),
+      signal: opts?.signal,
+    });
+  }
+
+  /**
    * Undo the command that wrote this receipt (any of its receipts):
    * Review's ⌘Z. A person undoes their own keep, reject, edit or conflict
    * resolution within 10 minutes, and any person who may keep undoes one
@@ -339,6 +359,40 @@ export class V2ReceiptsResource {
     opts: CommandOptions,
   ): Promise<MemoriesCommandResult> {
     return this.req("POST", `/v2/receipts/${seg(receipt)}:undo`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+}
+
+export class V2ReadsResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /**
+   * What agents read in the space (R-), newest first, with `reads_7d`.
+   * Reads are not receipts: they hold memory and compile refs, never words.
+   */
+  async list(space: string, opts?: PageOptions): Promise<ReadPage> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/reads`, {
+      query: pageQuery(opts),
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Report the compile (C-) an agent loaded natively at session start: a
+   * read of every fact in it, and how Memax knows the file's loads are
+   * seen. An agent's credential reports its own loads in spaces it is
+   * connected to; a person's session names the agent (`input.agent`).
+   * Report within a day of the load; the same key records it once.
+   */
+  async recordCompileLoad(
+    space: string,
+    input: CompileLoadInput,
+    opts: CommandOptions,
+  ): Promise<CompileLoadResult> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/compile-loads`, {
       body: input,
       extraHeaders: commandHeaders(opts),
       signal: opts.signal,
@@ -734,6 +788,7 @@ export class V2Resource {
   readonly memories: V2MemoriesResource;
   readonly review: V2ReviewResource;
   readonly receipts: V2ReceiptsResource;
+  readonly reads: V2ReadsResource;
   readonly agents: V2AgentsResource;
   readonly briefs: V2BriefsResource;
   readonly targets: V2TargetsResource;
@@ -744,6 +799,7 @@ export class V2Resource {
     this.memories = new V2MemoriesResource(req);
     this.review = new V2ReviewResource(req);
     this.receipts = new V2ReceiptsResource(req);
+    this.reads = new V2ReadsResource(req);
     this.agents = new V2AgentsResource(req);
     this.briefs = new V2BriefsResource(req);
     this.targets = new V2TargetsResource(req);

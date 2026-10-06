@@ -67,6 +67,42 @@ describe("paths", () => {
     ).not.toBeNull();
   });
 
+  // The server's rule (ledger ConfigureTarget): a scoped kind's folder is
+  // the tool's own rules folder, at the root or in a package.
+  it.each([
+    [
+      "cursor_mdc",
+      ".cursor/rules",
+      "packages/web/.cursor/rules",
+      ".github/instructions",
+      ".mdc",
+    ],
+    [
+      "copilot",
+      ".github/instructions",
+      "apps/api/.github/instructions",
+      ".cursor/rules",
+      ".instructions.md",
+    ],
+    ["windsurf", ".windsurf/rules", ".devin/rules", "rules", ".md"],
+    ["claude_rules", ".claude/rules", "web/.claude/rules", ".claude", ".md"],
+  ] as const)(
+    "writes %s only in its rules folder",
+    (kind, root, nested, wrong, ext) => {
+      const file = (dir: string) => `${dir}/memax-web${ext}`;
+      expect(outputRefusal({ kind, path: root }, file(root))).toBeNull();
+      expect(outputRefusal({ kind, path: nested }, file(nested))).toBeNull();
+      expect(outputRefusal({ kind, path: wrong }, file(wrong))).toMatch(
+        /isn't inside/,
+      );
+      // A folder that only looks like one.
+      const lookalike = `${root}-old`;
+      expect(outputRefusal({ kind, path: lookalike }, file(lookalike))).toMatch(
+        /isn't inside/,
+      );
+    },
+  );
+
   it("refuses a directory that is a symlink out of the repository", async () => {
     const outside = mkdtempSync(join(tmpdir(), "memax-outside-"));
     mkdirSync(join(h.repo, ".cursor"));

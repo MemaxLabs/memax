@@ -6,6 +6,10 @@
 //   - it is a file the target's kind writes (AGENTS.md, CLAUDE.md,
 //     `.cursor/rules/memax-<area>.mdc`, …), so a bad server can't write a
 //     git hook, `.envrc` or `package.json`;
+//   - a scoped kind's folder is the tool's own rules folder, as the
+//     server checks it (ledger ConfigureTarget): `.cursor/rules` for
+//     Cursor, `.github/instructions` for Copilot, `.devin/rules` or
+//     `.windsurf/rules` for Windsurf, `.claude/rules` for Claude Code;
 //   - it never enters `.git` or replaces `.memax.yml`;
 //   - every directory on the way resolves inside the repository, so a
 //     symlinked `.cursor` can't lead out of it.
@@ -42,6 +46,14 @@ const SCOPED_EXT: Partial<Record<V2.TargetKind, string>> = {
   claude_rules: ".md",
 };
 
+/** The rules folders each scoped kind's folder must be in (the server's hasDir). */
+const SCOPED_DIRS: Partial<Record<V2.TargetKind, string[]>> = {
+  cursor_mdc: [".cursor/rules"],
+  copilot: [".github/instructions"],
+  windsurf: [".devin/rules", ".windsurf/rules"],
+  claude_rules: [".claude/rules"],
+};
+
 const SCOPED_NAME = /^memax-[a-z0-9][a-z0-9-]{0,80}$/;
 
 /**
@@ -69,6 +81,10 @@ export function outputRefusal(
   }
   const ext = SCOPED_EXT[kind];
   if (ext) {
+    const dirs = SCOPED_DIRS[kind] ?? [];
+    if (!dirs.some((d) => `/${target.path}/`.includes(`/${d}/`))) {
+      return `the target's folder ${target.path} isn't inside ${dirs.join(" or ")}`;
+    }
     const prefix = target.path + "/";
     const name = file.startsWith(prefix) ? file.slice(prefix.length) : "";
     if (

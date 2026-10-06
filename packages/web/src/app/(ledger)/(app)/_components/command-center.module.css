@@ -54,6 +54,19 @@
   grid-column: 2;
 }
 
+/* The source a hovered or focused citation points at. */
+.sourceRow[data-active] .sourceText {
+  background: var(--highlight);
+  border-radius: var(--radius-xs);
+  box-decoration-break: clone;
+}
+
+/* Keep as memory, done: the seal stamps where the button was. */
+.keptSeal {
+  display: inline-flex;
+  margin: -16px 0 -16px;
+}
+
 .actions,
 .keepRow {
   display: flex;

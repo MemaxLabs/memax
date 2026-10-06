@@ -74,7 +74,7 @@ export class Memax {
     this.events = new EventsResource(stream);
     this.bar = new BarResource(req);
     this.chats = new ChatsResource(req, stream);
-    this.v2 = new V2Resource(req);
+    this.v2 = new V2Resource(req, transport.open.bind(transport));
   }
 
   async push(...args: Parameters<MemoriesResource["push"]>) {

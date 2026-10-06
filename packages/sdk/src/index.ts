@@ -53,7 +53,10 @@ export {
   V2TargetsResource,
   V2GatesResource,
   refusalOf,
+  askEventOf,
 } from "./v2/resources.js";
+export { EventStreamParser, readEventStream } from "./v2/sse.js";
+export type { ServerSentEvent } from "./v2/sse.js";
 export {
   verifyReceiptChain,
   canonicalReceipt,
@@ -83,6 +86,7 @@ export type {
   ListGatesOptions as V2ListGatesOptions,
   GateRefOptions as V2GateRefOptions,
   GateCommandOptions as V2GateCommandOptions,
+  AskOptions as V2AskOptions,
 } from "./v2/resources.js";
 export type {
   // Config

@@ -1,5 +1,5 @@
 import { MemaxError, type V2 } from "memax-sdk";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { webSessionOf } from "../web-session";
 import { toFailure } from "./command-error";
 import { DEMO_SPACES } from "./demo-dataset";
@@ -21,6 +21,17 @@ import { waitingOnYou } from "./types";
 const team = DEMO_SPACES.find((s) => s.slug === "memax-team")!;
 const ME = "user-zz";
 const NOW = new Date("2026-10-05T21:40:00Z");
+
+// The SDK source reads the wall clock to leave out expired gates, so the
+// fixtures' expiry times hold only at the fixtures' NOW: pin Date to it
+// (timers stay real, so the sources' promises resolve as usual).
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function gate(fields: Partial<V2.Gate> = {}): V2.Gate {
   return {

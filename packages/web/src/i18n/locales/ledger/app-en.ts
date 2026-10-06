@@ -285,8 +285,18 @@ export const ledgerAppEn = {
       detail:
         "You can still remember something. It's kept as soon as you press Keep.",
     },
+    off: {
+      title:
+        "Answers are off on this server, so these are what {space} has kept.",
+      detail: "Open one to see its receipts.",
+      empty: "Nothing kept matches the question.",
+    },
+    limit: {
+      title: "You've asked {n} questions this month, all your plan answers.",
+      detail: "Asks start again on {date}. Pro answers as many as you like.",
+    },
     rememberInstead: "Remember it instead",
-    failed: "Ask didn't answer. Try again.",
+    failed: "Ask didn't answer. Nothing was kept. Try again.",
     tryAgain: "Try again",
   },
   remember: {

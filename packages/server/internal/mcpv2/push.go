@@ -85,7 +85,7 @@ func (s *Server) push(ctx context.Context, c *handler.MCPToolCall, v *view) (*mc
 	var sources []ledger.SourceInput
 	for _, src := range a.Sources {
 		k := ledger.SourceKind(strings.TrimSpace(src.Kind))
-		if !k.Valid() || k == ledger.SourceImport {
+		if !k.Valid() || k == ledger.SourceImport || k == ledger.SourceMemory {
 			return errorResult(fmt.Sprintf("Source kind %q isn't one of session, pr, file, url, issue, email or note.", src.Kind)), true
 		}
 		sources = append(sources, ledger.SourceInput{Kind: k, Ref: src.Ref, URI: src.URI})

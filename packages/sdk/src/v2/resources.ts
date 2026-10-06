@@ -4,9 +4,12 @@
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
 // as on /v1.
 import { MemaxError } from "../errors.js";
-import type { QueryValue, RequestFn } from "../transport.js";
+import type { OpenFn, QueryValue, RequestFn } from "../transport.js";
+import { readEventStream } from "./sse.js";
 import type {
   AgentCommandInput,
+  AskEvent,
+  AskInput,
   AgentCommandResult,
   AgentDetail,
   AgentList,
@@ -793,8 +796,9 @@ export class V2Resource {
   readonly briefs: V2BriefsResource;
   readonly targets: V2TargetsResource;
   readonly gates: V2GatesResource;
+  private readonly openStream?: OpenFn;
 
-  constructor(req: RequestFn) {
+  constructor(req: RequestFn, open?: OpenFn) {
     this.spaces = new V2SpacesResource(req);
     this.memories = new V2MemoriesResource(req);
     this.review = new V2ReviewResource(req);
@@ -804,7 +808,91 @@ export class V2Resource {
     this.briefs = new V2BriefsResource(req);
     this.targets = new V2TargetsResource(req);
     this.gates = new V2GatesResource(req);
+    this.openStream = open;
   }
+
+  /**
+   * Ask a space a question: a short answer from its kept memories,
+   * streamed, every sentence cited. Iterate the events as they arrive:
+   *
+   * ```ts
+   * for await (const ev of memax.v2.ask("memax-v2", "Why River?", { signal })) {
+   *   if (ev.event === "delta") process.stdout.write(ev.data.text);
+   * }
+   * ```
+   *
+   * The stream is one `sources` event (the memories the answer may cite),
+   * then `delta` (words) and `cite` (`n`, `ref`) in answer order, then
+   * `done` with the `outcome`, or `error` if the model failed partway.
+   * Show `not_covered` and `unsupported` as "nothing kept answers that",
+   * never as an answer. A refusal before the stream starts throws a
+   * MemaxError (`refused` with policy `ask_by_person` or `ask_limit`; see
+   * {@link refusalOf}). Aborting `signal`, or leaving the loop early,
+   * closes the connection, and the server stops the model. To keep an
+   * answer, `memories.remember` it with the cited refs as sources of kind
+   * `memory`. Only a signed-in person may ask; API keys can't.
+   */
+  async *ask(
+    space: string,
+    question: string,
+    opts?: AskOptions,
+  ): AsyncGenerator<AskEvent> {
+    if (!this.openStream) {
+      throw new MemaxError(
+        "This client can't open event streams.",
+        "invalid_request",
+        0,
+      );
+    }
+    const body: AskInput = { question };
+    const res = await this.openStream("POST", `/v2/spaces/${seg(space)}/ask`, {
+      body,
+      signal: opts?.signal,
+    });
+    if (!res.body) return;
+    for await (const ev of readEventStream(res.body, opts?.signal)) {
+      const parsed = askEventOf(ev.event, ev.data);
+      if (parsed) yield parsed;
+    }
+    if (opts?.signal?.aborted) throw abortError(opts.signal);
+  }
+}
+
+/** Options for {@link V2Resource.ask}. */
+export interface AskOptions {
+  /** Abort to stop the answer; the server stops its model too. */
+  signal?: AbortSignal;
+}
+
+const ASK_EVENTS = new Set(["sources", "delta", "cite", "done", "error"]);
+
+/**
+ * An Ask event from a server-sent event, or undefined for one this SDK
+ * doesn't know (a newer server's), which callers skip.
+ */
+export function askEventOf(event: string, data: string): AskEvent | undefined {
+  if (!ASK_EVENTS.has(event)) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    throw new MemaxError(
+      `The answer's ${event} event isn't JSON.`,
+      "invalid_response",
+      200,
+    );
+  }
+  return { event, data: parsed } as AskEvent;
+}
+
+function abortError(signal: AbortSignal): Error {
+  const reason = (signal as { reason?: unknown }).reason;
+  if (reason instanceof Error && reason.name === "AbortError") return reason;
+  const err =
+    typeof DOMException !== "undefined"
+      ? new DOMException("Aborted", "AbortError")
+      : Object.assign(new Error("Aborted"), { name: "AbortError" });
+  return err;
 }
 
 /**

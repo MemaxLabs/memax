@@ -110,6 +110,25 @@ export type MemoryReads = Schemas["MemoryReads"];
 export type MemoryReader = Schemas["MemoryReader"];
 export type CompileLoadResult = Schemas["CompileLoadResult"];
 
+// Ask
+/** One event of an answer's stream (`memax.v2.ask`), discriminated by `event`. */
+export type AskEvent = Schemas["AskEvent"];
+export type AskSourcesEvent = Schemas["AskSourcesEvent"];
+export type AskDeltaEvent = Schemas["AskDeltaEvent"];
+export type AskCiteEvent = Schemas["AskCiteEvent"];
+export type AskDoneEvent = Schemas["AskDoneEvent"];
+export type AskErrorEvent = Schemas["AskErrorEvent"];
+export type AskSources = Schemas["AskSources"];
+export type AskSource = Schemas["AskSource"];
+export type AskDelta = Schemas["AskDelta"];
+export type AskCite = Schemas["AskCite"];
+export type AskDone = Schemas["AskDone"];
+export type AskUsage = Schemas["AskUsage"];
+export type AskFailure = Schemas["AskFailure"];
+/** answered, not_covered, unsupported (don't show it as an answer) or sources_only. */
+export type AskOutcome = Schemas["AskOutcome"];
+export type AskInput = Schemas["AskRequest"];
+
 // Agents
 export type AgentConnection = Schemas["AgentConnection"];
 export type AgentSpace = Schemas["AgentSpace"];

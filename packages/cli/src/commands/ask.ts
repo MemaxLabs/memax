@@ -1,10 +1,16 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import type { AskOptions as SdkAskOptions } from "memax-sdk";
+import type { AskOptions as SdkAskOptions, V2 } from "memax-sdk";
 import { getClient } from "../lib/client.js";
 import { getActiveHubID } from "../lib/config.js";
 import { resolveHubID } from "../lib/hubs.js";
+import { daemonPaths } from "../lib/daemon/paths.js";
+import { findLinkedRepo } from "../lib/daemon/registry.js";
+import { gitRoot, readMemaxYmlConfig } from "../lib/project-context.js";
+import { resolveSpace, SpaceChoiceError } from "../lib/v2-space.js";
+import { askV2 } from "./ask-v2.js";
 import { resolveTopicReference } from "./topic.js";
+import { apiFailureMessage } from "./v2-output.js";
 
 interface AskOptions {
   model?: string;
@@ -15,6 +21,7 @@ interface AskOptions {
   topicId?: string;
   stream?: boolean;
   noRerank?: boolean;
+  space?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -326,9 +333,47 @@ export async function askCommand(
     }
   }
 
+  // A space on the V2 record answers through /v2 (cited, streamed); a
+  // space still on V1, and no space at all, keep V1's ask exactly.
+  let named: V2.Space | undefined;
+  if (!options.hub) {
+    try {
+      named = await namedSpace(options.space);
+    } catch (err) {
+      console.error(
+        chalk.red(
+          `  ${err instanceof SpaceChoiceError ? err.message : apiFailureMessage(err)}`,
+        ),
+      );
+      process.exit(1);
+    }
+  }
+  if (named?.v2_enabled_at) {
+    const controller = new AbortController();
+    const stop = () => controller.abort();
+    process.once("SIGINT", stop);
+    try {
+      process.exitCode = await askV2(
+        named,
+        query,
+        {
+          memax: getClient(),
+          write: (s) => process.stdout.write(s),
+          err: (line) => console.error(line),
+          tty: Boolean(process.stdout.isTTY),
+          signal: controller.signal,
+        },
+        { format: options.format },
+      );
+    } finally {
+      process.off("SIGINT", stop);
+    }
+    return;
+  }
+
   const hubId = options.hub
     ? await resolveHubID(options.hub)
-    : getActiveHubID() || undefined;
+    : (named?.id ?? (getActiveHubID() || undefined));
   if (options.hub && !hubId) {
     console.error(
       chalk.red(
@@ -549,16 +594,51 @@ async function streamAsk(
   });
 }
 
+/**
+ * The space a question is about, when one is named: --space, the
+ * repository's .memax.yml, or its link on this device. Nothing named
+ * means no lookup at all (V1's ask, as before). A named space that the
+ * server can't resolve (an old server, or .memax.yml naming a V1 hub) falls
+ * back to V1, unless --space named it, which is an error worth saying.
+ * --space naming a V1 space asks V1 within that hub.
+ */
+async function namedSpace(flag?: string): Promise<V2.Space | undefined> {
+  const cwd = process.cwd();
+  const paths = daemonPaths();
+  const root = gitRoot(cwd);
+  const named =
+    flag ||
+    readMemaxYmlConfig(cwd)?.space ||
+    (root ? findLinkedRepo(paths, root)?.space_id : undefined);
+  if (!named) return undefined;
+  try {
+    const { space } = await resolveSpace(getClient(), {
+      space: flag,
+      cwd,
+      paths,
+    });
+    if (space.v2_enabled_at || flag) return space;
+    return undefined;
+  } catch (err) {
+    if (flag) throw err;
+    return undefined;
+  }
+}
+
 export function registerAskCommand(program: Command): void {
   program
     .command("ask [question]")
     .description(
-      "Ask a question — get an AI-synthesized answer from your knowledge",
+      "Ask a question; get a cited answer from what your spaces have kept",
     )
     .option("-m, --model <model>", "LLM model: auto, haiku, sonnet", "auto")
     .option("-l, --limit <n>", "Max source memories to use", "10")
     .option("--locale <locale>", "Response language: en, zh")
     .option("--format <format>", "Output format: text, json", "text")
+    .option(
+      "--space <slug>",
+      "The space to ask (default: this repository's); on the V2 record the answer is cited",
+    )
     .option("--hub <slug>", "Ask within a specific hub only")
     .option("--topic-id <id>", "Restrict sources to memories in this topic")
     .option("--no-rerank", "Skip reranking for source retrieval")

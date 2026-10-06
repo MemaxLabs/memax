@@ -62,6 +62,9 @@ var pathLimitOverrides = map[string]int{
 	// Ask is the most expensive heavy op — LLM call on top of retrieval.
 	// Even pro plans should see this capped a notch tighter than recall.
 	"POST /v1/ask": 30,
+	// V2's Ask is the same model call; every space shares one bucket (the
+	// key is the template, see routeKey).
+	"POST " + v2AskTemplate: 30,
 	// Batch delete and batch move can each touch hundreds of rows.
 	// Classify as heavy but let the per-endpoint cap limit the fanout
 	// rate specifically.
@@ -77,11 +80,31 @@ func applyPathOverride(method, path string, defaultLimit int) (int, bool) {
 	if defaultLimit <= 0 {
 		return defaultLimit, false
 	}
-	key := method + " " + strings.TrimRight(path, "/")
+	key := method + " " + routeKey(path)
 	if override, ok := pathLimitOverrides[key]; ok && override > 0 && override < defaultLimit {
 		return override, true
 	}
 	return defaultLimit, false
+}
+
+// v2AskTemplate is POST /v2/spaces/{space}/ask's path template.
+const v2AskTemplate = "/v2/spaces/{space}/ask"
+
+// isV2Ask reports whether path is a space's Ask.
+func isV2Ask(path string) bool {
+	rest, ok := strings.CutPrefix(strings.TrimRight(path, "/"), "/v2/spaces/")
+	space, tail, _ := strings.Cut(rest, "/")
+	return ok && space != "" && tail == "ask"
+}
+
+// routeKey is the path an override and its bucket are keyed by: the path,
+// or its template when it carries a resource (one bucket for every space).
+func routeKey(path string) string {
+	path = strings.TrimRight(path, "/")
+	if isV2Ask(path) {
+		return v2AskTemplate
+	}
+	return path
 }
 
 // Middleware returns an HTTP middleware that enforces per-user and global
@@ -134,7 +157,7 @@ func (l *Limiter) Middleware(registry planLimitsResolver, users userResolver, hu
 			// Per-user check
 			userKey := fmt.Sprintf("%s:%s", userID, opClass)
 			if useEndpointBucket {
-				userKey = fmt.Sprintf("%s:%s:%s:%s", userID, opClass, r.Method, strings.TrimRight(path, "/"))
+				userKey = fmt.Sprintf("%s:%s:%s:%s", userID, opClass, r.Method, routeKey(path))
 			}
 			result := l.Check(r.Context(), userKey, limit)
 

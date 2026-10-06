@@ -15,6 +15,10 @@ export type AskState =
   | ({ status: "streaming" } & Answer)
   | ({ status: "done" } & Answer)
   | { status: "none"; question: string }
+  /** Answers are off on the server: what matched, without an answer. */
+  | { status: "off"; question: string; sources: AskSource[] }
+  /** The plan's asks this month are used up. */
+  | { status: "limit"; question: string; limit: number; resetAt: string }
   | { status: "unavailable"; question: string }
   | { status: "failed"; question: string };
 
@@ -81,8 +85,25 @@ export function useAsk(space: SpaceSummary) {
               case "none":
               case "unavailable":
                 return { status: event.type, question: q };
+              case "off":
+                return { status: "off", question: q, sources: event.sources };
+              case "limit":
+                return {
+                  status: "limit",
+                  question: q,
+                  limit: event.limit,
+                  resetAt: event.resetAt,
+                };
             }
           });
+        }
+        // A stream that ends without saying how is a failure, not an answer.
+        if (!run.signal.aborted) {
+          setState((prev) =>
+            prev.status === "streaming"
+              ? { status: "failed", question: q }
+              : prev,
+          );
         }
       } catch {
         if (!run.signal.aborted) setState({ status: "failed", question: q });

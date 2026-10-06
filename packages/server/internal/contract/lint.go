@@ -19,6 +19,9 @@ import (
 //   - Every response body is a named schema, so the SDK gets a named type.
 //     2xx bodies are envelopes with exactly `data`; 4xx and 5xx bodies are
 //     ErrorEnvelope. That is the model.ApiResponse contract in AGENTS.md.
+//     The one exception is a 200 text/event-stream (Ask), whose schema is
+//     a named oneOf of named events, each exactly {event: const, data:
+//     named schema} (lintStream); its errors are still ErrorEnvelope.
 //   - Every POST and PATCH requires Idempotency-Key (commands are retried),
 //     except a POST marked x-memax-read: true, which only reads and is a
 //     POST to keep its input out of URLs (the near-duplicate check).
@@ -132,6 +135,10 @@ func (s *Spec) lintResponses(op *Operation, raw map[string]any) []error {
 			errs = append(errs, err)
 			continue
 		}
+		if stream := mapAt(obj, "content", EventStream); stream != nil {
+			errs = append(errs, s.lintStream(op, code, stream)...)
+			continue
+		}
 		media := mapAt(obj, "content", "application/json")
 		if media == nil {
 			if code != "204" {
@@ -155,6 +162,61 @@ func (s *Spec) lintResponses(op *Operation, raw map[string]any) []error {
 			}
 		} else if name != "ErrorEnvelope" {
 			errs = append(errs, fmt.Errorf("%s %s: error response %s must use ErrorEnvelope, not %s", op.Method, op.Path, code, name))
+		}
+	}
+	return errs
+}
+
+// lintStream holds an event-stream response to the same rules as a JSON
+// one, event by event: it is a success (200), and its schema is a named
+// oneOf of named event schemas, each a closed object with exactly a
+// required `event` (a const, unique in the stream) and a required `data`
+// that is a named schema. So the SDK gets one named type per event, and
+// an event the spec doesn't name can't pass.
+func (s *Spec) lintStream(op *Operation, code string, media map[string]any) []error {
+	var errs []error
+	where := fmt.Sprintf("%s %s: response %s", op.Method, op.Path, code)
+	add := func(format string, args ...any) { errs = append(errs, fmt.Errorf(where+": "+format, args...)) }
+	if code != "200" {
+		add("only a 200 may be %s; errors stay ErrorEnvelope", EventStream)
+	}
+	ref, _ := mapAt(media, "schema")["$ref"].(string)
+	m := componentSchemaRef.FindStringSubmatch(ref)
+	if m == nil {
+		add("an event stream's schema must be a named schema from #/components/schemas")
+		return errs
+	}
+	union := mapAt(s.doc, "components", "schemas", m[1])
+	members := asList(union["oneOf"])
+	if len(members) == 0 {
+		add("%s must be a oneOf of the stream's event schemas", m[1])
+		return errs
+	}
+	names := map[string]bool{}
+	for i, member := range members {
+		mref, _ := mapAt(member)["$ref"].(string)
+		mm := componentSchemaRef.FindStringSubmatch(mref)
+		if mm == nil {
+			add("%s.oneOf[%d] must be a named event schema", m[1], i)
+			continue
+		}
+		ev := mapAt(s.doc, "components", "schemas", mm[1])
+		props := mapAt(ev, "properties")
+		req := asList(ev["required"])
+		if len(props) != 2 || props["event"] == nil || props["data"] == nil || len(req) != 2 ||
+			!slices.Contains(req, any("event")) || !slices.Contains(req, any("data")) {
+			add("event schema %s must have exactly a required `event` and a required `data`", mm[1])
+			continue
+		}
+		name, ok := mapAt(props["event"])["const"].(string)
+		if !ok || name == "" {
+			add("event schema %s: `event` must be a const naming the event", mm[1])
+		} else if names[name] {
+			add("event %q is defined twice", name)
+		}
+		names[name] = true
+		if dref, _ := mapAt(props["data"])["$ref"].(string); componentSchemaRef.FindStringSubmatch(dref) == nil {
+			add("event schema %s: `data` must be a named schema", mm[1])
 		}
 	}
 	return errs

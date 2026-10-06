@@ -428,6 +428,69 @@ func TestCompleteStreamDispatchesDeltas(t *testing.T) {
 	}
 }
 
+// A stream reports its input tokens (message_start) and stop reason, and
+// routes to zero-retention providers when asked, as Complete does.
+func TestCompleteStreamUsageAndZDR(t *testing.T) {
+	t.Parallel()
+	var bodies []map[string]any
+	srv := fakeAnthropic(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		bodies = append(bodies, body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, evt := range []string{
+			`{"type":"message_start","message":{"usage":{"input_tokens":321,"output_tokens":1}}}`,
+			`{"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}`,
+			`{"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":9}}`,
+		} {
+			_, _ = w.Write([]byte("data: " + evt + "\n\n"))
+		}
+	})
+	c := New("k", srv.URL)
+	usage, err := c.CompleteStreamUsage(context.Background(), CompleteRequest{
+		Model: "m", MaxTokens: 50, Prompt: "p", ZeroDataRetention: true,
+	}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage != (StreamUsage{InputTokens: 321, OutputTokens: 9, StopReason: "max_tokens"}) {
+		t.Errorf("usage = %+v", usage)
+	}
+	if p, _ := bodies[0]["provider"].(map[string]any); p["zdr"] != true {
+		t.Errorf("provider = %v", bodies[0]["provider"])
+	}
+	if _, err := c.CompleteStream(context.Background(), CompleteRequest{Model: "m", MaxTokens: 50, Prompt: "p"}, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := bodies[1]["provider"]; ok {
+		t.Error("provider sent without zero data retention")
+	}
+}
+
+// Cancelling the context mid-stream ends the call with the context's error.
+func TestCompleteStreamCancelMidStream(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	srv := fakeAnthropic(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"a"}}` + "\n\n"))
+		w.(http.Flusher).Flush()
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	})
+	defer close(release)
+	c := New("k", srv.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	_, err := c.CompleteStreamUsage(ctx, CompleteRequest{Model: "m", MaxTokens: 10, Prompt: "p"}, func(string) { cancel() })
+	if err == nil {
+		t.Fatal("a cancelled stream should return an error")
+	}
+}
+
 func TestCompleteStreamReturnsErrorOn5xx(t *testing.T) {
 	t.Parallel()
 	srv := fakeAnthropic(t, func(w http.ResponseWriter, r *http.Request) {

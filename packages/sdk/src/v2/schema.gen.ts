@@ -99,6 +99,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask the space a question
+         * @description ⌘K Ask: a short answer to a person's question from the space's kept
+         *     memories, streamed as server-sent events, every sentence cited to
+         *     the memories it rests on.
+         *
+         *     The search is the one recall and search use: the space's kept
+         *     memories and decisions in force, never a superseded decision,
+         *     never another space's memory. Quarantined memories (trust
+         *     `external`) are left out of answers; search and Memories still
+         *     show them. The answer tier's model is given the best matches and
+         *     answers only from them, in at most three sentences. A citation of
+         *     anything it wasn't given is removed before it is sent (`dropped`
+         *     counts them). When the memories don't answer the question, or none
+         *     matched, the stream ends with outcome `not_covered` and no words;
+         *     an answer left with no citation ends `unsupported`, and clients
+         *     don't show it as an answer. When answers are off on the server,
+         *     the stream is the matching memories alone (`answering: false`,
+         *     outcome `sources_only`).
+         *
+         *     The stream, in order: one `sources` event; then `delta` (words,
+         *     citations removed) and `cite` events interleaved as the answer
+         *     arrives (`cite.n` numbers the cited memories in the order they're
+         *     first cited); then `done`, or `error` if the model failed partway.
+         *     Cancelling the request (closing the connection) stops the model.
+         *
+         *     Only a signed-in person who belongs to the space may ask; an agent
+         *     or API key is refused with policy `ask_by_person` (agents read the
+         *     record over MCP). It only reads: it writes no record row and no
+         *     receipt, and takes no `Idempotency-Key`. Each answer the model
+         *     writes counts toward the person's asks this month, and past the
+         *     plan's limit the request is refused with policy `ask_limit`
+         *     (`details.limit`, `details.current`, `details.reset_at`). Asks that
+         *     never reach the model (nothing matched, answers off) don't count.
+         *     To keep an answer, remember it with the cited memories as sources
+         *     of kind `memory`.
+         */
+        post: operations["askSpace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/spaces/{space}/review": {
         parameters: {
             query?: never;
@@ -1214,8 +1270,14 @@ export interface components {
          * @enum {string}
          */
         Trust: "person" | "agent_own_work" | "repository" | "external";
-        /** @enum {string} */
-        SourceKind: "session" | "pr" | "file" | "url" | "issue" | "email" | "note" | "import";
+        /**
+         * @description What a source points at. `memory` cites a kept memory in the same
+         *     space by its display ID (a kept Ask answer cites the memories it
+         *     came from); its trust is the cited memory's, whatever the request
+         *     says.
+         * @enum {string}
+         */
+        SourceKind: "session" | "pr" | "file" | "url" | "issue" | "email" | "note" | "import" | "memory";
         /** @enum {string} */
         SpaceKind: "personal" | "project" | "team";
         /** @enum {string} */
@@ -1299,7 +1361,10 @@ export interface components {
          *     person_must_answer (agents ask; people answer), gate_limit (the agent
          *     already has 3 decisions waiting in the space), not_your_gate (only the
          *     agent that asked, the person it works for, or someone who can answer
-         *     withdraws a question). Refused changes to
+         *     withdraws a question). Refused asks: ask_by_person (agents read over
+         *     MCP; Ask answers people), ask_limit (the plan's asks this month are
+         *     used up; `details.limit` and `details.resets_at` say how many and
+         *     when they start again). Refused changes to
          *     agents: person_must_manage (only a person changes what an agent may
          *     do), not_your_agent, autonomy_not_allowed, key_max_propose,
          *     autonomy_needs_web (raising an agent needs a person on the web).
@@ -1315,7 +1380,7 @@ export interface components {
          *     Confirmation: confirm_in_agent.
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "ask_by_person" | "ask_limit" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable";
         /**
@@ -2644,6 +2709,128 @@ export interface components {
             occurred_at?: components["schemas"]["Timestamp"];
             session_ref?: components["schemas"]["SessionRef"];
         };
+        /** @description A person's question. */
+        AskRequest: {
+            /** @description The question, as the person typed it. */
+            question: string;
+        };
+        /**
+         * @description One event of an answer's stream: `event` is the server-sent event's
+         *     name and `data` its JSON payload. The stream is one `sources`, then
+         *     `delta` and `cite` in answer order, then `done` (or `error`).
+         */
+        AskEvent: components["schemas"]["AskSourcesEvent"] | components["schemas"]["AskDeltaEvent"] | components["schemas"]["AskCiteEvent"] | components["schemas"]["AskDoneEvent"] | components["schemas"]["AskErrorEvent"];
+        AskSourcesEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "sources";
+            data: components["schemas"]["AskSources"];
+        };
+        AskDeltaEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "delta";
+            data: components["schemas"]["AskDelta"];
+        };
+        AskCiteEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "cite";
+            data: components["schemas"]["AskCite"];
+        };
+        AskDoneEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "done";
+            data: components["schemas"]["AskDone"];
+        };
+        AskErrorEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "error";
+            data: components["schemas"]["AskFailure"];
+        };
+        /** @description The kept memories the answer may cite, best match first. Sent once, before any words. */
+        AskSources: {
+            sources: components["schemas"]["AskSource"][];
+            /** @description `false` when answers are off on this server: `done` follows at once, with outcome `sources_only`. */
+            answering: boolean;
+            /** @description The search matched words, not meaning (embeddings off, or the query's embedding was late). */
+            lexical_only: boolean;
+        };
+        /** @description One kept memory an answer may cite. */
+        AskSource: {
+            id: components["schemas"]["Id"];
+            ref: components["schemas"]["DisplayRef"];
+            statement: string;
+            section: components["schemas"]["Section"];
+            kind: components["schemas"]["MemoryKind"];
+            state: components["schemas"]["State"];
+            trust: components["schemas"]["Trust"];
+            version: number;
+            /** @description How it came to read as it does, for the source's receipt line ("kept by ZZ · Oct 2"). */
+            receipt?: components["schemas"]["Receipt"];
+        };
+        /** @description The answer's next words, citations removed. */
+        AskDelta: {
+            text: string;
+        };
+        /** @description A citation at this point of the answer, of one of the sources. */
+        AskCite: {
+            /** @description The cited memory's number, in the order memories are first cited, from 1. */
+            n: number;
+            ref: components["schemas"]["DisplayRef"];
+        };
+        /**
+         * @description How an answer ended. `answered`: words with at least one citation.
+         *     `not_covered`: nothing kept matched, or the memories don't answer
+         *     it. `unsupported`: the model answered, but no citation named a
+         *     memory it was given; don't show it as an answer. `sources_only`:
+         *     answers are off; the sources are the answer.
+         * @enum {string}
+         */
+        AskOutcome: "answered" | "not_covered" | "unsupported" | "sources_only";
+        /** @description The end of an answer. */
+        AskDone: {
+            outcome: components["schemas"]["AskOutcome"];
+            /** @description The memories cited, in `n` order. */
+            cited: components["schemas"]["DisplayRef"][];
+            /** @description Citations removed because they named a memory the model wasn't given. */
+            dropped: number;
+            usage: components["schemas"]["AskUsage"];
+        };
+        /** @description What the answer used, and how long it took. */
+        AskUsage: {
+            /** @description The answer tier's model, when one answered. */
+            model?: string;
+            input_tokens: number;
+            output_tokens: number;
+            retrieval_ms: number;
+            /** @description From the request to the answer's first words, when any came. */
+            first_token_ms?: number;
+            total_ms: number;
+        };
+        /**
+         * @description `answer_failed`: the model failed or ran out of time partway; what streamed so far stays, and the person can ask again.
+         * @enum {string}
+         */
+        AskFailureCode: "answer_failed";
+        /** @description Why an answer stopped partway. */
+        AskFailure: {
+            code: components["schemas"]["AskFailureCode"];
+            /** @description What happened and what to do, in English. */
+            message: string;
+        };
         Error: {
             code: components["schemas"]["ErrorCode"];
             /** @description What went wrong and what to do, in English. */
@@ -2668,11 +2855,11 @@ export interface components {
             current_version?: number;
             /** @description Seconds to wait (`rate_limited`, `busy`, `judge_pending`). */
             retry_after?: number;
-            /** @description The rate limit (`rate_limited`). */
+            /** @description The rate limit (`rate_limited`), or the plan's asks a month (`refused` with policy `ask_limit`). */
             limit?: number;
-            /** @description Requests counted so far (`rate_limited`). */
+            /** @description Requests counted so far (`rate_limited`), or asks this month (`ask_limit`). */
             current?: number;
-            /** @description When the window resets (`rate_limited`). */
+            /** @description When the window resets (`rate_limited`), or when asks start again (`ask_limit`, the 1st, UTC). */
             reset_at?: components["schemas"]["Timestamp"];
         };
         ErrorEnvelope: {
@@ -3178,6 +3365,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NearDuplicatesEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    askSpace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskRequest"];
+            };
+        };
+        responses: {
+            /** @description The answer, as a stream of AskEvent events, sent with `Cache-Control: no-cache`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["AskEvent"];
                 };
             };
             400: components["responses"]["BadRequest"];

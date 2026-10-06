@@ -124,15 +124,40 @@ test("Ask streams a cited answer; ⌘↵ keeps it", async ({ page }) => {
   await expect(dialog.locator(".mx-answer")).toContainText(
     "it still matches the code.",
   );
+  // A citation of a kept memory opens it; its tooltip is the memory.
+  const cite = dialog.locator(".mx-answer").getByRole("link", {
+    name: /^Source 1/,
+  });
+  await expect(cite).toHaveAttribute("href", "/memax-v2/memories/M-0219");
+  await expect(cite).toHaveAttribute("title", /^M-0219 · Background jobs/);
   await expect(
     dialog.getByRole("button", { name: "Keep as memory" }),
   ).toBeVisible();
   await page.keyboard.press("ControlOrMeta+Enter");
+  // The seal stamps where Keep was, then the overlay goes.
+  await expect(dialog.getByRole("img", { name: /M-0439/ })).toBeVisible();
   await expect(dialog).toBeHidden();
   const toasts = page.getByRole("region", { name: "Notifications" });
   await expect(toasts).toContainText("Kept M-0439 · 3 files recompiled");
   // A person's own Remember has no undo on the server, so none is offered.
   await expect(toasts.getByRole("button", { name: "Undo" })).toHaveCount(0);
+});
+
+test("Escape mid-answer stops it, and Ask opens clean again", async ({
+  page,
+}) => {
+  await openFrame(page, "/memax-v2/today");
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.keyboard.type("Why did we pick River over Temporal?");
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Ask or remember" });
+  await expect(dialog.locator(".mx-answer")).toContainText("River runs");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".mx-answer")).toHaveCount(0);
+  await expect(dialog.getByRole("textbox", { name: "Ask" })).toHaveValue("");
 });
 
 test("Remember shows the near-duplicate, then keeps on Enter", async ({

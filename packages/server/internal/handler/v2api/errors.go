@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
@@ -61,6 +62,11 @@ type errorDetails struct {
 	Reason          string           `json:"reason,omitempty"`
 	// Status is a gate's status, when a gate command meets one that ended.
 	Status ledger.GateStatus `json:"status,omitempty"`
+	// Limit, Current and ResetAt: the plan's asks a month, the asks this
+	// month and when they start again (policy ask_limit).
+	Limit   int        `json:"limit,omitempty"`
+	Current int        `json:"current,omitempty"`
+	ResetAt *time.Time `json:"reset_at,omitempty"`
 }
 
 func writeError(w http.ResponseWriter, e *apiError) {

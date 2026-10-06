@@ -19,6 +19,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/analytics"
 	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
+	"github.com/MemaxLabs/memax/packages/server/internal/ask"
 	"github.com/MemaxLabs/memax/packages/server/internal/attachments"
 	"github.com/MemaxLabs/memax/packages/server/internal/billing"
 	"github.com/MemaxLabs/memax/packages/server/internal/cache"
@@ -644,7 +645,7 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 	// process, shared by /v2 and MCP; it flushes what is buffered at
 	// shutdown, after the HTTP server has drained and before the pool
 	// closes (cleanups run last-registered first).
-	v2h, v2Search, readRecorder := v2Handler(pool, queueClient, blobStore)
+	v2h, v2Search, readRecorder := v2Handler(pool, queueClient, blobStore, llm)
 	app.addClose(readRecorder.Close)
 
 	registerRoutes(mux, routeDeps{
@@ -752,7 +753,7 @@ func webSurfaceFromEnv() *websurface.Verifier {
 // returns the searcher MCP v2's recall and search use (hybrid when V2
 // embeddings are configured, v2Retrieval; lexical otherwise), and the
 // process's read recorder, shared with MCP.
-func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
+func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store, llm *anthropic.Client) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
 	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
 	var opts []ledger.Option
 	if queueClient != nil {
@@ -777,7 +778,22 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 	if vectors != nil {
 		hopts = append(hopts, v2api.WithDrafts(vectors))
 	}
+	hopts = append(hopts, v2api.WithAsk(askService(l, search, llm)))
 	return v2api.New(l, slog.Default(), hopts...), search, rec
+}
+
+// askService builds ⌘K Ask (internal/ask) on the same hybrid search as
+// recall, with the answer tier read once here (ASK_MODEL, ASK_ZDR,
+// ASK_TIMEOUT_MS, ASK_MONTHLY_LIMIT). Without an LLM key, or with
+// ASK_MODEL=off, Ask answers with the matching memories only.
+func askService(l *ledger.Ledger, search *v2recall.Searcher, llm *anthropic.Client) *ask.Service {
+	cfg := ask.ConfigFromEnv(os.LookupEnv)
+	svc := ask.New(l, search, ask.NewAnthropicModel(llm, cfg.ZeroDataRetention), cfg)
+	if svc != nil {
+		slog.Info("V2 Ask", "answers", svc.Synthesises(), "model", cfg.Model, "zdr", cfg.ZeroDataRetention,
+			"monthly_limit", cfg.MonthlyLimit)
+	}
+	return svc
 }
 
 // receiptKeysFromEnv reads the public keys receipt checkpoints are signed

@@ -1,5 +1,6 @@
 import type { Memax, V2 } from "memax-sdk";
 import { createSdkActivity } from "./activity-sdk";
+import { createSdkAsk } from "./ask-sdk";
 import { agentsOverview, createSdkAgents } from "./agents-sdk";
 import { createSdkBrief } from "./brief-sdk";
 import type { WebSession } from "./gates";
@@ -11,7 +12,7 @@ import type { LedgerDataSource } from "./source";
 import { syncLineOf, targetStatus } from "./targets";
 import { createSdkTargets, targetsOrNull } from "./targets-sdk";
 import { createSdkToday } from "./today-sdk";
-import type { AskEvent, KeepResult, SpaceOverview, Viewer } from "./types";
+import type { KeepResult, SpaceOverview, Viewer } from "./types";
 
 /**
  * The SDK source: memax.v2 for signed-in people.
@@ -19,11 +20,11 @@ import type { AskEvent, KeepResult, SpaceOverview, Viewer } from "./types";
  * What /v2 serves today: the spaces list, Review's queue and the
  * decision gates waiting on an answer (together the rail's ochre count),
  * memories, receipts, agents, the Brief and its compile targets (which
- * feed the status line), and Remember's near-duplicate check. Everything
- * else the frame shows is marked PLACEHOLDER below and returns "not
- * served" (null) or a neutral value until its endpoint lands: Handoffs,
- * Dream and Ask. The demo source has all of them, for comparison with
- * the boards.
+ * feed the status line), Remember's near-duplicate check and Ask.
+ * Everything else the frame shows is marked PLACEHOLDER below and returns
+ * "not served" (null) or a neutral value until its endpoint lands:
+ * Handoffs and Dream. The demo source has all of them, for comparison
+ * with the boards.
  */
 
 // `auth` for API keys (V1's auth.keys), until /v2 serves them.
@@ -120,18 +121,21 @@ export function createSdkSource({
         decisions: null,
       };
     },
-    // PLACEHOLDER: no /v2 ask yet (plan §5.11 streams it over SSE).
-    async *ask(): AsyncGenerator<AskEvent> {
-      yield { type: "unavailable" };
-    },
+    // A cited answer, streamed over memax.v2.ask (plan §5.11).
+    ask: createSdkAsk(client, () => viewer),
     // The near-duplicate check (plan §5.8), over memax.v2.memories.
     checkRemember: (input) => checkRememberOver(client, input),
     // No X-Memax-Via: the server records a keep as a person's on the web
     // only when it can tell (spec, Via), not because a client says so.
-    async remember({ space, statement, section, idempotencyKey }) {
+    async remember({ space, statement, section, idempotencyKey, cites }) {
+      // A kept answer cites the memories it came from (kind memory), so
+      // its trust is theirs.
+      const sources = cites?.map((ref) => ({ kind: "memory" as const, ref }));
       const result = await client.v2.memories.remember(
         space.slug,
-        { statement, section },
+        sources?.length
+          ? { statement, section, sources }
+          : { statement, section },
         { idempotencyKey },
       );
       // The server journals no undo for a person's own Remember (its

@@ -383,10 +383,35 @@ describe("the SDK source", () => {
     ).rejects.toThrow("aborted");
   });
 
-  it("can't ask yet, and says so", async () => {
-    const { source } = setup();
+  it("asks over memax.v2.ask, and keeps an answer citing its memories", async () => {
+    const { client, source } = setup();
+    (client.v2 as unknown as { ask: unknown }).ask = vi.fn(async function* () {
+      yield {
+        event: "done",
+        data: { outcome: "not_covered", cited: [], dropped: 0, usage: {} },
+      };
+    });
     expect(await collect(source.ask({ space: v2, question: "?" }))).toEqual([
-      { type: "unavailable" },
+      { type: "none" },
     ]);
+    await source.remember({
+      space: v2,
+      statement: "Jobs run on River.",
+      section: "decisions",
+      idempotencyKey: "k-ask",
+      cites: ["M-0219", "M-0230"],
+    });
+    expect(client.v2.memories.remember).toHaveBeenLastCalledWith(
+      "memax-v2",
+      {
+        statement: "Jobs run on River.",
+        section: "decisions",
+        sources: [
+          { kind: "memory", ref: "M-0219" },
+          { kind: "memory", ref: "M-0230" },
+        ],
+      },
+      { idempotencyKey: "k-ask" },
+    );
   });
 });

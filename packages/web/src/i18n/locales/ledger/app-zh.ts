@@ -264,8 +264,17 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
       title: "{space} 里暂时还不能提问。",
       detail: "你还是可以记点什么，按下保留就记住了。",
     },
+    off: {
+      title: "这台服务器没有开启回答，下面是 {space} 里保留的相关内容。",
+      detail: "打开一条，就能看到它的收据。",
+      empty: "没有保留的内容和这个问题有关。",
+    },
+    limit: {
+      title: "这个月你已经问了 {n} 个问题，用完了套餐的额度。",
+      detail: "{date} 起可以再问。Pro 不限次数。",
+    },
     rememberInstead: "改成记住",
-    failed: "这次没能回答，再试一次。",
+    failed: "这次没能回答，什么都没保留。再试一次。",
     tryAgain: "再试一次",
   },
   remember: {

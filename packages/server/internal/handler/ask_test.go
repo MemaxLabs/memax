@@ -16,6 +16,22 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
 
+// ASK_MODEL=off turns V2's Ask answers off; V1's /v1/ask must not send
+// "off" as a model slug, and keeps its default instead.
+func TestResolveModelIgnoresOff(t *testing.T) {
+	h := &AskHandler{}
+	for _, v := range []string{"off", "OFF", "none"} {
+		t.Setenv("ASK_MODEL", v)
+		if got := h.resolveModel("auto"); got != anthropic.StrongModel {
+			t.Errorf("ASK_MODEL=%s: resolveModel = %q, want %q", v, got, anthropic.StrongModel)
+		}
+	}
+	t.Setenv("ASK_MODEL", "anthropic/claude-sonnet-5.5")
+	if got := h.resolveModel("auto"); got != "anthropic/claude-sonnet-5.5" {
+		t.Errorf("a slug: %q", got)
+	}
+}
+
 func TestAskStreamUsesCachedResult(t *testing.T) {
 	reqBody := model.AskRequest{Query: "deploy", Locale: "en"}
 	body, err := json.Marshal(reqBody)

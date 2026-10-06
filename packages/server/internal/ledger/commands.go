@@ -287,7 +287,7 @@ func (d *DecisionFields) validate() error {
 
 func (s *SourceInput) validate() error {
 	if !s.Kind.Valid() {
-		return invalid("sources.kind", "use session, pr, file, url, issue, email, note or import")
+		return invalid("sources.kind", "use session, pr, file, url, issue, email, note, import or memory")
 	}
 	s.Ref = strings.TrimSpace(s.Ref)
 	if err := checkText("sources.ref", s.Ref, MaxSourceRefRunes, true); err != nil {

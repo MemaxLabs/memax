@@ -1,23 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { Inter, JetBrains_Mono } from "next/font/google";
 import { cn } from "@memaxlabs/ui/utils";
 import { Providers } from "./providers";
 
-// The V1 document: <html>/<body>, globals.css, fonts and the V1
+// The V1 document: <html>/<body>, globals.css, metadata and the V1
 // providers. Shared by the (v1) root layout and by
 // app/global-not-found.tsx, which renders unmatched URLs outside every
-// root layout and so has to bring its own document. Frozen with the
-// rest of V1; deleted at cutover.
-
-// Inter (sans) + JetBrains Mono (mono). Loaded via next/font/google so they
-// land in the initial HTML without FOUT. The :root fallback chain in
-// globals.css kicks in only if these fail to load. See kitchen §12 Typography.
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-});
+// root layout and so has to bring its own document. The fonts are passed
+// in (v1-fonts.ts for the layout, not-found-fonts.ts for the 404) so
+// this module imports no next/font. Frozen with the rest of V1; deleted
+// at cutover.
 
 export const v1Viewport: Viewport = {
   width: "device-width",
@@ -44,11 +36,18 @@ export const v1Metadata: Metadata = {
   },
 };
 
-export function V1Document({ children }: { children: React.ReactNode }) {
+export function V1Document({
+  fontVariables,
+  children,
+}: {
+  /** next/font variable classes for --font-sans and --font-mono. */
+  fontVariables: string;
+  children: React.ReactNode;
+}) {
   return (
     <html
       lang="en"
-      className={cn("font-sans", inter.variable, jetbrainsMono.variable)}
+      className={cn("font-sans", fontVariables)}
       suppressHydrationWarning
     >
       <body

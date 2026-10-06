@@ -188,6 +188,26 @@ describe("V1 stays free of the Ledger", () => {
     expect(offenders.map(rel)).toEqual([]);
   });
 
+  it("global-not-found pulls in no preloaded V1 fonts", () => {
+    // Next preloads every next/font face global-not-found imports on
+    // every page, Ledger pages included.
+    const notFound = readFileSync(
+      path.join(appDir, "global-not-found.tsx"),
+      "utf8",
+    );
+    const document = readFileSync(
+      path.join(appDir, "(v1)/v1-document.tsx"),
+      "utf8",
+    );
+    expect(importSpecifiers(notFound)).not.toContain("./(v1)/v1-fonts");
+    expect(
+      importSpecifiers(document).filter((s) => s.startsWith("next/font")),
+    ).toEqual([]);
+    expect(
+      readFileSync(path.join(appDir, "(v1)/not-found-fonts.ts"), "utf8"),
+    ).toMatch(/preload: false[\s\S]*preload: false/);
+  });
+
   it("global-error, shared by both root layouts, imports no stylesheet", () => {
     // Next preloads global-error's CSS on every page of both trees.
     const source = readFileSync(path.join(appDir, "global-error.tsx"), "utf8");

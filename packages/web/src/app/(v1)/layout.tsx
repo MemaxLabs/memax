@@ -1,4 +1,5 @@
 import { V1Document, v1Metadata, v1Viewport } from "./v1-document";
+import { v1FontVariables } from "./v1-fonts";
 
 // Root layout of the frozen V1 app. Every V1 route group lives under
 // (v1) so the URLs are unchanged; the V2 Ledger UI has its own root
@@ -13,5 +14,5 @@ export default function V1RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <V1Document>{children}</V1Document>;
+  return <V1Document fontVariables={v1FontVariables}>{children}</V1Document>;
 }

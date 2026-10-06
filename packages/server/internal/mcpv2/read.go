@@ -132,7 +132,7 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 	}
 
 	if sessionRef != "" && p.Actor.Kind == policy.ActorAgent {
-		proposals, err := s.search.SessionProposals(ctx, scope, ids(spaces), p.Actor.ID, sessionRef, query, 10)
+		proposals, err := s.search.SessionProposals(ctx, scope, ids(spaces), p.Actor.ID, sessionRef, 10)
 		if err != nil {
 			part.out.Partial = true
 			s.logReadError(ctx, "session proposals", err)

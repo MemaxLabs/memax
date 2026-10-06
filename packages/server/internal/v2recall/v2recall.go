@@ -136,6 +136,12 @@ func (s *Searcher) Search(ctx context.Context, scope ledger.Scope, q Query) (Res
 	err := s.ledger.Read(ctx, scope, func(tx pgx.Tx) error {
 		scores := map[uuid.UUID]float64{}
 		for _, lane := range s.lanes {
+			// A fallback lane (trigrams, for typos) runs only when the lanes
+			// before it found fewer than the results asked for: scoring
+			// every statement's trigrams is the expensive part of a recall.
+			if fb, ok := lane.(interface{ Fallback() bool }); ok && fb.Fallback() && len(scores) >= q.Limit {
+				continue
+			}
 			ids, err := lane.Rank(ctx, tx, q, pool)
 			if err != nil {
 				return fmt.Errorf("v2recall: %s lane: %w", lane.Name(), err)
@@ -266,6 +272,10 @@ type Trigram struct{}
 // Name implements Lane.
 func (Trigram) Name() string { return "trigram" }
 
+// Fallback marks the lane as one that runs only when the full-text lane
+// found too little: a query whose words match needs no typo tolerance.
+func (Trigram) Fallback() bool { return true }
+
 // trigramThreshold is the least word similarity that counts as a match.
 const trigramThreshold = 0.3
 
@@ -275,15 +285,23 @@ func (Trigram) Rank(ctx context.Context, tx pgx.Tx, q Query, limit int) ([]uuid.
 	if utf8.RuneCountInString(text) < 3 {
 		return nil, nil
 	}
+	// The <% operator is word similarity at the transaction's threshold,
+	// and memory_versions_trgm_idx (migration 033) serves it, so only
+	// statements that share trigrams with the query are scored.
+	if _, err := tx.Exec(ctx, `SELECT set_config('pg_trgm.word_similarity_threshold', $1, true)`,
+		fmt.Sprintf("%g", trigramThreshold)); err != nil {
+		return nil, err
+	}
 	args := append([]any{text}, filterArgs(q.Filter)...)
-	args = append(args, limit, trigramThreshold)
+	args = append(args, limit)
 	rows, err := tx.Query(ctx, `
+		WITH q AS (SELECT public.immutable_unaccent($1) AS t)
 		SELECT m.id
-		  FROM v2.memories m
-		  JOIN v2.memory_versions v ON v.memory_id = m.id AND v.version = m.current_version
-		 WHERE `+filterSQL+`
-		   AND word_similarity(public.immutable_unaccent($1), public.immutable_unaccent(lower(v.statement))) >= $8
-		 ORDER BY word_similarity(public.immutable_unaccent($1), public.immutable_unaccent(lower(v.statement))) DESC, m.seq DESC
+		  FROM q, v2.memory_versions v
+		  JOIN v2.memories m ON m.id = v.memory_id AND v.version = m.current_version
+		 WHERE q.t <% public.immutable_unaccent(lower(v.statement))
+		   AND v.space_id = ANY($2) AND `+filterSQL+`
+		 ORDER BY word_similarity(q.t, public.immutable_unaccent(lower(v.statement))) DESC, m.seq DESC
 		 LIMIT $7`, args...)
 	if err != nil {
 		return nil, err
@@ -323,16 +341,14 @@ func tsQuery(text string) string {
 func normalize(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
 
 // SessionProposals returns one connection's pending proposals from one
-// session, newest first, matching text when it isn't empty.
-func (s *Searcher) SessionProposals(ctx context.Context, scope ledger.Scope, spaces []uuid.UUID, proposer uuid.UUID, sessionRef, text string, limit int) ([]Hit, error) {
+// session, newest first: read-after-write for the proposer (plan 25
+// §5.6). A session's own proposals are few, so they all come back rather
+// than being ranked against the query.
+func (s *Searcher) SessionProposals(ctx context.Context, scope ledger.Scope, spaces []uuid.UUID, proposer uuid.UUID, sessionRef string, limit int) ([]Hit, error) {
 	if s == nil || proposer == uuid.Nil || sessionRef == "" || len(spaces) == 0 {
 		return nil, nil
 	}
 	f := Filter{Spaces: spaces, Lifecycle: "proposed", Proposer: proposer, SessionRef: sessionRef}
-	if strings.TrimSpace(text) != "" {
-		res, err := s.Search(ctx, scope, Query{Text: text, Filter: f, Limit: limit})
-		return res.Hits, err
-	}
 	var hits []Hit
 	err := s.ledger.Read(ctx, scope, func(tx pgx.Tx) error {
 		args := append([]any{nil}, filterArgs(f)...)

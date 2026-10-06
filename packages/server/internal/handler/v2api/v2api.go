@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 )
@@ -26,16 +27,28 @@ import (
 type Handler struct {
 	ledger *ledger.Ledger
 	log    *slog.Logger
+	now    func() time.Time
+	seen   seenTracker
 }
+
+// Option configures a Handler.
+type Option func(*Handler)
+
+// WithClock replaces time.Now (tests).
+func WithClock(now func() time.Time) Option { return func(h *Handler) { h.now = now } }
 
 // New returns the /v2 handler. A nil ledger (no database) is allowed:
 // every route then answers 503 unavailable, so the API says what is
 // missing instead of 404ing.
-func New(l *ledger.Ledger, log *slog.Logger) *Handler {
+func New(l *ledger.Ledger, log *slog.Logger, opts ...Option) *Handler {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Handler{ledger: l, log: log}
+	h := &Handler{ledger: l, log: log, now: time.Now}
+	for _, o := range opts {
+		o(h)
+	}
+	return h
 }
 
 // Route is one operation of v2.yaml.

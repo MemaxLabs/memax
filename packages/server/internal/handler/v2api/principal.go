@@ -1,8 +1,11 @@
 package v2api
 
 import (
+	"context"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -16,9 +19,12 @@ type principal struct {
 	actor ledger.Actor
 	// scope is every space the caller may touch: the user's memberships
 	// (ledger.ResolveUserScope), narrowed to the credential's hubs when the
-	// credential is hub-scoped.
+	// credential is hub-scoped, and for an agent carrying its connection's
+	// autonomy in each space (ledger.Scope.WithConnection).
 	scope ledger.Scope
 	via   policy.Via
+	// connection is the agent's connection, when it has one.
+	connection *ledger.Connection
 	// impersonated is set for an operator's impersonation session, which
 	// may read but not change the record: a receipt must name who acted.
 	impersonated bool
@@ -28,13 +34,17 @@ type principal struct {
 // scope. It is the one place this mapping lives:
 //
 //   - A signed-in session is a person, acting on their own authority.
-//   - An API key, an OAuth grant, or a legacy agent token is an agent
-//     working for that person. Its actor ID is the credential (the
-//     agent connection, until agent_connections exist), and its autonomy
-//     is Propose when the credential has memory:write, Read otherwise.
-//     policy.Decide caps API keys at Propose anyway: a key can never keep,
-//     reject or forget (HANDOFF §4). Per-space autonomy arrives with agent
-//     connections (epic 1.8) and replaces this rule here, nowhere else.
+//   - An API key or an OAuth grant is an agent working for that person,
+//     through the agent connection the credential is bound to (plan 25
+//     §5.15). The actor is the connection, so receipts name the agent, and
+//     its autonomy in each space is the connection's level there, capped by
+//     the credential: Read without memory:write. policy.Decide caps API keys
+//     at Propose anyway, so a key can never keep, reject or forget
+//     (HANDOFF §4).
+//   - A credential with no connection, or a paused or disconnected one, and
+//     a legacy agent token (which has no credential to bind), only read:
+//     their writes are refused with agent_not_connected or agent_paused,
+//     which say where to fix it.
 //   - A credential without memory:read can't use /v2 at all.
 //   - The surface (via) is what the client says, from X-Memax-Via, but
 //     only among api, cli and mcp. Those are all client-attested; the web
@@ -73,23 +83,37 @@ func (h *Handler) principalFor(r *http.Request) (*principal, *apiError) {
 		p.actor = ledger.Actor{Kind: policy.ActorPerson, ID: userID, Credential: policy.CredentialSession}
 		return p, nil
 	}
-	credential := policy.CredentialOAuth
+
+	credential, kind := policy.CredentialOAuth, ledger.CredentialOAuthGrant
 	if grant.PrincipalType == "api_key" {
-		credential = policy.CredentialAPIKey
+		credential, kind = policy.CredentialAPIKey, ledger.CredentialAPIKey
 	}
-	id, err := uuid.Parse(grant.GrantID)
-	if err != nil {
-		// A legacy agent token carries no grant; it acts for the user.
-		id = userID
-	}
-	autonomy := policy.AutonomyRead
+	limit := policy.AutonomyRead
 	if grant.DefaultPermissions.Has(handler.PermMemoryWrite) {
-		autonomy = policy.AutonomyPropose
+		limit = policy.AutonomyWrite
+	}
+	name := grant.AgentName
+	if k := ledger.AgentFromV1(name); k != ledger.AgentOther {
+		name = k.Name()
 	}
 	p.actor = ledger.Actor{
-		Kind: policy.ActorAgent, ID: id, Name: grant.AgentName, Agent: grant.AgentName,
-		Autonomy: autonomy, Credential: credential,
+		Kind: policy.ActorAgent, ID: userID, Name: name, Agent: grant.AgentName,
+		Autonomy: policy.AutonomyRead, Credential: credential,
 	}
+	// A legacy agent token carries no grant, so nothing to bind: it reads.
+	if credID, err := uuid.Parse(grant.GrantID); err == nil && grant.PrincipalType != "user" {
+		p.actor.ID = credID
+		conn, err := h.ledger.ConnectionForCredential(r.Context(), scope, kind, credID)
+		if err != nil {
+			return nil, h.fromLedger(r, err)
+		}
+		if conn != nil {
+			p.connection = conn
+			p.actor.ID, p.actor.Name, p.actor.Agent = conn.ID, conn.DisplayName, string(conn.Agent)
+			h.seen.touch(h, userID, conn)
+		}
+	}
+	p.scope = scope.WithConnection(p.connection, limit)
 	return p, nil
 }
 
@@ -131,3 +155,46 @@ func parseIDs(ss []string) []uuid.UUID {
 	}
 	return out
 }
+
+// seenEvery is how often an agent's last_seen_at is written at most.
+const seenEvery = time.Minute
+
+// seenTracker writes agents' last_seen_at off the request path: at most
+// once a minute per connection per process, in the background, never in
+// a command's transaction.
+type seenTracker struct {
+	mu   sync.Mutex
+	last map[uuid.UUID]time.Time
+	wg   sync.WaitGroup
+}
+
+func (s *seenTracker) touch(h *Handler, person uuid.UUID, c *ledger.Connection) {
+	now := h.now()
+	if c.State == ledger.ConnectionDisconnected || (c.LastSeenAt != nil && now.Sub(*c.LastSeenAt) < seenEvery) {
+		return
+	}
+	s.mu.Lock()
+	if s.last == nil || len(s.last) > 10_000 {
+		s.last = map[uuid.UUID]time.Time{}
+	}
+	if t, ok := s.last[c.ID]; ok && now.Sub(t) < seenEvery {
+		s.mu.Unlock()
+		return
+	}
+	s.last[c.ID] = now
+	s.mu.Unlock()
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := h.ledger.TouchConnection(ctx, person, c.ID, now); err != nil {
+			h.log.Warn("v2: could not record when an agent was last seen", "connection", c.ID.String(), "error", err)
+		}
+	}()
+}
+
+// Wait blocks until background work (last-seen updates) has finished.
+// Call it at shutdown, and in tests before the database goes away.
+func (h *Handler) Wait() { h.seen.wg.Wait() }

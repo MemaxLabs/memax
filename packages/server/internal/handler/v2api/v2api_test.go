@@ -84,11 +84,13 @@ func TestWhoKeepsWhat(t *testing.T) {
 	key, keyID := e.apiKey(zz, keyOpts{agent: "codex"})
 	readKey, _ := e.apiKey(zz, keyOpts{perms: []string{"memory:read"}, agent: "codex"})
 	grantTok, grantID := e.grant(zz, "claude-ai", []string{"memory:read", "memory:write"})
+	unconnected, _ := e.apiKey(zz, keyOpts{agent: "cursor", unconnected: true})
 	legacy, err := auth.SignAgentAccessToken(zz.String(), "claude-code", []byte(testSecret), time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// An agent's receipts name its connection, not its credential.
 	writes := []struct {
 		name, token string
 		status      int
@@ -101,10 +103,11 @@ func TestWhoKeepsWhat(t *testing.T) {
 		{"owner remembers", e.session(zz), 201, "applied", "", "person", zz, ""},
 		{"member remembers", e.session(jy), 201, "applied", "", "person", jy, ""},
 		{"viewer proposes", e.session(vi), 201, "proposed", "viewer", "person", vi, ""},
-		{"API key proposes", key, 201, "proposed", "api_key", "agent", keyID, "codex"},
-		{"OAuth grant proposes", grantTok, 201, "proposed", "autonomy_propose", "agent", grantID, "claude-ai"},
-		{"legacy agent token proposes", legacy, 201, "proposed", "autonomy_propose", "agent", zz, "claude-code"},
+		{"API key proposes", key, 201, "proposed", "api_key", "agent", e.connection(keyID), "codex"},
+		{"OAuth grant proposes", grantTok, 201, "proposed", "autonomy_propose", "agent", e.connection(grantID), "claude"},
 		{"read-only key is refused", readKey, 403, "", "key_read_only", "", uuid.Nil, ""},
+		{"an unconnected key only reads", unconnected, 403, "", "agent_not_connected", "", uuid.Nil, ""},
+		{"a legacy agent token only reads", legacy, 403, "", "agent_not_connected", "", uuid.Nil, ""},
 	}
 	for _, w := range writes {
 		r := e.do(call{method: "POST", path: memoriesPath(sp), token: w.token, body: remember(w.name+".", "conventions")})
@@ -461,9 +464,13 @@ func TestReceiptsHoldNoWords(t *testing.T) {
 	for _, rc := range p.Items {
 		actions = append(actions, rc.ObjectRef+" "+rc.Action)
 	}
-	want := []string{prop.Ref + " kept", prop.Ref + " proposed", kept.Ref + " edited", kept.Ref + " kept"}
+	// Connecting the key is in the Activity too (the V1 backfill, by Memax).
+	want := []string{prop.Ref + " kept", prop.Ref + " proposed", kept.Ref + " edited", kept.Ref + " kept", "codex connected"}
 	if !slices.Equal(actions, want) {
 		t.Errorf("activity = %v, want %v", actions, want)
+	}
+	if last := p.Items[4]; last.ObjectKind != "agent" || last.ActorKind != "memax" {
+		t.Errorf("connection receipt = %+v", last)
 	}
 	if p.Items[1].ActorKind != "agent" || p.Items[1].Agent != "codex" || p.Items[0].ActorKind != "person" {
 		t.Errorf("actors = %+v", p.Items[:2])
@@ -479,7 +486,7 @@ func TestReceiptsHoldNoWords(t *testing.T) {
 		t.Errorf("page of 3 = %d has_more %v", len(p.Items), p.HasMore)
 	}
 	e.do(call{method: "GET", path: "/v2/spaces/" + sp.slug + "/receipts?cursor=" + p.NextCursor, token: tok}).ok(200, &p)
-	if len(p.Items) != 1 || p.HasMore {
+	if len(p.Items) != 2 || p.HasMore {
 		t.Errorf("last page = %d has_more %v", len(p.Items), p.HasMore)
 	}
 }

@@ -301,10 +301,12 @@ export interface components {
          */
         Assurance: "human_web" | "client_attested";
         /**
-         * @description The past-tense verb a receipt records.
+         * @description The past-tense verb a receipt records. An agent connection's
+         *     receipts (`object_kind: agent`) are connected, autonomy_changed,
+         *     paused, resumed and disconnected.
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space";
         /**

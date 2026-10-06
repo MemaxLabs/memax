@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -243,17 +244,29 @@ func stringConsts(t *testing.T, path, prefix string) []string {
 
 // TestReceiptEnumsMatchTheSchema keeps ReceiptAction and ObjectKind equal
 // to the CHECK constraints on v2.receipts, which admit the verbs of
-// commands later epics add.
+// commands later epics add. Later migrations replace a constraint, so the
+// last migration that defines it wins.
 func TestReceiptEnumsMatchTheSchema(t *testing.T) {
 	t.Parallel()
-	sql, err := os.ReadFile("../../../migrations/028_v2_ledger.up.sql")
-	if err != nil {
-		t.Fatal(err)
+	files, err := filepath.Glob("../../../migrations/*.up.sql")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("migrations: %v", err)
 	}
+	sort.Strings(files)
 	check := func(constraint string) []string {
-		m := regexp.MustCompile(`(?s)CONSTRAINT ` + constraint + ` CHECK \(\w+ IN\s*\((.*?)\)\)`).FindSubmatch(sql)
+		var m [][]byte
+		re := regexp.MustCompile(`(?s)CONSTRAINT ` + constraint + ` CHECK \(\w+ IN\s*\((.*?)\)\)`)
+		for _, f := range files {
+			sql, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if found := re.FindSubmatch(sql); found != nil {
+				m = found
+			}
+		}
 		if m == nil {
-			t.Fatalf("no %s in migration 028", constraint)
+			t.Fatalf("no migration defines %s", constraint)
 		}
 		var out []string
 		for _, q := range regexp.MustCompile(`'([a-z_]+)'`).FindAllSubmatch(m[1], -1) {

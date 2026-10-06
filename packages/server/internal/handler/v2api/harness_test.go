@@ -95,12 +95,14 @@ func checkCoverage() int {
 // env is one isolated database behind the real auth middleware and the
 // /v2 handler, with every exchange checked against the spec.
 type env struct {
-	t    *testing.T
-	pool *pgxpool.Pool
-	srv  http.Handler
+	t      *testing.T
+	pool   *pgxpool.Pool
+	ledger *ledger.Ledger
+	h      *v2api.Handler
+	srv    http.Handler
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T, opts ...v2api.Option) *env {
 	t.Helper()
 	st, pool := testdb.Acquire(t)
 	dbTests.Add(1)
@@ -116,8 +118,33 @@ func newEnv(t *testing.T) *env {
 			handler.HubContext(st)(handler.AuthorizeHTTP(h)))
 	}
 	mux := http.NewServeMux()
-	v2api.New(ledger.New(pool, ledger.WithLogger(quiet)), quiet).Mount(mux, chain)
-	return &env{t: t, pool: pool, srv: spec.Handler(t, mux)}
+	l := ledger.New(pool, ledger.WithLogger(quiet))
+	h := v2api.New(l, quiet, opts...)
+	// Last-seen updates run in the background; let them finish before the
+	// database goes away (cleanups run last-registered first).
+	t.Cleanup(h.Wait)
+	h.Mount(mux, chain)
+	return &env{t: t, pool: pool, ledger: l, h: h, srv: spec.Handler(t, mux)}
+}
+
+// connectAll connects the user's unconnected credentials, the way the V1
+// backfill does: at Propose (Read without write access) in every space
+// each one reaches.
+func (e *env) connectAll(user uuid.UUID) {
+	e.t.Helper()
+	if _, err := e.ledger.BackfillConnections(context.Background(), ledger.BackfillOptions{Users: []uuid.UUID{user}}); err != nil {
+		e.t.Fatalf("connect %s's credentials: %v", user, err)
+	}
+}
+
+// connection is the agent connection a credential is bound to.
+func (e *env) connection(credential uuid.UUID) uuid.UUID {
+	e.t.Helper()
+	var id uuid.UUID
+	if err := e.pool.QueryRow(context.Background(), `SELECT id FROM v2.agent_connections WHERE credential_id = $1`, credential).Scan(&id); err != nil {
+		e.t.Fatalf("connection of %s: %v", credential, err)
+	}
+	return id
 }
 
 func (e *env) exec(sql string, args ...any) {
@@ -125,6 +152,15 @@ func (e *env) exec(sql string, args ...any) {
 	if _, err := e.pool.Exec(context.Background(), sql, args...); err != nil {
 		e.t.Fatalf("exec: %v", err)
 	}
+}
+
+func (e *env) count(sql string, args ...any) int {
+	e.t.Helper()
+	var n int
+	if err := e.pool.QueryRow(context.Background(), sql, args...).Scan(&n); err != nil {
+		e.t.Fatalf("count: %v", err)
+	}
+	return n
 }
 
 func (e *env) user(name string) uuid.UUID {
@@ -177,6 +213,9 @@ type keyOpts struct {
 	// legacyHub binds the key the old way: api_keys.hub_id set, scope
 	// mode left at all_accessible.
 	legacyHub *uuid.UUID
+	// unconnected leaves the key without an agent connection. By default
+	// it is connected like the V1 backfill does (connectAll).
+	unconnected bool
 }
 
 // apiKey creates an API key for the user and returns it with its id.
@@ -198,11 +237,23 @@ func (e *env) apiKey(user uuid.UUID, o keyOpts) (string, uuid.UUID) {
 	e.exec(`INSERT INTO api_keys (id, user_id, name, key_hash, prefix, agent_name, hub_scope_mode, hub_ids, default_permissions, hub_id)
 	        VALUES ($1, $2, 'test', $3, $4, $5, $6, $7, $8, $9)`,
 		id, user, hex.EncodeToString(sum[:]), key[:12], o.agent, mode, o.hubs, o.perms, o.legacyHub)
+	if !o.unconnected {
+		e.connectAll(user)
+	}
 	return key, id
 }
 
-// grant creates an OAuth grant for an MCP client and returns its token.
+// grant creates an OAuth grant for an MCP client, connected like the V1
+// backfill does, and returns its token.
 func (e *env) grant(user uuid.UUID, agent string, perms []string) (string, uuid.UUID) {
+	e.t.Helper()
+	tok, id := e.rawGrant(user, agent, perms)
+	e.connectAll(user)
+	return tok, id
+}
+
+// rawGrant creates an OAuth grant with no agent connection.
+func (e *env) rawGrant(user uuid.UUID, agent string, perms []string) (string, uuid.UUID) {
 	e.t.Helper()
 	id := uuid.New()
 	e.exec(`INSERT INTO oauth_clients (client_id, client_name) VALUES ('test-client', 'Test') ON CONFLICT DO NOTHING`)
@@ -346,15 +397,18 @@ type memory struct {
 }
 
 type receipt struct {
-	ID        uuid.UUID  `json:"id"`
-	ObjectRef string     `json:"object_ref"`
-	Action    string     `json:"action"`
-	ActorKind string     `json:"actor_kind"`
-	ActorID   *uuid.UUID `json:"actor_id"`
-	Agent     string     `json:"agent"`
-	Via       string     `json:"via"`
-	Assurance string     `json:"assurance"`
-	Reason    string     `json:"reason"`
+	ID         uuid.UUID  `json:"id"`
+	SpaceID    uuid.UUID  `json:"space_id"`
+	ObjectKind string     `json:"object_kind"`
+	ObjectID   uuid.UUID  `json:"object_id"`
+	ObjectRef  string     `json:"object_ref"`
+	Action     string     `json:"action"`
+	ActorKind  string     `json:"actor_kind"`
+	ActorID    *uuid.UUID `json:"actor_id"`
+	Agent      string     `json:"agent"`
+	Via        string     `json:"via"`
+	Assurance  string     `json:"assurance"`
+	Reason     string     `json:"reason"`
 }
 
 type result struct {

@@ -69,7 +69,9 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if peek.tool != "" && h.v2 != nil {
 		canonical := mcpCanonicalName(string(h.mode), peek.tool)
 		if mcpWriteTools[canonical] {
-			if scope, needed := h.v2.StepUp(r, canonical, peek.args); needed {
+			call := &MCPToolCall{Tool: canonical, Name: peek.tool, Profile: string(h.mode), Args: peek.args,
+				HTTP: r, Writer: w, OwnerID: GetUserID(r), h: h}
+			if scope, needed := h.v2.StepUp(r.Context(), call); needed {
 				writeInsufficientScope(w, r, peek.id, scope)
 				return
 			}

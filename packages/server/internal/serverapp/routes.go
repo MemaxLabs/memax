@@ -8,10 +8,12 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
+	"github.com/MemaxLabs/memax/packages/server/internal/mcpv2"
 	"github.com/MemaxLabs/memax/packages/server/internal/meter"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/ratelimit"
+	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
 
@@ -70,6 +72,20 @@ type routeDeps struct {
 	store                  store.Store
 	eventsBroker           events.Publisher
 	v2                     *v2api.Handler
+	mcp                    mcpDeps
+}
+
+// mcpDeps is what MCP v2 needs besides the /v2 handler (mcpDepsFromEnv).
+type mcpDeps struct {
+	// spaces says which spaces are on the V2 record; nil keeps every space
+	// on V1 (memory mode, tests).
+	spaces      *spacemode.Resolver
+	stateSecret []byte
+	appBaseURL  string
+	reads       mcpv2.ReadRecorder
+	// instance is FLY_MACHINE_ID: legacy MCP sessions carry it, so their
+	// requests reach the machine that holds them.
+	instance string
 }
 
 // ipLimitFactory returns a helper that wraps a handler with a per-IP
@@ -376,6 +392,17 @@ func registerMCPRoutes(root *http.ServeMux, withAuth func(http.Handler) http.Han
 		mcpH.SetOpGuard(deps.meter.BeginOp, meter.OpDenialMessage)
 		chatGPTH.SetOpGuard(deps.meter.BeginOp, meter.OpDenialMessage)
 	}
+	// Spaces on the V2 record are served through the ledger; the rest keep
+	// V1's tools exactly (internal/mcpv2, internal/spacemode).
+	if v2 := mcpv2.New(mcpv2.Options{
+		V2: deps.v2, Spaces: deps.mcp.spaces, StateSecret: deps.mcp.stateSecret,
+		AppBaseURL: deps.mcp.appBaseURL, Reads: deps.mcp.reads,
+	}); v2 != nil {
+		mcpH.SetV2(v2)
+		chatGPTH.SetV2(v2)
+	}
+	mcpH.SetInstance(deps.mcp.instance)
+	chatGPTH.SetInstance(deps.mcp.instance)
 	mcpProtected := http.NewServeMux()
 	mcpProtected.Handle("/mcp", mcpH)
 	mcpProtected.Handle("/mcp/chatgpt", chatGPTH)

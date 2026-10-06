@@ -22,7 +22,8 @@ type MCPV2 interface {
 	CallTool(ctx context.Context, call *MCPToolCall) (res *mcp.CallToolResult, handled bool)
 	// StepUp reports whether a write tool targets a space on the V2 record
 	// that the OAuth token's scope can't write to, and the scope to ask for.
-	StepUp(r *http.Request, tool string, args json.RawMessage) (scope string, needed bool)
+	// It runs before the call is dispatched, so call.MCP is nil.
+	StepUp(ctx context.Context, call *MCPToolCall) (scope string, needed bool)
 }
 
 // MCPToolCall is one tool call, as both the V1 and the V2 tools see it.

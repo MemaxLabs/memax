@@ -36,6 +36,16 @@ const inV2 = (
 
 const id = (n: number) => `0192a7c0-0000-7000-8000-0000000000c${n}`;
 
+/** The demo connections' ids by agent, for the demo's receipts. */
+export const DEMO_AGENT_IDS: Readonly<Record<string, string>> = {
+  "claude-code": id(1),
+  codex: id(2),
+  cursor: id(3),
+  chatgpt: id(4),
+  claude: id(5),
+  gemini: id(6),
+};
+
 const oauth = { kind: "oauth_grant", active: true } as const;
 
 /** Agents.png, in its order (oldest first). */
@@ -263,6 +273,16 @@ const API_KEYS: readonly ApiKeyView[] = [
   },
 ];
 
+/** The file each agent kind reads in memax-v2 (the demo's compile targets). */
+const NATIVE_FILES: Readonly<Record<string, string>> = {
+  "claude-code": "CLAUDE.md",
+  codex: "AGENTS.md",
+  opencode: "AGENTS.md",
+  copilot: "AGENTS.md",
+  cursor: ".cursor/rules/memax.mdc",
+  chatgpt: "ChatGPT project",
+};
+
 function detailFor(agent: AgentConnectionView): AgentDetailView {
   if (agent.agent === "codex") return { connection: agent, ...CODEX_DETAIL };
   return {
@@ -374,6 +394,21 @@ export function createDemoAgents(): AgentsData {
       });
     },
     newAgentAutonomy: () => "propose",
+    targetFor: (s, key) => {
+      if (s.slug !== "memax-v2") return undefined;
+      // ConnectAgent.png: OpenCode reads the AGENTS.md Codex reads.
+      const file = NATIVE_FILES[key];
+      if (!file) return null;
+      const reader = agents.find(
+        (a) => a.target?.path === file && a.agent !== key,
+      );
+      const target = agents.find((a) => a.target?.path === file)?.target;
+      return {
+        path: file,
+        status: target?.status ?? "synced",
+        sharedWith: reader?.agent,
+      };
+    },
     apiKeys: async () => [...keys],
     async createApiKey({ name, may, space: s }) {
       const n = nextKey++;

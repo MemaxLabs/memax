@@ -309,6 +309,8 @@ export function createSdkAgents({
     },
     // PLACEHOLDER: /v2 spaces don't carry their rules yet; Propose is the default.
     newAgentAutonomy: () => "propose",
+    // PLACEHOLDER: compile targets are built on another branch.
+    targetFor: () => undefined,
     async apiKeys() {
       const keys = await client.auth.listKeys();
       return keys.map(toApiKey);

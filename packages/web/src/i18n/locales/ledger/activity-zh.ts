@@ -27,6 +27,8 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     via: "途径",
     ref: "对象",
   },
+  byAgent: "只显示已载入收据中 {agent} 的。",
+  everyone: "显示所有人",
   opens: "按回车打开。",
   more: "载入更早的收据",
   loadingMore: "正在载入更早的收据",

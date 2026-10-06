@@ -5,6 +5,7 @@ import type {
   ActivityPage,
   ViaPart,
 } from "./activity";
+import { DEMO_AGENT_IDS } from "./agents-demo";
 
 /**
  * Activity.png's receipts for memax-v2, newest first, at Monday October 5
@@ -15,7 +16,11 @@ import type {
 
 const at = (day: string, time: string) => `2026-${day}T${time}:00-07:00`;
 const you: ActivityActor = { kind: "you", initials: "ZZ" };
-const agent = (key: string): ActivityActor => ({ kind: "agent", agent: key });
+const agent = (key: string): ActivityActor => ({
+  kind: "agent",
+  agent: key,
+  connectionId: DEMO_AGENT_IDS[key],
+});
 let n = 0;
 const uid = () => `0192a7c0-0000-7000-8000-f${String(++n).padStart(11, "0")}`;
 

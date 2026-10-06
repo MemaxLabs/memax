@@ -230,6 +230,12 @@ export interface AgentsData {
   disconnectAgent(input: AgentCommand): Promise<AgentConnectionView>;
   /** The autonomy a new agent starts at in the space (its rules). */
   newAgentAutonomy(space: SpaceSummary): Autonomy;
+  /**
+   * The compiled file an agent of this kind (a registry key) would read
+   * in the space, for Connect an agent. PLACEHOLDER: undefined until
+   * compile targets are served; null when it reads over MCP only.
+   */
+  targetFor(space: SpaceSummary, agent: string): AgentTarget | null | undefined;
   apiKeys(signal?: AbortSignal): Promise<ApiKeyView[]>;
   /** Creates a key for one space. The secret is returned once. */
   createApiKey(input: {

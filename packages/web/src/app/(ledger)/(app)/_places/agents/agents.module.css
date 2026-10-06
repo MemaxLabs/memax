@@ -1,0 +1,126 @@
+/* Agents, after Agents.dc.html: the table, then Trust rules beside the
+ * terminal (two equal columns, 24px apart). */
+
+/* The board's lede wraps at its own measure, beside two actions. */
+.head :global(.mx-page-lede) {
+  max-width: 420px;
+}
+
+.table {
+  min-width: 0;
+}
+
+/* A raise is waiting on the server: no spinner over the row. */
+.raising {
+  cursor: progress;
+}
+
+.lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 24px;
+  align-items: start;
+}
+
+.rules {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rule {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rule:last-child {
+  border-bottom: 0;
+}
+
+.ruleIcon {
+  display: flex;
+  padding-top: 2px;
+  color: var(--ink-3);
+}
+
+.ruleText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ruleTitle {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 550;
+  color: var(--ink);
+}
+
+.ruleBody {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+@media (max-width: 1023px) {
+  .lower {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Narrow: each agent is a small card. Name and autonomy on the first
+ * line, then its week, last seen and file with their names shown. */
+@media (max-width: 899px) {
+  .table :global(.mx-agent-head) {
+    display: none;
+  }
+
+  .table :global(.mx-agent) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "id seg"
+      "meta meta";
+    row-gap: 8px;
+    column-gap: 12px;
+  }
+
+  .table :global(.mx-agent-id) {
+    grid-area: id;
+    min-width: 0;
+  }
+
+  .table :global(.mx-agent .mx-seg) {
+    grid-area: seg;
+  }
+
+  .table :global(.mx-agent-num),
+  .table :global(.mx-agent-seen),
+  .table :global(.mx-agent-target) {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 6px;
+    justify-content: flex-start;
+    font-size: 12px;
+    line-height: 16px;
+    text-align: left;
+  }
+
+  /* The column names, read on screen here since there is no head. */
+  .table :global(.mx-agent-num .mx-sr),
+  .table :global(.mx-agent-seen .mx-sr),
+  .table :global(.mx-agent-target .mx-sr) {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    clip-path: none;
+    white-space: nowrap;
+    color: var(--ink-3);
+  }
+}

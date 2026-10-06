@@ -28,6 +28,8 @@ export const ledgerActivityEn = {
     via: "Via",
     ref: "Object",
   },
+  byAgent: "Showing {agent}'s receipts in what's loaded.",
+  everyone: "Show everyone",
   opens: "Press Enter to open it.",
   more: "Load older receipts",
   loadingMore: "Loading older receipts",

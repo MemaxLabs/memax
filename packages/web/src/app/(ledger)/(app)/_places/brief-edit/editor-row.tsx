@@ -273,6 +273,10 @@ function Cites({
   return (
     <div className={styles.cites}>
       <span className="mx-meta">{e.cites}</span>
+      {/* A memory cites where it came from, then itself (BriefEdit.png). */}
+      {!prose && item.source ? (
+        <span className="mx-code">{item.source}</span>
+      ) : null}
       {chips.map((ref) => (
         <span key={ref} className={styles.chip}>
           <span className="mx-code">{ref}</span>

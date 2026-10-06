@@ -172,25 +172,36 @@ export function BriefEditor({
 
           {state.sections.map((section) => (
             <section key={section.key} className={styles.section}>
-              <h2 className={styles.heading}>
-                <input
-                  className={styles.headingInput}
-                  aria-label={interpolate(
-                    section.originalHeading === null
-                      ? e.newSectionLabel
-                      : e.sectionLabel,
-                    { section: section.originalHeading ?? section.heading },
-                  )}
-                  value={section.heading}
-                  onChange={(event) =>
-                    act({
-                      type: "heading",
-                      section: section.key,
-                      heading: event.currentTarget.value,
-                    })
-                  }
-                />
-              </h2>
+              <div className={styles.heading}>
+                <h2 className={styles.headingTitle}>
+                  <input
+                    className={styles.headingInput}
+                    aria-label={interpolate(
+                      section.originalHeading === null
+                        ? e.newSectionLabel
+                        : e.sectionLabel,
+                      { section: section.originalHeading ?? section.heading },
+                    )}
+                    value={section.heading}
+                    onChange={(event) =>
+                      act({
+                        type: "heading",
+                        section: section.key,
+                        heading: event.currentTarget.value,
+                      })
+                    }
+                  />
+                </h2>
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  icon="plus"
+                  className={styles.addFact}
+                  onClick={() => act({ type: "add", section: section.key })}
+                >
+                  {e.newFactPlaceholder}
+                </Button>
+              </div>
               {checked && errors.get(`s:${section.key}`) ? (
                 <p className={styles.error}>{e.emptyHeading}</p>
               ) : null}
@@ -267,15 +278,6 @@ export function BriefEditor({
                   />
                 ))}
               </ul>
-              <Button
-                variant="quiet"
-                size="sm"
-                icon="plus"
-                className={styles.addFact}
-                onClick={() => act({ type: "add", section: section.key })}
-              >
-                {e.newFactPlaceholder}
-              </Button>
             </section>
           ))}
 

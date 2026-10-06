@@ -32,6 +32,8 @@ export interface DraftItem {
   original: string;
   cites: string[];
   originalCites: string[];
+  /** Where a memory came from ("session 3e1a"): what it cites, shown while editing. */
+  source: string | null;
   /** The section it started in; "" for a new fact. */
   from: string;
   state: BriefRowState;
@@ -94,6 +96,7 @@ export function draftOf(brief: BriefView): EditorState {
           original: row.text,
           cites: [...row.cites],
           originalCites: [...row.cites],
+          source: row.source,
           from: section.key,
           state: row.state,
         }),
@@ -260,6 +263,7 @@ export function editorReducer(
         original: "",
         cites: [],
         originalCites: [],
+        source: null,
         from: "",
         state: "kept",
       };

@@ -70,9 +70,18 @@
 }
 
 .heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 8px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--line);
+}
+
+.headingTitle {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
 }
 
 .headingInput {
@@ -89,6 +98,14 @@
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--ink);
+}
+
+/* The fields sit inside their fact's or heading's own ring. */
+.headingInput:focus-visible,
+.textarea:focus-visible,
+.newInput:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .headingInput:focus-visible {
@@ -116,10 +133,6 @@
 .fact:focus-visible,
 .fact:focus-within {
   background: var(--hover);
-}
-
-.fact:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--focus);
 }
 
 .editing,
@@ -351,10 +364,10 @@
   min-width: 0;
 }
 
-/* "Add a fact" shows where the pointer or focus is, so the Brief reads
- * as drawn; it keeps its space, so nothing jumps. */
+/* "Add a fact" sits at the end of its heading and shows where the
+ * pointer or focus is, so the Brief reads as drawn and nothing jumps. */
 .addFact:global(.mx-btn) {
-  margin: 4px 0 0 48px;
+  flex: none;
   visibility: hidden;
 }
 
@@ -368,7 +381,9 @@
  * commas and colons; see the plan's mx-meta note). */
 .change :global(.mx-meta),
 .foot:global(.mx-meta),
-.note:global(.mx-meta) {
+.note:global(.mx-meta),
+.newWrap :global(.mx-meta),
+.cites :global(.mx-meta) {
   font-variant-numeric: normal;
 }
 

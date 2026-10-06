@@ -65,6 +65,13 @@ export interface ReviewCardProps {
   onKeep?: () => void | Promise<unknown>;
   onEdit?: () => void;
   onReject?: () => void;
+  /**
+   * Why this person can't decide it (States2 "Permission": "Viewers can
+   * propose and comment. A member keeps."). Keep stays drawn but disabled
+   * with this reason, Edit and Reject are left out, and the footer shows
+   * the reason where the receipt would be.
+   */
+  keepDisabledReason?: string;
   /** Undo a Keep (⌘Z). The Undo button only shows when this is given. */
   onUndo?: () => void;
   /** Initials of the person who kept it, for the receipt stamp. */
@@ -115,6 +122,7 @@ export function ReviewCard({
   onKeep,
   onEdit,
   onReject,
+  keepDisabledReason,
   onUndo,
   keptBy,
   keptByName,
@@ -160,7 +168,7 @@ export function ReviewCard({
   }, [kept]);
 
   const handleKeep = () => {
-    if (kept || pending || !onKeep) return;
+    if (kept || pending || !onKeep || keepDisabledReason) return;
     const result: unknown = onKeep();
     if (isThenable(result)) {
       setKeeping(true);
@@ -280,6 +288,8 @@ export function ReviewCard({
             time={keptTime ?? strings.time.justNow}
             id={keptId ?? id}
           />
+        ) : keepDisabledReason ? (
+          <span className="mx-meta">{keepDisabledReason}</span>
         ) : (
           <span className="mx-receipt">{pendingReceipt}</span>
         )}
@@ -310,26 +320,30 @@ export function ReviewCard({
             ) : null
           ) : (
             <>
-              <Button
-                key="reject"
-                variant="quiet"
-                size="sm"
-                kbd="X"
-                onClick={onReject}
-                disabled={pending}
-              >
-                {s.reject}
-              </Button>
-              <Button
-                key="edit"
-                variant="secondary"
-                size="sm"
-                kbd="E"
-                onClick={onEdit}
-                disabled={pending}
-              >
-                {s.edit}
-              </Button>
+              {keepDisabledReason ? null : (
+                <>
+                  <Button
+                    key="reject"
+                    variant="quiet"
+                    size="sm"
+                    kbd="X"
+                    onClick={onReject}
+                    disabled={pending}
+                  >
+                    {s.reject}
+                  </Button>
+                  <Button
+                    key="edit"
+                    variant="secondary"
+                    size="sm"
+                    kbd="E"
+                    onClick={onEdit}
+                    disabled={pending}
+                  >
+                    {s.edit}
+                  </Button>
+                </>
+              )}
               <Button
                 key="keep"
                 ref={keepRef}
@@ -338,6 +352,8 @@ export function ReviewCard({
                 kbd="K"
                 onClick={handleKeep}
                 pending={pending}
+                disabled={Boolean(keepDisabledReason)}
+                disabledReason={keepDisabledReason}
               >
                 {conflictWith ? s.keepReplace : s.keep}
               </Button>

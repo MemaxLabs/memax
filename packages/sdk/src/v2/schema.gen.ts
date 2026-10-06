@@ -235,6 +235,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/memories/{ref}/conflict": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Compare a conflict
+         * @description ReviewConflict: both sides of one of this memory's conflicts (the
+         *     flagged memory and the decision in force it contradicts), each with
+         *     its sources, links and the judge's verdict; their latest receipts;
+         *     and the four answers with what each does and whether you may take
+         *     it. Pass `with` when the memory has more than one conflict. A memory
+         *     with no conflict is 409 `invalid_transition`.
+         */
+        get: operations["getConflict"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/memories/{ref}:resolve-conflict": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle a conflict
+         * @description One answer must win (rule 11). Relative to this memory:
+         *     `keep_this` keeps it and the other side gives way, `keep_other` the
+         *     reverse (a proposal that gives way is rejected; a kept decision is
+         *     superseded and stops compiling; a kept fact fades), `keep_both`
+         *     keeps both, usually with narrower words (`statement`,
+         *     `other_statement`), and `leave_open` makes it an open question,
+         *     setting a decision in force on either side to open. The flag is
+         *     cleared, every change has its receipt, and the whole resolution can
+         *     be undone. Only a person who may keep can settle a conflict, on the
+         *     web where the space needs one for decisions.
+         */
+        post: operations["resolveConflict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/receipts/{receipt}:undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A receipt's id. */
+                receipt: components["parameters"]["ReceiptPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo a decision
+         * @description Undoes the command that wrote this receipt (any of its receipts):
+         *     Review's ⌘Z. A person undoes their own keep, reject, edit or
+         *     conflict resolution within 10 minutes; any person who may keep
+         *     undoes one of the judge's folds within 14 days. Each memory gets an
+         *     `undid` receipt whose `source` names the receipt undone
+         *     (`{"kind": "receipt", "ref": <id>}`), and targets recompile when the
+         *     kept set changes. Refused with 409 `undo_refused` when the window
+         *     has passed (`window_passed`), it was already undone
+         *     (`already_undone`), a later change depends on it (`later_changes`,
+         *     `details.ref` names what is in the way), or the receipt's command
+         *     can't be undone (`not_undoable`). Forget can never be undone.
+         */
+        post: operations["undoReceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/agents": {
         parameters: {
             query?: never;
@@ -912,7 +1017,7 @@ export interface components {
          */
         PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "confirm_in_agent";
         /** @enum {string} */
-        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "unavailable";
+        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "unavailable";
         /**
          * @description A typed edge between two memories. merged_into: folded into another
          *     memory (a duplicate, or a repeat of a rejection). supersedes: replaces
@@ -957,6 +1062,21 @@ export interface components {
          * @enum {string}
          */
         ModelTier: "primary" | "fallback" | "strong";
+        /**
+         * @description ReviewConflict's answers, relative to the memory in the path.
+         * @enum {string}
+         */
+        ConflictChoice: "keep_this" | "keep_other" | "keep_both" | "leave_open";
+        /**
+         * @description What an answer does to one side.
+         * @enum {string}
+         */
+        ConflictChange: "kept" | "rejected" | "superseded" | "faded" | "open" | "stays";
+        /**
+         * @description Why an undo was refused.
+         * @enum {string}
+         */
+        UndoRefusal: "window_passed" | "later_changes" | "already_undone" | "not_undoable";
         /** @description A Brief version's display ID, unique within its tenant. */
         BriefRef: string;
         /** @description A compile run's display ID, unique within its tenant. */
@@ -1218,6 +1338,45 @@ export interface components {
             memory: components["schemas"]["Memory"];
             /** @description The receipts the command wrote, oldest first. */
             receipts: components["schemas"]["Receipt"][];
+        };
+        /** @description A command that changed several memories (settling a conflict, an undo). */
+        MemoriesCommandResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            /** @description The memory the command named (for an undo, the first it restored). */
+            memory: components["schemas"]["Memory"];
+            /** @description Every memory the command changed, that one first. */
+            memories: components["schemas"]["Memory"][];
+            /** @description The receipts the command wrote, oldest first. */
+            receipts: components["schemas"]["Receipt"][];
+        };
+        ConflictEffect: {
+            ref: components["schemas"]["DisplayRef"];
+            change: components["schemas"]["ConflictChange"];
+        };
+        ConflictOption: {
+            choice: components["schemas"]["ConflictChoice"];
+            /** @description What it does to each side, this memory first. */
+            effects: components["schemas"]["ConflictEffect"][];
+            /** @description Whether you may take it. */
+            allowed: boolean;
+            /** @description Why you may not, when policy says so. */
+            policy?: components["schemas"]["PolicyDecision"];
+        };
+        /** @description Both sides of a conflict, for ReviewConflict. */
+        Conflict: {
+            /** @description This side, with its sources, links and verdict. */
+            memory: components["schemas"]["Memory"];
+            other: components["schemas"]["Memory"];
+            /** @description The side carrying the conflict flag. */
+            flagged_ref: components["schemas"]["DisplayRef"];
+            /** @description The decision in force it contradicts. */
+            decision_ref: components["schemas"]["DisplayRef"];
+            /** @description The conflicts_with link, seen from this side. */
+            link: components["schemas"]["Link"];
+            /** @description Both sides' latest receipts, newest first. */
+            receipts: components["schemas"]["Receipt"][];
+            options: components["schemas"]["ConflictOption"][];
         };
         MemoryDetail: {
             memory: components["schemas"]["Memory"];
@@ -1726,6 +1885,19 @@ export interface components {
             occurred_at?: components["schemas"]["Timestamp"];
             session_ref?: components["schemas"]["SessionRef"];
         };
+        ResolveConflictRequest: {
+            choice: components["schemas"]["ConflictChoice"];
+            /** @description The other side, by display ID or id, when this memory has more than one conflict. */
+            other?: components["schemas"]["MemoryRef"];
+            /** @description keep_both only. Narrower words for this memory. */
+            statement?: string;
+            /** @description keep_both only. Narrower words for the other side. */
+            other_statement?: string;
+            reason?: components["schemas"]["Reason"];
+            /** @description When it happened on the client; offline queues keep the original time. */
+            occurred_at?: components["schemas"]["Timestamp"];
+            session_ref?: components["schemas"]["SessionRef"];
+        };
         AutonomyRequest: {
             autonomy: components["schemas"]["Autonomy"];
             reason?: components["schemas"]["Reason"];
@@ -1844,8 +2016,10 @@ export interface components {
             field?: string;
             /** @description The policy decision (`refused`). */
             policy?: components["schemas"]["PolicyDecision"];
-            /** @description The memory's display ID (`edit_clash`, `invalid_transition`). */
+            /** @description The memory's display ID (`edit_clash`, `invalid_transition`), or what is in an undo's way (`undo_refused`). */
             ref?: string;
+            /** @description Why an undo was refused (`undo_refused`). */
+            reason?: components["schemas"]["UndoRefusal"];
             /** @description The version you sent (`edit_clash`). */
             expected_version?: number;
             /** @description The memory's version now (`edit_clash`). */
@@ -1879,6 +2053,12 @@ export interface components {
         };
         CommandResultEnvelope: {
             data: components["schemas"]["CommandResult"];
+        };
+        MemoriesCommandResultEnvelope: {
+            data: components["schemas"]["MemoriesCommandResult"];
+        };
+        ConflictEnvelope: {
+            data: components["schemas"]["Conflict"];
         };
         AgentListEnvelope: {
             data: components["schemas"]["AgentList"];
@@ -1933,6 +2113,26 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["CommandResultEnvelope"];
+            };
+        };
+        /** @description The command was applied; `memories` are every memory it changed. */
+        MemoriesCommandResult: {
+            headers: {
+                ETag: components["headers"]["ETag"];
+                "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["MemoriesCommandResultEnvelope"];
+            };
+        };
+        /** @description `undo_refused`: see `details.reason`, and `details.ref` for what is in the way. */
+        UndoRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
         /** @description The change to the agent was applied (or there was nothing to change). */
@@ -2111,6 +2311,8 @@ export interface components {
          *     the web app.
          */
         Via: "api" | "cli" | "mcp";
+        /** @description A receipt's id. */
+        ReceiptPath: components["schemas"]["Id"];
         /** @description The target's id. */
         TargetPath: components["schemas"]["Id"];
         /**
@@ -2511,6 +2713,138 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["InvalidTransition"];
             412: components["responses"]["EditClash"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    getConflict: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+                /** @description The other side, by display ID or id, when there is more than one. */
+                with?: components["schemas"]["MemoryRef"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The conflict. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    resolveConflict: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description The `ETag` (memory version) you reviewed, e.g. `"3"`. */
+                "If-Match"?: components["parameters"]["IfMatchOptional"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveConflictRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["MemoriesCommandResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            412: components["responses"]["EditClash"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    undoReceipt: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description A receipt's id. */
+                receipt: components["parameters"]["ReceiptPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["MemoriesCommandResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["UndoRefused"];
             422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];

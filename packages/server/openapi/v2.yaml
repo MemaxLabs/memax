@@ -35,10 +35,10 @@ info:
 
     A command is a `POST` (or the `PATCH` that sets an agent's autonomy or
     changes a target) that changes the record: remember, keep, edit and
-    reject a memory; pause, resume, disconnect and set the autonomy of an
-    agent; revise the Brief; add, change and compile a target; acknowledge
-    a delivery, report a hand edit, and pull, overwrite or stop it. Every
-    command:
+    reject a memory; settle a conflict; undo a decision; pause, resume,
+    disconnect and set the autonomy of an agent; revise the Brief; add,
+    change and compile a target; acknowledge a delivery, report a hand
+    edit, and pull, overwrite or stop it. Every command:
 
     - needs an `Idempotency-Key` header (1 to 255 characters). Retrying a
       command with the same key returns the original result and writes
@@ -88,6 +88,28 @@ info:
     such an edit, and a person pulls it back as proposals, overwrites it,
     or stops compiling the file.
 
+    ## The judge
+
+    Every proposal is judged within seconds of being written: a repeat of a
+    kept memory is folded into it (`merged`, with a `merged_into` link), a
+    repeat of something rejected in the last 90 days is folded into that
+    rejection, an update links to the memory it updates (`updates`, so
+    Review can show a diff), and a contradiction of a decision in force is
+    flagged as a conflict (`flags: ["conflict"]`, with a `conflicts_with`
+    link) before anyone can keep it. Until the judge has run, a proposal's
+    `judge.state` is `working`. A conflict is settled with
+    `:resolve-conflict`; `GET /v2/memories/{ref}/conflict` shows both sides
+    and the four answers.
+
+    ## Undo
+
+    `POST /v2/receipts/{receipt}:undo` undoes the command that wrote the
+    receipt: a person's keep, reject, edit or conflict resolution (theirs
+    only, within 10 minutes), or one of the judge's folds (any person who
+    may keep, within 14 days). It is refused with 409 `undo_refused` when
+    the window has passed, it was already undone, a later change depends on
+    it, or the receipt's command can't be undone (`details.reason`).
+
     ## Display IDs
 
     `M-0219` is unique within a tenant, not across tenants, so a display ID
@@ -121,6 +143,7 @@ info:
     | 404 | `not_found` | No such space or memory in your spaces. |
     | 405 | `method_not_allowed` | The path exists, the method doesn't. |
     | 409 | `invalid_transition` | The memory's (or target's) state doesn't allow the command. |
+    | 409 | `undo_refused` | The command can't be undone; `details.reason` says why. |
     | 412 | `edit_clash` | `If-Match` is not the memory's current version. |
     | 422 | `idempotency_key_reused` | The key was used for a different command. |
     | 428 | `precondition_required` | An edit (or a Brief revision) came without `If-Match`. |
@@ -523,6 +546,154 @@ paths:
           $ref: '#/components/responses/InvalidTransition'
         '412':
           $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}/conflict:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    get:
+      operationId: getConflict
+      tags: [review]
+      summary: Compare a conflict
+      description: |
+        ReviewConflict: both sides of one of this memory's conflicts (the
+        flagged memory and the decision in force it contradicts), each with
+        its sources, links and the judge's verdict; their latest receipts;
+        and the four answers with what each does and whether you may take
+        it. Pass `with` when the memory has more than one conflict. A memory
+        with no conflict is 409 `invalid_transition`.
+      parameters:
+        - name: with
+          in: query
+          description: The other side, by display ID or id, when there is more than one.
+          schema:
+            $ref: '#/components/schemas/MemoryRef'
+      responses:
+        '200':
+          description: The conflict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}:resolve-conflict:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: resolveConflict
+      tags: [review]
+      summary: Settle a conflict
+      description: |
+        One answer must win (rule 11). Relative to this memory:
+        `keep_this` keeps it and the other side gives way, `keep_other` the
+        reverse (a proposal that gives way is rejected; a kept decision is
+        superseded and stops compiling; a kept fact fades), `keep_both`
+        keeps both, usually with narrower words (`statement`,
+        `other_statement`), and `leave_open` makes it an open question,
+        setting a decision in force on either side to open. The flag is
+        cleared, every change has its receipt, and the whole resolution can
+        be undone. Only a person who may keep can settle a conflict, on the
+        web where the space needs one for decisions.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchOptional'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveConflictRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/MemoriesCommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/receipts/{receipt}:undo:
+    parameters:
+      - $ref: '#/components/parameters/ReceiptPath'
+    post:
+      operationId: undoReceipt
+      tags: [review]
+      summary: Undo a decision
+      description: |
+        Undoes the command that wrote this receipt (any of its receipts):
+        Review's ⌘Z. A person undoes their own keep, reject, edit or
+        conflict resolution within 10 minutes; any person who may keep
+        undoes one of the judge's folds within 14 days. Each memory gets an
+        `undid` receipt whose `source` names the receipt undone
+        (`{"kind": "receipt", "ref": <id>}`), and targets recompile when the
+        kept set changes. Refused with 409 `undo_refused` when the window
+        has passed (`window_passed`), it was already undone
+        (`already_undone`), a later change depends on it (`later_changes`,
+        `details.ref` names what is in the way), or the receipt's command
+        can't be undone (`not_undoable`). Forget can never be undone.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/MemoriesCommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/UndoRefused'
         '422':
           $ref: '#/components/responses/IdempotencyKeyReused'
         '429':
@@ -1530,6 +1701,14 @@ components:
         type: string
         enum: [api, cli, mcp]
 
+    ReceiptPath:
+      name: receipt
+      in: path
+      required: true
+      description: A receipt's id.
+      schema:
+        $ref: '#/components/schemas/Id'
+
     TargetPath:
       name: target
       in: path
@@ -1594,6 +1773,23 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/CommandResultEnvelope'
+    MemoriesCommandResult:
+      description: The command was applied; `memories` are every memory it changed.
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MemoriesCommandResultEnvelope'
+    UndoRefused:
+      description: '`undo_refused`: see `details.reason`, and `details.ref` for what is in the way.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
     AgentCommandResult:
       description: The change to the agent was applied (or there was nothing to change).
       headers:
@@ -1953,6 +2149,7 @@ components:
         - not_found
         - method_not_allowed
         - invalid_transition
+        - undo_refused
         - edit_clash
         - idempotency_key_reused
         - precondition_required
@@ -2001,6 +2198,18 @@ components:
       description: The judge's model tier whose answer counted.
       type: string
       enum: [primary, fallback, strong]
+    ConflictChoice:
+      description: ReviewConflict's answers, relative to the memory in the path.
+      type: string
+      enum: [keep_this, keep_other, keep_both, leave_open]
+    ConflictChange:
+      description: What an answer does to one side.
+      type: string
+      enum: [kept, rejected, superseded, faded, open, stays]
+    UndoRefusal:
+      description: Why an undo was refused.
+      type: string
+      enum: [window_passed, later_changes, already_undone, not_undoable]
 
     BriefRef:
       description: A Brief version's display ID, unique within its tenant.
@@ -2509,6 +2718,91 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/Receipt'
+
+    MemoriesCommandResult:
+      description: A command that changed several memories (settling a conflict, an undo).
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, memory, memories, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        memory:
+          description: The memory the command named (for an undo, the first it restored).
+          $ref: '#/components/schemas/Memory'
+        memories:
+          description: Every memory the command changed, that one first.
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Memory'
+        receipts:
+          description: The receipts the command wrote, oldest first.
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    ConflictEffect:
+      type: object
+      additionalProperties: false
+      required: [ref, change]
+      properties:
+        ref:
+          $ref: '#/components/schemas/DisplayRef'
+        change:
+          $ref: '#/components/schemas/ConflictChange'
+
+    ConflictOption:
+      type: object
+      additionalProperties: false
+      required: [choice, effects, allowed]
+      properties:
+        choice:
+          $ref: '#/components/schemas/ConflictChoice'
+        effects:
+          description: What it does to each side, this memory first.
+          type: array
+          items:
+            $ref: '#/components/schemas/ConflictEffect'
+        allowed:
+          description: Whether you may take it.
+          type: boolean
+        policy:
+          description: Why you may not, when policy says so.
+          $ref: '#/components/schemas/PolicyDecision'
+
+    Conflict:
+      description: Both sides of a conflict, for ReviewConflict.
+      type: object
+      additionalProperties: false
+      required: [memory, other, flagged_ref, decision_ref, link, receipts, options]
+      properties:
+        memory:
+          description: This side, with its sources, links and verdict.
+          $ref: '#/components/schemas/Memory'
+        other:
+          $ref: '#/components/schemas/Memory'
+        flagged_ref:
+          description: The side carrying the conflict flag.
+          $ref: '#/components/schemas/DisplayRef'
+        decision_ref:
+          description: The decision in force it contradicts.
+          $ref: '#/components/schemas/DisplayRef'
+        link:
+          description: The conflicts_with link, seen from this side.
+          $ref: '#/components/schemas/Link'
+        receipts:
+          description: Both sides' latest receipts, newest first.
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConflictOption'
 
     MemoryDetail:
       type: object
@@ -3634,6 +3928,34 @@ components:
         session_ref:
           $ref: '#/components/schemas/SessionRef'
 
+    ResolveConflictRequest:
+      type: object
+      additionalProperties: false
+      required: [choice]
+      properties:
+        choice:
+          $ref: '#/components/schemas/ConflictChoice'
+        other:
+          description: The other side, by display ID or id, when this memory has more than one conflict.
+          $ref: '#/components/schemas/MemoryRef'
+        statement:
+          description: keep_both only. Narrower words for this memory.
+          type: string
+          minLength: 1
+          maxLength: 2000
+        other_statement:
+          description: keep_both only. Narrower words for the other side.
+          type: string
+          minLength: 1
+          maxLength: 2000
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
     AutonomyRequest:
       type: object
       additionalProperties: false
@@ -3896,8 +4218,11 @@ components:
           description: The policy decision (`refused`).
           $ref: '#/components/schemas/PolicyDecision'
         ref:
-          description: The memory's display ID (`edit_clash`, `invalid_transition`).
+          description: The memory's display ID (`edit_clash`, `invalid_transition`), or what is in an undo's way (`undo_refused`).
           type: string
+        reason:
+          description: Why an undo was refused (`undo_refused`).
+          $ref: '#/components/schemas/UndoRefusal'
         expected_version:
           description: The version you sent (`edit_clash`).
           type: integer
@@ -3972,6 +4297,22 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/CommandResult'
+
+    MemoriesCommandResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/MemoriesCommandResult'
+
+    ConflictEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Conflict'
 
     AgentListEnvelope:
       type: object

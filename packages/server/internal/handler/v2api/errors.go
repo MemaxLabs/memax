@@ -26,6 +26,7 @@ const (
 	codeNotFound               = "not_found"
 	codeMethodNotAllowed       = "method_not_allowed"
 	codeInvalidTransition      = "invalid_transition"
+	codeUndoRefused            = "undo_refused"
 	codeEditClash              = "edit_clash"
 	codeKeyReused              = "idempotency_key_reused"
 	codePreconditionRequired   = "precondition_required"
@@ -52,6 +53,7 @@ type errorDetails struct {
 	ExpectedVersion int              `json:"expected_version,omitempty"`
 	CurrentVersion  int              `json:"current_version,omitempty"`
 	RetryAfter      int              `json:"retry_after,omitempty"`
+	Reason          string           `json:"reason,omitempty"`
 }
 
 func writeError(w http.ResponseWriter, e *apiError) {
@@ -88,7 +90,11 @@ func (h *Handler) fromLedger(r *http.Request, err error) *apiError {
 	var te *ledger.TransitionError
 	var ce *ledger.ConnectionStateError
 	var tse *ledger.TargetStateError
+	var ue *ledger.UndoError
 	switch {
+	case errors.As(err, &ue):
+		return &apiError{status: http.StatusConflict, code: codeUndoRefused, message: ue.Error(),
+			details: &errorDetails{Reason: ue.Reason, Ref: ue.Ref}}
 	case errors.As(err, &ce):
 		return &apiError{status: http.StatusConflict, code: codeInvalidTransition, message: ce.Error()}
 	case errors.As(err, &tse):

@@ -196,6 +196,9 @@ type Space struct {
 	Role     policy.Role      `json:"role"`
 	// Repository is the repository the space compiles for, if any.
 	Repository string `json:"repository,omitempty"`
+	// V2EnabledAt is when the space switched to the V2 record (migration
+	// 033); nil while it is on V1 (internal/spacemode).
+	V2EnabledAt *time.Time `json:"v2_enabled_at,omitempty"`
 }
 
 // Action is the past-tense verb a receipt records.

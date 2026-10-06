@@ -338,9 +338,11 @@ If you find yourself tempted to put admin code in the SDK, stop and ask why. The
 
 **The CLI MCP server and Go server MCP handler must expose identical tools.** Both implementations serve the same purpose (giving AI agents access to Memax), and agents should get the same capabilities regardless of which MCP endpoint they connect to.
 
-**The two files:** `packages/server/internal/handler/mcp.go` (Go, remote) and `packages/cli/src/commands/mcp.ts` (TypeScript, local) — both now in this repo.
+**The two catalogues:** `packages/server/internal/handler/mcp_tools.json` (Go, remote; served by `mcp.go` on the official go-sdk, both profiles) and `packages/cli/src/commands/mcp-tools.ts` (TypeScript, local; served by `mcp.ts`). Each holds every tool's name, title, description, input schema, output schema and annotations, plus the server instructions.
 
-**The rule:** When adding or modifying an MCP tool (name, description, parameters), update BOTH files in the same commit. Current tools (10): `memax_recall`, `memax_push`, `memax_get`, `memax_list`, `memax_hubs`, `memax_hub_members`, `memax_forget`, `memax_capture`, `memax_topics`, `memax_request_decision`.
+**The rule:** When adding or modifying an MCP tool, update BOTH catalogues in the same commit. `node scripts/check-mcp-parity.mjs` (part of `pnpm lint`) compares them field by field and fails on any difference. Descriptions say what a tool does, never how an agent should behave ("ALWAYS call …" fails directory review; that guidance belongs in the Claude Code plugin's skill and hooks). Current tools (11): the 10 V1 tools `memax_recall`, `memax_push`, `memax_get`, `memax_list`, `memax_hubs`, `memax_hub_members`, `memax_forget`, `memax_capture`, `memax_topics`, `memax_request_decision`, plus `memax_search`. The ChatGPT profile (`/mcp/chatgpt`, remote only) has 7 aliases that map onto the same handlers.
+
+**V1 and V2 per space.** A space whose `hubs.v2_enabled_at` is set (`internal/spacemode`) is served through the ledger by `internal/mcpv2`; every other space keeps the V1 tools exactly (`TestV1SpacesBehaveExactlyAsV1` holds them byte-for-byte equal). `go run ./cmd/v2-switch-space -space <uuid>` switches one for development.
 
 **Why this exists:** We added `memax_topics` and `hint`/`project_context` params to the Go server MCP but forgot the CLI MCP. Agents connecting locally via `memax mcp serve` got different (fewer) capabilities than agents connecting to the remote server.
 
@@ -523,6 +525,13 @@ cd packages/server && go run ./cmd/locomo/ -dataset eval/locomo/data/locomo10.js
 # Connect V1 API keys and OAuth grants to the V2 record as agent connections, at Propose
 # (idempotent; prefer -user for the people moving to V2)
 cd packages/server && go run ./cmd/v2-backfill-agents -user <uuid>
+
+# Move a space to the V2 record (or back with -off), for dev and dogfooding until
+# the "Switch to V2" step ships; MCP then serves it through the ledger
+cd packages/server && go run ./cmd/v2-switch-space -space <uuid>
+
+# MCP v2: protocol, OAuth, V2 tool and V1-compatibility tests (real Postgres)
+cd packages/server && go test ./internal/handler/ -run 'MCP|ChatGPT' && go test ./internal/mcpv2/ ./internal/v2recall/ ./internal/spacemode/
 
 # /v2 contract: run the spec, handler and parity tests
 cd packages/server && go test ./internal/contract/ ./internal/handler/v2api/ ./internal/serverapp/

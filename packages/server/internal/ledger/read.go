@@ -225,7 +225,7 @@ func (l *Ledger) ListSpaces(ctx context.Context, scope Scope) ([]Space, error) {
 	var out []Space
 	err := l.Read(ctx, scope, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-			SELECT id, tenant_id, slug, name, kind, COALESCE(repository, '')
+			SELECT id, tenant_id, slug, name, kind, COALESCE(repository, ''), v2_enabled_at
 			  FROM v2.spaces
 			 WHERE id = ANY($1)
 			 ORDER BY kind = 'personal' DESC, lower(name), id`, scope.SpaceIDs())
@@ -234,7 +234,7 @@ func (l *Ledger) ListSpaces(ctx context.Context, scope Scope) ([]Space, error) {
 		}
 		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Space, error) {
 			var sp Space
-			err := r.Scan(&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository)
+			err := r.Scan(&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository, &sp.V2EnabledAt)
 			return sp, err
 		})
 		if err != nil {

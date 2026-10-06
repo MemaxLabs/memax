@@ -36,6 +36,8 @@ var (
 	// ErrReceiptRequired: the database refused a write without a receipt.
 	// It means a bug in this package, never a user error.
 	ErrReceiptRequired = errors.New("ledger: write refused without a receipt")
+	// ErrAlreadyConnected: the credential already has an agent connection.
+	ErrAlreadyConnected = errors.New("ledger: the credential is already connected")
 )
 
 // ValidationError says which field is wrong and how to fix it.
@@ -87,6 +89,7 @@ const (
 	sqlstateReceiptRequired  = "MXR01"
 	sqlstateReceiptImmutable = "MXR02"
 	sqlstateLifecycle        = "MXL01"
+	sqlstateAgentState       = "MXL02" // migration 029
 	sqlstateUniqueViolation  = "23505"
 	sqlstateLockNotAvailable = "55P03"
 	// jsonb refuses \u0000, and text refuses bytes outside the encoding.
@@ -105,7 +108,7 @@ func mapDBError(err error) error {
 		return fmt.Errorf("%w: %s", ErrReceiptRequired, pg.Message)
 	case sqlstateReceiptImmutable:
 		return fmt.Errorf("ledger: receipts are append-only: %s", pg.Message)
-	case sqlstateLifecycle:
+	case sqlstateLifecycle, sqlstateAgentState:
 		return fmt.Errorf("%w: %s", ErrInvalidTransition, pg.Message)
 	case sqlstateLockNotAvailable:
 		return fmt.Errorf("%w: try again in a moment", ErrBusy)
@@ -114,8 +117,11 @@ func mapDBError(err error) error {
 		// conditions, the scope) reaches jsonb, which can't store it.
 		return invalid("body", "contains a character that can't be stored (such as \\u0000); remove it and try again")
 	case sqlstateUniqueViolation:
-		if pg.ConstraintName == "receipts_stream_version_key" {
+		switch pg.ConstraintName {
+		case "receipts_stream_version_key":
 			return fmt.Errorf("%w: another change landed first; reload and try again", ErrEditClash)
+		case "agent_connections_credential_key":
+			return ErrAlreadyConnected
 		}
 	}
 	return err

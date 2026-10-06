@@ -321,14 +321,19 @@ export interface components {
          *     Refusals: unknown_actor, unknown_action, secret_detected, not_member,
          *     read_only, key_read_only, key_cannot_review, key_cannot_forget,
          *     person_must_review, person_must_forget, forget_not_allowed,
-         *     external_needs_review, proposal_in_review. Refused or sent to Review:
+         *     external_needs_review, proposal_in_review, agent_not_connected (the
+         *     agent has no connection, or none to this space, so it only reads),
+         *     agent_paused. Refused changes to agents: person_must_manage (only a
+         *     person changes what an agent may do), not_your_agent,
+         *     autonomy_not_allowed, key_max_propose, autonomy_needs_web (raising
+         *     an agent needs a person on the web). Refused or sent to Review:
          *     viewer, owners_keep, decision_needs_web. Sent to Review: api_key,
          *     external_source, contradicts_decision, edits_person_kept,
          *     autonomy_propose, integration, import, system_proposes, repository,
          *     person_proposed. Confirmation: confirm_in_agent.
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "confirm_in_agent";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "confirm_in_agent";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "not_found" | "method_not_allowed" | "invalid_transition" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "unavailable";
         Space: {

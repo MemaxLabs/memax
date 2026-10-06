@@ -21,6 +21,11 @@ import (
 // API key bound to one space, an agent connected to some spaces).
 type Scope struct {
 	Spaces []SpaceGrant
+	// PersonID is the person the actor is, or works for. Every ledger
+	// transaction sets app.person_id from it: a person's agent
+	// connections are visible to them in any space, and other people's
+	// only through the spaces in the scope. ResolveUserScope sets it.
+	PersonID uuid.UUID
 }
 
 // SpaceGrant is one space in a scope.
@@ -33,6 +38,12 @@ type SpaceGrant struct {
 	Role policy.Role
 	// CanForget carries V1's admin role (member + can_forget).
 	CanForget bool
+	// Autonomy and AgentStatus are an agent's level in this space and
+	// whether it is connected here, from its connection (WithConnection).
+	// Both are empty for people; an empty Autonomy falls back to
+	// Actor.Autonomy.
+	Autonomy    policy.Autonomy
+	AgentStatus policy.AgentStatus
 }
 
 // Grant returns the grant for a space, if the scope includes it.
@@ -67,9 +78,9 @@ func (s Scope) TenantIDs() []uuid.UUID {
 	return out
 }
 
-// Narrow keeps only the given spaces.
+// Narrow keeps only the given spaces (and the person).
 func (s Scope) Narrow(spaceIDs ...uuid.UUID) Scope {
-	out := Scope{}
+	out := Scope{PersonID: s.PersonID}
 	for _, g := range s.Spaces {
 		if slices.Contains(spaceIDs, g.SpaceID) {
 			out.Spaces = append(out.Spaces, g)
@@ -103,7 +114,7 @@ func ResolveUserScope(ctx context.Context, db Querier, userID uuid.UUID) (Scope,
 		return Scope{}, fmt.Errorf("ledger: resolve scope: %w", err)
 	}
 	defer rows.Close()
-	var s Scope
+	s := Scope{PersonID: userID}
 	for rows.Next() {
 		var g SpaceGrant
 		var kind, v1Role string

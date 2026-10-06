@@ -392,11 +392,19 @@ func (w *writer) receipt(sp spaceRow, objectID uuid.UUID, ref string, action Act
 	return rc
 }
 
+// policyActor is the actor as policy sees it in one space: with the
+// person's role there and, for an agent, its connection's autonomy and
+// status there (SpaceGrant, from WithConnection), falling back to
+// Actor.Autonomy.
 func (w *writer) policyActor(g SpaceGrant) policy.Actor {
 	a := w.meta.Actor
+	autonomy := a.Autonomy
+	if g.Autonomy != "" {
+		autonomy = g.Autonomy
+	}
 	return policy.Actor{
 		Kind: a.Kind, Name: a.Name, Role: g.Role, CanForget: g.CanForget,
-		Autonomy: a.Autonomy, Credential: a.Credential, Via: w.meta.Via,
+		Autonomy: autonomy, AgentStatus: g.AgentStatus, Credential: a.Credential, Via: w.meta.Via,
 		PersonPresent: a.PersonPresent, CanElicit: a.CanElicit,
 	}
 }
@@ -467,6 +475,12 @@ func (w *writer) claim(ctx context.Context, spaceID uuid.UUID) (*Result, error) 
 	if res.Receipts, err = loadReceipts(ctx, w.tx, w.meta.Scope, receiptIDs); err != nil {
 		return nil, err
 	}
+	if objectID != nil && isAgentCommand(w.command) {
+		if res.Connection, err = loadConnection(ctx, w.tx, w.meta.Scope, *objectID); err != nil {
+			return nil, err
+		}
+		return &res, nil
+	}
 	if objectID != nil {
 		if res.Memory, err = loadMemory(ctx, w.tx, w.meta.Scope, *objectID, false); err != nil {
 			return nil, err
@@ -478,23 +492,33 @@ func (w *writer) claim(ctx context.Context, spaceID uuid.UUID) (*Result, error) 
 	return &res, nil
 }
 
-// finish records the result against the idempotency key and loads the
-// memory's new projection.
-func (w *writer) finish(ctx context.Context, res Result, memoryID uuid.UUID) (Result, error) {
+// record stores the result against the idempotency key, so a retry
+// returns it (claim).
+func (w *writer) record(ctx context.Context, res Result, objectID uuid.UUID) error {
 	ids := make([]uuid.UUID, 0, len(res.Receipts))
 	for _, rc := range res.Receipts {
 		ids = append(ids, rc.ID)
 	}
 	policyJSON, err := json.Marshal(res.Policy)
 	if err != nil {
-		return Result{}, err
+		return err
 	}
 	if _, err := w.tx.Exec(ctx, `
 		UPDATE v2.command_keys SET outcome = $5, policy = $6, object_id = $7, receipt_ids = $8
 		 WHERE space_id = $1 AND actor_kind = $2 AND actor_id IS NOT DISTINCT FROM $3 AND idempotency_key = $4`,
 		w.space, string(w.meta.Actor.Kind), w.actorID(), w.meta.IdempotencyKey,
-		string(res.Outcome), policyJSON, memoryID, ids); err != nil {
-		return Result{}, fmt.Errorf("ledger: record idempotency key: %w", err)
+		string(res.Outcome), policyJSON, objectID, ids); err != nil {
+		return fmt.Errorf("ledger: record idempotency key: %w", err)
+	}
+	return nil
+}
+
+// finish records the result against the idempotency key and loads the
+// memory's new projection.
+func (w *writer) finish(ctx context.Context, res Result, memoryID uuid.UUID) (Result, error) {
+	err := w.record(ctx, res, memoryID)
+	if err != nil {
+		return Result{}, err
 	}
 	if res.Memory, err = loadMemory(ctx, w.tx, w.meta.Scope, memoryID, false); err != nil {
 		return Result{}, err

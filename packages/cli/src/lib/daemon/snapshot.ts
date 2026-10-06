@@ -66,6 +66,8 @@ export interface DaemonSnapshot {
   version: string;
   api_url: string;
   repos: RepoSnapshot[];
+  /** The process's memory in MiB, for `memax daemon status --format json`. */
+  memory?: { rss: number; heap_used: number };
   /** Set while `memax compile` delivers in place of a daemon. */
   oneshot?: boolean;
 }

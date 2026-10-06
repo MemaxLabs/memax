@@ -27,6 +27,7 @@ export interface DaemonStatus {
   pid?: number;
   started_at?: string;
   version?: string;
+  memory?: DaemonSnapshot["memory"];
   repos: RepoSnapshot[];
 }
 
@@ -45,6 +46,7 @@ export async function readDaemonStatus(
       pid: snap.pid,
       started_at: snap.started_at,
       version: snap.version,
+      memory: snap.memory,
       repos: snap.repos,
     };
   }

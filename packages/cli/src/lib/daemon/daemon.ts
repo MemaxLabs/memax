@@ -264,6 +264,7 @@ export class Daemon {
       started_at: this.startedAt,
       version: this.o.version,
       api_url: this.o.apiUrl,
+      memory: memoryMiB(),
       repos: [...this.repos.values()]
         .map((r) => r.delivery.snapshot())
         .sort((a, b) => a.root.localeCompare(b.root)),
@@ -296,6 +297,12 @@ export class Daemon {
     }
     this.o.log.info("stopped");
   }
+}
+
+function memoryMiB(): { rss: number; heap_used: number } {
+  const m = process.memoryUsage();
+  const mib = (n: number) => Math.round((n / 1048576) * 10) / 10;
+  return { rss: mib(m.rss), heap_used: mib(m.heapUsed) };
 }
 
 function errorMessage(status: number, code: string, slug: string): string {

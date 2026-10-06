@@ -30,41 +30,60 @@ export interface DaemonApi {
 /** No single request may hold the loop up for longer than this. */
 export const REQUEST_TIMEOUT_MS = 15_000;
 
-function timed(signal?: AbortSignal): AbortSignal {
-  const t = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  return signal ? AbortSignal.any([signal, t]) : t;
+/**
+ * Runs `fn` with a signal that aborts after REQUEST_TIMEOUT_MS or when
+ * `outer` does. A controller per request whose listener is taken off
+ * afterwards, rather than AbortSignal.any() on the feed's long-lived
+ * signal, so nothing accumulates over a day of polls.
+ */
+async function timed<T>(
+  outer: AbortSignal | undefined,
+  fn: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const ctl = new AbortController();
+  const timer = setTimeout(
+    () => ctl.abort(new DOMException("The request timed out", "TimeoutError")),
+    REQUEST_TIMEOUT_MS,
+  );
+  const onAbort = () => ctl.abort(outer?.reason);
+  if (outer?.aborted) onAbort();
+  else outer?.addEventListener("abort", onAbort, { once: true });
+  try {
+    return await fn(ctl.signal);
+  } finally {
+    clearTimeout(timer);
+    outer?.removeEventListener("abort", onAbort);
+  }
 }
 
 /** The daemon's calls through memax-sdk, as the CLI (`X-Memax-Via: cli`). */
 export function sdkDaemonApi(memax: Memax): DaemonApi {
   const t = memax.v2.targets;
   return {
-    async listTargets(space, signal) {
-      return (await t.list(space, { signal: timed(signal) })).items;
-    },
-    async changeToken(space, signal) {
-      const page = await memax.v2.receipts.list(space, {
-        limit: 1,
-        signal: timed(signal),
-      });
-      return page.items[0]?.id ?? "";
-    },
-    preview: (target, signal) => t.preview(target, { signal: timed(signal) }),
-    async runs(target, limit, signal) {
-      return (await t.runs(target, { limit, signal: timed(signal) })).items;
-    },
-    deliver: (target, input, key, signal) =>
-      t.deliver(target, input, {
-        idempotencyKey: key,
-        via: "cli",
-        signal: timed(signal),
-      }),
-    observe: (target, input, key, signal) =>
-      t.observe(target, input, {
-        idempotencyKey: key,
-        via: "cli",
-        signal: timed(signal),
-      }),
+    listTargets: (space, outer) =>
+      timed(outer, async (signal) => (await t.list(space, { signal })).items),
+    changeToken: (space, outer) =>
+      timed(
+        outer,
+        async (signal) =>
+          (await memax.v2.receipts.list(space, { limit: 1, signal })).items[0]
+            ?.id ?? "",
+      ),
+    preview: (target, outer) =>
+      timed(outer, (signal) => t.preview(target, { signal })),
+    runs: (target, limit, outer) =>
+      timed(
+        outer,
+        async (signal) => (await t.runs(target, { limit, signal })).items,
+      ),
+    deliver: (target, input, key, outer) =>
+      timed(outer, (signal) =>
+        t.deliver(target, input, { idempotencyKey: key, via: "cli", signal }),
+      ),
+    observe: (target, input, key, outer) =>
+      timed(outer, (signal) =>
+        t.observe(target, input, { idempotencyKey: key, via: "cli", signal }),
+      ),
   };
 }
 

@@ -61,6 +61,16 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 /**
+ * Whether requests authenticate with an API key (MEMAX_API_KEY, or the
+ * agent-scoped local key `memax setup` created). On the V2 record every
+ * API key is an agent, which reads only the spaces it's connected to.
+ */
+export function usesAPIKey(): boolean {
+  if (process.env.MEMAX_API_KEY) return true;
+  return scopedAgentID !== "" && getLocalAgentKey(scopedAgentID) !== undefined;
+}
+
+/**
  * CLI auth provider — resolves authorization headers.
  *
  * Priority:

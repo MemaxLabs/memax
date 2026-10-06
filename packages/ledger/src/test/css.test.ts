@@ -223,6 +223,15 @@ describe("ledger CSS", () => {
     );
   });
 
+  it("sets ReviewCard's reason as a sentence, not in tabular figures", () => {
+    // Schibsted Grotesk's tabular figures widen . and , too, which reads
+    // as a space before the punctuation (design review §2).
+    const hardening = stripComments(read(join(SRC, "styles/hardening.css")));
+    expect(hardening).toMatch(
+      /\.mx-review-foot > \.mx-meta \{ font-variant-numeric: normal; \}/,
+    );
+  });
+
   it("never wraps the terminal mid-token", () => {
     const body = declarations(join(SRC, "styles/hardening.css")).filter((d) =>
       ["white-space", "overflow-x"].includes(d.property),

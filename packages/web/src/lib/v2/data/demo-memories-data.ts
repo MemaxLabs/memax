@@ -197,20 +197,29 @@ export const DEMO_MEMORY_PAGES: Record<string, MemoryListItem[][]> = {
         ...kept(JY, at("12:10", "2026-07-30")),
       }),
       row({
+        ref: "M-0432",
+        statement: "Pin shared dependency versions with the pnpm catalog.",
+        section: "conventions",
+        state: "proposed",
+        receipt: { by: agent("codex"), action: "proposed", at: at("14:18") },
+      }),
+      row({
         ref: "M-0405",
         statement: "Does the CLI daemon need its own space token?",
         section: "open_question",
-        state: "proposed",
-        receipt: {
-          by: agent("claude-code"),
-          action: "proposed",
-          at: at("16:30", "2026-10-04"),
-        },
+        ...kept(ZZ, at("16:30", "2026-10-04")),
       }),
     ],
   ],
   personal: [
     [
+      row({
+        ref: "M-0433",
+        statement: "Prefers diffs over prose summaries in code review.",
+        section: "preferences",
+        state: "proposed",
+        receipt: { by: agent("chatgpt"), action: "proposed", at: at("11:40") },
+      }),
       row({
         ref: "M-0012",
         statement: "Reply in English unless the thread is in Chinese.",

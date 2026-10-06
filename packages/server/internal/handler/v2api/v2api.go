@@ -114,6 +114,11 @@ var routes = []Route{
 	{"POST", "/v2/targets/{target}/drift:pull", "pullDrift", (*Handler).pullDrift},
 	{"POST", "/v2/targets/{target}/drift:overwrite", "overwriteDrift", (*Handler).overwriteDrift},
 	{"POST", "/v2/targets/{target}/drift:stop", "stopDrift", (*Handler).stopDrift},
+	{"GET", "/v2/spaces/{space}/gates", "listGates", (*Handler).listGates},
+	{"POST", "/v2/spaces/{space}/gates", "requestDecision", (*Handler).requestDecision},
+	{"GET", "/v2/gates/{ref}", "getGate", (*Handler).getGate},
+	{"POST", "/v2/gates/{ref}:answer", "answerGate", (*Handler).answerGate},
+	{"POST", "/v2/gates/{ref}:withdraw", "withdrawGate", (*Handler).withdrawGate},
 }
 
 // Routes lists every /v2 operation this package serves, named as in

@@ -7,6 +7,9 @@
 import { ledgerActivityEn } from "./activity-en";
 import { ledgerAgentsEn } from "./agents-en";
 import { ledgerAppEn } from "./app-en";
+import { ledgerMemoryEn } from "./memory-en";
+import { ledgerRecordsEn } from "./records-en";
+import { ledgerReviewEn } from "./review-en";
 
 export const ledgerEn = {
   meta: {
@@ -36,6 +39,9 @@ export const ledgerEn = {
   app: ledgerAppEn,
   activity: ledgerActivityEn,
   agents: ledgerAgentsEn,
+  records: ledgerRecordsEn,
+  review: ledgerReviewEn,
+  memory: ledgerMemoryEn,
   devTokens: {
     breadcrumb: "Ledger · Dev fixture",
     title: "Tokens and type",

@@ -5,8 +5,8 @@
  * sheet can't drift from what the keys do.
  *
  * Declaring a binding doesn't make it fire: a mounted screen registers
- * a handler for its id in a scope (useHotkey). Review's K, E and X are
- * declared here today and handled once the Review screen lands.
+ * a handler for its id in a scope (useHotkey): Review's keys live in
+ * its screen (_places/review/review-keys.ts).
  *
  * Labels are i18n: `t.ledger.keys.actions[id]` (registry.test.ts checks
  * en and zh have one for every id).

@@ -5,6 +5,9 @@ import type { Translations } from "../en";
 import { ledgerActivityZh } from "./activity-zh";
 import { ledgerAgentsZh } from "./agents-zh";
 import { ledgerAppZh } from "./app-zh";
+import { ledgerMemoryZh } from "./memory-zh";
+import { ledgerRecordsZh } from "./records-zh";
+import { ledgerReviewZh } from "./review-zh";
 
 export const ledgerZh: Translations["ledger"] = {
   meta: {
@@ -32,6 +35,9 @@ export const ledgerZh: Translations["ledger"] = {
   app: ledgerAppZh,
   activity: ledgerActivityZh,
   agents: ledgerAgentsZh,
+  records: ledgerRecordsZh,
+  review: ledgerReviewZh,
+  memory: ledgerMemoryZh,
   devTokens: {
     breadcrumb: "Ledger · 开发样张",
     title: "设计令牌与字体",

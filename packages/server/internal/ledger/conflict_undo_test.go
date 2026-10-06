@@ -31,7 +31,8 @@ func (f *fixture) judgeAs(space uuid.UUID, m *ledger.Memory, outcome ledger.Verd
 	}
 	rel := map[ledger.VerdictOutcome]ledger.Relation{ledger.OutcomeFlagged: ledger.RelationContradicts,
 		ledger.OutcomeFolded: ledger.RelationDuplicate, ledger.OutcomeSuppressed: ledger.RelationDuplicate,
-		ledger.OutcomeLinked: ledger.RelationUpdates, ledger.OutcomeSuperseding: ledger.RelationUpdates}[outcome]
+		ledger.OutcomeLinked: ledger.RelationUpdates, ledger.OutcomeSuperseding: ledger.RelationUpdates,
+		ledger.OutcomeNone: ledger.RelationNone}[outcome]
 	stage := ledger.StageLLM
 	if outcome == ledger.OutcomeFolded {
 		stage = ledger.StageExact

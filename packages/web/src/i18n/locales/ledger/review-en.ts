@@ -36,7 +36,24 @@ export const ledgerReviewEn = {
     stopEditing: "stop editing",
     confirmReject: "reject",
     cancel: "cancel",
+    stopWaiting: "stop waiting",
   },
+  // The judge (plan §5.8): checking a proposal before a person decides.
+  // Its mark is the neutral working one, never a spinner.
+  judge: {
+    checking: "Checking",
+    working:
+      "Memax is checking it against what's kept, so a duplicate or a conflict shows before you decide.",
+    waiting:
+      "Checking it against the decision in force. It's kept once the check is done.",
+    failed:
+      "Memax couldn't check it against what's kept. Review it as usual; Dream looks again tonight.",
+  },
+  // Keep on a flagged proposal settles the conflict: it replaces the
+  // decision in force (ReviewCard's "Keep, replace old").
+  keptOver: "Kept {ref} in place of {other}",
+  nowConflict:
+    "{ref} contradicts {other}, a decision in force. Compare both sides to settle it.",
   edit: {
     title: "Editing a proposal",
   },
@@ -74,6 +91,9 @@ export const ledgerReviewEn = {
   },
   compare: {
     eyebrow: "Review · conflict · {proposal} against {kept}",
+    // The title when nobody wrote a question: by the decision's area.
+    titleArea: "Which {area} holds?",
+    titleNone: "Which of these holds?",
     lede: "{agent}'s proposal contradicts what {name} kept on {date}. One of them gives way, or both stand with a narrower scope.",
     ask: "Ask {name}",
     keptSide: "Kept · in force since {date}",
@@ -91,6 +111,12 @@ export const ledgerReviewEn = {
     changed: ", last changed {date}",
     question: "What should every agent read?",
     optionsLabel: "Resolution",
+    // An answer's title when nobody wrote one.
+    labels: {
+      proposal: "{agent}'s proposal",
+      kept: "{ref}, as kept",
+      both: "Both, each with its own scope",
+    },
     proposalDetail: "Keep {agent}'s proposal and replace {ref}.",
     keptDetail: "Reject {agent}'s proposal. {agent} is told why.",
     bothDetail: "Both stay true.",
@@ -98,20 +124,34 @@ export const ledgerReviewEn = {
     openDetail: "Agents are told it's undecided.",
     openDetailWith: "Agents are told it's undecided, and {detail}",
     decision: "The decision, as it will read",
-    footer: {
-      proposal:
-        "Kept as a decision authored by you. It supersedes {kept}, recompiles {files} and tells {agents}.",
-      kept: "{proposal} is rejected and {kept} stays in force. {agent} is told why.",
-      both: "Kept as a decision authored by you. It supersedes {kept}, closes {proposal}, recompiles {files} and tells {agents}.",
-      open: "Nothing is kept. Agents are told it's undecided, and {proposal} waits in Review.",
+    // keep_both narrows each side rather than writing a third memory.
+    decisionBoth: "Each side, as it will read",
+    side: "{ref}, as it will read",
+    openNote:
+      "Both become open questions until someone decides. Nothing is kept as the answer.",
+    choose: "Choose 1, 2, 3 or 4",
+    // What an answer does to each side (spec ConflictChange), one sentence each.
+    effects: {
+      kept: "{ref} is kept.",
+      rejected: "{ref} is rejected.",
+      superseded: "{ref} is superseded and stops compiling.",
+      faded: "{ref} fades.",
+      open: "{ref} becomes an open question.",
+      stays: "{ref} stays as it is.",
+      // `both`, when the person narrowed that side's words.
+      narrowed: "{ref} is kept with the narrower words.",
     },
+    reach: "Keeping it recompiles {files} and tells {agents}.",
+    reachFiles: "Keeping it recompiles {files}.",
     back: "Back to queue",
     keep: "Keep the decision",
     needsWords: "Write the decision as every agent should read it.",
     kept: "Kept {ref} as the decision",
     keptRecompiled: "Kept {ref} as the decision · {n} files recompiled",
     keptRecompiledOne: "Kept {ref} as the decision · 1 file recompiled",
-    leftOpen: "Left {ref} open",
+    stays: "{kept} stays in force. Rejected {proposal}",
+    keptBoth: "Kept {proposal} and {kept}, each narrowed",
+    leftOpen: "Left {proposal} and {kept} open",
     nothing: {
       title: "There's nothing to compare for {ref}.",
       detail:

@@ -291,6 +291,48 @@ describe("/v2 errors", () => {
     expect((err as MemaxError).code).toBe("busy");
     expect((err as MemaxError).retryAfterSeconds).toBe(1);
   });
+
+  it("tells waiting for the judge from a conflict on Keep", async () => {
+    const answers = [
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "judge_pending",
+            message: "Memax is still checking M-0430.",
+            details: { ref: "M-0430", retry_after: 2 },
+          },
+        }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json", "Retry-After": "2" },
+        },
+      ),
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "in_conflict",
+            message: "M-0430 contradicts M-0174, a decision in force.",
+            details: { ref: "M-0174" },
+          },
+        }),
+        { status: 409, headers: { "Content-Type": "application/json" } },
+      ),
+    ];
+    const { memax } = client(() => answers.shift()!);
+    const keep = () =>
+      memax.v2.memories
+        .keep("M-0430", {}, { space: "memax-v2", idempotencyKey: "k" })
+        .catch((e: unknown) => e as MemaxError);
+
+    const pending = await keep();
+    expect(pending.code).toBe("judge_pending");
+    expect(pending.retryAfterSeconds).toBe(2);
+    expect(pending.details?.ref).toBe("M-0430");
+    const conflict = await keep();
+    expect(conflict.code).toBe("in_conflict");
+    expect(conflict.status).toBe(409);
+    expect(conflict.details?.ref).toBe("M-0174");
+  });
 });
 
 describe("memax.v2 lists", () => {

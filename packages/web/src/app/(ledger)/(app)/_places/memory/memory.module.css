@@ -111,6 +111,14 @@
   margin-top: 32px;
 }
 
+/* A fold's Undo under its lineage line: until when, then the button. */
+.unfold {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .more {
   padding: 6px 12px;
 }

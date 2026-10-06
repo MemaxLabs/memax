@@ -131,6 +131,17 @@
   outline-offset: 2px;
 }
 
+/* An answer the person can't take: still focusable, with the reason in
+ * place of its detail (and as its tooltip), so it doesn't rely on colour. */
+.option[aria-disabled="true"] {
+  cursor: not-allowed;
+  color: var(--ink-3);
+}
+
+.option[aria-disabled="true"]:hover {
+  background: var(--card);
+}
+
 .option :global(.mx-kbd) {
   margin-top: 2px;
 }
@@ -155,6 +166,20 @@
   flex-direction: column;
   gap: 6px;
   margin-top: 6px;
+}
+
+/* "Both": each side's words, in one group (its legend is for screen
+ * readers; each field names its side, as the board's one field does). */
+fieldset.decision {
+  min-width: 0;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 0;
+  gap: 10px;
+}
+
+fieldset.decision > .decision {
+  margin-top: 0;
 }
 
 .label {

@@ -12,6 +12,7 @@ import type { CommandFailure } from "./data/command-error";
 import type { MemoryNote } from "./data/memories";
 import type { Actor, RecordAction } from "./data/records";
 import type { Section } from "./data/types";
+import type { UndoCommand } from "./data/undo";
 
 export type RecordsCopy = Translations["ledger"]["records"];
 
@@ -184,7 +185,23 @@ export function noteText(
 }
 
 /** Which command failed, for the first sentence. */
-export type FailedCommand = "keep" | "reject" | "edit";
+export type FailedCommand = "keep" | "reject" | "edit" | "resolve";
+
+function refusalReason(
+  refused: Record<string, string>,
+  failure: Extract<CommandFailure, { kind: "refused" }>,
+  values: Record<string, string>,
+  other: { other: string; otherBare: string },
+): string {
+  const known = failure.code ? refused[failure.code] : undefined;
+  if (known && failure.code !== "other" && failure.code !== "otherBare") {
+    return interpolate(known, values);
+  }
+  if (failure.message) {
+    return interpolate(other.other, { message: failure.message });
+  }
+  return other.otherBare;
+}
 
 /**
  * Why a command didn't go through and what to do, as one or two
@@ -206,24 +223,27 @@ export function failureText(
   const lead = interpolate(f[command], { ref });
   let reason: string;
   switch (failure.kind) {
-    case "refused": {
-      const known = failure.code
-        ? (f.refused as Record<string, string>)[failure.code]
-        : undefined;
-      if (known && failure.code !== "other" && failure.code !== "otherBare") {
-        reason = interpolate(known, { space, ref });
-      } else if (failure.message) {
-        reason = interpolate(f.refused.other, { message: failure.message });
-      } else {
-        reason = f.refused.otherBare;
-      }
+    case "refused":
+      reason = refusalReason(
+        f.refused as Record<string, string>,
+        failure,
+        { space, ref },
+        f.refused,
+      );
       break;
-    }
     case "rate-limited":
       reason =
         failure.retryAfter !== null
           ? interpolate(f.rateLimited, { n: failure.retryAfter })
           : f.rateLimitedSoon;
+      break;
+    case "busy":
+      reason = failure.judge ? f.busyJudge : f.busy;
+      break;
+    case "in-conflict":
+      reason = failure.with
+        ? interpolate(f.inConflict, { with: failure.with })
+        : f.inConflictBare;
       break;
     case "unreachable":
       reason = f.unreachable;
@@ -240,9 +260,76 @@ export function failureText(
     case "unavailable":
       reason = f.unavailable;
       break;
+    case "undo-refused":
     case "unknown":
       reason = f.unknown;
       break;
   }
   return joinSentences([lead, reason], locale);
+}
+
+/** What an undo did (no mark): "Undid the keep. M-0430 is back in Review." */
+export function undoneText(
+  copy: RecordsCopy,
+  command: UndoCommand,
+  ref: string,
+  { kept = false }: { kept?: boolean } = {},
+): string {
+  const d = copy.undo.done;
+  const template =
+    command === "edit" ? (kept ? d.editKeep : d.edit) : d[command];
+  return interpolate(template, { ref });
+}
+
+/**
+ * Why an undo didn't go through, and what to do instead (no mark):
+ * worded by the server's reason (spec UndoRefusal), or the policy code
+ * (`undo_by_decider`), or what kept it from reaching Memax.
+ */
+export function undoFailureText(
+  copy: RecordsCopy,
+  failure: CommandFailure,
+  { command, ref }: { command: UndoCommand; ref: string },
+): string {
+  const u = copy.undo;
+  switch (failure.kind) {
+    case "undo-refused": {
+      const r = u.refused;
+      switch (failure.reason) {
+        case "window_passed":
+          return interpolate(
+            command === "fold" ? r.window_passed_fold : r.window_passed,
+            { ref },
+          );
+        case "already_undone":
+          return interpolate(r.already_undone, { ref });
+        case "not_undoable":
+          return interpolate(r.not_undoable, { ref });
+        case "later_changes": {
+          const blocker = failure.ref;
+          if (blocker?.startsWith("B-")) {
+            return interpolate(r.later_brief, { ref });
+          }
+          return blocker && blocker !== ref
+            ? interpolate(r.later_changes, { ref, blocker })
+            : interpolate(r.later_changes_self, { ref });
+        }
+      }
+      break;
+    }
+    case "refused":
+      return refusalReason(
+        u.refused as Record<string, string>,
+        failure,
+        { ref },
+        { other: u.other, otherBare: u.unknown },
+      );
+    case "unreachable":
+    case "busy":
+    case "rate-limited":
+      return u.unreachable;
+    case "not-found":
+      return interpolate(u.notFound, { ref });
+  }
+  return u.unknown;
 }

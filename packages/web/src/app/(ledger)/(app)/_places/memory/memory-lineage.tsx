@@ -10,10 +10,15 @@ import {
   type MarkState,
 } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
-import { count } from "@/lib/v2/copy";
-import type { LineageEntry, MemoryRecord } from "@/lib/v2/data/memories";
+import { count, formatShortDate } from "@/lib/v2/copy";
+import type {
+  FoldUndo,
+  LineageEntry,
+  MemoryRecord,
+} from "@/lib/v2/data/memories";
 import { isYou } from "@/lib/v2/records-copy";
 import { StatementText } from "../../_components/statement-text";
+import { useUndo } from "../../_lib/undo";
 import type { RecordsView } from "../records-view";
 import styles from "./memory.module.css";
 
@@ -40,6 +45,7 @@ function title(view: RecordsView, entry: LineageEntry): string {
     case "edited":
       return you ? t.editedYou : interpolate(t.edited, { name });
     case "merged":
+      if (entry.into) return interpolate(t.folded, { name, ref: entry.into });
       return entry.count === null
         ? interpolate(t.mergedSome, { name })
         : count(t.mergedOne, t.merged, entry.count, { name });
@@ -73,8 +79,33 @@ export function MemoryLineage({
 }) {
   const p = view.l.memory.page;
   const [allNotes, setAllNotes] = useState(false);
+  const undo = useUndo();
+  // Anyone who may keep can undo one of the judge's folds, for 14 days.
+  const canUnfold = view.space.role !== "viewer";
+  const unfold = (ref: string, fold: FoldUndo) => (
+    <span className={styles.unfold}>
+      <span className="mx-meta">
+        {interpolate(p.foldedUntil, {
+          date: formatShortDate(
+            new Date(fold.until),
+            view.timeZone,
+            view.locale,
+          ),
+        })}
+      </span>
+      <Button
+        variant="quiet"
+        size="sm"
+        aria-label={interpolate(p.unfoldFor, { ref })}
+        onClick={() => void undo.unfold(view.space, ref, fold.receipt)}
+      >
+        {p.unfold}
+      </Button>
+    </span>
+  );
   const events: LineageEvent[] = record.lineage.map((entry) => {
     const stamp = view.stamp(entry.by);
+    const fold = canUnfold && entry.undo ? entry.undo : null;
     return {
       key: entry.key,
       state: MARKS[entry.action],
@@ -83,7 +114,14 @@ export function MemoryLineage({
       title: title(view, entry),
       time: view.dateTime(entry.at),
       dateTime: entry.at,
-      detail: entry.detail ?? undefined,
+      detail: fold ? (
+        <>
+          {entry.detail ? <span>{entry.detail} </span> : null}
+          {unfold(record.ref, fold)}
+        </>
+      ) : (
+        (entry.detail ?? undefined)
+      ),
     };
   });
   const merged = record.merged;
@@ -107,6 +145,7 @@ export function MemoryLineage({
             <MemoryList>
               {notes.map((note) => {
                 const stamp = view.stamp(note.by);
+                const fold = canUnfold && note.undo ? note.undo : null;
                 return (
                   <MemoryRow
                     key={note.ref}
@@ -116,6 +155,29 @@ export function MemoryLineage({
                     action={view.rc.verbs.merged}
                     time={view.time(note.at)}
                     id={note.ref}
+                    actions={
+                      fold ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          aria-label={interpolate(p.unfoldFor, {
+                            ref: note.ref,
+                          })}
+                          title={interpolate(p.foldedUntil, {
+                            date: formatShortDate(
+                              new Date(fold.until),
+                              view.timeZone,
+                              view.locale,
+                            ),
+                          })}
+                          onClick={() =>
+                            void undo.unfold(view.space, note.ref, fold.receipt)
+                          }
+                        >
+                          {p.unfold}
+                        </Button>
+                      ) : undefined
+                    }
                   >
                     <StatementText text={note.statement} />
                   </MemoryRow>

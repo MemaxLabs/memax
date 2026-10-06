@@ -251,6 +251,11 @@ export function commandReason(
       return f.clash;
     case "unavailable":
       return f.unavailable;
+    case "busy":
+      return failure.judge ? f.busyJudge : f.busy;
+    case "in-conflict":
+    case "undo-refused":
+      return f.unknown;
     case "unknown":
       return failure.message ?? f.unknown;
   }

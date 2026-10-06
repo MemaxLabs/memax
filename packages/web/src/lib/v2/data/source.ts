@@ -5,6 +5,7 @@ import type { MemoriesSource } from "./memories";
 import type { ReviewSource } from "./review";
 import type { TargetsSource } from "./targets";
 import type { TodaySource } from "./today";
+import type { UndoSource } from "./undo";
 import type {
   AskEvent,
   KeepResult,
@@ -27,9 +28,9 @@ import type {
  * implementing it in both.
  *
  * Each domain declares its part in its own module and is mixed in here:
- * activity.ts (Activity), agents.ts (Agents, keys).
+ * activity.ts (Activity), agents.ts (Agents, keys), undo.ts (Undo).
  */
-export interface LedgerDataSource extends ActivityData, AgentsData {
+export interface LedgerDataSource extends ActivityData, AgentsData, UndoSource {
   readonly kind: "sdk" | "demo";
   /**
    * Data the source already holds, for the first render (server and

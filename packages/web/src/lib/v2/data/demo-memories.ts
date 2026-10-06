@@ -5,10 +5,10 @@ import {
   DEMO_SECTION_COUNTS,
   DEMO_TOTALS,
 } from "./demo-memories-data";
-import { DEMO_CARDS, ZZ } from "./demo-review-data";
+import { DEMO_CARDS, DEMO_FOLD, ZZ } from "./demo-review-data";
 import { DEMO_TARGETS } from "./demo-targets-data";
 import { reachesTarget } from "./targets";
-import type { Decided } from "./demo-records";
+import type { Decided, DemoJournal } from "./demo-records";
 import type {
   MemoriesSource,
   MemoryFilter,
@@ -30,10 +30,18 @@ import type { Section } from "./types";
 export interface DemoStore {
   decided: Map<string, Decided>;
   edits: Map<string, { statement: string; version: number }>;
+  /** Folds undone this session (the team space's DEMO_FOLD): proposals again. */
+  unfolded: Set<string>;
   id: (slug: string, ref: string) => string;
   stamp: () => string;
   queueOf: (slug: string) => ReviewItem[];
-  command: (key: string, run: () => DecisionResult) => Promise<DecisionResult>;
+  command: <T>(key: string, run: () => T) => Promise<T>;
+  /** Undo's journal (demo-records.ts): each person's decision, to put back. */
+  journal: DemoJournal;
+  /** Edit, then keep: whether the new words wait for the demo's judge. */
+  holdsForJudge: (slug: string, ref: string) => boolean;
+  /** Keep on a flagged proposal, as the server refuses it (409 in_conflict). */
+  inConflict: (item: ReviewItem) => Error;
 }
 
 const FILTER_STATES: Record<MemoryFilter, string[] | null> = {
@@ -55,11 +63,17 @@ function countSections(
 export function createDemoMemories({
   decided,
   edits,
+  unfolded,
   id,
   stamp,
   queueOf,
   command,
+  journal,
+  holdsForJudge,
+  inConflict,
 }: DemoStore): MemoriesSource {
+  const isUnfolded = (slug: string, ref: string) => unfolded.has(id(slug, ref));
+
   /** Every row of a space, with this session's decisions and edits. */
   function rowsOf(slug: string): MemoryListItem[][] {
     return (DEMO_MEMORY_PAGES[slug] ?? []).map((page) =>
@@ -68,6 +82,19 @@ export function createDemoMemories({
         const edit = edits.get(id(slug, row.ref));
         if (done?.outcome === "rejected") return [];
         let next = edit ? { ...row, statement: edit.statement } : row;
+        if (isUnfolded(slug, row.ref) && !done) {
+          // Unfolded: a proposal in Review again.
+          next = {
+            ...next,
+            state: "proposed",
+            note: null,
+            receipt: {
+              by: DEMO_FOLD.item.by,
+              action: "proposed",
+              at: DEMO_FOLD.item.at,
+            },
+          };
+        }
         if (done?.outcome === "kept") {
           next = {
             ...next,
@@ -114,7 +141,14 @@ export function createDemoMemories({
       .flat()
       .find((r) => r.ref === ref);
     if (!row) return null;
-    const extra = DEMO_RECORDS[ref] ?? {};
+    // An undone fold leaves no fold on either side.
+    const foldGone = isUnfolded(slug, DEMO_FOLD.item.ref);
+    const extra =
+      foldGone && ref === DEMO_FOLD.item.ref
+        ? {}
+        : foldGone && ref === DEMO_FOLD.into
+          ? { ...DEMO_RECORDS[ref], merged: null }
+          : (DEMO_RECORDS[ref] ?? {});
     const edit = edits.get(id(slug, ref));
     const keptNow = decided.get(id(slug, ref))?.outcome === "kept";
     // Stale is a flag on a kept memory; the demo's conflict is a proposal.
@@ -187,7 +221,7 @@ export function createDemoMemories({
       };
     },
     edit({ space, ref, version, statement, keep, idempotencyKey }) {
-      return command(idempotencyKey, () => {
+      return command(idempotencyKey, (): DecisionResult => {
         const queued = queueOf(space.slug).find((i) => i.ref === ref);
         const found = queued ?? record(space.slug, ref);
         if (!found) throw new CommandFailedError({ kind: "not-found" });
@@ -197,20 +231,44 @@ export function createDemoMemories({
             currentVersion: found.version,
           });
         }
-        edits.set(id(space.slug, ref), { statement, version: version + 1 });
-        const keeps = Boolean(keep && queued);
+        // Like the server: a flagged proposal can't be kept until its
+        // conflict is settled, edited or not.
+        if (keep && queued?.state === "conflict") throw inConflict(queued);
+        const key = id(space.slug, ref);
+        const before = { edit: edits.get(key), decided: decided.get(key) };
+        // Edit, then keep, whose new words touch a decision in force: saved
+        // as the proposal's new version, judged, and not kept yet.
+        const held = Boolean(keep && queued && holdsForJudge(space.slug, ref));
+        edits.set(key, { statement, version: version + 1 });
+        const keeps = Boolean(keep && queued && !held);
         if (keeps && queued) {
-          decided.set(id(space.slug, ref), {
+          decided.set(key, {
             slug: space.slug,
             outcome: "kept",
             item: { ...queued, statement },
           });
         }
+        const receipt = journal.record({
+          slug: space.slug,
+          command: "edit",
+          ref,
+          revert: () => {
+            if (before.edit) edits.set(key, before.edit);
+            else edits.delete(key);
+            if (before.decided) decided.set(key, before.decided);
+            else decided.delete(key);
+          },
+        });
         return {
           ref,
           outcome: keeps ? "kept" : "edited",
           version: version + 1,
-          recompiled: DEMO_CARDS[ref]?.touches.targets?.length ?? null,
+          // Saved for the judge, nothing compiles yet.
+          recompiled: held
+            ? null
+            : (DEMO_CARDS[ref]?.touches.targets?.length ?? null),
+          receipt,
+          ...(held ? { judgePending: true } : {}),
         };
       });
     },

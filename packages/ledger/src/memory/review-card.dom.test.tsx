@@ -320,6 +320,37 @@ describe("ReviewCard", () => {
     ).toBeNull();
   });
 
+  it("wears the neutral working mark while Memax checks it, with a quiet line", () => {
+    const { container, rerender } = render(
+      <ReviewCard
+        {...BASE}
+        kept={false}
+        working="Proposed · checking"
+        note="Memax is checking it against what's kept."
+        conflictWith="Deploy the v2 API to Railway."
+      />,
+    );
+    const head = container.querySelector(".mx-review-head .mx-state")!;
+    expect(head.className).toContain("mx-state--working");
+    expect(head.textContent).toBe("Proposed · checking");
+    expect(
+      screen.getByText("Memax is checking it against what's kept.").className,
+    ).toBe("mx-review-note");
+    // Working is not a spinner: the glyph is the static arc.
+    expect(container.querySelector(".mx-glyph-arc")).not.toBeNull();
+    // Once kept, the seal says it all: no working mark, no note.
+    rerender(
+      <ReviewCard
+        {...BASE}
+        kept
+        working="Proposed · checking"
+        note="Memax is checking it against what's kept."
+      />,
+    );
+    expect(container.querySelector(".mx-state--working")).toBeNull();
+    expect(container.querySelector(".mx-review-note")).toBeNull();
+  });
+
   it("names another keeper, and speaks Chinese", () => {
     render(
       <LedgerProvider locale="zh">

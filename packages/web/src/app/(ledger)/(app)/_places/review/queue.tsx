@@ -119,12 +119,17 @@ export function Queue({
           <MemoryList aria-label={l.review.queueLabel}>
             {visible.map((item) => {
               const stamp = view.stamp(item.by);
+              // The judge's neutral working mark, never a spinner.
+              const checking =
+                item.judge === "working" || state.waiting === item.ref;
               return (
                 <MemoryRow
                   key={item.ref}
                   stacked
                   selected={item.ref === selected?.ref}
                   state={item.state}
+                  mark={checking ? "working" : undefined}
+                  markLabel={checking ? l.review.judge.checking : undefined}
                   unconfirmed={item.lifecycle === "proposed"}
                   {...(stamp ?? {})}
                   action={
@@ -135,9 +140,7 @@ export function Queue({
                   time={view.time(item.at)}
                   id={item.ref}
                   space={item.intoSpace ?? undefined}
-                  onClick={() =>
-                    review.dispatch({ type: "select", ref: item.ref })
-                  }
+                  onClick={() => review.select(item.ref)}
                 >
                   <StatementText text={item.statement} />
                 </MemoryRow>
@@ -159,7 +162,7 @@ export function Queue({
           </div>
         ) : null}
       </div>
-      <Legend view={view} mode={state.mode.kind} />
+      <Legend view={view} mode={state.waiting ? "waiting" : state.mode.kind} />
     </aside>
   );
 }
@@ -169,7 +172,7 @@ function Legend({
   mode,
 }: {
   view: RecordsView;
-  mode: ReviewController["state"]["mode"]["kind"];
+  mode: ReviewController["state"]["mode"]["kind"] | "waiting";
 }) {
   const { copy, l } = view;
   const { setKeysOpen } = useOverlays();
@@ -179,6 +182,7 @@ function Legend({
   const reject = useKeycap("review.reject");
   const help = useKeycap("help.keys");
   const keepChord = useKeycap("command.keep");
+  const stop = useKeycap("review.stopWaiting");
   const key = (caps: string, text: string) => (
     <span className={styles.key}>
       <Kbd>{caps}</Kbd> {text}
@@ -190,6 +194,18 @@ function Legend({
       <>
         {key(keepChord, l.review.legend.keepEdited)}
         {key("Esc", l.review.legend.stopEditing)}
+      </>
+    );
+  } else if (mode === "waiting") {
+    keys = (
+      <>
+        <span className={styles.key}>
+          {[...move].reverse().map((caps) => (
+            <Kbd key={caps.join()}>{caps.join(" ")}</Kbd>
+          ))}{" "}
+          {copy.review.legend.move}
+        </span>
+        {key(stop, l.review.legend.stopWaiting)}
       </>
     );
   } else if (mode === "rejecting") {

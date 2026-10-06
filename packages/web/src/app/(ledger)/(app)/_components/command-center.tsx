@@ -8,6 +8,7 @@ import type { KeepResult, SpaceSummary } from "@/lib/v2/data/types";
 import { KeyScopeBoundary, useHotkey, useKeycap } from "@/lib/v2/keymap/react";
 import { useSource, useViewer } from "../_lib/data";
 import { useOverlays } from "../_lib/overlays";
+import { useUndo } from "../_lib/undo";
 import { answerText, useAsk } from "../_lib/use-ask";
 import { useRemember } from "../_lib/use-remember";
 import { AskPanel } from "./ask-panel";
@@ -49,9 +50,10 @@ export function CommandCenter({
 function useKeptToast() {
   const { t } = useLocale();
   const toast = useToast();
+  const undo = useUndo();
   const copy = t.ledger.app.toast;
   return {
-    kept(result: KeepResult) {
+    kept(result: KeepResult, space: SpaceSummary) {
       if (result.outcome === "proposed") {
         toast({
           state: "proposed",
@@ -71,9 +73,17 @@ function useKeptToast() {
               },
             );
       const toastOptions: ShowToast = { state: "kept", text };
-      if (result.undo) {
-        toastOptions.undo = result.undo;
-        toastOptions.undoRef = result.ref;
+      // Keeping a proposal (the near-duplicate offer) can be undone; a
+      // fresh Remember carries no receipt to undo by.
+      if (result.receipt) {
+        const entry = undo.record({
+          space,
+          command: "keep",
+          ref: result.ref,
+          receipt: result.receipt,
+          restore: null,
+        });
+        toastOptions.undo = () => void undo.run(entry);
       }
       toast(toastOptions);
     },
@@ -116,7 +126,7 @@ function CommandBody({
       const result = await draft.keep();
       if (!result) return;
       close();
-      notify.kept(result);
+      notify.kept(result, draft.space);
     } catch {
       notify.failed();
     }
@@ -127,7 +137,7 @@ function CommandBody({
       const result = await draft.keepDuplicate();
       if (!result) return;
       close();
-      notify.kept(result);
+      notify.kept(result, draft.space);
     } catch {
       notify.failed();
     }
@@ -146,7 +156,7 @@ function CommandBody({
         idempotencyKey: crypto.randomUUID(),
       });
       close();
-      notify.kept(result);
+      notify.kept(result, space);
     } catch {
       notify.failed();
     } finally {

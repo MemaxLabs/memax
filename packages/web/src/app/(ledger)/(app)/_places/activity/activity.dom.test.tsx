@@ -39,10 +39,15 @@ const source = {
     timeZone: "America/Vancouver",
   },
   activity: vi.fn(),
+  undo: vi.fn(),
 };
 vi.mock("../../_lib/data", () => ({
   useSource: () => source,
   useViewer: () => source.viewer,
+  ledgerQueryKeys: {
+    overview: (kind: string, slug: string) =>
+      ["v2", kind, "spaces", slug, "overview"] as const,
+  },
 }));
 
 const SPACE: SpaceSummary = {
@@ -207,5 +212,55 @@ describe("Activity", () => {
     );
     // The week is covered now that a receipt from before it is loaded.
     expect(within(week).queryByText("From what's loaded")).toBeNull();
+  });
+
+  it("says what the judge folded into what, with Undo while it can", async () => {
+    const fold = (n: number, over: Partial<ActivityEntry> = {}) =>
+      entry(n, {
+        actor: { kind: "memax" },
+        action: "merged",
+        via: [{ kind: "via", via: "system" }],
+        rawVia: "system",
+        source: { kind: "memory", ref: "M-0001" },
+        ...over,
+      });
+    source.activity.mockResolvedValue({
+      entries: [
+        fold(5),
+        // Already undone: an `undid` receipt cites it.
+        fold(6),
+        entry(7, {
+          action: "undid",
+          source: { kind: "receipt", ref: "r6" },
+        }),
+        // Older than the 14 days.
+        fold(8, { at: "2026-09-01T10:00:00-07:00" }),
+      ],
+      nextCursor: null,
+      totals: null,
+    });
+    render(
+      <Frame>
+        <ActivityPlace />
+      </Frame>,
+    );
+    await screen.findByRole("list", { name: "Today" });
+    const rows = screen.getAllByRole("listitem").map((r) => r.textContent);
+    expect(rows[0]).toContain("Memax folded M-0005 into M-0001.");
+    expect(rows[1]).toContain("Memax folded M-0006 into M-0001.");
+    const undo = screen.getAllByRole("button", { name: /^Undo the fold of/ });
+    expect(undo.map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Undo the fold of M-0005",
+    ]);
+    source.undo = vi.fn().mockResolvedValue({ refs: ["M-0005"] });
+    fireEvent.click(undo[0]!);
+    await waitFor(() =>
+      expect(source.undo).toHaveBeenCalledWith(
+        expect.objectContaining({ receipt: "r5" }),
+      ),
+    );
+    expect(
+      await screen.findByText("Unfolded M-0005. It's back in Review."),
+    ).toBeTruthy();
   });
 });

@@ -11,6 +11,7 @@ import { failureText } from "@/lib/v2/records-copy";
 import { useToast } from "../../_components/toasts";
 import { useSource } from "../../_lib/data";
 import { useAfterDecision } from "../../_lib/records";
+import { useUndo } from "../../_lib/undo";
 
 interface Base {
   version: number;
@@ -49,6 +50,7 @@ export function useMemoryEdit(
   const rc = t.ledger.records;
   const toast = useToast();
   const afterDecision = useAfterDecision(space);
+  const undo = useUndo();
   const [mode, setMode] = useState<MemoryEditMode>({ kind: "view" });
   const [pending, setPending] = useState(false);
   const [keys] = useState(() => new IntentKeys());
@@ -97,6 +99,17 @@ export function useMemoryEdit(
         });
         keys.settle(intent);
         setMode({ kind: "view" });
+        // A person's edit can be undone for 10 minutes, by its receipt.
+        const entry =
+          result.outcome !== "proposed" && result.receipt
+            ? undo.record({
+                space,
+                command: "edit",
+                ref: result.ref,
+                receipt: result.receipt,
+                restore: null,
+              })
+            : null;
         toast(
           result.outcome === "proposed"
             ? {
@@ -118,6 +131,7 @@ export function useMemoryEdit(
                           ref: result.ref,
                         },
                       ),
+                ...(entry ? { undo: () => void undo.run(entry) } : {}),
               },
         );
         afterDecision({ leftQueue: false });
@@ -160,7 +174,19 @@ export function useMemoryEdit(
         setPending(false);
       }
     },
-    [afterDecision, keys, locale, pending, rc, record, source, space, t, toast],
+    [
+      afterDecision,
+      keys,
+      locale,
+      pending,
+      rc,
+      record,
+      source,
+      space,
+      t,
+      toast,
+      undo,
+    ],
   );
 
   const fromTheirs = useCallback(

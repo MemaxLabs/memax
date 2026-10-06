@@ -1,7 +1,7 @@
 import type { Memax, V2 } from "memax-sdk";
 import type { MemoryListItem } from "./memories";
 import type { Actor, DisplayState, RailReceipt, RecordAction } from "./records";
-import type { ReviewItem } from "./review";
+import type { JudgeMark, ReviewItem } from "./review";
 
 /**
  * Mapping /v2 records (V2.Memory, V2.Receipt, V2.Source) onto what the
@@ -98,6 +98,48 @@ export function displayState(memory: V2.Memory): DisplayState {
   return memory.state === "rejected" ? "proposed" : memory.state;
 }
 
+/** Where the judge is with the memory's current version (spec JudgeInfo). */
+export function judgeMarkOf(memory: V2.Memory): JudgeMark {
+  switch (memory.judge?.state) {
+    case "working":
+      return "working";
+    case "failed":
+      return "failed";
+    default:
+      return null;
+  }
+}
+
+/**
+ * The decision in force a flagged memory contradicts: its own
+ * `conflicts_with` link, else the judge's verdict.
+ */
+export function conflictPartnerOf(memory: V2.Memory): string | null {
+  const links = memory.links ?? [];
+  const link =
+    links.find((l) => l.kind === "conflicts_with" && l.direction === "out") ??
+    links.find((l) => l.kind === "conflicts_with");
+  if (link) return link.ref;
+  const judge = memory.judge;
+  return judge?.verdict === "contradicts" ? (judge.related?.ref ?? null) : null;
+}
+
+/** The memory a merged one was folded into (its `merged_into` link). */
+export function mergedIntoOf(memory: V2.Memory): string | null {
+  return (
+    memory.links?.find((l) => l.kind === "merged_into" && l.direction === "out")
+      ?.ref ?? null
+  );
+}
+
+/** The kept memory a proposal would replace: the judge's link, or a downgraded edit's receipt. */
+export function updatesRefOf(
+  memory: V2.Memory,
+  created: V2.Receipt | undefined,
+): string | null {
+  return memory.updates?.ref ?? updatesOf(created);
+}
+
 export function reviewItemOf(
   memory: V2.Memory,
   receipts: ReadonlyMap<string, V2.Receipt>,
@@ -105,12 +147,15 @@ export function reviewItemOf(
 ): ReviewItem {
   const created = receipts.get(memory.created_receipt_id);
   const last = receipts.get(memory.last_receipt_id) ?? created;
-  const updates = updatesOf(created);
+  const updates = updatesRefOf(memory, created);
   const state =
     memory.state === "conflict" || memory.state === "stale"
       ? memory.state
       : "proposed";
-  const flagged = last?.action === "flagged";
+  // A kept memory waits here because something flagged it (Dream's stale,
+  // the judge's conflict), and the queue says who. A proposal shows who
+  // proposed it, whatever Memax noted on it since (Review.png's M-0431).
+  const flagged = memory.lifecycle !== "proposed" && last?.action === "flagged";
   return {
     ref: memory.ref,
     version: memory.version,
@@ -126,9 +171,8 @@ export function reviewItemOf(
     at: (flagged ? last : created)?.occurred_at ?? memory.created_at,
     session: sessionOf(created),
     updates,
-    // PLACEHOLDER: /v2 doesn't serve memory links, so a conflict has
-    // nothing to compare against until the judge links it.
-    conflictsWith: null,
+    conflictsWith: state === "conflict" ? conflictPartnerOf(memory) : null,
+    judge: judgeMarkOf(memory),
     intoSpace: null,
   };
 }
@@ -164,7 +208,13 @@ export function listItemOf(
             changedAt: last.occurred_at,
             source: last.source?.ref ?? null,
           }
-        : null,
+        : state === "merged" && mergedIntoOf(memory)
+          ? {
+              kind: "merged",
+              into: mergedIntoOf(memory)!,
+              by: actorOf(last, viewerId),
+            }
+          : null,
     forgotten:
       state === "forgotten"
         ? {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   useInfiniteQuery,
   useQuery,
@@ -23,8 +23,24 @@ export const recordKeys = {
   space: (kind: string, slug: string) => ["v2", kind, "spaces", slug] as const,
   queue: (kind: string, slug: string) =>
     ["v2", kind, "spaces", slug, "review"] as const,
-  card: (kind: string, slug: string, ref: string, version: number) =>
-    ["v2", kind, "spaces", slug, "review", "card", ref, version] as const,
+  card: (
+    kind: string,
+    slug: string,
+    ref: string,
+    version: number,
+    facet = "",
+  ) =>
+    [
+      "v2",
+      kind,
+      "spaces",
+      slug,
+      "review",
+      "card",
+      ref,
+      version,
+      facet,
+    ] as const,
   conflict: (kind: string, slug: string, ref: string) =>
     ["v2", kind, "spaces", slug, "review", "conflict", ref] as const,
   memories: (kind: string, slug: string, filter: MemoryFilter) =>
@@ -33,9 +49,30 @@ export const recordKeys = {
     ["v2", kind, "spaces", slug, "memory", ref] as const,
 };
 
+/**
+ * While the judge is checking something in the queue, Review refetches
+ * it (plan §5.8: a verdict within about 5 s; there's no SSE yet): after
+ * 1 s, 2 s and 4 s, then every 5 s, and it stops once nothing is
+ * working. By time since the check was first seen, in steps, so a
+ * re-render never reschedules a refetch.
+ */
+export function judgePollDelay(elapsedMs: number): number {
+  if (elapsedMs < 1000) return 1000;
+  if (elapsedMs < 3000) return 2000;
+  if (elapsedMs < 7000) return 4000;
+  return 5000;
+}
+
+function anyWorking(data: InfiniteData<ReviewQueue> | undefined): boolean {
+  return Boolean(
+    data?.pages.some((page) => page.items.some((i) => i.judge === "working")),
+  );
+}
+
 export function useReviewQueue(space: SpaceSummary) {
   const source = useSource();
   const peek = source.review.peekQueue?.(space.slug);
+  const [poll] = useState(() => ({ since: null as number | null }));
   return useInfiniteQuery({
     queryKey: recordKeys.queue(source.kind, space.slug),
     queryFn: ({ pageParam, signal }) =>
@@ -44,7 +81,28 @@ export function useReviewQueue(space: SpaceSummary) {
     getNextPageParam: (last: ReviewQueue) => last.nextCursor ?? undefined,
     initialData: peek ? { pages: [peek], pageParams: [undefined] } : undefined,
     staleTime: 10_000,
+    refetchInterval: (query) => {
+      if (!anyWorking(query.state.data)) {
+        poll.since = null;
+        return false;
+      }
+      poll.since ??= Date.now();
+      return judgePollDelay(Date.now() - poll.since);
+    },
   });
+}
+
+/**
+ * What the card shows beyond the version: a verdict landing (working →
+ * an update, a conflict) changes it without a new version.
+ */
+export function cardFacet(item: ReviewItem): string {
+  return [
+    item.state,
+    item.judge ?? "",
+    item.updates ?? "",
+    item.conflictsWith ?? "",
+  ].join("|");
 }
 
 function cardQuery(
@@ -53,7 +111,13 @@ function cardQuery(
   item: ReviewItem,
 ) {
   return {
-    queryKey: recordKeys.card(source.kind, space.slug, item.ref, item.version),
+    queryKey: recordKeys.card(
+      source.kind,
+      space.slug,
+      item.ref,
+      item.version,
+      cardFacet(item),
+    ),
     queryFn: ({ signal }: { signal: AbortSignal }) =>
       source.review.card({ space, item, signal }),
     staleTime: 60_000,
@@ -71,6 +135,7 @@ export function useReviewCard(
       space.slug,
       item?.ref ?? "",
       item?.version ?? 0,
+      item ? cardFacet(item) : "",
     ),
     queryFn: ({ signal }) => source.review.card({ space, item: item!, signal }),
     enabled: item !== undefined,
@@ -128,6 +193,45 @@ export function useMemoryRecord(space: SpaceSummary, ref: string) {
     initialData: peek,
     staleTime: 30_000,
   });
+}
+
+/** A queue row as it's cached now, and where it sits: what Undo puts back. */
+export function useQueueSnapshot(space: SpaceSummary) {
+  const source = useSource();
+  const queryClient = useQueryClient();
+  return useCallback(
+    (ref: string): { item: ReviewItem; index: number } | null => {
+      const data = queryClient.getQueryData<
+        InfiniteData<ReviewQueue, string | undefined>
+      >(recordKeys.queue(source.kind, space.slug));
+      const items = data?.pages.flatMap((p) => p.items) ?? [];
+      const index = items.findIndex((i) => i.ref === ref);
+      return index < 0 ? null : { item: items[index], index };
+    },
+    [queryClient, source.kind, space.slug],
+  );
+}
+
+/** Puts one memory's current row into the cached queue (a verdict that landed while deciding). */
+export function usePatchQueueItem(space: SpaceSummary) {
+  const source = useSource();
+  const queryClient = useQueryClient();
+  return useCallback(
+    (item: ReviewItem) => {
+      queryClient.setQueryData<InfiniteData<ReviewQueue, string | undefined>>(
+        recordKeys.queue(source.kind, space.slug),
+        (data) =>
+          data && {
+            ...data,
+            pages: data.pages.map((page) => ({
+              ...page,
+              items: page.items.map((i) => (i.ref === item.ref ? item : i)),
+            })),
+          },
+      );
+    },
+    [queryClient, source.kind, space.slug],
+  );
 }
 
 /**

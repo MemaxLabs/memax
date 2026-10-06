@@ -85,6 +85,26 @@ func (e *EditClashError) Error() string {
 // Is makes errors.Is(err, ErrEditClash) match.
 func (e *EditClashError) Is(target error) bool { return target == ErrEditClash }
 
+// InConflictError: Keep (or edit, then keep) on a proposal the judge
+// flagged as contradicting a decision in force. It can't be kept until a
+// person settles the conflict (ResolveConflict); With is the decision in
+// the way, when the flag still has its link.
+type InConflictError struct {
+	Ref  string
+	With string
+}
+
+func (e *InConflictError) Error() string {
+	if e.With == "" {
+		return fmt.Sprintf("%s contradicts a decision in force, so it can't be kept as it is. Settle the conflict first: compare both sides and choose.", e.Ref)
+	}
+	return fmt.Sprintf("%s contradicts %s, a decision in force, so it can't be kept as it is. Settle the conflict first: compare both sides and choose.", e.Ref, e.With)
+}
+
+// Is makes errors.Is(err, ErrInvalidTransition) match: the lifecycle
+// refuses Keep in conflict, and older callers check for that.
+func (e *InConflictError) Is(target error) bool { return target == ErrInvalidTransition }
+
 // TransitionError wraps a lifecycle refusal with the memory's ref.
 type TransitionError struct {
 	Ref string

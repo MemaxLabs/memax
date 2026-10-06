@@ -901,16 +901,9 @@ func (w *writer) awaitJudge(ctx context.Context, mem *Memory) error {
 	if mem.Lifecycle != lifecycle.Proposed {
 		return nil
 	}
-	var pending bool
-	if err := w.tx.QueryRow(ctx, `
-		SELECT v.created_at > now() - make_interval(secs => $3)
-		       AND NOT EXISTS (SELECT 1 FROM v2.judge_verdicts j WHERE j.memory_id = $1 AND j.version = $2)
-		  FROM v2.memory_versions v WHERE v.memory_id = $1 AND v.version = $2`,
-		mem.ID, mem.Version, JudgeGrace.Seconds()).Scan(&pending); err != nil {
-		return fmt.Errorf("ledger: read verdicts: %w", err)
-	}
-	if !pending {
-		return nil
+	pending, err := w.verdictPending(ctx, mem.ID, mem.Version)
+	if err != nil || !pending {
+		return err
 	}
 	area := ""
 	if mem.Decision != nil {
@@ -921,6 +914,59 @@ func (w *writer) awaitJudge(ctx context.Context, mem *Memory) error {
 		return err
 	}
 	return &JudgePendingError{Ref: mem.Ref}
+}
+
+// verdictPending reports whether a version is inside JudgeGrace with no
+// verdict yet: the judge hasn't looked at those words.
+func (w *writer) verdictPending(ctx context.Context, memoryID uuid.UUID, version int) (bool, error) {
+	var pending bool
+	if err := w.tx.QueryRow(ctx, `
+		SELECT v.created_at > now() - make_interval(secs => $3)
+		       AND NOT EXISTS (SELECT 1 FROM v2.judge_verdicts j WHERE j.memory_id = $1 AND j.version = $2)
+		  FROM v2.memory_versions v WHERE v.memory_id = $1 AND v.version = $2`,
+		memoryID, version, JudgeGrace.Seconds()).Scan(&pending); err != nil {
+		return false, fmt.Errorf("ledger: read verdicts: %w", err)
+	}
+	return pending, nil
+}
+
+// holdEditForJudge decides, for a person's edit-then-keep of a proposal,
+// whether the words must wait for the judge first (rule 11): they touch a
+// decision in force, and the judge hasn't seen them. New words never have
+// a verdict; the same words (a section move) wait only while their
+// version does.
+func (w *writer) holdEditForJudge(ctx context.Context, mem *Memory, statement string) (bool, error) {
+	if statement == mem.Statement {
+		pending, err := w.verdictPending(ctx, mem.ID, mem.Version)
+		if err != nil || !pending {
+			return false, err
+		}
+	}
+	return w.touchesDecision(ctx, mem.SpaceID, mem.ID, statement, mem.area())
+}
+
+// inConflict is the refusal of a Keep on a proposal the judge flagged:
+// it names the decision in force it contradicts.
+func (w *writer) inConflict(ctx context.Context, mem *Memory) error {
+	links, err := activeLinks(ctx, w.tx, []uuid.UUID{mem.ID})
+	if err != nil {
+		return err
+	}
+	e := &InConflictError{Ref: mem.Ref}
+	for _, l := range links[mem.ID] {
+		if l.Kind == LinkConflictsWith && l.Direction == LinkOut {
+			e.With = l.Ref
+			break
+		}
+	}
+	return e
+}
+
+// heldForJudge is the outcome of an edit-then-keep whose words wait for
+// the judge: saved as the proposal's new version, not kept.
+func heldForJudge(ref string) policy.Decision {
+	return policy.Decision{Effect: policy.EffectPropose, Code: policy.CodeJudgePending, Message: fmt.Sprintf(
+		"Saved your edit to %s. Memax is checking it against the decision in force before it's kept: keep it again in a moment.", ref)}
 }
 
 // touchesDecision is the inline pre-check for a Write-level agent's

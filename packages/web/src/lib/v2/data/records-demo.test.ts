@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toFailure } from "./command-error";
 import { DEMO_SPACES } from "./demo-dataset";
+import { DEMO_FOLD } from "./demo-review-data";
 import { createDemoSource } from "./demo-source";
 
 const v2 = DEMO_SPACES.find((s) => s.slug === "memax-v2")!;
@@ -45,7 +46,8 @@ describe("the demo's Review", () => {
       outcome: "kept",
       recompiled: 3,
     });
-    expect(result.undo).toBeUndefined();
+    // Like the server's, the Keep returns the receipt Undo addresses.
+    expect(result.receipt).toMatch(/^demo-receipt-/);
     const after = await demo.review.queue({ space: v2 });
     expect(after.items.map((i) => i.ref)).not.toContain("M-0430");
     const overview = await demo.overview(v2);
@@ -124,25 +126,261 @@ describe("the demo's Review", () => {
     });
   });
 
-  it("compares M-0431 with M-0174 and resolves it as a new decision", async () => {
+  it("compares M-0431 with M-0174 and settles it, narrowing both sides", async () => {
     const demo = fresh();
     const conflict = await demo.review.conflict({ space: v2, ref: "M-0431" });
     expect(conflict).toMatchObject({
       question: "Fly.io or Railway for the v2 API?",
-      kept: { ref: "M-0174" },
-      proposal: { ref: "M-0431" },
+      area: "deploy target",
+      kept: { ref: "M-0174", version: 1 },
+      proposal: { ref: "M-0431", version: 1 },
       suggested: 2,
+    });
+    expect(conflict!.options.map((o) => o.kind)).toEqual([
+      "proposal",
+      "kept",
+      "both",
+      "open",
+    ]);
+    // The server's plan for each answer; "both" narrows each side.
+    expect(conflict!.options[0].effects).toEqual([
+      { ref: "M-0431", change: "kept" },
+      { ref: "M-0174", change: "superseded" },
+    ]);
+    expect(conflict!.options[2].narrowed).toEqual({
+      proposal: "The v2 API runs on Fly.io in iad and ams.",
+      kept: "Preview environments for pull requests run on Railway.",
     });
     expect(await demo.review.conflict({ space: v2, ref: "M-0432" })).toBeNull();
     const result = await demo.review.resolveConflict({
       space: v2,
       ref: "M-0431",
+      other: "M-0174",
+      version: 1,
       option: "both",
-      decision: conflict!.options[2].decision,
+      statement: conflict!.options[2].narrowed!.proposal,
+      otherStatement: conflict!.options[2].narrowed!.kept,
       idempotencyKey: "c",
     });
-    expect(result).toMatchObject({ outcome: "kept", recompiled: 4 });
+    expect(result).toMatchObject({
+      ref: "M-0431",
+      outcome: "kept",
+      recompiled: 4,
+      receipt: expect.stringMatching(/^demo-receipt-/),
+    });
     expect(await demo.review.conflict({ space: v2, ref: "M-0431" })).toBeNull();
+    // And the whole settlement is one Undo away.
+    await demo.undo({
+      space: v2,
+      receipt: result.receipt!,
+      idempotencyKey: "u",
+    });
+    expect(
+      await demo.review.conflict({ space: v2, ref: "M-0431" }),
+    ).not.toBeNull();
+  });
+
+  it("refuses Keep on a flagged proposal until its conflict is settled", async () => {
+    const demo = fresh();
+    const items = (await demo.review.queue({ space: v2 })).items;
+    const conflict = items.find((i) => i.ref === "M-0431")!;
+    // In conflict, naming the decision in the way (409 in_conflict).
+    for (const attempt of [
+      () =>
+        demo.review.keep({ space: v2, item: conflict, idempotencyKey: "k" }),
+      () =>
+        demo.memories.edit({
+          space: v2,
+          ref: "M-0431",
+          version: 1,
+          statement: "Deploy the v2 API to Fly.io.",
+          keep: true,
+          idempotencyKey: "e",
+        }),
+    ]) {
+      expect(await attempt().catch((err: unknown) => toFailure(err))).toEqual({
+        kind: "in-conflict",
+        with: "M-0174",
+      });
+    }
+    expect(await demo.review.item({ space: v2, ref: "M-0431" })).toMatchObject({
+      state: "conflict",
+      conflictsWith: "M-0174",
+    });
+  });
+});
+
+describe("the demo's judge", () => {
+  const team = DEMO_SPACES.find((s) => s.slug === "memax-team")!;
+
+  it("checks M-0445 for a while, and Keep waits for it with Retry-After", async () => {
+    let time = 0;
+    const demo = createDemoSource({
+      streamDelayMs: 0,
+      commandDelayMs: 0,
+      clock: () => time,
+    });
+    const queue = await demo.review.queue({ space: team });
+    expect(queue.items.map((i) => [i.ref, i.judge])).toEqual([
+      ["M-0444", "failed"],
+      ["M-0445", "working"],
+    ]);
+    const working = queue.items[1];
+    const busy = await demo.review
+      .keep({ space: team, item: working, idempotencyKey: "k" })
+      .catch((err: unknown) => toFailure(err));
+    expect(busy).toEqual({
+      kind: "busy",
+      retryAfter: 1,
+      ref: "M-0445",
+      judge: true,
+    });
+    // The check lands: the same key keeps it.
+    time = 6000;
+    expect(
+      (await demo.review.item({ space: team, ref: "M-0445" }))?.judge,
+    ).toBe(null);
+    const kept = await demo.review.keep({
+      space: team,
+      item: working,
+      idempotencyKey: "k",
+    });
+    expect(kept).toMatchObject({ ref: "M-0445", outcome: "kept" });
+  });
+
+  it("saves an edit, then keep, for the judge, as the server does", async () => {
+    let time = 10_000;
+    const demo = createDemoSource({
+      streamDelayMs: 0,
+      commandDelayMs: 0,
+      clock: () => time,
+    });
+    await demo.review.queue({ space: team });
+    // Past the first check: the agent's words were cleared.
+    time += 6000;
+    const saved = await demo.memories.edit({
+      space: team,
+      ref: "M-0445",
+      version: 1,
+      statement: "Release notes go out on Thursdays, after a two-day soak.",
+      keep: true,
+      idempotencyKey: "e",
+    });
+    expect(saved).toMatchObject({
+      outcome: "edited",
+      judgePending: true,
+      version: 2,
+      receipt: expect.stringMatching(/^demo-receipt-/),
+    });
+    // The new words wait for the judge: still in Review, being checked.
+    const item = await demo.review.item({ space: team, ref: "M-0445" });
+    expect(item).toMatchObject({ version: 2, judge: "working" });
+    expect(
+      await demo.review
+        .keep({ space: team, item: item!, idempotencyKey: "k" })
+        .catch((err: unknown) => toFailure(err)),
+    ).toMatchObject({ kind: "busy", judge: true });
+    time += 6000;
+    expect(
+      await demo.review.keep({ space: team, item: item!, idempotencyKey: "k" }),
+    ).toMatchObject({ outcome: "kept", version: 3 });
+  });
+});
+
+describe("the demo's Undo", () => {
+  it("puts a kept card back, once, and only inside its window", async () => {
+    let time = 0;
+    const demo = createDemoSource({
+      streamDelayMs: 0,
+      commandDelayMs: 0,
+      clock: () => time,
+    });
+    const [first, second] = (await demo.review.queue({ space: v2 })).items;
+    const kept = await demo.review.keep({
+      space: v2,
+      item: first,
+      idempotencyKey: "k1",
+    });
+    expect(
+      await demo.undo({
+        space: v2,
+        receipt: kept.receipt!,
+        idempotencyKey: "u1",
+      }),
+    ).toEqual({ refs: ["M-0430"] });
+    expect((await demo.review.queue({ space: v2 })).items[0].ref).toBe(
+      "M-0430",
+    );
+    const refusal = (receipt: string, key: string) =>
+      demo
+        .undo({ space: v2, receipt, idempotencyKey: key })
+        .catch((err: unknown) => toFailure(err));
+    expect(await refusal(kept.receipt!, "u2")).toEqual({
+      kind: "undo-refused",
+      reason: "already_undone",
+      ref: "M-0430",
+    });
+    expect(await refusal("nope", "u3")).toMatchObject({
+      reason: "not_undoable",
+    });
+    const rejected = await demo.review.reject({
+      space: v2,
+      item: second,
+      idempotencyKey: "r1",
+    });
+    time = 10 * 60 * 1000 + 1;
+    expect(await refusal(rejected.receipt!, "u4")).toMatchObject({
+      reason: "window_passed",
+    });
+  });
+
+  it("refuses to undo an edit that a later one built on", async () => {
+    const demo = fresh();
+    const edit = (version: number, statement: string, key: string) =>
+      demo.memories.edit({
+        space: v2,
+        ref: "M-0098",
+        version,
+        statement,
+        idempotencyKey: key,
+      });
+    const one = await edit(1, "API errors are RFC 9457 problem+json.", "e1");
+    await edit(2, "API errors are RFC 9457 problem+json, always.", "e2");
+    await expect(
+      demo.undo({ space: v2, receipt: one.receipt!, idempotencyKey: "u" }),
+    ).rejects.toSatisfy((err) => {
+      const failure = toFailure(err);
+      return (
+        failure.kind === "undo-refused" && failure.reason === "later_changes"
+      );
+    });
+  });
+
+  it("unfolds the judge's fold in the team space: back in Review", async () => {
+    const demo = fresh();
+    const team = DEMO_SPACES.find((s) => s.slug === "memax-team")!;
+    const folded = await demo.memories.get({ space: team, ref: "M-0446" });
+    expect(folded?.lineage.at(-1)).toMatchObject({
+      action: "merged",
+      into: "M-0310",
+      undo: { receipt: DEMO_FOLD.receipt },
+    });
+    const into = await demo.memories.get({ space: team, ref: "M-0310" });
+    expect(into?.merged?.notes[0]).toMatchObject({ ref: "M-0446" });
+    await demo.undo({
+      space: team,
+      receipt: DEMO_FOLD.receipt,
+      idempotencyKey: "f",
+    });
+    expect(
+      (await demo.review.queue({ space: team })).items.map((i) => i.ref),
+    ).toContain("M-0446");
+    expect(
+      (await demo.memories.get({ space: team, ref: "M-0446" }))?.state,
+    ).toBe("proposed");
+    expect(
+      (await demo.memories.get({ space: team, ref: "M-0310" }))?.merged,
+    ).toBeNull();
   });
 });
 

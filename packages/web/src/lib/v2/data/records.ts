@@ -77,9 +77,15 @@ export interface DecisionResult {
   /** Compiled files rewritten, when the source knows. */
   recompiled: number | null;
   /**
-   * The inverse command. No source has one yet (the server has no undo
-   * command for Keep or Reject), so Review hides Undo; the hook stays
-   * typed so Undo appears the day a source returns it.
+   * The command's receipt, which Undo addresses (spec: POST
+   * /v2/receipts/{receipt}:undo, any of the command's receipts). Null or
+   * absent when the command can't be undone.
    */
-  undo?: () => Promise<void>;
+  receipt?: string | null;
+  /**
+   * Edit, then keep, saved but not kept (policy `judge_pending`): the new
+   * words touch a decision in force, so they wait for the judge. `version`
+   * is the saved one; a plain Keep of it finishes the decision.
+   */
+  judgePending?: boolean;
 }

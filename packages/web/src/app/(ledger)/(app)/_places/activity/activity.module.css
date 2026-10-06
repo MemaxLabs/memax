@@ -104,6 +104,12 @@ section > .rows:last-child > .row:last-child {
   quotes: "“" "”";
 }
 
+/* A fold's Undo, after its sentence: quiet, on the text's line. */
+.unfold {
+  margin-block: -4px;
+  vertical-align: middle;
+}
+
 .via {
   min-width: 0;
   overflow: hidden;

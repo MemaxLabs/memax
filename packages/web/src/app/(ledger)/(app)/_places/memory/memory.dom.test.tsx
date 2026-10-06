@@ -18,12 +18,16 @@ import {
   DEMO_SPACES,
 } from "@/lib/v2/data/demo-dataset";
 import { createDemoSource } from "@/lib/v2/data/demo-source";
+import { DEMO_FOLD } from "@/lib/v2/data/demo-review-data";
 import type { LedgerDataSource } from "@/lib/v2/data/source";
+import type { SpaceSummary } from "@/lib/v2/data/types";
 import { KeymapProvider } from "@/lib/v2/keymap/react";
+import { createUndoStack } from "@/lib/v2/undo-stack";
 import { ToastProvider, ToastViewport } from "../../_components/toasts";
 import { LedgerDataProvider } from "../../_lib/data";
 import { OverlayProvider } from "../../_lib/overlays";
 import { SpaceViewContext } from "../../_lib/space-context";
+import { UndoStackProvider } from "../../_lib/undo";
 import { MemoryPlace } from "./index";
 
 const h = vi.hoisted(() => ({ source: null as LedgerDataSource | null }));
@@ -54,7 +58,11 @@ afterEach(() => {
 
 const v2 = DEMO_SPACES.find((s) => s.slug === "memax-v2")!;
 
-function renderMemory(ref: string, source: LedgerDataSource) {
+function renderMemory(
+  ref: string,
+  source: LedgerDataSource,
+  space: SpaceSummary = v2,
+) {
   h.source = source;
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -64,23 +72,25 @@ function renderMemory(ref: string, source: LedgerDataSource) {
       <LocaleProvider>
         <LedgerProvider locale="en">
           <LedgerDataProvider mode="demo">
-            <KeymapProvider>
-              <ToastProvider>
-                <OverlayProvider>
-                  <SpaceViewContext
-                    value={{
-                      space: v2,
-                      overview: DEMO_OVERVIEWS["memax-v2"],
-                      overviewFailed: false,
-                      retryOverview: () => {},
-                    }}
-                  >
-                    <MemoryPlace memoryRef={ref} />
-                  </SpaceViewContext>
-                  <ToastViewport />
-                </OverlayProvider>
-              </ToastProvider>
-            </KeymapProvider>
+            <UndoStackProvider value={createUndoStack()}>
+              <KeymapProvider>
+                <ToastProvider>
+                  <OverlayProvider>
+                    <SpaceViewContext
+                      value={{
+                        space,
+                        overview: DEMO_OVERVIEWS[space.slug],
+                        overviewFailed: false,
+                        retryOverview: () => {},
+                      }}
+                    >
+                      <MemoryPlace memoryRef={ref} />
+                    </SpaceViewContext>
+                    <ToastViewport />
+                  </OverlayProvider>
+                </ToastProvider>
+              </KeymapProvider>
+            </UndoStackProvider>
           </LedgerDataProvider>
         </LedgerProvider>
       </LocaleProvider>
@@ -189,5 +199,78 @@ describe("a memory's page", () => {
         "There's no memory with this ID that you can open.",
       ),
     ).toBeTruthy();
+  });
+
+  it("offers Undo on an edit, which puts the words back", async () => {
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    const source: LedgerDataSource = { ...demo, undo: vi.fn(demo.undo) };
+    renderMemory("M-0098", source);
+    await screen.findByRole("heading", { level: 1 });
+    await act(async () => {});
+    fireEvent.keyDown(document.body, { key: "e", code: "KeyE" });
+    const field = await screen.findByRole("textbox", { name: "Statement" });
+    fireEvent.change(field, {
+      target: { value: "API errors are RFC 9457 problem+json, always." },
+    });
+    fireEvent.keyDown(field, { key: "Enter", ctrlKey: true });
+    expect(await screen.findByText("Edited M-0098")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(
+      await screen.findByText(
+        "Undid your edit. M-0098 reads as it did before.",
+      ),
+    ).toBeTruthy();
+    expect(source.undo).toHaveBeenCalledOnce();
+  });
+});
+
+describe("one of the judge's folds", () => {
+  const team = DEMO_SPACES.find((s) => s.slug === "memax-team")!;
+
+  it("says what it was folded into, and Undo puts it back in Review", async () => {
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    const source: LedgerDataSource = { ...demo, undo: vi.fn(demo.undo) };
+    renderMemory("M-0446", source, team);
+    expect(await screen.findByText("Memax folded it into M-0310")).toBeTruthy();
+    expect(screen.getByText("Undo until Oct 19")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Undo the fold of M-0446" }),
+    );
+    expect(
+      await screen.findByText("Unfolded M-0446. It's back in Review."),
+    ).toBeTruthy();
+    expect(source.undo).toHaveBeenCalledWith(
+      expect.objectContaining({ receipt: DEMO_FOLD.receipt }),
+    );
+    // Refetched: a proposal again, with no fold left to undo.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Undo the fold of M-0446" }),
+      ).toBeNull(),
+    );
+  });
+
+  it("lists the fold on the memory it went into, with its Undo", async () => {
+    renderMemory(
+      "M-0310",
+      createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 }),
+      team,
+    );
+    expect(
+      await screen.findByText("Reviews need a member who isn't the author."),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Undo the fold of M-0446" }),
+    ).toBeTruthy();
+  });
+
+  it("offers a viewer no Undo", async () => {
+    renderMemory(
+      "M-0446",
+      createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 }),
+      { ...team, role: "viewer" },
+    );
+    expect(await screen.findByText("Memax folded it into M-0310")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Undo the fold/ })).toBeNull();
   });
 });

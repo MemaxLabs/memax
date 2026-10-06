@@ -16,12 +16,46 @@ export type CommandFailure =
   | { kind: "decided" }
   | { kind: "not-found" }
   | { kind: "rate-limited"; retryAfter: number | null }
+  /**
+   * 503: Memax is still checking a proposal that touches a decision in
+   * force (`judge_pending`: Keep before the judge, for at most 30 s), or
+   * another change holds the memory (`busy`). Either way, retry after
+   * `retryAfter` seconds with the same key.
+   */
+  | {
+      kind: "busy";
+      retryAfter: number | null;
+      ref: string | null;
+      /** `judge_pending` rather than another change holding it. */
+      judge: boolean;
+    }
+  /**
+   * 409 `in_conflict`: the judge flagged the proposal as contradicting a
+   * decision in force (`with`), so it is settled, not kept.
+   */
+  | { kind: "in-conflict"; with: string | null }
+  /** 409 `undo_refused`: why an undo can't go through, and what's in its way (`ref`). */
+  | { kind: "undo-refused"; reason: UndoRefusal; ref: string | null }
   /** The request didn't reach the server, or the server had a moment. Safe to retry with the same key. */
   | { kind: "unreachable" }
   /** The source can't do this yet (no /v2 endpoint): a PLACEHOLDER. */
   | { kind: "unavailable" }
   /** Anything else (a bad request, a reused key). Retrying needs a new key. */
   | { kind: "unknown"; message: string | null };
+
+/** Why an undo was refused (spec UndoRefusal). */
+export type UndoRefusal =
+  | "window_passed"
+  | "already_undone"
+  | "not_undoable"
+  | "later_changes";
+
+const UNDO_REFUSALS = new Set<string>([
+  "window_passed",
+  "already_undone",
+  "not_undoable",
+  "later_changes",
+]);
 
 /** Thrown by sources that aren't the SDK (the demo, placeholders). */
 export class CommandFailedError extends Error {
@@ -34,10 +68,13 @@ export class CommandFailedError extends Error {
 const UNREACHABLE = new Set([
   "network_error",
   "internal_error",
-  "busy",
   "unavailable",
   "invalid_response",
 ]);
+
+function detail(err: MemaxError, key: string): unknown {
+  return err.details?.[key];
+}
 
 export function toFailure(err: unknown): CommandFailure {
   if (err instanceof CommandFailedError) return err.failure;
@@ -55,6 +92,37 @@ export function toFailure(err: unknown): CommandFailure {
       return {
         kind: "clash",
         currentVersion: typeof current === "number" ? current : null,
+      };
+    }
+    if (err.code === "undo_refused") {
+      const reason = detail(err, "reason");
+      const ref = detail(err, "ref");
+      return {
+        kind: "undo-refused",
+        reason:
+          typeof reason === "string" && UNDO_REFUSALS.has(reason)
+            ? (reason as UndoRefusal)
+            : "not_undoable",
+        ref: typeof ref === "string" && ref ? ref : null,
+      };
+    }
+    if (err.code === "busy" || err.code === "judge_pending") {
+      const seconds = detail(err, "retry_after");
+      const ref = detail(err, "ref");
+      return {
+        kind: "busy",
+        retryAfter:
+          err.retryAfterSeconds ??
+          (typeof seconds === "number" ? seconds : null),
+        ref: typeof ref === "string" && ref ? ref : null,
+        judge: err.code === "judge_pending",
+      };
+    }
+    if (err.code === "in_conflict") {
+      const ref = detail(err, "ref");
+      return {
+        kind: "in-conflict",
+        with: typeof ref === "string" && ref ? ref : null,
       };
     }
     if (err.code === "invalid_transition") return { kind: "decided" };
@@ -84,5 +152,9 @@ export function toFailure(err: unknown): CommandFailure {
  * is reused, so the server applies it at most once.
  */
 export function isRetryable(failure: CommandFailure): boolean {
-  return failure.kind === "unreachable" || failure.kind === "rate-limited";
+  return (
+    failure.kind === "unreachable" ||
+    failure.kind === "rate-limited" ||
+    failure.kind === "busy"
+  );
 }

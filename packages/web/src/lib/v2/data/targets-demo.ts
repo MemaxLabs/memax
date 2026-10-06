@@ -297,6 +297,7 @@ export function createDemoTargets({
             session: null,
             updates: change.kind === "edit" ? change.ref : null,
             conflictsWith: null,
+            judge: null,
             intoSpace: null,
           });
         }

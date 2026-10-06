@@ -1,11 +1,13 @@
 import type { V2 } from "memax-sdk";
 import type {
   ConditionLine,
+  FoldUndo,
   LineageEntry,
   MemoryRecord,
   SourceLine,
 } from "./memories";
 import { actorOf, displayState, isRecordAction, railOf } from "./sdk-records";
+import { FOLD_UNDO_WINDOW_MS } from "./undo";
 
 /**
  * One /v2 memory (GET /v2/memories/{ref}) as a memory's page reads it:
@@ -60,32 +62,76 @@ export function conditionsOf(raw: unknown[]): ConditionLine[] {
   });
 }
 
+/** One of the judge's folds: Memax merged a proposal into a kept memory. */
+export function isFold(r: V2.Receipt): boolean {
+  return (
+    r.action === "merged" &&
+    r.actor_kind === "memax" &&
+    r.source?.kind === "memory"
+  );
+}
+
+/** Whether a receipt was undone, by the `undid` receipts that cite it. */
+export function undoneIn(
+  receipts: readonly V2.Receipt[],
+  receipt: string,
+): boolean {
+  return receipts.some(
+    (r) =>
+      r.action === "undid" &&
+      r.source?.kind === "receipt" &&
+      r.source.ref === receipt,
+  );
+}
+
+/** A fold's Undo while its 14 days last, else null. */
+export function foldUndo(
+  receipt: string,
+  at: string,
+  now: Date,
+): FoldUndo | null {
+  const until = Date.parse(at) + FOLD_UNDO_WINDOW_MS;
+  if (!Number.isFinite(until) || until <= now.getTime()) return null;
+  return { receipt, until: new Date(until).toISOString() };
+}
+
 export function lineageOf(
   receipts: readonly V2.Receipt[],
   viewerId: string | undefined,
+  { merged = false, now = new Date() }: { merged?: boolean; now?: Date } = {},
 ): LineageEntry[] {
-  return [...receipts]
-    .sort((a, b) => a.seq - b.seq)
-    .flatMap((r): LineageEntry[] =>
-      isRecordAction(r.action)
-        ? [
-            {
-              key: r.id,
-              action: r.action,
-              by: actorOf(r, viewerId),
-              at: r.occurred_at,
-              detail: r.reason ?? null,
-              count: null,
-              to: null,
-            },
-          ]
-        : [],
-    );
+  const sorted = [...receipts].sort((a, b) => a.seq - b.seq);
+  // Only the latest fold can be undone, while the memory is still folded.
+  const lastFold = merged ? sorted.filter(isFold).at(-1) : undefined;
+  return sorted.flatMap((r): LineageEntry[] => {
+    if (!isRecordAction(r.action)) return [];
+    const fold = isFold(r);
+    return [
+      {
+        key: r.id,
+        action: r.action,
+        by: actorOf(r, viewerId),
+        at: r.occurred_at,
+        detail: r.reason ?? null,
+        count: null,
+        to: null,
+        into: fold ? (r.source?.ref ?? null) : null,
+        undo:
+          fold && r === lastFold && !undoneIn(sorted, r.id)
+            ? foldUndo(r.id, r.occurred_at, now)
+            : null,
+      },
+    ];
+  });
 }
 
 export function recordOf(
   detail: V2.MemoryDetail,
   viewerId: string | undefined,
+  {
+    merged = null,
+    now = new Date(),
+  }: { merged?: MemoryRecord["merged"]; now?: Date } = {},
 ): MemoryRecord {
   const { memory } = detail;
   const receipts = detail.receipts.items;
@@ -107,13 +153,16 @@ export function recordOf(
         ? { by: actorOf(keptReceipt, viewerId), at: keptReceipt.occurred_at }
         : null,
     latest: railOf(newest[0], viewerId),
-    // PLACEHOLDER: reads, reach, merged notes and compiled files aren't
-    // served by /v2 yet.
+    // PLACEHOLDER: reads, reach and compiled files aren't served by /v2
+    // yet. What was folded into it comes from its links (the caller).
     reads: null,
     reach: null,
-    merged: null,
+    merged,
     reaches: null,
-    lineage: lineageOf(receipts, viewerId),
+    lineage: lineageOf(receipts, viewerId, {
+      merged: memory.lifecycle === "merged",
+      now,
+    }),
     sources: (memory.sources ?? []).map(sourceLineOf),
     conditions: conditionsOf(memory.conditions ?? []),
     checked: verified

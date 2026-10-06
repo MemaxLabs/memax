@@ -54,17 +54,23 @@ export function createDemoSource({
   streamDelayMs = 14,
   commandDelayMs,
   settleMs,
+  judging,
+  clock,
 }: {
   streamDelayMs?: number;
   commandDelayMs?: number;
   /** How long a demo compile takes before its file reads in sync. */
   settleMs?: number;
+  /** The demo judge's script (demo-review-data.ts DEMO_JUDGING), for tests. */
+  judging?: Parameters<typeof createDemoRecords>[0]["judging"];
+  /** Real time for the judge and Undo's window, for tests. */
+  clock?: () => number;
 } = {}): LedgerDataSource {
   let nextRef = DEMO_NEXT_REF;
   const allocRef = () => `M-${String(nextRef++).padStart(4, "0")}`;
   const now = () => new Date(DEMO_NOW);
   // Review and Memories (demo-records.ts); their decisions feed the overview.
-  const records = createDemoRecords({ now, commandDelayMs });
+  const records = createDemoRecords({ now, commandDelayMs, judging, clock });
   const agents = createDemoAgents();
   const targets = createDemoTargets({
     now,
@@ -111,11 +117,13 @@ export function createDemoSource({
       .length;
   };
   const remembered = new Map<string, KeepResult>();
+  // A person's own Remember isn't undoable on the server (no undo journal
+  // for it), so, like the SDK source, it carries no receipt.
   const kept = (ref: string, slug: string): KeepResult => ({
     ref,
     outcome: "kept",
     recompiled: files(slug),
-    undo: async () => {},
+    receipt: null,
   });
 
   return {
@@ -187,9 +195,20 @@ export function createDemoSource({
       remembered.set(idempotencyKey, result);
       return result;
     },
-    async keepProposal({ space, ref }) {
-      return kept(ref, space.slug);
+    // The near-duplicate offer keeps the proposal waiting in Review: the
+    // same Keep as Review's, so it leaves the queue and can be undone.
+    async keepProposal({ space, ref, idempotencyKey }) {
+      const item = await records.review.item({ space, ref });
+      if (!item) return kept(ref, space.slug);
+      const result = await records.review.keep({ space, item, idempotencyKey });
+      return {
+        ref: result.ref,
+        outcome: result.outcome === "kept" ? "kept" : "proposed",
+        recompiled: result.recompiled,
+        receipt: result.receipt ?? null,
+      };
     },
+    undo: records.undo,
   };
 }
 

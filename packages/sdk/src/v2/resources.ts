@@ -188,7 +188,14 @@ export class V2MemoriesResource {
     });
   }
 
-  /** Keep a proposal. Only a person who is a member or owner can. */
+  /**
+   * Keep a proposal. Only a person who is a member or owner can. Before
+   * the judge has looked at a proposal that touches a decision in force,
+   * this throws a MemaxError `judge_pending` (503, `retryAfterSeconds`
+   * set): send the same Keep, with the same key, after that. A proposal
+   * the judge flagged throws `in_conflict` (409; `details.ref` is the
+   * decision in force): settle it with {@link resolveConflict}.
+   */
   async keep(
     ref: string,
     input: ReviewInput,
@@ -209,7 +216,10 @@ export class V2MemoriesResource {
   /**
    * Write a new version of the statement. `opts.ifMatch` is the version
    * you started from; if the memory changed since, this throws a
-   * MemaxError with code `edit_clash` (412).
+   * MemaxError with code `edit_clash` (412). With `keep: true`, new words
+   * that touch a decision in force are saved but not kept until the judge
+   * has looked: the result is `outcome: "proposed"` with policy code
+   * `judge_pending`, and {@link keep} on the returned version finishes it.
    */
   async edit(
     ref: string,

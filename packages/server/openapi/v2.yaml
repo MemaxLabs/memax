@@ -2027,7 +2027,9 @@ components:
         delivered. The judge's (by Memax) are merged (a fold), linked (an
         update or explicit change), flagged (a conflict) and judged
         (nothing to do); settling a conflict writes resolved, kept,
-        rejected, edited, superseded or faded; Undo writes undid.
+        rejected, edited, superseded or faded; Undo writes undid. A decision
+        gate's (`gate`) are asked (by the agent), answered (by a person; the
+        kept decision it became has its own `kept` receipt) and withdrawn.
       type: string
       enum:
         - proposed
@@ -2062,6 +2064,8 @@ components:
         - judged
         - linked
         - superseded
+        - asked
+        - withdrawn
     ObjectKind:
       type: string
       enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space]
@@ -2085,7 +2089,12 @@ components:
         agent has no connection, or none to this space, so it only reads),
         agent_paused, brief_by_person (agents propose; people edit the
         Brief), targets_by_person, compile_by_memax, judge_by_memax,
-        undo_by_decider (only the person who decided can undo it). Refused changes to
+        undo_by_decider (only the person who decided can undo it). Refused
+        decision gates: gate_by_agent (agents ask; people decide directly),
+        person_must_answer (agents ask; people answer), gate_limit (the agent
+        already has 3 decisions waiting in the space), not_your_gate (only the
+        agent that asked, the person it works for, or someone who can answer
+        withdraws a question). Refused changes to
         agents: person_must_manage (only a person changes what an agent may
         do), not_your_agent, autonomy_not_allowed, key_max_propose,
         autonomy_needs_web (raising an agent needs a person on the web).
@@ -2123,6 +2132,10 @@ components:
         - compile_by_memax
         - judge_by_memax
         - undo_by_decider
+        - gate_by_agent
+        - person_must_answer
+        - gate_limit
+        - not_your_gate
         - viewer
         - owners_keep
         - decision_needs_web

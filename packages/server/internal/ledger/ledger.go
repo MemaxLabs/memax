@@ -75,7 +75,8 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		return Result{}, invalid("command", "is missing")
 	}
 	m := cmd.envelope()
-	if err := validateMeta(m, l.now()); err != nil {
+	now := l.now()
+	if err := validateMeta(m, now); err != nil {
 		return Result{}, err
 	}
 	if err := validateCommand(cmd); err != nil {
@@ -93,7 +94,7 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	w := &writer{tx: tx, meta: m, command: cmd.Name(), hash: hash, inserter: l.inserter, loginRole: loginRole,
-		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow}
+		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, now: now}
 	var res Result
 	switch c := cmd.(type) {
 	case *Remember:
@@ -136,6 +137,12 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.resolveConflict(ctx, c)
 	case *Undo:
 		res, err = w.undoCommand(ctx, c)
+	case *RequestDecision:
+		res, err = w.requestDecision(ctx, c)
+	case *AnswerGate:
+		res, err = w.answerGate(ctx, c)
+	case *WithdrawGate:
+		res, err = w.withdrawGate(ctx, c)
 	}
 	if err != nil {
 		return Result{}, mapDBError(err)
@@ -202,6 +209,12 @@ func validateCommand(cmd Command) error {
 			return invalid("receipt", "say which receipt to undo")
 		}
 		return nil
+	case *RequestDecision:
+		return c.validate()
+	case *AnswerGate:
+		return validateGateTarget(c.Gate, c.ExpectedVersion)
+	case *WithdrawGate:
+		return validateGateTarget(c.Gate, c.ExpectedVersion)
 	case *Remember:
 		return c.NewMemory.validate()
 	case *Propose:

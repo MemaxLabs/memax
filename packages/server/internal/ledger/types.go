@@ -354,6 +354,8 @@ type Result struct {
 	// Memories are every memory a conflict resolution or an undo changed,
 	// this side first.
 	Memories []Memory `json:"memories,omitempty"`
+	// Gate is the decision gate's projection after a gate command.
+	Gate *Gate `json:"gate,omitempty"`
 	// Unchanged is set when the command found nothing to do (an
 	// observation that matches what was delivered, a delivery already
 	// acknowledged): nothing was written and no receipt exists.

@@ -76,6 +76,16 @@ export type DriftItem = Schemas["DriftItem"];
 export type DriftResolutionResult = Schemas["DriftResolutionResult"];
 export type ErrorDetails = Schemas["ErrorDetails"];
 
+// Decision gates
+/** A question an agent asked a person (G-). */
+export type Gate = Schemas["Gate"];
+export type GateOption = Schemas["GateOption"];
+export type GateAnswer = Schemas["GateAnswer"];
+export type GateWithdrawal = Schemas["GateWithdrawal"];
+export type GatePage = Schemas["GatePage"];
+/** A gate command's answer; for an answer, `memory` is the kept decision. */
+export type GateResult = Schemas["GateResult"];
+
 // Agents
 export type AgentConnection = Schemas["AgentConnection"];
 export type AgentSpace = Schemas["AgentSpace"];
@@ -105,6 +115,10 @@ export type ResolveDriftInput = Schemas["ResolveDriftRequest"];
 export type ResolveConflictInput = Schemas["ResolveConflictRequest"];
 /** The body of an undo: an optional reason, for the receipt. */
 export type UndoInput = Schemas["ReviewRequest"];
+export type RequestDecisionInput = Schemas["RequestDecisionRequest"];
+export type AnswerGateInput = Schemas["AnswerGateRequest"];
+/** The body of withdrawing a gate: an optional reason, for the receipt. */
+export type WithdrawGateInput = Schemas["ReviewRequest"];
 
 // Vocabulary
 export type Section = Schemas["Section"];
@@ -156,5 +170,7 @@ export type ConflictChoice = Schemas["ConflictChoice"];
 export type ConflictChange = Schemas["ConflictChange"];
 /** Why an undo was refused (`details.reason` of `undo_refused`). */
 export type UndoRefusal = Schemas["UndoRefusal"];
+/** waiting, answered, withdrawn or expired. */
+export type GateStatus = Schemas["GateStatus"];
 /** The surfaces a client may declare in `X-Memax-Via`. */
 export type ClientVia = components["parameters"]["Via"];

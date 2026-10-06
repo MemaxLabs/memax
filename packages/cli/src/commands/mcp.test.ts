@@ -10,6 +10,8 @@ const state = {
   remembered: [] as unknown[],
   pushed: [] as unknown[],
   compiled: false,
+  asked: [] as unknown[],
+  gateStatus: "waiting",
 };
 
 const V1_HUB = "11111111-1111-4111-8111-111111111111";
@@ -38,6 +40,29 @@ const kept = (ref: string, statement: string, section = "conventions") => ({
   trust: "person",
   version: 1,
   created_at: "2026-10-01T00:00:00Z",
+});
+
+const GATE_ID = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a60";
+
+const gate = () => ({
+  id: GATE_ID,
+  ref: "G-0012",
+  space_id: V2_CONNECTED,
+  question: "Which deploy target should the v2 API use?",
+  options: [{ label: "Fly.io" }, { label: "Railway" }],
+  status: state.gateStatus,
+  expires_at: "2026-10-13T09:30:00Z",
+  needs_web: false,
+  version: state.gateStatus === "waiting" ? 1 : 2,
+  ...(state.gateStatus === "answered"
+    ? {
+        answer: {
+          option: 2,
+          label: "Railway",
+          memory: { id: "m-0432", ref: "M-0432" },
+        },
+      }
+    : {}),
 });
 
 const fakeClient = {
@@ -165,6 +190,18 @@ const fakeClient = {
     review: {
       list: vi.fn(async () => ({ items: [], has_more: false, total: 2 })),
     },
+    gates: {
+      request: vi.fn(async (spaceId: string, input: unknown, opts: unknown) => {
+        state.asked.push({ spaceId, input, opts });
+        return {
+          outcome: "applied",
+          policy: { effect: "apply" },
+          gate: gate(),
+          receipts: [],
+        };
+      }),
+      get: vi.fn(async () => gate()),
+    },
     targets: {
       list: vi.fn(async (spaceId: string) => ({
         items:
@@ -208,6 +245,7 @@ vi.mock("../lib/config.js", () => ({
 const { createMcpServerForTest } = await import("./mcp.js");
 const { MCP_INSTRUCTIONS, servedTools } = await import("./mcp-tools.js");
 const { rankLocally, resetV2StateForTest } = await import("./mcp-v2.js");
+const { resetGatesForTest } = await import("./mcp-v2-gates.js");
 
 async function connect(): Promise<Client> {
   const server = createMcpServerForTest("claude-code");
@@ -230,7 +268,10 @@ beforeEach(() => {
   state.remembered = [];
   state.pushed = [];
   state.compiled = false;
+  state.asked = [];
+  state.gateStatus = "waiting";
   resetV2StateForTest();
+  resetGatesForTest();
 });
 
 describe("the stdio MCP server", () => {
@@ -348,6 +389,97 @@ describe("the stdio MCP server", () => {
     };
     expect(out.digest[0].compiled?.ref).toBe("C-0881");
     expect(out.digest[0].sections).toEqual([]);
+  });
+
+  it("asks a decision gate through memax.v2 in a space on V2, via mcp", async () => {
+    const client = await connect();
+    const res = await client.callTool({
+      name: "memax_request_decision",
+      arguments: {
+        question: "Which deploy target should the v2 API use?",
+        options: ["Fly.io", " Railway ", ""],
+        context: "M-0174 and M-0431 disagree.",
+        space_id: "memax-v2",
+      },
+    });
+    expect(res.isError).toBeFalsy();
+    expect(res.structuredContent).toMatchObject({
+      id: "G-0012",
+      space_id: V2_CONNECTED,
+      status: "waiting",
+      url: "https://memax.app/memax-v2/review?ref=G-0012",
+    });
+    expect(textOf(res)).toContain("Asked in memax-v2 as G-0012.");
+    expect(textOf(res)).toContain("next memax_recall");
+    const call = state.asked[0] as {
+      spaceId: string;
+      input: Record<string, unknown>;
+      opts: Record<string, unknown>;
+    };
+    expect(call.spaceId).toBe(V2_CONNECTED);
+    expect(call.input).toEqual({
+      question: "Which deploy target should the v2 API use?",
+      options: [{ label: "Fly.io" }, { label: "Railway" }],
+      context: "M-0174 and M-0431 disagree.",
+    });
+    expect(call.opts.via).toBe("mcp");
+    expect(String(call.opts.idempotencyKey)).toMatch(/^mcp-gate:/);
+  });
+
+  it("tells recall how this session's gates ended, once", async () => {
+    const client = await connect();
+    await client.callTool({
+      name: "memax_request_decision",
+      arguments: {
+        question: "Which deploy target should the v2 API use?",
+        options: ["Fly.io", "Railway"],
+        space_id: "memax-v2",
+      },
+    });
+    let res = await client.callTool({ name: "memax_recall", arguments: {} });
+    expect(res.structuredContent).toMatchObject({
+      gates: [{ id: "G-0012", status: "waiting" }],
+    });
+    expect(textOf(res)).toContain("G-0012 (memax-v2) is still waiting");
+    state.gateStatus = "answered";
+    res = await client.callTool({
+      name: "memax_recall",
+      arguments: { query: "deploy" },
+    });
+    expect(res.structuredContent).toMatchObject({
+      gates: [
+        {
+          id: "G-0012",
+          status: "answered",
+          option: 2,
+          answer: "Railway",
+          memory: "M-0432",
+        },
+      ],
+    });
+    expect(textOf(res)).toContain(
+      "G-0012 (memax-v2) answered: Railway. Kept as M-0432.",
+    );
+    res = await client.callTool({ name: "memax_recall", arguments: {} });
+    expect(
+      (res.structuredContent as { gates?: unknown[] }).gates,
+    ).toBeUndefined();
+  });
+
+  it("refuses a Read agent's question", async () => {
+    state.autonomy = "read";
+    const client = await connect();
+    const res = await client.callTool({
+      name: "memax_request_decision",
+      arguments: {
+        question: "Which way?",
+        options: ["a", "b"],
+        space_id: "memax-v2",
+      },
+    });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain("read-only in memax-v2");
+    expect(state.asked).toHaveLength(0);
   });
 
   it("never forgets in a space on V2", async () => {

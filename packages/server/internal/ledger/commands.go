@@ -434,6 +434,18 @@ func requestHash(cmd Command) ([]byte, error) {
 		cp := *c
 		cp.Meta = strip
 		v = cp
+	case *RequestDecision:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *AnswerGate:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *WithdrawGate:
+		cp := *c
+		cp.Meta = strip
+		v = cp
 	default:
 		return nil, invalid("command", "unknown command")
 	}

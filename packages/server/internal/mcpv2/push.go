@@ -196,7 +196,7 @@ func (s *Server) pushNote(ctx context.Context, c *handler.MCPToolCall, v *view, 
 // guardWrite refuses a write the agent may not make in the space (read
 // autonomy, not connected, paused) or that carries a credential, using
 // the same policy as the ledger. It is for writes outside the ledger
-// (notes, board cards).
+// (notes).
 func (s *Server) guardWrite(sp space, p *v2api.Principal, texts ...string) *mcp.CallToolResult {
 	var found []string
 	for _, t := range texts {

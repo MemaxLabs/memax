@@ -50,6 +50,7 @@ export {
   V2AgentsResource,
   V2BriefsResource,
   V2TargetsResource,
+  V2GatesResource,
   refusalOf,
 } from "./v2/resources.js";
 export type {
@@ -62,6 +63,9 @@ export type {
   ListMemoriesOptions as V2ListMemoriesOptions,
   ListReceiptsOptions as V2ListReceiptsOptions,
   GetMemoryOptions as V2GetMemoryOptions,
+  ListGatesOptions as V2ListGatesOptions,
+  GateRefOptions as V2GateRefOptions,
+  GateCommandOptions as V2GateCommandOptions,
 } from "./v2/resources.js";
 export type {
   // Config

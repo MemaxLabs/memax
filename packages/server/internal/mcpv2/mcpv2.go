@@ -19,8 +19,9 @@
 //     kept by the person via the agent, assurance client_attested. A
 //     client that can't elicit gets the proposal's ID and the Review link.
 //   - memax_recall reads kept memories (lexically for now; plan §5.11),
-//     plus this session's own pending proposals, forget notices, and
-//     without a query a digest of each space. A decision a newer one
+//     plus this session's own pending proposals, forget notices, how the
+//     connection's decision gates ended, and without a query a digest of
+//     each space (with the gates still waiting). A decision a newer one
 //     superseded stays kept but is left out, as in the compiled files.
 //   - memax_search searches kept memories and decisions (the same).
 //   - memax_push says so when a write touches a decision in force and so
@@ -28,8 +29,11 @@
 //   - memax_get reads one memory with its receipts and sources.
 //   - memax_forget asks a person: an agent never forgets.
 //   - memax_capture writes notes (V1's note path), never proposals.
-//   - memax_request_decision still writes a board decision card until
-//     decision gates (G-) land in epic 1.11.
+//   - memax_request_decision asks a decision gate (G-) through the ledger
+//     and returns its ID at once; on 2026-07-28 clients that can elicit it
+//     also asks the person in the agent (gates.go). The answer, kept as the
+//     person's decision, reaches the asking connection in its next recall,
+//     once.
 //   - memax_list, memax_hubs, memax_hub_members and memax_topics are
 //     compatibility aliases (topics are the Brief's sections).
 //
@@ -178,8 +182,10 @@ func (s *Server) CallTool(ctx context.Context, c *handler.MCPToolCall) (*mcp.Cal
 		return s.topics(ctx, c, v)
 	case "memax_forget":
 		return s.forget(ctx, c, v)
-	case "memax_capture", "memax_request_decision":
+	case "memax_capture":
 		return s.noteWrite(ctx, c, v)
+	case "memax_request_decision":
+		return s.requestDecision(ctx, c, v)
 	}
 	return nil, false
 }
@@ -203,15 +209,21 @@ func (s *Server) StepUp(ctx context.Context, c *handler.MCPToolCall) (string, bo
 	if c.Tool != "memax_push" && c.Tool != "memax_capture" && c.Tool != "memax_request_decision" {
 		return "", false
 	}
-	hubID := ""
-	if c.Tool == "memax_push" {
-		hub, err := c.ResolveHub(argHub(c.Args))
+	hubID := handler.GetWriteHubID(c.HTTP)
+	switch ref := argHub(c.Args); {
+	case c.Tool == "memax_push":
+		hub, err := c.ResolveHub(ref)
 		if err != nil {
 			return "", false
 		}
 		hubID = hub.Hub.ID
-	} else {
-		hubID = handler.GetWriteHubID(c.HTTP)
+	case c.Tool == "memax_request_decision" && ref != "":
+		// A space on V2 named here is where the gate goes (requestDecision).
+		if hub, err := c.ResolveHub(ref); err == nil {
+			if on, err := s.spaces.IsV2(ctx, hub.Hub.ID); err == nil && on {
+				hubID = hub.Hub.ID
+			}
+		}
 	}
 	on, err := s.spaces.IsV2(ctx, hubID)
 	if err != nil || !on {

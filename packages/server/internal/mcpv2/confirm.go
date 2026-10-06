@@ -102,9 +102,26 @@ func (s *Server) askToKeep(ctx context.Context, c *handler.MCPToolCall, sp space
 // confirmRetry is the retry of a multi round-trip push: the answer and the
 // signed state of the question.
 func (s *Server) confirmRetry(ctx context.Context, c *handler.MCPToolCall, v *view) *mcp.CallToolResult {
+	p, st, sp, failed := s.verifyRetry(ctx, c, v, "Nothing was kept; the proposal waits in Review.")
+	if failed != nil {
+		return failed
+	}
+	memID, _ := uuid.Parse(st.Memory)
+	var answer *mcp.ElicitResult
+	if r, ok := c.MCP.Params.InputResponses[elicitID].(*mcp.ElicitResult); ok {
+		answer = r
+	}
+	return s.applyAnswer(ctx, sp, p, memID, st.Ref, st.Version, answer)
+}
+
+// verifyRetry checks a multi round-trip retry's signed state: issued to
+// this caller, for this call, not expired, about a space the caller still
+// reaches. When it can't be used, failed is the error result, ending with
+// nothing (what didn't happen).
+func (s *Server) verifyRetry(ctx context.Context, c *handler.MCPToolCall, v *view, nothing string) (*v2api.Principal, confirmState, space, *mcp.CallToolResult) {
 	p, res := v.principal(ctx)
 	if res != nil {
-		return res
+		return nil, confirmState{}, space{}, res
 	}
 	st, err := s.state.verify(c.MCP.Params.RequestState, s.now())
 	if err == nil {
@@ -117,25 +134,15 @@ func (s *Server) confirmRetry(ctx context.Context, c *handler.MCPToolCall, v *vi
 	}
 	if err != nil {
 		s.log.WarnContext(ctx, "mcp: refused a confirmation", "error", err)
-		return errorResult("This confirmation can't be used: " + err.Error() + ". Nothing was kept; the proposal waits in Review.")
+		return nil, st, space{}, errorResult("This confirmation can't be used: " + err.Error() + ". " + nothing)
 	}
 	spaceID, _ := uuid.Parse(st.Space)
-	memID, _ := uuid.Parse(st.Memory)
-	var sp space
-	found := false
 	for _, x := range v.spaces {
 		if x.ID == spaceID {
-			sp, found = x, true
+			return p, st, x, nil
 		}
 	}
-	if !found {
-		return errorResult("This connection no longer reaches the space of " + st.Ref + ". Nothing was kept.")
-	}
-	var answer *mcp.ElicitResult
-	if r, ok := c.MCP.Params.InputResponses[elicitID].(*mcp.ElicitResult); ok {
-		answer = r
-	}
-	return s.applyAnswer(ctx, sp, p, memID, st.Ref, st.Version, answer)
+	return nil, st, space{}, errorResult("This connection no longer reaches the space of " + st.Ref + ". " + nothing)
 }
 
 // applyAnswer keeps (or edits and keeps) the proposal when the person

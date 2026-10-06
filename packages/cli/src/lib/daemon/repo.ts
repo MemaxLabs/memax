@@ -40,7 +40,10 @@ export class RepoDelivery {
   private snaps = new Map<string, TargetSnapshot>();
   private fileNotes = new Map<string, FileSnapshot>();
   private queue: Promise<unknown> = Promise.resolve();
-  private retryAt = new Map<string, { at: number; failures: number }>();
+  private retryAt = new Map<
+    string,
+    { at: number; failures: number; blocked: boolean }
+  >();
   private goodOf = new Map<string, { failed: string; good: string }>();
   private polledAt?: string;
   private error?: string;
@@ -93,7 +96,6 @@ export class RepoDelivery {
         } catch (err) {
           const f = failureOf(err);
           this.backoff(t.id);
-          busy = true;
           this.note(t, {
             state: "error",
             detail: `couldn't deliver (${f.code})`,
@@ -145,8 +147,11 @@ export class RepoDelivery {
       this.note(t, this.noteFromFiles(t, { state: "in_sync" }));
       return false;
     }
+    // Backing off after a failure: wait it out. A file the daemon won't
+    // write (a symlink, say) waits for a person, so it never asks the feed
+    // to poll fast; it is tried again on the next full poll after the wait.
     const retry = this.retryAt.get(t.id);
-    if (retry && Date.now() < retry.at) return true;
+    if (retry && Date.now() < retry.at) return inFlight && !retry.blocked;
 
     const p = await this.d.api.preview(t.id);
     if (!p.compile) {
@@ -156,16 +161,17 @@ export class RepoDelivery {
     if (last.status === "failed")
       this.goodOf.set(t.id, { failed: last.ref, good: p.compile.ref });
     const res = await deliverRun(this.d, t, p);
-    if (res.retry) this.backoff(t.id);
+    const blocked = res.state === "blocked";
+    if (res.retry || blocked) this.backoff(t.id, blocked);
     else this.retryAt.delete(t.id);
     this.note(t, res);
-    return inFlight || res.state === "pending" || !!res.retry;
+    return !blocked && (inFlight || res.state === "pending");
   }
 
-  private backoff(id: string): void {
+  private backoff(id: string, blocked = false): void {
     const failures = (this.retryAt.get(id)?.failures ?? 0) + 1;
     const ms = Math.min(5 * 60_000, 2_000 * 2 ** (failures - 1));
-    this.retryAt.set(id, { at: Date.now() + ms, failures });
+    this.retryAt.set(id, { at: Date.now() + ms, failures, blocked });
   }
 
   /** Checks one file after a watcher event or a rescan. */
@@ -192,7 +198,13 @@ export class RepoDelivery {
           });
         return;
       }
-      const j = await judgeFile(this.d, t, path, disk, out?.drift_sha256 ?? "");
+      // What should be there: the latest run's file, or (after a failed
+      // compile) what was delivered.
+      const latest =
+        out?.drift_sha256 ??
+        t.delivered?.files.find((f) => f.path === path)?.sha256 ??
+        "";
+      const j = await judgeFile(this.d, t, path, disk, latest);
       if (!j) return; // couldn't ask the runs; the next rescan tries again
       if (j.kind === "hand_edit" && disk.kind === "file") {
         this.fileNotes.set(path, { path, state: "hand_edit" });

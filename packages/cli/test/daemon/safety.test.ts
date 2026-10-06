@@ -132,6 +132,10 @@ describe("the daemon", () => {
       state: "blocked",
     });
     expect(d.snapshot().repos[0].targets[0].detail).toContain("symlink");
+    // It waits for a person: no preview on every poll meanwhile.
+    await d.syncOnce();
+    await d.syncOnce();
+    expect(h.fake.calls("GET", /\/preview$/)).toHaveLength(1);
   });
 
   it("keeps file contents and credentials out of its log", async () => {

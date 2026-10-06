@@ -46,7 +46,7 @@ export class Daemon {
   readonly state: DeviceState;
   private repos = new Map<string, Repo>();
   private spaces = new Map<string, Space>();
-  private stamp = -1;
+  private stamp = "";
   private dirWatch: FSWatcher | null = null;
   private control: ControlServer | null = null;
   private running = false;

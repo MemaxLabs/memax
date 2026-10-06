@@ -36,12 +36,16 @@ export function readRegistry(paths: DaemonPaths): LinkedRepo[] {
   return Array.isArray(file.repos) ? file.repos.filter(isLinkedRepo) : [];
 }
 
-/** The registry's modification time in ms, or 0 when there is none. */
-export function registryStamp(paths: DaemonPaths): number {
+/**
+ * Changes whenever the registry is written: every write is a new file
+ * (a rename), so its inode moves even within one millisecond.
+ */
+export function registryStamp(paths: DaemonPaths): string {
   try {
-    return statSync(paths.repos).mtimeMs;
+    const st = statSync(paths.repos);
+    return `${st.ino}:${st.mtimeMs}:${st.size}`;
   } catch {
-    return 0;
+    return "none";
   }
 }
 

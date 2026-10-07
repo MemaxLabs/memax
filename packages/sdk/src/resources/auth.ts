@@ -9,6 +9,7 @@ import type {
   DeviceSignIn,
   DeviceSignInOptions,
   DeviceSignInPoll,
+  ExchangedTokens,
   ImpersonationResult,
   MeResponse,
   OAuthDecision,
@@ -248,7 +249,11 @@ export class AuthResource {
     });
   }
 
-  async exchangeCode(code: string): Promise<AuthTokenPair> {
+  /**
+   * Trades a sign-in's one-time code for its session. A session issued to
+   * the web app also says which web UI the person sees (`ui`).
+   */
+  async exchangeCode(code: string): Promise<ExchangedTokens> {
     return this.req("POST", "/v1/auth/exchange", {
       body: { code },
     });

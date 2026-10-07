@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
@@ -25,6 +26,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2ui"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
@@ -95,7 +97,13 @@ type AuthHandler struct {
 	// passkeys says who has a passkey: V1's link and unlink refuse them
 	// (auth_account.go). Nil means passkeys are off.
 	passkeys PasskeyHolders
+	// v2ui decides whether a person sees the V2 UI (internal/v2ui): /me
+	// and a web sign-in's tokens say which. Nil answers V1 for everyone.
+	v2ui *v2ui.Resolver
 }
+
+// SetV2UI sets the V2 UI flag's resolver (internal/v2ui).
+func (h *AuthHandler) SetV2UI(r *v2ui.Resolver) { h.v2ui = r }
 
 // onboardingEmitter is the plan-18 producer surface. Minimal
 // interface so AuthHandler doesn't import the onboarding package and
@@ -514,18 +522,22 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var user model.User
+	// The V2 UI flag's facts come with the row (internal/v2ui), so the
+	// flag costs no round trip of its own.
+	var ui v2ui.Row
 	// github_id is NULL for Google-only accounts (see auth_providers.go's
 	// NULLIF($1, 0) insert), so COALESCE to 0 before scanning into
 	// int64 — otherwise /v1/auth/me returns not_found for a valid
 	// session. Mirrors the fix applied to GetUser / GetUsersByIDs.
 	err := h.pool.QueryRow(context.Background(),
-		`SELECT id, COALESCE(github_id, 0), email, name, COALESCE(display_name, ''), avatar_url,
-			COALESCE(plan, 'free'), personal_plan_id, can_create_hub, created_at, updated_at
-		FROM users WHERE id = $1`, userID).Scan(
+		`SELECT u.id, COALESCE(u.github_id, 0), u.email, u.name, COALESCE(u.display_name, ''), u.avatar_url,
+			COALESCE(u.plan, 'free'), u.personal_plan_id, u.can_create_hub, u.created_at, u.updated_at,
+			`+v2ui.FactsColumns+`
+		FROM users u WHERE u.id = $1`, userID).Scan(append([]any{
 		&user.ID, &user.GitHubID, &user.Email, &user.Name,
 		&user.DisplayName, &user.AvatarURL, &user.Plan,
 		&user.PersonalPlanID, &user.CanCreateHub, &user.CreatedAt, &user.UpdatedAt,
-	)
+	}, ui.Dest()...)...)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, model.ApiResponse{
 			Error: &model.Error{Code: "not_found", Message: "User not found."},
@@ -533,7 +545,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := model.MeResponse{User: user}
+	resp := model.MeResponse{User: user, UI: string(h.v2ui.Decide(ui.Facts()).UI)}
 
 	// Connected providers (from auth_identities)
 	if h.store != nil {
@@ -846,7 +858,28 @@ func (h *AuthHandler) ExchangeCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, model.ApiResponse{Data: tokens})
+	// The web app's server sets its memax_ui routing cookie from the
+	// answer as the session starts, without asking /me first. A flag that
+	// can't be read is left out, and the web app treats that as V1 until
+	// its next /me.
+	answer := exchangeAnswer{TokenPair: tokens}
+	if kind == sessions.KindWeb {
+		if id, err := uuid.Parse(userID); err == nil {
+			if d, err := h.v2ui.For(r.Context(), id); err == nil {
+				answer.UI = string(d.UI)
+			} else {
+				slog.WarnContext(r.Context(), "auth: V2 UI flag on sign-in", "user_id", userID, "error", err)
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, model.ApiResponse{Data: answer})
+}
+
+// exchangeAnswer is a sign-in code's tokens and, for a session issued to
+// the web app, the web UI the person sees ("v1" or "v2", internal/v2ui).
+type exchangeAnswer struct {
+	*model.TokenPair
+	UI string `json:"ui,omitempty"`
 }
 
 // CreateAPIKey generates a new API key for CI/CD and non-interactive use.

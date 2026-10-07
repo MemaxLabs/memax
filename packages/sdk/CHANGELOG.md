@@ -4,6 +4,10 @@ All notable changes to `memax-sdk` are documented here.
 
 ## Unreleased
 
+- Added the web UI a person sees (the per-person V2 UI flag):
+  `auth.me()` answers `ui` (`WebUi`: `"v1"` or `"v2"`), and
+  `auth.exchangeCode()` returns `ExchangedTokens`, an `AuthTokenPair`
+  with `ui` for a session issued to the web app.
 - **Breaking:** OAuth consent moved to the web session (OAuthConsent).
   `auth.getOAuthConsentRequest` and the `OAuthConsentRequest`,
   `OAuthConsentHub` and `OAuthConsentPermission` types are removed: the

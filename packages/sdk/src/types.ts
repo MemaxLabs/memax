@@ -1019,6 +1019,13 @@ export interface UsageWithLimits extends Usage {
   plan_display_name: string;
 }
 
+/**
+ * The web UI a person sees on memax.app: the V2 Ledger UI or V1. The API
+ * decides it per person (a member of a space on the V2 record, an
+ * operator's choice, or the signup date); absent from older servers.
+ */
+export type WebUi = "v1" | "v2";
+
 export interface MeResponse {
   user: User;
   connected_providers?: AuthProviderName[];
@@ -1028,6 +1035,8 @@ export interface MeResponse {
   }>;
   /** Basic usage from /v1/auth/me. For enriched usage with limits, use settings.usage(). */
   usage?: Usage;
+  /** The web UI this person sees. */
+  ui?: WebUi;
 }
 
 export interface AuthTokenPair {
@@ -1045,6 +1054,16 @@ export interface AuthTokenPair {
    * from servers older than refresh-token rotation.
    */
   refresh_expires_in?: number;
+}
+
+/** A sign-in code traded for a session (`auth.exchangeCode`). */
+export interface ExchangedTokens extends AuthTokenPair {
+  /**
+   * For a session issued to the web app: the web UI the person sees, so
+   * the web app can route them as the session starts. Absent for other
+   * sessions (the CLI's) and from older servers.
+   */
+  ui?: WebUi;
 }
 
 /**

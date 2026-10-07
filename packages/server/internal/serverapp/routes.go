@@ -64,6 +64,9 @@ type routeDeps struct {
 	// adminV2Metrics serves the phase gates' metrics; nil without a V2
 	// record.
 	adminV2Metrics *handler.AdminV2MetricsHandler
+	// adminV2UI turns the V2 UI on and off per person (internal/v2ui);
+	// nil without a database.
+	adminV2UI      *handler.AdminV2UIHandler
 	resendWebhook  *handler.ResendWebhookHandler
 	unsubscribe    *handler.UnsubscribeHandler
 	bar            *handler.BarHandler
@@ -670,6 +673,12 @@ func registerAdminRoutes(root *http.ServeMux, deps routeDeps) {
 	// signup cohort, beside the north star. Counts only.
 	if deps.adminV2Metrics != nil {
 		admin.HandleFunc("GET /v1/admin/v2/metrics", deps.adminV2Metrics.Get)
+	}
+	// The per-person V2 UI flag (plan 25 E1): what it is and why, and an
+	// operator's on, off or back to the rules.
+	if deps.adminV2UI != nil {
+		admin.HandleFunc("GET /v1/admin/users/{id}/v2-ui", deps.adminV2UI.Get)
+		admin.HandleFunc("PUT /v1/admin/users/{id}/v2-ui", deps.adminV2UI.Set)
 	}
 
 	// Audiences — saved recipient rules

@@ -619,7 +619,7 @@ func (l *Ledger) VerifySpace(ctx context.Context, spaceID uuid.UUID, keys receip
 	}
 	v := receiptchain.NewVerifier(spaceID, keys, chain)
 	// A reason may be missing only beside a forgot receipt about its
-	// object, or, once the whole space was forgotten (migration 043), on
+	// object, or, once the whole space was forgotten (migration 044), on
 	// any receipt of the space.
 	rows, err = tx.Query(ctx, `
 		SELECT DISTINCT r.object_id FROM v2.receipts r

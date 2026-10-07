@@ -132,9 +132,9 @@ const (
 	sqlstateLifecycle        = "MXL01"
 	sqlstateAgentState       = "MXL02" // migration 029
 	sqlstateGateStatus       = "MXL03" // migration 036
-	sqlstateForgetRequest    = "MXL04" // migration 043
-	sqlstateForgottenWords   = "MXF01" // migration 043: a forgotten memory kept words
-	sqlstateForgottenCompile = "MXF02" // migration 043: a compile run held a forgotten memory
+	sqlstateForgetRequest    = "MXL04" // migration 044
+	sqlstateForgottenWords   = "MXF01" // migration 044: a forgotten memory kept words
+	sqlstateForgottenCompile = "MXF02" // migration 044: a compile run held a forgotten memory
 	sqlstateUniqueViolation  = "23505"
 	sqlstateLockNotAvailable = "55P03"
 	// jsonb refuses \u0000, and text refuses bytes outside the encoding.

@@ -207,7 +207,7 @@ func (l *Ledger) SpaceScope(ctx context.Context, spaceID uuid.UUID) (Scope, erro
 		Scan(&g.SpaceID, &g.TenantID, &kind)
 	if errNoRows(err) {
 		// A retired space: its hub is gone, its receipts and seals stay
-		// (migration 043), and the sealer and the verifier still need its
+		// (migration 044), and the sealer and the verifier still need its
 		// tenant.
 		var retired *time.Time
 		err = l.pool.QueryRow(ctx, `SELECT tenant_id, retired_at FROM v2.space_ledger($1)`, spaceID).Scan(&g.TenantID, &retired)

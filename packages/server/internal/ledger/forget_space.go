@@ -156,7 +156,7 @@ func (w *writer) forgetWholeSpace(ctx context.Context, sp spaceRow, retire bool,
 		}
 	}
 	// Gates answered by memories forgotten earlier still hold words if the
-	// gate predates 043; purge any left.
+	// gate predates 044; purge any left.
 	if err := w.purgeOrphanGates(ctx, sp, op); err != nil {
 		return Result{}, err
 	}

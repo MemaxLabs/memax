@@ -42,8 +42,11 @@ export function useImports(
       source.imports.list({ space: space!, limit: 10, signal }),
     enabled: Boolean(space),
     initialData: space ? source.imports.peekList?.(space.slug) : undefined,
+    // A space whose imports don't load (one still on V1) isn't polled.
     refetchInterval: (q) =>
-      poll && (q.state.data?.length ?? 0) === 0 ? WAIT_FOR_INIT_MS : false,
+      poll && q.state.status !== "error" && (q.state.data?.length ?? 0) === 0
+        ? WAIT_FOR_INIT_MS
+        : false,
   });
 }
 

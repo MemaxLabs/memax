@@ -59,7 +59,7 @@ jobs:
     # release_command, so CI and prod migrate the same way.
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: memax
           POSTGRES_PASSWORD: memax
@@ -128,7 +128,7 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.changes.outputs.server == 'true'
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: memax
           POSTGRES_PASSWORD: memax

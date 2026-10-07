@@ -160,11 +160,15 @@ test("the web session: cookies only the server reads, human_web Keeps, rotation,
   await page.keyboard.type("Undo takes back a Remember made by mistake.");
   await page.keyboard.press("Enter");
   const toasts = page.getByRole("region", { name: "Notifications" });
-  await expect(toasts).toContainText(/Kept M-\d{4}/, { timeout: 20_000 });
+  // Its own toast, beside the Keep's from Review (M-0430).
+  const toast = toasts
+    .getByRole("dialog", { name: /^Kept M-\d{4}/ })
+    .filter({ hasNotText: "M-0430" });
+  await expect(toast).toBeVisible({ timeout: 20_000 });
   const remembered = /Kept (M-\d{4})/.exec(
-    (await toasts.textContent()) ?? "",
+    (await toast.textContent()) ?? "",
   )![1]!;
-  await toasts.getByRole("button", { name: "Undo" }).click();
+  await toast.getByRole("button", { name: "Undo" }).click();
   await expect(toasts).toContainText(
     `Undid remembering ${remembered}. It's withdrawn.`,
   );

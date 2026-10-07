@@ -170,6 +170,7 @@ func TestJudgeReturnsAWriteAgentsWrite(t *testing.T) {
 			t.Errorf("verdict none: %v", actions(res.Receipts))
 		}
 	})
+	f.everyRowReceipted(t)
 }
 
 // A return isn't undone: a person settles the conflict, and keeping the
@@ -602,7 +603,13 @@ func TestKeepBothWaitsForTheJudge(t *testing.T) {
 		}
 	})
 
-	// Every write above has its receipt in its space.
+	f.everyRowReceipted(t)
+}
+
+// everyRowReceipted is the receipt sweep: every memory, version, verdict
+// and link the fixture holds has its receipt, in its space.
+func (f *fixture) everyRowReceipted(t *testing.T) {
+	t.Helper()
 	for name, sql := range map[string]string{
 		"memories": `SELECT count(*) FROM v2.memories m LEFT JOIN v2.receipts r ON r.id = m.last_receipt_id AND r.space_id = m.space_id
 		             AND r.object_id = m.id WHERE r.id IS NULL`,

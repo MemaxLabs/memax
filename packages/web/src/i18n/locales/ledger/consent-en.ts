@@ -71,6 +71,10 @@ export const ledgerConsentEn = {
     title: "This request has ended.",
     lede: "It was answered already, someone else opened it, or this is an old link. If your agent is still waiting, start connecting again from it.",
   },
+  handed: {
+    title: "Back to {client}.",
+    lede: "Your browser handed the answer to {client}. You can close this tab.",
+  },
   refused: {
     title: "This request can't be answered from here.",
     lede: "Sign in to the Memax web app as yourself, then start connecting again from your agent.",

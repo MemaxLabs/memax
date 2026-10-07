@@ -15,6 +15,7 @@ import {
   type OAuthRequest,
   type OAuthRequestSpace,
 } from "memax-sdk";
+import { acceptedRedirect } from "@/lib/oauth-redirects";
 import { TARGET_READERS, type TargetKind } from "./targets";
 
 /**
@@ -95,7 +96,9 @@ export type ConsentEnding =
   /** This session can't answer (not one the web app was issued). */
   | "refused"
   /** It didn't load; trying again may work. */
-  | "failed";
+  | "failed"
+  /** Answered, and the browser handed the answer to a native app. */
+  | "handed";
 
 export class ConsentLoadError extends Error {
   constructor(readonly ending: ConsentEnding) {
@@ -268,14 +271,12 @@ export function consentRefusal(err: unknown): ConsentDecisionError {
 }
 
 /**
- * Only an http(s) URL is followed: the server built it from the client's
- * registered redirect_uri, which it accepts only as https or loopback.
+ * Whether to follow the URL the server answered: it built it from the
+ * client's registered redirect_uri, and the page follows it only when it
+ * passes the same rules the server registered it under (https, loopback
+ * http, a native app's private scheme; never javascript:, data: and the
+ * like). A browser hands a native app's scheme to the app.
  */
 export function followable(url: string): boolean {
-  try {
-    const { protocol } = new URL(url);
-    return protocol === "https:" || protocol === "http:";
-  } catch {
-    return false;
-  }
+  return acceptedRedirect(url);
 }

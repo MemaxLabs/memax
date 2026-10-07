@@ -191,15 +191,46 @@ describe("OAuthConsent", () => {
     expect(h.decide).toHaveBeenCalledWith("req_1", { decision: "deny" });
   });
 
-  it("never follows anything but an http(s) URL", async () => {
-    h.open.mockResolvedValue(request());
-    h.decide.mockResolvedValue({ redirect_to: "javascript:alert(1)" });
-    renderScreen();
-    fireEvent.click(await screen.findByRole("button", { name: "Allow Codex" }));
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "That didn't go through. Try again.",
+  it("never follows a dangerous scheme", async () => {
+    for (const to of [
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "myapp://cb",
+    ]) {
+      h.open.mockResolvedValue(request());
+      h.decide.mockResolvedValue({ redirect_to: to });
+      renderScreen();
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Allow Codex" }),
+      );
+      expect((await screen.findByRole("alert")).textContent).toBe(
+        "That didn't go through. Try again.",
+      );
+      expect(assign).not.toHaveBeenCalled();
+      cleanup();
+    }
+  });
+
+  it("hands a native app's answer to the app, and says so", async () => {
+    const to =
+      "cursor://anysphere.cursor-mcp/oauth/callback?code=c1&state=s&iss=x";
+    h.open.mockResolvedValue(
+      request({ client_name: "Cursor", agent_name: "cursor" }),
     );
-    expect(assign).not.toHaveBeenCalled();
+    h.decide.mockResolvedValue({ redirect_to: to });
+    renderScreen();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Allow Cursor" }),
+    );
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(to));
+    expect(
+      await screen.findByRole("heading", { name: "Back to Cursor." }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Your browser handed the answer to Cursor. You can close this tab.",
+      ),
+    ).toBeTruthy();
   });
 
   it("says why an approval came back, and ends when the request did", async () => {

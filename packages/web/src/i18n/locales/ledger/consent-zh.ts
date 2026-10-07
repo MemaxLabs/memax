@@ -70,6 +70,10 @@ export const ledgerConsentZh: Translations["ledger"]["consent"] = {
     title: "这个请求已经结束了。",
     lede: "它已经处理过了、别人先打开了它，或者这是个旧链接。如果你的 Agent 还在等，就从它那边重新发起连接。",
   },
+  handed: {
+    title: "回到 {client}。",
+    lede: "浏览器已经把结果交给了 {client}，这个标签页可以关掉了。",
+  },
   refused: {
     title: "这个请求不能在这里处理。",
     lede: "用你自己的账号登录 Memax 网页版，再从你的 Agent 重新发起连接。",

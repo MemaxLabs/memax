@@ -118,13 +118,17 @@ describe("the consent request", () => {
     expect(consentRefusal(own)).toBe(own);
   });
 
-  it("follows only http(s) URLs", () => {
+  it("follows what the server accepts as a redirect, nothing else", () => {
     expect(followable("https://claude.ai/api/mcp/auth_callback?code=c")).toBe(
       true,
     );
     expect(followable("http://127.0.0.1:1455/callback?code=c")).toBe(true);
+    expect(
+      followable("cursor://anysphere.cursor-mcp/oauth/callback?code=c"),
+    ).toBe(true);
     expect(followable("javascript:alert(1)")).toBe(false);
     expect(followable("data:text/html,x")).toBe(false);
+    expect(followable("http://agent.example/cb?code=c")).toBe(false);
     expect(followable("/relative")).toBe(false);
   });
 });

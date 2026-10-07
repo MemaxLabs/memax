@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Logo } from "@memaxlabs/ledger";
-import { useLocale } from "@/i18n";
+import { interpolate, useLocale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
 import { devRoutesEnabled } from "@/lib/dev-routes";
 import { getMemaxClient } from "@/lib/memax-client";
 import {
   ConsentLoadError,
+  shortName,
   type ConsentEnding,
   type ConsentRequestView,
 } from "@/lib/v2/data/consent";
@@ -73,7 +74,11 @@ export function ConsentScreen() {
     <main className={styles.page}>
       <Logo variant="lockup" size={18} />
       {ending ? (
-        <Ending ending={ending} onRetry={() => void request.refetch()} />
+        <Ending
+          ending={ending}
+          client={request.data?.client.name}
+          onRetry={() => void request.refetch()}
+        />
       ) : request.data ? (
         <ConsentForm
           request={request.data}
@@ -113,20 +118,26 @@ function Loading() {
 
 function Ending({
   ending,
+  client,
   onRetry,
 }: {
   ending: ConsentEnding;
+  /** The agent the request was from, once it loaded. */
+  client?: string;
   onRetry: () => void;
 }) {
   const { t } = useLocale();
   const copy = t.ledger.consent[ending];
+  const name = shortName(client || t.ledger.consent.fallbackClient);
   return (
     <section className={styles.card} aria-labelledby="consent-ending">
       <div className={styles.head}>
         <h1 className={styles.title} id="consent-ending">
-          {copy.title}
+          {interpolate(copy.title, { client: name })}
         </h1>
-        <p className={styles.lede}>{copy.lede}</p>
+        <p className={styles.lede}>
+          {interpolate(copy.lede, { client: name })}
+        </p>
       </div>
       {ending === "failed" ? (
         <div className={styles.endActions}>

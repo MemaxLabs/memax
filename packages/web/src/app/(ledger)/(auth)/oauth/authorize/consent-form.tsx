@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { AgentStamp, Button, Icon, Logo } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
+import { opensInBrowser } from "@/lib/oauth-redirects";
 import { consentFootnote, type ConsentCopy } from "@/lib/v2/consent-copy";
 import {
   ConsentDecisionError,
@@ -76,6 +77,9 @@ export function ConsentForm({
       .then((to) => {
         if (!followable(to)) throw new ConsentDecisionError("failed");
         window.location.assign(to);
+        // A native app's scheme (cursor://) leaves this page where it is:
+        // say the answer went to the app.
+        if (!opensInBrowser(to)) onEnded("handed");
       })
       .catch(failed);
   };

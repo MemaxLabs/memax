@@ -1333,9 +1333,15 @@ export interface components {
          *     rejected, edited, superseded or faded; Undo writes undid. A decision
          *     gate's (`gate`) are asked (by the agent), answered (by a person; the
          *     kept decision it became has its own `kept` receipt) and withdrawn.
+         *     Forget writes forgot on each forgotten memory (and on a gate whose
+         *     decision it was, and on a space forgotten whole), resolved on a
+         *     memory whose only conflict was with it, and purged on a target or a
+         *     Brief whose drift evidence or older versions lost its words; an
+         *     agent's memax_forget writes forget_requested, and a person keeping
+         *     the memory instead writes forget_declined.
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "purged" | "forget_requested" | "forget_declined";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space";
         /**

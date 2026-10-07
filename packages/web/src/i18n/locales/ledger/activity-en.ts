@@ -194,6 +194,9 @@ export const ledgerActivityEn = {
     judged: "{actor} checked {ref} for duplicates and conflicts.",
     linked: "{actor} linked {ref} to the memory it updates.",
     superseded: "{actor} superseded {ref} with a newer decision.",
+    purged: "{actor} took a forgotten memory's words out of {ref}.",
+    forgetRequested: "{actor} asked you to forget {ref}.",
+    forgetDeclined: "{actor} kept {ref} instead of forgetting it.",
     other: "{actor} changed {ref}.",
   },
 } as const;

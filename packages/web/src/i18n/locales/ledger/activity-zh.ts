@@ -184,6 +184,9 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     judged: "{actor}检查了 {ref} 是否重复或冲突。",
     linked: "{actor}把 {ref} 关联到它更新的记忆。",
     superseded: "{actor}用新的决定取代了 {ref}。",
+    purged: "{actor}从 {ref} 里移除了一条已忘记记忆的文字。",
+    forgetRequested: "{actor}请你忘记 {ref}。",
+    forgetDeclined: "{actor}保留了 {ref}，没有忘记。",
     other: "{actor}改动了 {ref}。",
   },
 };

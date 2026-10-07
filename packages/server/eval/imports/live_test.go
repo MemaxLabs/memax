@@ -43,10 +43,13 @@ import (
 // judge.Classifier.FindImportDisagreements over judge.AnthropicModel over
 // anthropic.Client.
 
-// The bars of plan 25 §11 and of this eval (RESULTS.md says why).
+// The bars of plan 25 §11 and of this eval, on batches.json (RESULTS.md
+// says why): every planted conflict found, and precision 0.95, about two
+// wrong groups in a run's 55. The prompt of Oct 7 scored 0.98 four times;
+// the one before it 0.92 and 0.96.
 const (
-	minRecall    = 1.0 // every planted conflict found
-	minPrecision = 0.85
+	minRecall    = 1.0
+	minPrecision = 0.95
 )
 
 // timedModel records each model call's tier, size and latency, and

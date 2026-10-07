@@ -11,9 +11,9 @@
 // file's kind, which sets their section, kind and trust. The harness
 // builds the import's proposals as the ledger does (ledger.FoldImportItems
 // folds repeats into one proposal citing each file) and hands them to the
-// check as ledger.ImportCheckSnapshot would (judge.ImportCandidate), then
-// scores the model's groups against the labels at every bar. Results and
-// the labelling rules are in RESULTS.md.
+// check as ledger.ImportCheckSnapshot would (ledger.ImportCandidate, its
+// headings included), then scores the model's groups against the labels
+// at every bar. Results and the labelling rules are in RESULTS.md.
 package importseval
 
 import (
@@ -72,8 +72,8 @@ type file struct {
 type statement struct {
 	Line int `json:"line"`
 	// Under is the headings above it, outermost first, joined with " › "
-	// as init's locator joins them. It sets the section (sectionFor); the
-	// check doesn't see it.
+	// as init's locator joins them. It sets the section (sectionFor), and
+	// the check reads it from the locator (ImportCandidate.Under).
 	Under string `json:"under,omitempty"`
 	Text  string `json:"text"`
 }
@@ -246,6 +246,7 @@ func build(b batch) (*built, error) {
 	var items []ledger.ImportItem
 	var trusts []policy.Trust
 	var globs [][]string
+	var unders []string
 	for fi, f := range b.Files {
 		fk, ok := fileKinds[f.Kind]
 		if !ok {
@@ -267,6 +268,7 @@ func build(b batch) (*built, error) {
 					Sources: []ledger.SourceInput{{Kind: ledger.SourceFile, Ref: ref, Trust: fk.trust}}}})
 			trusts = append(trusts, fk.trust)
 			globs = append(globs, f.Globs)
+			unders = append(unders, st.Under)
 		}
 	}
 	bt := &built{batch: b, byID: map[uuid.UUID]int{}, byRef: map[string]int{}}
@@ -278,6 +280,10 @@ func build(b batch) (*built, error) {
 		for _, i := range g {
 			p.refs = append(p.refs, items[i].Ref)
 			p.cand.Sources = append(p.cand.Sources, items[i].Ref)
+			// As the snapshot reads it: the first source's locator heading.
+			if p.cand.Under == "" {
+				p.cand.Under = unders[i]
+			}
 			p.trust = policy.MinTrust(p.trust, trusts[i])
 			bt.byRef[items[i].Ref] = gi
 		}
@@ -450,9 +456,9 @@ func TestBatchesAreWellFormed(t *testing.T) {
 	t.Parallel()
 	n := checkSet(t, mainSet)
 	t.Log(n)
-	if n.largest <= judge.ImportBatch {
-		t.Errorf("the largest batch has %d proposals; one needs more than %d (judge.ImportBatch) to exercise the chunking",
-			n.largest, judge.ImportBatch)
+	if n.largest <= oldCut {
+		t.Errorf("the largest batch has %d proposals; one needs more than %d, the cut the check once made, to show "+
+			"what a cut loses and what one call over a long import finds", n.largest, oldCut)
 	}
 	if n.conflicts < 40 || n.threeWay < 3 || n.trapCount < 40 {
 		t.Errorf("%d conflicts (%d of three), %d traps: want at least 40, 3 and 40", n.conflicts, n.threeWay, n.trapCount)
@@ -990,13 +996,17 @@ func TestHarnessOnAFakeModel(t *testing.T) {
 // one call.
 func TestCuttingAnImportLosesConflicts(t *testing.T) {
 	t.Parallel()
-	runs := checkAll(t, buildSet(t, mainSet), func(b *built) judge.Model { return oracle{b} }, fakeTiers(), 120)
+	runs := checkAll(t, buildSet(t, mainSet), func(b *built) judge.Model { return oracle{b} }, fakeTiers(), oldCut)
 	tl, _ := at(runs, judge.ImportConflictBar)
-	t.Logf("cut at 120: %s\n%s", tl, details(runs, judge.ImportConflictBar))
+	t.Logf("cut at %d: %s\n%s", oldCut, tl, details(runs, judge.ImportConflictBar))
 	if tl.found == tl.planted {
-		t.Errorf("cut at 120, the labels still find every conflict: the large batches no longer test the cut")
+		t.Errorf("cut at %d, the labels still find every conflict: the large batches no longer test the cut", oldCut)
 	}
 }
+
+// oldCut is the batch size the check used before the eval (judge.ImportBatch
+// was 120).
+const oldCut = 120
 
 // The scorer, on groups planted by hand.
 func TestScore(t *testing.T) {

@@ -916,7 +916,7 @@
             { "line": 4, "under": "Notes for this repo", "text": "The local database runs on port 5433, because 5432 is taken by another project." },
             { "line": 5, "under": "Notes for this repo", "text": "This repo's services are Kotlin; stick to Kotlin here." },
             { "line": 6, "under": "Notes for this repo", "text": "Use the `staging` AWS profile for anything that touches cloud resources." },
-            { "line": 7, "under": "Notes for this repo", "text": "Explain the plan before writing any code." }
+            { "line": 7, "under": "Notes for this repo", "text": "Explain the plan and wait for my go-ahead before writing any code." }
           ]
         },
         {
@@ -933,7 +933,7 @@
             { "line": 10, "under": "How I work", "text": "Ask before running any command that takes more than 5 minutes." },
             { "line": 11, "under": "How I work", "text": "Never force-push a shared branch." },
             { "line": 12, "under": "How I work", "text": "When unsure, ask one question rather than guessing." },
-            { "line": 13, "under": "How I work", "text": "Show the code first and explain it after." }
+            { "line": 13, "under": "How I work", "text": "Don't wait for a go-ahead: make the change, then explain it." }
           ]
         },
         {
@@ -993,7 +993,7 @@
         { "id": "zz-wrap", "subject": "style", "members": ["~/.claude/CLAUDE.md:6", "~/.codex/AGENTS.md:5"], "note": "Don't wrap against wrap at 80." },
         { "id": "zz-e2e", "subject": "test", "members": ["CLAUDE.local.md:3", "~/.claude/projects/…/memory/MEMORY.md:4"], "note": "The person's file for this repository against Claude's memory of it." },
         { "id": "zz-leave", "subject": "schedule", "hinge": "date", "members": ["~/.claude/projects/…/memory/MEMORY.md:5", "~/.codex/memories/notes.md:1"], "note": "Two agents remember different dates." },
-        { "id": "zz-code-first", "subject": "preference", "members": ["CLAUDE.local.md:7", "~/.claude/CLAUDE.md:13"], "note": "Plan first against code first; neither names a scope." }
+        { "id": "zz-code-first", "subject": "preference", "members": ["CLAUDE.local.md:7", "~/.claude/CLAUDE.md:13"], "note": "Wait for a go-ahead against don't wait; neither names a scope. Rewritten after the first live runs: its first words (plan first, code first) could both be followed." }
       ],
       "traps": [
         { "id": "zz-kotlin", "trap": "scope", "members": ["CLAUDE.local.md:5", "~/.claude/CLAUDE.md:7"], "note": "This repository is the stated exception." },

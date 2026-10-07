@@ -16,6 +16,7 @@ import { useHotkey, useKeycap } from "@/lib/v2/keymap/react";
 import { setupHref, signInHref } from "@/lib/v2/onboarding/routes";
 import { webSessionOf } from "@/lib/v2/web-session";
 import { useSource, useViewer } from "../(app)/_lib/data";
+import { trackFunnelStep } from "@/lib/v2/funnel";
 import { OnboardingPage } from "./frame";
 import { useAppHost } from "./setup-bits";
 import styles from "./cli-auth.module.css";
@@ -166,9 +167,12 @@ function Confirm({
       keys.current.settle(intent);
       return result;
     },
-    onSuccess: (result) => {
+    onSuccess: (result, to) => {
       setFailure(null);
       queryClient.setQueryData(key, result);
+      if (to === "approve" && source.kind !== "demo") {
+        trackFunnelStep("device_approved");
+      }
     },
     onError: (err) =>
       setFailure(

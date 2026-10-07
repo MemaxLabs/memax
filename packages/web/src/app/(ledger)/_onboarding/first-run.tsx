@@ -20,6 +20,7 @@ import { AGENT_START, firstRunLines, type TranscriptAgent } from "./transcript";
 import { useViewer } from "../(app)/_lib/data";
 import { useLedger } from "@memaxlabs/ledger";
 import { OnboardingPage } from "./frame";
+import { useFunnelStep } from "./funnel";
 import { useAgentsOf, useSetupImport, useSetupSpace } from "./queries";
 import {
   CommandBox,
@@ -77,6 +78,10 @@ export function FirstRunScreen() {
   const { agents, chatgptPending } = useTranscriptAgents(space, view);
   const nextKey = useKeycap("setup.next");
   const host = useAppHost();
+  useFunnelStep("first_run_reached", true);
+  useFunnelStep("first_import_seen", view !== null, {
+    files: view?.summary.files.filter((f) => f.statements > 0).length ?? 0,
+  });
 
   const ready = Boolean(view?.progress.ready);
   const conflicts = view ? openConflicts(view).length : 0;

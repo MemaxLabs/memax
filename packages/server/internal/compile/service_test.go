@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/jackc/pgx/v5"
 	"io"
 	"slices"
 	"strings"
@@ -16,6 +17,41 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
+
+// A run the ledger doesn't record leaves no artifact: nothing would ever
+// reach it, since Forget re-renders only the artifacts a run records. Here
+// the target stays locked (as by a Forget purging the space) until the
+// recording gives up with ErrBusy.
+func TestRunLeavesNoArtifactWhenItsRunIsntRecorded(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, fixtureOpts{})
+	s := f.seed()
+	tg := s.targets[ledger.TargetAgentsMD]
+	ctx := context.Background()
+	var locker pgx.Tx
+	f.fake.OnCompile = func(*compile.Input) {
+		var err error
+		if locker, err = f.pool.Begin(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := locker.Exec(ctx, `SELECT 1 FROM v2.targets WHERE id = $1 FOR UPDATE`, tg.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := f.svc.Run(ctx, ledger.CompileTargetArgs{TargetID: tg.ID, SpaceID: s.space}, compile.RunOptions{NoWait: true})
+	if locker != nil {
+		_ = locker.Rollback(ctx)
+	}
+	if !errors.Is(err, ledger.ErrBusy) {
+		t.Fatalf("Run = %v, want ErrBusy (the target stayed locked)", err)
+	}
+	if n := len(f.runs(tg)); n != 0 {
+		t.Errorf("%d runs recorded", n)
+	}
+	if keys := f.store.Keys(); len(keys) != 0 {
+		t.Errorf("the unrecorded run's artifact is still stored: %v", keys)
+	}
+}
 
 // seed writes a small space: a decision, a convention, an open question,
 // a proposal, a kept external memory, a Brief and the four default

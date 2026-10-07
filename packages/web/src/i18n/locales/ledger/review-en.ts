@@ -222,6 +222,14 @@ export const ledgerReviewEn = {
       "Stopped checking. Your narrower words stay as you wrote them: keep the decision again to check them.",
     inConflictBoth:
       "The narrower words contradict {with}, a decision in force. Change them, or choose another answer.",
+    // The other answers keep a proposal's words as they stand: words the
+    // judge hasn't seen yet wait for it the same way.
+    checkingWords:
+      "Checking these words against the other decisions in force. It's settled once the check is done.",
+    stoppedCheckingWords:
+      "Stopped checking. Nothing is settled yet: keep the decision again to check it.",
+    inConflictWords:
+      "{ref} contradicts {with}, a decision in force too. Settle that first, or choose another answer.",
     nothing: {
       title: "There's nothing to compare for {ref}.",
       detail:

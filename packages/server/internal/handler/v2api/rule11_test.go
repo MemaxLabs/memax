@@ -209,6 +209,34 @@ func TestKeepBothWaitsForTheJudgeOverV2(t *testing.T) {
 			}
 		}
 	})
+	// "Keep this" and "leave open" keep the saved words as they stand: they
+	// wait for the same settling verdict, then apply or answer in_conflict.
+	for _, choice := range []string{"keep_this", "leave_open"} {
+		t.Run(choice+" waits for the judge on the saved words", func(t *testing.T) {
+			railway, fly, previews := conflict(choice)
+			held(resolve(fly, 1, map[string]any{"other": railway.Ref, "statement": narrowFly}), "edited")
+			settle := func() *resp {
+				return e.do(call{method: "POST", path: memoryPath(fly, ":resolve-conflict"), token: owner,
+					header: map[string]string{"If-Match": `"2"`}, body: map[string]any{"choice": choice, "other": railway.Ref}})
+			}
+			waits(settle(), fly.Ref)
+			e.judgeAll(flagging)
+			if got := settle().fails(409, "in_conflict"); got.Details.Ref != previews.Ref {
+				t.Errorf("in_conflict names %q, want %s", got.Details.Ref, previews.Ref)
+			}
+		})
+	}
+	t.Run("keep_this applies once the judge cleared the saved words", func(t *testing.T) {
+		railway, fly, _ := conflict("keep-this-clear")
+		held(resolve(fly, 1, map[string]any{"other": railway.Ref, "statement": narrowFly}), "edited")
+		e.judgeAll(clearing)
+		var done changes
+		e.do(call{method: "POST", path: memoryPath(fly, ":resolve-conflict"), token: owner,
+			header: map[string]string{"If-Match": `"2"`}, body: map[string]any{"choice": "keep_this", "other": railway.Ref}}).ok(200, &done)
+		if done.Outcome != "applied" || done.Memory.Lifecycle != "kept" || done.Memory.Statement != narrowFly {
+			t.Errorf("applied = %+v", done)
+		}
+	})
 	t.Run("words that touch no other decision apply at once", func(t *testing.T) {
 		railway, fly, _ := conflict("c")
 		var done changes

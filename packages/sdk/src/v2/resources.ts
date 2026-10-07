@@ -96,6 +96,7 @@ import type {
   ReviewInput,
   ReviewPage,
   ReviseBriefInput,
+  RestoreBriefResult,
   Section,
   Session,
   SessionList,
@@ -997,6 +998,28 @@ export class V2BriefsResource {
       extraHeaders: commandHeaders(opts, opts.ifMatch),
       signal: opts.signal,
     });
+  }
+
+  /**
+   * Write an older version back as a new one. What can't stand any more
+   * (a memory no longer kept, prose resting on a forgotten one) is left
+   * out, and `dropped` says which. `ifMatch` (the version in force) is
+   * required.
+   */
+  async restore(
+    space: string,
+    version: number,
+    opts: VersionedCommandOptions & { reason?: string },
+  ): Promise<RestoreBriefResult> {
+    return this.req(
+      "POST",
+      `/v2/spaces/${seg(space)}/brief/versions/${version}:restore`,
+      {
+        body: opts.reason ? { reason: opts.reason } : {},
+        extraHeaders: commandHeaders(opts, opts.ifMatch),
+        signal: opts.signal,
+      },
+    );
   }
 
   /** Every version of the Brief, newest first, with who wrote it and why. */

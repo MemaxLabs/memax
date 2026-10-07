@@ -227,6 +227,79 @@ func TestBriefEndpoints(t *testing.T) {
 	e.do(call{method: "GET", path: briefPath(sp), token: e.session(other)}).fails(http.StatusNotFound, "not_found")
 }
 
+func TestRestoreBriefVersion(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	zz, vi := e.user("zz"), e.user("vi")
+	sp := e.space(zz, policy.SpaceProject, "memax-v2")
+	e.join(sp, vi, "viewer")
+	tok := e.session(zz)
+	river := e.remember(tok, sp, "Background jobs run on River.").Memory
+	docs := e.remember(tok, sp, "The docs site builds with Fumadocs.").Memory
+	e.do(call{method: "POST", path: briefPath(sp), token: tok, body: briefBody("Memax V2 engineering brief",
+		map[string]any{"key": "decisions", "heading": "Decisions", "items": []map[string]any{{"ref": river.Ref}, {"ref": docs.Ref}}},
+		map[string]any{"key": "open", "heading": "Open", "items": []map[string]any{
+			{"text": "The docs follow the code.", "cites": []string{docs.Ref, river.Ref}}}})}).ok(http.StatusCreated, nil)
+	e.do(call{method: "POST", path: briefPath(sp), token: tok, header: map[string]string{"If-Match": `"1"`},
+		body: briefBody("Short", map[string]any{"key": "decisions", "heading": "Decisions", "items": []map[string]any{{"ref": river.Ref}}})}).
+		ok(http.StatusCreated, nil)
+	// The docs fact is forgotten since version 1.
+	e.do(call{method: "POST", path: "/v2/memories/" + docs.Ref + ":forget?space=" + sp.id.String(), token: tok,
+		header: map[string]string{"If-Match": `"1"`}}).ok(http.StatusOK, nil)
+
+	path := briefPath(sp) + "/versions/1:restore"
+	e.do(call{method: "POST", path: path, token: tok}).fails(http.StatusPreconditionRequired, "precondition_required")
+	key := uuid.NewString()
+	var res struct {
+		briefResult
+		Dropped []struct {
+			Section string   `json:"section"`
+			Item    string   `json:"item"`
+			Kind    string   `json:"kind"`
+			Refs    []string `json:"refs"`
+			Reason  string   `json:"reason"`
+		} `json:"dropped"`
+	}
+	r := e.do(call{method: "POST", path: path, token: tok, header: map[string]string{"If-Match": `"2"`, "Idempotency-Key": key},
+		body: map[string]any{"reason": "Restored from the history"}})
+	r.ok(http.StatusCreated, &res)
+	b := res.Brief
+	if b.Version != 3 || !b.Current || b.Title != "Memax V2 engineering brief" || r.header.Get("ETag") != `"3"` ||
+		len(b.Sections) != 2 || len(b.Sections[0].Items) != 1 || b.Sections[0].Items[0].Ref != river.Ref || len(b.Sections[1].Items) != 0 {
+		t.Errorf("restored = %+v, ETag %q", b, r.header.Get("ETag"))
+	}
+	if len(res.Dropped) != 2 || res.Dropped[0].Item != docs.Ref || res.Dropped[0].Kind != "memory" || res.Dropped[0].Reason != "forgotten" ||
+		res.Dropped[1].Item != "P:open:0" || res.Dropped[1].Kind != "prose" || res.Dropped[1].Reason != "forgotten" ||
+		len(res.Dropped[1].Refs) != 1 || res.Dropped[1].Refs[0] != docs.Ref {
+		t.Errorf("dropped = %+v", res.Dropped)
+	}
+	if rc := res.Receipts[0]; rc.Action != "revised" || rc.Source == nil || rc.Source.Kind != "brief" || rc.Source.Ref != "B-0001" ||
+		rc.Reason != "Restored from the history" {
+		t.Errorf("receipt = %+v", rc)
+	}
+	replay := e.do(call{method: "POST", path: path, token: tok, header: map[string]string{"If-Match": `"2"`, "Idempotency-Key": key},
+		body: map[string]any{"reason": "Restored from the history"}})
+	replay.ok(http.StatusCreated, nil)
+	if replay.header.Get("Idempotent-Replayed") != "true" {
+		t.Error("a replayed restore isn't marked")
+	}
+	e.do(call{method: "POST", path: path, token: tok, header: map[string]string{"If-Match": `"2"`}}).fails(http.StatusPreconditionFailed, "edit_clash")
+	if f := e.do(call{method: "POST", path: briefPath(sp) + "/versions/3:restore", token: tok,
+		header: map[string]string{"If-Match": `"3"`}}).fails(http.StatusBadRequest, "invalid_request"); f.Details.Field != "version" {
+		t.Errorf("the version in force: %+v", f)
+	}
+	if f := e.do(call{method: "POST", path: briefPath(sp) + "/versions/9:restore", token: tok,
+		header: map[string]string{"If-Match": `"3"`}}).fails(http.StatusBadRequest, "invalid_request"); f.Details.Field != "version" {
+		t.Errorf("a version that doesn't exist: %+v", f)
+	}
+	if f := e.do(call{method: "POST", path: path, token: e.session(vi), header: map[string]string{"If-Match": `"3"`}}).
+		fails(http.StatusForbidden, "refused"); f.Details.Policy.Code != "viewer" {
+		t.Errorf("viewer: %+v", f.Details.Policy)
+	}
+	e.do(call{method: "POST", path: path, token: e.session(e.user("other")), header: map[string]string{"If-Match": `"3"`}}).
+		fails(http.StatusNotFound, "not_found")
+}
+
 func TestTargetEndpoints(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)

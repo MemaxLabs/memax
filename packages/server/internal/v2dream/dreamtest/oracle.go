@@ -187,13 +187,21 @@ func (o *Oracle) classify(prompt string) string {
 		ExplicitChange  bool    `json:"explicit_change"`
 		Rationale       string  `json:"rationale"`
 		MergedStatement string  `json:"merged_statement"`
+		Question        string  `json:"question"`
+		Labels          struct {
+			Proposal string `json:"proposal"`
+			Decision string `json:"decision"`
+			Both     string `json:"both"`
+			Open     string `json:"open"`
+		} `json:"labels"`
+		Suggested string `json:"suggested"`
 	}
 	out := struct {
 		Pairs      []pair `json:"pairs"`
 		Conditions []any  `json:"conditions"`
 	}{Pairs: []pair{}, Conditions: []any{}}
 	for _, c := range candidateRe.FindAllStringSubmatch(prompt, -1) {
-		v := pair{Candidate: c[1], Relation: "unrelated", Confidence: 0.9, Rationale: "Compared with " + c[1] + "."}
+		v := pair{Candidate: c[1], Relation: "unrelated", Confidence: 0.9, Rationale: "Compared with " + c[1] + ".", Suggested: "none"}
 		for _, r := range o.Pairs {
 			if (contains(p, r.A) && contains(c[2], r.B)) || (contains(p, r.B) && contains(c[2], r.A)) {
 				v.Relation, v.Confidence, v.ExplicitChange = r.Relation, conf(r.Confidence), r.Explicit

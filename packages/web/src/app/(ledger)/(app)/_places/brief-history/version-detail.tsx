@@ -6,10 +6,10 @@ import { interpolate } from "@/i18n";
 import { commandReason } from "@/lib/v2/brief-copy";
 import { count, formatReceiptTime } from "@/lib/v2/copy";
 import { toFailure } from "@/lib/v2/data/command-error";
-import type {
-  BriefMemory,
-  BriefStructure,
-  BriefVersionView,
+import {
+  droppedLines,
+  type BriefMemory,
+  type BriefVersionView,
 } from "@/lib/v2/data/brief";
 import { IntentKeys, intentOf } from "@/lib/v2/intent-keys";
 import { StatementText } from "../../_components/statement-text";
@@ -23,25 +23,6 @@ import {
   type HistoryChange,
 } from "./history-diff";
 import styles from "./brief-history.module.css";
-
-/** A version as it can be restored now: what's no longer kept can't be placed. */
-export function restorable(
-  structure: BriefStructure,
-  memories: Readonly<Record<string, BriefMemory>>,
-): BriefStructure {
-  const kept = (ref: string) => memories[ref]?.kept === true;
-  return {
-    ...structure,
-    sections: structure.sections
-      .map((section) => ({
-        ...section,
-        items: section.items.filter((item) =>
-          "ref" in item ? kept(item.ref) : item.cites.some(kept),
-        ),
-      }))
-      .filter((section) => section.items.length > 0),
-  };
-}
 
 /** One version's changes (BriefHistory.png's right panel), against the one before it or against now. */
 export function VersionDetail({
@@ -81,25 +62,31 @@ export function VersionDetail({
   const restore = async () => {
     if (pending) return;
     setPending(true);
-    const structure = restorable(version.structure, memories);
     const intent = intentOf("brief.restore", version.ref, current.version);
     try {
-      const result = await source.brief.revise({
+      // The server restores it: what isn't kept any more is left out, and
+      // it says which.
+      const result = await source.brief.restore({
         space,
         base: current.version,
-        structure,
+        version: version.version,
         reason: interpolate(h.restoreReason, { ref: version.ref }),
         idempotencyKey: keys.keyFor(intent),
       });
       keys.settle(intent);
       afterCompile();
       setConfirming(false);
+      const left = droppedLines(result.dropped);
+      const t = l.brief.toast;
       toast({
         state: "kept",
-        text: interpolate(l.brief.toast.restored, {
-          from: version.ref,
-          ref: result.ref,
-        }),
+        text:
+          left === 0
+            ? interpolate(t.restored, { from: version.ref, ref: result.ref })
+            : count(t.restoredWithoutOne, t.restoredWithout, left, {
+                from: version.ref,
+                ref: result.ref,
+              }),
       });
     } catch (err) {
       toast({

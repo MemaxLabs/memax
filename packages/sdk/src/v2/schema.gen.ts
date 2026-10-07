@@ -946,8 +946,10 @@ export interface paths {
          *     flagged memory and the decision in force it contradicts), each with
          *     its sources, links and the judge's verdict; their latest receipts;
          *     and the four answers with what each does and whether you may take
-         *     it. Pass `with` when the memory has more than one conflict. A memory
-         *     with no conflict is 409 `invalid_transition`.
+         *     it. When the judge found the conflict, it also wrote a short
+         *     `question`, a `label` per answer and, when the sources settle it, a
+         *     `suggested` answer. Pass `with` when the memory has more than one
+         *     conflict. A memory with no conflict is 409 `invalid_transition`.
          */
         get: operations["getConflict"];
         put?: never;
@@ -1003,8 +1005,13 @@ export interface paths {
          *     never blocks it), then applies, or answers 409 `in_conflict` when
          *     the judge found the words contradict a decision in force
          *     (`details.ref`). Words that touch no other decision apply at once.
-         *     Keeping a side that is flagged against another decision too is 409
-         *     `in_conflict` naming it: settle that first.
+         *     `keep_this`, `keep_other` and `leave_open` keep a proposal's words as
+         *     they stand, and wait the same way: words the judge hasn't seen yet
+         *     (an edit, or narrower words a `keep_both` saved) that touch another
+         *     decision in force answer 503 `judge_pending` until it has, then
+         *     apply or answer 409 `in_conflict`. Keeping a side that is flagged
+         *     against another decision too is 409 `in_conflict` naming it: settle
+         *     that first.
          */
         post: operations["resolveConflict"];
         delete?: never;
@@ -1214,8 +1221,10 @@ export interface paths {
          * Undo a decision
          * @description Undoes the command that wrote this receipt (any of its receipts):
          *     Review's ⌘Z. A person undoes their own keep, reject, edit or
-         *     conflict resolution within 10 minutes; any person who may keep
-         *     undoes one of the judge's folds within 14 days. Each memory gets an
+         *     conflict resolution within 10 minutes, and their own Remember
+         *     (undoing it withdraws the memory: it ends rejected, and leaves the
+         *     compiled files); any person who may keep undoes one of the judge's
+         *     folds within 14 days. Each memory gets an
          *     `undid` receipt whose `source` names the receipt undone
          *     (`{"kind": "receipt", "ref": <id>}`), and targets recompile when the
          *     kept set changes. Refused with 409 `undo_refused` when the window
@@ -1465,12 +1474,50 @@ export interface paths {
         /**
          * List the Brief's versions
          * @description Every version of the space's Brief, newest first, each with the
-         *     receipt of whoever wrote it and why (BriefHistory). Restore one by
-         *     revising the Brief with its sections.
+         *     receipt of whoever wrote it and why (BriefHistory). Restore one with
+         *     `:restore`.
          */
         get: operations["listBriefVersions"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/brief/versions/{n}:restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description The Brief version's number (its `version`, from 1). */
+                n: components["parameters"]["BriefVersionNumber"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore an older version of the Brief
+         * @description Writes version `n` back as a new version (`B-`) of the Brief, with a
+         *     `revised` receipt whose `source` is the version restored
+         *     (`{kind: brief, ref: B-0040}`). The record has moved on since, so
+         *     it keeps only what can still stand, and `dropped` says what it left
+         *     out: a memory line whose memory isn't kept any more, a line of prose
+         *     whose words were forgotten, that cites a forgotten memory or that no
+         *     longer cites a kept one, and (kind `cite`) a citation of a rejected
+         *     memory taken off a line that stays. A line of prose that cites
+         *     nothing is refused (400), as Dream's own changes are. Send `If-Match`
+         *     with the version in force you started from; it is required. The
+         *     version in force can't be restored. Whoever may revise the Brief may
+         *     restore it, and every target of the space recompiles. A retry with
+         *     the same `Idempotency-Key` returns the same version, and works
+         *     `dropped` out again from version `n`.
+         */
+        post: operations["restoreBriefVersion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3280,6 +3327,11 @@ export interface components {
             allowed: boolean;
             /** @description Why you may not, when policy says so. */
             policy?: components["schemas"]["PolicyDecision"];
+            /**
+             * @description The judge's short label for this answer ("Fly.io everywhere"),
+             *     when it wrote one. One line, in the language of the memories.
+             */
+            label?: string;
         };
         /** @description Both sides of a conflict, for ReviewConflict. */
         Conflict: {
@@ -3295,6 +3347,19 @@ export interface components {
             /** @description Both sides' latest receipts, newest first. */
             receipts: components["schemas"]["Receipt"][];
             options: components["schemas"]["ConflictOption"][];
+            /**
+             * @description The judge's short question for settling it ("Fly.io or Railway
+             *     for the v2 API?"), when it wrote one (the verdict that flagged
+             *     it). One line, in the language of the memories. Forgetting
+             *     either side takes it out.
+             */
+            question?: string;
+            /**
+             * @description The answer the judge suggests, relative to this memory, when the
+             *     flagged memory's sources settle it. A suggestion: a person
+             *     decides.
+             */
+            suggested?: components["schemas"]["ConflictChoice"];
         };
         MemoryDetail: {
             memory: components["schemas"]["Memory"];
@@ -3665,6 +3730,43 @@ export interface components {
             policy: components["schemas"]["PolicyDecision"];
             brief: components["schemas"]["Brief"];
             receipts: components["schemas"]["Receipt"][];
+        };
+        /**
+         * @description Something a restore left out of the version it restored, and why.
+         *     Names memories by display ID, never by their words.
+         */
+        BriefDrop: {
+            /** @description The key of the section it was in. */
+            section: components["schemas"]["SectionKey"];
+            /** @description The line in the restored version, a memory's ref or `P:<section>:<index>` for prose. */
+            item: string;
+            /**
+             * @description A memory line, a line of prose, or a citation taken off a line of prose that stays.
+             * @enum {string}
+             */
+            kind: "memory" | "prose" | "cite";
+            /**
+             * @description The memories that made it go: the memory line's own, the
+             *     forgotten ones a line of prose cited (or, when none was
+             *     forgotten, every memory it cited), or the memory a citation
+             *     named.
+             */
+            refs: components["schemas"]["DisplayRef"][];
+            /**
+             * @description `forgotten` (the memory, or the line's words, were forgotten) or
+             *     `not_kept` (it isn't kept any more: faded, folded, rejected).
+             * @enum {string}
+             */
+            reason: "forgotten" | "not_kept";
+        };
+        RestoreBriefResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            /** @description The new version. */
+            brief: components["schemas"]["Brief"];
+            receipts: components["schemas"]["Receipt"][];
+            /** @description What the restore left out, in the order of the version it restored. */
+            dropped: components["schemas"]["BriefDrop"][];
         };
         BriefVersionPage: {
             items: components["schemas"]["Brief"][];
@@ -5710,6 +5812,9 @@ export interface components {
         BriefResultEnvelope: {
             data: components["schemas"]["BriefResult"];
         };
+        RestoreBriefResultEnvelope: {
+            data: components["schemas"]["RestoreBriefResult"];
+        };
         BriefVersionPageEnvelope: {
             data: components["schemas"]["BriefVersionPage"];
         };
@@ -6370,6 +6475,8 @@ export interface components {
         ImportPath: components["schemas"]["Id"];
         /** @description The disagreement's number within the import (its `n`, from 1). */
         ConflictNumber: string;
+        /** @description The Brief version's number (its `version`, from 1). */
+        BriefVersionNumber: string;
         /** @description A gate's display ID (G-0012, with `?space=`) or its id. */
         GateRefPath: components["schemas"]["GateRef"];
         /**
@@ -8473,6 +8580,66 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    restoreBriefVersion: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The `ETag` (the Brief's or the target's version) you started from,
+                 *     e.g. `"3"`. Revising a Brief requires it once the space has one.
+                 */
+                "If-Match"?: components["parameters"]["IfMatchVersion"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description The Brief version's number (its `version`, from 1). */
+                n: components["parameters"]["BriefVersionNumber"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description The new version, and what the restore left out. */
+            201: {
+                headers: {
+                    ETag: components["headers"]["VersionETag"];
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreBriefResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["EditClash"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

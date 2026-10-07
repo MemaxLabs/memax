@@ -19,6 +19,7 @@ import {
 } from "@/lib/v2/data/demo-dataset";
 import { createDemoSource } from "@/lib/v2/data/demo-source";
 import { DEMO_FOLD } from "@/lib/v2/data/demo-review-data";
+import type { LineageFlag } from "@/lib/v2/data/memories";
 import type { LedgerDataSource } from "@/lib/v2/data/source";
 import type { SpaceSummary } from "@/lib/v2/data/types";
 import { KeymapProvider } from "@/lib/v2/keymap/react";
@@ -262,6 +263,48 @@ describe("a memory's reads and reach", () => {
       "It's in a compiled file agents load without telling Memax, so it may be read more than this.",
     );
     expect(screen.getByText("3 agents")).toBeTruthy();
+  });
+});
+
+describe("flags in a memory's lineage", () => {
+  it("words a conflict flag as a conflict and a stale one as stale", async () => {
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    const flag = (key: string, by: "memax" | "dream", flag: LineageFlag) => ({
+      key,
+      action: "flagged" as const,
+      by: { kind: by },
+      at: "2026-10-05T03:12:00Z",
+      detail: null,
+      count: null,
+      to: null,
+      flag,
+    });
+    const source: LedgerDataSource = {
+      ...demo,
+      memories: {
+        ...demo.memories,
+        // No first render from the demo's record: the page reads this one.
+        peekRecord: undefined,
+        get: async (input) => {
+          const base = await demo.memories.get(input);
+          return (
+            base && {
+              ...base,
+              lineage: [
+                flag("c", "memax", { kind: "conflict", with: "M-0174" }),
+                flag("s", "dream", { kind: "stale" }),
+              ],
+            }
+          );
+        },
+      },
+    };
+    renderMemory("M-0098", source);
+    expect(
+      await screen.findByText("Flagged by Memax as contradicting M-0174"),
+    ).toBeTruthy();
+    expect(screen.getByText("Flagged stale by Dream")).toBeTruthy();
+    expect(screen.queryByText("Flagged stale by Memax")).toBeNull();
   });
 });
 

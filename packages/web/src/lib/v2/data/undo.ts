@@ -8,7 +8,8 @@
  *
  * What can be undone, and for how long (server internal/ledger/undo.go):
  * a person's own Keep, Reject, Edit (with or without Keep) and conflict
- * resolution for 10 minutes; one of the judge's folds, by anyone who may
+ * resolution, and their own Remember (undoing it withdraws the memory),
+ * for 10 minutes; one of the judge's folds, by anyone who may
  * keep, for 14 days. Forget never. A refusal throws: 409 `undo_refused`
  * (CommandFailure `undo-refused`, with the reason) or 403 `refused` with
  * policy code `undo_by_decider`.
@@ -16,7 +17,13 @@
 import type { SpaceSummary } from "./types";
 
 /** The command an undo reverses. `fold` is the judge's; the rest are a person's own. */
-export type UndoCommand = "keep" | "reject" | "edit" | "resolve" | "fold";
+export type UndoCommand =
+  | "keep"
+  | "reject"
+  | "edit"
+  | "resolve"
+  | "fold"
+  | "remember";
 
 /** How long the server lets each be undone. */
 export const UNDO_WINDOW_MS = 10 * 60 * 1000;

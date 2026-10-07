@@ -9,8 +9,11 @@
 //
 // The worker's judge talks to a fake Anthropic-compatible model here (no
 // keys, no network): it groups the two test commands as one disagreement
-// and calls everything else unrelated. Sign-in is a session token written
-// where `memax login` puts it; the browser step isn't timed.
+// and calls everything else unrelated. With MEMAX_E2E_LIVE_MODEL=1 the
+// worker uses the real judge tiers instead (ANTHROPIC_API_KEY and
+// ANTHROPIC_BASE_URL from the environment), and the conflict's subject is
+// the model's own words. Sign-in is a session token written where `memax
+// login` puts it; the browser step isn't timed.
 //
 //   MEMAX_E2E_SERVER=1 pnpm --filter memax-cli exec vitest run test/init/e2e-init.test.ts
 //
@@ -38,6 +41,7 @@ import type { InitReport } from "../../src/lib/init/types.js";
 import { startStack, type Stack } from "../daemon/e2e-stack.js";
 
 const enabled = process.env.MEMAX_E2E_SERVER === "1";
+const live = process.env.MEMAX_E2E_LIVE_MODEL === "1";
 if (!enabled) {
   console.log(
     "Skipping memax init against the real server: set MEMAX_E2E_SERVER=1 to run it.",
@@ -185,7 +189,7 @@ function fakeModel(): Promise<{
 
 describe.skipIf(!enabled)("memax init against the real server", () => {
   let stack: Stack;
-  let model: Awaited<ReturnType<typeof fakeModel>>;
+  let model: Awaited<ReturnType<typeof fakeModel>> | undefined;
   let memax: Memax;
   let home: string;
   let repo: string;
@@ -291,16 +295,18 @@ describe.skipIf(!enabled)("memax init against the real server", () => {
       [join(CLI, "node_modules", "typescript", "bin", "tsc"), "-p", CLI],
       { stdio: "inherit" },
     );
-    model = await fakeModel();
+    model = live ? undefined : await fakeModel();
     stack = await startStack({
-      workerEnv: {
-        ANTHROPIC_API_KEY: "e2e",
-        ANTHROPIC_BASE_URL: model.url,
-        JUDGE_MODEL: "e2e-judge",
-        JUDGE_FALLBACK_MODEL: "off",
-        JUDGE_STRONG_MODEL: "off",
-        JUDGE_ZDR: "false",
-      },
+      workerEnv: model
+        ? {
+            ANTHROPIC_API_KEY: "e2e",
+            ANTHROPIC_BASE_URL: model.url,
+            JUDGE_MODEL: "e2e-judge",
+            JUDGE_FALLBACK_MODEL: "off",
+            JUDGE_STRONG_MODEL: "off",
+            JUDGE_ZDR: "false",
+          }
+        : {},
     });
     memax = new Memax({ apiUrl: stack.apiUrl, apiKey: stack.token });
     const base = realpathSync(mkdtempSync(join(tmpdir(), "memax-e2e-init-")));
@@ -374,12 +380,15 @@ describe.skipIf(!enabled)("memax init against the real server", () => {
     const imp = report.imports[0];
     expect(imp).toMatchObject({ space: "payments", folded: 1, conflicts: 1 });
     expect(imp.proposed).toBe(8);
-    expect(model.calls.imports).toBeGreaterThanOrEqual(1);
+    if (model) expect(model.calls.imports).toBeGreaterThanOrEqual(1);
     const view = await memax.v2.imports.get("payments", imp.id);
     expect(view.progress.ready).toBe(true);
     expect(view.conflicts).toHaveLength(1);
     const conflict = view.conflicts[0];
-    expect(conflict).toMatchObject({ subject: "Test command", state: "open" });
+    expect(conflict).toMatchObject({
+      subject: live ? expect.any(String) : "Test command",
+      state: "open",
+    });
     const byId = new Map(view.memories.map((m) => [m.memory.id, m.memory]));
     const members = conflict.members.map((p) => byId.get(p.id)!);
     expect(members.map((m) => m.statement).sort()).toEqual([

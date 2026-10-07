@@ -392,7 +392,13 @@ func (o oracle) Complete(_ context.Context, c judge.Call) (string, error) {
 			ans := map[string]any{"pairs": []map[string]any{{
 				"candidate": "M-0002", "relation": string(p.Class), "confidence": 0.95, "explicit_change": p.Explicit,
 				"rationale": "Labelled " + string(p.Class) + ".", "merged_statement": "",
+				"question": "", "labels": map[string]string{"proposal": "", "decision": "", "both": "", "open": ""}, "suggested": "none",
 			}}, "conditions": []any{}}
+			if p.Class == "contradicts" {
+				pr := ans["pairs"].([]map[string]any)[0]
+				pr["question"] = "Which of the two holds?"
+				pr["labels"] = map[string]string{"proposal": "The proposal", "decision": "As kept", "both": "Both, scoped", "open": "Undecided"}
+			}
 			b, err := json.Marshal(ans)
 			return string(b), err
 		}

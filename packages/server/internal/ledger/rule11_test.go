@@ -606,6 +606,138 @@ func TestKeepBothWaitsForTheJudge(t *testing.T) {
 	f.everyRowReceipted(t)
 }
 
+// "Keep this" and "leave open" keep a proposal's words as they stand: words
+// the judge hasn't seen that touch a third decision in force wait for it,
+// as "keep both"'s narrowed words do, then apply or answer in_conflict.
+func TestKeepThisAndLeaveOpenWaitForTheJudge(t *testing.T) {
+	t.Parallel()
+	f := newCompileFixture(t)
+	ctx := context.Background()
+	zz := f.user("zz")
+	me := func() ledger.Meta { return meta(person(zz), f.scope(zz), policy.ViaWeb) }
+	resolve := func(ref, other string, choice ledger.ConflictChoice, version int, statement string) (ledger.Result, error) {
+		return f.l.Apply(ctx, &ledger.ResolveConflict{Meta: me(), Memory: ref, Other: other, Choice: choice,
+			ExpectedVersion: version, Statement: statement})
+	}
+	pending := func(t *testing.T, err error, ref string) {
+		t.Helper()
+		var jp *ledger.JudgePendingError
+		if !errors.As(err, &jp) || jp.Ref != ref || !errors.Is(err, ledger.ErrBusy) {
+			t.Fatalf("before the verdict = %v, want judge pending on %s", err, ref)
+		}
+	}
+	stillOpen := func(t *testing.T, c thirdDecision) {
+		t.Helper()
+		p, d := f.mem(zz, c.p.ID), f.mem(zz, c.d.ID)
+		if p.Lifecycle != lifecycle.Proposed || !p.Flags.Has(lifecycle.Conflict) || !hasLink(p, ledger.LinkConflictsWith, ledger.LinkOut, c.d.ID) ||
+			d.Lifecycle != lifecycle.Kept || status(d) != "" {
+			t.Errorf("the conflict didn't stay open: %s %v %+v / %s %s", p.Lifecycle, p.Flags, p.Links, d.Lifecycle, status(d))
+		}
+	}
+	// saveBoth narrows the proposal with "keep both", whose words touch the
+	// third decision: they are saved as version 2 and judged in settling mode.
+	saveBoth := func(t *testing.T, c thirdDecision) {
+		t.Helper()
+		res, err := resolve(c.p.Ref, c.d.Ref, ledger.ChooseBoth, 1, "Previews deploy to Fly.io; production stays on Railway.")
+		if err != nil || res.Policy.Code != policy.CodeJudgePending {
+			t.Fatalf("keep both = %v %s", err, res.Policy.Code)
+		}
+		if mode, beside := f.settleJob(c.p.ID, 2); mode != "settling" || beside != c.d.ID.String() {
+			t.Fatalf("job = %s beside %s", mode, beside)
+		}
+	}
+
+	for _, choice := range []ledger.ConflictChoice{ledger.ChooseThis, ledger.ChooseOpen} {
+		t.Run(string(choice)+" waits for the settling verdict, then applies", func(t *testing.T) {
+			c := f.withThirdDecision(zz, string(choice)+"-a")
+			saveBoth(t, c)
+			_, err := resolve(c.p.Ref, c.d.Ref, choice, 2, "")
+			pending(t, err, c.p.Ref)
+			stillOpen(t, c)
+			f.settled(c.sp, c.p.ID, 2, nil)
+			res, err := resolve(c.p.Ref, c.d.Ref, choice, 2, "")
+			if err != nil || res.Outcome != ledger.OutcomeApplied {
+				t.Fatalf("after the verdict = %v %s", err, res.Outcome)
+			}
+			p, d := f.mem(zz, c.p.ID), f.mem(zz, c.d.ID)
+			want := map[ledger.ConflictChoice][2]string{ledger.ChooseThis: {"", ledger.DecisionSuperseded},
+				ledger.ChooseOpen: {ledger.DecisionOpen, ledger.DecisionOpen}}[choice]
+			if p.Lifecycle != lifecycle.Kept || p.Version != 2 || status(p) != want[0] || status(d) != want[1] {
+				t.Errorf("after: %s v%d %q / %q", p.Lifecycle, p.Version, status(p), status(d))
+			}
+		})
+		t.Run(string(choice)+" answers in_conflict when the words contradict another decision", func(t *testing.T) {
+			c := f.withThirdDecision(zz, string(choice)+"-b")
+			saveBoth(t, c)
+			f.settled(c.sp, c.p.ID, 2, c.x)
+			_, err := resolve(c.p.Ref, c.d.Ref, choice, 2, "")
+			var ic *ledger.InConflictError
+			if !errors.As(err, &ic) || ic.Ref != c.p.Ref || ic.With != c.x.Ref {
+				t.Fatalf("after the verdict = %v, want %s in conflict with %s", err, c.p.Ref, c.x.Ref)
+			}
+			stillOpen(t, c)
+		})
+	}
+	t.Run("an edit's words wait for the judge's verdict on them", func(t *testing.T) {
+		c := f.withThirdDecision(zz, "edit")
+		res := f.apply(&ledger.Edit{Meta: me(), Memory: c.p.Ref, ExpectedVersion: 1,
+			Statement: "Previews deploy to Fly.io in iad; production stays on Railway."})
+		if res.Memory.Version != 2 || res.Memory.Lifecycle != lifecycle.Proposed || !res.Memory.Flags.Has(lifecycle.Conflict) {
+			t.Fatalf("edit = %+v", res.Memory)
+		}
+		_, err := resolve(c.p.Ref, c.d.Ref, ledger.ChooseOpen, 2, "")
+		pending(t, err, c.p.Ref)
+		// Seen from the decision's side, "keep other" keeps the same words.
+		_, err = resolve(c.d.Ref, c.p.Ref, ledger.ChooseOther, 0, "")
+		pending(t, err, c.p.Ref)
+		f.judgeAs(c.sp, f.mem(zz, c.p.ID), ledger.OutcomeNone, nil, ledger.JudgeProposal)
+		if res, err := resolve(c.p.Ref, c.d.Ref, ledger.ChooseOpen, 2, ""); err != nil || res.Outcome != ledger.OutcomeApplied {
+			t.Fatalf("after the verdict = %v %s", err, res.Outcome)
+		}
+	})
+	t.Run("words that touch no other decision don't wait", func(t *testing.T) {
+		c := f.withThirdDecision(zz, "plain")
+		f.apply(&ledger.Edit{Meta: me(), Memory: c.p.Ref, ExpectedVersion: 1, Statement: "Deploy the v2 API to Fly.io in iad."})
+		res, err := resolve(c.p.Ref, c.d.Ref, ledger.ChooseThis, 2, "")
+		if err != nil || res.Outcome != ledger.OutcomeApplied {
+			t.Fatalf("resolve = %v %s", err, res.Outcome)
+		}
+	})
+	t.Run("keeping the decision in force never waits", func(t *testing.T) {
+		c := f.withThirdDecision(zz, "other")
+		saveBoth(t, c)
+		res, err := resolve(c.p.Ref, c.d.Ref, ledger.ChooseOther, 2, "")
+		if err != nil || res.Outcome != ledger.OutcomeApplied {
+			t.Fatalf("resolve = %v %s", err, res.Outcome)
+		}
+		if p := f.mem(zz, c.p.ID); p.Lifecycle != lifecycle.Rejected {
+			t.Errorf("the proposal = %s", p.Lifecycle)
+		}
+	})
+	t.Run("a judge that's down never blocks it", func(t *testing.T) {
+		c := f.withThirdDecision(zz, "down")
+		saveBoth(t, c)
+		tx, err := f.pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec(ctx, `SET LOCAL session_replication_role = replica`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE v2.memory_versions SET created_at = created_at - interval '1 minute' WHERE memory_id = $1`, c.p.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if res, err := resolve(c.p.Ref, c.d.Ref, ledger.ChooseThis, 2, ""); err != nil || res.Outcome != ledger.OutcomeApplied {
+			t.Fatalf("after the grace = %v %s", err, res.Outcome)
+		}
+	})
+
+	f.everyRowReceipted(t)
+}
+
 // everyRowReceipted is the receipt sweep: every memory, version, verdict
 // and link the fixture holds has its receipt, in its space.
 func (f *fixture) everyRowReceipted(t *testing.T) {

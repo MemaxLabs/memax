@@ -192,6 +192,7 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
       editKeep: "已撤销编辑和保留。{ref} 回到了审阅。",
       resolve: "已撤销这次裁定。{ref} 作为冲突回到了审阅。",
       fold: "已取消合并 {ref}。它回到了审阅。",
+      remember: "已撤销记住 {ref}。它已撤回。",
     },
     refused: {
       window_passed:

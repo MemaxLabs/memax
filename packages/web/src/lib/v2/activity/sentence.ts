@@ -239,15 +239,17 @@ export function activitySentences(
       return [one(s.faded)];
     case "restored":
       return [one(s.restored)];
-    case "forgot":
-      return [
-        d?.kind === "forgot"
-          ? one(s.forgot, {
-              files: text(pick(s.filesOne, s.files, d.files)),
-              agents: text(pick(s.agentsOne, s.agents, d.agents)),
-            })
-          : one(s.forgotPlain),
-      ];
+    case "forgot": {
+      // Name only what held it: nothing compiled may have, or no agent.
+      if (d?.kind !== "forgot" || d.files + d.agents === 0) {
+        return [one(s.forgotPlain)];
+      }
+      const files = text(pick(s.filesOne, s.files, d.files));
+      const agents = text(pick(s.agentsOne, s.agents, d.agents));
+      if (d.files === 0) return [one(s.forgotAgents, { agents })];
+      if (d.agents === 0) return [one(s.forgotFiles, { files })];
+      return [one(s.forgot, { files, agents })];
+    }
     case "moved":
       return [one(s.moved)];
     case "answered":

@@ -374,6 +374,12 @@ func TestDecideMatrix(t *testing.T) {
 										if kind == ActorAgent && level != AutonomyPropose && level != AutonomyWrite {
 											check(d.Effect == EffectRefuse, "read-only agent wrote")
 										}
+										// Phase 2's gate: an agent connected at Propose keeps
+										// nothing. A person may still confirm in the agent
+										// (EffectConfirm, rule 4).
+										if kind == ActorAgent && level == AutonomyPropose {
+											check(d.Effect != EffectApply, "agent at Propose applied a write")
+										}
 										if role == RoleViewer && d.Effect == EffectApply {
 											check(false, "viewer's write applied")
 										}

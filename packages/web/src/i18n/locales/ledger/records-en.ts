@@ -220,6 +220,7 @@ export const ledgerRecordsEn = {
       editKeep: "Undid the edit and keep. {ref} is back in Review.",
       resolve: "Undid the settlement. {ref} is back in Review as a conflict.",
       fold: "Unfolded {ref}. It's back in Review.",
+      remember: "Undid remembering {ref}. It's withdrawn.",
     },
     // Why an undo didn't go through, by spec UndoRefusal and policy code.
     refused: {

@@ -139,8 +139,8 @@ test("Ask streams a cited answer; ⌘↵ keeps it", async ({ page }) => {
   await expect(dialog).toBeHidden();
   const toasts = page.getByRole("region", { name: "Notifications" });
   await expect(toasts).toContainText("Kept M-0439 · 3 files recompiled");
-  // A person's own Remember has no undo on the server, so none is offered.
-  await expect(toasts.getByRole("button", { name: "Undo" })).toHaveCount(0);
+  // Keeping an answer is the person's own Remember: it can be undone.
+  await expect(toasts.getByRole("button", { name: "Undo" })).toHaveCount(1);
 });
 
 test("Escape mid-answer stops it, and Ask opens clean again", async ({
@@ -177,9 +177,13 @@ test("Remember shows the near-duplicate, then keeps on Enter", async ({
   ).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(dialog).toBeHidden();
-  await expect(
-    page.getByRole("region", { name: "Notifications" }),
-  ).toContainText(/Kept M-04\d\d · 3 files recompiled/);
+  const toasts = page.getByRole("region", { name: "Notifications" });
+  await expect(toasts).toContainText(/Kept M-04\d\d · 3 files recompiled/);
+  // A person's own Remember is one Undo away: it is withdrawn.
+  await toasts.getByRole("button", { name: "Undo" }).click();
+  await expect(toasts).toContainText(
+    /Undid remembering M-04\d\d\. It's withdrawn\./,
+  );
 });
 
 test("keeping the near-duplicate is a Keep, and ⌘Z undoes it", async ({

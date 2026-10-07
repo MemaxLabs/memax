@@ -498,6 +498,10 @@ func requestHash(cmd Command) ([]byte, error) {
 		cp := *c
 		cp.Meta = strip
 		v = cp
+	case *RestoreBrief:
+		cp := *c
+		cp.Meta = strip
+		v = cp
 	default:
 		return nil, invalid("command", "unknown command")
 	}

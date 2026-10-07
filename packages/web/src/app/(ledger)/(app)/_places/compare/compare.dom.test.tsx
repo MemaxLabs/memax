@@ -256,6 +256,68 @@ describe("ReviewConflict", () => {
     expect(mine.readOnly).toBe(false);
   }, 10_000);
 
+  it("waits for the judge on the proposal's words before keeping it", async () => {
+    const { source, push } = setup();
+    const resolve = vi
+      .fn(source.review.resolveConflict)
+      .mockRejectedValueOnce(judgePending())
+      .mockResolvedValueOnce({
+        ref: "M-0431",
+        outcome: "kept",
+        version: 1,
+        recompiled: null,
+        receipt: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+      });
+    source.review.resolveConflict = resolve;
+    await screen.findByRole("heading", { level: 1 });
+    fireEvent.keyDown(radio(/Fly\.io everywhere/), { key: "1" });
+    fireEvent.keyDown(radio(/Fly\.io everywhere/), { key: "Enter" });
+    expect(
+      await screen.findByText(
+        "Checking these words against the other decisions in force. It's settled once the check is done.",
+      ),
+    ).toBeTruthy();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/memax-v2/review"), {
+      timeout: 6000,
+    });
+    expect(
+      await screen.findByText(/^Kept M-0431 as the decision/),
+    ).toBeTruthy();
+    // One answer, one key across its wait.
+    const calls = resolve.mock.calls.map(([input]) => input);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toMatchObject({ option: "proposal" });
+    expect(calls[1].idempotencyKey).toBe(calls[0].idempotencyKey);
+  }, 10_000);
+
+  it("says so when leaving it open meets another decision in force", async () => {
+    const { source, push } = setup();
+    source.review.resolveConflict = vi
+      .fn(source.review.resolveConflict)
+      .mockRejectedValueOnce(judgePending())
+      .mockRejectedValueOnce(
+        new MemaxError(
+          "M-0431 also conflicts with M-0102.",
+          "in_conflict",
+          409,
+          {
+            ref: "M-0102",
+          },
+        ),
+      );
+    await screen.findByRole("heading", { level: 1 });
+    fireEvent.keyDown(radio(/Leave it open/), { key: "4" });
+    fireEvent.keyDown(radio(/Leave it open/), { key: "Enter" });
+    expect(
+      await screen.findByText(
+        "M-0431 contradicts M-0102, a decision in force too. Settle that first, or choose another answer.",
+        undefined,
+        { timeout: 4000 },
+      ),
+    ).toBeTruthy();
+    expect(push).not.toHaveBeenCalled();
+  }, 10_000);
+
   it("stops checking on Esc, and keeps the words", async () => {
     const { source, push } = setup();
     const resolve = vi

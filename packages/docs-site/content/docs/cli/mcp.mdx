@@ -48,116 +48,158 @@ For agent-specific setup, see the [Integrations guides](/integrations/index).
 
 ## Exposed tools
 
-The MCP server exposes **10 tools**. All parameter names and types
-below come directly from the server's `inputSchema`.
+The MCP server exposes **11 tools**. All parameter names and types
+below come directly from the server's `inputSchema`. A space on the V2
+record (a reviewed record of kept memories) and a space still on the
+original record answer some of them differently; each section says how.
 
 ### `memax_recall`
 
-Semantic search across the user's hubs. Use it for project context,
-team processes, or past decisions.
+The memories relevant to a query, from the spaces this connection can
+read. In a V2 space it returns kept memories, this session's own pending
+proposals (marked proposed), and how each decision this connection asked
+for ended and what was forgotten since it read it, each once. Without a
+query it returns a digest of each space: its latest compiled file or top
+kept memories, what changed since this connection was last seen, and the
+decisions it is still waiting on.
 
-| Parameter         | Type   | Required | Description                                           |
-| ----------------- | ------ | :------: | ----------------------------------------------------- |
-| `query`           | string | **yes**  | Natural language search query.                        |
-| `limit`           | number |          | Max results (default 10).                             |
-| `topic_id`        | string |          | Restrict to memories in this topic (UUID).            |
-| `hub_id`          | string |          | Boost ranking for this hub (ID, slug, or `personal`). |
-| `project_context` | object |          | `{ repo, project }` for relevance boosting.           |
+| Parameter         | Type   | Required | Description                                                                 |
+| ----------------- | ------ | :------: | --------------------------------------------------------------------------- |
+| `query`           | string |          | What to look for. Omit it for each space's digest.                          |
+| `limit`           | number |          | Maximum number of results.                                                  |
+| `topic_id`        | string |          | Restrict to memories in this topic (UUID).                                  |
+| `hub_id`          | string |          | Space ID, slug, or `personal`; its results rank first. `space_id` is the same. |
+| `project_context` | object |          | `{ repo, project }` for relevance.                                          |
+| `session_ref`     | string |          | The agent session; its own proposals are included, marked proposed.         |
+
+### `memax_search`
+
+Searches kept memories and decisions in the spaces this connection can
+read and returns the matches with their display IDs (`M-0219`), for
+`memax_get`. With `include_notes` it also searches notes, the original
+memories of spaces that switched to V2 (raw material, never compiled).
+In spaces that haven't switched it searches saved memories.
+
+| Parameter       | Type    | Required | Description                                                       |
+| --------------- | ------- | :------: | ----------------------------------------------------------------- |
+| `query`         | string  | **yes**  | Words or a question to search for.                                |
+| `kind`          | string  |          | `fact` or `decision`: only memories of this kind.                 |
+| `space_id`      | string  |          | Space ID, slug, or `personal`. Omit it to search every space.     |
+| `limit`         | number  |          | Maximum number of results (default 10).                           |
+| `include_notes` | boolean |          | Also search notes.                                                |
 
 ### `memax_push`
 
-Save new knowledge. The server classifies it automatically.
+Saves one piece of knowledge to a space. In a V2 space it becomes a
+proposal a person keeps: in the agent when the client supports
+elicitation, otherwise in Review; an agent connected at Write keeps its
+own first-party statements. In other spaces Memax saves and classifies
+it.
 
-| Parameter         | Type     | Required | Description                                                                                            |
-| ----------------- | -------- | :------: | ------------------------------------------------------------------------------------------------------ |
-| `content`         | string   | **yes**  | The content to save.                                                                                   |
-| `title`           | string   |          | Auto-generated if omitted.                                                                             |
-| `hint`            | string   |          | Context hint (e.g. `"my resume"`) — improves classification.                                           |
-| `tags`            | string[] |          | Tags.                                                                                                  |
-| `initiation_type` | string   |          | `human_direct`, `human_requested_agent`, `agent_proactive`, `agent_automatic`, `import`, or `unknown`. |
-| `project_context` | object   |          | `{ repo, project, branch }`. Auto-detected by the CLI.                                                 |
-| `hub_id`          | string   |          | Target hub (required for team hubs).                                                                   |
-| `hub_reason`      | string   |          | Why it belongs in the shared hub — **required** when `hub_id` is a team hub.                           |
+| Parameter         | Type     | Required | Description                                                                                         |
+| ----------------- | -------- | :------: | --------------------------------------------------------------------------------------------------- |
+| `content`         | string   | **yes**  | The knowledge to save. In a V2 space, one statement of at most 2000 characters.                     |
+| `title`           | string   |          | Generated if omitted.                                                                               |
+| `hint`            | string   |          | Context that helps Memax process it (`"my resume"`).                                                |
+| `tags`            | string[] |          | Tags.                                                                                               |
+| `initiation_type` | string   |          | `human_requested_agent`, `agent_proactive`, `agent_automatic`, `import`, or `unknown`.              |
+| `project_context` | object   |          | `{ repo, project, branch }`. Auto-detected by the CLI.                                              |
+| `hub_id`          | string   |          | Target space (required for a team hub). `space_id` is the same.                                     |
+| `hub_reason`      | string   |          | Why it belongs in the shared hub; required for a team hub not on V2, the receipt's reason on V2.    |
+| `section`         | string   |          | V2: `decisions`, `conventions` (default), `preferences` or `open_question`.                         |
+| `sources`         | object[] |          | Where it comes from. Content from a URL, an email or an issue always waits in Review.               |
+| `session_ref`     | string   |          | The agent session; its recalls include the proposal before it is kept.                              |
 
 ### `memax_get`
 
-Read the full content of a memory by ID — use this after `memax_recall`
-to read a result in full.
+One memory in full by its display ID (with its space) or its UUID. In a
+V2 space it includes the receipts and sources.
 
-| Parameter | Type   | Required |
-| --------- | ------ | :------: |
-| `id`      | string | **yes**  |
+| Parameter  | Type   | Required | Description                                       |
+| ---------- | ------ | :------: | ------------------------------------------------- |
+| `id`       | string | **yes**  | A display ID such as `M-0219`, or a memory UUID.  |
+| `space_id` | string |          | The space of a display ID. Optional with a UUID.  |
 
 ### `memax_list`
 
-List memories with pagination. Returns `cursor` for the next page.
+Memories newest first, a page at a time; pass the `cursor` from the
+previous page. In a V2 space it lists kept memories, and `topic_id` may
+name a section.
 
-Same input schema as the CLI's `memax list`: `sort`, `limit`,
-`cursor`, `hub_id`, `topic_id`.
+Parameters: `limit` (default 20, max 50), `cursor`, `sort` (`newest` or
+`relevant`), `hub_id` / `space_id`, `topic_id`.
 
 ### `memax_hubs`
 
-List hubs the current user can access. Returns hub IDs, slugs, roles,
-and memory counts. No input parameters.
+The spaces (hubs) this connection can read, with their IDs, slugs, roles
+and memory counts, and in a V2 space this agent's autonomy there. No
+input parameters.
 
 ### `memax_hub_members`
 
-List members of a hub.
+The members of a space and their roles.
 
-| Parameter | Type   | Required | Description                    |
-| --------- | ------ | :------: | ------------------------------ |
-| `hub_id`  | string | **yes**  | Hub ID, slug, or `"personal"`. |
+| Parameter | Type   | Required | Description                                                   |
+| --------- | ------ | :------: | ------------------------------------------------------------- |
+| `hub_id`  | string |          | Space ID, slug, or `personal`. `space_id` is the same.        |
 
 ### `memax_forget`
 
-Delete a memory by ID.
+Asks to forget a memory. In a V2 space an agent can't forget: this
+records a request that a person forgets the memory, or keeps it, on the
+web, and the memory stays kept until then. In other spaces it deletes
+the memory.
 
-| Parameter | Type   | Required |
-| --------- | ------ | :------: |
-| `id`      | string | **yes**  |
+| Parameter  | Type   | Required | Description                                          |
+| ---------- | ------ | :------: | ---------------------------------------------------- |
+| `id`       | string | **yes**  | A display ID such as `M-0219`, or a memory UUID.     |
+| `space_id` | string |          | The space of a display ID. Optional with a UUID.     |
+| `reason`   | string |          | Why, for the person who decides.                     |
 
 ### `memax_capture`
 
-Save structured **session context** — summary, decisions, and
-learnings from a work session. Each decision / learning is extracted
-into its own searchable memory.
+Saves a summary of a work session, with its decisions and learnings. In
+a V2 space they are notes: raw material that [Dream](/concepts/dreams)
+folds into proposals for Review. Elsewhere each decision and learning is
+extracted into its own memory.
 
 This is **not** a URL capture — it's for end-of-session context
 persistence from the agent's perspective.
 
 | Parameter   | Type     | Required | Description                                  |
 | ----------- | -------- | :------: | -------------------------------------------- |
-| `summary`   | string   | **yes**  | Short summary of what was accomplished.      |
+| `summary`   | string   | **yes**  | What the session accomplished.               |
 | `decisions` | string[] |          | Key decisions made (one entry per decision). |
 | `learnings` | string[] |          | Things learned during the session.           |
 
 ### `memax_request_decision`
 
-Put a decision the agent should not make alone in front of the user.
-Creates a **decision card** on the user's memax board and sends a
-needs-action ping. When the user picks an option, their choice is
-**written back into hub memory** — the agent recalls it later with
-`memax_recall` using keywords from the question. Agents should not
+Puts a decision the agent should not make alone in front of the person:
+a question with 2 to 4 options, shown in Memax. It returns at once with
+the request's ID, and the person's answer is saved as a memory that
+later recalls return. In a V2 space the request is a gate (`G-0012`)
+that waits up to 7 days; the answer is kept as the person's decision, and
+this connection's next `memax_recall` returns it once. Agents should not
 block waiting for the answer.
 
-At most 3 decision gates can be open per board; further calls return
-an error telling the agent to continue with other work.
-
-| Parameter  | Type     | Required | Description                                             |
-| ---------- | -------- | :------: | ------------------------------------------------------- |
-| `question` | string   | **yes**  | The decision question — one sentence, user-facing.      |
-| `options`  | string[] | **yes**  | 2-4 mutually exclusive choices, short labels.           |
-| `context`  | string   |          | Tradeoffs, constraints, the agent's recommendation.     |
+| Parameter  | Type     | Required | Description                                          |
+| ---------- | -------- | :------: | ---------------------------------------------------- |
+| `question` | string   | **yes**  | The decision, as one user-facing question.           |
+| `options`  | string[] | **yes**  | 2 to 4 mutually exclusive choices, short labels.     |
+| `context`  | string   |          | Tradeoffs, constraints, and a recommendation.        |
+| `space_id` | string   |          | The V2 space to ask in; otherwise the default space. |
 
 ### `memax_topics`
 
-Browse the user's topic tree. Without `topic_id`: full tree with
-memory counts. With `topic_id`: memories in that topic.
+Without `topic_id`, the topic tree with memory counts; with it, the
+memories in that topic. In a V2 space the topics are its sections
+(`decisions`, `conventions`, `preferences`, `open_question`) and their
+kept memories.
 
-| Parameter  | Type   | Required | Description                       |
-| ---------- | ------ | :------: | --------------------------------- |
-| `topic_id` | string |          | Topic ID. Omit for the full tree. |
-| `hub_id`   | string |          | Scope topics to a specific hub.   |
+| Parameter  | Type   | Required | Description                                          |
+| ---------- | ------ | :------: | ---------------------------------------------------- |
+| `topic_id` | string |          | Topic ID, or a V2 section. Omit it for the whole tree. |
+| `hub_id`   | string |          | Space ID, slug, or `personal`. `space_id` is the same. |
 
 ## Tool parity
 

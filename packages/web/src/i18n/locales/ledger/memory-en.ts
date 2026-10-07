@@ -107,6 +107,10 @@ export const ledgerMemoryEn = {
       // One of the judge's folds, on the proposal it folded.
       folded: "{name} folded it into {ref}",
       flagged: "Flagged stale by {name}",
+      // A conflict flag: the judge's, an import's or Dream's.
+      flaggedConflict: "Flagged by {name} as contradicting {ref}",
+      flaggedConflictBare: "Flagged by {name} as a conflict",
+      flaggedBare: "Flagged by {name}",
       resolved: "Settled by {name}",
       verified: "Checked against the code",
       faded: "Faded",

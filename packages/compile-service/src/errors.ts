@@ -11,6 +11,7 @@ export type ErrorCode =
   | "invalid_json"
   | "invalid_input"
   | "unsupported_media_type"
+  | "unauthorized"
   | "too_large"
   | "not_found"
   | "method_not_allowed"

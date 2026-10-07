@@ -254,6 +254,12 @@ func (l *Ledger) DreamSnapshot(ctx context.Context, scope Scope, spaceID uuid.UU
 			return fmt.Errorf("ledger: dream snapshot: changes: %w", err)
 		}
 		limit := o.MaxMemories
+		// The first edition doesn't re-check a whole record for conflicts:
+		// what changed in the last week is its input.
+		changedSince := since
+		if s.Since == nil {
+			changedSince = s.Now.Add(-7 * 24 * time.Hour)
+		}
 		if s.Proposals, err = dreamMemories(ctx, tx, `
 			 WHERE m.space_id = $1 AND m.lifecycle = 'proposed' AND NOT ('conflict' = ANY (m.flags))
 			 ORDER BY m.seq LIMIT $2`, spaceID, limit); err != nil {
@@ -264,7 +270,7 @@ func (l *Ledger) DreamSnapshot(ctx context.Context, scope Scope, spaceID uuid.UU
 			   AND EXISTS (SELECT 1 FROM v2.receipts r WHERE r.stream_id = m.id AND r.space_id = m.space_id
 			                AND r.recorded_at > $2 AND r.actor_kind IN ('person', 'agent', 'repository')
 			                AND r.action IN ('kept', 'edited', 'restored', 'resolved', 'undid'))
-			 ORDER BY m.seq DESC LIMIT $3`, spaceID, since, limit); err != nil {
+			 ORDER BY m.seq DESC LIMIT $3`, spaceID, changedSince, limit); err != nil {
 			return err
 		}
 		if s.Unjudged, err = dreamMemories(ctx, tx, `

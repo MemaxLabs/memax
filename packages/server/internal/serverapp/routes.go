@@ -732,5 +732,8 @@ func registerV2Routes(root *http.ServeMux, withAuth func(http.Handler) http.Hand
 	if deps.v2 == nil {
 		return
 	}
-	deps.v2.Mount(root, withAuth)
+	ipLimit := ipLimitFactory(deps)
+	deps.v2.Mount(root, withAuth, func(h http.Handler) http.Handler {
+		return ipLimit(ratelimit.IPUnsubscribe, h.ServeHTTP)
+	})
 }

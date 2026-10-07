@@ -56,6 +56,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/safefetch"
 	"github.com/MemaxLabs/memax/packages/server/internal/sealer"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 )
@@ -242,7 +243,8 @@ func New(ctx context.Context) (*App, error) {
 	// any version left without an embedding. Without them nothing is
 	// embedded and V2 retrieval stays lexical.
 	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
-	v2Opts := []ledger.Option{ledger.WithJobs(insertClient)}
+	dreamCfg := v2dream.ConfigFromEnv(os.LookupEnv)
+	v2Opts := []ledger.Option{ledger.WithJobs(insertClient), ledger.WithDreamUndoWindow(dreamCfg.UndoWindow)}
 	if embedCfg.Enabled() {
 		v2Opts = append(v2Opts, ledger.WithIndexJobs())
 	}
@@ -297,6 +299,35 @@ func New(ctx context.Context) (*App, error) {
 		forgetCompiler = compileSvc
 	}
 	forget.AddWorkers(workers, forget.New(v2Ledger, forgetCompiler, forgetBus, slog.Default()))
+
+	// V2 Dream editions (plan 25 §5.10): a catch-up sweep every
+	// DREAM_SWEEP_INTERVAL queues each V2 space due in its owner's local
+	// night (no River Pro), and dream_space runs the phases on the DREAM_*
+	// tiers (zero-data-retention routing), with the judge's classifier for
+	// duplicates and conflicts and the same hybrid search for candidates.
+	// The edition's morning email goes through the email sender. Without an
+	// LLM key, or DREAM_MODEL=off, only the phases that need no model run.
+	dreamSearch := v2recall.New(v2Ledger)
+	if vectors := v2recall.NewVectors(v2Ledger, indexEmbedder, indexEmbedder,
+		v2recall.VectorConfig{Model: embedCfg.IndexModel}); vectors != nil {
+		dreamSearch.WithVectors(vectors)
+		forgetBus.Local.Register(func(uuid.UUID) { vectors.Purge() })
+	}
+	v2Dream := v2dream.New(v2Ledger, v2dream.NewAnthropicModel(llm, dreamCfg.ZeroDataRetention), dreamCfg,
+		v2dream.WithSearcher(dreamSearch))
+	var dreamMailer *v2dream.Mailer
+	if dreamCfg.Email {
+		dreamMailer = v2dream.NewMailer(v2Ledger, emailSender, v2dream.MailerConfig{From: dreamCfg.From,
+			AppURL: os.Getenv("APP_BASE_URL"), APIURL: os.Getenv("API_BASE_URL")})
+	}
+	logEnabled("V2 Dream (model phases)", v2Dream.Modeled())
+	logEnabled("V2 Dream (morning email)", dreamMailer != nil)
+	if v2Dream.Modeled() {
+		slog.Info("V2 Dream tiers", "primary", dreamCfg.Primary.Model, "fallback", dreamCfg.Fallback.Model,
+			"strong", dreamCfg.Strong.Model, "zdr", dreamCfg.ZeroDataRetention, "plan", dreamCfg.Plan,
+			"dry_run", dreamCfg.DryRun, "sweep_every", dreamCfg.SweepInterval.String())
+	}
+	v2dream.AddWorkers(workers, v2Dream, dreamMailer)
 
 	// V2 reads (plan 25 §5.3): the API records them; the worker keeps the
 	// monthly partitions ahead, prunes past retention and reports the north
@@ -539,6 +570,7 @@ func New(ctx context.Context) (*App, error) {
 	periodicJobs := configurePeriodicJobs(dreamEngine != nil)
 	periodicJobs = append(periodicJobs, reads.PeriodicJobs()...)
 	periodicJobs = append(periodicJobs, sealer.PeriodicJobs(v2Sealer)...)
+	periodicJobs = append(periodicJobs, v2dream.PeriodicJobs(v2Dream)...)
 	if compileSvc != nil {
 		periodicJobs = append(periodicJobs, compile.PeriodicJobs()...)
 		slog.Info("compile sweep scheduled", "every", compile.SweepInterval.String())
@@ -2062,6 +2094,8 @@ func workerRiverConfig(workers *river.Workers, periodicJobs []*river.PeriodicJob
 			ledger.QueueSeal: {MaxWorkers: sealer.MaxWorkers},
 			// Forget propagation: a minute's SLO, so its own slots.
 			ledger.QueueForget: {MaxWorkers: forget.MaxWorkers},
+			// Dream editions: a few spaces at a time, mostly waiting on the model.
+			ledger.QueueDream: {MaxWorkers: v2dream.MaxWorkers},
 		},
 		Workers: workers,
 		// Global worker middleware: every job's Work() runs inside a

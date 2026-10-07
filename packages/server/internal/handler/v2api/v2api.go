@@ -51,6 +51,8 @@ type Handler struct {
 	near   nearLimiter
 	// asker answers ⌘K Ask (ask.go); nil answers 503.
 	asker *ask.Service
+	// dream queues run-now (dream.go); nil answers 503 there.
+	dream *dreamDeps
 }
 
 // Option configures a Handler.
@@ -150,6 +152,16 @@ var routes = []Route{
 	{"GET", "/v2/gates/{ref}", "getGate", (*Handler).getGate},
 	{"POST", "/v2/gates/{ref}:answer", "answerGate", (*Handler).answerGate},
 	{"POST", "/v2/gates/{ref}:withdraw", "withdrawGate", (*Handler).withdrawGate},
+	{"GET", "/v2/spaces/{space}/dream/editions", "listEditions", (*Handler).listEditions},
+	{"GET", "/v2/spaces/{space}/dream/editions/{edition}", "getEdition", (*Handler).getEdition},
+	{"GET", "/v2/spaces/{space}/dream/editions/{edition}/actions", "listDreamActions", (*Handler).listDreamActions},
+	{"POST", "/v2/spaces/{space}/dream/editions/{edition}:undo", "undoEdition", (*Handler).undoEdition},
+	{"POST", "/v2/spaces/{space}/dream:run", "runDream", (*Handler).runDream},
+	{"POST", "/v2/dream/actions/{action}:undo", "undoDreamAction", (*Handler).undoDreamAction},
+	{"POST", "/v2/memories/{ref}:restore", "restoreMemory", (*Handler).restoreMemory},
+	{"GET", "/v2/dream/settings", "getDreamSettings", (*Handler).getDreamSettings},
+	{"PATCH", "/v2/dream/settings", "updateDreamSettings", (*Handler).updateDreamSettings},
+	{"POST", "/v2/dream/email:unsubscribe", "unsubscribeDreamEmail", (*Handler).unsubscribeDreamEmail},
 	{"GET", "/v2/notices", "listNotices", (*Handler).listNotices},
 	{"POST", "/v2/notices:ack", "ackNotices", (*Handler).ackNotices},
 }
@@ -160,9 +172,27 @@ func Routes() []Route { return slices.Clone(routes) }
 
 // Mount registers /v2 on mux behind wrap, the same auth middleware chain
 // /v1 uses (RequireAuth → HubContext → AuthorizeHTTP → RateLimit → Meter).
-func (h *Handler) Mount(mux *http.ServeMux, wrap func(http.Handler) http.Handler) {
+//
+// The few public routes (publicRoutes: the morning email's one-click
+// unsubscribe, whose token is the credential) are mounted outside wrap,
+// behind public when it is given (an IP rate limit).
+func (h *Handler) Mount(mux *http.ServeMux, wrap func(http.Handler) http.Handler, public ...func(http.Handler) http.Handler) {
 	mux.Handle("/v2/", wrap(h.routes()))
+	for _, rt := range routes {
+		if !publicRoutes[rt.OperationID] {
+			continue
+		}
+		var hd http.Handler = h.serve(rt)
+		for _, p := range public {
+			hd = p(hd)
+		}
+		mux.Handle(rt.Method+" "+rt.Path, hd)
+	}
 }
+
+// publicRoutes are the operations served without a credential (v2.yaml
+// says `security: []` for each).
+var publicRoutes = map[string]bool{"unsubscribeDreamEmail": true}
 
 // routes builds the /v2 mux. ServeMux wildcards must fill a whole path
 // segment, so the custom-method routes (/v2/memories/{ref}:keep) share

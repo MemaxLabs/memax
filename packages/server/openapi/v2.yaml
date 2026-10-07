@@ -171,6 +171,19 @@ info:
     conflicts and settled once, as a group. Nothing is kept until a person
     keeps it: one by one, in bulk (`memories:keep`), or by settling.
 
+    ## Dream
+
+    Each night (weekly on Free), if a space has something new since its
+    last edition, Dream reads it and publishes an edition (`D-`): notes
+    folded into what was kept as lineage, new facts proposed from notes,
+    duplicate proposals folded before Review, conflicts and stale facts
+    flagged, memories nobody read in 60 days faded (restorable), and a few
+    small, cited changes to the Brief. Every action has its receipts,
+    citing the edition, and any person who may keep undoes any of them for
+    30 days (`POST /v2/dream/actions/{action}:undo`). Dream never keeps
+    anything: what's new is a proposal, and its trust is never above the
+    notes it came from. It runs in the space owner's local night.
+
     ## Display IDs
 
     `M-0219` is unique within a tenant, not across tenants, so a display ID
@@ -240,6 +253,8 @@ tags:
     description: What agents read (R-). Reads are not receipts.
   - name: ask
     description: Cited answers from a space's kept memories, for people.
+  - name: dream
+    description: Dream's editions, the overnight upkeep of a space, in the open.
 paths:
   /v2/spaces:
     get:
@@ -2873,6 +2888,405 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/spaces/{space}/dream/editions:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listEditions
+      tags: [dream]
+      summary: List Dream's editions
+      description: |
+        The space's Dream editions (`D-`), newest first, each with what it
+        read and the counts of what it did, and when the next one is due
+        (`schedule`, in the owner's local night). An edition is published
+        only when the space had something new since the last one: no input,
+        no run. A person's `X-Timezone` is how Dream learns their local
+        night, unless they set one in the Dream settings.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/TimeZoneHeader'
+      responses:
+        '200':
+          description: One page of editions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DreamEditionPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/dream/editions/{edition}:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+      - $ref: '#/components/parameters/EditionPath'
+    get:
+      operationId: getEdition
+      tags: [dream]
+      summary: Read one edition
+      description: |
+        One edition (`D-0214`, `214` or `latest`) with every action it took
+        and what it found that needs a person (`surfaced`). Each action
+        carries the memory it is about as that memory is now, its words read
+        live: one forgotten since shows as forgotten, with no words.
+      responses:
+        '200':
+          description: The edition.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DreamEditionEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/dream/editions/{edition}/actions:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+      - $ref: '#/components/parameters/EditionPath'
+    get:
+      operationId: listDreamActions
+      tags: [dream]
+      summary: List an edition's actions
+      description: An edition's actions in the order it took them, of one kind or all.
+      parameters:
+        - name: kind
+          in: query
+          schema:
+            $ref: '#/components/schemas/DreamActionKind'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of actions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DreamActionPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/dream/editions/{edition}:undo:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+      - $ref: '#/components/parameters/EditionPath'
+    post:
+      operationId: undoEdition
+      tags: [dream]
+      summary: Undo an edition's actions of one kind
+      description: |
+        Undoes every undoable action of the edition of one kind (the
+        edition's "Undo both" and "Restore all"), each as its own command
+        with its own receipts, exactly as `POST /v2/dream/actions/{action}:undo`
+        would. What can't be undone is listed in `refused` with Undo's
+        reason; the rest goes ahead.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UndoEditionRequest'
+      responses:
+        '200':
+          description: What was undone, and what wasn't.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UndoEditionResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/dream:run:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    post:
+      operationId: runDream
+      tags: [dream]
+      summary: Run Dream now
+      description: |
+        Asks Dream to run on the space now, outside its night. Only the
+        space's owner may (`dream_run_by_owner`), a few times a day on Pro
+        and once a week on Free (429 `rate_limited`, with `Retry-After`).
+        The run is queued; it publishes an edition only if the space has
+        something new since the last one.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      responses:
+        '202':
+          description: The run is queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DreamRunEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/dream/actions/{action}:undo:
+    parameters:
+      - $ref: '#/components/parameters/DreamActionPath'
+    post:
+      operationId: undoDreamAction
+      tags: [dream]
+      summary: Undo one of Dream's actions
+      description: |
+        Applies the action's inverse as a ledger command: the state before
+        the action comes back exactly (folded notes unlinked, a proposal
+        withdrawn, a folded duplicate back in Review, a conflict or stale
+        flag cleared, a faded memory kept again, the Brief version Dream
+        replaced written back). Any person who may keep undoes it, within 30
+        days. Each memory (or the Brief) gets an `undid` receipt whose
+        `source` names the action's receipt. Refused with 409
+        `undo_refused` when it was already undone, the window has passed, a
+        memory it touched was forgotten, or a later change depends on it.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          description: The action is undone.
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DreamUndoResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/UndoRefused'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}:restore:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: restoreMemory
+      tags: [memories]
+      summary: Restore a faded memory
+      description: |
+        Keeps a faded memory again (Dream fades what nobody read in 60 days,
+        and never deletes it). It follows Keep's rules, and the memory
+        compiles again. Anything that isn't faded is 409
+        `invalid_transition`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchOptional'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/CommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/dream/settings:
+    get:
+      operationId: getDreamSettings
+      tags: [dream]
+      summary: Your Dream settings
+      description: |
+        Your time zone (Dream runs in your local night; `default` means
+        Memax doesn't know it yet and uses UTC) and whether the morning
+        edition comes by email.
+      responses:
+        '200':
+          description: Your settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DreamSettingsEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    patch:
+      operationId: updateDreamSettings
+      tags: [dream]
+      summary: Change your Dream settings
+      description: |
+        Sets your time zone (an IANA name, such as America/Vancouver) or
+        turns the morning email on or off. People only; your spaces' next
+        nights move to your zone at the next sweep.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DreamSettingsRequest'
+      responses:
+        '200':
+          description: Your settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DreamSettingsEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/dream/email:unsubscribe:
+    post:
+      operationId: unsubscribeDreamEmail
+      tags: [dream]
+      summary: Turn off the morning email
+      description: |
+        One-click unsubscribe (RFC 8058) from the morning edition: the token
+        from the email is the credential, so it needs no sign-in. It answers
+        the same whether or not the token matched.
+      security: []
+      x-memax-read: true
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      responses:
+        '200':
+          description: The morning email is off, if the token was one.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnsubscribeResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
   /v2/notices:
     get:
       operationId: listNotices
@@ -3045,6 +3459,31 @@ components:
       schema:
         $ref: '#/components/schemas/Id'
 
+    EditionPath:
+      name: edition
+      in: path
+      required: true
+      description: An edition's display ID (D-0214), its number (214), its id, or `latest`.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 40
+    DreamActionPath:
+      name: action
+      in: path
+      required: true
+      description: One of Dream's actions, by id.
+      schema:
+        $ref: '#/components/schemas/Id'
+    TimeZoneHeader:
+      name: X-Timezone
+      in: header
+      description: |
+        Your app's IANA time zone (the SDK sends it). Dream records it as
+        your zone, so it runs in your local night, unless you set one.
+      schema:
+        type: string
+        maxLength: 64
     ImportPath:
       name: import
       in: path
@@ -3459,7 +3898,13 @@ components:
         memory whose only conflict was with it, and purged on a target or a
         Brief whose drift evidence or older versions lost its words; an
         agent's memax_forget writes forget_requested, and a person keeping
-        the memory instead writes forget_declined.
+        the memory instead writes forget_declined. Dream (`actor_kind:
+        dream`, via system) writes published on its edition (`dream`, D-),
+        folded (notes folded into a memory as lineage), proposed, merged
+        (a duplicate proposal), flagged (a conflict or a stale fact), faded
+        and revised (the Brief), each citing the edition (`source: {kind:
+        dream, ref: D-0214}`); undoing one writes undid; restoring a faded
+        memory writes restored.
       type: string
       enum:
         - proposed
@@ -3501,6 +3946,8 @@ components:
         - purged
         - forget_requested
         - forget_declined
+        - published
+        - folded
     ObjectKind:
       type: string
       enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space]
@@ -3607,6 +4054,8 @@ components:
         - space_kind
         - space_limit
         - switch_by_owner
+        - dream_by_dream
+        - dream_run_by_owner
     ErrorCode:
       type: string
       enum:
@@ -7761,6 +8210,420 @@ components:
         notes:
           description: The V1 memories a space holds (`space_has_notes`).
           type: integer
+
+    # ------------------------------------------------------------------
+    # Dream editions (plan 25 §5.10)
+    # ------------------------------------------------------------------
+    DreamActionKind:
+      description: |
+        What one of an edition's actions did. fold: notes became lineage of
+        a kept memory (its words unchanged). propose: a new fact from notes,
+        waiting in Review. dedupe: a proposal that repeats one waiting was
+        folded into it. conflict: a memory that contradicts a kept one was
+        flagged. stale: a memory past its date was flagged. fade: a memory
+        nobody read in 60 days faded (restorable). brief: a few small, cited
+        changes to the Brief.
+      type: string
+      enum: [fold, propose, dedupe, conflict, stale, fade, brief]
+    DreamTrigger:
+      type: string
+      enum: [schedule, manual]
+    EditionRef:
+      description: An edition's display ID, unique per tenant.
+      type: string
+      pattern: '^D-[0-9]{4,}$'
+    NoteDisplayRef:
+      description: A note's display ID, unique per tenant.
+      type: string
+      pattern: '^N-[0-9]{4,}$'
+    NoteAuthorCount:
+      type: object
+      additionalProperties: false
+      required: [kind, count]
+      properties:
+        kind:
+          description: Who wrote the notes. `chat` is a note captured in a chat app.
+          type: string
+          enum: [agent, person, chat]
+        agent:
+          description: The agent's registry key, when an agent wrote them.
+          type: string
+        count:
+          type: integer
+          minimum: 1
+    DreamCounts:
+      description: The edition's actions by kind (those undone included).
+      type: object
+      additionalProperties: false
+      required: [fold, propose, dedupe, conflict, stale, fade, brief]
+      properties:
+        fold: {type: integer, minimum: 0}
+        propose: {type: integer, minimum: 0}
+        dedupe: {type: integer, minimum: 0}
+        conflict: {type: integer, minimum: 0}
+        stale: {type: integer, minimum: 0}
+        fade: {type: integer, minimum: 0}
+        brief: {type: integer, minimum: 0}
+    DreamBriefChange:
+      type: object
+      additionalProperties: false
+      required: [version, ops]
+      properties:
+        ref:
+          $ref: '#/components/schemas/BriefRef'
+        version:
+          type: integer
+          minimum: 1
+        ops:
+          description: How many small changes it made.
+          type: integer
+          minimum: 1
+    DreamUndone:
+      type: object
+      additionalProperties: false
+      required: [receipt_id, at]
+      properties:
+        receipt_id:
+          $ref: '#/components/schemas/Id'
+        by:
+          description: The person who undid it.
+          $ref: '#/components/schemas/Id'
+        at:
+          $ref: '#/components/schemas/Timestamp'
+    DreamAction:
+      description: One of an edition's actions, with the memory it is about as it is now.
+      type: object
+      additionalProperties: false
+      required: [id, edition_id, edition_ref, n, kind, note_refs, receipt_ids, undoable, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        edition_id:
+          $ref: '#/components/schemas/Id'
+        edition_ref:
+          $ref: '#/components/schemas/EditionRef'
+        n:
+          description: Its place in the edition, from 1.
+          type: integer
+          minimum: 1
+        kind:
+          $ref: '#/components/schemas/DreamActionKind'
+        memory:
+          description: The memory it changed or created (every kind but brief).
+          $ref: '#/components/schemas/Memory'
+        version:
+          description: That memory's version when Dream acted.
+          type: integer
+          minimum: 1
+        related:
+          description: The proposal a duplicate folded into (dedupe), or the other side (conflict).
+          $ref: '#/components/schemas/Memory'
+        note_refs:
+          description: The notes it rests on (fold, propose).
+          type: array
+          items:
+            $ref: '#/components/schemas/NoteDisplayRef'
+        brief:
+          $ref: '#/components/schemas/DreamBriefChange'
+        receipt_ids:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Id'
+        undone:
+          $ref: '#/components/schemas/DreamUndone'
+        undoable:
+          description: Whether Undo may still apply; a later change can still refuse it.
+          type: boolean
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+    DreamSurfaced:
+      description: Something the edition lists because it needs a person, though Dream didn't do it.
+      type: object
+      additionalProperties: false
+      required: [kind, memory]
+      properties:
+        kind:
+          type: string
+          enum: [conflict]
+        memory:
+          $ref: '#/components/schemas/Memory'
+        with:
+          $ref: '#/components/schemas/Memory'
+    DreamEdition:
+      description: One edition (D-): what Dream read and what it did.
+      type: object
+      additionalProperties: false
+      required: [id, ref, n, space_id, slot, trigger, until, started_at, finished_at, seconds, notes_read, notes_by,
+                 note_refs, fact_refs, counts, undone, needs_you, receipt_id]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        ref:
+          $ref: '#/components/schemas/EditionRef'
+        n:
+          description: The edition's number ("No. 214").
+          type: integer
+          minimum: 1
+        space_id:
+          $ref: '#/components/schemas/Id'
+        slot:
+          description: The night (or the run-now moment) it answers.
+          $ref: '#/components/schemas/Timestamp'
+        trigger:
+          $ref: '#/components/schemas/DreamTrigger'
+        requested_by:
+          description: The person who asked it to run now.
+          $ref: '#/components/schemas/Id'
+        since:
+          description: It read record changes after this (the previous edition's `until`).
+          $ref: '#/components/schemas/Timestamp'
+        until:
+          $ref: '#/components/schemas/Timestamp'
+        started_at:
+          $ref: '#/components/schemas/Timestamp'
+        finished_at:
+          $ref: '#/components/schemas/Timestamp'
+        seconds:
+          description: How long the run took.
+          type: integer
+          minimum: 0
+        notes_read:
+          type: integer
+          minimum: 0
+        notes_by:
+          type: array
+          items:
+            $ref: '#/components/schemas/NoteAuthorCount'
+        note_refs:
+          description: The notes it read, oldest first.
+          type: array
+          items:
+            $ref: '#/components/schemas/NoteDisplayRef'
+        fact_refs:
+          description: The memories the notes became, folded into or proposed.
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryDisplayRef'
+        counts:
+          $ref: '#/components/schemas/DreamCounts'
+        undone:
+          description: How many of its actions a person undid.
+          type: integer
+          minimum: 0
+        needs_you:
+          description: Conflicts and stale facts it flagged or found that still wait on a person.
+          type: integer
+          minimum: 0
+        receipt_id:
+          description: Its `published` receipt.
+          $ref: '#/components/schemas/Id'
+        actions:
+          description: Every action, in order (when one edition is read).
+          type: array
+          items:
+            $ref: '#/components/schemas/DreamAction'
+        surfaced:
+          description: What it found that needs a person (when one edition is read).
+          type: array
+          items:
+            $ref: '#/components/schemas/DreamSurfaced'
+    DreamSchedule:
+      type: object
+      additionalProperties: false
+      required: [cadence, time_zone, next_at]
+      properties:
+        cadence:
+          type: string
+          enum: [nightly, weekly]
+        time_zone:
+          description: The owner's zone the next night is in ("UTC" until Memax knows it).
+          type: string
+        next_at:
+          $ref: '#/components/schemas/Timestamp'
+    DreamEditionPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DreamEdition'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+        schedule:
+          $ref: '#/components/schemas/DreamSchedule'
+    DreamActionPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DreamAction'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+    DreamUndoResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, action, memories, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        action:
+          $ref: '#/components/schemas/DreamAction'
+        memories:
+          description: Every memory the undo changed.
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
+        receipts:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Receipt'
+    UndoEditionRequest:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          $ref: '#/components/schemas/DreamActionKind'
+        reason:
+          $ref: '#/components/schemas/Reason'
+    DreamUndoRefusal:
+      type: object
+      additionalProperties: false
+      required: [action_id, reason, message]
+      properties:
+        action_id:
+          $ref: '#/components/schemas/Id'
+        reason:
+          description: Undo's reason (`UndoRefusal`), or `refused` when policy refused.
+          type: string
+        message:
+          type: string
+        ref:
+          type: string
+    UndoEditionResult:
+      type: object
+      additionalProperties: false
+      required: [undone, refused]
+      properties:
+        undone:
+          type: array
+          items:
+            $ref: '#/components/schemas/DreamAction'
+        refused:
+          type: array
+          items:
+            $ref: '#/components/schemas/DreamUndoRefusal'
+    DreamRun:
+      type: object
+      additionalProperties: false
+      required: [queued, slot, trigger]
+      properties:
+        queued:
+          type: boolean
+        slot:
+          $ref: '#/components/schemas/Timestamp'
+        trigger:
+          $ref: '#/components/schemas/DreamTrigger'
+    DreamSettings:
+      type: object
+      additionalProperties: false
+      required: [time_zone, time_zone_source, morning_email]
+      properties:
+        time_zone:
+          type: string
+        time_zone_source:
+          description: '`default`: Memax doesn''t know your zone yet (UTC). `observed`: from your app''s clock. `set`: by you.'
+          type: string
+          enum: [default, observed, set]
+        morning_email:
+          type: boolean
+    DreamSettingsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        time_zone:
+          type: string
+          minLength: 1
+          maxLength: 64
+        morning_email:
+          type: boolean
+    UnsubscribeResult:
+      type: object
+      additionalProperties: false
+      required: [unsubscribed]
+      properties:
+        unsubscribed:
+          type: boolean
+
+    DreamEditionPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DreamEditionPage'
+    DreamEditionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DreamEdition'
+    DreamActionPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DreamActionPage'
+    DreamUndoResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DreamUndoResult'
+    UndoEditionResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/UndoEditionResult'
+    DreamRunEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DreamRun'
+    DreamSettingsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DreamSettings'
+    UnsubscribeResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/UnsubscribeResult'
 
     ErrorEnvelope:
       type: object

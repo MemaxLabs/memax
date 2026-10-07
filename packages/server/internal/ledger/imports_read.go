@@ -531,7 +531,11 @@ type ImportCandidate struct {
 	// applies (a scoped rule's globs).
 	Sources []string
 	Paths   []string
-	Trust   policy.Trust
+	// Under is the headings above it in its file ("Orbit › Mobile"), from
+	// its first source's locator, which init fills: a heading can be all
+	// that says where a statement applies ("Use Jest here").
+	Under string
+	Trust policy.Trust
 }
 
 // ImportCheckInput is what the conflict check compares.
@@ -583,10 +587,25 @@ func (l *Ledger) ImportCheckSnapshot(ctx context.Context, args JudgeImportArgs) 
 				Paths: scopePaths(m.Applies), Trust: m.Trust}
 			for _, s := range m.Sources {
 				c.Sources = append(c.Sources, s.Ref)
+				if c.Under == "" {
+					c.Under = locatorHeading(s.Locator)
+				}
 			}
 			in.Pending = append(in.Pending, c)
 		}
 		return nil
 	})
 	return in, done, err
+}
+
+// locatorHeading is the heading a file source's locator names ({"heading":
+// "Orbit › Mobile"}), or "".
+func locatorHeading(raw json.RawMessage) string {
+	var l struct {
+		Heading string `json:"heading"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &l) != nil {
+		return ""
+	}
+	return strings.TrimSpace(l.Heading)
 }

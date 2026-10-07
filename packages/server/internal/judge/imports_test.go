@@ -3,6 +3,7 @@ package judge_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -158,6 +159,60 @@ func TestImportCheckIsCarefulAndDegrades(t *testing.T) {
 	run, err = stage0Only(f).CheckImport(f.ctx, ledger.JudgeImportArgs{ImportID: res4.Import.ID, SpaceID: sp4})
 	if err != nil || run.State != ledger.CheckSkipped {
 		t.Fatalf("one proposal: %+v %v", run, err)
+	}
+}
+
+// The headings above a statement, which init sends in its source's
+// locator, reach the prompt: a heading can be all that says where a
+// statement applies ("Use Jest here" under "Mobile").
+func TestImportCheckSendsTheHeadings(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	zz := f.user("zz")
+	sp := f.space(zz, "memax-v2")
+	item := func(ref, heading, statement string) ledger.ImportItem {
+		loc, _ := json.Marshal(map[string]any{"path": "AGENTS.md", "heading": heading})
+		return ledger.ImportItem{Key: ref, Location: ledger.ImportRepository, NewMemory: ledger.NewMemory{Statement: statement,
+			Section: ledger.SectionConventions, Sources: []ledger.SourceInput{{Kind: ledger.SourceFile, Ref: ref, Locator: loc}}}}
+	}
+	res, err := f.l.Import(f.ctx, ledger.ImportRequest{
+		Meta:    ledger.Meta{Actor: person(zz), Scope: f.scope(zz), Via: policy.ViaCLI, IdempotencyKey: uuid.NewString()},
+		SpaceID: sp,
+		Items: []ledger.ImportItem{item("AGENTS.md:8", "Orbit › Mobile (packages/mobile)", "Use Jest here."),
+			item("AGENTS.md:3", "", "Unit tests run on Vitest.")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &fakeModel{answer: conflictOracle("Test runner", 0.9, "nothing disagrees")}
+	if _, err := withModel(f, model, judge.Config{Primary: judge.Tier{Model: "primary"}}).
+		CheckImport(f.ctx, ledger.JudgeImportArgs{ImportID: res.Import.ID, SpaceID: sp}); err != nil {
+		t.Fatal(err)
+	}
+	p := model.calls[0].Prompt
+	if !strings.Contains(p, `under="Orbit › Mobile (packages/mobile)">`+"\nUse Jest here.") || strings.Count(p, "under=") != 1 {
+		t.Errorf("prompt: %s", p)
+	}
+}
+
+// The primary leaves suggestion out when it has none; at temperature 0 it
+// does so again on a retry, so the answer is taken as it is (import eval,
+// Oct 7, 2026).
+func TestImportCheckTakesAnAnswerWithoutASuggestion(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	zz := f.user("zz")
+	sp := f.space(zz, "memax-v2")
+	res, _ := f.importFiles(zz, sp, [2]string{"CLAUDE.md:1", "Use pnpm."}, [2]string{"AGENTS.md:1", "Use yarn."})
+	model := &fakeModel{answer: func(c judge.Call, _ int) (string, error) {
+		refs := statementRef.FindAllStringSubmatch(c.Prompt, -1)
+		return fmt.Sprintf(`{"conflicts":[{"subject":"Package manager","members":[%q,%q],"confidence":0.95,"rationale":"pnpm or yarn."}]}`,
+			refs[0][1], refs[1][1]), nil
+	}}
+	run, err := withModel(f, model, judge.Config{Primary: judge.Tier{Model: "primary"}, Fallback: judge.Tier{Model: "f", Strict: true}}).
+		CheckImport(f.ctx, ledger.JudgeImportArgs{ImportID: res.Import.ID, SpaceID: sp})
+	if err != nil || run.Conflicts != 1 || run.Calls != 1 {
+		t.Fatalf("answer without a suggestion: %+v %v (tiers %v)", run, err, model.tiers())
 	}
 }
 

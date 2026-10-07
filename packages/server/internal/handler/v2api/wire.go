@@ -213,6 +213,14 @@ func (h *Handler) space(r *http.Request, p *principal, key string) (ledger.Space
 		}
 		return ledger.SpaceGrant{}, notFound
 	}
+	// The scope carries each space's slug, read with it from the same
+	// hubs rows v2.spaces shows: no round trip. A scope without slugs
+	// (built some other way) asks the record.
+	for _, g := range p.scope.Spaces {
+		if g.Slug == key {
+			return g, nil
+		}
+	}
 	spaces, err := h.ledger.ListSpaces(r.Context(), p.scope)
 	if err != nil {
 		return ledger.SpaceGrant{}, h.fromLedger(r, err)

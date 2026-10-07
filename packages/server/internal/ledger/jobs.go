@@ -216,8 +216,8 @@ func (l *Ledger) SpaceScope(ctx context.Context, spaceID uuid.UUID) (Scope, erro
 	}
 	var g SpaceGrant
 	var kind string
-	err := l.pool.QueryRow(ctx, `SELECT id, tenant_id, space_kind FROM public.hubs WHERE id = $1`, spaceID).
-		Scan(&g.SpaceID, &g.TenantID, &kind)
+	err := l.pool.QueryRow(ctx, `SELECT id, tenant_id, space_kind, slug, name FROM public.hubs WHERE id = $1`, spaceID).
+		Scan(&g.SpaceID, &g.TenantID, &kind, &g.Slug, &g.Name)
 	if errNoRows(err) {
 		return Scope{}, ErrNotFound
 	}

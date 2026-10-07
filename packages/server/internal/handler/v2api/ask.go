@@ -107,6 +107,9 @@ func (h *Handler) askSpace(w http.ResponseWriter, r *http.Request) {
 
 // spaceName is the space's name, which the answer's instructions use.
 func (h *Handler) spaceName(r *http.Request, p *principal, sp ledger.SpaceGrant) (string, error) {
+	if sp.Name != "" {
+		return sp.Name, nil // read with the scope
+	}
 	spaces, err := h.ledger.ListSpaces(r.Context(), p.scope.Narrow(sp.SpaceID))
 	if err != nil {
 		return "", err

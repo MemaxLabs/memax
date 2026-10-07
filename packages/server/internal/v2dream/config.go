@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	"github.com/MemaxLabs/memax/packages/server/internal/judge"
 )
 
@@ -206,6 +207,13 @@ func (c Config) judgeConfig() judge.Config {
 //	DREAM_FALLBACK_MODEL   strict-schema fallback tier (default anthropic/claude-haiku-4.5; "off")
 //	DREAM_STRONG_MODEL     tier for verdicts on decisions in force (default anthropic/claude-sonnet-5.5; "off")
 //	DREAM_ZDR              zero-data-retention routing (default true)
+//	DREAM_PROVIDERS        the primary's hosts, an ordered allowlist ("together,baseten"; "any" pins none;
+//	                       default anthropic.DefaultProviders for the slug, when DREAM_ZDR is on)
+//	DREAM_FALLBACK_PROVIDERS, DREAM_STRONG_PROVIDERS  the same, for the fallback and strong tiers
+//	DREAM_MIN_QUANTIZATION the lowest precision any tier's hosts may run (default fp8 when DREAM_ZDR is on; "off")
+//	DREAM_TEMPERATURE      the primary's temperature (default 0: every call is structured; "default" sends none)
+//	DREAM_FALLBACK_TEMPERATURE  the fallback's (default 0)
+//	DREAM_STRONG_TEMPERATURE    the strong tier's (default none: Claude Sonnet 5.5 takes no other)
 //	DREAM_TIMEOUT_MS       one model call (default 30000)
 //	DREAM_DRY_RUN          plan and log editions without publishing (default false)
 //	DREAM_PLAN             the plan every owner dreams on until V2 billing: pro (default, the alpha) or free
@@ -273,6 +281,28 @@ func ConfigFromEnv(lookup func(string) (string, bool)) Config {
 		ManualPerWeek:     num("DREAM_MANUAL_PER_WEEK"),
 		MaxNotes:          num("DREAM_MAX_NOTES"),
 		MaxCalls:          num("DREAM_MAX_CALLS"),
+	}
+	// Each tier's hosts, precision floor and temperature, as the judge's
+	// (plan 25 D14): every Dream call is structured, so 0 where the model
+	// takes a temperature.
+	zero := 0.0
+	for _, t := range []struct {
+		tier        *judge.Tier
+		prefix      string
+		temperature *float64
+	}{
+		{&c.Primary, "DREAM_", &zero},
+		{&c.Fallback, "DREAM_FALLBACK_", &zero},
+		{&c.Strong, "DREAM_STRONG_", nil},
+	} {
+		var err error
+		if t.tier.Routing, err = anthropic.RoutingFromEnv(lookup, t.prefix+"PROVIDERS", "DREAM_MIN_QUANTIZATION",
+			t.tier.Model, c.ZeroDataRetention); err != nil {
+			slog.Warn("dream: config", "error", err)
+		}
+		if t.tier.Temperature, err = anthropic.TemperatureFromEnv(lookup, t.prefix+"TEMPERATURE", t.temperature); err != nil {
+			slog.Warn("dream: config", "error", err)
+		}
 	}
 	if ms := num("DREAM_TIMEOUT_MS"); ms > 0 {
 		c.CallTimeout = time.Duration(ms) * time.Millisecond

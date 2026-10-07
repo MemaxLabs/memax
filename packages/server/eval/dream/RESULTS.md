@@ -29,6 +29,19 @@ against OpenRouter's list by eval/livemeter.
   (the OpenRouter balance moved $0.0085 while they ran; its usage lags).
 - No call was served by a provider that isn't zero-retention for its model.
 
+## Oct 7, 2026: on pinned hosts
+
+The same run with each tier pinned to its zero-retention hosts at fp8 or better
+(`DREAM_*PROVIDERS`, `DREAM_MIN_QUANTIZATION`; anthropic.DefaultProviders) and the
+primary and fallback at temperature 0, as the judge's tiers are:
+
+- Every phase scored as above: P 1.00, R 1.00 on fold, new facts, dedupe, conflict and
+  stale; the live Brief placed the fade candidates again, so none faded.
+- 12 calls, every one pinned and asked for zero retention: DeepSeek V4.1 Flash served by
+  Together 11 times at temperature 0 (gateway p50 510 ms, p95 670 ms), Claude Sonnet 5.5 by
+  Google Vertex once (1.22 s). Run A took 6.1 s.
+- Spend: $0.0079 by the meter.
+
 The fixture is small on purpose: it checks that the prompts, validation and the ledger's
 re-checks do what each phase promises, not how Dream does on a large, messy record. Grow it from
 alpha editions (with their undos as labels) before tuning the bars.

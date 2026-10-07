@@ -1,11 +1,13 @@
 package v2dream
 
 import (
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 )
 
@@ -114,5 +116,28 @@ func TestConfigFromEnv(t *testing.T) {
 	if d.Primary.Model != DefaultPrimaryModel || d.Plan != PlanPro || d.LocalHour != 3 || !d.ZeroDataRetention || !d.Email ||
 		d.ProCadence != Nightly || d.FreeCadence != Weekly {
 		t.Errorf("defaults %+v", d)
+	}
+	// D14: each tier on its pinned zero-retention hosts, at fp8 or wider,
+	// and at temperature 0 where the model takes one.
+	if !slices.Equal(d.Primary.Routing.Providers, anthropic.DefaultProviders[DefaultPrimaryModel]) ||
+		!slices.Equal(d.Strong.Routing.Providers, anthropic.DefaultProviders[DefaultStrongModel]) ||
+		slices.Contains(d.Primary.Routing.Quantizations, "fp4") || !slices.Contains(d.Primary.Routing.Quantizations, "fp8") {
+		t.Errorf("default routing %+v / %+v", d.Primary.Routing, d.Strong.Routing)
+	}
+	if d.Primary.Temperature == nil || *d.Primary.Temperature != 0 || d.Fallback.Temperature == nil || d.Strong.Temperature != nil {
+		t.Errorf("default temperatures %v %v %v", d.Primary.Temperature, d.Fallback.Temperature, d.Strong.Temperature)
+	}
+	// Named hosts and a floor win; without zero retention nothing is pinned.
+	pinned := ConfigFromEnv(func(k string) (string, bool) {
+		v, ok := map[string]string{"DREAM_PROVIDERS": "Baseten, together", "DREAM_MIN_QUANTIZATION": "bf16",
+			"DREAM_STRONG_TEMPERATURE": "0.2"}[k]
+		return v, ok
+	})
+	if !slices.Equal(pinned.Primary.Routing.Providers, []string{"baseten", "together"}) ||
+		slices.Contains(pinned.Primary.Routing.Quantizations, "fp8") || pinned.Strong.Temperature == nil {
+		t.Errorf("pinned %+v %v", pinned.Primary.Routing, pinned.Strong.Temperature)
+	}
+	if len(c.Primary.Routing.Providers)+len(c.Fallback.Routing.Providers)+len(c.Fallback.Routing.Quantizations) != 0 {
+		t.Errorf("DREAM_ZDR=false still pinned %+v", c.Fallback.Routing)
 	}
 }

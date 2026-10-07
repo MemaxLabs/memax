@@ -272,8 +272,36 @@ func TestDreamEval(t *testing.T) {
 			if len(s.NotZDR) > 0 {
 				t.Errorf("%s was served by providers that aren't zero-retention: %v", s.Model, s.NotZDR)
 			}
+			if len(s.Unpinned) > 0 {
+				t.Errorf("%s was served by providers its tier didn't pin: %v", s.Model, s.Unpinned)
+			}
+			if len(s.BelowFloor) > 0 {
+				t.Errorf("%s was served below its tier's precision floor by %v", s.Model, s.BelowFloor)
+			}
 		}
+		// Every call named its tier's hosts, floor and temperature.
+		live := modes[len(modes)-1].cfg
+		for _, cl := range meter.Calls() {
+			tier := live.Primary
+			for _, x := range []judge.Tier{live.Fallback, live.Strong} {
+				if x.Model == cl.Model {
+					tier = x
+				}
+			}
+			if !slices.Equal(tier.Routing.Providers, cl.Only) || !slices.Equal(tier.Routing.Quantizations, cl.Quantizations) ||
+				!sameTemperature(tier.Temperature, cl.Temperature) {
+				t.Errorf("a %s call pinned %v at %v, temperature %v; its tier %v at %v, %v", cl.Model, cl.Only, cl.Quantizations,
+					cl.Temperature, tier.Routing.Providers, tier.Routing.Quantizations, tier.Temperature)
+				break
+			}
+		}
+		t.Logf("hosts: primary %v, fallback %v, strong %v, at %v", live.Primary.Routing.Providers,
+			live.Fallback.Routing.Providers, live.Strong.Routing.Providers, live.Primary.Routing.Quantizations)
 	}
+}
+
+func sameTemperature(a, b *float64) bool {
+	return (a == nil) == (b == nil) && (a == nil || *a == *b)
 }
 
 func tier(model string) judge.Tier { return judge.Tier{Model: model} }

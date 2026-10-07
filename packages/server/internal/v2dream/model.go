@@ -23,7 +23,9 @@ type Model = judge.Model
 
 // AnthropicModel calls models through the shared client (internal/anthropic,
 // pointed at OpenRouter in production), with zero-data-retention routing,
-// and counts tokens for the edition.
+// each tier on the hosts it pins at the precisions it admits and at its
+// temperature (judge.Tier.Routing, Temperature), and counts tokens for the
+// edition.
 type AnthropicModel struct {
 	Client            *anthropic.Client
 	ZeroDataRetention bool
@@ -42,6 +44,7 @@ func (m *AnthropicModel) Complete(ctx context.Context, c judge.Call) (string, er
 	req := anthropic.CompleteRequest{
 		Model: c.Tier.Model, MaxTokens: c.Tier.MaxTokens, System: c.System, Prompt: c.Prompt,
 		Purpose: "dream." + purposeOf(ctx) + "." + c.Tier.Name, ZeroDataRetention: m.ZeroDataRetention,
+		Providers: c.Tier.Routing.Providers, Quantizations: c.Tier.Routing.Quantizations, Temperature: c.Tier.Temperature,
 	}
 	if c.Tier.Strict {
 		req.OutputSchema = c.Schema

@@ -26,6 +26,14 @@ primary_region = "sjc"
   # direct-to-Fly traffic blocked once Cloudflare is the only
   # sanctioned entry point.
   TRUSTED_PROXY = "fly"
+  # Staging runs the River worker inside the API process
+  # (cmd/server/worker.go) instead of a separate always-on machine.
+  # When no requests arrive the machine stops (min_machines_running =
+  # 0), the worker stops with it, and Neon's staging compute can scale
+  # to zero; a standalone worker polls River every second and kept it
+  # awake around the clock. Jobs left queued run on the next wake, and
+  # periodic jobs catch up then. Production keeps its own worker app.
+  MEMAX_EMBEDDED_WORKER = "1"
 
 [http_service]
   internal_port = 8080
@@ -62,8 +70,10 @@ primary_region = "sjc"
   timeout = "5s"
 
 [[vm]]
+  # 512mb holds the API and the embedded worker; it's billed only
+  # while the machine runs.
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "512mb"
 
 [swap]
   size_mb = 512

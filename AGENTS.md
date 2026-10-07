@@ -437,8 +437,8 @@ cd packages/server && go run ./cmd/worker/
 # Deploy API server to Fly.io (staging; swap to fly.server.production.toml for prod)
 cd packages/server && fly deploy -c fly/fly.server.staging.toml
 
-# Deploy worker to Fly.io (staging; swap to fly.worker.production.toml for prod)
-cd packages/server && fly deploy -c fly/fly.worker.staging.toml
+# Deploy the worker to Fly.io (production only; staging's API runs the worker in-process)
+cd packages/server && fly deploy -c fly/fly.worker.production.toml
 
 # Create a new migration with the correct next version
 pnpm --filter @memaxlabs/server migrate:new <slug>
@@ -453,8 +453,8 @@ Migrations use a single shared sequence. Don't hand-pick version numbers — alw
 
 - `packages/server/` deploys to Fly.io as two processes with per-env tomls in `packages/server/fly/`:
   - API server (`fly.server.{staging,production}.toml`, `Dockerfile.server`) — serves HTTP, insert-only queue client
-  - Worker (`fly.worker.{staging,production}.toml`, `Dockerfile.worker`) — processes River jobs (memory processing, dreams)
-  - Prod tomls allocate bigger VMs (shared-cpu-2x, 1gb) and `min_machines_running ≥ 1` for HA; staging stays cheap (1x, 256mb)
+  - Worker (`fly.worker.production.toml`, `Dockerfile.worker`) — processes River jobs (memory processing, dreams). Staging has no worker app: `MEMAX_EMBEDDED_WORKER=1` makes the staging API run the worker in-process (`cmd/server/worker.go`), so an idle staging machine stops and Neon's staging compute can scale to zero
+  - Sizing (Oct 2026 running-cost review): the prod API runs 2 shared-cpu-2x 1gb machines with `min_machines_running = 1`, so the second stays suspended until needed; the prod worker is shared-cpu-1x 1gb; staging is one shared-cpu-1x 512mb machine that stops when idle
 - `packages/web/` deploys to Vercel (`memax.app`)
 - `packages/docs-site/` deploys to Vercel (`docs.memax.app`)
 - This repo publishes `memax-sdk` and `memax-cli` to npm

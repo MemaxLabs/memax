@@ -1,6 +1,6 @@
--- Revert 047: v2_switch
+-- Revert 048: v2_switch
 --
--- Restores 046's receipt verbs, 027's hub columns rule, 028's notes view,
+-- Restores 047's receipt verbs, note refs and notes view, 027's hub columns rule,
 -- 043's import locations and 044's tombstones, propagations and notices.
 -- Receipts are append-only, so the switch's receipts written meanwhile
 -- stay, and the restored CHECK is NOT VALID. Switch notices and note
@@ -62,14 +62,38 @@ DROP VIEW v2.note_chunks;
 DROP VIEW v2.notes;
 CREATE VIEW v2.notes WITH (security_barrier = true) AS
     SELECT m.id, m.owner_id, m.hub_id AS space_id, m.title,
-           left(m.content, 280) AS excerpt, m.state, m.created_at
+           left(m.content, 280) AS excerpt, m.state, m.created_at,
+           left(m.content, 4000) AS body,
+           CASE WHEN m.created_by_type = 'agent' OR COALESCE(m.created_by_slug, '') <> '' OR COALESCE(m.source_agent, '') <> ''
+                THEN 'agent' ELSE 'person' END AS author_kind,
+           COALESCE(NULLIF(m.created_by_slug, ''), NULLIF(m.source_agent, '')) AS agent,
+           m.source, m.content_type, m.source_path
       FROM public.memories m
      WHERE m.hub_id = ANY ((SELECT v2.current_space_ids())::uuid[]);
 GRANT SELECT ON v2.notes TO memax_v2;
 
-DROP TABLE v2.note_refs;
+-- Note refs back to 047's: the switch's (no edition) go; Dream's stay.
+DELETE FROM v2.note_refs WHERE edition_id IS NULL;
+DROP TRIGGER note_refs_guard ON v2.note_refs;
+DROP TRIGGER note_refs_require_receipt ON v2.note_refs;
+DROP TRIGGER note_refs_defaults ON v2.note_refs;
 DROP FUNCTION v2.note_refs_guard();
 DROP FUNCTION v2.require_note_receipt();
+DROP FUNCTION v2.note_refs_defaults();
+REVOKE UPDATE ON v2.note_refs FROM memax_v2;
+DROP INDEX v2.note_refs_v1_idx;
+ALTER TABLE v2.note_refs
+    DROP CONSTRAINT note_refs_source_key,
+    DROP COLUMN origin, DROP COLUMN v1_id, DROP COLUMN author_kind, DROP COLUMN author_id, DROP COLUMN agent,
+    DROP COLUMN trust, DROP COLUMN disposition, DROP COLUMN hold, DROP COLUMN stream_version,
+    DROP COLUMN last_receipt_id, DROP COLUMN forgotten_at, DROP COLUMN updated_at;
+ALTER TABLE v2.note_refs ALTER COLUMN edition_id SET NOT NULL;
+COMMENT ON TABLE v2.note_refs IS
+    'N-: display IDs for notes Dream has read, allocated by the edition that first read them.';
+CREATE CONSTRAINT TRIGGER note_refs_require_receipt
+    AFTER INSERT OR UPDATE ON v2.note_refs
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION v2.require_dream_receipt();
 
 DROP TRIGGER hubs_space_ledger_tenant ON public.hubs;
 DROP FUNCTION v2.hubs_space_ledger_tenant();
@@ -109,4 +133,5 @@ ALTER TABLE v2.receipts ADD CONSTRAINT receipts_action_check CHECK (action IN
      'asked', 'withdrawn',
      'returned', 'drafted',
      'purged', 'forget_requested', 'forget_declined',
-     'exported')) NOT VALID;
+     'exported',
+     'published', 'folded')) NOT VALID;

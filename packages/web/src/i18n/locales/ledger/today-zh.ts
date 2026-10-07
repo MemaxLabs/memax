@@ -10,7 +10,7 @@ export const ledgerTodayZh: Translations["ledger"]["today"] = {
     restorable: "可恢复",
     none: "还没有晨报",
     noneDetail:
-      "每天早上，Dream 会在这里发一期晨报：它把哪些笔记整理成了事实、发现了哪些冲突、哪些淡出了。这个空间还没有开始运行 Dream。",
+      "每天早上，Dream 会在这里发一期晨报：它把哪些笔记整理成了事实、发现了哪些冲突、哪些淡出了。有了可读的内容之后，当晚就会有第一期。",
     quiet: "昨晚没有晨报",
     quietDetail: "Dream 没有新东西可读，所以没有晨报。空着的夜晚不花钱。",
   },
@@ -60,6 +60,7 @@ export const ledgerTodayZh: Translations["ledger"]["today"] = {
     compiledAt: "编译于 {time}",
     compiledOn: "编译于 {date} {time}",
     dreamAt: "Dream 每晚 {time} 运行",
+    dreamWeekly: "Dream 每周运行，{day} {time}",
     kept: "{space} 里保留了 {n} 条记忆",
     keptOne: "{space} 里保留了 1 条记忆",
   },

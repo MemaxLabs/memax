@@ -125,6 +125,24 @@ describe("receiptToEntry", () => {
     expect(repo.via).toEqual([{ kind: "repository" }]);
   });
 
+  it("says which edition one of Dream's actions came from", () => {
+    const entry = receiptToEntry(
+      receipt({
+        actor_kind: "dream",
+        actor_id: undefined,
+        via: "system",
+        action: "faded",
+        source: { kind: "dream", ref: "D-0214" },
+      }),
+      viewer,
+    );
+    expect(entry.actor).toEqual({ kind: "dream" });
+    expect(entry.via).toEqual([
+      { kind: "via", via: "system" },
+      { kind: "edition", n: 214 },
+    ]);
+  });
+
   it("reads an agent receipt's level from its autonomy source", () => {
     const entry = receiptToEntry(
       receipt({

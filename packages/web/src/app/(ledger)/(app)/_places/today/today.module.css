@@ -97,6 +97,22 @@
 }
 
 /* The placeholder edition, on Dream's night surface. */
+/* Last night's edition opens its page: a link stretched over the card. */
+.dreamEdition {
+  position: relative;
+}
+
+.dreamOpen {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+}
+
+.dreamOpen:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .dreamQuiet:global(.mx-dream) {
   gap: 12px;
 }

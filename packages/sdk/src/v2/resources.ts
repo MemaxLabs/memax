@@ -1,6 +1,6 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`, `.imports`,
 // `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets`, `.gates`,
-// `.notices`, `.devices` and `.notes`. Thin, typed
+// `.notices`, `.devices`, `.dream` and `.notes`. Thin, typed
 // wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
 // as on /v1.
@@ -34,6 +34,17 @@ import type {
   DeliveryResult,
   DeviceAuthorization,
   DeviceCodeInput,
+  DreamAction,
+  DreamActionKind,
+  DreamActionPage,
+  DreamEdition,
+  DreamEditionPage,
+  DreamRun,
+  DreamSettings,
+  DreamSettingsInput,
+  DreamUndoResult,
+  UndoEditionInput,
+  UndoEditionResult,
   Drift,
   DriftResolutionResult,
   EditInput,
@@ -567,6 +578,19 @@ export class V2MemoriesResource {
     return this.command(ref, "keep", input, opts, opts.ifMatch);
   }
 
+  /**
+   * Restore a faded memory: Dream fades what nobody read in 60 days, and
+   * never deletes it. It follows Keep's rules, and the memory compiles
+   * again.
+   */
+  async restore(
+    ref: string,
+    input: ReviewInput,
+    opts: ReviewOptions,
+  ): Promise<CommandResult> {
+    return this.command(ref, "restore", input, opts, opts.ifMatch);
+  }
+
   /** Reject a proposal. `input.reason` goes into the receipt. */
   async reject(
     ref: string,
@@ -720,7 +744,7 @@ export class V2MemoriesResource {
 
   private async command(
     ref: string,
-    verb: "keep" | "reject" | "edit",
+    verb: "keep" | "reject" | "edit" | "restore",
     input: ReviewInput | EditInput,
     opts: CommandOptions & MemoryRefOptions,
     ifMatch: number | undefined,
@@ -1307,6 +1331,149 @@ export class V2NoticesResource {
   }
 }
 
+/** Options for listing an edition's actions. */
+export interface ListDreamActionsOptions extends PageOptions {
+  /** Only actions of this kind. */
+  kind?: DreamActionKind;
+}
+
+/**
+ * `memax.v2.dream`: Dream's editions, the overnight upkeep of a space done
+ * in the open. Each edition (`D-`) lists what Dream read and every small
+ * action it took, each with receipts that cite the edition, and any person
+ * who may keep undoes any of them for 30 days.
+ */
+export class V2DreamResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /**
+   * The space's editions, newest first, and when the next is due
+   * (`schedule`). The SDK sends the client's time zone, which is how Dream
+   * learns the person's local night.
+   */
+  async editions(space: string, opts?: PageOptions): Promise<DreamEditionPage> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/dream/editions`, {
+      query: pageQuery(opts),
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * One edition by display ID (`D-0214`), number (`214`), id or `latest`,
+   * with its actions and what it found that needs a person. A space with no
+   * edition yet throws `not_found` for `latest`.
+   */
+  async edition(
+    space: string,
+    edition: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<DreamEdition> {
+    return this.req(
+      "GET",
+      `/v2/spaces/${seg(space)}/dream/editions/${seg(edition)}`,
+      { signal: opts?.signal },
+    );
+  }
+
+  /** An edition's actions, in order, of one kind or all. */
+  async actions(
+    space: string,
+    edition: string,
+    opts?: ListDreamActionsOptions,
+  ): Promise<DreamActionPage> {
+    return this.req(
+      "GET",
+      `/v2/spaces/${seg(space)}/dream/editions/${seg(edition)}/actions`,
+      { query: { ...pageQuery(opts), kind: opts?.kind }, signal: opts?.signal },
+    );
+  }
+
+  /**
+   * Undo one of Dream's actions: the state before it comes back exactly.
+   * A refusal (already undone, too old, a later change in the way, the
+   * memory forgotten) throws a MemaxError `undo_refused` with
+   * `details.reason`.
+   */
+  async undo(
+    action: string,
+    input: UndoInput,
+    opts: CommandOptions,
+  ): Promise<DreamUndoResult> {
+    return this.req("POST", `/v2/dream/actions/${seg(action)}:undo`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Undo every undoable action of one kind in an edition ("Undo both",
+   * "Restore all"), each as its own command. What can't be undone is in
+   * `refused`; the rest goes ahead. Reuse the key on a retry.
+   */
+  async undoAll(
+    space: string,
+    edition: string,
+    input: UndoEditionInput,
+    opts: CommandOptions,
+  ): Promise<UndoEditionResult> {
+    return this.req(
+      "POST",
+      `/v2/spaces/${seg(space)}/dream/editions/${seg(edition)}:undo`,
+      { body: input, extraHeaders: commandHeaders(opts), signal: opts.signal },
+    );
+  }
+
+  /**
+   * Ask Dream to run on the space now (its owner only; a few times a day
+   * on Pro). It runs only if the space has something new since the last
+   * edition. Too soon throws `rate_limited` with `retryAfter`.
+   */
+  async run(space: string, opts: CommandOptions): Promise<DreamRun> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/dream:run`, {
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** Your time zone (Dream runs in your night) and the morning email. */
+  async settings(opts?: { signal?: AbortSignal }): Promise<DreamSettings> {
+    return this.req("GET", "/v2/dream/settings", { signal: opts?.signal });
+  }
+
+  /** Set your time zone, or turn the morning email on or off. */
+  async updateSettings(
+    input: DreamSettingsInput,
+    opts: CommandOptions,
+  ): Promise<DreamSettings> {
+    return this.req("PATCH", "/v2/dream/settings", {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Turn the morning email off with the token from its unsubscribe link.
+   * It needs no sign-in, and answers the same whether or not the token
+   * matched.
+   */
+  async unsubscribe(
+    token: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<{ unsubscribed: boolean }> {
+    return this.req("POST", "/v2/dream/email:unsubscribe", {
+      query: { token },
+      signal: opts?.signal,
+    });
+  }
+}
+
+/** Whether a Dream action can still be undone, as the server last said. */
+export function undoableAction(a: DreamAction): boolean {
+  return a.undoable && !a.undone;
+}
+
 /** `memax.v2`: the V2 record. */
 export class V2Resource {
   readonly spaces: V2SpacesResource;
@@ -1322,6 +1489,7 @@ export class V2Resource {
   readonly imports: V2ImportsResource;
   readonly devices: V2DevicesResource;
   readonly notes: V2NotesResource;
+  readonly dream: V2DreamResource;
   private readonly openStream?: OpenFn;
 
   constructor(req: RequestFn, open?: OpenFn) {
@@ -1338,6 +1506,7 @@ export class V2Resource {
     this.imports = new V2ImportsResource(req);
     this.devices = new V2DevicesResource(req);
     this.notes = new V2NotesResource(req);
+    this.dream = new V2DreamResource(req);
     this.openStream = open;
   }
 

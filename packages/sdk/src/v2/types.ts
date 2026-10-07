@@ -218,6 +218,8 @@ export type ResolveDriftInput = Schemas["ResolveDriftRequest"];
 export type ResolveConflictInput = Schemas["ResolveConflictRequest"];
 /** The body of an undo: an optional reason, for the receipt. */
 export type UndoInput = Schemas["ReviewRequest"];
+export type UndoEditionInput = Schemas["UndoEditionRequest"];
+export type DreamSettingsInput = Schemas["DreamSettingsRequest"];
 export type RequestDecisionInput = Schemas["RequestDecisionRequest"];
 export type AnswerGateInput = Schemas["AnswerGateRequest"];
 /** The body of withdrawing a gate: an optional reason, for the receipt. */
@@ -342,5 +344,23 @@ export type ImportHeld = Schemas["ImportHeld"];
 export type ImportChoice = Schemas["ImportChoice"];
 /** applied, refused or failed. */
 export type BulkOutcome = Schemas["BulkOutcome"];
+// Dream editions (plan 25 §5.10)
+/** One edition (D-): what Dream read and what it did. */
+export type DreamEdition = Schemas["DreamEdition"];
+export type DreamEditionPage = Schemas["DreamEditionPage"];
+/** One of an edition's actions, with its memory as it is now. */
+export type DreamAction = Schemas["DreamAction"];
+export type DreamActionPage = Schemas["DreamActionPage"];
+/** fold, propose, dedupe, conflict, stale, fade or brief. */
+export type DreamActionKind = Schemas["DreamActionKind"];
+export type DreamCounts = Schemas["DreamCounts"];
+export type DreamSurfaced = Schemas["DreamSurfaced"];
+export type DreamSchedule = Schemas["DreamSchedule"];
+export type DreamUndoResult = Schemas["DreamUndoResult"];
+export type UndoEditionResult = Schemas["UndoEditionResult"];
+export type DreamUndoRefusal = Schemas["DreamUndoRefusal"];
+export type DreamRun = Schemas["DreamRun"];
+export type DreamSettings = Schemas["DreamSettings"];
+export type NoteAuthorCount = Schemas["NoteAuthorCount"];
 /** The surfaces a client may declare in `X-Memax-Via`. */
 export type ClientVia = components["parameters"]["Via"];

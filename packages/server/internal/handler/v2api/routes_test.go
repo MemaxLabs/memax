@@ -130,6 +130,17 @@ var sampleRequests = map[string]struct {
 	"listImports":          {path: "/v2/spaces/memax-v2/imports"},
 	"getImport":            {path: "/v2/spaces/memax-v2/imports/" + sampleID},
 	"settleImportConflict": {path: "/v2/spaces/memax-v2/imports/" + sampleID + "/conflicts/1:settle", body: `{"choice":"keep_all"}`},
+	// Dream.
+	"listEditions":          {path: "/v2/spaces/memax-v2/dream/editions?limit=5", header: map[string]string{"X-Timezone": "America/Vancouver"}},
+	"getEdition":            {path: "/v2/spaces/memax-v2/dream/editions/D-0214"},
+	"listDreamActions":      {path: "/v2/spaces/memax-v2/dream/editions/latest/actions?kind=fade"},
+	"undoEdition":           {path: "/v2/spaces/memax-v2/dream/editions/214:undo", body: `{"kind":"fade"}`},
+	"runDream":              {path: "/v2/spaces/memax-v2/dream:run"},
+	"undoDreamAction":       {path: "/v2/dream/actions/" + sampleID + ":undo"},
+	"restoreMemory":         {path: "/v2/memories/M-0001:restore?space=memax-v2"},
+	"getDreamSettings":      {path: "/v2/dream/settings"},
+	"updateDreamSettings":   {path: "/v2/dream/settings", body: `{"time_zone":"America/Vancouver"}`},
+	"unsubscribeDreamEmail": {path: "/v2/dream/email:unsubscribe?token=0123456789abcdef0123456789abcdef"},
 }
 
 const sampleID = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"

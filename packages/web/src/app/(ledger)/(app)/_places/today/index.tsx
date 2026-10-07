@@ -102,6 +102,7 @@ function Today({
     {
       compiledAt,
       dreamAt: data.dreamAt,
+      dreamWeekday: data.dreamWeekday ?? null,
       kept: overview?.memories.kept ?? null,
       space: space.name,
     },

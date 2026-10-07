@@ -22,7 +22,8 @@ import (
 
 // TestV2RoutesMatchSpec mounts /v2 the way registerRoutes does, behind
 // the real auth chain, and sends every operation in v2.yaml through it.
-// Without a token each one is 401 from RequireAuth; with one, each
+// Without a token each one is 401 from RequireAuth (a public one, with
+// `security: []`, reaches its handler); with one, each
 // reaches its v2 handler (503 unavailable: these deps have no ledger)
 // rather than a 404 or 405 from the router. Together with
 // v2api.TestRoutesMatchSpec (the route table equals the spec) and
@@ -57,6 +58,10 @@ func TestV2RoutesMatchSpec(t *testing.T) {
 			status int
 			code   string
 		}{{"", 401, "unauthorized"}, {tok, 503, "unavailable"}} {
+			// A public operation (security: []) reaches its handler without one.
+			if op.Public && c.token == "" {
+				c.status, c.code = 503, "unavailable"
+			}
 			r := httptest.NewRequest(op.Method, path, nil)
 			if c.token != "" {
 				r.Header.Set("Authorization", "Bearer "+c.token)

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { V2_SPACE_PLACES } from "@/lib/ui-gate";
 import {
   PLACE_ROUTES,
+  editionHref,
   placeHref,
   railOfRoute,
   railPlaces,
@@ -42,6 +43,8 @@ describe("places", () => {
     expect(routeOfRail("briefs")).toBe("brief");
     expect(railOfRoute("brief")).toBe("briefs");
     expect(railOfRoute("activity")).toBeUndefined();
+    expect(railOfRoute("dream")).toBe("today");
+    expect(editionHref("memax-v2", 214)).toBe("/memax-v2/dream/214");
     expect(placeHref("memax-v2", "review")).toBe("/memax-v2/review");
   });
 

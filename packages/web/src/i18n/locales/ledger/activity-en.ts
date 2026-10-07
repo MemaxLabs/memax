@@ -171,6 +171,9 @@ export const ledgerActivityEn = {
     dream:
       "{actor} folded {notes} into {facts}, flagged {stale} stale and faded {faded}.",
     dreamPlain: "{actor} rewrote the record overnight.",
+    dreamDuplicate: "{actor} folded {ref} into the proposal it repeats.",
+    published: "{actor} published edition No. {n}.",
+    foldedNotes: "{actor} folded notes into {ref}. Its words are unchanged.",
     notes: "{n} notes",
     notesOne: "1 note",
     facts: "{n} facts",

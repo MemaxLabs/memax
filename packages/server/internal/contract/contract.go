@@ -71,6 +71,8 @@ type Operation struct {
 	ID     string
 	Method string // upper case
 	Path   string // the template, e.g. /v2/memories/{ref}:keep
+	// Public is set when the operation needs no credential (`security: []`).
+	Public bool
 
 	segments  []segment
 	params    []*parameter
@@ -227,6 +229,9 @@ func (s *Spec) indexOperations() error {
 				responses: map[int]*response{}, pointer: itemPtr + "/" + m,
 			}
 			op.ID, _ = raw["operationId"].(string)
+			if sec, ok := raw["security"].([]any); ok && len(sec) == 0 {
+				op.Public = true
+			}
 			if op.ID == "" {
 				return fmt.Errorf("contract: %s %s has no operationId", op.Method, path)
 			}

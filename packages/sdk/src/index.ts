@@ -53,6 +53,8 @@ export {
   V2TargetsResource,
   V2GatesResource,
   V2NoticesResource,
+  V2DreamResource,
+  undoableAction,
   refusalOf,
   forgetCarriesOf,
   askEventOf,

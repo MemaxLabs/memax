@@ -1,16 +1,17 @@
--- 047: v2_switch
+-- 048: v2_switch
 --
 -- "Switch to V2", one space at a time (plan 25 §10, Phase 2 epic 2.8), and
 -- notes (N-), the V1 content a switched space keeps.
 --
---   note_refs       one row per note of a space on V2: its N- number, where
---                   its words live (a V1 memory, a persona or an agent
---                   config), who wrote them, and what the switch did with
---                   it (offered for bulk keep, left for Dream to fold, or
---                   kept as a note only). IDs, refs and codes; never words.
+--   note_refs       (047's, widened) one row per note of a space on V2: its
+--                   N- number, where its words live (a V1 memory, a persona
+--                   or an agent config), who wrote them, and what the switch
+--                   did with it (offered for bulk keep, left for Dream to
+--                   fold, or kept as a note only). IDs, refs and codes;
+--                   never words.
 --   notes (view)    the notes of the spaces in scope with their words, read
 --                   from the V1 rows that hold them (public.memories,
---                   personas, agent_configs). 028's view, widened.
+--                   personas, agent_configs). 028's and 047's view, widened.
 --   note_chunks     the V1 chunks of those notes, for search (the owner's,
 --                   memax_search include_notes and /v2/spaces/{space}/notes).
 --   space_switches  where a space's switch stands: the steps done, the
@@ -42,23 +43,24 @@
 -- reads, forced RLS, receipts), and search reads V1's own chunks, already
 -- indexed (GIN on search_vector, trigram on search_text).
 --
--- # Hand-off to Dream (branch v2-dream, its migration 047)
+-- # Hand-off to Dream (047)
 --
--- Dream reads v2.notes. This view keeps Dream's columns in Dream's order
--- (id … created_at, body, author_kind, agent, source, content_type,
--- source_path) and adds origin, seq, disposition, hold and trust after
--- them, so one CREATE OR REPLACE serves both. Dream folds only notes whose
--- disposition is 'fold' (agent-written V1 memories, personas, agent
--- configs, a person's documents longer than one statement, and every note
--- written after the switch): a person's own V1 memories are 'candidate',
--- already offered for bulk keep through the switch's V1 import, and
--- archived or credential-bearing ones are 'note' (searchable, never
--- proposed). Dream's note_refs (N- numbers allocated by an edition) is
--- this table: merging, Dream's migration adds `edition_id` here instead of
--- creating the table, and its receipt check admits the edition (this one
--- admits the space or the note); its numbering of a note the switch didn't
--- number inserts a row with origin 'memory', v1_id = note_id and
--- disposition 'fold'.
+-- Dream reads v2.notes after its cursor and numbers the notes it reads in
+-- v2.note_refs (047). This migration widens both rather than adding a
+-- second numbering: the switch numbers a space's V1 content when it moves
+-- (edition_id null), and Dream numbers what came later, as before. The view
+-- keeps 028's and Dream's columns in order and adds origin, seq,
+-- disposition, hold and trust after them; it now also lists personas and
+-- agent files numbered as notes, and leaves out V1's onboarding seeds.
+-- Dream's fold and new-fact phases read only notes whose disposition is
+-- 'fold' (internal/ledger/dream_snapshot.go): agent-written V1 memories,
+-- personas, agent files, a person's documents longer than one statement,
+-- and every note written after the switch (unnumbered notes read as
+-- 'fold'). A person's own short V1 memories are 'candidate', offered for
+-- bulk keep through the switch's V1 import, and archived or
+-- credential-bearing ones are 'note' (searchable, never proposed). Dream
+-- cites the trust the switch recorded (a repository's agent file is
+-- repository, not the person's), never above its own.
 --
 -- # The switch itself (internal/ledger/switch.go)
 --
@@ -86,8 +88,7 @@
 -- back to V1). They are on the space's own stream (object_kind space,
 -- object_ref "space"). A note's Forget is `forgot` about the note
 -- (object_kind note, which 028 admits). The list keeps every verb 028,
--- 029, 031, 035, 036, 042, 044 and 046 admit; a branch that adds verbs in
--- parallel merges by taking the union of both lists.
+-- 029, 031, 035, 036, 042, 044, 046 and 047 admit.
 
 ALTER TABLE v2.receipts DROP CONSTRAINT receipts_action_check;
 ALTER TABLE v2.receipts ADD CONSTRAINT receipts_action_check CHECK (action IN
@@ -100,6 +101,7 @@ ALTER TABLE v2.receipts ADD CONSTRAINT receipts_action_check CHECK (action IN
      'returned', 'drafted',
      'purged', 'forget_requested', 'forget_declined',
      'exported',
+     'published', 'folded',
      'noted', 'switched', 'switched_back'));
 
 -- ---------------------------------------------------------------------
@@ -170,48 +172,63 @@ CREATE TRIGGER hubs_space_ledger_tenant
 -- Note refs (N-)
 -- ---------------------------------------------------------------------
 
-CREATE TABLE v2.note_refs (
-    note_id         uuid PRIMARY KEY,                       -- the note: the V1 memory's id, or a name-based uuid of a persona or agent config
-    tenant_id       uuid NOT NULL,
-    space_id        uuid NOT NULL,
-    seq             bigint NOT NULL,                        -- display number: N-<seq>, per tenant
-    origin          text NOT NULL DEFAULT 'memory',         -- memory | persona | agent_config: the V1 table its words live in
-    v1_id           uuid NOT NULL,                          -- that row's id (= note_id for a memory)
-    author_kind     text,                                   -- person | agent, as V1 recorded who wrote it
-    author_id       uuid,                                   -- the V1 owner: the person, or the person the agent worked for
-    agent           text,                                   -- the agent's slug, for an agent's note
-    trust           text,                                   -- the class it is cited at: person | agent_own_work | repository | external
-    disposition     text NOT NULL DEFAULT 'fold',           -- candidate | fold | note
-    hold            text,                                   -- why a person's note isn't a candidate: long | secret | archived | format | external
-    stream_version  integer NOT NULL DEFAULT 0,             -- receipts about the note itself (its Forget)
-    receipt_id      uuid NOT NULL REFERENCES v2.receipts (id), -- the receipt that numbered it (the switch's noted)
-    last_receipt_id uuid NOT NULL REFERENCES v2.receipts (id),
-    forgotten_at    timestamptz,
-    created_at      timestamptz NOT NULL DEFAULT now(),
-    updated_at      timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT note_refs_space_fkey FOREIGN KEY (space_id, tenant_id) REFERENCES public.hubs (id, tenant_id) ON DELETE CASCADE,
-    CONSTRAINT note_refs_tenant_seq_key UNIQUE (tenant_id, seq),
-    CONSTRAINT note_refs_source_key UNIQUE (space_id, origin, v1_id),
-    CONSTRAINT note_refs_seq_check CHECK (seq >= 1),
-    CONSTRAINT note_refs_origin_check CHECK (origin IN ('memory', 'persona', 'agent_config')),
-    CONSTRAINT note_refs_memory_id_check CHECK (origin <> 'memory' OR v1_id = note_id),
-    CONSTRAINT note_refs_author_check CHECK (author_kind IS NULL OR author_kind IN ('person', 'agent')),
-    CONSTRAINT note_refs_agent_check CHECK (agent IS NULL OR (agent <> '' AND char_length(agent) <= 64)),
-    CONSTRAINT note_refs_trust_check CHECK (trust IS NULL OR trust IN ('person', 'agent_own_work', 'repository', 'external')),
-    CONSTRAINT note_refs_disposition_check CHECK (disposition IN ('candidate', 'fold', 'note')),
-    CONSTRAINT note_refs_hold_check CHECK (hold IS NULL OR hold IN ('long', 'secret', 'archived', 'format', 'external')),
-    CONSTRAINT note_refs_stream_version_check CHECK (stream_version >= 0)
-);
+-- Dream's table (047), widened: the switch numbers a space's V1 content
+-- without an edition, and records where each note's words live, who wrote
+-- them and what it did with them. Dream's inserts (note_id, tenant, space,
+-- seq, edition, receipt) still work: a BEFORE trigger fills v1_id and
+-- last_receipt_id, and the other columns default.
+DROP TRIGGER note_refs_require_receipt ON v2.note_refs;
 
-CREATE INDEX note_refs_space_idx ON v2.note_refs (space_id, seq);
+ALTER TABLE v2.note_refs ALTER COLUMN edition_id DROP NOT NULL;
+ALTER TABLE v2.note_refs
+    ADD COLUMN origin          text NOT NULL DEFAULT 'memory',  -- memory | persona | agent_config: the V1 table its words live in
+    ADD COLUMN v1_id           uuid,                            -- that row's id (= note_id for a memory)
+    ADD COLUMN author_kind     text,                            -- person | agent, as V1 recorded who wrote it
+    ADD COLUMN author_id       uuid,                            -- the V1 owner: the person, or the person the agent worked for
+    ADD COLUMN agent           text,                            -- the agent's slug, for an agent's note
+    ADD COLUMN trust           text,                            -- the class it is cited at: person | agent_own_work | repository | external
+    ADD COLUMN disposition     text NOT NULL DEFAULT 'fold',    -- candidate | fold | note
+    ADD COLUMN hold            text,                            -- why a person's note isn't a candidate: long | secret | archived | format | external
+    ADD COLUMN stream_version  integer NOT NULL DEFAULT 0,      -- receipts about the note itself (its Forget)
+    ADD COLUMN last_receipt_id uuid REFERENCES v2.receipts (id),
+    ADD COLUMN forgotten_at    timestamptz,
+    ADD COLUMN updated_at      timestamptz NOT NULL DEFAULT now();
+UPDATE v2.note_refs SET v1_id = note_id, last_receipt_id = receipt_id;
+ALTER TABLE v2.note_refs
+    ALTER COLUMN v1_id SET NOT NULL,
+    ALTER COLUMN last_receipt_id SET NOT NULL,
+    ADD CONSTRAINT note_refs_source_key UNIQUE (space_id, origin, v1_id),
+    ADD CONSTRAINT note_refs_origin_check CHECK (origin IN ('memory', 'persona', 'agent_config')),
+    ADD CONSTRAINT note_refs_memory_id_check CHECK (origin <> 'memory' OR v1_id = note_id),
+    ADD CONSTRAINT note_refs_author_check CHECK (author_kind IS NULL OR author_kind IN ('person', 'agent')),
+    ADD CONSTRAINT note_refs_agent_check CHECK (agent IS NULL OR (agent <> '' AND char_length(agent) <= 64)),
+    ADD CONSTRAINT note_refs_trust_check CHECK (trust IS NULL OR trust IN ('person', 'agent_own_work', 'repository', 'external')),
+    ADD CONSTRAINT note_refs_disposition_check CHECK (disposition IN ('candidate', 'fold', 'note')),
+    ADD CONSTRAINT note_refs_hold_check CHECK (hold IS NULL OR hold IN ('long', 'secret', 'archived', 'format', 'external')),
+    ADD CONSTRAINT note_refs_stream_version_check CHECK (stream_version >= 0);
+
 CREATE INDEX note_refs_v1_idx ON v2.note_refs (v1_id);
 
 COMMENT ON TABLE v2.note_refs IS
-    'N-: the notes of a space on V2, numbered once, with where their words live (a V1 row), who wrote them and what the switch did with them. Never words.';
+    'N-: the notes of a space on V2, numbered once (by the switch, or by the Dream edition that first read them), with where their words live (a V1 row), who wrote them and what the switch did with them. Never words.';
+
+-- Dream's inserts name neither v1_id nor last_receipt_id.
+CREATE FUNCTION v2.note_refs_defaults() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.v1_id := COALESCE(NEW.v1_id, NEW.note_id);
+    NEW.last_receipt_id := COALESCE(NEW.last_receipt_id, NEW.receipt_id);
+    RETURN NEW;
+END $$;
+
+CREATE TRIGGER note_refs_defaults
+    BEFORE INSERT ON v2.note_refs
+    FOR EACH ROW EXECUTE FUNCTION v2.note_refs_defaults();
 
 -- A row is written or changed only beside a receipt in the same
--- transaction, about the space (the switch's noted) or the note (its
--- Forget).
+-- transaction, about the space (the switch's noted), the note (its Forget)
+-- or the edition that numbered it (Dream's published).
 CREATE FUNCTION v2.require_note_receipt() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -221,7 +238,7 @@ BEGIN
          WHERE r.id = NEW.last_receipt_id
            AND r.txid = pg_current_xact_id()
            AND r.space_id = NEW.space_id
-           AND r.object_id IN (NEW.space_id, NEW.note_id)
+           AND (r.object_id = NEW.space_id OR r.object_id = NEW.note_id OR r.object_id = NEW.edition_id)
     ) THEN
         RAISE EXCEPTION 'v2.note_refs: % without a receipt written in the same transaction', TG_OP
             USING ERRCODE = 'MXR01',
@@ -527,19 +544,12 @@ COMMENT ON TABLE v2.agent_notices IS
 -- Row-level security and grants
 -- ---------------------------------------------------------------------
 
-ALTER TABLE v2.note_refs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE v2.note_refs FORCE ROW LEVEL SECURITY;
-CREATE POLICY note_refs_space ON v2.note_refs
-    USING (space_id = ANY ((SELECT v2.current_space_ids())::uuid[]))
-    WITH CHECK (space_id = ANY ((SELECT v2.current_space_ids())::uuid[]));
-
 ALTER TABLE v2.space_switches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE v2.space_switches FORCE ROW LEVEL SECURITY;
 CREATE POLICY space_switches_space ON v2.space_switches
     USING (space_id = ANY ((SELECT v2.current_space_ids())::uuid[]))
     WITH CHECK (space_id = ANY ((SELECT v2.current_space_ids())::uuid[]));
 
-GRANT SELECT, INSERT ON v2.note_refs TO memax_v2;
 GRANT UPDATE (disposition, hold, stream_version, last_receipt_id, forgotten_at, updated_at) ON v2.note_refs TO memax_v2;
 
 GRANT SELECT, INSERT ON v2.space_switches TO memax_v2;

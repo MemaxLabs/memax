@@ -42,6 +42,9 @@
 //     or anyone who could answer withdraws.
 //   - Ask: a signed-in person in the space asks, at any role, until their
 //     plan's asks this month are used up (D9); agents read over MCP.
+//   - Dream: only Dream publishes an edition, and its new facts are
+//     proposals. Any person who may keep undoes one of its actions or
+//     restores a faded memory; a space's owner asks it to run now.
 //
 // Messages follow the product voice (sentence case, actionable, no
 // exclamation marks). Clients localise by Code; Message is the English
@@ -337,6 +340,11 @@ const (
 	// the plan's monthly limit (D9).
 	ActionAsk Action = "ask"
 
+	// Dream (plan 25 §5.10, epic 2.2).
+	ActionPublishEdition Action = "publish_edition" // Dream writes an edition and its actions
+	ActionUndoDream      Action = "undo_dream"      // a person undoes one of an edition's actions
+	ActionRestore        Action = "restore"         // a person brings a faded memory back
+	ActionRunDream       Action = "run_dream"       // a space's owner asks Dream to run now
 	// Export (plan 25 §7.2, epic 2.4): a person takes a space's whole record
 	// (`memax export`, Memories' Export as Markdown). It changes nothing and
 	// writes one receipt, exported; decided here for who may.
@@ -524,6 +532,9 @@ const (
 	CodeAskByPerson = "ask_by_person" // agents read over MCP (recall, search); Ask is for people
 	CodeAskLimit    = "ask_limit"     // the plan's asks this month are used up
 
+	// Dream; all refusals.
+	CodeDreamByDream    = "dream_by_dream"     // only Dream publishes editions
+	CodeDreamRunByOwner = "dream_run_by_owner" // only the space's owner asks Dream to run now
 	// Export; a refusal.
 	CodeExportByPerson = "export_by_person" // agents read the record over MCP; export is for people
 
@@ -633,6 +644,17 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideRead(a, s)
 	case ActionAsk:
 		return decideAsk(a, o)
+	case ActionPublishEdition:
+		if a.Kind == ActorDream {
+			return apply()
+		}
+		return refuse(CodeDreamByDream, "Only Dream publishes an edition.")
+	case ActionUndoDream:
+		return decideUndoDream(a, s)
+	case ActionRestore:
+		return decideKeep(a, o, s)
+	case ActionRunDream:
+		return decideRunDream(a, s)
 	case ActionExport:
 		return decideExport(a, s)
 	}
@@ -966,6 +988,39 @@ func decideUndo(a Actor, o Object, s Space) Decision {
 		return refuse(CodeViewer, fmt.Sprintf("Viewers can't undo decisions in %s.", spaceName(s)))
 	case !canKeep(a.Role, s.Rules):
 		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners undo decisions in %s. Ask an owner.", spaceName(s)))
+	}
+	return apply()
+}
+
+// decideUndoDream: any person who may keep undoes one of Dream's actions
+// (plan 25 §5.5: "any Dream action → undo → member"). Undo only puts back
+// what was there, so, as for the judge's folds, it needs no more assurance
+// than the role.
+func decideUndoDream(a Actor, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson:
+		return refuse(CodePersonMustReview, "Only a person can undo what Dream did. Undo it in the edition.")
+	case a.Credential == CredentialAPIKey:
+		return refuse(CodeKeyCannotReview, "API keys can't undo what Dream did. Undo it in the edition.")
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf("Viewers can't undo what Dream did in %s.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules):
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners undo what Dream did in %s. Ask an owner.", spaceName(s)))
+	}
+	return apply()
+}
+
+// decideRunDream: a space's owner, signed in as themselves, asks Dream to
+// run now. It costs a model run, so it is the owner's call, as the plan's
+// run caps are.
+func decideRunDream(a Actor, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson:
+		return refuse(CodeDreamRunByOwner, fmt.Sprintf("Only %s's owner can ask Dream to run now.", spaceName(s)))
+	case a.Credential == CredentialAPIKey:
+		return refuse(CodeKeyCannotReview, "API keys can't ask Dream to run. Ask on the web.")
+	case a.Role != RoleOwner:
+		return refuse(CodeDreamRunByOwner, fmt.Sprintf("Only %s's owner can ask Dream to run now. Dream runs on its own each night.", spaceName(s)))
 	}
 	return apply()
 }

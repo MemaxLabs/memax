@@ -50,6 +50,8 @@ type writer struct {
 
 	// forgetHonesty is what tombstones say about copies Memax can't reach.
 	forgetHonesty ForgetHonesty
+	// dreamUndoWindow is how long one of Dream's actions can be undone.
+	dreamUndoWindow time.Duration
 }
 
 // write is Remember and Propose.

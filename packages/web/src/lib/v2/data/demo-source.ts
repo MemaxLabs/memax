@@ -14,6 +14,7 @@ import { createDemoRecords } from "./demo-records";
 import { askingAgents, type WebSession } from "./gates";
 import { createDemoGates } from "./gates-demo";
 import { createDemoDevices } from "./devices-demo";
+import { createDemoDream } from "./dream-demo";
 import { createDemoImports } from "./imports-demo";
 import type { LedgerDataSource } from "./source";
 import { syncLineOf, targetStatus } from "./targets";
@@ -201,6 +202,7 @@ export function createDemoSource({
     gates,
     imports: createDemoImports({ commandDelayMs, nextRef: allocRef }),
     devices: createDemoDevices({ now, commandDelayMs }),
+    dream: createDemoDream({ commandDelayMs }),
     spaces: async () => [...DEMO_SPACES],
     overview: async (space) => {
       const found = overview(space.slug);

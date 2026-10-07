@@ -19,6 +19,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
 )
 
@@ -92,6 +93,10 @@ func TestInsertClient_InsertsEveryKindOnItsQueue(t *testing.T) {
 		{ledger.JudgeImportArgs{ImportID: uuid.New(), SpaceID: uuid.New()}, ledger.QueueJudge, 3},
 		{ledger.ForgetPropagateArgs{OpID: uuid.New(), SpaceID: uuid.New()}, ledger.QueueForget, 20},
 		{ledger.SpaceSwitchArgs{SpaceID: uuid.New()}, ledger.QueueSwitch, 5},
+		// Dream: run now inserts dream_space from a request.
+		{ledger.DreamSpaceArgs{SpaceID: uuid.New(), Slot: time.Unix(1_791_000_000, 0).UTC(), Trigger: ledger.DreamManual}, ledger.QueueDream, 3},
+		{ledger.DreamEmailArgs{EditionID: uuid.New(), SpaceID: uuid.New()}, ledger.QueueDream, 5},
+		{v2dream.SweepArgs{}, ledger.QueueDream, 1},
 	}
 
 	expected := make([]rivertest.ExpectedJob, 0, len(cases))

@@ -34,6 +34,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "@secretlint/core": "^13.0.7",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.0.7",
     "chalk": "^5.4.0",
     "commander": "^13.0.0",
     "memax-sdk": "workspace:^"

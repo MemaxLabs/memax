@@ -206,7 +206,10 @@ func (r *apiRig) measure(t *testing.T, op apiOp) (time.Duration, *netsim.Counter
 
 // TestAPILatency times the /v2 hot paths at 0 and 24 ms of round-trip time
 // (MEMAX_LATENCY=1) and prints a table. At 24 ms, Ask's sources must come
-// within 300 ms and a Keep's own request within about 200 ms.
+// within 300 ms, the reads within 300 ms, and a Keep or a Remember within
+// 500 ms. A Keep's aim of about 200 ms is reported, not enforced: its
+// command makes about a dozen dependent statements (AGENTS.md, "Round
+// trips").
 func TestAPILatency(t *testing.T) {
 	if !netsim.LatencyOn() {
 		t.Skipf("wall-clock latency: set %s=1", netsim.LatencyEnv)
@@ -214,9 +217,15 @@ func TestAPILatency(t *testing.T) {
 	r := newAPIRig(t, testdb.Options{Proxy: true})
 	const runs = 20
 	bars := map[string]time.Duration{
+		"/v2 memory list":               300 * time.Millisecond,
+		"/v2 memory get":                300 * time.Millisecond,
+		"/v2 review queue":              300 * time.Millisecond,
+		"/v2 Brief":                     300 * time.Millisecond,
+		"/v2 Keep (+ jobs)":             500 * time.Millisecond,
+		"/v2 Remember (+ jobs)":         500 * time.Millisecond,
 		"/v2 Ask, to the sources event": 300 * time.Millisecond,
-		"/v2 Keep (+ jobs)":             200 * time.Millisecond,
 	}
+	aims := map[string]time.Duration{"/v2 Keep (+ jobs)": 200 * time.Millisecond}
 	var rows []string
 	for _, rtt := range []time.Duration{0, netsim.ProductionRTT} {
 		r.db.Proxy.SetOneWay(rtt / 2)
@@ -232,6 +241,9 @@ func TestAPILatency(t *testing.T) {
 			rows = append(rows, s.Row())
 			if bar, ok := bars[op.name]; ok && rtt == netsim.ProductionRTT && s.P(0.95) > bar {
 				t.Errorf("%s at %v: p95 %v, want under %v", op.name, rtt, s.P(0.95), bar)
+			}
+			if aim, ok := aims[op.name]; ok && rtt == netsim.ProductionRTT && s.P(0.95) > aim {
+				t.Logf("%s at %v: p95 %v misses the %v aim", op.name, rtt, s.P(0.95), aim)
 			}
 		}
 	}

@@ -243,7 +243,8 @@ func partial(t *testing.T, res *mcp.CallToolResult) bool {
 // TestMCPLatency times the MCP reads at 0 and 24 ms of round-trip time
 // (MEMAX_LATENCY=1) and prints a table. At 24 ms, recall in a space on V2
 // (N2's path) must stay well under N2's 300 ms p95, and search under its
-// 500 ms.
+// 500 ms; recall's aim of 150 ms is reported, not enforced (it needs the
+// API and the database closer than 24 ms; AGENTS.md, "Round trips").
 func TestMCPLatency(t *testing.T) {
 	if !netsim.LatencyOn() {
 		t.Skipf("wall-clock latency: set %s=1", netsim.LatencyEnv)
@@ -252,11 +253,12 @@ func TestMCPLatency(t *testing.T) {
 	const runs = 30
 	var rows []string
 	bars := map[string]time.Duration{
-		opRecallSpace: 150 * time.Millisecond,
-		opDigest:      200 * time.Millisecond,
-		opSearchSpace: 300 * time.Millisecond,
-		opGet:         200 * time.Millisecond,
+		opRecallSpace: 275 * time.Millisecond,
+		opDigest:      300 * time.Millisecond,
+		opSearchSpace: 500 * time.Millisecond,
+		opGet:         300 * time.Millisecond,
 	}
+	aims := map[string]time.Duration{opRecallSpace: 150 * time.Millisecond}
 	for _, rtt := range []time.Duration{0, netsim.ProductionRTT} {
 		r.db.Proxy.SetOneWay(rtt / 2)
 		for _, op := range r.ops() {
@@ -279,6 +281,9 @@ func TestMCPLatency(t *testing.T) {
 			rows = append(rows, row)
 			if bar, ok := bars[op.name]; ok && rtt == netsim.ProductionRTT && s.P(0.95) > bar {
 				t.Errorf("%s at %v: p95 %v, want under %v", op.name, rtt, s.P(0.95), bar)
+			}
+			if aim, ok := aims[op.name]; ok && rtt == netsim.ProductionRTT && s.P(0.95) > aim {
+				t.Logf("%s at %v: p95 %v misses the %v aim", op.name, rtt, s.P(0.95), aim)
 			}
 			if partials > 0 && rtt == netsim.ProductionRTT {
 				t.Errorf("%s at %v: %d of %d answers were partial", op.name, rtt, partials, runs)

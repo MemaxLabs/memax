@@ -208,7 +208,7 @@ export function standing(
   return edition.actions.filter((a) => a.kind === kind && !a.undone);
 }
 
-/** What waits on a person: conflicts and stale facts still flagged, and what the judge flagged. */
+/** What waits on a person: conflicts still flagged (Dream's and the judge's), then stale facts. */
 export function needsYouOf(edition: DreamEditionView): MemoryListItem[] {
   const out: MemoryListItem[] = [];
   const seen = new Set<string>();
@@ -225,7 +225,11 @@ export function needsYouOf(edition: DreamEditionView): MemoryListItem[] {
   for (const s of edition.surfaced) {
     if (s.memory.state === "conflict") add(s.memory);
   }
-  return out;
+  // Conflicts first (DreamEdition.png), then what to verify.
+  return [
+    ...out.filter((m) => m.state === "conflict"),
+    ...out.filter((m) => m.state !== "conflict"),
+  ];
 }
 
 /**

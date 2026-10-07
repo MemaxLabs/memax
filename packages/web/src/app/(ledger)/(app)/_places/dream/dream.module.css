@@ -30,6 +30,7 @@
 .titleMeta {
   margin-left: 8px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .more {
@@ -125,5 +126,79 @@
 @media (max-width: 960px) {
   .grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A phone (after MobileToday.png): the header stacks, the edition card
+ * drops its fold figure, and rows put their receipt under the statement. */
+@media (max-width: 639px) {
+  .page:global(.mx-page) {
+    padding: 20px 16px 24px;
+  }
+
+  .page :global(.mx-page-head) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
+  }
+
+  .page :global(.mx-page-title) {
+    font-size: 26px;
+    line-height: 31px;
+  }
+
+  .page :global(.mx-page-actions) {
+    flex-wrap: wrap;
+  }
+
+  /* No keyboard to press them with. */
+  .page :global(.mx-btn-kbd) {
+    display: none;
+  }
+
+  .page :global(.mx-dream) {
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .page :global(.mx-dream-fold) {
+    display: none;
+  }
+
+  .page :global(.mx-dream-title) {
+    max-width: none;
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .grid {
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .main {
+    gap: 16px;
+  }
+
+  .main :global(.mx-row) {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+
+  .main :global(.mx-row)::after {
+    display: none;
+  }
+
+  .main :global(.mx-row-rail) {
+    grid-column: 2;
+    grid-row: 2;
+    padding: 6px 0 0;
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .main :global(.mx-row-rail-lines) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    column-gap: 10px;
   }
 }

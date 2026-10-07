@@ -19,8 +19,8 @@ describe("scrubURL", () => {
     [`${APP}/join/inv_abc123/accept?x=1`, `${APP}/join/:invite/accept`],
     [`${APP}/invite/tok_abc123`, `${APP}/invite/:token`],
     [
-      "https://api.memax.app/v1/invites/tok_abc/accept",
-      "https://api.memax.app/v1/invites/:token/accept",
+      "https://api.memax.app/api/invites/tok_abc/accept",
+      "https://api.memax.app/api/invites/:token/accept",
     ],
     // Pages with nothing secret keep their path.
     [`${APP}/memax-v2/memories/M-0219`, `${APP}/memax-v2/memories/M-0219`],
@@ -43,7 +43,7 @@ describe("scrubEvent", () => {
         $current_url: `${APP}/oauth/authorize?request=8f2c1a`,
         $pathname: "/oauth/authorize",
         $referrer:
-          "https://api.memax.app/v1/auth/github/callback?code=gh&state=mcp:8f2c1a",
+          "https://github.com/login/oauth/authorize?client_id=x&state=mcp:8f2c1a",
         $initial_current_url: `${APP}/signin/callback?code=one-time`,
         $initial_referrer: "$direct",
         $session_entry_url: `${APP}/device?code=WQRT-4821`,
@@ -64,7 +64,7 @@ describe("scrubEvent", () => {
     expect(out.properties).toEqual({
       $current_url: `${APP}/oauth/authorize`,
       $pathname: "/oauth/authorize",
-      $referrer: "https://api.memax.app/v1/auth/github/callback",
+      $referrer: "https://github.com/login/oauth/authorize",
       $initial_current_url: `${APP}/signin/callback`,
       $initial_referrer: "$direct",
       $session_entry_url: `${APP}/device`,

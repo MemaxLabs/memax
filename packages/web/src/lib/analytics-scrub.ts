@@ -15,7 +15,7 @@ import type { CaptureResult } from "posthog-js";
 /** Path segments that are followed by a secret, and the name it becomes. */
 const SECRET_AFTER: Readonly<Record<string, string>> = {
   invite: ":token", // V1 /invite/<token>
-  invites: ":token", // the API's /v1/invites/<token>
+  invites: ":token", // the API's invites/<token> (its accept link)
   join: ":invite", // V2 /join/<invite>
 };
 

@@ -183,6 +183,17 @@ info:
     grant, collects a CLI session once. Codes last 10 minutes and are
     decided once.
 
+    ## Sessions
+
+    Every sign-in is a session: the web app, the CLI, a device code, an MCP
+    client's authorization. Its access tokens last an hour; its refresh
+    token, stored only as a hash, is replaced on every refresh, and a
+    replaced one presented again after a minute signs the whole session out
+    (someone else has a copy). `GET /v2/sessions` lists yours, and you can
+    sign any of them out (`/v2/sessions/{session}:revoke`) or all but this
+    one (`/v2/sessions:revoke-others`). A client signs its own session out
+    with its refresh token at `POST /oauth/revoke` (RFC 7009, outside /v2).
+
     ## Dream
 
     Each night (weekly on Free), if a space has something new since its
@@ -267,6 +278,8 @@ tags:
     description: What agents read (R-). Reads are not receipts.
   - name: devices
     description: Signing the memax CLI in on a machine with no browser, with a code you confirm on the web.
+  - name: sessions
+    description: Everywhere you are signed in, and signing any of it out.
   - name: ask
     description: Cited answers from a space's kept memories, for people.
   - name: dream
@@ -3918,6 +3931,116 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/sessions:
+    get:
+      operationId: listSessions
+      tags: [sessions]
+      summary: Your sessions
+      description: |
+        Everywhere you are signed in, the most recently used first: the web
+        app, the memax CLI (a browser login or the email code), a device
+        code, and each MCP client you authorized. Each says what signed in,
+        the client, when it signed in and was last used, the address and
+        city it was last seen from when Memax knows them, when it ends, and
+        whether it is the session this request comes from (`current`).
+        Sessions that ended (signed out, revoked, expired, or an MCP client
+        whose authorization was withdrawn) are not listed. Only a person on
+        a session lists them (`session_by_person`).
+      responses:
+        '200':
+          description: Your live sessions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/sessions/{session}:revoke:
+    parameters:
+      - $ref: '#/components/parameters/SessionPath'
+    post:
+      operationId: revokeSession
+      tags: [sessions]
+      summary: Sign a session out
+      description: |
+        Ends one of your sessions. Its refresh token stops working at once;
+        the access token it last received works until it expires, within
+        the hour. An MCP client whose session you end must be authorized
+        again; its agent connection stays. Signing out the session this
+        request comes from works from anywhere you are signed in; any other
+        needs you on the web app (`session_needs_web`), so an agent holding
+        your CLI login can't sign you out elsewhere. A session that isn't
+        yours, or has already ended, is 404.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The session, ended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/sessions:revoke-others:
+    post:
+      operationId: revokeOtherSessions
+      tags: [sessions]
+      summary: Sign out everywhere else
+      description: |
+        Ends every session of yours but the one this request comes from:
+        other browsers, the CLI on every machine, devices, MCP clients. Each
+        one's refresh token stops working at once, and its last access
+        token within the hour. It needs you on the web app
+        (`session_needs_web`). A request whose session Memax can't tell (a
+        sign-in from before sessions were named) is 409
+        `invalid_transition`: sign in again, then sign the others out.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: How many sessions ended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionsRevokedEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
 components:
   securitySchemes:
     bearer:
@@ -3966,6 +4089,13 @@ components:
       in: path
       required: true
       description: The agent connection's id.
+      schema:
+        $ref: '#/components/schemas/Id'
+    SessionPath:
+      name: session
+      in: path
+      required: true
+      description: The session's id.
       schema:
         $ref: '#/components/schemas/Id'
     Cursor:
@@ -4603,7 +4733,9 @@ components:
         during the alpha), switch_by_owner (only the owner switches a space).
         Refused device codes: device_by_person (only a person signs a device
         in), device_needs_web (confirming or declining a code needs a person
-        on the web app).
+        on the web app). Refused sessions: session_by_person (only a person
+        lists or signs out their sessions), session_needs_web (signing out a
+        session other than this one needs a person on the web app).
       type: string
       enum:
         - unknown_actor
@@ -4663,6 +4795,8 @@ components:
         - dream_run_by_owner
         - device_by_person
         - device_needs_web
+        - session_by_person
+        - session_needs_web
     ErrorCode:
       type: string
       enum:
@@ -10216,3 +10350,98 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/DeviceAuthorization'
+
+    SessionSurface:
+      description: |
+        What signed in. `web`: the web app. `cli`: the memax CLI, through a
+        browser login or the email code. `device`: the memax CLI with a
+        device code you confirmed on the web. `mcp`: an MCP client you
+        authorized. Only a `web` session, through the web app, can keep as
+        a person on the web (`human_web`).
+      type: string
+      enum: [web, cli, device, mcp]
+
+    Session:
+      description: One place you are signed in.
+      type: object
+      additionalProperties: false
+      required: [id, surface, client, signed_in_at, last_used_at, expires_at, current]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        surface:
+          $ref: '#/components/schemas/SessionSurface'
+        client:
+          description: |
+            The client, in words: the browser and system for the web app
+            ("Chrome on macOS"), the CLI and its version, or, for a device,
+            what it said about itself ("memax CLI 2.0.0 on ziyang-mbp
+            (macOS)"), and an MCP client's registered name.
+          type: string
+        agent:
+          description: The agent an MCP session is for, e.g. `claude-ai`.
+          type: string
+        address:
+          description: The address it was last seen from, when Memax knows it.
+          type: string
+        city:
+          description: The city that address is in, when the edge says.
+          type: string
+        signed_in_at:
+          $ref: '#/components/schemas/Timestamp'
+        last_used_at:
+          description: When it was last used, within a few minutes.
+          $ref: '#/components/schemas/Timestamp'
+        expires_at:
+          description: When it ends unless it is signed out first; refreshing doesn't extend it.
+          $ref: '#/components/schemas/Timestamp'
+        revoked_at:
+          description: When it was signed out (only in the answer to signing it out).
+          $ref: '#/components/schemas/Timestamp'
+        current:
+          description: Whether this request comes from this session.
+          type: boolean
+
+    SessionList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+
+    SessionListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SessionList'
+
+    SessionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Session'
+
+    SessionsRevoked:
+      type: object
+      additionalProperties: false
+      required: [revoked]
+      properties:
+        revoked:
+          description: How many sessions were signed out.
+          type: integer
+          minimum: 0
+
+    SessionsRevokedEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SessionsRevoked'

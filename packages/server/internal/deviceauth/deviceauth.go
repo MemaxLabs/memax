@@ -286,14 +286,32 @@ func (s *Store) Create(ctx context.Context, st Start) (*Issued, error) {
 // used. Errors are ErrPending, ErrSlowDown (the code's interval grew),
 // ErrExpired, ErrDenied, ErrUsed and ErrUnknownClient.
 func (s *Store) Poll(ctx context.Context, clientID, deviceCode string) (uuid.UUID, error) {
+	c, err := s.Collect(ctx, clientID, deviceCode)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return c.User, nil
+}
+
+// Collected is a confirmed code, collected: the person to issue a session
+// for, and what the device said about itself (for the sessions list).
+type Collected struct {
+	User          uuid.UUID
+	ClientVersion string
+	DeviceName    string
+	DeviceOS      string
+}
+
+// Collect is Poll, with what the device said about itself.
+func (s *Store) Collect(ctx context.Context, clientID, deviceCode string) (*Collected, error) {
 	if clientID != ClientCLI {
-		return uuid.Nil, ErrUnknownClient
+		return nil, ErrUnknownClient
 	}
 	if deviceCode == "" {
-		return uuid.Nil, ErrUsed
+		return nil, ErrUsed
 	}
 	now := s.now()
-	var user uuid.UUID
+	var user Collected
 	// waiting is ErrPending or ErrSlowDown: the poll's bookkeeping commits
 	// with that answer (BeginFunc rolls back when the function errs).
 	var waiting error
@@ -307,9 +325,11 @@ func (s *Store) Poll(ctx context.Context, clientID, deviceCode string) (uuid.UUI
 			polled   *time.Time
 			expires  time.Time
 		)
-		err := tx.QueryRow(ctx, `SELECT id, client_id, status, user_id, interval_seconds, last_polled_at, expires_at
+		err := tx.QueryRow(ctx, `SELECT id, client_id, status, user_id, interval_seconds, last_polled_at, expires_at,
+				client_version, device_name, device_os
 			FROM device_authorizations WHERE device_code_hash = $1 FOR UPDATE`, hashDeviceCode(deviceCode)).
-			Scan(&id, &client, &status, &userID, &interval, &polled, &expires)
+			Scan(&id, &client, &status, &userID, &interval, &polled, &expires,
+				&user.ClientVersion, &user.DeviceName, &user.DeviceOS)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrUsed
 		}
@@ -330,7 +350,7 @@ func (s *Store) Poll(ctx context.Context, clientID, deviceCode string) (uuid.UUI
 				SET status = 'consumed', consumed_at = $2, last_polled_at = $2 WHERE id = $1`, id, now); err != nil {
 				return err
 			}
-			user = *userID
+			user.User = *userID
 			return nil
 		}
 		// Still waiting. Too soon after the last poll is slow_down, which
@@ -350,12 +370,12 @@ func (s *Store) Poll(ctx context.Context, clientID, deviceCode string) (uuid.UUI
 		return nil
 	})
 	if err != nil {
-		return uuid.Nil, err
+		return nil, err
 	}
 	if waiting != nil {
-		return uuid.Nil, waiting
+		return nil, waiting
 	}
-	return user, nil
+	return &user, nil
 }
 
 // Find is the request a user code names, as the person confirming it may

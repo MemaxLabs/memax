@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { handoffPreviewsDir, handoffScreensDir } from "./e2e/handoff";
+import { STACK_API_URL, STACK_SURFACE_SECRET } from "./e2e/stack";
 
 // Playwright for packages/web: V2 visual regression and keyboard smoke
 // tests (plan §6.8). Run with `pnpm --filter @memaxlabs/web test:e2e`;
@@ -21,6 +22,18 @@ const port = Number(process.env.E2E_PORT ?? 3100);
 const externalBaseURL = process.env.E2E_BASE_URL;
 const baseURL = externalBaseURL ?? `http://localhost:${port}`;
 const devServer = process.env.E2E_SERVER === "dev";
+// E2E_STACK=1 runs e2e/auth-bff.e2e.ts against the real API (e2e/stack.ts
+// starts it): the build points at it and shares its WEB_SURFACE_SECRET.
+// The demo specs are unaffected: a browser without a session still sees
+// the demo dataset.
+const stackEnv: Record<string, string> =
+  process.env.E2E_STACK === "1"
+    ? {
+        NEXT_PUBLIC_API_URL: STACK_API_URL,
+        NEXT_PUBLIC_APP_URL: baseURL,
+        WEB_SURFACE_SECRET: STACK_SURFACE_SECRET,
+      }
+    : {};
 
 export default defineConfig({
   testDir: "./e2e",
@@ -101,6 +114,7 @@ export default defineConfig({
         env: {
           NEXT_PUBLIC_DEV_FIXTURES: "1",
           NEXT_TELEMETRY_DISABLED: "1",
+          ...stackEnv,
         },
       },
 });

@@ -3,9 +3,7 @@
 // place, and because the SSE subscription doesn't fit adminReq's
 // parsed-body contract (it streams, not returns).
 
-import { API_URL } from "@/lib/urls";
-import { apiAuthHeaders } from "@/lib/api";
-import { adminReq } from "./transport";
+import { ADMIN_API_BASE, adminReq } from "./transport";
 import type {
   AdminOpsIngestionSnapshot,
   AdminOpsJobDetail,
@@ -132,10 +130,9 @@ export function subscribeOpsStream(opts: {
 
   (async () => {
     try {
-      const res = await fetch(`${API_URL}/v1/admin/ops/stream`, {
+      const res = await fetch(`${ADMIN_API_BASE}/v1/admin/ops/stream`, {
         method: "GET",
         headers: {
-          ...apiAuthHeaders(),
           Accept: "text/event-stream",
         },
         signal: combinedSignal,
@@ -253,11 +250,10 @@ export function subscribeJobLogsStream(opts: {
   (async () => {
     try {
       const res = await fetch(
-        `${API_URL}/v1/admin/ops/jobs/${opts.jobId}/logs/stream`,
+        `${ADMIN_API_BASE}/v1/admin/ops/jobs/${opts.jobId}/logs/stream`,
         {
           method: "GET",
           headers: {
-            ...apiAuthHeaders(),
             Accept: "text/event-stream",
           },
           signal: combinedSignal,

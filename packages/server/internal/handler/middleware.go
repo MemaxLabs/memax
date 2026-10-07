@@ -125,6 +125,7 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 								TrustLevel:         result.TrustLevel,
 								RateLimitTier:      result.RateLimitTier,
 								OAuthScope:         result.OAuthScope,
+								SessionID:          claims.Sid,
 							}
 						}
 					} else {
@@ -136,6 +137,9 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 						}
 						if agentName == "" && claims.ImpersonatorID == "" {
 							grant.Surface = claims.Surface
+						}
+						if claims.ImpersonatorID == "" {
+							grant.SessionID = claims.Sid
 						}
 					}
 				}

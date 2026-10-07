@@ -136,6 +136,28 @@ export class AuthResource {
     throw oauthFailure(status, body, retryAfter);
   }
 
+  /**
+   * Sign a session out (RFC 7009, `POST /oauth/revoke`): pass its refresh
+   * token, which ends the session even if that token was just replaced, or
+   * one of its access tokens. Its refresh token stops working at once, and
+   * the access tokens it minted within the hour. A token that names nothing
+   * succeeds too, so signing out twice is fine. Throws on a network error
+   * or a refusal (`invalid_request`, `rate_limited`).
+   */
+  async revoke(
+    token: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<void> {
+    const { status, body, retryAfter } = await this.oauthForm(
+      "/oauth/revoke",
+      { token },
+      options.signal,
+    );
+    if (status !== 200) {
+      throw oauthFailure(status, body, retryAfter);
+    }
+  }
+
   private async oauthForm(
     path: string,
     fields: Record<string, string | undefined>,

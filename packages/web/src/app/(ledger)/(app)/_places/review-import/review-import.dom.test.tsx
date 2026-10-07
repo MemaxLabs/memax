@@ -43,8 +43,7 @@ vi.mock("@/lib/v2/data/demo-source", async (load) => {
   };
 });
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ user: null, loading: false }),
-  getAccessToken: () => null,
+  useAuth: () => ({ user: null, loading: false, session: null }),
 }));
 vi.mock("@/lib/memax-client", () => ({ getMemaxClient: () => ({}) }));
 vi.mock("next/navigation", () => ({

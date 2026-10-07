@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -22,7 +23,9 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/auth"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
+	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
 type AuthHandler struct {
@@ -78,6 +81,17 @@ type AuthHandler struct {
 	// handler returns 503 rather than storing a row whose email will
 	// never arrive.
 	enqueueEmail func(template, to string, vars map[string]string) error
+
+	// sessions keeps sign-in sessions and their hashed, rotating refresh
+	// tokens (internal/sessions); made from pool on first use when unset.
+	sessions     *sessions.Store
+	sessionsOnce sync.Once
+	// web verifies where the web app's server says a browser is
+	// (websurface.ClientInfo); nil records what the API sees.
+	web *websurface.Verifier
+	// clientAddress is a request's client address and, when the edge says,
+	// its city (the rate limiter's view of which proxy header to trust).
+	clientAddress func(*http.Request) (ip, city string)
 }
 
 // onboardingEmitter is the plan-18 producer surface. Minimal
@@ -735,7 +749,11 @@ func (h *AuthHandler) Impersonate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Refresh exchanges a refresh token for a new access token.
+// Refresh trades a refresh token for a new pair: a new access token and
+// the session's next refresh token (rotation; internal/sessions). Every
+// memax CLI and the web app store the refresh token in the answer. A
+// retired token sent again within the grace window answers the session's
+// current one; after it, the session is revoked.
 // POST /v1/auth/refresh  { "refresh_token": "..." }
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -748,61 +766,36 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var session model.Session
-	var agentName string
-	var grantID string
-	var surface string
-	err := h.pool.QueryRow(context.Background(),
-		`SELECT id, user_id, expires_at, COALESCE(agent_name, ''), COALESCE(grant_id::text, ''), COALESCE(surface, '')
-		FROM sessions WHERE refresh_token = $1`,
-		req.RefreshToken).Scan(&session.ID, &session.UserID, &session.ExpiresAt, &agentName, &grantID, &surface)
+	// An MCP grant's session refreshed here keeps working while its grant
+	// does, as before; its token names the grant's agent.
+	var grantAgent string
+	is, err := h.sessionStore().Refresh(r.Context(), req.RefreshToken, sessions.RefreshOptions{
+		Where: h.where(r),
+		Accept: func(ss sessions.Session) error {
+			if ss.GrantID == "" {
+				return nil
+			}
+			grant := h.ResolveOAuthGrant(ss.UserID.String(), ss.GrantID)
+			if grant.UserID == "" {
+				return sessions.ErrGrantRevoked
+			}
+			grantAgent = grant.AgentName
+			return nil
+		},
+	})
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
-			Error: &model.Error{Code: "invalid_token", Message: "Invalid refresh token."},
-		})
+		status, code, message := refreshFailure(err)
+		writeJSON(w, status, model.ApiResponse{Error: &model.Error{Code: code, Message: message}})
 		return
 	}
-
-	if time.Now().After(session.ExpiresAt) {
-		// Clean up expired session
-		h.pool.Exec(context.Background(), `DELETE FROM sessions WHERE id = $1`, session.ID)
-		writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
-			Error: &model.Error{Code: "expired_token", Message: "Refresh token expired. Please log in again."},
-		})
-		return
-	}
-
-	var accessToken string
-	if grantID != "" {
-		grant := h.ResolveOAuthGrant(session.UserID, grantID)
-		if grant.UserID == "" {
-			h.pool.Exec(context.Background(), `DELETE FROM sessions WHERE id = $1`, session.ID)
-			writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
-				Error: &model.Error{Code: "invalid_token", Message: "Authorization grant is no longer valid."},
-			})
-			return
-		}
-		accessToken, err = auth.SignGrantAccessToken(session.UserID, grant.AgentName, grantID, h.jwtSecret, time.Hour)
-	} else if agentName != "" {
-		accessToken, err = auth.SignAgentAccessToken(session.UserID, agentName, h.jwtSecret, time.Hour)
-	} else {
-		// A refreshed token keeps the surface its sign-in was for.
-		accessToken, err = auth.SignSessionToken(session.UserID, surface, h.jwtSecret, time.Hour)
-	}
+	accessToken, err := h.accessTokenFor(is.Session, grantAgent, "", nil)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, model.ApiResponse{
 			Error: &model.Error{Code: "internal", Message: "Failed to issue access token."},
 		})
 		return
 	}
-
-	writeJSON(w, http.StatusOK, model.ApiResponse{
-		Data: model.TokenPair{
-			AccessToken:  accessToken,
-			RefreshToken: req.RefreshToken, // same refresh token
-			ExpiresIn:    3600,
-		},
-	})
+	writeJSON(w, http.StatusOK, model.ApiResponse{Data: tokenPair(accessToken, is, h.sessionStore().Now())})
 }
 
 // ExchangeCode exchanges a one-time auth code for tokens.
@@ -848,15 +841,22 @@ func (h *AuthHandler) ExchangeCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mark as used
-	h.pool.Exec(context.Background(), `UPDATE auth_codes SET used = true WHERE code = $1`, req.Code)
+	// Mark as used, once: of two exchanges racing with the same code, one
+	// gets the session.
+	if tag, err := h.pool.Exec(r.Context(), `UPDATE auth_codes SET used = true WHERE code = $1 AND NOT used`, req.Code); err != nil || tag.RowsAffected() != 1 {
+		writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
+			Error: &model.Error{Code: "expired_code", Message: "Authorization code expired or already used."},
+		})
+		return
+	}
 
 	// The session is for the surface the code was delivered to (migration
 	// 030); a code from before that counts as the CLI.
+	kind := sessions.KindWeb
 	if surface != auth.SurfaceWeb {
-		surface = auth.SurfaceCLI
+		surface, kind = auth.SurfaceCLI, sessions.KindCLI
 	}
-	tokens, err := h.issueSessionTokens(userID, surface)
+	tokens, err := h.startSession(r, userID, sessionStart{kind: kind, surface: surface})
 	if err != nil {
 		slog.Error("token issuance failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, model.ApiResponse{
@@ -1873,58 +1873,11 @@ func (h *AuthHandler) ensurePersonalHub(user *model.User) {
 	slog.Info("personal hub created", "user_id", user.ID, "hub_id", hub.ID)
 }
 
-// issueTokens issues a person's token pair returned directly in a
-// response, which is the CLI's way (tokens for the web app always go
-// through a redirected one-time code; see redirectSurface).
-func (h *AuthHandler) issueTokens(userID string) (*model.TokenPair, error) {
-	return h.issueSessionTokens(userID, auth.SurfaceCLI)
-}
-
-// issueSessionTokens issues a person's token pair for a sign-in surface.
-// The session remembers the surface, so refreshed tokens keep it.
-func (h *AuthHandler) issueSessionTokens(userID, surface string) (*model.TokenPair, error) {
-	return h.issueTokenPair(userID, "", "", surface, 30*24*time.Hour)
-}
-
-// issueAgentTokens issues a token pair with optional agent identity embedded in the JWT.
-func (h *AuthHandler) issueAgentTokens(userID, agentName string) (*model.TokenPair, error) {
-	return h.issueAgentGrantTokens(userID, agentName, "", 30*24*time.Hour)
-}
-
-func (h *AuthHandler) issueAgentGrantTokens(userID, agentName, grantID string, refreshTTL time.Duration) (*model.TokenPair, error) {
-	return h.issueTokenPair(userID, agentName, grantID, "", refreshTTL)
-}
-
-func (h *AuthHandler) issueTokenPair(userID, agentName, grantID, surface string, refreshTTL time.Duration) (*model.TokenPair, error) {
-	var accessToken string
-	var err error
-	if grantID != "" {
-		accessToken, err = auth.SignGrantAccessToken(userID, agentName, grantID, h.jwtSecret, time.Hour)
-	} else if agentName != "" {
-		accessToken, err = auth.SignAgentAccessToken(userID, agentName, h.jwtSecret, time.Hour)
-	} else {
-		accessToken, err = auth.SignSessionToken(userID, surface, h.jwtSecret, time.Hour)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	refreshToken := generateToken()
-	expiresAt := time.Now().Add(refreshTTL)
-
-	_, err = h.pool.Exec(context.Background(),
-		`INSERT INTO sessions (user_id, refresh_token, expires_at, agent_name, grant_id, surface)
-		VALUES ($1, $2, $3, $4, NULLIF($5, '')::uuid, NULLIF($6, ''))`,
-		userID, refreshToken, expiresAt, agentName, grantID, surface)
-	if err != nil {
-		return nil, err
-	}
-
-	return &model.TokenPair{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    3600,
-	}, nil
+// issueTokens issues a person's CLI session, its token pair returned
+// directly in the response, which is the CLI's way (tokens for the web app
+// always go through a redirected one-time code; see redirectSurface).
+func (h *AuthHandler) issueTokens(r *http.Request, userID string) (*model.TokenPair, error) {
+	return h.startSession(r, userID, sessionStart{kind: sessions.KindCLI, surface: auth.SurfaceCLI})
 }
 
 func generateToken() string {

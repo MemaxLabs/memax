@@ -99,6 +99,8 @@ export interface WarmCacheOptions {
   log: Logger;
   now?: () => number;
   saveDelayMs?: number;
+  /** At most one fetch of a space's forgets and gates this often (MIN_REFRESH_MS). */
+  minRefreshMs?: number;
 }
 
 export class WarmCache {
@@ -159,7 +161,9 @@ export class WarmCache {
     if (this.stopped || this.pending.has(spaceId)) return;
     const wait = Math.max(
       0,
-      (this.lastRefresh.get(spaceId) ?? 0) + MIN_REFRESH_MS - this.now(),
+      (this.lastRefresh.get(spaceId) ?? 0) +
+        (this.o.minRefreshMs ?? MIN_REFRESH_MS) -
+        this.now(),
     );
     if (wait === 0) {
       void this.refresh(spaceId, slug);

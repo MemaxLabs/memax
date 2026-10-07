@@ -27,6 +27,8 @@ export interface DaemonOptions {
   cadence?: Partial<Cadence>;
   watch?: Partial<WatchOptions>;
   hooks?: FsHooks;
+  /** How often the warm cache may fetch a space's forgets and gates (tests). */
+  warmRefreshMs?: number;
   /** Called after a stop request, once everything is closed. */
   onStopped?(): void;
 }
@@ -61,7 +63,12 @@ export class Daemon {
   constructor(private readonly o: DaemonOptions) {
     ensureDaemonDir(o.paths);
     this.state = new DeviceState(o.paths);
-    this.warm = new WarmCache({ paths: o.paths, api: o.api, log: o.log });
+    this.warm = new WarmCache({
+      paths: o.paths,
+      api: o.api,
+      log: o.log,
+      minRefreshMs: o.warmRefreshMs,
+    });
     this.loads = new LoadReporter({ paths: o.paths, api: o.api, log: o.log });
   }
 

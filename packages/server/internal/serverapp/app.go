@@ -813,14 +813,14 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 
 // askService builds ⌘K Ask (internal/ask) on the same hybrid search as
 // recall, with the answer tier read once here (ASK_MODEL, ASK_ZDR,
-// ASK_TIMEOUT_MS, ASK_MONTHLY_LIMIT). Without an LLM key, or with
+// ASK_PROVIDERS, ASK_MIN_QUANTIZATION, ASK_TIMEOUT_MS, ASK_MONTHLY_LIMIT). Without an LLM key, or with
 // ASK_MODEL=off, Ask answers with the matching memories only.
 func askService(l *ledger.Ledger, search *v2recall.Searcher, llm *anthropic.Client) *ask.Service {
 	cfg := ask.ConfigFromEnv(os.LookupEnv)
 	svc := ask.New(l, search, ask.NewAnthropicModel(llm, cfg.ZeroDataRetention), cfg)
 	if svc != nil {
 		slog.Info("V2 Ask", "answers", svc.Synthesises(), "model", cfg.Model, "zdr", cfg.ZeroDataRetention,
-			"monthly_limit", cfg.MonthlyLimit)
+			"hosts", cfg.Routing.Providers, "quantizations", cfg.Routing.Quantizations, "monthly_limit", cfg.MonthlyLimit)
 	}
 	return svc
 }

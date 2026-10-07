@@ -12,6 +12,8 @@ type Call struct {
 	System    string
 	Prompt    string
 	MaxTokens int
+	// Routing pins the hosts that may answer (D14).
+	Routing anthropic.Routing
 }
 
 // Usage is what one answer used.
@@ -54,6 +56,8 @@ func (m *AnthropicModel) Stream(ctx context.Context, c Call, onText func(string)
 		Prompt:            c.Prompt,
 		Purpose:           "ask.v2.answer",
 		ZeroDataRetention: m.ZeroDataRetention,
+		Providers:         c.Routing.Providers,
+		Quantizations:     c.Routing.Quantizations,
 	}, onText)
 	return Usage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens}, err
 }

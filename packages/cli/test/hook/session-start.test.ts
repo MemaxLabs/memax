@@ -281,6 +281,48 @@ describe("formats", () => {
   });
 });
 
+describe("GEMINI.md, opt-in", () => {
+  // A Memax-compiled GEMINI.md left in the repository (the target was
+  // stopped, or another space wrote it) beside this space's AGENTS.md.
+  beforeEach(() => {
+    m.compiled("C-0881", lines881);
+    m.compiled("C-0870", lines881, "GEMINI.md");
+  });
+  const compiles = (agent: string) =>
+    m
+      .run(agent)
+      .loads.map((l) => l.compile)
+      .sort();
+
+  it("skips GEMINI.md for a space that doesn't compile it", () => {
+    m.warm({ targets: [m.target("C-0881", ["M-0219"])] });
+    expect(compiles("gemini")).toEqual(["C-0881"]);
+  });
+
+  it("counts GEMINI.md for a space that asked for it", () => {
+    m.warm({
+      targets: [
+        m.target("C-0881", ["M-0219"]),
+        m.target("C-0870", ["M-0219"], {
+          kind: "gemini_md",
+          path: "GEMINI.md",
+          label: "GEMINI.md",
+        }),
+      ],
+    });
+    expect(compiles("gemini")).toEqual(["C-0870", "C-0881"]);
+  });
+
+  it("counts a compiled GEMINI.md while the space isn't cached here", () => {
+    expect(compiles("gemini")).toEqual(["C-0870", "C-0881"]);
+  });
+
+  it("never counts a GEMINI.md a person wrote", () => {
+    writeFileSync(join(m.repo, "GEMINI.md"), "# My Gemini notes\n");
+    expect(compiles("gemini")).toEqual(["C-0881"]);
+  });
+});
+
 describe("the cap", () => {
   const many = (n: number, word: string) =>
     Array.from(

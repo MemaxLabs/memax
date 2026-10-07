@@ -286,7 +286,9 @@ func New(ctx context.Context) (*App, error) {
 	logEnabled("V2 judge (vector candidates)", len(judgeOpts) > 0)
 	if v2Judge.Stage1() {
 		slog.Info("V2 judge tiers", "primary", judgeCfg.Primary.Model, "fallback", judgeCfg.Fallback.Model,
-			"strong", judgeCfg.Strong.Model, "zdr", judgeCfg.ZeroDataRetention, "conditions", judgeCfg.Conditions)
+			"strong", judgeCfg.Strong.Model, "zdr", judgeCfg.ZeroDataRetention, "conditions", judgeCfg.Conditions,
+			"primary_hosts", judgeCfg.Primary.Routing.Providers, "fallback_hosts", judgeCfg.Fallback.Routing.Providers,
+			"strong_hosts", judgeCfg.Strong.Routing.Providers, "quantizations", judgeCfg.Primary.Routing.Quantizations)
 	}
 	judge.AddWorkers(workers, v2Judge)
 

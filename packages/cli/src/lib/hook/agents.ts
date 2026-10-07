@@ -88,6 +88,13 @@ export const DEFAULT_PATHS: Record<string, string> = {
   gemini_md: "GEMINI.md",
 };
 
+/**
+ * Kinds a space compiles only when it asks for one (the compiler's
+ * OPT_IN_TARGET_KINDS): Gemini CLI gets AGENTS.md alone unless the space
+ * has the GEMINI.md target (`memax connect gemini --gemini-md`).
+ */
+export const OPT_IN_KINDS: ReadonlySet<string> = new Set(["gemini_md"]);
+
 /** Wraps the block the way the agent reads it; "" stays "". */
 export function wrapFor(format: HookFormat, block: string): string {
   if (block === "") return "";

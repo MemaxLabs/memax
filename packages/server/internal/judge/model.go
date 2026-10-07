@@ -54,6 +54,9 @@ func (m *AnthropicModel) Complete(ctx context.Context, c Call) (string, error) {
 		Prompt:            c.Prompt,
 		Purpose:           "judge.classify." + c.Tier.Name,
 		ZeroDataRetention: m.ZeroDataRetention,
+		Providers:         c.Tier.Routing.Providers,
+		Quantizations:     c.Tier.Routing.Quantizations,
+		Temperature:       c.Tier.Temperature,
 	}
 	if c.Tier.Strict {
 		req.OutputSchema = c.Schema

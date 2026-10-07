@@ -260,6 +260,7 @@ const SEALS: Readonly<Record<string, SealView>> = {
     sealedAt: "2026-10-05T14:40:12-07:00",
     unsealed: 0,
     signed: true,
+    keyId: "ed25519:7f3a9c2e41d0b6a5",
     verified: { at: "2026-10-05T03:00:41-07:00", problems: 0 },
   },
 };
@@ -269,6 +270,7 @@ const UNSEALED: SealView = {
   sealedAt: null,
   unsealed: 0,
   signed: null,
+  keyId: null,
   verified: null,
 };
 

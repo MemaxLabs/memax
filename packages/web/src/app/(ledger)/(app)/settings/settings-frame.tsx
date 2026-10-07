@@ -11,12 +11,16 @@ const ITEMS = [
   "keys",
   "plan",
   "notifications",
+  "security",
   "integrations",
   "export",
 ] as const;
 
-/** Pages built so far; the others are listed, as drawn, and arrive in Phase 2. */
-const BUILT = new Set<string>(["account", "keys"]);
+/**
+ * Pages built so far; the others are listed, as drawn, and arrive later.
+ * No board's nav has Security: it sits after Notifications.
+ */
+const BUILT = new Set<string>(["account", "keys", "notifications", "security"]);
 
 export function SettingsFrame({ children }: { children: React.ReactNode }) {
   const { t } = useLocale();

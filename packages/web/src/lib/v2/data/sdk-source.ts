@@ -11,6 +11,7 @@ import { createSdkImports } from "./imports-sdk";
 import { checkRememberOver } from "./remember-sdk";
 import { createSdkMemories } from "./sdk-memories";
 import { createSdkReview } from "./sdk-review";
+import { createSdkSettings } from "./settings-sdk";
 import { createSdkSwitch } from "./switch-sdk";
 import type { LedgerDataSource } from "./source";
 import { syncLineOf, targetStatus } from "./targets";
@@ -25,7 +26,9 @@ import type { KeepResult, SpaceOverview, Viewer } from "./types";
  * decision gates waiting on an answer (together the rail's ochre count),
  * memories, receipts, agents, the Brief and its compile targets (which
  * feed the status line), Remember's near-duplicate check and Ask.
- * Dream's editions come from memax.v2.dream. Everything else the frame
+ * Dream's editions come from memax.v2.dream, and the person's
+ * notification settings and Security page from memax.v2.settings.
+ * Everything else the frame
  * shows is marked PLACEHOLDER below and returns "not served" (null) or a
  * neutral value until its endpoint lands: Handoffs. The demo source has
  * all of them, for comparison with the boards.
@@ -65,6 +68,7 @@ export function createSdkSource({
     devices: createSdkDevices(client),
     dream,
     switch: createSdkSwitch(client),
+    settings: createSdkSettings(client),
     async spaces(signal) {
       const { items } = await client.v2.spaces.list({ signal });
       return items.map((space) => ({

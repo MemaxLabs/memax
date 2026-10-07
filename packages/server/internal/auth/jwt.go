@@ -28,6 +28,12 @@ type Claims struct {
 	// at the MCP endpoint it was issued for. Older tokens carry neither.
 	Iss string   `json:"iss,omitempty"`
 	Aud Audience `json:"aud,omitempty"`
+	// Sid is the session (internal/sessions) whose refresh token minted the
+	// token, so the API can tell which session a request is (the sessions
+	// list marks it current, and "revoke all others" spares it). Tokens
+	// from before migration 048, API keys and impersonation tokens have
+	// none.
+	Sid string `json:"sid,omitempty"`
 }
 
 // Audience is a JWT aud claim: one string, or an array of them.
@@ -135,6 +141,15 @@ func SignImpersonationToken(targetUserID, impersonatorID string, secret []byte, 
 		ImpersonatorID: impersonatorID,
 	}
 	return signJWT(claims, secret)
+}
+
+// Sign issues a token with the given claims, issued now and expiring
+// after ttl (Iat and Exp are set here).
+func Sign(c Claims, secret []byte, ttl time.Duration) (string, error) {
+	now := time.Now()
+	c.Iat = now.Unix()
+	c.Exp = now.Add(ttl).Unix()
+	return signJWT(c, secret)
 }
 
 func VerifyAccessToken(token string, secret []byte) (*Claims, error) {

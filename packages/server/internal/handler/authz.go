@@ -167,6 +167,10 @@ type GrantContext struct {
 	// OAuthScope is an OAuth grant's granted scope (migration 032), empty
 	// for API keys and grants from before it was recorded.
 	OAuthScope string
+	// SessionID is the sign-in session the access token belongs to (its
+	// sid claim; internal/sessions). Empty for API keys, impersonation and
+	// tokens from before migration 048.
+	SessionID string
 }
 
 // The MCP OAuth scopes (plan 25 §5.15): autonomy maps onto them.

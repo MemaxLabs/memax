@@ -86,6 +86,9 @@ import type {
   ReviewPage,
   ReviseBriefInput,
   Section,
+  Session,
+  SessionList,
+  SessionsRevoked,
   SettleImportConflictInput,
   Space,
   SpaceList,
@@ -1180,6 +1183,53 @@ export class V2DevicesResource {
   }
 }
 
+/** Options for signing a session out. */
+export interface SessionCommandOptions {
+  /** One per intent, the same on a retry (see {@link CommandOptions}). */
+  idempotencyKey: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * `memax.v2.sessions`: everywhere you are signed in (the web app, the CLI,
+ * devices, MCP clients), and signing any of it out. Signing a session out
+ * ends its refresh token at once, and its last access token within the
+ * hour. A client signs its own session out with `memax.auth.revoke`.
+ */
+export class V2SessionsResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /** Your live sessions, the most recently used first; `current` marks this one. */
+  async list(opts?: { signal?: AbortSignal }): Promise<SessionList> {
+    return this.req("GET", "/v2/sessions", { signal: opts?.signal });
+  }
+
+  /**
+   * Sign one session out. The session you call from may sign itself out
+   * anywhere; any other needs you on the web app (`refused` with
+   * `session_needs_web`). A session that isn't yours, or already ended,
+   * throws `not_found`.
+   */
+  async revoke(id: string, opts: SessionCommandOptions): Promise<Session> {
+    return this.req("POST", `/v2/sessions/${seg(id)}:revoke`, {
+      extraHeaders: { "Idempotency-Key": opts.idempotencyKey },
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Sign out everywhere but this session (web app only,
+   * `session_needs_web`). A sign-in from before sessions were named throws
+   * `invalid_transition`: sign in again first.
+   */
+  async revokeOthers(opts: SessionCommandOptions): Promise<SessionsRevoked> {
+    return this.req("POST", "/v2/sessions:revoke-others", {
+      extraHeaders: { "Idempotency-Key": opts.idempotencyKey },
+      signal: opts.signal,
+    });
+  }
+}
+
 export class V2NoticesResource {
   constructor(private readonly req: RequestFn) {}
 
@@ -1365,6 +1415,7 @@ export class V2Resource {
   readonly notices: V2NoticesResource;
   readonly imports: V2ImportsResource;
   readonly devices: V2DevicesResource;
+  readonly sessions: V2SessionsResource;
   readonly dream: V2DreamResource;
   private readonly openStream?: OpenFn;
 
@@ -1381,6 +1432,7 @@ export class V2Resource {
     this.notices = new V2NoticesResource(req);
     this.imports = new V2ImportsResource(req);
     this.devices = new V2DevicesResource(req);
+    this.sessions = new V2SessionsResource(req);
     this.dream = new V2DreamResource(req);
     this.openStream = open;
   }

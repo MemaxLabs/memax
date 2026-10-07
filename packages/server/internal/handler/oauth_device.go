@@ -9,7 +9,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/auth"
 	"github.com/MemaxLabs/memax/packages/server/internal/deviceauth"
+	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 )
 
 // The device authorization grant's protocol endpoints (RFC 8628; plan 25
@@ -116,7 +118,7 @@ func (h *MCPOAuthHandler) tokenDeviceCode(w http.ResponseWriter, r *http.Request
 		oauthJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported_grant_type"})
 		return
 	}
-	user, err := h.device.Poll(r.Context(), r.PostFormValue("client_id"), r.PostFormValue("device_code"))
+	collected, err := h.device.Collect(r.Context(), r.PostFormValue("client_id"), r.PostFormValue("device_code"))
 	switch {
 	case errors.Is(err, deviceauth.ErrPending):
 		deviceError(w, "authorization_pending", "Waiting for you to confirm the code at memax.app/device.")
@@ -146,8 +148,12 @@ func (h *MCPOAuthHandler) tokenDeviceCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 	// A person's CLI session: its tokens carry surface cli, so nothing done
-	// with them is human_web, however the person confirmed the code.
-	tokens, err := h.authH.issueTokens(user.String())
+	// with them is human_web, however the person confirmed the code. The
+	// sessions list shows it as a device sign-in, named as the device
+	// named itself.
+	tokens, err := h.authH.startSession(r, collected.User.String(), sessionStart{
+		kind: sessions.KindDevice, surface: auth.SurfaceCLI, client: deviceClient(collected),
+	})
 	if err != nil {
 		slog.Error("device token issuance failed", "error", err)
 		oauthJSON(w, http.StatusInternalServerError, map[string]string{
@@ -155,13 +161,29 @@ func (h *MCPOAuthHandler) tokenDeviceCode(w http.ResponseWriter, r *http.Request
 		})
 		return
 	}
-	track(user.String(), "api.auth.login", map[string]any{"provider": "device"})
+	track(collected.User.String(), "api.auth.login", map[string]any{"provider": "device"})
 	oauthJSON(w, http.StatusOK, map[string]any{
 		"access_token":  tokens.AccessToken,
 		"token_type":    "Bearer",
 		"expires_in":    tokens.ExpiresIn,
 		"refresh_token": tokens.RefreshToken,
 	})
+}
+
+// deviceClient names a device's session from what it said about itself:
+// "memax CLI 0.9.0 on zz-mbp (macOS)".
+func deviceClient(c *deviceauth.Collected) string {
+	name := "memax CLI"
+	if c.ClientVersion != "" {
+		name += " " + c.ClientVersion
+	}
+	if c.DeviceName != "" {
+		name += " on " + c.DeviceName
+	}
+	if c.DeviceOS != "" {
+		name += " (" + c.DeviceOS + ")"
+	}
+	return name
 }
 
 // deviceError is a 400 OAuth error, never cached.

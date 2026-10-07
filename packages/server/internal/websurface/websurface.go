@@ -94,6 +94,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -355,4 +356,77 @@ func (c *nonceCache) add(nonce string, now time.Time) bool {
 	}
 	c.seen[nonce] = now.Add(c.ttl)
 	return true
+}
+
+// # Where the person's browser is
+//
+// The web app's server (its BFF: /api/auth/* and /api/proxy) is what
+// calls the API, so the API sees the web deployment's address and user
+// agent, not the person's. When the BFF signs a session in or refreshes
+// it, it says where the browser is, signed with the same secret, so the
+// sessions list shows the person's own address, city and browser:
+//
+//	X-Memax-Client-IP          the browser's address, as the edge saw it
+//	X-Memax-Client-City        its city, percent-encoded UTF-8 (may be empty)
+//	X-Memax-Client-User-Agent  the browser's User-Agent
+//	X-Memax-Client-Timestamp   unix seconds
+//	X-Memax-Client-Signature   "v1=" + base64url HMAC-SHA256 over
+//	                           "memax-web-client/v1", the timestamp, the
+//	                           address, the city (as sent) and the user
+//	                           agent, one per line
+//
+// Unsigned, wrong or stale (MaxSkew), these headers are ignored and the
+// API records what it sees itself. They are informational: they never
+// decide what a request may do.
+const (
+	HeaderClientIP        = "X-Memax-Client-IP"
+	HeaderClientCity      = "X-Memax-Client-City"
+	HeaderClientUserAgent = "X-Memax-Client-User-Agent"
+	HeaderClientTimestamp = "X-Memax-Client-Timestamp"
+	HeaderClientSignature = "X-Memax-Client-Signature"
+)
+
+// ClientInfo is where the person's browser is, as the web app saw it.
+type ClientInfo struct {
+	IP        string
+	City      string
+	UserAgent string
+}
+
+// SignClientInfo is the X-Memax-Client-Signature value at timestamp ts;
+// cityHeader is the city as sent (percent-encoded).
+func SignClientInfo(secret []byte, ts int64, ip, cityHeader, userAgent string) string {
+	mac := hmac.New(sha256.New, secret)
+	canonical := strings.Join([]string{"memax-web-client/" + version, strconv.FormatInt(ts, 10), ip, cityHeader, userAgent}, "\n")
+	mac.Write([]byte(canonical))
+	return version + "=" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// ClientInfo returns where the browser behind a request from the web app's
+// server is, when the request carries those headers signed and fresh.
+func (v *Verifier) ClientInfo(r *http.Request) (ClientInfo, bool) {
+	if v == nil {
+		return ClientInfo{}, false
+	}
+	h := r.Header
+	sig, ts := h.Get(HeaderClientSignature), h.Get(HeaderClientTimestamp)
+	if sig == "" || ts == "" {
+		return ClientInfo{}, false
+	}
+	t, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return ClientInfo{}, false
+	}
+	if d := v.now().Sub(time.Unix(t, 0)); d > MaxSkew || d < -MaxSkew {
+		return ClientInfo{}, false
+	}
+	ip, cityHeader, ua := h.Get(HeaderClientIP), h.Get(HeaderClientCity), h.Get(HeaderClientUserAgent)
+	if !hmac.Equal([]byte(sig), []byte(SignClientInfo(v.key, t, ip, cityHeader, ua))) {
+		return ClientInfo{}, false
+	}
+	city, err := url.PathUnescape(cityHeader)
+	if err != nil {
+		city = ""
+	}
+	return ClientInfo{IP: ip, City: city, UserAgent: ua}, true
 }

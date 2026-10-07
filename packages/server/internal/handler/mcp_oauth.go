@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -26,6 +27,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/safefetch"
+	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 )
 
 // MCPOAuthHandler implements the MCP-spec OAuth 2.0 authorization flow.
@@ -206,6 +208,9 @@ func (h *MCPOAuthHandler) AuthorizationServerMetadata(w http.ResponseWriter, r *
 		"grant_types_supported":                          []string{"authorization_code", "refresh_token"},
 		"token_endpoint_auth_methods_supported":          []string{"none"},
 		"code_challenge_methods_supported":               []string{"S256"},
+		// RFC 7009: a client signing out ends its session.
+		"revocation_endpoint":                        base + "/oauth/revoke",
+		"revocation_endpoint_auth_methods_supported": []string{"none"},
 	}
 	// The device grant signs the memax CLI in (RFC 8628 §4); MCP clients
 	// never use it.
@@ -461,7 +466,10 @@ func (h *MCPOAuthHandler) tokenAuthCode(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	tokens, err := h.authH.issueBoundGrantTokens(userID, grant.AgentName, grantID, h.resolveBaseURL(r), aud, 30*24*time.Hour)
+	tokens, err := h.authH.startSession(r, userID, sessionStart{
+		kind: sessions.KindMCP, agentName: grant.AgentName, grantID: grantID,
+		client: h.grantClientName(r.Context(), grantID, grant.AgentName), issuer: h.resolveBaseURL(r), audience: aud,
+	})
 	if err != nil {
 		slog.Error("MCP OAuth token issuance failed", "error", err)
 		oauthError(w, "server_error", "Failed to issue tokens")
@@ -482,25 +490,52 @@ func (h *MCPOAuthHandler) tokenAuthCode(w http.ResponseWriter, r *http.Request) 
 // a resource (RFC 8707) must name the grant's, or one of the MCP endpoints
 // for a grant that has none; otherwise it fails with invalid_target.
 func (h *MCPOAuthHandler) tokenAudience(w http.ResponseWriter, r *http.Request, grantID string) ([]string, bool) {
+	aud, oerr := h.grantAudience(r, grantID)
+	if oerr != nil {
+		oauthError(w, oerr.code, oerr.description)
+		return nil, false
+	}
+	return aud, true
+}
+
+// oauthFailure is an OAuth error answer (RFC 6749 §5.2).
+type oauthFailure struct{ code, description string }
+
+func (e *oauthFailure) Error() string { return e.code + ": " + e.description }
+
+// grantAudience is tokenAudience without writing the answer.
+func (h *MCPOAuthHandler) grantAudience(r *http.Request, grantID string) ([]string, *oauthFailure) {
 	var resource string
 	if err := h.authH.pool.QueryRow(r.Context(),
 		`SELECT COALESCE(resource, '') FROM oauth_grants WHERE id = $1::uuid`, grantID).Scan(&resource); err != nil {
-		oauthError(w, "invalid_grant", "Authorization grant is no longer valid")
-		return nil, false
+		return nil, &oauthFailure{"invalid_grant", "Authorization grant is no longer valid"}
 	}
 	if asked := strings.TrimSpace(r.FormValue("resource")); asked != "" {
 		switch {
 		case resource != "" && !auth.Audience{resource}.Contains(asked):
-			oauthError(w, "invalid_target", "resource doesn't match the authorization")
-			return nil, false
+			return nil, &oauthFailure{"invalid_target", "resource doesn't match the authorization"}
 		case resource == "" && !h.validResource(r, asked):
-			oauthError(w, "invalid_target", "resource must be this server's MCP endpoint")
-			return nil, false
+			return nil, &oauthFailure{"invalid_target", "resource must be this server's MCP endpoint"}
 		case resource == "":
 			resource = asked
 		}
 	}
-	return h.audienceFor(r, resource), true
+	return h.audienceFor(r, resource), nil
+}
+
+// grantClientName is what the sessions list calls an MCP grant's client:
+// its registered name, or its agent.
+func (h *MCPOAuthHandler) grantClientName(ctx context.Context, grantID, agentName string) string {
+	var name string
+	_ = h.authH.pool.QueryRow(ctx, `SELECT COALESCE(NULLIF(c.client_name, ''), '') FROM oauth_grants g
+		JOIN oauth_clients c ON c.client_id = g.client_id WHERE g.id = $1::uuid`, grantID).Scan(&name)
+	if name == "" {
+		name = agentName
+	}
+	if name == "" {
+		name = "MCP client"
+	}
+	return name
 }
 
 // grantScope is the scope a grant's tokens carry: the scope the person
@@ -513,23 +548,12 @@ func grantScope(grant APIKeyResult) string {
 	return oauthScopeFromPermissions(grant.DefaultPermissions)
 }
 
-// issueBoundGrantTokens issues an MCP OAuth grant's access token, bound to
-// its audience and naming the issuer, and a refresh token.
-func (h *AuthHandler) issueBoundGrantTokens(userID, agentName, grantID, issuer string, aud []string, refreshTTL time.Duration) (*model.TokenPair, error) {
-	accessToken, err := auth.SignBoundGrantAccessToken(userID, agentName, grantID, issuer, aud, h.jwtSecret, time.Hour)
-	if err != nil {
-		return nil, err
-	}
-	refreshToken := generateToken()
-	if _, err := h.pool.Exec(context.Background(),
-		`INSERT INTO sessions (user_id, refresh_token, expires_at, agent_name, grant_id)
-		VALUES ($1, $2, $3, $4, NULLIF($5, '')::uuid)`,
-		userID, refreshToken, time.Now().Add(refreshTTL), agentName, grantID); err != nil {
-		return nil, err
-	}
-	return &model.TokenPair{AccessToken: accessToken, RefreshToken: refreshToken, ExpiresIn: 3600}, nil
-}
-
+// tokenRefresh is the refresh_token grant: an MCP client trades its
+// refresh token for a new pair. The refresh token rotates on every use
+// (OAuth 2.1 §4.3.1 for public clients) and is stored hashed; a retired one
+// presented after the grace window revokes the session (internal/sessions).
+// Only an MCP grant's session refreshes here; a person's refreshes at
+// /v1/auth/refresh.
 func (h *MCPOAuthHandler) tokenRefresh(w http.ResponseWriter, r *http.Request) {
 	refreshToken := r.FormValue("refresh_token")
 	if refreshToken == "" {
@@ -537,57 +561,110 @@ func (h *MCPOAuthHandler) tokenRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var session model.Session
-	var agentName string
-	var grantID string
-	err := h.authH.pool.QueryRow(context.Background(),
-		`SELECT id, user_id, expires_at, COALESCE(agent_name, ''), COALESCE(grant_id::text, '')
-		FROM sessions WHERE refresh_token = $1`,
-		refreshToken).Scan(&session.ID, &session.UserID, &session.ExpiresAt, &agentName, &grantID)
-	if err != nil {
-		oauthError(w, "invalid_grant", "Invalid refresh token")
+	var (
+		grant APIKeyResult
+		aud   []string
+	)
+	is, err := h.authH.sessionStore().Refresh(r.Context(), refreshToken, sessions.RefreshOptions{
+		Where: h.authH.where(r),
+		// Everything that could refuse the refresh is checked before it
+		// rotates, so a refused client keeps a token that works.
+		Accept: func(ss sessions.Session) error {
+			if ss.GrantID == "" {
+				return &oauthFailure{"invalid_grant", "Invalid refresh token"}
+			}
+			grant = h.authH.ResolveOAuthGrant(ss.UserID.String(), ss.GrantID)
+			if grant.UserID == "" {
+				return sessions.ErrGrantRevoked
+			}
+			var oerr *oauthFailure
+			if aud, oerr = h.grantAudience(r, ss.GrantID); oerr != nil {
+				return oerr
+			}
+			return nil
+		},
+	})
+	var oerr *oauthFailure
+	switch {
+	case errors.As(err, &oerr):
+		oauthError(w, oerr.code, oerr.description)
 		return
-	}
-
-	if time.Now().After(session.ExpiresAt) {
-		h.authH.pool.Exec(context.Background(), `DELETE FROM sessions WHERE id = $1`, session.ID)
+	case errors.Is(err, sessions.ErrExpired):
 		oauthError(w, "invalid_grant", "Refresh token expired")
 		return
-	}
-
-	grant := h.authH.ResolveOAuthGrant(session.UserID, grantID)
-	if grant.UserID == "" {
-		h.authH.pool.Exec(context.Background(), `DELETE FROM sessions WHERE id = $1`, session.ID)
+	case errors.Is(err, sessions.ErrGrantRevoked):
 		oauthError(w, "invalid_grant", "Authorization grant is no longer valid")
 		return
-	}
-
-	aud, ok := h.tokenAudience(w, r, grantID)
-	if !ok {
+	case errors.Is(err, sessions.ErrReused), errors.Is(err, sessions.ErrRevoked):
+		oauthError(w, "invalid_grant", "This session was revoked. Authorize the client again.")
+		return
+	case errors.Is(err, sessions.ErrUnknown):
+		oauthError(w, "invalid_grant", "Invalid refresh token")
+		return
+	case err != nil:
+		slog.Error("MCP OAuth refresh failed", "error", err)
+		oauthError(w, "server_error", "Failed to refresh the session")
 		return
 	}
-	accessToken, err := auth.SignBoundGrantAccessToken(session.UserID, grant.AgentName, grantID, h.resolveBaseURL(r), aud, h.authH.jwtSecret, time.Hour)
+	accessToken, err := h.authH.accessTokenFor(is.Session, grant.AgentName, h.resolveBaseURL(r), aud)
 	if err != nil {
 		oauthError(w, "server_error", "Failed to issue access token")
 		return
 	}
-	newRefreshToken := generateToken()
-	if _, err := h.authH.pool.Exec(context.Background(),
-		`UPDATE sessions SET refresh_token = $1, agent_name = $2 WHERE id = $3`,
-		newRefreshToken, grant.AgentName, session.ID); err != nil {
-		slog.Error("failed to rotate MCP OAuth refresh token", "error", err)
-		oauthError(w, "server_error", "Failed to rotate refresh token")
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	oauthJSON(w, http.StatusOK, map[string]any{
 		"access_token":  accessToken,
 		"token_type":    "Bearer",
-		"expires_in":    3600,
-		"refresh_token": newRefreshToken,
+		"expires_in":    int(accessTTL / time.Second),
+		"refresh_token": is.RefreshToken,
 		"scope":         grantScope(grant),
 	})
+}
+
+// Revoke serves POST /oauth/revoke (RFC 7009): a client signing out ends
+// its session. The token is a refresh token (token_type_hint
+// refresh_token, the default), which ends its session even when it was
+// just rotated out, or a session's access token (hint access_token), which
+// ends the session it names. A token that names nothing is answered the
+// same way (RFC 7009 §2.2), so this tells nobody whether a token existed.
+// Public clients don't authenticate here, as at the token endpoint.
+func (h *MCPOAuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		oauthError(w, "invalid_request", "Send the request as a form (application/x-www-form-urlencoded).")
+		return
+	}
+	token := strings.TrimSpace(r.PostFormValue("token"))
+	if token == "" {
+		oauthError(w, "invalid_request", "token is required")
+		return
+	}
+	store := h.authH.sessionStore()
+	revoked := false
+	if claims, err := auth.VerifyAccessToken(token, h.authH.jwtSecret); err == nil {
+		if user, uerr := uuid.Parse(claims.Sub); uerr == nil {
+			if sid, serr := uuid.Parse(claims.Sid); serr == nil && claims.ImpersonatorID == "" {
+				if _, err := store.Revoke(r.Context(), user, sid, sessions.ReasonSignedOut); err == nil {
+					revoked = true
+				} else if !errors.Is(err, sessions.ErrNotFound) {
+					slog.Error("token revocation failed", "error", err)
+					oauthError(w, "server_error", "Memax couldn't revoke the token. Try again.")
+					return
+				}
+			}
+		}
+	} else {
+		ss, err := store.RevokeToken(r.Context(), token, sessions.ReasonSignedOut)
+		if err != nil {
+			slog.Error("token revocation failed", "error", err)
+			oauthError(w, "server_error", "Memax couldn't revoke the token. Try again.")
+			return
+		}
+		revoked = ss != nil
+	}
+	if revoked {
+		slog.Info("session signed out", "via", "oauth_revoke")
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
 }
 
 // HandleMCPCallback is called from the GitHub OAuth callback when state starts with "mcp:".

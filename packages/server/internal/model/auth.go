@@ -92,4 +92,8 @@ type TokenPair struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int    `json:"expires_in"` // seconds
+	// RefreshExpiresIn is how long the session (and so the refresh token)
+	// has left, in seconds. Refreshing rotates the refresh token but
+	// doesn't extend the session.
+	RefreshExpiresIn int `json:"refresh_expires_in,omitempty"`
 }

@@ -203,6 +203,8 @@ export const ledgerActivityEn = {
     purged: "{actor} took a forgotten memory's words out of {ref}.",
     forgetRequested: "{actor} asked you to forget {ref}.",
     forgetDeclined: "{actor} kept {ref} instead of forgetting it.",
+    exported:
+      "{actor} exported this space's whole record as Markdown, with its receipts.",
     other: "{actor} changed {ref}.",
   },
 } as const;

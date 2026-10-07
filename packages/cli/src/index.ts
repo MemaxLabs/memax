@@ -29,6 +29,7 @@ import { registerStatusCommand } from "./commands/status.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerConnectCommand } from "./commands/connect.js";
 import { registerCompileCommand } from "./commands/compile.js";
+import { registerExportCommands } from "./commands/export.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(
@@ -57,6 +58,7 @@ registerListCommand(program);
 registerShowCommand(program);
 registerDeleteCommand(program);
 registerForgetCommand(program);
+registerExportCommands(program);
 registerCaptureSessionCommand(program);
 registerTopicCommands(program);
 registerDreamsCommands(program);

@@ -86,6 +86,17 @@ func (w *writer) endLink(ctx context.Context, l Link, receiptID uuid.UUID) error
 	return nil
 }
 
+// linksSQL reads the active memory-to-memory links of the memories $1,
+// both ways, oldest first.
+const linksSQL = `
+	SELECT l.id, l.kind, l.from_memory_id, l.to_memory_id, l.receipt_id, l.created_at, f.seq, t.seq
+	  FROM v2.memory_links l
+	  JOIN v2.memories f ON f.id = l.from_memory_id
+	  JOIN v2.memories t ON t.id = l.to_memory_id
+	 WHERE l.ended_receipt_id IS NULL AND l.to_memory_id IS NOT NULL
+	   AND (l.from_memory_id = ANY ($1) OR l.to_memory_id = ANY ($1))
+	 ORDER BY l.created_at, l.id`
+
 // activeLinks loads the active memory-to-memory links of the given
 // memories, both ways, oldest first.
 func activeLinks(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) (map[uuid.UUID][]Link, error) {
@@ -93,23 +104,21 @@ func activeLinks(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) (map[uuid.UUID
 	if len(ids) == 0 {
 		return out, nil
 	}
-	rows, err := tx.Query(ctx, `
-		SELECT l.id, l.kind, l.from_memory_id, l.to_memory_id, l.receipt_id, l.created_at, f.seq, t.seq
-		  FROM v2.memory_links l
-		  JOIN v2.memories f ON f.id = l.from_memory_id
-		  JOIN v2.memories t ON t.id = l.to_memory_id
-		 WHERE l.ended_receipt_id IS NULL AND l.to_memory_id IS NOT NULL
-		   AND (l.from_memory_id = ANY ($1) OR l.to_memory_id = ANY ($1))
-		 ORDER BY l.created_at, l.id`, ids)
+	rows, err := tx.Query(ctx, linksSQL, ids)
 	if err != nil {
 		return nil, fmt.Errorf("ledger: load links: %w", err)
 	}
+	return out, scanLinks(rows, ids, out)
+}
+
+// scanLinks reads linksSQL's rows into out.
+func scanLinks(rows pgx.Rows, ids []uuid.UUID, out map[uuid.UUID][]Link) error {
 	defer rows.Close()
 	for rows.Next() {
 		var l Link
 		var fromSeq, toSeq int64
 		if err := rows.Scan(&l.ID, &l.Kind, &l.from, &l.to, &l.ReceiptID, &l.CreatedAt, &fromSeq, &toSeq); err != nil {
-			return nil, fmt.Errorf("ledger: load links: %w", err)
+			return fmt.Errorf("ledger: load links: %w", err)
 		}
 		if slices.Contains(ids, l.from) {
 			out[l.from] = append(out[l.from], Link{ID: l.ID, Kind: l.Kind, Direction: LinkOut, MemoryID: l.to,
@@ -120,12 +129,15 @@ func activeLinks(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) (map[uuid.UUID
 				Ref: FormatRef(PrefixMemory, fromSeq), ReceiptID: l.ReceiptID, CreatedAt: l.CreatedAt, from: l.from, to: l.to})
 		}
 	}
-	return out, rows.Err()
+	return rows.Err()
 }
 
 // attachDetails fills each memory's links, the memory it updates and the
-// judge's verdict, in three queries for the whole batch.
-func attachDetails(ctx context.Context, tx pgx.Tx, ms []*Memory) error {
+// judge's verdict, for the whole batch. The links, the verdicts and what
+// extra queues (a memory's sources, say) go to the server together, in one
+// round trip; the memories a decision updates, when there are any, in a
+// second.
+func attachDetails(ctx context.Context, tx pgx.Tx, ms []*Memory, extra ...func(*pgx.Batch)) error {
 	if len(ms) == 0 {
 		return nil
 	}
@@ -133,10 +145,83 @@ func attachDetails(ctx context.Context, tx pgx.Tx, ms []*Memory) error {
 	for i, m := range ms {
 		ids[i] = m.ID
 	}
-	links, err := activeLinks(ctx, tx, ids)
-	if err != nil {
+	b := &pgx.Batch{}
+	d := queueDetails(b, ids)
+	for _, queue := range extra {
+		queue(b)
+	}
+	if err := tx.SendBatch(ctx, b).Close(); err != nil {
 		return err
 	}
+	return d.apply(ctx, tx, ms)
+}
+
+// loadFull reads one memory in scope as GetMemory shows it: its row, its
+// sources, links and verdict in one round trip, and the memory it
+// updates, when there is one, in a second. extra queues more into the
+// first.
+func loadFull(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID, extra ...func(*pgx.Batch)) (*Memory, error) {
+	var m *Memory
+	b := &pgx.Batch{}
+	b.Queue(memorySelect+` WHERE m.id = $1 AND m.space_id = ANY($2)`, id, scope.SpaceIDs()).
+		Query(func(rows pgx.Rows) error {
+			ms, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (*Memory, error) { return scanMemory(r) })
+			if err != nil {
+				return fmt.Errorf("ledger: load memory: %w", err)
+			}
+			if len(ms) == 1 {
+				m = ms[0]
+			}
+			return nil
+		})
+	var sources []Source
+	b.Queue(sourcesSQL, id).Query(func(rows pgx.Rows) error {
+		var err error
+		if sources, err = scanSources(rows); err != nil {
+			return fmt.Errorf("ledger: load sources: %w", err)
+		}
+		return nil
+	})
+	d := queueDetails(b, []uuid.UUID{id})
+	for _, queue := range extra {
+		queue(b)
+	}
+	if err := tx.SendBatch(ctx, b).Close(); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return nil, ErrNotFound
+	}
+	m.Sources = sources
+	if err := d.apply(ctx, tx, []*Memory{m}); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// details are memories' links and verdicts, read in a batch the caller
+// sends (queueDetails), then applied to the memories.
+type details struct {
+	links    map[uuid.UUID][]Link
+	verdicts map[uuid.UUID]*JudgeInfo
+}
+
+// queueDetails queues the read of the links and verdicts of ids into b.
+func queueDetails(b *pgx.Batch, ids []uuid.UUID) *details {
+	d := &details{links: map[uuid.UUID][]Link{}}
+	b.Queue(linksSQL, ids).Query(func(rows pgx.Rows) error { return scanLinks(rows, ids, d.links) })
+	b.Queue(verdictsSQL, ids).Query(func(rows pgx.Rows) error {
+		var err error
+		d.verdicts, err = scanVerdicts(rows)
+		return err
+	})
+	return d
+}
+
+// apply fills each memory's links, the memory it updates (read now, when
+// there is one) and the judge's verdict.
+func (d *details) apply(ctx context.Context, tx pgx.Tx, ms []*Memory) error {
+	links, verdicts := d.links, d.verdicts
 	var updates []uuid.UUID
 	for _, m := range ms {
 		m.Links = links[m.ID]
@@ -170,5 +255,6 @@ func attachDetails(ctx context.Context, tx pgx.Tx, ms []*Memory) error {
 			}
 		}
 	}
-	return attachVerdicts(ctx, tx, ms)
+	applyVerdicts(ms, verdicts)
+	return nil
 }

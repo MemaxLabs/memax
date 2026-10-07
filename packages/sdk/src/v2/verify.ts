@@ -333,7 +333,8 @@ export async function merkleRoot(
  * Recompute the space's chain from its first receipt and check every
  * checkpoint: its range, the chain hash before and after it, its Merkle
  * root and its signature (with `keys`), and every reason against its
- * commitment. A reason may be missing only where the object was forgotten.
+ * commitment. A reason may be missing only where the object was forgotten,
+ * or anywhere once the whole space was (a `forgot` receipt on the space).
  */
 export async function verifyReceiptChain(
   input: VerifyChainInput,
@@ -417,12 +418,22 @@ export async function verifyReceiptChain(
   let leaves: Uint8Array[] = [];
   const forgotten = new Set<string>();
   const redacted = new Map<string, string[]>();
+  // A Forget of the whole space redacts every reason in it (the server's
+  // verifier allows the same).
+  let spaceForgotten = false;
   for (const [i, r] of input.receipts.entries()) {
     const position = i + 1;
     const leaf = await receiptLeaf(r, c);
     const before = head;
     head = await sha256(c, head, leaf);
     if (r.action === "forgot") forgotten.add(r.object_id);
+    if (
+      r.action === "forgot" &&
+      r.object_kind === "space" &&
+      r.object_id === input.spaceId
+    ) {
+      spaceForgotten = true;
+    }
     const hasReason = r.reason !== null && r.reason !== undefined;
     const hasCommitment =
       r.reason_sha256 !== null && r.reason_sha256 !== undefined;
@@ -509,7 +520,7 @@ export async function verifyReceiptChain(
     });
   }
   for (const [object, receipts] of redacted) {
-    if (forgotten.has(object)) continue;
+    if (forgotten.has(object) || spaceForgotten) continue;
     for (const id of receipts) {
       problems.push({
         kind: "redaction",

@@ -21,6 +21,7 @@
 package contract
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	_ "embed"
@@ -100,6 +101,9 @@ type response struct {
 	// stream marks a text/event-stream response: schema then describes
 	// each event as {"event", "data"} (see ValidateResponse).
 	stream bool
+	// archive marks an application/zip response (the export): the body
+	// must be a zip archive with at least one file.
+	archive bool
 }
 
 type header struct {
@@ -316,12 +320,16 @@ func (s *Spec) indexResponses(op *Operation, raw map[string]any) error {
 		if content := mapAt(obj, "content"); len(content) > 0 {
 			_, isJSON := content["application/json"]
 			_, isStream := content[EventStream]
-			if len(content) != 1 || (!isJSON && !isStream) {
-				return fmt.Errorf("contract: %s %s: a response is application/json or %s, and only one", op.ID, code, EventStream)
+			_, isZip := content[Zip]
+			if len(content) != 1 || (!isJSON && !isStream && !isZip) {
+				return fmt.Errorf("contract: %s %s: a response is application/json, %s or %s, and only one", op.ID, code, EventStream, Zip)
 			}
 			media := "application~1json"
-			if isStream {
+			switch {
+			case isStream:
 				media, resp.stream = "text~1event-stream", true
+			case isZip:
+				media, resp.archive = "application~1zip", true
 			}
 			if resp.schema, err = s.compile(ptr + "/content/" + media + "/schema"); err != nil {
 				return err
@@ -545,6 +553,11 @@ func (s *Spec) ValidateResponse(op *Operation, status int, h http.Header, body [
 	switch {
 	case resp.schema == nil && len(bytes.TrimSpace(body)) > 0:
 		errs = append(errs, fmt.Errorf("%s %d: documented without a body, got %d bytes", op.ID, status, len(body)))
+	case resp.archive:
+		if ct := h.Get("Content-Type"); !isMedia(ct, Zip) {
+			errs = append(errs, fmt.Errorf("%s %d: Content-Type is %q, want %s", op.ID, status, ct, Zip))
+		}
+		errs = append(errs, checkZip(body, fmt.Sprintf("%s %d: body", op.ID, status)))
 	case resp.stream:
 		if ct := h.Get("Content-Type"); !isEventStream(ct) {
 			errs = append(errs, fmt.Errorf("%s %d: Content-Type is %q, want %s", op.ID, status, ct, EventStream))
@@ -687,6 +700,38 @@ func (r *recorder) Flush() { _ = r.FlushError() }
 
 // EventStream is the media type of a server-sent event stream.
 const EventStream = "text/event-stream"
+
+// Zip is the media type of a zip archive (the export).
+const Zip = "application/zip"
+
+func isMedia(contentType, want string) bool {
+	mt, _, _ := strings.Cut(contentType, ";")
+	return strings.TrimSpace(strings.ToLower(mt)) == want
+}
+
+// checkZip checks that body is a zip archive with at least one file, each
+// of which reads back.
+func checkZip(body []byte, what string) error {
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		return fmt.Errorf("%s is not a zip archive: %w", what, err)
+	}
+	if len(zr.File) == 0 {
+		return fmt.Errorf("%s is an empty zip archive", what)
+	}
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("%s: %s: %w", what, f.Name, err)
+		}
+		_, err = io.Copy(io.Discard, rc)
+		_ = rc.Close()
+		if err != nil {
+			return fmt.Errorf("%s: %s: %w", what, f.Name, err)
+		}
+	}
+	return nil
+}
 
 func isEventStream(contentType string) bool {
 	mt, _, _ := strings.Cut(contentType, ";")

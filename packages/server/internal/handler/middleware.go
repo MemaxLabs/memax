@@ -382,7 +382,45 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 			var writeHubID string
 			permsByHub := map[string]PermissionSet{}
 
-			allHubs, _ := s.ListUserHubs(userID)
+			allHubs, listErr := s.ListUserHubs(userID)
+			// The personal hub and the write hub's role come from allHubs,
+			// which ListUserHubs read from the same hubs and hub_members
+			// rows, so a request makes one round trip to Postgres here,
+			// not up to four (the API is about 24 ms from the database). A
+			// personal hub missing from the list (its owner has no
+			// membership row), or a failed list, is looked up as before.
+			var personal struct {
+				id         string
+				ok, looked bool
+			}
+			personalHub := func() (string, bool) {
+				if personal.looked {
+					return personal.id, personal.ok
+				}
+				personal.looked = true
+				for _, item := range allHubs {
+					if item.Hub.HubType == "personal" && item.Hub.OwnerID == userID {
+						personal.id, personal.ok = item.Hub.ID, true
+						return personal.id, true
+					}
+				}
+				if hub, err := s.GetPersonalHub(userID); err == nil {
+					personal.id, personal.ok = hub.ID, true
+				}
+				return personal.id, personal.ok
+			}
+			memberRole := func(hubID string) string {
+				if listErr != nil {
+					role, _ := s.GetHubMemberRole(hubID, userID)
+					return role
+				}
+				for _, item := range allHubs {
+					if item.Hub.ID == hubID {
+						return item.Role
+					}
+				}
+				return ""
+			}
 			allowedByScope := map[string]bool{}
 			if grant.HubScopeMode == HubScopeAllowlist {
 				for _, scopedHubID := range grant.ScopedHubIDs {
@@ -442,16 +480,16 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 				}
 				retrievalBoostHubID = hubID
 				if hubID == "" {
-					if hub, err := s.GetPersonalHub(userID); err == nil {
-						hubID = hub.ID
+					if id, ok := personalHub(); ok {
+						hubID = id
 					}
 				}
 
 				// Validate membership and grant read access.
 				if hubID != "" {
 					if !permsByHub[hubID].Has(PermMemoryRead) && !permsByHub[hubID].Has(PermHubRead) {
-						if hub, err := s.GetPersonalHub(userID); err == nil {
-							hubID = hub.ID
+						if id, ok := personalHub(); ok {
+							hubID = id
 						}
 						retrievalBoostHubID = ""
 					}
@@ -460,15 +498,14 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 				// Write context: explicit X-Hub-ID only. Any switched read hub is client-local state.
 				writeHubID = r.Header.Get("X-Hub-ID")
 				if writeHubID == "" {
-					if hub, err := s.GetPersonalHub(userID); err == nil {
-						writeHubID = hub.ID
+					if id, ok := personalHub(); ok {
+						writeHubID = id
 					}
 				}
 				if writeHubID != "" {
-					role, _ := s.GetHubMemberRole(writeHubID, userID)
-					if role == "" {
-						if hub, err := s.GetPersonalHub(userID); err == nil {
-							writeHubID = hub.ID
+					if memberRole(writeHubID) == "" {
+						if id, ok := personalHub(); ok {
+							writeHubID = id
 						}
 					}
 				}

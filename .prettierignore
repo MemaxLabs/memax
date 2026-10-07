@@ -22,6 +22,9 @@ package-lock.json
 # Generated from packages/server/openapi/v2.yaml; `pnpm lint` compares it
 # byte for byte with a fresh generation, so it must not be reformatted.
 packages/sdk/src/v2/schema.gen.ts
+# The golden export, written by packages/server/internal/export
+# (TestGoldenExport) and compared byte for byte: never reformatted.
+packages/sdk/src/v2/testdata/
 
 # Binary / media
 *.png

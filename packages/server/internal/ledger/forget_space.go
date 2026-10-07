@@ -107,11 +107,11 @@ func (w *writer) forgetWholeSpace(ctx context.Context, sp spaceRow, retire bool,
 
 	// The space's own forgot receipt, which lets the space's reasons be
 	// redacted and the space retired.
-	var stream int
-	if err := w.tx.QueryRow(ctx, `SELECT COALESCE(max(stream_version), 0) FROM v2.receipts WHERE stream_id = $1`, sp.ID).Scan(&stream); err != nil {
+	stream, err := nextSpaceStreamVersion(ctx, w.tx, sp.ID)
+	if err != nil {
 		return Result{}, fmt.Errorf("ledger: forget space: %w", err)
 	}
-	src := w.objectReceipt(sp, ObjectSpace, sp.ID, SpaceObjectRef, ActionForgot, stream+1, "")
+	src := w.objectReceipt(sp, ObjectSpace, sp.ID, SpaceObjectRef, ActionForgot, stream, "")
 	if err := insertReceipt(ctx, w.tx, &src); err != nil {
 		return Result{}, err
 	}

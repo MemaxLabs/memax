@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/MemaxLabs/memax/packages/server/internal/dbpool"
 	"github.com/google/uuid"
 	"log/slog"
 	"net/http"
@@ -876,7 +877,7 @@ func configureStore(ctx context.Context, app *App) (store.Store, *pgxpool.Pool, 
 	}
 
 	slog.Info("connecting to PostgreSQL")
-	pool, err := pgxpool.New(ctx, dbURL)
+	pool, err := dbpool.Open(ctx, dbURL, dbpool.APIMaxConns)
 	if err != nil {
 		return nil, nil, fmt.Errorf("connect to database: %w", err)
 	}

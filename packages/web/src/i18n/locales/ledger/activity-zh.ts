@@ -150,6 +150,8 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     forgot:
       "{actor}忘记了一条记忆。已从 {files}和 {agents} 里移除，墓碑会留下。",
     forgotPlain: "{actor}忘记了一条记忆。墓碑会留下。",
+    forgotAgents: "{actor}忘记了一条记忆。已从 {agents} 里移除，墓碑会留下。",
+    forgotFiles: "{actor}忘记了一条记忆。已从 {files}里移除，墓碑会留下。",
     files: "{n} 个文件",
     filesOne: "1 个文件",
     agents: "{n} 个 Agent",

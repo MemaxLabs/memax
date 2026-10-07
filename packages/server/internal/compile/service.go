@@ -234,11 +234,15 @@ func (s *Service) Run(ctx context.Context, args ledger.CompileTargetArgs, opts R
 		}
 	}
 	rec, err := s.ledger.Apply(ctx, cmd)
-	if errors.Is(err, ledger.ErrBehind) {
-		s.drop(ctx, cmd.ArtifactKey)
-		return Snooze, nil
-	}
 	if err != nil {
+		// No run records this artifact, so nothing would ever reach it:
+		// Forget re-renders only the artifacts a run records, and the
+		// ledger refuses a run citing a memory forgotten while it compiled
+		// (MXF02). Left behind, it would keep the forgotten words.
+		s.drop(ctx, cmd.ArtifactKey)
+		if errors.Is(err, ledger.ErrBehind) {
+			return Snooze, nil
+		}
 		return Done, err
 	}
 	if rec.Unchanged {

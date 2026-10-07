@@ -24,6 +24,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
+	"github.com/MemaxLabs/memax/packages/server/internal/oauthredirect"
 	"github.com/MemaxLabs/memax/packages/server/internal/safefetch"
 	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 )
@@ -237,9 +238,12 @@ func (h *MCPOAuthHandler) DynamicClientRegistration(w http.ResponseWriter, r *ht
 		oauthError(w, "invalid_client_metadata", "redirect_uris is required")
 		return
 	}
+	// application_type isn't required (Cursor sends none): which redirects
+	// a client may use is decided by the URIs themselves (RFC 8252).
 	for _, redirectURI := range req.RedirectURIs {
-		if !validOAuthRedirectURI(redirectURI) {
-			oauthError(w, "invalid_redirect_uri", "redirect_uris must be absolute http(s) URLs or loopback URLs")
+		if !oauthredirect.Valid(redirectURI) {
+			oauthError(w, "invalid_redirect_uri",
+				"redirect_uris must be https URLs, http loopback URLs (127.0.0.1, [::1], localhost) or a native app's private-use scheme (RFC 8252)")
 			return
 		}
 	}
@@ -317,7 +321,8 @@ func (h *MCPOAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unknown OAuth client", http.StatusBadRequest)
 		return
 	}
-	if !redirectURIAllowed(redirectURI, client.RedirectURIs) {
+	// A registered loopback redirect matches with any port (RFC 8252 §7.3).
+	if !oauthredirect.Allowed(redirectURI, client.RedirectURIs) {
 		http.Error(w, "redirect_uri is not registered for this client", http.StatusBadRequest)
 		return
 	}
@@ -423,7 +428,9 @@ func (h *MCPOAuthHandler) tokenAuthCode(w http.ResponseWriter, r *http.Request) 
 		oauthError(w, "invalid_grant", "Invalid authorization code")
 		return
 	}
-	if storedRedirectURI != "" && redirectURI != storedRedirectURI {
+	// The redirect URI of the authorization request, or, for a loopback
+	// one, the same with another port (RFC 8252 §7.3).
+	if storedRedirectURI != "" && !oauthredirect.Matches(redirectURI, storedRedirectURI) {
 		oauthError(w, "invalid_grant", "redirect_uri does not match authorization request")
 		return
 	}
@@ -881,31 +888,6 @@ func displayOAuthClientName(name string) string {
 	return name
 }
 
-func validOAuthRedirectURI(raw string) bool {
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return false
-	}
-	switch u.Scheme {
-	case "https":
-		return true
-	case "http":
-		host := strings.ToLower(u.Hostname())
-		return host == "localhost" || host == "127.0.0.1" || host == "::1"
-	default:
-		return false
-	}
-}
-
-func redirectURIAllowed(redirectURI string, allowed []string) bool {
-	for _, candidate := range allowed {
-		if redirectURI == candidate {
-			return true
-		}
-	}
-	return false
-}
-
 func oauthPermissionsFromScope(scope string) (PermissionSet, string, []string) {
 	if strings.TrimSpace(scope) == "" {
 		scope = "memax:read memax:write"
@@ -1031,7 +1013,10 @@ func agentNameFromClientName(clientName string) string {
 		return "gemini"
 	case strings.Contains(lower, "codex"):
 		return "codex"
-	case strings.Contains(lower, "copilot"):
+	case strings.Contains(lower, "copilot"),
+		// VS Code's MCP client (GitHub Copilot's agent mode) registers as
+		// "Visual Studio Code".
+		strings.Contains(lower, "visual studio code"), strings.Contains(lower, "vs code"):
 		return "copilot"
 	case strings.Contains(lower, "opencode"):
 		return "opencode"

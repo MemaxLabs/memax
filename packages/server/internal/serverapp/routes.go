@@ -493,7 +493,9 @@ func registerAuthRoutes(root *http.ServeMux, protected *http.ServeMux, deps rout
 	// person signed in on the web, through the web app's proxy: these need
 	// a web session's access token (mcp_oauth_consent.go). No per-address
 	// limit: through the proxy every person shares the web app's address,
-	// and only a signed-in person gets past RequireAuth.
+	// and only a signed-in person gets past RequireAuth. A request is made
+	// by GET /oauth/authorize, which is limited per address; if these are
+	// ever abused, limit them per person (GetUserID), not per address.
 	root.Handle("GET /oauth/authorize/requests/{id}", deps.authMiddleware(http.HandlerFunc(mcpOAuth.OpenRequest)))
 	root.Handle("POST /oauth/authorize/requests/{id}/decision", deps.authMiddleware(http.HandlerFunc(mcpOAuth.DecideRequest)))
 	root.Handle("POST /oauth/authorize/requests/{id}/release", deps.authMiddleware(http.HandlerFunc(mcpOAuth.ReleaseRequest)))

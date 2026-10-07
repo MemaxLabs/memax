@@ -154,6 +154,10 @@ func requestGone(w http.ResponseWriter) {
 // request bound by the old GitHub callback, which still carries a consent
 // token, counts as nobody's for one release) and loads it. Errors:
 // errRequestGone, errRequestExpired.
+//
+// oauth_authorization_requests.csrf_token is read only to tell those old
+// requests apart: once ResumeOnWeb and LegacyConsent go (one release),
+// drop the column in a migration, and these clauses with it.
 func (h *MCPOAuthHandler) openRequest(ctx context.Context, id, person string) (oauthPendingSession, error) {
 	me, err := uuid.Parse(person)
 	if err != nil || id == "" {

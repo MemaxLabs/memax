@@ -157,30 +157,6 @@ func TestMCPOAuthScopeMappingRejectsUnknown(t *testing.T) {
 	}
 }
 
-func TestMCPOAuthRedirectURIValidation(t *testing.T) {
-	valid := []string{
-		"https://chat.openai.com/aip/g-123/oauth/callback",
-		"http://localhost:1455/callback",
-		"http://127.0.0.1:1455/callback",
-	}
-	for _, uri := range valid {
-		if !validOAuthRedirectURI(uri) {
-			t.Fatalf("expected valid redirect URI: %s", uri)
-		}
-	}
-
-	invalid := []string{
-		"javascript:alert(1)",
-		"http://example.com/callback",
-		"/relative/callback",
-	}
-	for _, uri := range invalid {
-		if validOAuthRedirectURI(uri) {
-			t.Fatalf("expected invalid redirect URI: %s", uri)
-		}
-	}
-}
-
 func TestMCPOAuthRedirectsToClientCallbackWithSeeOther(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/consent", nil)
 	w := httptest.NewRecorder()

@@ -1,5 +1,5 @@
 {
-  "about": "A small space where every Dream phase has a known answer. Run A happens the night after the record below was written; run B sixty-one days later, after one more note. 'expect' is what Dream should do; 'oracle' is how the fake model answers (the live model gets the same prompts). Words are made up for the eval.",
+  "about": "A small space where every Dream phase has a known answer. Run A happens the night after the record below was written; run B sixty-one days later, after one more note. 'expect' is what Dream should do (a memory the Brief comes to place is exempt from fading); 'oracle' is how the fake model answers (the live model gets the same prompts). Words are made up for the eval.",
   "kept": [
     {"key": "river", "statement": "Background jobs run on River, not Temporal.", "section": "decisions", "kind": "decision", "area": "job queue"},
     {"key": "railway", "statement": "The v2 API deploys to Railway.", "section": "conventions"},
@@ -9,7 +9,8 @@
     {"key": "haiku", "statement": "Ask memax answers with the Haiku tier.", "section": "conventions", "stale_days": -2},
     {"key": "tabs", "statement": "Use tabs, not spaces, in generated Go files.", "section": "conventions"},
     {"key": "staging", "statement": "The staging database is reset every Sunday night.", "section": "conventions"},
-    {"key": "fly", "statement": "The v2 API deploys to Fly.io in iad and ams.", "section": "conventions"}
+    {"key": "fly", "statement": "The v2 API deploys to Fly.io in iad and ams.", "section": "conventions"},
+    {"key": "temporal", "statement": "New background jobs are written as Temporal workflows.", "section": "conventions"}
   ],
   "proposals": [
     {"key": "cards", "statement": "Review cards show the diff against the memory they replace."},
@@ -38,11 +39,10 @@
     "propose": [{"notes": ["n-commit"], "words": ["commit", "imperative"]}, {"notes": ["n-vitest"], "words": ["vitest"]}],
     "skip_notes": ["n-coffee", "n-standup"],
     "dedupe": [["cards2", "cards"], ["cli2", "cli"]],
-    "conflict": [["fly", "railway"]],
+    "conflict": [["fly", "railway"], ["temporal", "river"]],
     "stale": ["haiku"],
-    "fade_b": ["tabs", "staging"],
-    "never_fade": ["river", "pnpm", "mcp", "fly", "railway", "haiku"],
-    "fade_unless_placed": ["errors"],
+    "fade_b": ["tabs", "staging", "errors"],
+    "never_fade": ["river", "pnpm", "mcp", "fly", "railway", "haiku", "temporal"],
     "brief_places": ["errors"]
   },
   "oracle": {
@@ -56,7 +56,8 @@
     ],
     "pairs": [
       {"a": "come out in the same order", "b": "prints receipts in the same order", "relation": "duplicate", "confidence": 0.95},
-      {"a": "Fly.io in iad", "b": "deploys to Railway", "relation": "updates", "confidence": 0.92}
+      {"a": "Fly.io in iad", "b": "deploys to Railway", "relation": "updates", "confidence": 0.92},
+      {"a": "Temporal workflows", "b": "River, not Temporal", "relation": "contradicts", "confidence": 0.9}
     ],
     "brief": [
       {"op": "place", "item": "problem+json", "section": "conventions", "after": "pnpm workspaces"},

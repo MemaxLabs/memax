@@ -67,14 +67,13 @@ type fixture struct {
 			Notes []string
 			Words []string
 		} `json:"propose"`
-		SkipNotes        []string   `json:"skip_notes"`
-		Dedupe           [][]string `json:"dedupe"`
-		Conflict         [][]string `json:"conflict"`
-		Stale            []string   `json:"stale"`
-		FadeB            []string   `json:"fade_b"`
-		NeverFade        []string   `json:"never_fade"`
-		FadeUnlessPlaced []string   `json:"fade_unless_placed"`
-		BriefPlaces      []string   `json:"brief_places"`
+		SkipNotes   []string   `json:"skip_notes"`
+		Dedupe      [][]string `json:"dedupe"`
+		Conflict    [][]string `json:"conflict"`
+		Stale       []string   `json:"stale"`
+		FadeB       []string   `json:"fade_b"`
+		NeverFade   []string   `json:"never_fade"`
+		BriefPlaces []string   `json:"brief_places"`
 	} `json:"expect"`
 	Oracle struct {
 		Folds []dreamtest.FoldRule
@@ -410,9 +409,19 @@ func runMode(t *testing.T, f fixture, m mode) {
 	if err != nil || !outB.Ran {
 		t.Fatalf("run B: %+v %v", outB, err)
 	}
-	fade := score{expected: len(f.Expect.FadeB)}
+	// What should fade: the expected ones, unless run A's Brief placed one
+	// (the Brief's memories never fade).
+	var fade score
 	for _, k := range f.Expect.FadeB {
-		if lc, _ := w.lifecycle(k); lc == lifecycle.Faded {
+		lc, _ := w.lifecycle(k)
+		if placed[w.ref(k)] {
+			if lc == lifecycle.Faded {
+				t.Errorf("%s faded though the Brief places it", k)
+			}
+			continue
+		}
+		fade.expected++
+		if lc == lifecycle.Faded {
 			fade.hit++
 		}
 	}
@@ -420,16 +429,6 @@ func runMode(t *testing.T, f fixture, m mode) {
 	for _, k := range f.Expect.NeverFade {
 		if lc, _ := w.lifecycle(k); lc == lifecycle.Faded {
 			t.Errorf("%s faded: decisions, the Brief's memories, flagged ones and open conflicts never fade", k)
-		}
-	}
-	for _, k := range f.Expect.FadeUnlessPlaced {
-		lc, _ := w.lifecycle(k)
-		if wantFaded := !placed[w.ref(k)]; (lc == lifecycle.Faded) != wantFaded {
-			t.Errorf("%s is %s; the Brief places it: %v", k, lc, placed[w.ref(k)])
-		} else if wantFaded {
-			fade.expected++
-			fade.hit++
-			fade.planned++
 		}
 	}
 

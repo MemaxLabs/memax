@@ -71,6 +71,33 @@ func TestGoldenExport(t *testing.T) {
 	}
 }
 
+// goldenZip is the fixture's archive as the server streams it: the CLI's
+// tests read it with their own zip reader. It is compared by what it
+// holds, not byte for byte (compress/flate may change between Go
+// releases); -update rewrites it.
+const goldenZip = "../../../sdk/src/v2/testdata/export-v1.zip"
+
+func TestGoldenArchive(t *testing.T) {
+	f := newFixture(t)
+	if *update {
+		if err := os.WriteFile(goldenZip, f.zip(t), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	raw, err := os.ReadFile(goldenZip)
+	if err != nil {
+		t.Fatalf("read the golden archive (run with -update): %v", err)
+	}
+	root, files, err := export.ReadZip(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root != "memax-v2" || !reflect.DeepEqual(files, f.render(t)) {
+		t.Error("the golden archive doesn't hold the fixture's export; run with -update")
+	}
+}
+
 // TestExportIsDeterministic: the same record gives byte-identical files
 // and a byte-identical archive, and the archive holds exactly the files.
 func TestExportIsDeterministic(t *testing.T) {

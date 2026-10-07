@@ -78,11 +78,14 @@ func (v *view) readTarget(ctx context.Context, ref string) (spaces []space, v1 b
 func (s *Server) recall(ctx context.Context, c *handler.MCPToolCall, v *view) (*mcp.CallToolResult, bool) {
 	var a readArgs
 	_ = json.Unmarshal(c.Args, &a)
+	query := strings.TrimSpace(a.Query)
+	// The query embedding needs only the text: it runs while the caller's
+	// principal and spaces resolve.
+	emb := s.search.Embed(ctx, query)
 	spaces, withV1, res := v.readTarget(ctx, firstNonEmpty(a.HubID, a.SpaceID))
 	if res != nil {
 		return res, true
 	}
-	query := strings.TrimSpace(a.Query)
 	limit := a.Limit
 	if limit <= 0 {
 		limit = 5
@@ -98,13 +101,13 @@ func (s *Server) recall(ctx context.Context, c *handler.MCPToolCall, v *view) (*
 		}()
 	}
 	p := v.p
-	part := s.recallV2(ctx, c, p, spaces, query, limit, sessionRefOf(c, a.SessionRef))
+	part := s.recallV2(ctx, c, p, spaces, query, emb, limit, sessionRefOf(c, a.SessionRef))
 	wg.Wait()
 	return s.compose(part, v1, query == ""), true
 }
 
 // recallV2 reads the V2 spaces within the recall budget.
-func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.Principal, spaces []space, query string, limit int, sessionRef string) v2Part {
+func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.Principal, spaces []space, query string, emb *v2recall.Embedding, limit int, sessionRef string) v2Part {
 	part := v2Part{out: handler.MCPRecallOutput{Results: []handler.MCPItem{}, LexicalOnly: true}}
 	if len(spaces) == 0 {
 		return part
@@ -160,7 +163,8 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 			writeDigest(&b, sd)
 		}
 	} else {
-		found, err := s.search.Search(ctx, scope, v2recall.Query{Text: query, Filter: v2recall.Filter{Spaces: ids(spaces)}, Limit: limit})
+		found, err := s.search.Search(ctx, scope, v2recall.Query{Text: query, Filter: v2recall.Filter{Spaces: ids(spaces)}, Limit: limit,
+			Embedding: emb})
 		if err != nil {
 			part.out.Partial = true
 			s.logReadError(ctx, "search", err)
@@ -258,6 +262,9 @@ func (s *Server) searchTool(ctx context.Context, c *handler.MCPToolCall, v *view
 	if kind != "" && !kind.Valid() {
 		return errorResult("kind must be fact or decision."), true
 	}
+	// The query embedding needs only the text: it runs while the caller's
+	// principal and spaces resolve.
+	emb := s.search.Embed(ctx, query)
 	spaces, withV1, res := v.readTarget(ctx, a.SpaceID)
 	if res != nil {
 		return res, true
@@ -281,7 +288,7 @@ func (s *Server) searchTool(ctx context.Context, c *handler.MCPToolCall, v *view
 	if len(spaces) > 0 {
 		sctx, cancel := context.WithTimeout(ctx, 2*s.recallBudget)
 		found, err := s.search.Search(sctx, v.p.Scope.Narrow(ids(spaces)...), v2recall.Query{
-			Text: query, Filter: v2recall.Filter{Spaces: ids(spaces), Kind: kind}, Limit: limit})
+			Text: query, Filter: v2recall.Filter{Spaces: ids(spaces), Kind: kind}, Limit: limit, Embedding: emb})
 		cancel()
 		if err != nil {
 			out.Partial = true

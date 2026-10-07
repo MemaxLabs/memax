@@ -82,6 +82,27 @@ type Query struct {
 	Text   string
 	Filter Filter
 	Limit  int
+	// Embedding is Text's query embedding, already on its way (Embed);
+	// nil starts one when the search does.
+	Embedding *Embedding
+}
+
+// Embedding is a query embedding started before its search (Embed).
+type Embedding struct {
+	text string
+	p    *pendingQuery
+}
+
+// Embed starts embedding a query for a search to come, within the query
+// deadline (120 ms) from now; nil without vectors. A caller that knows its
+// query before it can search (recall, while it resolves who is asking and
+// where) starts it early, so the embedding overlaps that work: each round
+// trip to Postgres is about 24 ms in production.
+func (s *Searcher) Embed(ctx context.Context, text string) *Embedding {
+	if s == nil || s.vectors == nil || strings.TrimSpace(text) == "" {
+		return nil
+	}
+	return &Embedding{text: text, p: s.vectors.startQuery(ctx, text)}
 }
 
 // Result is a search's answer.
@@ -177,7 +198,11 @@ func (s *Searcher) Search(ctx context.Context, scope ledger.Scope, q Query) (Res
 	// The query embedding runs while the lexical lanes do (§5.11).
 	var pending *pendingQuery
 	if s.vectors != nil && q.Filter.Proposer == uuid.Nil {
-		pending = s.vectors.startQuery(ctx, q.Text)
+		if e := q.Embedding; e != nil && e.text == q.Text {
+			pending = e.p
+		} else {
+			pending = s.vectors.startQuery(ctx, q.Text)
+		}
 	}
 	var rankings []ranking
 	// loaded holds the hits the lanes returned with their ranking (the

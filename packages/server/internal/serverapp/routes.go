@@ -489,6 +489,9 @@ func registerAuthRoutes(root *http.ServeMux, protected *http.ServeMux, deps rout
 	root.HandleFunc("GET /oauth/authorize/consent-request", ipLimit(ratelimit.IPOAuthAuthorize, mcpOAuth.ConsentRequest))
 	root.HandleFunc("POST /oauth/authorize/consent", ipLimit(ratelimit.IPOAuthAuthorize, mcpOAuth.Consent))
 	root.HandleFunc("POST /oauth/token", ipLimit(ratelimit.IPOAuthTokenLimit, mcpOAuth.Token))
+	// Signing out (RFC 7009): the web app's sign-out, memax logout, and MCP
+	// clients end their session with its refresh token.
+	root.HandleFunc("POST /oauth/revoke", ipLimit(ratelimit.IPOAuthTokenLimit, mcpOAuth.Revoke))
 	// Device sign-in for the memax CLI (RFC 8628): the code here, the
 	// device_code grant on /oauth/token, the person's confirmation on /v2.
 	mcpOAuth.SetDeviceAuth(deps.v2.Devices(), ratelimit.ClientIP)

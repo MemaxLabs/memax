@@ -994,8 +994,19 @@ export interface MeResponse {
 
 export interface AuthTokenPair {
   access_token: string;
+  /**
+   * The session's next refresh token. It changes on every refresh (the one
+   * you sent is retired), so always store this one; a retired token used
+   * again after a minute signs the whole session out.
+   */
   refresh_token: string;
+  /** Seconds until the access token expires. */
   expires_in: number;
+  /**
+   * Seconds the session has left. Refreshing doesn't extend it. Absent
+   * from servers older than refresh-token rotation.
+   */
+  refresh_expires_in?: number;
 }
 
 /**

@@ -55,6 +55,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/distill"
 	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/rerank"
+	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 	"github.com/MemaxLabs/memax/packages/server/internal/trust"
@@ -658,7 +659,17 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 	listenCtx, stopListening := context.WithCancel(context.Background())
 	forgetBus.Listen(listenCtx)
 	app.addCleanup(func(context.Context) error { stopListening(); return forgetBus.Close() })
-	v2h, v2Search, readRecorder := v2Handler(pool, queueClient, blobStore, llm, forgetBus)
+	// The web app's signing secret, read once: it verifies the web proxy's
+	// signed /v2 requests (human_web) and where it says a browser signing
+	// in or refreshing is.
+	web := webSurfaceFromEnv()
+	var sessionStore *sessions.Store
+	if authH != nil {
+		authH.SetWebSurface(web)
+		sessionStore = authH.Sessions()
+		app.addClose(sessionStore.Wait)
+	}
+	v2h, v2Search, readRecorder := v2Handler(pool, queueClient, blobStore, llm, forgetBus, web, sessionStore)
 	app.addClose(readRecorder.Close)
 	// V1's deletes of a hub and of a person's data forget the V2 record
 	// through the ledger first, when there is one.
@@ -783,7 +794,7 @@ func webSurfaceFromEnv() *websurface.Verifier {
 // can't reach from the same configuration (forget.HonestyFromEnv), and the
 // embeddings cache is purged when a Forget's propagation signals bus.
 func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store, llm *anthropic.Client,
-	bus *forget.Bus) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
+	bus *forget.Bus, web *websurface.Verifier, sessionStore *sessions.Store) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
 	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
 	dreamCfg := v2dream.ConfigFromEnv(os.LookupEnv)
 	opts := []ledger.Option{ledger.WithForgetHonesty(forget.HonestyFromEnv(os.LookupEnv)),
@@ -808,7 +819,7 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 		slog.Info("/v2 enabled", "compile_jobs", queueClient != nil, "compile_service", svc != nil,
 			"vectors", vectors != nil, "reads", rec != nil)
 	}
-	hopts := []v2api.Option{v2api.WithWebSurface(webSurfaceFromEnv()), v2api.WithCompile(svc),
+	hopts := []v2api.Option{v2api.WithWebSurface(web), v2api.WithCompile(svc), v2api.WithSessions(sessionStore),
 		v2api.WithReads(rec), v2api.WithReceiptKeys(receiptKeysFromEnv())}
 	if vectors != nil {
 		hopts = append(hopts, v2api.WithDrafts(vectors))
@@ -973,7 +984,23 @@ func configureAuth(pool *pgxpool.Pool, s store.Store) (*handler.AuthHandler, fun
 		}
 		keyResolver = authH.ResolveAPIKey
 		grantResolver = authH.ResolveOAuthGrant
+		// A session's address and, behind Cloudflare, its city, read the
+		// way the rate limiter trusts proxy headers.
+		authH.SetClientAddress(func(r *http.Request) (string, string) {
+			city := ""
+			if ratelimit.TrustedProxyMode() == "cloudflare" {
+				city = r.Header.Get("CF-IPCity")
+			}
+			return ratelimit.ClientIP(r), city
+		})
 	}
 
-	return authH, handler.RequireAuth(jwtSecret, keyResolver, grantResolver), nil
+	requireAuth := handler.RequireAuth(jwtSecret, keyResolver, grantResolver)
+	if authH == nil {
+		return nil, requireAuth, nil
+	}
+	// Every authenticated request records, now and then, that its session
+	// was used (the sessions list's "last used").
+	touch := handler.TouchSessions(authH.Sessions())
+	return authH, func(next http.Handler) http.Handler { return requireAuth(touch(next)) }, nil
 }

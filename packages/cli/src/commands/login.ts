@@ -235,10 +235,37 @@ export async function signInWithBrowser(
   }
 }
 
+/**
+ * Signs this CLI's session out on the server (its refresh token stops
+ * working at once) and clears the saved credentials. Offline, the
+ * credentials are cleared anyway and the session ends when it expires, or
+ * when you sign it out from Settings on memax.app.
+ */
 export async function logoutCommand(): Promise<void> {
-  const { clearCredentials } = await import("../lib/credentials.js");
+  const { clearCredentials, loadCredentials } =
+    await import("../lib/credentials.js");
+  const creds = loadCredentials();
+  let signedOut = false;
+  const token = creds?.refresh_token || creds?.access_token;
+  if (token) {
+    try {
+      await getPublicClient().auth.revoke(token);
+      signedOut = true;
+    } catch {
+      // Unreachable or refused: clear locally all the same.
+    }
+  }
   clearCredentials();
-  console.log("  Logged out. Credentials cleared.\n");
+  resetClient();
+  if (token && !signedOut) {
+    console.log(
+      "  Logged out here. Memax couldn't be reached to end the session, so it lasts until it expires; sign it out in Settings on memax.app.\n",
+    );
+    return;
+  }
+  console.log(
+    "  Logged out. The session is signed out and credentials cleared.\n",
+  );
 }
 
 export async function whoamiCommand(): Promise<void> {
@@ -306,7 +333,7 @@ export function registerLoginCommands(program: Command): void {
     .action(loginCommand);
   program
     .command("logout")
-    .description("Clear saved credentials")
+    .description("Sign this session out and clear saved credentials")
     .action(logoutCommand);
   program
     .command("whoami")

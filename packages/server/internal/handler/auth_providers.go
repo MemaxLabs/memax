@@ -1046,17 +1046,11 @@ func (h *AuthHandler) clearGitHubID(ctx context.Context, userID string) {
 // completeLogin issues tokens and redirects to the client, or returns JSON.
 // Used by both GitHub and Google callbacks.
 func (h *AuthHandler) completeLogin(w http.ResponseWriter, r *http.Request, user *model.User, clientRedirect string) {
-	tokens, err := h.issueTokens(user.ID)
-	if err != nil {
-		slog.Error("token issuance failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, model.ApiResponse{
-			Error: &model.Error{Code: "internal", Message: "Failed to issue tokens."},
-		})
-		return
-	}
-
 	track(user.ID, "api.auth.login", map[string]any{"name": user.Name, "email": user.Email})
 
+	// A redirected login's session starts when its code is exchanged
+	// (ExchangeCode), by whoever the code reached: issuing one here too
+	// would leave a session nobody holds.
 	if clientRedirect != "" {
 		authCode := generateToken()
 		_, err := h.pool.Exec(context.Background(),
@@ -1084,6 +1078,14 @@ func (h *AuthHandler) completeLogin(w http.ResponseWriter, r *http.Request, user
 		return
 	}
 
+	tokens, err := h.issueTokens(r, user.ID)
+	if err != nil {
+		slog.Error("token issuance failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, model.ApiResponse{
+			Error: &model.Error{Code: "internal", Message: "Failed to issue tokens."},
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, model.ApiResponse{Data: tokens})
 }
 

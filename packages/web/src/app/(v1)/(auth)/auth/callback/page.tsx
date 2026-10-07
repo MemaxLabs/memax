@@ -105,45 +105,7 @@ function CallbackHandler() {
     }
 
     const code = params.get("code");
-    const accessToken = params.get("access_token");
-    const refreshToken = params.get("refresh_token");
-    const inlineCredentialsKey =
-      accessToken && refreshToken ? `${accessToken}:${refreshToken}` : null;
     let active = true;
-
-    if (inlineCredentialsKey) {
-      const nextAccessToken = accessToken;
-      const nextRefreshToken = refreshToken;
-      if (!nextAccessToken || !nextRefreshToken) {
-        setStatus("error");
-        return;
-      }
-      if (flowRef.current?.key !== inlineCredentialsKey) {
-        flowRef.current = {
-          key: inlineCredentialsKey,
-          promise: completeLogin(nextAccessToken, nextRefreshToken),
-        };
-      }
-
-      void flowRef.current.promise
-        .then((ok) => {
-          if (!active || !ok) {
-            if (active) setStatus("error");
-            return;
-          }
-          setStatus("success");
-          const returnTo = localStorage.getItem("memax_return_to");
-          if (returnTo) localStorage.removeItem("memax_return_to");
-          window.location.replace(returnTo || "/home");
-        })
-        .catch(() => {
-          if (!active) return;
-          setStatus("error");
-        });
-      return () => {
-        active = false;
-      };
-    }
 
     if (!code) {
       setStatus("error");
@@ -155,22 +117,22 @@ function CallbackHandler() {
       flowRef.current = {
         key: flowKey,
         promise: (async () => {
+          // The web app's server trades the code for the session and
+          // keeps its tokens in HttpOnly cookies; this page never sees
+          // them, only that it worked.
           const res = await fetch("/api/auth/exchange", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ code }),
           });
           const json = (await res.json()) as {
-            data?: { access_token?: string; refresh_token?: string };
+            data?: { signed_in?: boolean };
             error?: { code: string; message: string };
           };
-          if (!res.ok || json.error || !json.data) {
+          if (!res.ok || json.error || !json.data?.signed_in) {
             throw new Error(json.error?.code ?? "auth_exchange_failed");
           }
-          if (!json.data.access_token || !json.data.refresh_token) {
-            throw new Error("auth_exchange_incomplete");
-          }
-          return completeLogin(json.data.access_token, json.data.refresh_token);
+          return completeLogin();
         })(),
       };
     }

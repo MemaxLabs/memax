@@ -2,7 +2,7 @@
 
 import { createContext, use, useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getAccessToken, useAuth, type User } from "@/lib/auth";
+import { useAuth, type User } from "@/lib/auth";
 import { getMemaxClient } from "@/lib/memax-client";
 import { demoSource } from "@/lib/v2/data/demo-source";
 import { createSdkSource } from "@/lib/v2/data/sdk-source";
@@ -45,7 +45,7 @@ export function LedgerDataProvider({
   mode: DataMode;
   children: ReactNode;
 }) {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const source = useMemo(
     () =>
       mode === "demo"
@@ -53,10 +53,11 @@ export function LedgerDataProvider({
         : createSdkSource({
             client: getMemaxClient(),
             viewer: user ? viewerFromUser(user) : null,
-            // D15: whether this session was issued to the web app.
-            webSession: () => webSessionOf(getAccessToken()),
+            // D15: whether this session was issued to the web app, as the
+            // web app's server read it from the session's token.
+            webSession: () => webSessionOf(session),
           }),
-    [mode, user],
+    [mode, user, session],
   );
   return <SourceContext value={source}>{children}</SourceContext>;
 }

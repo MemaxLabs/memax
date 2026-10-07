@@ -89,9 +89,19 @@ and are never blocked.
 
 - TLS everywhere in transit; storage encryption at rest via the managed
   database layer.
-- Access tokens expire in 1 hour; refresh tokens in 30 days. Permissions
-  resolve server-side on every request — revocation takes effect
-  immediately, not at token expiry.
+- Access tokens expire in 1 hour; a session lasts 30 days. Permissions
+  resolve server-side on every request — revoking a key or an agent's
+  authorization takes effect immediately, not at token expiry.
+- Refresh tokens are stored only as a hash and replaced on every refresh.
+  A replaced refresh token used again signs the whole session out, since
+  it means someone else holds a copy.
+- Every sign-in is a session you can see and sign out (`GET
+  /v2/sessions`, `memax sessions`): signing one out ends its refresh
+  token at once, and its last access token within the hour. `memax
+  logout` signs the CLI's session out on the server.
+- On the web app, the session lives in HttpOnly, `SameSite=Strict`
+  cookies that only the web app's server reads; page scripts never see a
+  token.
 - Admin surfaces use a separate auth model and are never exposed in the
   published SDK.
 

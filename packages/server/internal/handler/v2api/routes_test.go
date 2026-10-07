@@ -21,6 +21,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/trust"
 )
 
@@ -107,6 +108,9 @@ var sampleRequests = map[string]struct {
 	"lookupDeviceAuthorization":  {path: "/v2/device-authorizations:lookup", body: `{"user_code":"WQRT-4821"}`},
 	"approveDeviceAuthorization": {path: "/v2/device-authorizations:approve", body: `{"user_code":"WQRT-4821"}`},
 	"denyDeviceAuthorization":    {path: "/v2/device-authorizations:deny", body: `{"user_code":"WQRT-4821"}`},
+	"listSessions":               {path: "/v2/sessions"},
+	"revokeSession":              {path: "/v2/sessions/" + sampleID + ":revoke"},
+	"revokeOtherSessions":        {path: "/v2/sessions:revoke-others"},
 
 	"forgetMemory":         {path: "/v2/memories/M-0001:forget?space=memax-v2", body: `{"note":"personal","carries":["M-0002"]}`, header: map[string]string{"If-Match": `"1"`}},
 	"requestForget":        {path: "/v2/memories/M-0001:request-forget?space=memax-v2", body: `{"reason":"a test value"}`},
@@ -286,9 +290,12 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "Outcome", specEnum(t, "Outcome"), []string{string(ledger.OutcomeApplied), string(ledger.OutcomeProposed), string(ledger.OutcomeNeedsConfirmation)})
 	sameSet(t, "PolicyEffect", specEnum(t, "PolicyEffect"),
 		[]string{string(policy.EffectApply), string(policy.EffectPropose), string(policy.EffectConfirm), string(policy.EffectRefuse)})
-	sameSet(t, "PolicyCode", specEnum(t, "PolicyCode"), append(append(stringConsts(t, "../../ledger/policy/policy.go", "Code"),
+	sameSet(t, "PolicyCode", specEnum(t, "PolicyCode"), append(append(append(stringConsts(t, "../../ledger/policy/policy.go", "Code"),
 		stringConsts(t, "../../ledger/policy/spaces.go", "Code")...),
-		stringConsts(t, "../../ledger/policy/devices.go", "Code")...))
+		stringConsts(t, "../../ledger/policy/devices.go", "Code")...),
+		stringConsts(t, "../../ledger/policy/sessions.go", "Code")...))
+	sameSet(t, "SessionSurface", specEnum(t, "SessionSurface"), []string{
+		string(sessions.KindWeb), string(sessions.KindCLI), string(sessions.KindDevice), string(sessions.KindMCP)})
 	sameSet(t, "DeviceAuthorizationState", specEnum(t, "DeviceAuthorizationState"), []string{
 		string(deviceauth.StatePending), string(deviceauth.StateApproved), string(deviceauth.StateSignedIn),
 		string(deviceauth.StateDenied), string(deviceauth.StateExpired)})

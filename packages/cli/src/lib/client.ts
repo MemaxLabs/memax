@@ -14,6 +14,15 @@ import {
   isTokenExpired,
   getLocalAgentKey,
 } from "./credentials.js";
+import { cliVersion } from "./version.js";
+
+/**
+ * Names the CLI to the API, so your sessions list says "memax CLI 0.9.0"
+ * rather than an anonymous client.
+ */
+export function cliUserAgent(): string {
+  return `memax-cli/${cliVersion()} (${process.platform})`;
+}
 
 let instance: Memax | null = null;
 let publicInstance: Memax | null = null;
@@ -30,6 +39,7 @@ export function getClient(): Memax {
       auth: cliAuthProvider,
       onWarning: printApiWarning,
       fetch: fetchImpl,
+      headers: { "User-Agent": cliUserAgent() },
     });
   }
   return instance;
@@ -42,6 +52,7 @@ export function getPublicClient(): Memax {
     publicInstance = new Memax({
       apiUrl: config.api_url,
       fetch: fetchImpl,
+      headers: { "User-Agent": cliUserAgent() },
     });
   }
   return publicInstance;
@@ -116,20 +127,24 @@ async function cliAuthProvider(): Promise<Record<string, string>> {
   const creds = loadCredentials();
   if (!creds?.access_token) return {};
 
-  // Auto-refresh if expired
+  // Auto-refresh if expired. The refresh token rotates: the answer carries
+  // the session's next one and the one sent is retired, so it must be
+  // stored. Processes sharing this file (the daemon, MCP servers, hooks)
+  // that refresh together all get the same next token from the server.
   if (isTokenExpired() && creds.refresh_token) {
     try {
       const tokens = await getPublicClient().auth.refresh(creds.refresh_token);
       if (tokens.access_token) {
         saveCredentials({
           access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
+          refresh_token: tokens.refresh_token || creds.refresh_token,
           expires_at: Date.now() + tokens.expires_in * 1000,
         });
         return { Authorization: `Bearer ${tokens.access_token}` };
       }
     } catch {
-      // Refresh failed — fall through to stale token
+      // Refresh failed (offline, or the session was signed out) — fall
+      // through to the stale token; the API's 401 says to log in again.
     }
   }
 

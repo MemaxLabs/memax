@@ -371,13 +371,6 @@ func (h *AuthHandler) VerifyEmailOTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tokens, err := h.issueTokens(user.ID)
-	if err != nil {
-		slog.Error("email otp token issuance failed", "error", err)
-		writeError(w, http.StatusInternalServerError, "internal", "Failed to issue tokens.")
-		return
-	}
-
 	track(user.ID, "api.auth.login", map[string]any{
 		"provider": emailOTPProvider,
 		"email":    user.Email,
@@ -387,8 +380,8 @@ func (h *AuthHandler) VerifyEmailOTP(w http.ResponseWriter, r *http.Request) {
 	// Mirror OAuth's two-mode response: when a redirect was carried
 	// through, mint an auth_code so the web client can complete login
 	// via /v1/auth/exchange (same code path that powers the OAuth
-	// callback page). Otherwise return tokens directly — used by
-	// non-redirect clients like the CLI.
+	// callback page); the session starts at that exchange. Otherwise
+	// return tokens directly — used by non-redirect clients like the CLI.
 	if row.ClientRedirect != "" {
 		authCode := generateToken()
 		if _, err := h.pool.Exec(ctx,
@@ -407,6 +400,12 @@ func (h *AuthHandler) VerifyEmailOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tokens, err := h.issueTokens(r, user.ID)
+	if err != nil {
+		slog.Error("email otp token issuance failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal", "Failed to issue tokens.")
+		return
+	}
 	writeJSON(w, http.StatusOK, model.ApiResponse{Data: tokens})
 }
 

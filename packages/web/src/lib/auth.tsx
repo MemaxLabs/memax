@@ -9,12 +9,9 @@ import {
   useState,
   useCallback,
 } from "react";
-import { getPublicMemaxClient } from "@/lib/memax-client";
-import { isImpersonating, restoreOriginalSession } from "@/lib/impersonation";
-import {
-  clearSessionPresence,
-  markSessionPresence,
-} from "@/lib/session-presence";
+import { isImpersonating, stopImpersonating } from "@/lib/impersonation";
+import { forgetLegacyTokens } from "@/lib/legacy-tokens";
+import { clearSessionPresence } from "@/lib/session-presence";
 import { queryClient } from "@/lib/query-client";
 import { hubListQueryKey } from "@/hooks/use-hubs";
 import type { AuthProviderName } from "memax-sdk";
@@ -70,6 +67,18 @@ import type { Usage } from "memax-sdk";
 export type { Usage };
 
 /**
+ * What the signed-in session is, as the web app's server read it from the
+ * session's access token (the page never sees the token itself).
+ * `surface` is "web" for a sign-in on the web app: with /api/proxy's
+ * signature, that is what lets a person keep as a person on the web
+ * (human_web, D15). Sessions from before migration 030 have none.
+ */
+export interface SessionInfo {
+  surface: string | null;
+  impersonating: boolean;
+}
+
+/**
  * Hub model (Slack/Notion pattern):
  *   activeHubId = the hub you're in. Controls both what you SEE and where you PUSH.
  *   Recall crosses all hubs regardless (server VisibilityScope).
@@ -81,11 +90,15 @@ interface AuthState {
   activeHubId: string;
   usage: Usage | null; // basic usage from auth/me; enriched usage (with limits) via useUsage()
   connectedProviders: AuthProviderName[];
+  /** The signed-in session, or null when signed out. */
+  session: SessionInfo | null;
   loading: boolean;
-  completeLogin: (
-    accessToken: string,
-    refreshToken: string,
-  ) => Promise<boolean>;
+  /**
+   * Picks up the session the web app's server just stored (after
+   * /api/auth/exchange answered): loads the profile; false when there is
+   * no session after all.
+   */
+  completeLogin: () => Promise<boolean>;
   /**
    * Start an OAuth login.
    *
@@ -110,6 +123,7 @@ const AuthContext = createContext<AuthState>({
   activeHubId: "",
   usage: null,
   connectedProviders: [],
+  session: null,
   loading: true,
   completeLogin: async () => false,
   login: () => {},
@@ -118,8 +132,6 @@ const AuthContext = createContext<AuthState>({
   refreshProfile: async () => {},
 });
 
-const TOKEN_KEY = "memax_access_token";
-const REFRESH_KEY = "memax_refresh_token";
 const ACTIVE_HUB_KEY = "memax_active_hub_id";
 
 interface MeResponse {
@@ -129,12 +141,11 @@ interface MeResponse {
   dev_access: boolean;
   admin_role?: string;
   connected_providers?: AuthProviderName[];
+  session?: SessionInfo;
 }
 
-interface AuthTokens {
-  access_token?: string;
-  refresh_token?: string;
-}
+/** What loading the profile came to. */
+type ProfileResult = "ok" | "signed_out" | "impersonation_expired" | "error";
 
 function chooseActiveHubID(hubs: HubWithRole[], preferred?: string): string {
   if (preferred && hubs.some((entry) => entry.hub.id === preferred)) {
@@ -147,6 +158,15 @@ function chooseActiveHubID(hubs: HubWithRole[], preferred?: string): string {
   return hubs[0]?.hub.id ?? "";
 }
 
+/** Signs the session out on the server and clears its cookies. */
+async function signOutOnServer(): Promise<void> {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } catch {
+    // Offline: the cookies stay until the next request clears them.
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [hubs, setHubs] = useState<HubWithRole[]>([]);
@@ -155,81 +175,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [connectedProviders, setConnectedProviders] = useState<
     AuthProviderName[]
   >([]);
+  const [session, setSession] = useState<SessionInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const sessionVersionRef = useRef(0);
 
   const clearSession = useCallback(() => {
     sessionVersionRef.current += 1;
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(ACTIVE_HUB_KEY);
     // Retired landing-surface hint (home now always lands on
     // memories); still evicted here so browsers that wrote it under
     // the old scheme don't carry the stale key forever.
     localStorage.removeItem("memax_landing_surface");
+    forgetLegacyTokens();
     clearSessionPresence();
     setUser(null);
     setHubs([]);
     setActiveHubId("");
     setUsage(null);
     setConnectedProviders([]);
+    setSession(null);
     try {
       import("@/lib/posthog").then(({ resetUser }) => resetUser());
     } catch {}
   }, []);
 
-  // handleAuthFailure distinguishes impersonation-token expiry from real auth
-  // failure. When impersonating and the short-lived token expires, we restore
-  // the original dev session and reload — rather than logging the dev out.
+  // handleAuthFailure distinguishes impersonation expiry from real auth
+  // failure. When impersonating and the short-lived token expires, the
+  // server restores the original dev session and the page reloads into it,
+  // rather than logging the dev out.
   const handleAuthFailure = useCallback(() => {
-    if (isImpersonating() && restoreOriginalSession()) {
-      window.location.reload();
+    if (isImpersonating()) {
+      void stopImpersonating();
       return;
     }
     clearSession();
+    void signOutOnServer();
   }, [clearSession]);
 
-  const storeTokens = useCallback(
-    (accessToken: string, refreshToken: string) => {
-      localStorage.setItem(TOKEN_KEY, accessToken);
-      localStorage.setItem(REFRESH_KEY, refreshToken);
-      // Server-visible session marker — lets the Edge middleware route
-      // signed-in users straight into the app from / and /login.
-      markSessionPresence();
-    },
-    [],
-  );
-
-  const fetchUser = useCallback(async (token: string) => {
+  const fetchUser = useCallback(async (): Promise<ProfileResult> => {
     const requestID = ++sessionVersionRef.current;
     try {
-      const res = await fetch("/api/auth/me", {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
+      // The session's cookies go with it; the web app's server attaches
+      // the token and refreshes it when it needs to.
+      const res = await fetch("/api/auth/me", { cache: "no-store" });
+      if (res.status === 401) {
+        const payload = (await res.json().catch(() => null)) as {
+          error?: { code?: string };
+        } | null;
+        return payload?.error?.code === "impersonation_expired"
+          ? "impersonation_expired"
+          : "signed_out";
+      }
       if (!res.ok) {
-        return false;
+        return "error";
       }
       const payload = (await res.json()) as {
         data?: MeResponse | User;
       };
       const data = payload.data;
       if (!data) {
-        return false;
+        return "error";
       }
       if (requestID !== sessionVersionRef.current) {
-        return false;
+        return "error";
       }
-      // Session verified — (re)plant the presence cookie. Covers
-      // browsers whose tokens predate the cookie (set only at
-      // store/refresh time) so they pick up middleware fast-routing.
-      markSessionPresence();
       if ("user" in data) {
         setUser({
           ...data.user,
           dev_access: data.dev_access,
           admin_role: data.admin_role,
         });
+        setSession(data.session ?? { surface: null, impersonating: false });
         const hubsData = data.hubs ?? [];
         setHubs(hubsData);
         // Seed TanStack Query cache so useHubs() has data instantly.
@@ -269,104 +285,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
       } else {
         setUser(data);
+        setSession({ surface: null, impersonating: false });
         import("@/lib/posthog")
           .then(({ identifyUser }) => {
             identifyUser(data.id, { name: data.name, email: data.email });
           })
           .catch(() => {});
       }
-      return true;
+      return "ok";
     } catch {
       // network error
     }
-    return false;
+    return "error";
   }, []);
 
-  const tryRefresh = useCallback(async () => {
-    const refreshToken = localStorage.getItem(REFRESH_KEY);
-    if (!refreshToken) return false;
-
+  const completeLogin = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetch("/api/auth/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
-      if (!res.ok) {
-        return false;
-      }
-      const payload = (await res.json()) as {
-        data?: AuthTokens;
-      };
-      const tokens = payload.data;
-      if (!tokens?.access_token || !tokens.refresh_token) {
-        return false;
-      }
-      // Torn-down-session guard: if logout cleared the stored tokens
-      // while this refresh was in flight, storing the late response
-      // would resurrect the session (and replant the presence cookie
-      // that the middleware fast path trusts). A refresh only extends
-      // an existing session — drop the response if the slot is empty.
-      if (localStorage.getItem(REFRESH_KEY) === null) {
-        return false;
-      }
-      storeTokens(tokens.access_token, tokens.refresh_token);
-      return fetchUser(tokens.access_token);
-    } catch {
-      // refresh failed
+      const result = await fetchUser();
+      if (result === "ok") return true;
+      if (result !== "error") handleAuthFailure();
+      return false;
+    } finally {
+      setLoading(false);
     }
-    return false;
-  }, [fetchUser, storeTokens]);
-
-  const completeLogin = useCallback(
-    async (accessToken: string, refreshToken: string) => {
-      setLoading(true);
-      storeTokens(accessToken, refreshToken);
-
-      try {
-        const ok = await fetchUser(accessToken);
-        if (ok) {
-          return true;
-        }
-
-        const refreshed = await tryRefresh();
-        if (!refreshed) {
-          handleAuthFailure();
-        }
-        return refreshed;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleAuthFailure, fetchUser, storeTokens, tryRefresh],
-  );
+  }, [handleAuthFailure, fetchUser]);
 
   useEffect(() => {
     const init = async () => {
-      const token = localStorage.getItem(TOKEN_KEY);
-      if (token) {
-        const ok = await fetchUser(token);
-        if (!ok) {
-          const refreshed = await tryRefresh();
-          if (!refreshed) {
-            handleAuthFailure();
-          }
-        }
-      } else {
-        // No tokens at all: make sure the session-presence cookie is
-        // gone too. If it survived a localStorage wipe (privacy tools,
-        // storage eviction, devtools), the middleware fast path would
-        // bounce /login → /home while this shell bounces /home →
-        // /login — an infinite loader loop with the login form
-        // unreachable. handleAuthFailure never runs on this branch
-        // (there is nothing to fail), so the cookie must be cleared
-        // here explicitly.
+      // Tokens an older version kept in localStorage are deleted unread.
+      forgetLegacyTokens();
+      const result = await fetchUser();
+      if (result === "impersonation_expired") {
+        handleAuthFailure();
+        return;
+      }
+      if (result === "signed_out") {
+        // The server cleared the session's cookies (and the presence
+        // marker the middleware's fast path trusts) with its answer.
+        clearSession();
+      } else if (result === "error") {
+        // The API is unreachable: the session's cookies stay, but the
+        // presence marker goes, so the middleware's fast path doesn't
+        // bounce /login → /home while this shell bounces /home → /login.
+        // The next successful /api/auth/me plants it again.
         clearSessionPresence();
       }
       setLoading(false);
     };
     init();
-  }, [handleAuthFailure, fetchUser, tryRefresh]);
+  }, [clearSession, handleAuthFailure, fetchUser]);
 
   useEffect(() => {
     const onAuthExpired = () => {
@@ -413,15 +381,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(() => {
-    // Clear impersonation stash on explicit logout so stale dev tokens
-    // can't be resurrected. This is intentionally NOT in clearSession(),
-    // because clearSession also fires on token expiry — and during
-    // impersonation expiry we want to restore the original session, not
-    // destroy it.
-    import("@/lib/impersonation").then(({ clearImpersonationState }) =>
-      clearImpersonationState(),
-    );
+    // The server revokes the session (and a dev's own session waiting
+    // behind an impersonation) and clears every session cookie.
     clearSession();
+    void signOutOnServer();
   }, [clearSession]);
 
   const switchHub = useCallback((hubId: string) => {
@@ -430,10 +393,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshProfile = useCallback(async () => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (token) {
-      await fetchUser(token);
-    }
+    await fetchUser();
   }, [fetchUser]);
 
   // Stable context value so consumers that depend on the whole auth
@@ -443,8 +403,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // consumers (the SSE bridge depends on user?.id, which is a
   // primitive), but strictly better hygiene. All closures below are
   // useCallback-memoized; scalar state (user/hubs/activeHubId/usage/
-  // connectedProviders/loading) is the only remaining source of
-  // identity change.
+  // connectedProviders/session/loading) is the only remaining source
+  // of identity change.
   const contextValue = useMemo(
     () => ({
       user,
@@ -452,6 +412,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       activeHubId,
       usage,
       connectedProviders,
+      session,
       loading,
       completeLogin,
       login,
@@ -465,6 +426,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       activeHubId,
       usage,
       connectedProviders,
+      session,
       loading,
       completeLogin,
       login,
@@ -497,9 +459,4 @@ export function useActiveHub() {
     /** Pass to useMemories/useTopics — always a real hub ID. */
     hubFilter: activeHubId,
   };
-}
-
-export function getAccessToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
 }

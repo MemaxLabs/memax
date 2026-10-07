@@ -63,7 +63,6 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 
-	"github.com/MemaxLabs/memax/packages/server/internal/migrate"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb/catalock"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb/netsim"
@@ -325,9 +324,10 @@ func Copy(t *testing.T, pool *pgxpool.Pool) *pgxpool.Pool {
 	return cp
 }
 
-// ensureTemplate creates and migrates the shared template DB
-// exactly once per process. Returns the template DB name (or an
-// error if Postgres isn't reachable).
+// ensureTemplate finds or builds the migrated template this process
+// clones from (template.go: one per migration set, shared across
+// processes), then sweeps databases earlier runs leaked. Returns the
+// template's name, or an error if Postgres isn't reachable.
 func ensureTemplate(ctx context.Context) (string, error) {
 	templateOnce.Do(func() {
 		admin, err := getAdminPool(ctx)
@@ -335,44 +335,9 @@ func ensureTemplate(ctx context.Context) (string, error) {
 			templateErr = err
 			return
 		}
-		// Per-process unique name so parallel `go test` invocations
-		// (rare but possible with `-run ...` over multiple packages
-		// in parallel) don't clobber each other's templates.
-		templateName = fmt.Sprintf("memax_tpl_%d_%d", time.Now().UnixNano(), rand.Int64N(1_000_000))
-
-		if _, err := admin.Exec(ctx, fmt.Sprintf("CREATE DATABASE %q", templateName)); err != nil {
-			templateErr = fmt.Errorf("create template DB: %w", err)
-			return
-		}
-
-		// Run migrations against the template. Subsequent clones
-		// inherit the fully-migrated schema.
-		if err := migrate.Run(connStringFor(templateName), findMigrationsDir()); err != nil {
-			// Best-effort cleanup if migrations fail.
-			_ = catalock.DropDatabase(context.Background(), admin, templateName)
-			templateErr = fmt.Errorf("migrate template: %w", err)
-			return
-		}
-
-		// Also run River's own migrations so river_job /
-		// river_leader / river_queue / etc. exist in the template.
-		// Tests that query these tables (admin ops, queue readiness
-		// probes) would otherwise see "relation does not exist"
-		// errors. River migrations are idempotent + advisory-
-		// locked.
-		if err := runRiverMigrations(ctx, connStringFor(templateName)); err != nil {
-			_ = catalock.DropDatabase(context.Background(), admin, templateName)
-			templateErr = fmt.Errorf("migrate river template: %w", err)
-			return
-		}
-
-		// Mark as template so accidental connections during test
-		// runs (which should only happen via CREATE DATABASE ...
-		// TEMPLATE) get rejected cleanly. Not strictly required
-		// but makes misuse loud.
-		if _, err := admin.Exec(ctx, fmt.Sprintf("ALTER DATABASE %q IS_TEMPLATE true", templateName)); err != nil {
-			templateErr = fmt.Errorf("mark template: %w", err)
-			return
+		templateName, templateErr = buildTemplate(ctx, admin)
+		if templateErr == nil {
+			sweepLeaked(ctx, admin, templateName)
 		}
 	})
 	return templateName, templateErr

@@ -468,16 +468,12 @@ describe("the demo's gates", () => {
 });
 
 describe("whether a session is the web app's", () => {
-  const token = (claims: object) =>
-    `h.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.s`;
-  it("reads the surface claim, and can't tell without a token", () => {
-    expect(webSessionOf(token({ sub: "u", surface: "web" }))).toBe(true);
-    expect(webSessionOf(token({ sub: "u", surface: "cli" }))).toBe(false);
+  it("reads the surface the web app's server reported, and can't tell without a session", () => {
+    expect(webSessionOf({ surface: "web" })).toBe(true);
+    expect(webSessionOf({ surface: "cli" })).toBe(false);
     // A session from before migration 030 carries no surface.
-    expect(webSessionOf(token({ sub: "u" }))).toBe(false);
-    expect(webSessionOf("mxk_live_123")).toBe(false);
+    expect(webSessionOf({ surface: null })).toBe(false);
     expect(webSessionOf(null)).toBeNull();
-    expect(webSessionOf("not-a-jwt")).toBeNull();
-    expect(webSessionOf("a.%%%.c")).toBeNull();
+    expect(webSessionOf(undefined)).toBeNull();
   });
 });

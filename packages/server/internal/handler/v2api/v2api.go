@@ -26,6 +26,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/deviceauth"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
+	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/trust"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
@@ -65,6 +66,9 @@ type Handler struct {
 	// posture what Settings › Security says about it (settings.go).
 	delivery NotificationDelivery
 	posture  *trust.Posture
+	// sessions lists and signs out a person's sessions (sessions.go); nil
+	// answers 503.
+	sessions *sessions.Store
 }
 
 // Option configures a Handler.
@@ -189,6 +193,9 @@ var routes = []Route{
 	{"POST", "/v2/device-authorizations:lookup", "lookupDeviceAuthorization", (*Handler).lookupDevice},
 	{"POST", "/v2/device-authorizations:approve", "approveDeviceAuthorization", (*Handler).approveDevice},
 	{"POST", "/v2/device-authorizations:deny", "denyDeviceAuthorization", (*Handler).denyDevice},
+	{"GET", "/v2/sessions", "listSessions", (*Handler).listSessions},
+	{"POST", "/v2/sessions/{session}:revoke", "revokeSession", (*Handler).revokeSession},
+	{"POST", "/v2/sessions:revoke-others", "revokeOtherSessions", (*Handler).revokeOtherSessions},
 }
 
 // Routes lists every /v2 operation this package serves, named as in

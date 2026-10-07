@@ -2356,6 +2356,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your sessions
+         * @description Everywhere you are signed in, the most recently used first: the web
+         *     app, the memax CLI (a browser login or the email code), a device
+         *     code, and each MCP client you authorized. Each says what signed in,
+         *     the client, when it signed in and was last used, the address and
+         *     city it was last seen from when Memax knows them, when it ends, and
+         *     whether it is the session this request comes from (`current`).
+         *     Sessions that ended (signed out, revoked, expired, or an MCP client
+         *     whose authorization was withdrawn) are not listed. Only a person on
+         *     a session lists them (`session_by_person`).
+         */
+        get: operations["listSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/sessions/{session}:revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The session's id. */
+                session: components["parameters"]["SessionPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign a session out
+         * @description Ends one of your sessions. Its refresh token stops working at once;
+         *     the access token it last received works until it expires, within
+         *     the hour. An MCP client whose session you end must be authorized
+         *     again; its agent connection stays. Signing out the session this
+         *     request comes from works from anywhere you are signed in; any other
+         *     needs you on the web app (`session_needs_web`), so an agent holding
+         *     your CLI login can't sign you out elsewhere. A session that isn't
+         *     yours, or has already ended, is 404.
+         */
+        post: operations["revokeSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/sessions:revoke-others": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign out everywhere else
+         * @description Ends every session of yours but the one this request comes from:
+         *     other browsers, the CLI on every machine, devices, MCP clients. Each
+         *     one's refresh token stops working at once, and its last access
+         *     token within the hour. It needs you on the web app
+         *     (`session_needs_web`). A request whose session Memax can't tell (a
+         *     sign-in from before sessions were named) is 409
+         *     `invalid_transition`: sign in again, then sign the others out.
+         */
+        post: operations["revokeOtherSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2546,10 +2630,12 @@ export interface components {
          *     during the alpha), switch_by_owner (only the owner switches a space).
          *     Refused device codes: device_by_person (only a person signs a device
          *     in), device_needs_web (confirming or declining a code needs a person
-         *     on the web app).
+         *     on the web app). Refused sessions: session_by_person (only a person
+         *     lists or signs out their sessions), session_needs_web (signing out a
+         *     session other than this one needs a person on the web app).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_kind";
         /**
@@ -5420,6 +5506,58 @@ export interface components {
         DeviceAuthorizationEnvelope: {
             data: components["schemas"]["DeviceAuthorization"];
         };
+        /**
+         * @description What signed in. `web`: the web app. `cli`: the memax CLI, through a
+         *     browser login or the email code. `device`: the memax CLI with a
+         *     device code you confirmed on the web. `mcp`: an MCP client you
+         *     authorized. Only a `web` session, through the web app, can keep as
+         *     a person on the web (`human_web`).
+         * @enum {string}
+         */
+        SessionSurface: "web" | "cli" | "device" | "mcp";
+        /** @description One place you are signed in. */
+        Session: {
+            id: components["schemas"]["Id"];
+            surface: components["schemas"]["SessionSurface"];
+            /**
+             * @description The client, in words: the browser and system for the web app
+             *     ("Chrome on macOS"), the CLI and its version, or, for a device,
+             *     what it said about itself ("memax CLI 2.0.0 on ziyang-mbp
+             *     (macOS)"), and an MCP client's registered name.
+             */
+            client: string;
+            /** @description The agent an MCP session is for, e.g. `claude-ai`. */
+            agent?: string;
+            /** @description The address it was last seen from, when Memax knows it. */
+            address?: string;
+            /** @description The city that address is in, when the edge says. */
+            city?: string;
+            signed_in_at: components["schemas"]["Timestamp"];
+            /** @description When it was last used, within a few minutes. */
+            last_used_at: components["schemas"]["Timestamp"];
+            /** @description When it ends unless it is signed out first; refreshing doesn't extend it. */
+            expires_at: components["schemas"]["Timestamp"];
+            /** @description When it was signed out (only in the answer to signing it out). */
+            revoked_at?: components["schemas"]["Timestamp"];
+            /** @description Whether this request comes from this session. */
+            current: boolean;
+        };
+        SessionList: {
+            items: components["schemas"]["Session"][];
+        };
+        SessionListEnvelope: {
+            data: components["schemas"]["SessionList"];
+        };
+        SessionEnvelope: {
+            data: components["schemas"]["Session"];
+        };
+        SessionsRevoked: {
+            /** @description How many sessions were signed out. */
+            revoked: number;
+        };
+        SessionsRevokedEnvelope: {
+            data: components["schemas"]["SessionsRevoked"];
+        };
     };
     responses: {
         /** @description The command was applied, or sent to Review. */
@@ -5653,6 +5791,8 @@ export interface components {
         RefPath: components["schemas"]["MemoryRef"];
         /** @description The agent connection's id. */
         AgentPath: components["schemas"]["Id"];
+        /** @description The session's id. */
+        SessionPath: components["schemas"]["Id"];
         /** @description The `next_cursor` of the previous page. */
         Cursor: string;
         /** @description Page size. Larger values are capped at 200. */
@@ -9099,6 +9239,100 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your live sessions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionListEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    revokeSession: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description The session's id. */
+                session: components["parameters"]["SessionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session, ended. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    revokeOtherSessions: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description How many sessions ended. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionsRevokedEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["InvalidTransition"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];

@@ -386,11 +386,11 @@ export async function adminSuperNotifFunnelCsv(params: {
   qs.set("format", "csv");
   // adminReq parses JSON envelopes by default; download the raw CSV
   // via fetch + Blob and click an in-memory <a download>.
-  const { apiAuthHeaders, ApiError } = await import("@/lib/api");
-  const { API_URL } = await import("@/lib/urls");
+  const { ApiError } = await import("@/lib/api");
+  const { ADMIN_API_BASE } = await import("./transport");
   const res = await fetch(
-    `${API_URL}/v1/admin/notifications/super?${qs.toString()}`,
-    { method: "GET", headers: apiAuthHeaders(), cache: "no-store" },
+    `${ADMIN_API_BASE}/v1/admin/notifications/super?${qs.toString()}`,
+    { method: "GET", cache: "no-store" },
   );
   if (!res.ok) {
     throw new ApiError(

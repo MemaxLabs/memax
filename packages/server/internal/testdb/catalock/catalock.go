@@ -14,6 +14,7 @@ package catalock
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -21,8 +22,15 @@ import (
 // key is the advisory lock's key ("memax" in ASCII).
 const key int64 = 0x6d656d6178
 
-// DropDatabase drops name holding the lock shared.
+// dropTimeout bounds one drop, its wait for the lock included.
+const dropTimeout = 2 * time.Minute
+
+// DropDatabase drops name holding the lock shared. It waits for the lock
+// on its own deadline rather than the caller's: a drop that gave up while
+// a role drop held the lock would leak the database.
 func DropDatabase(ctx context.Context, admin *pgxpool.Pool, name string) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), dropTimeout)
+	defer cancel()
 	conn, err := admin.Acquire(ctx)
 	if err != nil {
 		return err
@@ -32,7 +40,9 @@ func DropDatabase(ctx context.Context, admin *pgxpool.Pool, name string) error {
 		return err
 	}
 	defer func() { _, _ = conn.Exec(context.Background(), "SELECT pg_advisory_unlock_shared($1)", key) }()
-	_, err = conn.Exec(ctx, fmt.Sprintf("DROP DATABASE IF EXISTS %q", name))
+	// WITH (FORCE) ends any session still connected (a River client
+	// reconnecting after the test closed its pool) in the same step.
+	_, err = conn.Exec(ctx, fmt.Sprintf("DROP DATABASE IF EXISTS %q WITH (FORCE)", name))
 	return err
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/auth"
 	"github.com/MemaxLabs/memax/packages/server/internal/deviceauth"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
+	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
 )
 
@@ -155,10 +156,19 @@ func TestDeviceGrantIssuesOneCLISession(t *testing.T) {
 	if claims.Sub != zz.String() || claims.Surface != auth.SurfaceCLI || claims.AgentName != "" || claims.GrantID != "" {
 		t.Fatalf("a device's session is %+v, want the person's, surface cli", claims)
 	}
-	var surface string
-	if err := d.auth.pool.QueryRow(context.Background(), `SELECT surface FROM sessions WHERE refresh_token = $1`,
-		body["refresh_token"]).Scan(&surface); err != nil || surface != auth.SurfaceCLI {
+	// The session is the CLI's (surface cli) and listed as a device
+	// sign-in, named as the device named itself; only the token's hash is
+	// stored.
+	var surface, kind, client string
+	if err := d.auth.pool.QueryRow(context.Background(), `SELECT surface, kind, client FROM sessions WHERE refresh_token_hash = $1`,
+		sessions.HashToken(body["refresh_token"].(string))).Scan(&surface, &kind, &client); err != nil || surface != auth.SurfaceCLI {
 		t.Fatalf("session surface %q (%v)", surface, err)
+	}
+	if kind != string(sessions.KindDevice) || !strings.HasPrefix(client, "memax CLI 2.0.0 on ") {
+		t.Fatalf("the device's session is kind %q, client %q", kind, client)
+	}
+	if claims.Sid == "" {
+		t.Fatal("the device's access token doesn't name its session")
 	}
 
 	// A refreshed token stays the CLI's.

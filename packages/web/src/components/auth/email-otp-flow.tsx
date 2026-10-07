@@ -8,11 +8,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
 import { MemaxError } from "memax-sdk";
 import type { VerifyEmailOtpResponse } from "memax-sdk";
 
-import { useAuth } from "@/lib/auth";
 import { useLocale } from "@/i18n";
 import { getPublicMemaxClient } from "@/lib/memax-client";
 
@@ -58,8 +56,6 @@ export function EmailOtpFlow({
 }: EmailOtpFlowProps) {
   const { t } = useLocale();
   const copy = t.auth.emailSignIn;
-  const router = useRouter();
-  const { completeLogin } = useAuth();
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState(defaultEmail);
@@ -138,9 +134,14 @@ export function EmailOtpFlow({
       }
       setSubmitting(true);
       try {
+        // With a redirect, the code's verify answers a one-time code for
+        // the web app (surface web), which the callback page trades for
+        // the session through the web app's server; the page never
+        // handles a token.
         const resp = await client.auth.requestEmailOtp({
           email: trimmed,
           invite_token: inviteToken,
+          redirect_uri: `${window.location.origin}/auth/callback`,
         });
         // The server canonicalizes — adopt that form so subsequent
         // verify calls don't drift on whitespace/case.
@@ -172,21 +173,11 @@ export function EmailOtpFlow({
           email,
           code: submitCode,
         });
-        // The verify response is a discriminated union — we issued
-        // no redirect_uri at request time, so the server must hand
-        // back tokens directly. Defensive narrow regardless: a
-        // future SDK addition can carry redirect data, and we want
-        // a single happy-path branch.
-        if ("access_token" in resp && resp.access_token && resp.refresh_token) {
-          const ok = await completeLogin(resp.access_token, resp.refresh_token);
-          if (!ok) {
-            setErrors({ banner: copy.errorGeneric });
-            return;
-          }
-          router.replace(redirectAfter);
-          return;
-        }
+        // We asked with a redirect_uri, so the server answers a
+        // redirect carrying a one-time code: the callback page trades it
+        // for the session and goes on to memax_return_to.
         if ("redirect" in resp && resp.redirect) {
+          localStorage.setItem("memax_return_to", redirectAfter);
           window.location.assign(resp.redirect);
           return;
         }
@@ -197,7 +188,7 @@ export function EmailOtpFlow({
         setSubmitting(false);
       }
     },
-    [code, email, client, copy, completeLogin, mapError, redirectAfter, router],
+    [code, email, client, copy, mapError, redirectAfter],
   );
 
   // Paste-friendly digit input. If the user pastes the full code, we

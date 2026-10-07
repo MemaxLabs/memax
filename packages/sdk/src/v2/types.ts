@@ -188,6 +188,15 @@ export type DeviceAuthorization = Schemas["DeviceAuthorization"];
 export type DeviceAuthorizationState = Schemas["DeviceAuthorizationState"];
 export type DeviceCodeInput = Schemas["DeviceCodeRequest"];
 
+// Sessions (Settings › Account)
+/** One place you are signed in; `current` is the session asking. */
+export type Session = Schemas["Session"];
+/** What signed in: web, cli, device or mcp. */
+export type SessionSurface = Schemas["SessionSurface"];
+export type SessionList = Schemas["SessionList"];
+/** How many sessions signing out everywhere else ended. */
+export type SessionsRevoked = Schemas["SessionsRevoked"];
+
 // Agents
 export type AgentConnection = Schemas["AgentConnection"];
 export type AgentSpace = Schemas["AgentSpace"];

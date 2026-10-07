@@ -34,6 +34,7 @@ const FORWARDED_RESPONSE_HEADERS = [
   "etag",
   "idempotent-replayed",
   "retry-after",
+  "x-memax-export-receipt",
 ];
 
 function buildUpstreamURL(req: Request, path: string[]): URL {

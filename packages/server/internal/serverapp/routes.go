@@ -484,6 +484,10 @@ func registerAuthRoutes(root *http.ServeMux, protected *http.ServeMux, deps rout
 	root.HandleFunc("GET /oauth/authorize/consent-request", ipLimit(ratelimit.IPOAuthAuthorize, mcpOAuth.ConsentRequest))
 	root.HandleFunc("POST /oauth/authorize/consent", ipLimit(ratelimit.IPOAuthAuthorize, mcpOAuth.Consent))
 	root.HandleFunc("POST /oauth/token", ipLimit(ratelimit.IPOAuthTokenLimit, mcpOAuth.Token))
+	// Device sign-in for the memax CLI (RFC 8628): the code here, the
+	// device_code grant on /oauth/token, the person's confirmation on /v2.
+	mcpOAuth.SetDeviceAuth(deps.v2.Devices(), ratelimit.ClientIP)
+	root.HandleFunc("POST /oauth/device_authorization", ipLimit(ratelimit.IPDeviceAuthorization, mcpOAuth.DeviceAuthorization))
 }
 
 func registerAdminRoutes(root *http.ServeMux, deps routeDeps) {

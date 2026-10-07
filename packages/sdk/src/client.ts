@@ -59,7 +59,7 @@ export class Memax {
     this.memories = new MemoriesResource(req, stream, download);
     this.configs = new ConfigsResource(req);
     this.uploads = new UploadsResource(req);
-    this.auth = new AuthResource(req, apiUrl);
+    this.auth = new AuthResource(req, apiUrl, transport.form.bind(transport));
     this.account = new AccountResource(req);
     this.hubs = new HubsResource(req);
     this.invites = new InvitesResource(req);

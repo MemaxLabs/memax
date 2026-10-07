@@ -10,6 +10,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 )
 
 // V2Forgetter is the V2 record's side of V1's deletes (plan 25 §5.13): a
@@ -26,6 +27,10 @@ type V2Forgetter interface {
 
 // SetV2Forgetter wires the V2 record into hub deletion.
 func (h *HubsHandler) SetV2Forgetter(f V2Forgetter) { h.v2 = f }
+
+// SetSpaceModes lets V1's push say when it saves into a space on V2
+// (X-Memax-Warning: space_on_v2): the memory becomes a note there.
+func (h *MemoriesHandler) SetSpaceModes(m *spacemode.Resolver) { h.modes = m }
 
 // SetV2Forgetter wires the V2 record into DELETE /v1/account/data.
 func (h *MemoriesHandler) SetV2Forgetter(f V2Forgetter) { h.v2 = f }

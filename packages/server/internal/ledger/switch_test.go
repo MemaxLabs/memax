@@ -14,6 +14,8 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
+	"github.com/MemaxLabs/memax/packages/server/internal/testdb/netsim"
 )
 
 // v1World is a realistic V1 team hub and a personal hub, as alpha
@@ -513,6 +515,52 @@ func TestSwitchResumesAfterAFailure(t *testing.T) {
 	}
 	if n := f.count(`SELECT count(*) FROM v2.memories WHERE space_id = $1`, w.team); n != 6 {
 		t.Errorf("%d proposals after resuming, want 6", n)
+	}
+}
+
+// The switch, the notes' search and a note's Forget read and write v2
+// tables only inside their transactions, after their scope, as memax_v2
+// (netsim.Audit on the wire). The V1 rows it reads, it reads as the login
+// role, before any ledger transaction, as identity resolution does.
+func TestSwitchIsScopedOnTheWire(t *testing.T) {
+	t.Parallel()
+	audit := netsim.NewAudit(ledger.DBRole)
+	db := testdb.Open(t, testdb.Options{Watch: audit.Observe})
+	f := newFixtureOn(t, db)
+	w := newV1World(f)
+	ctx := context.Background()
+	audit.Arm()
+	defer audit.Require(t)
+	repo := "acme/web"
+	if _, err := f.l.SwitchStatus(ctx, f.scope(w.owner), w.team); err != nil {
+		t.Fatal(err)
+	}
+	st, err := f.l.StartSwitch(ctx, person(w.owner), policy.ViaWeb, f.scope(w.owner), w.team,
+		ledger.SwitchOptions{Kind: policy.SpaceProject, Repository: &repo, Key: "s"})
+	if err != nil || st.State != ledger.SwitchStateSwitched {
+		t.Fatalf("switch: %v", err)
+	}
+	notes, err := f.l.SearchNotes(ctx, f.scope(w.owner), ledger.NoteQuery{Text: "pnpm"})
+	if err != nil || len(notes) == 0 {
+		t.Fatalf("search: %v %d", err, len(notes))
+	}
+	scope := f.scope(w.owner).Narrow(w.team)
+	res, err := f.l.Apply(ctx, &ledger.ForgetNote{Meta: meta(person(w.owner), scope, policy.ViaWeb), SpaceID: w.team,
+		Note: notes[0].Ref, Carries: nil})
+	var ce *ledger.ForgetCarriesError
+	if errors.As(err, &ce) {
+		refs := make([]string, len(ce.Carries))
+		for i, c := range ce.Carries {
+			refs[i] = c.Ref
+		}
+		res, err = f.l.Apply(ctx, &ledger.ForgetNote{Meta: meta(person(w.owner), scope, policy.ViaWeb), SpaceID: w.team,
+			Note: notes[0].Ref, Carries: refs})
+	}
+	if err != nil || res.Outcome != ledger.OutcomeApplied {
+		t.Fatalf("forget a note: %v", err)
+	}
+	if _, err := f.l.SwitchBack(ctx, person(w.owner), policy.ViaWeb, f.scope(w.owner), w.team, "b"); err != nil {
+		t.Fatal(err)
 	}
 }
 

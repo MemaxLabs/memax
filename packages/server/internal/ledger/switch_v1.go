@@ -139,7 +139,9 @@ func classifyV1(m v1Memory, personal bool) classifiedNote {
 		c.Disposition = NoteFold
 	case external:
 		c.Disposition, c.Hold = NoteFold, HoldExternal
-	case !v1Text(m) || m.Attachments > 0:
+	case !v1Text(m):
+		// A file's extracted text or a page: Dream reads it. (Text a person
+		// typed beside an attachment is theirs, and the file stays a note's.)
 		c.Disposition, c.Hold = NoteFold, HoldFormat
 	case !short:
 		c.Disposition, c.Hold = NoteFold, HoldLong
@@ -330,7 +332,11 @@ func configNote(c v1Config) noteRow {
 
 // ConfigTargets are the compile targets a V1 agent file stands for (D2:
 // AGENTS.md is canonical, CLAUDE.md a shim importing it, Cursor rules for
-// scoped facts).
+// scoped facts). Copilot, Windsurf and Claude Code's path rules read
+// AGENTS.md for everything their scoped targets (off until Phase 3) would
+// hold, so they stand for AGENTS.md alone. GEMINI.md is opt-in
+// (OptInTargetKinds): a GEMINI.md the person synced in V1 is that ask, since
+// Gemini CLI doesn't read AGENTS.md by default.
 func ConfigTargets(filePath string) []TargetKind {
 	p := strings.ToLower(strings.TrimPrefix(strings.ReplaceAll(filePath, "\\", "/"), "./"))
 	base := path.Base(p)
@@ -343,12 +349,10 @@ func ConfigTargets(filePath string) []TargetKind {
 		return []TargetKind{TargetAgentsMD, TargetGeminiMD}
 	case base == ".cursorrules" || strings.Contains(p, ".cursor/rules"):
 		return []TargetKind{TargetAgentsMD, TargetCursorMDC}
-	case strings.HasSuffix(p, "copilot-instructions.md") || strings.Contains(p, ".github/instructions"):
-		return []TargetKind{TargetAgentsMD, TargetCopilot}
-	case base == ".windsurfrules" || strings.Contains(p, ".windsurf/rules") || strings.Contains(p, ".devin/rules"):
-		return []TargetKind{TargetAgentsMD, TargetWindsurf}
-	case strings.Contains(p, ".claude/rules"):
-		return []TargetKind{TargetAgentsMD, TargetClaudeRules}
+	case strings.HasSuffix(p, "copilot-instructions.md") || strings.Contains(p, ".github/instructions"),
+		base == ".windsurfrules" || strings.Contains(p, ".windsurf/rules") || strings.Contains(p, ".devin/rules"),
+		strings.Contains(p, ".claude/rules"):
+		return []TargetKind{TargetAgentsMD}
 	}
 	return nil
 }

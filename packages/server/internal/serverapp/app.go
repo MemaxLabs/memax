@@ -663,6 +663,11 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 	if l := v2h.Ledger(); l != nil {
 		hubsH.SetV2Forgetter(l)
 		memories.SetV2Forgetter(l)
+		// Spaces on V2, seen from V1's API: a push into one warns that it
+		// becomes a note, and two-way config sync leaves its files alone.
+		modes := spacemode.New(pool)
+		memories.SetSpaceModes(modes)
+		configsH.SetSpaceModes(modes)
 	}
 	mcp := mcpDepsFromEnv(pool, readRecorder)
 	mcp.purge = forgetBus.Local

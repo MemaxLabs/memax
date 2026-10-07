@@ -21,6 +21,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
 
 // DB is what the resolver needs from a pgx pool.
@@ -81,17 +84,71 @@ func (r *Resolver) IsV2(ctx context.Context, hubID string) (bool, error) {
 	return m[hubID], err
 }
 
+// ConfigSyncOff says which of a person's V1 agent files V1's two-way
+// config sync must leave alone: those that belong to a space of theirs on
+// V2 (plan 25 §10: "two-way sync is turned off", D10), where Memax compiles
+// them instead. The answer takes a file's V1 sync scope ("global",
+// "profile:<name>", "project:<url>"). Switching the space back turns sync
+// on again: nothing is stored.
+func (r *Resolver) ConfigSyncOff(ctx context.Context, userID string) (func(scope string) bool, error) {
+	none := func(string) bool { return false }
+	id, err := uuid.Parse(userID)
+	if r == nil || err != nil {
+		return none, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT h.space_kind, COALESCE(h.repository, '')
+		  FROM public.hubs h
+		 WHERE h.v2_enabled_at IS NOT NULL
+		   AND (h.owner_id = $1 OR EXISTS (SELECT 1 FROM public.hub_members m WHERE m.hub_id = h.id AND m.user_id = $1))`, id)
+	if err != nil {
+		return none, fmt.Errorf("spacemode: %w", err)
+	}
+	defer rows.Close()
+	type sp struct {
+		kind policy.SpaceKind
+		repo string
+	}
+	var spaces []sp
+	for rows.Next() {
+		var s sp
+		if err := rows.Scan(&s.kind, &s.repo); err != nil {
+			return none, fmt.Errorf("spacemode: %w", err)
+		}
+		spaces = append(spaces, s)
+	}
+	if err := rows.Err(); err != nil {
+		return none, fmt.Errorf("spacemode: %w", err)
+	}
+	if len(spaces) == 0 {
+		return none, nil
+	}
+	return func(scope string) bool {
+		if scope == "" {
+			scope = "global"
+		}
+		for _, s := range spaces {
+			if ledger.ConfigBelongs(scope, s.kind, s.repo) {
+				return true
+			}
+		}
+		return false
+	}, nil
+}
+
 // ErrNoSpace is returned by Enable and Disable for an unknown hub.
 var ErrNoSpace = errors.New("spacemode: no such space")
 
 // Enable switches a space to the V2 record at the given time (its first
-// switch time is kept). Until the Switch to V2 step (epic 2.8) runs the
-// import cleanup, only tests and dev seeding call it.
+// switch time is kept), and nothing else: tests and dev seeding. The
+// Switch to V2 itself (moving the space's V1 content) is
+// ledger.StartSwitch.
 func (r *Resolver) Enable(ctx context.Context, hubID uuid.UUID, at time.Time) error {
 	return r.set(ctx, `UPDATE public.hubs SET v2_enabled_at = COALESCE(v2_enabled_at, $2) WHERE id = $1`, hubID, at)
 }
 
-// Disable puts a space back on V1 (dev and tests only: its V2 records stay).
+// Disable puts a space back on V1 (dev and tests only: its V2 records
+// stay; ledger.SwitchBack is the receipted way).
 func (r *Resolver) Disable(ctx context.Context, hubID uuid.UUID) error {
 	return r.set(ctx, `UPDATE public.hubs SET v2_enabled_at = NULL WHERE id = $1`, hubID)
 }

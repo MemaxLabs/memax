@@ -1,0 +1,90 @@
+---
+title: memax export
+description: Take a space's whole record as Markdown with frontmatter, its receipts and the signed checkpoints.
+---
+
+`memax export` writes a space's whole record to a folder you own: every
+memory as a Markdown file with YAML frontmatter, a tombstone for each
+forgotten one, every version of the Brief, the decision gates, the
+compile targets, the agents, read counts, every receipt and the signed
+checkpoints that seal them. Any tool reads it; [`memax
+verify-export`](/cli/verify-export) checks nothing in it was changed. The
+format is described in [Export format](/concepts/export).
+
+Export is on every plan. Any member of a space can export it, viewers
+included. Each export is one receipt (`exported`) in the space's Activity,
+and it doesn't count as a read.
+
+## Usage
+
+```bash
+memax export [--space <slug>] [--out <dir>] [--force] [--format json]
+```
+
+| Flag             | Description                                                                       |
+| ---------------- | --------------------------------------------------------------------------------- |
+| `--space <slug>` | The space. Without it, every space of yours on the V2 record, a folder each.      |
+| `--out <dir>`    | Where to write it. Default `memax-export`; each space goes in `<dir>/<slug>`.     |
+| `--force`        | Replace an earlier export in the same folder. A folder that isn't one is refused. |
+| `--format <fmt>` | `text` (default) or `json`.                                                       |
+
+```text
+› memax export --space memax-v2
+
+  ✓ Exported memax-v2 to memax-export/memax-v2
+    214 memories · 3 tombstones · 1,284 receipts, sealed through 1,280
+
+  Check it with: memax verify-export memax-export/memax-v2
+```
+
+The receipts written in the last few seconds before an export aren't
+sealed yet (the sealer runs every 15 seconds or so), the export's own
+receipt among them. They're in the export, chained after the last
+checkpoint; `memax verify-export` says how many.
+
+The web app's **Export as Markdown**, on Memories, downloads the same
+export as a zip archive.
+
+## Exit codes
+
+| Code | Meaning                                                                           |
+| ---- | --------------------------------------------------------------------------------- |
+| 0    | Every space was exported.                                                         |
+| 1    | Not signed in, a space that isn't yours, a folder in the way, or a failed export. |
+
+## JSON
+
+```json
+{
+  "exports": [
+    {
+      "space": "memax-v2",
+      "dir": "memax-export/memax-v2",
+      "receipt": "0199…",
+      "files": 231,
+      "memories": 214,
+      "tombstones": 3,
+      "receipts": 1284,
+      "sealed": 1280,
+      "unsealed": 4
+    }
+  ]
+}
+```
+
+## Over the API
+
+`POST /v2/spaces/{space}:export`, with an `Idempotency-Key`, answers the
+zip archive (`application/zip`) as it is read from one consistent
+snapshot of the record. Nothing is kept on the server: a stored copy would
+be one more place Forget would have to reach. A retry with the same key
+writes no second receipt and, if nothing changed meanwhile, returns the
+same bytes. Agents and API keys are refused (`export_by_person`); exports
+are rate-limited per person. In the SDK:
+
+```ts
+const archive = await memax.v2.spaces.export("memax-v2", {
+  idempotencyKey: crypto.randomUUID(),
+});
+// archive.bytes, archive.filename, archive.receipt
+```

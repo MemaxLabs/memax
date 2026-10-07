@@ -465,4 +465,73 @@ func TestSupersededDecisionsDontCompile(t *testing.T) {
 	}
 }
 
+// Rule 11: a Write agent's write kept at once compiles; when the judge
+// finds it contradicts a decision in force, it goes back to Review and
+// leaves every compiled file. Past the return window it stays, marked in
+// conflict.
+func TestReturnedWriteLeavesTheCompiledFiles(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, fixtureOpts{})
+	s := f.seed()
+	tg := s.targets[ledger.TargetAgentsMD]
+	river := f.apply(&ledger.Remember{Meta: f.meta(s.owner, policy.ViaWeb), NewMemory: ledger.NewMemory{
+		SpaceID: s.space, Statement: "Queue background work on River, not Temporal.", Section: ledger.SectionDecisions,
+		Kind: ledger.KindDecision, Decision: &ledger.DecisionFields{Area: "job queue"}}}).Memory
+	agent := ledger.Actor{Kind: policy.ActorAgent, ID: uuid.New(), Agent: "codex", Autonomy: policy.AutonomyWrite}
+	write := func(statement string) *ledger.Memory {
+		res := f.apply(&ledger.Propose{Meta: ledger.Meta{Actor: agent, Scope: f.scope(s.owner), Via: policy.ViaMCP, IdempotencyKey: uuid.NewString()},
+			NewMemory: ledger.NewMemory{SpaceID: s.space, Statement: statement, Section: ledger.SectionConventions}})
+		if res.Memory.Lifecycle != "kept" {
+			t.Fatalf("write %q = %s", statement, res.Memory.Lifecycle)
+		}
+		return res.Memory
+	}
+	compiled := func() map[string]compile.InputMemory {
+		f.run(tg)
+		out := map[string]compile.InputMemory{}
+		for _, m := range f.fake.LastInput().Memories {
+			out[m.Ref] = m
+		}
+		return out
+	}
+	flag := func(l *ledger.Ledger, m *ledger.Memory) ledger.Action {
+		scope, err := l.SpaceScope(context.Background(), s.space)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := l.Apply(context.Background(), &ledger.RecordVerdict{
+			Meta:   ledger.Meta{Actor: ledger.Actor{Kind: policy.ActorMemax}, Scope: scope, Via: policy.ViaSystem, IdempotencyKey: uuid.NewString()},
+			Memory: m.ID, Version: m.Version, Mode: ledger.JudgeKept, Outcome: ledger.OutcomeFlagged, Target: river.ID,
+			Verdict: ledger.Verdict{Stage: ledger.StageLLM, Relation: ledger.RelationContradicts, Related: river.ID}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.Receipts[0].Action
+	}
+
+	soon := write("Long workflows use Temporal.")
+	late := write("Nightly exports run on Temporal.")
+	before := compiled()
+	if _, ok := before[soon.Ref]; !ok {
+		t.Fatalf("the agent's write didn't compile: %v", before)
+	}
+	if a := flag(f.l, soon); a != ledger.ActionReturned {
+		t.Fatalf("verdict = %s, want returned", a)
+	}
+	pastWindow := ledger.New(f.pool, ledger.WithLogger(quiet), ledger.WithReturnWindow(0))
+	if a := flag(pastWindow, late); a != ledger.ActionFlagged {
+		t.Fatalf("late verdict = %s, want flagged", a)
+	}
+	after := compiled()
+	if _, ok := after[soon.Ref]; ok {
+		t.Errorf("%s is back in Review and still compiles", soon.Ref)
+	}
+	if m, ok := after[late.Ref]; !ok || !slices.Contains(m.Flags, "conflict") {
+		t.Errorf("%s past the window = %+v, want compiled in conflict", late.Ref, m)
+	}
+	if _, ok := after[river.Ref]; !ok {
+		t.Errorf("the decision in force stopped compiling")
+	}
+}
+
 func ptr[T any](v T) *T { return &v }

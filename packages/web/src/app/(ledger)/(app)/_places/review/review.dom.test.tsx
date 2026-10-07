@@ -611,6 +611,61 @@ describe("Review and the judge", () => {
     expect(source.review.keep).toHaveBeenCalledTimes(2);
   }, 10_000);
 
+  it("shows a write the judge returned to Review as a conflict, with its receipt", async () => {
+    // Rule 11: Codex kept M-0431 at once; the judge found it contradicts
+    // M-0174, a decision in force, and returned it to Review.
+    const returned = <T extends { ref: string } | null>(item: T): T =>
+      item && item.ref === "M-0431"
+        ? { ...item, action: "returned", returned: { decision: "M-0174" } }
+        : item;
+    const source = sourceWith((demo) => ({
+      review: {
+        peekQueue: (slug) => {
+          const queue = demo.review.peekQueue?.(slug);
+          return queue && { ...queue, items: queue.items.map(returned) };
+        },
+        queue: vi.fn(async (input) => {
+          const queue = await demo.review.queue(input);
+          return { ...queue, items: queue.items.map(returned) };
+        }),
+        item: vi.fn(async (input) => returned(await demo.review.item(input))),
+        resolveConflict: vi.fn(demo.review.resolveConflict),
+      },
+    }));
+    renderReview();
+    await ready();
+    press("ArrowDown");
+    await screen.findByText("memax-v2 · 2 of 5");
+    // The card: the conflict, who kept it at once, and what the judge did.
+    expect(
+      await screen.findByText(
+        "Codex kept this at once. Memax returned it to Review: it contradicts M-0174, a decision in force.",
+      ),
+    ).toBeTruthy();
+    const card = document.querySelector(".mx-review") as HTMLElement;
+    expect(within(card).getByText("Conflicts with a kept memory")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Keep, replace old/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /Compare both sides/ }),
+    ).toBeTruthy();
+    // The queue row says it's back in Review, in conflict.
+    const row = document.querySelector(".mx-row.is-selected") as HTMLElement;
+    expect(row.querySelector(".mx-state")?.className).toContain(
+      "mx-state--conflict",
+    );
+    expect(within(row).getByText("back in Review")).toBeTruthy();
+    // Keeping it settles the conflict in its favour: a person's Keep.
+    press("k");
+    expect(
+      await screen.findByText("Kept M-0431 in place of M-0174"),
+    ).toBeTruthy();
+    expect(source.review.resolveConflict).toHaveBeenCalledWith(
+      expect.objectContaining({ ref: "M-0431", option: "proposal" }),
+    );
+  });
+
   it("keeps a flagged proposal in place of the decision it contradicts", async () => {
     const source = sourceWith((demo) => ({
       review: {

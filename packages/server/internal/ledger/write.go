@@ -40,6 +40,8 @@ type writer struct {
 	undo            *undoJournal
 	undoWindow      time.Duration
 	judgeUndoWindow time.Duration
+	// returnWindow bounds the judge's return to Review (judge.go).
+	returnWindow time.Duration
 
 	// now is the ledger's clock when the command began: when a gate
 	// expires, and whether it has.

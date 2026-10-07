@@ -103,3 +103,77 @@ func TestPushTouchingADecisionGoesToReview(t *testing.T) {
 		t.Errorf("unrelated push: %s", text(res))
 	}
 }
+
+// Rule 11, §5.6 downgrade (b), from the agent's side: a push kept at once
+// that the judge then finds contradicting a decision in force is back in
+// Review. Recall no longer serves it as kept: the session that pushed it
+// sees it among its proposals, in conflict, every connection gets a
+// notice once since it was last seen, and memax_get says why and that it
+// isn't kept.
+func TestAgentSeesItsWriteReturnedToReview(t *testing.T) {
+	e, f := newFixture(t, policy.AutonomyWrite)
+	ctx := context.Background()
+	railway := e.keep(f.user, f.sp, "Deploy the v2 API to Railway.", ledger.SectionDecisions)
+	cs := e.connectClient(f.token, "/mcp", older, nil)
+	res := call(t, cs, "memax_push", push("Preview builds run on Fly.io machines.", f.sp, map[string]any{"session_ref": "cc-7f3a"}))
+	out := structured[handler.MCPPushOutput](t, res)
+	if res.IsError || out.Status != handler.MCPPushKept {
+		t.Fatalf("push: %s", text(res))
+	}
+	ref := out.ID
+	// The connection was last seen before the verdict.
+	e.exec(`UPDATE v2.agent_connections SET last_seen_at = now() - interval '1 hour'`)
+
+	_, n, _ := ledger.ParseRef(ref)
+	var id uuid.UUID
+	if err := e.pool.QueryRow(ctx, `SELECT id FROM v2.memories WHERE space_id = $1 AND seq = $2`, f.sp.id, n).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	system, err := e.ledger.SpaceScope(ctx, f.sp.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := e.ledger.Apply(ctx, &ledger.RecordVerdict{
+		Meta:   ledger.Meta{Actor: ledger.Actor{Kind: policy.ActorMemax}, Scope: system, Via: policy.ViaSystem, IdempotencyKey: uuid.NewString()},
+		Memory: id, Version: 1, Mode: ledger.JudgeKept, Outcome: ledger.OutcomeFlagged, Target: railway.ID,
+		Verdict: ledger.Verdict{Stage: ledger.StageLLM, Relation: ledger.RelationContradicts, Related: railway.ID},
+	})
+	if err != nil || len(v.Receipts) != 1 || v.Receipts[0].Action != ledger.ActionReturned {
+		t.Fatalf("verdict: %v %+v", err, v.Receipts)
+	}
+
+	res = call(t, cs, "memax_recall", map[string]any{"query": "preview builds Fly.io machines", "session_ref": "cc-7f3a"})
+	validates(t, "agent", "memax_recall", res)
+	rec := structured[handler.MCPRecallOutput](t, res)
+	for _, r := range rec.Results {
+		if r.Ref == ref {
+			t.Errorf("recall serves %s as kept: %s", ref, text(res))
+		}
+	}
+	found := false
+	for _, p := range rec.Proposals {
+		found = found || (p.Ref == ref && p.State == "conflict")
+	}
+	if !found {
+		t.Errorf("the pushing session doesn't see %s in conflict: %+v", ref, rec.Proposals)
+	}
+	notice := ""
+	for _, nt := range rec.Notices {
+		if nt.Kind == "returned" {
+			notice = nt.Message
+		}
+	}
+	mustContain(t, notice, ref, "contradicts "+railway.Ref, "aren't kept now", "don't act on them")
+	mustContain(t, text(res), "Back in Review in")
+
+	res = call(t, cs, "memax_get", map[string]any{"id": ref, "space_id": f.sp.id.String()})
+	if !res.IsError {
+		t.Errorf("get serves the returned write: %s", text(res))
+	}
+	mustContain(t, text(res), ref+" is back in Review", "contradicts "+railway.Ref, "isn't kept now", "don't act on it")
+
+	res = call(t, cs, "memax_list", map[string]any{"hub_id": f.sp.id.String()})
+	if strings.Contains(text(res), ref) {
+		t.Errorf("list serves the returned write: %s", text(res))
+	}
+}

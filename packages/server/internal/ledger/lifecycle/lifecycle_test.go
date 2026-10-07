@@ -229,6 +229,34 @@ func TestUndoTransitions(t *testing.T) {
 	}
 }
 
+// The judge's return (rule 11) is kept → proposed only, and always lands
+// in conflict: it is never a verb, so Allowed still refuses it.
+func TestReturnTransition(t *testing.T) {
+	t.Parallel()
+	for _, a := range append([]Lifecycle{None}, Lifecycles...) {
+		for _, b := range Lifecycles {
+			if got, want := ReturnAllowed(a, b), a == Kept && b == Proposed; got != want {
+				t.Errorf("ReturnAllowed(%q, %q) = %v, want %v", a, b, got, want)
+			}
+		}
+	}
+	if Allowed(Kept, Proposed) {
+		t.Error("kept → proposed became a verb; the return must stay outside the transition table")
+	}
+	for _, from := range []State{st(Kept), st(Kept, Stale), st(Kept, Conflict, Stale)} {
+		got, err := ReturnToReview(from)
+		if err != nil || got.Lifecycle != Proposed || !slices.Equal(got.Flags.Strings(), []string{"conflict"}) {
+			t.Errorf("ReturnToReview(%v) = %v, %v", from, got, err)
+		}
+	}
+	for _, from := range []State{st(Proposed), st(Faded), st(Forgotten), st(Merged), st(Rejected)} {
+		var te *TransitionError
+		if _, err := ReturnToReview(from); !errors.As(err, &te) {
+			t.Errorf("ReturnToReview(%v) = %v, want a TransitionError", from, err)
+		}
+	}
+}
+
 func TestFlagsNormalize(t *testing.T) {
 	t.Parallel()
 	got := NewFlags(Stale, Conflict, Stale)

@@ -23,7 +23,9 @@ import (
 //     "superseded", and stops compiling); a kept fact fades (restorable).
 //     The winner gets a `supersedes` link to a kept loser.
 //   - keep_both: both stand, usually with narrower words (an edit of
-//     either side, or both), and a flagged proposal is kept.
+//     either side, or both), and a flagged proposal is kept. Narrower
+//     words that touch another decision in force wait for the judge
+//     first (rule 11; see planBoth).
 //   - leave_open: it is undecided. The flagged side becomes an open
 //     question (kept, in the open-question section), and a decision in
 //     force on the other side is set to "open" too, so no agent reads it
@@ -235,7 +237,8 @@ func (w *writer) resolveConflict(ctx context.Context, c *ResolveConflict) (Resul
 		return Result{}, err
 	}
 	if replay != nil {
-		ids := []uuid.UUID{}
+		// The memory the command named first, as the first answer had it.
+		ids := []uuid.UUID{this.ID}
 		for _, rc := range replay.Receipts {
 			if !slices.Contains(ids, rc.ObjectID) {
 				ids = append(ids, rc.ObjectID)
@@ -273,12 +276,26 @@ func (w *writer) resolveConflict(ctx context.Context, c *ResolveConflict) (Resul
 		return Result{}, conflictStateError(p.flagged.Ref, fmt.Sprintf("%s isn't flagged as a conflict any more. Reload it.", p.flagged.Ref))
 	}
 	if len(p.alsoConflicts) > 0 && p.keepsFlagged(c.Choice) {
+		// A decision in force is in the way (the judge may have found it
+		// in words narrowed to settle this one): name it.
 		refs := make([]string, len(p.alsoConflicts))
 		for i, l := range p.alsoConflicts {
 			refs[i] = l.Ref
 		}
-		return Result{}, conflictStateError(p.flagged.Ref, fmt.Sprintf(
-			"%s also conflicts with %s. Settle that first.", p.flagged.Ref, strings.Join(refs, " and ")))
+		return Result{}, &InConflictError{Ref: p.flagged.Ref, With: refs[0], Message: fmt.Sprintf(
+			"%s also conflicts with %s, %s in force. Settle that first.", p.flagged.Ref, strings.Join(refs, " and "), pluralDecision(len(refs)))}
+	}
+	// "Keep both" keeps words the judge hasn't seen only when they touch no
+	// other decision in force; otherwise they are saved and wait for it.
+	var both []narrowing
+	if c.Choice == ChooseBoth {
+		var hold bool
+		if both, hold, err = w.planBoth(ctx, p, c); err != nil {
+			return Result{}, err
+		}
+		if hold {
+			return w.holdBoth(ctx, sp, p, both)
+		}
 	}
 
 	w.startUndo(UndoResolve, w.undoWindow)
@@ -337,12 +354,11 @@ func (w *writer) resolveConflict(ctx context.Context, c *ResolveConflict) (Resul
 			return Result{}, err
 		}
 	case ChooseBoth:
-		for _, s := range []struct {
-			m         *Memory
-			statement string
-		}{{p.this, c.Statement}, {p.other, c.OtherStatement}} {
-			if s.statement != "" && s.statement != s.m.Statement {
-				if err := add(w.writeVersion(ctx, sp, s.m, s.statement, "Narrowed to settle a conflict.")); err != nil {
+		for _, n := range both {
+			if n.change {
+				// A kept side's draft the judge has seen becomes its words;
+				// any other new words are a new version.
+				if err := add(w.putVersion(ctx, sp, n.m, n.draft, n.words, "Narrowed to settle a conflict.")); err != nil {
 					return Result{}, err
 				}
 			}
@@ -394,6 +410,241 @@ func resolutionReason(choice ConflictChoice, p conflictPair) string {
 		return fmt.Sprintf("Settled: %s and %s both stand.", p.this.Ref, p.other.Ref)
 	}
 	return fmt.Sprintf("Left open: %s and %s are undecided.", p.this.Ref, p.other.Ref)
+}
+
+// narrowing is one side of a "keep both": the words it will stand with.
+type narrowing struct {
+	m, other *Memory
+	words    string
+	// change: the words differ from the side's words in force.
+	change bool
+	// draft is a kept side's draft of these words the judge has seen (or
+	// that waited out JudgeGrace), to adopt; 0 when there is none.
+	draft int
+	// hold: the words touch another decision in force and the judge hasn't
+	// seen them, so the resolution waits (holdBoth).
+	hold bool
+}
+
+// planBoth checks "keep both"'s words against rule 11 before anything is
+// kept. Each side's new words are checked inline (Touches) against the
+// decisions in force other than the two sides of this conflict, which the
+// person is narrowing to stand together:
+//
+//   - words that touch none are kept at once, as before;
+//   - words that touch one wait for the judge: hold is set, and the
+//     caller saves them (holdBoth) and answers judge_pending;
+//   - on the retry, the saved words are what the person sends again: a
+//     proposal's are its current version, which waits while it is inside
+//     JudgeGrace without a verdict (503 judge_pending), and a kept side's
+//     are its draft, which waits the same way. A contradiction the judge
+//     found is a conflict (409 in_conflict naming the decision): on a
+//     proposal it is a new conflicts_with link, refused before this, and
+//     on a draft it is the draft's verdict.
+//
+// A refusal outranks a hold, and a hold outranks a wait, so new words are
+// never refused for an older wait.
+func (w *writer) planBoth(ctx context.Context, p conflictPair, c *ResolveConflict) ([]narrowing, bool, error) {
+	pair := []uuid.UUID{p.this.ID, p.other.ID}
+	var sides []narrowing
+	var wait, conflict error
+	hold := false
+	for _, s := range []struct {
+		m, other *Memory
+		words    string
+	}{{p.this, p.other, c.Statement}, {p.other, p.this, c.OtherStatement}} {
+		n := narrowing{m: s.m, other: s.other, words: s.m.Statement}
+		if s.words != "" && s.words != s.m.Statement {
+			n.words, n.change = s.words, true
+		}
+		switch {
+		case !n.change && s.m.Lifecycle == lifecycle.Proposed:
+			pending, err := w.verdictPending(ctx, s.m.ID, s.m.Version)
+			if err != nil {
+				return nil, false, err
+			}
+			if pending {
+				touches, err := w.touchesOther(ctx, s.m.SpaceID, pair, n.words, s.m.area())
+				if err != nil {
+					return nil, false, err
+				}
+				if touches && wait == nil {
+					wait = &JudgePendingError{Ref: s.m.Ref}
+				}
+			}
+		case n.change && s.m.Lifecycle == lifecycle.Kept:
+			d, err := w.findDraft(ctx, s.m, n.words)
+			if err != nil {
+				return nil, false, err
+			}
+			switch {
+			case d == nil:
+				if n.hold, err = w.touchesOther(ctx, s.m.SpaceID, pair, n.words, s.m.area()); err != nil {
+					return nil, false, err
+				}
+			case d.contradicts != "":
+				if conflict == nil {
+					conflict = &InConflictError{Ref: s.m.Ref, With: d.contradicts, Message: fmt.Sprintf(
+						"The narrower words for %s contradict %s, a decision in force. Change them, or settle the conflict another way.",
+						s.m.Ref, d.contradicts)}
+				}
+			case d.pending:
+				n.draft = d.version
+				if wait == nil {
+					wait = &JudgePendingError{Ref: s.m.Ref}
+				}
+			default:
+				n.draft = d.version
+			}
+		case n.change:
+			var err error
+			if n.hold, err = w.touchesOther(ctx, s.m.SpaceID, pair, n.words, s.m.area()); err != nil {
+				return nil, false, err
+			}
+		}
+		hold = hold || n.hold
+		sides = append(sides, n)
+	}
+	switch {
+	case conflict != nil:
+		return nil, false, conflict
+	case hold:
+		return sides, true, nil
+	case wait != nil:
+		return nil, false, wait
+	}
+	return sides, false, nil
+}
+
+// holdBoth saves "keep both"'s words for the judge and settles nothing:
+// a proposal's new words become its new version (it stays a flagged
+// proposal), and a kept side's words that touch another decision in force
+// become a draft, so the words in force stay until the resolution is
+// applied. Each is judged in settling mode, beside the other side, in this
+// transaction. The answer is "proposed" with policy code judge_pending,
+// like edit-then-keep's; the person sends the same resolution again,
+// which waits for the verdicts (planBoth).
+func (w *writer) holdBoth(ctx context.Context, sp spaceRow, p conflictPair, sides []narrowing) (Result, error) {
+	var receipts []Receipt
+	var refs []string
+	for _, n := range sides {
+		if !n.change || n.draft != 0 {
+			continue
+		}
+		switch n.m.Lifecycle {
+		case lifecycle.Proposed:
+			rc, err := w.writeVersion(ctx, sp, n.m, n.words, "Narrowed to settle a conflict; Memax checks the words before both are kept.")
+			if err != nil {
+				return Result{}, err
+			}
+			receipts = append(receipts, rc)
+			w.enqueueJudge(JudgeArgs{MemoryID: n.m.ID, SpaceID: sp.ID, Version: n.m.Version, Mode: JudgeSettling, Beside: n.other.ID})
+		case lifecycle.Kept:
+			if !n.hold {
+				continue // words that touch nothing else are kept with the resolution
+			}
+			rc, version, err := w.writeDraft(ctx, sp, n.m, n.words)
+			if err != nil {
+				return Result{}, err
+			}
+			receipts = append(receipts, rc)
+			w.enqueueJudge(JudgeArgs{MemoryID: n.m.ID, SpaceID: sp.ID, Version: version, Mode: JudgeSettling, Beside: n.other.ID})
+		default:
+			continue
+		}
+		refs = append(refs, n.m.Ref)
+	}
+	// The memory the command named, then any other the hold saved words
+	// for, as a replay lists them.
+	ids := []uuid.UUID{p.this.ID}
+	for _, rc := range receipts {
+		if !slices.Contains(ids, rc.ObjectID) {
+			ids = append(ids, rc.ObjectID)
+		}
+	}
+	res, err := w.finish(ctx, Result{Outcome: OutcomeProposed, Policy: heldNarrowing(refs), Receipts: receipts}, p.this.ID)
+	if err == nil {
+		err = w.loadMemories(ctx, &res, ids)
+	}
+	return res, err
+}
+
+// heldNarrowing is the outcome of a "keep both" whose words wait for the
+// judge: saved, not settled.
+func heldNarrowing(refs []string) policy.Decision {
+	return policy.Decision{Effect: policy.EffectPropose, Code: policy.CodeJudgePending, Message: fmt.Sprintf(
+		"Saved the narrower words for %s. Memax is checking them against the other decisions in force before both are kept: "+
+			"settle it the same way again in a moment.", strings.Join(refs, " and "))}
+}
+
+// writeDraft saves words for a kept memory as a draft: a version above
+// its current one, written by a `drafted` receipt. The words in force are
+// unchanged; only a resolution the judge has cleared adopts them.
+func (w *writer) writeDraft(ctx context.Context, sp spaceRow, m *Memory, statement string) (Receipt, int, error) {
+	if secrets := findSecrets(statement); len(secrets) > 0 {
+		return Receipt{}, 0, invalid("statement", "looks like a credential (%s); Memax never stores secrets", strings.Join(secrets, ", "))
+	}
+	rc := w.receipt(sp, m.ID, m.Ref, ActionDrafted, m.streamVersion+1,
+		"Narrower words to settle a conflict, held for Memax's check; the words in force are unchanged.")
+	if err := insertReceipt(ctx, w.tx, &rc); err != nil {
+		return Receipt{}, 0, err
+	}
+	version, err := w.nextVersion(ctx, m.ID)
+	if err != nil {
+		return Receipt{}, 0, err
+	}
+	if _, err := w.tx.Exec(ctx, `
+		INSERT INTO v2.memory_versions (memory_id, version, space_id, statement, receipt_id, last_receipt_id)
+		VALUES ($1, $2, $3, $4, $5, $5)`, m.ID, version, sp.ID, statement, rc.ID); err != nil {
+		return Receipt{}, 0, fmt.Errorf("ledger: write draft: %w", err)
+	}
+	if _, err := w.tx.Exec(ctx, `
+		UPDATE v2.memories SET stream_version = $2, last_receipt_id = $3 WHERE id = $1 AND space_id = $4`,
+		m.ID, rc.StreamVersion, rc.ID, sp.ID); err != nil {
+		return Receipt{}, 0, fmt.Errorf("ledger: update memory: %w", err)
+	}
+	m.streamVersion = rc.StreamVersion
+	return rc, version, nil
+}
+
+// draftState is a kept memory's newest draft of some words.
+type draftState struct {
+	version int
+	// pending: no verdict yet, inside JudgeGrace.
+	pending bool
+	// contradicts is the decision in force the judge found the words
+	// contradict, if it still is one.
+	contradicts string
+}
+
+// findDraft looks up a kept memory's newest draft of exactly these words,
+// above its current version; nil when there's none.
+func (w *writer) findDraft(ctx context.Context, m *Memory, words string) (*draftState, error) {
+	var d draftState
+	var outcome *string
+	var related *int64
+	var inForce *bool
+	err := w.tx.QueryRow(ctx, `
+		SELECT v.version, j.outcome IS NULL AND v.created_at > now() - make_interval(secs => $5), j.outcome, rm.seq,
+		       rm.kind = 'decision' AND rm.lifecycle = 'kept' AND COALESCE(rm.decision ->> 'status', '') IN ('', 'in_force')
+		  FROM v2.memory_versions v
+		  JOIN v2.receipts r ON r.id = v.receipt_id AND r.action = 'drafted'
+		  LEFT JOIN LATERAL (SELECT outcome, related_memory_id FROM v2.judge_verdicts
+		                      WHERE memory_id = v.memory_id AND version = v.version ORDER BY round DESC LIMIT 1) j ON true
+		  LEFT JOIN v2.memories rm ON rm.id = j.related_memory_id
+		 WHERE v.memory_id = $1 AND v.space_id = $2 AND v.version > $3 AND v.statement = $4
+		 ORDER BY v.version DESC LIMIT 1`,
+		m.ID, m.SpaceID, m.Version, words, JudgeGrace.Seconds()).Scan(&d.version, &d.pending, &outcome, &related, &inForce)
+	if errNoRows(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ledger: read draft: %w", err)
+	}
+	if outcome != nil && VerdictOutcome(*outcome) == OutcomeFlagged && related != nil && inForce != nil && *inForce {
+		d.contradicts = FormatRef(PrefixMemory, *related)
+	}
+	return &d, nil
 }
 
 // keepIt keeps a proposal as part of a resolution: a person's Keep, with
@@ -508,6 +759,13 @@ func (w *writer) reshape(ctx context.Context, sp spaceRow, m *Memory, action Act
 // writeVersion writes a new version of a memory's statement, as part of
 // a larger command, with its `edited` receipt.
 func (w *writer) writeVersion(ctx context.Context, sp spaceRow, m *Memory, statement, reason string) (Receipt, error) {
+	return w.putVersion(ctx, sp, m, 0, statement, reason)
+}
+
+// putVersion makes statement a memory's words, with an `edited` receipt:
+// a new version, or (draft > 0) the draft that holds those words already,
+// once the judge has seen it (planBoth).
+func (w *writer) putVersion(ctx context.Context, sp spaceRow, m *Memory, draft int, statement, reason string) (Receipt, error) {
 	if secrets := findSecrets(statement); len(secrets) > 0 {
 		return Receipt{}, invalid("statement", "looks like a credential (%s); Memax never stores secrets", strings.Join(secrets, ", "))
 	}
@@ -515,14 +773,17 @@ func (w *writer) writeVersion(ctx context.Context, sp spaceRow, m *Memory, state
 	if err := insertReceipt(ctx, w.tx, &rc); err != nil {
 		return Receipt{}, err
 	}
-	version, err := w.nextVersion(ctx, m.ID)
-	if err != nil {
-		return Receipt{}, err
-	}
-	if _, err := w.tx.Exec(ctx, `
-		INSERT INTO v2.memory_versions (memory_id, version, space_id, statement, receipt_id, last_receipt_id)
-		VALUES ($1, $2, $3, $4, $5, $5)`, m.ID, version, sp.ID, statement, rc.ID); err != nil {
-		return Receipt{}, fmt.Errorf("ledger: write version: %w", err)
+	version := draft
+	if version == 0 {
+		var err error
+		if version, err = w.nextVersion(ctx, m.ID); err != nil {
+			return Receipt{}, err
+		}
+		if _, err := w.tx.Exec(ctx, `
+			INSERT INTO v2.memory_versions (memory_id, version, space_id, statement, receipt_id, last_receipt_id)
+			VALUES ($1, $2, $3, $4, $5, $5)`, m.ID, version, sp.ID, statement, rc.ID); err != nil {
+			return Receipt{}, fmt.Errorf("ledger: write version: %w", err)
+		}
 	}
 	w.indexVersion(sp.ID, m.ID, version)
 	hash, bands := signature(statement)

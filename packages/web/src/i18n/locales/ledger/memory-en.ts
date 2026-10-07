@@ -81,6 +81,7 @@ export const ledgerMemoryEn = {
       handedOff: "Handed off by {name}",
       answered: "Answered by {name}",
       undid: "Undone by {name}",
+      returned: "Returned to Review by {name}",
     },
     mergedInto: "Merged into this",
     // Undo on one of the judge's folds: 14 days, by anyone who may keep.

@@ -54,6 +54,12 @@ export const ledgerReviewEn = {
   keptOver: "Kept {ref} in place of {other}",
   nowConflict:
     "{ref} contradicts {other}, a decision in force. Compare both sides to settle it.",
+  // Rule 11: a Write agent's write kept at once, then put back in Review
+  // by the judge (its `returned` receipt, as Activity says it).
+  returned:
+    "{agent} kept this at once. Memax returned it to Review: it contradicts {decision}, a decision in force.",
+  returnedBare:
+    "{agent} kept this at once. Memax returned it to Review: it contradicts a decision in force.",
   edit: {
     title: "Editing a proposal",
   },
@@ -207,6 +213,15 @@ export const ledgerReviewEn = {
     stays: "{kept} stays in force. Rejected {proposal}",
     keptBoth: "Kept {proposal} and {kept}, each narrowed",
     leftOpen: "Left {proposal} and {kept} open",
+    // Rule 11 for "both": narrower words that touch another decision in
+    // force wait for the judge before both are kept.
+    checkingBoth:
+      "Checking the narrower words against the other decisions in force. Both are kept once the check is done.",
+    stopChecking: "Stop checking",
+    stoppedChecking:
+      "Stopped checking. Your narrower words stay as you wrote them: keep the decision again to check them.",
+    inConflictBoth:
+      "The narrower words contradict {with}, a decision in force. Change them, or choose another answer.",
     nothing: {
       title: "There's nothing to compare for {ref}.",
       detail:

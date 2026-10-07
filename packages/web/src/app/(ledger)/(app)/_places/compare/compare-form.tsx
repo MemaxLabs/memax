@@ -2,10 +2,11 @@
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Kbd, PageHeader } from "@memaxlabs/ledger";
+import { Button, Kbd, PageHeader, StateMark } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { count, formatShortDate, joinList, joinSentences } from "@/lib/v2/copy";
 import { toFailure } from "@/lib/v2/data/command-error";
+import type { DecisionResult } from "@/lib/v2/data/records";
 import type { ConflictData, ConflictOption } from "@/lib/v2/data/review";
 import { IntentKeys, intentOf } from "@/lib/v2/intent-keys";
 import { isComposing } from "@/lib/v2/keymap/keymap";
@@ -17,6 +18,7 @@ import { useAfterDecision, useQueueSnapshot } from "../../_lib/records";
 import { useUndo } from "../../_lib/undo";
 import { NotYetButton } from "../place";
 import type { RecordsView } from "../records-view";
+import { JUDGE_WAIT_MS, judgeRetryMs, pause } from "../review/use-review";
 import { ConflictSides } from "./conflict-sides";
 import styles from "./compare.module.css";
 
@@ -94,6 +96,13 @@ function refusalText(
  * server does: "both" narrows each side (two fields) rather than writing
  * a third memory, "open" makes both open questions, and the footer says
  * what each answer does to each side (spec ConflictEffect).
+ *
+ * Rule 11 for "both": narrower words that touch another decision in force
+ * are saved, not kept, until the judge has seen them. The answer then
+ * wears the working mark and the checking line, and goes again (its own
+ * idempotency key, reused across the waits) until it is kept, or the
+ * words turn out to contradict a decision in force (said here, the fields
+ * as written). Esc stops checking; the saved words stay saved.
  */
 export function Compare({
   view,
@@ -122,6 +131,13 @@ export function Compare({
   });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
+  // "Both" waiting for the judge: checking, and what to say after it.
+  const [checking, setChecking] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const waitFor = useRef<AbortController | null>(null);
+  // The flagged side's version after a held "both" saved its words: the
+  // If-Match of the next answer, until the conflict is read again.
+  const saved = useRef(0);
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const id = useId();
   const queueHref = placeHref(space.slug, "review");
@@ -156,29 +172,77 @@ export function Compare({
       setError(true);
       return;
     }
-    const intent = intentOf(
-      "resolve",
-      proposal.ref,
-      proposal.version,
-      option.kind,
-      option.kind === "both" ? words.proposal : "",
-      option.kind === "both" ? words.kept : "",
-    );
+    const both = option.kind === "both";
     const restore = snapshot(proposal.ref);
+    const controller = new AbortController();
+    waitFor.current = controller;
+    let version = Math.max(proposal.version, saved.current);
+    // A held "both", sent again, is its own intent (a new key), reused
+    // across its waits for the judge.
+    let phase = "";
+    const intentNow = () =>
+      intentOf(
+        "resolve",
+        proposal.ref,
+        version,
+        option.kind,
+        both ? words.proposal : "",
+        both ? words.kept : "",
+        phase,
+      );
+    let intent = intentNow();
     setPending(true);
+    setNotice(null);
     try {
-      const result = await source.review.resolveConflict({
-        space,
-        ref: proposal.ref,
-        other: kept.ref,
-        version: proposal.version,
-        option: option.kind,
-        ...(option.kind === "both"
-          ? { statement: words.proposal, otherStatement: words.kept }
-          : {}),
-        idempotencyKey: keys.keyFor(intent),
-      });
-      keys.settle(intent);
+      const deadline = Date.now() + JUDGE_WAIT_MS;
+      let result: DecisionResult;
+      for (;;) {
+        intent = intentNow();
+        try {
+          result = await source.review.resolveConflict({
+            space,
+            ref: proposal.ref,
+            other: kept.ref,
+            version,
+            option: option.kind,
+            ...(both
+              ? { statement: words.proposal, otherStatement: words.kept }
+              : {}),
+            idempotencyKey: keys.keyFor(intent),
+          });
+        } catch (err) {
+          const failure = toFailure(err);
+          // The judge hasn't looked at the saved words yet (saved just now,
+          // or before an Esc): wait for it, with the same key.
+          if (
+            !both ||
+            failure.kind !== "busy" ||
+            !failure.judge ||
+            Date.now() > deadline
+          ) {
+            throw err;
+          }
+          setChecking(true);
+          if (
+            !(await pause(judgeRetryMs(failure.retryAfter), controller.signal))
+          )
+            return;
+          continue;
+        }
+        keys.settle(intent);
+        if (!result.judgePending) break;
+        if (Date.now() > deadline) throw new Error("still checking");
+        // Saved for the judge: the flagged side's words are its new
+        // version, and the same answer goes again in a moment.
+        version = result.version ?? version;
+        saved.current = version;
+        phase = "checked";
+        setChecking(true);
+        afterDecision({ leftQueue: false });
+        if (!(await pause(judgeRetryMs(1), controller.signal))) return;
+      }
+      // Settled (even if Esc came while the last answer was on its way).
+      saved.current = 0;
       const entry = result.receipt
         ? undo.record({
             space,
@@ -227,6 +291,15 @@ export function Compare({
     } catch (err) {
       const failure = toFailure(err);
       keys.settle(intent);
+      if (both && failure.kind === "in-conflict") {
+        // The narrower words contradict another decision in force: the
+        // conflict stays open, and the words stay as written to change.
+        setNotice(
+          interpolate(c.inConflictBoth, { with: failure.with ?? kept.ref }),
+        );
+        afterDecision({ leftQueue: false });
+        return;
+      }
       toast({
         state: "proposed",
         text: failureText(rc, failure, {
@@ -238,7 +311,20 @@ export function Compare({
       });
     } finally {
       setPending(false);
+      setChecking(false);
+      if (waitFor.current === controller) waitFor.current = null;
     }
+  };
+
+  /** Esc while "both" waits for the judge: stop waiting, keep the words. */
+  const stopChecking = () => {
+    const controller = waitFor.current;
+    if (!controller || !checking) return false;
+    controller.abort();
+    waitFor.current = null;
+    setChecking(false);
+    setNotice(c.stoppedChecking);
+    return true;
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -246,7 +332,7 @@ export function Compare({
     const inField = (event.target as HTMLElement).tagName === "TEXTAREA";
     if (event.key === "Escape") {
       event.preventDefault();
-      router.push(queueHref);
+      if (!stopChecking()) router.push(queueHref);
     } else if (
       event.key === "Enter" &&
       (!inField || event.metaKey || event.ctrlKey)
@@ -408,12 +494,34 @@ export function Compare({
           })}
         </div>
         {words}
+        {/* "Both" waiting for the judge: the neutral working mark, never a spinner. */}
+        <p className={styles.checking} role="status" aria-live="polite">
+          {checking ? (
+            <>
+              <StateMark state="working" label={l.review.judge.checking} />
+              <span className="mx-meta">{c.checkingBoth}</span>
+            </>
+          ) : notice ? (
+            <span className="mx-meta">{notice}</span>
+          ) : null}
+        </p>
         <footer className={styles.foot}>
           <span className={`mx-meta ${styles.footText}`}>{footer}</span>
           <span className={styles.spacer} />
-          <Button variant="quiet" size="sm" kbd="Esc" href={queueHref}>
-            {c.back}
-          </Button>
+          {checking ? (
+            <Button
+              variant="quiet"
+              size="sm"
+              kbd="Esc"
+              onClick={() => void stopChecking()}
+            >
+              {c.stopChecking}
+            </Button>
+          ) : (
+            <Button variant="quiet" size="sm" kbd="Esc" href={queueHref}>
+              {c.back}
+            </Button>
+          )}
           <Button
             variant="keep"
             size="sm"

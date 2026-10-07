@@ -276,6 +276,19 @@ export function createSdkReview(
         idempotencyKey,
         ifMatch: version,
       });
+      // Rule 11: "both" with narrower words that touch another decision in
+      // force is saved, not settled (policy judge_pending). `version` is
+      // the flagged side's now; the same answer, sent again, finishes it.
+      if (result.policy.code === "judge_pending") {
+        return {
+          ref: result.memory.ref,
+          outcome: "proposed",
+          version: result.memory.version,
+          recompiled: null,
+          receipt: null,
+          judgePending: true,
+        };
+      }
       // Every answer settles the flagged side: kept (as an open question
       // when left open), or rejected when the decision in force stays.
       return decision(result, option === "kept" ? "rejected" : "kept");

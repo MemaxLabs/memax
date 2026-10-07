@@ -298,6 +298,19 @@ export function activitySentences(
       return [one(s.linked, { ref: text(entry.object.ref) })];
     case "superseded":
       return [one(s.superseded, { ref: text(entry.object.ref) })];
+    // The judge put a Write agent's write back in Review; the receipt's
+    // source is the decision in force it contradicts.
+    case "returned":
+      return [
+        entry.source?.kind === "memory"
+          ? one(s.returned, {
+              ref: text(entry.object.ref),
+              decision: text(entry.source.ref),
+            })
+          : one(s.returnedPlain, { ref: text(entry.object.ref) }),
+      ];
+    case "drafted":
+      return [one(s.drafted, { ref: text(entry.object.ref) })];
     default: {
       // Every verb the API can send has words above; this fails to compile
       // when the spec gains one. A newer server can still send a verb this

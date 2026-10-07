@@ -92,9 +92,15 @@ func (e *EditClashError) Is(target error) bool { return target == ErrEditClash }
 type InConflictError struct {
 	Ref  string
 	With string
+	// Message, when set, says it for a case Keep's words don't fit (words
+	// narrowed to settle a conflict that contradict another decision).
+	Message string
 }
 
 func (e *InConflictError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
 	if e.With == "" {
 		return fmt.Sprintf("%s contradicts a decision in force, so it can't be kept as it is. Settle the conflict first: compare both sides and choose.", e.Ref)
 	}

@@ -125,7 +125,14 @@ func newEnv(t *testing.T, opts ...v2api.Option) *env {
 // services that sit on the same ledger (Ask).
 func newEnvWith(t *testing.T, more func(*env) []v2api.Option) *env {
 	t.Helper()
-	st, pool := testdb.Acquire(t)
+	return newEnvOn(t, testdb.Open(t, testdb.Options{}), more)
+}
+
+// newEnvOn is newEnvWith on a database opened with options (a simulated
+// network, the RLS-ordering audit).
+func newEnvOn(t *testing.T, db *testdb.DB, more func(*env) []v2api.Option, ledgerOpts ...ledger.Option) *env {
+	t.Helper()
+	st, pool := db.Store, db.Pool
 	dbTests.Add(1)
 	authH, err := handler.NewAuthHandler(pool)
 	if err != nil {
@@ -143,7 +150,7 @@ func newEnvWith(t *testing.T, more func(*env) []v2api.Option) *env {
 		t.Fatal(err)
 	}
 	e := &env{t: t, pool: pool, store: mockobjectstore.New()}
-	e.ledger = ledger.New(pool, ledger.WithLogger(quiet), ledger.WithJobs(jobs))
+	e.ledger = ledger.New(pool, append([]ledger.Option{ledger.WithLogger(quiet), ledger.WithJobs(jobs)}, ledgerOpts...)...)
 	e.svc = compile.New(e.ledger, &compiletest.Fake{}, e.store, compile.Config{Log: quiet})
 	mux := http.NewServeMux()
 	h := v2api.New(e.ledger, quiet, append([]v2api.Option{v2api.WithCompile(e.svc)}, more(e)...)...)

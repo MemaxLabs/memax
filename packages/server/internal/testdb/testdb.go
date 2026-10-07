@@ -49,6 +49,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -64,6 +65,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/migrate"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/testdb/netsim"
 )
 
 // defaultBaseURL matches the docker-compose service name. Override
@@ -121,10 +123,64 @@ func Acquire(t *testing.T) (store.Store, *pgxpool.Pool) {
 // cleanup already handles it.
 func AcquireWithContext(t *testing.T, ctx context.Context) (store.Store, *pgxpool.Pool) {
 	t.Helper()
+	db := OpenWithContext(t, ctx, Options{})
+	return db.Store, db.Pool
+}
+
+// RTTEnv names the environment variable that puts every test database of
+// a run behind a simulated network: "24ms" is production's round trip from
+// Fly sjc to Neon us-west-2. Options.RTT overrides it.
+const RTTEnv = "TEST_DB_RTT"
+
+// Options configure Open.
+type Options struct {
+	// RTT is the simulated round-trip time between the pool and Postgres:
+	// a netsim proxy holds every byte for RTT/2 in each direction. Zero
+	// connects directly, unless TEST_DB_RTT is set.
+	RTT time.Duration
+	// Proxy routes through the proxy even at RTT 0 (for Watch).
+	Proxy bool
+	// Watch receives every statement the proxy forwards, in each
+	// connection's order (the RLS-ordering audit, netsim.Audit).
+	Watch func(netsim.Statement)
+	// Config adjusts the pool's config before the pool is built.
+	Config func(*pgxpool.Config)
+}
+
+// DB is one migrated database of a test's own.
+type DB struct {
+	Store store.Store
+	Pool  *pgxpool.Pool
+	// Proxy is the simulated network; nil when the pool connects directly.
+	Proxy *netsim.Proxy
+	// Trips counts the pool's round trips: per operation through
+	// netsim.Track, and in total.
+	Trips *netsim.Tracer
+}
+
+// Open is Acquire with options: a simulated network between the pool and
+// Postgres, a statement watcher, pool settings. The pool always carries a
+// netsim.Tracer, so any test can count an operation's round trips.
+func Open(t *testing.T, o Options) *DB {
+	t.Helper()
+	return OpenWithContext(t, context.Background(), o)
+}
+
+// OpenWithContext is Open with an explicit context for connection
+// timeouts.
+func OpenWithContext(t *testing.T, ctx context.Context, o Options) *DB {
+	t.Helper()
 
 	template, err := ensureTemplate(ctx)
 	if err != nil {
 		t.Skipf("testdb: Postgres unavailable (%v) — skipping integration test", err)
+	}
+	if o.RTT == 0 {
+		if v := strings.TrimSpace(os.Getenv(RTTEnv)); v != "" {
+			if o.RTT, err = time.ParseDuration(v); err != nil {
+				t.Fatalf("testdb: %s=%q: %v", RTTEnv, v, err)
+			}
+		}
 	}
 
 	dbName := fmt.Sprintf("memax_test_%d_%d", time.Now().UnixNano(), rand.Int64N(1_000_000))
@@ -143,18 +199,7 @@ func AcquireWithContext(t *testing.T, ctx context.Context) (store.Store, *pgxpoo
 	if _, err := admin.Exec(ctx, createSQL); err != nil {
 		t.Fatalf("testdb: CREATE DATABASE failed: %v", err)
 	}
-
-	// Open a pool against the new DB and hand it to the caller.
-	pool, err := pgxpool.New(ctx, connStringFor(dbName))
-	if err != nil {
-		_, _ = admin.Exec(context.Background(), fmt.Sprintf("DROP DATABASE %q", dbName))
-		t.Fatalf("testdb: pgxpool.New for clone: %v", err)
-	}
-
-	// Register teardown BEFORE returning so a panic/fail later
-	// still releases the database.
-	t.Cleanup(func() {
-		pool.Close()
+	drop := func() {
 		// Postgres refuses DROP DATABASE if any session is
 		// connected to the target. Our pool is already closed
 		// here so the normal case succeeds, but terminate any
@@ -168,9 +213,70 @@ func AcquireWithContext(t *testing.T, ctx context.Context) (store.Store, *pgxpoo
 		if _, err := admin.Exec(termCtx, fmt.Sprintf("DROP DATABASE IF EXISTS %q", dbName)); err != nil {
 			t.Logf("testdb: DROP DATABASE %q failed (non-fatal): %v", dbName, err)
 		}
+	}
+
+	db := &DB{}
+	connString := connStringFor(dbName)
+	if o.RTT > 0 || o.Proxy || o.Watch != nil {
+		if connString, db.Proxy, err = proxied(connString, o); err != nil {
+			drop()
+			t.Fatalf("testdb: proxy: %v", err)
+		}
+	}
+	cfg, err := pgxpool.ParseConfig(connString)
+	if err != nil {
+		drop()
+		t.Fatalf("testdb: pool config: %v", err)
+	}
+	db.Trips = netsim.Install(cfg)
+	if o.Config != nil {
+		o.Config(cfg)
+	}
+
+	// Open a pool against the new DB and hand it to the caller.
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		if db.Proxy != nil {
+			_ = db.Proxy.Close()
+		}
+		drop()
+		t.Fatalf("testdb: pgxpool.New for clone: %v", err)
+	}
+	db.Pool, db.Store = pool, store.NewPostgresStore(pool)
+
+	// Register teardown BEFORE returning so a panic/fail later
+	// still releases the database.
+	t.Cleanup(func() {
+		pool.Close()
+		if db.Proxy != nil {
+			_ = db.Proxy.Close()
+		}
+		drop()
 	})
 
-	return store.NewPostgresStore(pool), pool
+	return db
+}
+
+// proxied starts a netsim proxy in front of the database connString names
+// and returns the connection string through it.
+func proxied(connString string, o Options) (string, *netsim.Proxy, error) {
+	u, err := url.Parse(connString)
+	if err != nil {
+		return "", nil, err
+	}
+	target := u.Host
+	if u.Port() == "" {
+		target = net.JoinHostPort(u.Hostname(), "5432")
+	}
+	p, err := netsim.Listen(target, o.RTT/2)
+	if err != nil {
+		return "", nil, err
+	}
+	if o.Watch != nil {
+		p.Watch(o.Watch)
+	}
+	u.Host = p.Addr()
+	return u.String(), p, nil
 }
 
 // ensureTemplate creates and migrates the shared template DB

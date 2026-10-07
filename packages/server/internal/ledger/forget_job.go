@@ -255,9 +255,9 @@ func (l *Ledger) TakeNotices(ctx context.Context, scope Scope, connection uuid.U
 			     WHERE n.id IN (SELECT id FROM v2.agent_notices
 			                     WHERE connection_id = $1 AND delivered_at IS NULL
 			                     ORDER BY created_at, id LIMIT $3 FOR UPDATE SKIP LOCKED)
-			    RETURNING n.id, n.space_id, n.op_id, n.kind, n.refs, n.read_it, n.created_at
+			    RETURNING n.id, n.space_id, n.op_id, n.kind, n.refs, n.read_it, n.created_at, n.autonomy
 			)
-			SELECT t.id, t.space_id, t.op_id, t.kind, t.refs, t.read_it, t.created_at, COALESCE(s.name, '')
+			SELECT t.id, t.space_id, t.op_id, t.kind, t.refs, t.read_it, t.created_at, COALESCE(s.name, ''), COALESCE(t.autonomy, '')
 			  FROM taken t LEFT JOIN v2.spaces s ON s.id = t.space_id
 			 ORDER BY t.created_at, t.id`, connection, via, limit)
 		if err != nil {
@@ -265,7 +265,7 @@ func (l *Ledger) TakeNotices(ctx context.Context, scope Scope, connection uuid.U
 		}
 		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Notice, error) {
 			var n Notice
-			err := r.Scan(&n.ID, &n.SpaceID, &n.OpID, &n.Kind, &n.Refs, &n.ReadIt, &n.At, &n.Space)
+			err := r.Scan(&n.ID, &n.SpaceID, &n.OpID, &n.Kind, &n.Refs, &n.ReadIt, &n.At, &n.Space, &n.Autonomy)
 			return n, err
 		})
 		return err
@@ -285,7 +285,7 @@ func (l *Ledger) PendingNotices(ctx context.Context, scope Scope, connection uui
 	var out []Notice
 	err := l.Read(ctx, scope, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-			SELECT n.id, n.space_id, n.op_id, n.kind, n.refs, n.read_it, n.created_at, COALESCE(s.name, '')
+			SELECT n.id, n.space_id, n.op_id, n.kind, n.refs, n.read_it, n.created_at, COALESCE(s.name, ''), COALESCE(n.autonomy, '')
 			  FROM v2.agent_notices n LEFT JOIN v2.spaces s ON s.id = n.space_id
 			 WHERE n.connection_id = $1 AND n.delivered_at IS NULL
 			 ORDER BY n.created_at, n.id LIMIT 100`, connection)
@@ -294,7 +294,7 @@ func (l *Ledger) PendingNotices(ctx context.Context, scope Scope, connection uui
 		}
 		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Notice, error) {
 			var n Notice
-			err := r.Scan(&n.ID, &n.SpaceID, &n.OpID, &n.Kind, &n.Refs, &n.ReadIt, &n.At, &n.Space)
+			err := r.Scan(&n.ID, &n.SpaceID, &n.OpID, &n.Kind, &n.Refs, &n.ReadIt, &n.At, &n.Space, &n.Autonomy)
 			return n, err
 		})
 		return err

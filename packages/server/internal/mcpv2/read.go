@@ -28,6 +28,9 @@ type readArgs struct {
 	SpaceID    string `json:"space_id"`
 	SessionRef string `json:"session_ref"`
 	Kind       string `json:"kind"`
+	// IncludeNotes (memax_search) also searches the notes the person the
+	// connection works for may read.
+	IncludeNotes bool `json:"include_notes"`
 }
 
 // v2Part is the V2 half of a read that spans both records.
@@ -309,6 +312,26 @@ func (s *Server) searchTool(ctx context.Context, c *handler.MCPToolCall, v *view
 		}
 		writeItems(&b, "Kept", out.Results)
 		s.recordRead(v.p, ledger.ReadSearch, sessionRefOf(c, a.SessionRef), spaces, handler.MCPRecallOutput{Results: out.Results})
+		if a.IncludeNotes && kind == "" {
+			notes, err := s.ledger.SearchNotes(ctx, v.p.Scope.Narrow(ids(spaces)...), ledger.NoteQuery{
+				SpaceIDs: ids(spaces), Text: query, Limit: limit})
+			if err != nil {
+				out.Partial = true
+				s.logReadError(ctx, "search notes", err)
+			}
+			var items []handler.MCPItem
+			for _, n := range notes {
+				items = append(items, noteItem(bySpace[n.SpaceID], n))
+			}
+			if len(items) > 0 {
+				fmt.Fprintf(&b, "Notes (V1 memories, never kept context):\n")
+				for i, it := range items {
+					fmt.Fprintf(&b, "[%d] %s (%s) %s\n", i+1, it.Ref, it.Space, it.Text)
+				}
+				b.WriteString("\n")
+				out.Results = append(out.Results, items...)
+			}
+		}
 	}
 	wg.Wait()
 	text := strings.TrimSpace(b.String())
@@ -621,6 +644,18 @@ func (s *Server) sectionCounts(ctx context.Context, p *v2api.Principal, sp space
 }
 
 // --- Formatting ---
+
+// noteItem is a note as memax_search returns it: its ref, title and the
+// start of its words.
+func noteItem(sp space, n ledger.Note) handler.MCPItem {
+	ref := n.Ref
+	text := strings.TrimSpace(n.Excerpt)
+	if text == "" {
+		text = n.Title
+	}
+	return handler.MCPItem{ID: n.ID.String(), Ref: ref, Record: handler.MCPRecordNote, SpaceID: n.SpaceID.String(),
+		Space: sp.Hub.Name, Title: n.Title, Text: text, Source: n.Path, Score: n.Score, State: "note"}
+}
 
 func (s *Server) hitItem(sp space, h v2recall.Hit) handler.MCPItem {
 	return s.item(sp, h.Ref, h.ID, h.Statement, h.Section, h.Kind, h.State, h.Score)

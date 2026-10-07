@@ -16,6 +16,8 @@ import { createDemoGates } from "./gates-demo";
 import { createDemoDevices } from "./devices-demo";
 import { createDemoDream } from "./dream-demo";
 import { createDemoImports } from "./imports-demo";
+import { DEMO_V1_SPACE } from "./demo-switch-data";
+import { createDemoSwitch } from "./switch-demo";
 import type { LedgerDataSource } from "./source";
 import { syncLineOf, targetStatus } from "./targets";
 import { createDemoTargets } from "./targets-demo";
@@ -77,6 +79,12 @@ export function createDemoSource({
   let nextRef = DEMO_NEXT_REF;
   const allocRef = () => `M-${String(nextRef++).padStart(4, "0")}`;
   const now = () => new Date(DEMO_NOW);
+  // acme-web is on V1 until switched in this session (switch-demo.ts).
+  const switching = createDemoSwitch({ commandDelayMs });
+  const spaces = () => [
+    ...DEMO_SPACES,
+    { ...DEMO_V1_SPACE, onV2: switching.onV2(DEMO_V1_SPACE.slug) },
+  ];
   // Review and Memories (demo-records.ts); their decisions feed the overview.
   const records = createDemoRecords({ now, commandDelayMs, judging, clock });
   const agents = createDemoAgents();
@@ -189,7 +197,7 @@ export function createDemoSource({
     ...agents,
     kind: "demo",
     peek: {
-      spaces: () => [...DEMO_SPACES],
+      spaces,
       overview,
     },
     now,
@@ -200,10 +208,15 @@ export function createDemoSource({
     targets,
     today,
     gates,
-    imports: createDemoImports({ commandDelayMs, nextRef: allocRef }),
+    imports: createDemoImports({
+      commandDelayMs,
+      nextRef: allocRef,
+      switched: switching.onV2,
+    }),
     devices: createDemoDevices({ now, commandDelayMs }),
     dream: createDemoDream({ commandDelayMs }),
-    spaces: async () => [...DEMO_SPACES],
+    switch: switching,
+    spaces: async () => spaces(),
     overview: async (space) => {
       const found = overview(space.slug);
       if (!found) throw new Error(`No demo space "${space.slug}"`);

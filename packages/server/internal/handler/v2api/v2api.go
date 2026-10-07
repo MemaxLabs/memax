@@ -107,7 +107,13 @@ type Route struct {
 var routes = []Route{
 	{"GET", "/v2/spaces", "listSpaces", (*Handler).listSpaces},
 	{"POST", "/v2/spaces", "createSpace", (*Handler).createSpace},
+	{"GET", "/v2/spaces/{space}/switch", "getSpaceSwitch", (*Handler).getSpaceSwitch},
 	{"POST", "/v2/spaces/{space}:switch", "switchSpace", (*Handler).switchSpace},
+	{"GET", "/v2/spaces/{space}/v1-dream-runs", "listV1DreamRuns", (*Handler).listV1DreamRuns},
+	{"GET", "/v2/spaces/{space}/notes", "searchNotes", (*Handler).searchNotes},
+	{"GET", "/v2/spaces/{space}/notes/{note}", "getNote", (*Handler).getNote},
+	{"GET", "/v2/spaces/{space}/notes/{note}/forget-preview", "previewForgetNote", (*Handler).previewForgetNote},
+	{"POST", "/v2/spaces/{space}/notes/{note}:forget", "forgetNote", (*Handler).forgetNote},
 	{"POST", "/v2/spaces/{space}:export", "exportSpace", (*Handler).exportSpace},
 	{"POST", "/v2/spaces/{space}/memories", "rememberMemory", (*Handler).remember},
 	{"GET", "/v2/spaces/{space}/memories", "listMemories", (*Handler).listMemories},

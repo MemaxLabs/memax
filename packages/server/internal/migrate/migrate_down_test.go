@@ -3,11 +3,14 @@ package migrate
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"testing"
 
 	gomigrate "github.com/golang-migrate/migrate/v4"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/testdb/catalock"
 )
 
 // lastV1Version is the newest migration before the V2 record
@@ -53,7 +56,7 @@ func TestV2MigrationsRoundTrip(t *testing.T) {
 	}
 
 	m := newMigrator(t, cs)
-	if err := m.Migrate(lastV1Version); err != nil {
+	if err := migrateDownTo(t, m, lastV1Version); err != nil {
 		t.Fatalf("migrate down to %03d: %v", lastV1Version, err)
 	}
 	if v2, kind, reviews := state(); v2 || kind || !reviews {
@@ -111,7 +114,7 @@ func TestBriefTargetsMigrationStepsBack(t *testing.T) {
 		t.Fatalf("after up: %d of the 031 tables", n)
 	}
 	m := newMigrator(t, cs)
-	if err := m.Migrate(briefTargetsVersion - 1); err != nil {
+	if err := migrateDownTo(t, m, briefTargetsVersion-1); err != nil {
 		t.Fatalf("migrate down to %03d: %v", briefTargetsVersion-1, err)
 	}
 	if n := tables(); n != 0 {
@@ -179,7 +182,7 @@ func TestDecisionGatesMigrationStepsBack(t *testing.T) {
 		return ok
 	}
 	m := newMigrator(t, cs)
-	if err := m.Migrate(decisionGatesVersion - 1); err != nil {
+	if err := migrateDownTo(t, m, decisionGatesVersion-1); err != nil {
 		t.Fatalf("migrate down to %03d: %v", decisionGatesVersion-1, err)
 	}
 	if gates() {
@@ -247,7 +250,7 @@ func TestRule11MigrationStepsBack(t *testing.T) {
 		return ok
 	}
 	m := newMigrator(t, cs)
-	if err := m.Migrate(rule11Version - 1); err != nil {
+	if err := migrateDownTo(t, m, rule11Version-1); err != nil {
 		t.Fatalf("migrate down to %03d: %v", rule11Version-1, err)
 	}
 	if returnFunc() {
@@ -284,4 +287,37 @@ func newMigrator(t *testing.T, cs string) *gomigrate.Migrate {
 	}
 	t.Cleanup(func() { _, _ = m.Close() })
 	return m
+}
+
+// migrateDownTo steps down one migration at a time to version, each
+// step holding the catalog lock alone (catalock): a down migration that
+// drops a role scans every database's catalog, and another test package
+// dropping its database mid-scan made it fail with "cache lookup failed
+// for database".
+func migrateDownTo(t *testing.T, m *gomigrate.Migrate, version uint) error {
+	t.Helper()
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, migrateTestBaseURL())
+	if err != nil {
+		return fmt.Errorf("admin pool: %w", err)
+	}
+	defer admin.Close()
+	for {
+		cur, _, err := m.Version()
+		if err != nil {
+			return err
+		}
+		if cur <= version {
+			return nil
+		}
+		release, err := catalock.Exclusive(ctx, admin)
+		if err != nil {
+			return fmt.Errorf("catalog lock: %w", err)
+		}
+		err = m.Steps(-1)
+		release()
+		if err != nil {
+			return fmt.Errorf("down from %03d: %w", cur, err)
+		}
+	}
 }

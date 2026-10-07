@@ -4,6 +4,11 @@ import {
   DEMO_IMPORT_SPACE,
   demoImportView,
 } from "./demo-imports-data";
+import {
+  DEMO_V1_IMPORT_ID,
+  DEMO_V1_SPACE,
+  demoV1ImportView,
+} from "./demo-switch-data";
 import type {
   BulkOutcome,
   ImportMemoryView,
@@ -17,19 +22,27 @@ import type {
  * keep_one keeps one member and rejects the rest, keep_suggestion keeps
  * new words and rejects the members, keep_all keeps them all and
  * leave_open keeps them as open questions; a bulk keep refuses anything
- * that can't be kept in bulk. Answers at once through `peek*`.
+ * that can't be kept in bulk. Answers at once through `peek*`. acme-web's
+ * V1 import (ReviewImport "From V1") is there once the space switched.
  */
 export function createDemoImports({
   commandDelayMs = 0,
   nextRef,
+  switched = () => true,
 }: {
   commandDelayMs?: number;
   /** A display ID for the suggestion a settlement keeps. */
   nextRef: () => string;
+  /** Whether a space switched to V2 in this session (switch-demo.ts). */
+  switched?: (slug: string) => boolean;
 }): ImportsSource {
-  const views = new Map<string, ImportView>([
+  const all = new Map<string, ImportView>([
     [DEMO_IMPORT_SPACE, demoImportView()],
+    [DEMO_V1_SPACE.slug, demoV1ImportView()],
   ]);
+  const views = {
+    get: (slug: string) => (switched(slug) ? all.get(slug) : undefined),
+  };
   const delay = () =>
     new Promise<void>((r) => setTimeout(r, Math.max(0, commandDelayMs)));
   const viewOf = (slug: string, id: string) => {
@@ -143,4 +156,4 @@ export function createDemoImports({
   };
 }
 
-export { DEMO_IMPORT_ID };
+export { DEMO_IMPORT_ID, DEMO_V1_IMPORT_ID };

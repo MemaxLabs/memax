@@ -322,6 +322,48 @@
   gap: var(--space-2);
 }
 
+/* Switch to V2 (switch-to-v2.tsx): what moves, one row each. */
+.switchNote {
+  margin: 0 0 20px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.moves {
+  margin: 0;
+}
+
+.move {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.move:last-child {
+  border-bottom: 0;
+}
+
+.move dt {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.move dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+.switchAs {
+  padding: 16px 20px;
+}
+
 @media (max-width: 1023px) {
   .grid,
   .emptyGrid {
@@ -332,6 +374,18 @@
 /* MobileToday.png: the date, one headline, the edition, what's waiting
  * and Start review; the rest of the board waits for a wider screen. */
 @media (max-width: 639px) {
+  .switchHead:global(.mx-page-head) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    margin-bottom: 0;
+  }
+
+  .move {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
   .page:global(.mx-page) {
     display: flex;
     flex-direction: column;

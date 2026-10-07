@@ -205,6 +205,31 @@ const fakeClient = {
         },
       ),
     },
+    notes: {
+      search: vi.fn(async (spaceId: string, opts: { q: string }) => ({
+        items:
+          spaceId === V2_CONNECTED && opts.q.includes("lighthouse")
+            ? [
+                {
+                  id: "55555555-5555-4555-8555-555555555555",
+                  ref: "N-0012",
+                  space_id: V2_CONNECTED,
+                  owner_id: "owner",
+                  origin: "memory",
+                  title: "Lamps",
+                  excerpt: "The lighthouse lamps were swapped in V1 days.",
+                  author_kind: "agent",
+                  state: "active",
+                  disposition: "fold",
+                  length: 44,
+                  created_at: "2026-09-01T00:00:00Z",
+                  updated_at: "2026-09-01T00:00:00Z",
+                },
+              ]
+            : [],
+        has_more: false,
+      })),
+    },
     notices: {
       list: vi.fn(async () => ({
         notices: state.notices.filter((n) => !state.acked.includes(n.id)),
@@ -653,6 +678,62 @@ describe("the stdio MCP server", () => {
     const next = await client.callTool({ name: "memax_hubs", arguments: {} });
     expect(textOf(next)).not.toContain("Forgotten in");
     expect(next._meta?.["app.memax/notices"]).toBeUndefined();
+  });
+
+  it("searches a space's notes only when asked to include them", async () => {
+    const client = await connect();
+    const plain = await client.callTool({
+      name: "memax_search",
+      arguments: { query: "lighthouse" },
+    });
+    expect(textOf(plain)).not.toContain("N-0012");
+    expect(fakeClient.v2.notes.search).not.toHaveBeenCalled();
+
+    const res = await client.callTool({
+      name: "memax_search",
+      arguments: { query: "lighthouse", include_notes: true },
+    });
+    expect(textOf(res)).toContain(
+      "[1] N-0012 (memax-v2) The lighthouse lamps were swapped in V1 days.",
+    );
+    const results = (res.structuredContent as { results: unknown[] }).results;
+    expect(results).toContainEqual(
+      expect.objectContaining({
+        ref: "N-0012",
+        record: "note",
+        state: "note",
+        space: "memax-v2",
+      }),
+    );
+  });
+
+  it("tells the agent once that a space moved to V2, at its level", async () => {
+    state.notices = [
+      {
+        id: "n2",
+        space_id: V2_CONNECTED,
+        kind: "switched",
+        autonomy: "propose",
+        refs: [],
+        read_it: false,
+        at: "2026-10-07T09:30:00Z",
+      },
+    ];
+    const client = await connect();
+    const res = await client.callTool({ name: "memax_hubs", arguments: {} });
+    const told =
+      "memax-v2 moved to Memax V2. What you save there is now proposed, and a person keeps it in Review; recall serves what people kept. A person can change what you may do in Agents.";
+    expect(textOf(res)).toContain(told);
+    expect(res._meta?.["app.memax/notices"]).toEqual([
+      {
+        kind: "switched",
+        space_id: V2_CONNECTED,
+        space: "memax-v2",
+        refs: [],
+        message: told,
+      },
+    ]);
+    expect(state.acked).toEqual(["n2"]);
   });
 
   it("tells a person's session nothing (notices are agents')", async () => {

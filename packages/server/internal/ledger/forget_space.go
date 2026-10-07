@@ -569,7 +569,8 @@ func (w *writer) reapplyForget(ctx context.Context, c *ReapplyForget) (Result, e
 		return res, w.record(ctx, res, uuid.Nil)
 	}
 
-	// A memory op: the primary first, so the carried tombstones' op exists.
+	// A memory op (or a note's): the primary first, so the carried
+	// tombstones' op exists.
 	op := &forgetOp{id: c.Op.OpID, kind: ObjectMemory}
 	type back struct {
 		m       *Memory
@@ -577,7 +578,17 @@ func (w *writer) reapplyForget(ctx context.Context, c *ReapplyForget) (Result, e
 		carried *Carried
 	}
 	var todo []back
+	notePurged := false
 	for _, e := range c.Op.Entries {
+		if e.ObjectKind == ObjectNote {
+			op.kind, op.primary = ObjectNote, e.Ref
+			done, err := w.reapplyNote(ctx, sp, op, e)
+			if err != nil {
+				return Result{}, err
+			}
+			notePurged = notePurged || done
+			continue
+		}
 		m, err := loadMemory(ctx, w.tx, w.meta.Scope, e.ObjectID, true)
 		if errors.Is(err, ErrNotFound) {
 			continue
@@ -603,7 +614,7 @@ func (w *writer) reapplyForget(ctx context.Context, c *ReapplyForget) (Result, e
 		op.refs = append(op.refs, m.Ref)
 		op.ids = append(op.ids, m.ID)
 	}
-	if len(todo) == 0 {
+	if len(todo) == 0 && !notePurged {
 		return Result{Outcome: OutcomeApplied, Policy: dec, Unchanged: true}, nil
 	}
 	files, err := w.filesHolding(ctx, sp.ID, op.refs)
@@ -623,6 +634,76 @@ func (w *writer) reapplyForget(ctx context.Context, c *ReapplyForget) (Result, e
 	}
 	res := Result{Outcome: OutcomeApplied, Policy: dec, Receipts: op.receipts}
 	return res, w.record(ctx, res, uuid.Nil)
+}
+
+// reapplyNote forgets a note again from its forget-ledger entry, when a
+// restore brought its V1 row back: a forgot receipt by Memax, the purge,
+// and its tombstone (the ledger's id) if that is missing too. A note the
+// restore took back before the switch numbered it is found by its V1
+// memory's id (= the note's); a persona's or agent config's can't be, and
+// is logged.
+func (w *writer) reapplyNote(ctx context.Context, sp spaceRow, op *forgetOp, e ForgetLedgerEntry) (bool, error) {
+	var stream int
+	var forgotten *time.Time
+	var origin NoteOrigin
+	var v1 uuid.UUID
+	numbered := true
+	err := w.tx.QueryRow(ctx, `
+		SELECT stream_version, forgotten_at, origin, v1_id FROM v2.note_refs WHERE note_id = $1 AND space_id = $2 FOR UPDATE`,
+		e.ObjectID, sp.ID).Scan(&stream, &forgotten, &origin, &v1)
+	switch {
+	case errNoRows(err):
+		numbered, origin, v1 = false, NoteFromMemory, e.ObjectID
+	case err != nil:
+		return false, fmt.Errorf("ledger: reapply %s: %w", e.Ref, err)
+	}
+	var left bool
+	if err := w.tx.QueryRow(ctx, `SELECT v2.note_words_left($1, $2)`, string(origin), v1).Scan(&left); err != nil {
+		return false, fmt.Errorf("ledger: reapply %s: %w", e.Ref, err)
+	}
+	tomb, err := w.tombstoneExists(ctx, e.ObjectID)
+	if err != nil {
+		return false, err
+	}
+	if !left && (forgotten != nil || !numbered) && tomb {
+		return false, nil
+	}
+	rc := w.objectReceipt(sp, ObjectNote, e.ObjectID, e.Ref, ActionForgot, stream+1, "")
+	if err := insertReceipt(ctx, w.tx, &rc); err != nil {
+		return false, err
+	}
+	op.receipts = append(op.receipts, rc)
+	op.refs = append(op.refs, e.Ref)
+	op.ids = append(op.ids, e.ObjectID)
+	if !numbered {
+		if !left {
+			return false, nil // nothing came back, and nothing to number
+		}
+		_, seq, _ := ParseRef(e.Ref)
+		if _, err := w.tx.Exec(ctx, `
+			INSERT INTO v2.note_refs (note_id, tenant_id, space_id, seq, origin, v1_id, disposition, receipt_id, last_receipt_id)
+			VALUES ($1, $2, $3, $4, 'memory', $1, 'fold', $5, $5)`, e.ObjectID, sp.TenantID, sp.ID, seq, rc.ID); err != nil {
+			return false, fmt.Errorf("ledger: reapply %s: %w", e.Ref, err)
+		}
+	}
+	if left {
+		if _, err := w.tx.Exec(ctx, `SELECT v2.purge_note_words($1)`, e.ObjectID); err != nil {
+			return false, fmt.Errorf("ledger: reapply %s: %w", e.Ref, err)
+		}
+	}
+	if forgotten == nil {
+		if _, err := w.tx.Exec(ctx, `
+			UPDATE v2.note_refs SET forgotten_at = now(), stream_version = $2, last_receipt_id = $3, updated_at = now()
+			 WHERE note_id = $1 AND space_id = $4`, e.ObjectID, rc.StreamVersion, rc.ID, sp.ID); err != nil {
+			return false, fmt.Errorf("ledger: reapply %s: %w", e.Ref, err)
+		}
+	}
+	if !tomb {
+		if err := w.insertTombstone(ctx, sp, op, e.ObjectID, e.Ref, ObjectNote, nil, rc, nil, 0, TombstoneGone{}); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 // alreadyPurged reports whether a memory is forgotten, without words and

@@ -40,6 +40,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore"
 	"github.com/MemaxLabs/memax/packages/server/internal/sanitize"
 	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
+	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
 
@@ -58,6 +59,7 @@ type MemoriesHandler struct {
 	store         store.Store
 	events        events.Publisher
 	v2            V2Forgetter             // nil = V2 off
+	modes         *spacemode.Resolver     // nil = V2 off: no space is on V2
 	embedder      embed.Embedder          // nil = no embeddings, keyword search only
 	summarizer    *summarize.Summarizer   // nil = no summaries
 	extractor     *extract.Extractor      // nil = no fact extraction
@@ -344,6 +346,13 @@ func (h *MemoriesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		if err != nil || hub.OwnerID != ownerID {
 			writeError(w, http.StatusForbidden, "no_write_access", "Write access to this hub is required")
 			return
+		}
+	}
+	// A push into a space on V2 through V1's API (an old CLI) still saves,
+	// as a note: Dream folds it into proposals for Review. Say so.
+	if h.modes != nil {
+		if on, err := h.modes.IsV2(r.Context(), hubID); err == nil && on {
+			setMemaxWarningHeader(w, memaxWarningSpaceOnV2)
 		}
 	}
 	// Related-context enrichment requires read access to the destination hub.

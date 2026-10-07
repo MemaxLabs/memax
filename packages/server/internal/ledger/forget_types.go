@@ -386,19 +386,25 @@ const (
 const (
 	NoticeForgotten      = "forgotten"
 	NoticeSpaceForgotten = "space_forgotten"
+	// NoticeSwitched: a space the agent is connected to switched to V2
+	// (switch.go), and Autonomy is what it may do there now.
+	NoticeSwitched = "switched"
 )
 
 // Notice is something an agent connection is told once, on its next MCP
-// response: memories forgotten since it read them.
+// response: memories forgotten since it read them, or a space it is
+// connected to switching to V2.
 type Notice struct {
 	ID      uuid.UUID `json:"id"`
 	SpaceID uuid.UUID `json:"space_id"`
-	OpID    uuid.UUID `json:"op_id"`
-	Kind    string    `json:"kind"`
-	Refs    []string  `json:"refs"`
-	ReadIt  bool      `json:"read_it"`
-	At      time.Time `json:"at"`
-	Space   string    `json:"space,omitempty"`
+	// OpID is the Forget (its tombstone); nil for a switch.
+	OpID     *uuid.UUID      `json:"op_id,omitempty"`
+	Kind     string          `json:"kind"`
+	Refs     []string        `json:"refs"`
+	ReadIt   bool            `json:"read_it"`
+	Autonomy policy.Autonomy `json:"autonomy,omitempty"`
+	At       time.Time       `json:"at"`
+	Space    string          `json:"space,omitempty"`
 }
 
 // QueueForget is the River queue forget propagation runs on.

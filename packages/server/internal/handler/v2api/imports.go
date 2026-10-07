@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -54,43 +53,6 @@ func (h *Handler) createSpace(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Idempotent-Replayed", "true")
 	}
 	writeData(w, http.StatusCreated, sp)
-}
-
-// POST /v2/spaces/{space}:switch
-func (h *Handler) switchSpace(w http.ResponseWriter, r *http.Request) {
-	p, _, e := h.commandStart(r)
-	if e != nil {
-		writeError(w, e)
-		return
-	}
-	g, e := h.space(r, p, r.PathValue("space"))
-	if e != nil {
-		writeError(w, e)
-		return
-	}
-	sp, err := h.ledger.SwitchSpace(r.Context(), p.actor, p.scope, g.SpaceID)
-	if err != nil {
-		writeError(w, h.spaceError(r, err))
-		return
-	}
-	writeData(w, http.StatusOK, sp)
-}
-
-// spaceError maps CreateSpace's and SwitchSpace's errors.
-func (h *Handler) spaceError(r *http.Request, err error) *apiError {
-	var refused *ledger.SpaceRefusedError
-	var notes *ledger.SpaceHasNotesError
-	switch {
-	case errors.As(err, &refused):
-		return refusal(refused.Decision)
-	case errors.As(err, &notes):
-		return &apiError{status: http.StatusConflict, code: codeSpaceHasNotes, message: notes.Error(),
-			details: &errorDetails{Notes: notes.Notes}}
-	case errors.Is(err, ledger.ErrSlugTaken):
-		return &apiError{status: http.StatusConflict, code: codeSlugTaken, message: err.Error(),
-			details: &errorDetails{Field: "slug"}}
-	}
-	return h.fromLedger(r, err)
 }
 
 type importItemInput struct {

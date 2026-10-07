@@ -58,6 +58,14 @@ export function getPublicClient(): Memax {
   return publicInstance;
 }
 
+/**
+ * Marks a warning as said already: a command that explains it in its own
+ * words (memax agents sync, for space_on_v2) calls this first.
+ */
+export function quietWarning(warning: string): void {
+  seenWarnings.add(warning);
+}
+
 /** Reset the cached client (useful after login/logout) */
 export function resetClient(): void {
   instance = null;
@@ -148,6 +156,14 @@ function printApiWarning(warning: string): void {
     return;
   }
   seenWarnings.add(warning);
+  if (warning === "space_on_v2") {
+    console.error(
+      chalk.yellow(
+        "  This space is on V2: what you push here is kept as a note, and Dream proposes from it for Review.",
+      ),
+    );
+    return;
+  }
   if (warning === "agent_identity_claim_rejected") {
     console.error(
       chalk.yellow(

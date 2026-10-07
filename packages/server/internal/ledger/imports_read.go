@@ -114,7 +114,7 @@ type ImportProgress struct {
 
 const importColumns = `id, tenant_id, space_id, actor_kind, actor_id, COALESCE(agent, ''), COALESCE(client, ''),
 	files, skipped, items_total, uploaded_at, checked_at, COALESCE(check_state, ''), COALESCE(check_tier, ''),
-	COALESCE(check_model, ''), created_at`
+	COALESCE(check_model, ''), created_at, origin`
 
 func scanImport(row pgx.Row) (*Import, error) {
 	var imp Import
@@ -122,7 +122,7 @@ func scanImport(row pgx.Row) (*Import, error) {
 	var state string
 	if err := row.Scan(&imp.ID, &imp.TenantID, &imp.SpaceID, &imp.ActorKind, &imp.ActorID, &imp.Agent, &imp.Client,
 		&files, &skipped, &imp.Counts.Items, &imp.UploadedAt, &imp.Check.CheckedAt, &state, &imp.Check.Tier,
-		&imp.Check.Model, &imp.CreatedAt); err != nil {
+		&imp.Check.Model, &imp.CreatedAt, &imp.Origin); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal(files, &imp.Files); err != nil {

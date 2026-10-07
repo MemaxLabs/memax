@@ -33,6 +33,8 @@ export interface InitState {
   connected: Array<{ agent: string; space: string; autonomy: string }>;
   settled: Array<{ n: number; choice: string }>;
   kept: string[];
+  /** V1 memories a space still on V1 holds, by slug (the switch preview). */
+  v1Notes: Record<string, number>;
 }
 
 function fail(
@@ -54,6 +56,7 @@ export function installInit(fake: FakeV2): InitState {
     connected: [],
     settled: [],
     kept: [],
+    v1Notes: {},
   };
   let seq = 0;
   const space = (key: string) =>
@@ -201,6 +204,61 @@ export function installInit(fake: FakeV2): InitState {
     };
   };
 
+  // The Switch to V2 as the server answers it: a space's V1 memories are
+  // st.v1Notes[slug] (none by default).
+  const switchView = (sp: V2.Space): V2.SpaceSwitch => {
+    const total = st.v1Notes[sp.slug] ?? 0;
+    return {
+      space: sp,
+      state: sp.v2_enabled_at ? "switched" : "v1",
+      step: sp.v2_enabled_at ? "done" : "space",
+      preview: {
+        kind: sp.kind,
+        kinds: [sp.kind],
+        members: [],
+        notes: {
+          total,
+          person: total,
+          agent: 0,
+          candidates: total,
+          fold: 0,
+          kept: 0,
+          long: 0,
+          secret: 0,
+          archived: 0,
+          format: 0,
+          external: 0,
+          seeds: 0,
+        },
+        personas: 0,
+        configs: [],
+        targets: [],
+        agents: [],
+        gates: 0,
+        dream_runs: 0,
+        empty: total === 0,
+      },
+      progress: {
+        notes: 0,
+        personas: 0,
+        configs: 0,
+        targets: [],
+        proposed: 0,
+        folded: 0,
+        existing: 0,
+        refused: 0,
+        imports: [],
+        connected: 0,
+        already_connected: 0,
+        notified: 0,
+        gates_moved: 0,
+        gates_left: 0,
+      },
+      attempts: 0,
+      background: false,
+    };
+  };
+
   const keep = (m: V2.Memory): string | null => {
     if (m.lifecycle !== "proposed") return "invalid_transition";
     if (m.flags.includes("conflict")) return "in_conflict";
@@ -222,13 +280,21 @@ export function installInit(fake: FakeV2): InitState {
       return { status: 201, data: sp };
     }
     if (
+      method === "GET" &&
+      (m = path.match(/^\/v2\/spaces\/([^/]+)\/switch$/))
+    ) {
+      const sp = space(m[1]);
+      if (!sp) return null;
+      return { status: 200, data: switchView(sp) };
+    }
+    if (
       method === "POST" &&
       (m = path.match(/^\/v2\/spaces\/([^/]+):switch$/))
     ) {
       const sp = space(m[1]);
       if (!sp) return null;
       sp.v2_enabled_at ??= now();
-      return { status: 200, data: sp };
+      return { status: 200, data: switchView(sp) };
     }
     if (
       (m = path.match(
@@ -431,6 +497,7 @@ export function installInit(fake: FakeV2): InitState {
           conflicts: 0,
         },
         check: { state: "pending" },
+        origin: "init",
         created_at: now(),
       },
       items: [],

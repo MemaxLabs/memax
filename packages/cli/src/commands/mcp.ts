@@ -30,6 +30,7 @@ import {
   v2Get,
   v2HubLines,
   v2List,
+  v2Notes,
   v2Push,
   v2Recall,
   v2Space,
@@ -188,7 +189,19 @@ async function recallTool(
       );
     }
 
-    const results = [...(v2?.results ?? []), ...recalledItems(v1)];
+    // memax_search include_notes: the notes the person may read.
+    const notes =
+      search &&
+      args.include_notes === true &&
+      readable.length > 0 &&
+      !str(args.kind)
+        ? await v2Notes(readable, query, limit)
+        : undefined;
+    const results = [
+      ...(v2?.results ?? []),
+      ...(notes?.results ?? []),
+      ...recalledItems(v1),
+    ];
     const structured: Record<string, unknown> = { results };
     if (!search && v2?.proposals.length) structured.proposals = v2.proposals;
     if (!search && v2?.digest.length) structured.digest = v2.digest;
@@ -196,6 +209,7 @@ async function recallTool(
     if (v2) structured.lexical_only = true;
 
     let text = v2?.text ?? "";
+    if (notes?.text) text = text ? `${text}\n\n${notes.text}` : notes.text;
     if (news?.text) text = text ? `${text}\n\n${news.text}` : news.text;
     if (v1.length) {
       if (text) text += "\n\nFrom spaces not on V2 yet:\n";

@@ -51,6 +51,7 @@ export function toImportSummary(imp: V2.Import): ImportSummary {
     })),
     counts: { ...imp.counts },
     check: imp.check.state,
+    origin: imp.origin,
   };
 }
 

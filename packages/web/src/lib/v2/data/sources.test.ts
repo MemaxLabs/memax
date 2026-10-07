@@ -37,7 +37,12 @@ describe("the demo source", () => {
       "memax-v2",
       "memax-web",
       "memax-team",
+      // Still on V1, until switched (switch-demo.ts).
+      "acme-web",
     ]);
+    expect(demo.peek?.spaces().find((s) => s.slug === "acme-web")?.onV2).toBe(
+      false,
+    );
     expect(demo.peek?.overview("memax-v2")?.waiting).toBe(5);
     expect(demo.viewer?.initials).toBe("ZZ");
     expect(demo.now().toISOString()).toBe("2026-10-05T21:40:00.000Z");

@@ -60,6 +60,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2switch"
 )
 
 // App owns the worker process dependencies and River client.
@@ -303,6 +304,10 @@ func New(ctx context.Context) (*App, error) {
 	}
 	forget.AddWorkers(workers, forget.New(v2Ledger, forgetCompiler, forgetBus, slog.Default()))
 
+	// V2 Switch to V2 (plan 25 §10, epic 2.8): space_switch, queued when a
+	// space with V1 memories to import switches, runs the switch's steps
+	// through the ledger, resuming at a failed step.
+	v2switch.AddWorkers(workers, v2Ledger)
 	// V2 Dream editions (plan 25 §5.10): a catch-up sweep every
 	// DREAM_SWEEP_INTERVAL queues each V2 space due in its owner's local
 	// night (no River Pro), and dream_space runs the phases on the DREAM_*
@@ -2097,6 +2102,8 @@ func workerRiverConfig(workers *river.Workers, periodicJobs []*river.PeriodicJob
 			ledger.QueueSeal: {MaxWorkers: sealer.MaxWorkers},
 			// Forget propagation: a minute's SLO, so its own slots.
 			ledger.QueueForget: {MaxWorkers: forget.MaxWorkers},
+			// Switches to V2: rare and long, kept off the default queue.
+			ledger.QueueSwitch: {MaxWorkers: v2switch.MaxWorkers},
 			// Dream editions: a few spaces at a time, mostly waiting on the model.
 			ledger.QueueDream: {MaxWorkers: v2dream.MaxWorkers},
 		},

@@ -195,6 +195,11 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     forgetRequested: "{actor}请你忘记 {ref}。",
     forgetDeclined: "{actor}保留了 {ref}，没有忘记。",
     exported: "{actor}把这个空间的全部记录连同回执导出为 Markdown。",
+    noted:
+      "{actor}把这个空间切换到 V2。它在 V1 的内容成了笔记，留给审阅和 Dream。",
+    switched:
+      "{actor}把这个空间切换到 V2。Agent 现在读取的是人在这里保留的内容。",
+    switchedBack: "{actor}把这个空间切换回 V1。",
     other: "{actor}改动了 {ref}。",
   },
 };

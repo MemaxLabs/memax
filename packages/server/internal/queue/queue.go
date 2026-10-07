@@ -24,6 +24,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/judge"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2switch"
 )
 
 // Client wraps river.Client for job insertion. Used by the API server.
@@ -283,15 +284,17 @@ func InsertClient(pool *pgxpool.Pool) (*Client, error) {
 	river.AddWorker(workers, &stubCopySeedMemoriesWorker{})
 	river.AddWorker(workers, &stubBoardSweepWorker{})
 	river.AddWorker(workers, &stubBoardRefreshWorker{})
-	// V2 compile path, judge, embeddings, Forget and Dream: the ledger
-	// InsertTx-es compile_target, judge_proposal, judge_import,
-	// index_memory and forget_propagate jobs through this client
-	// (ledger.WithJobs), and Dream's run now inserts dream_space. A kind
-	// missing here fails the command that inserts it, on the API only.
+	// V2 compile path, judge, embeddings, Forget, Dream and the switch to
+	// V2: the ledger InsertTx-es compile_target, judge_proposal,
+	// judge_import, index_memory, forget_propagate and space_switch jobs
+	// through this client (ledger.WithJobs), and Dream's run now inserts
+	// dream_space. A kind missing here fails the command that inserts it,
+	// on the API only.
 	compile.AddWorkers(workers, nil, nil)
 	judge.AddWorkers(workers, nil)
 	v2index.AddWorkers(workers, nil, nil)
 	forget.AddWorkers(workers, nil)
+	v2switch.AddWorkers(workers, nil)
 	v2dream.AddWorkers(workers, nil, nil)
 
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{

@@ -17,6 +17,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 )
 
@@ -40,14 +41,28 @@ type v2Part struct {
 // readTarget narrows a read to the space it names, when that space is on
 // V2: v1 = false then means the V1 tools have nothing to add.
 func (v *view) readTarget(ctx context.Context, ref string) (spaces []space, v1 bool, res *mcp.CallToolResult) {
+	// The hub the call names is resolved while the caller's principal is:
+	// neither depends on the other, and each round trip to Postgres is
+	// about 24 ms in production.
+	var hub model.HubWithRole
+	var err error
+	resolved := make(chan struct{})
+	if ref != "" {
+		go func() {
+			defer close(resolved)
+			hub, err = v.hub(ref)
+		}()
+	} else {
+		close(resolved)
+	}
 	readable, res := v.readable(ctx)
+	<-resolved
 	if res != nil {
 		return nil, false, res
 	}
 	if ref == "" {
 		return readable, true, nil
 	}
-	hub, err := v.hub(ref)
 	if err != nil || !v.onV2(hub.Hub.ID) {
 		return nil, true, nil // a V1 hub (or none): V1 answers
 	}

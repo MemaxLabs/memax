@@ -24,7 +24,7 @@ const ctx = (locale: "en" | "zh"): TombstoneContext => {
   return {
     rc: t.ledger.records,
     app: t.ledger.app,
-    timeZone: "UTC",
+    timeZone: "America/Vancouver",
     locale,
     you: { initials: "ZZ" },
     agentName: (key) => names[key] ?? key,

@@ -17,6 +17,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/observability"
 	"github.com/MemaxLabs/memax/packages/server/internal/serverapp"
+	"github.com/MemaxLabs/memax/packages/server/internal/workerapp"
 )
 
 func main() {
@@ -143,16 +144,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Mark server as ready — health endpoint now returns 200
-	ready.Store(true)
-	slog.Info("memax API server ready", "addr", addr)
-
 	// Block until SIGTERM/SIGINT (Fly's stop signal), then drain:
 	// stop accepting, let in-flight requests finish (30s budget, same
 	// as the worker), then release app resources. Mirrors
 	// cmd/worker/main.go's NotifyContext pattern.
 	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Staging runs the worker in this process (see worker.go). It starts
+	// after migrations, which serverapp.Configure ran, and stops after
+	// the HTTP drain below.
+	var worker *workerapp.App
+	if embeddedWorkerEnabled() {
+		worker, err = startEmbeddedWorker(sigCtx)
+		if err != nil {
+			slog.Error("failed to start embedded worker", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	// Mark server as ready — health endpoint now returns 200
+	ready.Store(true)
+	slog.Info("memax API server ready", "addr", addr)
+
 	<-sigCtx.Done()
 	slog.Info("shutdown signal received, draining")
 	ready.Store(false)
@@ -160,6 +174,11 @@ func main() {
 	defer cancelDrain()
 	if err := srv.Shutdown(drainCtx); err != nil {
 		slog.Warn("http drain incomplete", "error", err)
+	}
+	if worker != nil {
+		workerCtx, cancelWorker := context.WithTimeout(context.Background(), 30*time.Second)
+		worker.Shutdown(workerCtx)
+		cancelWorker()
 	}
 	appCtx, cancelApp := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelApp()

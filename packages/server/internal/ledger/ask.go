@@ -139,6 +139,10 @@ func (l *Ledger) meter(ctx context.Context, scope Scope, fn func(pgx.Tx) error) 
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// fn writes one statement: its COMMIT goes in the same round trip.
+	if t, ok := tx.(*scopedTx); ok {
+		t.commitWithNext()
+	}
 	if err := fn(tx); err != nil {
 		return mapDBError(fmt.Errorf("ledger: ask meter: %w", err))
 	}

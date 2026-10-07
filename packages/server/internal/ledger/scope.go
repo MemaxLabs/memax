@@ -44,6 +44,11 @@ type SpaceGrant struct {
 	// Actor.Autonomy.
 	Autonomy    policy.Autonomy
 	AgentStatus policy.AgentStatus
+	// Slug and Name are the space's, as ResolveUserScope and SpaceScope
+	// read them with the grant: /v2 resolves a slug, and Ask names the
+	// space, without another round trip. Empty in a scope built otherwise.
+	Slug string
+	Name string
 }
 
 // Grant returns the grant for a space, if the scope includes it.
@@ -105,7 +110,7 @@ type Querier interface {
 func ResolveUserScope(ctx context.Context, db Querier, userID uuid.UUID) (Scope, error) {
 	rows, err := db.Query(ctx, `
 		SELECT h.id, h.tenant_id, h.space_kind,
-		       CASE WHEN h.owner_id = $1 THEN 'owner' ELSE m.role END
+		       CASE WHEN h.owner_id = $1 THEN 'owner' ELSE m.role END, h.slug, h.name
 		  FROM public.hubs h
 		  LEFT JOIN public.hub_members m ON m.hub_id = h.id AND m.user_id = $1
 		 WHERE h.owner_id = $1 OR m.user_id = $1
@@ -118,7 +123,7 @@ func ResolveUserScope(ctx context.Context, db Querier, userID uuid.UUID) (Scope,
 	for rows.Next() {
 		var g SpaceGrant
 		var kind, v1Role string
-		if err := rows.Scan(&g.SpaceID, &g.TenantID, &kind, &v1Role); err != nil {
+		if err := rows.Scan(&g.SpaceID, &g.TenantID, &kind, &v1Role, &g.Slug, &g.Name); err != nil {
 			return Scope{}, fmt.Errorf("ledger: resolve scope: %w", err)
 		}
 		g.Kind = policy.SpaceKind(kind)

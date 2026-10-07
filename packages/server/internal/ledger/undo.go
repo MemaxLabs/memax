@@ -208,7 +208,9 @@ func (w *writer) writeUndo(ctx context.Context, sp spaceRow, receipts []Receipt)
 	if w.meta.Actor.Kind != policy.ActorPerson {
 		actorKind, actorID = string(policy.ActorMemax), nil
 	}
-	if _, err := w.tx.Exec(ctx, `
+	// Nothing reads the insert's result: it goes out with the next
+	// statement (execDeferred).
+	if err := execDeferred(ctx, w.tx, `
 		INSERT INTO v2.undo_entries (id, tenant_id, space_id, command, actor_kind, actor_id, receipt_ids, memory_ids,
 		                             inverse, expires_at, receipt_id, last_receipt_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now() + make_interval(secs => $10), $11, $11)`,

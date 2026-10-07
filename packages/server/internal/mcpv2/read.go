@@ -17,6 +17,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 )
 
@@ -40,14 +41,28 @@ type v2Part struct {
 // readTarget narrows a read to the space it names, when that space is on
 // V2: v1 = false then means the V1 tools have nothing to add.
 func (v *view) readTarget(ctx context.Context, ref string) (spaces []space, v1 bool, res *mcp.CallToolResult) {
+	// The hub the call names is resolved while the caller's principal is:
+	// neither depends on the other, and each round trip to Postgres is
+	// about 24 ms in production.
+	var hub model.HubWithRole
+	var err error
+	resolved := make(chan struct{})
+	if ref != "" {
+		go func() {
+			defer close(resolved)
+			hub, err = v.hub(ref)
+		}()
+	} else {
+		close(resolved)
+	}
 	readable, res := v.readable(ctx)
+	<-resolved
 	if res != nil {
 		return nil, false, res
 	}
 	if ref == "" {
 		return readable, true, nil
 	}
-	hub, err := v.hub(ref)
 	if err != nil || !v.onV2(hub.Hub.ID) {
 		return nil, true, nil // a V1 hub (or none): V1 answers
 	}
@@ -63,11 +78,14 @@ func (v *view) readTarget(ctx context.Context, ref string) (spaces []space, v1 b
 func (s *Server) recall(ctx context.Context, c *handler.MCPToolCall, v *view) (*mcp.CallToolResult, bool) {
 	var a readArgs
 	_ = json.Unmarshal(c.Args, &a)
+	query := strings.TrimSpace(a.Query)
+	// The query embedding needs only the text: it runs while the caller's
+	// principal and spaces resolve.
+	emb := s.search.Embed(ctx, query)
 	spaces, withV1, res := v.readTarget(ctx, firstNonEmpty(a.HubID, a.SpaceID))
 	if res != nil {
 		return res, true
 	}
-	query := strings.TrimSpace(a.Query)
 	limit := a.Limit
 	if limit <= 0 {
 		limit = 5
@@ -83,13 +101,13 @@ func (s *Server) recall(ctx context.Context, c *handler.MCPToolCall, v *view) (*
 		}()
 	}
 	p := v.p
-	part := s.recallV2(ctx, c, p, spaces, query, limit, sessionRefOf(c, a.SessionRef))
+	part := s.recallV2(ctx, c, p, spaces, query, emb, limit, sessionRefOf(c, a.SessionRef))
 	wg.Wait()
 	return s.compose(part, v1, query == ""), true
 }
 
 // recallV2 reads the V2 spaces within the recall budget.
-func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.Principal, spaces []space, query string, limit int, sessionRef string) v2Part {
+func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.Principal, spaces []space, query string, emb *v2recall.Embedding, limit int, sessionRef string) v2Part {
 	part := v2Part{out: handler.MCPRecallOutput{Results: []handler.MCPItem{}, LexicalOnly: true}}
 	if len(spaces) == 0 {
 		return part
@@ -103,6 +121,31 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 	}
 	since := lastSeen(p)
 	var b strings.Builder
+
+	// What the answer carries beside the search (or the digest) doesn't
+	// depend on it, so it's read at the same time: the session's own
+	// proposals with the return notices in one round trip, and the
+	// decision gates' news. Each round trip is about 24 ms in production.
+	var side sync.WaitGroup
+	extrasQ := v2recall.ExtrasQuery{Spaces: ids(spaces), Since: since}
+	if sessionRef != "" && p.Actor.Kind == policy.ActorAgent {
+		extrasQ.Proposer, extrasQ.SessionRef, extrasQ.ProposalLimit = p.Actor.ID, sessionRef, 10
+	}
+	var extras v2recall.Extras
+	var extrasErr error
+	side.Add(1)
+	go func() {
+		defer side.Done()
+		extras, extrasErr = s.search.Extras(ctx, scope, extrasQ)
+	}()
+	var news gateNews
+	if p.Actor.Kind == policy.ActorAgent && p.Connection != nil {
+		side.Add(1)
+		go func() {
+			defer side.Done()
+			news = s.takeGateNews(ctx, p, scope, query == "")
+		}()
+	}
 
 	if query == "" {
 		refs := make([]SpaceRef, len(spaces))
@@ -120,7 +163,8 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 			writeDigest(&b, sd)
 		}
 	} else {
-		found, err := s.search.Search(ctx, scope, v2recall.Query{Text: query, Filter: v2recall.Filter{Spaces: ids(spaces)}, Limit: limit})
+		found, err := s.search.Search(ctx, scope, v2recall.Query{Text: query, Filter: v2recall.Filter{Spaces: ids(spaces)}, Limit: limit,
+			Embedding: emb})
 		if err != nil {
 			part.out.Partial = true
 			s.logReadError(ctx, "search", err)
@@ -135,13 +179,13 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 		writeItems(&b, "Kept", part.out.Results)
 	}
 
-	if sessionRef != "" && p.Actor.Kind == policy.ActorAgent {
-		proposals, err := s.search.SessionProposals(ctx, scope, ids(spaces), p.Actor.ID, sessionRef, 10)
-		if err != nil {
-			part.out.Partial = true
-			s.logReadError(ctx, "session proposals", err)
-		}
-		for _, h := range proposals {
+	side.Wait()
+	if extrasErr != nil {
+		part.out.Partial = true
+		s.logReadError(ctx, "session proposals and notices", extrasErr)
+	}
+	if extrasQ.Proposer != uuid.Nil {
+		for _, h := range extras.Proposals {
 			part.out.Proposals = append(part.out.Proposals, s.hitItem(bySpace[h.SpaceID], h))
 		}
 		if len(part.out.Proposals) > 0 {
@@ -153,13 +197,8 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 		// Rule 11: a Write-level agent's write the judge found contradicting
 		// a decision in force went back to Review. Any agent may have read
 		// it while it was kept, so every connection hears it once.
-		returned, err := s.search.ReturnedSince(ctx, scope, ids(spaces), *since)
-		if err != nil {
-			part.out.Partial = true
-			s.logReadError(ctx, "return notices", err)
-		}
 		for _, sp := range spaces {
-			rs := returned[sp.ID]
+			rs := extras.Returned[sp.ID]
 			if len(rs) == 0 {
 				continue
 			}
@@ -169,7 +208,7 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 		}
 	}
 	// Forget notices ride on every response (notices.go), once each.
-	s.gateNews(ctx, p, scope, bySpace, query == "", &part, &b)
+	s.writeGateNews(ctx, news, bySpace, &part, &b)
 	if ctx.Err() != nil {
 		part.out.Partial = true
 		b.WriteString("Some spaces didn't answer in time; results may be incomplete.\n")
@@ -223,6 +262,9 @@ func (s *Server) searchTool(ctx context.Context, c *handler.MCPToolCall, v *view
 	if kind != "" && !kind.Valid() {
 		return errorResult("kind must be fact or decision."), true
 	}
+	// The query embedding needs only the text: it runs while the caller's
+	// principal and spaces resolve.
+	emb := s.search.Embed(ctx, query)
 	spaces, withV1, res := v.readTarget(ctx, a.SpaceID)
 	if res != nil {
 		return res, true
@@ -246,7 +288,7 @@ func (s *Server) searchTool(ctx context.Context, c *handler.MCPToolCall, v *view
 	if len(spaces) > 0 {
 		sctx, cancel := context.WithTimeout(ctx, 2*s.recallBudget)
 		found, err := s.search.Search(sctx, v.p.Scope.Narrow(ids(spaces)...), v2recall.Query{
-			Text: query, Filter: v2recall.Filter{Spaces: ids(spaces), Kind: kind}, Limit: limit})
+			Text: query, Filter: v2recall.Filter{Spaces: ids(spaces), Kind: kind}, Limit: limit, Embedding: emb})
 		cancel()
 		if err != nil {
 			out.Partial = true

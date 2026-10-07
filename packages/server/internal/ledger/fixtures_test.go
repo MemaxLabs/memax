@@ -45,12 +45,16 @@ func (s *syncBuffer) String() string {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	_, pool := testdb.Acquire(t)
+	return newFixtureOn(t, testdb.Open(t, testdb.Options{}))
+}
+
+// newFixtureOn is newFixture on a database opened with options (a
+// simulated network, the RLS-ordering audit).
+func newFixtureOn(t *testing.T, db *testdb.DB, opts ...ledger.Option) *fixture {
+	t.Helper()
 	logs := &syncBuffer{}
-	return &fixture{
-		t: t, pool: pool, logs: logs,
-		l: ledger.New(pool, ledger.WithLogger(slog.New(slog.NewTextHandler(io.MultiWriter(logs), nil)))),
-	}
+	opts = append([]ledger.Option{ledger.WithLogger(slog.New(slog.NewTextHandler(io.MultiWriter(logs), nil)))}, opts...)
+	return &fixture{t: t, pool: db.Pool, logs: logs, l: ledger.New(db.Pool, opts...)}
 }
 
 func (f *fixture) exec(sql string, args ...any) {

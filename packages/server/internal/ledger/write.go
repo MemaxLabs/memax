@@ -551,7 +551,9 @@ func (w *writer) changeState(ctx context.Context, sp spaceRow, grant SpaceGrant,
 	if err := insertReceipt(ctx, w.tx, &rc); err != nil {
 		return Receipt{}, err
 	}
-	if _, err := w.tx.Exec(ctx, `
+	// Nothing reads the update's result: it goes out with the next
+	// statement (execDeferred).
+	if err := execDeferred(ctx, w.tx, `
 		UPDATE v2.memories
 		   SET lifecycle = $2, flags = $3, stream_version = $4, last_receipt_id = $5, updated_at = now()
 		 WHERE id = $1 AND space_id = $6`,
@@ -641,13 +643,7 @@ func (w *writer) claim(ctx context.Context, spaceID uuid.UUID) (*Result, error) 
 		return &res, nil
 	}
 	if c.objectID != nil {
-		if res.Memory, err = loadMemory(ctx, w.tx, w.meta.Scope, *c.objectID, false); err != nil {
-			return nil, err
-		}
-		if res.Memory.Sources, err = loadSources(ctx, w.tx, *c.objectID); err != nil {
-			return nil, err
-		}
-		if err := attachDetails(ctx, w.tx, []*Memory{res.Memory}); err != nil {
+		if res.Memory, err = loadFull(ctx, w.tx, w.meta.Scope, *c.objectID); err != nil {
 			return nil, err
 		}
 	}
@@ -734,7 +730,9 @@ func (w *writer) record(ctx context.Context, res Result, objectID uuid.UUID) err
 	if objectID != uuid.Nil {
 		object = &objectID
 	}
-	if _, err := w.tx.Exec(ctx, `
+	// Nothing reads the update's result: it goes out with the next
+	// statement, or with COMMIT (execDeferred).
+	if err := execDeferred(ctx, w.tx, `
 		UPDATE v2.command_keys SET outcome = $5, policy = $6, object_id = $7, receipt_ids = $8
 		 WHERE space_id = $1 AND actor_kind = $2 AND actor_id IS NOT DISTINCT FROM $3 AND idempotency_key = $4`,
 		w.space, string(w.meta.Actor.Kind), w.actorID(), w.meta.IdempotencyKey,
@@ -751,13 +749,7 @@ func (w *writer) finish(ctx context.Context, res Result, memoryID uuid.UUID) (Re
 		return Result{}, err
 	}
 	var err error
-	if res.Memory, err = loadMemory(ctx, w.tx, w.meta.Scope, memoryID, false); err != nil {
-		return Result{}, err
-	}
-	if res.Memory.Sources, err = loadSources(ctx, w.tx, memoryID); err != nil {
-		return Result{}, err
-	}
-	if err := attachDetails(ctx, w.tx, []*Memory{res.Memory}); err != nil {
+	if res.Memory, err = loadFull(ctx, w.tx, w.meta.Scope, memoryID); err != nil {
 		return Result{}, err
 	}
 	return res, nil

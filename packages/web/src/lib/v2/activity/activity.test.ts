@@ -109,6 +109,35 @@ describe("Activity sentences", () => {
     ]);
   });
 
+  it("say only what a Forget reached: no file count when nothing compiled held it", () => {
+    const forgot = (files: number, agents: number, locale: "en" | "zh") =>
+      sentenceText(
+        activitySentences(
+          (locale === "en" ? en : zh).ledger.activity,
+          entry({
+            action: "forgot",
+            detail: { kind: "forgot", files, agents },
+          }),
+          names(locale),
+        ),
+        locale,
+      );
+    expect(forgot(0, 2, "en")).toBe(
+      "You forgot a memory. Removed from 2 agents; the tombstone stays.",
+    );
+    expect(forgot(3, 0, "en")).toBe(
+      "You forgot a memory. Removed from 3 files; the tombstone stays.",
+    );
+    expect(forgot(1, 1, "en")).toBe(
+      "You forgot a memory. Removed from 1 file and 1 agent; the tombstone stays.",
+    );
+    expect(forgot(0, 0, "en")).toBe(
+      "You forgot a memory. The tombstone stays.",
+    );
+    expect(forgot(0, 2, "zh")).not.toContain("0 个文件");
+    expect(forgot(0, 2, "zh")).toContain("2 个 Agent");
+  });
+
   it("say only what a receipt holds when the words aren't there", () => {
     const say = (e: ActivityEntry) =>
       sentenceText(activitySentences(en.ledger.activity, e, names("en")), "en");

@@ -373,6 +373,8 @@ type Result struct {
 	Edition *DreamEdition `json:"edition,omitempty"`
 	// DreamAction is one of Dream's actions, after UndoDreamAction.
 	DreamAction *DreamAction `json:"dream_action,omitempty"`
+	// Dropped is what RestoreBrief left out of the version it restored.
+	Dropped []BriefDrop `json:"dropped,omitempty"`
 	// Unchanged is set when the command found nothing to do (an
 	// observation that matches what was delivered, a delivery already
 	// acknowledged): nothing was written and no receipt exists.

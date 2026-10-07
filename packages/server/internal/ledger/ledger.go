@@ -192,6 +192,8 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.export(ctx, c)
 	case *ForgetNote:
 		res, err = w.forgetNote(ctx, c)
+	case *RestoreBrief:
+		res, err = w.restoreBrief(ctx, c)
 	}
 	if err != nil {
 		return Result{}, mapDBError(err)
@@ -298,6 +300,8 @@ func validateCommand(cmd Command) error {
 		}
 		return nil
 	case *ForgetNote:
+		return c.validate()
+	case *RestoreBrief:
 		return c.validate()
 	case *Remember:
 		return c.NewMemory.validate()

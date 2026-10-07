@@ -186,8 +186,22 @@ func TestForgetReachesVerdictsConflictsAndGates(t *testing.T) {
 	if n := f.count(`SELECT count(*) FROM v2.judge_verdicts WHERE memory_id = $1 AND rationale IS NOT NULL`, p.ID); n != 1 {
 		t.Fatalf("seeded %d verdicts with words", n)
 	}
+	// And one that flags it again, with the question and labels the model
+	// wrote for settling it (round 2): judge words on both sides too.
+	f.apply(&ledger.RecordVerdict{
+		Meta:   ledger.Meta{Actor: ledger.Actor{Kind: policy.ActorMemax}, Scope: sscope, Via: policy.ViaSystem, IdempotencyKey: uuid.NewString()},
+		Memory: p.ID, Version: p.Version, Mode: ledger.JudgeProposal, Round: 2, Force: true, Outcome: ledger.OutcomeFlagged, Target: d.ID,
+		Verdict: ledger.Verdict{Stage: ledger.StageLLM, Relation: ledger.RelationContradicts, Related: d.ID,
+			Question: "Railway or Fly.io for the v2 API?", Suggested: ledger.SuggestDecision,
+			Labels: ledger.ConflictLabels{Proposal: "Fly.io", Decision: "Railway, as kept", Both: "Both", Open: "Undecided"}},
+	})
+	if cv, err := f.l.GetConflict(ctx, scope, person(zz), policy.ViaWeb, p.Ref, ""); err != nil ||
+		cv.Question != "Railway or Fly.io for the v2 API?" || cv.Suggested != ledger.ChooseOther {
+		t.Fatalf("the conflict's question = %+v, %v", cv, err)
+	}
 	res := f.apply(forgetCmd(person(zz), scope, policy.ViaWeb, d.Ref, 1))
-	if n := f.count(`SELECT count(*) FROM v2.judge_verdicts WHERE (memory_id = $1 OR related_memory_id = $1) AND (rationale IS NOT NULL OR merged_statement IS NOT NULL)`, d.ID); n != 0 {
+	if n := f.count(`SELECT count(*) FROM v2.judge_verdicts WHERE (memory_id = $1 OR related_memory_id = $1)
+	                   AND (rationale IS NOT NULL OR merged_statement IS NOT NULL OR question IS NOT NULL OR labels IS NOT NULL)`, d.ID); n != 0 {
 		t.Errorf("%d verdicts still quote it", n)
 	}
 	np := f.mem(zz, p.ID)

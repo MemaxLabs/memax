@@ -355,3 +355,106 @@ describe("memax init", () => {
     expect(personal.v2_enabled_at).toBeUndefined();
   });
 });
+
+// The session-start hook, as memax connect installs it, for each agent
+// init connects (Claude Code and Codex in this temporary home).
+describe("memax init's hooks", () => {
+  const settings = () => join(h.home, ".claude", "settings.json");
+  const codexHooks = () => join(h.home, ".codex", "hooks.json");
+  const read = (path: string) =>
+    existsSync(path) ? readFileSync(path, "utf8") : null;
+  const sessionStart = (path: string) =>
+    JSON.stringify(
+      (JSON.parse(read(path) ?? "{}") as { hooks?: Record<string, unknown> })
+        .hooks?.SessionStart ?? null,
+    );
+
+  it("installs each connected agent's hook, once, keeping the rest of its settings", async () => {
+    put(
+      h.home,
+      ".claude/settings.json",
+      JSON.stringify({ theme: "dark", hooks: { Stop: [{ hooks: [] }] } }),
+    );
+    const r = await init({ yes: true, format: "json" }, [], false);
+    expect(r.code).toBe(0);
+    expect(sessionStart(settings())).toContain(
+      "memax hook session-start --agent claude-code",
+    );
+    expect(sessionStart(codexHooks())).toContain(
+      "memax hook session-start --agent codex",
+    );
+    const kept = JSON.parse(read(settings())!) as {
+      theme: string;
+      hooks: Record<string, unknown>;
+    };
+    expect(kept.theme).toBe("dark");
+    expect(kept.hooks.Stop).toEqual([{ hooks: [] }]);
+    const report = JSON.parse(r.out) as {
+      agents: Array<{ kind: string; hook: string | null }>;
+    };
+    expect(
+      Object.fromEntries(report.agents.map((a) => [a.kind, a.hook])),
+    ).toMatchObject({ "claude-code": "written", codex: "written" });
+
+    // Again: nothing changes, byte for byte.
+    const before = [read(settings()), read(codexHooks())];
+    const again = await init({ yes: true, format: "json" }, [], false);
+    expect([read(settings()), read(codexHooks())]).toEqual(before);
+    const second = JSON.parse(again.out) as typeof report;
+    expect(
+      Object.fromEntries(second.agents.map((a) => [a.kind, a.hook])),
+    ).toMatchObject({ "claude-code": "present", codex: "present" });
+  });
+
+  it("says so in the agents' lines", async () => {
+    const r = await init({}, [
+      [/Connect Claude Code/, true],
+      [/Bring \d+ notes/, false],
+      [/Which holds/, ""],
+      [/Keep the \d+\?|Keep it\?/, false],
+      [/CLAUDE.md is yours/, false],
+      [/Start the Memax daemon/, false],
+      [/Replace AGENTS.md/, false],
+    ]);
+    expect(r.asked.find((q) => /Connect Claude Code/.test(q))).toContain(
+      "session-start hooks",
+    );
+    expect(r.out).toMatch(/Claude Code.*session hook added/);
+  });
+
+  it("writes no hook when the person declines, or with --no-connect", async () => {
+    await init({}, [
+      [/Connect Claude Code/, false],
+      [/Bring \d+ notes/, false],
+      [/Which holds/, ""],
+      [/Keep the \d+\?|Keep it\?/, false],
+      [/CLAUDE.md is yours/, false],
+      [/Start the Memax daemon/, false],
+      [/Replace AGENTS.md/, false],
+    ]);
+    expect(read(settings())).toBeNull();
+    expect(read(codexHooks())).toBeNull();
+    // Already connected, but --no-connect writes nothing to its settings.
+    present.add("claude-code");
+    await init({ yes: true, connect: false, format: "json" }, [], false);
+    expect(read(settings())).toBeNull();
+  });
+
+  it("leaves Claude Code to the Memax plugin when it is on", async () => {
+    present.add("claude-code");
+    put(
+      h.home,
+      ".claude/settings.json",
+      JSON.stringify({ enabledPlugins: { "memax@memax": true } }),
+    );
+    const before = read(settings());
+    const r = await init({ yes: true, format: "json" }, [], false);
+    expect(read(settings())).toBe(before);
+    const report = JSON.parse(r.out) as {
+      agents: Array<{ kind: string; hook: string | null }>;
+    };
+    expect(report.agents.find((a) => a.kind === "claude-code")?.hook).toBe(
+      "plugin",
+    );
+  });
+});

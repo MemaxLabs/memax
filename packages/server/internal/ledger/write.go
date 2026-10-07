@@ -41,6 +41,9 @@ type writer struct {
 	undo            *undoJournal
 	undoWindow      time.Duration
 	judgeUndoWindow time.Duration
+	// remembering is set for a person's own Remember, which journals the
+	// memory it writes so Undo can withdraw it.
+	remembering bool
 	// returnWindow bounds the judge's return to Review (judge.go).
 	returnWindow time.Duration
 
@@ -64,6 +67,9 @@ func (w *writer) write(ctx context.Context, nm NewMemory, propose bool) (Result,
 	if err != nil || replay != nil {
 		return deref(replay), err
 	}
+	// A person's own Remember is undoable (undo.go): undoing it withdraws
+	// the memory.
+	w.remembering = !propose && w.meta.Actor.Kind == policy.ActorPerson
 	return w.writeMemory(ctx, sp, grant, nm, propose)
 }
 
@@ -137,12 +143,22 @@ func (w *writer) writeMemory(ctx context.Context, sp spaceRow, grant SpaceGrant,
 	if err := w.insertSources(ctx, sp.ID, id, rc.ID, srcs); err != nil {
 		return Result{}, err
 	}
+	receipts := []Receipt{rc}
+	if w.remembering {
+		// The memory is new, so its stream after the command is the
+		// creating receipt's: the journal needs no read.
+		w.startUndo(UndoRemember, w.undoWindow)
+		w.undo.withdraw(id, rc.ObjectRef, nm, trust)
+		if err := w.storeUndo(ctx, sp, receipts, []uuid.UUID{id}, map[uuid.UUID]int{id: rc.StreamVersion}); err != nil {
+			return Result{}, err
+		}
+	}
 	if state.Lifecycle == lifecycle.Kept {
 		if err := w.markDirty(ctx, sp.ID); err != nil {
 			return Result{}, err
 		}
 	}
-	return w.finish(ctx, Result{Outcome: outcomeFor(dec.Effect), Policy: dec, Receipts: []Receipt{rc}}, id)
+	return w.finish(ctx, Result{Outcome: outcomeFor(dec.Effect), Policy: dec, Receipts: receipts}, id)
 }
 
 // review is Keep and Reject.

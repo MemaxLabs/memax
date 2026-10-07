@@ -511,6 +511,10 @@ type receipt struct {
 	Via        string     `json:"via"`
 	Assurance  string     `json:"assurance"`
 	Reason     string     `json:"reason"`
+	Source     *struct {
+		Kind string `json:"kind"`
+		Ref  string `json:"ref"`
+	} `json:"source"`
 }
 
 type result struct {

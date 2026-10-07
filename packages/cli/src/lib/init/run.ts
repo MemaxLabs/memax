@@ -157,18 +157,24 @@ async function flow(
     (s): s is V2.Space => !!s,
   );
   let declined = false;
-  const agents = await connectAgents(d, root, targetSpaces, async (need) => {
-    if (o.connect === false) return false;
-    const yes =
-      o.yes ||
-      (d.interactive &&
-        (await d.prompt.confirm(
-          `  Connect ${need.map((a) => a.name).join(", ")} (writes their MCP settings)? [Y/n] `,
-          true,
-        )));
-    declined = !yes;
-    return yes;
-  });
+  const agents = await connectAgents(
+    d,
+    root,
+    targetSpaces,
+    async (need) => {
+      if (o.connect === false) return false;
+      const yes =
+        o.yes ||
+        (d.interactive &&
+          (await d.prompt.confirm(
+            `  Connect ${need.map((a) => a.name).join(", ")} (writes their MCP settings and session-start hooks)? [Y/n] `,
+            true,
+          )));
+      declined = !yes;
+      return yes;
+    },
+    { hooks: o.connect !== false },
+  );
   report.agents = agents.rows;
   for (const l of renderAgents(agents.rows)) d.out(l);
   if (declined)

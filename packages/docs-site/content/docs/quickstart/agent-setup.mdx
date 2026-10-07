@@ -124,22 +124,22 @@ does not work. Use `--only claude-code` to restrict instead.
 
 ### Exposed MCP tools
 
-9 tools total — see [`memax mcp`](/cli/mcp) for each tool's full
-schema. In summary:
+11 tools total, the same on the local and the remote server — see
+[`memax mcp`](/cli/mcp) for each tool's full schema. In summary:
 
-| Tool                | Purpose                                                  |
-| ------------------- | -------------------------------------------------------- |
-| `memax_recall`      | Semantic search against your hubs.                       |
-| `memax_push`        | Save new knowledge.                                      |
-| `memax_get`         | Read a memory by ID.                                     |
-| `memax_list`        | Paginated memory listing.                                |
-| `memax_hubs`        | List hubs the token can access.                          |
-| `memax_hub_members` | List members of a hub.                                   |
-| `memax_forget`      | Delete a memory by ID.                                   |
-| `memax_capture`     | Persist session context (summary, decisions, learnings). |
-| `memax_topics`      | Browse the topic tree.                                   |
-
-There is no `memax_search` tool.
+| Tool                     | Purpose                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| `memax_recall`           | The memories relevant to a query; without one, each space's digest.                      |
+| `memax_search`           | Search kept memories and decisions by words, with their IDs; notes too, if asked.         |
+| `memax_push`             | Save one piece of knowledge. In a V2 space it's a proposal a person keeps.                |
+| `memax_get`              | Read one memory in full by its ID (`M-0219`) or UUID.                                     |
+| `memax_list`             | List memories newest first, a page at a time.                                             |
+| `memax_hubs`             | List the spaces (hubs) the connection can read.                                           |
+| `memax_hub_members`      | List the members of a space and their roles.                                              |
+| `memax_forget`           | Forget a memory. In a V2 space an agent asks, and a person forgets it on the web.         |
+| `memax_capture`          | Save a work session's summary, decisions and learnings.                                   |
+| `memax_request_decision` | Put a decision in front of the person; their answer comes back in a later recall.         |
+| `memax_topics`           | Browse the topic tree; in a V2 space, its sections.                                       |
 
 ## Hooks (Claude Code only)
 

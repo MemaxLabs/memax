@@ -251,7 +251,7 @@ func (w *writer) undoDreamBrief(ctx context.Context, sp spaceRow, a *DreamAction
 		// The older version places or cites a memory that is no longer kept.
 		"The Brief before Dream's edit rests on a memory that isn't kept any more. Edit the Brief directly instead."}
 	}
-	rc, _, err := w.writeBriefVersion(ctx, sp, cur, before.Title, before.Summary, before.Sections, reason, src, ActionUndid)
+	rc, _, _, err := w.writeBriefVersion(ctx, sp, cur, before.Title, before.Summary, before.Sections, reason, src, ActionUndid)
 	return rc, err
 }
 

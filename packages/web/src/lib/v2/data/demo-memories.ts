@@ -217,6 +217,15 @@ export function createDemoMemories({
               detail: null,
               count: null,
               to: null,
+              // The demo's flags are what the row wears.
+              flag:
+                row.receipt.action !== "flagged"
+                  ? null
+                  : row.state === "stale"
+                    ? { kind: "stale" }
+                    : row.state === "conflict"
+                      ? { kind: "conflict", with: null }
+                      : null,
             },
           ]
         : [],

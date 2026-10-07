@@ -87,6 +87,8 @@ var sampleRequests = map[string]struct {
 	"getBrief":          {path: "/v2/spaces/memax-v2/brief"},
 	"reviseBrief":       {path: "/v2/spaces/memax-v2/brief", body: `{"title":"Brief","sections":[{"key":"decisions","heading":"Decisions","items":[{"ref":"M-0219"}]}]}`, header: map[string]string{"If-Match": `"1"`}},
 	"listBriefVersions": {path: "/v2/spaces/memax-v2/brief/versions?limit=5"},
+	"restoreBriefVersion": {path: "/v2/spaces/memax-v2/brief/versions/1:restore", body: `{"reason":"back to the first"}`,
+		header: map[string]string{"If-Match": `"2"`}},
 	"listTargets":       {path: "/v2/spaces/memax-v2/targets"},
 	"createTarget":      {path: "/v2/spaces/memax-v2/targets", body: `{"kind":"agents_md"}`},
 	"configureTarget":   {path: "/v2/targets/" + sampleID, body: `{"enabled":false}`, header: map[string]string{"Idempotency-Key": "k-configure"}},

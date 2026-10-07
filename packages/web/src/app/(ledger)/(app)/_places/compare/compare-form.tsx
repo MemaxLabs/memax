@@ -102,7 +102,9 @@ function refusalText(
  * wears the working mark and the checking line, and goes again (its own
  * idempotency key, reused across the waits) until it is kept, or the
  * words turn out to contradict a decision in force (said here, the fields
- * as written). Esc stops checking; the saved words stay saved.
+ * as written). Esc stops checking; the saved words stay saved. The other
+ * answers keep a proposal's words as they stand, and wait the same way
+ * when the judge hasn't seen them yet (503 judge_pending, same key).
  */
 export function Compare({
   view,
@@ -131,7 +133,7 @@ export function Compare({
   });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
-  // "Both" waiting for the judge: checking, and what to say after it.
+  // An answer waiting for the judge: checking, and what to say after it.
   const [checking, setChecking] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const waitFor = useRef<AbortController | null>(null);
@@ -212,10 +214,10 @@ export function Compare({
           });
         } catch (err) {
           const failure = toFailure(err);
-          // The judge hasn't looked at the saved words yet (saved just now,
-          // or before an Esc): wait for it, with the same key.
+          // The judge hasn't looked at the words yet (saved just now, before
+          // an Esc, or an edit's): wait for it, with the same key. Every
+          // answer that keeps a proposal's words waits this way.
           if (
-            !both ||
             failure.kind !== "busy" ||
             !failure.judge ||
             Date.now() > deadline
@@ -291,11 +293,17 @@ export function Compare({
     } catch (err) {
       const failure = toFailure(err);
       keys.settle(intent);
-      if (both && failure.kind === "in-conflict") {
-        // The narrower words contradict another decision in force: the
-        // conflict stays open, and the words stay as written to change.
+      if (failure.kind === "in-conflict") {
+        // The words contradict another decision in force: the conflict
+        // stays open, and narrower words stay as written to change.
+        const other = failure.with ?? kept.ref;
         setNotice(
-          interpolate(c.inConflictBoth, { with: failure.with ?? kept.ref }),
+          both
+            ? interpolate(c.inConflictBoth, { with: other })
+            : interpolate(c.inConflictWords, {
+                ref: proposal.ref,
+                with: other,
+              }),
         );
         afterDecision({ leftQueue: false });
         return;
@@ -316,14 +324,16 @@ export function Compare({
     }
   };
 
-  /** Esc while "both" waits for the judge: stop waiting, keep the words. */
+  /** Esc while an answer waits for the judge: stop waiting, keep the words. */
   const stopChecking = () => {
     const controller = waitFor.current;
     if (!controller || !checking) return false;
     controller.abort();
     waitFor.current = null;
     setChecking(false);
-    setNotice(c.stoppedChecking);
+    setNotice(
+      option?.kind === "both" ? c.stoppedChecking : c.stoppedCheckingWords,
+    );
     return true;
   };
 
@@ -494,12 +504,14 @@ export function Compare({
           })}
         </div>
         {words}
-        {/* "Both" waiting for the judge: the neutral working mark, never a spinner. */}
+        {/* Waiting for the judge: the neutral working mark, never a spinner. */}
         <p className={styles.checking} role="status" aria-live="polite">
           {checking ? (
             <>
               <StateMark state="working" label={l.review.judge.checking} />
-              <span className="mx-meta">{c.checkingBoth}</span>
+              <span className="mx-meta">
+                {option?.kind === "both" ? c.checkingBoth : c.checkingWords}
+              </span>
             </>
           ) : notice ? (
             <span className="mx-meta">{notice}</span>

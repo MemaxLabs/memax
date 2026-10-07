@@ -164,7 +164,7 @@ export function registerInitCommand(program: Command): void {
       "--no-personal",
       "Leave machine-local memory (~/.claude, ~/.codex, ~/.gemini) where it is",
     )
-    .option("--no-connect", "Don't write the agents' MCP settings")
+    .option("--no-connect", "Don't write the agents' MCP settings or hooks")
     .option(
       "--no-daemon",
       "Write the files once instead of starting the daemon",

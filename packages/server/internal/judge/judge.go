@@ -249,6 +249,10 @@ func (j *Judge) stage1(ctx context.Context, cmd *ledger.RecordVerdict, mode ledg
 		conf := pr.Confidence
 		v.Relation, v.Related, v.Confidence = pr.Relation, cands[d.Pair].ID, &conf
 		v.Rationale, v.MergedStatement, v.Tier = pr.Rationale, pr.MergedStatement, pr.Tier
+		if d.Outcome == ledger.OutcomeFlagged {
+			// The words a person settles the conflict with (ReviewConflict).
+			v.Question, v.Labels, v.Suggested = pr.Question, pr.Labels, pr.Suggested
+		}
 		if pr.Tier == ledger.TierStrong {
 			v.Model = cls.StrongModel
 		}

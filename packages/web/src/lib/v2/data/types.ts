@@ -219,8 +219,8 @@ export interface KeepResult {
   recompiled: number | null;
   /**
    * The receipt Undo addresses, when the command can be undone: a Keep
-   * can. A person's own Remember can't (the server journals no undo for
-   * it), so it carries none.
+   * can, and so can a person's own Remember (undoing it withdraws the
+   * memory).
    */
   receipt?: string | null;
 }

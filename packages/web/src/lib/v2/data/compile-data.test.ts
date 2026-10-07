@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { V2 } from "memax-sdk";
-import { blocksOf, factCount, numberSources } from "./brief";
+import {
+  blocksOf,
+  droppedLines,
+  factCount,
+  numberSources,
+  restoreStructure,
+  type RestoreState,
+} from "./brief";
 import {
   buildBriefView,
   proseAuthorsOf,
@@ -170,6 +177,127 @@ describe("the Brief as the page shows it", () => {
     expect(rows.find((r) => r.ref === "M-0219")?.changed).toBe(
       "We do not use Temporal.",
     );
+  });
+});
+
+describe("restoring an older version", () => {
+  const states: Record<string, RestoreState> = {
+    "M-1": "kept",
+    "M-2": "kept",
+    "M-3": "faded",
+    "M-4": "forgotten",
+    "M-5": "proposed",
+    "M-6": "rejected",
+  };
+  const stateOf = (ref: string) => states[ref] ?? null;
+
+  it("keeps what stands and says what it left out, as the server does", () => {
+    const { structure, dropped } = restoreStructure(
+      {
+        title: "Brief",
+        summary: null,
+        sections: [
+          {
+            key: "decisions",
+            heading: "Decisions",
+            items: [{ ref: "M-1" }, { ref: "M-3" }, { ref: "M-4" }],
+          },
+          {
+            key: "open",
+            heading: "Open",
+            items: [
+              { text: "Undecided.", cites: ["M-5", "M-6", "M-1"] },
+              { text: "Faded.", cites: ["M-3"] },
+              { text: "Forgotten.", cites: ["M-2", "M-4"] },
+            ],
+          },
+          { key: "conventions", heading: "Conventions", items: [] },
+        ],
+      },
+      stateOf,
+    );
+    expect(structure.sections).toEqual([
+      { key: "decisions", heading: "Decisions", items: [{ ref: "M-1" }] },
+      {
+        key: "open",
+        heading: "Open",
+        items: [{ text: "Undecided.", cites: ["M-5", "M-1"] }],
+      },
+      { key: "conventions", heading: "Conventions", items: [] },
+    ]);
+    expect(dropped).toEqual([
+      {
+        section: "decisions",
+        item: "M-3",
+        kind: "memory",
+        refs: ["M-3"],
+        reason: "not_kept",
+      },
+      {
+        section: "decisions",
+        item: "M-4",
+        kind: "memory",
+        refs: ["M-4"],
+        reason: "forgotten",
+      },
+      {
+        section: "open",
+        item: "P:open:0",
+        kind: "cite",
+        refs: ["M-6"],
+        reason: "not_kept",
+      },
+      {
+        section: "open",
+        item: "P:open:1",
+        kind: "prose",
+        refs: ["M-3"],
+        reason: "not_kept",
+      },
+      {
+        section: "open",
+        item: "P:open:2",
+        kind: "prose",
+        refs: ["M-4"],
+        reason: "forgotten",
+      },
+    ]);
+    expect(droppedLines(dropped)).toBe(4);
+  });
+
+  it("restores in the demo as a new version, and replays by key", async () => {
+    const source = createDemoSource({ commandDelayMs: 0 });
+    const space = v2;
+    const page = await source.brief.versions({ space });
+    const [current, , older] = page.items;
+    const result = await source.brief.restore({
+      space,
+      base: current!.version,
+      version: older!.version,
+      idempotencyKey: "restore-1",
+    });
+    expect(result.version).toBe(current!.version + 1);
+    const again = await source.brief.restore({
+      space,
+      base: current!.version,
+      version: older!.version,
+      idempotencyKey: "restore-1",
+    });
+    expect(again).toEqual(result);
+    const now = await source.brief.versions({ space });
+    expect(now.items[0]).toMatchObject({
+      ref: result.ref,
+      parent: current!.version,
+      reason: `Restored ${older!.ref}`,
+    });
+    await expect(
+      source.brief.restore({
+        space,
+        base: current!.version,
+        version: older!.version,
+        idempotencyKey: "restore-2",
+      }),
+    ).rejects.toMatchObject({ failure: { kind: "clash" } });
   });
 });
 

@@ -1,4 +1,11 @@
 {
   "title": "Integrations",
-  "pages": ["index", "claude-code", "cursor", "codex", "other-agents"]
+  "pages": [
+    "index",
+    "claude-code",
+    "claude-code-plugin",
+    "cursor",
+    "codex",
+    "other-agents"
+  ]
 }

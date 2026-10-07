@@ -30,7 +30,13 @@ type NewSpace struct {
 	Kind policy.SpaceKind
 	// Repository is the repository the space compiles for ("owner/name").
 	Repository string
+	// Key makes creating idempotent: the same person and key find the
+	// space the first call created (the request's Idempotency-Key).
+	Key string
 }
+
+// spaceKeys namespaces the ids of spaces created with a key.
+var spaceKeys = uuid.MustParse("6f1c2b8e-3d6a-4c1e-9a57-0b6c3d2e8f41")
 
 // The space limits.
 const (
@@ -142,37 +148,58 @@ func (e *slugTakenError) Is(target error) bool { return target == ErrSlugTaken }
 
 // CreateSpace creates a space on the V2 record, owned by the person, and
 // returns it with the person's role (owner). It refuses with
-// *SpaceRefusedError when policy does.
-func (l *Ledger) CreateSpace(ctx context.Context, actor Actor, in NewSpace) (*Space, error) {
+// *SpaceRefusedError when policy does. With a Key, a retry returns the
+// space the first call created (replayed); the same key for another space
+// is ErrIdempotencyKeyReused.
+func (l *Ledger) CreateSpace(ctx context.Context, actor Actor, in NewSpace) (*Space, bool, error) {
 	if l == nil {
-		return nil, ErrDisabled
+		return nil, false, ErrDisabled
 	}
 	if err := in.validate(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if actor.Kind != policy.ActorPerson || actor.ID == uuid.Nil {
 		d := policy.DecideCreateSpace(policy.Actor{Kind: actor.Kind, Credential: actor.Credential}, in.Kind, 0)
-		return nil, &SpaceRefusedError{Decision: d}
+		return nil, false, &SpaceRefusedError{Decision: d}
 	}
 	tx, err := l.pool.Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("ledger: begin: %w", err)
+		return nil, false, fmt.Errorf("ledger: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	// One person creates one space at a time, so the fair-use count can't
-	// be raced past.
+	// be raced past, and a retry waits for the first call.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('v2.create_space:' || $1::text, 0))`, actor.ID); err != nil {
-		return nil, fmt.Errorf("ledger: create space: %w", err)
+		return nil, false, fmt.Errorf("ledger: create space: %w", err)
+	}
+	id := newID()
+	if in.Key != "" {
+		id = uuid.NewSHA1(spaceKeys, []byte(actor.ID.String()+"\x00"+in.Key))
+		var sp Space
+		var owner uuid.UUID
+		err := tx.QueryRow(ctx, `SELECT id, tenant_id, slug, name, space_kind, COALESCE(repository, ''), v2_enabled_at, owner_id
+			  FROM public.hubs WHERE id = $1`, id).
+			Scan(&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository, &sp.V2EnabledAt, &owner)
+		switch {
+		case err == nil && owner == actor.ID && sp.Name == in.Name && sp.Kind == in.Kind && sp.Repository == in.Repository &&
+			(in.Slug == "" || in.Slug == sp.Slug):
+			sp.Role = policy.RoleOwner
+			return &sp, true, nil
+		case err == nil:
+			return nil, false, fmt.Errorf("%w: key %q created another space; send a new key for a new space",
+				ErrIdempotencyKeyReused, in.Key)
+		case !errNoRows(err):
+			return nil, false, fmt.Errorf("ledger: create space: %w", err)
+		}
 	}
 	var owned int
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM public.hubs WHERE owner_id = $1 AND space_kind = 'project'`, actor.ID).Scan(&owned); err != nil {
-		return nil, fmt.Errorf("ledger: create space: %w", err)
+		return nil, false, fmt.Errorf("ledger: create space: %w", err)
 	}
 	if d := policy.DecideCreateSpace(policy.Actor{Kind: actor.Kind, Credential: actor.Credential}, in.Kind, owned); d.Effect == policy.EffectRefuse {
-		return nil, &SpaceRefusedError{Decision: d}
+		return nil, false, &SpaceRefusedError{Decision: d}
 	}
 
-	id := newID()
 	now := l.now().UTC().Truncate(time.Microsecond)
 	candidates := []string{in.Slug}
 	if in.Slug == "" {
@@ -201,7 +228,7 @@ func (l *Ledger) CreateSpace(ctx context.Context, actor Actor, in NewSpace) (*Sp
 			ON CONFLICT (slug) DO NOTHING`,
 			id, in.Name, c, actor.ID, string(in.Kind), nullText(in.Repository), now)
 		if err != nil {
-			return nil, fmt.Errorf("ledger: create space: %w", err)
+			return nil, false, fmt.Errorf("ledger: create space: %w", err)
 		}
 		if tag.RowsAffected() == 1 {
 			slug = c
@@ -210,24 +237,24 @@ func (l *Ledger) CreateSpace(ctx context.Context, actor Actor, in NewSpace) (*Sp
 	}
 	if slug == "" {
 		if in.Slug != "" {
-			return nil, &slugTakenError{slug: in.Slug}
+			return nil, false, &slugTakenError{slug: in.Slug}
 		}
-		return nil, fmt.Errorf("ledger: create space: no free slug for %q", in.Name)
+		return nil, false, fmt.Errorf("ledger: create space: no free slug for %q", in.Name)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO public.hub_members (hub_id, user_id, role) VALUES ($1, $2, 'owner')`, id, actor.ID); err != nil {
-		return nil, fmt.Errorf("ledger: create space: %w", err)
+		return nil, false, fmt.Errorf("ledger: create space: %w", err)
 	}
 	var sp Space
 	if err := tx.QueryRow(ctx, `SELECT id, tenant_id, slug, name, space_kind, COALESCE(repository, ''), v2_enabled_at FROM public.hubs WHERE id = $1`, id).
 		Scan(&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository, &sp.V2EnabledAt); err != nil {
-		return nil, fmt.Errorf("ledger: create space: %w", err)
+		return nil, false, fmt.Errorf("ledger: create space: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, mapDBError(fmt.Errorf("ledger: create space: %w", err))
+		return nil, false, mapDBError(fmt.Errorf("ledger: create space: %w", err))
 	}
 	sp.Role = policy.RoleOwner
 	l.log.Info("ledger: space created", "space_id", sp.ID.String(), "slug", sp.Slug, "kind", string(sp.Kind))
-	return &sp, nil
+	return &sp, false, nil
 }
 
 // SwitchSpace moves a space in the actor's scope to the V2 record, if it

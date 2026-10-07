@@ -252,8 +252,8 @@ func TestImportConflictsFlagAndSettleAsAGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Check.State != ledger.CheckChecked || len(v.Conflicts) != 1 || len(v.Conflicts[0].Members) != 3 {
-		t.Fatalf("view: check %s, conflicts %+v", v.Check.State, v.Conflicts)
+	if v.Import.Check.State != ledger.CheckChecked || len(v.Conflicts) != 1 || len(v.Conflicts[0].Members) != 3 {
+		t.Fatalf("view: check %s, conflicts %+v", v.Import.Check.State, v.Conflicts)
 	}
 	bulk := map[uuid.UUID]ledger.ImportMemory{}
 	for _, im := range v.Memories {
@@ -434,8 +434,8 @@ func TestImportViewProgressAndList(t *testing.T) {
 		t.Fatal(err)
 	}
 	// No judge has run: the proposal is working, and the check pending.
-	if v.Progress.Ready || v.Progress.Working != 1 || v.Check.State != ledger.CheckPending || v.Memories[0].Held != ledger.HeldChecking {
-		t.Errorf("before the judge: progress %+v, check %s, held %q", v.Progress, v.Check.State, v.Memories[0].Held)
+	if v.Progress.Ready || v.Progress.Working != 1 || v.Import.Check.State != ledger.CheckPending || v.Memories[0].Held != ledger.HeldChecking {
+		t.Errorf("before the judge: progress %+v, check %s, held %q", v.Progress, v.Import.Check.State, v.Memories[0].Held)
 	}
 	page, err := f.l.ListImports(ctx, f.scope(zz), sp, "", 2)
 	if err != nil {
@@ -463,7 +463,7 @@ func TestCreateAndSwitchSpaces(t *testing.T) {
 	f := newFixture(t)
 	zz := f.user("zz")
 	ctx := context.Background()
-	sp, err := f.l.CreateSpace(ctx, person(zz), ledger.NewSpace{Name: "memax", Repository: "MemaxLabs/memax"})
+	sp, _, err := f.l.CreateSpace(ctx, person(zz), ledger.NewSpace{Name: "memax", Repository: "MemaxLabs/memax", Key: "k1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -472,21 +472,29 @@ func TestCreateAndSwitchSpaces(t *testing.T) {
 		sp.Repository != "MemaxLabs/memax" || sp.TenantID != zz {
 		t.Fatalf("created %+v", sp)
 	}
-	again, err := f.l.CreateSpace(ctx, person(zz), ledger.NewSpace{Name: "memax"})
+	// The same key finds the same space; the same key for another doesn't.
+	same, replayed, err := f.l.CreateSpace(ctx, person(zz), ledger.NewSpace{Name: "memax", Repository: "MemaxLabs/memax", Key: "k1"})
+	if err != nil || !replayed || same.ID != sp.ID {
+		t.Fatalf("retry: %v replayed=%v %v", same, replayed, err)
+	}
+	if _, _, err := f.l.CreateSpace(ctx, person(zz), ledger.NewSpace{Name: "other", Key: "k1"}); !errors.Is(err, ledger.ErrIdempotencyKeyReused) {
+		t.Errorf("reused key: %v", err)
+	}
+	again, _, err := f.l.CreateSpace(ctx, person(zz), ledger.NewSpace{Name: "memax"})
 	if err != nil || again.Slug != "memax-3" {
 		t.Fatalf("second: %v %v", again, err)
 	}
-	if _, err := f.l.CreateSpace(ctx, person(zz), ledger.NewSpace{Name: "x", Slug: "memax-2"}); !errors.Is(err, ledger.ErrSlugTaken) {
+	if _, _, err := f.l.CreateSpace(ctx, person(zz), ledger.NewSpace{Name: "x", Slug: "memax-2"}); !errors.Is(err, ledger.ErrSlugTaken) {
 		t.Errorf("taken slug: %v", err)
 	}
-	if _, err := f.l.CreateSpace(ctx, person(zz), ledger.NewSpace{Name: "x", Slug: "settings"}); !errors.Is(err, ledger.ErrSlugTaken) {
+	if _, _, err := f.l.CreateSpace(ctx, person(zz), ledger.NewSpace{Name: "x", Slug: "settings"}); !errors.Is(err, ledger.ErrSlugTaken) {
 		t.Errorf("reserved slug: %v", err)
 	}
 	var refused *ledger.SpaceRefusedError
-	if _, err := f.l.CreateSpace(ctx, person(zz), ledger.NewSpace{Name: "Mine", Kind: policy.SpacePersonal}); !errors.As(err, &refused) {
+	if _, _, err := f.l.CreateSpace(ctx, person(zz), ledger.NewSpace{Name: "Mine", Kind: policy.SpacePersonal}); !errors.As(err, &refused) {
 		t.Errorf("a second personal space: %v", err)
 	}
-	if _, err := f.l.CreateSpace(ctx, agentFor(policy.AutonomyWrite), ledger.NewSpace{Name: "agents"}); !errors.As(err, &refused) {
+	if _, _, err := f.l.CreateSpace(ctx, agentFor(policy.AutonomyWrite), ledger.NewSpace{Name: "agents"}); !errors.As(err, &refused) {
 		t.Errorf("an agent creates a space: %v", err)
 	}
 	// The person's scope has it now, with the person as owner.
@@ -513,5 +521,19 @@ func TestCreateAndSwitchSpaces(t *testing.T) {
 	}
 	if _, err := f.l.SwitchSpace(ctx, person(jy), f.scope(jy), busy); !errors.As(err, &refused) {
 		t.Errorf("a member switches: %v", err)
+	}
+}
+
+// Cursor and Gemini CLI start at Read when they connect (the Connect
+// board); every other agent at the space's default.
+func TestStartAutonomy(t *testing.T) {
+	t.Parallel()
+	for kind, want := range map[ledger.AgentKind]policy.Autonomy{
+		ledger.AgentCursor: policy.AutonomyRead, ledger.AgentGeminiCLI: policy.AutonomyRead,
+		ledger.AgentClaudeCode: "", ledger.AgentCodex: "", ledger.AgentOther: "",
+	} {
+		if got := kind.StartAutonomy(); got != want {
+			t.Errorf("%s starts at %q, want %q", kind, got, want)
+		}
 	}
 }

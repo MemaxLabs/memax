@@ -77,6 +77,19 @@ func (k AgentKind) Surface() AgentSurface {
 	return SurfaceCLI
 }
 
+// StartAutonomy is the level a newly connected agent of this kind starts
+// at in a space, below the space's default when the design flows say so
+// (plan 25 §7.3 step 3, the Connect board): Cursor and Gemini CLI read
+// until a person raises them; every other agent starts at the space's
+// default (empty). A person changes it in Agents.
+func (k AgentKind) StartAutonomy() policy.Autonomy {
+	switch k {
+	case AgentCursor, AgentGeminiCLI:
+		return policy.AutonomyRead
+	}
+	return ""
+}
+
 // AgentFromV1 maps a V1 agent slug (api_keys.agent_name,
 // oauth_grants.agent_name, as `memax setup` and the MCP OAuth flow write
 // them) onto an agent.

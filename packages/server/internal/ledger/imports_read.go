@@ -24,8 +24,8 @@ import (
 
 // ImportView is one import, in full.
 type ImportView struct {
-	Import
-	Items []ImportItemView `json:"items"`
+	Import Import           `json:"import"`
+	Items  []ImportItemView `json:"items"`
 	// Memories are the memories the items became or matched, once each, in
 	// the order the items first name them.
 	Memories  []ImportMemory   `json:"memories"`
@@ -431,7 +431,7 @@ func importMemories(ctx context.Context, tx pgx.Tx, scope Scope, v *ImportView) 
 			inConflict[m.ID] = c.N
 		}
 	}
-	checking := v.Check.State == CheckPending
+	checking := v.Import.Check.State == CheckPending
 	out := make([]ImportMemory, 0, len(ids))
 	for _, id := range ids {
 		m := byID[id]
@@ -477,7 +477,7 @@ func importProgress(v *ImportView) ImportProgress {
 			p.Judged++
 		}
 	}
-	p.Ready = p.Working == 0 && v.Check.State != CheckPending
+	p.Ready = p.Working == 0 && v.Import.Check.State != CheckPending
 	return p
 }
 

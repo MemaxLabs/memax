@@ -342,7 +342,7 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "ImportHeld", specEnum(t, "ImportHeld"), ledger.ImportHelds)
 	sameSet(t, "ImportChoice", specEnum(t, "ImportChoice"), strs(ledger.ImportChoices))
 
-	// Settings (migration 049) and the Security page.
+	// Settings (migration 050) and the Security page.
 	sameSet(t, "NotificationEvent", specEnum(t, "NotificationEvent"), strs(ledger.NotificationEvents))
 	sameSet(t, "DataHolds", specEnum(t, "DataHolds"), trust.Holds)
 	sameSet(t, "Retention", specEnum(t, "Retention"), trust.Retentions)

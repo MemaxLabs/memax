@@ -437,7 +437,7 @@ func TestMorningEmail(t *testing.T) {
 }
 
 // The morning email waits for the end of each person's quiet hours, in
-// their own zone (notification settings, migration 049): the job snoozes
+// their own zone (notification settings, migration 050): the job snoozes
 // until the first ends, then sends to whoever is out of them, once.
 func TestMorningEmailWaitsForQuietHours(t *testing.T) {
 	t.Parallel()

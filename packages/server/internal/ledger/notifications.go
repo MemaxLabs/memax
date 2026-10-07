@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// A person's notification preferences (migration 049; plan 25 §9, epic
+// A person's notification preferences (migration 050; plan 25 §9, epic
 // 2.6; the handoff's Notifications board): whether each event reaches
 // them by email, and the quiet hours, in their own time zone, during which
 // email waits. Like Dream's settings they are a person's preferences, not
@@ -138,7 +138,7 @@ func (s NotificationSettings) Event(e NotificationEvent) (NotificationChoice, bo
 	return NotificationChoice{}, false
 }
 
-// The defaults, equal to migration 049's column defaults
+// The defaults, equal to migration 050's column defaults
 // (TestNotificationDefaultsMatchTheSchema).
 const (
 	DefaultQuietFrom       = "20:00"

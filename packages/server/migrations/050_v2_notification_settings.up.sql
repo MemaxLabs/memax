@@ -1,4 +1,4 @@
--- 049: v2_notification_settings
+-- 050: v2_notification_settings
 --
 -- A person's notification preferences (plan 25 §9, Phase 2 epic 2.6; the
 -- handoff's Notifications board): for each event Memax can tell them

@@ -453,7 +453,7 @@ type DreamRecipient struct {
 	Token string
 	// TimeZone is theirs, for the edition's date ("UTC" until known).
 	TimeZone string
-	// Quiet are their quiet hours (notification settings, migration 049),
+	// Quiet are their quiet hours (notification settings, migration 050),
 	// in TimeZone: the email waits until they end.
 	Quiet QuietHours
 	// Sent is set when this edition's email already went to them.

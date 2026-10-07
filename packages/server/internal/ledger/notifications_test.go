@@ -13,7 +13,7 @@ import (
 )
 
 // A person without a row reads the defaults, and a row nobody has edited
-// (one the morning email's trigger made) reads the same: migration 049's
+// (one the morning email's trigger made) reads the same: migration 050's
 // column defaults and DefaultNotificationSettings say one thing.
 func TestNotificationDefaultsMatchTheSchema(t *testing.T) {
 	t.Parallel()

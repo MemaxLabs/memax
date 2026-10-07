@@ -38,5 +38,13 @@ export function handoffPreviewsDir(): string | null {
   return candidates.find((dir) => existsSync(dir)) ?? null;
 }
 
+/** Where the handoff's screen boards are (screens/png), beside the previews. */
+export function handoffScreensDir(): string | null {
+  const previews = handoffPreviewsDir();
+  if (!previews) return null;
+  const dir = path.resolve(previews, "..", "..", "screens", "png");
+  return existsSync(dir) ? dir : null;
+}
+
 export const HANDOFF_MISSING =
   "The handoff PNGs aren't here: clone MemaxLabs/memax-internal beside this repo (or set MEMAX_INTERNAL_DIR) to compare the components with the design.";

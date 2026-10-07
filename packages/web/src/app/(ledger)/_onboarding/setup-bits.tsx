@@ -1,6 +1,21 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
+
+const noSubscribe = () => () => {};
+
+/**
+ * This app's host ("memax.app"), for what the CLI prints. The server
+ * renders the production host and the browser its own, without a
+ * hydration mismatch.
+ */
+export function useAppHost(): string {
+  return useSyncExternalStore(
+    noSubscribe,
+    () => window.location.host,
+    () => "memax.app",
+  );
+}
 import { Button, Icon, type ButtonProps } from "@memaxlabs/ledger";
 import { useLocale } from "@/i18n";
 import { useToast } from "../(app)/_components/toasts";

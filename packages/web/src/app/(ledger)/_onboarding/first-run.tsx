@@ -21,7 +21,12 @@ import { useViewer } from "../(app)/_lib/data";
 import { useLedger } from "@memaxlabs/ledger";
 import { OnboardingPage } from "./frame";
 import { useAgentsOf, useSetupImport, useSetupSpace } from "./queries";
-import { CommandBox, SetupSteps, type SetupStepItem } from "./setup-bits";
+import {
+  CommandBox,
+  SetupSteps,
+  useAppHost,
+  type SetupStepItem,
+} from "./setup-bits";
 import styles from "./first-run.module.css";
 
 /** The agents init would list: connected in the space, else found by their files. */
@@ -71,6 +76,7 @@ export function FirstRunScreen() {
   const view = viewQuery.data ?? null;
   const { agents, chatgptPending } = useTranscriptAgents(space, view);
   const nextKey = useKeycap("setup.next");
+  const host = useAppHost();
 
   const ready = Boolean(view?.progress.ready);
   const conflicts = view ? openConflicts(view).length : 0;
@@ -182,7 +188,7 @@ export function FirstRunScreen() {
     agents,
     chatgptPending,
     view,
-    host: typeof window === "undefined" ? "memax.app" : window.location.host,
+    host,
   });
   const repo = space?.repository?.split("/").at(-1) ?? space?.slug;
 

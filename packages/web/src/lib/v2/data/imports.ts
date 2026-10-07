@@ -225,6 +225,22 @@ export function fileOfRef(ref: string): string {
   return ref.replace(/:\d+$/, "");
 }
 
+/**
+ * The import's file a statement's file belongs to: the same path, or a
+ * folder the import lists as one file ("~/.codex/memories" holding
+ * "~/.codex/memories/notes.md").
+ */
+export function importFileOf(
+  file: string,
+  paths: readonly string[],
+): string | null {
+  return (
+    paths.find((p) => p === file) ??
+    paths.find((p) => file.startsWith(`${p}/`)) ??
+    null
+  );
+}
+
 /** Proposals waiting on a person: neither kept nor rejected yet. */
 export function waitingMemories(view: ImportView): ImportMemoryView[] {
   return view.memories.filter(
@@ -277,7 +293,7 @@ export function sourceGroups(view: ImportView): SourceGroup[] {
   ];
   for (const [key, files] of byKind) {
     const count = waiting.filter((m) =>
-      m.files.some((f) => files.includes(f)),
+      m.files.some((f) => importFileOf(f, files) !== null),
     ).length;
     if (count > 0) groups.push({ key, files, count });
   }

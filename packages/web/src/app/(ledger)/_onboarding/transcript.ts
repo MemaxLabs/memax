@@ -12,6 +12,7 @@ import type { Translations } from "@/i18n/locales/en";
 import type { Autonomy } from "@/lib/v2/data/agents";
 import {
   fileOfRef,
+  importFileOf,
   skippedSecrets,
   type ImportView,
 } from "@/lib/v2/data/imports";
@@ -60,10 +61,11 @@ function mono(key: string): string {
 /** The proposals each file's statements became (folded repeats count to their proposal). */
 export function proposalsByFile(view: ImportView): Map<string, number> {
   const out = new Map<string, number>();
+  const paths = view.summary.files.map((f) => f.path);
   for (const m of view.memories) {
     if (m.outcome !== "proposed") continue;
     for (const ref of m.refs) {
-      const file = fileOfRef(ref);
+      const file = importFileOf(fileOfRef(ref), paths) ?? fileOfRef(ref);
       out.set(file, (out.get(file) ?? 0) + 1);
     }
   }

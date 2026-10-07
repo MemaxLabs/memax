@@ -17,6 +17,7 @@ import { setupHref, signInHref } from "@/lib/v2/onboarding/routes";
 import { webSessionOf } from "@/lib/v2/web-session";
 import { useSource, useViewer } from "../(app)/_lib/data";
 import { OnboardingPage } from "./frame";
+import { useAppHost } from "./setup-bits";
 import styles from "./cli-auth.module.css";
 
 type Copy = ReturnType<
@@ -183,9 +184,8 @@ function Confirm({
     enabled: pending && !decide.isPending,
   });
 
+  const host = useAppHost();
   const lines = useMemo<TerminalLine[]>(() => {
-    const host =
-      typeof window === "undefined" ? "memax.app" : window.location.host;
     const out: TerminalLine[] = [];
     if (request?.clientVersion) {
       out.push({
@@ -209,7 +209,7 @@ function Confirm({
       out.push({ kind: "dim", text: copy.terminal.waiting });
     }
     return out;
-  }, [copy, code, request, viewer]);
+  }, [copy, code, request, viewer, host]);
 
   if (lookup.isPending) {
     return (

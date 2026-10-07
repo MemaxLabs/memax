@@ -316,7 +316,7 @@ function ConflictCard({
   const footer =
     choice === null
       ? interpolate(copy.chooseWith, {
-          keys: joinList(keys1, locale),
+          keys: joinOr(keys1, copy.or, locale),
         })
       : choice.choice.choice === "leave_open"
         ? copy.willLeaveOpen
@@ -395,6 +395,13 @@ function ConflictCard({
       </div>
     </article>
   );
+}
+
+/** "1, 2 or 3" / "1、2 或 3". */
+export function joinOr(items: string[], or: string, locale: string): string {
+  if (items.length < 2) return items.join("");
+  const head = items.slice(0, -1).join(locale === "zh" ? "、" : ", ");
+  return `${head} ${or} ${items.at(-1)}`;
 }
 
 /** A ref as the cleanup shows it: the file's own name and the line. */

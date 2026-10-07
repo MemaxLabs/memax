@@ -236,6 +236,7 @@ export const ledgerOnboardingZh: Translations["ledger"]["onboarding"] = {
     keepN: "保留 {n}",
     keep: "保留",
     chooseWith: "用 {keys} 选择。",
+    or: "或",
     willKeepOne: "保留为一条记忆，并写入 Memax 编译的每个文件。",
     willKeepSuggestion: "按这句话保留，引用每个文件；其余的被拒绝。",
     willLeaveOpen: "保留为待定问题，Agent 会知道它还没定。",

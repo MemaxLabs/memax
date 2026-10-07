@@ -15,6 +15,7 @@ import { interpolate } from "@/i18n";
 import { count, joinList } from "@/lib/v2/copy";
 import {
   bulkMemories,
+  importFileOf,
   openConflicts,
   sourceGroups,
   waitingMemories,
@@ -106,7 +107,7 @@ function ReviewImport({ view, data }: { view: RecordsView; data: ImportView }) {
     key === "all" ? null : (groups.find((g) => g.key === key)?.files ?? null);
   const inGroup = (m: ImportMemoryView) => {
     const files = filesOf(group);
-    return !files || m.files.some((f) => files.includes(f));
+    return !files || m.files.some((f) => importFileOf(f, files) !== null);
   };
   const waiting = waitingMemories(data).filter(inGroup);
   const bulk = bulkMemories(data).filter(inGroup);
@@ -186,7 +187,11 @@ function ReviewImport({ view, data }: { view: RecordsView; data: ImportView }) {
     const kinds: string[] = [];
     for (const m of picked) {
       for (const f of m.files) {
-        const kind = data.summary.files.find((x) => x.path === f)?.kind;
+        const path = importFileOf(
+          f,
+          data.summary.files.map((x) => x.path),
+        );
+        const kind = data.summary.files.find((x) => x.path === path)?.kind;
         const label =
           kind === "codex_memory"
             ? r.codexMemory

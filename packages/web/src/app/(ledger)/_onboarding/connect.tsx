@@ -209,13 +209,7 @@ function AgentLine({
     case "found":
       return (
         <div className={styles.row}>
-          <input
-            type="checkbox"
-            checked
-            readOnly
-            disabled
-            aria-label={interpolate(copy.foundLabel, { agent: name })}
-          />
+          <Check label={interpolate(copy.foundLabel, { agent: name })} />
           {stamp}
           <span className={styles.where}>
             <code>{AGENT_WHERE[key] ?? ""}</code>
@@ -233,7 +227,7 @@ function AgentLine({
     case "chatgpt":
       return (
         <div className={styles.row}>
-          <input type="checkbox" disabled aria-label={copy.chatgpt} />
+          <span className={styles.box} aria-hidden="true" />
           {stamp}
           <span className="mx-meta">{copy.chatgpt}</span>
           <span>
@@ -259,31 +253,24 @@ function AgentLine({
           {stamp}
           <span className="mx-meta">{copy.notConnected}</span>
           <span className="mx-meta">
-            <RunIt copy={copy} agent={key} space={space} />
+            <RunIt copy={copy} agent={key} />
           </span>
         </div>
       );
   }
 }
 
-/** "Run npx memax-cli connect copilot where it's installed", with the command as code. */
-function RunIt({
-  copy,
-  agent,
-  space,
-}: {
-  copy: Copy;
-  agent: string;
-  space: SpaceSummary | null;
-}) {
-  const command = `npx memax-cli connect ${agent === "gemini" ? "gemini-cli" : agent}${
-    space ? ` --space ${space.slug}` : ""
-  }`;
+/**
+ * "Run npx memax-cli setup --mcp --only copilot where it's installed": what
+ * init does for each agent it finds, for one, with the command as code.
+ */
+function RunIt({ copy, agent }: { copy: Copy; agent: string }) {
+  const command = `npx memax-cli setup --mcp --only ${agent}`;
   const [before, after] = copy.runIt.split("{command}");
   return (
     <>
       {before}
-      <code className="mx-code">{command}</code>
+      <code className={`mx-code ${styles.wrap}`}>{command}</code>
       {after}
     </>
   );
@@ -310,14 +297,8 @@ function ConnectedLine({
   );
   return (
     <div className={`${styles.row} ${raising ? styles.raising : ""}`}>
-      <input
-        type="checkbox"
-        checked
-        readOnly
-        disabled
-        aria-label={interpolate(copy.connectedLabel, {
-          agent: connection.name,
-        })}
+      <Check
+        label={interpolate(copy.connectedLabel, { agent: connection.name })}
       />
       {stamp}
       <span className={styles.where}>
@@ -336,6 +317,23 @@ function ConnectedLine({
         onChange={choose}
       />
     </div>
+  );
+}
+
+/**
+ * The board's checked box for an agent that is (or will be) connected. Not
+ * a control: connecting is init's (or the agent's own sign-in), and the
+ * level beside it is what the person changes here.
+ */
+function Check({ label }: { label: string }) {
+  return (
+    <span
+      className={`${styles.box} ${styles.checked}`}
+      role="img"
+      aria-label={label}
+    >
+      <Icon name="check" size={12} />
+    </span>
   );
 }
 

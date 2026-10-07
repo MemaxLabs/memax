@@ -240,6 +240,7 @@ export const ledgerOnboardingEn = {
     keepN: "Keep {n}",
     keep: "Keep",
     chooseWith: "Choose with {keys}.",
+    or: "or",
     willKeepOne:
       "Kept as one memory and written into every file Memax compiles.",
     willKeepSuggestion:

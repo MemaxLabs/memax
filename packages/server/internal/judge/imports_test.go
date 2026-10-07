@@ -3,6 +3,7 @@ package judge_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -158,6 +159,27 @@ func TestImportCheckIsCarefulAndDegrades(t *testing.T) {
 	run, err = stage0Only(f).CheckImport(f.ctx, ledger.JudgeImportArgs{ImportID: res4.Import.ID, SpaceID: sp4})
 	if err != nil || run.State != ledger.CheckSkipped {
 		t.Fatalf("one proposal: %+v %v", run, err)
+	}
+}
+
+// The primary leaves suggestion out when it has none; at temperature 0 it
+// does so again on a retry, so the answer is taken as it is (import eval,
+// Oct 7, 2026).
+func TestImportCheckTakesAnAnswerWithoutASuggestion(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	zz := f.user("zz")
+	sp := f.space(zz, "memax-v2")
+	res, _ := f.importFiles(zz, sp, [2]string{"CLAUDE.md:1", "Use pnpm."}, [2]string{"AGENTS.md:1", "Use yarn."})
+	model := &fakeModel{answer: func(c judge.Call, _ int) (string, error) {
+		refs := statementRef.FindAllStringSubmatch(c.Prompt, -1)
+		return fmt.Sprintf(`{"conflicts":[{"subject":"Package manager","members":[%q,%q],"confidence":0.95,"rationale":"pnpm or yarn."}]}`,
+			refs[0][1], refs[1][1]), nil
+	}}
+	run, err := withModel(f, model, judge.Config{Primary: judge.Tier{Model: "primary"}, Fallback: judge.Tier{Model: "f", Strict: true}}).
+		CheckImport(f.ctx, ledger.JudgeImportArgs{ImportID: res.Import.ID, SpaceID: sp})
+	if err != nil || run.Conflicts != 1 || run.Calls != 1 {
+		t.Fatalf("answer without a suggestion: %+v %v (tiers %v)", run, err, model.tiers())
 	}
 }
 

@@ -45,9 +45,25 @@ import (
 // task.
 const ImportConflictBar = 0.8
 
-// ImportBatch is how many proposals one call compares; an import with more
-// is checked in batches of related statements, by section.
-const ImportBatch = 120
+// ImportBatch is how many proposals one call compares: a whole import
+// (ledger.MaxImportItems), because a disagreement is between files and any
+// cut through an import loses the ones across it. At 120, sorted by
+// section, the cut fell between AGENTS.md and the files after it: the
+// import eval (Oct 7, 2026) found 2 of 10 planted conflicts in a 215-
+// proposal import, and 10 of 10 in one call of 4.6 s.
+const ImportBatch = ledger.MaxImportItems
+
+// ImportCallTimeout bounds one import call, unless the judge's own
+// CallTimeout is longer. A call reads a whole import: the fallback tier
+// took up to 11.4 s over 142 proposals (import eval, Oct 7, 2026), past
+// the judge's 12 s default with no room for a larger import. Four calls
+// fit in ImportWorker's timeout.
+const ImportCallTimeout = 40 * time.Second
+
+// importMaxTokens is the least answer budget an import call gets: a
+// group's answer is about 100 tokens, and 12 groups took 1,241 over 142
+// proposals, so a full import can pass the judge's 2,500.
+const importMaxTokens = 6000
 
 // ImportRun is what one import check did.
 type ImportRun struct {
@@ -79,8 +95,8 @@ func (j *Judge) CheckImport(ctx context.Context, args ledger.JudgeImportArgs) (*
 	case j.classifier == nil:
 		cmd.State = ledger.CheckNoModel
 	default:
-		groups, tier, calls, err := j.findDisagreements(ctx, in.Pending)
-		run.Calls = calls
+		check, err := j.classifier.FindImportDisagreements(ctx, in.Pending, 0)
+		run.Calls = check.Calls
 		if err != nil {
 			j.Metrics.LLMFailed.Add(1)
 			j.cfg.Log.WarnContext(ctx, "judge: import check failed", "metric", "judge_import_failed",
@@ -88,7 +104,8 @@ func (j *Judge) CheckImport(ctx context.Context, args ledger.JudgeImportArgs) (*
 			cmd.State = ledger.CheckFailed
 			break
 		}
-		cmd.State, cmd.Tier, cmd.Model, cmd.Conflicts = ledger.CheckChecked, tier.Name, tier.Model, groups
+		cmd.State, cmd.Tier, cmd.Model = ledger.CheckChecked, check.Tier.Name, check.Tier.Model
+		cmd.Conflicts = ImportConflicts(check.Groups, ImportConflictBar)
 	}
 	res, err := j.ledger.Apply(ctx, cmd)
 	if err != nil {
@@ -103,28 +120,83 @@ func (j *Judge) CheckImport(ctx context.Context, args ledger.JudgeImportArgs) (*
 	return run, nil
 }
 
-// findDisagreements asks the model, in batches, which proposals can't all
-// be true, and keeps the groups it is sure enough of.
-func (j *Judge) findDisagreements(ctx context.Context, pending []ledger.ImportCandidate) ([]ledger.ImportConflictInput, Tier, int, error) {
-	batches := importBatches(pending, ImportBatch)
-	var out []ledger.ImportConflictInput
-	var used Tier
-	calls := 0
-	for _, b := range batches {
-		groups, tier, n, err := j.askImport(ctx, b)
-		calls += n
-		if err != nil {
-			return nil, Tier{}, calls, err
-		}
-		used = tier
-		out = append(out, groups...)
+// ImportGroup is one group of proposals the model says disagree, before
+// any bar.
+type ImportGroup struct {
+	// Members are the group's proposals, each a proposal of the batch the
+	// model was shown, at least two and none twice.
+	Members                       []uuid.UUID
+	Subject, Rationale, Suggestion string
+	Confidence                    float64
+}
+
+// ImportCheck is what the model found among an import's proposals.
+type ImportCheck struct {
+	// Groups are every group the model named, in its order, batch by
+	// batch, before ImportConflictBar (ImportConflicts applies it).
+	Groups []ImportGroup
+	// Tier answered the last batch.
+	Tier Tier
+	// Calls counts the model calls, Batches the batches.
+	Calls, Batches int
+}
+
+// FindImportDisagreements asks the model which of an import's proposals
+// can't all be true, in batches of at most batch proposals (ImportBatch
+// when batch is 0). It returns every group the model named with its
+// confidence: CheckImport keeps those at ImportConflictBar, and the import
+// eval (eval/imports) scores the groups at every bar.
+func (c *Classifier) FindImportDisagreements(ctx context.Context, pending []ledger.ImportCandidate, batch int) (ImportCheck, error) {
+	if batch <= 0 {
+		batch = ImportBatch
 	}
-	return out, used, calls, nil
+	var out ImportCheck
+	for _, b := range importBatches(pending, batch) {
+		groups, tier, n, err := c.askImport(ctx, b)
+		out.Calls += n
+		out.Batches++
+		if err != nil {
+			return out, err
+		}
+		out.Tier = tier
+		out.Groups = append(out.Groups, groups...)
+	}
+	return out, nil
+}
+
+// ImportConflicts keeps the groups at or above bar, in order: each
+// proposal in the first of them that names it, and each group with at
+// least two proposals left.
+func ImportConflicts(groups []ImportGroup, bar float64) []ledger.ImportConflictInput {
+	used := map[uuid.UUID]bool{}
+	var out []ledger.ImportConflictInput
+	for _, g := range groups {
+		if g.Confidence < bar {
+			continue
+		}
+		var members []uuid.UUID
+		for _, id := range g.Members {
+			if !used[id] {
+				members = append(members, id)
+			}
+		}
+		if len(members) < 2 {
+			continue
+		}
+		for _, id := range members {
+			used[id] = true
+		}
+		conf := g.Confidence
+		out = append(out, ledger.ImportConflictInput{Members: members, Subject: g.Subject, Rationale: g.Rationale,
+			Suggestion: g.Suggestion, Confidence: &conf})
+	}
+	return out
 }
 
 // importBatches splits the proposals into batches of at most n, keeping a
-// section's statements together, since disagreements are about one
-// subject.
+// section's statements together. At ImportBatch an import is one batch;
+// a smaller n (the eval's IMPORT_EVAL_BATCH) loses the disagreements that
+// fall across a cut.
 func importBatches(pending []ledger.ImportCandidate, n int) [][]ledger.ImportCandidate {
 	if len(pending) <= n {
 		return [][]ledger.ImportCandidate{pending}
@@ -141,23 +213,24 @@ func importBatches(pending []ledger.ImportCandidate, n int) [][]ledger.ImportCan
 }
 
 // askImport makes the call for one batch: each tier in turn, each twice.
-func (j *Judge) askImport(ctx context.Context, batch []ledger.ImportCandidate) ([]ledger.ImportConflictInput, Tier, int, error) {
+func (c *Classifier) askImport(ctx context.Context, batch []ledger.ImportCandidate) ([]ImportGroup, Tier, int, error) {
 	if len(batch) < 2 {
-		return nil, j.cfg.Primary, 0, nil
+		return nil, c.cfg.Primary, 0, nil
 	}
 	calls := 0
 	var last error
-	for _, t := range []Tier{j.cfg.Primary, j.cfg.Fallback} {
+	for _, t := range []Tier{c.cfg.Primary, c.cfg.Fallback} {
 		if !t.Enabled() {
 			continue
 		}
+		t.MaxTokens = max(t.MaxTokens, importMaxTokens)
 		prompt := importPrompt(batch, t.Strict)
 		for attempt := 0; attempt < 2; attempt++ {
 			calls++
-			text, err := j.callImport(ctx, Call{Tier: t, System: importSystem, Prompt: prompt, Schema: importSchemaRaw})
+			text, err := c.callImport(ctx, Call{Tier: t, System: importSystem, Prompt: prompt, Schema: importSchemaRaw})
 			if err == nil {
-				var groups []ledger.ImportConflictInput
-				if groups, err = parseImport(text, batch, ImportConflictBar); err == nil {
+				var groups []ImportGroup
+				if groups, err = parseImport(text, batch); err == nil {
 					return groups, t, calls, nil
 				}
 			}
@@ -175,11 +248,11 @@ func (j *Judge) askImport(ctx context.Context, batch []ledger.ImportCandidate) (
 	return nil, Tier{}, calls, fmt.Errorf("%w: %v", ErrNoAnswer, last)
 }
 
-func (j *Judge) callImport(ctx context.Context, call Call) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, j.cfg.CallTimeout)
+func (c *Classifier) callImport(ctx context.Context, call Call) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, max(c.cfg.CallTimeout, ImportCallTimeout))
 	defer cancel()
 	ctx = anthropic.WithTracking(ctx, anthropic.Tracking{Metadata: map[string]any{"feature": "judge_import", "tier": call.Tier.Name}})
-	text, err := j.classifier.model.Complete(ctx, call)
+	text, err := c.model.Complete(ctx, call)
 	if err == nil && strings.TrimSpace(text) == "" {
 		err = ErrEmpty
 	}
@@ -240,9 +313,18 @@ type importAnswer struct {
 	} `json:"conflicts"`
 }
 
-// parseImport validates an answer and keeps the groups at or above the
-// bar, each member a statement of the batch, each statement in one group.
-func parseImport(text string, batch []ledger.ImportCandidate, bar float64) ([]ledger.ImportConflictInput, error) {
+// ParseImportAnswer is the check's reading of one answer for batch: an
+// error when the check would refuse it (and ask again), else every group
+// it names, before the bar. The import eval reports the answers it
+// refuses.
+func ParseImportAnswer(text string, batch []ledger.ImportCandidate) ([]ImportGroup, error) {
+	return parseImport(text, batch)
+}
+
+// parseImport validates an answer and returns its groups, each member a
+// statement of the batch, none twice in a group, and each group at least
+// two of them. The bar is ImportConflicts'.
+func parseImport(text string, batch []ledger.ImportCandidate) ([]ImportGroup, error) {
 	raw := anthropic.ExtractJSONObject(anthropic.StripMarkdownFences(text))
 	doc, err := jsonschema.UnmarshalJSON(strings.NewReader(raw))
 	if err != nil {
@@ -259,36 +341,32 @@ func parseImport(text string, batch []ledger.ImportCandidate, bar float64) ([]le
 	for _, c := range batch {
 		byRef[c.Ref] = c.ID
 	}
-	used := map[uuid.UUID]bool{}
-	var out []ledger.ImportConflictInput
+	var out []ImportGroup
 	for _, g := range a.Conflicts {
 		if g.Confidence < 0 || g.Confidence > 1 {
 			return nil, fmt.Errorf("confidence %v is outside 0..1", g.Confidence)
 		}
-		if g.Confidence < bar {
-			continue
-		}
 		var members []uuid.UUID
 		for _, r := range g.Members {
 			id, ok := byRef[strings.ToUpper(strings.TrimSpace(r))]
-			if ok && !used[id] && !slices.Contains(members, id) {
+			if ok && !slices.Contains(members, id) {
 				members = append(members, id)
 			}
 		}
 		if len(members) < 2 {
 			continue
 		}
-		for _, id := range members {
-			used[id] = true
-		}
-		conf := g.Confidence
-		out = append(out, ledger.ImportConflictInput{Members: members, Subject: truncate(strings.TrimSpace(g.Subject), ledger.MaxConflictSubject),
+		out = append(out, ImportGroup{Members: members, Subject: truncate(strings.TrimSpace(g.Subject), ledger.MaxConflictSubject),
 			Rationale:  truncate(strings.TrimSpace(g.Rationale), ledger.MaxConflictRationale),
-			Suggestion: truncate(strings.TrimSpace(g.Suggestion), ledger.MaxStatementRunes), Confidence: &conf})
+			Suggestion: truncate(strings.TrimSpace(g.Suggestion), ledger.MaxStatementRunes), Confidence: g.Confidence})
 	}
 	return out, nil
 }
 
+// importSchemaRaw is the answer's JSON Schema. suggestion may be left out:
+// the primary leaves it out when it has none to give, and at temperature 0
+// a retry leaves it out again, so requiring it sent whole imports to the
+// fallback tier (import eval, Oct 7, 2026: 4 of 7 imports).
 var importSchemaRaw = json.RawMessage(`{
   "type": "object",
   "additionalProperties": false,
@@ -299,7 +377,7 @@ var importSchemaRaw = json.RawMessage(`{
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["subject", "members", "confidence", "rationale", "suggestion"],
+        "required": ["subject", "members", "confidence", "rationale"],
         "properties": {
           "subject": {"type": "string"},
           "members": {"type": "array", "items": {"type": "string"}},
@@ -334,7 +412,8 @@ type ImportWorker struct {
 	Judge *Judge
 }
 
-// Timeout bounds one attempt: a few batches, each up to four calls.
+// Timeout bounds one attempt: one batch (an import holds at most
+// ImportBatch proposals), up to four calls of ImportCallTimeout.
 func (w *ImportWorker) Timeout(*river.Job[ledger.JudgeImportArgs]) time.Duration {
 	return 3 * time.Minute
 }

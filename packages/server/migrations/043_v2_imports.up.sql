@@ -1,4 +1,4 @@
--- 042: v2_imports
+-- 043: v2_imports
 --
 -- `npx memax-cli init` (plan 25 §7.3, Phase 2 epic 2.1): what agents
 -- already know, read from their files on the person's machine, arrives as

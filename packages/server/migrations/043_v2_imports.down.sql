@@ -1,4 +1,4 @@
--- 042 down: v2_imports
+-- 043 down: v2_imports
 --
 -- Drops the import bookkeeping and the import conflict groups. The
 -- proposals an import wrote, their sources, flags, links and receipts are

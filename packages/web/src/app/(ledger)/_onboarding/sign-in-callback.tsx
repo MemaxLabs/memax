@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Button } from "@memaxlabs/ledger";
 import { useLocale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
+import { trackFunnelStep } from "@/lib/v2/funnel";
 import { safeNext, signInHref } from "@/lib/v2/onboarding/routes";
 import { StatusPage } from "../_components/status-page";
 import { useLandingRedirect } from "./landing";
@@ -63,6 +64,7 @@ export function SignInCallbackScreen() {
           setState("failed");
           return;
         }
+        trackFunnelStep("signed_in");
         setState("landing");
         landing.go(next);
       } catch {

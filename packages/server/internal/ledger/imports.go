@@ -481,6 +481,12 @@ func itemKeyPrefix(key string) string {
 	return "import:" + hex.EncodeToString(sum[:12]) + ":"
 }
 
+// FoldImportItems groups an import's items into proposals as Import does:
+// each group becomes one proposal, its first item's words citing every
+// item's sources. The import eval (eval/imports) builds its proposals with
+// it.
+func FoldImportItems(items []ImportItem) [][]int { return foldImport(items) }
+
 // foldImport groups the items that repeat each other, as the judge's
 // stage 0 decides a repeat: the same normalised words, or a near-verbatim
 // repeat (textsig.NearDuplicate, which refuses any difference in numbers,

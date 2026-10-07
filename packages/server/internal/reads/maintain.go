@@ -14,7 +14,15 @@ import (
 )
 
 // The worker's daily upkeep of reads: next month's partitions, retention,
-// and the north star (plan 25 §5.18) for the week that just ended.
+// the north star (plan 25 §5.18) for the week that just ended, and beside
+// it the product metrics that judge the phase gates (§12): activation,
+// first file, week-4 keeping, team pull and review health
+// (ledger.GetProductMetrics).
+
+// ProductMetricsWeeks is how many signup weeks the daily job reports, the
+// current one included: enough for the oldest cohort's 60 days of team
+// pull to have closed.
+const ProductMetricsWeeks = 10
 
 // MaintainInterval is how often reads_maintain runs.
 const MaintainInterval = 24 * time.Hour
@@ -71,6 +79,12 @@ func (w *MaintainWorker) Work(ctx context.Context, _ *river.Job[MaintainArgs]) e
 		"spaces_two_connections", m.SpacesTwoConnections, "spaces_hook_loads", m.SpacesHookLoads,
 		"connections_reading", m.ConnectionsReading, "connections_seen", m.ConnectionsSeen,
 		"coverage", m.Coverage(), "partitions_dropped", dropped)
+
+	pm, err := w.Ledger.GetProductMetrics(ctx, ledger.WeekStart(now).AddDate(0, 0, -7*(ProductMetricsWeeks-1)), now)
+	if err != nil {
+		return err
+	}
+	reportProductMetrics(ctx, log, pm)
 	return nil
 }
 

@@ -1,23 +1,25 @@
 /**
  * OAuthConsent (plan 25 §5.15, epic 2.3): a person lets an outside agent
- * (an MCP client) connect to one of their spaces. The API is the OAuth
- * authority: GET /oauth/authorize/consent-request answers who is signed
- * in for the request, the person's spaces and what the agent will and
- * won't be able to do in each, decided by the server's policy. The page
- * posts the decision back as a plain form, so the browser follows the
- * API's redirect to the client's registered redirect_uri; nothing here
- * builds one. No words live here.
+ * (an MCP client) connect to one of their spaces. GET /oauth/authorize on
+ * the API sends the browser here with the request's ID; the person signs
+ * in on the web (any method) and their session opens and answers the
+ * request through the web app's proxy. The first person to open a request
+ * is bound to it. The server says, for each space, what the agent will and
+ * won't be able to do there (from policy), and answers a decision with the
+ * URL to send the browser to: the client's registered redirect_uri, which
+ * nothing here builds. No words live here.
  */
 import {
   MemaxError,
-  type OAuthConsentHub,
-  type OAuthConsentRequest,
+  type OAuthAutonomy,
+  type OAuthRequest,
+  type OAuthRequestSpace,
 } from "memax-sdk";
 import { TARGET_READERS, type TargetKind } from "./targets";
 
 /**
  * An ability the server says the agent has (can) or lacks (cannot) in a
- * space (packages/server/internal/handler/mcp_oauth_v2.go).
+ * space (packages/server/internal/handler/mcp_oauth_consent.go).
  */
 export type ConsentAbility =
   | "read_brief"
@@ -43,7 +45,7 @@ const ABILITIES: ReadonlySet<string> = new Set<ConsentAbility>([
 export type ConsentSpaceKind = "personal" | "project" | "team";
 
 export interface ConsentSpaceView {
-  /** The hub id the form sends. */
+  /** The space the decision names. */
   id: string;
   name: string;
   kind: ConsentSpaceKind;
@@ -56,20 +58,16 @@ export interface ConsentSpaceView {
   people: number | null;
   /** The file this agent reads here, else the canonical one. */
   compiles: string | null;
-  /** read, propose or write (V2); null on V1. */
-  autonomy: "read" | "propose" | "write" | null;
+  /** The level the agent is connected at (V2); null on V1. */
+  autonomy: OAuthAutonomy | null;
+  /** The most a person may later allow it, in Agents (V2); null on V1. */
+  ceiling: OAuthAutonomy | null;
   can: ConsentAbility[];
   cannot: ConsentAbility[];
-  /** Whether the server said what the agent can do here. */
-  described: boolean;
 }
 
 export interface ConsentRequestView {
   requestId: string;
-  /** The consent token: the form's CSRF token. */
-  token: string;
-  /** Where the form posts: the API's consent endpoint. */
-  submitUrl: string;
   client: {
     /** As the client names itself; never trusted as anything but text. */
     name: string;
@@ -78,12 +76,10 @@ export interface ConsentRequestView {
     /** For a metadata-document client, the host Memax fetched it from. */
     host: string | null;
   };
-  /** Who the request is signed in as. */
-  person: string | null;
+  /** Who the request is bound to: the person signed in here. */
+  person: string;
   /** V2 first, then project, team, personal; by name. */
   spaces: ConsentSpaceView[];
-  /** The permissions the form sends: never above memax:propose. */
-  permissions: string[];
   /** Seconds left when it was read. */
   expiresIn: number;
 }
@@ -94,8 +90,10 @@ export type ConsentEnding =
   | "missing"
   /** It lasted its 10 minutes. */
   | "expired"
-  /** Answered already, or an old link (a token "Not you?" retired). */
+  /** Answered already, an old link, or someone else's. */
   | "gone"
+  /** This session can't answer (not one the web app was issued). */
+  | "refused"
   /** It didn't load; trying again may work. */
   | "failed";
 
@@ -106,12 +104,33 @@ export class ConsentLoadError extends Error {
   }
 }
 
+/** Why a decision didn't go through. */
+export type ConsentRefusal =
+  /** The space can't be connected from this account. */
+  | "space"
+  /** The request ended meanwhile (consentEnding says how). */
+  | "ended"
+  | "failed";
+
+export class ConsentDecisionError extends Error {
+  constructor(
+    readonly refusal: ConsentRefusal,
+    readonly ending: ConsentEnding | null = null,
+  ) {
+    super(refusal);
+    this.name = "ConsentDecisionError";
+  }
+}
+
 export interface ConsentSource {
-  load(input: {
-    requestId: string;
-    token: string;
-    signal?: AbortSignal;
-  }): Promise<ConsentRequestView>;
+  load(requestId: string): Promise<ConsentRequestView>;
+  /** The URL to send the browser to: the client's redirect_uri. */
+  decide(
+    requestId: string,
+    decision: { decision: "approve"; spaceId: string } | { decision: "deny" },
+  ): Promise<string>;
+  /** "Not you?": lets go of the request. */
+  release(requestId: string): Promise<void>;
 }
 
 /** What a client named itself, for display: no control or bidi characters, one line. */
@@ -137,12 +156,7 @@ export function shortName(name: string, max = 32): string {
 
 /** The V1 agent slug as the Ledger's stamp registry knows it. */
 export function stampAgent(slug: string): string {
-  switch (slug) {
-    case "claude-ai":
-      return "claude";
-    default:
-      return slug;
-  }
+  return slug === "claude-ai" ? "claude" : slug;
 }
 
 const FILE_LABELS: Record<string, string> = {
@@ -158,7 +172,7 @@ const FILE_LABELS: Record<string, string> = {
  */
 export function compiledFor(
   agent: string,
-  targets: NonNullable<OAuthConsentHub["targets"]>,
+  targets: NonNullable<OAuthRequestSpace["targets"]>,
 ): string | null {
   const files = targets.filter((t) => t.kind !== "chatgpt");
   const mine = (Object.keys(TARGET_READERS) as TargetKind[])
@@ -185,71 +199,83 @@ const KIND_ORDER: Record<ConsentSpaceKind, number> = {
 };
 
 export function toConsentSpace(
-  hub: OAuthConsentHub,
+  space: OAuthRequestSpace,
   agent: string,
 ): ConsentSpaceView {
-  const kind: ConsentSpaceKind =
-    hub.space_kind ?? (hub.hub_type === "personal" ? "personal" : "team");
-  const onV2 = hub.on_v2 === true;
   return {
-    id: hub.id,
-    name: hub.name,
-    kind,
-    onV2,
-    disabled: hub.disabled,
-    memories: onV2 ? (hub.kept_count ?? null) : hub.memory_count,
-    people: hub.people_count ?? null,
-    compiles: onV2 ? compiledFor(agent, hub.targets ?? []) : null,
-    autonomy: onV2 ? (hub.autonomy ?? null) : null,
-    can: abilities(hub.can),
-    cannot: abilities(hub.cannot),
-    described: hub.can !== undefined || hub.cannot !== undefined,
+    id: space.id,
+    name: space.name,
+    kind: space.kind,
+    onV2: space.on_v2,
+    disabled: space.disabled,
+    memories: space.memories ?? null,
+    people: space.people,
+    compiles: space.on_v2 ? compiledFor(agent, space.targets ?? []) : null,
+    autonomy: space.on_v2 ? (space.autonomy ?? null) : null,
+    ceiling: space.on_v2 ? (space.ceiling ?? null) : null,
+    can: abilities(space.can),
+    cannot: abilities(space.cannot),
   };
 }
 
-export function toConsentRequest(r: OAuthConsentRequest): ConsentRequestView {
+export function toConsentRequest(r: OAuthRequest): ConsentRequestView {
   const agent = stampAgent(r.agent_name);
-  const spaces = r.hubs
-    .map((hub) => toConsentSpace(hub, agent))
+  const spaces = r.spaces
+    .map((space) => toConsentSpace(space, agent))
     .sort(
       (a, b) =>
         Number(b.onV2) - Number(a.onV2) ||
         KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
         a.name.localeCompare(b.name),
     );
-  const scope = (r.consent_scope ?? "memax:read memax:propose")
-    .split(/\s+/)
-    .filter((s) => s === "memax:read" || s === "memax:propose");
   return {
-    requestId: r.session_id,
-    token: r.csrf_token,
-    submitUrl: r.submit_url,
+    requestId: r.request_id,
     client: {
       name: cleanClientName(r.client_name),
       agent,
       host: r.client_host ?? null,
     },
-    person: r.person?.name ?? null,
+    person: r.person.name,
     spaces,
-    permissions: scope,
-    expiresIn: r.expires_in ?? 600,
+    expiresIn: r.expires_in,
   };
 }
 
-/** How the API's refusal reads on the page. */
+/** How the API's refusal of a request reads on the page. */
 export function consentEnding(err: unknown): ConsentEnding {
   if (err instanceof ConsentLoadError) return err.ending;
   if (!(err instanceof MemaxError)) return "failed";
   if (err.status === 410 || err.code === "consent_request_expired") {
     return "expired";
   }
-  if (
-    err.status === 404 ||
-    err.code === "consent_request_not_found" ||
-    err.code === "invalid_consent_token"
-  ) {
+  if (err.status === 404 || err.code === "consent_request_not_found") {
     return "gone";
   }
-  if (err.code === "missing_consent_request") return "missing";
+  if (err.code === "consent_by_person_on_web") return "refused";
   return "failed";
+}
+
+/** How the API's refusal of a decision reads on the page. */
+export function consentRefusal(err: unknown): ConsentDecisionError {
+  if (err instanceof ConsentDecisionError) return err;
+  if (err instanceof MemaxError && err.code === "consent_space") {
+    return new ConsentDecisionError("space");
+  }
+  const ending = consentEnding(err);
+  return ending === "failed"
+    ? new ConsentDecisionError("failed")
+    : new ConsentDecisionError("ended", ending);
+}
+
+/**
+ * Only an http(s) URL is followed: the server built it from the client's
+ * registered redirect_uri, which it accepts only as https or loopback.
+ */
+export function followable(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
 }

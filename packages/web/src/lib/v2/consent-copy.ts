@@ -40,15 +40,27 @@ export function spaceMetaLine(
   return space.onV2 ? meta : interpolate(m.onV1, { meta });
 }
 
-/** The line under Allow, for the level the agent is connected at. */
+/**
+ * The line under Allow: what a person may change later, in Agents, from
+ * the level the agent gets up to the ceiling the server gave (the token's
+ * scope and the person's role). It never offers what the ceiling refuses.
+ */
 export function consentFootnote(
   copy: ConsentCopy,
   client: string,
   space: ConsentSpaceView | undefined,
 ): string {
-  if (space && !space.onV2) return interpolate(copy.footnoteV1, { client });
-  if (space?.autonomy === "read") {
-    return interpolate(copy.footnoteRead, { client });
+  const level = space?.autonomy;
+  const ceiling = space?.ceiling;
+  if (space?.onV2 && level && ceiling) {
+    if (ceiling === "write") {
+      return interpolate(level === "read" ? copy.footnoteRead : copy.footnote, {
+        client,
+      });
+    }
+    if (ceiling === "propose" && level === "read") {
+      return interpolate(copy.footnoteReadPropose, { client });
+    }
   }
-  return interpolate(copy.footnote, { client });
+  return interpolate(copy.footnoteDisconnect, { client });
 }

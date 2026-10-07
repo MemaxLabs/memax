@@ -84,8 +84,8 @@ export function proxy(request: NextRequest) {
 
   // V2 gating first: a V2 path without the opt-in cookie goes to the
   // V1 home. Query strings are dropped; they belong to the V2 route.
-  // The one exception carries it: an opted-in browser on V1's consent
-  // page goes on to the Ledger one with the same request.
+  // The one exception carries it: V1's retired consent page sends every
+  // browser on to the Ledger one (OAuthConsent) with the same request.
   const gate = decideUiGate({
     pathname,
     uiCookie: request.cookies.get(UI_COOKIE)?.value,
@@ -151,7 +151,7 @@ export const config = {
     "/signin/:path*",
     "/device/:path*",
     "/unsubscribe/:path*",
-    // OAuthConsent, and V1's consent page an opted-in browser leaves for it
+    // OAuthConsent, and V1's retired consent page, which sends browsers to it
     "/oauth/:path*",
     "/setup/:path*",
     "/join/:path*",

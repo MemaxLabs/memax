@@ -9,12 +9,10 @@ export const metadata: Metadata = {
 };
 
 // OAuthConsent (OAuthConsent.png): where an outside agent's OAuth request
-// (MCP) asks a person for one space. Open to every browser, like /device:
-// the API sends a person with a space on the V2 record here after they
-// sign in for the agent, and a browser that opted into V2 comes here from
-// V1's /oauth/consent (lib/ui-gate.ts). The referrer policy stays the
-// default: the consent form's post must carry this page's Origin, which
-// the API checks.
+// (MCP) asks a person for one space. Open to every browser, like /signin
+// and /device: the API sends everyone here from GET /oauth/authorize, and
+// V1's retired /oauth/consent sends its links here (lib/ui-gate.ts). The
+// person signs in on the way if they need to.
 export default function OAuthConsentPage() {
   return (
     <Suspense>

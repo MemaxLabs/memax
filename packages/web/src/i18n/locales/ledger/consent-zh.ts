@@ -51,10 +51,11 @@ export const ledgerConsentZh: Translations["ledger"]["consent"] = {
   allow: "允许 {client}",
   footnote: "你随时可以在 Agent 页面允许写入，或断开 {client}。",
   footnoteRead: "你随时可以在 Agent 页面让 {client} 提议或写入，或者断开它。",
-  footnoteV1: "你随时可以在 Agent 页面断开 {client}。",
+  footnoteReadPropose: "你随时可以在 Agent 页面让 {client} 提议，或者断开它。",
+  footnoteDisconnect: "你随时可以在 Agent 页面断开 {client}。",
   errors: {
     space: "这个账号连接不了那个空间。从这里列出的空间里选一个吧。",
-    permission: "Memax 给不了 {client} 要的权限。从 {client} 重新发起连接吧。",
+    failed: "没能完成，再试一次吧。",
   },
   loading: "正在读取请求",
   missing: {
@@ -67,7 +68,11 @@ export const ledgerConsentZh: Translations["ledger"]["consent"] = {
   },
   gone: {
     title: "这个请求已经结束了。",
-    lede: "它已经处理过了，或者这是个旧链接。如果你的 Agent 还在等，就从它那边重新发起连接。",
+    lede: "它已经处理过了、别人先打开了它，或者这是个旧链接。如果你的 Agent 还在等，就从它那边重新发起连接。",
+  },
+  refused: {
+    title: "这个请求不能在这里处理。",
+    lede: "用你自己的账号登录 Memax 网页版，再从你的 Agent 重新发起连接。",
   },
   failed: {
     title: "这个请求没能加载出来。",

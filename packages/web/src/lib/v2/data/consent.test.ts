@@ -6,8 +6,11 @@ import { consentFootnote, spaceMetaLine } from "../consent-copy";
 import {
   cleanClientName,
   compiledFor,
+  ConsentDecisionError,
   ConsentLoadError,
   consentEnding,
+  consentRefusal,
+  followable,
   shortName,
   toConsentRequest,
   type ConsentSpaceView,
@@ -32,15 +35,14 @@ describe("the consent request", () => {
     expect(compiledFor("codex", [])).toBeNull();
   });
 
-  it("puts spaces on V2 first, then projects, teams and Personal, and sends no more than propose", () => {
-    const [project, team, personal] = demoConsentRequest.hubs;
+  it("puts spaces on V2 first, then projects, teams and Personal", () => {
+    const [project, team, personal] = demoConsentRequest.spaces;
     const view = toConsentRequest({
       ...demoConsentRequest,
       client_name: "Claude",
       agent_name: "claude-ai",
-      consent_scope: "memax:write memax:propose memax:read",
-      hubs: [
-        { ...personal!, on_v2: false, name: "Personal" },
+      spaces: [
+        { ...personal!, on_v2: false, name: "Personal", memories: 12 },
         { ...team!, name: "Zeta team" },
         { ...team!, id: "t2", name: "Alpha team" },
         project!,
@@ -52,33 +54,38 @@ describe("the consent request", () => {
       "Zeta team",
       "Personal",
     ]);
-    expect(view.permissions).toEqual(["memax:propose", "memax:read"]);
     expect(view.client).toEqual({
       name: "Claude",
       agent: "claude",
       host: null,
     });
-    // V1 counts its V1 memories, V2 its kept ones.
-    expect(view.spaces[3]!.memories).toBe(0);
-    expect(view.spaces[0]!.memories).toBe(214);
+    expect(view.person).toBe("Ziyang");
+    // V1 counts its V1 memories and has no level; V2 its kept ones.
+    expect(view.spaces[3]).toMatchObject({
+      memories: 12,
+      autonomy: null,
+      ceiling: null,
+    });
+    expect(view.spaces[0]).toMatchObject({
+      memories: 214,
+      autonomy: "propose",
+      ceiling: "write",
+    });
   });
 
   it("keeps abilities it knows and drops ones it doesn't", () => {
     const view = toConsentRequest({
       ...demoConsentRequest,
-      hubs: [
+      spaces: [
         {
-          ...demoConsentRequest.hubs[0]!,
+          ...demoConsentRequest.spaces[0]!,
           can: ["read_brief", "teleport"],
           cannot: ["forget"],
         },
-        { ...demoConsentRequest.hubs[1]!, can: undefined, cannot: undefined },
       ],
     });
     expect(view.spaces[0]!.can).toEqual(["read_brief"]);
-    expect(view.spaces[0]!.described).toBe(true);
-    // An older server says nothing: the page then claims nothing.
-    expect(view.spaces[1]!.described).toBe(false);
+    expect(view.spaces[0]!.cannot).toEqual(["forget"]);
   });
 
   it("shows a client's name as one line of text", () => {
@@ -92,24 +99,33 @@ describe("the consent request", () => {
     expect(shortName("😀".repeat(12), 10)).toBe(`${"😀".repeat(9)}…`);
   });
 
-  it("reads the API's refusals as endings", () => {
-    expect(
-      consentEnding(new MemaxError("", "consent_request_expired", 410)),
-    ).toBe("expired");
-    expect(
-      consentEnding(new MemaxError("", "consent_request_not_found", 404)),
-    ).toBe("gone");
-    expect(
-      consentEnding(new MemaxError("", "invalid_consent_token", 403)),
-    ).toBe("gone");
-    expect(
-      consentEnding(new MemaxError("", "missing_consent_request", 400)),
-    ).toBe("missing");
-    expect(consentEnding(new MemaxError("", "network_error", 502))).toBe(
-      "failed",
-    );
+  it("reads the API's refusals as endings and decisions", () => {
+    const e = (code: string, status: number) =>
+      new MemaxError("", code, status);
+    expect(consentEnding(e("consent_request_expired", 410))).toBe("expired");
+    expect(consentEnding(e("consent_request_not_found", 404))).toBe("gone");
+    expect(consentEnding(e("consent_by_person_on_web", 403))).toBe("refused");
+    expect(consentEnding(e("network_error", 502))).toBe("failed");
     expect(consentEnding(new ConsentLoadError("gone"))).toBe("gone");
     expect(consentEnding(new Error("x"))).toBe("failed");
+    expect(consentRefusal(e("consent_space", 422)).refusal).toBe("space");
+    expect(consentRefusal(e("consent_request_expired", 410))).toMatchObject({
+      refusal: "ended",
+      ending: "expired",
+    });
+    expect(consentRefusal(e("network_error", 502)).refusal).toBe("failed");
+    const own = new ConsentDecisionError("space");
+    expect(consentRefusal(own)).toBe(own);
+  });
+
+  it("follows only http(s) URLs", () => {
+    expect(followable("https://claude.ai/api/mcp/auth_callback?code=c")).toBe(
+      true,
+    );
+    expect(followable("http://127.0.0.1:1455/callback?code=c")).toBe(true);
+    expect(followable("javascript:alert(1)")).toBe(false);
+    expect(followable("data:text/html,x")).toBe(false);
+    expect(followable("/relative")).toBe(false);
   });
 });
 
@@ -124,9 +140,9 @@ function space(over: Partial<ConsentSpaceView>): ConsentSpaceView {
     people: null,
     compiles: null,
     autonomy: "propose",
+    ceiling: "write",
     can: [],
     cannot: [],
-    described: true,
     ...over,
   };
 }
@@ -160,18 +176,32 @@ describe("consent copy", () => {
     );
   });
 
-  it("says what can change later, for the level the agent gets", () => {
-    expect(consentFootnote(EN, "Codex", space({}))).toBe(
+  it("offers only what a person may change later, up to the ceiling", () => {
+    const at = (
+      autonomy: "read" | "propose",
+      ceiling: "read" | "propose" | "write",
+    ) => consentFootnote(EN, "Codex", space({ autonomy, ceiling }));
+    expect(at("propose", "write")).toBe(
       "You can allow Write, or disconnect Codex, any time in Agents.",
     );
-    expect(consentFootnote(EN, "Cursor", space({ autonomy: "read" }))).toBe(
-      "You can let Cursor propose or write, or disconnect it, any time in Agents.",
+    expect(at("read", "write")).toBe(
+      "You can let Codex propose or write, or disconnect it, any time in Agents.",
+    );
+    expect(at("read", "propose")).toBe(
+      "You can let Codex propose, or disconnect it, any time in Agents.",
+    );
+    // A viewer's agent, or a scope that only proposes: nothing to raise.
+    expect(at("propose", "propose")).toBe(
+      "You can disconnect Codex any time in Agents.",
+    );
+    expect(at("read", "read")).toBe(
+      "You can disconnect Codex any time in Agents.",
     );
     expect(consentFootnote(EN, "Codex", space({ onV2: false }))).toBe(
       "You can disconnect Codex any time in Agents.",
     );
     expect(consentFootnote(EN, "Codex", undefined)).toBe(
-      "You can allow Write, or disconnect Codex, any time in Agents.",
+      "You can disconnect Codex any time in Agents.",
     );
   });
 });

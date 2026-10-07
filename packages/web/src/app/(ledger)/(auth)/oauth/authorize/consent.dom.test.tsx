@@ -10,63 +10,60 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LedgerProvider } from "@memaxlabs/ledger";
-import { MemaxError, type OAuthConsentRequest } from "memax-sdk";
+import { MemaxError, type OAuthRequest } from "memax-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocaleProvider, type Locale } from "@/i18n";
 import { demoConsentRequest } from "@/lib/v2/data/consent-demo";
 import { ConsentScreen } from "./consent-screen";
 
-// OAuthConsent: the board's request, what each space says, the forms the
-// page posts (never above memax:propose, Cancel as `deny`, "Not you?" as
-// `switch`, each with the request's token), and every ending.
+// OAuthConsent: signing in first and coming back, the board's request,
+// what each space says, the decisions the page sends as the person signed
+// in (one space, Cancel as deny) and the URL it follows, "Not you?", and
+// every ending.
 
 const h = vi.hoisted(() => ({
-  params: new URLSearchParams("request_id=req_1&consent_token=tok_1"),
-  load: vi.fn(),
-  user: null as { id: string } | null,
+  params: new URLSearchParams("request=req_1"),
+  open: vi.fn(),
+  decide: vi.fn(),
+  release: vi.fn(),
+  replace: vi.fn(),
+  auth: { user: { id: "u1" } as { id: string } | null, loading: false },
 }));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => h.params,
+  useRouter: () => ({ replace: h.replace }),
 }));
 vi.mock("@/lib/memax-client", () => ({
-  getPublicMemaxClient: () => ({ auth: { getOAuthConsentRequest: h.load } }),
+  getMemaxClient: () => ({
+    auth: {
+      openOAuthRequest: h.open,
+      decideOAuthRequest: h.decide,
+      releaseOAuthRequest: h.release,
+    },
+  }),
 }));
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ user: h.user }),
+  useAuth: () => h.auth,
 }));
 
-const SUBMIT = "https://api.memax.test/oauth/authorize/consent";
-
-function request(over: Partial<OAuthConsentRequest> = {}): OAuthConsentRequest {
-  return {
-    ...demoConsentRequest,
-    session_id: "req_1",
-    csrf_token: "tok_1",
-    submit_url: SUBMIT,
-    ...over,
-  };
+function request(over: Partial<OAuthRequest> = {}): OAuthRequest {
+  return { ...demoConsentRequest, request_id: "req_1", ...over };
 }
 
-const [project, team, personal] = demoConsentRequest.hubs;
-
-let submitted: HTMLFormElement[] = [];
-const keep = (e: Event) => {
-  e.preventDefault();
-  submitted.push(e.target as HTMLFormElement);
-};
+const [project, team, personal] = demoConsentRequest.spaces;
+let assign: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
-  submitted = [];
-  document.addEventListener("submit", keep);
+  assign = vi.fn();
+  vi.stubGlobal("location", { ...window.location, assign });
 });
 
 afterEach(() => {
   cleanup();
-  document.removeEventListener("submit", keep);
-  h.load.mockReset();
-  h.user = null;
-  h.params = new URLSearchParams("request_id=req_1&consent_token=tok_1");
   vi.unstubAllGlobals();
+  for (const fn of [h.open, h.decide, h.release, h.replace]) fn.mockReset();
+  h.auth = { user: { id: "u1" }, loading: false };
+  h.params = new URLSearchParams("request=req_1");
 });
 
 function renderScreen(locale: Locale = "en") {
@@ -82,36 +79,48 @@ function renderScreen(locale: Locale = "en") {
   );
 }
 
-function fields(form: HTMLFormElement) {
-  return [...new FormData(form).entries()].map(([k, v]) => `${k}=${v}`);
-}
-
 function lists() {
-  const can = screen.getByRole("list", { name: /will be able to/ });
-  const cannot = screen.getByRole("list", { name: "It won't be able to" });
   const text = (list: HTMLElement) =>
     within(list)
       .getAllByRole("listitem")
       .map((li) => li.textContent);
-  return { can: text(can), cannot: text(cannot) };
+  return {
+    can: text(screen.getByRole("list", { name: /will be able to/ })),
+    cannot: text(screen.getByRole("list", { name: "It won't be able to" })),
+  };
 }
 
 describe("OAuthConsent", () => {
+  it("signs in first, and comes back to the same request", () => {
+    h.auth = { user: null, loading: false };
+    renderScreen();
+    expect(h.replace).toHaveBeenCalledWith(
+      "/signin?next=%2Foauth%2Fauthorize%3Frequest%3Dreq_1",
+    );
+    expect(h.open).not.toHaveBeenCalled();
+    cleanup();
+    // While the session is still being read, nothing is decided.
+    h.replace.mockReset();
+    h.auth = { user: null, loading: true };
+    renderScreen();
+    expect(h.replace).not.toHaveBeenCalled();
+  });
+
   it("shows the board's request: the agent, who is signed in, the spaces and what's true in the chosen one", async () => {
-    h.load.mockResolvedValue(request());
+    h.open.mockResolvedValue(request());
     renderScreen();
     expect(
       await screen.findByRole("heading", {
         name: "Codex wants to connect to Memax",
       }),
     ).toBeTruthy();
-    expect(h.load).toHaveBeenCalledWith("req_1", "tok_1");
+    expect(h.open).toHaveBeenCalledWith("req_1");
     expect(screen.getByText(/Signed in as Ziyang/)).toBeTruthy();
     const radios = screen.getAllByRole("radio");
     expect(radios.map((r) => (r as HTMLInputElement).value)).toEqual([
-      project.id,
-      team.id,
-      personal.id,
+      project!.id,
+      team!.id,
+      personal!.id,
     ]);
     expect((radios[0] as HTMLInputElement).checked).toBe(true);
     expect(screen.getByText("Project · 214 memories")).toBeTruthy();
@@ -133,8 +142,6 @@ describe("OAuthConsent", () => {
         "See your other spaces",
       ],
     });
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Allow Codex" })).toBeTruthy();
     expect(
       screen.getByText(
         "You can allow Write, or disconnect Codex, any time in Agents.",
@@ -142,73 +149,112 @@ describe("OAuthConsent", () => {
     ).toBeTruthy();
   });
 
-  it("posts the chosen space with read and propose, never write, and the request's token", async () => {
-    // A server that offered write would still get no more than propose.
-    h.load.mockResolvedValue(
-      request({ consent_scope: "memax:read memax:propose memax:write" }),
-    );
+  it("allows one space as the person signed in, and follows the URL the API answers", async () => {
+    h.open.mockResolvedValue(request());
+    h.decide.mockResolvedValue({
+      redirect_to: "http://127.0.0.1:1455/callback?code=c1&state=s&iss=x",
+    });
     renderScreen();
     const allow = await screen.findByRole("button", { name: "Allow Codex" });
     fireEvent.click(screen.getAllByRole("radio")[1]!);
-    const form = (allow as HTMLButtonElement).form!;
-    expect(form.getAttribute("action")).toBe(SUBMIT);
-    expect(form.getAttribute("method")).toBe("post");
-    expect(fields(form)).toEqual([
-      "session_id=req_1",
-      "csrf_token=tok_1",
-      "ui=v2",
-      "permission=memax:read",
-      "permission=memax:propose",
-      `hub_id=${team.id}`,
-    ]);
-    expect((allow as HTMLButtonElement).name).toBe("decision");
-    expect((allow as HTMLButtonElement).value).toBe("approve");
     fireEvent.click(allow);
-    expect(submitted).toEqual([form]);
     // Sent once: Allow waits, Cancel can't be pressed meanwhile.
     expect(allow.getAttribute("aria-busy")).toBe("true");
     expect(
       (screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(
+        "http://127.0.0.1:1455/callback?code=c1&state=s&iss=x",
+      ),
+    );
+    expect(h.decide).toHaveBeenCalledTimes(1);
+    expect(h.decide).toHaveBeenCalledWith("req_1", {
+      decision: "approve",
+      space_id: team!.id,
+    });
   });
 
-  it("cancels with deny, so the agent hears access_denied", async () => {
-    h.load.mockResolvedValue(request());
+  it("cancels with deny, and the agent hears access_denied at its own URL", async () => {
+    h.open.mockResolvedValue(request());
+    h.decide.mockResolvedValue({
+      redirect_to: "https://claude.example/cb?error=access_denied&state=s",
+    });
     renderScreen();
-    const cancel = (await screen.findByRole("button", {
-      name: "Cancel",
-    })) as HTMLButtonElement;
-    const form = cancel.form!;
-    expect(form.id).toBe("consent-cancel");
-    expect(form.getAttribute("action")).toBe(SUBMIT);
-    expect(fields(form)).toEqual([
-      "session_id=req_1",
-      "csrf_token=tok_1",
-      "ui=v2",
-      "decision=deny",
-    ]);
-    fireEvent.click(cancel);
-    expect(submitted).toEqual([form]);
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(
+        "https://claude.example/cb?error=access_denied&state=s",
+      ),
+    );
+    expect(h.decide).toHaveBeenCalledWith("req_1", { decision: "deny" });
+  });
+
+  it("never follows anything but an http(s) URL", async () => {
+    h.open.mockResolvedValue(request());
+    h.decide.mockResolvedValue({ redirect_to: "javascript:alert(1)" });
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "Allow Codex" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "That didn't go through. Try again.",
+    );
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("says why an approval came back, and ends when the request did", async () => {
+    h.open.mockResolvedValue(request());
+    h.decide.mockRejectedValueOnce(new MemaxError("no", "consent_space", 422));
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "Allow Codex" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "That space can't be connected from this account. Choose one of the spaces here.",
+    );
+    h.decide.mockRejectedValueOnce(
+      new MemaxError("gone", "consent_request_expired", 410),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Allow Codex" }));
+    expect(
+      await screen.findByRole("heading", { name: "This request expired." }),
+    ).toBeTruthy();
+  });
+
+  it("Not you? lets go of the request, signs out, and signs in again for it", async () => {
+    h.open.mockResolvedValue(request());
+    h.release.mockResolvedValue({ released: true });
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "Not you?" }));
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(
+        "/signin?next=%2Foauth%2Fauthorize%3Frequest%3Dreq_1",
+      ),
+    );
+    expect(h.release).toHaveBeenCalledWith("req_1");
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", {
+      method: "POST",
+    });
   });
 
   it("says what is true where the agent only reads, and in a space still on V1", async () => {
-    h.load.mockResolvedValue(
+    h.open.mockResolvedValue(
       request({
-        hubs: [
+        spaces: [
           project!,
           {
             ...team!,
             autonomy: "read",
+            ceiling: "propose",
             can: ["read_brief"],
             cannot: ["propose", "gate", "forget", "other_spaces"],
           },
           {
             ...personal!,
             on_v2: false,
-            memory_count: 40,
-            kept_count: undefined,
+            memories: 40,
             autonomy: undefined,
+            ceiling: undefined,
             can: ["read_memories", "add", "gate"],
             cannot: ["forget", "other_spaces"],
           },
@@ -229,7 +275,7 @@ describe("OAuthConsent", () => {
     });
     expect(
       screen.getByText(
-        "You can let Codex propose or write, or disconnect it, any time in Agents.",
+        "You can let Codex propose, or disconnect it, any time in Agents.",
       ),
     ).toBeTruthy();
     fireEvent.click(screen.getAllByRole("radio")[2]!);
@@ -247,7 +293,7 @@ describe("OAuthConsent", () => {
   it("names an unknown client by its own words, cleaned, shortened where a line can't wrap", async () => {
     const name =
       "Acme Research Assistant for Very Long Enterprise Workflows <img src=x onerror=alert(1)>";
-    h.load.mockResolvedValue(
+    h.open.mockResolvedValue(
       request({
         client_name: `‮${name}​\n`,
         agent_name: "acme-research",
@@ -262,46 +308,12 @@ describe("OAuthConsent", () => {
     const allow = screen.getByRole("button", { name: /^Allow / });
     expect(allow.textContent).toBe("Allow Acme Research Assistant for…");
     expect(allow.getAttribute("title")).toBe(`Allow ${name}`);
-    expect(
-      screen.getByText(
-        "You can allow Write, or disconnect Acme Research Assistant for…, any time in Agents.",
-      ),
-    ).toBeTruthy();
     expect(screen.getByText("from agents.acme.example")).toBeTruthy();
     // The fallback stamp: two letters from its name.
     expect(document.querySelector(".mx-stamp")?.textContent).toBe("AR");
   });
 
-  it("signs this browser out, then starts the request over as someone else", async () => {
-    h.load.mockResolvedValue(request());
-    h.user = { id: "u1" };
-    const fetchMock = vi.fn().mockResolvedValue(new Response("{}"));
-    vi.stubGlobal("fetch", fetchMock);
-    const submit = vi
-      .spyOn(HTMLFormElement.prototype, "submit")
-      .mockImplementation(function (this: HTMLFormElement) {
-        submitted.push(this);
-      });
-    renderScreen();
-    const notYou = (await screen.findByRole("button", {
-      name: "Not you?",
-    })) as HTMLButtonElement;
-    expect(notYou.form!.id).toBe("consent-switch");
-    expect(fields(notYou.form!)).toEqual([
-      "session_id=req_1",
-      "csrf_token=tok_1",
-      "ui=v2",
-      "decision=switch",
-    ]);
-    fireEvent.click(notYou);
-    await waitFor(() => expect(submitted).toEqual([notYou.form]));
-    expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", {
-      method: "POST",
-    });
-    submit.mockRestore();
-  });
-
-  it("says when the request expired, ended, never came, or didn't load", async () => {
+  it("says when the request expired, ended, can't be answered here, never came, or didn't load", async () => {
     const cases: [unknown, string][] = [
       [
         new MemaxError("expired", "consent_request_expired", 410),
@@ -312,37 +324,28 @@ describe("OAuthConsent", () => {
         "This request has ended.",
       ],
       [
-        new MemaxError("token", "invalid_consent_token", 403),
-        "This request has ended.",
+        new MemaxError("cli", "consent_by_person_on_web", 403),
+        "This request can't be answered from here.",
       ],
     ];
     for (const [err, title] of cases) {
-      h.load.mockRejectedValueOnce(err);
+      h.open.mockRejectedValueOnce(err);
       renderScreen();
       expect(await screen.findByRole("heading", { name: title })).toBeTruthy();
       expect(screen.queryByRole("button", { name: /Allow/ })).toBeNull();
       cleanup();
     }
 
-    h.params = new URLSearchParams("request_id=req_1");
+    h.params = new URLSearchParams();
     renderScreen();
     expect(
       screen.getByRole("heading", { name: "This link has no request in it." }),
     ).toBeTruthy();
     cleanup();
 
-    // The API sent a post back: no request is read.
-    h.params = new URLSearchParams("ended=expired");
-    renderScreen();
-    expect(
-      screen.getByRole("heading", { name: "This request expired." }),
-    ).toBeTruthy();
-    cleanup();
-    expect(h.load).toHaveBeenCalledTimes(3);
-
-    h.params = new URLSearchParams("request_id=req_1&consent_token=tok_1");
-    h.load.mockRejectedValueOnce(new MemaxError("down", "network_error", 502));
-    h.load.mockResolvedValueOnce(request());
+    h.params = new URLSearchParams("request=req_1");
+    h.open.mockRejectedValueOnce(new MemaxError("down", "network_error", 502));
+    h.open.mockResolvedValueOnce(request());
     renderScreen();
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
     expect(
@@ -352,9 +355,17 @@ describe("OAuthConsent", () => {
     ).toBeTruthy();
   });
 
+  it("opens a link from V1's page made before the move", async () => {
+    h.params = new URLSearchParams("request_id=req_1&consent_token=old");
+    h.open.mockResolvedValue(request());
+    renderScreen();
+    await screen.findByRole("button", { name: "Allow Codex" });
+    expect(h.open).toHaveBeenCalledWith("req_1");
+  });
+
   it("ends when the request's time runs out on the page", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    h.load.mockResolvedValue(request({ expires_in: 5 }));
+    h.open.mockResolvedValue(request({ expires_in: 5 }));
     renderScreen();
     await screen.findByRole("button", { name: "Allow Codex" });
     await act(async () => {
@@ -367,7 +378,10 @@ describe("OAuthConsent", () => {
   });
 
   it("sends someone with no space to set one up, and still lets them cancel", async () => {
-    h.load.mockResolvedValue(request({ hubs: [] }));
+    h.open.mockResolvedValue(request({ spaces: [] }));
+    h.decide.mockResolvedValue({
+      redirect_to: "https://claude.example/cb?error=access_denied",
+    });
     renderScreen();
     expect(
       await screen.findByRole("heading", {
@@ -378,25 +392,12 @@ describe("OAuthConsent", () => {
       screen.getByRole("link", { name: "Set up Memax" }).getAttribute("href"),
     ).toBe("/setup");
     expect(screen.queryByRole("button", { name: /Allow/ })).toBeNull();
-    expect(
-      (screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
-        .form!.id,
-    ).toBe("consent-cancel");
-  });
-
-  it("says why a post came back", async () => {
-    h.params = new URLSearchParams(
-      "request_id=req_1&consent_token=tok_1&error=space",
-    );
-    h.load.mockResolvedValue(request());
-    renderScreen();
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "That space can't be connected from this account. Choose one of the spaces here.",
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(h.decide).toHaveBeenCalled());
   });
 
   it("reads in Chinese", async () => {
-    h.load.mockResolvedValue(request());
+    h.open.mockResolvedValue(request());
     renderScreen("zh");
     expect(
       await screen.findByRole("heading", { name: "Codex 想连接到 Memax" }),

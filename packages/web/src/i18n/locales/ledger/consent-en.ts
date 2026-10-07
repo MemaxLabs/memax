@@ -50,12 +50,13 @@ export const ledgerConsentEn = {
   footnote: "You can allow Write, or disconnect {client}, any time in Agents.",
   footnoteRead:
     "You can let {client} propose or write, or disconnect it, any time in Agents.",
-  footnoteV1: "You can disconnect {client} any time in Agents.",
+  footnoteReadPropose:
+    "You can let {client} propose, or disconnect it, any time in Agents.",
+  footnoteDisconnect: "You can disconnect {client} any time in Agents.",
   errors: {
     space:
       "That space can't be connected from this account. Choose one of the spaces here.",
-    permission:
-      "Memax couldn't give {client} what it asked for. Start connecting again from {client}.",
+    failed: "That didn't go through. Try again.",
   },
   loading: "Loading the request",
   missing: {
@@ -68,7 +69,11 @@ export const ledgerConsentEn = {
   },
   gone: {
     title: "This request has ended.",
-    lede: "It was answered already, or this is an old link. If your agent is still waiting, start connecting again from it.",
+    lede: "It was answered already, someone else opened it, or this is an old link. If your agent is still waiting, start connecting again from it.",
+  },
+  refused: {
+    title: "This request can't be answered from here.",
+    lede: "Sign in to the Memax web app as yourself, then start connecting again from your agent.",
   },
   failed: {
     title: "This request didn't load.",

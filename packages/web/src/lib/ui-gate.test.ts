@@ -216,21 +216,15 @@ describe("decideUiGate", () => {
     ).toEqual({ action: "redirect", pathname: "/home" });
   });
 
-  it("sends an opted-in browser from V1's consent page to OAuthConsent, query and all", () => {
+  it("sends every browser from V1's retired consent page to OAuthConsent, query and all", () => {
     for (const pathname of ["/oauth/consent", "/oauth/consent/"]) {
       expect(v2PageFor(pathname)).toBe("/oauth/authorize");
-      expect(
-        decideUiGate({ pathname, uiCookie: "v2", hasSession: false }),
-      ).toEqual({
-        action: "redirect",
-        pathname: "/oauth/authorize",
-        keepQuery: true,
-      });
-      // Without the opt-in V1 keeps its page, signed in or not.
-      for (const uiCookie of [undefined, "v1"]) {
+      for (const uiCookie of [undefined, "v1", "v2"]) {
         for (const hasSession of [false, true]) {
           expect(decideUiGate({ pathname, uiCookie, hasSession })).toEqual({
-            action: "continue",
+            action: "redirect",
+            pathname: "/oauth/authorize",
+            keepQuery: true,
           });
         }
       }

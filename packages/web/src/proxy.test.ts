@@ -133,22 +133,18 @@ describe("proxy V2 gating", () => {
     }
   });
 
-  it("sends an opted-in browser on V1's consent page to OAuthConsent with its request", () => {
+  it("sends every browser on V1's retired consent page to OAuthConsent with its request", () => {
     const query = "?request_id=r1&consent_token=t%2B1";
     for (const sessionPresence of [false, true]) {
-      const res = proxy(
-        makeRequest(`/oauth/consent${query}`, { sessionPresence, ui: "v2" }),
-      );
-      expect(res.status).toBe(307);
-      expect(res.headers.get("location")).toBe(
-        `https://memax.app/oauth/authorize${query}`,
-      );
-      // Without the opt-in, V1's page answers.
-      const v1 = proxy(
-        makeRequest(`/oauth/consent${query}`, { sessionPresence }),
-      );
-      expect(v1.status).toBe(200);
-      expect(v1.headers.get("location")).toBeNull();
+      for (const ui of [undefined, "v1", "v2"]) {
+        const res = proxy(
+          makeRequest(`/oauth/consent${query}`, { sessionPresence, ui }),
+        );
+        expect(res.status).toBe(307);
+        expect(res.headers.get("location")).toBe(
+          `https://memax.app/oauth/authorize${query}`,
+        );
+      }
     }
     expect(
       unstable_doesMiddlewareMatch({ config, url: "/oauth/consent" }),

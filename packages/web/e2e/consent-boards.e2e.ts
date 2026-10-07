@@ -37,7 +37,7 @@ test("OAuthConsent against its board", async ({ page, baseURL }, testInfo) => {
   );
   await useTheme(page, baseURL, "light");
   await page.setViewportSize({ width: 1440, height: 940 });
-  await page.goto("/oauth/authorize?request_id=demo&consent_token=demo");
+  await page.goto("/oauth/authorize?request=demo");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "Codex wants to connect to Memax",
   );

@@ -1,7 +1,6 @@
 import type { Page, Request } from "@playwright/test";
 import {
   expect,
-  optIntoV2,
   settle,
   skipWithoutBrowser,
   test,
@@ -9,114 +8,139 @@ import {
   usingDevServer,
 } from "./fixtures";
 
-// OAuthConsent in a browser: the request read through /api/proxy (the
-// API stubbed at the browser), the forms posted to the API and the
-// redirect followed back to the agent, Cancel's access_denied, the route
-// from V1's page for an opted-in browser, and self-baselines of the
-// board's request (the dev fixtures' demo) in Paper and Carbon.
+// OAuthConsent in a browser, with the API stubbed at the browser: a person
+// without a session is sent to sign in and back; signed in, the request is
+// read and answered through /api/proxy as them, and the page follows the
+// URL the API answers (the agent's redirect_uri); Cancel's access_denied;
+// "Not you?"; V1's retired page sends every browser on; and self-baselines
+// of the board's request (the dev fixtures' demo) in Paper and Carbon.
 
 skipWithoutBrowser();
 
-const API = "https://api.memax.test";
-// The agent's redirect_uri, on this web server (see stubAPI).
+// The agent's redirect_uri, on this web server: Playwright doesn't route
+// the request a page navigates to after a fulfilled call, so the "agent"
+// is a file the web server serves.
 const CALLBACK = "/favicon.svg";
 
+const space = {
+  role: "owner",
+  disabled: false,
+  people: 1,
+} as const;
+
 const request = {
-  session_id: "req_e2e",
-  csrf_token: "tok_e2e",
+  request_id: "req_e2e",
   client_name: "Codex",
   agent_name: "codex",
-  resource: `${API}/mcp`,
-  submit_url: `${API}/oauth/authorize/consent`,
+  scope: "memax:read memax:write",
   expires_at: "2026-10-07T12:00:00Z",
-  hubs: [
+  expires_in: 600,
+  person: { name: "ZZ" },
+  spaces: [
     {
+      ...space,
       id: "11111111-1111-4111-8111-111111111111",
       name: "Personal",
       slug: "personal",
-      role: "owner",
-      hub_type: "personal",
-      memory_count: 12,
-      checked: true,
-      disabled: false,
-      capability_label: "",
-      supported_permissions: [],
-      space_kind: "personal",
+      kind: "personal",
       on_v2: false,
-      people_count: 1,
+      memories: 12,
       can: ["read_memories", "add", "gate"],
       cannot: ["forget", "other_spaces"],
     },
     {
+      ...space,
       id: "22222222-2222-4222-8222-222222222222",
       name: "memax-v2",
       slug: "memax-v2",
-      role: "owner",
-      hub_type: "team",
-      memory_count: 0,
-      checked: true,
-      disabled: false,
-      capability_label: "",
-      supported_permissions: [],
-      space_kind: "project",
+      kind: "project",
       on_v2: true,
-      people_count: 1,
-      kept_count: 3,
+      memories: 3,
       targets: [{ kind: "agents_md", path: "AGENTS.md" }],
       autonomy: "propose",
+      ceiling: "write",
       can: ["read_brief", "propose", "gate"],
       cannot: ["keep", "forget", "other_spaces"],
     },
   ],
-  permissions: [],
-  not_requested: [],
-  person: { name: "ZZ" },
-  consent_scope: "memax:read memax:propose",
-  expires_in: 600,
+};
+
+const me = {
+  user: {
+    id: "0192a7c0-0000-7000-8000-0000000000aa",
+    email: "zz@example.com",
+    name: "ZZ",
+    display_name: "ZZ",
+    avatar_url: "",
+  },
+  hubs: [],
+  session: { surface: "web", impersonating: false },
 };
 
 /**
- * Stubs the API at the browser: the request through the web app's proxy
- * and the consent post, answered as the API does, with a redirect to the
- * agent's callback. Playwright doesn't route the request a fulfilled
- * redirect leads to, so the "agent" is a file this web server serves.
- * Returns the posts it saw.
+ * Stubs the API at the browser: who is signed in (or nobody), and the
+ * consent request's three calls through the web app's proxy. Returns the
+ * calls it saw.
  */
-async function stubAPI(page: Page, baseURL: string | undefined) {
-  const posts: Request[] = [];
-  await page.route("**/api/proxy/oauth/authorize/consent-request**", (route) =>
-    route.fulfill({ json: { data: request } }),
+async function stubAPI(
+  page: Page,
+  baseURL: string | undefined,
+  { signedIn = true }: { signedIn?: boolean } = {},
+) {
+  const calls: Request[] = [];
+  await page.route("**/api/auth/me", (route) =>
+    signedIn
+      ? route.fulfill({ json: { data: me } })
+      : route.fulfill({
+          status: 401,
+          json: { error: { code: "unauthorized", message: "Sign in." } },
+        }),
   );
-  await page.route(`${API}/oauth/authorize/consent`, (route) => {
+  await page.route("**/api/auth/logout", (route) =>
+    route.fulfill({ json: { data: { signed_out: true, revoked: true } } }),
+  );
+  await page.route("**/api/proxy/oauth/authorize/requests/**", (route) => {
     const req = route.request();
-    posts.push(req);
-    const form = new URLSearchParams(req.postData() ?? "");
+    calls.push(req);
+    if (req.method() === "GET") {
+      return route.fulfill({ json: { data: request } });
+    }
+    if (req.url().endsWith("/release")) {
+      return route.fulfill({ json: { data: { released: true } } });
+    }
+    const body = JSON.parse(req.postData() ?? "{}") as { decision?: string };
     const back = new URL(CALLBACK, baseURL);
     back.searchParams.set("state", "s1");
-    if (form.get("decision") === "deny") {
-      back.searchParams.set("error", "access_denied");
-    } else {
-      back.searchParams.set("code", "code_e2e");
-    }
-    return route.fulfill({
-      status: 303,
-      headers: { location: back.toString() },
-    });
+    back.searchParams.set(
+      body.decision === "deny" ? "error" : "code",
+      body.decision === "deny" ? "access_denied" : "code_e2e",
+    );
+    return route.fulfill({ json: { data: { redirect_to: back.toString() } } });
   });
-  return posts;
+  return calls;
 }
 
-const PAGE = `/oauth/authorize?request_id=${request.session_id}&consent_token=${request.csrf_token}`;
+const PAGE = `/oauth/authorize?request=${request.request_id}`;
+
+test("a person signs in first, and comes back to the request", async ({
+  page,
+  baseURL,
+}) => {
+  await stubAPI(page, baseURL, { signedIn: false });
+  await page.goto(PAGE);
+  await expect(page).toHaveURL(`/signin?next=${encodeURIComponent(PAGE)}`);
+});
 
 test("a person allows the agent one space, and the browser goes back to it", async ({
   page,
   baseURL,
 }) => {
-  const posts = await stubAPI(page, baseURL);
+  const calls = await stubAPI(page, baseURL);
   await page.goto(PAGE);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "Codex wants to connect to Memax",
   );
+  await expect(page.getByText("Signed in as ZZ")).toBeVisible();
   // The space on V2 comes first and is chosen; it says what's true there.
   await expect(page.getByRole("radio", { name: /memax-v2/ })).toBeChecked();
   await expect(page.getByText("compiles AGENTS.md")).toBeVisible();
@@ -134,53 +158,54 @@ test("a person allows the agent one space, and the browser goes back to it", asy
   await expect(page).toHaveURL(
     new URL(`${CALLBACK}?state=s1&code=code_e2e`, baseURL).toString(),
   );
-  expect(new URL(page.url()).searchParams.get("code")).toBe("code_e2e");
-  expect(posts).toHaveLength(1);
-  const form = new URLSearchParams(posts[0]!.postData() ?? "");
-  expect([...form.entries()]).toEqual([
-    ["session_id", "req_e2e"],
-    ["csrf_token", "tok_e2e"],
-    ["ui", "v2"],
-    ["permission", "memax:read"],
-    ["permission", "memax:propose"],
-    ["hub_id", "22222222-2222-4222-8222-222222222222"],
-    ["decision", "approve"],
-  ]);
-  // The API's Fetch Metadata check reads where the post came from.
-  const headers = await posts[0]!.allHeaders();
-  expect(headers.origin).toBe(new URL(baseURL!).origin);
+  const decision = calls.find((c) => c.url().endsWith("/decision"))!;
+  expect(JSON.parse(decision.postData() ?? "{}")).toEqual({
+    decision: "approve",
+    space_id: "22222222-2222-4222-8222-222222222222",
+  });
+  // Same-origin, through the web app's proxy, which refuses anything else.
+  expect((await decision.allHeaders())["sec-fetch-site"]).toBe("same-origin");
 });
 
 test("Cancel answers the agent access_denied", async ({ page, baseURL }) => {
-  const posts = await stubAPI(page, baseURL);
+  const calls = await stubAPI(page, baseURL);
   await page.goto(PAGE);
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page).toHaveURL(/error=access_denied/);
-  const form = new URLSearchParams(posts[0]!.postData() ?? "");
-  expect(form.get("decision")).toBe("deny");
-  expect(form.get("csrf_token")).toBe("tok_e2e");
-  expect(form.getAll("hub_id")).toEqual([]);
+  const decision = calls.find((c) => c.url().endsWith("/decision"))!;
+  expect(JSON.parse(decision.postData() ?? "{}")).toEqual({ decision: "deny" });
 });
 
-test("V1's consent page sends an opted-in browser here with its request", async ({
+test("Not you? lets go of the request and signs in again for it", async ({
+  page,
+  baseURL,
+}) => {
+  const calls = await stubAPI(page, baseURL);
+  await page.goto(PAGE);
+  await page.getByRole("button", { name: "Not you?" }).click();
+  await expect(page).toHaveURL(/\/signin\?next=/);
+  expect(new URL(page.url()).searchParams.get("next")).toBe(PAGE);
+  expect(calls.some((c) => c.url().endsWith("/release"))).toBe(true);
+});
+
+test("V1's retired consent page sends every browser here with its request", async ({
   page,
   baseURL,
 }) => {
   await stubAPI(page, baseURL);
-  await optIntoV2(page, baseURL);
-  await page.goto(
-    `/oauth/consent?request_id=${request.session_id}&consent_token=${request.csrf_token}`,
+  await page.goto(`/oauth/consent?request_id=${request.request_id}`);
+  await expect(page).toHaveURL(
+    `/oauth/authorize?request_id=${request.request_id}`,
   );
-  await expect(page).toHaveURL(PAGE);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "Codex wants to connect to Memax",
   );
 });
 
-test("an ended request says so", async ({ page }) => {
-  await page.goto("/oauth/authorize?ended=expired");
+test("a link with no request says so", async ({ page }) => {
+  await page.goto("/oauth/authorize");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "This request expired.",
+    "This link has no request in it.",
   );
 });
 
@@ -189,7 +214,7 @@ for (const theme of ["light", "dark"] as const) {
     test.skip(usingDevServer, "screenshots need the production build");
     await useTheme(page, baseURL, theme);
     await page.setViewportSize({ width: 1440, height: 940 });
-    await page.goto("/oauth/authorize?request_id=demo&consent_token=demo");
+    await page.goto("/oauth/authorize?request=demo");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
       "Codex wants to connect to Memax",
     );

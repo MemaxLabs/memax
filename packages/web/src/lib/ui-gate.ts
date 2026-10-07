@@ -31,22 +31,20 @@ const V2_OPEN_AREAS = new Set(["signin", "device", "unsubscribe"]);
 /**
  * OAuthConsent, the Ledger page where a person lets an outside agent (an
  * MCP client) connect: /oauth/authorize. It opens for every browser, like
- * /device: the API sends a person whose spaces are on the V2 record here
- * after they sign in for the agent, cookie or not, and the page is for
- * that request alone (it shows no space of the browser's own session).
+ * /signin and /device: the API sends everyone there (V1 people too) from
+ * an agent's OAuth request, cookie or not, and the person signs in on the
+ * way if they need to.
  *
- * V1's consent page stays at /oauth/consent, in the (v1) tree, for
- * everyone else. A browser that opted into V2 and lands there (the API
- * sends people with no space on V2 to it) goes on to the Ledger page with
- * the same query (V1_PAGES_WITH_V2). The two paths differ because the
- * root layouts can't share one; the API picks between them
- * (packages/server/internal/handler/mcp_oauth_v2.go).
+ * V1's consent page (/oauth/consent, in the (v1) tree) is retired: every
+ * browser that lands there, a link from before the move, goes on to the
+ * Ledger page with the same query (V1_PAGES_WITH_V2). The paths differ
+ * because the root layouts can't share one.
  */
 const OAUTH_CONSENT_V2 = "/oauth/authorize";
 
 /**
- * V1 pages with a V2 page that takes the same query: a browser with the
- * opt-in goes on to the V2 one, query and all.
+ * Retired V1 pages and the V2 page that took each over with the same
+ * query: every browser goes on to the V2 one, query and all.
  */
 const V1_PAGES_WITH_V2: ReadonlyMap<string, string> = new Map([
   ["/oauth/consent", OAUTH_CONSENT_V2],
@@ -64,7 +62,7 @@ export function isOpenV2Path(pathname: string): boolean {
   return first !== undefined && V2_OPEN_AREAS.has(first);
 }
 
-/** The V2 page that takes over a V1 page for an opted-in browser, if any. */
+/** The V2 page that took over a retired V1 page, if any. */
 export function v2PageFor(pathname: string): string | null {
   const segments = pathname.split("/").filter(Boolean);
   return V1_PAGES_WITH_V2.get(`/${segments.join("/")}`) ?? null;
@@ -246,9 +244,7 @@ export function decideUiGate({
 }): UiGateDecision {
   const v2Page = v2PageFor(pathname);
   if (v2Page !== null) {
-    return hasV2Opt(uiCookie)
-      ? { action: "redirect", pathname: v2Page, keepQuery: true }
-      : { action: "continue" };
+    return { action: "redirect", pathname: v2Page, keepQuery: true };
   }
   const bare = bareSpaceSlug(pathname);
   if (bare !== null) {

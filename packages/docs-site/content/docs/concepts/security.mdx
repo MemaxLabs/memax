@@ -132,13 +132,33 @@ settings), and a self-hosted server can change them.
   reviewed record.
 </Callout>
 
+## Every change has a receipt, and the receipts are sealed
+
+In a space on the V2 record, nothing changes without a receipt: who did
+what, through which surface, and why, written in the same transaction
+as the change, or the database refuses the change. Receipts never hold
+memory text, so Forget can take the words out without rewriting
+history.
+
+Receipts form a hash chain per space. Every 10 to 60 seconds Memax seals
+the newest ones into a checkpoint: their RFC 6962 Merkle root and the
+chain hash, signed with Ed25519. A nightly check recomputes every chain
+from its first receipt. You can check one yourself, offline: an
+[export](/cli/export) carries the receipts and the signed checkpoints,
+and [`memax verify-export`](/cli/verify-export) recomputes the chain and
+every signature. A receipt's reason is sealed as a commitment, so a
+reason Forget removed still verifies.
+
+Agents' reads are counted separately and aren't receipts.
+
 ## What we don't claim (yet)
 
 Honesty about limits is part of the posture:
 
-- **No tamper-evident audit chain yet** — access logging exists;
-  hash-chained, externally-anchored audit is designed but deliberately
-  not shipped pre-launch.
+- **Checkpoints aren't anchored outside Memax yet** — they are signed
+  with Memax's key and copied to its own object storage, not published to
+  a third-party transparency log. Spaces still on the original record
+  keep access logging, without receipts.
 - **No per-memory sharing circles yet** — access is hub-membership based
   today; finer-grained disclosure (audience circles) is a published
   design direction, not a shipped feature.

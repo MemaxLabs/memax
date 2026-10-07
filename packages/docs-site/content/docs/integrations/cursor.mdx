@@ -71,10 +71,8 @@ memax setup --only cursor --mcp
     ### Verify
 
     Ask Cursor: "what memax tools do you have?" — it should list the
-    9 tools (`memax_recall`, `memax_push`, `memax_list`, `memax_hubs`,
-    etc. — see [`memax mcp`](/cli/mcp)).
-
-    There is no `memax_search` tool — it was never exposed.
+    11 tools (`memax_recall`, `memax_search`, `memax_push`, `memax_get`,
+    `memax_hubs`, etc. — see [`memax mcp`](/cli/mcp)).
 
   </Step>
 </Steps>
@@ -83,7 +81,8 @@ memax setup --only cursor --mcp
 
 Cursor can:
 
-- Call `memax_recall` to pull context before generating code.
+- Call `memax_recall` to pull context before generating code, or
+  `memax_search` to find a memory or decision by its words.
 - Push decisions and discoveries with `memax_push` during a session.
 - Browse the topic tree with `memax_topics`.
 

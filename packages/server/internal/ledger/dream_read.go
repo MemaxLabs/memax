@@ -70,77 +70,106 @@ func notesBy(notes []NoteRead) []NoteAuthorCount {
 }
 
 // attachEditionFacts fills each edition's counts, note refs, fact refs and
-// what still needs a person, in a few queries for the batch.
+// what still needs a person: three reads for the whole batch, in one round
+// trip.
 func attachEditionFacts(ctx context.Context, tx pgx.Tx, es []*DreamEdition) error {
 	if len(es) == 0 {
 		return nil
 	}
 	ids := make([]uuid.UUID, len(es))
-	var notes []uuid.UUID
+	var notes, surfaced []uuid.UUID
+	byID := map[uuid.UUID]*DreamEdition{}
 	for i, e := range es {
 		ids[i] = e.ID
 		notes = append(notes, e.notes...)
-	}
-	byID := map[uuid.UUID]*DreamEdition{}
-	for _, e := range es {
+		for _, s := range e.surfaced {
+			surfaced = append(surfaced, s.Memory)
+		}
 		byID[e.ID] = e
 		e.FactRefs, e.NoteRefs = []string{}, []string{}
 	}
-	rows, err := tx.Query(ctx, `
+	type actionFact struct {
+		edition      uuid.UUID
+		kind         DreamActionKind
+		seq          *int64
+		undone, need bool
+	}
+	var facts []actionFact
+	flagged := map[uuid.UUID]bool{}
+	refs := map[uuid.UUID]string{}
+	b := &pgx.Batch{}
+	b.Queue(`
 		SELECT a.edition_id, a.kind, m.seq, a.undone_by IS NOT NULL,
 		       a.kind IN ('conflict', 'stale') AND a.undone_by IS NULL
 		         AND ((a.kind = 'conflict' AND 'conflict' = ANY (m.flags)) OR (a.kind = 'stale' AND 'stale' = ANY (m.flags)))
 		  FROM v2.dream_actions a
 		  LEFT JOIN v2.memories m ON m.id = a.memory_id
 		 WHERE a.edition_id = ANY ($1)
-		 ORDER BY a.edition_id, a.n`, ids)
-	if err != nil {
-		return fmt.Errorf("ledger: read dream actions: %w", err)
-	}
-	for rows.Next() {
-		var id uuid.UUID
-		var kind DreamActionKind
-		var seq *int64
-		var undone, needs bool
-		if err := rows.Scan(&id, &kind, &seq, &undone, &needs); err != nil {
-			rows.Close()
+		 ORDER BY a.edition_id, a.n`, ids).Query(func(rows pgx.Rows) error {
+		var err error
+		facts, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (actionFact, error) {
+			var f actionFact
+			err := r.Scan(&f.edition, &f.kind, &f.seq, &f.undone, &f.need)
+			return f, err
+		})
+		if err != nil {
 			return fmt.Errorf("ledger: read dream actions: %w", err)
 		}
-		e := byID[id]
-		e.Counts[kind]++
-		if undone {
+		return nil
+	})
+	// What an edition surfaced still needs a person while it is flagged.
+	if len(surfaced) > 0 {
+		b.Queue(`SELECT id FROM v2.memories WHERE id = ANY ($1) AND 'conflict' = ANY (flags)`, surfaced).
+			Query(func(rows pgx.Rows) error {
+				var id uuid.UUID
+				_, err := pgx.ForEachRow(rows, []any{&id}, func() error {
+					flagged[id] = true
+					return nil
+				})
+				if err != nil {
+					return fmt.Errorf("ledger: read surfaced: %w", err)
+				}
+				return nil
+			})
+	}
+	if len(notes) > 0 {
+		b.Queue(`SELECT note_id, seq FROM v2.note_refs WHERE note_id = ANY ($1)`, notes).Query(func(rows pgx.Rows) error {
+			var id uuid.UUID
+			var seq int64
+			_, err := pgx.ForEachRow(rows, []any{&id, &seq}, func() error {
+				refs[id] = FormatRef(PrefixNote, seq)
+				return nil
+			})
+			if err != nil {
+				return fmt.Errorf("ledger: read note refs: %w", err)
+			}
+			return nil
+		})
+	}
+	if err := tx.SendBatch(ctx, b).Close(); err != nil {
+		return err
+	}
+	for _, f := range facts {
+		e := byID[f.edition]
+		e.Counts[f.kind]++
+		if f.undone {
 			e.Undone++
 		}
-		if needs {
+		if f.need {
 			e.NeedsYou++
 		}
-		if (kind == DreamFold || kind == DreamPropose) && !undone && seq != nil {
-			if ref := FormatRef(PrefixMemory, *seq); !slices.Contains(e.FactRefs, ref) {
+		if (f.kind == DreamFold || f.kind == DreamPropose) && !f.undone && f.seq != nil {
+			if ref := FormatRef(PrefixMemory, *f.seq); !slices.Contains(e.FactRefs, ref) {
 				e.FactRefs = append(e.FactRefs, ref)
 			}
 		}
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("ledger: read dream actions: %w", err)
-	}
 	for _, e := range es {
 		for _, s := range e.surfaced {
-			var flagged bool
-			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM v2.memories WHERE id = $1 AND 'conflict' = ANY (flags))`,
-				s.Memory).Scan(&flagged); err != nil {
-				return fmt.Errorf("ledger: read surfaced: %w", err)
-			}
-			if flagged {
+			if flagged[s.Memory] {
 				e.NeedsYou++
 			}
 		}
-	}
-	refs, err := noteRefsOf(ctx, tx, notes)
-	if err != nil {
-		return err
-	}
-	for _, e := range es {
 		for _, n := range e.notes {
 			if r := refs[n]; r != "" {
 				e.NoteRefs = append(e.NoteRefs, r)
@@ -148,29 +177,6 @@ func attachEditionFacts(ctx context.Context, tx pgx.Tx, es []*DreamEdition) erro
 		}
 	}
 	return nil
-}
-
-// noteRefsOf maps notes to their N- refs.
-func noteRefsOf(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) (map[uuid.UUID]string, error) {
-	out := map[uuid.UUID]string{}
-	if len(ids) == 0 {
-		return out, nil
-	}
-	rows, err := tx.Query(ctx, `SELECT note_id, seq FROM v2.note_refs WHERE note_id = ANY ($1)`, ids)
-	if err != nil {
-		return nil, fmt.Errorf("ledger: read note refs: %w", err)
-	}
-	for rows.Next() {
-		var id uuid.UUID
-		var seq int64
-		if err := rows.Scan(&id, &seq); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("ledger: read note refs: %w", err)
-		}
-		out[id] = FormatRef(PrefixNote, seq)
-	}
-	rows.Close()
-	return out, rows.Err()
 }
 
 // loadEdition reads one edition of a space, with its counts.
@@ -228,15 +234,23 @@ func (l *Ledger) ListEditions(ctx context.Context, scope Scope, q EditionQuery) 
 	}
 	var page EditionPage
 	err = l.Read(ctx, scope, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, editionSelect+`
+		// The page and the schedule in one round trip, then the editions'
+		// facts in another.
+		var es []*DreamEdition
+		b := &pgx.Batch{}
+		b.Queue(editionSelect+`
 			 WHERE e.space_id = $1 AND e.space_id = ANY ($2) AND ($3::bigint = 0 OR e.seq < $3)
-			 ORDER BY e.seq DESC LIMIT $4`, q.SpaceID, scope.SpaceIDs(), after, limit+1)
-		if err != nil {
-			return fmt.Errorf("ledger: list editions: %w", err)
-		}
-		es, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (*DreamEdition, error) { return scanEdition(r) })
-		if err != nil {
-			return fmt.Errorf("ledger: list editions: %w", err)
+			 ORDER BY e.seq DESC LIMIT $4`, q.SpaceID, scope.SpaceIDs(), after, limit+1).Query(func(rows pgx.Rows) error {
+			var err error
+			es, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (*DreamEdition, error) { return scanEdition(r) })
+			if err != nil {
+				return fmt.Errorf("ledger: list editions: %w", err)
+			}
+			return nil
+		})
+		queueSchedule(b, q.SpaceID, &page.Schedule)
+		if err := tx.SendBatch(ctx, b).Close(); err != nil {
+			return err
 		}
 		if len(es) > limit {
 			es, page.HasMore = es[:limit], true
@@ -249,23 +263,27 @@ func (l *Ledger) ListEditions(ctx context.Context, scope Scope, q EditionQuery) 
 		for i, e := range es {
 			page.Editions[i] = *e
 		}
-		page.Schedule, err = readSchedule(ctx, tx, q.SpaceID)
-		return err
+		return nil
 	})
 	return page, err
 }
 
-func readSchedule(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (*DreamSchedule, error) {
-	var s DreamSchedule
-	err := tx.QueryRow(ctx, `SELECT cadence, time_zone, due_at FROM v2.dream_schedules WHERE space_id = $1`, spaceID).
-		Scan(&s.Cadence, &s.TimeZone, &s.NextAt)
-	if errNoRows(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("ledger: read the schedule: %w", err)
-	}
-	return &s, nil
+// queueSchedule queues a read of the space's schedule into b; *out stays
+// nil until the sweep has made one.
+func queueSchedule(b *pgx.Batch, spaceID uuid.UUID, out **DreamSchedule) {
+	b.Queue(`SELECT cadence, time_zone, due_at FROM v2.dream_schedules WHERE space_id = $1`, spaceID).
+		QueryRow(func(r pgx.Row) error {
+			var s DreamSchedule
+			err := r.Scan(&s.Cadence, &s.TimeZone, &s.NextAt)
+			if errNoRows(err) {
+				return nil
+			}
+			if err != nil {
+				return fmt.Errorf("ledger: read the schedule: %w", err)
+			}
+			*out = &s
+			return nil
+		})
 }
 
 // GetEdition reads one edition of a space (by D- ref, uuid or "latest"),
@@ -281,30 +299,39 @@ func (l *Ledger) GetEdition(ctx context.Context, scope Scope, spaceID uuid.UUID,
 	var out *DreamEdition
 	now := l.now()
 	err := l.Read(ctx, scope, func(tx pgx.Tx) error {
-		id, err := resolveEdition(ctx, tx, spaceID, ref)
+		where, args, err := editionWhere(spaceID, ref)
 		if err != nil {
 			return err
 		}
-		e, err := loadEdition(ctx, tx, scope, spaceID, id)
+		e, err := scanEdition(tx.QueryRow(ctx, editionSelect+where, args...))
+		if errNoRows(err) {
+			return ErrNotFound
+		}
 		if err != nil {
+			return fmt.Errorf("ledger: read edition: %w", err)
+		}
+		if err := attachEditionFacts(ctx, tx, []*DreamEdition{e}); err != nil {
 			return err
 		}
-		if e.Actions, err = editionActions(ctx, tx, scope, e.ID, "", 0, MaxDreamActions); err != nil {
-			return err
-		}
-		for i := range e.Actions {
-			e.Actions[i].Undoable = dreamUndoable(&e.Actions[i], l.dreamUndoWindow, now)
-		}
-		var ids []uuid.UUID
+		var surfaced []uuid.UUID
 		for _, s := range e.surfaced {
-			ids = append(ids, s.Memory)
+			surfaced = append(surfaced, s.Memory)
 			if s.With != uuid.Nil {
-				ids = append(ids, s.With)
+				surfaced = append(surfaced, s.With)
 			}
 		}
-		ms, err := memoriesByID(ctx, tx, scope, ids)
+		as, err := scanEditionActions(ctx, tx, scope, e.ID, "", 0, MaxDreamActions)
 		if err != nil {
 			return err
+		}
+		ms, err := attachActionDetails(ctx, tx, scope, as, surfaced...)
+		if err != nil {
+			return err
+		}
+		e.Actions = make([]DreamAction, len(as))
+		for i, a := range as {
+			e.Actions[i] = *a
+			e.Actions[i].Undoable = dreamUndoable(&e.Actions[i], l.dreamUndoWindow, now)
 		}
 		e.Surfaced = []SurfacedMemory{}
 		for _, s := range e.surfaced {
@@ -319,29 +346,35 @@ func (l *Ledger) GetEdition(ctx context.Context, scope Scope, spaceID uuid.UUID,
 	return out, err
 }
 
+// editionWhere is the WHERE clause (and its arguments) that finds one of a
+// space's editions by "D-0214", 214, a uuid or "latest".
+func editionWhere(spaceID uuid.UUID, ref string) (string, []any, error) {
+	ref = strings.TrimSpace(ref)
+	if strings.EqualFold(ref, "latest") {
+		return ` WHERE e.space_id = $1 ORDER BY e.seq DESC LIMIT 1`, []any{spaceID}, nil
+	}
+	if parsed, err := uuid.Parse(ref); err == nil {
+		return ` WHERE e.space_id = $1 AND e.id = $2`, []any{spaceID, parsed}, nil
+	}
+	p, n, ok := ParseRef(ref)
+	if !ok && ref != "" && strings.Trim(ref, "0123456789") == "" {
+		p, ok = PrefixDream, true
+		_, _ = fmt.Sscan(ref, &n)
+	}
+	if !ok || p != PrefixDream || n < 1 {
+		return "", nil, invalid("edition", "use an edition's number (214), its ID (D-0214) or latest")
+	}
+	return ` WHERE e.space_id = $1 AND e.seq = $2`, []any{spaceID, n}, nil
+}
+
 // resolveEdition turns "D-0214", a uuid or "latest" into an edition id.
 func resolveEdition(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID, ref string) (uuid.UUID, error) {
-	ref = strings.TrimSpace(ref)
-	var id uuid.UUID
-	var err error
-	switch {
-	case strings.EqualFold(ref, "latest"):
-		err = tx.QueryRow(ctx, `SELECT id FROM v2.dream_editions WHERE space_id = $1 ORDER BY seq DESC LIMIT 1`, spaceID).Scan(&id)
-	default:
-		if parsed, perr := uuid.Parse(ref); perr == nil {
-			err = tx.QueryRow(ctx, `SELECT id FROM v2.dream_editions WHERE space_id = $1 AND id = $2`, spaceID, parsed).Scan(&id)
-			break
-		}
-		p, n, ok := ParseRef(ref)
-		if !ok && ref != "" && strings.Trim(ref, "0123456789") == "" {
-			p, ok = PrefixDream, true
-			_, _ = fmt.Sscan(ref, &n)
-		}
-		if !ok || p != PrefixDream || n < 1 {
-			return uuid.Nil, invalid("edition", "use an edition's number (214), its ID (D-0214) or latest")
-		}
-		err = tx.QueryRow(ctx, `SELECT id FROM v2.dream_editions WHERE space_id = $1 AND seq = $2`, spaceID, n).Scan(&id)
+	where, args, err := editionWhere(spaceID, ref)
+	if err != nil {
+		return uuid.Nil, err
 	}
+	var id uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT e.id FROM v2.dream_editions e`+where, args...).Scan(&id)
 	if errNoRows(err) {
 		return uuid.Nil, ErrNotFound
 	}
@@ -407,7 +440,7 @@ func loadDreamAction(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID, 
 	if err != nil {
 		return nil, fmt.Errorf("ledger: read dream action: %w", err)
 	}
-	if err := attachActionDetails(ctx, tx, scope, []*DreamAction{a}); err != nil {
+	if _, err := attachActionDetails(ctx, tx, scope, []*DreamAction{a}); err != nil {
 		return nil, err
 	}
 	return a, nil
@@ -415,6 +448,23 @@ func loadDreamAction(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID, 
 
 // editionActions reads an edition's actions in order (kind filters).
 func editionActions(ctx context.Context, tx pgx.Tx, scope Scope, editionID uuid.UUID, kind DreamActionKind, after, limit int) ([]DreamAction, error) {
+	as, err := scanEditionActions(ctx, tx, scope, editionID, kind, after, limit)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := attachActionDetails(ctx, tx, scope, as); err != nil {
+		return nil, err
+	}
+	out := make([]DreamAction, len(as))
+	for i, a := range as {
+		out[i] = *a
+	}
+	return out, nil
+}
+
+// scanEditionActions reads an edition's action rows, without their
+// memories (attachActionDetails).
+func scanEditionActions(ctx context.Context, tx pgx.Tx, scope Scope, editionID uuid.UUID, kind DreamActionKind, after, limit int) ([]*DreamAction, error) {
 	rows, err := tx.Query(ctx, dreamActionSelect+`
 		 WHERE a.edition_id = $1 AND a.space_id = ANY ($2) AND ($3 = '' OR a.kind = $3) AND a.n > $4
 		 ORDER BY a.n LIMIT $5`, editionID, scope.SpaceIDs(), string(kind), after, limit)
@@ -425,19 +475,15 @@ func editionActions(ctx context.Context, tx pgx.Tx, scope Scope, editionID uuid.
 	if err != nil {
 		return nil, fmt.Errorf("ledger: read dream actions: %w", err)
 	}
-	if err := attachActionDetails(ctx, tx, scope, as); err != nil {
-		return nil, err
-	}
-	out := make([]DreamAction, len(as))
-	for i, a := range as {
-		out[i] = *a
-	}
-	return out, nil
+	return as, nil
 }
 
-// attachActionDetails fills each action's memories and note refs.
-func attachActionDetails(ctx context.Context, tx pgx.Tx, scope Scope, as []*DreamAction) error {
-	var ids, notes []uuid.UUID
+// attachActionDetails fills each action's memories and note refs, and
+// returns the memories it read, extra (the surfaced ones) included. The
+// memories and the note refs go out together, then the memories' details.
+func attachActionDetails(ctx context.Context, tx pgx.Tx, scope Scope, as []*DreamAction, extra ...uuid.UUID) (map[uuid.UUID]*Memory, error) {
+	ids := slices.Clone(extra)
+	var notes []uuid.UUID
 	for _, a := range as {
 		for _, id := range []uuid.UUID{a.memoryID, a.relatedID} {
 			if id != uuid.Nil {
@@ -446,13 +492,45 @@ func attachActionDetails(ctx context.Context, tx pgx.Tx, scope Scope, as []*Drea
 		}
 		notes = append(notes, a.noteIDs...)
 	}
-	ms, err := memoriesByID(ctx, tx, scope, ids)
-	if err != nil {
-		return err
+	var list []*Memory
+	refs := map[uuid.UUID]string{}
+	b := &pgx.Batch{}
+	if len(ids) > 0 {
+		b.Queue(memorySelect+` WHERE m.id = ANY ($1) AND m.space_id = ANY ($2)`, ids, scope.SpaceIDs()).
+			Query(func(rows pgx.Rows) error {
+				var err error
+				list, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (*Memory, error) { return scanMemory(r) })
+				if err != nil {
+					return fmt.Errorf("ledger: read memories: %w", err)
+				}
+				return nil
+			})
 	}
-	refs, err := noteRefsOf(ctx, tx, notes)
-	if err != nil {
-		return err
+	if len(notes) > 0 {
+		b.Queue(`SELECT note_id, seq FROM v2.note_refs WHERE note_id = ANY ($1)`, notes).Query(func(rows pgx.Rows) error {
+			var id uuid.UUID
+			var seq int64
+			_, err := pgx.ForEachRow(rows, []any{&id, &seq}, func() error {
+				refs[id] = FormatRef(PrefixNote, seq)
+				return nil
+			})
+			if err != nil {
+				return fmt.Errorf("ledger: read note refs: %w", err)
+			}
+			return nil
+		})
+	}
+	if b.Len() > 0 {
+		if err := tx.SendBatch(ctx, b).Close(); err != nil {
+			return nil, err
+		}
+	}
+	if err := attachDetails(ctx, tx, list); err != nil {
+		return nil, err
+	}
+	ms := make(map[uuid.UUID]*Memory, len(list))
+	for _, m := range list {
+		ms[m.ID] = m
 	}
 	for _, a := range as {
 		a.Memory, a.Related = ms[a.memoryID], ms[a.relatedID]
@@ -464,30 +542,7 @@ func attachActionDetails(ctx context.Context, tx pgx.Tx, scope Scope, as []*Drea
 		}
 		slices.Sort(a.NoteRefs)
 	}
-	return nil
-}
-
-// memoriesByID reads memories' projections (links and verdicts included).
-func memoriesByID(ctx context.Context, tx pgx.Tx, scope Scope, ids []uuid.UUID) (map[uuid.UUID]*Memory, error) {
-	out := map[uuid.UUID]*Memory{}
-	if len(ids) == 0 {
-		return out, nil
-	}
-	rows, err := tx.Query(ctx, memorySelect+` WHERE m.id = ANY ($1) AND m.space_id = ANY ($2)`, ids, scope.SpaceIDs())
-	if err != nil {
-		return nil, fmt.Errorf("ledger: read memories: %w", err)
-	}
-	ms, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (*Memory, error) { return scanMemory(r) })
-	if err != nil {
-		return nil, fmt.Errorf("ledger: read memories: %w", err)
-	}
-	if err := attachDetails(ctx, tx, ms); err != nil {
-		return nil, err
-	}
-	for _, m := range ms {
-		out[m.ID] = m
-	}
-	return out, nil
+	return ms, nil
 }
 
 // DreamActionQuery pages an edition's actions, in the edition's order.

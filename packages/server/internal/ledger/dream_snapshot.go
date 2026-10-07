@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
@@ -66,8 +67,6 @@ type DreamSnapshot struct {
 	TenantID uuid.UUID
 	Name     string
 	Now      time.Time
-	// Last is the previous edition (nil before the first).
-	Last *DreamEdition
 	// Since is the previous edition's Until: record changes after it are
 	// this run's input. Nil reads everything.
 	Since  *time.Time
@@ -146,16 +145,49 @@ func scanDreamMemory(r pgx.CollectableRow) (DreamMemory, error) {
 	return m, nil
 }
 
-func dreamMemories(ctx context.Context, tx pgx.Tx, where string, args ...any) ([]DreamMemory, error) {
-	rows, err := tx.Query(ctx, dreamMemorySelect+where, args...)
-	if err != nil {
-		return nil, fmt.Errorf("ledger: dream snapshot: %w", err)
-	}
-	out, err := pgx.CollectRows(rows, scanDreamMemory)
-	if err != nil {
-		return nil, fmt.Errorf("ledger: dream snapshot: %w", err)
-	}
-	return out, nil
+// queueDreamMemories queues a dreamMemorySelect read into b, collected
+// into *out when the batch is read.
+func queueDreamMemories(b *pgx.Batch, out *[]DreamMemory, where string, args ...any) {
+	b.Queue(dreamMemorySelect+where, args...).Query(func(rows pgx.Rows) error {
+		ms, err := pgx.CollectRows(rows, scanDreamMemory)
+		if err != nil {
+			return fmt.Errorf("ledger: dream snapshot: %w", err)
+		}
+		*out = ms
+		return nil
+	})
+}
+
+// queueBriefInForce queues a read of the Brief version in force into b:
+// *out stays nil when the space has none.
+func queueBriefInForce(b *pgx.Batch, spaceID uuid.UUID, out **Brief) {
+	b.Queue(`
+		SELECT b.id, b.current_version, v.seq, v.title, v.summary, v.structure
+		  FROM v2.briefs b
+		  JOIN v2.brief_versions v ON v.brief_id = b.id AND v.version = b.current_version
+		 WHERE b.space_id = $1`, spaceID).QueryRow(func(r pgx.Row) error {
+		var br Brief
+		var seq int64
+		var summary *string
+		var structure []byte
+		err := r.Scan(&br.ID, &br.Version, &seq, &br.Title, &summary, &structure)
+		if errNoRows(err) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("ledger: read Brief: %w", err)
+		}
+		var st briefStructure
+		if err := json.Unmarshal(structure, &st); err != nil {
+			return fmt.Errorf("ledger: read Brief: %w", err)
+		}
+		if summary != nil {
+			br.Summary = *summary
+		}
+		br.SpaceID, br.Ref, br.Sections = spaceID, FormatRef(PrefixBrief, seq), st.Sections
+		*out = &br
+		return nil
+	})
 }
 
 // DreamSnapshot reads what one run of Dream on a space needs.
@@ -180,78 +212,51 @@ func (l *Ledger) DreamSnapshot(ctx context.Context, scope Scope, spaceID uuid.UU
 		o.JudgeGrace = 10 * time.Minute
 	}
 	s := &DreamSnapshot{SpaceID: spaceID, TenantID: g.TenantID, Now: l.now().UTC().Truncate(time.Microsecond), Acted: map[DreamActed]bool{}}
+	// Three round trips, each a batch of reads that don't wait on each
+	// other: the space and the last edition's head; then the notes and the
+	// record; then the memories the Brief places.
 	err := l.readSnapshot(ctx, scope.Narrow(spaceID), func(tx pgx.Tx) error {
-		sp, err := loadSpace(ctx, tx, spaceID)
-		if err != nil {
-			return err
-		}
-		s.Name = sp.Name
-		var lastID uuid.UUID
+		found := false
 		var cursorAt *time.Time
 		var cursorID *uuid.UUID
-		err = tx.QueryRow(ctx, `SELECT id, until, note_cursor_at, note_cursor_id FROM v2.dream_editions
-		                          WHERE space_id = $1 ORDER BY seq DESC LIMIT 1`, spaceID).Scan(&lastID, &s.Since, &cursorAt, &cursorID)
-		switch {
-		case errNoRows(err):
-			s.Since = nil
-		case err != nil:
+		b := &pgx.Batch{}
+		b.Queue(`SELECT name FROM v2.spaces WHERE id = $1`, spaceID).QueryRow(func(r pgx.Row) error {
+			err := r.Scan(&s.Name)
+			if errNoRows(err) {
+				return nil
+			}
+			found = err == nil
+			return err
+		})
+		b.Queue(`SELECT until, note_cursor_at, note_cursor_id FROM v2.dream_editions
+		          WHERE space_id = $1 ORDER BY seq DESC LIMIT 1`, spaceID).QueryRow(func(r pgx.Row) error {
+			var until time.Time
+			err := r.Scan(&until, &cursorAt, &cursorID)
+			if errNoRows(err) {
+				return nil
+			}
+			if err == nil {
+				s.Since = &until
+			}
+			return err
+		})
+		if err := tx.SendBatch(ctx, b).Close(); err != nil {
 			return fmt.Errorf("ledger: dream snapshot: %w", err)
-		default:
-			if s.Last, err = loadEdition(ctx, tx, scope, spaceID, lastID); err != nil {
-				return err
-			}
-			if cursorAt != nil && cursorID != nil {
-				s.Cursor = &NoteCursor{At: *cursorAt, ID: *cursorID}
-			}
+		}
+		if !found {
+			return ErrNotFound
+		}
+		if cursorAt != nil && cursorID != nil {
+			s.Cursor = &NoteCursor{At: *cursorAt, ID: *cursorID}
 		}
 		since := time.Time{}
 		if s.Since != nil {
 			since = *s.Since
 		}
-
-		// Notes after the cursor, oldest first.
 		var afterAt time.Time
 		afterID := uuid.Nil
 		if s.Cursor != nil {
 			afterAt, afterID = s.Cursor.At, s.Cursor.ID
-		}
-		rows, err := tx.Query(ctx, `
-			SELECT n.id, n.created_at, n.author_kind, COALESCE(n.agent, ''), COALESCE(n.source, ''), COALESCE(n.title, ''),
-			       COALESCE(n.body, ''), r.seq,
-			       (COALESCE(n.source, '') IN ('email', 'url', 'link', 'web_clip')
-			        OR COALESCE(n.content_type, '') IN ('html', 'url', 'link')
-			        OR COALESCE(n.source_path, '') ~* '^https?://')
-			  FROM v2.notes n LEFT JOIN v2.note_refs r ON r.note_id = n.id
-			 WHERE n.space_id = $1 AND n.state <> 'archived' AND (n.created_at, n.id) > ($2, $3)
-			 ORDER BY n.created_at, n.id LIMIT $4`, spaceID, afterAt, afterID, o.MaxNotes+1)
-		if err != nil {
-			return fmt.Errorf("ledger: dream snapshot: notes: %w", err)
-		}
-		for rows.Next() {
-			var n DreamNote
-			var seq *int64
-			if err := rows.Scan(&n.ID, &n.CreatedAt, &n.AuthorKind, &n.Agent, &n.Source, &n.Title, &n.Body, &seq, &n.External); err != nil {
-				rows.Close()
-				return fmt.Errorf("ledger: dream snapshot: notes: %w", err)
-			}
-			if seq != nil {
-				n.Ref = FormatRef(PrefixNote, *seq)
-			}
-			s.Notes = append(s.Notes, n)
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return fmt.Errorf("ledger: dream snapshot: notes: %w", err)
-		}
-		if len(s.Notes) > o.MaxNotes {
-			s.Notes, s.MoreNotes = s.Notes[:o.MaxNotes], true
-		}
-
-		if err := tx.QueryRow(ctx, `
-			SELECT count(*) FROM v2.receipts
-			 WHERE space_id = $1 AND recorded_at > $2 AND actor_kind IN ('person', 'agent', 'repository')`,
-			spaceID, since).Scan(&s.Changes); err != nil {
-			return fmt.Errorf("ledger: dream snapshot: changes: %w", err)
 		}
 		limit := o.MaxMemories
 		// The first edition doesn't re-check a whole record for conflicts:
@@ -260,141 +265,142 @@ func (l *Ledger) DreamSnapshot(ctx context.Context, scope Scope, spaceID uuid.UU
 		if s.Since == nil {
 			changedSince = s.Now.Add(-7 * 24 * time.Hour)
 		}
-		if s.Proposals, err = dreamMemories(ctx, tx, `
+
+		b = &pgx.Batch{}
+		// Notes after the cursor, oldest first.
+		b.Queue(`
+			SELECT n.id, n.created_at, n.author_kind, COALESCE(n.agent, ''), COALESCE(n.source, ''), COALESCE(n.title, ''),
+			       COALESCE(n.body, ''), r.seq,
+			       (COALESCE(n.source, '') IN ('email', 'url', 'link', 'web_clip')
+			        OR COALESCE(n.content_type, '') IN ('html', 'url', 'link')
+			        OR COALESCE(n.source_path, '') ~* '^https?://')
+			  FROM v2.notes n LEFT JOIN v2.note_refs r ON r.note_id = n.id
+			 WHERE n.space_id = $1 AND n.state <> 'archived' AND (n.created_at, n.id) > ($2, $3)
+			 ORDER BY n.created_at, n.id LIMIT $4`, spaceID, afterAt, afterID, o.MaxNotes+1).
+			Query(func(rows pgx.Rows) error {
+				var err error
+				s.Notes, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (DreamNote, error) {
+					var n DreamNote
+					var seq *int64
+					if err := r.Scan(&n.ID, &n.CreatedAt, &n.AuthorKind, &n.Agent, &n.Source, &n.Title, &n.Body, &seq,
+						&n.External); err != nil {
+						return DreamNote{}, err
+					}
+					if seq != nil {
+						n.Ref = FormatRef(PrefixNote, *seq)
+					}
+					return n, nil
+				})
+				if err != nil {
+					return fmt.Errorf("ledger: dream snapshot: notes: %w", err)
+				}
+				return nil
+			})
+		b.Queue(`
+			SELECT count(*) FROM v2.receipts
+			 WHERE space_id = $1 AND recorded_at > $2 AND actor_kind IN ('person', 'agent', 'repository')`,
+			spaceID, since).QueryRow(func(r pgx.Row) error { return r.Scan(&s.Changes) })
+		queueDreamMemories(b, &s.Proposals, `
 			 WHERE m.space_id = $1 AND m.lifecycle = 'proposed' AND NOT ('conflict' = ANY (m.flags))
-			 ORDER BY m.seq LIMIT $2`, spaceID, limit); err != nil {
-			return err
-		}
-		if s.Changed, err = dreamMemories(ctx, tx, `
+			 ORDER BY m.seq LIMIT $2`, spaceID, limit)
+		queueDreamMemories(b, &s.Changed, `
 			 WHERE m.space_id = $1 AND m.lifecycle = 'kept' AND NOT ('conflict' = ANY (m.flags))
 			   AND EXISTS (SELECT 1 FROM v2.receipts r WHERE r.stream_id = m.id AND r.space_id = m.space_id
 			                AND r.recorded_at > $2 AND r.actor_kind IN ('person', 'agent', 'repository')
 			                AND r.action IN ('kept', 'edited', 'restored', 'resolved', 'undid'))
-			 ORDER BY m.seq DESC LIMIT $3`, spaceID, changedSince, limit); err != nil {
-			return err
-		}
-		if s.Unjudged, err = dreamMemories(ctx, tx, `
+			 ORDER BY m.seq DESC LIMIT $3`, spaceID, changedSince, limit)
+		queueDreamMemories(b, &s.Unjudged, `
 			 WHERE m.space_id = $1 AND NOT ('conflict' = ANY (m.flags))
 			   AND (m.lifecycle = 'proposed'
 			        OR (m.lifecycle = 'kept' AND EXISTS (SELECT 1 FROM v2.receipts r WHERE r.id = v.receipt_id AND r.actor_kind = 'agent')))
 			   AND v.created_at < $2
 			   AND NOT EXISTS (SELECT 1 FROM v2.judge_verdicts j WHERE j.memory_id = m.id AND j.version = m.current_version
 			                    AND j.outcome <> 'failed')
-			 ORDER BY m.seq DESC LIMIT $3`, spaceID, s.Now.Add(-o.JudgeGrace), limit); err != nil {
-			return err
-		}
-		if s.Decisions, err = dreamMemories(ctx, tx, `
+			 ORDER BY m.seq DESC LIMIT $3`, spaceID, s.Now.Add(-o.JudgeGrace), limit)
+		queueDreamMemories(b, &s.Decisions, `
 			 WHERE m.space_id = $1 AND m.kind = 'decision' AND m.lifecycle = 'kept'
 			   AND COALESCE(m.decision ->> 'status', '') IN ('', 'in_force')
-			 ORDER BY m.seq DESC LIMIT $2`, spaceID, judgeMaxDecisions); err != nil {
-			return err
-		}
-		if s.StaleDue, err = dreamMemories(ctx, tx, `
+			 ORDER BY m.seq DESC LIMIT $2`, spaceID, judgeMaxDecisions)
+		queueDreamMemories(b, &s.StaleDue, `
 			 WHERE m.space_id = $1 AND m.lifecycle = 'kept' AND NOT ('stale' = ANY (m.flags))
 			   AND m.stale_after IS NOT NULL AND m.stale_after <= $2
 			   AND NOT EXISTS (SELECT 1 FROM v2.receipts r WHERE r.stream_id = m.id AND r.space_id = m.space_id
 			                    AND r.actor_kind = 'person' AND r.recorded_at > m.stale_after AND r.id <> m.created_receipt_id)
-			 ORDER BY m.stale_after LIMIT $3`, spaceID, s.Now, limit); err != nil {
-			return err
-		}
-
-		// The Brief in force, and the kept memories it doesn't place.
-		cur, err := lockBriefRead(ctx, tx, spaceID)
-		if err != nil {
-			return err
-		}
-		if cur != nil {
-			if s.Brief, err = currentBriefVersion(ctx, tx, spaceID, cur); err != nil {
-				return err
-			}
-			s.Brief.ID, s.Brief.SpaceID = cur.id, spaceID
-			s.Brief.Ref = FormatRef(PrefixBrief, cur.seq)
-			placed := briefRefs(s.Brief.Sections)
-			seqs := make([]int64, 0, len(placed))
-			for _, r := range placed {
-				_, n, _ := ParseRef(r)
-				seqs = append(seqs, n)
-			}
-			in, err := dreamMemories(ctx, tx, ` WHERE m.space_id = $1 AND m.seq = ANY ($2)`, spaceID, seqs)
-			if err != nil {
-				return err
-			}
-			s.Placed = map[string]DreamMemory{}
-			for _, m := range in {
-				s.Placed[m.Ref] = m
-			}
-			if s.Unplaced, err = dreamMemories(ctx, tx, `
-				 WHERE m.space_id = $1 AND m.lifecycle = 'kept' AND NOT (m.seq = ANY ($2))
-				 ORDER BY m.updated_at DESC, m.seq DESC LIMIT $3`, spaceID, seqs, limit); err != nil {
-				return err
-			}
-		}
-
+			 ORDER BY m.stale_after LIMIT $3`, spaceID, s.Now, limit)
+		// The Brief in force.
+		queueBriefInForce(b, spaceID, &s.Brief)
 		// Conflicts the judge flagged since the last edition, still open.
-		rows, err = tx.Query(ctx, `
+		b.Queue(`
 			SELECT l.from_memory_id, l.to_memory_id
 			  FROM v2.memory_links l
 			  JOIN v2.receipts r ON r.id = l.receipt_id
 			  JOIN v2.memories m ON m.id = l.from_memory_id
 			 WHERE l.space_id = $1 AND l.kind = 'conflicts_with' AND l.ended_receipt_id IS NULL
 			   AND r.actor_kind = 'memax' AND r.recorded_at > $2 AND 'conflict' = ANY (m.flags)
-			 ORDER BY l.created_at LIMIT $3`, spaceID, since, MaxDreamSurfaced)
-		if err != nil {
-			return fmt.Errorf("ledger: dream snapshot: conflicts: %w", err)
-		}
-		for rows.Next() {
-			var sf Surfaced
-			if err := rows.Scan(&sf.Memory, &sf.With); err != nil {
-				rows.Close()
-				return fmt.Errorf("ledger: dream snapshot: conflicts: %w", err)
-			}
-			sf.Kind = "conflict"
-			s.Surfaced = append(s.Surfaced, sf)
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return fmt.Errorf("ledger: dream snapshot: conflicts: %w", err)
-		}
-
+			 ORDER BY l.created_at LIMIT $3`, spaceID, since, MaxDreamSurfaced).
+			Query(func(rows pgx.Rows) error {
+				var err error
+				s.Surfaced, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Surfaced, error) {
+					sf := Surfaced{Kind: "conflict"}
+					err := r.Scan(&sf.Memory, &sf.With)
+					return sf, err
+				})
+				if err != nil {
+					return fmt.Errorf("ledger: dream snapshot: conflicts: %w", err)
+				}
+				return nil
+			})
 		// What Dream did before, so it doesn't raise the same thing twice.
-		rows, err = tx.Query(ctx, `
+		b.Queue(`
 			SELECT kind, memory_id, COALESCE(version, 0), COALESCE(related_memory_id, '00000000-0000-0000-0000-000000000000'::uuid)
-			  FROM v2.dream_actions WHERE space_id = $1 AND kind IN ('dedupe', 'conflict', 'fade', 'stale') AND memory_id IS NOT NULL`, spaceID)
-		if err != nil {
-			return fmt.Errorf("ledger: dream snapshot: acted: %w", err)
-		}
-		for rows.Next() {
+			  FROM v2.dream_actions WHERE space_id = $1 AND kind IN ('dedupe', 'conflict', 'fade', 'stale') AND memory_id IS NOT NULL`,
+			spaceID).Query(func(rows pgx.Rows) error {
 			var a DreamActed
-			if err := rows.Scan(&a.Kind, &a.Memory, &a.Version, &a.Related); err != nil {
-				rows.Close()
+			_, err := pgx.ForEachRow(rows, []any{&a.Kind, &a.Memory, &a.Version, &a.Related}, func() error {
+				s.Acted[a] = true
+				return nil
+			})
+			if err != nil {
 				return fmt.Errorf("ledger: dream snapshot: acted: %w", err)
 			}
-			s.Acted[a] = true
+			return nil
+		})
+		if err := tx.SendBatch(ctx, b).Close(); err != nil {
+			return err
 		}
-		rows.Close()
-		return rows.Err()
+		if len(s.Notes) > o.MaxNotes {
+			s.Notes, s.MoreNotes = s.Notes[:o.MaxNotes], true
+		}
+		if s.Brief == nil {
+			return nil
+		}
+
+		// The kept memories the Brief places and those it doesn't.
+		placed := briefRefs(s.Brief.Sections)
+		seqs := make([]int64, 0, len(placed))
+		for _, r := range placed {
+			_, n, _ := ParseRef(r)
+			seqs = append(seqs, n)
+		}
+		var in []DreamMemory
+		b = &pgx.Batch{}
+		queueDreamMemories(b, &in, ` WHERE m.space_id = $1 AND m.seq = ANY ($2)`, spaceID, seqs)
+		queueDreamMemories(b, &s.Unplaced, `
+			 WHERE m.space_id = $1 AND m.lifecycle = 'kept' AND NOT (m.seq = ANY ($2))
+			 ORDER BY m.updated_at DESC, m.seq DESC LIMIT $3`, spaceID, seqs, limit)
+		if err := tx.SendBatch(ctx, b).Close(); err != nil {
+			return err
+		}
+		s.Placed = map[string]DreamMemory{}
+		for _, m := range in {
+			s.Placed[m.Ref] = m
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return s, nil
-}
-
-// lockBriefRead reads the Brief's head without a lock (a read snapshot).
-func lockBriefRead(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (*briefRow, error) {
-	var b briefRow
-	err := tx.QueryRow(ctx, `
-		SELECT b.id, b.current_version, b.stream_version, v.seq
-		  FROM v2.briefs b
-		  JOIN v2.brief_versions v ON v.brief_id = b.id AND v.version = b.current_version
-		 WHERE b.space_id = $1`, spaceID).Scan(&b.id, &b.version, &b.streamVersion, &b.seq)
-	if errNoRows(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("ledger: load Brief: %w", err)
-	}
-	return &b, nil
 }
 
 // FadeCandidate is a kept memory that may fade: unread, and untouched by
@@ -431,58 +437,60 @@ func (l *Ledger) FadeCandidates(ctx context.Context, scope Scope, spaceID uuid.U
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	var out []FadeCandidate
-	err = l.Read(ctx, scope.Narrow(spaceID), func(tx pgx.Tx) error {
-		var placed []string
-		if cur, err := lockBriefRead(ctx, tx, spaceID); err != nil {
-			return err
-		} else if cur != nil {
-			b, err := currentBriefVersion(ctx, tx, spaceID, cur)
+	type row struct {
+		c       FadeCandidate
+		kind    Kind
+		status  string
+		touched time.Time
+	}
+	var brief *Brief
+	var rows []row
+	b := &pgx.Batch{}
+	queueBriefInForce(b, spaceID, &brief)
+	b.Queue(`
+		SELECT m.id, m.seq, m.current_version, m.kind, COALESCE(m.decision ->> 'status', ''),
+		       COALESCE((SELECT max(r.recorded_at) FROM v2.receipts r
+		                  WHERE r.stream_id = m.id AND r.space_id = m.space_id AND r.actor_kind IN ('person', 'agent')), m.created_at)
+		  FROM v2.memories m
+		 WHERE m.space_id = $1 AND m.id = ANY ($2) AND m.lifecycle = 'kept' AND cardinality(m.flags) = 0
+		   AND NOT EXISTS (SELECT 1 FROM v2.memory_links l
+		                    WHERE l.kind = 'conflicts_with' AND l.ended_receipt_id IS NULL
+		                      AND (l.from_memory_id = m.id OR l.to_memory_id = m.id))`, spaceID, ids).
+		Query(func(rs pgx.Rows) error {
+			var err error
+			rows, err = pgx.CollectRows(rs, func(r pgx.CollectableRow) (row, error) {
+				var x row
+				var seq int64
+				err := r.Scan(&x.c.ID, &seq, &x.c.Version, &x.kind, &x.status, &x.touched)
+				x.c.Ref = FormatRef(PrefixMemory, seq)
+				return x, err
+			})
 			if err != nil {
-				return err
-			}
-			placed = briefRefs(b.Sections)
-		}
-		rows, err := tx.Query(ctx, `
-			SELECT m.id, m.seq, m.current_version, m.kind, COALESCE(m.decision ->> 'status', ''),
-			       COALESCE((SELECT max(r.recorded_at) FROM v2.receipts r
-			                  WHERE r.stream_id = m.id AND r.space_id = m.space_id AND r.actor_kind IN ('person', 'agent')), m.created_at)
-			  FROM v2.memories m
-			 WHERE m.space_id = $1 AND m.id = ANY ($2) AND m.lifecycle = 'kept' AND cardinality(m.flags) = 0
-			   AND NOT EXISTS (SELECT 1 FROM v2.memory_links l
-			                    WHERE l.kind = 'conflicts_with' AND l.ended_receipt_id IS NULL
-			                      AND (l.from_memory_id = m.id OR l.to_memory_id = m.id))`, spaceID, ids)
-		if err != nil {
-			return fmt.Errorf("ledger: fade candidates: %w", err)
-		}
-		for rows.Next() {
-			var c FadeCandidate
-			var seq int64
-			var kind Kind
-			var status string
-			var touched time.Time
-			if err := rows.Scan(&c.ID, &seq, &c.Version, &kind, &status, &touched); err != nil {
-				rows.Close()
 				return fmt.Errorf("ledger: fade candidates: %w", err)
 			}
-			c.Ref = FormatRef(PrefixMemory, seq)
-			if kind == KindDecision && (status == "" || status == DecisionInForce) {
-				continue
-			}
-			if slices.Contains(placed, c.Ref) || touched.After(cut) {
-				continue
-			}
-			c.Unread = touched
-			if r := unread[c.ID]; r != nil && r.After(c.Unread) {
-				c.Unread = *r
-			}
-			out = append(out, c)
-		}
-		rows.Close()
-		return rows.Err()
-	})
-	if err != nil {
+			return nil
+		})
+	if err := l.ReadBatch(ctx, scope.Narrow(spaceID), b); err != nil {
 		return nil, err
+	}
+	var placed []string
+	if brief != nil {
+		placed = briefRefs(brief.Sections)
+	}
+	var out []FadeCandidate
+	for _, x := range rows {
+		if x.kind == KindDecision && (x.status == "" || x.status == DecisionInForce) {
+			continue
+		}
+		if slices.Contains(placed, x.c.Ref) || x.touched.After(cut) {
+			continue
+		}
+		c := x.c
+		c.Unread = x.touched
+		if r := unread[c.ID]; r != nil && r.After(c.Unread) {
+			c.Unread = *r
+		}
+		out = append(out, c)
 	}
 	slices.SortFunc(out, func(a, b FadeCandidate) int { return a.Unread.Compare(b.Unread) })
 	if limit > 0 && len(out) > limit {

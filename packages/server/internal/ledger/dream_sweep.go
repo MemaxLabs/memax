@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/riverqueue/river"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
@@ -81,14 +82,15 @@ func (l *Ledger) DreamSweep(ctx context.Context, now time.Time, limit int, decid
 	if l == nil {
 		return nil, ErrDisabled
 	}
-	tx, loginRole, err := l.beginRole(ctx, DreamSweeperRole, Scope{}, pgx.TxOptions{AccessMode: pgx.ReadWrite})
+	// However many spaces come due, the sweep is the same few round
+	// trips: the candidates (with BEGIN, the role, the scope and
+	// app.sweep), their ranks, one lock over every schedule, then one
+	// upsert of them all, which goes out with River's insert or COMMIT.
+	tx, err := l.beginDreamSweep(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `SELECT set_config('app.sweep', 'dream', true)`); err != nil {
-		return nil, fmt.Errorf("ledger: dream sweep: %w", err)
-	}
 	rows, err := tx.Query(ctx, `
 		SELECT h.id, h.tenant_id, h.owner_id, COALESCE(ds.time_zone, 'UTC'),
 		       s.space_id IS NOT NULL, COALESCE(s.cadence, ''), COALESCE(s.time_zone, ''), COALESCE(s.due_at, $1), s.last_slot
@@ -118,17 +120,43 @@ func (l *Ledger) DreamSweep(ctx context.Context, now time.Time, limit int, decid
 	if err := rankBusy(ctx, tx, now, spaces); err != nil {
 		return nil, err
 	}
-	var queued []DreamSpaceArgs
+	// Lock every schedule at once. One another sweep holds is skipped: that
+	// sweep has it.
+	var scheduled []uuid.UUID
 	for _, s := range spaces {
 		if s.HasSchedule {
-			// Another sweep may hold it: skip it, it has it.
-			var due time.Time
-			err := tx.QueryRow(ctx, `SELECT due_at FROM v2.dream_schedules WHERE space_id = $1 FOR UPDATE SKIP LOCKED`, s.SpaceID).Scan(&due)
-			if errNoRows(err) {
+			scheduled = append(scheduled, s.SpaceID)
+		}
+	}
+	locked := map[uuid.UUID]time.Time{}
+	if len(scheduled) > 0 {
+		rows, err := tx.Query(ctx, `
+			SELECT space_id, due_at FROM v2.dream_schedules WHERE space_id = ANY ($1) ORDER BY space_id FOR UPDATE SKIP LOCKED`,
+			scheduled)
+		if err != nil {
+			return nil, fmt.Errorf("ledger: dream sweep: %w", err)
+		}
+		var id uuid.UUID
+		var due time.Time
+		if _, err := pgx.ForEachRow(rows, []any{&id, &due}, func() error {
+			locked[id] = due
+			return nil
+		}); err != nil {
+			return nil, fmt.Errorf("ledger: dream sweep: %w", err)
+		}
+	}
+	var queued []DreamSpaceArgs
+	var (
+		ids, tenants, owners []uuid.UUID
+		cadences, zones      []string
+		dues                 []time.Time
+		slots                []pgtype.Timestamptz
+	)
+	for _, s := range spaces {
+		if s.HasSchedule {
+			due, ok := locked[s.SpaceID]
+			if !ok {
 				continue
-			}
-			if err != nil {
-				return nil, fmt.Errorf("ledger: dream sweep: %w", err)
 			}
 			s.DueAt = due
 		}
@@ -136,19 +164,27 @@ func (l *Ledger) DreamSweep(ctx context.Context, now time.Time, limit int, decid
 		if d.Cadence != "nightly" && d.Cadence != "weekly" {
 			return nil, fmt.Errorf("ledger: dream sweep: cadence %q", d.Cadence)
 		}
-		var lastSlot any
+		slot := pgtype.Timestamptz{}
 		if d.Slot != nil {
-			lastSlot = d.Slot.UTC()
+			slot = pgtype.Timestamptz{Time: d.Slot.UTC(), Valid: true}
 			queued = append(queued, DreamSpaceArgs{SpaceID: s.SpaceID, Slot: d.Slot.UTC(), Trigger: DreamScheduled})
 		}
-		if _, err := tx.Exec(ctx, `
+		ids, tenants, owners = append(ids, s.SpaceID), append(tenants, s.TenantID), append(owners, s.OwnerID)
+		cadences, zones, dues = append(cadences, d.Cadence), append(zones, d.TimeZone), append(dues, d.DueAt)
+		slots = append(slots, slot)
+	}
+	if len(ids) > 0 {
+		if err := execDeferred(ctx, tx, `
 			INSERT INTO v2.dream_schedules AS s (space_id, tenant_id, owner_id, cadence, time_zone, due_at, last_slot, last_queued_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $7::timestamptz IS NULL THEN NULL ELSE now() END)
+			SELECT u.space_id, u.tenant_id, u.owner_id, u.cadence, u.time_zone, u.due_at, u.last_slot,
+			       CASE WHEN u.last_slot IS NULL THEN NULL ELSE now() END
+			  FROM unnest($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::text[], $6::timestamptz[], $7::timestamptz[])
+			       AS u(space_id, tenant_id, owner_id, cadence, time_zone, due_at, last_slot)
 			ON CONFLICT (space_id) DO UPDATE
 			   SET owner_id = EXCLUDED.owner_id, cadence = EXCLUDED.cadence, time_zone = EXCLUDED.time_zone,
 			       due_at = EXCLUDED.due_at, last_slot = COALESCE(EXCLUDED.last_slot, s.last_slot),
 			       last_queued_at = COALESCE(EXCLUDED.last_queued_at, s.last_queued_at), updated_at = now()`,
-			s.SpaceID, s.TenantID, s.OwnerID, d.Cadence, d.TimeZone, d.DueAt, lastSlot); err != nil {
+			ids, tenants, owners, cadences, zones, dues, slots); err != nil {
 			return nil, fmt.Errorf("ledger: dream sweep: %w", err)
 		}
 	}
@@ -157,12 +193,11 @@ func (l *Ledger) DreamSweep(ctx context.Context, now time.Time, limit int, decid
 		for i, q := range queued {
 			params[i] = river.InsertManyParams{Args: q}
 		}
-		// River's tables are the login role's (jobs.go); the insert is the
-		// transaction's last statement.
-		if _, err := tx.Exec(ctx, `SELECT set_config('role', $1, true)`, loginRole); err != nil {
-			return nil, fmt.Errorf("ledger: dream sweep: %w", err)
-		}
-		if _, err := jobs.InsertManyTx(ctx, tx, params); err != nil {
+		// River's tables are the login role's (jobs.go).
+		if err := asLoginRole(ctx, tx, tx.loginRole, func() error {
+			_, err := jobs.InsertManyTx(ctx, tx, params)
+			return err
+		}); err != nil {
 			return nil, fmt.Errorf("ledger: dream sweep: queue %d run(s): %w", len(params), err)
 		}
 	}
@@ -437,38 +472,47 @@ func (l *Ledger) DreamRecipients(ctx context.Context, spaceID, editionID uuid.UU
 	var sp DreamEmailSpace
 	var out []DreamRecipient
 	err := l.asDreamSweeper(ctx, func(tx pgx.Tx) error {
+		// The space and its members in one round trip.
 		var rulesJSON []byte
 		var owner uuid.UUID
-		err := tx.QueryRow(ctx, `SELECT name, COALESCE(slug, ''), owner_id, rules FROM public.hubs WHERE id = $1`, spaceID).
-			Scan(&sp.Name, &sp.Slug, &owner, &rulesJSON)
-		if errNoRows(err) {
-			return ErrNotFound
-		}
-		if err != nil {
-			return fmt.Errorf("ledger: email recipients: %w", err)
-		}
-		var rules policy.Rules
-		if err := json.Unmarshal(rulesJSON, &rules); err != nil {
-			return fmt.Errorf("ledger: email recipients: rules: %w", err)
-		}
-		rows, err := tx.Query(ctx, `
-			SELECT u.id, COALESCE(m.role, 'owner') FROM public.users u
-			  LEFT JOIN public.hub_members m ON m.hub_id = $1 AND m.user_id = u.id
-			 WHERE u.id = $2 OR m.hub_id = $1`, spaceID, owner)
-		if err != nil {
-			return fmt.Errorf("ledger: email recipients: %w", err)
-		}
+		found := false
 		type member struct {
 			id   uuid.UUID
 			role string
 		}
-		members, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (member, error) {
-			var m member
-			err := r.Scan(&m.id, &m.role)
-			return m, err
-		})
-		if err != nil {
+		var members []member
+		b := &pgx.Batch{}
+		b.Queue(`SELECT name, COALESCE(slug, ''), owner_id, rules FROM public.hubs WHERE id = $1`, spaceID).
+			QueryRow(func(r pgx.Row) error {
+				err := r.Scan(&sp.Name, &sp.Slug, &owner, &rulesJSON)
+				if errNoRows(err) {
+					return nil
+				}
+				found = err == nil
+				return err
+			})
+		b.Queue(`
+			SELECT u.id, COALESCE(m.role, 'owner') FROM public.users u
+			  LEFT JOIN public.hub_members m ON m.hub_id = $1 AND m.user_id = u.id
+			 WHERE u.id = (SELECT owner_id FROM public.hubs WHERE id = $1) OR m.hub_id = $1`, spaceID).
+			Query(func(rows pgx.Rows) error {
+				var err error
+				members, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (member, error) {
+					var m member
+					err := r.Scan(&m.id, &m.role)
+					return m, err
+				})
+				return err
+			})
+		if err := tx.SendBatch(ctx, b).Close(); err != nil {
 			return fmt.Errorf("ledger: email recipients: %w", err)
+		}
+		if !found {
+			return ErrNotFound
+		}
+		var rules policy.Rules
+		if err := json.Unmarshal(rulesJSON, &rules); err != nil {
+			return fmt.Errorf("ledger: email recipients: rules: %w", err)
 		}
 		var keepers []uuid.UUID
 		for _, m := range members {
@@ -483,11 +527,12 @@ func (l *Ledger) DreamRecipients(ctx context.Context, spaceID, editionID uuid.UU
 		if len(keepers) == 0 {
 			return nil
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO v2.dream_settings (person_id) SELECT unnest($1::uuid[]) ON CONFLICT DO NOTHING`,
+		// Their settings rows (and unsubscribe tokens) ride with the read.
+		if err := execDeferred(ctx, tx, `INSERT INTO v2.dream_settings (person_id) SELECT unnest($1::uuid[]) ON CONFLICT DO NOTHING`,
 			keepers); err != nil {
 			return fmt.Errorf("ledger: email recipients: %w", err)
 		}
-		rows, err = tx.Query(ctx, `
+		rows, err := tx.Query(ctx, `
 			SELECT u.id, u.email, COALESCE(NULLIF(u.display_name, ''), u.name), d.unsubscribe_token, d.time_zone,
 			       EXISTS (SELECT 1 FROM v2.dream_email_sends s WHERE s.edition_id = $2 AND s.person_id = u.id)
 			  FROM public.users u JOIN v2.dream_settings d ON d.person_id = u.id
@@ -521,16 +566,26 @@ func (l *Ledger) MarkDreamEmailSent(ctx context.Context, spaceID, editionID, per
 
 // asDreamSweeper runs fn as DreamSweeperRole with app.sweep set.
 func (l *Ledger) asDreamSweeper(ctx context.Context, fn func(pgx.Tx) error) error {
-	tx, _, err := l.beginRole(ctx, DreamSweeperRole, Scope{}, pgx.TxOptions{AccessMode: pgx.ReadWrite})
+	tx, err := l.beginDreamSweep(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `SELECT set_config('app.sweep', 'dream', true)`); err != nil {
-		return fmt.Errorf("ledger: dream sweeper: %w", err)
-	}
 	if err := fn(tx); err != nil {
 		return mapDBError(err)
 	}
 	return tx.Commit(ctx)
+}
+
+// beginDreamSweep opens a ledger transaction (tx.go) as DreamSweeperRole,
+// scoped to no space, with app.sweep = 'dream', which admits the sweeper's
+// policies. BEGIN, the role, the scope and app.sweep go out with its
+// first statement, in that order.
+func (l *Ledger) beginDreamSweep(ctx context.Context) (*scopedTx, error) {
+	tx, err := l.openTx(ctx, DreamSweeperRole, Scope{}, pgx.TxOptions{AccessMode: pgx.ReadWrite})
+	if err != nil {
+		return nil, err
+	}
+	tx.deferStatement(`SELECT set_config('app.sweep', 'dream', true)`)
+	return tx, nil
 }

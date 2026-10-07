@@ -33,7 +33,12 @@ type dreamWorld struct {
 
 func newDreamWorld(t *testing.T) *dreamWorld {
 	t.Helper()
-	f := newFixture(t)
+	return newDreamWorldOn(t, newFixture(t))
+}
+
+// newDreamWorldOn builds the world on a fixture (an audited database).
+func newDreamWorldOn(t *testing.T, f *fixture) *dreamWorld {
+	t.Helper()
 	w := &dreamWorld{f: f, owner: f.user("zz")}
 	w.space = f.space(w.owner, policy.SpaceProject, "memax-v2")
 	w.k = f.remember(w.owner, w.space, "Background jobs run on River, not Temporal.")

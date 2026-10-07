@@ -1003,8 +1003,13 @@ export interface paths {
          *     never blocks it), then applies, or answers 409 `in_conflict` when
          *     the judge found the words contradict a decision in force
          *     (`details.ref`). Words that touch no other decision apply at once.
-         *     Keeping a side that is flagged against another decision too is 409
-         *     `in_conflict` naming it: settle that first.
+         *     `keep_this`, `keep_other` and `leave_open` keep a proposal's words as
+         *     they stand, and wait the same way: words the judge hasn't seen yet
+         *     (an edit, or narrower words a `keep_both` saved) that touch another
+         *     decision in force answer 503 `judge_pending` until it has, then
+         *     apply or answer 409 `in_conflict`. Keeping a side that is flagged
+         *     against another decision too is 409 `in_conflict` naming it: settle
+         *     that first.
          */
         post: operations["resolveConflict"];
         delete?: never;

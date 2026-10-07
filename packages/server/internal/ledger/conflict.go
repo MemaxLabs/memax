@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -21,7 +22,9 @@ import (
 //     The losing side gives way: a proposal is rejected; a kept decision
 //     is superseded (it stays kept with its history, decision status
 //     "superseded", and stops compiling); a kept fact fades (restorable).
-//     The winner gets a `supersedes` link to a kept loser.
+//     The winner gets a `supersedes` link to a kept loser. A winning
+//     proposal's words the judge hasn't seen yet wait for it when they
+//     touch another decision in force (awaitWords), as keep_both's do.
 //   - keep_both: both stand, usually with narrower words (an edit of
 //     either side, or both), and a flagged proposal is kept. Narrower
 //     words that touch another decision in force wait for the judge
@@ -29,7 +32,7 @@ import (
 //   - leave_open: it is undecided. The flagged side becomes an open
 //     question (kept, in the open-question section), and a decision in
 //     force on the other side is set to "open" too, so no agent reads it
-//     as decided.
+//     as decided. A flagged proposal's unjudged words wait as above.
 //
 // Every change has its receipt, the flag is cleared, the conflicts_with
 // link ends, and the whole resolution is one Undo away.
@@ -230,6 +233,42 @@ func (p *conflictPair) keepsFlagged(choice ConflictChoice) bool {
 	return false
 }
 
+// keptProposals lists the proposals a choice keeps with their words as
+// they stand: the winner of "keep this" or "keep other", or the flagged
+// side "leave open" keeps as an open question.
+func (p *conflictPair) keptProposals(choice ConflictChoice) []*Memory {
+	var out []*Memory
+	for _, e := range p.plan(choice) {
+		for _, m := range []*Memory{p.this, p.other} {
+			if m.Ref == e.Ref && m.Lifecycle == lifecycle.Proposed && (e.Change == EffectKept || e.Change == EffectOpen) {
+				out = append(out, m)
+			}
+		}
+	}
+	return out
+}
+
+// awaitWords holds a resolution that would keep a proposal's words before
+// the judge has seen them (rule 11): words inside JudgeGrace with no
+// verdict that touch a decision in force other than the conflict's two
+// sides wait (judge_pending), as "keep both"'s narrowed words do. Such
+// words were written since the flag (an edit, or narrowed words a "keep
+// both" saved and queued in settling mode), so a verdict is on its way:
+// one that finds a contradiction links it, and the resolution then
+// answers in_conflict. After JudgeGrace it goes ahead, since a judge that
+// is down must never block Review.
+func (w *writer) awaitWords(ctx context.Context, p conflictPair, m *Memory) error {
+	pending, err := w.verdictPending(ctx, m.ID, m.Version)
+	if err != nil || !pending {
+		return err
+	}
+	touches, err := w.touchesOther(ctx, m.SpaceID, []uuid.UUID{p.this.ID, p.other.ID}, m.Statement, m.area())
+	if err != nil || !touches {
+		return err
+	}
+	return &JudgePendingError{Ref: m.Ref}
+}
+
 // resolveConflict applies ResolveConflict.
 func (w *writer) resolveConflict(ctx context.Context, c *ResolveConflict) (Result, error) {
 	this, grant, sp, replay, err := w.open(ctx, c.Memory)
@@ -287,6 +326,8 @@ func (w *writer) resolveConflict(ctx context.Context, c *ResolveConflict) (Resul
 	}
 	// "Keep both" keeps words the judge hasn't seen only when they touch no
 	// other decision in force; otherwise they are saved and wait for it.
+	// "Keep this" and "leave open" keep a proposal's words as they stand,
+	// which wait the same way (awaitWords).
 	var both []narrowing
 	if c.Choice == ChooseBoth {
 		var hold bool
@@ -295,6 +336,12 @@ func (w *writer) resolveConflict(ctx context.Context, c *ResolveConflict) (Resul
 		}
 		if hold {
 			return w.holdBoth(ctx, sp, p, both)
+		}
+	} else {
+		for _, m := range p.keptProposals(c.Choice) {
+			if err := w.awaitWords(ctx, p, m); err != nil {
+				return Result{}, err
+			}
 		}
 	}
 
@@ -459,17 +506,13 @@ func (w *writer) planBoth(ctx context.Context, p conflictPair, c *ResolveConflic
 		}
 		switch {
 		case !n.change && s.m.Lifecycle == lifecycle.Proposed:
-			pending, err := w.verdictPending(ctx, s.m.ID, s.m.Version)
-			if err != nil {
-				return nil, false, err
-			}
-			if pending {
-				touches, err := w.touchesOther(ctx, s.m.SpaceID, pair, n.words, s.m.area())
-				if err != nil {
+			if err := w.awaitWords(ctx, p, s.m); err != nil {
+				var jp *JudgePendingError
+				if !errors.As(err, &jp) {
 					return nil, false, err
 				}
-				if touches && wait == nil {
-					wait = &JudgePendingError{Ref: s.m.Ref}
+				if wait == nil {
+					wait = err
 				}
 			}
 		case n.change && s.m.Lifecycle == lifecycle.Kept:

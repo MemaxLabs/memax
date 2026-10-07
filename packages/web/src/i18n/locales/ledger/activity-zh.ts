@@ -191,6 +191,7 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     purged: "{actor}从 {ref} 里移除了一条已忘记记忆的文字。",
     forgetRequested: "{actor}请你忘记 {ref}。",
     forgetDeclined: "{actor}保留了 {ref}，没有忘记。",
+    exported: "{actor}把这个空间的全部记录连同回执导出为 Markdown。",
     other: "{actor}改动了 {ref}。",
   },
 };

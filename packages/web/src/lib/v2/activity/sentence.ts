@@ -317,6 +317,8 @@ export function activitySentences(
       return [one(s.forgetRequested, { ref: text(entry.object.ref) })];
     case "forget_declined":
       return [one(s.forgetDeclined, { ref: text(entry.object.ref) })];
+    case "exported":
+      return [one(s.exported)];
     default: {
       // Every verb the API can send has words above; this fails to compile
       // when the spec gains one. A newer server can still send a verb this

@@ -8,10 +8,11 @@ import type { MemoryFilter } from "@/lib/v2/data/memories";
 import { useHotkey, useKeycap } from "@/lib/v2/keymap/react";
 import { EmptyState } from "../../_components/empty-state";
 import { useOverlays } from "../../_lib/overlays";
-import { NotYetButton, PlaceColumn } from "../place";
+import { PlaceColumn } from "../place";
 import { useRecordsView } from "../records-view";
 import { FILTERS, Record } from "./record-list";
 import styles from "./memories.module.css";
+import { useSpaceExport } from "./use-export";
 
 /**
  * Memories (Memories.png): the whole record by section, a state filter
@@ -30,6 +31,7 @@ export function MemoriesPlace() {
   const rememberKey = useKeycap("memories.remember");
   const remember = () => openCommand("remember");
   useHotkey("memories.remember", remember);
+  const exporting = useSpaceExport(view.space);
 
   const counts: Record<MemoryFilter, number | null> = {
     all:
@@ -75,9 +77,16 @@ export function MemoriesPlace() {
         }
         actions={
           <>
-            <NotYetButton variant="secondary" icon="file">
-              {copy.memories.export}
-            </NotYetButton>
+            <Button
+              variant="secondary"
+              icon="file"
+              pending={exporting.pending}
+              onClick={() => void exporting.run()}
+            >
+              {exporting.pending
+                ? copy.memories.exporting
+                : copy.memories.export}
+            </Button>
             <Button
               variant="primary"
               icon="plus"

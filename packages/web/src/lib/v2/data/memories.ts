@@ -277,7 +277,26 @@ export interface LatestVersion {
   at: string;
 }
 
+/** A space's export, ready to download (memax.export.v1). */
+export interface SpaceExportFile {
+  blob: Blob;
+  /** `memax-<slug>-<yyyy-mm-dd>.zip`. */
+  filename: string;
+  /** The export's own `exported` receipt; empty in the demo. */
+  receipt: string;
+}
+
 export interface MemoriesSource {
+  /**
+   * The space's whole record as a zip archive in the export format: one
+   * `exported` receipt per idempotency key. A failure throws (see
+   * command-error.ts).
+   */
+  exportSpace(input: {
+    space: SpaceSummary;
+    idempotencyKey: string;
+    signal?: AbortSignal;
+  }): Promise<SpaceExportFile>;
   /** The demo's first page, on hand for the first render. */
   peekList?(slug: string, filter: MemoryFilter): MemoryPage | undefined;
   peekRecord?(slug: string, ref: string): MemoryRecord | null | undefined;

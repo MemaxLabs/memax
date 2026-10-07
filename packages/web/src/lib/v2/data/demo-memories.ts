@@ -1,4 +1,5 @@
 import { CommandFailedError } from "./command-error";
+import { demoExport } from "./demo-export";
 import {
   DEMO_FORGET_REQUESTS,
   DEMO_MEMORY_PAGES,
@@ -423,6 +424,16 @@ export function createDemoMemories({
         }
         declined.add(id(space.slug, ref));
       });
+    },
+    exportSpace({ space, idempotencyKey }) {
+      return command(idempotencyKey, () => ({
+        blob: new Blob(
+          [demoExport(space.slug, space.name, rowsOf(space.slug).flat())],
+          { type: "application/zip" },
+        ),
+        filename: `memax-${space.slug}-${stamp().slice(0, 10)}.zip`,
+        receipt: "",
+      }));
     },
     async list({ space, filter, cursor }) {
       return listPage(space.slug, filter, cursor);

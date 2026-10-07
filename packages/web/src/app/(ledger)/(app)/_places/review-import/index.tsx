@@ -102,6 +102,9 @@ function ReviewImport({ view, data }: { view: RecordsView; data: ImportView }) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [expanded, setExpanded] = useState(false);
 
+  // The person's own V1 memories, offered when the space switched to V2
+  // (ReviewImport "From V1"): each cites its note (N-), not a file.
+  const fromV1 = data.summary.origin === "v1";
   const groups = sourceGroups(data);
   const filesOf = (key: string) =>
     key === "all" ? null : (groups.find((g) => g.key === key)?.files ?? null);
@@ -185,6 +188,7 @@ function ReviewImport({ view, data }: { view: RecordsView; data: ImportView }) {
   }));
   const pickedFiles = useMemo(() => {
     const kinds: string[] = [];
+    if (fromV1) return kinds;
     for (const m of picked) {
       for (const f of m.files) {
         const path = importFileOf(
@@ -202,7 +206,7 @@ function ReviewImport({ view, data }: { view: RecordsView; data: ImportView }) {
       }
     }
     return kinds;
-  }, [picked, data, r]);
+  }, [picked, data, r, fromV1]);
 
   const client = data.summary.client?.startsWith("memax-cli")
     ? "npx memax-cli init"
@@ -222,24 +226,38 @@ function ReviewImport({ view, data }: { view: RecordsView; data: ImportView }) {
   });
 
   if (waitingMemories(data).length === 0) {
+    const doneTitle = fromV1 ? r.v1.doneTitle : r.doneTitle;
     return (
       <div className={`mx-page ${styles.page}`}>
-        <h1 className="mx-sr">{r.doneTitle}</h1>
+        <h1 className="mx-sr">{doneTitle}</h1>
         <EmptyState
-          title={r.doneTitle}
-          detail={r.doneDetail}
+          title={doneTitle}
+          detail={fromV1 ? r.v1.doneDetail : r.doneDetail}
           action={
             <Button
               variant="primary"
-              href={setupHref("done", { space: space.slug })}
+              href={
+                fromV1
+                  ? placeHref(space.slug, "today")
+                  : setupHref("done", { space: space.slug })
+              }
             >
-              {r.seeFiles}
+              {fromV1 ? r.v1.openToday : r.seeFiles}
             </Button>
           }
         />
       </div>
     );
   }
+  const proposed = data.summary.counts.proposed;
+  const title = fromV1
+    ? interpolate(proposed === 1 ? r.v1.titleOne : r.v1.title, {
+        n: proposed,
+      })
+    : interpolate(proposed === 1 ? r.titleOne : r.title, {
+        n: proposed,
+        files: fileCount,
+      });
 
   return (
     <div className={styles.frame}>
@@ -247,12 +265,13 @@ function ReviewImport({ view, data }: { view: RecordsView; data: ImportView }) {
         <div className={`mx-page ${styles.page}`}>
           <PageHeader
             className={styles.head}
-            eyebrow={interpolate(r.eyebrow, { client, when })}
-            title={interpolate(
-              data.summary.counts.proposed === 1 ? r.titleOne : r.title,
-              { n: data.summary.counts.proposed, files: fileCount },
-            )}
-            lede={r.lede}
+            eyebrow={
+              fromV1
+                ? interpolate(r.v1.eyebrow, { when })
+                : interpolate(r.eyebrow, { client, when })
+            }
+            title={title}
+            lede={fromV1 ? r.v1.lede : r.lede}
             actions={
               <Button href={placeHref(space.slug, "review")}>
                 {r.oneByOne}
@@ -296,7 +315,7 @@ function ReviewImport({ view, data }: { view: RecordsView; data: ImportView }) {
               <span className={styles.headLabel}>
                 {count(r.selectAllOne, r.selectAll, bulk.length)}
               </span>
-              <span className="mx-meta">{r.sorted}</span>
+              <span className="mx-meta">{fromV1 ? r.v1.sorted : r.sorted}</span>
             </div>
             {shown.map((m, i) => (
               <ImportRow
@@ -459,6 +478,11 @@ function rowNote(
   space: string,
 ) {
   if (memory.bulk) {
+    if (data.summary.origin === "v1") {
+      return memory.refs.length > 1
+        ? interpolate(r.v1.repeated, { n: memory.refs.length })
+        : null;
+    }
     const files = memory.files.length;
     if (files >= 3) return interpolate(r.agreeMany, { n: files });
     if (files === 2) return r.agreeTwo;

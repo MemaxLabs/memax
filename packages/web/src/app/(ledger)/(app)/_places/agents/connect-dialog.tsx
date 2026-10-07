@@ -106,7 +106,8 @@ function ConnectBody({
   const toast = useToast();
   const { space } = useSpaceView();
   const place = usePlace();
-  const spaces = useSpaces().data ?? [space];
+  // Agents connect to spaces on the V2 record; one still on V1 switches first.
+  const spaces = (useSpaces().data ?? [space]).filter((x) => x.onV2 !== false);
   const surfaceOf = (key: string) => agents[key]?.surface ?? "cli";
   const [agent, setAgent] = useState<Connectable>(() =>
     firstChoice(connected, surfaceOf),

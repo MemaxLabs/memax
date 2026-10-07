@@ -327,6 +327,17 @@ export const ledgerOnboardingZh: Translations["ledger"]["onboarding"] = {
     noneDetail:
       "在这个空间的仓库里运行 memax init。它读到的内容会作为提议在这里等你。",
     codexMemory: "Codex 的记忆",
+    v1: {
+      eyebrow: "审阅 · 来自 V1 · {when} 切换",
+      title: "这 {n} 条是你在 V1 里写的。一次保留吗？",
+      titleOne: "这 1 条是你在 V1 里写的。保留吗？",
+      lede: "每条都是你自己在 V1 里写的记忆，现在是一条笔记（N-）。保留仍然成立的。其余的继续作为笔记，可以搜索但不会编译进文件；Agent 写的交给 Dream。",
+      sorted: "按你写下的顺序",
+      repeated: "你在 V1 里写过 {n} 次",
+      doneTitle: "你在 V1 里写的记忆都处理完了。",
+      doneDetail: "保留的内容会编译进 Agent 读取的文件，其余的继续作为笔记。",
+      openToday: "打开今天",
+    },
     labels: {
       claude_md: "CLAUDE.md",
       agents_md: "AGENTS.md",

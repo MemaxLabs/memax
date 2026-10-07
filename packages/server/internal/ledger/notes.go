@@ -26,7 +26,7 @@ import (
 //
 // The words stay in the V1 rows until cutover (3.8): v2.notes and
 // v2.note_chunks read them, scoped to the transaction's spaces, and
-// v2.note_refs (migration 047) numbers each note and says what the switch
+// v2.note_refs (migrations 047 and 048) numbers each note and says what the switch
 // did with it. Forget of a note (forget_note.go) deletes its V1 row, as
 // V1's own delete does.
 

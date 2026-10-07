@@ -324,7 +324,7 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 
 	// Imports.
 	sameSet(t, "ImportLocation", specEnum(t, "ImportLocation"), []string{string(ledger.ImportRepository), string(ledger.ImportHome), string(ledger.ImportV1)})
-	// Switch to V2 and notes (migration 047).
+	// Switch to V2 and notes (migration 048).
 	sameSet(t, "SwitchState", specEnum(t, "SwitchState"), []string{ledger.SwitchStateV1, ledger.SwitchStateRunning,
 		ledger.SwitchStateSwitched, ledger.SwitchStateFailed, ledger.SwitchStateOff})
 	sameSet(t, "SwitchStep", specEnum(t, "SwitchStep"), append(slices.Clone(ledger.SwitchSteps), ledger.SwitchStepDone))
@@ -415,7 +415,7 @@ func TestReceiptEnumsMatchTheSchema(t *testing.T) {
 	sameSet(t, "JudgeStage", specEnum(t, "JudgeStage"), check("judge_verdicts_stage_check"))
 	sameSet(t, "Relation", specEnum(t, "Relation"), check("judge_verdicts_verdict_check"))
 	sameSet(t, "VerdictOutcome", specEnum(t, "VerdictOutcome"), check("judge_verdicts_outcome_check"))
-	// Notes and the switch (migration 047).
+	// Notes and the switch (migration 048).
 	sameSet(t, "NoteDisposition", specEnum(t, "NoteDisposition"), check("note_refs_disposition_check"))
 	sameSet(t, "NoteOrigin", specEnum(t, "NoteOrigin"), check("note_refs_origin_check"))
 	sameSet(t, "SwitchStep", specEnum(t, "SwitchStep"), check("space_switches_step_check"))

@@ -11,6 +11,7 @@ import { createSdkImports } from "./imports-sdk";
 import { checkRememberOver } from "./remember-sdk";
 import { createSdkMemories } from "./sdk-memories";
 import { createSdkReview } from "./sdk-review";
+import { createSdkSwitch } from "./switch-sdk";
 import type { LedgerDataSource } from "./source";
 import { syncLineOf, targetStatus } from "./targets";
 import { createSdkTargets, targetsOrNull } from "./targets-sdk";
@@ -63,6 +64,7 @@ export function createSdkSource({
     imports: createSdkImports(client),
     devices: createSdkDevices(client),
     dream,
+    switch: createSdkSwitch(client),
     async spaces(signal) {
       const { items } = await client.v2.spaces.list({ signal });
       return items.map((space) => ({

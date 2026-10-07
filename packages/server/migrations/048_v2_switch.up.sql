@@ -143,7 +143,7 @@ BEGIN
 END $$;
 
 COMMENT ON FUNCTION v2.hubs_space_columns() IS
-    'Fills hubs.space_kind and hubs.tenant_id on insert (tenant = owner for personal/project, the space for team) and keeps id, kind and tenant immutable, except a team hub becoming a project space (047) before it has a V2 record.';
+    'Fills hubs.space_kind and hubs.tenant_id on insert (tenant = owner for personal/project, the space for team) and keeps id, kind and tenant immutable, except a team hub becoming a project space (048) before it has a V2 record.';
 
 -- The space's ledger row follows a tenant change. Every receipt, seal,
 -- tombstone and notice refers to (space_id, tenant_id) there, so this

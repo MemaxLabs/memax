@@ -87,7 +87,7 @@ const (
 // SwitchSteps lists the steps in the order they run.
 var SwitchSteps = []string{SwitchStepSpace, SwitchStepNotes, SwitchStepPersonas, SwitchStepConfigs, SwitchStepCandidates, SwitchStepAgents, SwitchStepGates, SwitchStepSwitch}
 
-// The switch's receipt verbs (migration 047), on the space's own stream.
+// The switch's receipt verbs (migration 048), on the space's own stream.
 const (
 	ActionNoted        Action = "noted"         // the switch numbered V1 content as notes
 	ActionSwitched     Action = "switched"      // the space moved to the V2 record

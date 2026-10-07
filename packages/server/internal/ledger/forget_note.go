@@ -15,7 +15,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
 
-// Forgetting a note (rule 7 for N-; migration 047).
+// Forgetting a note (rule 7 for N-; migration 048).
 //
 // A note's words live in one V1 row (a memory with its chunks, a persona,
 // an agent config) until cutover. ForgetNote takes them out of Memax in one

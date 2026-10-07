@@ -1,0 +1,28 @@
+Memax V2 gate metrics
+People who signed up from 2026-08-03 up to 2026-10-05, as of 2026-10-03 00:00 UTC.
+First session: 24 hours after signup. Only people who reached a V2 space count; staff are left out.
+
+Gates, judged on new people (from V1 beside them)
+PHASE  GATE                                          BAR    NEW                   STATUS  FROM V1
+2      2+ agents and a compile in the first session  60%    4/9 (44%)             fail    100%
+2      first file, median from init's import         5m00s  3m00s (7/8 under 5m)  pass    –
+3      activated people keeping in week 4            40%    2/3 (67%)             pass    100%
+4      a teammate within 60 days                     25%    1/2 (50%)             pass    –
+
+Cohorts by signup week (first-session counts are of closed sessions)
+WEEK        COHORT   PEOPLE  CLOSED  2+ AGENTS  2+ KINDS  COMPILED  ACTIVATED  READ  FIRST FILE p50  p90    UNDER 5m  SIGNUP TO FILE  WEEK 4  TEAMMATE
+2026-08-03  new      5       5       3          2         3         2 (40%)    3     3m30s           6m48s  3/4       9m30s           1/2     1/2
+2026-08-10  new      2       2       1          1         2         1 (50%)    0     3m00s           3m00s  2/2       7m30s           1/1     0/0
+2026-08-31  new      1       1       0          0         0         0 (0%)     0     –               –      0/0       –               0/0     0/0
+2026-09-28  new      2       1       1          1         1         1 (100%)   0     3m30s           3m54s  2/2       5m30s           0/0     0/0
+2026-08-03  from_v1  1       1       1          1         1         1 (100%)   0     –               –      0/0       20m00s          1/1     0/0
+all         new      10      9       5          4         6         4 (44%)    3     3m00s           5m12s  7/8       6m00s           2/3     1/2
+all         from_v1  1       1       1          1         1         1 (100%)   0     –               –      0/0       20m00s          1/1     0/0
+
+Review health, by the week proposals were made
+WEEK        PROPOSALS  KEPT  REJECTED  FOLDED  FORGOTTEN  OPEN  REJECT RATE  TO DECISION p50  p90
+2026-08-03  6          2     1         1       1          1     33%          2m00s            5m12s
+2026-09-28  2          1     0         0       0          1     0%           1h00m            1h00m
+all         8          3     1         1       1          2     25%          4m00s            43m48s
+
+North star, the week ending 2026-10-02: 0 of 0 spaces read were read by 2+ agents; coverage 0/0 connections (0%).

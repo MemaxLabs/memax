@@ -776,18 +776,20 @@ func (h *MCPOAuthHandler) connectAgent(ctx context.Context, session oauthPending
 		slog.Warn("MCP OAuth: can't connect the agent on the V2 record", "grant_id", grantID, "error", err)
 		return
 	}
+	agentSlug := agentNameFromClientName(session.clientName)
+	// Cursor and Gemini CLI start at Read; the rest at the space's default.
+	start := ledger.AgentFromV1(agentSlug).StartAutonomy()
 	spaces := make([]ledger.SpaceAutonomy, 0, len(hubIDs))
 	var ids []uuid.UUID
 	for _, h := range hubIDs {
 		if id, err := uuid.Parse(h); err == nil {
-			spaces = append(spaces, ledger.SpaceAutonomy{SpaceID: id})
+			spaces = append(spaces, ledger.SpaceAutonomy{SpaceID: id, Autonomy: start})
 			ids = append(ids, id)
 		}
 	}
 	if len(spaces) == 0 {
 		return
 	}
-	agentSlug := agentNameFromClientName(session.clientName)
 	clientID := ""
 	if isMetadataClientID(session.clientID) {
 		clientID = session.clientID // the CIMD URL: the agent's verifiable identity

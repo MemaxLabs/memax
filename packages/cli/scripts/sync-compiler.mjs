@@ -22,6 +22,13 @@ const FILES = [
     to: join(cli, "src", "lib", "daemon", "compiler", "managed-block.ts"),
     name: "packages/compiler/src/managed-block.ts",
   },
+  // memax init strips hidden characters from what it imports exactly as
+  // the compiler strips them from what it writes (plan 25 §5.7).
+  {
+    from: join(compiler, "src", "sanitize.ts"),
+    to: join(cli, "src", "lib", "daemon", "compiler", "sanitize.ts"),
+    name: "packages/compiler/src/sanitize.ts",
+  },
 ];
 
 const header = (name) =>

@@ -56,11 +56,27 @@ export function manifest(entries: Record<string, string>): string {
   return sha256Hex(keys.map((k) => `${k}\u0000${entries[k]}\n`).join(""));
 }
 
+export type RouteResult =
+  | { status: number; data: unknown }
+  | { status: number; error: string; message: string; details?: unknown };
+
+export type Route = (
+  method: string,
+  path: string,
+  url: URL,
+  body: Record<string, unknown> | undefined,
+) => RouteResult | null;
+
 export class FakeV2 {
   readonly log: Logged[] = [];
   readonly spaces: V2.Space[] = [];
   readonly targets = new Map<string, Entry>();
   readonly agents: V2.AgentConnection[] = [];
+  /**
+   * More routes, tried before the built-in ones (memax init's tests add
+   * spaces, imports, bulk review and the Brief: test/init/fake-init.ts).
+   */
+  readonly extra: Route[] = [];
   reviewTotal = 0;
   keptCount = 0;
   /** Receipts written, as the server writes them (compile runs write none). */
@@ -346,7 +362,14 @@ export class FakeV2 {
     try {
       const out = this.route(req.method ?? "GET", path, url, body);
       if (!out) return fail(404, "not_found", "No such thing in your spaces.");
-      if ("error" in out) return fail(out.status, out.error, out.message);
+      if ("error" in out)
+        return send(out.status, {
+          error: {
+            code: out.error,
+            message: out.message,
+            details: out.details,
+          },
+        });
       return req.method === "GET"
         ? send(out.status, { data: out.data })
         : remember(out.status, out.data);
@@ -364,10 +387,11 @@ export class FakeV2 {
     path: string,
     url: URL,
     body: Record<string, unknown> | undefined,
-  ):
-    | { status: number; data: unknown }
-    | { status: number; error: string; message: string }
-    | null {
+  ): RouteResult | null {
+    for (const r of this.extra) {
+      const out = r(method, path, url, body);
+      if (out) return out;
+    }
     let m: RegExpMatchArray | null;
     if (method === "GET" && path === "/v2/spaces")
       return { status: 200, data: { items: this.spaces } };

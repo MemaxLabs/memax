@@ -159,6 +159,18 @@ info:
     every fact in it. A memory's `reads` say how often it was read and by
     which agents, and whether it is in a file whose loads Memax can't see.
 
+    ## Imports
+
+    `memax init` reads what agents already know from their files, splits
+    it into statements on your machine (secrets and hidden characters never
+    leave it) and uploads them (`POST /v2/spaces/{space}/imports`). Every
+    statement arrives as a proposal with its `file:line`, through the import
+    surface (`via: import`); repeats fold into one proposal and what the
+    space already has is skipped. The judge looks at each proposal, and the
+    import's conflict check groups the ones that disagree, flagged as
+    conflicts and settled once, as a group. Nothing is kept until a person
+    keeps it: one by one, in bulk (`memories:keep`), or by settling.
+
     ## Display IDs
 
     `M-0219` is unique within a tenant, not across tenants, so a display ID
@@ -208,6 +220,8 @@ security:
 tags:
   - name: spaces
     description: The spaces you belong to.
+  - name: imports
+    description: What agents already know, read from their files by `memax init`, arriving as proposals.
   - name: memories
     description: One statement each, under a seal.
   - name: review
@@ -251,6 +265,96 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+    post:
+      operationId: createSpace
+      tags: [spaces]
+      summary: Create a project space
+      description: |
+        Creates a project space on the V2 record, owned by you: `memax init`
+        does this for a repository that has no space yet. Without a `slug`,
+        the name's slug is used, with a number added when it is taken; a
+        slug you name must be free (409 `slug_taken`). Only a signed-in
+        person creates spaces, and here only project spaces: your personal
+        space exists already, and team spaces come with Team. A space isn't
+        part of its own record, so creating one writes no receipt; its
+        Activity starts with its first change. The same `Idempotency-Key`
+        finds the space the first call created.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSpaceRequest'
+      responses:
+        '201':
+          description: The space, with you as its owner.
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpaceEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/SpaceConflict'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}:switch:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    post:
+      operationId: switchSpace
+      tags: [spaces]
+      summary: Switch an empty space to the V2 record
+      description: |
+        Moves a space that holds no V1 memories to the V2 record, so agents
+        are served from it over MCP too: a new person's personal space, say,
+        before `memax init` brings machine-local memory into it. A space
+        with V1 memories switches in the app, where they are cleaned up
+        first (409 `space_has_notes`, with `details.notes`). Only the
+        space's owner may. A space already on V2 is returned as it is.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      responses:
+        '200':
+          description: The space, on the V2 record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpaceEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/SpaceConflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v2/spaces/{space}/memories:
     parameters:
       - $ref: '#/components/parameters/SpacePath'
@@ -403,6 +507,101 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/memories:keep:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    post:
+      operationId: keepMemories
+      tags: [review]
+      summary: Keep proposals in bulk
+      description: |
+        Keeps several proposals of the space, each as its own Keep: its own
+        receipt, by Keep's rules, so one that can't be kept (in conflict,
+        quarantined outside the web, a decision where decisions need a
+        person on the web, not judged yet) is reported and the rest are
+        kept. ReviewImport's "Keep 30" and `memax init`'s "keep the ones
+        that agree" send the proposals the person chose. Each item's
+        `version` is the version the person saw, as `If-Match` is for one
+        Keep. Retrying with the same `Idempotency-Key` keeps nothing twice.
+        Every target recompiles once the keeps land.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkReviewRequest'
+      responses:
+        '200':
+          description: What happened to each proposal, in request order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkReviewResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/memories:reject:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    post:
+      operationId: rejectMemories
+      tags: [review]
+      summary: Reject proposals in bulk
+      description: |
+        Rejects several proposals of the space, each as its own Reject with
+        its own receipt, by Reject's rules; one that can't be rejected is
+        reported and the rest are. Retrying with the same `Idempotency-Key`
+        rejects nothing twice.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkReviewRequest'
+      responses:
+        '200':
+          description: What happened to each proposal, in request order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkReviewResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -675,6 +874,204 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/imports:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    post:
+      operationId: createImport
+      tags: [imports]
+      summary: Import statements from agent files
+      description: |
+        Uploads what agents already know, read from their files (`memax
+        init`): statements, each with its source `file:line`, plus what the
+        client kept on the machine and why (a ref and a rule, never the
+        words). Each statement is written as its own proposal, with its own
+        receipt (`via: import`), and is always a proposal, whoever sends it:
+        nothing an import brings is kept until a person keeps it.
+
+        Statements of the upload that repeat each other (the same words, or
+        a near-verbatim repeat) become one proposal citing every file that
+        says it (`folded`). A statement the space already has, in any state
+        but forgotten, is skipped (`existing`), so running `memax init` again
+        proposes only what is new. A statement policy refuses (a credential
+        the client missed) is `refused`. A repository file's statements are
+        held to the repository class whatever the request says; lines only
+        on another branch arrive `external` and are quarantined.
+
+        The judge then looks at each proposal, and the import's conflict
+        check groups the proposals that disagree (`conflicts` on the
+        import), within seconds; read the import to follow it.
+
+        A retry with the same `Idempotency-Key` resumes the same import and
+        writes nothing twice. At most 500 statements; split more into
+        several imports.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+      responses:
+        '201':
+          description: The import, and what became of each statement.
+          headers:
+            Location:
+              $ref: '#/components/headers/ImportURL'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    get:
+      operationId: listImports
+      tags: [imports]
+      summary: List imports
+      description: The space's imports, newest first, each with its counts.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of imports.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportPageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/imports/{import}:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+      - $ref: '#/components/parameters/ImportPath'
+    get:
+      operationId: getImport
+      tags: [imports]
+      summary: Read an import
+      description: |
+        One import in full: its files, what the client kept on the machine,
+        what became of every statement, the memories they became (with the
+        judge's verdicts) and the disagreements found (Cleanup, ReviewImport).
+        A proposal can be kept in bulk (`bulk`) when it waits in Review, the
+        judge and the conflict check have looked at it and found nothing,
+        it cites no outside source and its line had no hidden characters;
+        `held` says why one can't. `progress.ready` is set once nothing is
+        being judged and the conflict check is done.
+      responses:
+        '200':
+          description: The import.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportViewEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/imports/{import}/conflicts/{n}:settle:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+      - $ref: '#/components/parameters/ImportPath'
+      - $ref: '#/components/parameters/ConflictNumber'
+    post:
+      operationId: settleImportConflict
+      tags: [imports]
+      summary: Settle an import's disagreement
+      description: |
+        Settles one of an import's disagreements, once, as a group:
+        `keep_one` keeps `keep` and rejects the rest; `keep_all` keeps them
+        all (they don't disagree after all); `leave_open` keeps them as open
+        questions, so agents read that it isn't decided; `keep_suggestion`
+        keeps one new statement (the check's `suggestion`, or your
+        `statement`), citing every member's sources, and rejects the members.
+        The group's flags and links end, and every change has its receipt.
+        It follows Keep's rules: a person who may keep, on the web where the
+        space needs one for decisions, and on the web to keep a quarantined
+        statement. A member that also contradicts a decision in force can't
+        be kept until that is settled (409 `in_conflict`). The members of an
+        open import disagreement can't be settled two at a time with
+        `:resolve-conflict`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettleImportConflictRequest'
+      responses:
+        '200':
+          description: The disagreement, settled, and every memory it changed.
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportConflictResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
         '422':
           $ref: '#/components/responses/IdempotencyKeyReused'
         '429':
@@ -2296,6 +2693,22 @@ components:
       schema:
         $ref: '#/components/schemas/Id'
 
+    ImportPath:
+      name: import
+      in: path
+      required: true
+      description: The import's id.
+      schema:
+        $ref: '#/components/schemas/Id'
+    ConflictNumber:
+      name: n
+      in: path
+      required: true
+      description: The disagreement's number within the import (its `n`, from 1).
+      schema:
+        type: string
+        pattern: '^[1-9][0-9]{0,4}$'
+
     GateRefPath:
       name: ref
       in: path
@@ -2367,6 +2780,12 @@ components:
         format: uri-reference
     GateLocation:
       description: The gate's URL, by id.
+      required: true
+      schema:
+        type: string
+        format: uri-reference
+    ImportURL:
+      description: The import's URL.
       required: true
       schema:
         type: string
@@ -2491,6 +2910,13 @@ components:
           schema:
             type: string
             pattern: '^[0-9]+$'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+    SpaceConflict:
+      description: '`slug_taken` (the slug belongs to another space) or `space_has_notes` (the space holds V1 memories, `details.notes`; switch it in the app).'
       content:
         application/json:
           schema:
@@ -2755,6 +3181,10 @@ components:
         "keep both" whose narrower words touch another decision in force:
         they are saved, and the same resolution waits for the judge).
         Confirmation: confirm_in_agent.
+        Refused changes to spaces: space_by_person (only a signed-in person
+        creates or switches a space), space_kind (only project spaces are
+        created here), space_limit (the most project spaces one person owns
+        during the alpha), switch_by_owner (only the owner switches a space).
       type: string
       enum:
         - unknown_actor
@@ -2804,6 +3234,10 @@ components:
         - person_proposed
         - judge_pending
         - confirm_in_agent
+        - space_by_person
+        - space_kind
+        - space_limit
+        - switch_by_owner
     ErrorCode:
       type: string
       enum:
@@ -2829,6 +3263,8 @@ components:
         - busy
         - judge_pending
         - unavailable
+        - slug_taken
+        - space_has_notes
 
     LinkKind:
       description: |
@@ -5094,6 +5530,16 @@ components:
             Third-party content. URL, email and issue sources are external
             whatever this says.
           type: boolean
+        trust:
+          description: |
+            The source's class as you assert it: `person` for your own
+            words (your global instructions file), `agent_own_work` for an
+            agent's notes. Memax holds it to what you could write yourself
+            (an agent's own work at most, for an agent); without it, a file
+            or PR is `repository` and an import `external`. An import holds
+            a repository file's statements to `repository`, whatever this
+            says.
+          $ref: '#/components/schemas/Trust'
         quote:
           description: The supporting excerpt.
           type: string
@@ -5768,6 +6214,611 @@ components:
     # ------------------------------------------------------------------
     # Envelopes
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Spaces, imports and bulk review (memax init, Cleanup, ReviewImport)
+    # ------------------------------------------------------------------
+    CreateSpaceRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        slug:
+          description: Lowercase letters, digits and hyphens, 4 to 50 characters. Without one, Memax picks one from the name.
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{2,48}[a-z0-9]$'
+        kind:
+          description: Only project spaces are created here; the default.
+          type: string
+          enum: [project]
+        repository:
+          description: The repository the space compiles for, "owner/name".
+          type: string
+          maxLength: 200
+
+    ImportLocation:
+      description: |
+        Where a file an import read lives: `repository` (shared with
+        everyone who clones it) or `home` (on the person's machine only).
+      type: string
+      enum: [repository, home]
+    ImportOutcome:
+      description: |
+        What became of one statement: `proposed` (a new proposal),
+        `folded` (it repeats another statement of the upload, whose proposal
+        cites it too), `existing` (the space already has it) or `refused`
+        (policy refused it; see `policy`).
+      type: string
+      enum: [proposed, folded, existing, refused]
+    ImportSkipReason:
+      description: |
+        Why the client kept a statement on the machine: `secret` (it holds
+        a credential), `too_long` (longer than a statement can be) or
+        `limit` (the file has more statements than one import takes).
+      type: string
+      enum: [secret, too_long, limit]
+    ImportCheckState:
+      description: |
+        How far the import's conflict check got: `pending`, `checked`,
+        `no_model` (no model is configured: only the judge's repeats check
+        ran), `failed` (the model gave no answer; nothing was flagged) or
+        `skipped` (fewer than two proposals to compare).
+      type: string
+      enum: [pending, checked, no_model, failed, skipped]
+    ImportHeld:
+      description: |
+        Why a proposal can't be kept in bulk: `decided` (it isn't waiting in
+        Review any more), `conflict` (it disagrees with another statement or
+        a decision in force), `quarantined` (it cites an outside source),
+        `checking` (the judge or the conflict check hasn't finished),
+        `unchecked` (the judge couldn't reach a verdict), `stale`, or
+        `hidden_characters` (its line had hidden characters: read it first).
+      type: string
+      enum: [decided, conflict, quarantined, checking, hidden_characters, stale, unchecked]
+    ImportChoice:
+      description: |
+        How a disagreement is settled: `keep_one`, `keep_all`, `leave_open`
+        or `keep_suggestion`.
+      type: string
+      enum: [keep_one, keep_all, leave_open, keep_suggestion]
+    ImportFileKind:
+      description: The client's name for a file's role, e.g. claude_md, agents_md, cursor_rule, claude_memory, codex_memory.
+      type: string
+      pattern: '^[a-z][a-z0-9_]{0,39}$'
+
+    ImportFile:
+      description: One file an import read. Never its contents.
+      type: object
+      additionalProperties: false
+      required: [path, kind, location, statements, skipped, hidden_characters]
+      properties:
+        path:
+          description: What people see, e.g. "CLAUDE.md" or "~/.codex/memories/notes.md".
+          type: string
+          minLength: 1
+          maxLength: 500
+        kind:
+          $ref: '#/components/schemas/ImportFileKind'
+        agent:
+          description: The agent the file belongs to, e.g. claude-code.
+          type: string
+          maxLength: 64
+        location:
+          $ref: '#/components/schemas/ImportLocation'
+        trust:
+          description: The class the file's statements were sent at.
+          $ref: '#/components/schemas/Trust'
+        statements:
+          description: The statements found in it.
+          type: integer
+          minimum: 0
+        skipped:
+          description: The statements the client kept on the machine.
+          type: integer
+          minimum: 0
+        hidden_characters:
+          description: The hidden characters the client removed from it.
+          type: integer
+          minimum: 0
+
+    ImportSkip:
+      description: A statement the client didn't send, and why. A ref and a rule, never its words.
+      type: object
+      additionalProperties: false
+      required: [ref, reason]
+      properties:
+        ref:
+          description: Where it is, e.g. "CLAUDE.md:31".
+          type: string
+          minLength: 1
+          maxLength: 500
+        reason:
+          $ref: '#/components/schemas/ImportSkipReason'
+        detail:
+          description: The rule that matched, e.g. "GitHub token". Never the matched text.
+          type: string
+          maxLength: 100
+
+    ImportItemInput:
+      description: One statement of an import.
+      type: object
+      additionalProperties: false
+      required: [key, location, statement, section]
+      properties:
+        key:
+          description: Unique within the request; the item's result carries it back.
+          type: string
+          pattern: '^[A-Za-z0-9._:-]{1,64}$'
+        ref:
+          description: Where it came from, e.g. "CLAUDE.md:12". Defaults to its first source's ref.
+          type: string
+          maxLength: 500
+        location:
+          $ref: '#/components/schemas/ImportLocation'
+        hidden_characters:
+          description: The hidden characters the client removed from it.
+          type: integer
+          minimum: 0
+        statement:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        section:
+          $ref: '#/components/schemas/Section'
+        kind:
+          $ref: '#/components/schemas/MemoryKind'
+        decision:
+          $ref: '#/components/schemas/Decision'
+        sources:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/SourceInput'
+        scope:
+          description: 'Where it applies, e.g. {"paths": ["**/*.test.ts"]} from a scoped rule.'
+          type: object
+          additionalProperties: true
+
+    ImportRequest:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        client:
+          description: The uploader, e.g. "memax-cli 0.3.0".
+          type: string
+          maxLength: 100
+        files:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/ImportFile'
+        skipped:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/ImportSkip'
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/ImportItemInput'
+        occurred_at:
+          description: When the files were read.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          description: The run that read them, e.g. "init-7f3a"; every statement's receipt carries it.
+          $ref: '#/components/schemas/SessionRef'
+
+    ImportCounts:
+      description: An import's statements by outcome, and its disagreements.
+      type: object
+      additionalProperties: false
+      required: [items, proposed, folded, existing, refused, conflicts]
+      properties:
+        items:
+          type: integer
+          minimum: 0
+        proposed:
+          type: integer
+          minimum: 0
+        folded:
+          type: integer
+          minimum: 0
+        existing:
+          type: integer
+          minimum: 0
+        refused:
+          type: integer
+          minimum: 0
+        conflicts:
+          type: integer
+          minimum: 0
+
+    ImportCheck:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          $ref: '#/components/schemas/ImportCheckState'
+        checked_at:
+          $ref: '#/components/schemas/Timestamp'
+        tier:
+          $ref: '#/components/schemas/ModelTier'
+        model:
+          type: string
+
+    Import:
+      description: One upload of statements read from agent files.
+      type: object
+      additionalProperties: false
+      required: [id, space_id, tenant_id, actor_kind, files, skipped, counts, check, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        tenant_id:
+          $ref: '#/components/schemas/Id'
+        actor_kind:
+          $ref: '#/components/schemas/ActorKind'
+        actor_id:
+          description: The person, or the agent connection, that uploaded it.
+          $ref: '#/components/schemas/Id'
+        agent:
+          type: string
+        client:
+          type: string
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportFile'
+        skipped:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportSkip'
+        counts:
+          $ref: '#/components/schemas/ImportCounts'
+        uploaded_at:
+          description: When every statement was written.
+          $ref: '#/components/schemas/Timestamp'
+        check:
+          $ref: '#/components/schemas/ImportCheck'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    ImportItemResult:
+      description: What became of one statement of the request.
+      type: object
+      additionalProperties: false
+      required: [key, position, ref, outcome]
+      properties:
+        key:
+          type: string
+        position:
+          description: Its index in the request.
+          type: integer
+          minimum: 0
+        ref:
+          type: string
+        outcome:
+          $ref: '#/components/schemas/ImportOutcome'
+        memory:
+          description: The proposal it became (folded, the one it folded into), or the memory the space already had.
+          $ref: '#/components/schemas/MemoryPointer'
+        lifecycle:
+          description: That memory's lifecycle, for an existing one.
+          $ref: '#/components/schemas/Lifecycle'
+        folded_into:
+          description: The key of the item it folded into.
+          type: string
+        policy:
+          description: Why it was refused.
+          $ref: '#/components/schemas/PolicyDecision'
+
+    ImportResult:
+      type: object
+      additionalProperties: false
+      required: [import, items]
+      properties:
+        import:
+          $ref: '#/components/schemas/Import'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportItemResult'
+
+    ImportItem:
+      description: What became of one statement, as the import shows it.
+      type: object
+      additionalProperties: false
+      required: [position, key, ref, location, outcome, hidden_characters]
+      properties:
+        position:
+          type: integer
+          minimum: 0
+        key:
+          type: string
+        ref:
+          type: string
+        location:
+          $ref: '#/components/schemas/ImportLocation'
+        outcome:
+          $ref: '#/components/schemas/ImportOutcome'
+        memory:
+          $ref: '#/components/schemas/MemoryPointer'
+        folded_into:
+          description: The position of the item it folded into.
+          type: integer
+          minimum: 0
+        code:
+          description: The policy code it was refused with.
+          type: string
+        hidden_characters:
+          type: integer
+          minimum: 0
+
+    ImportMemory:
+      description: A memory an import proposed or found, and whether it can be kept in bulk.
+      type: object
+      additionalProperties: false
+      required: [memory, outcome, items, bulk]
+      properties:
+        memory:
+          $ref: '#/components/schemas/Memory'
+        outcome:
+          description: proposed (this import proposed it) or existing.
+          $ref: '#/components/schemas/ImportOutcome'
+        items:
+          description: The import's statements it stands for, folded repeats included ("Three files agree").
+          type: integer
+          minimum: 1
+        bulk:
+          description: It can be kept in bulk with the ones that agree.
+          type: boolean
+        held:
+          $ref: '#/components/schemas/ImportHeld'
+        conflict:
+          description: The import disagreement it is in, by its `n`.
+          type: integer
+          minimum: 1
+
+    ImportConflict:
+      description: "A disagreement among an import's proposals (Test command, 3 files disagree)."
+      type: object
+      additionalProperties: false
+      required: [id, n, members, state, created_receipt_id, last_receipt_id, created_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        n:
+          description: Its number within the import ("1 of 3").
+          type: integer
+          minimum: 1
+        subject:
+          description: What they disagree about, in the model's words.
+          type: string
+        rationale:
+          description: How they disagree, in the model's words.
+          type: string
+        suggestion:
+          description: One statement that says what holds for all of them, when the model found one.
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        members:
+          description: The proposals that disagree, in the import's order.
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/MemoryPointer'
+        state:
+          type: string
+          enum: [open, settled]
+        choice:
+          $ref: '#/components/schemas/ImportChoice'
+        chosen:
+          description: The memory that holds (keep_one, keep_suggestion).
+          $ref: '#/components/schemas/MemoryPointer'
+        created_receipt_id:
+          $ref: '#/components/schemas/Id'
+        last_receipt_id:
+          $ref: '#/components/schemas/Id'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        settled_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    ImportProgress:
+      description: How far the judge got with the import's proposals.
+      type: object
+      additionalProperties: false
+      required: [proposals, working, judged, failed, ready]
+      properties:
+        proposals:
+          type: integer
+          minimum: 0
+        working:
+          type: integer
+          minimum: 0
+        judged:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        ready:
+          description: Nothing is being judged and the conflict check is done.
+          type: boolean
+
+    ImportView:
+      type: object
+      additionalProperties: false
+      required: [import, items, memories, conflicts, progress]
+      properties:
+        import:
+          $ref: '#/components/schemas/Import'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportItem'
+        memories:
+          description: The memories the items became or matched, once each, in the order the items first name them.
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportMemory'
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportConflict'
+        progress:
+          $ref: '#/components/schemas/ImportProgress'
+
+    ImportPage:
+      type: object
+      additionalProperties: false
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Import'
+        has_more:
+          type: boolean
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+
+    SettleImportConflictRequest:
+      type: object
+      additionalProperties: false
+      required: [choice]
+      properties:
+        choice:
+          $ref: '#/components/schemas/ImportChoice'
+        keep:
+          description: keep_one only. The member to keep.
+          $ref: '#/components/schemas/MemoryRef'
+        statement:
+          description: keep_suggestion only. The words to keep; without them, the check's suggestion.
+          type: string
+          minLength: 1
+          maxLength: 2000
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    ImportConflictResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, conflict, memories, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        conflict:
+          $ref: '#/components/schemas/ImportConflict'
+        memories:
+          description: Every memory it changed, the members first.
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
+        receipts:
+          description: The receipts it wrote, oldest first.
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    BulkReviewItemInput:
+      type: object
+      additionalProperties: false
+      required: [memory]
+      properties:
+        memory:
+          $ref: '#/components/schemas/MemoryRef'
+        version:
+          description: The version the person saw (its ETag); a newer one is reported as `edit_clash`.
+          type: integer
+          minimum: 1
+
+    BulkReviewRequest:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/BulkReviewItemInput'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    BulkOutcome:
+      description: '`applied` (kept, or rejected), `refused` (policy; see `policy`) or `failed` (see `error`).'
+      type: string
+      enum: [applied, refused, failed]
+
+    BulkReviewItem:
+      type: object
+      additionalProperties: false
+      required: [memory, outcome]
+      properties:
+        memory:
+          description: The memory as the request named it.
+          type: string
+        ref:
+          $ref: '#/components/schemas/DisplayRef'
+        outcome:
+          $ref: '#/components/schemas/BulkOutcome'
+        state:
+          description: Its state now.
+          $ref: '#/components/schemas/State'
+        version:
+          type: integer
+          minimum: 1
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        error:
+          description: Why it failed, as the one-memory command would have answered.
+          $ref: '#/components/schemas/Error'
+
+    BulkReviewResult:
+      type: object
+      additionalProperties: false
+      required: [items, applied, refused, failed]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BulkReviewItem'
+        applied:
+          type: integer
+          minimum: 0
+        refused:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+
     Error:
       type: object
       additionalProperties: false
@@ -5819,6 +6870,9 @@ components:
         reset_at:
           description: When the window resets (`rate_limited`), or when asks start again (`ask_limit`, the 1st, UTC).
           $ref: '#/components/schemas/Timestamp'
+        notes:
+          description: The V1 memories a space holds (`space_has_notes`).
+          type: integer
 
     ErrorEnvelope:
       type: object
@@ -5827,6 +6881,54 @@ components:
       properties:
         error:
           $ref: '#/components/schemas/Error'
+
+    SpaceEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Space'
+
+    ImportResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ImportResult'
+
+    ImportViewEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ImportView'
+
+    ImportPageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ImportPage'
+
+    ImportConflictResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ImportConflictResult'
+
+    BulkReviewResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/BulkReviewResult'
 
     SpaceListEnvelope:
       type: object

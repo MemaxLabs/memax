@@ -446,6 +446,18 @@ func requestHash(cmd Command) ([]byte, error) {
 		cp := *c
 		cp.Meta = strip
 		v = cp
+	case *ImportStatement:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *RecordImportCheck:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *SettleImportConflict:
+		cp := *c
+		cp.Meta = strip
+		v = cp
 	default:
 		return nil, invalid("command", "unknown command")
 	}

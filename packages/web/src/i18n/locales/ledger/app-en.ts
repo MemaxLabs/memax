@@ -154,6 +154,21 @@ export const ledgerAppEn = {
     forgotten: "{n} forgotten",
     ledeRest: "Kept is the quiet default, so only the exceptions carry a mark.",
     export: "Export as Markdown",
+    exporting: "Exporting…",
+    exported:
+      "Exported {space} as Markdown, with its receipts and signed checkpoints. Check it with memax verify-export.",
+    exportedDemo:
+      "Exported the demo's memories as Markdown. A signed-in space's export also carries its receipts and signed checkpoints.",
+    exportFailed: {
+      refused:
+        "Only a signed-in person exports a space. Sign in again, then export.",
+      rateLimited:
+        "You've exported several times in a row. Export again in {n} seconds.",
+      busy: "Memax is writing other exports right now. Export again in a moment.",
+      unreachable:
+        "Memax couldn't be reached, so nothing was exported. Try again.",
+      other: "{space} wasn't exported. Try again.",
+    },
     remember: "Remember",
   },
   handoffs: {

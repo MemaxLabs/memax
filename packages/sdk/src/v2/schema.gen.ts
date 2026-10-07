@@ -65,6 +65,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}:export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export a space's whole record
+         * @description The space's whole record as a zip archive in the export format
+         *     (`memax.export.v1`; see the docs' Export page), one folder named by
+         *     the space's slug: every memory as Markdown with YAML frontmatter
+         *     (its statement as the body; state, sources with their `file:line`,
+         *     versions, decision fields, conditions, links and receipts in the
+         *     frontmatter), a tombstone without words for every forgotten memory,
+         *     every Brief version as it reads, the decision gates, the targets
+         *     with their latest compile, the agents, read counts, every receipt in
+         *     chain order with its canonical fields (`receipts.jsonl`), every
+         *     signed checkpoint with the public keys (`checkpoints.json`), and a
+         *     manifest with every file's SHA-256 (`export.json`).
+         *     `memax verify-export` (or the SDK's `verifyExport`) checks it.
+         *
+         *     Any person who may read the space exports it, on every plan; agents
+         *     and API keys are refused with policy `export_by_person`. An export
+         *     changes nothing, and is counted by one receipt (`exported`, on the
+         *     space, by you), written before the record is read, so the export
+         *     lists it. It records no reads. A retry with the same
+         *     `Idempotency-Key` writes no new receipt and, if nothing else changed
+         *     meanwhile, returns the same bytes. Exports are rate-limited per
+         *     person (429 `rate_limited`, with `Retry-After`).
+         *
+         *     The archive streams as it is read, from one consistent snapshot of
+         *     the record. A failure after the first byte ends the response early,
+         *     so the archive is incomplete and can't be opened; export again.
+         */
+        post: operations["exportSpace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/spaces/{space}/memories": {
         parameters: {
             query?: never;
@@ -1917,10 +1964,11 @@ export interface components {
          *     memory whose only conflict was with it, and purged on a target or a
          *     Brief whose drift evidence or older versions lost its words; an
          *     agent's memax_forget writes forget_requested, and a person keeping
-         *     the memory instead writes forget_declined.
+         *     the memory instead writes forget_declined. An export of the space is
+         *     one exported receipt on the space (`object_kind: space`).
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "exported";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space";
         /**
@@ -1950,7 +1998,8 @@ export interface components {
          *     (people forget it themselves, or ask an owner). Refused asks: ask_by_person (agents read over
          *     MCP; Ask answers people), ask_limit (the plan's asks this month are
          *     used up; `details.limit` and `details.resets_at` say how many and
-         *     when they start again). Refused changes to
+         *     when they start again). A refused export: export_by_person (only a
+         *     signed-in person exports a space). Refused changes to
          *     agents: person_must_manage (only a person changes what an agent may
          *     do), not_your_agent, autonomy_not_allowed, key_max_propose,
          *     autonomy_needs_web (raising an agent needs a person on the web).
@@ -1975,7 +2024,7 @@ export interface components {
          *     on the web app).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "device_by_person" | "device_needs_web";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "device_by_person" | "device_needs_web";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_has_notes";
         /**
@@ -2398,6 +2447,14 @@ export interface components {
             reads_7d: number;
             last_read_at: components["schemas"]["Timestamp"];
         };
+        /**
+         * @description A zip archive in the export format `memax.export.v1`: one folder,
+         *     named by the space's slug, holding README.md, export.json,
+         *     memories/, tombstones/, brief/, decisions.md, gates.json,
+         *     targets.json, agents.json, reads.json, receipts.jsonl and
+         *     checkpoints.json. The same record gives the same bytes.
+         */
+        ExportArchive: string;
         /**
          * @description One signed checkpoint of a space's receipt chain. Its signature is
          *     Ed25519 over the checkpoint statement (receiptchain format 1: the
@@ -4620,6 +4677,56 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["SpaceConflict"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    exportSpace: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The export, as a zip archive. */
+            200: {
+                headers: {
+                    /** @description `attachment; filename="memax-<slug>-<yyyy-mm-dd>.zip"`, dated as of the newest receipt. */
+                    "Content-Disposition": string;
+                    /** @description The id of the export's own `exported` receipt (also in `export.json`). */
+                    "X-Memax-Export-Receipt": string;
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": components["schemas"]["ExportArchive"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

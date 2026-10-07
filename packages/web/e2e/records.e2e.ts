@@ -248,6 +248,27 @@ test("Memories: filters, search, more, and rows by keyboard", async ({
   ]);
 });
 
+test("Memories: Export as Markdown downloads the space as a zip", async ({
+  page,
+}) => {
+  await open(page, "/memax-v2/memories");
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export as Markdown" }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toMatch(
+    /^memax-memax-v2-\d{4}-\d{2}-\d{2}\.zip$/,
+  );
+  const path = await download.path();
+  const { readFileSync } = await import("node:fs");
+  const zip = readFileSync(path);
+  // A zip archive: its first local header, and the space's folder.
+  expect(zip.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  expect(zip.includes(Buffer.from("memax-v2/README.md"))).toBe(true);
+  await expect(toasts(page)).toContainText(
+    "Exported the demo's memories as Markdown.",
+  );
+});
+
 test("a memory's page: Copy citation, Edit, and not found", async ({
   page,
   context,

@@ -19,9 +19,11 @@ import (
 //   - Every response body is a named schema, so the SDK gets a named type.
 //     2xx bodies are envelopes with exactly `data`; 4xx and 5xx bodies are
 //     ErrorEnvelope. That is the model.ApiResponse contract in AGENTS.md.
-//     The one exception is a 200 text/event-stream (Ask), whose schema is
+//     The exceptions are a 200 text/event-stream (Ask), whose schema is
 //     a named oneOf of named events, each exactly {event: const, data:
-//     named schema} (lintStream); its errors are still ErrorEnvelope.
+//     named schema} (lintStream), and a 200 application/zip (the export),
+//     a named string schema with that contentMediaType (lintArchive);
+//     their errors are still ErrorEnvelope.
 //   - Every POST and PATCH requires Idempotency-Key (commands are retried),
 //     except a POST marked x-memax-read: true, which only reads and is a
 //     POST to keep its input out of URLs (the near-duplicate check).
@@ -139,6 +141,10 @@ func (s *Spec) lintResponses(op *Operation, raw map[string]any) []error {
 			errs = append(errs, s.lintStream(op, code, stream)...)
 			continue
 		}
+		if archive := mapAt(obj, "content", Zip); archive != nil {
+			errs = append(errs, s.lintArchive(op, code, archive)...)
+			continue
+		}
 		media := mapAt(obj, "content", "application/json")
 		if media == nil {
 			if code != "204" {
@@ -218,6 +224,28 @@ func (s *Spec) lintStream(op *Operation, code string, media map[string]any) []er
 		if dref, _ := mapAt(props["data"])["$ref"].(string); componentSchemaRef.FindStringSubmatch(dref) == nil {
 			add("event schema %s: `data` must be a named schema", mm[1])
 		}
+	}
+	return errs
+}
+
+// lintArchive holds a zip response (the export) to the same rules: only a
+// 200 is a zip (errors stay ErrorEnvelope), and its schema is a named
+// string schema whose contentMediaType says application/zip, so the SDK
+// gets a named type for it.
+func (s *Spec) lintArchive(op *Operation, code string, media map[string]any) []error {
+	var errs []error
+	where := fmt.Sprintf("%s %s: response %s", op.Method, op.Path, code)
+	if code != "200" {
+		errs = append(errs, fmt.Errorf("%s: only a 200 may be %s; errors stay ErrorEnvelope", where, Zip))
+	}
+	ref, _ := mapAt(media, "schema")["$ref"].(string)
+	m := componentSchemaRef.FindStringSubmatch(ref)
+	if m == nil {
+		return append(errs, fmt.Errorf("%s: an archive's schema must be a named schema from #/components/schemas", where))
+	}
+	sch := mapAt(s.doc, "components", "schemas", m[1])
+	if sch["type"] != "string" || sch["contentMediaType"] != Zip {
+		errs = append(errs, fmt.Errorf("%s: %s must be type: string with contentMediaType: %s", where, m[1], Zip))
 	}
 	return errs
 }

@@ -179,6 +179,8 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.recordImportCheck(ctx, c)
 	case *SettleImportConflict:
 		res, err = w.settleImportConflict(ctx, c)
+	case *Export:
+		res, err = w.export(ctx, c)
 	}
 	if err != nil {
 		return Result{}, mapDBError(err)
@@ -270,6 +272,11 @@ func validateCommand(cmd Command) error {
 		return c.validate()
 	case *SettleImportConflict:
 		return c.validate()
+	case *Export:
+		if c.SpaceID == uuid.Nil {
+			return invalid("space", "say which space to export")
+		}
+		return nil
 	case *Remember:
 		return c.NewMemory.validate()
 	case *Propose:

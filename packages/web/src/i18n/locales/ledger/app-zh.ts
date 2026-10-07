@@ -137,6 +137,18 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
     forgotten: "{n} 条已忘记",
     ledeRest: "保留是默认状态，所以只有例外才带标记。",
     export: "导出为 Markdown",
+    exporting: "正在导出…",
+    exported:
+      "已将 {space} 导出为 Markdown，附带回执和签名检查点。可以用 memax verify-export 核对。",
+    exportedDemo:
+      "已将演示数据的记忆导出为 Markdown。登录后的空间导出时还会附带回执和签名检查点。",
+    exportFailed: {
+      refused: "只有已登录的人可以导出空间。请重新登录后再导出。",
+      rateLimited: "你连续导出了好几次。请 {n} 秒后再导出。",
+      busy: "Memax 正在写其他导出。请稍后再导出。",
+      unreachable: "连不上 Memax，所以什么也没导出。请再试一次。",
+      other: "{space} 没有导出。请再试一次。",
+    },
     remember: "记住",
   },
   handoffs: {

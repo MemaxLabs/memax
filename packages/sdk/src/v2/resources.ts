@@ -211,7 +211,18 @@ export class V2SpacesResource {
       extraHeaders: { ...commandHeaders(opts), Accept: "application/zip" },
       signal: opts.signal,
     });
-    const bytes = new Uint8Array(await res.arrayBuffer());
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(await res.arrayBuffer());
+    } catch (err) {
+      if (opts.signal?.aborted) throw err;
+      // The server ends a failed export early: retry with the same key.
+      throw new MemaxError(
+        "The export stopped partway. Export again with the same idempotency key.",
+        "network_error",
+        0,
+      );
+    }
     const disposition = res.headers.get("Content-Disposition") ?? "";
     const named = /filename="([^"]+)"/.exec(disposition)?.[1];
     return {

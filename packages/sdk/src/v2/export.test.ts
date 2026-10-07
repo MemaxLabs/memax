@@ -331,6 +331,26 @@ describe("the export format, memax.export.v1", () => {
       Accept: "application/zip",
     });
 
+    // An archive cut off partway is a network_error, to retry with the key.
+    const cut = new Memax({
+      apiUrl: "https://api.memax.app",
+      apiKey: "mxk_test",
+      maxRetries: 0,
+      fetch: async () =>
+        new Response(
+          new ReadableStream({
+            start(c) {
+              c.enqueue(new Uint8Array([0x50, 0x4b]));
+              c.error(new Error("connection reset"));
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/zip" } },
+        ),
+    });
+    await expect(
+      cut.v2.spaces.export("memax-v2", { idempotencyKey: "k-3" }),
+    ).rejects.toMatchObject({ code: "network_error" });
+
     // A refusal is the usual MemaxError.
     const refused = new Memax({
       apiUrl: "https://api.memax.app",

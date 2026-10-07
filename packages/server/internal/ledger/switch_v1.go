@@ -294,6 +294,28 @@ func ConfigBelongs(scope string, kind policy.SpaceKind, repository string) bool 
 	return false
 }
 
+// repoName is "owner/name" for any spelling of a repository's URL, as it
+// was written ("https://github.com/Acme/Web.git" is "Acme/Web"). RepoKey
+// is the same name in lower case, for comparing.
+func repoName(url string) string {
+	s := strings.TrimSuffix(strings.TrimSpace(url), "/")
+	if strings.HasSuffix(strings.ToLower(s), ".git") {
+		s = s[:len(s)-len(".git")]
+	}
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	if i := strings.Index(s, "@"); i >= 0 && !strings.Contains(s[:i], "/") {
+		s = s[i+1:]
+	}
+	s = strings.ReplaceAll(s, ":", "/")
+	parts := strings.FieldsFunc(s, func(r rune) bool { return r == '/' })
+	if len(parts) < 2 {
+		return strings.Join(parts, "/")
+	}
+	return parts[len(parts)-2] + "/" + parts[len(parts)-1]
+}
+
 // RepoKey is "owner/name" for any spelling of a repository's URL
 // (https://github.com/Acme/Web.git, git@github.com:acme/web, acme/web).
 func RepoKey(url string) string {
@@ -458,6 +480,8 @@ func readV1HubFacts(ctx context.Context, db Querier, hubID uuid.UUID) (v1HubFact
 		if err := rows.Scan(&f.Plan, &f.DreamRuns, &f.Agents, &f.Repo); err != nil {
 			return f, fmt.Errorf("ledger: read V1 hub: %w", err)
 		}
+		// V1 kept the remote's URL; a space names its repository "owner/name".
+		f.Repo = repoName(f.Repo)
 	}
 	return f, rows.Err()
 }

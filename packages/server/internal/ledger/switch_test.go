@@ -709,3 +709,50 @@ func TestForgetANote(t *testing.T) {
 		t.Fatalf("forget an unnumbered note: %v", err)
 	}
 }
+
+// A switch nobody gave a repository takes the one its preview suggested
+// (from V1's project context), so it moves the agent files the preview
+// counted: the web's Switch to V2 sends none.
+func TestSwitchTakesTheSuggestedRepository(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	w := newV1World(f)
+	ctx := context.Background()
+	f.exec(`UPDATE memories SET project_context = '{"repo":"acme/web"}' WHERE id = $1`, w.mine)
+	pv, err := f.l.SwitchStatus(ctx, f.scope(w.owner), w.team)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pv.Preview.SuggestedRepository != "acme/web" || len(pv.Preview.Configs) != 2 {
+		t.Fatalf("preview: repository %q, %d configs; want acme/web and 2", pv.Preview.SuggestedRepository, len(pv.Preview.Configs))
+	}
+	st, err := f.l.StartSwitch(ctx, person(w.owner), policy.ViaWeb, f.scope(w.owner), w.team,
+		ledger.SwitchOptions{Key: "switch-suggested"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.State != ledger.SwitchStateSwitched || st.Space.Repository != "acme/web" {
+		t.Fatalf("state %s, repository %q; want switched for acme/web", st.State, st.Space.Repository)
+	}
+	if st.Progress.Configs != len(pv.Preview.Configs) {
+		t.Errorf("moved %d agent files, the preview counted %d", st.Progress.Configs, len(pv.Preview.Configs))
+	}
+}
+
+func TestRepoNameKeepsTheCase(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"https://github.com/MemaxLabs/memax": "MemaxLabs/memax",
+		"https://github.com/Acme/Web.git/":   "Acme/Web",
+		"git@github.com:acme/web.GIT":        "acme/web",
+		"Acme/Web":                           "Acme/Web",
+		"":                                   "",
+	} {
+		if got := ledger.RepoName(in); got != want {
+			t.Errorf("RepoName(%q) = %q, want %q", in, got, want)
+		}
+		if ledger.RepoKey(in) != strings.ToLower(ledger.RepoName(in)) {
+			t.Errorf("RepoKey(%q) = %q, RepoName lower-cased is %q", in, ledger.RepoKey(in), strings.ToLower(ledger.RepoName(in)))
+		}
+	}
+}

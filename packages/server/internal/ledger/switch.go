@@ -751,6 +751,14 @@ func (l *Ledger) setSpaceColumns(ctx context.Context, hub *hubRow, opts SwitchOp
 	repo := hub.Repository
 	if opts.Repository != nil {
 		repo = *opts.Repository
+	} else if repo == "" && kind != policy.SpacePersonal {
+		// Nobody chose one: take the repository the preview suggested and
+		// counted the agent files for, so the switch moves what it showed.
+		facts, err := readV1HubFacts(ctx, l.pool, hub.ID)
+		if err != nil {
+			return err
+		}
+		repo = facts.Repo
 	}
 	if kind == hub.Kind && repo == hub.Repository {
 		return nil

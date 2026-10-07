@@ -4,6 +4,15 @@ All notable changes to `memax-sdk` are documented here.
 
 ## Unreleased
 
+- **Breaking:** OAuth consent moved to the web session (OAuthConsent).
+  `auth.getOAuthConsentRequest` and the `OAuthConsentRequest`,
+  `OAuthConsentHub` and `OAuthConsentPermission` types are removed: the
+  API no longer serves `GET /oauth/authorize/consent-request`. Use
+  `auth.openOAuthRequest(id)`, `auth.decideOAuthRequest(id, { decision,
+  space_id })` and `auth.releaseOAuthRequest(id)` with the `OAuthRequest`,
+  `OAuthRequestSpace`, `OAuthDecisionInput` and `OAuthDecision` types, as
+  the person signed in on the web. Bump the minor version (0.8.0) when
+  this is released.
 - Added `memax.v2`, the first resources on the `/v2` API (the V2
   record): `spaces.list`, `memories.remember` / `list` / `get` /
   `keep` / `edit` / `reject`, `review.list` and `receipts.list`.

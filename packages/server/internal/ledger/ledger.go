@@ -49,6 +49,9 @@ type Ledger struct {
 	// the first transaction's opening (tx.go): River's insert switches
 	// back to it.
 	loginRole atomic.Pointer[string]
+	// honesty is what tombstones say about copies Memax can't reach
+	// (WithForgetHonesty).
+	honesty ForgetHonesty
 }
 
 // Option configures a Ledger.
@@ -70,7 +73,8 @@ func New(pool *pgxpool.Pool, opts ...Option) *Ledger {
 		return nil
 	}
 	l := &Ledger{pool: pool, now: time.Now, lockTimeout: DefaultLockTimeout, log: slog.Default(),
-		undoWindow: DefaultUndoWindow, judgeUndoWindow: DefaultJudgeUndoWindow, returnWindow: DefaultReturnWindow}
+		undoWindow: DefaultUndoWindow, judgeUndoWindow: DefaultJudgeUndoWindow, returnWindow: DefaultReturnWindow,
+		honesty: ForgetHonesty{BackupDays: DefaultBackupDays}}
 	for _, o := range opts {
 		o(l)
 	}
@@ -110,7 +114,7 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 
 	w := &writer{tx: tx, meta: m, command: cmd.Name(), hash: hash, inserter: l.inserter, loginRole: loginRole,
 		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, returnWindow: l.returnWindow, now: now,
-		indexJobs: l.indexJobs}
+		indexJobs: l.indexJobs, forgetHonesty: l.honesty}
 	var res Result
 	switch c := cmd.(type) {
 	case *Remember:
@@ -159,6 +163,16 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.answerGate(ctx, c)
 	case *WithdrawGate:
 		res, err = w.withdrawGate(ctx, c)
+	case *Forget:
+		res, err = w.forget(ctx, c)
+	case *ForgetSpace:
+		res, err = w.forgetSpace(ctx, c)
+	case *RequestForget:
+		res, err = w.requestForget(ctx, c)
+	case *DeclineForget:
+		res, err = w.declineForget(ctx, c)
+	case *ReapplyForget:
+		res, err = w.reapplyForget(ctx, c)
 	case *ImportStatement:
 		res, err = w.importStatement(ctx, c)
 	case *RecordImportCheck:
@@ -237,6 +251,19 @@ func validateCommand(cmd Command) error {
 		return validateGateTarget(c.Gate, c.ExpectedVersion)
 	case *WithdrawGate:
 		return validateGateTarget(c.Gate, c.ExpectedVersion)
+	case *Forget:
+		return c.validate()
+	case *ForgetSpace:
+		if c.SpaceID == uuid.Nil {
+			return invalid("space", "say which space to forget")
+		}
+		return nil
+	case *RequestForget:
+		return validateTarget(c.Memory, 0, false)
+	case *DeclineForget:
+		return validateTarget(c.Memory, 0, false)
+	case *ReapplyForget:
+		return c.Op.validate()
 	case *ImportStatement:
 		return c.validate()
 	case *RecordImportCheck:

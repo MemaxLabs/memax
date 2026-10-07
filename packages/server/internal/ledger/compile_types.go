@@ -19,6 +19,10 @@ type BriefItem struct {
 	Ref   string   `json:"ref,omitempty"`
 	Text  string   `json:"text,omitempty"`
 	Cites []string `json:"cites,omitempty"`
+	// Forgotten marks prose in an older version whose words Forget took
+	// out, because it cited a forgotten memory: only its citations stay.
+	// A revision never sends one.
+	Forgotten bool `json:"forgotten,omitempty"`
 }
 
 // BriefSection is one `## heading` of the Brief, in order.

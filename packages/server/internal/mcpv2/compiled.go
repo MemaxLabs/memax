@@ -45,6 +45,7 @@ type compiledDigest struct {
 
 type cachedArtifact struct {
 	compiled handler.MCPCompiled
+	space    uuid.UUID
 	at       time.Time
 }
 
@@ -136,7 +137,7 @@ func (d *compiledDigest) compiled(ctx context.Context, scope ledger.Scope, space
 	}
 	c := handler.MCPCompiled{Ref: p.Compile.Ref, Target: t.Label, CompiledAt: p.Compile.CompiledAt.UTC().Format(time.RFC3339)}
 	c.Content, c.Truncated = truncateUTF8(content, maxCompiled)
-	d.store(p.Compile.Ref, c)
+	d.store(spaceID, p.Compile.Ref, c)
 	return &c, nil
 }
 
@@ -167,13 +168,31 @@ func (d *compiledDigest) cached(ref string) (handler.MCPCompiled, bool) {
 	return c.compiled, true
 }
 
-func (d *compiledDigest) store(ref string, c handler.MCPCompiled) {
+func (d *compiledDigest) store(space uuid.UUID, ref string, c handler.MCPCompiled) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if len(d.cache) >= 512 {
 		d.cache = map[string]cachedArtifact{}
 	}
-	d.cache[ref] = cachedArtifact{compiled: c, at: time.Now()}
+	// A compile ref's output never changes, but a newer one replaces it:
+	// drop the space's older copies, which may hold a forgotten line.
+	for k, a := range d.cache {
+		if a.space == space && k != ref {
+			delete(d.cache, k)
+		}
+	}
+	d.cache[ref] = cachedArtifact{compiled: c, space: space, at: time.Now()}
+}
+
+// purgeSpace drops a space's cached compiled files (Forget's propagation).
+func (d *compiledDigest) purgeSpace(space uuid.UUID) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for k, a := range d.cache {
+		if a.space == space {
+			delete(d.cache, k)
+		}
+	}
 }
 
 func truncateUTF8(s string, max int) (string, bool) {

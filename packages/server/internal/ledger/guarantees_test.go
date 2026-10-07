@@ -39,6 +39,27 @@ func insertReceiptSQL(tx pgx.Tx, m *ledger.Memory, object uuid.UUID, version int
 	return id, err
 }
 
+// insertForgotSQL writes a forgot receipt about m by person, at a stream
+// version.
+func insertForgotSQL(tx pgx.Tx, m *ledger.Memory, by uuid.UUID, version int) (uuid.UUID, error) {
+	id := uuid.Must(uuid.NewV7())
+	_, err := tx.Exec(context.Background(), `
+		INSERT INTO v2.receipts (id, tenant_id, space_id, object_kind, object_id, object_ref, action, actor_kind, actor_id, via, occurred_at, stream_id, stream_version)
+		VALUES ($1, $2, $3, 'memory', $4, $5, 'forgot', 'person', $6, 'web', now(), $4, $7)`,
+		id, m.TenantID, m.SpaceID, m.ID, m.Ref, by, version)
+	return id, err
+}
+
+// insertTombstoneSQL writes m's tombstone beside its forgot receipt.
+func insertTombstoneSQL(tx pgx.Tx, m *ledger.Memory, by, receipt uuid.UUID) error {
+	id := uuid.Must(uuid.NewV7())
+	_, err := tx.Exec(context.Background(), `
+		INSERT INTO v2.tombstones (id, tenant_id, space_id, op_id, object_kind, object_id, object_ref, by_kind, by_id, via, receipt_id, forgotten_at)
+		VALUES ($1, $2, $3, $1, 'memory', $4, $5, 'person', $6, 'web', $7, now())`,
+		id, m.TenantID, m.SpaceID, m.ID, m.Ref, by, receipt)
+	return err
+}
+
 // Rule 1: a projection write without a same-transaction receipt fails
 // at commit.
 func TestReceiptRequiredAtCommit(t *testing.T) {
@@ -536,8 +557,26 @@ func TestLifecycleGuardInSQL(t *testing.T) {
 	if err := move(`UPDATE v2.memories SET lifecycle = 'forgotten', last_receipt_id = $2, stream_version = $3, search = NULL WHERE id = $1`, 2); sqlstate(err) != "23514" {
 		t.Errorf("forgetting without purging the fingerprints: %v, want a check violation", err)
 	}
-	if err := move(`UPDATE v2.memories SET lifecycle = 'forgotten', last_receipt_id = $2, stream_version = $3, search = NULL,
-	                       content_sha256 = NULL, minhash_bands = NULL WHERE id = $1`, 2); err != nil {
+	forgetSQL := `UPDATE v2.memories SET lifecycle = 'forgotten', last_receipt_id = $2, stream_version = $3, search = NULL,
+	                     content_sha256 = NULL, minhash_bands = NULL WHERE id = $1`
+	// Migration 042: at commit, a forgotten memory has no words left in any
+	// version, and a tombstone.
+	if err := move(forgetSQL, 2); sqlstate(err) != "MXF01" {
+		t.Errorf("forgetting with the words still in a version: %v, want MXF01", err)
+	}
+	if err := f.asV2([]uuid.UUID{space}, []uuid.UUID{m.TenantID}, func(tx pgx.Tx) error {
+		rid, err := insertForgotSQL(tx, m, zz, 2)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE v2.memory_versions SET statement = NULL, last_receipt_id = $2 WHERE memory_id = $1`, m.ID, rid); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, forgetSQL, m.ID, rid, 2); err != nil {
+			return err
+		}
+		return insertTombstoneSQL(tx, m, zz, rid)
+	}); err != nil {
 		t.Fatalf("kept → forgotten: %v", err)
 	}
 	if err := move(`UPDATE v2.memories SET section = 'decisions', last_receipt_id = $2, stream_version = $3 WHERE id = $1`, 3); sqlstate(err) != "MXL01" {

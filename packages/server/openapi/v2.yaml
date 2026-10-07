@@ -835,6 +835,43 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/spaces/{space}/tombstones:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listTombstones
+      tags: [memories]
+      summary: List what was forgotten
+      description: |
+        The space's tombstones, newest first: each forgotten memory (and
+        each Forget of the whole space), who asked, when, what went with it,
+        and whether its propagation is done. Read one with
+        `GET /v2/memories/{ref}/tombstone` for its steps.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of tombstones.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TombstonePageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
   /v2/spaces/{space}/compile-loads:
     parameters:
       - $ref: '#/components/parameters/SpacePath'
@@ -1386,6 +1423,254 @@ paths:
           $ref: '#/components/responses/EditClash'
         '422':
           $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}:forget:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: forgetMemory
+      tags: [memories]
+      summary: Forget a memory everywhere
+      description: |
+        Forgets a memory (rule 7). In one transaction its words leave the
+        record: every version's statement, its sources' quotes and
+        locators, its decision fields, its search entry and embeddings, the
+        reasons on its receipts, the judge's words about it on both sides of
+        every pair, a gate's question when it is the decision the gate
+        became, and every Brief line that cited it (the Brief gets a new
+        version). A tombstone stays. Every target that held it recompiles,
+        the stored copies of older compiles are re-rendered without it, the
+        caches are purged and every agent that read it (or is connected to
+        the space) is told on its next response; the tombstone's steps say
+        how far that got. It can't be undone.
+
+        Only a person who may keep and forget in the space forgets (owners,
+        by default; see the space's rules). A decision in a space whose
+        decisions need a person on the web needs the web (D15). Agents and
+        API keys are refused: an agent asks with `:request-forget`.
+
+        `If-Match` is required: the version you saw. Memories that carry its
+        words go with it (proposals folded into it or that would change it,
+        and memories citing it as a source, such as a kept Ask answer).
+        Name them in `carries`; when the list doesn't match, the answer is
+        409 `forget_carries` with `details.carries`, and nothing changes.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgetRequest'
+      responses:
+        '200':
+          description: Forgotten; the result has the tombstone.
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgetResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ForgetConflict'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}:request-forget:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: requestForget
+      tags: [memories]
+      summary: Ask a person to forget a memory
+      description: |
+        An agent's memax_forget on the V2 record: it forgets nothing and
+        records a request (receipted, with `reason`) that a person forgets
+        the memory, or keeps it, on the web. Asking again while one waits is
+        the same request. Agents connected at Propose or Write, and API keys
+        that propose, may ask; people forget it themselves (policy
+        `forget_by_person`).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          description: The request, waiting for a person.
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgetRequestResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}:decline-forget:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: declineForget
+      tags: [memories]
+      summary: Keep a memory an agent asked to forget
+      description: |
+        A person who may forget it keeps it instead: every waiting request
+        to forget it is declined, with a `forget_declined` receipt. 409
+        `invalid_transition` when nobody asked.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/CommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}/forget-preview:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    get:
+      operationId: previewForget
+      tags: [memories]
+      summary: What a Forget would do
+      description: |
+        Read before anyone confirms a Forget: the memories that would go with
+        it (send their refs as `carries`), the compiled files and copy-outs
+        that hold it and would be rewritten, how many agents would be told
+        (`readers` of them read it; the rest are connected to the space),
+        the version to send as `If-Match`, and whether you may (`allowed`,
+        with `policy` when not). It changes nothing. 409 `invalid_transition`
+        when it is forgotten already.
+      responses:
+        '200':
+          description: What it would do.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgetPreviewEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}/tombstone:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    get:
+      operationId: getTombstone
+      tags: [memories]
+      summary: Read a forgotten memory's tombstone
+      description: |
+        What Forget did: who asked and when, what went with it, each step of
+        how it was forgotten (removed from Memax, each file rewritten, each
+        agent told) with where it stands now, and the copies Memax can't
+        reach (`unreachable`: git history of committed files, agents' own
+        memories, backups and their window, the model providers that saw
+        the words, files with a hand edit Memax won't write over, copies a
+        person pasted elsewhere). Never words. 404 when it isn't forgotten.
+      responses:
+        '200':
+          description: The tombstone.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TombstoneEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -2588,6 +2873,73 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/notices:
+    get:
+      operationId: listNotices
+      tags: [agents]
+      summary: Your agent's notices
+      description: |
+        For an agent's own credential: what it hasn't been told yet, oldest
+        first: each memory forgotten since it read it (or in a space it is
+        connected to), and each space forgotten whole. The remote MCP server
+        puts them in the agent's next response; a local server (memax mcp
+        serve) reads them here and acknowledges them with `:ack` once it has
+        told the agent. A person's session has none.
+      responses:
+        '200':
+          description: The notices waiting.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoticeListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/notices:ack:
+    post:
+      operationId: ackNotices
+      tags: [agents]
+      summary: Mark notices told
+      description: |
+        Marks the agent's notices told, each once (a notice already told,
+        or someone else's, is skipped). Telling an agent is bookkeeping, not
+        a change to the record: it writes no receipt, and acknowledging
+        again changes nothing.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AckNoticesRequest'
+      responses:
+        '200':
+          description: How many were marked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckNoticesResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
 components:
   securitySchemes:
     bearer:
@@ -2863,6 +3215,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
+    ForgetConflict:
+      description: "`forget_carries`: other memories carry its words and go with it; `details.carries` lists them, and the Forget goes through once `carries` names exactly those. `invalid_transition`: it is forgotten already."
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
     EditClash:
       description: '`edit_clash`: the memory changed since you read it. Reload and try again.'
       content:
@@ -3096,6 +3454,12 @@ components:
         them); Undo writes undid. A decision gate's (`gate`) are asked (by
         the agent), answered (by a person; the kept decision it became has
         its own `kept` receipt) and withdrawn.
+        Forget writes forgot on each forgotten memory (and on a gate whose
+        decision it was, and on a space forgotten whole), resolved on a
+        memory whose only conflict was with it, and purged on a target or a
+        Brief whose drift evidence or older versions lost its words; an
+        agent's memax_forget writes forget_requested, and a person keeping
+        the memory instead writes forget_declined.
       type: string
       enum:
         - proposed
@@ -3134,6 +3498,9 @@ components:
         - withdrawn
         - returned
         - drafted
+        - purged
+        - forget_requested
+        - forget_declined
     ObjectKind:
       type: string
       enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space]
@@ -3162,7 +3529,8 @@ components:
         person_must_answer (agents ask; people answer), gate_limit (the agent
         already has 3 decisions waiting in the space), not_your_gate (only the
         agent that asked, the person it works for, or someone who can answer
-        withdraws a question). Refused asks: ask_by_person (agents read over
+        withdraws a question). Refused forget requests: forget_by_person
+        (people forget it themselves, or ask an owner). Refused asks: ask_by_person (agents read over
         MCP; Ask answers people), ask_limit (the plan's asks this month are
         used up; `details.limit` and `details.resets_at` say how many and
         when they start again). Refused changes to
@@ -3216,6 +3584,7 @@ components:
         - person_must_answer
         - gate_limit
         - not_your_gate
+        - forget_by_person
         - ask_by_person
         - ask_limit
         - viewer
@@ -3263,6 +3632,7 @@ components:
         - busy
         - judge_pending
         - unavailable
+        - forget_carries
         - slug_taken
         - space_has_notes
 
@@ -3947,6 +4317,11 @@ components:
         reads:
           description: How agents read it. Absent when the counts couldn't be read.
           $ref: '#/components/schemas/MemoryReads'
+        forget_requests:
+          description: Agents' requests to forget it, waiting for a person (forget it, or keep it with `:decline-forget`).
+          type: array
+          items:
+            $ref: '#/components/schemas/ForgetRequestRecord'
 
     MemoryReads:
       description: |
@@ -4582,6 +4957,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DisplayRef'
+        forgotten:
+          description: In an older version, prose whose words Forget took out because it cited a forgotten memory; only its citations stay.
+          type: boolean
 
     BriefSection:
       type: object
@@ -6214,6 +6592,511 @@ components:
     # ------------------------------------------------------------------
     # Envelopes
     # ------------------------------------------------------------------
+    ForgetRequest:
+      description: The body of `:forget`. Every field is optional.
+      type: object
+      additionalProperties: false
+      properties:
+        note:
+          description: |
+            Your own note on why. It stays on the tombstone (it is not
+            forgotten), so don't repeat the words.
+          type: string
+          maxLength: 500
+        carries:
+          description: The display IDs that go with it, exactly as `forget_carries` listed them.
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/MemoryDisplayRef'
+        occurred_at:
+          description: When it happened on the client.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    CarryReason:
+      description: |
+        Why a memory goes with another one's Forget. folded: a proposal the
+        judge folded into it (a copy of its words). updates: a proposal that
+        would change it. cites: built from it (a kept Ask answer citing it).
+        space: everything in the space was forgotten.
+      type: string
+      enum: [folded, updates, cites, space]
+
+    ForgetCarry:
+      description: A memory that goes with a Forget.
+      type: object
+      additionalProperties: false
+      required: [id, ref, reason, with, lifecycle, kind]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        ref:
+          $ref: '#/components/schemas/DisplayRef'
+        reason:
+          $ref: '#/components/schemas/CarryReason'
+        with:
+          description: The memory it goes with.
+          $ref: '#/components/schemas/DisplayRef'
+        lifecycle:
+          $ref: '#/components/schemas/Lifecycle'
+        kind:
+          $ref: '#/components/schemas/MemoryKind'
+
+    ForgetResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, memory, receipts, tombstone, memories]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        memory:
+          description: The forgotten memory (no words, state forgotten).
+          $ref: '#/components/schemas/Memory'
+        receipts:
+          description: The receipts the Forget wrote, oldest first.
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Receipt'
+        tombstone:
+          $ref: '#/components/schemas/Tombstone'
+        memories:
+          description: The memories forgotten with it.
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
+
+    ForgetPreview:
+      description: What a Forget of a memory would do, before anyone confirms it.
+      type: object
+      additionalProperties: false
+      required: [ref, version, carries, files, agents, readers, allowed]
+      properties:
+        ref:
+          $ref: '#/components/schemas/DisplayRef'
+        version:
+          description: The memory's version; send it as `If-Match`.
+          type: integer
+          minimum: 1
+        carries:
+          description: The memories that go with it; send their refs as `carries`.
+          type: array
+          items:
+            $ref: '#/components/schemas/ForgetCarry'
+        files:
+          description: The compiled files and copy-outs that hold it, which would be rewritten.
+          type: array
+          items:
+            $ref: '#/components/schemas/TombstoneTarget'
+        agents:
+          description: The agents that would be told on their next read.
+          type: integer
+          minimum: 0
+        readers:
+          description: Of those agents, how many read it.
+          type: integer
+          minimum: 0
+        allowed:
+          description: Whether you may forget it (and everything that goes with it).
+          type: boolean
+        policy:
+          description: Why you may not, when policy says so.
+          $ref: '#/components/schemas/PolicyDecision'
+
+    TombstoneKind:
+      description: '`memory`, or `space` for a Forget of everything in a space.'
+      type: string
+      enum: [memory, space]
+    TombstoneStatus:
+      description: '`propagating` until every copy has an answer (the SLO is a minute); then `done`.'
+      type: string
+      enum: [propagating, done]
+    StepKind:
+      description: |
+        asked: who asked. removed: the words left Memax. target: a compiled
+        file (or copy-out) rewritten. artifacts: the stored copies of older
+        compiles and hand edits re-rendered. caches: the caches purged.
+        ledger: the forget ledger's copy (ids only) written. agent: an agent
+        told on its next read.
+      type: string
+      enum: [asked, removed, target, artifacts, caches, ledger, agent]
+    StepStatus:
+      type: string
+      enum: [done, waiting, held, failed, unreachable]
+    StepReason:
+      description: |
+        hand_edit: the file has a hand edit, which Memax never writes over.
+        stopped: compiling the target was stopped. copy: copied out (ChatGPT);
+        paste it again. delivery: compiled, waiting for the daemon (or a pull
+        request) to write it. compiling: not compiled yet. paused: the agent
+        is paused, and is told before it reads anything else. disconnected:
+        the agent can't read any more. next_read: told on its next read.
+      type: string
+      enum: [hand_edit, stopped, copy, delivery, compiling, paused, disconnected, next_read]
+    UnreachableKind:
+      description: |
+        A copy Memax can't reach. git_history: earlier commits of the
+        compiled files. agent_memory: what agents saved in their own memory.
+        backups: database backups, kept for `days` and treated as beyond use
+        (the forget ledger is re-applied after any restore). llm: model
+        providers that processed the words. hand_edits: files with a hand
+        edit Memax won't write over. copies: copy-outs a person pasted
+        elsewhere.
+      type: string
+      enum: [git_history, agent_memory, backups, llm, hand_edits, copies]
+
+    TombstoneActor:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          description: '`person`, or `memax` when the forget ledger re-applied it after a restore.'
+          type: string
+          enum: [person, memax]
+        id:
+          $ref: '#/components/schemas/Id'
+
+    TombstoneAgent:
+      type: object
+      additionalProperties: false
+      required: [connection_id]
+      properties:
+        connection_id:
+          $ref: '#/components/schemas/Id'
+        agent:
+          $ref: '#/components/schemas/AgentKind'
+        display_name:
+          type: string
+        state:
+          $ref: '#/components/schemas/AgentState'
+
+    TombstoneTarget:
+      type: object
+      additionalProperties: false
+      required: [id, kind, label, delivery]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        kind:
+          $ref: '#/components/schemas/TargetKind'
+        label:
+          type: string
+        delivery:
+          $ref: '#/components/schemas/Delivery'
+
+    TombstoneGone:
+      description: What Forget took out of Memax.
+      type: object
+      additionalProperties: false
+      required: [versions, sources, embeddings, verdicts, model_verdicts, gates, files]
+      properties:
+        versions:
+          type: integer
+        sources:
+          type: integer
+        embeddings:
+          type: integer
+        verdicts:
+          type: integer
+        model_verdicts:
+          description: Verdicts a model gave (the judge's provider saw the words).
+          type: integer
+        gates:
+          type: integer
+        files:
+          description: Compiled files that held it.
+          type: integer
+        memories:
+          description: Memories forgotten (a space's Forget).
+          type: integer
+
+    TombstoneStep:
+      type: object
+      additionalProperties: false
+      required: [kind, status]
+      properties:
+        kind:
+          $ref: '#/components/schemas/StepKind'
+        status:
+          $ref: '#/components/schemas/StepStatus'
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        target:
+          $ref: '#/components/schemas/TombstoneTarget'
+        compile:
+          description: The compile run that rewrote the target.
+          $ref: '#/components/schemas/CompileRef'
+        agent:
+          $ref: '#/components/schemas/TombstoneAgent'
+        reason:
+          $ref: '#/components/schemas/StepReason'
+        count:
+          description: How many stored copies were re-rendered.
+          type: integer
+        read_it:
+          description: The agent read it (else it is connected to the space).
+          type: boolean
+
+    Processor:
+      type: object
+      additionalProperties: false
+      required: [name, purpose, zero_retention]
+      properties:
+        name:
+          type: string
+        purpose:
+          type: string
+          enum: [embeddings, judge, ask]
+        zero_retention:
+          type: boolean
+
+    UnreachableCopy:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          $ref: '#/components/schemas/UnreachableKind'
+        repositories:
+          type: array
+          items:
+            type: string
+        files:
+          type: array
+          items:
+            type: string
+        agents:
+          type: array
+          items:
+            type: string
+        days:
+          type: integer
+        processors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Processor'
+        targets:
+          type: array
+          items:
+            type: string
+
+    Tombstone:
+      description: What Forget did to one memory (or a whole space). Never words.
+      type: object
+      additionalProperties: false
+      required: [id, op_id, ref, kind, object_id, space_id, tenant_id, with, by, via, receipt_id, forgotten_at,
+                 reads_before, gone, agents, status, steps, unreachable]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        op_id:
+          description: The Forget it belongs to (the primary tombstone's id).
+          $ref: '#/components/schemas/Id'
+        ref:
+          description: The forgotten memory's display ID, or `space`.
+          type: string
+        kind:
+          $ref: '#/components/schemas/TombstoneKind'
+        object_id:
+          $ref: '#/components/schemas/Id'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        tenant_id:
+          $ref: '#/components/schemas/Id'
+        carried:
+          $ref: '#/components/schemas/CarryReason'
+        primary:
+          description: The memory it went with, when carried.
+          type: string
+        with:
+          description: The other display IDs forgotten in the same Forget.
+          type: array
+          items:
+            type: string
+        note:
+          description: The person's note.
+          type: string
+        by:
+          $ref: '#/components/schemas/TombstoneActor'
+        requested_by:
+          description: The agent whose request led to it.
+          $ref: '#/components/schemas/TombstoneAgent'
+        via:
+          $ref: '#/components/schemas/Via'
+        receipt_id:
+          $ref: '#/components/schemas/Id'
+        forgotten_at:
+          $ref: '#/components/schemas/Timestamp'
+        kept_at:
+          $ref: '#/components/schemas/Timestamp'
+        reads_before:
+          description: Reads before it was forgotten, directly and in compiles that held it.
+          type: integer
+        gone:
+          $ref: '#/components/schemas/TombstoneGone'
+        agents:
+          description: How many agents are told, each once on its next read.
+          type: integer
+          minimum: 0
+        status:
+          $ref: '#/components/schemas/TombstoneStatus'
+        completed_at:
+          $ref: '#/components/schemas/Timestamp'
+        duration_ms:
+          description: From the Forget to the last step's answer.
+          type: integer
+        reapplied_at:
+          description: When the forget ledger re-applied it after a restore.
+          $ref: '#/components/schemas/Timestamp'
+        steps:
+          description: How it was forgotten, in order. Empty in a list.
+          type: array
+          items:
+            $ref: '#/components/schemas/TombstoneStep'
+        unreachable:
+          description: The copies Memax can't reach. Empty in a list.
+          type: array
+          items:
+            $ref: '#/components/schemas/UnreachableCopy'
+
+    TombstonePage:
+      type: object
+      additionalProperties: false
+      required: [tombstones, has_more]
+      properties:
+        tombstones:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tombstone'
+        next_cursor:
+          $ref: '#/components/schemas/Cursor'
+        has_more:
+          type: boolean
+
+    ForgetRequestStatus:
+      type: string
+      enum: [waiting, forgotten, declined]
+
+    ForgetRequestRecord:
+      description: An agent's request that a person forget a memory.
+      type: object
+      additionalProperties: false
+      required: [id, memory_id, ref, space_id, agent, status, receipt_id, requested_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        memory_id:
+          $ref: '#/components/schemas/Id'
+        ref:
+          $ref: '#/components/schemas/DisplayRef'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        agent:
+          $ref: '#/components/schemas/TombstoneAgent'
+        session_ref:
+          type: string
+        reason:
+          description: The agent's reason, from the request's receipt (redacted if the memory is forgotten).
+          type: string
+        status:
+          $ref: '#/components/schemas/ForgetRequestStatus'
+        decided_by:
+          $ref: '#/components/schemas/Id'
+        decided_at:
+          $ref: '#/components/schemas/Timestamp'
+        receipt_id:
+          $ref: '#/components/schemas/Id'
+        requested_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    ForgetRequestResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, memory, receipts, forget_request]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        memory:
+          $ref: '#/components/schemas/Memory'
+        receipts:
+          description: The request's receipt; empty when it was already waiting.
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+        forget_request:
+          $ref: '#/components/schemas/ForgetRequestRecord'
+
+    NoticeKind:
+      type: string
+      enum: [forgotten, space_forgotten]
+
+    Notice:
+      description: Something an agent is told once, on its next read.
+      type: object
+      additionalProperties: false
+      required: [id, space_id, op_id, kind, refs, read_it, at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        op_id:
+          description: The Forget (its tombstone).
+          $ref: '#/components/schemas/Id'
+        kind:
+          $ref: '#/components/schemas/NoticeKind'
+        refs:
+          description: The forgotten display IDs; empty when a whole space was forgotten.
+          type: array
+          items:
+            type: string
+        read_it:
+          description: The agent read it (else it is connected to the space).
+          type: boolean
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        space:
+          description: The space's name, when the agent can still read it.
+          type: string
+
+    NoticeList:
+      type: object
+      additionalProperties: false
+      required: [notices]
+      properties:
+        notices:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notice'
+
+    AckNoticesRequest:
+      type: object
+      additionalProperties: false
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Id'
+
+    AckNoticesResult:
+      type: object
+      additionalProperties: false
+      required: [acknowledged]
+      properties:
+        acknowledged:
+          description: How many were marked told now.
+          type: integer
+
     # ------------------------------------------------------------------
     # Spaces, imports and bulk review (memax init, Cleanup, ReviewImport)
     # ------------------------------------------------------------------
@@ -6870,6 +7753,11 @@ components:
         reset_at:
           description: When the window resets (`rate_limited`), or when asks start again (`ask_limit`, the 1st, UTC).
           $ref: '#/components/schemas/Timestamp'
+        carries:
+          description: The memories that go with a Forget (`forget_carries`).
+          type: array
+          items:
+            $ref: '#/components/schemas/ForgetCarry'
         notes:
           description: The V1 memories a space holds (`space_has_notes`).
           type: integer
@@ -6881,6 +7769,62 @@ components:
       properties:
         error:
           $ref: '#/components/schemas/Error'
+
+    ForgetResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ForgetResult'
+
+    TombstoneEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Tombstone'
+
+    ForgetPreviewEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ForgetPreview'
+
+    TombstonePageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TombstonePage'
+
+    ForgetRequestResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ForgetRequestResult'
+
+    NoticeListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/NoticeList'
+
+    AckNoticesResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/AckNoticesResult'
 
     SpaceEnvelope:
       type: object

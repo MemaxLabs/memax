@@ -41,6 +41,7 @@ type HubsHandler struct {
 	ownership          hubOwnershipResolver                                    // nil = legacy can_create_hub fallback
 	enqueueEmail       func(template, to string, vars map[string]string) error // nil = no email
 	appBaseURL         string                                                  // for invite links in emails
+	v2                 V2Forgetter                                             // nil = V2 off
 }
 
 func NewHubsHandler(s store.Store) *HubsHandler {
@@ -854,6 +855,13 @@ func (h *HubsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	members, err := h.store.ListHubMembers(hubID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "store_error", "Failed to list hub members before deletion")
+		return
+	}
+
+	// A space on the V2 record is forgotten through the ledger first (a
+	// receipted Forget of everything in it, which retires its V2 rows), so
+	// its receipts and seals outlive the hub and its chain still verifies.
+	if !forgetV2Space(w, r, h.v2, userID, hubID, true) {
 		return
 	}
 

@@ -1,5 +1,6 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`, `.imports`,
-// `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets` and `.gates`. Thin, typed
+// `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets`, `.gates` and
+// `.notices`. Thin, typed
 // wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
 // as on /v1.
@@ -34,6 +35,16 @@ import type {
   Drift,
   DriftResolutionResult,
   EditInput,
+  AckNoticesInput,
+  AckNoticesResult,
+  ForgetCarry,
+  ForgetInput,
+  ForgetPreview,
+  ForgetRequestResult,
+  ForgetResult,
+  NoticeList,
+  Tombstone,
+  TombstonePage,
   AnswerGateInput,
   Gate,
   GatePage,
@@ -424,6 +435,101 @@ export class V2MemoriesResource {
       body: input,
       extraHeaders: commandHeaders(opts, opts.ifMatch),
       signal: opts.signal,
+    });
+  }
+
+  /**
+   * What a Forget of the memory would do, before anyone confirms it: the
+   * memories that go with it (send their refs as `carries`), the compiled
+   * files that hold it, how many agents would be told, the version to
+   * send as `ifMatch`, and whether you may (`allowed`, with `policy`). It
+   * changes nothing.
+   */
+  async previewForget(
+    ref: string,
+    opts?: GetMemoryOptions,
+  ): Promise<ForgetPreview> {
+    return this.req("GET", `/v2/memories/${seg(ref)}/forget-preview`, {
+      query: { space: opts?.space },
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Forget a memory everywhere (rule 7): its words leave the record in one
+   * step, every target recompiles without it, and every agent that read it
+   * is told. It can't be undone. Only a person who may forget in the space
+   * can; agents ask with {@link requestForget}. `opts.ifMatch` is the
+   * version you saw. Memories that carry its words (proposals folded into
+   * it, memories citing it) go with it: name them in `input.carries`. When
+   * the list doesn't match, this throws a MemaxError `forget_carries`
+   * (409) and nothing changes; {@link forgetCarriesOf} reads the list.
+   */
+  async forget(
+    ref: string,
+    input: ForgetInput,
+    opts: EditOptions,
+  ): Promise<ForgetResult> {
+    return this.req("POST", `/v2/memories/${seg(ref)}:forget`, {
+      query: { space: opts.space },
+      body: input,
+      extraHeaders: commandHeaders(opts, opts.ifMatch),
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * An agent asks a person to forget a memory (memax_forget): it records a
+   * request, with `input.reason`, that a person confirms or declines on
+   * the web. It forgets nothing. A person forgets with {@link forget}.
+   */
+  async requestForget(
+    ref: string,
+    input: ReviewInput,
+    opts: CommandOptions & MemoryRefOptions,
+  ): Promise<ForgetRequestResult> {
+    return this.req("POST", `/v2/memories/${seg(ref)}:request-forget`, {
+      query: { space: opts.space },
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Keep a memory an agent asked to forget: every waiting request is
+   * declined. Throws `invalid_transition` (409) when nobody asked.
+   */
+  async declineForget(
+    ref: string,
+    input: ReviewInput,
+    opts: CommandOptions & MemoryRefOptions,
+  ): Promise<CommandResult> {
+    return this.req("POST", `/v2/memories/${seg(ref)}:decline-forget`, {
+      query: { space: opts.space },
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * A forgotten memory's tombstone: who forgot it and when, what went with
+   * it, each step of the Forget with where it stands, and the copies Memax
+   * can't reach. Never words. Throws `not_found` when it isn't forgotten.
+   */
+  async tombstone(ref: string, opts?: GetMemoryOptions): Promise<Tombstone> {
+    return this.req("GET", `/v2/memories/${seg(ref)}/tombstone`, {
+      query: { space: opts?.space },
+      signal: opts?.signal,
+    });
+  }
+
+  /** What was forgotten in a space, newest first (without the steps). */
+  async tombstones(space: string, opts?: PageOptions): Promise<TombstonePage> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/tombstones`, {
+      query: pageQuery(opts),
+      signal: opts?.signal,
     });
   }
 
@@ -922,6 +1028,34 @@ export class V2GatesResource {
   }
 }
 
+export class V2NoticesResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /**
+   * For an agent's own credential: what it hasn't been told yet, oldest
+   * first (memories forgotten since it read them, spaces forgotten whole).
+   * Tell the agent, then {@link ack} them. A person's session has none.
+   */
+  async list(opts?: { signal?: AbortSignal }): Promise<NoticeList> {
+    return this.req("GET", "/v2/notices", { signal: opts?.signal });
+  }
+
+  /**
+   * Mark notices told, each once. It writes no receipt; acknowledging
+   * again changes nothing.
+   */
+  async ack(
+    input: AckNoticesInput,
+    opts: CommandOptions,
+  ): Promise<AckNoticesResult> {
+    return this.req("POST", "/v2/notices:ack", {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+}
+
 /** `memax.v2`: the V2 record. */
 export class V2Resource {
   readonly spaces: V2SpacesResource;
@@ -933,6 +1067,7 @@ export class V2Resource {
   readonly briefs: V2BriefsResource;
   readonly targets: V2TargetsResource;
   readonly gates: V2GatesResource;
+  readonly notices: V2NoticesResource;
   readonly imports: V2ImportsResource;
   private readonly openStream?: OpenFn;
 
@@ -946,6 +1081,7 @@ export class V2Resource {
     this.briefs = new V2BriefsResource(req);
     this.targets = new V2TargetsResource(req);
     this.gates = new V2GatesResource(req);
+    this.notices = new V2NoticesResource(req);
     this.imports = new V2ImportsResource(req);
     this.openStream = open;
   }
@@ -1032,6 +1168,19 @@ function abortError(signal: AbortSignal): Error {
       ? new DOMException("Aborted", "AbortError")
       : Object.assign(new Error("Aborted"), { name: "AbortError" });
   return err;
+}
+
+/**
+ * The memories that go with a Forget, from its 409 `forget_carries`, or
+ * undefined for any other error. Show them, then forget again with their
+ * refs in `carries`.
+ */
+export function forgetCarriesOf(err: unknown): ForgetCarry[] | undefined {
+  if (!(err instanceof MemaxError) || err.code !== "forget_carries") {
+    return undefined;
+  }
+  const carries = err.details?.carries;
+  return Array.isArray(carries) ? (carries as ForgetCarry[]) : undefined;
 }
 
 /**

@@ -12,6 +12,9 @@ const state = {
   compiled: false,
   asked: [] as unknown[],
   gateStatus: "waiting",
+  forgetRequests: [] as unknown[],
+  notices: [] as { id: string; [k: string]: unknown }[],
+  acked: [] as string[],
 };
 
 const V1_HUB = "11111111-1111-4111-8111-111111111111";
@@ -186,6 +189,30 @@ const fakeClient = {
         has_more: false,
       })),
       get: vi.fn(),
+      requestForget: vi.fn(
+        async (ref: string, input: unknown, opts: unknown) => {
+          state.forgetRequests.push({ ref, input, opts });
+          return {
+            outcome: "applied",
+            policy: { effect: "apply" },
+            memory: kept(
+              "M-0219",
+              "Lighthouse lamps are checked every morning",
+            ),
+            receipts: [],
+            forget_request: { status: "waiting", ref: "M-0219" },
+          };
+        },
+      ),
+    },
+    notices: {
+      list: vi.fn(async () => ({
+        notices: state.notices.filter((n) => !state.acked.includes(n.id)),
+      })),
+      ack: vi.fn(async (input: { ids: string[] }) => {
+        state.acked.push(...input.ids);
+        return { acknowledged: input.ids.length };
+      }),
     },
     review: {
       list: vi.fn(async () => ({ items: [], has_more: false, total: 2 })),
@@ -270,6 +297,10 @@ beforeEach(() => {
   state.compiled = false;
   state.asked = [];
   state.gateStatus = "waiting";
+  state.forgetRequests = [];
+  state.notices = [];
+  state.acked = [];
+  fakeClient.v2.memories.get.mockReset();
   resetV2StateForTest();
   resetGatesForTest();
 });
@@ -526,14 +557,122 @@ describe("the stdio MCP server", () => {
     );
   });
 
-  it("never forgets in a space on V2", async () => {
+  it("never forgets in a space on V2: an agent asks a person", async () => {
+    const memory = kept("M-0219", "Lighthouse lamps are checked every morning");
+    fakeClient.v2.memories.get.mockResolvedValue({ memory });
+    const client = await connect();
+    const res = await client.callTool({
+      name: "memax_forget",
+      arguments: {
+        id: "M-0219",
+        space_id: "memax-v2",
+        reason: "it was a test value",
+      },
+    });
+    expect(textOf(res)).toContain(
+      "M-0219 wasn't forgotten yet: an agent can't forget. It now waits for a person to forget it on the web: https://memax.app/memax-v2/memories/M-0219",
+    );
+    expect(state.forgetRequests).toHaveLength(1);
+    const req = state.forgetRequests[0] as {
+      ref: string;
+      input: unknown;
+      opts: { idempotencyKey: string; via: string };
+    };
+    expect(req.ref).toBe(memory.id);
+    expect(req.input).toEqual({ reason: "it was a test value" });
+    expect(req.opts.via).toBe("mcp");
+    expect(req.opts.idempotencyKey).toMatch(/^mcp-forget:/);
+    // Asking again the same day for the same reason is the same request.
+    await client.callTool({
+      name: "memax_forget",
+      arguments: {
+        id: "M-0219",
+        space_id: "memax-v2",
+        reason: "it was a test value",
+      },
+    });
+    const again = state.forgetRequests[1] as typeof req;
+    expect(again.opts.idempotencyKey).toBe(req.opts.idempotencyKey);
+  });
+
+  it("points a person's own session to the web to forget", async () => {
+    state.apiKey = false;
+    fakeClient.v2.memories.get.mockResolvedValue({
+      memory: kept("M-0219", "Lighthouse lamps are checked every morning"),
+    });
     const client = await connect();
     const res = await client.callTool({
       name: "memax_forget",
       arguments: { id: "M-0219", space_id: "memax-v2" },
     });
-    expect(textOf(res)).toContain("wasn't forgotten");
-    expect(textOf(res)).toContain("https://memax.app/memax-v2/memories/M-0219");
+    expect(textOf(res)).toContain(
+      "M-0219 wasn't forgotten: forget it yourself on the web at https://memax.app/memax-v2/memories/M-0219",
+    );
+    expect(state.forgetRequests).toHaveLength(0);
+  });
+
+  it("tells the agent once what was forgotten, on its next response", async () => {
+    state.notices = [
+      {
+        id: "n1",
+        space_id: V2_CONNECTED,
+        op_id: "op1",
+        kind: "forgotten",
+        refs: ["M-0219"],
+        read_it: true,
+        at: "2026-10-07T09:30:00Z",
+      },
+    ];
+    const client = await connect();
+    const res = await client.callTool({
+      name: "memax_recall",
+      arguments: { query: "lighthouse" },
+    });
+    const told =
+      "Forgotten in memax-v2: M-0219. Drop anything you took from it, including what you saved in your own memory; it is gone from Memax and every compiled file.";
+    expect(textOf(res)).toContain(told);
+    expect(res._meta?.["app.memax/notices"]).toEqual([
+      {
+        kind: "forgotten",
+        space_id: V2_CONNECTED,
+        space: "memax-v2",
+        refs: ["M-0219"],
+        message: told,
+      },
+    ]);
+    expect((res.structuredContent as { notices?: unknown[] }).notices).toEqual([
+      {
+        kind: "forgotten",
+        space_id: V2_CONNECTED,
+        refs: ["M-0219"],
+        message: told,
+      },
+    ]);
+    expect(state.acked).toEqual(["n1"]);
+    // Told once: the next response, whatever the tool, doesn't repeat it.
+    const next = await client.callTool({ name: "memax_hubs", arguments: {} });
+    expect(textOf(next)).not.toContain("Forgotten in");
+    expect(next._meta?.["app.memax/notices"]).toBeUndefined();
+  });
+
+  it("tells a person's session nothing (notices are agents')", async () => {
+    state.apiKey = false;
+    state.notices = [
+      {
+        id: "n1",
+        space_id: V2_CONNECTED,
+        op_id: "op1",
+        kind: "space_forgotten",
+        refs: [],
+        read_it: false,
+        at: "2026-10-07T09:30:00Z",
+      },
+    ];
+    const client = await connect();
+    const before = fakeClient.v2.notices.list.mock.calls.length;
+    const res = await client.callTool({ name: "memax_hubs", arguments: {} });
+    expect(textOf(res)).not.toContain("was forgotten");
+    expect(fakeClient.v2.notices.list.mock.calls.length).toBe(before);
   });
 });
 

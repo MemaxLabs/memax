@@ -188,6 +188,9 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     returnedPlain: "{actor}把 {ref} 退回了审阅：它和一条现行的决策矛盾。",
     drafted:
       "{actor}为 {ref} 写了更窄的措辞来解决冲突。Memax 检查过后，它才会替换现行的措辞。",
+    purged: "{actor}从 {ref} 里移除了一条已忘记记忆的文字。",
+    forgetRequested: "{actor}请你忘记 {ref}。",
+    forgetDeclined: "{actor}保留了 {ref}，没有忘记。",
     other: "{actor}改动了 {ref}。",
   },
 };

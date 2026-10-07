@@ -591,19 +591,13 @@ type ExtrasQuery struct {
 	Proposer      uuid.UUID
 	SessionRef    string
 	ProposalLimit int
-	// Since asks for what changed after it: the writes the judge returned
-	// to Review, and, with Forgotten, the memories forgotten (a digest
-	// reads its own).
-	Since     *time.Time
-	Forgotten bool
+	// Since asks for the writes the judge returned to Review after it.
+	Since *time.Time
 }
 
 // Extras is what an ExtrasQuery found.
 type Extras struct {
 	Proposals []Hit
-	// Forgotten lists memories forgotten since, as space id → refs (the
-	// words are gone): forget notices.
-	Forgotten map[uuid.UUID][]string
 	// Returned lists the writes the judge returned to Review since, as space
 	// id → returns: the notices a connection gets on its next recall, since
 	// it may have read them while they were kept. One that has since been
@@ -622,7 +616,7 @@ type Returned struct {
 // Extras reads what q asks for in one round trip (ledger.ReadBatch): its
 // statements don't depend on each other.
 func (s *Searcher) Extras(ctx context.Context, scope ledger.Scope, q ExtrasQuery) (Extras, error) {
-	out := Extras{Forgotten: map[uuid.UUID][]string{}, Returned: map[uuid.UUID][]Returned{}}
+	out := Extras{Returned: map[uuid.UUID][]Returned{}}
 	if s == nil || len(q.Spaces) == 0 {
 		return out, nil
 	}
@@ -639,13 +633,6 @@ func (s *Searcher) Extras(ctx context.Context, scope ledger.Scope, q ExtrasQuery
 			})
 	}
 	if q.Since != nil {
-		if q.Forgotten {
-			b.Queue(`
-				SELECT space_id, object_ref FROM v2.receipts
-				 WHERE space_id = ANY($1) AND object_kind = 'memory' AND action = 'forgot' AND recorded_at > $2
-				 ORDER BY seq LIMIT 50`, q.Spaces, *q.Since).
-				Query(func(rows pgx.Rows) error { return collectRefs(rows, out.Forgotten) })
-		}
 		b.Queue(`
 			SELECT space_id, object_ref, COALESCE(source->>'ref', '') FROM v2.receipts
 			 WHERE space_id = ANY($1) AND object_kind = 'memory' AND action = 'returned' AND recorded_at > $2

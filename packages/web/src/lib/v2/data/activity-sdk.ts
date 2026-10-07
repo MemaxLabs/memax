@@ -120,6 +120,34 @@ export function readToEntry(r: V2.Read, viewer: Viewer | null): ActivityEntry {
   };
 }
 
+/** Tombstones read for one page of Activity (the newest first). */
+const TOMBSTONES_PAGE = 200;
+
+function isForgot(e: ActivityEntry): boolean {
+  return e.action === "forgot" && e.object.kind === "memory";
+}
+
+/**
+ * Fills each forgot row's "removed from N files and M agents" from its
+ * tombstone (a Forget's own memory; the ones carried with it say less).
+ */
+export function withForgetCounts(
+  entries: ActivityEntry[],
+  tombstones: readonly V2.Tombstone[],
+): void {
+  const byRef = new Map(
+    tombstones.filter((t) => t.kind === "memory").map((t) => [t.ref, t]),
+  );
+  for (const e of entries) {
+    if (!isForgot(e)) continue;
+    const t = byRef.get(e.object.ref);
+    // Nothing held it outside Memax: the plain sentence says enough.
+    if (t && !t.carried && t.gone.files + t.agents > 0) {
+      e.detail = { kind: "forgot", files: t.gone.files, agents: t.agents };
+    }
+  }
+}
+
 /** The seal from a page of checkpoints, newest first: how far, signed or not, and the last check. */
 export function sealOf(page: V2.CheckpointPage): SealView {
   const { seal } = page;
@@ -149,8 +177,17 @@ export function createSdkActivity({
         limit: PAGE_SIZE,
         signal,
       });
+      const entries = page.items.map((r) => receiptToEntry(r, viewer));
+      // "Removed from 4 files and 5 agents": a forgot receipt holds no
+      // counts, its tombstone does. Read them only when the page has one.
+      if (entries.some((e) => isForgot(e))) {
+        const tombstones = await client.v2.memories
+          .tombstones(space.slug, { limit: TOMBSTONES_PAGE, signal })
+          .catch(() => null);
+        if (tombstones) withForgetCounts(entries, tombstones.tombstones);
+      }
       return {
-        entries: page.items.map((r) => receiptToEntry(r, viewer)),
+        entries,
         nextCursor: page.has_more ? (page.next_cursor ?? null) : null,
         // PLACEHOLDER: /v2 serves no weekly receipt totals.
         totals: null,

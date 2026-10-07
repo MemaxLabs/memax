@@ -35,6 +35,7 @@ const (
 	codeInternal               = "internal_error"
 	codeBusy                   = "busy"
 	codeJudgePending           = "judge_pending"
+	codeForgetCarries          = "forget_carries"
 	codeUnavailable            = "unavailable"
 	// codeRateLimited is the rate-limit middleware's code, which the
 	// near-duplicate check also answers with (near.go).
@@ -70,6 +71,8 @@ type errorDetails struct {
 	Limit   int        `json:"limit,omitempty"`
 	Current int        `json:"current,omitempty"`
 	ResetAt *time.Time `json:"reset_at,omitempty"`
+	// Carries are the memories that go with a Forget (forget_carries).
+	Carries []ledger.Carried `json:"carries,omitempty"`
 	// Notes counts a space's V1 memories (space_has_notes).
 	Notes int `json:"notes,omitempty"`
 }

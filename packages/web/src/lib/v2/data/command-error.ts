@@ -38,6 +38,11 @@ export type CommandFailure =
    * decision in force (`with`), so it is settled, not kept.
    */
   | { kind: "in-conflict"; with: string | null }
+  /**
+   * 409 `forget_carries`: what goes with a Forget changed since the person
+   * confirmed it (`refs`, what goes now). Nothing was forgotten.
+   */
+  | { kind: "carries"; refs: string[] }
   /** 409 `undo_refused`: why an undo can't go through, and what's in its way (`ref`). */
   | { kind: "undo-refused"; reason: UndoRefusal; ref: string | null }
   /** The request didn't reach the server, or the server had a moment. Safe to retry with the same key. */
@@ -120,6 +125,19 @@ export function toFailure(err: unknown): CommandFailure {
           (typeof seconds === "number" ? seconds : null),
         ref: typeof ref === "string" && ref ? ref : null,
         judge: err.code === "judge_pending",
+      };
+    }
+    if (err.code === "forget_carries") {
+      const carries = detail(err, "carries");
+      return {
+        kind: "carries",
+        refs: Array.isArray(carries)
+          ? carries.flatMap((c) =>
+              c && typeof c === "object" && typeof c.ref === "string"
+                ? [c.ref as string]
+                : [],
+            )
+          : [],
       };
     }
     if (err.code === "in_conflict") {

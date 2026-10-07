@@ -47,6 +47,19 @@ export const recordKeys = {
     ["v2", kind, "spaces", slug, "memories", filter] as const,
   memory: (kind: string, slug: string, ref: string) =>
     ["v2", kind, "spaces", slug, "memory", ref] as const,
+  tombstone: (kind: string, slug: string, ref: string) =>
+    ["v2", kind, "spaces", slug, "memory", ref, "tombstone"] as const,
+  forgetPreview: (kind: string, slug: string, ref: string, version: number) =>
+    [
+      "v2",
+      kind,
+      "spaces",
+      slug,
+      "memory",
+      ref,
+      "forget-preview",
+      version,
+    ] as const,
 };
 
 /**
@@ -192,6 +205,40 @@ export function useMemoryRecord(space: SpaceSummary, ref: string) {
     queryFn: ({ signal }) => source.memories.get({ space, ref, signal }),
     initialData: peek,
     staleTime: 30_000,
+  });
+}
+
+/** How often a propagating tombstone is read again (it's done within the minute). */
+const TOMBSTONE_POLL_MS = 2000;
+
+/** A forgotten memory's tombstone, read again while its Forget propagates. */
+export function useTombstone(space: SpaceSummary, ref: string) {
+  const source = useSource();
+  const peek = source.memories.peekTombstone?.(space.slug, ref);
+  return useQuery({
+    queryKey: recordKeys.tombstone(source.kind, space.slug, ref),
+    queryFn: ({ signal }) => source.memories.tombstone({ space, ref, signal }),
+    initialData: peek,
+    refetchInterval: (query) =>
+      query.state.data?.status === "propagating" ? TOMBSTONE_POLL_MS : false,
+  });
+}
+
+/** What a Forget would do, read when the person opens the confirmation. */
+export function useForgetPreview(
+  space: SpaceSummary,
+  ref: string,
+  version: number,
+  enabled: boolean,
+) {
+  const source = useSource();
+  return useQuery({
+    queryKey: recordKeys.forgetPreview(source.kind, space.slug, ref, version),
+    queryFn: ({ signal }) =>
+      source.memories.previewForget({ space, ref, signal }),
+    enabled,
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 

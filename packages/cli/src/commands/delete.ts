@@ -8,7 +8,7 @@ export async function deleteCommand(
   options: { yes?: boolean },
 ): Promise<void> {
   if (!id) {
-    console.error(chalk.red("Provide a memory ID: memax forget <id>"));
+    console.error(chalk.red("Provide a memory ID: memax delete <id>"));
     process.exit(1);
   }
 
@@ -42,8 +42,9 @@ export async function deleteCommand(
 export function registerDeleteCommand(program: Command): void {
   program
     .command("delete <id>")
-    .alias("forget")
-    .description("Delete a memory")
+    .description(
+      "Delete a V1 memory (memories on the V2 record are forgotten: memax forget)",
+    )
     .option("-y, --yes", "Skip confirmation")
     .action(deleteCommand);
 }

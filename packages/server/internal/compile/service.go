@@ -430,16 +430,24 @@ func (s *Service) Observe(ctx context.Context, meta ledger.Meta, targetID uuid.U
 	if unchanged || v.Target.SyncState == ledger.SyncOff {
 		return ledger.Result{Outcome: ledger.OutcomeApplied, Target: v.Target, Unchanged: true}, nil
 	}
+	// A file kept on a disk can still hold a forgotten memory's line (a
+	// hand edit Memax won't write over): its lines never come back into
+	// Memax, neither in the stored copy nor in what the edit means.
+	forgotten, err := s.ledger.ForgottenRefs(ctx, meta.Scope, v.Target.SpaceID)
+	if err != nil {
+		return ledger.Result{}, err
+	}
+	stored, _ := StripCited(in.Content, forgotten)
 	cmd := &ledger.RecordObservation{
 		Meta: meta, Target: targetID, Path: in.Path, ObservedSHA256: pb.DriftSHA256,
 		ObserverKind: in.ObserverKind, ObserverID: in.ObserverID, Commit: in.Commit,
 		ArtifactKey: observedKey(v.Target.SpaceID, v.Target.ID, pb.DriftSHA256), Bytes: len(in.Content),
-		BaseSHA256: driftSHA, Changes: pb.ChangeSet,
+		BaseSHA256: driftSHA, Changes: stripChanges(pb.ChangeSet, forgotten),
 	}
 	if base != nil {
 		cmd.BaseCompileID = &base.ID
 	}
-	if err := putText(ctx, s.store, cmd.ArtifactKey, in.Content); err != nil {
+	if err := putText(ctx, s.store, cmd.ArtifactKey, stored); err != nil {
 		return ledger.Result{}, fmt.Errorf("compile: store observation: %w", err)
 	}
 	return s.ledger.Apply(ctx, cmd)

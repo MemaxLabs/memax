@@ -682,6 +682,12 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		memories.SetSpaceModes(modes)
 		configsH.SetSpaceModes(modes)
 	}
+	// The admin panel's gate metrics read the V2 record across spaces, as
+	// the metrics role (ledger.GetProductMetrics).
+	var adminV2Metrics *handler.AdminV2MetricsHandler
+	if l := v2h.Ledger(); l != nil {
+		adminV2Metrics = handler.NewAdminV2MetricsHandler(l)
+	}
 	mcp := mcpDepsFromEnv(pool, readRecorder)
 	mcp.purge = forgetBus.Local
 
@@ -719,6 +725,7 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		adminDreams:            adminDreamsH,
 		adminWaitlist:          adminWaitlistH,
 		adminOps:               adminOpsH,
+		adminV2Metrics:         adminV2Metrics,
 		resendWebhook:          resendWebhookH,
 		unsubscribe:            unsubscribeH,
 		bar:                    handler.NewBarHandler(s, memories),

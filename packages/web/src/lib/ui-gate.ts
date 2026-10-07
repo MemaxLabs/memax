@@ -303,11 +303,13 @@ export function decideUiGate({
   if (!isV2Path(pathname) || hasV2Opt(uiCookie) || isOpenV2Path(pathname)) {
     return { action: "continue" };
   }
-  // Signed in without the hint: read the flag again on the sign-in page,
-  // which comes back here for a person with it. Never for the dev
-  // fixtures, which aren't anyone's page.
+  // Without the hint, the sign-in page decides: signed in, it reads the
+  // flag again and comes back here for a person with it; signed out, the
+  // person signs in and lands by their flag (V1 people on V1's home), so a
+  // V2 link from an email or the CLI never strands an alpha person in V1.
+  // Never for the dev fixtures, which aren't anyone's page.
   const dev = pathname.split("/").filter(Boolean)[0] === "dev";
-  if (hasSession && !rechecked && !dev) {
+  if (!dev && (!hasSession || !rechecked)) {
     // The page's own query goes along; the router's (_rsc, on a client
     // navigation's fetch) doesn't.
     const query = new URLSearchParams(search);
@@ -320,7 +322,7 @@ export function decideUiGate({
       action: "redirect",
       pathname: "/signin",
       search: `?${next.toString()}`,
-      recheck: true,
+      recheck: hasSession,
     };
   }
   return { action: "redirect", pathname: v1HomePath(hasSession) };

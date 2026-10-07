@@ -193,7 +193,9 @@ describe("decideUiGate", () => {
     }
   });
 
-  it("redirects V2 paths without the opt-in to the V1 home when signed out", () => {
+  it("sends a signed-out browser on a V2 path to sign in, then on by its flag", () => {
+    // A V2 link from an email or the CLI: the person signs in and lands by
+    // their flag, so no re-check marker is needed.
     expect(
       decideUiGate({
         pathname: "/memax-v2/today",
@@ -201,11 +203,29 @@ describe("decideUiGate", () => {
         uiCookie: undefined,
         hasSession: false,
       }),
-    ).toEqual({ action: "redirect", pathname: "/" });
+    ).toEqual({
+      action: "redirect",
+      pathname: "/signin",
+      search: `?${new URLSearchParams({ next: "/memax-v2/today?x=1" })}`,
+      recheck: false,
+    });
     expect(
       decideUiGate({
         pathname: "/setup/import",
         uiCookie: "1",
+        hasSession: false,
+      }),
+    ).toEqual({
+      action: "redirect",
+      pathname: "/signin",
+      search: `?${new URLSearchParams({ next: "/setup/import" })}`,
+      recheck: false,
+    });
+    // The dev fixtures aren't anyone's page: still V1's home.
+    expect(
+      decideUiGate({
+        pathname: "/dev/ledger/tokens",
+        uiCookie: undefined,
         hasSession: false,
       }),
     ).toEqual({ action: "redirect", pathname: "/" });

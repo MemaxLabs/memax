@@ -70,11 +70,18 @@ const V1_PATHS = [
 
 describe("proxy V2 gating", () => {
   it.each(V2_PATHS)(
-    "redirects %s to the V1 landing page without the memax_ui cookie",
+    "sends a signed-out browser on %s to sign in, coming back after",
     (path) => {
       const res = proxy(makeRequest(path));
       expect(res.status).toBe(307);
-      expect(res.headers.get("location")).toBe("https://memax.app/");
+      const to = new URL(res.headers.get("location")!);
+      if (path.startsWith("/dev/")) {
+        // The dev fixtures aren't anyone's page: V1's home.
+        expect(to.pathname).toBe("/");
+        return;
+      }
+      expect(to.pathname).toBe("/signin");
+      expect(to.searchParams.get("next")).toBe(path);
     },
   );
 
@@ -118,9 +125,11 @@ describe("proxy V2 gating", () => {
     expect(res.headers.get("location")).toBe("https://memax.app/home");
   });
 
-  it("drops the V2 query string on the redirect", () => {
+  it("keeps the V2 query string in next, for after sign-in", () => {
     const res = proxy(makeRequest("/memax-v2/search?q=river"));
-    expect(res.headers.get("location")).toBe("https://memax.app/");
+    const to = new URL(res.headers.get("location")!);
+    expect(to.pathname).toBe("/signin");
+    expect(to.searchParams.get("next")).toBe("/memax-v2/search?q=river");
   });
 
   it.each(V2_PATHS)("lets %s through with memax_ui=v2", (path) => {

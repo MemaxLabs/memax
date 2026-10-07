@@ -1,0 +1,319 @@
+/* One memory, after Memory.dc.html: the statement under its seal, then
+ * lineage and merged notes beside the sources, reach and conditions. */
+
+.page {
+  max-width: 1160px;
+  margin: 0 auto;
+}
+
+.top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 40px;
+  align-items: start;
+  margin-bottom: 40px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+}
+
+.lead {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  max-width: 760px;
+  font-family: var(--font-serif);
+  font-size: 38px;
+  line-height: 46px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+/* Type carries certainty: italic while proposed, dotted once stale. */
+.title.isProposed {
+  font-style: italic;
+  color: var(--ink-2);
+}
+
+.title.isProposed:lang(zh) {
+  font-style: normal;
+  font-synthesis: none;
+  padding-left: 12px;
+  border-left: 2px solid var(--ochre);
+}
+
+.title.isStale {
+  text-decoration: underline dotted var(--line-strong);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 8px;
+}
+
+.title.isMerged {
+  color: var(--ink-3);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.prose {
+  font-variant-numeric: normal;
+}
+
+.actions {
+  margin-top: 8px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.waiting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.seal {
+  padding: 18px 12px 0 0;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 48px;
+}
+
+.main {
+  min-width: 0;
+}
+
+.mergedLabel {
+  margin-top: 32px;
+}
+
+/* A fold's Undo under its lineage line: until when, then the button. */
+.unfold {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.more {
+  padding: 6px 12px;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.source {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink);
+}
+
+.source:last-child {
+  border-bottom: 0;
+}
+
+.sourceIcon {
+  display: flex;
+  color: var(--ink-3);
+}
+
+.sourceLabel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: inherit;
+  text-decoration: none;
+}
+
+a.sourceLabel:hover {
+  text-decoration: underline;
+}
+
+.note {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+.conditions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px 16px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.checked {
+  margin-top: 4px;
+}
+
+.tombstone {
+  max-width: 760px;
+}
+
+/* Forget, confirmed inline (States.dc.html): a vermilion wash, the
+ * question, what it removes, then Cancel and Forget. */
+.forgetConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 760px;
+  margin-top: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--vermilion-wash);
+}
+
+.forgetText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.forgetTitle {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.forgetDetail {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.forgetRefusal {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--vermilion);
+}
+
+.forgetNote {
+  max-width: 480px;
+}
+
+.forgetButtons {
+  display: flex;
+  gap: 8px;
+}
+
+/* Tombstone.dc.html: the redaction, the mark and its line, the lede. */
+.tombHead {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 40px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 760px;
+}
+
+.bar {
+  display: block;
+  height: 30px;
+  background: var(--redact);
+  border-radius: var(--radius-xs);
+}
+
+.tombMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lede {
+  margin: 0;
+  max-width: 40em;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 28px;
+  color: var(--ink-2);
+}
+
+.panelList {
+  list-style: none;
+  margin: 0;
+  padding: 8px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.footnote {
+  margin: 0;
+}
+
+@media (max-width: 1023px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .page:global(.mx-page) {
+    padding: 20px 16px 24px;
+  }
+
+  .top {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .seal {
+    order: -1;
+    padding: 0;
+  }
+
+  .title {
+    font-size: 28px;
+    line-height: 35px;
+  }
+}

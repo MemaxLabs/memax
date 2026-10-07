@@ -1,174 +1,78 @@
 "use client";
 
 import { Memax } from "memax-sdk";
-import { getAccessToken } from "@/lib/auth";
-import {
-  clearSessionPresence,
-  markSessionPresence,
-} from "@/lib/session-presence";
 import { API_URL } from "@/lib/urls";
+import {
+  PASSKEY_SUGGESTED_EVENT,
+  answerPasskeyCheck,
+  suggestsPasskey,
+} from "@/lib/v2/passkeys/check";
 
+// The browser talks to the API only through the web app's server
+// (/api/proxy), which holds the session in HttpOnly cookies, attaches its
+// token and refreshes it (lib/bff). The browser never has a token: the
+// SDK here sends no Authorization header, and same-origin requests carry
+// the cookies.
 const BROWSER_API_PROXY_URL = "/api/proxy";
-const TOKEN_KEY = "memax_access_token";
-const REFRESH_KEY = "memax_refresh_token";
 
 let authedClient: Memax | null = null;
 let publicClient: Memax | null = null;
-let refreshPromise: Promise<string | null> | null = null;
-
-interface AuthTokens {
-  access_token?: string;
-  refresh_token?: string;
-}
 
 function notifyAuthExpired() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent("memax:auth-expired"));
 }
 
-function getBrowserSafeAPIURL(): string {
-  return typeof window === "undefined" ? API_URL : BROWSER_API_PROXY_URL;
-}
-
-export function createMemaxClientWithToken(token: string): Memax {
-  return new Memax({
-    apiUrl: getBrowserSafeAPIURL(),
-    auth: async (): Promise<Record<string, string>> => ({
-      Authorization: `Bearer ${token}`,
-    }),
-  });
-}
-
-function getRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(REFRESH_KEY);
-}
-
-function setStoredTokens(accessToken: string, refreshToken: string) {
-  localStorage.setItem(TOKEN_KEY, accessToken);
-  localStorage.setItem(REFRESH_KEY, refreshToken);
-  markSessionPresence();
-}
-
-function clearStoredTokens() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_KEY);
-  clearSessionPresence();
-}
-
-async function refreshAccessToken(): Promise<string | null> {
-  if (typeof window === "undefined") return null;
-  if (refreshPromise) return refreshPromise;
-
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) {
-    clearStoredTokens();
-    notifyAuthExpired();
-    return null;
-  }
-
-  refreshPromise = (async () => {
-    try {
-      const res = await fetch("/api/auth/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
-      const payload = (await res.json()) as {
-        data?: AuthTokens;
-        error?: { code?: string };
-      };
-      const tokens = payload.data;
-      const nextAccessToken = tokens?.access_token;
-      const nextRefreshToken = tokens?.refresh_token;
-      if (!nextAccessToken || !nextRefreshToken) {
-        if (
-          res.status === 401 ||
-          payload.error?.code === "invalid_token" ||
-          payload.error?.code === "expired_token" ||
-          payload.error?.code === "unauthorized"
-        ) {
-          clearStoredTokens();
-          notifyAuthExpired();
-        }
-        return null;
+/**
+ * A /v2 change that needed a person and went through without a passkey
+ * says so in its policy (`suggest: "passkey"`); the frame offers to add
+ * one. Read from a copy, after the answer is on its way to the caller.
+ */
+function watchForSuggestion(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  res: Response,
+) {
+  if (typeof window === "undefined" || !res.ok) return;
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (method === "GET" || !String(input).includes("/v2/")) return;
+  void res
+    .clone()
+    .json()
+    .then((body: unknown) => {
+      if (suggestsPasskey(body)) {
+        window.dispatchEvent(new CustomEvent(PASSKEY_SUGGESTED_EVENT));
       }
-
-      // Torn-down-session guard: if logout (or auth failure) cleared
-      // the stored tokens while this refresh was in flight, writing
-      // the late response would resurrect the session — and with the
-      // middleware's presence-cookie fast path, silently sign the
-      // browser back in on the next visit. A refresh only extends an
-      // EXISTING session; if the refresh token slot is empty now, the
-      // session is gone and this response must be dropped.
-      if (getRefreshToken() === null) {
-        return null;
-      }
-      setStoredTokens(nextAccessToken, nextRefreshToken);
-      return nextAccessToken;
-    } catch {
-      return null;
-    } finally {
-      refreshPromise = null;
-    }
-  })();
-
-  return refreshPromise;
+    })
+    .catch(() => {});
 }
 
-function shouldAttemptRefresh(input: RequestInfo | URL): boolean {
-  const url =
-    typeof input === "string"
-      ? input
-      : input instanceof URL
-        ? input.toString()
-        : input.url;
-  return !url.includes("auth/refresh") && !url.includes("auth/exchange");
-}
-
+/**
+ * A 401 through the proxy means the session is over: the proxy already
+ * refreshed it if it could. The auth provider signs the page out.
+ */
 async function authFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  const res = await fetch(input, init);
-  if (res.status !== 401 || !shouldAttemptRefresh(input)) {
-    return res;
-  }
-
-  const nextAccessToken = await refreshAccessToken();
-  if (!nextAccessToken) {
-    return res;
-  }
-
-  const headers = new Headers(init?.headers ?? undefined);
-  headers.set("Authorization", `Bearer ${nextAccessToken}`);
-
-  const retried = await fetch(input, {
-    ...init,
-    headers,
-  });
-
-  if (retried.status === 401) {
-    clearStoredTokens();
-    notifyAuthExpired();
-  }
-
-  return retried;
+  const res = await fetch(input, { credentials: "same-origin", ...init });
+  if (res.status === 401) notifyAuthExpired();
+  watchForSuggestion(input, init, res);
+  return res;
 }
 
 function createAuthedClient(): Memax {
   return new Memax({
     apiUrl: getBrowserSafeAPIURL(),
     fetch: authFetch,
-    auth: async (): Promise<Record<string, string>> => {
-      const headers: Record<string, string> = {};
-      const token = getAccessToken();
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-      return headers;
-    },
+    // The passkey re-check (lib/v2/passkeys/check.ts): a decision that
+    // asks for the person's passkey is answered and sent again.
+    passkeyCheck: answerPasskeyCheck,
   });
+}
+
+function getBrowserSafeAPIURL(): string {
+  return typeof window === "undefined" ? API_URL : BROWSER_API_PROXY_URL;
 }
 
 function createPublicClient(): Memax {

@@ -4,9 +4,13 @@
 //
 // Next mounts this ABOVE the root layout, so there is no i18n
 // Provider, no font variables, no design tokens from the normal
-// tree. We import ./globals.css directly so the destructive color
-// tokens + font stack still resolve, and we ship our own <html>
-// + <body> per Next's requirement.
+// tree. We ship our own <html> + <body> per Next's requirement.
+//
+// Shared by both root layouts ((v1) and (ledger)), so it imports NO
+// stylesheet: Next puts global-error in every route's tree and
+// preloads its CSS on every page, which would make each Ledger page
+// fetch V1's globals.css. Everything below is inline, with literal
+// fallbacks for the var() lookups.
 //
 // Keep this file dependency-free on the render path: it must
 // render even if an import in the providers tree throws. The
@@ -14,7 +18,6 @@
 // posthog chunk can't take down the fallback itself.
 
 import { useEffect, useState } from "react";
-import "./globals.css";
 
 type Locale = "en" | "zh";
 
@@ -104,7 +107,7 @@ export default function GlobalError({
       <head>
         <title>{copy.title}</title>
       </head>
-      <body>
+      <body style={{ margin: 0 }}>
         <div
           role="alert"
           aria-live="assertive"

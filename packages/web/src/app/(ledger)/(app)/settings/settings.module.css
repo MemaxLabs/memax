@@ -1,0 +1,137 @@
+/* Settings, after Account.dc.html: a 208px nav beside the page. */
+
+.layout {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 40px;
+  box-sizing: border-box;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 40px 40px 48px;
+}
+
+.nav {
+  padding-top: 4px;
+}
+
+.navLabel {
+  padding: 0 10px;
+}
+
+.navList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--ink-2);
+  text-decoration: none;
+}
+
+a.navItem:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.navItem[aria-current="page"] {
+  font-weight: 550;
+  color: var(--ink);
+  background: var(--select);
+}
+
+.navItem:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.navLater {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+.content :global(.mx-page-head) {
+  margin-bottom: 8px;
+}
+
+/* Rows of a settings panel: label and help on the left, the control on the right. */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* .mx-meta's look without its tabular figures, which in Schibsted
+ * Grotesk also widen "." and "," (they read as a space before them). */
+.hint {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+/* A row's controls, side by side: a field and a button beside it. */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rowLabel {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+@media (max-width: 1023px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .navList {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 639px) {
+  .layout {
+    padding: 20px 16px 24px;
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

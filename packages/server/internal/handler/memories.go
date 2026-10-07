@@ -40,6 +40,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore"
 	"github.com/MemaxLabs/memax/packages/server/internal/sanitize"
 	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
+	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
 
@@ -57,6 +58,9 @@ var maxBodySize = func() int64 {
 type MemoriesHandler struct {
 	store         store.Store
 	events        events.Publisher
+	v2            V2Forgetter             // nil = V2 off
+	passkeys      PasskeyHolders          // nil = passkeys off
+	modes         *spacemode.Resolver     // nil = V2 off: no space is on V2
 	embedder      embed.Embedder          // nil = no embeddings, keyword search only
 	summarizer    *summarize.Summarizer   // nil = no summaries
 	extractor     *extract.Extractor      // nil = no fact extraction
@@ -343,6 +347,13 @@ func (h *MemoriesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		if err != nil || hub.OwnerID != ownerID {
 			writeError(w, http.StatusForbidden, "no_write_access", "Write access to this hub is required")
 			return
+		}
+	}
+	// A push into a space on V2 through V1's API (an old CLI) still saves,
+	// as a note: Dream folds it into proposals for Review. Say so.
+	if h.modes != nil {
+		if on, err := h.modes.IsV2(r.Context(), hubID); err == nil && on {
+			setMemaxWarningHeader(w, memaxWarningSpaceOnV2)
 		}
 	}
 	// Related-context enrichment requires read access to the destination hub.
@@ -2181,10 +2192,15 @@ func (h *MemoriesHandler) BatchMove(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// DeleteAllData purges all user data: memories, topics, configs, dreams, reviews.
+// DeleteAllData purges all user data: memories, topics, configs, dreams.
 // DELETE /v1/account/data
 func (h *MemoriesHandler) DeleteAllData(w http.ResponseWriter, r *http.Request) {
 	ownerID := GetUserID(r)
+	// The V2 record of the spaces the person owns is forgotten through the
+	// ledger first (a receipted Forget of each space; plan 25 §5.13).
+	if !forgetV2Account(w, r, h.v2, h.passkeys, ownerID) {
+		return
+	}
 	// Count memories + sum storage bytes before deletion for meter adjustment.
 	// We use the authoritative Postgres SUM here (not the Redis cache)
 	// because an account wipe should zero the counters regardless of
@@ -3143,6 +3159,13 @@ func writeJSON(w http.ResponseWriter, status int, v model.ApiResponse) {
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	WriteError(w, status, code, message)
+}
+
+// WriteJSON is writeJSON for handler packages outside this one (the /v2
+// handlers in internal/handler/v2api). It keeps the compile-time
+// guarantee: only a model.ApiResponse can be written.
+func WriteJSON(w http.ResponseWriter, status int, v model.ApiResponse) {
+	writeJSON(w, status, v)
 }
 
 // WriteError writes a standard error response using the ApiResponse envelope.

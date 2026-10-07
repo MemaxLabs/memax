@@ -16,7 +16,7 @@
   },
   "type": "module",
   "bin": {
-    "memax": "./dist/index.js"
+    "memax": "./dist/bin.js"
   },
   "exports": {
     ".": {
@@ -28,12 +28,14 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && tsc --noEmit -p test && node scripts/sync-compiler.mjs --check",
     "test": "vitest run --passWithNoTests",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "@secretlint/core": "^13.0.7",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.0.7",
     "chalk": "^5.4.0",
     "commander": "^13.0.0",
     "memax-sdk": "workspace:^"

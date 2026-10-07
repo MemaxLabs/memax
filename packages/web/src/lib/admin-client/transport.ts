@@ -1,11 +1,19 @@
 // Minimal transport for the internal admin client. Mirrors the
-// request/response shape of lib/api.ts (auth headers, ApiError
-// envelope, retry-after behavior) so admin calls and user-facing
-// calls fail the same way in the UI. Kept in-package so the admin
-// client never imports from the public SDK transport.
+// request/response shape of lib/api.ts (ApiError envelope, retry-after
+// behavior) so admin calls and user-facing calls fail the same way in
+// the UI. Kept in-package so the admin client never imports from the
+// public SDK transport.
+//
+// Like every browser call, admin calls go through the web app's server
+// (/api/proxy), which holds the session in HttpOnly cookies and attaches
+// its token (lib/bff); the page has no token to send.
 
-import { apiAuthHeaders, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { API_URL } from "@/lib/urls";
+
+/** Where admin calls go: the proxy in the browser, the API on the server. */
+export const ADMIN_API_BASE =
+  typeof window === "undefined" ? API_URL : "/api/proxy";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -32,7 +40,7 @@ export async function adminReq<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const headers: Record<string, string> = { ...apiAuthHeaders() };
+  const headers: Record<string, string> = {};
   const init: RequestInit = { method, headers };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -42,7 +50,7 @@ export async function adminReq<T>(
     init.cache = "no-store";
   }
 
-  const res = await fetch(`${API_URL}${path}`, init);
+  const res = await fetch(`${ADMIN_API_BASE}${path}`, init);
   const text = res.status === 204 ? "" : await res.text();
   const parsed: Envelope = text ? safeParse(text) : {};
 

@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "compile": { "id": "C-0910", "at": "2026-10-06T10:15:00Z" },
+  "space": {
+    "slug": "memax-v2",
+    "name": "Memax V2",
+    "kind": "project",
+    "url": "https://memax.app/memax-v2/brief"
+  },
+  "brief": {
+    "id": "B-0045",
+    "title": "Memax V2 engineering brief",
+    "sections": [
+      {
+        "key": "decisions",
+        "heading": "Decisions",
+        "items": [{ "ref": "M-0219" }, { "ref": "M-0450" }]
+      },
+      {
+        "key": "conventions",
+        "heading": "Conventions",
+        "items": [
+          { "ref": "M-0071" },
+          { "ref": "M-0441" },
+          { "ref": "M-0442" },
+          { "ref": "M-0451" }
+        ]
+      }
+    ]
+  },
+  "memories": [
+    {
+      "ref": "M-0219",
+      "statement": "Background jobs run on River, Postgres-backed. We do not use Temporal.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "read_score": 41
+    },
+    {
+      "ref": "M-0450",
+      "statement": "Handlers return the model.ApiResponse envelope, never raw JSON.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "scope": { "paths": ["packages/server/**"] },
+      "read_score": 17
+    },
+    {
+      "ref": "M-0071",
+      "statement": "pnpm workspaces only. Never run `npm install` at the root.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "read_score": 38
+    },
+    {
+      "ref": "M-0441",
+      "statement": "Prefer named exports in React components.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "scope": { "paths": ["packages/web/**"] },
+      "read_score": 11
+    },
+    {
+      "ref": "M-0442",
+      "statement": "Run tests with `pnpm test -- --run`.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "scope": { "paths": ["packages/web/**"] },
+      "read_score": 14
+    },
+    {
+      "ref": "M-0451",
+      "statement": "Test files sit next to the code they test.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "scope": { "paths": ["**/*.test.ts", "**/*.test.tsx"] },
+      "read_score": 5
+    },
+    {
+      "ref": "M-0460",
+      "statement": "Hand work to Codex with the memax plugin's handoff skill.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "scope": { "agents": ["claude-code"] },
+      "read_score": 4
+    },
+    {
+      "ref": "M-0461",
+      "statement": "Run repo-wide edits with `gemini --sandbox`.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "scope": { "agents": ["gemini"] },
+      "read_score": 2
+    },
+    {
+      "ref": "M-0462",
+      "statement": "Keep Composer edits inside one package.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "scope": { "paths": ["packages/web/**"], "agents": ["cursor"] },
+      "read_score": 3
+    }
+  ],
+  "targets": [
+    { "kind": "agents_md" },
+    { "kind": "agents_md", "path": "scoped-omit/AGENTS.md", "scoped": "omit" },
+    { "kind": "claude_md" },
+    { "kind": "cursor_mdc" },
+    { "kind": "chatgpt", "scoped": "omit" },
+    { "kind": "gemini_md" },
+    { "kind": "copilot" },
+    { "kind": "windsurf" },
+    { "kind": "claude_rules" }
+  ]
+}

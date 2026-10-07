@@ -19,6 +19,10 @@ func TestClassifyRequest(t *testing.T) {
 		{"POST", "/v1/recall/", OpClassHeavy},
 		{"POST", "/v1/ask", OpClassHeavy},
 		{"POST", "/v1/ask/", OpClassHeavy},
+		{"POST", "/v2/spaces/memax-v2/ask", OpClassHeavy},
+		{"POST", "/v2/spaces/memax-v2/ask/", OpClassHeavy},
+		{"POST", "/v2/spaces//ask", OpClassLight},
+		{"POST", "/v2/spaces/memax-v2/memories", OpClassLight},
 		// Light ops
 		{"GET", "/v1/memories", OpClassLight},
 		{"GET", "/v1/memories/abc", OpClassLight},
@@ -101,6 +105,7 @@ func TestApplyPathOverride(t *testing.T) {
 		{"recall unaffected (no override)", "POST", "/v1/recall", 120, 120},
 		{"override floors to plan when plan is tighter", "POST", "/v1/ask", 10, 10}, // plan wins when plan < override
 		{"override ignored for non-matching method", "GET", "/v1/ask", 120, 120},
+		{"v2 ask, any space", "POST", "/v2/spaces/memax-v2/ask", 120, 30},
 		{"batch-delete override applied", "POST", "/v1/memories/batch-delete", 120, 15},
 		{"zero default passes through", "POST", "/v1/ask", 0, 0},
 	}

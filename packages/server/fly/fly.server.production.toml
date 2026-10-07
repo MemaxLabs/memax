@@ -15,6 +15,10 @@ swap_size_mb = 512
   dockerfile = "../Dockerfile.server"
 
 [env]
+  # V2 compile service: a Cloudflare Worker (packages/compile-service/
+  # wrangler.jsonc, deployed before this app by CI). It needs
+  # COMPILE_SERVICE_TOKEN, a secret synced from Doppler with the rest.
+  COMPILE_SERVICE_URL = "https://compile.memax.app"
   PORT = "8080"
   # Trust header source for per-IP rate limiting. Valid: none|cloudflare|fly|xff.
   #

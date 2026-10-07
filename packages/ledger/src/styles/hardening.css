@@ -1,0 +1,167 @@
+/* Memax Ledger · Production hardening.
+ * Everything here is an addition to the handoff bundle, from the V2 design review
+ * (memax-internal/docs/v2/design-review.md §2–§5, D1 and D4). The other files in
+ * this folder are the bundle itself. Rules here only add behaviour or fix the
+ * defects the review lists; on the boards' own content they render the same.
+ * Every colour is a token. */
+
+/* ---------- utilities ---------- */
+/* Visually hidden, still read by assistive technology (state words, column labels). */
+.mx-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+
+/* ---------- focus ---------- */
+/* The bundle draws focus only inside .mx-shell and .mx-stage. Dialogs and popovers render
+ * in portals outside both, so the interactive parts carry the same ring wherever they are:
+ * a solid 2px focus ring outside a 2px paper gap. Same specificity as the bundle's rule, so
+ * the night overrides (.mx-dream, .mx-term) still win. */
+:where(.mx-btn, .mx-seg-opt, .mx-gate-opt, .mx-cite, .mx-rail-item, .mx-rail-space, .mx-rail-ask, .mx-term-body, .mx-skip):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; box-shadow: 0 0 0 2px var(--paper); }
+.mx-term :focus-visible { outline-color: var(--night-accent); box-shadow: none; }
+.mx-sheet:focus-visible { outline: none; box-shadow: none; }
+
+/* ---------- button ---------- */
+/* Button can render as a link: an anchor needs the button's box model and no underline. */
+.mx-btn { box-sizing: border-box; text-decoration: none; }
+/* Disabled never relies on colour alone (design review §2): a not-allowed cursor, and
+ * aria-disabled with the reason in the tooltip when the control stays focusable. */
+.mx-btn:disabled, .mx-btn[aria-disabled="true"] { cursor: not-allowed; }
+.mx-btn[aria-disabled="true"] { opacity: .4; }
+.mx-btn[aria-busy="true"] { cursor: progress; opacity: 1; }
+.mx-btn--primary[aria-disabled="true"]:hover { background: var(--ink); }
+.mx-btn--keep[aria-disabled="true"]:hover { filter: none; }
+.mx-btn--secondary[aria-disabled="true"]:hover { background: var(--card); }
+.mx-btn--quiet[aria-disabled="true"]:hover { background: transparent; color: var(--ink-2); }
+.mx-btn--danger[aria-disabled="true"]:hover { background: transparent; border-color: var(--line-strong); }
+
+/* ---------- segmented ---------- */
+/* An option that can't be chosen (Write for an API key's agent) is greyed, with a
+ * not-allowed cursor, and keeps its reason in the tooltip (design review §2). */
+.mx-seg-opt:disabled, .mx-seg-opt[aria-disabled="true"] { cursor: not-allowed; opacity: .4; }
+.mx-seg-opt:disabled:hover, .mx-seg-opt[aria-disabled="true"]:hover { color: var(--ink-3); }
+.mx-seg-opt.is-on:disabled:hover, .mx-seg-opt.is-on[aria-disabled="true"]:hover { color: var(--ink); }
+
+/* ---------- agent row ---------- */
+/* With href, the stamp and name are a link to the agent's page. */
+.mx-agent-link { display: inline-flex; min-width: 0; color: inherit; text-decoration: none; border-radius: var(--radius-xs); }
+.mx-agent-link:hover .mx-stamp-name { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.mx-agent-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; box-shadow: 0 0 0 2px var(--paper); }
+
+/* ---------- lists ---------- */
+/* MemoryRow and Redaction are list items; MemoryList is their <ul>. */
+.mx-list { list-style: none; margin: 0; padding: 0; }
+.mx-panel > .mx-list:last-child > :last-child { border-bottom: 0; }
+
+/* ---------- decision gate: answered, ended, notices ---------- */
+/* Answered, the seal stamps where the time was, as on a kept ReviewCard. Ended any other
+ * way, the head stops being ochre (nothing waits on you) and the options read as a record:
+ * no hover, and the ones not chosen step back. A notice (D15: answering needs the web)
+ * sits on the ochre wash, like the quarantine notice. */
+.mx-gate { position: relative; }
+/* As specific as .mx-seal.is-stamping, so the stamp stays where the time was. */
+.mx-gate > .mx-gate-seal { position: absolute; top: 10px; right: 18px; }
+.mx-gate.is-answered .mx-gate-head .mx-meta { visibility: hidden; }
+.mx-gate.is-answered .mx-gate-q { max-width: calc(100% - 72px); }
+.mx-gate.is-locked .mx-gate-who { color: var(--ink-2); }
+.mx-gate.is-locked .mx-gate-opt { cursor: default; }
+.mx-gate.is-locked .mx-gate-opt:hover { background: var(--card); }
+.mx-gate.is-locked .mx-gate-opt.is-on:hover { background: var(--select); }
+.mx-gate.is-locked .mx-gate-opt:not(.is-on) { color: var(--ink-2); }
+.mx-gate-notice { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--ochre-wash); color: var(--ink); font-size: 13px; line-height: 18px; text-wrap: pretty; }
+.mx-gate-actions { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
+.mx-gate-foot { flex-wrap: wrap; min-height: var(--control-sm); }
+/* A phone: the card keeps its edge, with less padding, and the footer wraps under. */
+@media (max-width: 639px) {
+  .mx-gate { padding: var(--space-4); }
+}
+
+/* ---------- memory row: the statement as a link or button ---------- */
+/* With href or onClick the statement becomes the row's one control, stretched over the
+ * whole row, so the row is a single tab stop and its actions stay separate buttons. */
+.mx-row-link { margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: inherit; text-decoration: none; cursor: pointer; }
+.mx-row-link::after { content: ""; position: absolute; inset: 0; }
+/* The reason Keep is unavailable is a sentence: tabular figures would set its full stops
+ * tabular-wide too (the "space before punctuation" the design review saw on States2). */
+.mx-review-foot > .mx-meta { font-variant-numeric: normal; }
+/* A button is an atomic inline box, so the stale row's dotted underline doesn't reach the
+ * words inside it the way it reaches a link's: it carries the row's decoration itself. */
+.mx-row.is-stale button.mx-row-link { text-decoration: inherit; }
+.mx-row-link:focus-visible { outline: none; box-shadow: none; }
+.mx-row-link:focus-visible::after { box-shadow: inset 0 0 0 2px var(--focus), inset 0 0 0 4px var(--paper); }
+.mx-row-actions { z-index: 1; }
+/* Without hover (touch), a selected row shows its actions; focus-within already does. */
+@media (hover: none) {
+  .mx-row.is-selected .mx-row-actions { opacity: 1; pointer-events: auto; }
+}
+
+/* ---------- memory row: the receipt rail at 1024–1280 (design review D4) ---------- */
+/* The second receipt line is ID · space · source. The ID never truncates; "space · source"
+ * is one box that ends in an ellipsis, so the source goes first and then the space. The
+ * first line ends in an ellipsis too rather than clipping a glyph. The full receipt is in
+ * the rail's title and in the row's accessible description. */
+.mx-row-rail-2 { display: flex; gap: 0; min-width: 0; }
+.mx-row-rail-2 > * { flex: none; white-space: pre; }
+.mx-row-rail-2 > .mx-row-rail-id { flex: none; }
+.mx-row-rail-2 > .mx-row-rail-rest { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mx-row-rail-lines > .mx-receipt:first-child > :not(.mx-receipt-dot) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mx-row-rail-lines > .mx-receipt:first-child > .mx-receipt-action { flex-shrink: 0; max-width: 100%; }
+@media (min-width: 1024px) and (max-width: 1180px) {
+  .mx-row { --receipt-rail: 176px; }
+}
+
+/* ---------- memory text ---------- */
+/* MemoryText applies the state typography to a statement outside a row (design review §4),
+ * so screens never set the serif or the state styles by hand. Same values as .mx-row-text. */
+.mx-mem { margin: 0; font-family: var(--font-serif); font-size: 16px; line-height: 24px; font-weight: 400; font-variation-settings: "opsz" 16; color: var(--ink); text-wrap: pretty; }
+.mx-mem.is-lg { font-size: 20px; line-height: 30px; font-variation-settings: "opsz" 20; }
+.mx-mem.is-unconfirmed { font-style: italic; color: var(--ink-2); }
+.mx-mem.is-stale { text-decoration: underline dotted var(--line-strong); text-decoration-thickness: 1.5px; text-underline-offset: 5px; animation: mx-dots-in var(--duration-settle) var(--ease-standard) both; }
+.mx-mem.is-merged { color: var(--ink-3); }
+
+/* ---------- proposed in Chinese (design review D1) ---------- */
+/* PENDING DESIGNER APPROVAL. Songti SC and Noto Serif SC have no italic, and a synthesised
+ * CJK oblique looks broken, so under :lang(zh) (and zh-*) a proposed statement is upright
+ * ink-2 with a 2px ochre rule on its left. The ○ mark and the state word stay. The rule
+ * sits in the gutter, so the text keeps its column. Set lang="en" on a statement to keep
+ * the italic for Latin text inside a Chinese UI. */
+:is(.mx-row.is-unconfirmed .mx-row-text, .mx-review-statement.is-proposed, .mx-mem.is-unconfirmed):lang(zh) { font-style: normal; font-synthesis: none; color: var(--ink-2); margin-left: -10px; padding-left: 8px; border-left: 2px solid var(--ochre); }
+/* PENDING DESIGNER APPROVAL. The Dream headline's 11ch measure is set for Latin; CJK glyphs
+ * are twice as wide, and a break can land inside a word ("变成|了"). In Chinese the headline
+ * breaks only at the template's spaces: "34 条笔记变成了 / 6 条事实。". */
+.mx-dream-title:lang(zh) { max-width: 9em; word-break: keep-all; }
+
+/* ---------- terminal ---------- */
+/* Code views never wrap mid-token (design review §2): lines keep their own breaks and the
+ * body scrolls sideways. The body is focusable so the scroll works from the keyboard. */
+.mx-term-body { white-space: pre; overflow-x: auto; }
+.mx-term-line { display: block; }
+
+/* ---------- dream ---------- */
+/* The edition plays once. The app passes animate={false} once it has been seen. */
+.mx-dream.is-static .mx-dream-notes span, .mx-dream.is-static .mx-dream-facts li { animation: none; }
+
+/* ---------- command dialog ---------- */
+/* The one floating layer: centred 88px from the top over the scrim (CommandBar spec). */
+.mx-cmd-scrim { position: fixed; inset: 0; z-index: 100; background: var(--scrim); transition: opacity var(--duration-base) var(--ease-settle); }
+.mx-cmd-layer { position: fixed; top: 88px; left: 50%; z-index: 101; display: flex; justify-content: center; width: calc(100vw - 2 * var(--space-4)); max-width: 680px; transform: translateX(-50%); outline: none; transition: opacity var(--duration-base) var(--ease-settle), transform var(--duration-base) var(--ease-settle); }
+.mx-cmd-scrim[data-starting-style], .mx-cmd-scrim[data-ending-style] { opacity: 0; }
+.mx-cmd-layer[data-starting-style] { opacity: 0; transform: translate(-50%, 4px); }
+.mx-cmd-layer[data-ending-style] { opacity: 0; transition-timing-function: var(--ease-exit); }
+
+/* ---------- shell ---------- */
+.mx-skip { position: absolute; top: var(--space-2); left: var(--space-2); z-index: 102; padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--card); color: var(--ink); font-family: var(--font-sans); font-size: 13px; line-height: 18px; text-decoration: none; transform: translateY(calc(-100% - var(--space-4))); }
+.mx-skip:focus { transform: none; }
+
+/* ---------- touch targets ---------- */
+/* At least 44px on coarse pointers. Inline controls grow an invisible hit area so the
+ * drawn size is unchanged; stacked rail items and fields grow to 44px. */
+@media (pointer: coarse) {
+  .mx-btn, .mx-seg-opt, .mx-cite, .mx-rail-ask, .mx-rail-space { position: relative; }
+  .mx-btn::after, .mx-seg-opt::after, .mx-cite::after, .mx-rail-ask::after, .mx-rail-space::after { content: ""; position: absolute; top: 50%; left: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
+  .mx-rail-item, .mx-field-box { height: 44px; }
+}
+
+/* ---------- reduced motion ---------- */
+/* The bundle switches motion off inside .mx-shell and .mx-stage. Components also render in
+ * portals and on bare pages, so every mx- element is covered. */
+@media (prefers-reduced-motion: reduce) {
+  [class*="mx-"], [class*="mx-"]::before, [class*="mx-"]::after { animation: none !important; transition: none !important; }
+}

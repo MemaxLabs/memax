@@ -35,10 +35,102 @@ export {
 // Admin APIs are an internal, web-only surface and are intentionally not
 // exported by this public SDK.
 export { MemaxError } from "./errors.js";
+
+// /v2 — the V2 record. Types are generated from
+// packages/server/openapi/v2.yaml; use them as `V2.Memory`, `V2.PolicyCode`…
+// (`export * as`, not `export type * as`, so the .d.ts parses on
+// TypeScript before 5.0; the module holds only types.)
+export * as V2 from "./v2/types.js";
+export {
+  V2Resource,
+  V2SpacesResource,
+  V2MemoriesResource,
+  V2ReviewResource,
+  V2ReceiptsResource,
+  V2ReadsResource,
+  V2AgentsResource,
+  V2BriefsResource,
+  V2TargetsResource,
+  V2GatesResource,
+  V2NoticesResource,
+  V2SessionsResource,
+  V2DreamResource,
+  V2SettingsResource,
+  V2AccountResource,
+  V2PasskeysResource,
+  undoableAction,
+  refusalOf,
+  forgetCarriesOf,
+  askEventOf,
+} from "./v2/resources.js";
+export { EventStreamParser, readEventStream } from "./v2/sse.js";
+export type { ServerSentEvent } from "./v2/sse.js";
+export {
+  verifyReceiptChain,
+  canonicalReceipt,
+  checkpointStatement,
+  receiptLeaf,
+  genesisHash,
+  merkleRoot,
+} from "./v2/verify.js";
+export type {
+  ChainReceipt,
+  ChainReport,
+  ChainProblem,
+  ChainProblemKind,
+  ChainCrypto,
+  VerifyChainInput,
+} from "./v2/verify.js";
+export {
+  EXPORT_FORMAT,
+  ExportFormatError,
+  parseExport,
+  parseFrontmatter,
+  parseReceipts,
+  splitDocument,
+  verifyExport,
+} from "./v2/export.js";
+export type {
+  ExportFiles,
+  ExportManifest,
+  ExportManifestFile,
+  ExportCheckpoints,
+  ExportReceiptStamp,
+  ExportedMemory,
+  ExportedTombstone,
+  ExportedBrief,
+  ParsedExport,
+  ExportProblem,
+  ExportProblemKind,
+  ExportReport,
+  VerifyExportInput,
+} from "./v2/export.js";
+export type {
+  CommandOptions as V2CommandOptions,
+  MemoryRefOptions as V2MemoryRefOptions,
+  ReviewOptions as V2ReviewOptions,
+  EditOptions as V2EditOptions,
+  PageOptions as V2PageOptions,
+  VersionedCommandOptions as V2VersionedCommandOptions,
+  ListMemoriesOptions as V2ListMemoriesOptions,
+  ListReceiptsOptions as V2ListReceiptsOptions,
+  GetMemoryOptions as V2GetMemoryOptions,
+  ListGatesOptions as V2ListGatesOptions,
+  GateRefOptions as V2GateRefOptions,
+  GateCommandOptions as V2GateCommandOptions,
+  AskOptions as V2AskOptions,
+  SpaceExport as V2SpaceExport,
+  SettingsEditOptions as V2SettingsEditOptions,
+  SessionCommandOptions as V2SessionCommandOptions,
+  AccountCommandOptions as V2AccountCommandOptions,
+} from "./v2/resources.js";
+export { passkeyCheckOf, encodePasskeyAnswer } from "./transport.js";
 export type {
   // Config
   MemaxConfig,
   AuthProvider,
+  PasskeyCheck,
+  PasskeyCheckHandler,
   // Request options
   PushOptions,
   RecallOptions,
@@ -110,7 +202,12 @@ export type {
   AuthProviderName,
   User,
   MeResponse,
+  WebUi,
   AuthTokenPair,
+  ExchangedTokens,
+  DeviceSignIn,
+  DeviceSignInOptions,
+  DeviceSignInPoll,
   ImpersonationResult,
   AuthIdentity,
   UnlinkProviderResult,
@@ -123,9 +220,12 @@ export type {
   ApiKeyListItem,
   UpdateApiKeyPayload,
   UpdateApiKeyResult,
-  OAuthConsentHub,
-  OAuthConsentPermission,
-  OAuthConsentRequest,
+  OAuthAutonomy,
+  OAuthDecision,
+  OAuthDecisionInput,
+  OAuthRequest,
+  OAuthRequestSpace,
+  OAuthConsentTarget,
   UpdateProfileResult,
   DeleteAllDataResult,
   // Hubs

@@ -17,6 +17,14 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
+	"github.com/riverqueue/river/rivertype"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
+	"github.com/MemaxLabs/memax/packages/server/internal/forget"
+	"github.com/MemaxLabs/memax/packages/server/internal/judge"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2switch"
 )
 
 // Client wraps river.Client for job insertion. Used by the API server.
@@ -276,6 +284,18 @@ func InsertClient(pool *pgxpool.Pool) (*Client, error) {
 	river.AddWorker(workers, &stubCopySeedMemoriesWorker{})
 	river.AddWorker(workers, &stubBoardSweepWorker{})
 	river.AddWorker(workers, &stubBoardRefreshWorker{})
+	// V2 compile path, judge, embeddings, Forget, Dream and the switch to
+	// V2: the ledger InsertTx-es compile_target, judge_proposal,
+	// judge_import, index_memory, forget_propagate and space_switch jobs
+	// through this client (ledger.WithJobs), and Dream's run now inserts
+	// dream_space. A kind missing here fails the command that inserts it,
+	// on the API only.
+	compile.AddWorkers(workers, nil, nil)
+	judge.AddWorkers(workers, nil)
+	v2index.AddWorkers(workers, nil, nil)
+	forget.AddWorkers(workers, nil)
+	v2switch.AddWorkers(workers, nil)
+	v2dream.AddWorkers(workers, nil, nil)
 
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Logger:  slog.Default(),
@@ -294,6 +314,13 @@ func InsertClient(pool *pgxpool.Pool) (*Client, error) {
 func (c *Client) Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) error {
 	_, err := c.river.Insert(ctx, args, opts)
 	return err
+}
+
+// InsertManyTx enqueues jobs inside the caller's transaction, so they
+// exist if and only if it commits. The V2 ledger uses it (ledger.Jobs)
+// to enqueue compile jobs with the command that dirties the targets.
+func (c *Client) InsertManyTx(ctx context.Context, tx pgx.Tx, params []river.InsertManyParams) ([]*rivertype.JobInsertResult, error) {
+	return c.river.InsertManyTx(ctx, tx, params)
 }
 
 // JobRetry re-schedules a non-running job for immediate execution.

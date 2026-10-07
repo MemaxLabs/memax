@@ -60,8 +60,11 @@ type OpsWorkers struct {
 	Clients []OpsWorkerClient `json:"clients"`
 }
 
-// OpsWorkerClient is one row from river_client joined against
-// river_client_queue.
+// OpsWorkerClient is one worker machine, read from the app-owned
+// worker_heartbeats table (or synthesized from river_leader when no
+// heartbeat rows exist). Queues is always empty: it came from River's
+// river_client_queue, which nothing ever wrote and River v0.40
+// dropped. The field stays so the admin UI contract is unchanged.
 type OpsWorkerClient struct {
 	ClientID    string                 `json:"client_id"`
 	Queues      []OpsWorkerClientQueue `json:"queues"`

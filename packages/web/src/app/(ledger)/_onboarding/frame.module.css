@@ -1,0 +1,69 @@
+/* The first session's own pages (CliAuth, Connect, FirstRun, Cleanup,
+ * CompileDone): the wordmark and a meta line, then the page. */
+
+.page {
+  box-sizing: border-box;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-6) var(--space-12) var(--space-12);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+/* FirstRun keeps both columns in the window. */
+.fill {
+  min-height: max(100dvh, 820px);
+  padding-bottom: var(--space-6);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.main {
+  width: 100%;
+  margin: var(--space-12) auto 0;
+}
+
+.wide {
+  max-width: 1280px;
+}
+
+.narrow {
+  max-width: 1080px;
+}
+
+.split {
+  max-width: 1180px;
+}
+
+.center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin-top: 0;
+}
+
+@media (max-width: 639px) {
+  .page {
+    padding: var(--space-4) var(--space-4) var(--space-10);
+  }
+  .main {
+    margin-top: var(--space-8);
+  }
+}

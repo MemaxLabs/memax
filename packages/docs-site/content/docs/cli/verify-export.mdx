@@ -1,0 +1,92 @@
+---
+title: memax verify-export
+description: "Check an export: its files, its receipt chain against the signed checkpoints, and its memories against their receipts."
+---
+
+`memax verify-export` checks an [export](/cli/export), offline, and says
+exactly what it verified.
+
+## Usage
+
+```bash
+memax verify-export <path> [--key <public key>]... [--offline] [--format json]
+```
+
+`<path>` is the space's export folder, the folder `memax export` wrote
+into, or a zip archive downloaded from the web app.
+
+| Flag             | Description                                                                      |
+| ---------------- | -------------------------------------------------------------------------------- |
+| `--key <key>`    | An Ed25519 public key to trust (base64 or hex), pinned. Repeat it for more keys. |
+| `--offline`      | Don't ask the server for its keys.                                               |
+| `--format <fmt>` | `text` (default) or `json` (the SDK's `ExportReport`).                           |
+
+```text
+› memax verify-export memax-export/memax-v2
+
+  Verified memax-v2, exported as of 2026-10-07 14:02 UTC (memax.export.v1)
+
+  ✓ 230 files match export.json
+  ✓ Receipts 1–1,280 are sealed in 12 checkpoints; every signature verifies (ed25519:fe812c12f3ab4ce6, from https://api.memax.app)
+  ○ 4 receipts came after the last seal (lines 1,281–1,284 of receipts.jsonl): they chain on, but no checkpoint covers them yet
+  ✓ 214 memories, 3 tombstones and 2 Brief versions match their receipts
+```
+
+## What it checks
+
+1. **Every file against `export.json`**, by SHA-256 and size; a file the
+   manifest doesn't list is reported too.
+2. **The receipt chain**, recomputed from the first receipt in
+   `receipts.jsonl`: each receipt's canonical form, its leaf hash, the
+   chain hash, each checkpoint's range, the chain hash before and after
+   it, its Merkle root, and its Ed25519 signature. Receipts 1 to N are
+   then exactly the ones Memax sealed and signed. A receipt's reason is
+   checked against the commitment sealed with it; a reason Forget
+   redacted is missing, and only its commitment is left, which is what
+   the chain needs.
+3. **The records against the receipts**: each memory's and tombstone's
+   receipts are in `receipts.jsonl`, about it, as listed, and all of
+   them; its versions and its body agree; every forgotten memory has its
+   tombstone; each Brief version names one of the Brief's receipts; the
+   export's own receipt is there.
+
+**Which keys.** `--key` pins the keys you trust. Otherwise, when you're
+signed in, it asks the server for its published keys
+(`GET /v2/spaces/{space}/checkpoints`); offline, it uses the keys the
+export carries in `checkpoints.json` and says so, since those prove only
+that the export is consistent with itself.
+
+**What it can't prove.** A memory's words are never in a receipt, so that
+Forget can remove them. The receipts prove which memories existed, their
+versions, and who did what when; the words are checked against
+`export.json`, which catches a file changed after the export, but not one
+rewritten together with the manifest. Receipts after the last checkpoint
+weren't sealed when the export was made: they chain on, unproven.
+
+Each problem says where it is:
+
+```text
+  ✗ memax-v2 doesn't verify: 2 problems
+
+  ✗ memories/M-0219.md: it changed after the export: its SHA-256 is 3f2a91c0d1e4…, export.json says 9b71e2a4c3f0…
+  ✗ receipts.jsonl: checkpoint 3 (receipts 33–64, lines 33–64 of receipts.jsonl): the Merkle root of its receipts differs from the signed one; a receipt in that range was changed, added, removed or reordered
+```
+
+## Exit codes
+
+| Code | Meaning                                          |
+| ---- | ------------------------------------------------ |
+| 0    | Everything it checked verified.                  |
+| 1    | A problem, or a path that isn't an export.       |
+
+## In code
+
+The SDK verifies the same way, with Web Crypto only:
+
+```ts
+import { verifyExport } from "memax-sdk";
+
+// files: Map<string, Uint8Array>, by path below the space's folder
+const report = await verifyExport({ files, keys });
+report.ok; // report.sealed, report.unsealed, report.problems …
+```

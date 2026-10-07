@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/MemaxLabs/memax/packages/server/internal/dbpool"
 	"log/slog"
 	"net/url"
 	"os"
@@ -30,9 +31,11 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	"github.com/MemaxLabs/memax/packages/server/internal/cache"
 	"github.com/MemaxLabs/memax/packages/server/internal/chatstream"
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/dreams"
 	"github.com/MemaxLabs/memax/packages/server/internal/email"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
+	"github.com/MemaxLabs/memax/packages/server/internal/forget"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/categorize"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/embed"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/extract"
@@ -41,6 +44,8 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/link"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/summarize"
 	ingesttitle "github.com/MemaxLabs/memax/packages/server/internal/ingest/title"
+	"github.com/MemaxLabs/memax/packages/server/internal/judge"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/meter"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore"
@@ -48,8 +53,14 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
 	"github.com/MemaxLabs/memax/packages/server/internal/quota"
+	"github.com/MemaxLabs/memax/packages/server/internal/reads"
 	"github.com/MemaxLabs/memax/packages/server/internal/safefetch"
+	"github.com/MemaxLabs/memax/packages/server/internal/sealer"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2switch"
 )
 
 // App owns the worker process dependencies and River client.
@@ -67,7 +78,7 @@ func New(ctx context.Context) (*App, error) {
 		return nil, fmt.Errorf("DATABASE_URL is required for the worker")
 	}
 
-	pool, err := pgxpool.New(ctx, dbURL)
+	pool, err := dbpool.Open(ctx, dbURL, dbpool.WorkerMaxConns)
 	if err != nil {
 		return nil, fmt.Errorf("connect to database: %w", err)
 	}
@@ -219,6 +230,139 @@ func New(ctx context.Context) (*App, error) {
 	}
 
 	workers := river.NewWorkers()
+
+	// V2 compile path (plan 25 §5.7): compile_target jobs, enqueued by the
+	// ledger with each change that affects a target, run the coordinator,
+	// which calls the compile service (COMPILE_SERVICE_URL, with
+	// COMPILE_SERVICE_TOKEN for the Worker) and stores artifacts in object
+	// storage; a periodic sweep re-enqueues anything left behind. Without
+	// COMPILE_SERVICE_URL or object storage nothing compiles (nil means
+	// disabled): compile jobs cancel with the reason, and no sweep runs.
+	// V2 embeddings (plan 25 §5.11): the models are explicit configuration,
+	// read here once (VOYAGE_API_KEY, V2_EMBED_MODEL, V2_EMBED_QUERY_MODEL).
+	// With them, commands enqueue index_memory for every searchable version,
+	// the index worker embeds them in batches, and a periodic sweep queues
+	// any version left without an embedding. Without them nothing is
+	// embedded and V2 retrieval stays lexical.
+	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
+	dreamCfg := v2dream.ConfigFromEnv(os.LookupEnv)
+	v2Opts := []ledger.Option{ledger.WithJobs(insertClient), ledger.WithDreamUndoWindow(dreamCfg.UndoWindow)}
+	if embedCfg.Enabled() {
+		v2Opts = append(v2Opts, ledger.WithIndexJobs())
+	}
+	v2Ledger := ledger.New(pool, v2Opts...)
+	compileSvc := compile.New(v2Ledger, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL"), compile.WithToken(os.Getenv("COMPILE_SERVICE_TOKEN"))), blobStore,
+		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
+	logEnabled("V2 compile", compileSvc != nil)
+	compile.AddWorkers(workers, v2Ledger, compileSvc)
+
+	indexEmbedder := embedCfg.IndexEmbedder()
+	indexer := v2index.New(v2Ledger, indexEmbedder, embedCfg.IndexModel, embedCfg.Batch, slog.Default())
+	logEnabled("V2 embeddings", indexer != nil)
+	if indexer != nil {
+		slog.Info("V2 embedding models", "index", embedCfg.IndexModel, "query", embedCfg.QueryModel,
+			"batch", embedCfg.Batch, "sweep_every", embedCfg.SweepInterval.String())
+	}
+	v2index.AddWorkers(workers, indexer, v2Ledger)
+
+	// V2 judge (plan 25 §5.8): judge_proposal jobs, enqueued by the ledger
+	// with every proposal, fold duplicates and flag conflicts with decisions
+	// in force before anyone keeps them. The model tiers are explicit
+	// configuration, read here once. Without an LLM key the judge runs its
+	// no-model stage alone and never blocks a proposal. With V2 embeddings,
+	// its hybrid candidates include the nearest kept memories by vector
+	// (JUDGE_VECTOR_FLOOR, 0.65).
+	judgeCfg := judge.ConfigFromEnv(os.LookupEnv)
+	var judgeOpts []judge.Option
+	// Forget's cache purge (plan 25 §5.13): the worker drops its own
+	// in-memory copies and signals every API process over Redis.
+	forgetBus := forget.NewBusFromEnv(slog.Default())
+	app.addCleanup(func(context.Context) error { return forgetBus.Close() })
+	if vectors := v2recall.NewVectors(v2Ledger, indexEmbedder, indexEmbedder,
+		v2recall.VectorConfig{Model: embedCfg.IndexModel}); vectors != nil {
+		judgeOpts = append(judgeOpts, judge.WithVectors(vectors))
+		forgetBus.Local.Register(func(uuid.UUID) { vectors.Purge() })
+	}
+	v2Judge := judge.New(v2Ledger, judge.NewAnthropicModel(llm, judgeCfg.ZeroDataRetention), judgeCfg, judgeOpts...)
+	logEnabled("V2 judge (model stage)", v2Judge.Stage1())
+	logEnabled("V2 judge (vector candidates)", len(judgeOpts) > 0)
+	if v2Judge.Stage1() {
+		slog.Info("V2 judge tiers", "primary", judgeCfg.Primary.Model, "fallback", judgeCfg.Fallback.Model,
+			"strong", judgeCfg.Strong.Model, "zdr", judgeCfg.ZeroDataRetention, "conditions", judgeCfg.Conditions,
+			"primary_hosts", judgeCfg.Primary.Routing.Providers, "fallback_hosts", judgeCfg.Fallback.Routing.Providers,
+			"strong_hosts", judgeCfg.Strong.Routing.Providers, "quantizations", judgeCfg.Primary.Routing.Quantizations)
+	}
+	judge.AddWorkers(workers, v2Judge)
+
+	// V2 Forget propagation (plan 25 §5.13, rule 7): forget_propagate, queued
+	// in every Forget's transaction, recompiles the targets that held the
+	// memory, re-renders the stored artifacts without it, purges the caches
+	// and copies the forget ledger to object storage, within the minute.
+	var forgetCompiler forget.Compiler
+	if compileSvc != nil {
+		forgetCompiler = compileSvc
+	}
+	forget.AddWorkers(workers, forget.New(v2Ledger, forgetCompiler, forgetBus, slog.Default()))
+
+	// V2 Switch to V2 (plan 25 §10, epic 2.8): space_switch, queued when a
+	// space with V1 memories to import switches, runs the switch's steps
+	// through the ledger, resuming at a failed step.
+	v2switch.AddWorkers(workers, v2Ledger)
+	// V2 Dream editions (plan 25 §5.10): a catch-up sweep every
+	// DREAM_SWEEP_INTERVAL queues each V2 space due in its owner's local
+	// night (no River Pro), and dream_space runs the phases on the DREAM_*
+	// tiers (zero-data-retention routing), with the judge's classifier for
+	// duplicates and conflicts and the same hybrid search for candidates.
+	// The edition's morning email goes through the email sender. Without an
+	// LLM key, or DREAM_MODEL=off, only the phases that need no model run.
+	dreamSearch := v2recall.New(v2Ledger)
+	if vectors := v2recall.NewVectors(v2Ledger, indexEmbedder, indexEmbedder,
+		v2recall.VectorConfig{Model: embedCfg.IndexModel}); vectors != nil {
+		dreamSearch.WithVectors(vectors)
+		forgetBus.Local.Register(func(uuid.UUID) { vectors.Purge() })
+	}
+	v2Dream := v2dream.New(v2Ledger, v2dream.NewAnthropicModel(llm, dreamCfg.ZeroDataRetention), dreamCfg,
+		v2dream.WithSearcher(dreamSearch))
+	var dreamMailer *v2dream.Mailer
+	if dreamCfg.Email {
+		dreamMailer = v2dream.NewMailer(v2Ledger, emailSender, v2dream.MailerConfig{From: dreamCfg.From,
+			AppURL: os.Getenv("APP_BASE_URL"), APIURL: os.Getenv("API_BASE_URL")})
+	}
+	logEnabled("V2 Dream (model phases)", v2Dream.Modeled())
+	logEnabled("V2 Dream (morning email)", dreamMailer != nil)
+	if v2Dream.Modeled() {
+		slog.Info("V2 Dream tiers", "primary", dreamCfg.Primary.Model, "fallback", dreamCfg.Fallback.Model,
+			"strong", dreamCfg.Strong.Model, "zdr", dreamCfg.ZeroDataRetention, "plan", dreamCfg.Plan,
+			"dry_run", dreamCfg.DryRun, "sweep_every", dreamCfg.SweepInterval.String())
+	}
+	v2dream.AddWorkers(workers, v2Dream, dreamMailer)
+
+	// V2 reads (plan 25 §5.3): the API records them; the worker keeps the
+	// monthly partitions ahead, prunes past retention and reports the north
+	// star, once a day.
+	reads.AddWorkers(workers, v2Ledger)
+
+	// V2 receipt sealing (plan 25 §5.3): a sweep every SEALER_INTERVAL
+	// queues a seal job per space with new receipts; each chains them into
+	// a checkpoint signed with RECEIPT_SIGNING_KEY and copies it to object
+	// storage; every space is verified from genesis nightly. A bad key
+	// fails startup rather than sealing unsigned by surprise.
+	sealCfg, err := sealer.ConfigFromEnv(os.Getenv)
+	if err != nil {
+		app.Shutdown(context.Background())
+		return nil, fmt.Errorf("receipt sealer: %w", err)
+	}
+	sealCfg.Store = blobStore
+	v2Sealer := sealer.New(v2Ledger, sealCfg)
+	if v2Sealer.Signed() {
+		slog.Info("V2 receipt sealer: checkpoints signed", "key_id", sealCfg.Signer.KeyID(), "every", v2Sealer.Interval().String(),
+			"verify_keys", len(sealCfg.Keys), "copies", blobStore != nil)
+	} else {
+		slog.Warn("V2 receipt sealer: RECEIPT_SIGNING_KEY is not set, so checkpoints are chained but unsigned",
+			"every", v2Sealer.Interval().String(), "copies", blobStore != nil)
+	}
+	sealer.AddWorkers(workers, v2Sealer)
+
 	river.AddWorker(workers, &queue.MemoryProcessWorker{
 		Store:         s,
 		Events:        eventsPublisher,
@@ -432,31 +576,17 @@ func New(ctx context.Context) (*App, error) {
 	}
 
 	periodicJobs := configurePeriodicJobs(dreamEngine != nil)
-	riverClient, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
-		Logger: slog.Default(),
-		Queues: map[string]river.QueueConfig{
-			river.QueueDefault: {MaxWorkers: 20},
-			"dreams":           {MaxWorkers: 3},
-			// Phase 3.4a — chat queue. Higher concurrency than
-			// dreams because a chat turn is interactive (user is
-			// waiting); we want the worker pool deep enough to
-			// absorb a burst of concurrent sends without
-			// queueing latency. 8 is a starting point — tune
-			// alongside the per-process model client's rate
-			// limits.
-			"chat": {MaxWorkers: 8},
-		},
-		Workers: workers,
-		// Global worker middleware: every job's Work() runs inside a
-		// ctx pre-loaded with job_id/kind/queue/attempt as slog attrs.
-		// Paired with observability.NewCtxAttrsHandler on the default
-		// logger, any slog.InfoContext/ErrorContext call inside a job
-		// handler (or any code it transitively calls with the ctx)
-		// lands in Loki tagged with the job id — which is what the
-		// admin ops logs panel queries against.
-		Middleware:   []rivertype.Middleware{queue.NewLoggerMiddleware()},
-		PeriodicJobs: periodicJobs,
-	})
+	periodicJobs = append(periodicJobs, reads.PeriodicJobs()...)
+	periodicJobs = append(periodicJobs, sealer.PeriodicJobs(v2Sealer)...)
+	periodicJobs = append(periodicJobs, v2dream.PeriodicJobs(v2Dream)...)
+	if compileSvc != nil {
+		periodicJobs = append(periodicJobs, compile.PeriodicJobs()...)
+		slog.Info("compile sweep scheduled", "every", compile.SweepInterval.String())
+	}
+	if indexer != nil {
+		periodicJobs = append(periodicJobs, v2index.PeriodicJobs(embedCfg)...)
+	}
+	riverClient, err := river.NewClient(riverpgxv5.New(pool), workerRiverConfig(workers, periodicJobs))
 	if err != nil {
 		app.Shutdown(context.Background())
 		return nil, fmt.Errorf("create river client: %w", err)
@@ -1891,9 +2021,9 @@ func (a *App) Start(ctx context.Context) error {
 		"max_workers_dreams", 3,
 	)
 
-	// River v0.32 doesn't populate river_client, so the admin ops
-	// pulse has no way to count real worker machines. We write our
-	// own row per process; see workerapp/heartbeat.go for why.
+	// River keeps no per-client registry, so the admin ops pulse has
+	// no way to count real worker machines. We write our own row per
+	// process to worker_heartbeats; see workerapp/heartbeat.go.
 	heartbeatStop := startClientHeartbeat(ctx, a.pool)
 	a.addCleanup(heartbeatStop)
 
@@ -1927,6 +2057,67 @@ func (a *App) addClose(closeFn func()) {
 		closeFn()
 		return nil
 	})
+}
+
+// workerRiverConfig is the River client config for the worker
+// process. Split out of New so tests can build a client with the
+// exact production queues and middleware.
+//
+// SoftStopTimeout is deliberately left unset. The worker passes its
+// SIGTERM context to Client.Start, and without SoftStopTimeout a
+// cancelled Start context is a hard stop: running jobs see their ctx
+// cancelled, the attempt counts, and they retry with backoff (or are
+// discarded once MaxAttempts is used up). Setting SoftStopTimeout (or
+// calling StopAndCancel) switches River ≥ v0.44 to "interrupted"
+// semantics instead: the attempt is refunded and the job is made
+// available again immediately. That would let a deploy re-run
+// MaxAttempts=1 jobs (campaign_send, chat_message_run), so it needs
+// its own decision. TestWorkerRiverConfig_SignalStopCountsAttempt
+// pins the current behaviour.
+func workerRiverConfig(workers *river.Workers, periodicJobs []*river.PeriodicJob) *river.Config {
+	return &river.Config{
+		Logger: slog.Default(),
+		Queues: map[string]river.QueueConfig{
+			river.QueueDefault: {MaxWorkers: 20},
+			"dreams":           {MaxWorkers: 3},
+			// Phase 3.4a — chat queue. Higher concurrency than
+			// dreams because a chat turn is interactive (user is
+			// waiting); we want the worker pool deep enough to
+			// absorb a burst of concurrent sends without
+			// queueing latency. 8 is a starting point — tune
+			// alongside the per-process model client's rate
+			// limits.
+			"chat": {MaxWorkers: 8},
+			// V2 compile path. A compile job spends most of its time in
+			// the quiet window (§5.7), so a handful of slots covers many
+			// targets compiling at once.
+			ledger.QueueCompile: {MaxWorkers: compile.MaxWorkers},
+			// The judge waits on the model; a dedicated queue keeps it from
+			// holding default-queue slots.
+			ledger.QueueJudge: {MaxWorkers: judge.MaxWorkers},
+			// V2 embeddings wait on Voyage; one job embeds its space's
+			// whole burst, so a few slots do.
+			ledger.QueueIndex: {MaxWorkers: v2index.MaxWorkers},
+			// The receipt sealer: short, database-bound jobs, one per space.
+			ledger.QueueSeal: {MaxWorkers: sealer.MaxWorkers},
+			// Forget propagation: a minute's SLO, so its own slots.
+			ledger.QueueForget: {MaxWorkers: forget.MaxWorkers},
+			// Switches to V2: rare and long, kept off the default queue.
+			ledger.QueueSwitch: {MaxWorkers: v2switch.MaxWorkers},
+			// Dream editions: a few spaces at a time, mostly waiting on the model.
+			ledger.QueueDream: {MaxWorkers: v2dream.MaxWorkers},
+		},
+		Workers: workers,
+		// Global worker middleware: every job's Work() runs inside a
+		// ctx pre-loaded with job_id/kind/queue/attempt as slog attrs.
+		// Paired with observability.NewCtxAttrsHandler on the default
+		// logger, any slog.InfoContext/ErrorContext call inside a job
+		// handler (or any code it transitively calls with the ctx)
+		// lands in Loki tagged with the job id — which is what the
+		// admin ops logs panel queries against.
+		Middleware:   []rivertype.Middleware{queue.NewLoggerMiddleware()},
+		PeriodicJobs: periodicJobs,
+	}
 }
 
 func configurePeriodicJobs(dreamsEnabled bool) []*river.PeriodicJob {

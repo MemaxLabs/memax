@@ -6,12 +6,17 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/billing"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
+	"github.com/MemaxLabs/memax/packages/server/internal/forget"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
+	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
+	"github.com/MemaxLabs/memax/packages/server/internal/mcpv2"
 	"github.com/MemaxLabs/memax/packages/server/internal/meter"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/ratelimit"
+	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 )
 
 // hubAwarePlanResolver resolves limits with per-hub elevation.
@@ -56,18 +61,45 @@ type routeDeps struct {
 	adminDreams            *handler.AdminDreamsHandler
 	adminWaitlist          *handler.AdminWaitlistReconcileHandler
 	adminOps               *handler.AdminOpsHandler
-	resendWebhook          *handler.ResendWebhookHandler
-	unsubscribe            *handler.UnsubscribeHandler
-	bar                    *handler.BarHandler
-	billing                *billing.Service
-	meter                  *meter.Meter
-	rateLimiter            *ratelimit.Limiter
-	hubResolver            hubAwarePlanResolver
-	planRegistry           *plans.Registry
-	authMiddleware         func(http.Handler) http.Handler
-	hubMiddleware          func(http.Handler) http.Handler
-	store                  store.Store
-	eventsBroker           events.Publisher
+	// adminV2Metrics serves the phase gates' metrics; nil without a V2
+	// record.
+	adminV2Metrics *handler.AdminV2MetricsHandler
+	// adminV2UI turns the V2 UI on and off per person (internal/v2ui);
+	// nil without a database.
+	adminV2UI      *handler.AdminV2UIHandler
+	resendWebhook  *handler.ResendWebhookHandler
+	unsubscribe    *handler.UnsubscribeHandler
+	bar            *handler.BarHandler
+	billing        *billing.Service
+	meter          *meter.Meter
+	rateLimiter    *ratelimit.Limiter
+	hubResolver    hubAwarePlanResolver
+	planRegistry   *plans.Registry
+	authMiddleware func(http.Handler) http.Handler
+	hubMiddleware  func(http.Handler) http.Handler
+	store          store.Store
+	eventsBroker   events.Publisher
+	v2             *v2api.Handler
+	// v2Search answers MCP v2's recall and search: hybrid with V2
+	// embeddings, lexical without (nil: MCP v2 builds the lexical one).
+	v2Search *v2recall.Searcher
+	mcp      mcpDeps
+}
+
+// mcpDeps is what MCP v2 needs besides the /v2 handler (mcpDepsFromEnv).
+type mcpDeps struct {
+	// spaces says which spaces are on the V2 record; nil keeps every space
+	// on V1 (memory mode, tests).
+	spaces      *spacemode.Resolver
+	stateSecret []byte
+	appBaseURL  string
+	reads       mcpv2.ReadRecorder
+	// instance is FLY_MACHINE_ID: legacy MCP sessions carry it, so their
+	// requests reach the machine that holds them.
+	instance string
+	// purge is this process's Forget cache purgers: MCP v2's compiled
+	// digest registers there (nil: none).
+	purge *forget.Local
 }
 
 // ipLimitFactory returns a helper that wraps a handler with a per-IP
@@ -87,10 +119,12 @@ func ipLimitFactory(deps routeDeps) func(ratelimit.EndpointLimit, http.HandlerFu
 	return deps.rateLimiter.WrapIP
 }
 
-func registerRoutes(mux *http.ServeMux, deps routeDeps) {
-	// Middleware chain (execution order, outermost first):
-	//   RequireAuth → HubContext → AuthorizeHTTP → RateLimit → Meter → Handler
-	withAuth := func(h http.Handler) http.Handler {
+// authChain is the middleware chain every authenticated route sits
+// behind (execution order, outermost first):
+//
+//	RequireAuth → HubContext → AuthorizeHTTP → RateLimit → Meter → Handler
+func authChain(deps routeDeps) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
 		inner := h
 		if deps.meter != nil {
 			inner = deps.meter.Middleware()(inner)
@@ -101,6 +135,10 @@ func registerRoutes(mux *http.ServeMux, deps routeDeps) {
 		inner = handler.AuthorizeHTTP(inner)
 		return deps.authMiddleware(deps.hubMiddleware(inner))
 	}
+}
+
+func registerRoutes(mux *http.ServeMux, deps routeDeps) {
+	withAuth := authChain(deps)
 
 	protected := http.NewServeMux()
 	registerMemoryRoutes(protected, deps)
@@ -117,6 +155,7 @@ func registerRoutes(mux *http.ServeMux, deps routeDeps) {
 	registerWebhookRoutes(mux, deps)
 	registerUnsubscribeRoute(mux, deps)
 	registerPlansRoutes(mux, deps)
+	registerV2Routes(mux, withAuth, deps)
 
 	// GET /v1/attachments/view is deliberately unauthenticated at the
 	// middleware layer — the HMAC signature on the query string IS
@@ -367,6 +406,21 @@ func registerMCPRoutes(root *http.ServeMux, withAuth func(http.Handler) http.Han
 		mcpH.SetOpGuard(deps.meter.BeginOp, meter.OpDenialMessage)
 		chatGPTH.SetOpGuard(deps.meter.BeginOp, meter.OpDenialMessage)
 	}
+	// Spaces on the V2 record are served through the ledger; the rest keep
+	// V1's tools exactly (internal/mcpv2, internal/spacemode).
+	if v2 := mcpv2.New(mcpv2.Options{
+		V2: deps.v2, Spaces: deps.mcp.spaces, StateSecret: deps.mcp.stateSecret,
+		AppBaseURL: deps.mcp.appBaseURL, Reads: deps.mcp.reads,
+		// The digest at session start is the space's latest compile.
+		Compile: deps.v2.Compile(),
+		Search:  deps.v2Search,
+	}); v2 != nil {
+		mcpH.SetV2(v2)
+		chatGPTH.SetV2(v2)
+		deps.mcp.purge.Register(v2.PurgeSpace)
+	}
+	mcpH.SetInstance(deps.mcp.instance)
+	chatGPTH.SetInstance(deps.mcp.instance)
 	mcpProtected := http.NewServeMux()
 	mcpProtected.Handle("/mcp", mcpH)
 	mcpProtected.Handle("/mcp/chatgpt", chatGPTH)
@@ -427,6 +481,8 @@ func registerAuthRoutes(root *http.ServeMux, protected *http.ServeMux, deps rout
 	root.Handle("/v1/auth/api-keys/", deps.authMiddleware(protected))
 
 	mcpOAuth := handler.NewMCPOAuthHandler(deps.auth)
+	// Consent connects the agent to the chosen spaces on the V2 record.
+	mcpOAuth.SetLedger(deps.v2.Ledger())
 	deps.auth.SetMCPOAuth(mcpOAuth)
 	root.HandleFunc("GET /.well-known/oauth-protected-resource", mcpOAuth.ProtectedResourceMetadata)
 	root.HandleFunc("GET /.well-known/oauth-protected-resource/", mcpOAuth.ProtectedResourceMetadata)
@@ -436,9 +492,27 @@ func registerAuthRoutes(root *http.ServeMux, protected *http.ServeMux, deps rout
 	// per-IP budget on the server.
 	root.HandleFunc("POST /oauth/register", ipLimit(ratelimit.IPOAuthDCRLimit, mcpOAuth.DynamicClientRegistration))
 	root.HandleFunc("GET /oauth/authorize", ipLimit(ratelimit.IPOAuthAuthorize, mcpOAuth.Authorize))
-	root.HandleFunc("GET /oauth/authorize/consent-request", ipLimit(ratelimit.IPOAuthAuthorize, mcpOAuth.ConsentRequest))
-	root.HandleFunc("POST /oauth/authorize/consent", ipLimit(ratelimit.IPOAuthAuthorize, mcpOAuth.Consent))
+	// The consent page (OAuthConsent) reads and answers a request as the
+	// person signed in on the web, through the web app's proxy: these need
+	// a web session's access token (mcp_oauth_consent.go). No per-address
+	// limit: through the proxy every person shares the web app's address,
+	// and only a signed-in person gets past RequireAuth. A request is made
+	// by GET /oauth/authorize, which is limited per address; if these are
+	// ever abused, limit them per person (GetUserID), not per address.
+	root.Handle("GET /oauth/authorize/requests/{id}", deps.authMiddleware(http.HandlerFunc(mcpOAuth.OpenRequest)))
+	root.Handle("POST /oauth/authorize/requests/{id}/decision", deps.authMiddleware(http.HandlerFunc(mcpOAuth.DecideRequest)))
+	root.Handle("POST /oauth/authorize/requests/{id}/release", deps.authMiddleware(http.HandlerFunc(mcpOAuth.ReleaseRequest)))
+	// Where V1's consent page posted; it sends a page loaded before the
+	// deploy on to the web page. Remove after one release.
+	root.HandleFunc("POST /oauth/authorize/consent", ipLimit(ratelimit.IPOAuthAuthorize, mcpOAuth.LegacyConsent))
 	root.HandleFunc("POST /oauth/token", ipLimit(ratelimit.IPOAuthTokenLimit, mcpOAuth.Token))
+	// Signing out (RFC 7009): the web app's sign-out, memax logout, and MCP
+	// clients end their session with its refresh token.
+	root.HandleFunc("POST /oauth/revoke", ipLimit(ratelimit.IPOAuthTokenLimit, mcpOAuth.Revoke))
+	// Device sign-in for the memax CLI (RFC 8628): the code here, the
+	// device_code grant on /oauth/token, the person's confirmation on /v2.
+	mcpOAuth.SetDeviceAuth(deps.v2.Devices(), ratelimit.ClientIP)
+	root.HandleFunc("POST /oauth/device_authorization", ipLimit(ratelimit.IPDeviceAuthorization, mcpOAuth.DeviceAuthorization))
 }
 
 func registerAdminRoutes(root *http.ServeMux, deps routeDeps) {
@@ -595,6 +669,18 @@ func registerAdminRoutes(root *http.ServeMux, deps routeDeps) {
 		admin.HandleFunc("POST /v1/admin/ops/memories/{id}/force-active", deps.adminOps.ForceActiveMemory)
 	}
 
+	// V2's product metrics (plan 25 §5.18): the phase gates by weekly
+	// signup cohort, beside the north star. Counts only.
+	if deps.adminV2Metrics != nil {
+		admin.HandleFunc("GET /v1/admin/v2/metrics", deps.adminV2Metrics.Get)
+	}
+	// The per-person V2 UI flag (plan 25 E1): what it is and why, and an
+	// operator's on, off or back to the rules.
+	if deps.adminV2UI != nil {
+		admin.HandleFunc("GET /v1/admin/users/{id}/v2-ui", deps.adminV2UI.Get)
+		admin.HandleFunc("PUT /v1/admin/users/{id}/v2-ui", deps.adminV2UI.Set)
+	}
+
 	// Audiences — saved recipient rules
 	if deps.adminAudiences != nil {
 		admin.HandleFunc("GET /v1/admin/audiences", deps.adminAudiences.List)
@@ -672,4 +758,21 @@ func registerPlansRoutes(root *http.ServeMux, deps routeDeps) {
 	}
 	// Public endpoint — no auth required (for pricing page, CLI, web app)
 	root.HandleFunc("GET /v1/plans", deps.plansH.List)
+}
+
+// registerV2Routes mounts /v2. Every /v2 route comes from
+// v2api.Routes(), which TestV2RoutesMatchSpec holds equal to
+// openapi/v2.yaml; nothing else in this file registers a /v2 path
+// (TestV2RoutesOnlyComeFromV2API).
+func registerV2Routes(root *http.ServeMux, withAuth func(http.Handler) http.Handler, deps routeDeps) {
+	if deps.v2 == nil {
+		return
+	}
+	ipLimit := ipLimitFactory(deps)
+	deps.v2.Mount(root, withAuth, func(op string, h http.Handler) http.Handler {
+		if op == "startPasskeySignIn" || op == "finishPasskeySignIn" {
+			return ipLimit(ratelimit.IPPasskeySignIn, h.ServeHTTP)
+		}
+		return ipLimit(ratelimit.IPUnsubscribe, h.ServeHTTP)
+	})
 }

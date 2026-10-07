@@ -33,6 +33,7 @@ import (
 	"encoding/binary"
 	"math"
 	"sync"
+	"time"
 )
 
 // Dimensions is the vector width the mock produces. Matches the
@@ -54,6 +55,48 @@ type Embedder struct {
 	// calls counts how many inputs have been embedded. Tests assert
 	// "was the embedder called at all?" via CallCount().
 	calls int
+	// requests counts EmbedContext calls (batches).
+	requests int
+	// delay makes every call wait (SetDelay); err fails it (SetError).
+	delay time.Duration
+	err   error
+}
+
+// SetDelay makes every call wait d, or until its context is done, before
+// answering: a slow embedder, for deadline tests.
+func (e *Embedder) SetDelay(d time.Duration) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.delay = d
+}
+
+// SetError makes every call fail with err (nil clears it).
+func (e *Embedder) SetError(err error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.err = err
+}
+
+// RequestCount returns how many EmbedContext calls (batches) were made.
+func (e *Embedder) RequestCount() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.requests
+}
+
+// wait sleeps for the configured delay, honouring ctx.
+func wait(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // New returns a ready-to-use Embedder.
@@ -102,8 +145,15 @@ func (e *Embedder) EmbedContext(ctx context.Context, texts []string, _ string) (
 	}
 	e.mu.Lock()
 	e.calls += len(texts)
-	ovr := e.overrides
+	e.requests++
+	ovr, delay, failure := e.overrides, e.delay, e.err
 	e.mu.Unlock()
+	if err := wait(ctx, delay); err != nil {
+		return nil, err
+	}
+	if failure != nil {
+		return nil, failure
+	}
 
 	out := make([][]float64, len(texts))
 	for i, t := range texts {

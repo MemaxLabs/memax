@@ -1,0 +1,185 @@
+// Today (Main.png, TodayDark.png, MobileToday.png, EmptySpace.png),
+// mounted as `t.ledger.today`. The page's title, lede and actions are
+// in app-en.ts (`t.ledger.app.today`). Board copy is word for word.
+// Placeholders are {name}; `<key>One` is the singular of `<key>`.
+// Ledger voice applies (./voice.test.ts).
+export const ledgerTodayEn = {
+  dream: {
+    seconds: "{n}s",
+    folded: "{n} notes → {ref}",
+    needsYou: "needs you",
+    restorable: "restorable",
+    none: "No edition yet",
+    noneDetail:
+      "Each morning Dream publishes an edition here: the notes it folded into facts, the conflicts it found and what faded. The first comes the night after there's something to read.",
+    quiet: "No edition last night",
+    quietDetail:
+      "Dream had nothing new to read, so there's no edition. Empty nights cost nothing.",
+  },
+  waiting: {
+    title: "Waiting on you",
+    count: "{n} waiting on you",
+    proposals: "{n} proposals",
+    proposalsOne: "1 proposal",
+    verify: "{n} to verify",
+    more: "{n} more in Review",
+    moreOne: "1 more in Review",
+    open: "Open Review",
+    nothing: "Nothing is waiting on you.",
+    question: "a question",
+    questions: "{n} questions",
+    // The panel's count of questions agents asked (decision gates).
+    asked: "{n} questions",
+    askedOne: "1 question",
+  },
+  inFlight: {
+    title: "In flight",
+    working: "{agent} is working",
+    questions: "{n} questions for you",
+    questionsOne: "1 question for you",
+    from: "From {from} to {to}",
+    none: "Nothing is in flight.",
+    later:
+      "Handoffs aren't available yet. When an agent passes a session on, it shows here while it's in flight.",
+  },
+  agents: {
+    title: "Agents today",
+    active: "{n} of {total} active",
+    read: "{n} read",
+    kept: "{n} kept",
+    proposed: "{n} proposed",
+    none: "none",
+    nobody: "No agent has worked here today.",
+    noAgents: "No agents are connected.",
+    connect: "Connect an agent",
+    unavailable: "The agents didn't load.",
+  },
+  compiled: {
+    title: "Compiled context",
+    recompile: "Recompile all files",
+    none: "Nothing compiles yet.",
+  },
+  footer: {
+    compiledAt: "Compiled at {time}",
+    compiledOn: "Compiled {date} at {time}",
+    dreamAt: "Dream runs nightly at {time}",
+    dreamWeekly: "Dream runs weekly, on {day} at {time}",
+    kept: "{n} memories kept in {space}",
+    keptOne: "1 memory kept in {space}",
+  },
+  empty: {
+    title: "Nothing here yet",
+    lede: "Connect an agent and Memax reads what it already knows about {where}. Everything arrives as a proposal.",
+    steps: "Three steps to a first compile",
+    connect: "Connect an agent in this repository",
+    connectAnywhere: "Connect an agent",
+    connectDetail:
+      "Run this in {repository}. It finds Claude Code, Codex, Cursor and the rest.",
+    connectDetailAnywhere:
+      "Run this in your repository. It finds Claude Code, Codex, Cursor and the rest.",
+    command: "npx memax-cli init --space {space}",
+    copy: "Copy the command",
+    connectHere: "Or connect one here",
+    settle: "Settle what they disagree on",
+    settleDetail:
+      "The day-one cleanup shows where their files contradict each other.",
+    compile: "Keep what's true, then compile",
+    compileDetail:
+      "Memax writes AGENTS.md, a CLAUDE.md that imports it and Cursor rules into the repository.",
+    done: "Done",
+    startFrom: "Or start from",
+    conventionsFrom: "Conventions from {space}",
+    conventionsLater: "Starting from another space isn't available yet.",
+    drop: "Drop a CLAUDE.md or AGENTS.md",
+    dropMeta: "Read as proposals, never kept on arrival",
+    dropLater:
+      "Reading a dropped file isn't available yet. `npx memax-cli init` reads them from the repository.",
+    dreamTonight:
+      "Dream runs tonight at {time} once there's something to read.",
+  },
+  // Switch to V2 (plan §10): Today of a space still on V1.
+  switch: {
+    title: "{space} is still on V1",
+    lede: "Switch it to V2 to keep its record yourself: agents propose, people keep, and every change carries a receipt. Nothing in V1 changes, and you can switch back.",
+    moves: "What moves",
+    notes: "Notes",
+    notesText:
+      "{n} V1 memories become notes (N-): searchable, never compiled. Nothing is lost.",
+    notesTextOne:
+      "1 V1 memory becomes a note (N-): searchable, never compiled.",
+    notesNone: "There are no V1 memories to move.",
+    review: "Review",
+    reviewText:
+      "{n} you wrote, one statement each, wait in Review to keep in one go.",
+    reviewTextOne: "1 you wrote waits in Review.",
+    dream: "Dream",
+    dreamText:
+      "{n} that agents wrote, and longer notes, go to Dream, which folds them into proposals.",
+    dreamTextOne: "1 goes to Dream, which folds it into a proposal.",
+    notesOnly: "Notes only",
+    notesOnlyText: "{n} stay notes and are never proposed: {why}.",
+    archived: "{n} archived",
+    secret: "{n} hold a credential",
+    secretOne: "1 holds a credential",
+    personas: "Personas",
+    personasText: "{n} personas become notes, for Dream to propose from.",
+    personasTextOne: "1 persona becomes a note, for Dream to propose from.",
+    people: "People",
+    peopleText:
+      "{n} people keep their access. V1 admins become members who can forget, and viewers can propose.",
+    peopleOne: "Only you.",
+    agents: "Agents",
+    agentsText: "{list} connect, and each is told on its next response.",
+    agentAt: "{name} at {level}",
+    levels: { read: "Read", propose: "Propose", write: "Write" },
+    files: "Files",
+    filesText:
+      "{files} compile from the record. Two-way sync of its agent files stops.",
+    decisions: "Decisions",
+    decisionsText:
+      "{n} waiting on V1's board move once their agent is connected.",
+    decisionsTextOne:
+      "1 waiting on V1's board moves once its agent is connected.",
+    history: "History",
+    historyText: "{n} V1 Dream runs stay, read-only.",
+    historyTextOne: "1 V1 Dream run stays, read-only.",
+    plan: "Plan",
+    planText: "Your {plan} plan carries over.",
+    as: "Switch as",
+    kinds: { project: "Project", team: "Team", personal: "Personal" },
+    switchNow: "Switch to V2",
+    ownerOnly: "Only the space's owner can switch it.",
+    running: "Switching {space}.",
+    runningDetail:
+      "Numbering its notes and proposing what you wrote. It goes on if you leave this page.",
+    failed: "The switch stopped at {step}.",
+    failedDetail: "Nothing was lost. Switch again to resume where it stopped.",
+    resume: "Resume the switch",
+    steps: {
+      space: "the space",
+      notes: "the notes",
+      personas: "the personas",
+      configs: "the agent files",
+      candidates: "your memories",
+      agents: "the agents",
+      gates: "the decisions",
+      switch: "the last step",
+      done: "the end",
+    },
+    switchedToast: "{space} is on V2.",
+    failedToast: "That didn't go through. Try again.",
+    loadFailed: "What moves didn't load.",
+    retry: "Try again",
+    back: "Switched back: {space} is on V1 again. Its V2 record stays for when you switch again.",
+    targets: {
+      agents_md: "AGENTS.md",
+      claude_md: "CLAUDE.md",
+      gemini_md: "GEMINI.md",
+      cursor_mdc: "Cursor rules",
+      copilot: "Copilot instructions",
+      windsurf: "Windsurf rules",
+      claude_rules: "Claude rules",
+      chatgpt: "ChatGPT",
+    },
+  },
+} as const;

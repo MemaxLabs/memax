@@ -29,6 +29,12 @@ memax agents sync
 memax agents sync --push
 ```
 
+Agent files that belong to a space on V2 aren't synced: Memax compiles
+them from that space's record instead, so sync leaves them alone (even
+with `--push` or `--pull`) and lists them as `compiled by Memax`. Switch
+the space back to V1 ([`memax switch --back`](/cli/switch)) and they sync
+again.
+
 ### `memax agents list`
 
 List cloud-backed configs AND sessions in a combined view.

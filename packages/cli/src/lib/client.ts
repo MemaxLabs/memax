@@ -14,11 +14,21 @@ import {
   isTokenExpired,
   getLocalAgentKey,
 } from "./credentials.js";
+import { cliVersion } from "./version.js";
+
+/**
+ * Names the CLI to the API, so your sessions list says "memax CLI 0.9.0"
+ * rather than an anonymous client.
+ */
+export function cliUserAgent(): string {
+  return `memax-cli/${cliVersion()} (${process.platform})`;
+}
 
 let instance: Memax | null = null;
 let publicInstance: Memax | null = null;
 const seenWarnings = new Set<string>();
 let scopedAgentID = "";
+let fetchImpl: typeof globalThis.fetch | undefined;
 
 /** Get the shared SDK client instance (lazily created) */
 export function getClient(): Memax {
@@ -28,6 +38,8 @@ export function getClient(): Memax {
       apiUrl: config.api_url,
       auth: cliAuthProvider,
       onWarning: printApiWarning,
+      fetch: fetchImpl,
+      headers: { "User-Agent": cliUserAgent() },
     });
   }
   return instance;
@@ -39,9 +51,19 @@ export function getPublicClient(): Memax {
     const config = loadConfig();
     publicInstance = new Memax({
       apiUrl: config.api_url,
+      fetch: fetchImpl,
+      headers: { "User-Agent": cliUserAgent() },
     });
   }
   return publicInstance;
+}
+
+/**
+ * Marks a warning as said already: a command that explains it in its own
+ * words (memax agents sync, for space_on_v2) calls this first.
+ */
+export function quietWarning(warning: string): void {
+  seenWarnings.add(warning);
 }
 
 /** Reset the cached client (useful after login/logout) */
@@ -51,6 +73,15 @@ export function resetClient(): void {
   seenWarnings.clear();
 }
 
+/**
+ * Sends every request through `f` from here on, token refreshes included
+ * (the daemon's lighter transport, lib/daemon/http.ts).
+ */
+export function setClientFetch(f: typeof globalThis.fetch): void {
+  fetchImpl = f;
+  resetClient();
+}
+
 export function setClientAgent(agentID?: string): void {
   scopedAgentID = agentID?.trim() ?? "";
   resetClient();
@@ -58,6 +89,16 @@ export function setClientAgent(agentID?: string): void {
 
 export async function getAuthHeaders(): Promise<Record<string, string>> {
   return cliAuthProvider();
+}
+
+/**
+ * Whether requests authenticate with an API key (MEMAX_API_KEY, or the
+ * agent-scoped local key `memax setup` created). On the V2 record every
+ * API key is an agent, which reads only the spaces it's connected to.
+ */
+export function usesAPIKey(): boolean {
+  if (process.env.MEMAX_API_KEY) return true;
+  return scopedAgentID !== "" && getLocalAgentKey(scopedAgentID) !== undefined;
 }
 
 /**
@@ -86,20 +127,24 @@ async function cliAuthProvider(): Promise<Record<string, string>> {
   const creds = loadCredentials();
   if (!creds?.access_token) return {};
 
-  // Auto-refresh if expired
+  // Auto-refresh if expired. The refresh token rotates: the answer carries
+  // the session's next one and the one sent is retired, so it must be
+  // stored. Processes sharing this file (the daemon, MCP servers, hooks)
+  // that refresh together all get the same next token from the server.
   if (isTokenExpired() && creds.refresh_token) {
     try {
       const tokens = await getPublicClient().auth.refresh(creds.refresh_token);
       if (tokens.access_token) {
         saveCredentials({
           access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
+          refresh_token: tokens.refresh_token || creds.refresh_token,
           expires_at: Date.now() + tokens.expires_in * 1000,
         });
         return { Authorization: `Bearer ${tokens.access_token}` };
       }
     } catch {
-      // Refresh failed — fall through to stale token
+      // Refresh failed (offline, or the session was signed out) — fall
+      // through to the stale token; the API's 401 says to log in again.
     }
   }
 
@@ -111,6 +156,14 @@ function printApiWarning(warning: string): void {
     return;
   }
   seenWarnings.add(warning);
+  if (warning === "space_on_v2") {
+    console.error(
+      chalk.yellow(
+        "  This space is on V2: what you push here is kept as a note, and Dream proposes from it for Review.",
+      ),
+    );
+    return;
+  }
   if (warning === "agent_identity_claim_rejected") {
     console.error(
       chalk.yellow(

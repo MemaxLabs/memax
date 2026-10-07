@@ -27,7 +27,45 @@ export interface MemaxConfig {
   retryDelayMs?: number;
   /** Optional hook for warning headers returned by the API transport. */
   onWarning?: (warning: string) => void;
+  /**
+   * Answers the passkey re-check. When a request is refused with 403
+   * `needs_passkey` (you have a passkey, and this decision asks for it),
+   * the transport calls this with the challenge. Return the browser's
+   * answer (`PublicKeyCredential.toJSON()` from `navigator.credentials.get`
+   * with `check.options`) to send the very same request again, with the
+   * same Idempotency-Key and body, carrying it in `X-Memax-Passkey`; return
+   * null to give up, and the call throws the `needs_passkey` error. Only
+   * the web app on memax.app can answer: an assertion must come from a
+   * browser on the site's origin, and the API counts it only for the web
+   * app's own signed requests.
+   */
+  passkeyCheck?: PasskeyCheckHandler;
 }
+
+/** The challenge a 403 `needs_passkey` carries (`details.passkey`). */
+export interface PasskeyCheck {
+  /** PublicKeyCredentialRequestOptionsJSON, for `PublicKeyCredential.parseRequestOptionsFromJSON`. */
+  options: {
+    challenge: string;
+    timeout: number;
+    rpId: string;
+    allowCredentials: {
+      type: "public-key";
+      id: string;
+      transports?: string[];
+    }[];
+    userVerification: "required";
+  };
+  /** When the challenge stops working. */
+  expiresAt: string;
+  /** What the decision is, in English (`details.policy.message`). */
+  message: string;
+}
+
+/** See {@link MemaxConfig.passkeyCheck}. */
+export type PasskeyCheckHandler = (
+  check: PasskeyCheck,
+) => Promise<unknown | null>;
 
 // --- Request Options ---
 
@@ -981,6 +1019,13 @@ export interface UsageWithLimits extends Usage {
   plan_display_name: string;
 }
 
+/**
+ * The web UI a person sees on memax.app: the V2 Ledger UI or V1. The API
+ * decides it per person (a member of a space on the V2 record, an
+ * operator's choice, or the signup date); absent from older servers.
+ */
+export type WebUi = "v1" | "v2";
+
 export interface MeResponse {
   user: User;
   connected_providers?: AuthProviderName[];
@@ -990,13 +1035,79 @@ export interface MeResponse {
   }>;
   /** Basic usage from /v1/auth/me. For enriched usage with limits, use settings.usage(). */
   usage?: Usage;
+  /** The web UI this person sees. */
+  ui?: WebUi;
 }
 
 export interface AuthTokenPair {
   access_token: string;
+  /**
+   * The session's next refresh token. It changes on every refresh (the one
+   * you sent is retired), so always store this one; a retired token used
+   * again after a minute signs the whole session out.
+   */
   refresh_token: string;
+  /** Seconds until the access token expires. */
   expires_in: number;
+  /**
+   * Seconds the session has left. Refreshing doesn't extend it. Absent
+   * from servers older than refresh-token rotation.
+   */
+  refresh_expires_in?: number;
 }
+
+/** A sign-in code traded for a session (`auth.exchangeCode`). */
+export interface ExchangedTokens extends AuthTokenPair {
+  /**
+   * For a session issued to the web app: the web UI the person sees, so
+   * the web app can route them as the session starts. Absent for other
+   * sessions (the CLI's) and from older servers.
+   */
+  ui?: WebUi;
+}
+
+/**
+ * What the memax CLI says about itself when it asks for a device code
+ * (RFC 8628). The person sees it on memax.app/device before confirming.
+ */
+export interface DeviceSignInOptions {
+  /** The CLI's version, e.g. "2.0.0". */
+  clientVersion?: string;
+  /** The machine's name (its hostname). */
+  deviceName?: string;
+  /** The machine's system: darwin, linux or win32 (Node's names) work. */
+  deviceOs?: string;
+  /** The space the CLI will use, by slug. */
+  space?: string;
+  signal?: AbortSignal;
+}
+
+/** A device code to show the person (RFC 8628 §3.2). */
+export interface DeviceSignIn {
+  /** Secret: poll with it, never show it. */
+  deviceCode: string;
+  /** What the person checks and confirms, e.g. "WQRT-4821". */
+  userCode: string;
+  /** Where the person confirms it, e.g. https://memax.app/device. */
+  verificationUri: string;
+  /** The same page with the code filled in, to open in a browser. */
+  verificationUriComplete?: string;
+  /** Seconds the code lives. */
+  expiresIn: number;
+  /** Seconds to wait between polls. */
+  interval: number;
+}
+
+/**
+ * One poll of the token endpoint with a device code (RFC 8628 §3.5):
+ * `signed_in` with the person's CLI session, `pending` (keep waiting),
+ * `slow_down` (wait 5 seconds longer from now on), or how it ended:
+ * `denied` (the person declined), `expired` (the code ran out) or
+ * `invalid` (the code was already used, or isn't one).
+ */
+export type DeviceSignInPoll =
+  | { status: "signed_in"; tokens: AuthTokenPair }
+  | { status: "pending" | "slow_down" | "denied" | "expired" | "invalid" };
 
 export interface ImpersonationResult {
   access_token: string;
@@ -1098,43 +1209,80 @@ export interface DeleteAllDataResult {
   deleted: boolean;
 }
 
-export interface OAuthConsentHub {
+// --- OAuth consent (OAuthConsent) ---
+//
+// An MCP client's pending authorization request, as the person signed in
+// on the web sees it (openOAuthRequest), and their answer.
+
+export type OAuthAutonomy = "read" | "propose" | "write";
+
+export interface OAuthConsentTarget {
+  /** agents_md, claude_md, cursor_mdc, chatgpt, … */
+  kind: string;
+  /** Repository-relative; absent for ChatGPT. */
+  path?: string;
+}
+
+/** One of the person's spaces, as the consent page shows it. */
+export interface OAuthRequestSpace {
   id: string;
   name: string;
   slug: string;
+  kind: "personal" | "project" | "team";
+  /** Whether the space is on the V2 record; V1's rules apply otherwise. */
+  on_v2: boolean;
   role: HubRole;
-  hub_type: HubType;
-  memory_count: number;
-  checked: boolean;
+  /** The person's role can't use what the client asked for. */
   disabled: boolean;
-  capability_label: string;
-  supported_permissions: string[];
-}
-
-export interface OAuthConsentPermission {
-  value: string;
-  label: string;
-  description: string;
-  checked: boolean;
+  people: number;
+  /** Kept memories on V2 (absent when the server can't say), V1's memories on V1. */
+  memories?: number;
+  /** The files it compiles to (V2 only), the canonical one first. */
+  targets?: OAuthConsentTarget[];
+  /** The level the agent is connected at here (V2 only). */
+  autonomy?: OAuthAutonomy;
+  /** The most a person may later allow it here, in Agents (V2 only). */
+  ceiling?: OAuthAutonomy;
   /**
-   * Essential permissions are pre-checked and locked in the consent UI —
-   * the agent cannot meaningfully operate without them. Server marks
-   * memax:read as essential for any recall-capable agent.
+   * What the agent will and won't be able to do here, decided by the
+   * server's policy: read_brief, read_memories, propose, keep, add, gate,
+   * forget, other_spaces. Unknown values may appear; skip them.
    */
-  essential?: boolean;
+  can: string[];
+  cannot: string[];
 }
 
-export interface OAuthConsentRequest {
-  session_id: string;
-  csrf_token: string;
+export interface OAuthRequest {
+  request_id: string;
+  /** The name the client gives itself. */
   client_name: string;
+  /**
+   * For a client known by its metadata document, the host it is served
+   * from: Memax fetched it there, unlike the name, which the client says.
+   */
+  client_host?: string;
+  /** Memax's slug for the agent (codex, claude-code, …). */
   agent_name: string;
-  resource: string;
-  submit_url: string;
+  resource?: string;
+  /** The scope the grant carries: what the client asked for. */
+  scope: string;
   expires_at: string;
-  hubs: OAuthConsentHub[];
-  permissions: OAuthConsentPermission[];
-  not_requested: string[];
+  /** Seconds left before the request expires. */
+  expires_in: number;
+  /** Who the request is bound to: the person signed in on the web. */
+  person: { name: string };
+  spaces: OAuthRequestSpace[];
+}
+
+export interface OAuthDecisionInput {
+  decision: "approve" | "deny";
+  /** The one space an approval connects the agent to. */
+  space_id?: string;
+}
+
+export interface OAuthDecision {
+  /** Where to send the browser: the client's redirect_uri with a code or access_denied. */
+  redirect_to: string;
 }
 
 // --- Hubs ---

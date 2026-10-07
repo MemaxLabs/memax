@@ -1,0 +1,161 @@
+/* A small layer over the frame's scrim (the passkey re-check, passkeys,
+ * forgetting the account), after ConnectAgent.dc.html's card: 64px from
+ * the top, a card with a ruled head, a body and a foot of actions. */
+
+.layer {
+  position: fixed;
+  z-index: 102;
+  top: 64px;
+  left: 50%;
+  box-sizing: border-box;
+  width: calc(100vw - 48px);
+  max-width: 480px;
+  max-height: calc(100vh - 88px);
+  transform: translateX(-50%);
+  outline: none;
+  display: flex;
+  transition:
+    opacity var(--duration-base) var(--ease-settle),
+    transform var(--duration-base) var(--ease-settle);
+}
+
+.wide {
+  max-width: 560px;
+}
+
+.layer[data-starting-style],
+.layer[data-ending-style] {
+  opacity: 0;
+  transform: translate(-50%, 4px);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+  font-family: var(--font-sans);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 14px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--ink-2);
+}
+
+.body p {
+  margin: 0;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--sheet);
+}
+
+.problem {
+  color: var(--vermilion);
+}
+
+.list {
+  margin: 0;
+  padding: 0 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rows {
+  list-style: none;
+  margin: 0 -20px;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.row :global(.mx-icon) {
+  color: var(--ink-3);
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rowName {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.rowMeta {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.confirm {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--sheet);
+  color: var(--ink);
+}
+
+.confirm .actions {
+  justify-content: flex-end;
+}

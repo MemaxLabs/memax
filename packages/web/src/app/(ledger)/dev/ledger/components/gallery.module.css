@@ -1,0 +1,98 @@
+/* /dev/ledger/components: the component gallery. Tokens only. */
+
+.page {
+  box-sizing: border-box;
+  min-height: 100dvh;
+  padding: var(--space-2);
+  background: var(--paper);
+}
+
+.sheet {
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+  margin: 0 auto;
+  padding: var(--space-12) var(--space-8) var(--space-16);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--sheet);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-10);
+}
+
+.breadcrumb {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-3);
+}
+
+.title {
+  margin: 0 0 var(--space-2);
+  color: var(--ink);
+}
+
+.lede {
+  max-width: var(--measure);
+  margin: 0;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.group {
+  margin-top: var(--space-12);
+}
+
+.groupTitle {
+  margin: 0 0 var(--space-4);
+  color: var(--ink);
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-10);
+}
+
+.name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0;
+  color: var(--ink);
+  font: inherit;
+}
+
+.name :global(.receipt) {
+  color: var(--ink-3);
+}
+
+/* The hairline sits outside the artboard, so screenshots of the
+ * artboard carry none of it. */
+.frame {
+  width: max-content;
+  padding: 1px;
+  background: var(--line);
+  border-radius: var(--radius-xs);
+}
+
+.artboard {
+  position: relative;
+  width: var(--artboard-w);
+  height: var(--artboard-h);
+  overflow: hidden;
+  background: var(--paper);
+}
+
+/* Each handoff preview page was its own viewport, artboard-sized, so a
+ * stage's `min-height: 100vh` meant the artboard. Here the viewport is
+ * the gallery's: give the stage the artboard's height instead. */
+.artboard :global(.mx-stage) {
+  min-height: var(--artboard-h);
+}

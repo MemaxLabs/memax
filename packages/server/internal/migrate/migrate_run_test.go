@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/testdb/catalock"
 )
 
 // baseURL mirrors internal/testdb's resolution so this test file
@@ -58,7 +60,7 @@ func withFreshDB(t *testing.T) string {
 			"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
 			dbName,
 		)
-		_, _ = admin.Exec(termCtx, fmt.Sprintf("DROP DATABASE IF EXISTS %q", dbName))
+		_ = catalock.DropDatabase(termCtx, admin, dbName)
 	})
 
 	// Build the connection string for the new DB by replacing the

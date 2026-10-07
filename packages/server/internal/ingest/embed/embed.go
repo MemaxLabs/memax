@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -44,22 +47,94 @@ func NewEmbedder() Embedder {
 	}
 }
 
+// VoyageConfig is an explicit Voyage embedder: the key and model are
+// read once at startup by the caller (the V2 index and query models,
+// V2_EMBED_MODEL and V2_EMBED_QUERY_MODEL), never from the environment
+// inside the package.
+type VoyageConfig struct {
+	APIKey string
+	// Model is the Voyage model, e.g. voyage-4 (documents) or
+	// voyage-4-lite (queries), which share one embedding space.
+	Model string
+	// OutputDimension asks for vectors of this width (voyage-4 supports
+	// 256, 512, 1024 and 2048). 0 leaves the model's default.
+	OutputDimension int
+	// MaxAttempts bounds the tries of one batch, for 429 and 5xx (0 is 3).
+	// The query path uses 1: a retry can't fit its deadline.
+	MaxAttempts int
+	// Timeout bounds one HTTP request (0 is 30 s); a context deadline
+	// shorter than it wins.
+	Timeout time.Duration
+	// HTTPClient replaces the default client (tests).
+	HTTPClient *http.Client
+}
+
+// NewVoyage returns a Voyage embedder for cfg, or nil when it has no key
+// or no model (nil means disabled).
+func NewVoyage(cfg VoyageConfig) Embedder {
+	if strings.TrimSpace(cfg.APIKey) == "" || strings.TrimSpace(cfg.Model) == "" {
+		return nil
+	}
+	client := cfg.HTTPClient
+	if client == nil {
+		timeout := cfg.Timeout
+		if timeout <= 0 {
+			timeout = defaultRequestTimeout
+		}
+		client = &http.Client{Timeout: timeout}
+	}
+	return &VoyageEmbedder{
+		apiKey: cfg.APIKey, model: strings.TrimSpace(cfg.Model), client: client,
+		outputDimension: cfg.OutputDimension, maxAttempts: cfg.MaxAttempts,
+	}
+}
+
+// RateLimitError is Voyage answering 429 on the last attempt. RetryAfter
+// is its Retry-After header, or 0 when it sent none.
+type RateLimitError struct {
+	RetryAfter time.Duration
+	Err        error
+}
+
+func (e *RateLimitError) Error() string { return e.Err.Error() }
+func (e *RateLimitError) Unwrap() error { return e.Err }
+
+// IsRateLimited reports whether err is a RateLimitError, and its wait.
+func IsRateLimited(err error) (time.Duration, bool) {
+	var rl *RateLimitError
+	if errors.As(err, &rl) {
+		return rl.RetryAfter, true
+	}
+	return 0, false
+}
+
 // VoyageEmbedder calls the Voyage AI embeddings API.
 type VoyageEmbedder struct {
 	apiKey string
 	model  string
 	client *http.Client
+	// outputDimension is sent as output_dimension when set.
+	outputDimension int
+	// maxAttempts overrides maxAttempts when set.
+	maxAttempts int
 }
 
 func (e *VoyageEmbedder) Dimensions() int {
+	if e.outputDimension > 0 {
+		return e.outputDimension
+	}
 	// voyage-code-3 returns 1024-dim vectors
 	return 1024
 }
 
+// Model is the Voyage model this embedder calls.
+func (e *VoyageEmbedder) Model() string { return e.model }
+
 type voyageRequest struct {
-	Input     []string `json:"input"`
-	Model     string   `json:"model"`
-	InputType string   `json:"input_type,omitempty"`
+	Input           []string `json:"input"`
+	Model           string   `json:"model"`
+	InputType       string   `json:"input_type,omitempty"`
+	OutputDimension int      `json:"output_dimension,omitempty"`
 }
 
 type voyageResponse struct {
@@ -110,17 +185,22 @@ func (e *VoyageEmbedder) EmbedContext(ctx context.Context, texts []string, input
 
 func (e *VoyageEmbedder) embedBatch(ctx context.Context, texts []string, inputType string) ([][]float64, error) {
 	reqBody := voyageRequest{
-		Input:     texts,
-		Model:     e.model,
-		InputType: inputType,
+		Input:           texts,
+		Model:           e.model,
+		InputType:       inputType,
+		OutputDimension: e.outputDimension,
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("embed marshal: %w", err)
 	}
 
+	attempts := maxAttempts
+	if e.maxAttempts > 0 {
+		attempts = e.maxAttempts
+	}
 	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+	for attempt := 1; attempt <= attempts; attempt++ {
 		if attempt > 1 {
 			if err := sleepBeforeRetry(ctx, attempt); err != nil {
 				return nil, err
@@ -159,7 +239,11 @@ func (e *VoyageEmbedder) doEmbedBatch(ctx context.Context, body []byte, count in
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseErrorBytes))
-		return nil, isRetryableStatus(resp.StatusCode), fmt.Errorf("voyage API error %d: %s", resp.StatusCode, respBody)
+		err := fmt.Errorf("voyage API error %d: %s", resp.StatusCode, respBody)
+		if resp.StatusCode == http.StatusTooManyRequests {
+			err = &RateLimitError{RetryAfter: retryAfter(resp.Header.Get("Retry-After")), Err: err}
+		}
+		return nil, isRetryableStatus(resp.StatusCode), err
 	}
 
 	var voyageResp voyageResponse
@@ -174,6 +258,15 @@ func (e *VoyageEmbedder) doEmbedBatch(ctx context.Context, body []byte, count in
 		}
 	}
 	return embeddings, false, nil
+}
+
+// retryAfter parses a Retry-After header in seconds (the form Voyage
+// sends); anything else is 0.
+func retryAfter(h string) time.Duration {
+	if n, err := strconv.Atoi(strings.TrimSpace(h)); err == nil && n > 0 {
+		return time.Duration(n) * time.Second
+	}
+	return 0
 }
 
 func isRetryableStatus(status int) bool {

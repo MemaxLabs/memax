@@ -1,0 +1,212 @@
+/* Settings › Agents and keys, after Keys.dc.html: two tables of five
+ * columns (name, spaces or key, may, last used, Revoke) and a notice. */
+
+.head :global(.mx-page-lede) {
+  max-width: 460px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr)
+    96px 72px;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.list > .row:last-child {
+  border-bottom: 0;
+}
+
+.th {
+  padding: 8px 16px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.c {
+  color: var(--ink-2);
+}
+
+.keyName {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.name {
+  font-weight: 550;
+  color: var(--ink);
+}
+
+.key {
+  justify-self: start;
+}
+
+.none {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-3);
+}
+
+/* Revoke, confirmed inline on its own line under the row. */
+.confirm {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--vermilion-wash);
+  border-radius: var(--radius-sm);
+}
+
+.confirmText {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+}
+
+.notice {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.noticeIcon {
+  display: flex;
+  padding-top: 1px;
+  color: var(--ink-3);
+}
+
+/* New key. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--sheet);
+}
+
+.formRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.formName {
+  flex: 1;
+  min-width: 220px;
+}
+
+.formMay {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.formFoot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.grow {
+  flex: 1;
+}
+
+.formTitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.formHint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.secret {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.secretText {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  overflow-x: auto;
+  white-space: pre;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ink);
+}
+
+@media (max-width: 899px) {
+  .th {
+    display: none;
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 4px;
+  }
+
+  .row > :nth-child(2),
+  .row > :nth-child(3),
+  .row > :nth-child(4) {
+    grid-column: 1;
+  }
+
+  .row > :nth-child(5) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .confirm {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    flex-wrap: wrap;
+  }
+}
+
+/* .mx-meta's look for prose: its tabular figures widen "." and "," in
+ * Schibsted Grotesk, which reads as a space before them (design review §2). */
+:global(.mx-meta).plain,
+.plain {
+  font-variant-numeric: normal;
+}

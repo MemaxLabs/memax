@@ -1,12 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import {
-  readFileSync,
-  readdirSync,
-  statSync,
-  watch,
-  existsSync,
-} from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, extname, resolve } from "node:path";
 import { getClient } from "../lib/client.js";
 import {
@@ -18,7 +12,6 @@ import { confirm } from "../lib/prompt.js";
 
 interface ImportOptions {
   boundary?: string;
-  watch?: boolean;
   ignore?: string;
   yes?: boolean;
 }
@@ -94,7 +87,7 @@ export async function importCommand(
     updateSyncSourceRun(syncRoot, {
       ignorePatterns,
       defaultBoundary: options.boundary,
-      mode: options.watch ? "watch" : "manual",
+      mode: "manual",
       scanCount: 0,
       pushed: 0,
       skipped: 0,
@@ -135,7 +128,7 @@ export async function importCommand(
   updateSyncSourceRun(syncRoot, {
     ignorePatterns,
     defaultBoundary: options.boundary,
-    mode: options.watch ? "watch" : "manual",
+    mode: "manual",
     scanCount: files.length,
     pushed,
     skipped,
@@ -153,39 +146,6 @@ export async function importCommand(
       "  Missing local files are retained in Memax until removed explicitly.",
     ),
   );
-
-  if (options.watch) {
-    console.log(
-      chalk.cyan(`\nWatching ${dir} for changes... (Ctrl+C to stop)`),
-    );
-
-    let debounceTimer: NodeJS.Timeout | null = null;
-    const pendingChanges = new Set<string>();
-
-    watch(syncRoot, { recursive: true }, (_eventType, filename) => {
-      if (!filename) return;
-      const fullPath = join(syncRoot, filename);
-
-      if (!isSupportedFile(filename) || isIgnored(filename, ignoreSet)) return;
-
-      pendingChanges.add(fullPath);
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(async () => {
-        for (const file of pendingChanges) {
-          if (!existsSync(file)) {
-            console.log(
-              chalk.gray("  ~"),
-              buildSyncSourcePath(syncRoot, file),
-              chalk.gray("[deleted locally, retained in Memax]"),
-            );
-            continue;
-          }
-          await pushFile(file, syncRoot, projectContext, options);
-        }
-        pendingChanges.clear();
-      }, 500);
-    });
-  }
 }
 
 async function pushFile(
@@ -328,7 +288,6 @@ export function registerImportCommand(program: Command): void {
   const importCmd = program
     .command("import [directory]")
     .description("Import a directory of files into your Memax workspace")
-    .option("-w, --watch", "Watch for changes (coming soon)")
     .option(
       "-b, --boundary <level>",
       "Visibility level: private, team, org",

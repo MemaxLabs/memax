@@ -1,0 +1,313 @@
+{
+  "version": 1,
+  "compile_id": "C-0910",
+  "compiled_at": "2026-10-06T10:15:00Z",
+  "brief_id": "B-0045",
+  "space": "memax-v2",
+  "files": [
+    {
+      "path": ".claude/rules/memax-packages-server.md",
+      "target": "claude_rules",
+      "bytes": 284,
+      "lines": 8,
+      "sha256": "e1ed83bea6d281b48310638f18e4f88c2ed531d565754a2cc7853f77c0452852",
+      "refs": ["M-0450"],
+      "cites": ["M-0450"],
+      "dropped_for_budget": [],
+      "drift_sha256": "e1ed83bea6d281b48310638f18e4f88c2ed531d565754a2cc7853f77c0452852",
+      "user_owned": false
+    },
+    {
+      "path": ".claude/rules/memax-packages-web.md",
+      "target": "claude_rules",
+      "bytes": 309,
+      "lines": 9,
+      "sha256": "27bcf3faa9b896d29ef0996f8b042ee59290c62d290a2586d23c68a7c22377ef",
+      "refs": ["M-0441", "M-0442"],
+      "cites": ["M-0441", "M-0442"],
+      "dropped_for_budget": [],
+      "drift_sha256": "27bcf3faa9b896d29ef0996f8b042ee59290c62d290a2586d23c68a7c22377ef",
+      "user_owned": false
+    },
+    {
+      "path": ".claude/rules/memax-test-ts-test-tsx.md",
+      "target": "claude_rules",
+      "bytes": 279,
+      "lines": 9,
+      "sha256": "e4ced59a09aa673c2b92bb1f7a7075011828fa283814fb85f2020dc8e3dc1e4b",
+      "refs": ["M-0451"],
+      "cites": ["M-0451"],
+      "dropped_for_budget": [],
+      "drift_sha256": "e4ced59a09aa673c2b92bb1f7a7075011828fa283814fb85f2020dc8e3dc1e4b",
+      "user_owned": false
+    },
+    {
+      "path": ".cursor/rules/memax-packages-server.mdc",
+      "target": "cursor_mdc",
+      "bytes": 353,
+      "lines": 9,
+      "sha256": "b57e7fcfcb3a91e3cd1ae45b44f1bb6251c0512c8eeef4b5dca0ea324c2538db",
+      "refs": ["M-0450"],
+      "cites": ["M-0450"],
+      "dropped_for_budget": [],
+      "drift_sha256": "b57e7fcfcb3a91e3cd1ae45b44f1bb6251c0512c8eeef4b5dca0ea324c2538db",
+      "user_owned": false
+    },
+    {
+      "path": ".cursor/rules/memax-packages-web.mdc",
+      "target": "cursor_mdc",
+      "bytes": 426,
+      "lines": 11,
+      "sha256": "59feaec427c1077e060582bc9feebb4987d7d0077e22969047f60d0cf684de4f",
+      "refs": ["M-0441", "M-0442", "M-0462"],
+      "cites": ["M-0441", "M-0442", "M-0462"],
+      "dropped_for_budget": [],
+      "drift_sha256": "59feaec427c1077e060582bc9feebb4987d7d0077e22969047f60d0cf684de4f",
+      "user_owned": false
+    },
+    {
+      "path": ".cursor/rules/memax-test-ts-test-tsx.mdc",
+      "target": "cursor_mdc",
+      "bytes": 351,
+      "lines": 9,
+      "sha256": "dd2a93674e2e2f36e1162cb33e18ecae76c5cab1bbff5fefa124bc98ac055495",
+      "refs": ["M-0451"],
+      "cites": ["M-0451"],
+      "dropped_for_budget": [],
+      "drift_sha256": "dd2a93674e2e2f36e1162cb33e18ecae76c5cab1bbff5fefa124bc98ac055495",
+      "user_owned": false
+    },
+    {
+      "path": ".devin/rules/memax-packages-server.md",
+      "target": "windsurf",
+      "bytes": 292,
+      "lines": 8,
+      "sha256": "ca800dc3ae9bc15885159d1721689c5e329b6222908a991f0337721da13e1588",
+      "refs": ["M-0450"],
+      "cites": ["M-0450"],
+      "dropped_for_budget": [],
+      "drift_sha256": "ca800dc3ae9bc15885159d1721689c5e329b6222908a991f0337721da13e1588",
+      "user_owned": false
+    },
+    {
+      "path": ".devin/rules/memax-packages-web.md",
+      "target": "windsurf",
+      "bytes": 317,
+      "lines": 9,
+      "sha256": "637f6c819f9c872e3621c953e784d434e0468a5bb6297428e68c0a495f70ccd4",
+      "refs": ["M-0441", "M-0442"],
+      "cites": ["M-0441", "M-0442"],
+      "dropped_for_budget": [],
+      "drift_sha256": "637f6c819f9c872e3621c953e784d434e0468a5bb6297428e68c0a495f70ccd4",
+      "user_owned": false
+    },
+    {
+      "path": ".devin/rules/memax-test-ts-test-tsx.md",
+      "target": "windsurf",
+      "bytes": 281,
+      "lines": 8,
+      "sha256": "6225bf4c37f582ba28cdc473d64c16349bc12de434f1ee6376f0993c96e741cc",
+      "refs": ["M-0451"],
+      "cites": ["M-0451"],
+      "dropped_for_budget": [],
+      "drift_sha256": "6225bf4c37f582ba28cdc473d64c16349bc12de434f1ee6376f0993c96e741cc",
+      "user_owned": false
+    },
+    {
+      "path": ".github/instructions/memax-packages-server.instructions.md",
+      "target": "copilot",
+      "bytes": 282,
+      "lines": 7,
+      "sha256": "477ca1c11f52a62d3d2c361bdb34422c2fc64b972ba8a2e0e1fdc413dfa901c1",
+      "refs": ["M-0450"],
+      "cites": ["M-0450"],
+      "dropped_for_budget": [],
+      "drift_sha256": "477ca1c11f52a62d3d2c361bdb34422c2fc64b972ba8a2e0e1fdc413dfa901c1",
+      "user_owned": false
+    },
+    {
+      "path": ".github/instructions/memax-packages-web.instructions.md",
+      "target": "copilot",
+      "bytes": 307,
+      "lines": 8,
+      "sha256": "b331c48b1c3f123c373b5367dfbf432a6528efa80492d0a7d5d3f90500b60a2b",
+      "refs": ["M-0441", "M-0442"],
+      "cites": ["M-0441", "M-0442"],
+      "dropped_for_budget": [],
+      "drift_sha256": "b331c48b1c3f123c373b5367dfbf432a6528efa80492d0a7d5d3f90500b60a2b",
+      "user_owned": false
+    },
+    {
+      "path": ".github/instructions/memax-test-ts-test-tsx.instructions.md",
+      "target": "copilot",
+      "bytes": 271,
+      "lines": 7,
+      "sha256": "2608498090b379978c24d1f285c3f5dc2ac794aad09392acacf94aa0ab59084c",
+      "refs": ["M-0451"],
+      "cites": ["M-0451"],
+      "dropped_for_budget": [],
+      "drift_sha256": "2608498090b379978c24d1f285c3f5dc2ac794aad09392acacf94aa0ab59084c",
+      "user_owned": false
+    },
+    {
+      "path": "AGENTS.md",
+      "target": "agents_md",
+      "bytes": 892,
+      "lines": 24,
+      "sha256": "cc1ddf593466828462c47127174ccd400331ecc6cff2740673ac8de0d29e5f04",
+      "refs": ["M-0071", "M-0219", "M-0441", "M-0442", "M-0450", "M-0451"],
+      "cites": ["M-0071", "M-0219", "M-0441", "M-0442", "M-0450", "M-0451"],
+      "dropped_for_budget": [],
+      "drift_sha256": "cc1ddf593466828462c47127174ccd400331ecc6cff2740673ac8de0d29e5f04",
+      "user_owned": false
+    },
+    {
+      "path": "CLAUDE.md",
+      "target": "claude_md",
+      "bytes": 251,
+      "lines": 5,
+      "sha256": "069b11c70913fec6366410979bf8e9f4ee4ca4beb6644ae89258900a800fa1c7",
+      "refs": ["M-0460"],
+      "cites": ["M-0460"],
+      "dropped_for_budget": [],
+      "drift_sha256": "069b11c70913fec6366410979bf8e9f4ee4ca4beb6644ae89258900a800fa1c7",
+      "user_owned": false
+    },
+    {
+      "path": "GEMINI.md",
+      "target": "gemini_md",
+      "bytes": 240,
+      "lines": 5,
+      "sha256": "29fd710849e432ed5b2ed37452250d010747c2ee0a88e1bc93d5f98429534562",
+      "refs": ["M-0461"],
+      "cites": ["M-0461"],
+      "dropped_for_budget": [],
+      "drift_sha256": "29fd710849e432ed5b2ed37452250d010747c2ee0a88e1bc93d5f98429534562",
+      "user_owned": false
+    },
+    {
+      "path": "scoped-omit/AGENTS.md",
+      "target": "agents_md",
+      "bytes": 567,
+      "lines": 14,
+      "sha256": "8cb2463f948866c84d24f5125fddf55177984d925f6ae645ef10857d8cb11013",
+      "refs": ["M-0071", "M-0219"],
+      "cites": ["M-0071", "M-0219"],
+      "dropped_for_budget": [],
+      "drift_sha256": "8cb2463f948866c84d24f5125fddf55177984d925f6ae645ef10857d8cb11013",
+      "user_owned": false
+    }
+  ],
+  "copies": [
+    {
+      "label": "ChatGPT project instructions",
+      "target": "chatgpt",
+      "bytes": 471,
+      "lines": 13,
+      "sha256": "6ba5fb8300f43d4e94577772ec2be3a3a57edf4bd3e4e750a745bce9b43cc36b",
+      "refs": ["M-0071", "M-0219"],
+      "cites": ["M-0071", "M-0219"],
+      "dropped_for_budget": []
+    }
+  ],
+  "targets": [
+    {
+      "kind": "agents_md",
+      "path": "AGENTS.md",
+      "delivery": "file",
+      "reads": null,
+      "files": ["AGENTS.md"],
+      "refs": ["M-0071", "M-0219", "M-0441", "M-0442", "M-0450", "M-0451"],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "agents_md",
+      "path": "scoped-omit/AGENTS.md",
+      "delivery": "file",
+      "reads": null,
+      "files": ["scoped-omit/AGENTS.md"],
+      "refs": ["M-0071", "M-0219"],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "claude_md",
+      "path": "CLAUDE.md",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": ["CLAUDE.md"],
+      "refs": ["M-0460"],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "cursor_mdc",
+      "path": ".cursor/rules",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": [
+        ".cursor/rules/memax-test-ts-test-tsx.mdc",
+        ".cursor/rules/memax-packages-server.mdc",
+        ".cursor/rules/memax-packages-web.mdc"
+      ],
+      "refs": ["M-0441", "M-0442", "M-0450", "M-0451", "M-0462"],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "chatgpt",
+      "path": null,
+      "delivery": "copy",
+      "reads": null,
+      "files": [],
+      "refs": ["M-0071", "M-0219"],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "gemini_md",
+      "path": "GEMINI.md",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": ["GEMINI.md"],
+      "refs": ["M-0461"],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "copilot",
+      "path": ".github/instructions",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": [
+        ".github/instructions/memax-test-ts-test-tsx.instructions.md",
+        ".github/instructions/memax-packages-server.instructions.md",
+        ".github/instructions/memax-packages-web.instructions.md"
+      ],
+      "refs": ["M-0441", "M-0442", "M-0450", "M-0451"],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "windsurf",
+      "path": ".devin/rules",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": [
+        ".devin/rules/memax-test-ts-test-tsx.md",
+        ".devin/rules/memax-packages-server.md",
+        ".devin/rules/memax-packages-web.md"
+      ],
+      "refs": ["M-0441", "M-0442", "M-0450", "M-0451"],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "claude_rules",
+      "path": ".claude/rules",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": [
+        ".claude/rules/memax-test-ts-test-tsx.md",
+        ".claude/rules/memax-packages-server.md",
+        ".claude/rules/memax-packages-web.md"
+      ],
+      "refs": ["M-0441", "M-0442", "M-0450", "M-0451"],
+      "dropped_for_budget": []
+    }
+  ],
+  "warnings": []
+}

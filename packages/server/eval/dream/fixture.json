@@ -1,0 +1,68 @@
+{
+  "about": "A small space where every Dream phase has a known answer. Run A happens the night after the record below was written; run B sixty-one days later, after one more note. 'expect' is what Dream should do (a memory the Brief comes to place is exempt from fading); 'oracle' is how the fake model answers (the live model gets the same prompts). Words are made up for the eval.",
+  "kept": [
+    {"key": "river", "statement": "Background jobs run on River, not Temporal.", "section": "decisions", "kind": "decision", "area": "job queue"},
+    {"key": "railway", "statement": "The v2 API deploys to Railway.", "section": "conventions"},
+    {"key": "pnpm", "statement": "Use pnpm workspaces only; never npm or yarn.", "section": "conventions"},
+    {"key": "mcp", "statement": "Remote MCP is stateless streamable HTTP with OAuth 2.1.", "section": "conventions"},
+    {"key": "errors", "statement": "API errors are RFC 9457 problem+json documents.", "section": "conventions"},
+    {"key": "haiku", "statement": "Ask memax answers with the Haiku tier.", "section": "conventions", "stale_days": -2},
+    {"key": "tabs", "statement": "Use tabs, not spaces, in generated Go files.", "section": "conventions"},
+    {"key": "staging", "statement": "The staging database is reset every Sunday night.", "section": "conventions"},
+    {"key": "fly", "statement": "The v2 API deploys to Fly.io in iad and ams.", "section": "conventions"},
+    {"key": "temporal", "statement": "New background jobs are written as Temporal workflows.", "section": "conventions"}
+  ],
+  "proposals": [
+    {"key": "cards", "statement": "Review cards show the diff against the memory they replace."},
+    {"key": "cards2", "statement": "Review cards show the diff against the memory they replace!"},
+    {"key": "cli", "statement": "The CLI prints receipts in the same order as the web app."},
+    {"key": "cli2", "statement": "Receipts in the CLI come out in the same order the web app shows them."}
+  ],
+  "notes": [
+    {"key": "n-river-1", "agent": "claude-code", "body": "Checked the worker again: background jobs run on River, and River's retries cover the compile jobs. No Temporal anywhere."},
+    {"key": "n-river-2", "agent": "codex", "body": "Confirmed River is the job queue for background jobs; Temporal was never added."},
+    {"key": "n-mcp", "agent": "cursor", "body": "The remote MCP endpoint is stateless streamable HTTP, and OAuth 2.1 guards it."},
+    {"key": "n-commit", "agent": "claude-code", "body": "Ziyang asked again: commit messages are short and in the imperative mood, like 'Add recall endpoint'. He prefers that everywhere."},
+    {"key": "n-vitest", "agent": "codex", "body": "Agreed with Jiahao: the CLI's unit tests use Vitest, and integration tests run against a local API."},
+    {"key": "n-coffee", "agent": "cursor", "body": "lol the coffee machine on floor 3 is broken again"},
+    {"key": "n-standup", "agent": "claude-code", "body": "Today I'm looking at the flaky test in the sealer, then lunch."}
+  ],
+  "later_notes": [
+    {"key": "n-back", "agent": "codex", "body": "Back from leave; nothing new to note yet."}
+  ],
+  "brief": [
+    {"key": "decisions", "heading": "Decisions", "items": ["river"]},
+    {"key": "conventions", "heading": "Conventions", "items": ["pnpm", "mcp"]}
+  ],
+  "expect": {
+    "fold": [{"memory": "river", "notes": ["n-river-1", "n-river-2"]}, {"memory": "mcp", "notes": ["n-mcp"]}],
+    "propose": [{"notes": ["n-commit"], "words": ["commit", "imperative"]}, {"notes": ["n-vitest"], "words": ["vitest"]}],
+    "skip_notes": ["n-coffee", "n-standup"],
+    "dedupe": [["cards2", "cards"], ["cli2", "cli"]],
+    "conflict": [["fly", "railway"], ["temporal", "river"]],
+    "stale": ["haiku"],
+    "fade_b": ["tabs", "staging", "errors"],
+    "never_fade": ["river", "pnpm", "mcp", "fly", "railway", "haiku", "temporal"],
+    "brief_places": ["errors"]
+  },
+  "oracle": {
+    "folds": [
+      {"note": "River", "memory": "Background jobs run on River"},
+      {"note": "remote MCP endpoint", "memory": "Remote MCP is stateless"}
+    ],
+    "facts": [
+      {"notes": ["commit messages"], "statement": "Commit messages are short and in the imperative mood.", "section": "preferences"},
+      {"notes": ["Vitest"], "statement": "The CLI's unit tests use Vitest; integration tests run against a local API.", "section": "conventions"}
+    ],
+    "pairs": [
+      {"a": "come out in the same order", "b": "prints receipts in the same order", "relation": "duplicate", "confidence": 0.95},
+      {"a": "Fly.io in iad", "b": "deploys to Railway", "relation": "updates", "confidence": 0.92},
+      {"a": "Temporal workflows", "b": "River, not Temporal", "relation": "contradicts", "confidence": 0.9}
+    ],
+    "brief": [
+      {"op": "place", "item": "problem+json", "section": "conventions", "after": "pnpm workspaces"},
+      {"op": "add", "section": "conventions", "text": "Errors and transports follow the standards named here.", "cites": ["problem+json", "Remote MCP"]},
+      {"op": "add", "section": "decisions", "text": "An uncited claim that validation refuses."}
+    ]
+  }
+}

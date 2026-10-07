@@ -2,7 +2,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AuthIdentity, AuthProviderName } from "memax-sdk";
-import { getAccessToken } from "@/lib/auth";
 import { getMemaxClient } from "@/lib/memax-client";
 import { useLocale } from "@/i18n";
 
@@ -30,20 +29,14 @@ export function useStartProviderLink() {
       errorAction: t.errors.action.linkProvider,
     },
     mutationFn: async (provider: AuthProviderName) => {
-      const token = getAccessToken();
-      if (!token) {
-        throw new Error("Not authenticated.");
-      }
-
+      // The session's cookies go with the request; the web app's server
+      // asks the API with the session's token.
       const redirectURI = `${window.location.origin}/settings?account_linked=${provider}`;
       const response = await fetch(
         `/api/auth/link/${provider}?redirect_uri=${encodeURIComponent(
           redirectURI,
         )}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: "no-store",
-        },
+        { cache: "no-store" },
       );
       const payload = (await response.json()) as LinkStartResponse;
       if (!response.ok || payload.error || !payload.data?.url) {

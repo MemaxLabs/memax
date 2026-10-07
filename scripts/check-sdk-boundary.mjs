@@ -5,17 +5,17 @@ import process from "node:process";
 const ROOTS = ["packages/web"];
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
 const ignoredPathSnippets = [
-  "packages/web/src/app/dev/kitchen/",
+  "packages/web/src/app/(v1)/dev/kitchen/",
   "packages/web/src/lib/dev-mocks.ts",
   // Admin endpoints intentionally bypass the public SDK. They are internal
   // operator tools with a different auth model (JWT session + admin_roles).
   "packages/web/src/hooks/use-admin-",
   "packages/web/src/lib/admin-client/",
-  "packages/web/src/app/(admin)/",
+  "packages/web/src/app/(v1)/(admin)/",
   // Waitlist signup + invite validation are public endpoints that don't require
   // auth. They predate the user's account, so no API key/session can exist yet.
-  "packages/web/src/app/(marketing)/waitlist/",
-  "packages/web/src/app/(auth)/register/",
+  "packages/web/src/app/(v1)/(marketing)/waitlist/",
+  "packages/web/src/app/(v1)/(auth)/register/",
   "packages/web/src/components/landing/hero-waitlist.tsx",
 ];
 
@@ -25,7 +25,15 @@ function walk(dir) {
     const fullPath = join(dir, entry);
     const stat = statSync(fullPath);
     if (stat.isDirectory()) {
-      if (entry === "node_modules" || entry === "dist" || entry === ".next") {
+      // Build output, including the Cloudflare Worker build (OpenNext's
+      // .open-next and Wrangler's .wrangler hold bundled copies of the SDK).
+      if (
+        entry === "node_modules" ||
+        entry === "dist" ||
+        entry === ".next" ||
+        entry === ".open-next" ||
+        entry === ".wrangler"
+      ) {
         continue;
       }
       files.push(...walk(fullPath));

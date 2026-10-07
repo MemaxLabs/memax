@@ -1,0 +1,18 @@
+-- 025: drop_reviews
+--
+-- The V1 `reviews` table has been dead since Phase 6 of the
+-- notifications work: dream contradictions, topic merges and pending
+-- review items all moved to `notifications`, and no handler, worker or
+-- MCP tool reads or writes `reviews` any more. The only reference left
+-- was a defensive DELETE in the account-wipe path (DeleteAllUserData),
+-- removed in the same change as this migration.
+--
+-- V2 plan (memax-internal docs/plans/25-memax-v2.md §12, epic 0.6 and
+-- the V1 feature disposition §3) retires it now, before V2's own
+-- "Review" queue arrives, so the two can never be confused.
+--
+-- Before applying in production, run the disposition doc's check:
+--   SELECT count(*), max(created_at) FROM reviews;   -- expect dead
+-- The down migration restores the empty table and its indexes, not
+-- any rows.
+DROP TABLE IF EXISTS public.reviews;

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "compile": { "id": "C-0001", "at": "2026-10-05T08:00:00Z" },
+  "space": {
+    "slug": "memax-web",
+    "name": "Memax Web",
+    "kind": "project",
+    "url": "https://memax.app/memax-web/brief"
+  },
+  "brief": {
+    "id": "B-0001",
+    "title": "Memax Web brief",
+    "sections": []
+  },
+  "memories": [],
+  "targets": [
+    { "kind": "agents_md" },
+    { "kind": "claude_md" },
+    { "kind": "cursor_mdc" },
+    { "kind": "chatgpt" },
+    { "kind": "gemini_md" },
+    { "kind": "copilot" },
+    { "kind": "windsurf" },
+    { "kind": "claude_rules" }
+  ]
+}

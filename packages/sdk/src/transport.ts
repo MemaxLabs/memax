@@ -1,4 +1,8 @@
-import type { MemaxConfig } from "./types.js";
+import type {
+  MemaxConfig,
+  PasskeyCheck,
+  PasskeyCheckHandler,
+} from "./types.js";
 import { MemaxError, parseRetryAfter } from "./errors.js";
 
 /**
@@ -37,19 +41,20 @@ export interface RequestOptions {
    * cancellation; we never wrap them as `network_error`.
    */
   signal?: AbortSignal;
-}
-
-export interface StreamOptions extends RequestOptions {
-  onEvent: (event: string, data: unknown) => void;
-  onClose?: () => void;
   /**
    * Per-call header overrides. Use cases:
+   *   - /v2 commands send `Idempotency-Key` and `If-Match`.
    *   - Chat stream resume sends `Last-Event-ID` so the server
    *     replays only events past the last seq the client saw.
    * Static `headers` on `MemaxConfig` are still merged; this map
    * overrides per-request without mutating the transport singleton.
    */
   extraHeaders?: Record<string, string>;
+}
+
+export interface StreamOptions extends RequestOptions {
+  onEvent: (event: string, data: unknown) => void;
+  onClose?: () => void;
 }
 
 export interface DownloadOptions {
@@ -72,6 +77,28 @@ export type StreamFn = (
 export type DownloadFn = (
   path: string,
   options?: DownloadOptions,
+) => Promise<Response>;
+
+/** An OAuth protocol answer: its status and JSON body, unwrapped. */
+export interface FormResult {
+  status: number;
+  body: Record<string, unknown>;
+  /** Seconds, from Retry-After, when the server sent one. */
+  retryAfter?: number;
+}
+
+/** Posts an OAuth form; see {@link ApiTransport.form}. */
+export type FormFn = (
+  path: string,
+  fields: Record<string, string | undefined>,
+  signal?: AbortSignal,
+) => Promise<FormResult>;
+
+/** Opens an event stream; see {@link ApiTransport.open}. */
+export type OpenFn = (
+  method: string,
+  path: string,
+  options?: RequestOptions,
 ) => Promise<Response>;
 
 function resolveFetch(config: MemaxConfig): typeof globalThis.fetch {
@@ -194,6 +221,34 @@ function buildQueryString(query?: RequestOptions["query"]): string {
   return encoded ? `?${encoded}` : "";
 }
 
+/** The challenge a 403 `needs_passkey` carries, when it carries one. */
+export function passkeyCheckOf(
+  message: string,
+  details: Record<string, unknown> | undefined,
+): PasskeyCheck | undefined {
+  const passkey = details?.passkey as
+    | { options?: PasskeyCheck["options"]; expires_at?: string }
+    | undefined;
+  if (!passkey?.options || typeof passkey.options.challenge !== "string") {
+    return undefined;
+  }
+  return {
+    options: passkey.options,
+    expiresAt: passkey.expires_at ?? "",
+    message,
+  };
+}
+
+/**
+ * A passkey's answer as the `X-Memax-Passkey` header carries it: its JSON
+ * (AuthenticationResponseJSON), base64url. The JSON is ASCII (its binary
+ * members are base64url already), so btoa takes it as it is.
+ */
+export function encodePasskeyAnswer(answer: unknown): string {
+  const json = typeof answer === "string" ? answer : JSON.stringify(answer);
+  return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 export class ApiTransport {
   // Public so `Memax` (client.ts) can pass the resolved apiUrl to
   // AuthResource without duplicating the DEFAULT_API_URL fallback —
@@ -206,6 +261,7 @@ export class ApiTransport {
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
   private readonly onWarning?: (warning: string) => void;
+  private readonly passkeyCheck?: PasskeyCheckHandler;
 
   constructor(config: MemaxConfig) {
     this.apiUrl = (config.apiUrl ?? DEFAULT_API_URL).replace(/\/$/, "");
@@ -215,6 +271,7 @@ export class ApiTransport {
     this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
     this.onWarning = config.onWarning;
+    this.passkeyCheck = config.passkeyCheck;
   }
 
   async request<T>(
@@ -225,6 +282,9 @@ export class ApiTransport {
     const url = `${this.apiUrl}${path}${buildQueryString(options?.query)}`;
 
     let lastErr: unknown;
+    // The passkey re-check's answer, once the person has given it: the
+    // same request goes again with it (see MemaxConfig.passkeyCheck).
+    let passkeyAnswer: string | undefined;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       // Bail before doing any work if the caller already cancelled.
       // Matters between not_ready retries — the inter-retry sleep can
@@ -234,13 +294,19 @@ export class ApiTransport {
       }
 
       const authHeaders = await this.getAuth();
+      // Built per attempt from the same options, so a retried command
+      // carries the same Idempotency-Key.
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         ...this.headers,
         ...authHeaders,
+        ...(options?.extraHeaders ?? {}),
       };
       if (options?.hubId) {
         headers["X-Hub-ID"] = options.hubId;
+      }
+      if (passkeyAnswer) {
+        headers["X-Memax-Passkey"] = passkeyAnswer;
       }
       // Auto-detect and send client timezone for TZ-aware date handling
       try {
@@ -349,6 +415,22 @@ export class ApiTransport {
           await sleepUnlessAborted(this.retryDelayMs, options?.signal);
           continue;
         }
+        const check =
+          json.error.code === "needs_passkey" && !passkeyAnswer
+            ? passkeyCheckOf(json.error.message, json.error.details)
+            : undefined;
+        if (check && this.passkeyCheck) {
+          const answer = await this.passkeyCheck(check);
+          if (options?.signal?.aborted) {
+            throw signalAbortError(options.signal);
+          }
+          if (answer != null) {
+            passkeyAnswer = encodePasskeyAnswer(answer);
+            // The answered request isn't a retry: it doesn't use one up.
+            attempt--;
+            continue;
+          }
+        }
         throw err;
       }
 
@@ -356,6 +438,154 @@ export class ApiTransport {
     }
 
     throw lastErr;
+  }
+
+  /**
+   * Posts an OAuth protocol form (`application/x-www-form-urlencoded`) with
+   * no credentials and returns its status and JSON body as they are: OAuth
+   * answers in its own JSON (`{error, error_description}`), not the
+   * `{data}` envelope, and its 400s are expected answers, not failures.
+   * Only a network failure or a body that isn't JSON throws.
+   */
+  async form(
+    path: string,
+    fields: Record<string, string | undefined>,
+    signal?: AbortSignal,
+  ): Promise<FormResult> {
+    const url = `${this.apiUrl}${path}`;
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined && value !== "") params.set(key, value);
+    }
+    if (signal?.aborted) throw signalAbortError(signal);
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        method: "POST",
+        headers: {
+          ...this.headers,
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: params.toString(),
+        signal,
+        cache: "no-store",
+      });
+    } catch (error) {
+      if (signal?.aborted) throw signalAbortError(signal);
+      if (isAbortShaped(error)) throw error;
+      throw new MemaxError(
+        `Cannot reach API at ${url} — is the server running?`,
+        "network_error",
+        0,
+      );
+    }
+    const text = await res.text();
+    try {
+      return {
+        status: res.status,
+        body: (text ? JSON.parse(text) : {}) as Record<string, unknown>,
+        retryAfter: parseRetryAfter(res.headers.get("Retry-After")),
+      };
+    } catch {
+      const preview = summarizeResponseText(text);
+      throw new MemaxError(
+        preview
+          ? `${formatRequestLabel("POST", url)} returned ${res.status} with non-JSON response: ${preview}`
+          : `${formatRequestLabel("POST", url)} returned ${res.status} with non-JSON response`,
+        "invalid_response",
+        res.status,
+      );
+    }
+  }
+
+  /**
+   * Opens a server-sent event stream (`Accept: text/event-stream`) and
+   * returns the response once its status is a success, body unread. An
+   * error response is JSON, as on every other call, and throws the same
+   * MemaxError `request` would; an abort throws an AbortError.
+   */
+  async open(
+    method: string,
+    path: string,
+    options?: RequestOptions,
+  ): Promise<Response> {
+    const url = `${this.apiUrl}${path}${buildQueryString(options?.query)}`;
+    if (options?.signal?.aborted) throw signalAbortError(options.signal);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      ...this.headers,
+      ...(await this.getAuth()),
+      ...(options?.extraHeaders ?? {}),
+    };
+    if (options?.hubId) headers["X-Hub-ID"] = options.hubId;
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz) headers["X-Timezone"] = tz;
+    } catch {
+      // Intl not available — skip
+    }
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        method,
+        headers,
+        body:
+          options?.body !== undefined
+            ? JSON.stringify(options.body)
+            : undefined,
+        signal: options?.signal,
+        cache: "no-store",
+      });
+    } catch (error) {
+      if (options?.signal?.aborted) throw signalAbortError(options.signal);
+      if (isAbortShaped(error)) throw error;
+      throw new MemaxError(
+        `Cannot reach API at ${url} — is the server running?`,
+        "network_error",
+        0,
+      );
+    }
+    if (res.ok && res.body) return res;
+    const text = await res.text().catch(() => "");
+    let json:
+      | {
+          error?: {
+            code: string;
+            message: string;
+            details?: Record<string, unknown>;
+          };
+        }
+      | undefined;
+    try {
+      json = text ? JSON.parse(text) : undefined;
+    } catch {
+      json = undefined;
+    }
+    const retryAfter =
+      res.status === 429 || res.status === 503
+        ? parseRetryAfter(res.headers.get("Retry-After"))
+        : undefined;
+    if (json?.error) {
+      throw new MemaxError(
+        json.error.message,
+        json.error.code,
+        res.status,
+        json.error.details,
+        retryAfter,
+      );
+    }
+    const preview = summarizeResponseText(text);
+    throw new MemaxError(
+      preview
+        ? `${formatRequestLabel(method, url)} returned ${res.status}: ${preview}`
+        : `${formatRequestLabel(method, url)} returned ${res.status} without a stream`,
+      res.status === 401 ? "unauthorized" : "invalid_response",
+      res.status,
+      undefined,
+      retryAfter,
+    );
   }
 
   async download(path: string, options?: DownloadOptions): Promise<Response> {

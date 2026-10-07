@@ -1,0 +1,137 @@
+/* The keyboard sheet, after Shortcuts.dc.html: an 820px card 96px from
+ * the top over the scrim, three columns of 30px rows, and below them
+ * the keys a single page adds. */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--scrim);
+  transition: opacity var(--duration-base) var(--ease-settle);
+}
+
+.scrim[data-starting-style],
+.scrim[data-ending-style] {
+  opacity: 0;
+}
+
+.sheet {
+  position: fixed;
+  top: 96px;
+  left: 50%;
+  z-index: 101;
+  box-sizing: border-box;
+  width: calc(100vw - 2 * var(--space-6));
+  max-width: 820px;
+  max-height: calc(100dvh - 96px - var(--space-6));
+  overflow: auto;
+  transform: translateX(-50%);
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-float);
+  font-family: var(--font-sans);
+  outline: none;
+  transition:
+    opacity var(--duration-base) var(--ease-settle),
+    transform var(--duration-base) var(--ease-settle);
+}
+
+.sheet[data-starting-style] {
+  opacity: 0;
+  transform: translate(-50%, 4px);
+}
+
+.sheet[data-ending-style] {
+  opacity: 0;
+  transition-timing-function: var(--ease-exit);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 14px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px 32px;
+  padding: 20px 24px 24px;
+}
+
+.group {
+  margin: 0 0 6px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.list,
+.pageList {
+  margin: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 30px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.row dt,
+.row dd {
+  margin: 0;
+}
+
+.caps {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pages {
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--sheet);
+}
+
+.pageList {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 32px;
+}
+
+@media (max-width: 760px) {
+  .sheet {
+    top: var(--space-6);
+    max-height: calc(100dvh - 2 * var(--space-6));
+  }
+
+  .columns,
+  .pageList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim,
+  .sheet {
+    transition: none;
+  }
+}

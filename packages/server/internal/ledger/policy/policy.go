@@ -1,0 +1,1355 @@
+// Package policy decides what a write to the V2 record does: apply it,
+// send it to Review as a proposal, ask the person in the agent to
+// confirm, or refuse it. Decide is the one place autonomy, roles,
+// quarantine and (later) plan limits are enforced, for every surface
+// (plan 25 §5.6, HANDOFF rules 2, 3, 4 and 12).
+//
+// Decide is a pure function of its inputs. The ledger loads the facts
+// (the actor's role in the space, the memory's trust, whether a person
+// kept it) and Decide applies the rules:
+//
+//   - Agent at Read: refused, with a message saying where to change it.
+//   - Agent at Propose: proposed; when a person is present and the client
+//     can elicit, NeedsConfirmation (an accepted confirmation is a Keep by
+//     that person, "via" the agent).
+//   - Agent at Write: kept, unless a source is external, it contradicts a
+//     decision in force, it touches one (the ledger's inline pre-check; the
+//     judge decides after), it edits a memory a person kept, or it is a
+//     decision in a space where decisions need a person on the web.
+//   - Viewer: proposed. Member and owner: kept (and Review is theirs).
+//   - API key: read or propose only; never keeps, rejects or forgets.
+//   - Forget: a person who may keep and whom the space's rule lets forget
+//     (owners, by default), with a person on the web for a decision where
+//     decisions need one (D15). Agents and keys ask (request_forget), and a
+//     person forgets or keeps it. Forgetting everything in a space, or
+//     deleting it, is its owner's. Only Memax re-applies the forget ledger.
+//   - An agent that isn't connected to the space, or is paused, only reads.
+//   - Dream, Memax and the repository: new statements are proposals.
+//   - Integrations (email, Slack, GitHub, Linear): proposed and external.
+//   - The Brief: people who may keep edit it, and Dream rewrites it;
+//     agents never do. Targets: people who may keep configure them,
+//     overwrite a hand edit or stop compiling; anyone who can see the
+//     space may ask for a compile (not a read-only agent), any person may
+//     pull a hand edit back as proposals, devices and the repository
+//     report deliveries and hand edits, and only Memax records compiles.
+//   - The judge: only Memax records its verdicts. Settling a conflict
+//     follows Keep's rules. Undo is the decider's own; any person who may
+//     keep can undo one of the judge's folds.
+//   - Decision gates: an agent that may propose asks (at most
+//     MaxWaitingGates waiting per agent and space); a person answers by
+//     Keep's rules for a decision, D15 included, and the answer is kept as
+//     a decision they authored; the asking agent, the person it works for,
+//     or anyone who could answer withdraws.
+//   - Ask: a signed-in person in the space asks, at any role, until their
+//     plan's asks this month are used up (D9); agents read over MCP.
+//   - Dream: only Dream publishes an edition, and its new facts are
+//     proposals. Any person who may keep undoes one of its actions or
+//     restores a faded memory; a space's owner asks it to run now.
+//   - Passkeys (assurance.go, plan 25 §5.15): what needs a person on the
+//     web (human_web) needs their passkey too when they have one
+//     (Actor.Passkey): refused with CodeNeedsPasskey unless this request
+//     answered a re-check (Actor.Verified, human_web_verified), and so
+//     does every Forget by a passkey holder. Without a passkey the
+//     decision applies at human_web and suggests one (Decision.Suggest).
+//     DecideAccount covers the account itself.
+//
+// Messages follow the product voice (sentence case, actionable, no
+// exclamation marks). Clients localise by Code; Message is the English
+// fallback.
+package policy
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
+)
+
+// ActorKind is who acted, as receipts record it.
+type ActorKind string
+
+// The actor kinds.
+const (
+	ActorPerson     ActorKind = "person"
+	ActorAgent      ActorKind = "agent"
+	ActorDream      ActorKind = "dream"
+	ActorMemax      ActorKind = "memax"
+	ActorRepository ActorKind = "repository"
+)
+
+// ActorKinds lists every actor kind.
+var ActorKinds = []ActorKind{ActorPerson, ActorAgent, ActorDream, ActorMemax, ActorRepository}
+
+// Valid reports whether k is a known actor kind.
+func (k ActorKind) Valid() bool { return slices.Contains(ActorKinds, k) }
+
+// Role is a person's role in a space. Agents act with the role of the
+// person they work for.
+type Role string
+
+// The roles. RoleNone means "not a member".
+const (
+	RoleNone   Role = ""
+	RoleOwner  Role = "owner"
+	RoleMember Role = "member"
+	RoleViewer Role = "viewer"
+)
+
+// RoleFromV1 maps a V1 hub_members.role onto a V2 role (plan 25 §10):
+// owner → owner; admin → member who can forget; contributor → member;
+// viewer → viewer. Anything unknown maps to viewer, the least privilege.
+func RoleFromV1(v1 string) (role Role, canForget bool) {
+	switch v1 {
+	case "owner":
+		return RoleOwner, true
+	case "admin":
+		return RoleMember, true
+	case "contributor", "member":
+		return RoleMember, false
+	}
+	return RoleViewer, false
+}
+
+// Autonomy is how much an agent (or an API key) may write in a space.
+type Autonomy string
+
+// The autonomy levels.
+const (
+	AutonomyRead    Autonomy = "read"
+	AutonomyPropose Autonomy = "propose"
+	AutonomyWrite   Autonomy = "write"
+)
+
+// Valid reports whether a is a known autonomy level.
+func (a Autonomy) Valid() bool {
+	return a == AutonomyRead || a == AutonomyPropose || a == AutonomyWrite
+}
+
+// Autonomies lists the levels, lowest first.
+var Autonomies = []Autonomy{AutonomyRead, AutonomyPropose, AutonomyWrite}
+
+// rank orders the levels; unknown values rank below read.
+func (a Autonomy) rank() int {
+	switch a {
+	case AutonomyRead:
+		return 0
+	case AutonomyPropose:
+		return 1
+	case AutonomyWrite:
+		return 2
+	}
+	return -1
+}
+
+// Above reports whether a allows more than b.
+func (a Autonomy) Above(b Autonomy) bool { return a.rank() > b.rank() }
+
+// MinAutonomy returns the lowest of the levels. An unknown level counts
+// as read, and so does an empty list.
+func MinAutonomy(as ...Autonomy) Autonomy {
+	if len(as) == 0 {
+		return AutonomyRead
+	}
+	low := AutonomyWrite
+	for _, a := range as {
+		if !a.Valid() {
+			return AutonomyRead
+		}
+		if a.rank() < low.rank() {
+			low = a
+		}
+	}
+	return low
+}
+
+// AgentStatus is whether an agent is connected to a space (plan 25
+// §5.15: an agent connection is identity plus autonomy per space).
+type AgentStatus string
+
+// The statuses. The zero value means connected (or not an agent).
+const (
+	AgentConnected AgentStatus = ""
+	// AgentNotConnected: the credential has no connection, it was
+	// disconnected, or it isn't connected to this space. It only reads.
+	AgentNotConnected AgentStatus = "not_connected"
+	// AgentPaused: the person paused it. It only reads.
+	AgentPaused AgentStatus = "paused"
+)
+
+// Credential is how the actor authenticated. API keys are capped at
+// Propose whatever else is configured.
+type Credential string
+
+// The credentials. The zero value is a signed-in session.
+const (
+	CredentialSession Credential = ""
+	CredentialOAuth   Credential = "oauth"
+	CredentialAPIKey  Credential = "api_key"
+)
+
+// Valid reports whether c is a known credential.
+func (c Credential) Valid() bool {
+	return c == CredentialSession || c == CredentialOAuth || c == CredentialAPIKey
+}
+
+// Via is the surface a change came through.
+type Via string
+
+// The surfaces.
+const (
+	ViaWeb    Via = "web"
+	ViaCLI    Via = "cli"
+	ViaMCP    Via = "mcp"
+	ViaReview Via = "review"
+	ViaAPI    Via = "api"
+	ViaEmail  Via = "email"
+	ViaSlack  Via = "slack"
+	ViaGitHub Via = "github"
+	ViaLinear Via = "linear"
+	ViaImport Via = "import"
+	ViaSystem Via = "system"
+)
+
+// Vias lists every surface.
+var Vias = []Via{ViaWeb, ViaCLI, ViaMCP, ViaReview, ViaAPI, ViaEmail, ViaSlack, ViaGitHub, ViaLinear, ViaImport, ViaSystem}
+
+// Valid reports whether v is a known surface.
+func (v Via) Valid() bool { return slices.Contains(Vias, v) }
+
+// Integration reports whether content through v is third-party content
+// (always proposed and external).
+func (v Via) Integration() bool {
+	return v == ViaEmail || v == ViaSlack || v == ViaGitHub || v == ViaLinear
+}
+
+// Assurance is how sure we are that a person, not an automation, made a
+// Keep (plan 25 §5.12): Claude Code hooks can auto-accept elicitations,
+// and an agent can run the CLI with the person's login. The levels and the
+// passkey re-check are in assurance.go.
+type Assurance string
+
+// SpaceKind is personal, project or team.
+type SpaceKind string
+
+// The space kinds.
+const (
+	SpacePersonal SpaceKind = "personal"
+	SpaceProject  SpaceKind = "project"
+	SpaceTeam     SpaceKind = "team"
+)
+
+// Valid reports whether k is a known space kind.
+func (k SpaceKind) Valid() bool { return k == SpacePersonal || k == SpaceProject || k == SpaceTeam }
+
+// Who names a set of members for a space rule.
+type Who string
+
+// The rule values.
+const (
+	WhoOwners  Who = "owners"
+	WhoMembers Who = "members"
+)
+
+// Rules are a space's rules, stored in hubs.rules. The zero value means
+// the defaults: members keep, owners forget, new agents start at
+// Propose, and decisions need a person on the web in team spaces only
+// (D15).
+type Rules struct {
+	Keep             Who      `json:"keep,omitempty"`
+	Forget           Who      `json:"forget,omitempty"`
+	NewAgentAutonomy Autonomy `json:"new_agent_autonomy,omitempty"`
+	DecisionsNeedWeb *bool    `json:"decisions_need_web,omitempty"`
+}
+
+// KeepBy is who may keep and reject. Unknown values mean owners only.
+func (r Rules) KeepBy() Who {
+	if r.Keep == "" || r.Keep == WhoMembers {
+		return WhoMembers
+	}
+	return WhoOwners
+}
+
+// ForgetBy is who may forget, besides members a V1 admin role carried
+// over (SpaceGrant.CanForget). Only an explicit "members" widens it.
+func (r Rules) ForgetBy() Who {
+	if r.Forget == WhoMembers {
+		return WhoMembers
+	}
+	return WhoOwners
+}
+
+// AgentAutonomy is the autonomy a newly connected agent starts at.
+func (r Rules) AgentAutonomy() Autonomy {
+	if r.NewAgentAutonomy.Valid() {
+		return r.NewAgentAutonomy
+	}
+	return AutonomyPropose
+}
+
+// DecisionsNeedPersonOnWeb reports whether keeping a decision needs a
+// person on the web (assurance human_web) in a space of this kind.
+func (r Rules) DecisionsNeedPersonOnWeb(kind SpaceKind) bool {
+	if r.DecisionsNeedWeb != nil {
+		return *r.DecisionsNeedWeb
+	}
+	return kind == SpaceTeam
+}
+
+// Action is what the actor asks to do.
+type Action string
+
+// The actions.
+const (
+	ActionRemember Action = "remember" // write a statement, kept if allowed
+	ActionPropose  Action = "propose"  // write a statement for Review (agents: kept at Write)
+	ActionKeep     Action = "keep"
+	ActionEdit     Action = "edit"
+	ActionReject   Action = "reject"
+	ActionForget   Action = "forget"
+
+	// Forget's companions (plan 25 §5.13, epic 2.4).
+	ActionForgetSpace   Action = "forget_space"   // forget everything in a space (and, deleting it, retire it)
+	ActionRequestForget Action = "request_forget" // an agent asks a person to forget a memory (memax_forget)
+	ActionDeclineForget Action = "decline_forget" // a person keeps the memory an agent asked to forget
+	ActionReapplyForget Action = "reapply_forget" // Memax re-applies the forget ledger after a restore
+
+	// The Brief and compile actions (plan 25 §5.7).
+	ActionReviseBrief     Action = "revise_brief"     // write a new Brief version
+	ActionConfigureTarget Action = "configure_target" // add a target, change it, overwrite a hand edit, stop compiling
+	ActionRequestCompile  Action = "request_compile"  // ask for a fresh compile
+	ActionRecordCompile   Action = "record_compile"   // record a compile run
+	ActionReport          Action = "report"           // report a delivery or a hand edit from a device or GitHub
+	ActionPullDrift       Action = "pull_drift"       // turn a hand edit into proposals
+
+	// The judge and Review (plan 25 §5.8, epics 1.3 and 1.4).
+	ActionJudge           Action = "judge"            // record the judge's verdict on a memory (fold, link, flag)
+	ActionResolveConflict Action = "resolve_conflict" // settle a conflict: one side wins, both narrow, or it stays open
+	ActionUndo            Action = "undo"             // undo a person's last decision, or one of the judge's folds
+
+	// Decision gates (plan 25 §5.12, epic 1.11).
+	ActionRequestDecision Action = "request_decision" // an agent asks a person to decide (a G- gate)
+	ActionAnswerGate      Action = "answer_gate"      // a person answers; the answer is kept as their decision
+	ActionWithdrawGate    Action = "withdraw_gate"    // the question is taken back before anyone answers
+
+	// Reads (plan 25 §5.3): not writes to the record, but who may report
+	// one is decided here too, so a read can't count for a space the
+	// reader can't read.
+	ActionRead Action = "read" // read a space, or report a compile an agent loaded at session start
+
+	// Ask (plan 25 §5.11, epic 1.10): a cited answer from the space's kept
+	// memories. A read that writes nothing; decided here for who may ask and
+	// the plan's monthly limit (D9).
+	ActionAsk Action = "ask"
+
+	// Dream (plan 25 §5.10, epic 2.2).
+	ActionPublishEdition Action = "publish_edition" // Dream writes an edition and its actions
+	ActionUndoDream      Action = "undo_dream"      // a person undoes one of an edition's actions
+	ActionRestore        Action = "restore"         // a person brings a faded memory back
+	ActionRunDream       Action = "run_dream"       // a space's owner asks Dream to run now
+	// Export (plan 25 §7.2, epic 2.4): a person takes a space's whole record
+	// (`memax export`, Memories' Export as Markdown). It changes nothing and
+	// writes one receipt, exported; decided here for who may.
+	ActionExport Action = "export"
+)
+
+// FreeAskLimit is how many asks a month Free answers (D9: "Ask 50/mo").
+// Pro and Team have no Ask limit. The plan a person is on is the caller's
+// to say (Object.AskLimit): during the free alpha no V2 plan exists yet,
+// so the API counts asks and passes no limit unless ASK_MONTHLY_LIMIT
+// sets one (internal/ask).
+const FreeAskLimit = 50
+
+// MaxWaitingGates is how many decisions one agent may have waiting on
+// people in one space at a time. V1 capped a board at three open decisions
+// for every agent together; per agent, a busy agent no longer blocks the
+// others, and a looping one still can't flood Review.
+//
+// It is a fair-use limit on every plan. D9 lists "handoffs and gates
+// between your own agents" under Pro, but the alpha is free, so no plan is
+// checked here yet: when V2 billing lands, the plan check for asking goes
+// in decideRequestDecision.
+const MaxWaitingGates = 3
+
+// Actor is everything Decide needs to know about who is acting.
+type Actor struct {
+	Kind ActorKind
+	// Name is shown in messages ("Codex is read-only in memax-v2").
+	Name string
+	// Role is the person's role in the space (for an agent, the role of
+	// the person it works for). Ignored for Dream, Memax and repository.
+	Role Role
+	// CanForget carries V1's admin role (member + can_forget).
+	CanForget bool
+	// Autonomy applies to agents, and to API keys as the key's scope.
+	Autonomy Autonomy
+	// AgentStatus says whether an agent is connected to the space; one
+	// that isn't, or is paused, only reads.
+	AgentStatus AgentStatus
+	Credential  Credential
+	Via         Via
+	// PersonPresent and CanElicit describe the agent's client: a person
+	// is at the keyboard, and the client supports MCP elicitation.
+	PersonPresent bool
+	CanElicit     bool
+	// Passkey says the person has a passkey, so the decisions that need a
+	// person ask for it (assurance.go). The server loads it; nothing a
+	// client sends sets it.
+	Passkey bool
+	// Verified says this request carries a fresh, user-verified passkey
+	// assertion bound to the person, their session and the request
+	// (internal/passkeys). It counts only on the web.
+	Verified bool
+}
+
+// Assurance is the assurance a Keep by this actor carries:
+// human_web_verified for the web app and Review with a fresh passkey
+// assertion, human_web without one; everything else (MCP confirmations,
+// the CLI) is client_attested. It is derived, never claimed. Non-person
+// actors have none.
+func (a Actor) Assurance() Assurance {
+	if a.Kind != ActorPerson {
+		return ""
+	}
+	if a.Via == ViaWeb || a.Via == ViaReview {
+		if a.Verified {
+			return AssuranceHumanWebVerified
+		}
+		return AssuranceHumanWeb
+	}
+	return AssuranceClientAttested
+}
+
+// autonomy is the effective write level: people write on their own
+// authority, API keys are capped at Propose, and system actors propose.
+// An unknown level counts as Read.
+func (a Actor) autonomy() Autonomy {
+	level := AutonomyWrite
+	switch a.Kind {
+	case ActorAgent:
+		level = a.Autonomy
+	case ActorDream, ActorMemax, ActorRepository:
+		level = AutonomyPropose
+	}
+	if a.Credential == CredentialAPIKey {
+		level = a.Autonomy
+		if level == AutonomyWrite {
+			level = AutonomyPropose
+		}
+	}
+	if a.Kind == ActorAgent && a.AgentStatus != AgentConnected {
+		level = AutonomyRead
+	}
+	if !level.Valid() {
+		return AutonomyRead
+	}
+	return level
+}
+
+// Object is what the action applies to. For Remember and Propose it
+// describes the new statement.
+type Object struct {
+	// Ref is the display ID ("M-0219"), for messages; empty when new.
+	Ref string
+	// Lifecycle is the memory's current lifecycle (None when new).
+	Lifecycle lifecycle.Lifecycle
+	// Decision is set for kind = decision.
+	Decision bool
+	// External is set when any source (or the memory's trust) is external.
+	External bool
+	// ContradictsDecision is the judge's verdict: the statement
+	// contradicts a decision in force (rule 11).
+	ContradictsDecision bool
+	// TouchesDecision is the ledger's inline check for a Write-level
+	// agent: the statement names or overlaps a decision in force, so it
+	// waits for the judge and a person instead of being kept at once.
+	TouchesDecision bool
+	// UndoOwn is set when the actor made the decision being undone;
+	// UndoSystem when Memax did (one of the judge's folds).
+	UndoOwn    bool
+	UndoSystem bool
+	// PersonKept is set when a person kept or edited the memory.
+	PersonKept bool
+	// Secrets names any credential patterns found in the new words.
+	Secrets []string
+	// GateMine is set when the gate was asked by this agent, or by an agent
+	// working for this person (withdrawing it).
+	GateMine bool
+	// WaitingGates counts the decisions the asking agent already has
+	// waiting in the space (asking another).
+	WaitingGates int
+	// AsksBefore counts the person's asks this month before this one, and
+	// AskLimit is their plan's monthly limit (0: none).
+	AsksBefore int
+	AskLimit   int
+}
+
+// Space is the space the action happens in.
+type Space struct {
+	Name  string
+	Kind  SpaceKind
+	Rules Rules
+}
+
+// Effect is what happens to the write.
+type Effect string
+
+// The effects.
+const (
+	EffectApply   Effect = "apply"   // kept / applied as asked
+	EffectPropose Effect = "propose" // sent to Review as a proposal
+	EffectConfirm Effect = "confirm" // proposed, and the agent should ask the person to keep it
+	EffectRefuse  Effect = "refuse"  // nothing is written
+)
+
+// Decision is Decide's answer. Code is stable and machine-readable;
+// Message is the English sentence shown to people.
+type Decision struct {
+	Effect     Effect `json:"effect"`
+	Code       string `json:"code,omitempty"`
+	Message    string `json:"message,omitempty"`
+	Quarantine bool   `json:"quarantine,omitempty"`
+	// Suggest is a hint for the person, on a decision that went through:
+	// SuggestPasskey when it needed a person and they have no passkey.
+	Suggest string `json:"suggest,omitempty"`
+}
+
+// Decision codes. Refusals, then downgrades to a proposal, then the
+// confirmation request.
+const (
+	CodeUnknownActor        = "unknown_actor"
+	CodeUnknownAction       = "unknown_action"
+	CodeSecret              = "secret_detected"
+	CodeNotMember           = "not_member"
+	CodeReadOnly            = "read_only"
+	CodeKeyReadOnly         = "key_read_only"
+	CodeKeyCannotReview     = "key_cannot_review"
+	CodeKeyCannotForget     = "key_cannot_forget"
+	CodePersonMustReview    = "person_must_review"
+	CodePersonMustForget    = "person_must_forget"
+	CodeForgetNotAllowed    = "forget_not_allowed"
+	CodeForgetByPerson      = "forget_by_person" // a person asked to request a forget: they forget, or ask an owner
+	CodeExternalNeedsReview = "external_needs_review"
+	CodeProposalInReview    = "proposal_in_review"
+	CodeAgentNotConnected   = "agent_not_connected"
+	CodeAgentPaused         = "agent_paused"
+	CodeBriefByPerson       = "brief_by_person"
+	CodeTargetsByPerson     = "targets_by_person"
+	CodeCompileByMemax      = "compile_by_memax"
+	CodeJudgeByMemax        = "judge_by_memax"
+	CodeUndoByDecider       = "undo_by_decider"
+
+	// Decision gates; all refusals.
+	CodeGateByAgent      = "gate_by_agent"      // agents ask; people decide directly
+	CodePersonMustAnswer = "person_must_answer" // agents ask; people answer
+	CodeGateLimit        = "gate_limit"         // the agent already has MaxWaitingGates waiting
+	CodeNotYourGate      = "not_your_gate"      // withdrawing someone else's question
+
+	// Ask; both refusals.
+	CodeAskByPerson = "ask_by_person" // agents read over MCP (recall, search); Ask is for people
+	CodeAskLimit    = "ask_limit"     // the plan's asks this month are used up
+
+	// Dream; all refusals.
+	CodeDreamByDream    = "dream_by_dream"     // only Dream publishes editions
+	CodeDreamRunByOwner = "dream_run_by_owner" // only the space's owner asks Dream to run now
+	// Export; a refusal.
+	CodeExportByPerson = "export_by_person" // agents read the record over MCP; export is for people
+
+	// Changes to agent connections (DecideConnection); all refusals.
+	CodePersonMustManage   = "person_must_manage"
+	CodeNotYourAgent       = "not_your_agent"
+	CodeAutonomyNotAllowed = "autonomy_not_allowed"
+	CodeKeyMaxPropose      = "key_max_propose"
+	CodeAutonomyNeedsWeb   = "autonomy_needs_web"
+
+	CodeViewer           = "viewer"             // refused (keep, reject) or downgraded (write)
+	CodeOwnersKeep       = "owners_keep"        // refused (keep, reject) or downgraded (write)
+	CodeDecisionNeedsWeb = "decision_needs_web" // refused (keep) or downgraded (write)
+
+	CodeAPIKey          = "api_key"
+	CodeExternalSource  = "external_source"
+	CodeContradicts     = "contradicts_decision"
+	CodeTouchesDecision = "touches_decision"
+	// CodeJudgePending: a person's edit-then-keep whose new words touch a
+	// decision in force is saved as the proposal's new version and not
+	// kept, until the judge has looked at the words (rule 11). The ledger
+	// sets it, not Decide: it depends on the judge's progress, not on who
+	// asks.
+	CodeJudgePending    = "judge_pending"
+	CodeEditsPersonKept = "edits_person_kept"
+	CodeAutonomyPropose = "autonomy_propose"
+	CodeIntegration     = "integration"
+	CodeImport          = "import"
+	CodeSystem          = "system_proposes"
+	CodeRepository      = "repository"
+	CodePersonProposed  = "person_proposed"
+
+	CodeConfirm = "confirm_in_agent"
+)
+
+// Decide applies the space's rules to one action.
+func Decide(a Actor, act Action, o Object, s Space) Decision {
+	if !a.Kind.Valid() {
+		return refuse(CodeUnknownActor, "Memax doesn't recognise who is writing. Sign in again.")
+	}
+	if (a.Kind == ActorPerson || a.Kind == ActorAgent) && !slices.Contains([]Role{RoleOwner, RoleMember, RoleViewer}, a.Role) {
+		return refuse(CodeNotMember, fmt.Sprintf("Only members of %s can change its record.", spaceName(s)))
+	}
+	if len(o.Secrets) > 0 && slices.Contains([]Action{ActionRemember, ActionPropose, ActionEdit, ActionReviseBrief,
+		ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate, ActionForget, ActionRequestForget}, act) {
+		return refuse(CodeSecret, fmt.Sprintf(
+			"This looks like a credential (%s). Memax never stores secrets. Remove it and try again.",
+			strings.Join(o.Secrets, ", ")))
+	}
+	switch act {
+	case ActionRemember, ActionPropose:
+		return decideWrite(a, act, o, s)
+	case ActionEdit:
+		return decideEdit(a, o, s)
+	case ActionKeep:
+		return decideKeep(a, o, s)
+	case ActionReject:
+		return decideReject(a, o, s)
+	case ActionForget:
+		return decideForget(a, o, s)
+	case ActionForgetSpace:
+		return decideForgetSpace(a, s)
+	case ActionRequestForget:
+		return decideRequestForget(a, s)
+	case ActionDeclineForget:
+		// Keeping it is the forgetter's call, with no more assurance than
+		// the role: nothing is lost by keeping, so no passkey either.
+		keeper := a
+		keeper.Passkey = false
+		return decideForget(keeper, Object{Ref: o.Ref}, s)
+	case ActionReapplyForget:
+		return decideReapplyForget(a)
+	case ActionReviseBrief:
+		return decideReviseBrief(a, s)
+	case ActionConfigureTarget:
+		return decideConfigureTarget(a, s)
+	case ActionRequestCompile:
+		return decideRequestCompile(a, s)
+	case ActionRecordCompile:
+		if a.Kind == ActorMemax {
+			return apply()
+		}
+		return refuse(CodeCompileByMemax, "Only Memax records compiles. Ask for one with Compile now.")
+	case ActionReport:
+		return decideReport(a, s)
+	case ActionJudge:
+		if a.Kind == ActorMemax {
+			return apply()
+		}
+		return refuse(CodeJudgeByMemax, "Only Memax records the judge's verdicts.")
+	case ActionResolveConflict:
+		return decideResolve(a, o, s)
+	case ActionUndo:
+		return decideUndo(a, o, s)
+	case ActionPullDrift:
+		if a.Kind == ActorPerson {
+			return apply()
+		}
+		return refuse(CodeTargetsByPerson,
+			"A person decides what happens to a hand edit. Resolve it on the web or with the CLI.")
+	case ActionRequestDecision:
+		return decideRequestDecision(a, o, s)
+	case ActionAnswerGate:
+		return decideAnswerGate(a, o, s)
+	case ActionWithdrawGate:
+		return decideWithdrawGate(a, o, s)
+	case ActionRead:
+		return decideRead(a, s)
+	case ActionAsk:
+		return decideAsk(a, o)
+	case ActionPublishEdition:
+		if a.Kind == ActorDream {
+			return apply()
+		}
+		return refuse(CodeDreamByDream, "Only Dream publishes an edition.")
+	case ActionUndoDream:
+		return decideUndoDream(a, s)
+	case ActionRestore:
+		return decideKeep(a, o, s)
+	case ActionRunDream:
+		return decideRunDream(a, s)
+	case ActionExport:
+		return decideExport(a, s)
+	}
+	return refuse(CodeUnknownAction, fmt.Sprintf("Memax doesn't know how to %q.", act))
+}
+
+// decideRead: people read the spaces they belong to, and system actors
+// the spaces they act on. An agent reads only the spaces it is connected
+// to (decided Oct 6); a paused agent still reads. Autonomy doesn't matter:
+// Read is enough.
+func decideRead(a Actor, s Space) Decision {
+	if a.Kind == ActorAgent && a.AgentStatus == AgentNotConnected {
+		return refuse(CodeAgentNotConnected, fmt.Sprintf(
+			"%s isn't connected to %s, so it can't read it. Connect it in Agents.", actorName(a), spaceName(s)))
+	}
+	return apply()
+}
+
+// decideAsk: a person who may read the space asks, any role (a viewer
+// reads what a member does). Agents and API keys don't: they read the
+// record themselves over MCP, and an answer synthesised for an agent would
+// be words no person kept. Past the plan's monthly limit, nobody asks.
+func decideAsk(a Actor, o Object) Decision {
+	if a.Kind != ActorPerson || a.Credential != CredentialSession {
+		return refuse(CodeAskByPerson,
+			"Ask answers people. Agents read the record over MCP with memax_recall and memax_search.")
+	}
+	if o.AskLimit > 0 && o.AsksBefore >= o.AskLimit {
+		return refuse(CodeAskLimit, fmt.Sprintf(
+			"You've asked %d questions this month, all your plan answers. Asks start again on the 1st; Pro answers as many as you like.",
+			o.AskLimit))
+	}
+	return apply()
+}
+
+// decideExport: a person who may read the space exports it, any role (a
+// viewer reads the whole record too), on every plan (D9). Agents and API
+// keys don't: they read the record over MCP, and an export is a person's
+// copy of their record, with its receipt naming who took it.
+func decideExport(a Actor, s Space) Decision {
+	if a.Kind != ActorPerson || a.Credential != CredentialSession {
+		return refuse(CodeExportByPerson, fmt.Sprintf(
+			"Only a signed-in person exports %s. Agents read the record over MCP with memax_recall and memax_search.",
+			spaceName(s)))
+	}
+	return apply()
+}
+
+func decideWrite(a Actor, act Action, o Object, s Space) Decision {
+	if a.autonomy() == AutonomyRead {
+		return refuseReadOnly(a, s)
+	}
+	quarantine := o.External || a.Via.Integration()
+	propose := func(code string) Decision { return downgrade(code, a, o, s, quarantine) }
+	needsWeb := o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind)
+
+	switch {
+	case a.Via.Integration():
+		return propose(CodeIntegration)
+	case a.Via == ViaImport:
+		return propose(CodeImport)
+	}
+	switch a.Kind {
+	case ActorDream, ActorMemax:
+		return propose(CodeSystem)
+	case ActorRepository:
+		return propose(CodeRepository)
+	}
+	if code := keepCap(a, s); code != "" {
+		return propose(code)
+	}
+
+	if a.Kind == ActorPerson {
+		if act == ActionPropose {
+			return propose(CodePersonProposed)
+		}
+		if needsWeb {
+			// D15: below human_web the decision waits in Review; with a
+			// passkey, the web asks for it before keeping.
+			if !a.Assurance().AtLeast(AssuranceHumanWeb) {
+				return propose(CodeDecisionNeedsWeb)
+			}
+			if !a.Assurance().AtLeast(a.verified()) {
+				return refuse(CodeNeedsPasskey, passkeyMessage("keeping a decision in "+spaceName(s)))
+			}
+			return applyChecked(a)
+		}
+		return apply()
+	}
+
+	// An agent. External content is quarantined at any autonomy.
+	if o.External {
+		return propose(CodeExternalSource)
+	}
+	if a.autonomy() == AutonomyWrite {
+		switch {
+		case o.ContradictsDecision:
+			return propose(CodeContradicts)
+		case o.TouchesDecision:
+			return propose(CodeTouchesDecision)
+		case needsWeb:
+			return propose(CodeDecisionNeedsWeb)
+		}
+		return apply()
+	}
+	// A write that touches a decision in force waits for the judge in
+	// Review; a confirmation in the agent would keep it before the judge
+	// could flag it.
+	if o.TouchesDecision {
+		return propose(CodeTouchesDecision)
+	}
+	if a.PersonPresent && a.CanElicit && !o.ContradictsDecision && !needsWeb {
+		return Decision{Effect: EffectConfirm, Code: CodeConfirm, Message: fmt.Sprintf("Keep this in %s?", spaceName(s))}
+	}
+	return propose(CodeAutonomyPropose)
+}
+
+func decideEdit(a Actor, o Object, s Space) Decision {
+	if a.autonomy() == AutonomyRead {
+		return refuseReadOnly(a, s)
+	}
+	quarantine := o.External || a.Via.Integration()
+	propose := func(code string) Decision { return downgrade(code, a, o, s, quarantine) }
+	needsWeb := o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind)
+
+	var d Decision
+	switch {
+	case a.Via.Integration():
+		d = propose(CodeIntegration)
+	case a.Kind == ActorDream || a.Kind == ActorMemax:
+		d = propose(CodeSystem)
+	case a.Kind == ActorRepository:
+		d = propose(CodeRepository)
+	case a.Kind == ActorAgent && o.Lifecycle == lifecycle.Proposed:
+		return refuse(CodeProposalInReview, fmt.Sprintf(
+			"%s is waiting in Review. Propose a new memory instead.", refOr(o, "This proposal")))
+	case keepCap(a, s) != "":
+		d = propose(keepCap(a, s))
+	case a.Kind == ActorPerson:
+		switch {
+		case !needsWeb:
+			d = apply()
+		case !a.Assurance().AtLeast(AssuranceHumanWeb):
+			d = propose(CodeDecisionNeedsWeb)
+		case !a.Assurance().AtLeast(a.verified()):
+			return refuse(CodeNeedsPasskey, passkeyMessage("changing a decision in "+spaceName(s)))
+		default:
+			d = applyChecked(a)
+		}
+	case a.autonomy() == AutonomyWrite:
+		switch {
+		case o.External:
+			d = propose(CodeExternalSource)
+		case o.PersonKept:
+			d = propose(CodeEditsPersonKept)
+		case o.ContradictsDecision:
+			d = propose(CodeContradicts)
+		case o.TouchesDecision:
+			d = propose(CodeTouchesDecision)
+		case needsWeb:
+			d = propose(CodeDecisionNeedsWeb)
+		default:
+			d = apply()
+		}
+	default:
+		d = propose(CodeAutonomyPropose)
+	}
+	// A downgraded edit becomes a new proposal that supersedes the kept
+	// memory. A proposal is already in Review, so there is nothing to
+	// supersede: send the actor to Review instead.
+	if d.Effect == EffectPropose && o.Lifecycle == lifecycle.Proposed {
+		return refuse(CodeProposalInReview, fmt.Sprintf(
+			"%s is waiting in Review. Propose a new memory instead.", refOr(o, "This proposal")))
+	}
+	return d
+}
+
+func decideKeep(a Actor, o Object, s Space) Decision {
+	if a.Kind != ActorPerson {
+		return refuse(CodePersonMustReview, fmt.Sprintf(
+			"Agents propose and people keep. %s is waiting in Review.", refOr(o, "This proposal")))
+	}
+	if a.Credential == CredentialAPIKey {
+		return refuse(CodeKeyCannotReview, "API keys can propose but never keep or reject. Review it on the web.")
+	}
+	if a.Role == RoleViewer {
+		return refuse(CodeViewer, fmt.Sprintf(
+			"Viewers can propose but not keep in %s. Ask a member to keep it.", spaceName(s)))
+	}
+	if !canKeep(a.Role, s.Rules) {
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners keep in %s. Ask an owner to keep it.", spaceName(s)))
+	}
+	gated := false
+	if o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) {
+		if d := needsPerson(a, CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web. Keep it in Review.", spaceName(s)),
+			"keeping "+refOr(o, "a decision")); d != nil {
+			return *d
+		}
+		gated = true
+	}
+	if o.External {
+		if d := needsPerson(a, CodeExternalNeedsReview, fmt.Sprintf(
+			"%s comes from an outside source. Keep it in Review on the web.", refOr(o, "This proposal")),
+			"keeping "+refOr(o, "a quarantined proposal")); d != nil {
+			return *d
+		}
+		gated = true
+	}
+	if gated {
+		return applyChecked(a)
+	}
+	return apply()
+}
+
+func decideReject(a Actor, o Object, s Space) Decision {
+	if a.Kind != ActorPerson {
+		return refuse(CodePersonMustReview, fmt.Sprintf(
+			"Only a person can reject %s. Review it on the web.", refOr(o, "this proposal")))
+	}
+	if a.Credential == CredentialAPIKey {
+		return refuse(CodeKeyCannotReview, "API keys can propose but never keep or reject. Review it on the web.")
+	}
+	if a.Role == RoleViewer {
+		return refuse(CodeViewer, fmt.Sprintf(
+			"Viewers can propose but not reject in %s. Ask a member to review it.", spaceName(s)))
+	}
+	if !canKeep(a.Role, s.Rules) {
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners review proposals in %s. Ask an owner.", spaceName(s)))
+	}
+	return apply()
+}
+
+// decideForget: only a person who may keep in the space, and whom the
+// space's rule lets forget, forgets (rule 7). Forget is the one command
+// nothing undoes, so nobody else comes close: an API key never forgets,
+// and an agent's memax_forget is a request a person confirms on the web
+// (ActionRequestForget), never an in-agent confirmation, because a hook
+// can answer an elicitation by itself.
+//
+// D15: forgetting a decision where decisions need a person on the web
+// (team spaces, by default) needs assurance human_web. Keeping a decision
+// there already does, and forgetting one is the larger change: it can't
+// be undone, it takes the decision out of every file the whole team's
+// agents read, and an agent driving the CLI with the person's login would
+// otherwise be able to erase the team's record of why something was
+// decided.
+func decideForget(a Actor, o Object, s Space) Decision {
+	if a.Credential == CredentialAPIKey {
+		return refuse(CodeKeyCannotForget, "API keys can't forget. Forget it on the web.")
+	}
+	switch a.Kind {
+	case ActorPerson:
+	case ActorAgent:
+		if a.autonomy() == AutonomyRead {
+			return refuseReadOnly(a, s)
+		}
+		return refuse(CodePersonMustForget, fmt.Sprintf(
+			"Agents ask and people forget. Ask the person to forget %s on the web.", refOr(o, "it")))
+	default:
+		return refuse(CodePersonMustForget, "Forget needs a person. Forget it on the web.")
+	}
+	switch {
+	case a.Role == RoleViewer:
+		return refuse(CodeForgetNotAllowed, fmt.Sprintf("Viewers can't forget in %s. Ask an owner to forget it.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules) || !canForget(a, s):
+		return refuse(CodeForgetNotAllowed, forgetNotAllowed(s))
+	case o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind):
+		if d := needsPerson(a, CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web, and so does forgetting one. Forget %s at memax.app.",
+			spaceName(s), refOr(o, "it")), "forgetting "+refOr(o, "it")); d != nil {
+			return *d
+		}
+		return applyChecked(a)
+	case a.Passkey && !a.Assurance().AtLeast(AssuranceHumanWebVerified):
+		// Forget is the one change nothing undoes: with a passkey, every
+		// Forget asks for it, from any surface, so an agent holding any of
+		// the person's logins can't erase words. The CLI can't make an
+		// assertion, so its forgets go to the web.
+		return refuse(CodeNeedsPasskey, passkeyMessage("forgetting "+refOr(o, "it")))
+	}
+	return apply()
+}
+
+// decideForgetSpace: forgetting everything in a space, or deleting it, is
+// its owner's, signed in as themselves (not an API key or an agent). It is
+// the V1 owner-only delete, and the same person's "Delete all my data",
+// so it needs no more assurance than those always did.
+func decideForgetSpace(a Actor, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson:
+		return refuse(CodePersonMustForget, fmt.Sprintf("Only %s's owner can forget everything in it.", spaceName(s)))
+	case a.Credential == CredentialAPIKey:
+		return refuse(CodeKeyCannotForget, "API keys can't forget. Forget it on the web.")
+	case a.Role != RoleOwner:
+		return refuse(CodeForgetNotAllowed, fmt.Sprintf(
+			"Only %s's owner can forget everything in it. Ask an owner.", spaceName(s)))
+	}
+	return apply()
+}
+
+// decideRequestForget: an agent that may write in the space asks a person
+// to forget a memory (memax_forget on V2). The request is a receipted write
+// that puts a question in front of people, so it needs what proposing
+// needs: connected at Propose or Write, not paused. An API key may ask,
+// since it proposes. People forget directly, or ask an owner.
+func decideRequestForget(a Actor, s Space) Decision {
+	if a.Kind != ActorAgent && a.Credential != CredentialAPIKey {
+		return refuse(CodeForgetByPerson, "People forget it themselves, or ask an owner to.")
+	}
+	if a.autonomy() == AutonomyRead {
+		return refuseReadOnly(a, s)
+	}
+	return apply()
+}
+
+// decideReapplyForget: only Memax re-applies the forget ledger, after a
+// restore brought back words a person had forgotten.
+func decideReapplyForget(a Actor) Decision {
+	if a.Kind == ActorMemax {
+		return apply()
+	}
+	return refuse(CodePersonMustForget, "Only Memax re-applies the forget ledger.")
+}
+
+// decideResolve: settling a conflict is a person's Keep of one answer
+// (rule 11: one answer must win), so it follows Keep's rules: members and
+// owners per the space's rules, a person on the web for decisions where
+// the space needs one, and for keeping a quarantined side.
+func decideResolve(a Actor, o Object, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson:
+		return refuse(CodePersonMustReview, fmt.Sprintf(
+			"Agents propose and people settle conflicts. %s waits in Review.", refOr(o, "This conflict")))
+	case a.Credential == CredentialAPIKey:
+		return refuse(CodeKeyCannotReview, "API keys can propose but never settle a conflict. Settle it in Review on the web.")
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf("Viewers can't settle conflicts in %s. Ask a member.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules):
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners settle conflicts in %s. Ask an owner.", spaceName(s)))
+	}
+	gated := false
+	if o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) {
+		if d := needsPerson(a, CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web. Settle it in Review.", spaceName(s)),
+			"settling "+refOr(o, "a decision")); d != nil {
+			return *d
+		}
+		gated = true
+	}
+	if o.External {
+		if d := needsPerson(a, CodeExternalNeedsReview, fmt.Sprintf(
+			"%s comes from an outside source. Settle it in Review on the web.", refOr(o, "This proposal")),
+			"settling "+refOr(o, "a quarantined proposal")); d != nil {
+			return *d
+		}
+		gated = true
+	}
+	if gated {
+		return applyChecked(a)
+	}
+	return apply()
+}
+
+// decideUndo: a person undoes their own decision (Review's ⌘Z), and any
+// person who may keep can undo one of the judge's folds. Undo only puts
+// back what was there, so it needs no more assurance than the person's
+// role; Forget is never undoable and never reaches here.
+func decideUndo(a Actor, o Object, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson:
+		return refuse(CodePersonMustReview, "Only a person can undo a decision. Undo it in Review.")
+	case a.Credential == CredentialAPIKey:
+		return refuse(CodeKeyCannotReview, "API keys can't undo decisions. Undo it in Review.")
+	case !o.UndoOwn && !o.UndoSystem:
+		return refuse(CodeUndoByDecider, fmt.Sprintf(
+			"Only the person who decided %s can undo it. Change it instead, or ask them.", refOr(o, "this")))
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf("Viewers can't undo decisions in %s.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules):
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners undo decisions in %s. Ask an owner.", spaceName(s)))
+	}
+	return apply()
+}
+
+// decideUndoDream: any person who may keep undoes one of Dream's actions
+// (plan 25 §5.5: "any Dream action → undo → member"). Undo only puts back
+// what was there, so, as for the judge's folds, it needs no more assurance
+// than the role.
+func decideUndoDream(a Actor, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson:
+		return refuse(CodePersonMustReview, "Only a person can undo what Dream did. Undo it in the edition.")
+	case a.Credential == CredentialAPIKey:
+		return refuse(CodeKeyCannotReview, "API keys can't undo what Dream did. Undo it in the edition.")
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf("Viewers can't undo what Dream did in %s.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules):
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners undo what Dream did in %s. Ask an owner.", spaceName(s)))
+	}
+	return apply()
+}
+
+// decideRunDream: a space's owner, signed in as themselves, asks Dream to
+// run now. It costs a model run, so it is the owner's call, as the plan's
+// run caps are.
+func decideRunDream(a Actor, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson:
+		return refuse(CodeDreamRunByOwner, fmt.Sprintf("Only %s's owner can ask Dream to run now.", spaceName(s)))
+	case a.Credential == CredentialAPIKey:
+		return refuse(CodeKeyCannotReview, "API keys can't ask Dream to run. Ask on the web.")
+	case a.Role != RoleOwner:
+		return refuse(CodeDreamRunByOwner, fmt.Sprintf("Only %s's owner can ask Dream to run now. Dream runs on its own each night.", spaceName(s)))
+	}
+	return apply()
+}
+
+// decideRequestDecision: an agent asks a person to decide (a G- gate).
+// Asking writes to the record (the gate and its receipt) and puts a
+// question in front of people, so it needs what proposing needs: an agent
+// connected to the space at Propose or Write, and not paused. A read-only
+// agent writes nothing (HANDOFF rule 2), so it may not ask; an API key may,
+// because it proposes. People don't ask: they remember the decision
+// themselves. Dream, Memax and the repository don't ask either. One agent
+// has at most MaxWaitingGates decisions waiting in a space.
+func decideRequestDecision(a Actor, o Object, s Space) Decision {
+	if a.Kind != ActorAgent {
+		return refuse(CodeGateByAgent, "Agents ask and people decide. Remember the decision instead.")
+	}
+	if a.autonomy() == AutonomyRead {
+		return refuseReadOnly(a, s)
+	}
+	if o.WaitingGates >= MaxWaitingGates {
+		return refuse(CodeGateLimit, fmt.Sprintf(
+			"%s already has %d decisions waiting on a person in %s. Carry on with other work; the answers come back in the next recall.",
+			actorName(a), MaxWaitingGates, spaceName(s)))
+	}
+	return apply()
+}
+
+// decideAnswerGate: a person answers a gate, and the answer is kept as a
+// decision they authored (HANDOFF "Decision gate"), so it follows Keep's
+// rules for a decision: a member or owner per the space's rules, never an
+// agent or an API key (agents ask, people answer), and a person on the web
+// where the space's decisions need one (D15). There a client-attested
+// answer (the CLI, an answer given inside the agent) is refused rather than
+// kept as a proposal: the gate stays waiting, so the agent that asked never
+// acts on an answer no person confirmed on the web.
+func decideAnswerGate(a Actor, o Object, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson:
+		return refuse(CodePersonMustAnswer, fmt.Sprintf(
+			"Agents ask and people answer. %s waits for a person in Review.", refOr(o, "This question")))
+	case a.Credential == CredentialAPIKey:
+		return refuse(CodeKeyCannotReview, "API keys can ask but never answer. Answer it in Review on the web.")
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf("Viewers can't answer decisions in %s. Ask a member.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules):
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners answer decisions in %s. Ask an owner.", spaceName(s)))
+	case s.Rules.DecisionsNeedPersonOnWeb(s.Kind):
+		if d := needsPerson(a, CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web. Answer %s in Review at memax.app.", spaceName(s), refOr(o, "it")),
+			"answering "+refOr(o, "a decision")); d != nil {
+			return *d
+		}
+		return applyChecked(a)
+	}
+	return apply()
+}
+
+// decideWithdrawGate: the agent that asked may take its question back (it
+// found the answer, or moved on), and so may the person it works for and
+// anyone who could answer it. Withdrawing keeps nothing, so it needs no
+// more assurance than the role. A paused or read-only agent only reads.
+func decideWithdrawGate(a Actor, o Object, s Space) Decision {
+	switch a.Kind {
+	case ActorAgent:
+		if a.autonomy() == AutonomyRead {
+			return refuseReadOnly(a, s)
+		}
+		if o.GateMine {
+			return apply()
+		}
+		return refuse(CodeNotYourGate, fmt.Sprintf(
+			"Only the agent that asked %s can withdraw it. A person can withdraw it in Review.", refOr(o, "this question")))
+	case ActorPerson:
+		if o.GateMine || (a.Credential != CredentialAPIKey && canKeep(a.Role, s.Rules)) {
+			return apply()
+		}
+	}
+	return refuse(CodeNotYourGate, fmt.Sprintf(
+		"Only the agent that asked %s, the person it works for, or someone who can answer it can withdraw it.",
+		refOr(o, "this question")))
+}
+
+// decideReviseBrief: people who may keep edit the Brief, and Dream
+// rewrites it in the open (plan 25 §5.6). Agents propose memories; they
+// never edit the Brief.
+func decideReviseBrief(a Actor, s Space) Decision {
+	switch a.Kind {
+	case ActorPerson:
+		switch {
+		case a.Role == RoleViewer:
+			return refuse(CodeViewer, fmt.Sprintf(
+				"Viewers can read the Brief but not edit it in %s. Ask a member to edit it.", spaceName(s)))
+		case !canKeep(a.Role, s.Rules):
+			return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners edit the Brief in %s. Ask an owner.", spaceName(s)))
+		}
+		return apply()
+	case ActorDream:
+		return apply()
+	}
+	return refuse(CodeBriefByPerson,
+		"Agents propose memories and people edit the Brief. Edit it on the web or with the CLI.")
+}
+
+// decideConfigureTarget: people who may keep decide where a space
+// compiles, overwrite a hand edit, or stop compiling a file.
+func decideConfigureTarget(a Actor, s Space) Decision {
+	if a.Kind != ActorPerson {
+		return refuse(CodeTargetsByPerson, fmt.Sprintf(
+			"Only people change where %s compiles. Change it on the web or with the CLI.", spaceName(s)))
+	}
+	switch {
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf(
+			"Viewers can't change where %s compiles. Ask a member.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules):
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners change where %s compiles. Ask an owner.", spaceName(s)))
+	}
+	return apply()
+}
+
+// decideRequestCompile: a compile changes no words, so anyone who can see
+// the space may ask for one, except an agent or key that can only read.
+func decideRequestCompile(a Actor, s Space) Decision {
+	if a.Kind == ActorAgent && a.autonomy() == AutonomyRead {
+		return refuseReadOnly(a, s)
+	}
+	return apply()
+}
+
+// decideReport: a device (the person's daemon, or an agent's key it runs
+// with) or the repository reports what it wrote or what it saw. Reports
+// change no words: a hand edit becomes proposals only when a person pulls
+// it.
+func decideReport(a Actor, s Space) Decision {
+	switch a.Kind {
+	case ActorPerson, ActorRepository, ActorMemax:
+		return apply()
+	case ActorAgent:
+		if a.autonomy() == AutonomyRead {
+			return refuseReadOnly(a, s)
+		}
+		return apply()
+	}
+	return refuse(CodeTargetsByPerson, "Deliveries and hand edits are reported by a device or the repository.")
+}
+
+// keepCap is why a person (or the agent working for them) can't keep at
+// all in this space, or "" when they can.
+func keepCap(a Actor, s Space) string {
+	switch {
+	case a.Credential == CredentialAPIKey:
+		return CodeAPIKey
+	case a.Role == RoleViewer:
+		return CodeViewer
+	case !canKeep(a.Role, s.Rules):
+		return CodeOwnersKeep
+	}
+	return ""
+}
+
+func canKeep(r Role, rules Rules) bool {
+	switch r {
+	case RoleOwner:
+		return true
+	case RoleMember:
+		return rules.KeepBy() == WhoMembers
+	}
+	return false
+}
+
+func canForget(a Actor, s Space) bool {
+	switch a.Role {
+	case RoleOwner:
+		return true
+	case RoleMember:
+		return a.CanForget || s.Rules.ForgetBy() == WhoMembers
+	}
+	return false
+}
+
+func apply() Decision { return Decision{Effect: EffectApply} }
+
+func refuse(code, msg string) Decision {
+	return Decision{Effect: EffectRefuse, Code: code, Message: msg}
+}
+
+func refuseReadOnly(a Actor, s Space) Decision {
+	if a.Kind == ActorAgent {
+		switch a.AgentStatus {
+		case AgentConnected:
+		case AgentPaused:
+			return refuse(CodeAgentPaused, fmt.Sprintf("%s is paused, so it can only read. Resume it in Agents.", actorName(a)))
+		default:
+			return refuse(CodeAgentNotConnected, fmt.Sprintf(
+				"%s isn't connected to %s, so it can only read. Connect it in Agents.", actorName(a), spaceName(s)))
+		}
+	}
+	if a.Credential == CredentialAPIKey {
+		return refuse(CodeKeyReadOnly, fmt.Sprintf(
+			"This API key can only read %s. Create a key that can propose in Settings.", spaceName(s)))
+	}
+	return refuse(CodeReadOnly, fmt.Sprintf("%s is read-only in %s. Change it in Agents.", actorName(a), spaceName(s)))
+}
+
+func downgrade(code string, a Actor, o Object, s Space, quarantine bool) Decision {
+	var msg string
+	switch code {
+	case CodeIntegration:
+		msg = fmt.Sprintf("Sent to Review: what arrives by %s is always reviewed.", a.Via)
+	case CodeImport:
+		msg = "Sent to Review: imported memories are reviewed before they're kept."
+	case CodeSystem:
+		msg = "Sent to Review: Dream proposes and people keep."
+	case CodeRepository:
+		msg = "Sent to Review: changes from the repository are reviewed before they're kept."
+	case CodeAPIKey:
+		msg = "Sent to Review: API keys propose and people keep."
+	case CodeViewer:
+		msg = fmt.Sprintf("Sent to Review: viewers propose and members keep in %s.", spaceName(s))
+	case CodeOwnersKeep:
+		msg = fmt.Sprintf("Sent to Review: only owners keep in %s.", spaceName(s))
+	case CodeDecisionNeedsWeb:
+		msg = fmt.Sprintf("Sent to Review: decisions in %s need a person on the web.", spaceName(s))
+	case CodeExternalSource:
+		msg = "Sent to Review: it cites an outside source."
+	case CodeContradicts:
+		msg = "Sent to Review: it contradicts a decision in force."
+	case CodeTouchesDecision:
+		msg = "Sent to Review: it touches a decision in force, so a person checks it first."
+	case CodeEditsPersonKept:
+		msg = fmt.Sprintf("Sent to Review: a person kept %s, so changes to it need a person.", refOr(o, "this memory"))
+	case CodeAutonomyPropose:
+		msg = fmt.Sprintf("Sent to Review: %s proposes in %s.", actorName(a), spaceName(s))
+	case CodePersonProposed:
+		msg = "Sent to Review."
+	}
+	return Decision{Effect: EffectPropose, Code: code, Message: msg, Quarantine: quarantine}
+}
+
+func forgetNotAllowed(s Space) string {
+	return fmt.Sprintf("Only owners can forget in %s. Ask an owner to forget it.", spaceName(s))
+}
+
+func actorName(a Actor) string {
+	if a.Name != "" {
+		return a.Name
+	}
+	if a.Kind == ActorAgent {
+		return "This agent"
+	}
+	return "You"
+}
+
+func spaceName(s Space) string {
+	if s.Name != "" {
+		return s.Name
+	}
+	return "this space"
+}
+
+func refOr(o Object, fallback string) string {
+	if o.Ref != "" {
+		return o.Ref
+	}
+	return fallback
+}

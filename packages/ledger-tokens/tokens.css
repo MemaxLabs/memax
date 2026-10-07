@@ -1,0 +1,158 @@
+/* Memax Ledger tokens (Paper light on :root and [data-theme="light"]; Carbon on [data-theme="dark"]).
+ * Generated from tokens.json in the V2 design handoff (Oct 5, 2026). Font files are relative to this file.
+ * Never use a literal colour in Memax UI: always var(--token). */
+:root,
+[data-theme="light"] {
+  --paper: #edf1ef;
+  --sheet: #f4f7f5;
+  --card: #fcfdfc;
+  --well: #e6ebe8;
+  --hover: #eaefec;
+  --select: #dde6e1;
+  --night: #17211b;
+  --line: #d5dad7;
+  --line-strong: #818683;
+  --ink: #151b18;
+  --ink-2: #474d4a;
+  --ink-3: #5c625f;
+  --on-ink: #f4f7f5;
+  --night-ink: #edf1ef;
+  --night-ink-2: #b0b8b3;
+  --night-line: #2d3932;
+  --night-accent: #7ed3a6;
+  --night-ochre: #eebb5e;
+  --night-vermilion: #f6876e;
+  --seal: #1b5a3e;
+  --seal-fill: #1b5a3e;
+  --seal-wash: #dff2e7;
+  --on-seal: #fcfdfc;
+  --ochre: #895909;
+  --ochre-wash: #fbedd5;
+  --ochre-fill: #eebb5e;
+  --on-ochre: #151b18;
+  --vermilion: #b23521;
+  --vermilion-wash: #ffeae5;
+  --redact: #151b18;
+  --highlight: #e8eeb4;
+  --focus: var(--seal);
+  --scrim: rgba(21, 27, 24, 0.28);
+  --shadow-float:
+    0 1px 2px rgba(21, 27, 24, 0.06), 0 16px 40px -12px rgba(21, 27, 24, 0.24);
+  --shadow-drag: 0 8px 24px -8px rgba(21, 27, 24, 0.3);
+}
+[data-theme="dark"] {
+  --paper: #0f1310;
+  --sheet: #141816;
+  --card: #1a201c;
+  --well: #0b0e0c;
+  --hover: #1e2521;
+  --select: #242c28;
+  --night: #051a10;
+  --line: #2d3330;
+  --line-strong: #6a716d;
+  --ink: #eaeeeb;
+  --ink-2: #bec4c1;
+  --ink-3: #9fa5a1;
+  --on-ink: #141816;
+  --night-ink: #edf1ef;
+  --night-ink-2: #b3bdb7;
+  --night-line: #204130;
+  --night-accent: #7bcba1;
+  --night-ochre: #eebb5e;
+  --night-vermilion: #f6876e;
+  --seal: #7ec59f;
+  --seal-fill: #267450;
+  --seal-wash: #183124;
+  --on-seal: #f0f7f3;
+  --ochre: #eaba67;
+  --ochre-wash: #3a2a16;
+  --ochre-fill: #e6b55d;
+  --on-ochre: #221709;
+  --vermilion: #f78970;
+  --vermilion-wash: #44241f;
+  --redact: #666c68;
+  --highlight: #4e5120;
+  --focus: var(--seal);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --shadow-float:
+    0 1px 2px rgba(0, 0, 0, 0.5), 0 20px 48px -12px rgba(0, 0, 0, 0.7);
+  --shadow-drag: 0 8px 24px -8px rgba(0, 0, 0, 0.8);
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+  --control-sm: 28px;
+  --control-md: 32px;
+  --control-lg: 40px;
+  --rail: 232px;
+  --receipt-rail: 208px;
+  --measure: 680px;
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-settle: 320ms;
+  --duration-dream: 1200ms;
+  --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --font-brand: "Gloock", "Songti SC", Georgia, serif;
+  --font-serif: "Newsreader", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --font-sans:
+    "Schibsted Grotesk", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@font-face {
+  font-family: "Gloock";
+  src: url("fonts/Gloock-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("fonts/Newsreader-Variable.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("fonts/Newsreader-Italic-Variable.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Schibsted Grotesk";
+  src: url("fonts/SchibstedGrotesk-Variable.woff2") format("woff2");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("fonts/IBMPlexMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("fonts/IBMPlexMono-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}

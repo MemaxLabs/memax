@@ -35,7 +35,7 @@ export type { AgentDef, MemaxBin };
 
 // --- Agent definitions ---
 
-function getAgents(): AgentDef[] {
+export function getAgents(): AgentDef[] {
   const home = homedir();
   const cwd = process.cwd();
 

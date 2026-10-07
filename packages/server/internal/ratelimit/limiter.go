@@ -174,6 +174,8 @@ func ClassifyRequest(method, path string) OpClass {
 		return OpClassHeavy
 	case method == "POST" && (path == "/v1/ask" || path == "/v1/ask/"):
 		return OpClassHeavy
+	case method == "POST" && isV2Ask(path):
+		return OpClassHeavy
 	case method == "GET" && (path == "/v1/hubs" || startsWithPrefix(path, "/v1/hubs/")):
 		return OpClassMetadata
 	case isLightDataPlane(method, path):

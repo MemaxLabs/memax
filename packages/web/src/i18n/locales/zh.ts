@@ -3,6 +3,7 @@
 // memax 是一个有温度的记忆伙伴，不是冰冷的数据库
 // 语气：温暖、简洁、稍微俏皮
 import type { Translations } from "./en";
+import { ledgerZh } from "./ledger/zh";
 
 export const zh: Translations = {
   common: {
@@ -2535,6 +2536,7 @@ export const zh: Translations = {
       adminSendEmail: "发送该邮件",
       adminSetUserPlan: "设置用户计划",
       adminSetOverrides: "保存覆盖项",
+      adminSetV2Ui: "更改 V2 界面设置",
       adminDeleteOverrides: "清空覆盖项",
       adminUpdatePlan: "更新计划",
       adminSetHubPlan: "设置 hub 计划",
@@ -3331,6 +3333,26 @@ export const zh: Translations = {
         effectiveSourceHub: "Hub：{name}",
         effectiveSourceUnknownHub: "Hub：{id}",
       },
+      v2Ui: {
+        title: "V2 界面",
+        on: "开启",
+        off: "关闭",
+        reasons: {
+          v2_space: "TA 是某个 V2 空间的成员。",
+          operator_on: "运营人员为 TA 开启了。",
+          operator_off: "运营人员为 TA 关闭了，优先于所有规则。",
+          signed_up_since: "TA 在 {since} 或之后注册。",
+          none: "TA 没有 V2 空间。",
+        },
+        setting: "运营设置",
+        settings: {
+          default: "按规则",
+          on: "开启",
+          off: "关闭",
+        },
+        hint: "TA 的浏览器会在下次加载页面时生效。",
+        loadError: "无法读取 V2 界面开关。",
+      },
       pagination: {
         previous: "上一页",
         next: "下一页",
@@ -3480,6 +3502,7 @@ export const zh: Translations = {
         pulse: "脉搏",
         ingestion: "入库",
         jobs: "任务",
+        metrics: "阶段指标",
       },
       ops: {
         title: "运行监控",
@@ -3661,6 +3684,95 @@ export const zh: Translations = {
           pending: "挂起",
         },
       },
+      metrics: {
+        title: "阶段指标",
+        description:
+          "V2 计划的阶段门槛，按收据统计：按注册所在周分组的人数。一个人在进入 V2 空间后才被计入；内部员工不计入。",
+        weeks: "注册周数",
+        weeksOption: "{n} 周",
+        asOf: "截至 {time} UTC",
+        loadError: "无法加载阶段指标。请刷新重试。",
+        none: "–",
+        gates: {
+          title: "阶段门槛",
+          description: "以新用户为准。从 V1 迁来的人并列显示，不计入其中。",
+          activation: "阶段 2 · 首次使用中连接 2+ 个智能体并完成一次编译",
+          first_file: "阶段 2 · 首个文件，从 init 导入起的中位数",
+          week4_keeping: "阶段 3 · 已激活用户在第 4 周仍在保留",
+          team_pull: "阶段 4 · 60 天内加入一位队友",
+          ratioHint: "{denominator} 人中 {numerator} 人 · 门槛 {bar}",
+          fileHint: "{denominator} 人中 {numerator} 人在 5 分钟内 · 门槛 {bar}",
+          fromV1: "来自 V1：{value}",
+          status: {
+            pass: "达到门槛",
+            fail: "低于门槛",
+            pending: "等待统计窗口结束",
+          },
+        },
+        northStar: {
+          title: "北极星指标",
+          value: "{read} 个中的 {two} 个",
+          hint: "截至 {week} 的一周内被 2+ 个智能体读取的空间。覆盖率 {coverage}：在 {seen} 个活跃连接中，有 {reading} 个被看到读取。",
+        },
+        cohorts: {
+          title: "按注册周分组",
+          description: "首次使用的统计只计入前 {hours} 小时已结束的人。",
+          empty: "这些周里没有人进入 V2 空间。",
+          all: "全部",
+          kind: {
+            new: "新用户",
+            from_v1: "来自 V1",
+          },
+          columns: {
+            week: "周",
+            cohort: "分组",
+            people: "人数",
+            closed: "已结束",
+            twoAgents: "2+ 智能体",
+            compiled: "已编译",
+            activated: "已激活",
+            read: "已读取",
+            firstFile: "首个文件 p50 / p90",
+            under5m: "5 分钟内",
+            signupToFile: "注册到文件",
+            week4: "第 4 周",
+            teammate: "队友",
+          },
+        },
+        review: {
+          title: "审阅健康度",
+          description: "按提出所在周统计的提议，以及每条提议最先如何被处理。",
+          empty: "这些周里没有提议。",
+          columns: {
+            week: "周",
+            proposals: "提议",
+            kept: "保留",
+            rejected: "拒绝",
+            folded: "合并",
+            forgotten: "遗忘",
+            open: "待处理",
+            rejectRate: "拒绝率",
+            decision: "处理用时 p50",
+            decisionP90: "p90",
+          },
+        },
+        definitions: {
+          title: "统计口径",
+          signup:
+            "注册：新用户创建账号的时间。对先在 V1 写过记忆的人，是其首次拥有 V2 空间的时间。",
+          session:
+            "首次使用：注册后的 {hours} 小时，足够运行 init 并打开第二个智能体。",
+          activated:
+            "已激活：首次使用结束前，有 2+ 个智能体连接，且本人的 CLI 或守护进程把一次编译写入了磁盘。",
+          firstFile: "首个文件：从 init 的首次导入到首次写入磁盘的编译。",
+          week4: "第 4 周：已激活用户在注册后第 21 到 28 天亲自保留过内容。",
+          teammate:
+            "队友：60 天内有另一人加入其拥有的 V2 空间。目前尚未计费，因此统计所有人，而不只是 Pro。",
+          review:
+            "拒绝率：拒绝数占保留与拒绝之和的比例。合并的提议是被评审合并的重复内容。",
+        },
+      },
     },
   },
+  ledger: ledgerZh,
 };

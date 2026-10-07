@@ -2,6 +2,35 @@
 
 All notable changes to `memax-sdk` are documented here.
 
+## Unreleased
+
+- Added the web UI a person sees (the per-person V2 UI flag):
+  `auth.me()` answers `ui` (`WebUi`: `"v1"` or `"v2"`), and
+  `auth.exchangeCode()` returns `ExchangedTokens`, an `AuthTokenPair`
+  with `ui` for a session issued to the web app.
+- **Breaking:** OAuth consent moved to the web session (OAuthConsent).
+  `auth.getOAuthConsentRequest` and the `OAuthConsentRequest`,
+  `OAuthConsentHub` and `OAuthConsentPermission` types are removed: the
+  API no longer serves `GET /oauth/authorize/consent-request`. Use
+  `auth.openOAuthRequest(id)`, `auth.decideOAuthRequest(id, { decision,
+  space_id })` and `auth.releaseOAuthRequest(id)` with the `OAuthRequest`,
+  `OAuthRequestSpace`, `OAuthDecisionInput` and `OAuthDecision` types, as
+  the person signed in on the web. Bump the minor version (0.8.0) when
+  this is released.
+- Added `memax.v2`, the first resources on the `/v2` API (the V2
+  record): `spaces.list`, `memories.remember` / `list` / `get` /
+  `keep` / `edit` / `reject`, `review.list` and `receipts.list`.
+  Commands take a required `idempotencyKey`; `edit` takes the
+  `ifMatch` version it started from. `refusalOf(err)` returns the
+  policy decision behind a 403 `refused`.
+- Added the `V2` type namespace (`V2.Memory`, `V2.CommandResult`,
+  `V2.PolicyCode`, …), generated from
+  `packages/server/openapi/v2.yaml` into `src/v2/schema.gen.ts`
+  (`pnpm gen:v2`).
+- `extraHeaders` moved from `StreamOptions` to `RequestOptions`, so
+  every request can carry per-call headers (`StreamOptions` still
+  inherits it). V1 resources are unchanged.
+
 ## 0.5.0 - 2026-04-28
 
 - Added `chats` resource for plan 24's Agent Chat surface:

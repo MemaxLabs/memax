@@ -56,6 +56,10 @@ export type Brief = Schemas["Brief"];
 export type BriefSection = Schemas["BriefSection"];
 export type BriefItem = Schemas["BriefItem"];
 export type BriefResult = Schemas["BriefResult"];
+/** A restored version, and what the restore left out (`dropped`). */
+export type RestoreBriefResult = Schemas["RestoreBriefResult"];
+/** A line (or a citation) a restore left out, and why. */
+export type BriefDrop = Schemas["BriefDrop"];
 export type BriefVersionPage = Schemas["BriefVersionPage"];
 export type Target = Schemas["Target"];
 export type TargetSettings = Schemas["TargetSettings"];

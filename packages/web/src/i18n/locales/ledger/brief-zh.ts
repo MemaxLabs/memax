@@ -88,6 +88,10 @@ export const ledgerBriefZh: Translations["ledger"]["brief"] = {
     kept: "已保留你的修改，版本 {ref}",
     started: "简报已开始，版本 {ref}",
     restored: "已把 {from} 恢复为 {ref}",
+    restoredWithout:
+      "已把 {from} 恢复为 {ref}，去掉了 {n} 行：它们依据的记忆已不再保留",
+    restoredWithoutOne:
+      "已把 {from} 恢复为 {ref}，去掉了 1 行：它依据的记忆已不再保留",
     changed: "已更改 {file} 的写法",
     restarted: "重新开始编译 {file}",
     copied: "已复制 {file}",

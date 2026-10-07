@@ -34,6 +34,14 @@ type briefResult struct {
 	Receipts []ledger.Receipt `json:"receipts"`
 }
 
+type restoreBriefResult struct {
+	Outcome  ledger.Outcome     `json:"outcome"`
+	Policy   policy.Decision    `json:"policy"`
+	Brief    *ledger.Brief      `json:"brief"`
+	Receipts []ledger.Receipt   `json:"receipts"`
+	Dropped  []ledger.BriefDrop `json:"dropped"`
+}
+
 type targetList struct {
 	Items []ledger.Target `json:"items"`
 }
@@ -218,6 +226,48 @@ func (h *Handler) reviseBrief(w http.ResponseWriter, r *http.Request) {
 	}
 	setVersionETag(w, res.Brief.Version)
 	writeData(w, http.StatusCreated, briefResult{Outcome: res.Outcome, Policy: res.Policy, Brief: res.Brief, Receipts: nonNil(res.Receipts)})
+}
+
+// POST /v2/spaces/{space}/brief/versions/{n}:restore
+func (h *Handler) restoreBriefVersion(w http.ResponseWriter, r *http.Request) {
+	p, key, e := h.commandStart(r)
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	version, hasIfMatch, e := ifMatchVersion(r)
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	var req reviewRequest
+	if e := decodeBody(w, r, &req, false); e != nil {
+		writeError(w, e)
+		return
+	}
+	sp, e := h.space(r, p, r.PathValue("space"))
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	n, err := strconv.Atoi(r.PathValue("n"))
+	if err != nil || n < 1 {
+		writeError(w, notFound)
+		return
+	}
+	if !hasIfMatch {
+		writeError(w, &apiError{status: http.StatusPreconditionRequired, code: codePreconditionRequired,
+			message: `Send If-Match with the Brief version in force you started from (its ETag, such as "3").`})
+		return
+	}
+	res, err := h.ledger.Apply(r.Context(), &ledger.RestoreBrief{Meta: p.meta(p.scope.Narrow(sp.SpaceID), key, req.commandFields),
+		SpaceID: sp.SpaceID, Version: n, ExpectedVersion: version})
+	if !h.commandOK(w, r, res, err) {
+		return
+	}
+	setVersionETag(w, res.Brief.Version)
+	writeData(w, http.StatusCreated, restoreBriefResult{Outcome: res.Outcome, Policy: res.Policy, Brief: res.Brief,
+		Receipts: nonNil(res.Receipts), Dropped: nonNil(res.Dropped)})
 }
 
 // GET /v2/spaces/{space}/brief/versions

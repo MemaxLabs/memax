@@ -872,7 +872,7 @@ func (w *writer) dreamBrief(ctx context.Context, ed *editionWrite, a *PlannedAct
 	if n := len(a.Brief.Ops); n > 1 {
 		what = fmt.Sprintf("%d small changes", n)
 	}
-	rc, version, err := w.writeBriefVersion(ctx, ed.sp, cur, base.Title, base.Summary, sections,
+	rc, version, _, err := w.writeBriefVersion(ctx, ed.sp, cur, base.Title, base.Summary, sections,
 		fmt.Sprintf("Dream made %s, each citing the memories it rests on.", what), dreamSource(ed.ref), ActionRevised)
 	if err != nil {
 		return "", nil, err
@@ -891,14 +891,16 @@ func currentBriefVersion(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID, cur 
 	return briefVersion(ctx, tx, spaceID, cur.id, cur.version)
 }
 
-// briefVersion reads one Brief version's title, summary and sections.
+// briefVersion reads one Brief version's display ID, title, summary and
+// sections.
 func briefVersion(ctx context.Context, tx pgx.Tx, spaceID, briefID uuid.UUID, version int) (*Brief, error) {
 	var b Brief
+	var seq int64
 	var summary *string
 	var structure []byte
 	err := tx.QueryRow(ctx, `
-		SELECT title, summary, structure FROM v2.brief_versions WHERE brief_id = $1 AND version = $2 AND space_id = $3`,
-		briefID, version, spaceID).Scan(&b.Title, &summary, &structure)
+		SELECT seq, title, summary, structure FROM v2.brief_versions WHERE brief_id = $1 AND version = $2 AND space_id = $3`,
+		briefID, version, spaceID).Scan(&seq, &b.Title, &summary, &structure)
 	if errNoRows(err) {
 		return nil, ErrNotFound
 	}
@@ -912,7 +914,7 @@ func briefVersion(ctx context.Context, tx pgx.Tx, spaceID, briefID uuid.UUID, ve
 	if err := json.Unmarshal(structure, &st); err != nil {
 		return nil, fmt.Errorf("ledger: read Brief version: %w", err)
 	}
-	b.Sections, b.Version = st.Sections, version
+	b.Sections, b.Version, b.Ref = st.Sections, version, FormatRef(PrefixBrief, seq)
 	return &b, nil
 }
 
@@ -934,39 +936,41 @@ func keptRefs(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (map[string]boo
 }
 
 // writeBriefVersion writes the next version of a space's Brief, as the
-// command's actor, with a receipt of the given action, and recompiles.
-// ReviseBrief's write, for Dream and for undoing Dream.
+// command's actor, with a receipt of the given action, and returns the
+// receipt and the new version's number and id; the caller recompiles.
+// ReviseBrief's write, for Dream, for undoing Dream and for RestoreBrief.
 func (w *writer) writeBriefVersion(ctx context.Context, sp spaceRow, cur *briefRow, title, summary string,
-	sections []BriefSection, reason string, src *ReceiptSource, action Action) (Receipt, int, error) {
+	sections []BriefSection, reason string, src *ReceiptSource, action Action) (Receipt, int, uuid.UUID, error) {
 	seq, err := allocateRef(ctx, w.tx, sp.TenantID, PrefixBrief)
 	if err != nil {
-		return Receipt{}, 0, err
+		return Receipt{}, 0, uuid.Nil, err
 	}
 	ref := FormatRef(PrefixBrief, seq)
 	version, stream := cur.version+1, cur.streamVersion+1
 	rc := w.objectReceipt(sp, ObjectBrief, cur.id, ref, action, stream, reason)
 	rc.Source = src
 	if err := insertReceipt(ctx, w.tx, &rc); err != nil {
-		return Receipt{}, 0, err
+		return Receipt{}, 0, uuid.Nil, err
 	}
 	if _, err := w.tx.Exec(ctx, `
 		UPDATE v2.briefs SET current_version = $2, stream_version = $3, last_receipt_id = $4, updated_at = now()
 		 WHERE id = $1 AND space_id = $5`, cur.id, version, stream, rc.ID, sp.ID); err != nil {
-		return Receipt{}, 0, fmt.Errorf("ledger: update Brief: %w", err)
+		return Receipt{}, 0, uuid.Nil, fmt.Errorf("ledger: update Brief: %w", err)
 	}
 	structure, err := json.Marshal(briefStructure{Sections: sections})
 	if err != nil {
-		return Receipt{}, 0, err
+		return Receipt{}, 0, uuid.Nil, err
 	}
+	versionID := newID()
 	if _, err := w.tx.Exec(ctx, `
 		INSERT INTO v2.brief_versions (id, brief_id, version, tenant_id, space_id, seq, parent_version, title, summary,
 		                               structure, receipt_id, last_receipt_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)`,
-		newID(), cur.id, version, sp.TenantID, sp.ID, seq, cur.version, title, nullText(summary), structure, rc.ID); err != nil {
-		return Receipt{}, 0, fmt.Errorf("ledger: write Brief version: %w", err)
+		versionID, cur.id, version, sp.TenantID, sp.ID, seq, cur.version, title, nullText(summary), structure, rc.ID); err != nil {
+		return Receipt{}, 0, uuid.Nil, fmt.Errorf("ledger: write Brief version: %w", err)
 	}
 	cur.version, cur.streamVersion, cur.seq = version, stream, seq
-	return rc, version, nil
+	return rc, version, versionID, nil
 }
 
 // stillSurfaced keeps what an edition lists for a person that still needs

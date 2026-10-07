@@ -146,6 +146,108 @@ export interface BriefVersionsPage {
   nextCursor: string | null;
 }
 
+/** Something a restore left out of the version it restored (spec BriefDrop), by ID only. */
+export interface BriefDrop {
+  /** The section's key. */
+  section: string;
+  /** The line in the restored version: a ref, or "P:<section>:<index>" for prose. */
+  item: string;
+  /** A memory line, a line of prose, or a citation taken off a line that stays. */
+  kind: "memory" | "prose" | "cite";
+  /** The memories that made it go. */
+  refs: string[];
+  reason: "forgotten" | "not_kept";
+}
+
+/** What a memory is now, as a restore reads it; null when it isn't in the space. */
+export type RestoreState =
+  | "kept"
+  | "proposed"
+  | "merged"
+  | "faded"
+  | "rejected"
+  | "forgotten"
+  | null;
+
+/**
+ * An older version as it can stand now, by the server's rules
+ * (ledger.RestoreBriefSections): a memory line stays while its memory is
+ * kept; a line of prose goes when its words were forgotten, when it cites
+ * a forgotten memory, or when it cites no kept one, and otherwise loses
+ * only the citations that can't be made any more. Every section stays.
+ * The demo restores with it; the SDK source asks the server.
+ */
+export function restoreStructure(
+  structure: BriefStructure,
+  stateOf: (ref: string) => RestoreState,
+): { structure: BriefStructure; dropped: BriefDrop[] } {
+  const dropped: BriefDrop[] = [];
+  const sections = structure.sections.map((section) => {
+    const items: BriefItem[] = [];
+    section.items.forEach((item, index) => {
+      if ("ref" in item) {
+        const state = stateOf(item.ref);
+        if (state === "kept") items.push({ ref: item.ref });
+        else
+          dropped.push({
+            section: section.key,
+            item: item.ref,
+            kind: "memory",
+            refs: [item.ref],
+            reason: state === "forgotten" ? "forgotten" : "not_kept",
+          });
+        return;
+      }
+      const id = `P:${section.key}:${index}`;
+      const forgotten = item.cites.filter(
+        (ref) => stateOf(ref) === "forgotten",
+      );
+      const gone = item.cites.filter((ref) => {
+        const state = stateOf(ref);
+        return state === null || state === "rejected";
+      });
+      const cites = item.cites.filter(
+        (ref) => !forgotten.includes(ref) && !gone.includes(ref),
+      );
+      if (forgotten.length > 0) {
+        dropped.push({
+          section: section.key,
+          item: id,
+          kind: "prose",
+          refs: forgotten,
+          reason: "forgotten",
+        });
+      } else if (!cites.some((ref) => stateOf(ref) === "kept")) {
+        dropped.push({
+          section: section.key,
+          item: id,
+          kind: "prose",
+          refs: [...item.cites],
+          reason: "not_kept",
+        });
+      } else {
+        items.push({ text: item.text, cites });
+        for (const ref of gone) {
+          dropped.push({
+            section: section.key,
+            item: id,
+            kind: "cite",
+            refs: [ref],
+            reason: "not_kept",
+          });
+        }
+      }
+    });
+    return { ...section, items };
+  });
+  return { structure: { ...structure, sections }, dropped };
+}
+
+/** How many lines a restore left out (a citation taken off a line isn't one). */
+export function droppedLines(dropped: readonly BriefDrop[]): number {
+  return dropped.filter((d) => d.kind !== "cite").length;
+}
+
 export interface BriefSource {
   /** The demo's Brief, on hand for the first render; null when the space has none. */
   peek?(slug: string): BriefView | null | undefined;
@@ -172,6 +274,18 @@ export interface BriefSource {
     reason?: string;
     idempotencyKey: string;
   }): Promise<{ ref: string; version: number }>;
+  /**
+   * Writes an older version (`version`) back as a new one. `base` is the
+   * version in force; a newer one throws a clash. What can't stand any
+   * more is left out (restoreStructure), and `dropped` says which.
+   */
+  restore(input: {
+    space: SpaceSummary;
+    base: number;
+    version: number;
+    reason?: string;
+    idempotencyKey: string;
+  }): Promise<{ ref: string; version: number; dropped: BriefDrop[] }>;
 }
 
 /** Where a memory of this section sits in the Brief, by the compiler's keys. */

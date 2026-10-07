@@ -244,5 +244,24 @@ export function createSdkBrief(
       });
       return { ref: result.brief.ref, version: result.brief.version };
     },
+
+    async restore({ space, base, version, reason, idempotencyKey }) {
+      const result = await client.v2.briefs.restore(space.slug, version, {
+        idempotencyKey,
+        ifMatch: base,
+        ...(reason ? { reason } : {}),
+      });
+      return {
+        ref: result.brief.ref,
+        version: result.brief.version,
+        dropped: result.dropped.map((d) => ({
+          section: d.section,
+          item: d.item,
+          kind: d.kind,
+          refs: d.refs,
+          reason: d.reason,
+        })),
+      };
+    },
   };
 }

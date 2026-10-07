@@ -80,6 +80,28 @@ describe("memax.v2.briefs", () => {
       "https://api.memax.app/v2/spaces/memax-v2/brief/versions?limit=5",
     );
   });
+
+  it("restores a version with If-Match and an idempotency key", async () => {
+    const { memax, call } = client({ dropped: [] });
+    await memax.v2.briefs.restore("memax-v2", 40, {
+      idempotencyKey: "r-1",
+      ifMatch: 43,
+      reason: "Restored B-0040",
+    });
+    await memax.v2.briefs.restore("memax-v2", 41, {
+      idempotencyKey: "r-2",
+      ifMatch: 44,
+    });
+    const restore = call(0);
+    expect(restore.method).toBe("POST");
+    expect(restore.url).toBe(
+      "https://api.memax.app/v2/spaces/memax-v2/brief/versions/40:restore",
+    );
+    expect(restore.headers["If-Match"]).toBe('"43"');
+    expect(restore.headers["Idempotency-Key"]).toBe("r-1");
+    expect(restore.body).toEqual({ reason: "Restored B-0040" });
+    expect(call(1).body).toEqual({});
+  });
 });
 
 describe("memax.v2.targets", () => {

@@ -1,10 +1,13 @@
 import { CommandFailedError } from "./command-error";
 import {
   briefRefs,
+  restoreStructure,
+  type BriefDrop,
   type BriefSource,
   type BriefStructure,
   type BriefVersionView,
   type BriefView,
+  type RestoreState,
 } from "./brief";
 import {
   buildBriefView,
@@ -68,6 +71,35 @@ export function createDemoBrief({
   const versions = new Map<string, BriefVersionView[]>();
   const extra = new Map<string, BriefInputMemory[]>();
   const replays = new Map<string, { ref: string; version: number }>();
+  const restores = new Map<
+    string,
+    { ref: string; version: number; dropped: BriefDrop[] }
+  >();
+
+  /** Writes the next version, by you, as the one in force. */
+  function append(
+    slug: string,
+    structure: BriefStructure,
+    reason: string | null,
+  ): { ref: string; version: number } {
+    const list = versionsOf(slug);
+    const current = list[0];
+    const version = (current?.version ?? 0) + 1;
+    const n = current ? Number(current.ref.slice(2)) + 1 : 1;
+    const next: BriefVersionView = {
+      ref: `B-${String(n).padStart(4, "0")}`,
+      version,
+      parent: current?.version ?? null,
+      current: true,
+      by: YOU,
+      at: now().toISOString(),
+      reason,
+      facts: briefRefs(structure).length,
+      structure,
+    };
+    versions.set(slug, [next, ...list.map((v) => ({ ...v, current: false }))]);
+    return { ref: next.ref, version };
+  }
 
   function versionsOf(slug: string): BriefVersionView[] {
     let list = versions.get(slug);
@@ -183,25 +215,49 @@ export function createDemoBrief({
           }
         }
       }
-      const version = (current?.version ?? 0) + 1;
-      const n = current ? Number(current.ref.slice(2)) + 1 : 1;
-      const next: BriefVersionView = {
-        ref: `B-${String(n).padStart(4, "0")}`,
-        version,
-        parent: current?.version ?? null,
-        current: true,
-        by: YOU,
-        at: now().toISOString(),
-        reason: reason ?? null,
-        facts: briefRefs(structure).length,
-        structure: structure satisfies BriefStructure,
-      };
-      versions.set(space.slug, [
-        next,
-        ...list.map((v) => ({ ...v, current: false })),
-      ]);
-      const result = { ref: next.ref, version };
+      const result = append(space.slug, structure, reason ?? null);
       replays.set(idempotencyKey, result);
+      return result;
+    },
+    async restore({ space, base, version, reason, idempotencyKey }) {
+      await sleep(commandDelayMs);
+      const replay = restores.get(idempotencyKey);
+      if (replay) return replay;
+      const list = versionsOf(space.slug);
+      const current = list[0];
+      if (!current || current.version !== base) {
+        throw new CommandFailedError({
+          kind: "clash",
+          currentVersion: current?.version ?? null,
+        });
+      }
+      const from = list.find((v) => v.version === version);
+      if (!from || from === current) {
+        throw new CommandFailedError({
+          kind: "unknown",
+          message: "Restore an older version of the Brief.",
+        });
+      }
+      // The server's rules (restoreStructure), on the session's record.
+      const states = new Map(
+        memoriesOf(space.slug).map((m): [string, RestoreState] => [
+          m.ref,
+          m.lifecycle === "other"
+            ? m.state === "forgotten"
+              ? "forgotten"
+              : "faded"
+            : m.lifecycle,
+        ]),
+      );
+      const { structure, dropped } = restoreStructure(
+        from.structure,
+        (ref) => states.get(ref) ?? null,
+      );
+      const result = {
+        ...append(space.slug, structure, reason ?? `Restored ${from.ref}`),
+        dropped,
+      };
+      restores.set(idempotencyKey, result);
       return result;
     },
     remembered(slug, { ref, statement, section }) {

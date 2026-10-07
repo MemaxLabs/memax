@@ -2473,8 +2473,8 @@ paths:
       summary: List the Brief's versions
       description: |
         Every version of the space's Brief, newest first, each with the
-        receipt of whoever wrote it and why (BriefHistory). Restore one by
-        revising the Brief with its sections.
+        receipt of whoever wrote it and why (BriefHistory). Restore one with
+        `:restore`.
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
@@ -2493,6 +2493,72 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/brief/versions/{n}:restore:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+      - $ref: '#/components/parameters/BriefVersionNumber'
+    post:
+      operationId: restoreBriefVersion
+      tags: [briefs]
+      summary: Restore an older version of the Brief
+      description: |
+        Writes version `n` back as a new version (`B-`) of the Brief, with a
+        `revised` receipt whose `source` is the version restored
+        (`{kind: brief, ref: B-0040}`). The record has moved on since, so
+        it keeps only what can still stand, and `dropped` says what it left
+        out: a memory line whose memory isn't kept any more, a line of prose
+        whose words were forgotten, that cites a forgotten memory or that no
+        longer cites a kept one, and (kind `cite`) a citation of a rejected
+        memory taken off a line that stays. A line of prose that cites
+        nothing is refused (400), as Dream's own changes are. Send `If-Match`
+        with the version in force you started from; it is required. The
+        version in force can't be restored. Whoever may revise the Brief may
+        restore it, and every target of the space recompiles. A retry with
+        the same `Idempotency-Key` returns the same version, and works
+        `dropped` out again from version `n`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchVersion'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '201':
+          description: The new version, and what the restore left out.
+          headers:
+            ETag:
+              $ref: '#/components/headers/VersionETag'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestoreBriefResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -3999,6 +4065,15 @@ components:
       schema:
         type: string
         pattern: '^[1-9][0-9]{0,4}$'
+
+    BriefVersionNumber:
+      name: n
+      in: path
+      required: true
+      description: The Brief version's number (its `version`, from 1).
+      schema:
+        type: string
+        pattern: '^[1-9][0-9]{0,8}$'
 
     GateRefPath:
       name: ref
@@ -6025,6 +6100,64 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/Receipt'
+
+    BriefDrop:
+      description: |
+        Something a restore left out of the version it restored, and why.
+        Names memories by display ID, never by their words.
+      type: object
+      additionalProperties: false
+      required: [section, item, kind, refs, reason]
+      properties:
+        section:
+          description: The key of the section it was in.
+          $ref: '#/components/schemas/SectionKey'
+        item:
+          description: The line in the restored version, a memory's ref or `P:<section>:<index>` for prose.
+          type: string
+        kind:
+          description: A memory line, a line of prose, or a citation taken off a line of prose that stays.
+          type: string
+          enum: [memory, prose, cite]
+        refs:
+          description: |
+            The memories that made it go: the memory line's own, the
+            forgotten ones a line of prose cited (or, when none was
+            forgotten, every memory it cited), or the memory a citation
+            named.
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+        reason:
+          description: |
+            `forgotten` (the memory, or the line's words, were forgotten) or
+            `not_kept` (it isn't kept any more: faded, folded, rejected).
+          type: string
+          enum: [forgotten, not_kept]
+
+    RestoreBriefResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, brief, receipts, dropped]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        brief:
+          description: The new version.
+          $ref: '#/components/schemas/Brief'
+        receipts:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Receipt'
+        dropped:
+          description: What the restore left out, in the order of the version it restored.
+          type: array
+          items:
+            $ref: '#/components/schemas/BriefDrop'
 
     BriefVersionPage:
       type: object
@@ -9876,6 +10009,14 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/BriefResult'
+
+    RestoreBriefResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/RestoreBriefResult'
 
     BriefVersionPageEnvelope:
       type: object

@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { signInHref } from "@/lib/v2/onboarding/routes";
 
 /**
  * Sends the person to sign in again and back here: a fresh session
@@ -12,7 +13,7 @@ export function useSignInAgain() {
   const router = useRouter();
   const pathname = usePathname();
   return useCallback(
-    () => router.push(`/login?returnTo=${encodeURIComponent(pathname ?? "/")}`),
+    () => router.push(signInHref(pathname ?? "/", { again: true })),
     [router, pathname],
   );
 }

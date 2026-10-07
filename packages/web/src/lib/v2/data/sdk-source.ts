@@ -5,6 +5,8 @@ import { agentsOverview, createSdkAgents } from "./agents-sdk";
 import { createSdkBrief } from "./brief-sdk";
 import type { WebSession } from "./gates";
 import { createSdkGates } from "./gates-sdk";
+import { createSdkDevices } from "./devices-sdk";
+import { createSdkImports } from "./imports-sdk";
 import { checkRememberOver } from "./remember-sdk";
 import { createSdkMemories } from "./sdk-memories";
 import { createSdkReview } from "./sdk-review";
@@ -56,6 +58,8 @@ export function createSdkSource({
     targets: createSdkTargets(client),
     today: createSdkToday({ client, viewer, agents, gates }),
     gates,
+    imports: createSdkImports(client),
+    devices: createSdkDevices(client),
     async spaces(signal) {
       const { items } = await client.v2.spaces.list({ signal });
       return items.map((space) => ({
@@ -65,6 +69,7 @@ export function createSdkSource({
         kind: space.kind,
         role: space.role,
         repository: space.repository,
+        onV2: Boolean(space.v2_enabled_at),
         // PLACEHOLDER: the spaces list carries no counts yet.
         kept: null,
         agents: null,

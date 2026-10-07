@@ -1,0 +1,183 @@
+/* ReviewImport (ReviewImport.dc.html): the import's proposals as a
+ * selectable list, and the selection's bar along the sheet's foot. */
+
+.frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.page {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding-bottom: var(--space-6);
+}
+
+.head {
+  margin-bottom: var(--space-6);
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.grow {
+  flex: 1;
+}
+
+.headRow {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  padding: 10px var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--sheet);
+}
+
+.headRow input,
+.row input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.headLabel {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 20px 16px minmax(0, 1fr) 220px;
+  align-items: start;
+  column-gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.row input {
+  margin-top: 4px;
+}
+
+label.row {
+  cursor: pointer;
+}
+
+.last {
+  border-bottom: 0;
+}
+
+.on {
+  background: var(--select);
+}
+
+.held {
+  background: var(--sheet);
+}
+
+.mark {
+  display: flex;
+  padding-top: 7px;
+}
+
+.shield {
+  display: flex;
+  color: var(--ochre);
+}
+
+.text {
+  display: block;
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 24px;
+  font-style: italic;
+  color: var(--ink-2);
+}
+
+.note {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.vermilion,
+.vermilion .inlineLink {
+  color: var(--vermilion);
+}
+
+.inlineLink {
+  color: inherit;
+}
+
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px 0 0 14px;
+  border-left: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sources span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.more {
+  padding: 10px var(--space-1) 0;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+  padding: var(--space-3) var(--space-10);
+  border-top: 1px solid var(--line);
+  background: var(--card);
+}
+
+.count {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+@media (max-width: 1023px) {
+  .row {
+    grid-template-columns: 20px 16px minmax(0, 1fr);
+  }
+  .sources {
+    grid-column: 3;
+    padding: var(--space-1) 0 0;
+    border-left: 0;
+  }
+  .bar {
+    padding: var(--space-3) var(--space-4);
+    flex-wrap: wrap;
+  }
+}

@@ -1,0 +1,142 @@
+/* CompileDone (CompileDone.dc.html): the seal and the sentence, the files
+ * beside git status, then three next steps. */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.heroText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 48px;
+  line-height: 52px;
+  font-weight: 380;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+.lede {
+  margin: 0;
+  max-width: 34em;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 28px;
+  color: var(--ink-2);
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.file {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.file:last-child {
+  border-bottom: 0;
+}
+
+.file code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  min-width: 90px;
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-4);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.next {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+a.card:hover {
+  background: var(--hover);
+}
+
+a.card:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.first {
+  border-color: var(--ink);
+}
+
+.card b {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.card span {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.later b {
+  color: var(--ink-2);
+}
+
+@media (max-width: 1023px) {
+  .pair,
+  .next {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .title {
+    font-size: 36px;
+    line-height: 42px;
+  }
+}

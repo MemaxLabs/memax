@@ -181,6 +181,13 @@ export type ImportConflictResult = Schemas["ImportConflictResult"];
 export type BulkReviewResult = Schemas["BulkReviewResult"];
 export type BulkReviewItem = Schemas["BulkReviewItem"];
 
+// Device sign-in (CliAuth, /device)
+/** A device asking to sign in with a code; all but `address` is what it says about itself. */
+export type DeviceAuthorization = Schemas["DeviceAuthorization"];
+/** pending, approved, signed_in, denied or expired. */
+export type DeviceAuthorizationState = Schemas["DeviceAuthorizationState"];
+export type DeviceCodeInput = Schemas["DeviceCodeRequest"];
+
 // Agents
 export type AgentConnection = Schemas["AgentConnection"];
 export type AgentSpace = Schemas["AgentSpace"];

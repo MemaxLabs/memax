@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { handoffPreviewsDir } from "./e2e/handoff";
+import { handoffPreviewsDir, handoffScreensDir } from "./e2e/handoff";
 
 // Playwright for packages/web: V2 visual regression and keyboard smoke
 // tests (plan §6.8). Run with `pnpm --filter @memaxlabs/web test:e2e`;
@@ -49,7 +49,10 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: "**/ledger-components.e2e.ts",
+      testIgnore: [
+        "**/ledger-components.e2e.ts",
+        "**/onboarding-boards.e2e.ts",
+      ],
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1440, height: 900 },
@@ -67,6 +70,20 @@ export default defineConfig({
         ...devices["Desktop Chrome"],
         viewport: { width: 1440, height: 900 },
         deviceScaleFactor: 2,
+        reducedMotion: "reduce",
+      },
+    },
+    {
+      // The first session's screens against their 1× boards
+      // (screens/png), read in place like the previews; it measures how
+      // far each is from its board (e2e/onboarding-boards.e2e.ts).
+      name: "boards",
+      testMatch: "**/onboarding-boards.e2e.ts",
+      snapshotPathTemplate: `${handoffScreensDir() ?? "{testDir}/__handoff_missing__"}/{arg}{ext}`,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1440, height: 900 },
+        deviceScaleFactor: 1,
         reducedMotion: "reduce",
       },
     },

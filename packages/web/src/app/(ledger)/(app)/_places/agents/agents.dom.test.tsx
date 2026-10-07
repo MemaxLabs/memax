@@ -205,7 +205,9 @@ describe("the autonomy control", () => {
     );
     expect(toast.textContent).toContain("WEB_SURFACE_SECRET");
     fireEvent.click(screen.getByRole("button", { name: "Sign in again" }));
-    expect(push).toHaveBeenCalledWith("/login?returnTo=%2Fmemax-v2%2Fagents");
+    expect(push).toHaveBeenCalledWith(
+      "/signin?next=%2Fmemax-v2%2Fagents&again=1",
+    );
   });
 
   it("sends only where the arrows stop", async () => {

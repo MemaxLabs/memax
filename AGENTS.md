@@ -171,12 +171,13 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 - **API.** New endpoints go under `/v2`, spec-first in `packages/server/openapi/v2.yaml`. SDK types are generated from that spec. The `model.ApiResponse` envelope still applies. Commands need an `Idempotency-Key`, and edits need `If-Match`. A read that is a `POST` to keep its input out of URLs (the near-duplicate check) is marked `x-memax-read: true` and takes none. `/v1` is frozen for old CLIs, and retired `/v1` routes answer 410 with a pointer.
 - **The `/v2` contract workflow.** The spec is written first and the build holds everything else to it:
   1. Change `packages/server/openapi/v2.yaml` (OpenAPI 3.1, Apache-2.0 so the SDK can carry its types). Close every object (`additionalProperties: false`) and name every response schema; `internal/contract` lints these rules.
-  2. Implement the handler in `packages/server/internal/handler/v2api` and add the route to `v2api.routes` (the route table must equal the spec, and nothing else in `serverapp` may register a `/v2` path). Handlers call only `internal/ledger` (and `internal/compile` for compiled words: the preview, observations, the drift view; and the draft embedder, `v2api.WithDrafts`, for the near-duplicate check). A credential becomes a ledger actor in one place, `principalFor`.
+  2. Implement the handler in `packages/server/internal/handler/v2api` and add the route to `v2api.routes` (the route table must equal the spec, and nothing else in `serverapp` may register a `/v2` path). Handlers call only `internal/ledger` (and `internal/compile` for compiled words: the preview, observations, the drift view; the draft embedder, `v2api.WithDrafts`, for the near-duplicate check; and the device codes, `v2api.WithDevices` over `internal/deviceauth`, for confirming the CLI's sign-in). A credential becomes a ledger actor in one place, `principalFor`.
   3. Test through `env.do` in `v2api`'s tests: every request and response runs through the spec, so an undocumented status, header or field fails, and the run fails if any operation lacks a 2xx test. A `text/event-stream` 200 (Ask) is checked event by event against a named `oneOf` of `{event: const, data: named schema}` objects; `env.live` reads such a stream from a real server as it arrives.
   4. Regenerate the SDK types (`pnpm --filter memax-sdk gen:v2`), add the typed method under `memax.v2`, and commit the spec, server, SDK and `src/v2/schema.gen.ts` together. `pnpm lint` fails when the generated types are stale.
 - **MCP.** All 17 V1 tool names keep working (both profiles), and remote and stdio parity still applies.
 - **CLI.** The install command is `npx memax-cli init`; the binary is `memax`.
 - **Init and imports (migration 043).** `memax init` (`packages/cli/src/commands/init.ts`, the flow in `src/lib/init/run.ts`) detects agents and their files, signs in, connects the agents (writes MCP settings once asked; connections start at Propose, Cursor and Gemini CLI at Read, never raised from the CLI), then splits each file into statements **on the machine**: secretlint's recommended preset plus the server's own refusal patterns (`internal/secrets`, ported; `testdata/credentials.json` is the corpus both suites read) keep secrets local, and the compiler's `cleanLine` strips hidden Unicode (counted in `lib/init/hidden.ts`). A file's kind sets its trust (`lib/init/files.ts`: repository files `repository`, `~/.claude/CLAUDE.md` and the like `person`, agents' memory `agent_own_work`, lines only on a non-default branch `external`). Statements go up as one import per space, `POST /v2/spaces/{space}/imports` (≤ 500 items, `file:line` sources, `via=import` so they only ever propose; a statement the space has is `existing`, repeats in one import are `folded`). The import enqueues `judge_import` in its transaction: one model call (`internal/judge/imports.go`, its own bar `ImportConflictBar`, not `Contradicts`) groups statements that disagree into `v2.import_conflicts`, each receipted and settled once as a group (`…/conflicts/{n}:settle`). `GET …/imports/{id}` says which proposals can be kept in bulk (`bulk`/`held`); `POST …/memories:keep` and `:reject` take up to 200. New people get spaces from `POST /v2/spaces`; an empty V1 space moves with `POST /v2/spaces/{space}:switch`.
+- **Device sign-in (migration 045, RFC 8628).** Where no browser can open (SSH, no display, CI) or with `--device`, `memax login` and `memax init` sign in with a device code (`packages/cli/src/lib/device-login.ts`, over `memax.auth.startDeviceSignIn`/`pollDeviceSignIn`). The CLI posts `client_id=memax-cli` and what it says about itself to `POST /oauth/device_authorization` and polls `POST /oauth/token` with the `urn:ietf:params:oauth:grant-type:device_code` grant (`internal/handler/oauth_device.go`, beside the MCP OAuth server; the metadata advertises both); a person confirms or declines the code at `/device` through `/v2/device-authorizations:lookup`, `:approve` and `:deny`, and only a person on the web app may (`policy.DecideDevice`: `device_by_person`, `device_needs_web`). `internal/deviceauth` keeps the codes hashed (the device code's SHA-256, the user code's HMAC keyed by `JWT_SECRET`), 10 minutes, decided once, one session per code, `slow_down` adding 5 s; new codes are limited per address (5/min in the route limiter, 20/hour in the table) and lookups of codes that don't exist per person and address. The session issued is the CLI's (surface `cli`), so it is never `human_web`.
 
 **UI (Ledger)**
 
@@ -498,6 +499,7 @@ Package-specific commands are in each package's README.
 - **Records (Review, Memories, a memory's page).** Each domain has its own module on the interface (`data/review.ts` as `source.review`, `data/memories.ts` as `source.memories`), with `sdk-review.ts`/`sdk-memories.ts` and the demo's session store (`demo-records.ts`, `demo-memories.ts`). Commands take one idempotency key per user action, reused across retries (`lib/v2/intent-keys.ts`), and errors normalise to `CommandFailure` (`data/command-error.ts`), worded by policy code in `lib/v2/records-copy.ts`.
 - **The Brief, targets and Today.** `data/brief.ts` (`source.brief`: the current version as the page shows it, built by the compiler's placement rules in `brief-view.ts`; versions; revise with If-Match), `data/targets.ts` (`source.targets`: list, preview, drift, Compile now, settings, pull/overwrite/stop; `targetStatus` words D2/D3, so ChatGPT is "live over connector" and a Cursor with nothing scoped "reads AGENTS.md"), and `data/today.ts` (`source.today`). The rail's status line comes from the targets (`syncLineOf`). The demo's compiled files in `data/demo-compiled.ts` are `@memaxlabs/compiler`'s own output for the demo Brief; regenerate them when the demo record changes.
 - **Keyboard.** Every binding is declared once in `src/lib/v2/keymap/registry.ts`, and the `?` sheet is generated from it. Screens handle a binding with `useHotkey(id, …)`; never add a `window` key listener. Forget has no key.
+- **The first session.** SignIn (`/signin`, `/signin/callback`), CliAuth (`/device`) and the setup screens (`/setup/{agents,import,cleanup,done}`: Connect, FirstRun, Cleanup, CompileDone) live in `(ledger)/(auth)` and `(ledger)/(setup)`, built in `(ledger)/_onboarding` on an `OnboardingFrame` (the app frame's data source, keymap and toasts, no rail); ReviewImport is Review's `?filter=import`. They read two more domain modules, `data/imports.ts` (`source.imports`) and `data/devices.ts` (`source.devices`). Sign-in always sends the one-time code to this app's origin (email included), so the session is the web's. After sign-in (`lib/v2/onboarding/routes.ts`): `next`, else FirstRun for someone with no space on the V2 record, ReviewImport for an import still in progress (two weeks), else a project space's Today. `/signin` and `/device` open without `memax_ui=v2` (the CLI sends anyone to `/device`); everything else stays behind it.
 - **Specimen and gallery.** `/dev/ledger/tokens` shows every token and type style in Paper and Carbon. `/dev/ledger/components` mounts every `@memaxlabs/ledger` preview at its artboard size in both themes.
 
 ```bash
@@ -511,6 +513,9 @@ E2E_BASE_URL=http://localhost:3100 pnpm --filter @memaxlabs/web test:e2e   # reu
 # place from ../memax-internal (or MEMAX_INTERNAL_DIR); it skips without that checkout
 # and never writes those PNGs. E2E_HANDOFF_MAX_RATIO=0 prints every preview's difference.
 pnpm --filter @memaxlabs/web test:e2e --project=handoff
+# The "boards" project measures the first session's screens against their 1x boards
+# (screens/png), read in place the same way; E2E_BOARDS_MAX_RATIO=0 prints each difference.
+pnpm --filter @memaxlabs/web test:e2e --project=boards
 ```
 
 **On Cloudflare Workers.** `@opennextjs/cloudflare` builds the same app into a Worker (`wrangler.jsonc`, `open-next.config.ts`); `next build`/`next start` (self-hosting) and the Vercel deploy (`vercel.json`) are unchanged. The app uses nothing Vercel-only: no `next/image`, `next/og`, ISR, `"use cache"` or edge runtime, so prerendered pages are served from the Worker's static assets (no R2, KV or queue). `proxy.ts` runs as Next 16's Node middleware, which OpenNext supports (and labels experimental). Settings:
@@ -622,6 +627,11 @@ cd packages/server && go test ./internal/reads/ ./internal/receiptchain/ ./inter
 cd packages/server && go test ./internal/ledger/ -run 'Forget|Tombstone' && go test ./internal/forget/
 MEMAX_REQUIRE_COMPILE_SERVICE=1 go test ./internal/handler/v2api/ -run 'Forget|V1SpaceDelete|V1AccountData' -v
 
+# Device sign-in (RFC 8628): the codes and their store, the OAuth endpoints (each RFC error, single
+# use, the cli surface) and the web's confirmation through the spec (human_web only, guessing waits)
+cd packages/server && go test ./internal/deviceauth/ && go test ./internal/handler/ -run DeviceGrant && \
+  go test ./internal/handler/v2api/ -run Device
+
 # Re-apply the forget ledger after any database restore (reads object storage, S3_*;
 # -dry-run lists the ops, -db-only reads the tombstones alone)
 cd packages/server && go run ./cmd/v2-reapply-forgets -all
@@ -685,6 +695,9 @@ node packages/cli/scripts/sync-compiler.mjs
 # Init tests: detection fixtures in temporary homes, the splitter, the secret scan (against the
 # server's corpus), hidden characters, and the whole flow against the fake /v2 server
 pnpm --filter memax-cli exec vitest run test/init
+
+# Device sign-in from the CLI (memax login --device) against the fake server's device grant
+pnpm --filter memax-cli exec vitest run test/login
 
 # Daemon tests (a fake /v2 server built on the real compiler)
 pnpm --filter memax-cli exec vitest run test/daemon

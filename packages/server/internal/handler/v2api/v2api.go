@@ -23,6 +23,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ask"
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
+	"github.com/MemaxLabs/memax/packages/server/internal/deviceauth"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
@@ -51,6 +52,10 @@ type Handler struct {
 	near   nearLimiter
 	// asker answers ⌘K Ask (ask.go); nil answers 503.
 	asker *ask.Service
+	// devices confirms the CLI's device codes (device.go); nil answers
+	// 503. deviceMisses slows down guessing codes.
+	devices      *deviceauth.Store
+	deviceMisses deviceMisses
 }
 
 // Option configures a Handler.
@@ -152,6 +157,9 @@ var routes = []Route{
 	{"POST", "/v2/gates/{ref}:withdraw", "withdrawGate", (*Handler).withdrawGate},
 	{"GET", "/v2/notices", "listNotices", (*Handler).listNotices},
 	{"POST", "/v2/notices:ack", "ackNotices", (*Handler).ackNotices},
+	{"POST", "/v2/device-authorizations:lookup", "lookupDeviceAuthorization", (*Handler).lookupDevice},
+	{"POST", "/v2/device-authorizations:approve", "approveDeviceAuthorization", (*Handler).approveDevice},
+	{"POST", "/v2/device-authorizations:deny", "denyDeviceAuthorization", (*Handler).denyDevice},
 }
 
 // Routes lists every /v2 operation this package serves, named as in

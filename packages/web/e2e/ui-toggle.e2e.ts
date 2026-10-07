@@ -15,9 +15,19 @@ skipWithoutBrowser();
 test("V2 paths send a browser without memax_ui=v2 to the V1 home", async ({
   page,
 }) => {
-  for (const path of ["/dev/ledger/tokens", "/memax-v2/today", "/signin"]) {
+  for (const path of [
+    "/dev/ledger/tokens",
+    "/memax-v2/today",
+    "/setup/import",
+  ]) {
     await page.goto(path);
     await expect(page).toHaveURL("/");
+  }
+  // Sign-in and device confirmation are open to everyone: the CLI sends
+  // any person to /device, and V1 has neither page.
+  for (const path of ["/signin", "/device"]) {
+    await page.goto(path);
+    await expect(page).toHaveURL(path);
   }
 });
 

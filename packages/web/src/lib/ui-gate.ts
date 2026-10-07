@@ -2,11 +2,25 @@
  * V1 / V2 UI gating: the one place that says which URLs belong to the
  * V2 Ledger UI (plan §6.3) and who may open them.
  *
- * A browser opts into V2 with the `memax_ui=v2` cookie (dev: visit
- * /dev/ui?v=2). Requests for V2 paths without it are redirected to the
- * V1 home; V1 paths are never touched. src/proxy.ts applies the
- * decision, and its static `config.matcher` must cover every V2 path
- * listed here (proxy.test.ts checks that).
+ * Whether a person sees V2 is a per-person flag the API decides
+ * (internal/v2ui: a member of a space on the V2 record, an operator's
+ * choice, or the signup date; plan 25 E1). The browser carries it as the
+ * `memax_ui=v2` cookie, a routing hint only: the web app's server sets or
+ * clears it from the flag whenever a session starts and on every profile
+ * read (/api/auth/me), and clears it at sign-out (lib/bff). In dev-fixture
+ * builds /dev/ui?v=2|1 sets and clears it by hand.
+ *
+ * Requests for V2 paths without the hint are redirected to the V1 home,
+ * except that a signed-in browser is sent once to /signin?next= to read
+ * its flag again (a hint can be missing because the flag turned on after
+ * the session started, say when `memax init` made the person's first
+ * space): the sign-in page reads the profile, which sets the hint, and
+ * goes on to `next` for a person with the flag or to V1's home for one
+ * without. A short-lived marker (UI_RECHECK_COOKIE) makes that at most
+ * once a minute, so a hint that can't be set never loops. V1 paths are
+ * never touched. src/proxy.ts applies the decision, and its static
+ * `config.matcher` must cover every V2 path listed here (proxy.test.ts
+ * checks that).
  *
  * Pure and dependency-free: it runs in the proxy on every matched
  * request.
@@ -14,6 +28,15 @@
 
 export const UI_COOKIE = "memax_ui";
 export const UI_COOKIE_V2 = "v2";
+
+/**
+ * The re-check marker: set by the proxy when it sends a signed-in
+ * browser without the hint to /signin to read its flag again, for
+ * UI_RECHECK_SECONDS. While it is there, a V2 path without the hint goes
+ * to the V1 home instead. Not a secret, and nothing else reads it.
+ */
+export const UI_RECHECK_COOKIE = "memax_ui_check";
+export const UI_RECHECK_SECONDS = 60;
 
 /** Top-level areas that are V2 in full, with any sub-path (§6.3). */
 const V2_AREAS = new Set(["signin", "device", "unsubscribe", "setup", "join"]);
@@ -228,19 +251,43 @@ export function bareSpaceSlug(pathname: string): string | null {
   return isSpaceSlug(segments[0]) ? segments[0] : null;
 }
 
+/**
+ * Whether a path (a `next`, query and all) is a V2 page that needs the
+ * opt-in: a V2 path that isn't open to every browser. After signing in, a
+ * person without the V2 UI flag never goes to one (onboarding/routes.ts).
+ */
+export function needsV2Opt(path: string): boolean {
+  const pathname = path.split(/[?#]/, 1)[0] ?? "";
+  return isV2Path(pathname) && !isOpenV2Path(pathname);
+}
+
 export type UiGateDecision =
   | { action: "continue" }
-  /** `keepQuery`: the query string goes along (V1_PAGES_WITH_V2). */
-  | { action: "redirect"; pathname: string; keepQuery?: boolean };
+  | {
+      action: "redirect";
+      pathname: string;
+      /** The query string goes along (V1_PAGES_WITH_V2). */
+      keepQuery?: boolean;
+      /** The redirect's own query string, "?…" (the re-check's `next`). */
+      search?: string;
+      /** Set the re-check marker (UI_RECHECK_COOKIE) on the redirect. */
+      recheck?: boolean;
+    };
 
 export function decideUiGate({
   pathname,
+  search = "",
   uiCookie,
   hasSession,
+  rechecked = false,
 }: {
   pathname: string;
+  /** The request's query string, "?…" or "". */
+  search?: string;
   uiCookie: string | undefined;
   hasSession: boolean;
+  /** The re-check marker is there: this browser was re-checked a moment ago. */
+  rechecked?: boolean;
 }): UiGateDecision {
   const v2Page = v2PageFor(pathname);
   if (v2Page !== null) {
@@ -255,6 +302,26 @@ export function decideUiGate({
   }
   if (!isV2Path(pathname) || hasV2Opt(uiCookie) || isOpenV2Path(pathname)) {
     return { action: "continue" };
+  }
+  // Signed in without the hint: read the flag again on the sign-in page,
+  // which comes back here for a person with it. Never for the dev
+  // fixtures, which aren't anyone's page.
+  const dev = pathname.split("/").filter(Boolean)[0] === "dev";
+  if (hasSession && !rechecked && !dev) {
+    // The page's own query goes along; the router's (_rsc, on a client
+    // navigation's fetch) doesn't.
+    const query = new URLSearchParams(search);
+    query.delete("_rsc");
+    const own = query.toString();
+    const next = new URLSearchParams({
+      next: `${pathname}${own ? `?${own}` : ""}`,
+    });
+    return {
+      action: "redirect",
+      pathname: "/signin",
+      search: `?${next.toString()}`,
+      recheck: true,
+    };
   }
   return { action: "redirect", pathname: v1HomePath(hasSession) };
 }

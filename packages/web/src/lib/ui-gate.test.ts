@@ -9,6 +9,7 @@ import {
   isOpenV2Path,
   isSpaceSlug,
   isV2Path,
+  needsV2Opt,
   RESERVED_SPACE_SLUGS,
   V2_SPACE_PLACES,
   v1HomePath,
@@ -190,30 +191,116 @@ describe("decideUiGate", () => {
     for (const pathname of ["/setup", "/setup/import", "/join/x", "/"]) {
       expect(isOpenV2Path(pathname)).toBe(false);
     }
-    expect(
-      decideUiGate({
-        pathname: "/setup/import",
-        uiCookie: undefined,
-        hasSession: true,
-      }),
-    ).toEqual({ action: "redirect", pathname: "/home" });
   });
 
-  it("redirects V2 paths without the opt-in to the V1 home", () => {
+  it("redirects V2 paths without the opt-in to the V1 home when signed out", () => {
     expect(
       decideUiGate({
         pathname: "/memax-v2/today",
+        search: "?x=1",
         uiCookie: undefined,
         hasSession: false,
       }),
     ).toEqual({ action: "redirect", pathname: "/" });
     expect(
       decideUiGate({
+        pathname: "/setup/import",
+        uiCookie: "1",
+        hasSession: false,
+      }),
+    ).toEqual({ action: "redirect", pathname: "/" });
+  });
+
+  it("sends a signed-in browser without the hint to read its V2 UI flag again, once", () => {
+    // The flag may have turned on after the session started (memax init
+    // made the person's first space): the sign-in page reads it, which
+    // sets the hint, and comes back with the path and its query.
+    expect(
+      decideUiGate({
+        pathname: "/memax-v2/review",
+        search: "?filter=import&import=i-1",
+        uiCookie: undefined,
+        hasSession: true,
+      }),
+    ).toEqual({
+      action: "redirect",
+      pathname: "/signin",
+      search: "?next=%2Fmemax-v2%2Freview%3Ffilter%3Dimport%26import%3Di-1",
+      recheck: true,
+    });
+    expect(
+      decideUiGate({
         pathname: "/settings/plan",
         uiCookie: "1",
         hasSession: true,
       }),
+    ).toEqual({
+      action: "redirect",
+      pathname: "/signin",
+      search: "?next=%2Fsettings%2Fplan",
+      recheck: true,
+    });
+    // A client navigation's router query isn't the page's.
+    expect(
+      decideUiGate({
+        pathname: "/memax-v2/search",
+        search: "?q=river&_rsc=1x2y",
+        uiCookie: undefined,
+        hasSession: true,
+      }),
+    ).toMatchObject({ search: "?next=%2Fmemax-v2%2Fsearch%3Fq%3Driver" });
+    // Re-checked a moment ago, and still no hint: the person doesn't see
+    // V2 (or the hint can't be set), so V1's home, never a loop.
+    expect(
+      decideUiGate({
+        pathname: "/setup/import",
+        uiCookie: undefined,
+        hasSession: true,
+        rechecked: true,
+      }),
     ).toEqual({ action: "redirect", pathname: "/home" });
+    // The dev fixtures aren't anyone's page: no re-check.
+    expect(
+      decideUiGate({
+        pathname: "/dev/ledger/tokens",
+        uiCookie: undefined,
+        hasSession: true,
+      }),
+    ).toEqual({ action: "redirect", pathname: "/home" });
+    // With the hint, nothing to read again.
+    expect(
+      decideUiGate({
+        pathname: "/setup/import",
+        uiCookie: "v2",
+        hasSession: true,
+        rechecked: true,
+      }),
+    ).toEqual({ action: "continue" });
+  });
+
+  it("says which paths need the opt-in, query and all", () => {
+    for (const path of [
+      "/setup/import?space=memax-v2",
+      "/memax-v2/today",
+      "/memax-v2/review?filter=import#k",
+      "/settings/account",
+      "/join/abc",
+    ]) {
+      expect(needsV2Opt(path)).toBe(true);
+    }
+    for (const path of [
+      "/device?code=WQRT-4821",
+      "/oauth/authorize?request=r1",
+      "/signin",
+      "/unsubscribe?token=t",
+      "/home",
+      "/h/personal/memories",
+      "/settings",
+      "/memax-v2",
+      "/",
+    ]) {
+      expect(needsV2Opt(path)).toBe(false);
+    }
   });
 
   it("sends every browser from V1's retired consent page to OAuthConsent, query and all", () => {

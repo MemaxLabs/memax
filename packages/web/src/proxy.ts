@@ -4,8 +4,10 @@
  *
  * V2 gating (see lib/ui-gate.ts, the single definition of the V2 path
  * set): requests for V2 Ledger paths without the `memax_ui=v2` cookie
- * redirect to the V1 home. Every other path falls through to the V1
- * rules below unchanged.
+ * (the person's V2 UI flag, as the web app's server last read it)
+ * redirect to the V1 home, or a signed-in browser once to /signin to read
+ * the flag again. Every other path falls through to the V1 rules below
+ * unchanged.
  *
  * Plan 24 phase 4b retired v1 across the board. Legacy `/memories`
  * paths now unconditionally redirect to their v2 equivalents so URLs
@@ -42,7 +44,12 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { decideUiGate, UI_COOKIE } from "@/lib/ui-gate";
+import {
+  decideUiGate,
+  UI_COOKIE,
+  UI_RECHECK_COOKIE,
+  UI_RECHECK_SECONDS,
+} from "@/lib/ui-gate";
 
 // Path predicates — minimal regex set. Keep this file cheap: it runs
 // before every matched request. (lib/ui-gate is pure and
@@ -83,18 +90,33 @@ export function proxy(request: NextRequest) {
     request.cookies.get(SESSION_PRESENCE_COOKIE)?.value === "1";
 
   // V2 gating first: a V2 path without the opt-in cookie goes to the
-  // V1 home. Query strings are dropped; they belong to the V2 route.
-  // The one exception carries it: V1's retired consent page sends every
-  // browser on to the Ledger one (OAuthConsent) with the same request.
+  // V1 home, or, signed in, once to /signin?next= to read the person's
+  // V2 UI flag again. Query strings are dropped on the way to V1; they
+  // belong to the V2 route. Two redirects carry it: the re-check's
+  // `next`, and V1's retired consent page, which sends every browser on
+  // to the Ledger one (OAuthConsent) with the same request.
   const gate = decideUiGate({
     pathname,
+    search: request.nextUrl.search,
     uiCookie: request.cookies.get(UI_COOKIE)?.value,
     hasSession,
+    rechecked: request.cookies.has(UI_RECHECK_COOKIE),
   });
   if (gate.action === "redirect") {
     const target = new URL(gate.pathname, request.nextUrl.origin);
     if (gate.keepQuery) target.search = request.nextUrl.search;
-    return NextResponse.redirect(target);
+    if (gate.search) target.search = gate.search;
+    const res = NextResponse.redirect(target);
+    if (gate.recheck) {
+      res.cookies.set(UI_RECHECK_COOKIE, "1", {
+        path: "/",
+        maxAge: UI_RECHECK_SECONDS,
+        httpOnly: true,
+        sameSite: "lax",
+        secure: request.nextUrl.protocol === "https:",
+      });
+    }
+    return res;
   }
 
   // Silent session restore. When the session-presence cookie says this

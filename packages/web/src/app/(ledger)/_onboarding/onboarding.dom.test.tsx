@@ -39,6 +39,8 @@ const h = vi.hoisted(() => ({
   push: vi.fn(),
   replace: vi.fn(),
   user: null as { id: string; name: string; email: string } | null,
+  ui: null as "v1" | "v2" | null,
+  loading: false,
   login: vi.fn(),
   completeLogin: vi.fn(async () => true),
   session: null as { surface: string | null; impersonating: boolean } | null,
@@ -59,7 +61,8 @@ vi.mock("@/lib/v2/data/demo-source", async (load) => {
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
     user: h.user,
-    loading: false,
+    ui: h.ui,
+    loading: h.loading,
     login: h.login,
     completeLogin: h.completeLogin,
     session: h.session,
@@ -85,6 +88,8 @@ beforeEach(() => {
   h.push = vi.fn();
   h.replace = vi.fn();
   h.user = null;
+  h.ui = null;
+  h.loading = false;
   h.login = vi.fn();
   h.completeLogin = vi.fn(async () => true);
   h.session = null;
@@ -170,13 +175,18 @@ describe("SignIn", () => {
         ? Response.json({
             data: { options, expires_at: "2026-10-05T21:45:00Z" },
           })
-        : Response.json({ data: { signed_in: true, surface: "web" } }),
+        : Response.json({
+            data: { signed_in: true, surface: "web", ui: "v2" },
+          }),
     );
     vi.stubGlobal("fetch", fetchMock);
     renderWith(<SignInScreen />, { frame: false });
     fireEvent.click(screen.getByRole("button", { name: "Use a passkey" }));
     await waitFor(() => expect(h.completeLogin).toHaveBeenCalled());
     await waitFor(() => expect(h.funnel).toHaveBeenCalledWith("signed_in"));
+    await waitFor(() =>
+      expect(h.replace).toHaveBeenCalledWith("/device?code=WQRT-4821"),
+    );
     const publicKey = (
       get.mock.calls[0] as unknown as [
         { publicKey: PublicKeyCredentialRequestOptions },
@@ -305,8 +315,48 @@ describe("SignIn", () => {
     );
   });
 
+  it("sends a person without the V2 UI to V1's home, even from a V2 page", async () => {
+    h.user = { id: "u", name: "Ziyang", email: "zz@memax.app" };
+    h.ui = "v1";
+    at("/signin", "next=/memax-v2/today");
+    renderWith(<SignInScreen />, { frame: false });
+    await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/home"));
+    expect(h.replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("goes back to the page that sent a person with the V2 UI to read it again", async () => {
+    // The proxy sends a signed-in browser without the hint here; the
+    // profile read that says V2 also set the hint.
+    h.user = { id: "u", name: "Ziyang", email: "zz@memax.app" };
+    h.ui = "v2";
+    at("/signin", "next=/memax-v2/review?filter=import");
+    renderWith(<SignInScreen />, { frame: false });
+    await waitFor(() =>
+      expect(h.replace).toHaveBeenCalledWith("/memax-v2/review?filter=import"),
+    );
+  });
+
+  it("says where it's going, not the form, while a session loads", () => {
+    h.loading = true;
+    at("/signin", "next=/memax-v2/today");
+    renderWith(<SignInScreen restoring />, { frame: false });
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+      "Finding where you left off.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Continue with GitHub" }),
+    ).toBeNull();
+    cleanup();
+    // Without a session marker, the form shows while the profile loads.
+    renderWith(<SignInScreen />, { frame: false });
+    expect(
+      screen.getByRole("button", { name: "Continue with GitHub" }),
+    ).toBeTruthy();
+  });
+
   it("lands a new person on FirstRun", async () => {
     h.user = { id: "u", name: "Ziyang", email: "zz@memax.app" };
+    h.ui = "v2";
     h.client = {
       v2: {
         spaces: {
@@ -350,7 +400,9 @@ describe("the sign-in callback", () => {
     const fetchMock = vi.fn(
       async () =>
         new Response(
-          JSON.stringify({ data: { signed_in: true, surface: "web" } }),
+          JSON.stringify({
+            data: { signed_in: true, surface: "web", ui: "v2" },
+          }),
         ),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -366,6 +418,31 @@ describe("the sign-in callback", () => {
     // The tokens stay with the web app's server; the page only loads the
     // session it now has.
     expect(h.completeLogin).toHaveBeenCalledWith();
+  });
+
+  it("sends a person without the V2 UI on to V1's home", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: { signed_in: true, surface: "web", ui: "v1" },
+            }),
+          ),
+      ),
+    );
+    at("/signin/callback", "code=one-time&next=/setup/import");
+    renderWith(<SignInCallbackScreen />, { frame: false });
+    await waitFor(() => expect(h.replace).toHaveBeenCalledWith("/home"));
+    // A page every browser may open is still theirs.
+    cleanup();
+    h.replace = vi.fn();
+    at("/signin/callback", "code=two&next=/device?code=WQRT-4821");
+    renderWith(<SignInCallbackScreen />, { frame: false });
+    await waitFor(() =>
+      expect(h.replace).toHaveBeenCalledWith("/device?code=WQRT-4821"),
+    );
   });
 
   it("says when it didn't finish, and starts over", async () => {

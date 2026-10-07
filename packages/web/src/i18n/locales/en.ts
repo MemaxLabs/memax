@@ -2782,6 +2782,7 @@ export const en = {
       adminSendEmail: "send that email",
       adminSetUserPlan: "set that user's plan",
       adminSetOverrides: "save those overrides",
+      adminSetV2Ui: "change their V2 UI",
       adminDeleteOverrides: "clear those overrides",
       adminUpdatePlan: "update that plan",
       adminSetHubPlan: "set the hub's plan",
@@ -3609,6 +3610,28 @@ export const en = {
         effectiveSourcePersonal: "personal",
         effectiveSourceHub: "hub: {name}",
         effectiveSourceUnknownHub: "hub: {id}",
+      },
+      // The per-person V2 UI flag (plan 25 E1, internal/v2ui): what it is,
+      // why, and the operator's own choice.
+      v2Ui: {
+        title: "V2 UI",
+        on: "On",
+        off: "Off",
+        reasons: {
+          v2_space: "They're a member of a space on V2.",
+          operator_on: "An operator turned it on.",
+          operator_off: "An operator turned it off. This wins over every rule.",
+          signed_up_since: "They signed up on or after {since}.",
+          none: "They have no space on V2.",
+        },
+        setting: "Operator setting",
+        settings: {
+          default: "Follow the rules",
+          on: "Turn on",
+          off: "Turn off",
+        },
+        hint: "Their browser picks up a change at its next page load.",
+        loadError: "Couldn't read the V2 UI flag.",
       },
       pagination: {
         previous: "Previous",

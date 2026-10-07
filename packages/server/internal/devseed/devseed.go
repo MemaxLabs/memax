@@ -329,6 +329,12 @@ func upsertSpace(ctx context.Context, pool *pgxpool.Pool, owner, member uuid.UUI
 	if err := pool.QueryRow(ctx, `SELECT id FROM hubs WHERE slug = $1 AND owner_id = $2`, SpaceSlug, owner).Scan(&got); err != nil {
 		return uuid.Nil, fmt.Errorf("devseed: space %s exists and isn't the demo's: %w", SpaceSlug, err)
 	}
+	// On the V2 record, as POST /v2/spaces makes spaces (migration 033):
+	// MCP serves it through the ledger, and its people see the V2 UI
+	// (internal/v2ui). A space seeded before this keeps its first time.
+	if _, err := pool.Exec(ctx, `UPDATE hubs SET v2_enabled_at = COALESCE(v2_enabled_at, now()) WHERE id = $1`, got); err != nil {
+		return uuid.Nil, fmt.Errorf("devseed: space on V2: %w", err)
+	}
 	for _, m := range []struct {
 		user uuid.UUID
 		role string

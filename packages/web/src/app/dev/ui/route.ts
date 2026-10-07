@@ -5,7 +5,10 @@ import { parseUiToggle, UI_COOKIE, UI_COOKIE_V2 } from "@/lib/ui-gate";
 // Dev-only UI toggle. /dev/ui?v=2 sets memax_ui=v2 and opens the Ledger
 // specimen; /dev/ui?v=1 clears it and goes back to V1. Either takes
 // &next=/path. 404 in production builds unless NEXT_PUBLIC_DEV_FIXTURES=1,
-// like the /dev pages.
+// like the /dev pages. Everywhere else the web app's server sets the
+// cookie from the person's V2 UI flag (lib/bff, internal/v2ui), and for a
+// signed-in browser that wins at its next profile read; without a
+// session (the demo dataset) the toggle's choice stands.
 //
 // It lives outside both route groups: it belongs to neither UI and
 // renders no layout.

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Field, Logo, MemoryRow } from "@memaxlabs/ledger";
-import { MemaxError, type AuthProviderName } from "memax-sdk";
+import { MemaxError, type AuthProviderName, type WebUi } from "memax-sdk";
 import { interpolate, useLocale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
 import { getPublicMemaxClient } from "@/lib/memax-client";
@@ -14,6 +14,7 @@ import {
   PasskeyError,
   type RequestOptionsJSON,
 } from "@/lib/v2/passkeys/webauthn";
+import { StatusPage } from "../_components/status-page";
 import { useLandingRedirect } from "./landing";
 import styles from "./sign-in.module.css";
 
@@ -61,12 +62,17 @@ function errorText(copy: Copy, code: string | null | undefined): string {
  * the same way. Either way the one-time code is delivered to this app's
  * origin, so the session is issued to the web app (surface web) and the
  * signed proxy can record the person's keeps as human_web. Already
- * signed in, the page lands (routes.ts) or returns to `next`.
+ * signed in, the page lands (routes.ts) or returns to `next`, by the web
+ * UI the person sees: the proxy sends a signed-in browser here to read
+ * its V2 UI flag again (lib/ui-gate.ts), and the profile read that tells
+ * it also sets the hint. `restoring` (the session-presence marker, read
+ * by the page's server) shows that instead of the form while the profile
+ * loads.
  */
-export function SignInScreen() {
+export function SignInScreen({ restoring = false }: { restoring?: boolean }) {
   const { t } = useLocale();
   const copy = t.ledger.onboarding.signIn;
-  const { user, loading, login } = useAuth();
+  const { user, ui, loading, login } = useAuth();
   const params = useSearchParams();
   const next = safeNext(params?.get("next"));
   const landing = useLandingRedirect();
@@ -75,8 +81,20 @@ export function SignInScreen() {
   const signedIn = !again && !loading && Boolean(user);
 
   useEffect(() => {
-    if (signedIn) landing.go(next);
-  }, [signedIn, next, landing]);
+    if (signedIn) landing.go(next, ui);
+  }, [signedIn, next, landing, ui]);
+
+  if (signedIn || (!again && loading && restoring)) {
+    const status = t.ledger.onboarding.callback;
+    return (
+      <StatusPage
+        receipt={status.receipt}
+        title={status.landing}
+        description={status.workingDetail}
+        actions={null}
+      />
+    );
+  }
 
   const callback = () => signInCallback(window.location.origin, next);
   const start = (provider: AuthProviderName) => login(callback(), provider);
@@ -148,7 +166,7 @@ export function SignInScreen() {
             <PasskeySignIn
               copy={copy}
               disabled={signedIn}
-              onSignedIn={() => landing.go(next)}
+              onSignedIn={(signedInUi) => landing.go(next, signedInUi)}
             />
           </div>
           <div className={styles.or} aria-hidden="true">
@@ -189,7 +207,8 @@ function PasskeySignIn({
 }: {
   copy: Copy;
   disabled: boolean;
-  onSignedIn: () => void;
+  /** With the web UI the person sees, as the sign-in answered it. */
+  onSignedIn: (ui: WebUi | undefined) => void;
 }) {
   const { completeLogin } = useAuth();
   const [busy, setBusy] = useState(false);
@@ -217,7 +236,7 @@ function PasskeySignIn({
         body: JSON.stringify({ credential }),
       });
       const json = (await res.json()) as {
-        data?: { signed_in?: boolean };
+        data?: { signed_in?: boolean; ui?: WebUi };
         error?: { code?: string; details?: { passkey_failure?: string } };
       };
       if (!res.ok || !json.data?.signed_in) {
@@ -233,7 +252,7 @@ function PasskeySignIn({
         return;
       }
       trackFunnelStep("signed_in");
-      onSignedIn();
+      onSignedIn(json.data.ui);
     } catch (err) {
       const problem = err instanceof PasskeyError ? err.problem : "failed";
       setError(

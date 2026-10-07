@@ -6,12 +6,13 @@ import { isV2Path, RESERVED_SPACE_SLUGS, V2_SPACE_PLACES } from "./lib/ui-gate";
 
 function makeRequest(
   pathname: string,
-  opts: { sessionPresence?: boolean; ui?: string } = {},
+  opts: { sessionPresence?: boolean; ui?: string; extra?: string } = {},
 ): NextRequest {
   const url = `https://memax.app${pathname}`;
   const cookies = [
     opts.sessionPresence ? "memax_session_presence=1" : null,
     opts.ui ? `memax_ui=${opts.ui}` : null,
+    opts.extra ?? null,
   ].filter(Boolean);
   return new NextRequest(url, {
     headers: cookies.length ? { cookie: cookies.join("; ") } : undefined,
@@ -77,11 +78,43 @@ describe("proxy V2 gating", () => {
     },
   );
 
-  it("sends a signed-in browser straight to /home", () => {
+  it("sends a signed-in browser once to /signin to read its V2 UI flag again", () => {
+    // The sign-in page reads the profile (which sets the hint) and goes
+    // on to the path, query and all, for a person who sees V2.
     const res = proxy(
-      makeRequest("/memax-v2/today", { sessionPresence: true }),
+      makeRequest("/memax-v2/review?filter=import", { sessionPresence: true }),
     );
     expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      "https://memax.app/signin?next=%2Fmemax-v2%2Freview%3Ffilter%3Dimport",
+    );
+    const marker = res.headers
+      .getSetCookie()
+      .find((c) => c.startsWith("memax_ui_check="));
+    expect(marker).toContain("memax_ui_check=1");
+    expect(marker).toContain("Max-Age=60");
+    expect(marker).toContain("Path=/");
+    expect(marker).toContain("HttpOnly");
+    expect(marker?.toLowerCase()).toContain("samesite=lax");
+    expect(marker).toContain("Secure");
+  });
+
+  it("sends a signed-in browser re-checked a moment ago straight to /home", () => {
+    const res = proxy(
+      makeRequest("/memax-v2/today", {
+        sessionPresence: true,
+        extra: "memax_ui_check=1",
+      }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("https://memax.app/home");
+    expect(res.headers.getSetCookie()).toEqual([]);
+  });
+
+  it("never re-checks for the dev fixtures", () => {
+    const res = proxy(
+      makeRequest("/dev/ledger/tokens", { sessionPresence: true }),
+    );
     expect(res.headers.get("location")).toBe("https://memax.app/home");
   });
 

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@memaxlabs/ledger";
+import type { WebUi } from "memax-sdk";
 import { useLocale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
 import { trackFunnelStep } from "@/lib/v2/funnel";
@@ -14,8 +15,10 @@ import { useLandingRedirect } from "./landing";
  * Where the API sends a sign-in's one-time code (GitHub, Google or the
  * email code): the web app's server trades the code for the web app's
  * session (surface web, migration 030) through /api/auth/exchange and
- * keeps its tokens in HttpOnly cookies this page never sees; then it goes
- * on to `next` or the person's landing. A failure says so and starts
+ * keeps its tokens in HttpOnly cookies this page never sees, and sets the
+ * V2 UI hint from the person's flag; then it goes on to `next` or the
+ * person's landing, V1's home for a person without the flag
+ * (lib/v2/onboarding/routes.ts afterSignIn). A failure says so and starts
  * over; an error the API sent (an account that may not sign in) goes back
  * to SignIn, which words it.
  */
@@ -54,7 +57,7 @@ export function SignInCallbackScreen() {
           body: JSON.stringify({ code }),
         });
         const json = (await res.json()) as {
-          data?: { signed_in?: boolean };
+          data?: { signed_in?: boolean; ui?: WebUi };
         };
         if (!res.ok || !json.data?.signed_in) {
           setState("failed");
@@ -66,7 +69,7 @@ export function SignInCallbackScreen() {
         }
         trackFunnelStep("signed_in");
         setState("landing");
-        landing.go(next);
+        landing.go(next, json.data.ui);
       } catch {
         setState("failed");
       }

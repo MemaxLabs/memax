@@ -20,6 +20,7 @@ import {
   useAdminUserOrphanStatus,
   useReconcileOrphans,
 } from "@/hooks/use-admin-orphans";
+import { V2UiCard } from "@/components/admin/v2-ui-card";
 
 export default function AdminUserDetailPage({
   params,
@@ -198,6 +199,9 @@ export default function AdminUserDetailPage({
           </div>
         )}
       </div>
+
+      {/* V2 UI card — the per-person V2 UI flag and the operator's choice */}
+      <V2UiCard userId={user.id} />
 
       {/* Effective plan card — populated only when effective > personal */}
       {effective_limits && effective_plan && (

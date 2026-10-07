@@ -111,8 +111,9 @@ describe("POST /api/auth/exchange", () => {
     );
     expect(res.status).toBe(200);
     const text = await res.text();
+    // An API that doesn't say the web UI counts as V1: the hint goes.
     expect(JSON.parse(text)).toEqual({
-      data: { signed_in: true, surface: "web" },
+      data: { signed_in: true, surface: "web", ui: "v1" },
     });
     expect(text).not.toContain("refresh-1");
     expect(text).not.toContain(webAccess);
@@ -135,6 +136,7 @@ describe("POST /api/auth/exchange", () => {
     const presence = last("memax_session_presence=");
     expect(presence).toContain("SameSite=Lax");
     expect(presence).not.toContain("HttpOnly");
+    expect(last("memax_ui=")).toContain("Max-Age=0");
     // The browser's previous session is signed out.
     expect(String(api.to("/oauth/revoke")[0]!.init.body)).toBe(
       "token=older-session",
@@ -143,6 +145,48 @@ describe("POST /api/auth/exchange", () => {
     expect(
       api.to(EXCHANGE)[0]!.init.headers.get("x-memax-client-signature"),
     ).toMatch(/^v1=/);
+  });
+
+  it("sets the V2 UI hint from the person's flag as the session starts", async () => {
+    const { POST } = await load<{ POST: Handler }>("./exchange/route");
+    const exchange = (ui?: string) => () =>
+      Response.json({
+        data: {
+          access_token: webAccess,
+          refresh_token: "refresh-1",
+          expires_in: HOUR,
+          refresh_expires_in: 7 * 24 * HOUR,
+          ...(ui ? { ui } : {}),
+        },
+      });
+    mockApi({ [EXCHANGE]: exchange("v2") });
+    const on = await POST(
+      req("/api/auth/exchange", { method: "POST", body: { code: "c1" } }),
+    );
+    expect(((await on.json()) as { data: { ui: string } }).data.ui).toBe("v2");
+    const hint = on.headers
+      .getSetCookie()
+      .filter((c) => c.startsWith("memax_ui="));
+    // One name over http and https (the proxy reads it), HttpOnly and
+    // Lax like /dev/ui's, for as long as the session.
+    expect(hint).toEqual([
+      `memax_ui=v2; Path=/; Max-Age=${7 * 24 * HOUR}; SameSite=Lax; HttpOnly; Secure`,
+    ]);
+
+    // The next person on this browser doesn't see V2: the hint goes, even
+    // though the last one left it.
+    mockApi({ [EXCHANGE]: exchange("v1") });
+    const off = await POST(
+      req("/api/auth/exchange", {
+        method: "POST",
+        body: { code: "c2" },
+        cookie: "memax_ui=v2",
+      }),
+    );
+    expect(((await off.json()) as { data: { ui: string } }).data.ui).toBe("v1");
+    expect(
+      off.headers.getSetCookie().filter((c) => c.startsWith("memax_ui=")),
+    ).toEqual(["memax_ui=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly; Secure"]);
   });
 
   it("refuses a request another site starts", async () => {
@@ -210,6 +254,9 @@ describe("POST /api/auth/logout", () => {
       "__Host-memax_original_refresh",
       "memax_session_presence",
       "memax_impersonating",
+      // The V2 UI hint: the next person on this browser starts from
+      // their own flag.
+      "memax_ui",
     ]) {
       expect(
         set.some((c) => c.startsWith(`${name}=;`) && c.includes("Max-Age=0")),
@@ -286,6 +333,45 @@ describe("GET /api/auth/me", () => {
     );
   });
 
+  it("keeps the V2 UI hint in step with the person's flag", async () => {
+    const { GET } = await load<{ GET: Handler }>("./me/route");
+    const me = async (ui: string | undefined, cookie: string) => {
+      mockApi({
+        [ME]: () =>
+          Response.json({ data: { ...profile, ...(ui ? { ui } : {}) } }),
+      });
+      const res = await GET(
+        req("/api/auth/me", {
+          cookie: `__Host-memax_session=${webAccess}; __Host-memax_refresh=r1${cookie}`,
+        }),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { ui?: string } };
+      return {
+        ui: body.data.ui,
+        hint: res.headers
+          .getSetCookie()
+          .filter((c) => c.startsWith("memax_ui=")),
+      };
+    };
+    // Turned on (an operator, a space switched to V2, memax init's first
+    // space): set, for the page to route the next load.
+    expect(await me("v2", "")).toEqual({
+      ui: "v2",
+      hint: [
+        `memax_ui=v2; Path=/; Max-Age=${30 * 24 * HOUR}; SameSite=Lax; HttpOnly; Secure`,
+      ],
+    });
+    // Turned off: cleared.
+    expect((await me("v1", "; memax_ui=v2")).hint).toEqual([
+      "memax_ui=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly; Secure",
+    ]);
+    // Already in step, or not said: nothing set.
+    expect((await me("v2", "; memax_ui=v2")).hint).toEqual([]);
+    expect((await me("v1", "")).hint).toEqual([]);
+    expect((await me(undefined, "; memax_ui=v2")).hint).toEqual([]);
+  });
+
   it("refreshes an expired session first", async () => {
     const { GET } = await load<{ GET: Handler }>("./me/route");
     const fresh = jwt({ sub: "u-1", surface: "web", sid: "s-1", n: 2 });
@@ -314,7 +400,9 @@ describe("GET /api/auth/me", () => {
     const { GET } = await load<{ GET: Handler }>("./me/route");
     const api = mockApi({});
     const res = await GET(
-      req("/api/auth/me", { cookie: "memax_session_presence=1" }),
+      req("/api/auth/me", {
+        cookie: "memax_session_presence=1; memax_ui=v2",
+      }),
     );
     expect(res.status).toBe(401);
     expect(api.calls).toHaveLength(0);
@@ -323,6 +411,11 @@ describe("GET /api/auth/me", () => {
         .getSetCookie()
         .some((c) => c.startsWith("memax_session_presence=;")),
     ).toBe(true);
+    // The V2 UI hint stays: only a sign-in or a sign-out changes it
+    // without a profile to read (and the dev fixtures' demo keeps it).
+    expect(
+      res.headers.getSetCookie().some((c) => c.startsWith("memax_ui=")),
+    ).toBe(false);
   });
 
   it("keeps an operator's own session when their impersonation expired", async () => {
@@ -454,6 +547,7 @@ describe("POST /api/auth/passkey", () => {
             refresh_token: "refresh-pk",
             expires_in: HOUR,
             refresh_expires_in: 30 * 24 * HOUR,
+            ui: "v2",
           },
         }),
     });
@@ -463,8 +557,11 @@ describe("POST /api/auth/passkey", () => {
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(JSON.parse(text)).toEqual({
-      data: { signed_in: true, surface: "web" },
+      data: { signed_in: true, surface: "web", ui: "v2" },
     });
+    expect(
+      res.headers.getSetCookie().find((c) => c.startsWith("memax_ui=")),
+    ).toContain("memax_ui=v2;");
     expect(text).not.toContain("refresh-pk");
     expect(text).not.toContain("one-time");
     expect(

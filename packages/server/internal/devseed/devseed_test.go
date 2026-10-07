@@ -7,10 +7,14 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/devseed"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2ui"
 )
 
 func TestSeedMemaxV2(t *testing.T) {
@@ -38,6 +42,14 @@ func TestSeedMemaxV2(t *testing.T) {
 	}
 	if d.Brief.Ref != "B-0043" || len(d.Targets) != 4 || d.CC.Agent != ledger.AgentClaudeCode {
 		t.Errorf("brief %s, targets %d, CC %+v", d.Brief.Ref, len(d.Targets), d.CC)
+	}
+	// The space is on the V2 record, as POST /v2/spaces makes them, so ZZ
+	// and JY see the V2 UI.
+	ui := v2ui.New(pool, time.Time{})
+	for _, who := range []uuid.UUID{d.ZZ, d.JY} {
+		if got, err := ui.For(ctx, who); err != nil || got.UI != v2ui.V2 || got.Reason != v2ui.ReasonV2Space {
+			t.Errorf("%s: %+v, %v", who, got, err)
+		}
 	}
 	// The agents' writes name their connections.
 	if rc := d.Memory["M-0436"].CreatedReceiptID; rc == [16]byte{} {

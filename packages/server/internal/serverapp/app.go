@@ -63,6 +63,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2ui"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
@@ -695,6 +696,12 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		memories.SetSpaceModes(modes)
 		configsH.SetSpaceModes(modes)
 	}
+	// The per-person V2 UI flag (plan 25 E1, internal/v2ui): /v1/auth/me
+	// and a web sign-in's tokens say it, and operators turn it on and off.
+	ui := v2UIFromEnv(pool)
+	if authH != nil {
+		authH.SetV2UI(ui)
+	}
 	// The admin panel's gate metrics read the V2 record across spaces, as
 	// the metrics role (ledger.GetProductMetrics).
 	var adminV2Metrics *handler.AdminV2MetricsHandler
@@ -739,6 +746,7 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		adminWaitlist:          adminWaitlistH,
 		adminOps:               adminOpsH,
 		adminV2Metrics:         adminV2Metrics,
+		adminV2UI:              handler.NewAdminV2UIHandler(ui),
 		resendWebhook:          resendWebhookH,
 		unsubscribe:            unsubscribeH,
 		bar:                    handler.NewBarHandler(s, memories),
@@ -827,6 +835,23 @@ func passkeysFromEnv(pool *pgxpool.Pool) *passkeys.Service {
 	}
 	slog.Info("passkeys enabled", "rp_id", cfg.RPID, "origins", strings.Join(cfg.Origins, ","))
 	return svc
+}
+
+// v2UIFromEnv builds the V2 UI flag's resolver (internal/v2ui) with
+// V2_UI_SINCE; nil (V1 for everyone) without a database. A V2_UI_SINCE that
+// doesn't parse is logged and treated as unset, so a typo hides V2 rather
+// than showing it to every new account.
+func v2UIFromEnv(pool *pgxpool.Pool) *v2ui.Resolver {
+	if pool == nil {
+		return nil
+	}
+	since, err := v2ui.SinceFromEnv(os.Getenv)
+	if err != nil {
+		slog.Error("V2_UI_SINCE ignored: new accounts don't get the V2 UI by signup time", "error", err)
+	} else if !since.IsZero() {
+		slog.Info("V2 UI on for accounts created since", "since", since.UTC().Format(time.RFC3339))
+	}
+	return v2ui.New(pool, since)
 }
 
 // v2Handler builds /v2: the ledger, which enqueues compile jobs with

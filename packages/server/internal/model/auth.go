@@ -31,6 +31,10 @@ type MeResponse struct {
 	Hubs               []HubWithRole `json:"hubs"`
 	DevAccess          bool          `json:"dev_access"`
 	AdminRole          string        `json:"admin_role,omitempty"` // "super_admin" when user is admin
+	// UI is the web UI the person sees, "v2" (the Ledger) or "v1", as
+	// internal/v2ui decides it. The web app's server keeps its memax_ui
+	// routing cookie in step with it.
+	UI string `json:"ui"`
 }
 
 // AuthIdentity represents one OAuth provider linked to a user account.

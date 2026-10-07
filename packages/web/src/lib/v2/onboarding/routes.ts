@@ -13,12 +13,18 @@
  *   /setup/done?space=      CompileDone: the files written and what's next
  *   /[space]/review?filter=import&import=   ReviewImport
  *
- * Landing after sign-in: a person with no space on the V2 record yet is
- * new, and starts at FirstRun; one with an import still in progress (a
- * disagreement open or proposals it brought still waiting, within the
- * last two weeks) goes back to ReviewImport; anyone else opens a space's
- * Today, a project space before Personal.
+ * Landing after sign-in (afterSignIn): only a person the API shows the V2
+ * UI (the V2 UI flag, internal/v2ui) lands in V2. For them, `next` when
+ * the sign-in came from a page; else a person with no space on the V2
+ * record yet is new, and starts at FirstRun; one with an import still in
+ * progress (a disagreement open or proposals it brought still waiting,
+ * within the last two weeks) goes back to ReviewImport; anyone else opens
+ * a space's Today, a project space before Personal. A person without the
+ * flag goes on to `next` only when it opens for them (the CLI's device
+ * code, OAuthConsent, a V1 page), and otherwise to V1's home.
  */
+import type { WebUi } from "memax-sdk";
+import { needsV2Opt, v1HomePath } from "@/lib/ui-gate";
 import { importInProgress, type ImportView } from "../data/imports";
 import type { ImportsSource } from "../data/imports";
 import type { SpaceSummary } from "../data/types";
@@ -72,6 +78,31 @@ export function safeNext(next: string | null | undefined): string | null {
   // Signing in again from the sign-in pages would loop.
   if (/^\/signin(?:[/?#]|$)/.test(next)) return null;
   return next;
+}
+
+/** Where a sign-in goes on, before any V2 data is read. */
+export type AfterSignIn =
+  /** A same-origin path the person may open. */
+  | { kind: "next"; href: string }
+  /** The person's V2 landing (resolveLanding). */
+  | { kind: "landing" }
+  /** V1's home: the person doesn't see V2. */
+  | { kind: "v1"; href: string };
+
+/**
+ * Where a sign-in goes on, from `next` and the person's web UI (the API's
+ * `ui`, as the sign-in or the profile answered it; unknown counts as V1,
+ * so V2 stays hidden when in doubt).
+ */
+export function afterSignIn(
+  next: string | null | undefined,
+  ui: WebUi | null | undefined,
+): AfterSignIn {
+  const safe = safeNext(next);
+  if (ui === "v2")
+    return safe ? { kind: "next", href: safe } : { kind: "landing" };
+  if (safe && !needsV2Opt(safe)) return { kind: "next", href: safe };
+  return { kind: "v1", href: v1HomePath(true) };
 }
 
 export type Landing =

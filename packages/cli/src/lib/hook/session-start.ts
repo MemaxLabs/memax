@@ -83,6 +83,11 @@ const FIRST_FORGET_WINDOW_MS = 7 * 24 * 60 * 60_000;
 const MAX_FORGETS = 20;
 const MAX_GATES = 10;
 
+/** A compile's number (C-0881 → 881); compiles count up per tenant. */
+function compileNumber(ref: string): number {
+  return Number(ref.slice(2)) || 0;
+}
+
 function str(v: unknown): string | undefined {
   return typeof v === "string" && v !== "" ? v : undefined;
 }
@@ -291,13 +296,14 @@ export function sessionStart(i: SessionStartInput): SessionStartResult {
       expires_at: g.expires_at,
     }));
 
-  // Files whose newest compile hasn't reached this machine.
+  // Files whose newest compile hasn't reached this machine (C- numbers
+  // only grow; a file newer than the cache means the cache is behind).
   const toldBehind = new Set(prev.behind);
   const behind: BlockBehind[] = [];
   for (const { file, target } of files) {
     if (
       target?.compile &&
-      target.compile !== file.compile &&
+      compileNumber(target.compile) > compileNumber(file.compile) &&
       !toldBehind.has(target.compile)
     )
       behind.push({

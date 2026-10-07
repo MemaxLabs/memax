@@ -8,6 +8,7 @@ import { enqueueLoads } from "../../src/lib/hook/loads.js";
 import { flushOnce } from "../../src/lib/hook/flush.js";
 import { readWarm } from "../../src/lib/hook/warm.js";
 import { loadKey } from "../../src/lib/daemon/loads.js";
+import { warmTargets } from "../../src/lib/daemon/warm.js";
 import { harness, until, type Harness } from "../daemon/harness.js";
 import { header } from "./fixture.js";
 import {
@@ -96,6 +97,20 @@ describe("the warm-start cache", () => {
     unlinkRepo(h.paths, h.repo);
     d.reload();
     await until(() => !warm(), 5_000, "the space to go");
+  });
+
+  it("counts what prose cites as the compile's, beside the items it places", () => {
+    const t = h.fake.entry(target.id).target;
+    const run = t.last_compile!;
+    run.files[0].refs = ["M-0219"];
+    run.files[0].cites = ["M-0431", "M-0174"];
+    expect(warmTargets([t])[0].refs).toEqual(["M-0174", "M-0219", "M-0431"]);
+    // A failed compile keeps the last good one.
+    const failed = {
+      ...t,
+      last_compile: { ...run, status: "failed" as const },
+    };
+    expect(warmTargets([failed], warmTargets([t]))[0].compile).toBe("C-0881");
   });
 
   it("is written by memax compile's one pass too", async () => {

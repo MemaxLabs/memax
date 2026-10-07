@@ -134,6 +134,14 @@ describe("a new compile", () => {
     expect(m.run().output).toBe("");
   });
 
+  it("doesn't say a file is behind when the cache is", () => {
+    m.compiled("C-0884", lines881);
+    m.warm({ targets: [m.target("C-0883", ["M-0219"])] });
+    m.run();
+    m.warm({ targets: [m.target("C-0882", ["M-0219"])] });
+    expect(m.run().output).toBe("");
+  });
+
   it("reads CLAUDE.md's own lines for Claude Code, and only its managed block", () => {
     m.compiled("C-0881", lines881);
     writeFileSync(

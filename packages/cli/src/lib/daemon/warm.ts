@@ -51,7 +51,14 @@ export function warmTargets(
       if (good) {
         w.compile = good.ref;
         w.compiled_at = good.compiled_at;
-        w.refs = [...good.refs];
+        // Every memory a line of the compile may cite: the items placed and
+        // what connective prose rests on (an open question cites both sides).
+        w.refs = [
+          ...new Set([
+            ...good.refs,
+            ...good.files.flatMap((f) => [...f.refs, ...f.cites]),
+          ]),
+        ].sort();
       } else if (before?.compile) {
         w.compile = before.compile;
         w.compiled_at = before.compiled_at;

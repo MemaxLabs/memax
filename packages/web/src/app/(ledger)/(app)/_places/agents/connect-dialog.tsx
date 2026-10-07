@@ -77,14 +77,15 @@ export function ConnectAgentDialog({
     <Dialog.Root open={open} onOpenChange={(next) => onOpenChange(next)}>
       <Dialog.Portal>
         <Dialog.Backdrop className="mx-cmd-scrim" />
-        {/* Keyed by opening, so each open starts from the defaults. */}
-        {open ? (
-          <ConnectBody
-            connected={connected}
-            onClose={() => onOpenChange(false)}
-            title={copy.title}
-          />
-        ) : null}
+        {/* Always rendered: the portal mounts it for each opening (so each
+            starts from the defaults) and keeps it while it closes, so the
+            scrim's exit ends with the popup's. Rendering it only while open
+            left the scrim behind, taking every click on the page. */}
+        <ConnectBody
+          connected={connected}
+          onClose={() => onOpenChange(false)}
+          title={copy.title}
+        />
       </Dialog.Portal>
     </Dialog.Root>
   );

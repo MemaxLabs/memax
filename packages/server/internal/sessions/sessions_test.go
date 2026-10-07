@@ -364,7 +364,7 @@ func TestGrantSessionsEndWithTheirGrant(t *testing.T) {
 }
 
 // TestAnOlderServersPlainTextIsHashed: during a rolling deploy, a server
-// from before migration 048 still inserts and rotates plain-text tokens.
+// from before migration 049 still inserts and rotates plain-text tokens.
 // The database hashes them before storing, so they never land, and the
 // new server refreshes them.
 func TestAnOlderServersPlainTextIsHashed(t *testing.T) {

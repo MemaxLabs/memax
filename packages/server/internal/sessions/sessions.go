@@ -1,5 +1,5 @@
 // Package sessions keeps people's sign-in sessions and their refresh
-// tokens (plan 25 §5.15 and §5.16 "Tokens"; migration 048).
+// tokens (plan 25 §5.15 and §5.16 "Tokens"; migration 049).
 //
 // # Sessions
 //
@@ -44,7 +44,7 @@
 //
 // # Existing tokens
 //
-// Migration 048 hashed the plain-text tokens in place: every client keeps
+// Migration 049 hashed the plain-text tokens in place: every client keeps
 // the token it has, and its next refresh rotates it. Every published
 // memax CLI stores the refresh token /v1/auth/refresh returns, so old CLIs
 // keep working through rotation.

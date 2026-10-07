@@ -1,4 +1,4 @@
--- 048 down: the plain-text tokens can't be recovered from their hashes, so
+-- 049 down: the plain-text tokens can't be recovered from their hashes, so
 -- every session ends and everyone signs in again.
 DROP TABLE IF EXISTS public.session_retired_tokens;
 

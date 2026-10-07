@@ -1,4 +1,4 @@
--- 048: session_refresh_rotation
+-- 049: session_refresh_rotation
 --
 -- Refresh tokens are hashed and rotated, and sessions can be listed and
 -- revoked (plan 25 §5.15 and §5.16 "Tokens"; internal/sessions has the

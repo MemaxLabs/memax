@@ -14,12 +14,12 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 )
 
-// sessionRotationVersion is migration 048 (hashed, rotated refresh
+// sessionRotationVersion is migration 049 (hashed, rotated refresh
 // tokens). Renumber it with the file if a merge moves it.
-const sessionRotationVersion = 48
+const sessionRotationVersion = 49
 
 // TestSessionMigrationHashesLiveTokensInPlace: the people signed in before
-// 048 stay signed in. Their plain-text refresh tokens are hashed where they
+// 049 stay signed in. Their plain-text refresh tokens are hashed where they
 // are, nothing in plain text is left in the table, each session gets its
 // kind, and the token each client holds still refreshes, now rotating.
 func TestSessionMigrationHashesLiveTokensInPlace(t *testing.T) {
@@ -91,7 +91,7 @@ func TestSessionMigrationHashesLiveTokensInPlace(t *testing.T) {
 	}
 
 	// Back and forth: the down migration ends every session (hashes can't
-	// be turned back into tokens), and 048 applies again on top.
+	// be turned back into tokens), and 049 applies again on top.
 	if err := m.Migrate(sessionRotationVersion - 1); err != nil {
 		t.Fatalf("migrate down to %03d: %v", sessionRotationVersion-1, err)
 	}

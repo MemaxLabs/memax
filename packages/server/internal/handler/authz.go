@@ -169,7 +169,7 @@ type GrantContext struct {
 	OAuthScope string
 	// SessionID is the sign-in session the access token belongs to (its
 	// sid claim; internal/sessions). Empty for API keys, impersonation and
-	// tokens from before migration 048.
+	// tokens from before migration 049.
 	SessionID string
 }
 

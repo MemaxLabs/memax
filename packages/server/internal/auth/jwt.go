@@ -31,7 +31,7 @@ type Claims struct {
 	// Sid is the session (internal/sessions) whose refresh token minted the
 	// token, so the API can tell which session a request is (the sessions
 	// list marks it current, and "revoke all others" spares it). Tokens
-	// from before migration 048, API keys and impersonation tokens have
+	// from before migration 049, API keys and impersonation tokens have
 	// none.
 	Sid string `json:"sid,omitempty"`
 }

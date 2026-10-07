@@ -18,7 +18,7 @@ Both of these must hold. Neither is enough alone.
    (`memax login`) or a token returned in the response is `cli`
    (migration 030). A device-code sign-in is `cli` too. Every access token
    the session mints, refreshes included, carries the surface as a signed
-   claim, and names its session (`sid`, migration 048).
+   claim, and names its session (`sid`, migration 049).
 2. **The web app's proxy signed the request.** `/api/proxy` signs each
    `/v2` request for a `web` session with `WEB_SURFACE_SECRET`, which only
    the web deployment and the API hold: HMAC-SHA256 over the method, path
@@ -153,7 +153,7 @@ signature (used directly against the API) is `client_attested`.
   sign them out from the sessions list. An operator can end them all at
   once after the cutover with
   `UPDATE sessions SET revoked_at = now(), revoked_reason = 'revoked' WHERE kind = 'web' AND created_at < '<cutover>' AND revoked_at IS NULL`.
-- **Plain-text refresh tokens from before migration 048** survive in dead
+- **Plain-text refresh tokens from before migration 049** survive in dead
   tuples until autovacuum, and in WAL and backups for their retention.
 - **A leaked `WEB_SURFACE_SECRET`** lets the holder sign, but they still
   need a `web` token for the user. Rotate it on both sides. On

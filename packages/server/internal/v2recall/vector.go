@@ -26,8 +26,11 @@ import (
 // says so (MCP puts it in _meta). The LLM query distiller is never on
 // this path.
 
-// The defaults. The floors are uncalibrated until the retrieval and judge
-// evals run on Voyage embeddings (no keys on the machine that wrote this).
+// The defaults. The floors were calibrated on voyage-4-lite queries and
+// drafts against voyage-4 statements in the live evals of Oct 6, 2026
+// (eval/v2/RESULTS.md, eval/judge/RESULTS.md); they are model-specific, so
+// recalibrate them with any model change (voyage-code-3, for one, puts
+// nonsense queries above 0.30).
 const (
 	// DefaultQueryDeadline is how long a recall waits for its query
 	// embedding before answering lexically (§5.11).
@@ -35,13 +38,24 @@ const (
 	// DefaultVectorFloor is the least cosine similarity the recall and
 	// search vector lane keeps: a nonsense query must not bring back a
 	// space's nearest memories as if they matched (precision over
-	// recall).
-	DefaultVectorFloor = 0.30
+	// recall). At the first guess of 0.30, 9 of the eval's 14 queries that
+	// nothing answers got statements from the vector lane; at 0.35, 2 did,
+	// while every ideal match (the lowest at 0.36) stayed, and nDCG@5 and
+	// MRR@10 rose (0.827 → 0.843 and 0.752 → 0.798 without the reranker,
+	// 0.886 → 0.890 and 0.803 → 0.832 with it). Past 0.36 ideal matches
+	// drop out (nDCG@5 0.813 at 0.37), so don't raise it on this evidence.
+	DefaultVectorFloor = 0.35
 	// DefaultNearDuplicateFloor is the least similarity at which Remember
 	// offers a memory as the same thing as the draft. It errs high: a
-	// wrong offer costs the person a second look, a missed one only a
-	// repeat the judge or Dream folds later.
-	DefaultNearDuplicateFloor = 0.90
+	// wrong offer costs the person a second look. The draft is embedded
+	// with the query model (voyage-4-lite) and compared with statements on
+	// the index model (voyage-4), which reads about 0.05 lower than
+	// voyage-4 on both sides: at 0.90 Remember offered 18 of the judge
+	// eval's 26 duplicates; at 0.85, 21, plus 17 of its 24 updates of the
+	// same fact and 3 of its 74 other pairs (contradictions and extensions
+	// of the same subject, none unrelated), the operating point 0.90 has
+	// with voyage-4 on both sides.
+	DefaultNearDuplicateFloor = 0.85
 )
 
 // VectorConfig configures the vector side.
@@ -63,8 +77,8 @@ type VectorConfig struct {
 // VectorConfigFromEnv reads the floors through lookup (os.LookupEnv),
 // once, in a composition root; model is the index model.
 //
-//	V2_RECALL_VECTOR_FLOOR   least similarity the recall and search vector lane keeps (default 0.30)
-//	V2_NEAR_DUPLICATE_FLOOR  least similarity Remember's check calls a near repeat (default 0.90)
+//	V2_RECALL_VECTOR_FLOOR   least similarity the recall and search vector lane keeps (default 0.35)
+//	V2_NEAR_DUPLICATE_FLOOR  least similarity Remember's check calls a near repeat (default 0.85)
 func VectorConfigFromEnv(lookup func(string) (string, bool), model string) VectorConfig {
 	c := VectorConfig{Model: model, QueryDeadline: DefaultQueryDeadline, Floor: DefaultVectorFloor,
 		NearDuplicateFloor: DefaultNearDuplicateFloor}

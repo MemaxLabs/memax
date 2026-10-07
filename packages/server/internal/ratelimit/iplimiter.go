@@ -37,7 +37,7 @@ var (
 	IPTokenLimit      = EndpointLimit{Name: "token", RPM: 30}       // refresh / exchange
 	IPImpersonate     = EndpointLimit{Name: "impersonate", RPM: 20} // admin-only, but still IP-bounded for safety
 	IPOAuthDCRLimit   = EndpointLimit{Name: "oauth_dcr", RPM: 5}    // MCP dynamic client registration — very restrictive
-	IPOAuthAuthorize  = EndpointLimit{Name: "oauth_auth", RPM: 30}  // /oauth/authorize + /oauth/authorize/consent
+	IPOAuthAuthorize  = EndpointLimit{Name: "oauth_auth", RPM: 30}  // /oauth/authorize (and the legacy consent post)
 	IPOAuthTokenLimit = EndpointLimit{Name: "oauth_token", RPM: 30} // /oauth/token
 	IPInviteLimit     = EndpointLimit{Name: "invite", RPM: 10}      // invite token validation — brute-force enumeration
 	IPWaitlistLimit   = EndpointLimit{Name: "waitlist", RPM: 5}     // /v1/waitlist* — may enqueue email; tight by design

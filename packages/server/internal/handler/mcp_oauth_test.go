@@ -69,25 +69,16 @@ func TestMCPOAuthResolveAppBaseURL_UsesExplicitValue(t *testing.T) {
 	}
 }
 
-func TestMCPOAuthConsentURLsShape(t *testing.T) {
+func TestMCPOAuthRequestURLShape(t *testing.T) {
 	t.Parallel()
 	h := &MCPOAuthHandler{baseURL: "https://api.memax.app", appBaseURL: "https://memax.app"}
 	req := httptest.NewRequest(http.MethodGet, "https://api.memax.app/x", nil)
-
-	got := h.webConsentURL(req, "req-123", "tok-abc", false)
-	if !strings.Contains(got, "https://memax.app/oauth/consent") {
-		t.Errorf("webConsentURL prefix wrong: %q", got)
+	if got := h.webRequestURL(req, "req-123"); got != "https://memax.app/oauth/authorize?request=req-123" {
+		t.Errorf("webRequestURL = %q", got)
 	}
-	if !strings.Contains(got, "request_id=req-123") {
-		t.Errorf("request_id missing: %q", got)
-	}
-	if !strings.Contains(got, "consent_token=tok-abc") {
-		t.Errorf("consent_token missing: %q", got)
-	}
-
-	submit := h.consentSubmitURL(req)
-	if submit != "https://api.memax.app/oauth/authorize/consent" {
-		t.Errorf("consentSubmitURL = %q", submit)
+	// No web app to sign in on: no page.
+	if got := (&MCPOAuthHandler{baseURL: "https://api.example.org"}).webRequestURL(req, "req-123"); got != "" {
+		t.Errorf("webRequestURL without a web app = %q", got)
 	}
 }
 

@@ -213,53 +213,23 @@ func TestMCPOAuthErrorRedirectsToClientCallbackWithSeeOther(t *testing.T) {
 	}
 }
 
-func TestConsentDecisionOnlyDeniesExplicitCancel(t *testing.T) {
-	cases := map[string]bool{
-		"deny":    true,
-		" deny ":  true,
-		"DENY":    true,
-		"approve": false,
-		"":        false,
-		"unknown": false,
-	}
-	for decision, want := range cases {
-		if got := consentDecisionDenied(decision); got != want {
-			t.Fatalf("consentDecisionDenied(%q) = %t, want %t", decision, got, want)
-		}
-	}
-}
-
-func TestMCPOAuthWebConsentURLUsesConfiguredAppBaseURL(t *testing.T) {
+func TestMCPOAuthWebRequestURLUsesConfiguredAppBaseURL(t *testing.T) {
 	t.Setenv("APP_BASE_URL", "https://app.memax.test/")
 	h := NewMCPOAuthHandler(nil)
-	req := httptest.NewRequest(http.MethodGet, "/v1/auth/github/callback", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/authorize", nil)
 
-	got := h.webConsentURL(req, "request-1", "token-1", false)
-
-	if !strings.HasPrefix(got, "https://app.memax.test/oauth/consent?") {
-		t.Fatalf("consent URL = %q, want configured app consent route", got)
-	}
-	for _, want := range []string{"request_id=request-1", "consent_token=token-1"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("consent URL = %q, want %q", got, want)
-		}
-	}
-	// A person with a space on V2 gets the Ledger page, same query.
-	got = h.webConsentURL(req, "request-1", "token-1", true)
-	if !strings.HasPrefix(got, "https://app.memax.test/oauth/authorize?") || !strings.Contains(got, "consent_token=token-1") {
-		t.Fatalf("V2 consent URL = %q, want the Ledger consent route", got)
+	if got := h.webRequestURL(req, "request-1"); got != "https://app.memax.test/oauth/authorize?request=request-1" {
+		t.Fatalf("request page = %q, want the configured app's consent page", got)
 	}
 }
 
-func TestMCPOAuthWebConsentURLInfersStagingAppFromAPIBaseURL(t *testing.T) {
+func TestMCPOAuthWebRequestURLInfersStagingAppFromAPIBaseURL(t *testing.T) {
 	t.Setenv("API_BASE_URL", "https://staging-api.memaxlabs.com")
 	h := NewMCPOAuthHandler(nil)
-	req := httptest.NewRequest(http.MethodGet, "/v1/auth/github/callback", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/authorize", nil)
 
-	got := h.webConsentURL(req, "request-1", "token-1", false)
-
-	if !strings.HasPrefix(got, "https://staging-app.memaxlabs.com/oauth/consent?") {
-		t.Fatalf("consent URL = %q, want staging app consent route", got)
+	if got := h.webRequestURL(req, "request-1"); got != "https://staging-app.memaxlabs.com/oauth/authorize?request=request-1" {
+		t.Fatalf("request page = %q, want the staging app's consent page", got)
 	}
 }
 

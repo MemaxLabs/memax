@@ -320,6 +320,14 @@ func (h *AuthHandler) GitHubLogin(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) GitHubCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
+	// An MCP authorization request from before sign-in moved to the web
+	// app (state "mcp:<request>"): nobody is signed in here; the request
+	// goes on on the web, where the person signs in with any method.
+	// Remove after one release.
+	if strings.HasPrefix(state, "mcp:") && h.mcpOAuth != nil {
+		h.mcpOAuth.ResumeOnWeb(w, r, strings.TrimPrefix(state, "mcp:"))
+		return
+	}
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, model.ApiResponse{
 			Error: &model.Error{Code: "missing_code", Message: "No authorization code provided."},
@@ -394,36 +402,6 @@ func (h *AuthHandler) GitHubCallback(w http.ResponseWriter, r *http.Request) {
 		EmailVerified: ghUser.EmailVerified,
 		Name:          ghUser.Name,
 		AvatarURL:     ghUser.AvatarURL,
-	}
-
-	// --- MCP OAuth flow ---
-	// state starts with "mcp:" — resolve user, then delegate to MCP handler.
-	// MCP flow does not carry invite tokens; org membership is the
-	// only signal that lets a new user register here. If requiredOrg
-	// is set and the user isn't a member AND doesn't already have an
-	// account, loginOrCreateUser returns ErrRegistrationRequired —
-	// surfaced below as a clean 403.
-	if strings.HasPrefix(state, "mcp:") && h.mcpOAuth != nil {
-		user, loginErr := h.loginOrCreateUser(r.Context(), pu, loginOpts{
-			ProviderOrgMember: isRequiredOrgMember,
-		})
-		if loginErr != nil {
-			if errors.Is(loginErr, ErrRegistrationRequired) {
-				writeJSON(w, http.StatusForbidden, model.ApiResponse{
-					Error: &model.Error{Code: "not_authorized", Message: fmt.Sprintf("Access restricted to members of the %s GitHub organization or invited users.", h.requiredOrg)},
-				})
-				return
-			}
-			slog.Error("github mcp login failed", "error", loginErr)
-			writeJSON(w, http.StatusInternalServerError, model.ApiResponse{
-				Error: &model.Error{Code: "login_failed", Message: "Failed to log in via GitHub."},
-			})
-			return
-		}
-		h.persistDevAccess(user.ID, devAccess)
-		mcpSessionID := strings.TrimPrefix(state, "mcp:")
-		h.mcpOAuth.HandleMCPCallback(w, r, user.ID, mcpSessionID)
-		return
 	}
 
 	// --- New OAuth state flow (production with store) ---

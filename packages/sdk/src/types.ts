@@ -1152,37 +1152,12 @@ export interface DeleteAllDataResult {
   deleted: boolean;
 }
 
-export interface OAuthConsentHub {
-  id: string;
-  name: string;
-  slug: string;
-  role: HubRole;
-  hub_type: HubType;
-  memory_count: number;
-  checked: boolean;
-  disabled: boolean;
-  capability_label: string;
-  supported_permissions: string[];
-  // What the V2 consent page shows. Older servers send none of it.
-  /** personal, project or team. */
-  space_kind?: "personal" | "project" | "team";
-  /** Whether the space is on the V2 record. */
-  on_v2?: boolean;
-  people_count?: number;
-  /** Memories kept in it (V2 only); absent when the server can't say. */
-  kept_count?: number;
-  /** The files it compiles to (V2 only), the canonical one first. */
-  targets?: OAuthConsentTarget[];
-  /** The autonomy the agent is connected at here (V2 only). */
-  autonomy?: "read" | "propose" | "write";
-  /**
-   * What the agent will and won't be able to do here, decided by the
-   * server's policy: read_brief, read_memories, propose, keep, add, gate,
-   * forget, other_spaces. Unknown values may appear; skip them.
-   */
-  can?: string[];
-  cannot?: string[];
-}
+// --- OAuth consent (OAuthConsent) ---
+//
+// An MCP client's pending authorization request, as the person signed in
+// on the web sees it (openOAuthRequest), and their answer.
+
+export type OAuthAutonomy = "read" | "propose" | "write";
 
 export interface OAuthConsentTarget {
   /** agents_md, claude_md, cursor_mdc, chatgpt, … */
@@ -1191,41 +1166,66 @@ export interface OAuthConsentTarget {
   path?: string;
 }
 
-export interface OAuthConsentPermission {
-  value: string;
-  label: string;
-  description: string;
-  checked: boolean;
+/** One of the person's spaces, as the consent page shows it. */
+export interface OAuthRequestSpace {
+  id: string;
+  name: string;
+  slug: string;
+  kind: "personal" | "project" | "team";
+  /** Whether the space is on the V2 record; V1's rules apply otherwise. */
+  on_v2: boolean;
+  role: HubRole;
+  /** The person's role can't use what the client asked for. */
+  disabled: boolean;
+  people: number;
+  /** Kept memories on V2 (absent when the server can't say), V1's memories on V1. */
+  memories?: number;
+  /** The files it compiles to (V2 only), the canonical one first. */
+  targets?: OAuthConsentTarget[];
+  /** The level the agent is connected at here (V2 only). */
+  autonomy?: OAuthAutonomy;
+  /** The most a person may later allow it here, in Agents (V2 only). */
+  ceiling?: OAuthAutonomy;
   /**
-   * Essential permissions are pre-checked and locked in the consent UI —
-   * the agent cannot meaningfully operate without them. Server marks
-   * memax:read as essential for any recall-capable agent.
+   * What the agent will and won't be able to do here, decided by the
+   * server's policy: read_brief, read_memories, propose, keep, add, gate,
+   * forget, other_spaces. Unknown values may appear; skip them.
    */
-  essential?: boolean;
+  can: string[];
+  cannot: string[];
 }
 
-export interface OAuthConsentRequest {
-  session_id: string;
-  csrf_token: string;
+export interface OAuthRequest {
+  request_id: string;
+  /** The name the client gives itself. */
   client_name: string;
-  agent_name: string;
-  resource: string;
-  submit_url: string;
-  expires_at: string;
-  hubs: OAuthConsentHub[];
-  permissions: OAuthConsentPermission[];
-  not_requested: string[];
-  /** Who the request is signed in as. */
-  person?: { name: string };
   /**
    * For a client known by its metadata document, the host it is served
    * from: Memax fetched it there, unlike the name, which the client says.
    */
   client_host?: string;
-  /** The scope the V2 page grants: never above memax:propose. */
-  consent_scope?: string;
+  /** Memax's slug for the agent (codex, claude-code, …). */
+  agent_name: string;
+  resource?: string;
+  /** The scope the grant carries: what the client asked for. */
+  scope: string;
+  expires_at: string;
   /** Seconds left before the request expires. */
-  expires_in?: number;
+  expires_in: number;
+  /** Who the request is bound to: the person signed in on the web. */
+  person: { name: string };
+  spaces: OAuthRequestSpace[];
+}
+
+export interface OAuthDecisionInput {
+  decision: "approve" | "deny";
+  /** The one space an approval connects the agent to. */
+  space_id?: string;
+}
+
+export interface OAuthDecision {
+  /** Where to send the browser: the client's redirect_uri with a code or access_denied. */
+  redirect_to: string;
 }
 
 // --- Hubs ---

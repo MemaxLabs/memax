@@ -11,7 +11,9 @@ import type {
   DeviceSignInPoll,
   ImpersonationResult,
   MeResponse,
-  OAuthConsentRequest,
+  OAuthDecision,
+  OAuthDecisionInput,
+  OAuthRequest,
   RequestEmailOtpOptions,
   RequestEmailOtpResponse,
   UnlinkProviderResult,
@@ -252,16 +254,40 @@ export class AuthResource {
     });
   }
 
-  async getOAuthConsentRequest(
+  /**
+   * An MCP client's pending authorization request (OAuthConsent), for the
+   * person signed in on the web: the first person to open it is bound to
+   * it, and anyone else gets 404. Needs a session the web app was issued.
+   */
+  async openOAuthRequest(requestId: string): Promise<OAuthRequest> {
+    return this.req(
+      "GET",
+      `/oauth/authorize/requests/${encodeURIComponent(requestId)}`,
+    );
+  }
+
+  /**
+   * The bound person's answer: approve (one space) or deny. Answers where
+   * to send the browser: the client's registered redirect_uri with a code,
+   * or with access_denied.
+   */
+  async decideOAuthRequest(
     requestId: string,
-    consentToken: string,
-  ): Promise<OAuthConsentRequest> {
-    return this.req("GET", "/oauth/authorize/consent-request", {
-      query: {
-        request_id: requestId,
-        consent_token: consentToken,
-      },
-    });
+    decision: OAuthDecisionInput,
+  ): Promise<OAuthDecision> {
+    return this.req(
+      "POST",
+      `/oauth/authorize/requests/${encodeURIComponent(requestId)}/decision`,
+      { body: { ...decision } },
+    );
+  }
+
+  /** "Not you?": the bound person lets go of the request. */
+  async releaseOAuthRequest(requestId: string): Promise<{ released: boolean }> {
+    return this.req(
+      "POST",
+      `/oauth/authorize/requests/${encodeURIComponent(requestId)}/release`,
+    );
   }
 
   githubLoginURL(redirectURI: string): string {

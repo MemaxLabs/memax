@@ -145,7 +145,21 @@ func (w *writer) flush(ctx context.Context) error {
 
 // asLoginRole runs fn as the transaction's login role, then switches back
 // to memax_v2. If fn fails, the transaction is aborted anyway.
+//
+// On a ledger transaction the switches are deferred (tx.go): the switch
+// to the login role goes out in the round trip of fn's first statement,
+// ahead of it, and the switch back in the next round trip after fn's last
+// (COMMIT's, in a command). The statements and their order are the same;
+// a failed switch fails the statement it travels with.
 func asLoginRole(ctx context.Context, tx pgx.Tx, loginRole string, fn func() error) error {
+	if st, ok := tx.(*scopedTx); ok {
+		st.deferStatement(`SELECT set_config('role', $1, true)`, loginRole)
+		if err := fn(); err != nil {
+			return err
+		}
+		st.deferStatement(`SELECT set_config('role', $1, true)`, DBRole)
+		return nil
+	}
 	if _, err := tx.Exec(ctx, `SELECT set_config('role', $1, true)`, loginRole); err != nil {
 		return fmt.Errorf("ledger: switch to %s for River: %w", loginRole, err)
 	}

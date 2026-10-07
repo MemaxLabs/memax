@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,7 +24,7 @@ import (
 // default set (the Phase 1 targets) and each default path.
 func TestRealServiceMatchesTheLedgersTargets(t *testing.T) {
 	t.Parallel()
-	client := compile.NewClient(compiletest.StartService(t))
+	client := compiletest.Client(compiletest.StartService(t))
 	h, err := client.Health(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +63,7 @@ func TestRealServiceMatchesTheLedgersTargets(t *testing.T) {
 // compiler's golden AGENTS.md.
 func TestRealServiceCompilesTheGoldenDemo(t *testing.T) {
 	t.Parallel()
-	client := compile.NewClient(compiletest.StartService(t))
+	client := compiletest.Client(compiletest.StartService(t))
 	dir := filepath.Join(compiletest.RepoRoot(), "packages", "compiler", "test", "fixtures", "demo-memax-v2")
 	raw, err := os.ReadFile(filepath.Join(dir, "input.json"))
 	if err != nil {
@@ -95,6 +97,60 @@ func TestRealServiceCompilesTheGoldenDemo(t *testing.T) {
 	}
 }
 
+// The service takes only its token: health is public, and a client with
+// no token or a wrong one is refused at once, without retries, and told
+// what to set. The token never shows up in an error.
+func TestRealServiceRequiresTheToken(t *testing.T) {
+	t.Parallel()
+	url := compiletest.StartService(t)
+	if compiletest.Token() == "" {
+		t.Skip("the external service under test has no token")
+	}
+	if _, err := compile.NewClient(url).Health(context.Background()); err != nil {
+		t.Fatalf("health without a token: %v", err)
+	}
+	for name, client := range map[string]*compile.Client{
+		"no token":    compile.NewClient(url, compile.WithAttempts(3)),
+		"wrong token": compile.NewClient(url, compile.WithAttempts(3), compile.WithToken("not-"+compiletest.Token())),
+	} {
+		start := time.Now()
+		_, err := client.Compile(context.Background(), &compile.Input{})
+		if err == nil || errors.Is(err, compile.ErrUnavailable) || !strings.Contains(err.Error(), "COMPILE_SERVICE_TOKEN") {
+			t.Errorf("%s: %v", name, err)
+		}
+		if err != nil && strings.Contains(err.Error(), compiletest.Token()) {
+			t.Errorf("%s: the error names the token: %v", name, err)
+		}
+		if d := time.Since(start); d > time.Second {
+			t.Errorf("%s: refused only after %v; a 401 isn't retried", name, d)
+		}
+	}
+}
+
+// WithToken sends the token as a bearer token on every request, and an
+// empty one sends no Authorization header.
+func TestClientSendsTheToken(t *testing.T) {
+	t.Parallel()
+	got := make(chan string, 4)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got <- r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","contract_version":1,"adapters":[]}`))
+	}))
+	defer srv.Close()
+	for _, tc := range []struct{ token, want string }{
+		{" s3cret ", "Bearer s3cret"},
+		{"", ""},
+	} {
+		if _, err := compile.NewClient(srv.URL, compile.WithToken(tc.token)).Health(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if h := <-got; h != tc.want {
+			t.Errorf("token %q: Authorization %q, want %q", tc.token, h, tc.want)
+		}
+	}
+}
+
 // Connection failures are retried, then reported (the job retries).
 func TestClientRetriesThenFails(t *testing.T) {
 	t.Parallel()
@@ -124,7 +180,7 @@ func TestClientRetriesThenFails(t *testing.T) {
 // edit read back by the real parse-back.
 func TestCoordinatorWithTheRealService(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t, fixtureOpts{compiler: compile.NewClient(compiletest.StartService(t))})
+	f := newFixture(t, fixtureOpts{compiler: compiletest.Client(compiletest.StartService(t))})
 	s := f.seed()
 	scoped := f.apply(&ledger.Remember{Meta: f.meta(s.owner, policy.ViaWeb), NewMemory: ledger.NewMemory{
 		SpaceID: s.space, Statement: "Web screens use only packages/ledger components.", Section: ledger.SectionConventions,

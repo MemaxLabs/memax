@@ -2,7 +2,7 @@
   "name": "@memaxlabs/compile-service",
   "version": "0.1.0",
   "private": true,
-  "description": "The stateless compile service: @memaxlabs/compiler over HTTP on Memax's private network",
+  "description": "The stateless compile service: @memaxlabs/compiler over HTTP, as a Node server or a Cloudflare Worker",
   "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./dist/main.js",
@@ -15,9 +15,12 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/main.js",
+    "build:cf": "wrangler deploy --dry-run --outdir .wrangler/dist",
+    "dev:cf": "wrangler dev",
+    "deploy:cf": "wrangler deploy",
     "lint": "eslint . --max-warnings 0 && tsc --noEmit && tsc --noEmit -p test",
     "test": "vitest run",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist .wrangler"
   },
   "dependencies": {
     "@memaxlabs/compiler": "workspace:*"
@@ -28,6 +31,7 @@
     "@typescript-eslint/parser": "^8.20.0",
     "eslint": "^9.18.0",
     "typescript": "^5.8.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "wrangler": "^4.148.0"
   }
 }

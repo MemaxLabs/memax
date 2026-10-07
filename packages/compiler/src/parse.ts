@@ -321,15 +321,13 @@ function diff(
   const key = (l: ParsedLine) => l.refs.join(",");
 
   // Cited lines pair up by their cites, in order.
-  const queues = new Map<string, ParsedLine[]>();
-  for (const l of newContent.filter((l) => l.refs.length > 0)) {
-    queues.set(key(l), [...(queues.get(key(l)) ?? []), l]);
-  }
+  const queues = new Queues<ParsedLine>();
+  for (const l of newContent) if (l.refs.length > 0) queues.push(key(l), l);
   const paired = new Set<ParsedLine>();
   const edits: Change[] = [];
   const gone: ParsedLine[] = [];
   for (const o of oldContent.filter((l) => l.refs.length > 0)) {
-    const n = queues.get(key(o))?.shift();
+    const n = queues.shift(key(o));
     if (!n) {
       gone.push(o);
       continue;
@@ -358,14 +356,17 @@ function diff(
     return !take(oldUncited, l.text);
   });
 
-  // A cited line whose words survive without the cite wasn't removed.
+  // A cited line whose words survive without the cite wasn't removed: it
+  // takes the first such uncited line, in order. (Queues keep this linear;
+  // a scan per gone line made a file of a few thousand lines take seconds.)
+  const uncited = new Queues<ParsedLine>();
+  for (const l of added) if (l.refs.length === 0) uncited.push(l.text, l);
+  const survived = new Set<ParsedLine>();
   const removes: Change[] = [];
   for (const o of gone) {
-    const same = added.findIndex(
-      (l) => l.refs.length === 0 && l.text === o.text,
-    );
-    if (same >= 0) {
-      added.splice(same, 1);
+    const same = uncited.shift(o.text);
+    if (same) {
+      survived.add(same);
       continue;
     }
     removes.push({
@@ -377,14 +378,16 @@ function diff(
     });
   }
 
-  const news: Change[] = added.map((l) => ({
-    kind: "new",
-    text: l.text,
-    line: l.line,
-    section: l.section,
-    paths: l.paths,
-    cites: l.refs,
-  }));
+  const news: Change[] = added
+    .filter((l) => !survived.has(l))
+    .map((l) => ({
+      kind: "new",
+      text: l.text,
+      line: l.line,
+      section: l.section,
+      paths: l.paths,
+      cites: l.refs,
+    }));
   const at = (c: Change) =>
     c.kind === "edit" ? c.new_line : c.kind === "new" ? c.line : c.old_line;
   return {
@@ -409,6 +412,23 @@ function take(counts: Map<string, number>, value: string): boolean {
   if (n === 1) counts.delete(value);
   else counts.set(value, n - 1);
   return true;
+}
+
+/** First-in, first-out queues by key; push and shift take constant time. */
+class Queues<T> {
+  private readonly byKey = new Map<string, { items: T[]; next: number }>();
+
+  push(key: string, item: T): void {
+    const q = this.byKey.get(key);
+    if (q) q.items.push(item);
+    else this.byKey.set(key, { items: [item], next: 0 });
+  }
+
+  /** The oldest item under `key` not yet shifted, or undefined. */
+  shift(key: string): T | undefined {
+    const q = this.byKey.get(key);
+    return q && q.next < q.items.length ? q.items[q.next++] : undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------

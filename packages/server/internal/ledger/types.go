@@ -369,6 +369,10 @@ type Result struct {
 	// ForgetRequest is an agent's request to forget, after RequestForget
 	// or DeclineForget.
 	ForgetRequest *ForgetRequest `json:"forget_request,omitempty"`
+	// Edition is a Dream edition, after PublishEdition (dream.go).
+	Edition *DreamEdition `json:"edition,omitempty"`
+	// DreamAction is one of Dream's actions, after UndoDreamAction.
+	DreamAction *DreamAction `json:"dream_action,omitempty"`
 	// Unchanged is set when the command found nothing to do (an
 	// observation that matches what was delivered, a delivery already
 	// acknowledged): nothing was written and no receipt exists.

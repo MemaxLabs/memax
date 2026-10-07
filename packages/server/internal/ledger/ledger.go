@@ -47,6 +47,9 @@ type Ledger struct {
 	// honesty is what tombstones say about copies Memax can't reach
 	// (WithForgetHonesty).
 	honesty ForgetHonesty
+	// dreamUndoWindow is how long one of Dream's actions can be undone
+	// (WithDreamUndoWindow).
+	dreamUndoWindow time.Duration
 }
 
 // Option configures a Ledger.
@@ -69,7 +72,7 @@ func New(pool *pgxpool.Pool, opts ...Option) *Ledger {
 	}
 	l := &Ledger{pool: pool, now: time.Now, lockTimeout: DefaultLockTimeout, log: slog.Default(),
 		undoWindow: DefaultUndoWindow, judgeUndoWindow: DefaultJudgeUndoWindow, returnWindow: DefaultReturnWindow,
-		honesty: ForgetHonesty{BackupDays: DefaultBackupDays}}
+		honesty: ForgetHonesty{BackupDays: DefaultBackupDays}, dreamUndoWindow: DefaultDreamUndo}
 	for _, o := range opts {
 		o(l)
 	}
@@ -109,7 +112,7 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 
 	w := &writer{tx: tx, meta: m, command: cmd.Name(), hash: hash, inserter: l.inserter, loginRole: loginRole,
 		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, returnWindow: l.returnWindow, now: now,
-		indexJobs: l.indexJobs, forgetHonesty: l.honesty}
+		indexJobs: l.indexJobs, forgetHonesty: l.honesty, dreamUndoWindow: l.dreamUndoWindow}
 	var res Result
 	switch c := cmd.(type) {
 	case *Remember:
@@ -174,6 +177,12 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.recordImportCheck(ctx, c)
 	case *SettleImportConflict:
 		res, err = w.settleImportConflict(ctx, c)
+	case *PublishEdition:
+		res, err = w.publishEdition(ctx, c)
+	case *UndoDreamAction:
+		res, err = w.undoDreamAction(ctx, c)
+	case *Restore:
+		res, err = w.restore(ctx, c)
 	}
 	if err != nil {
 		return Result{}, mapDBError(err)
@@ -265,6 +274,15 @@ func validateCommand(cmd Command) error {
 		return c.validate()
 	case *SettleImportConflict:
 		return c.validate()
+	case *PublishEdition:
+		return c.validate()
+	case *UndoDreamAction:
+		if c.Action == uuid.Nil {
+			return invalid("action", "say which of Dream's actions to undo")
+		}
+		return nil
+	case *Restore:
+		return validateTarget(c.Memory, c.ExpectedVersion, false)
 	case *Remember:
 		return c.NewMemory.validate()
 	case *Propose:

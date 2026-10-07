@@ -1,6 +1,6 @@
 # Fonts
 
-All four families are licensed under the SIL Open Font License 1.1, which allows them to be self-hosted and bundled with the app. Keep this note, or the OFL text from each family's source, next to the files when you ship them.
+All four families are licensed under the SIL Open Font License 1.1, which allows them to be self-hosted and bundled with the app. Each family's copyright notice and the licence text are in `OFL-<family>.txt` here (from the families' sources on Google Fonts); keep them next to the files wherever you ship them.
 
 | File                                                            | Family                              | Use                                                                                |
 | --------------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------- |

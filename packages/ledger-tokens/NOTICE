@@ -5,6 +5,6 @@ Licensed under the Apache License, Version 2.0 (see LICENSE), except:
 
 - fonts/: Gloock, Newsreader, Schibsted Grotesk and IBM Plex Mono are each
   licensed by their authors under the SIL Open Font License, Version 1.1.
-  See fonts/README.md.
+  Each family's copyright notice and the licence are in fonts/OFL-*.txt.
 - assets/logos/: the Memax name and mark are trademarks of MemaxLabs. The
   licence above covers the files, not the right to use the marks.

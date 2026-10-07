@@ -57,32 +57,39 @@ function useKeptToast() {
   const undo = useUndo();
   const copy = t.ledger.app.toast;
   return {
-    kept(result: KeepResult, space: SpaceSummary) {
-      if (result.outcome === "proposed") {
-        toast({
-          state: "proposed",
-          text: interpolate(copy.proposed, { ref: result.ref }),
-        });
-        return;
-      }
-      const text =
-        result.recompiled === null
-          ? interpolate(copy.kept, { ref: result.ref })
-          : count(
-              copy.keptRecompiledOne,
-              copy.keptRecompiled,
-              result.recompiled,
-              {
-                ref: result.ref,
-              },
-            );
-      const toastOptions: ShowToast = { state: "kept", text };
-      // Keeping a proposal (the near-duplicate offer) can be undone; a
-      // fresh Remember carries no receipt to undo by.
+    /**
+     * The toast for a Remember, or for keeping the near-duplicate offer
+     * (`keep`). Both can be undone from it (and ⌘Z) while their receipt
+     * is fresh: undoing a Remember withdraws the memory, undoing a keep
+     * sends the proposal back to Review.
+     */
+    kept(
+      result: KeepResult,
+      space: SpaceSummary,
+      command: "remember" | "keep",
+    ) {
+      const toastOptions: ShowToast =
+        result.outcome === "proposed"
+          ? {
+              state: "proposed",
+              text: interpolate(copy.proposed, { ref: result.ref }),
+            }
+          : {
+              state: "kept",
+              text:
+                result.recompiled === null
+                  ? interpolate(copy.kept, { ref: result.ref })
+                  : count(
+                      copy.keptRecompiledOne,
+                      copy.keptRecompiled,
+                      result.recompiled,
+                      { ref: result.ref },
+                    ),
+            };
       if (result.receipt) {
         const entry = undo.record({
           space,
-          command: "keep",
+          command,
           ref: result.ref,
           receipt: result.receipt,
           restore: null,
@@ -135,7 +142,7 @@ function CommandBody({
       const result = await draft.keep();
       if (!result) return;
       close();
-      notify.kept(result, draft.space);
+      notify.kept(result, draft.space, "remember");
     } catch {
       notify.failed();
     }
@@ -146,7 +153,7 @@ function CommandBody({
       const result = await draft.keepDuplicate();
       if (!result) return;
       close();
-      notify.kept(result, draft.space);
+      notify.kept(result, draft.space, "keep");
     } catch {
       notify.failed();
     }
@@ -182,7 +189,7 @@ function CommandBody({
         await new Promise((resolve) => setTimeout(resolve, SEAL_MS));
       }
       close();
-      notify.kept(result, space);
+      notify.kept(result, space, "remember");
     } catch {
       notify.failed();
     } finally {

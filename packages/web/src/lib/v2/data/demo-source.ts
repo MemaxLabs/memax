@@ -271,7 +271,14 @@ export function createDemoSource({
       const ref = allocRef();
       // So the Brief places it, as the compiler does.
       brief.remembered(space.slug, { ref, statement, section });
-      const result = kept(ref, space.slug);
+      // A person's own Remember can be undone: it is withdrawn.
+      const receipt = records.journal.record({
+        slug: space.slug,
+        command: "remember",
+        ref,
+        revert: () => brief.withdrawn(space.slug, ref),
+      });
+      const result = { ...kept(ref, space.slug), receipt };
       remembered.set(idempotencyKey, result);
       return result;
     },

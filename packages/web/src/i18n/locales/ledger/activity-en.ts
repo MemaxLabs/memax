@@ -160,6 +160,11 @@ export const ledgerActivityEn = {
     forgot:
       "{actor} forgot a memory. Removed from {files} and {agents}; the tombstone stays.",
     forgotPlain: "{actor} forgot a memory. The tombstone stays.",
+    // Nothing compiled held it, or no agent read it: say only what did.
+    forgotAgents:
+      "{actor} forgot a memory. Removed from {agents}; the tombstone stays.",
+    forgotFiles:
+      "{actor} forgot a memory. Removed from {files}; the tombstone stays.",
     files: "{n} files",
     filesOne: "1 file",
     agents: "{n} agents",

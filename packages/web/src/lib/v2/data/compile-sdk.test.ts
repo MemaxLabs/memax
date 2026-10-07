@@ -91,6 +91,21 @@ function fakeClient(over: Record<string, unknown> = {}) {
         brief: { ...BRIEF, ref: "B-0003", version: 3 },
         receipts: [],
       }),
+      restore: vi.fn().mockResolvedValue({
+        outcome: "applied",
+        policy: { effect: "allow" },
+        brief: { ...BRIEF, ref: "B-0004", version: 3 },
+        receipts: [],
+        dropped: [
+          {
+            section: "decisions",
+            item: "M-7",
+            kind: "memory",
+            refs: ["M-7"],
+            reason: "forgotten",
+          },
+        ],
+      }),
     },
     memories: {
       list: vi.fn().mockResolvedValue({
@@ -160,6 +175,35 @@ describe("the Brief through memax.v2.briefs", () => {
     expect(
       await createSdkBrief(client, () => "u1").get({ space: SPACE }),
     ).toBeNull();
+  });
+
+  it("restores on the server, with If-Match on the version in force", async () => {
+    const client = fakeClient();
+    const result = await createSdkBrief(client, () => "u1").restore({
+      space: SPACE,
+      base: 2,
+      version: 1,
+      reason: "Restored B-0001",
+      idempotencyKey: "k2",
+    });
+    expect(result).toEqual({
+      ref: "B-0004",
+      version: 3,
+      dropped: [
+        {
+          section: "decisions",
+          item: "M-7",
+          kind: "memory",
+          refs: ["M-7"],
+          reason: "forgotten",
+        },
+      ],
+    });
+    expect(client.v2.briefs.restore).toHaveBeenCalledWith("memax-v2", 1, {
+      idempotencyKey: "k2",
+      ifMatch: 2,
+      reason: "Restored B-0001",
+    });
   });
 
   it("revises with If-Match on the version it started from", async () => {

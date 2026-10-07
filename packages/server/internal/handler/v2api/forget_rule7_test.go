@@ -403,6 +403,30 @@ func (s *forgetStack) seedWords(owner uuid.UUID, sp space, token string) (memory
 		time.Sleep(50 * time.Millisecond)
 	}
 	s.awaitEmbedded(m.Memory.ID, cited.Memory.ID, other.Memory.ID)
+
+	// The judge compared an agent's decision with m on its way to flagging
+	// a conflict, and wrote its question and labels with m's words in them.
+	var kept, proposed result
+	s.do(call{method: "POST", path: base + "/memories", token: tok,
+		body: decisionBody("Secrets live in the platform vault.", "secrets")}).ok(http.StatusCreated, &kept)
+	s.do(call{method: "POST", path: base + "/memories", token: key,
+		body: decisionBody("Secrets live in each service's own vault.", "secrets")}).ok(http.StatusCreated, &proposed)
+	sscope, err := s.ledger.SpaceScope(ctx, sp.id)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	if _, err := s.ledger.Apply(ctx, &ledger.RecordVerdict{
+		Meta:   ledger.Meta{Actor: ledger.Actor{Kind: policy.ActorMemax}, Scope: sscope, Via: policy.ViaSystem, IdempotencyKey: uuid.NewString()},
+		Memory: proposed.Memory.ID, Version: 1, Mode: ledger.JudgeProposal, Round: 1, Force: true,
+		Outcome: ledger.OutcomeFlagged, Target: kept.Memory.ID,
+		Verdict: ledger.Verdict{Stage: ledger.StageLLM, Relation: ledger.RelationContradicts, Related: kept.Memory.ID,
+			Question: "Does " + token + " keep the vault?", Suggested: ledger.SuggestDecision,
+			Labels: ledger.ConflictLabels{Proposal: "Each service", Decision: token + "'s vault", Both: "Both", Open: "Undecided"},
+			Candidates: []ledger.VerdictCandidate{{MemoryID: kept.Memory.ID, Ref: kept.Memory.Ref, Sets: []string{"keyed"}},
+				{MemoryID: m.Memory.ID, Ref: m.Memory.Ref, Sets: []string{"lexical"}}}},
+	}); err != nil {
+		s.t.Fatal(err)
+	}
 	return m.Memory, key
 }
 
@@ -418,7 +442,7 @@ func TestForgetLeavesTheWordsNowhere(t *testing.T) {
 	// The grep sees the words where they are: it isn't blind.
 	before := s.grepDB(token)
 	for _, want := range []string{"v2.memory_versions.statement", "v2.sources.quote", "v2.sources.uri", "v2.receipts.reason",
-		"v2.memories.search", "v2.brief_versions.structure"} {
+		"v2.memories.search", "v2.brief_versions.structure", "v2.judge_verdicts.question", "v2.judge_verdicts.labels"} {
 		if !slices.ContainsFunc(before, func(h string) bool { return strings.HasPrefix(h, want+" ") }) {
 			t.Errorf("before the Forget, the grep doesn't see the words in %s: %v", want, before)
 		}

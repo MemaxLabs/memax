@@ -118,8 +118,14 @@ describe("the demo source", () => {
     });
     expect([first.ref, second.ref]).toEqual(["M-0439", "M-0440"]);
     expect(first).toMatchObject({ outcome: "kept", recompiled: 3 });
-    // A fresh Remember has no undo on the server, so none here either.
-    expect(first.receipt).toBeNull();
+    // A person's own Remember is undoable: undoing it withdraws it.
+    expect(first.receipt).toMatch(/^demo-receipt-/);
+    const undone = await demo.undo({
+      space: v2,
+      receipt: first.receipt!,
+      idempotencyKey: "undo-a",
+    });
+    expect(undone.refs).toEqual(["M-0439"]);
   });
 });
 
@@ -173,7 +179,7 @@ function fakeClient() {
         remember: vi.fn().mockResolvedValue({
           outcome: "applied",
           memory: { ref: "M-0500" },
-          receipts: [{}],
+          receipts: [{ id: "r-remember" }],
         }),
         keep: vi.fn().mockResolvedValue({
           outcome: "proposed",
@@ -248,11 +254,12 @@ describe("the SDK source", () => {
       { statement: "River, not Temporal.", section: "decisions" },
       { idempotencyKey: "key-1" },
     );
+    // Its receipt, for Undo: a person's own Remember is undoable.
     expect(kept).toEqual({
       ref: "M-0500",
       outcome: "kept",
       recompiled: null,
-      receipt: null,
+      receipt: "r-remember",
     });
     const proposal = await source.keepProposal({
       space: v2,

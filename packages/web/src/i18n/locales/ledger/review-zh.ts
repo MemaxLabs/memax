@@ -191,6 +191,11 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
       "已停止检查。你写的说法还在：再保留一次这个决策，就会重新检查。",
     inConflictBoth:
       "缩小后的说法和现行的决策 {with} 矛盾。改一改说法，或换一个答案。",
+    checkingWords: "正在对照其他现行的决策检查这段说法。检查完就会定下来。",
+    stoppedCheckingWords:
+      "已停止检查。还没有定下来：再保留一次这个决策，就会重新检查。",
+    inConflictWords:
+      "{ref} 也和现行的决策 {with} 矛盾。先处理那个，或换一个答案。",
     nothing: {
       title: "{ref} 没有可以对比的东西。",
       detail:

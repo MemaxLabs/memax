@@ -158,6 +158,7 @@ var routes = []Route{
 	{"GET", "/v2/spaces/{space}/brief", "getBrief", (*Handler).getBrief},
 	{"POST", "/v2/spaces/{space}/brief", "reviseBrief", (*Handler).reviseBrief},
 	{"GET", "/v2/spaces/{space}/brief/versions", "listBriefVersions", (*Handler).listBriefVersions},
+	{"POST", "/v2/spaces/{space}/brief/versions/{n}:restore", "restoreBriefVersion", (*Handler).restoreBriefVersion},
 	{"GET", "/v2/spaces/{space}/targets", "listTargets", (*Handler).listTargets},
 	{"POST", "/v2/spaces/{space}/targets", "createTarget", (*Handler).createTarget},
 	{"PATCH", "/v2/targets/{target}", "configureTarget", (*Handler).configureTarget},

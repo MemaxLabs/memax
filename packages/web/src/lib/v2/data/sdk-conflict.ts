@@ -16,10 +16,11 @@ import { actorOf, sessionOf } from "./sdk-records";
  * keep_this / keep_other become `proposal` / `kept` by which side the
  * path named.
  *
- * What the server doesn't write: a question, labels, a suggested answer,
- * compiled files and the agents told (PLACEHOLDER: compile runs aren't
- * served to Review yet). The screen words those from the catalogue, or
- * leaves them out.
+ * The judge writes a question, a label per answer and a suggested answer
+ * when it found the conflict; a conflict found otherwise (an import, Dream)
+ * has none, and the screen words them from the catalogue and preselects
+ * nothing. What the server doesn't serve: compiled files and the agents
+ * told (PLACEHOLDER: compile runs aren't served to Review yet).
  */
 
 /** The board's order: 1 the proposal, 2 as kept, 3 both, 4 open. */
@@ -99,7 +100,7 @@ function optionOf(
 ): ConflictOption {
   return {
     kind,
-    label: null,
+    label: option.label?.trim() || null,
     detail: null,
     effects: option.effects.map((e) => ({
       ref: e.ref,
@@ -135,14 +136,20 @@ export function conflictOf(
   const options = conflict.options
     .map((o) => optionOf(o, kindOf(o.choice, thisIsFlagged), kept, flagged))
     .sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
+  // The judge's suggestion is preselected, when the person may take it.
+  const suggestedKind = conflict.suggested
+    ? kindOf(conflict.suggested, thisIsFlagged)
+    : null;
+  const suggested = options.findIndex(
+    (o) => o.kind === suggestedKind && o.allowed,
+  );
   return {
-    question: null,
+    question: conflict.question?.trim() || null,
     area: kept.decision?.area?.trim() || flagged.decision?.area?.trim() || null,
     kept: sideOf(kept, conflict.receipts, "kept", viewerId),
     proposal: sideOf(flagged, conflict.receipts, "proposal", viewerId),
     options,
-    // The judge doesn't suggest an answer: the person picks one.
-    suggested: null,
+    suggested: suggested < 0 ? null : suggested,
     // PLACEHOLDER: compile runs and the agents told aren't served yet.
     recompiles: null,
     tells: [],

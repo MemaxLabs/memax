@@ -106,12 +106,15 @@ useful.
 
 ## Exposed MCP tools
 
-9 tools — see [`memax mcp`](/cli/mcp) for the full schema. Notable:
-`memax_recall`, `memax_push`, `memax_get`, `memax_list`,
-`memax_hubs`, `memax_hub_members`, `memax_forget`, `memax_capture`,
-`memax_topics`.
+11 tools — see [`memax mcp`](/cli/mcp) for the full schema:
+`memax_recall`, `memax_search`, `memax_push`, `memax_get`,
+`memax_list`, `memax_hubs`, `memax_hub_members`, `memax_forget`,
+`memax_capture`, `memax_request_decision` and `memax_topics`.
 
-There is **no** `memax_search` tool.
+`memax_recall` answers a question with the relevant memories (or, with
+no query, a digest of each space); `memax_search` finds memories and
+decisions by their words and returns their IDs, which `memax_get` reads
+in full.
 
 <Callout type="info">
   Claude Code uses deferred tool loading — Memax tools may not appear until the

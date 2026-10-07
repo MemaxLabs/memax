@@ -92,6 +92,10 @@ export const ledgerBriefEn = {
     kept: "Kept your edits as {ref}",
     started: "Started the Brief as {ref}",
     restored: "Restored {from} as {ref}",
+    restoredWithout:
+      "Restored {from} as {ref}, without {n} lines that rest on memories no longer kept",
+    restoredWithoutOne:
+      "Restored {from} as {ref}, without 1 line that rests on a memory no longer kept",
     changed: "Changed how {file} is written",
     restarted: "Compiling {file} again",
     copied: "Copied {file}",

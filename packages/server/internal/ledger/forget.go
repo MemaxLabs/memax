@@ -27,8 +27,9 @@ import (
 //     search vector and the judge's fingerprints (the embeddings go by
 //     037's triggers in the same statement);
 //   - the reasons (and their salts) on its receipts;
-//   - the judge's rationale and merged statement on every verdict that
-//     names it, on either side of the pair;
+//   - the judge's rationale and merged statement, and the question and
+//     answer labels it wrote for a conflict, on every verdict that names
+//     it, on either side of the pair;
 //   - the idempotency request hashes of the commands that carried its
 //     words;
 //   - a gate's question, context and options when it is the decision the
@@ -435,10 +436,13 @@ func (w *writer) purgeMemory(ctx context.Context, sp spaceRow, op *forgetOp, m *
 	if _, err := w.tx.Exec(ctx, `SELECT v2.redact_receipt_reasons($1)`, m.ID); err != nil {
 		return Receipt{}, fmt.Errorf("ledger: forget %s: receipts: %w", m.Ref, err)
 	}
-	// The judge's words, on both sides of every pair it is part of.
+	// The judge's words, on both sides of every pair it is part of: its
+	// rationale and merged wording, and a conflict's question and labels.
 	if _, err := w.tx.Exec(ctx, `
-		UPDATE v2.judge_verdicts SET rationale = NULL, merged_statement = NULL, last_receipt_id = $2
-		 WHERE space_id = $3 AND (rationale IS NOT NULL OR merged_statement IS NOT NULL)
+		UPDATE v2.judge_verdicts
+		   SET rationale = NULL, merged_statement = NULL, question = NULL, labels = NULL, last_receipt_id = $2
+		 WHERE space_id = $3
+		   AND (rationale IS NOT NULL OR merged_statement IS NOT NULL OR question IS NOT NULL OR labels IS NOT NULL)
 		   AND (memory_id = $1 OR related_memory_id = $1 OR candidates @> $4::jsonb)`,
 		m.ID, rc.ID, sp.ID, candidate); err != nil {
 		return Receipt{}, fmt.Errorf("ledger: forget %s: verdicts: %w", m.Ref, err)

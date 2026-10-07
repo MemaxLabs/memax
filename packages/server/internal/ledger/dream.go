@@ -581,7 +581,7 @@ func ApplyBriefOps(base []BriefSection, ops []BriefOp, kept func(ref string) boo
 			return nil, err
 		}
 		if len(op.Cites) == 0 {
-			return nil, invalid("ops.cites", "every line cites the memories it rests on; an uncited claim can't go in the Brief")
+			return nil, invalid("ops.cites", uncitedClaim)
 		}
 		var refs []string
 		for _, c := range op.Cites {

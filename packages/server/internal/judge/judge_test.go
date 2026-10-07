@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -404,6 +405,26 @@ func TestContradictionIsFlaggedBeforeKeep(t *testing.T) {
 	// The decision shows the incoming conflict.
 	if d := f.get(zz, railway.ID); link(d, ledger.LinkConflictsWith, ledger.LinkIn) == nil {
 		t.Errorf("decision links = %+v", d.Links)
+	}
+	// The model's question, labels and suggestion settle it in Review,
+	// relative to whichever side asks.
+	for _, side := range []struct {
+		ref, other         string
+		proposal, decision ledger.ConflictChoice
+	}{{fly.Ref, railway.Ref, ledger.ChooseThis, ledger.ChooseOther}, {railway.Ref, fly.Ref, ledger.ChooseOther, ledger.ChooseThis}} {
+		cv, err := f.l.GetConflict(f.ctx, f.scope(zz), person(zz), policy.ViaWeb, side.ref, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		labels := map[ledger.ConflictChoice]string{}
+		for _, o := range cv.Options {
+			labels[o.Choice] = o.Label
+		}
+		want := map[ledger.ConflictChoice]string{side.proposal: fakeLabels.Proposal, side.decision: fakeLabels.Decision,
+			ledger.ChooseBoth: fakeLabels.Both, ledger.ChooseOpen: fakeLabels.Open}
+		if cv.Question != fakeQuestion(railway.Ref) || cv.Suggested != ledger.ChooseBoth || !maps.Equal(labels, want) {
+			t.Errorf("from %s: question %q, suggested %q, labels %v", side.ref, cv.Question, cv.Suggested, labels)
+		}
 	}
 }
 

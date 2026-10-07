@@ -12,6 +12,27 @@ function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/** What happened to an agent's session-start hook, in a few words; null to say nothing. */
+function hookNote(hook: string | null): string | null {
+  switch (hook) {
+    case null:
+    case "unsupported":
+      return null;
+    case "written":
+      return "session hook added";
+    case "present":
+      return "session hook in place";
+    case "plugin":
+      return "the Memax plugin runs its hook";
+    case "windows":
+      return "no session hook on Windows yet";
+    default:
+      return hook.startsWith("failed: ")
+        ? `session hook not added: ${hook.slice("failed: ".length)}`
+        : hook;
+  }
+}
+
 export function renderAgents(rows: InitReport["agents"]): string[] {
   const lines = ["", chalk.white("  Agents on this machine")];
   if (rows.filter((r) => r.found).length === 0) {
@@ -35,8 +56,9 @@ export function renderAgents(rows: InitReport["agents"]): string[] {
           : r.mcp === "not written"
             ? "not set up"
             : r.mcp;
+    const hook = hookNote(r.hook);
     lines.push(
-      `  ${chalk.green("✓")} ${pad(mark, 4)}${pad(r.name, 13)}${pad(r.where, 22)}${pad(r.autonomy ?? "", 9)}${chalk.gray(note)}`,
+      `  ${chalk.green("✓")} ${pad(mark, 4)}${pad(r.name, 13)}${pad(r.where, 22)}${pad(r.autonomy ?? "", 9)}${chalk.gray(hook ? `${note} · ${hook}` : note)}`,
     );
   }
   return lines;

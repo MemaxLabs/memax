@@ -27,6 +27,7 @@ const OPEN_V2_PATHS = [
   "/device",
   "/device?code=WQRT-4821",
   "/unsubscribe?token=abc",
+  "/oauth/authorize?request_id=r1&consent_token=t1",
 ];
 
 // Representative V2 paths, one or more per gated area in lib/ui-gate.ts.
@@ -130,6 +131,28 @@ describe("proxy V2 gating", () => {
         expect(res.status).toBe(200);
       }
     }
+  });
+
+  it("sends an opted-in browser on V1's consent page to OAuthConsent with its request", () => {
+    const query = "?request_id=r1&consent_token=t%2B1";
+    for (const sessionPresence of [false, true]) {
+      const res = proxy(
+        makeRequest(`/oauth/consent${query}`, { sessionPresence, ui: "v2" }),
+      );
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toBe(
+        `https://memax.app/oauth/authorize${query}`,
+      );
+      // Without the opt-in, V1's page answers.
+      const v1 = proxy(
+        makeRequest(`/oauth/consent${query}`, { sessionPresence }),
+      );
+      expect(v1.status).toBe(200);
+      expect(v1.headers.get("location")).toBeNull();
+    }
+    expect(
+      unstable_doesMiddlewareMatch({ config, url: "/oauth/consent" }),
+    ).toBe(true);
   });
 
   it("keeps the V2 redirect ahead of the session fast path", () => {

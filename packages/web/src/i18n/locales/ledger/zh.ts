@@ -6,6 +6,7 @@ import { ledgerActivityZh } from "./activity-zh";
 import { ledgerAgentsZh } from "./agents-zh";
 import { ledgerAppZh } from "./app-zh";
 import { ledgerBriefZh } from "./brief-zh";
+import { ledgerConsentZh } from "./consent-zh";
 import { ledgerDreamZh } from "./dream-zh";
 import { ledgerMemoryZh } from "./memory-zh";
 import { ledgerOnboardingZh } from "./onboarding-zh";
@@ -47,6 +48,7 @@ export const ledgerZh: Translations["ledger"] = {
   today: ledgerTodayZh,
   dream: ledgerDreamZh,
   onboarding: ledgerOnboardingZh,
+  consent: ledgerConsentZh,
   settings: ledgerSettingsZh,
   devTokens: {
     breadcrumb: "Ledger · 开发样张",

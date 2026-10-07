@@ -8,6 +8,7 @@ import { ledgerActivityEn } from "./activity-en";
 import { ledgerAgentsEn } from "./agents-en";
 import { ledgerAppEn } from "./app-en";
 import { ledgerBriefEn } from "./brief-en";
+import { ledgerConsentEn } from "./consent-en";
 import { ledgerDreamEn } from "./dream-en";
 import { ledgerMemoryEn } from "./memory-en";
 import { ledgerOnboardingEn } from "./onboarding-en";
@@ -51,6 +52,7 @@ export const ledgerEn = {
   today: ledgerTodayEn,
   dream: ledgerDreamEn,
   onboarding: ledgerOnboardingEn,
+  consent: ledgerConsentEn,
   settings: ledgerSettingsEn,
   devTokens: {
     breadcrumb: "Ledger · Dev fixture",

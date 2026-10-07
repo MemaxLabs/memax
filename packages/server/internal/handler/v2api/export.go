@@ -127,7 +127,7 @@ func (h *Handler) exportSpace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, h.fromLedger(r, err))
 		return
 	case res.Outcome == ledger.OutcomeRefused:
-		writeError(w, refusal(res.Policy))
+		h.writeRefusal(w, r, res.Policy)
 		return
 	case len(res.Receipts) == 0:
 		writeError(w, h.fromLedger(r, errors.New("v2: an export wrote no receipt")))

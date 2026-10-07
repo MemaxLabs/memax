@@ -21,6 +21,7 @@ import { CommandCenter } from "./command-center";
 import { FrameKeys } from "./frame-keys";
 import { FrameFailed, FrameSkeleton } from "./frame-states";
 import { MobileTabBar, MobileTopBar } from "./mobile-bars";
+import { PasskeyCheckHost } from "./passkey-check";
 import { useRailProps } from "./rail-props";
 import { ShortcutsSheet } from "./shortcuts-sheet";
 import { SpaceMenu } from "./space-menu";
@@ -48,6 +49,7 @@ export function AppFrame({
         <ToastProvider>
           <OverlayProvider>
             <FrameBody mode={mode}>{children}</FrameBody>
+            <PasskeyCheckHost />
             <ToastViewport />
           </OverlayProvider>
         </ToastProvider>

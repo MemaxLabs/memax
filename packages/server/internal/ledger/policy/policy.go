@@ -611,9 +611,10 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideRequestForget(a, s)
 	case ActionDeclineForget:
 		// Keeping it is the forgetter's call, with no more assurance than
-		// the role: nothing is lost by keeping.
-		d := decideForget(a, Object{Ref: o.Ref}, s)
-		return d
+		// the role: nothing is lost by keeping, so no passkey either.
+		keeper := a
+		keeper.Passkey = false
+		return decideForget(keeper, Object{Ref: o.Ref}, s)
 	case ActionReapplyForget:
 		return decideReapplyForget(a)
 	case ActionReviseBrief:

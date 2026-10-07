@@ -2,6 +2,11 @@
 
 import { Memax } from "memax-sdk";
 import { API_URL } from "@/lib/urls";
+import {
+  PASSKEY_SUGGESTED_EVENT,
+  answerPasskeyCheck,
+  suggestsPasskey,
+} from "@/lib/v2/passkeys/check";
 
 // The browser talks to the API only through the web app's server
 // (/api/proxy), which holds the session in HttpOnly cookies, attaches its
@@ -18,8 +23,28 @@ function notifyAuthExpired() {
   window.dispatchEvent(new CustomEvent("memax:auth-expired"));
 }
 
-function getBrowserSafeAPIURL(): string {
-  return typeof window === "undefined" ? API_URL : BROWSER_API_PROXY_URL;
+/**
+ * A /v2 change that needed a person and went through without a passkey
+ * says so in its policy (`suggest: "passkey"`); the frame offers to add
+ * one. Read from a copy, after the answer is on its way to the caller.
+ */
+function watchForSuggestion(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  res: Response,
+) {
+  if (typeof window === "undefined" || !res.ok) return;
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (method === "GET" || !String(input).includes("/v2/")) return;
+  void res
+    .clone()
+    .json()
+    .then((body: unknown) => {
+      if (suggestsPasskey(body)) {
+        window.dispatchEvent(new CustomEvent(PASSKEY_SUGGESTED_EVENT));
+      }
+    })
+    .catch(() => {});
 }
 
 /**
@@ -32,11 +57,22 @@ async function authFetch(
 ): Promise<Response> {
   const res = await fetch(input, { credentials: "same-origin", ...init });
   if (res.status === 401) notifyAuthExpired();
+  watchForSuggestion(input, init, res);
   return res;
 }
 
 function createAuthedClient(): Memax {
-  return new Memax({ apiUrl: getBrowserSafeAPIURL(), fetch: authFetch });
+  return new Memax({
+    apiUrl: getBrowserSafeAPIURL(),
+    fetch: authFetch,
+    // The passkey re-check (lib/v2/passkeys/check.ts): a decision that
+    // asks for the person's passkey is answered and sent again.
+    passkeyCheck: answerPasskeyCheck,
+  });
+}
+
+function getBrowserSafeAPIURL(): string {
+  return typeof window === "undefined" ? API_URL : BROWSER_API_PROXY_URL;
 }
 
 function createPublicClient(): Memax {

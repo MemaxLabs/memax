@@ -29,7 +29,11 @@
 --
 -- Isolation: RLS is ENABLEd and FORCEd on both, keyed on app.person_id, so
 -- a transaction sees and changes only its own person's passkeys and
--- challenges. Sign-in challenges belong to nobody yet (person_id NULL) and
+-- challenges. memax_v2 never deletes in v2 (TestEveryV2TableIsLockedDown):
+-- removing a passkey, and clearing out expired challenges, go through
+-- v2.remove_passkeys and v2.clear_passkey_challenges (SECURITY DEFINER),
+-- which delete only the current person's rows (and sign-in challenges,
+-- which are nobody's). Sign-in challenges belong to nobody yet (person_id NULL) and
 -- hold nothing but a random nonce, so any memax_v2 transaction may read
 -- and use them. Signing in has to find a credential before it knows whose
 -- it is: v2.passkey_owner (SECURITY DEFINER) answers only the person a
@@ -82,8 +86,23 @@ CREATE POLICY passkeys_person ON v2.passkeys
 CREATE POLICY passkeys_sign_in ON v2.passkeys FOR SELECT TO CURRENT_USER
     USING (current_setting('app.sweep', true) = 'passkey_sign_in');
 
-GRANT SELECT, INSERT, DELETE ON v2.passkeys TO memax_v2;
+GRANT SELECT, INSERT ON v2.passkeys TO memax_v2;
 GRANT UPDATE (name, sign_count, backed_up, last_used_at) ON v2.passkeys TO memax_v2;
+
+-- Takes one of the current person's passkeys off their account (p_id), or
+-- all of them (NULL), and returns what it removed. RLS still applies to
+-- the owner (FORCE), so only app.person_id's rows are visible to it.
+CREATE FUNCTION v2.remove_passkeys(p_id uuid) RETURNS SETOF v2.passkeys
+    LANGUAGE sql SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    AS $$
+    DELETE FROM v2.passkeys
+     WHERE person_id = v2.current_person_id() AND (p_id IS NULL OR id = p_id)
+    RETURNING *
+    $$;
+
+REVOKE ALL ON FUNCTION v2.remove_passkeys(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION v2.remove_passkeys(uuid) TO memax_v2;
 
 -- The person a credential belongs to, for signing in with it. Nothing
 -- else about the credential leaves: the caller then reads it in that
@@ -131,8 +150,34 @@ CREATE POLICY passkey_challenges_person ON v2.passkey_challenges
     USING (person_id IS NULL OR person_id = (SELECT v2.current_person_id()))
     WITH CHECK (person_id IS NULL OR person_id = (SELECT v2.current_person_id()));
 
-GRANT SELECT, INSERT, DELETE ON v2.passkey_challenges TO memax_v2;
+GRANT SELECT, INSERT ON v2.passkey_challenges TO memax_v2;
 GRANT UPDATE (used_at) ON v2.passkey_challenges TO memax_v2;
+
+-- Clears challenges that expired before p_before (at most 200 at a time),
+-- the current person's and nobody's (sign-in); with p_all_mine, every one
+-- of the current person's too (forgetting the account). Returns how many.
+CREATE FUNCTION v2.clear_passkey_challenges(p_before timestamptz, p_all_mine boolean) RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    AS $$
+DECLARE
+    n integer;
+BEGIN
+    WITH gone AS (
+        DELETE FROM v2.passkey_challenges
+         WHERE challenge IN (
+            SELECT challenge FROM v2.passkey_challenges
+             WHERE (person_id IS NULL OR person_id = v2.current_person_id())
+               AND (expires_at < p_before OR (p_all_mine AND person_id = v2.current_person_id()))
+             LIMIT CASE WHEN p_all_mine THEN NULL ELSE 200 END)
+        RETURNING 1)
+    SELECT count(*) INTO n FROM gone;
+    RETURN n;
+END
+$$;
+
+REVOKE ALL ON FUNCTION v2.clear_passkey_challenges(timestamptz, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION v2.clear_passkey_challenges(timestamptz, boolean) TO memax_v2;
 
 -- ---------------------------------------------------------------------
 -- Assurance: human_web_verified

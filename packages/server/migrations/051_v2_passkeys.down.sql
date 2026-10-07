@@ -12,6 +12,8 @@ ALTER TABLE v2.receipts DROP CONSTRAINT receipts_assurance_check;
 ALTER TABLE v2.receipts ADD CONSTRAINT receipts_assurance_check
     CHECK (assurance IS NULL OR assurance IN ('human_web', 'client_attested')) NOT VALID;
 
+DROP FUNCTION IF EXISTS v2.clear_passkey_challenges(timestamptz, boolean);
+DROP FUNCTION IF EXISTS v2.remove_passkeys(uuid);
 DROP TABLE IF EXISTS v2.passkey_challenges;
 DROP FUNCTION IF EXISTS v2.passkey_owner(bytea);
 DROP TABLE IF EXISTS v2.passkeys;

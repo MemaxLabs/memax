@@ -108,7 +108,7 @@ func (h *Handler) writeMemoriesResult(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 	if res.Outcome == ledger.OutcomeRefused {
-		writeError(w, refusal(res.Policy))
+		h.writeRefusal(w, r, res.Policy)
 		return
 	}
 	if res.Replayed {

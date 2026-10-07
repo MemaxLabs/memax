@@ -112,6 +112,7 @@ func (w *writer) forgetWholeSpace(ctx context.Context, sp spaceRow, retire bool,
 		return Result{}, fmt.Errorf("ledger: forget space: %w", err)
 	}
 	src := w.objectReceipt(sp, ObjectSpace, sp.ID, SpaceObjectRef, ActionForgot, stream, "")
+	src.Assurance = w.personAssurance()
 	if err := insertReceipt(ctx, w.tx, &src); err != nil {
 		return Result{}, err
 	}
@@ -355,7 +356,19 @@ type AccountForget struct {
 // every agent connection of theirs is disconnected and its credential
 // revoked, so nothing can write to their record again.
 func (l *Ledger) ForgetAccount(ctx context.Context, person uuid.UUID, via policy.Via) (AccountForget, error) {
-	out, err := l.ForgetAccountRecord(ctx, person, via)
+	return l.ForgetAccountAs(ctx, Actor{Kind: policy.ActorPerson, ID: person, Credential: policy.CredentialSession}, via)
+}
+
+// ForgetAccountAs is ForgetAccount by actor, the person themselves as the
+// API resolved them (POST /v2/me/account:forget): their receipts carry the
+// assurance the request had, human_web_verified after a passkey re-check.
+// Who may is policy.DecideAccount's, decided before this runs.
+func (l *Ledger) ForgetAccountAs(ctx context.Context, actor Actor, via policy.Via) (AccountForget, error) {
+	if actor.Kind != policy.ActorPerson || actor.ID == uuid.Nil {
+		return AccountForget{}, invalid("actor", "only a person forgets their account")
+	}
+	person := actor.ID
+	out, err := l.forgetAccountRecord(ctx, actor, via)
 	if err != nil {
 		return out, err
 	}
@@ -363,7 +376,6 @@ func (l *Ledger) ForgetAccount(ctx context.Context, person uuid.UUID, via policy
 	if err != nil {
 		return out, err
 	}
-	actor := Actor{Kind: policy.ActorPerson, ID: person, Credential: policy.CredentialSession}
 	conns, err := l.ListConnections(ctx, scope, ConnectionQuery{})
 	if err != nil {
 		return out, err
@@ -394,15 +406,18 @@ func (l *Ledger) ForgetAccount(ctx context.Context, person uuid.UUID, via policy
 // transaction, so a failure leaves the spaces done so far forgotten and
 // the call can be repeated.
 func (l *Ledger) ForgetAccountRecord(ctx context.Context, person uuid.UUID, via policy.Via) (AccountForget, error) {
+	return l.forgetAccountRecord(ctx, Actor{Kind: policy.ActorPerson, ID: person, Credential: policy.CredentialSession}, via)
+}
+
+func (l *Ledger) forgetAccountRecord(ctx context.Context, actor Actor, via policy.Via) (AccountForget, error) {
 	var out AccountForget
 	if l == nil {
 		return out, ErrDisabled
 	}
-	scope, err := l.UserScope(ctx, person)
+	scope, err := l.UserScope(ctx, actor.ID)
 	if err != nil {
 		return out, err
 	}
-	actor := Actor{Kind: policy.ActorPerson, ID: person, Credential: policy.CredentialSession}
 	for _, g := range scope.Spaces {
 		if g.Role != policy.RoleOwner {
 			continue

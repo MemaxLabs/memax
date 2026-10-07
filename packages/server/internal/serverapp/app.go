@@ -46,6 +46,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore"
 	"github.com/MemaxLabs/memax/packages/server/internal/observability"
 	"github.com/MemaxLabs/memax/packages/server/internal/onboarding"
+	"github.com/MemaxLabs/memax/packages/server/internal/passkeys"
 	"github.com/MemaxLabs/memax/packages/server/internal/planresolver"
 	"github.com/MemaxLabs/memax/packages/server/internal/plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
@@ -669,7 +670,19 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		sessionStore = authH.Sessions()
 		app.addClose(sessionStore.Wait)
 	}
-	v2h, v2Search, readRecorder := v2Handler(pool, queueClient, blobStore, llm, forgetBus, web, sessionStore)
+	// Passkeys (WebAuthn): sign-in, Settings › Account and the re-check,
+	// with the relying party from WEBAUTHN_RP_ID and APP_BASE_URL.
+	pk := passkeysFromEnv(pool)
+	var accounts v2api.Accounts
+	if authH != nil {
+		accounts = authH
+		if pk != nil {
+			authH.SetPasskeys(pk)
+			hubsH.SetPasskeys(pk)
+			memories.SetPasskeys(pk)
+		}
+	}
+	v2h, v2Search, readRecorder := v2Handler(pool, queueClient, blobStore, llm, forgetBus, web, sessionStore, pk, accounts)
 	app.addClose(readRecorder.Close)
 	// V1's deletes of a hub and of a person's data forget the V2 record
 	// through the ledger first, when there is one.
@@ -783,6 +796,32 @@ func webSurfaceFromEnv() *websurface.Verifier {
 	return v
 }
 
+// passkeysFromEnv builds the passkey service (internal/passkeys) from
+// WEBAUTHN_RP_ID, WEBAUTHN_RP_ORIGINS, WEBAUTHN_RP_NAME and APP_BASE_URL;
+// nil (passkeys off: every decision stays at human_web) without a database
+// or a relying party.
+func passkeysFromEnv(pool *pgxpool.Pool) *passkeys.Service {
+	if pool == nil {
+		return nil
+	}
+	cfg, ok, err := passkeys.ConfigFromEnv(os.Getenv)
+	switch {
+	case err != nil:
+		slog.Error("passkeys disabled: the relying party is misconfigured", "error", err)
+		return nil
+	case !ok:
+		slog.Warn("passkeys disabled: set APP_BASE_URL or WEBAUTHN_RP_ID")
+		return nil
+	}
+	svc, err := passkeys.New(pool, cfg)
+	if err != nil {
+		slog.Error("passkeys disabled", "error", err)
+		return nil
+	}
+	slog.Info("passkeys enabled", "rp_id", cfg.RPID, "origins", strings.Join(cfg.Origins, ","))
+	return svc
+}
+
 // v2Handler builds /v2: the ledger, which enqueues compile jobs with
 // River's InsertTx when there is a queue (plan 25 §5.7), and the compile
 // coordinator for previews, hand edits and drift, which needs
@@ -794,7 +833,7 @@ func webSurfaceFromEnv() *websurface.Verifier {
 // can't reach from the same configuration (forget.HonestyFromEnv), and the
 // embeddings cache is purged when a Forget's propagation signals bus.
 func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store, llm *anthropic.Client,
-	bus *forget.Bus, web *websurface.Verifier, sessionStore *sessions.Store) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
+	bus *forget.Bus, web *websurface.Verifier, sessionStore *sessions.Store, pk *passkeys.Service, accounts v2api.Accounts) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
 	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
 	dreamCfg := v2dream.ConfigFromEnv(os.LookupEnv)
 	opts := []ledger.Option{ledger.WithForgetHonesty(forget.HonestyFromEnv(os.LookupEnv)),
@@ -820,7 +859,7 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 			"vectors", vectors != nil, "reads", rec != nil)
 	}
 	hopts := []v2api.Option{v2api.WithWebSurface(web), v2api.WithCompile(svc), v2api.WithSessions(sessionStore),
-		v2api.WithReads(rec), v2api.WithReceiptKeys(receiptKeysFromEnv())}
+		v2api.WithReads(rec), v2api.WithReceiptKeys(receiptKeysFromEnv()), v2api.WithPasskeys(pk), v2api.WithAccounts(accounts)}
 	if vectors != nil {
 		hopts = append(hopts, v2api.WithDrafts(vectors))
 	}

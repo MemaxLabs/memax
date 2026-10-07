@@ -262,11 +262,11 @@ describe("the CSV export", () => {
     expect(csv.startsWith("﻿")).toBe(true);
     const lines = csv.slice(1).trimEnd().split("\r\n");
     expect(lines[0]).toBe(
-      "occurred_at,actor_kind,actor,action,object_kind,object_ref,via,session,source,reason,receipt_id",
+      "occurred_at,actor_kind,actor,action,object_kind,object_ref,via,assurance,session,source,reason,receipt_id",
     );
     expect(lines).toHaveLength(page.entries.length + 1);
     expect(lines[1]).toMatch(
-      /^2026-10-05T14:40:00-07:00,agent,codex,asked,gate,H-0093,,9f1c,,,/,
+      /^2026-10-05T14:40:00-07:00,agent,codex,asked,gate,H-0093,,,9f1c,,,/,
     );
     expect(lines[6]).toContain(",person,ZZ,rejected,memory,M-0429,review,");
     expect(lines[6]).toContain("superseded by M-0219.");

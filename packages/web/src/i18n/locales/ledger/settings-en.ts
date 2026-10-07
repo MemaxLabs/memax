@@ -207,6 +207,12 @@ export const ledgerSettingsEn = {
       needs:
         "Keeping a decision in a team space, or anything that came from outside, needs human_web.",
       session: "This session",
+      verifiedLabel: "With your passkey",
+      verified:
+        "You have a passkey, so those keeps, raising what an agent may do and Forget ask for it, and count as human_web_verified: a copied browser session or an agent driving your browser can't make them.",
+      nudge:
+        "Add a passkey in Account, and those keeps will ask for it and count as human_web_verified, which a copied browser session can't reach.",
+      account: "Account",
     },
   },
 } as const;

@@ -208,8 +208,9 @@ func (s *Service) Rename(ctx context.Context, person, id uuid.UUID, name string)
 func (s *Service) Remove(ctx context.Context, person, id uuid.UUID) (*Passkey, error) {
 	var out *Passkey
 	err := s.inPerson(ctx, person, func(tx pgx.Tx) error {
-		r, err := scanRecord(tx.QueryRow(ctx, `DELETE FROM v2.passkeys WHERE id = $1 AND person_id = $2
-			RETURNING `+recordColumns, id, person))
+		// memax_v2 never deletes in v2: v2.remove_passkeys does, for the
+		// person in scope only.
+		r, err := scanRecord(tx.QueryRow(ctx, `SELECT `+recordColumns+` FROM v2.remove_passkeys($1)`, id))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -228,12 +229,10 @@ func (s *Service) Remove(ctx context.Context, person, id uuid.UUID) (*Passkey, e
 func (s *Service) RemoveAll(ctx context.Context, person uuid.UUID) (int, error) {
 	var n int
 	err := s.inPerson(ctx, person, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, `DELETE FROM v2.passkeys WHERE person_id = $1`, person)
-		if err != nil {
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM v2.remove_passkeys(NULL)`).Scan(&n); err != nil {
 			return fmt.Errorf("passkeys: remove all: %w", err)
 		}
-		n = int(tag.RowsAffected())
-		if _, err := tx.Exec(ctx, `DELETE FROM v2.passkey_challenges WHERE person_id = $1`, person); err != nil {
+		if _, err := tx.Exec(ctx, `SELECT v2.clear_passkey_challenges($1, true)`, s.now()); err != nil {
 			return fmt.Errorf("passkeys: remove challenges: %w", err)
 		}
 		return nil

@@ -42,6 +42,7 @@ type HubsHandler struct {
 	enqueueEmail       func(template, to string, vars map[string]string) error // nil = no email
 	appBaseURL         string                                                  // for invite links in emails
 	v2                 V2Forgetter                                             // nil = V2 off
+	passkeys           PasskeyHolders                                          // nil = passkeys off
 }
 
 func NewHubsHandler(s store.Store) *HubsHandler {
@@ -861,7 +862,7 @@ func (h *HubsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	// A space on the V2 record is forgotten through the ledger first (a
 	// receipted Forget of everything in it, which retires its V2 rows), so
 	// its receipts and seals outlive the hub and its chain still verifies.
-	if !forgetV2Space(w, r, h.v2, userID, hubID, true) {
+	if !forgetV2Space(w, r, h.v2, h.passkeys, userID, hubID, true) {
 		return
 	}
 

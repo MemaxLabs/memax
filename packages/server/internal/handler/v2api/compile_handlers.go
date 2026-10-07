@@ -527,7 +527,7 @@ func (h *Handler) commandOK(w http.ResponseWriter, r *http.Request, res ledger.R
 		writeError(w, h.fromLedger(r, err))
 		return false
 	case res.Outcome == ledger.OutcomeRefused:
-		writeError(w, refusal(res.Policy))
+		h.writeRefusal(w, r, res.Policy)
 		return false
 	}
 	if res.Replayed {

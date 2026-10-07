@@ -21,6 +21,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/passkeys"
 	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/trust"
 )
@@ -150,6 +151,19 @@ var sampleRequests = map[string]struct {
 	"updateNotificationSettings": {path: "/v2/me/notifications", body: `{"quiet_hours":{"from":"21:00"}}`,
 		header: map[string]string{"If-Match": `"1"`}},
 	"getSecurity": {path: "/v2/security"},
+	// Your account and passkeys.
+	"getAccount":               {path: "/v2/me/account"},
+	"updateAccount":            {path: "/v2/me/account", body: `{"name":"Ziyang Zeng"}`},
+	"forgetAccount":            {path: "/v2/me/account:forget", body: `{"confirm":"ziyang@example.com"}`},
+	"connectSignInMethod":      {path: "/v2/me/sign-in-methods/google:connect", body: `{"redirect_uri":"https://memax.app/settings/account"}`},
+	"disconnectSignInMethod":   {path: "/v2/me/sign-in-methods/github:disconnect"},
+	"listPasskeys":             {path: "/v2/me/passkeys"},
+	"addPasskey":               {path: "/v2/me/passkeys", body: `{"credential":{"id":"abc","type":"public-key"},"name":"Laptop"}`},
+	"startPasskeyRegistration": {path: "/v2/me/passkey-registrations"},
+	"renamePasskey":            {path: "/v2/me/passkeys/" + sampleID, body: `{"name":"Work laptop"}`},
+	"removePasskey":            {path: "/v2/me/passkeys/" + sampleID + ":remove"},
+	"startPasskeySignIn":       {path: "/v2/passkey-sign-ins"},
+	"finishPasskeySignIn":      {path: "/v2/passkey-sign-ins:finish", body: `{"credential":{"id":"abc","type":"public-key"}}`},
 }
 
 const sampleID = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
@@ -279,7 +293,7 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "SourceKind", specEnum(t, "SourceKind"), strs(ledger.SourceKinds))
 	sameSet(t, "ActorKind", specEnum(t, "ActorKind"), strs(policy.ActorKinds))
 	sameSet(t, "Via", specEnum(t, "Via"), strs(policy.Vias))
-	sameSet(t, "Assurance", specEnum(t, "Assurance"), []string{string(policy.AssuranceHumanWeb), string(policy.AssuranceClientAttested)})
+	sameSet(t, "Assurance", specEnum(t, "Assurance"), strs(policy.Assurances))
 	sameSet(t, "SpaceKind", specEnum(t, "SpaceKind"), []string{string(policy.SpacePersonal), string(policy.SpaceProject), string(policy.SpaceTeam)})
 	sameSet(t, "Role", specEnum(t, "Role"), []string{string(policy.RoleOwner), string(policy.RoleMember), string(policy.RoleViewer)})
 	sameSet(t, "Autonomy", specEnum(t, "Autonomy"), strs(policy.Autonomies))
@@ -290,10 +304,16 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "Outcome", specEnum(t, "Outcome"), []string{string(ledger.OutcomeApplied), string(ledger.OutcomeProposed), string(ledger.OutcomeNeedsConfirmation)})
 	sameSet(t, "PolicyEffect", specEnum(t, "PolicyEffect"),
 		[]string{string(policy.EffectApply), string(policy.EffectPropose), string(policy.EffectConfirm), string(policy.EffectRefuse)})
-	sameSet(t, "PolicyCode", specEnum(t, "PolicyCode"), append(append(append(stringConsts(t, "../../ledger/policy/policy.go", "Code"),
+	sameSet(t, "PolicyCode", specEnum(t, "PolicyCode"), append(append(append(append(stringConsts(t, "../../ledger/policy/policy.go", "Code"),
 		stringConsts(t, "../../ledger/policy/spaces.go", "Code")...),
 		stringConsts(t, "../../ledger/policy/devices.go", "Code")...),
-		stringConsts(t, "../../ledger/policy/sessions.go", "Code")...))
+		stringConsts(t, "../../ledger/policy/sessions.go", "Code")...),
+		stringConsts(t, "../../ledger/policy/assurance.go", "Code")...))
+	sameSet(t, "PasskeyFailure", specEnum(t, "PasskeyFailure"), []string{
+		string(passkeys.ReasonMalformed), string(passkeys.ReasonUnknown), string(passkeys.ReasonExpired), string(passkeys.ReasonUsed),
+		string(passkeys.ReasonOtherSession), string(passkeys.ReasonOtherRequest), string(passkeys.ReasonNoCredential),
+		string(passkeys.ReasonInvalid), string(passkeys.ReasonNotVerified), string(passkeys.ReasonCloned), string(passkeys.ReasonExists),
+		string(passkeys.ReasonLimit), string(passkeys.ReasonNoPasskey), string(passkeys.ReasonSessionEnded), string(passkeys.ReasonSessionNeeded)})
 	sameSet(t, "SessionSurface", specEnum(t, "SessionSurface"), []string{
 		string(sessions.KindWeb), string(sessions.KindCLI), string(sessions.KindDevice), string(sessions.KindMCP)})
 	sameSet(t, "DeviceAuthorizationState", specEnum(t, "DeviceAuthorizationState"), []string{

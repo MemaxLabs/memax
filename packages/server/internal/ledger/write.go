@@ -586,6 +586,12 @@ func (w *writer) policyActor(g SpaceGrant) policy.Actor {
 	return toPolicyActor(w.meta.Actor, w.meta.Via, g)
 }
 
+// personAssurance is the assurance a person's change carries (none for
+// anyone else); it doesn't depend on the space.
+func (w *writer) personAssurance() policy.Assurance {
+	return toPolicyActor(w.meta.Actor, w.meta.Via, SpaceGrant{}).Assurance()
+}
+
 // toPolicyActor is an actor as policy sees it in one space (policyActor).
 func toPolicyActor(a Actor, via policy.Via, g SpaceGrant) policy.Actor {
 	autonomy := a.Autonomy

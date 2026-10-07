@@ -32,7 +32,11 @@ const SURFACE_VERSION = "v1";
 
 // Request headers forwarded to the API. Anything else the browser sends
 // (Authorization, cookies, the X-Memax-Surface-* and X-Memax-Client-*
-// headers) is dropped.
+// headers) is dropped. X-Memax-Passkey is a passkey's answer to the
+// re-check the API asked for (403 needs_passkey): self-authenticating
+// (signed by the authenticator over a challenge bound to the person, the
+// session and this exact request), so the proxy passes it through as is
+// and the surface signature doesn't need to cover it.
 const FORWARDED_REQUEST_HEADERS = [
   "content-type",
   "accept",
@@ -40,6 +44,7 @@ const FORWARDED_REQUEST_HEADERS = [
   "x-timezone",
   "idempotency-key",
   "if-match",
+  "x-memax-passkey",
 ];
 
 // Response headers passed back to the browser.

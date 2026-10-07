@@ -1,0 +1,127 @@
+/* Settings › Account, after Account.dc.html. */
+
+/* Profile: the stamp beside a two-by-two grid of fields. */
+.profile {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+  align-items: start;
+}
+
+.stamp {
+  padding-top: 22px;
+}
+
+.language {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.language :global(.mx-field-label) {
+  margin: 0;
+}
+
+/* A sign-in method's or a session's row: icon, name, state, action. */
+.row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row :global(.mx-icon) {
+  color: var(--ink-3);
+}
+
+.name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* .mx-meta's look without its tabular figures, which in Schibsted
+ * Grotesk also widen "." and "," (they read as a space before them). */
+.quiet {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+/* The danger zone: a vermilion edge, the title, the sentence, the button. */
+.danger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid var(--vermilion);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+
+.dangerText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dangerText h2 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.dangerText p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+@media (max-width: 1023px) {
+  .profile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stamp {
+    padding-top: 0;
+  }
+
+  .danger {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .row {
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+  }
+
+  .row > :nth-child(3) {
+    display: none;
+  }
+}

@@ -1,4 +1,5 @@
 import type { Memax, V2 } from "memax-sdk";
+import { createSdkAccount } from "./account-sdk";
 import { createSdkActivity } from "./activity-sdk";
 import { createSdkAsk } from "./ask-sdk";
 import { agentsOverview, createSdkAgents } from "./agents-sdk";
@@ -69,6 +70,7 @@ export function createSdkSource({
     dream,
     switch: createSdkSwitch(client),
     settings: createSdkSettings(client),
+    account: createSdkAccount(client),
     async spaces(signal) {
       const { items } = await client.v2.spaces.list({ signal });
       return items.map((space) => ({

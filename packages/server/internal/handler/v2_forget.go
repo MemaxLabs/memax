@@ -28,6 +28,41 @@ type V2Forgetter interface {
 // SetV2Forgetter wires the V2 record into hub deletion.
 func (h *HubsHandler) SetV2Forgetter(f V2Forgetter) { h.v2 = f }
 
+// PasskeyHolders says whether a person has a passkey (internal/passkeys).
+// A person with one makes the decisions that need them with it, on the web
+// (policy's assurance.go), and V1's routes can't ask for it: forgetting a
+// V2 record through V1, and linking or unlinking a sign-in method, are
+// refused for them and pointed at the web app. Nil means passkeys are off.
+type PasskeyHolders interface {
+	Has(ctx context.Context, person uuid.UUID) (bool, error)
+}
+
+// SetPasskeys turns that refusal on for V1's space delete.
+func (h *HubsHandler) SetPasskeys(p PasskeyHolders) { h.passkeys = p }
+
+// SetPasskeys turns that refusal on for V1's data wipe.
+func (h *MemoriesHandler) SetPasskeys(p PasskeyHolders) { h.passkeys = p }
+
+// refusedForPasskey answers 403 for a person with a passkey, whose change
+// V1 can't check, and reports whether it did.
+func refusedForPasskey(w http.ResponseWriter, r *http.Request, p PasskeyHolders, person uuid.UUID, where string) bool {
+	if p == nil {
+		return false
+	}
+	has, err := p.Has(r.Context(), person)
+	if err != nil {
+		slog.Error("v1: couldn't tell whether a person has a passkey", "error", err, "user_id", person.String())
+		writeError(w, http.StatusServiceUnavailable, "unavailable", "Memax couldn't check your passkeys. Try again in a moment.")
+		return true
+	}
+	if has {
+		writeError(w, http.StatusForbidden, "needs_passkey",
+			"You have a passkey, so this asks for it. "+where+" on memax.app, where you can confirm with it.")
+		return true
+	}
+	return false
+}
+
 // SetSpaceModes lets V1's push say when it saves into a space on V2
 // (X-Memax-Warning: space_on_v2): the memory becomes a note there.
 func (h *MemoriesHandler) SetSpaceModes(m *spacemode.Resolver) { h.modes = m }
@@ -47,7 +82,7 @@ func isPersonSession(r *http.Request) bool {
 // forgetV2Space forgets (and, deleting the hub, retires) a hub's V2
 // record. It answers false after writing the error response; true means
 // V1 may go on (the hub held no V2 record, or it is forgotten now).
-func forgetV2Space(w http.ResponseWriter, r *http.Request, f V2Forgetter, userID, hubID string, retire bool) bool {
+func forgetV2Space(w http.ResponseWriter, r *http.Request, f V2Forgetter, pk PasskeyHolders, userID, hubID string, retire bool) bool {
 	if f == nil {
 		return true
 	}
@@ -71,6 +106,9 @@ func forgetV2Space(w http.ResponseWriter, r *http.Request, f V2Forgetter, userID
 			"This space holds a V2 record, which only its owner can forget. Delete it at memax.app.")
 		return false
 	}
+	if refusedForPasskey(w, r, pk, person, "Forget this space's record") {
+		return false
+	}
 	if _, err := f.ForgetSpaceForV1(r.Context(), person, space, retire); err != nil {
 		writeForgetError(w, err, "hub_id", hubID)
 		return false
@@ -81,7 +119,7 @@ func forgetV2Space(w http.ResponseWriter, r *http.Request, f V2Forgetter, userID
 // forgetV2Account forgets the V2 record of the spaces a person owns before
 // V1 wipes their data (DELETE /v1/account/data). It answers false after
 // writing the error response.
-func forgetV2Account(w http.ResponseWriter, r *http.Request, f V2Forgetter, userID string) bool {
+func forgetV2Account(w http.ResponseWriter, r *http.Request, f V2Forgetter, pk PasskeyHolders, userID string) bool {
 	if f == nil {
 		return true
 	}
@@ -102,6 +140,9 @@ func forgetV2Account(w http.ResponseWriter, r *http.Request, f V2Forgetter, user
 	if !isPersonSession(r) {
 		writeError(w, http.StatusForbidden, "forget_needs_person",
 			"Your spaces hold a V2 record, which only you can forget. Forget it at memax.app.")
+		return false
+	}
+	if refusedForPasskey(w, r, pk, person, "Forget your record in Settings › Account") {
 		return false
 	}
 	if _, err := f.ForgetAccountRecord(r.Context(), person, policy.ViaAPI); err != nil {

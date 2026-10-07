@@ -170,10 +170,7 @@ func (s *Service) saveChallenge(ctx context.Context, tx pgx.Tx, purpose string, 
 	if action != "" {
 		actionArg = action
 	}
-	if _, err := tx.Exec(ctx, `
-		DELETE FROM v2.passkey_challenges
-		 WHERE challenge IN (SELECT challenge FROM v2.passkey_challenges WHERE expires_at < $1 LIMIT 200)`,
-		now.Add(-time.Hour)); err != nil {
+	if _, err := tx.Exec(ctx, `SELECT v2.clear_passkey_challenges($1, false)`, now.Add(-time.Hour)); err != nil {
 		return time.Time{}, fmt.Errorf("passkeys: clear challenges: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `

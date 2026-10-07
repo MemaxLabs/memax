@@ -25,6 +25,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/deviceauth"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
+	"github.com/MemaxLabs/memax/packages/server/internal/passkeys"
 	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/trust"
@@ -69,6 +70,12 @@ type Handler struct {
 	// sessions lists and signs out a person's sessions (sessions.go); nil
 	// answers 503.
 	sessions *sessions.Store
+	// passkeys signs people in with passkeys and runs the re-check
+	// (passkeys.go, account.go); nil leaves every decision at human_web and
+	// answers the passkey endpoints 503. accounts is the identity side of
+	// Settings › Account (account.go); nil answers 503 there.
+	passkeys *passkeys.Service
+	accounts Accounts
 }
 
 // Option configures a Handler.
@@ -196,6 +203,18 @@ var routes = []Route{
 	{"GET", "/v2/sessions", "listSessions", (*Handler).listSessions},
 	{"POST", "/v2/sessions/{session}:revoke", "revokeSession", (*Handler).revokeSession},
 	{"POST", "/v2/sessions:revoke-others", "revokeOtherSessions", (*Handler).revokeOtherSessions},
+	{"GET", "/v2/me/account", "getAccount", (*Handler).getAccount},
+	{"PATCH", "/v2/me/account", "updateAccount", (*Handler).updateAccount},
+	{"POST", "/v2/me/account:forget", "forgetAccount", (*Handler).forgetAccount},
+	{"POST", "/v2/me/sign-in-methods/{method}:connect", "connectSignInMethod", (*Handler).connectSignInMethod},
+	{"POST", "/v2/me/sign-in-methods/{method}:disconnect", "disconnectSignInMethod", (*Handler).disconnectSignInMethod},
+	{"GET", "/v2/me/passkeys", "listPasskeys", (*Handler).listPasskeys},
+	{"POST", "/v2/me/passkeys", "addPasskey", (*Handler).addPasskey},
+	{"POST", "/v2/me/passkey-registrations", "startPasskeyRegistration", (*Handler).startPasskeyRegistration},
+	{"PATCH", "/v2/me/passkeys/{passkey}", "renamePasskey", (*Handler).renamePasskey},
+	{"POST", "/v2/me/passkeys/{passkey}:remove", "removePasskey", (*Handler).removePasskey},
+	{"POST", "/v2/passkey-sign-ins", "startPasskeySignIn", (*Handler).startPasskeySignIn},
+	{"POST", "/v2/passkey-sign-ins:finish", "finishPasskeySignIn", (*Handler).finishPasskeySignIn},
 }
 
 // Routes lists every /v2 operation this package serves, named as in
@@ -206,9 +225,11 @@ func Routes() []Route { return slices.Clone(routes) }
 // /v1 uses (RequireAuth → HubContext → AuthorizeHTTP → RateLimit → Meter).
 //
 // The few public routes (publicRoutes: the morning email's one-click
-// unsubscribe, whose token is the credential) are mounted outside wrap,
-// behind public when it is given (an IP rate limit).
-func (h *Handler) Mount(mux *http.ServeMux, wrap func(http.Handler) http.Handler, public ...func(http.Handler) http.Handler) {
+// unsubscribe, whose token is the credential, and signing in with a
+// passkey, which is how a session starts) are mounted outside wrap, behind
+// public when it is given (an IP rate limit), which learns each one's
+// operation.
+func (h *Handler) Mount(mux *http.ServeMux, wrap func(http.Handler) http.Handler, public ...func(op string, h http.Handler) http.Handler) {
 	mux.Handle("/v2/", wrap(h.routes()))
 	for _, rt := range routes {
 		if !publicRoutes[rt.OperationID] {
@@ -216,7 +237,7 @@ func (h *Handler) Mount(mux *http.ServeMux, wrap func(http.Handler) http.Handler
 		}
 		var hd http.Handler = h.serve(rt)
 		for _, p := range public {
-			hd = p(hd)
+			hd = p(rt.OperationID, hd)
 		}
 		mux.Handle(rt.Method+" "+rt.Path, hd)
 	}
@@ -224,7 +245,7 @@ func (h *Handler) Mount(mux *http.ServeMux, wrap func(http.Handler) http.Handler
 
 // publicRoutes are the operations served without a credential (v2.yaml
 // says `security: []` for each).
-var publicRoutes = map[string]bool{"unsubscribeDreamEmail": true}
+var publicRoutes = map[string]bool{"unsubscribeDreamEmail": true, "startPasskeySignIn": true, "finishPasskeySignIn": true}
 
 // routes builds the /v2 mux. ServeMux wildcards must fill a whole path
 // segment, so the custom-method routes (/v2/memories/{ref}:keep) share
@@ -276,7 +297,7 @@ func (h *Handler) serve(rt Route) http.HandlerFunc {
 				message: "The V2 record needs a database, and this server has none. Set DATABASE_URL."})
 			return
 		}
-		rt.serve(h, w, r)
+		rt.serve(h, w, withState(r))
 	}
 }
 

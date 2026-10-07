@@ -1103,6 +1103,12 @@ func (h *AuthHandler) LinkProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A person with a passkey links in Settings › Account, where the
+	// change can ask for it.
+	if h.refuseLinkForPasskey(w, r, userID) {
+		return
+	}
+
 	// Validate provider and config before creating state — avoids throwaway rows
 	switch provider {
 	case "github":
@@ -1164,6 +1170,9 @@ func (h *AuthHandler) UnlinkProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.refuseLinkForPasskey(w, r, userID) {
+		return
+	}
 	if err := h.unlinkProvider(userID, provider); err != nil {
 		h.handleLinkError(w, err)
 		return

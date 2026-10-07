@@ -1,6 +1,6 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`, `.imports`,
 // `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets`, `.gates`,
-// `.notices`, `.devices`, `.sessions`, `.dream`, `.notes` and `.settings`. Thin, typed
+// `.notices`, `.devices`, `.sessions`, `.dream`, `.notes`, `.settings` and `.account`. Thin, typed
 // wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
 // as on /v1.
@@ -8,6 +8,14 @@ import { MemaxError } from "../errors.js";
 import type { OpenFn, QueryValue, RequestFn } from "../transport.js";
 import { readEventStream } from "./sse.js";
 import type {
+  Account,
+  AccountForgotten,
+  Passkey,
+  PasskeyChallenge,
+  PasskeyList,
+  PasskeyRegistration,
+  PasskeySignIn,
+  PublicKeyCredentialJSON,
   AgentCommandInput,
   AskEvent,
   AskInput,
@@ -1574,6 +1582,176 @@ export class V2SettingsResource {
   }
 }
 
+/** Options for a change to your account: one key per intent, reused on a retry. */
+export interface AccountCommandOptions {
+  idempotencyKey: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * `memax.v2.account`: Settings › Account. You, how you sign in (GitHub,
+ * Google, an email code), your passkeys, and forgetting your account.
+ *
+ * Once you have a passkey, the decisions that need you ask for it: the
+ * API refuses them with 403 `needs_passkey` and a challenge, and a client
+ * configured with `passkeyCheck` (the web app) answers it and sends the
+ * same request again. Everything that changes how you sign in happens on
+ * the web app (`account_needs_web`).
+ */
+export class V2AccountResource {
+  readonly passkeys: V2PasskeysResource;
+
+  constructor(private readonly req: RequestFn) {
+    this.passkeys = new V2PasskeysResource(req);
+  }
+
+  /** Your account: name, email, sign-in methods, passkeys, this session. */
+  async get(opts?: { signal?: AbortSignal }): Promise<Account> {
+    return this.req("GET", "/v2/me/account", { signal: opts?.signal });
+  }
+
+  /** Change the name receipts show for you. */
+  async update(
+    input: { name: string },
+    opts: AccountCommandOptions,
+  ): Promise<Account> {
+    return this.req("PATCH", "/v2/me/account", {
+      body: input,
+      extraHeaders: { "Idempotency-Key": opts.idempotencyKey },
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Forget your account: everything in your personal space and the
+   * projects you own, your agents disconnected, your passkeys removed and
+   * every session signed out, this one included. `confirm` is your email,
+   * typed. On the web app, with your passkey when you have one.
+   */
+  async forget(
+    confirm: string,
+    opts: AccountCommandOptions,
+  ): Promise<AccountForgotten> {
+    return this.req("POST", "/v2/me/account:forget", {
+      body: { confirm },
+      extraHeaders: { "Idempotency-Key": opts.idempotencyKey },
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Start adding GitHub or Google as a way to sign in: the provider's page
+   * to send the browser to, which comes back to `redirectUri`. Needs a
+   * sign-in in the last few minutes (`needs_sign_in`), or your passkey.
+   */
+  async connectSignIn(
+    method: "github" | "google",
+    redirectUri: string,
+    opts: AccountCommandOptions,
+  ): Promise<{ url: string }> {
+    return this.req("POST", `/v2/me/sign-in-methods/${seg(method)}:connect`, {
+      body: { redirect_uri: redirectUri },
+      extraHeaders: { "Idempotency-Key": opts.idempotencyKey },
+      signal: opts.signal,
+    });
+  }
+
+  /** Stop signing in with GitHub or Google (not your last way in). */
+  async disconnectSignIn(
+    method: "github" | "google",
+    opts: AccountCommandOptions,
+  ): Promise<Account> {
+    return this.req(
+      "POST",
+      `/v2/me/sign-in-methods/${seg(method)}:disconnect`,
+      {
+        extraHeaders: { "Idempotency-Key": opts.idempotencyKey },
+        signal: opts.signal,
+      },
+    );
+  }
+}
+
+/** `memax.v2.account.passkeys`: your passkeys. */
+export class V2PasskeysResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /** Your passkeys, oldest first. */
+  async list(opts?: { signal?: AbortSignal }): Promise<PasskeyList> {
+    return this.req("GET", "/v2/me/passkeys", { signal: opts?.signal });
+  }
+
+  /**
+   * Start adding a passkey: the options for `navigator.credentials.create`
+   * (hand them to `PublicKeyCredential.parseCreationOptionsFromJSON`),
+   * good for this session for five minutes.
+   */
+  async startRegistration(
+    opts: AccountCommandOptions,
+  ): Promise<PasskeyRegistration> {
+    return this.req("POST", "/v2/me/passkey-registrations", {
+      extraHeaders: { "Idempotency-Key": opts.idempotencyKey },
+      signal: opts.signal,
+    });
+  }
+
+  /** Finish adding it: the browser's answer (`toJSON()`), and a name. */
+  async add(
+    credential: PublicKeyCredentialJSON,
+    name: string | undefined,
+    opts: AccountCommandOptions,
+  ): Promise<Passkey> {
+    return this.req("POST", "/v2/me/passkeys", {
+      body: name ? { credential, name } : { credential },
+      extraHeaders: { "Idempotency-Key": opts.idempotencyKey },
+      signal: opts.signal,
+    });
+  }
+
+  /** Rename one. */
+  async rename(
+    id: string,
+    name: string,
+    opts: AccountCommandOptions,
+  ): Promise<Passkey> {
+    return this.req("PATCH", `/v2/me/passkeys/${seg(id)}`, {
+      body: { name },
+      extraHeaders: { "Idempotency-Key": opts.idempotencyKey },
+      signal: opts.signal,
+    });
+  }
+
+  /** Take one off your account (asks for a passkey). */
+  async remove(id: string, opts: AccountCommandOptions): Promise<Passkey> {
+    return this.req("POST", `/v2/me/passkeys/${seg(id)}:remove`, {
+      extraHeaders: { "Idempotency-Key": opts.idempotencyKey },
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Start a passkey sign-in (no sign-in needed): options for
+   * `navigator.credentials.get`, naming nobody. The web app's server calls
+   * this and {@link finishSignIn}, then exchanges the code for a session.
+   */
+  async startSignIn(opts?: {
+    signal?: AbortSignal;
+  }): Promise<PasskeyChallenge> {
+    return this.req("POST", "/v2/passkey-sign-ins", { signal: opts?.signal });
+  }
+
+  /** Verify a passkey sign-in: a one-time code for a web session. */
+  async finishSignIn(
+    credential: PublicKeyCredentialJSON,
+    opts?: { signal?: AbortSignal },
+  ): Promise<PasskeySignIn> {
+    return this.req("POST", "/v2/passkey-sign-ins:finish", {
+      body: { credential },
+      signal: opts?.signal,
+    });
+  }
+}
+
 /** Whether a Dream action can still be undone, as the server last said. */
 export function undoableAction(a: DreamAction): boolean {
   return a.undoable && !a.undone;
@@ -1597,6 +1775,7 @@ export class V2Resource {
   readonly notes: V2NotesResource;
   readonly dream: V2DreamResource;
   readonly settings: V2SettingsResource;
+  readonly account: V2AccountResource;
   private readonly openStream?: OpenFn;
 
   constructor(req: RequestFn, open?: OpenFn) {
@@ -1616,6 +1795,7 @@ export class V2Resource {
     this.notes = new V2NotesResource(req);
     this.dream = new V2DreamResource(req);
     this.settings = new V2SettingsResource(req);
+    this.account = new V2AccountResource(req);
     this.openStream = open;
   }
 

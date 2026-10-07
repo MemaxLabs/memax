@@ -77,6 +77,10 @@ func TestPasskeyReCheck(t *testing.T) {
 			nudge, check, ok, want{EffectPropose, CodeDecisionNeedsWeb, false}, want{EffectPropose, CodeDecisionNeedsWeb, false}},
 		{"forget a project fact", func(a Actor) Decision { return Decide(a, ActionForget, kept, project) },
 			ok, check, ok, ok, check},
+		{"keep what an agent asked to forget", func(a Actor) Decision { return Decide(a, ActionDeclineForget, kept, project) },
+			ok, ok, ok, ok, ok},
+		{"restore a faded quarantined memory", func(a Actor) Decision { return Decide(a, ActionRestore, keptExt, project) },
+			nudge, check, ok, want{EffectRefuse, CodeExternalNeedsReview, false}, want{EffectRefuse, CodeExternalNeedsReview, false}},
 		{"forget a team decision", func(a Actor) Decision { return Decide(a, ActionForget, keptDec, team) },
 			nudge, check, ok, want{EffectRefuse, CodeDecisionNeedsWeb, false}, want{EffectRefuse, CodeDecisionNeedsWeb, false}},
 		{"raise an agent", func(a Actor) Decision {

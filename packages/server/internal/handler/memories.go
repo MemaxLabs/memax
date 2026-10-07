@@ -59,6 +59,7 @@ type MemoriesHandler struct {
 	store         store.Store
 	events        events.Publisher
 	v2            V2Forgetter             // nil = V2 off
+	passkeys      PasskeyHolders          // nil = passkeys off
 	modes         *spacemode.Resolver     // nil = V2 off: no space is on V2
 	embedder      embed.Embedder          // nil = no embeddings, keyword search only
 	summarizer    *summarize.Summarizer   // nil = no summaries
@@ -2197,7 +2198,7 @@ func (h *MemoriesHandler) DeleteAllData(w http.ResponseWriter, r *http.Request) 
 	ownerID := GetUserID(r)
 	// The V2 record of the spaces the person owns is forgotten through the
 	// ledger first (a receipted Forget of each space; plan 25 §5.13).
-	if !forgetV2Account(w, r, h.v2, ownerID) {
+	if !forgetV2Account(w, r, h.v2, h.passkeys, ownerID) {
 		return
 	}
 	// Count memories + sum storage bytes before deletion for meter adjustment.

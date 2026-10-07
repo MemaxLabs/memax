@@ -82,7 +82,7 @@ func (h *Handler) recordCompileLoad(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if res.Read == nil {
-		writeError(w, refusal(res.Policy))
+		h.writeRefusal(w, r, res.Policy)
 		return
 	}
 	if res.Replayed {

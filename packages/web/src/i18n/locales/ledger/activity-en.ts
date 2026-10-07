@@ -120,6 +120,8 @@ export const ledgerActivityEn = {
     targets: "{done} of {total} targets",
     edition: "edition {n}",
     repository: "repository",
+    // Assurance human_web_verified: confirmed with the person's passkey.
+    passkey: "with a passkey",
   },
   // One sentence per receipt. {actor} is set in bold, {quote} in the serif.
   sentence: {

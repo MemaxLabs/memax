@@ -391,6 +391,8 @@ export function viaText(
           return v.repository;
         case "source":
           return p.ref;
+        case "passkey":
+          return v.passkey;
       }
     })
     .join(" · ");

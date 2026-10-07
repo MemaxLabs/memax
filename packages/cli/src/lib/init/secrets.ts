@@ -6,7 +6,8 @@
 //   - the server's own refusal patterns (packages/server/internal/secrets,
 //     ported line for line), over each statement, so nothing the server
 //     would refuse is ever sent to it. The shared corpus in
-//     test/init/secrets-corpus.json holds both sides to the same cases.
+//     packages/server/internal/secrets/testdata/credentials.json holds
+//     both sides to the same cases.
 //
 // A statement that holds a secret never leaves the machine; the import
 // says where it was and which rule matched, never the secret.

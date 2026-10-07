@@ -185,7 +185,12 @@ async function waitHealthy(url: string, ms: number): Promise<void> {
   throw new Error(`the API server at ${url} wasn't ready within ${ms} ms`);
 }
 
-export async function startStack(): Promise<Stack> {
+export interface StackOptions {
+  /** More environment for the worker (a fake model for the judge, say). */
+  workerEnv?: Record<string, string>;
+}
+
+export async function startStack(opts: StackOptions = {}): Promise<Stack> {
   const logs: string[] = [];
   const children: ChildProcess[] = [];
   const admin =
@@ -292,7 +297,12 @@ export async function startStack(): Promise<Stack> {
       S3_REGION: "us-east-1",
     };
     const worker = spawn(join(bin, "worker"), {
-      env: { ...env, ...storage, HEALTH_PORT: String(await freePort()) },
+      env: {
+        ...env,
+        ...storage,
+        ...opts.workerEnv,
+        HEALTH_PORT: String(await freePort()),
+      },
     });
     children.push(worker);
     worker.stdout.on("data", (b) =>

@@ -127,7 +127,8 @@ export function initDeps(o: InitOptions): InitDeps {
     startDaemon: async () =>
       (await startDaemon({
         paths: daemonPaths(),
-        out: (l) => console.log(l),
+        // --format json keeps stdout to the report.
+        out: (l) => (o.format === "json" ? undefined : console.log(l)),
       })) === 0,
     compile: compileHere,
     appUrl: appBaseURL(),

@@ -277,6 +277,27 @@ func TestExportRoundTrip(t *testing.T) {
 	}
 	report := v.Finish()
 	if !report.OK() || report.Signed != len(cps) || report.Receipts != int64(len(all)) || len(cps) == 0 {
+		// What the sealer and the export each saw, to tell an ordering
+		// fault from a test's race (it failed only on CI, Oct 7).
+		for i, r := range rec.Receipts {
+			t.Logf("export #%d %s seq %d", i+1, r.ID, r.Seq)
+		}
+		rows, err := e.pool.Query(ctx, `SELECT id, txid::text, seq, action, recorded_at FROM v2.receipts WHERE space_id = $1 ORDER BY txid, seq`, sp.id)
+		if err == nil {
+			for rows.Next() {
+				var id uuid.UUID
+				var txid, action string
+				var seq int64
+				var at time.Time
+				if rows.Scan(&id, &txid, &seq, &action, &at) == nil {
+					t.Logf("db %s txid %s seq %d %s %s", id, txid, seq, action, at.Format(time.RFC3339Nano))
+				}
+			}
+			rows.Close()
+		}
+		for _, c := range cps {
+			t.Logf("checkpoint %d: positions %d-%d, first %s, last %s, last seq %d", c.Number, c.PositionFrom, c.PositionTo, c.FirstReceiptID, c.LastReceiptID, c.LastSeq)
+		}
 		t.Fatalf("the export doesn't verify: %+v", report)
 	}
 	// Sealed through everything before the export; its own receipt waits.

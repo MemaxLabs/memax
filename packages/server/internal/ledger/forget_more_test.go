@@ -406,3 +406,42 @@ func TestForgetRequests(t *testing.T) {
 	roActor, roScope := f.agentActor(zz, ro, policy.AutonomyRead)
 	refusedWith(t, f.apply(&ledger.RequestForget{Meta: meta(roActor, roScope, policy.ViaMCP), Memory: n.Ref}), policy.CodeKeyReadOnly)
 }
+
+// Rule 11's drafts: a kept side's narrowed words wait above its current
+// version, and Forget purges them with every other version, along with
+// the settling verdict on them.
+func TestForgetPurgesDrafts(t *testing.T) {
+	t.Parallel()
+	f := newCompileFixture(t)
+	ctx := context.Background()
+	zz := f.user("zz")
+	c := f.withThirdDecision(zz, "drafts")
+	const narrowD = "Production deploys to Railway; previews run elsewhere."
+	res, err := f.l.Apply(ctx, &ledger.ResolveConflict{Meta: meta(person(zz), f.scope(zz), policy.ViaWeb), Memory: c.p.Ref, Other: c.d.Ref,
+		Choice: ledger.ChooseBoth, ExpectedVersion: 1, OtherStatement: narrowD})
+	if err != nil || res.Outcome != ledger.OutcomeProposed {
+		t.Fatalf("keep both: %v %s", err, res.Outcome)
+	}
+	f.settled(c.sp, c.d.ID, 2, nil)
+	if n := f.count(`SELECT count(*) FROM v2.memory_versions WHERE memory_id = $1 AND version = 2 AND statement IS NOT NULL`, c.d.ID); n != 1 {
+		t.Fatalf("no draft to purge (%d)", n)
+	}
+	scope := f.scope(zz).Narrow(c.sp)
+	out := f.apply(forgetCmd(person(zz), scope, policy.ViaWeb, c.d.Ref, 1))
+	if out.Tombstone.Gone.Versions != 2 {
+		t.Errorf("gone = %+v, want both versions", out.Tombstone.Gone)
+	}
+	if n := f.count(`SELECT count(*) FROM v2.memory_versions WHERE memory_id = $1 AND statement IS NOT NULL`, c.d.ID); n != 0 {
+		t.Errorf("%d versions (the draft included) keep words", n)
+	}
+	if n := f.count(`SELECT count(*) FROM v2.judge_verdicts WHERE memory_id = $1 AND (rationale IS NOT NULL OR merged_statement IS NOT NULL)`, c.d.ID); n != 0 {
+		t.Errorf("%d verdicts on the draft keep words", n)
+	}
+	if n := f.count(`SELECT count(*) FROM v2.receipts WHERE object_id = $1 AND reason IS NOT NULL`, c.d.ID); n != 0 {
+		t.Errorf("%d receipts (the drafted one included) keep a reason", n)
+	}
+	// The proposal left in conflict with it is free.
+	if p := f.mem(zz, c.p.ID); p.Flags.Has(lifecycle.Conflict) {
+		t.Errorf("the other side still in conflict: %v", p.Flags)
+	}
+}

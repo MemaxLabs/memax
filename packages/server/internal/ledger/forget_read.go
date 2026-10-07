@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -109,7 +110,9 @@ func (l *Ledger) ListTombstones(ctx context.Context, scope Scope, q TombstoneQue
 }
 
 func encodeTombstoneCursor(at time.Time, id uuid.UUID) string {
-	return "t" + at.UTC().Format(time.RFC3339Nano) + "_" + id.String()
+	// Postgres keeps microseconds, so this is exact, and "t" + up to 17
+	// digits + "_" + 36 fits the spec's 64.
+	return "t" + strconv.FormatInt(at.UnixMicro(), 10) + "_" + id.String()
 }
 
 func decodeTombstoneCursor(s string) (time.Time, uuid.UUID, bool) {
@@ -120,10 +123,11 @@ func decodeTombstoneCursor(s string) (time.Time, uuid.UUID, bool) {
 	if !ok {
 		return time.Time{}, uuid.Nil, false
 	}
-	t, err := time.Parse(time.RFC3339Nano, at)
-	if err != nil {
+	micros, err := strconv.ParseInt(at, 10, 64)
+	if err != nil || micros < 0 {
 		return time.Time{}, uuid.Nil, false
 	}
+	t := time.UnixMicro(micros).UTC()
 	id, err := uuid.Parse(idText)
 	if err != nil {
 		return time.Time{}, uuid.Nil, false

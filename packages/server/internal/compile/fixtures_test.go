@@ -43,11 +43,17 @@ type fixtureOpts struct {
 	// workers runs compile jobs in-process (a River client with the
 	// compile queue).
 	workers bool
+	// db is the database (a simulated network, the RLS-ordering audit);
+	// nil opens a plain one.
+	db *testdb.DB
 }
 
 func newFixture(t *testing.T, o fixtureOpts) *fixture {
 	t.Helper()
-	_, pool := testdb.Acquire(t)
+	if o.db == nil {
+		o.db = testdb.Open(t, testdb.Options{})
+	}
+	pool := o.db.Pool
 	f := &fixture{t: t, pool: pool, store: mockobjectstore.New(), fake: &compiletest.Fake{}}
 	var compiler compile.Compiler = f.fake
 	if o.compiler != nil {

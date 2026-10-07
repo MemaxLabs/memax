@@ -35,7 +35,14 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	_, pool := testdb.Acquire(t)
+	return newFixtureOn(t, testdb.Open(t, testdb.Options{}))
+}
+
+// newFixtureOn is newFixture on a database opened with options (a
+// simulated network, the RLS-ordering audit).
+func newFixtureOn(t *testing.T, db *testdb.DB) *fixture {
+	t.Helper()
+	pool := db.Pool
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Logger: quiet})
 	if err != nil {
 		t.Fatal(err)

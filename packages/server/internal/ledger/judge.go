@@ -734,25 +734,20 @@ func (w *writer) insertVerdict(ctx context.Context, spaceID, memoryID uuid.UUID,
 	return nil
 }
 
-// attachVerdicts fills Judge on each memory from its current version's
-// latest verdict, or "working" for a proposal without one.
-func attachVerdicts(ctx context.Context, tx pgx.Tx, ms []*Memory) error {
-	ids := make([]uuid.UUID, len(ms))
-	for i, m := range ms {
-		ids[i] = m.ID
-	}
-	rows, err := tx.Query(ctx, `
-		SELECT DISTINCT ON (v.memory_id) v.memory_id, v.version, v.stage, v.verdict, v.outcome,
-		       v.related_memory_id, r.seq, v.confidence, COALESCE(v.rationale, ''), COALESCE(v.merged_statement, ''),
-		       COALESCE(v.tier, ''), v.created_at
-		  FROM v2.judge_verdicts v
-		  JOIN v2.memories m ON m.id = v.memory_id AND m.current_version = v.version
-		  LEFT JOIN v2.memories r ON r.id = v.related_memory_id
-		 WHERE v.memory_id = ANY ($1)
-		 ORDER BY v.memory_id, v.round DESC`, ids)
-	if err != nil {
-		return fmt.Errorf("ledger: load verdicts: %w", err)
-	}
+// verdictsSQL reads the latest verdict on the current version of each of
+// the memories $1.
+const verdictsSQL = `
+	SELECT DISTINCT ON (v.memory_id) v.memory_id, v.version, v.stage, v.verdict, v.outcome,
+	       v.related_memory_id, r.seq, v.confidence, COALESCE(v.rationale, ''), COALESCE(v.merged_statement, ''),
+	       COALESCE(v.tier, ''), v.created_at
+	  FROM v2.judge_verdicts v
+	  JOIN v2.memories m ON m.id = v.memory_id AND m.current_version = v.version
+	  LEFT JOIN v2.memories r ON r.id = v.related_memory_id
+	 WHERE v.memory_id = ANY ($1)
+	 ORDER BY v.memory_id, v.round DESC`
+
+// scanVerdicts reads verdictsSQL's rows, by memory.
+func scanVerdicts(rows pgx.Rows) (map[uuid.UUID]*JudgeInfo, error) {
 	defer rows.Close()
 	got := map[uuid.UUID]*JudgeInfo{}
 	for rows.Next() {
@@ -764,7 +759,7 @@ func attachVerdicts(ctx context.Context, tx pgx.Tx, ms []*Memory) error {
 		j := &JudgeInfo{State: JudgeJudged}
 		if err := rows.Scan(&id, &j.Version, &j.Stage, &j.Verdict, &j.Outcome, &related, &relatedSeq, &conf,
 			&j.Rationale, &j.MergedStatement, &j.Tier, &at); err != nil {
-			return fmt.Errorf("ledger: load verdicts: %w", err)
+			return nil, fmt.Errorf("ledger: load verdicts: %w", err)
 		}
 		if related != nil && relatedSeq != nil {
 			j.Related = &MemoryPointer{ID: *related, Ref: FormatRef(PrefixMemory, *relatedSeq)}
@@ -780,8 +775,14 @@ func attachVerdicts(ctx context.Context, tx pgx.Tx, ms []*Memory) error {
 		got[id] = j
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("ledger: load verdicts: %w", err)
+		return nil, fmt.Errorf("ledger: load verdicts: %w", err)
 	}
+	return got, nil
+}
+
+// applyVerdicts fills Judge on each memory from its current version's
+// latest verdict, or "working" for a proposal without one.
+func applyVerdicts(ms []*Memory, got map[uuid.UUID]*JudgeInfo) {
 	for _, m := range ms {
 		switch j := got[m.ID]; {
 		case j != nil:
@@ -790,7 +791,6 @@ func attachVerdicts(ctx context.Context, tx pgx.Tx, ms []*Memory) error {
 			m.Judge = &JudgeInfo{State: JudgeWorking, Version: m.Version}
 		}
 	}
-	return nil
 }
 
 // inForce reports whether a memory is a decision in force: kept, of kind

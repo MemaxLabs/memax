@@ -30,12 +30,18 @@ func TestResolveUserScope(t *testing.T) {
 
 	scope := f.scope(zz)
 	want := map[uuid.UUID]ledger.SpaceGrant{
-		personal: {SpaceID: personal, TenantID: zz, Kind: policy.SpacePersonal, Role: policy.RoleOwner, CanForget: true},
-		project:  {SpaceID: project, TenantID: zz, Kind: policy.SpaceProject, Role: policy.RoleOwner, CanForget: true},
-		team:     {SpaceID: team, TenantID: team, Kind: policy.SpaceTeam, Role: policy.RoleMember, CanForget: true},
-		viewing:  {SpaceID: viewing, TenantID: viewing, Kind: policy.SpaceTeam, Role: policy.RoleViewer},
-		contrib:  {SpaceID: contrib, TenantID: contrib, Kind: policy.SpaceTeam, Role: policy.RoleMember},
-		orphan:   {SpaceID: orphan, TenantID: orphan, Kind: policy.SpaceTeam, Role: policy.RoleOwner, CanForget: true},
+		personal: {SpaceID: personal, TenantID: zz, Kind: policy.SpacePersonal, Role: policy.RoleOwner, CanForget: true, Name: "Personal"},
+		project:  {SpaceID: project, TenantID: zz, Kind: policy.SpaceProject, Role: policy.RoleOwner, CanForget: true, Name: "memax-v2"},
+		team:     {SpaceID: team, TenantID: team, Kind: policy.SpaceTeam, Role: policy.RoleMember, CanForget: true, Name: "MemaxLabs"},
+		viewing:  {SpaceID: viewing, TenantID: viewing, Kind: policy.SpaceTeam, Role: policy.RoleViewer, Name: "Docs"},
+		contrib:  {SpaceID: contrib, TenantID: contrib, Kind: policy.SpaceTeam, Role: policy.RoleMember, Name: "Ops"},
+		orphan:   {SpaceID: orphan, TenantID: orphan, Kind: policy.SpaceTeam, Role: policy.RoleOwner, CanForget: true, Name: "Orphan"},
+	}
+	// The slug and the name come with the grant (the fixture's slug is the
+	// space's id).
+	for id, w := range want {
+		w.Slug = id.String()
+		want[id] = w
 	}
 	if len(scope.Spaces) != len(want) {
 		t.Fatalf("scope has %d spaces, want %d: %+v", len(scope.Spaces), len(want), scope.Spaces)

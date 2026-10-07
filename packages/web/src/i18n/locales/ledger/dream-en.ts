@@ -1,5 +1,6 @@
-// Dream's catalogue (DreamEdition.png, the Dream card, the morning
-// email's settings and its unsubscribe page), mounted as `t.ledger.dream`.
+// Dream's catalogue (DreamEdition.png, the Dream card and the morning
+// email's unsubscribe page), mounted as `t.ledger.dream`. Its settings
+// live in Account (the zone) and Notifications (the email).
 // ./dream-zh.ts matches it key for key.
 export const ledgerDreamEn = {
   title: "Dream",
@@ -137,21 +138,6 @@ export const ledgerDreamEn = {
       "Dream has run now as often as your plan allows for this space. It still runs on its own each night.",
     runOwner: "Only the space's owner can run Dream now.",
     failed: "That didn't go through. Try again.",
-  },
-  settingsPanel: {
-    title: "Dream",
-    meta: "For every space you own",
-    timeZone: "Time zone",
-    timeZoneHint:
-      "Dream runs in your night, at 03:00 where you are. It learns your zone from this app's clock until you set one.",
-    timeZoneDefault:
-      "Memax doesn't know your zone yet, so Dream runs at 03:00 UTC.",
-    useDevice: "Use {zone}",
-    email: "Morning email",
-    emailHint: "The edition, each morning Dream has one, with what needs you.",
-    on: "On",
-    off: "Off",
-    changed: "Dream settings changed.",
   },
   unsubscribe: {
     title: "Morning email",

@@ -190,7 +190,7 @@ func main() {
 // must be allowed and documented response headers exposed, or browsers
 // drop them (TestCORSCoversTheV2Contract).
 const (
-	corsAllowHeaders  = "Content-Type, Authorization, X-Hub-ID, X-Timezone, Mcp-Session-Id, Idempotency-Key, If-Match, X-Memax-Via"
+	corsAllowHeaders  = "Content-Type, Authorization, X-Hub-ID, X-Timezone, Mcp-Session-Id, Idempotency-Key, If-Match, X-Memax-Via, X-Memax-Passkey"
 	corsExposeHeaders = "Mcp-Session-Id, WWW-Authenticate, ETag, Location, Idempotent-Replayed, Retry-After, Content-Disposition, X-Memax-Export-Receipt"
 )
 

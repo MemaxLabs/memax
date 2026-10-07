@@ -2487,6 +2487,273 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/me/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your account
+         * @description Settings › Account: your name and email, the GitHub login receipts
+         *     can show as your handle, each way you sign in (GitHub, Google, an
+         *     email code) and your passkeys, whether decisions that need you ask
+         *     for your passkey (`passkey_check`, on whenever you have one), and
+         *     this session's sign-in time with how long it counts as fresh for
+         *     adding a way in (`fresh_until`). People on a session only
+         *     (`account_by_person`).
+         */
+        get: operations["getAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change your name
+         * @description Changes the name receipts and Activity show for you (its initials
+         *     are your stamp). Your email is how you sign in and isn't changed
+         *     here; your time zone is Dream's (`PATCH /v2/dream/settings`).
+         */
+        patch: operations["updateAccount"];
+        trace?: never;
+    };
+    "/v2/me/account:forget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Forget your account
+         * @description Forgets everything in your personal space and in the project spaces
+         *     you own, everywhere it was compiled (each through the ledger's
+         *     Forget, with its tombstone), disconnects every agent of yours and
+         *     revokes its credential, takes your passkeys off the account and
+         *     signs out every session, this one included. Team spaces stay with
+         *     their other members. Nothing undoes it. Type your email in
+         *     `confirm`. It needs you on the web app (`account_needs_web`) and,
+         *     when you have a passkey, a fresh check with it (403
+         *     `needs_passkey`); the forgot receipts then say
+         *     `human_web_verified`.
+         */
+        post: operations["forgetAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/me/sign-in-methods/{method}:connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The provider. */
+                method: components["parameters"]["SignInMethodPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add GitHub or Google as a way to sign in
+         * @description Answers the provider's sign-in page to send the browser to; it
+         *     comes back to `redirect_uri` (on the web app) once the provider
+         *     account is linked, or with the reason it wasn't. Adding a way in
+         *     needs you on the web app, signed in within the last few minutes
+         *     (`needs_sign_in`) or, when you have a passkey, a check with it
+         *     (`needs_passkey`), so a copied session can't link its own account.
+         */
+        post: operations["connectSignInMethod"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/me/sign-in-methods/{method}:disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The provider. */
+                method: components["parameters"]["SignInMethodPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop signing in with GitHub or Google
+         * @description Unlinks the provider. Your last way to sign in can't go (409
+         *     `invalid_transition`). Needs you on the web app, and your passkey
+         *     when you have one.
+         */
+        post: operations["disconnectSignInMethod"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/me/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your passkeys
+         * @description The passkeys on your account, oldest first: the name you gave each,
+         *     the provider it says it is from, whether it syncs, when it was
+         *     added and last used. Public keys never leave Memax.
+         */
+        get: operations["listPasskeys"];
+        put?: never;
+        /**
+         * Add a passkey
+         * @description Finishes a registration begun with `/v2/me/passkey-registrations`
+         *     from this session: `credential` is the browser's answer
+         *     (`PublicKeyCredential.toJSON()`). The passkey must be discoverable
+         *     and must have verified you (UV). An answer that doesn't verify is
+         *     403 `passkey_invalid` with `details.passkey_failure`.
+         */
+        post: operations["addPasskey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/me/passkey-registrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start adding a passkey
+         * @description The options for `navigator.credentials.create` (WebAuthn Level 3's
+         *     JSON form: hand `options` to
+         *     `PublicKeyCredential.parseCreationOptionsFromJSON`), good for five
+         *     minutes and for this session only. Discoverable, user-verified,
+         *     attestation `none`; your passkeys already registered are excluded.
+         *     It needs you on the web app, signed in within the last few minutes
+         *     (`needs_sign_in`) or checked with a passkey you already have
+         *     (`needs_passkey`). Up to 20 passkeys.
+         */
+        post: operations["startPasskeyRegistration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/me/passkeys/{passkey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The passkey's id. */
+                passkey: components["parameters"]["PasskeyPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename a passkey
+         * @description Names one of your passkeys (1 to 64 characters). On the web app.
+         */
+        patch: operations["renamePasskey"];
+        trace?: never;
+    };
+    "/v2/me/passkeys/{passkey}:remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The passkey's id. */
+                passkey: components["parameters"]["PasskeyPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take a passkey off your account
+         * @description The passkey stops signing you in and checking your decisions; your
+         *     device keeps it until you delete it there. It needs a check with a
+         *     passkey (this one or another), so a copied session can't turn the
+         *     check off. With the last one gone, decisions that need you ask for
+         *     the web alone again.
+         */
+        post: operations["removePasskey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/passkey-sign-ins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start signing in with a passkey
+         * @description The options for `navigator.credentials.get`, naming nobody (any
+         *     passkey for this site), good for five minutes. No sign-in needed;
+         *     the web app's server calls it.
+         */
+        post: operations["startPasskeySignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/passkey-sign-ins:finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in with a passkey
+         * @description Verifies the browser's answer to a passkey sign-in (user verified,
+         *     on this site's origin, a challenge used once) and answers a one-time
+         *     code for the web app's server to exchange (`/v1/auth/exchange`,
+         *     within a minute) for a web session. An answer that doesn't verify
+         *     is 401 `passkey_invalid` with `details.passkey_failure`.
+         */
+        post: operations["finishPasskeySignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2584,12 +2851,16 @@ export interface components {
          */
         Via: "web" | "cli" | "mcp" | "review" | "api" | "email" | "slack" | "github" | "linear" | "import" | "system";
         /**
-         * @description For keeps, and a person's changes to an agent connection:
-         *     `human_web` when Memax verified the person was on the web app,
-         *     `client_attested` when a client (the CLI, an agent) says a person did.
+         * @description For keeps, gate answers, a person's Forget and their changes to an
+         *     agent connection, weakest first: `client_attested` when a client
+         *     (the CLI, an agent) says a person did; `human_web` when Memax
+         *     verified the person was on the web app; `human_web_verified` when,
+         *     on the web app, they also confirmed with a passkey (a fresh,
+         *     user-verified assertion bound to them, their session and that very
+         *     request).
          * @enum {string}
          */
-        Assurance: "human_web" | "client_attested";
+        Assurance: "human_web" | "human_web_verified" | "client_attested";
         /**
          * @description The past-tense verb a receipt records. An agent connection's
          *     receipts (`object_kind: agent`) are connected, autonomy_changed,
@@ -2680,11 +2951,18 @@ export interface components {
          *     on the web app). Refused sessions: session_by_person (only a person
          *     lists or signs out their sessions), session_needs_web (signing out a
          *     session other than this one needs a person on the web app).
+         *     The passkey re-check: needs_passkey (you have a passkey, so this
+         *     decision asks for it; on the web the error is 403 `needs_passkey`
+         *     with a challenge, elsewhere a refusal that says to do it on the web).
+         *     Refused account changes: account_by_person (only you, signed in,
+         *     manage your account), account_needs_web (how you sign in changes on
+         *     the web app), needs_sign_in (adding a passkey or a way to sign in
+         *     needs a sign-in in the last few minutes, or your passkey).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
         /** @enum {string} */
-        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_kind";
+        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_kind" | "needs_passkey" | "passkey_invalid";
         /**
          * @description A typed edge between two memories. merged_into: folded into another
          *     memory (a duplicate, or a repeat of a rejection). supersedes: replaces
@@ -3007,6 +3285,13 @@ export interface components {
             message?: string;
             /** @description External content, held with the ochre notice. */
             quarantine?: boolean;
+            /**
+             * @description A hint on a change that went through: `passkey` when it needed
+             *     a person and you have no passkey, so the web app suggests adding
+             *     one (then the same change asks for it).
+             * @enum {string}
+             */
+            suggest?: "passkey";
         };
         CommandResult: {
             outcome: components["schemas"]["Outcome"];
@@ -5069,6 +5354,10 @@ export interface components {
             carries?: components["schemas"]["ForgetCarry"][];
             /** @description How a device's code ended (`invalid_transition` on a device code). */
             state?: components["schemas"]["DeviceAuthorizationState"];
+            /** @description The challenge to answer and send the same request again with (`needs_passkey`). */
+            passkey?: components["schemas"]["PasskeyChallenge"];
+            /** @description Why a passkey answer was refused (`passkey_invalid`). */
+            passkey_failure?: components["schemas"]["PasskeyFailure"];
         };
         /**
          * @description What one of an edition's actions did. fold: notes became lineage of
@@ -5381,8 +5670,13 @@ export interface components {
             uses: components["schemas"]["SubprocessorUse"][];
         };
         Security: {
-            /** @description What a Keep from this session counts as. */
+            /** @description What a Keep from this session counts as without a passkey check. */
             assurance: components["schemas"]["Assurance"];
+            /**
+             * @description You have a passkey, so keeps that need you ask for it and count
+             *     as `human_web_verified`.
+             */
+            passkey_check: boolean;
             residency: components["schemas"]["DataPlace"][];
             /** @description Every outside service that sees a memory's words, while the feature that sends them is on. */
             processors: components["schemas"]["Subprocessor"][];
@@ -5663,6 +5957,236 @@ export interface components {
         SessionsRevokedEnvelope: {
             data: components["schemas"]["SessionsRevoked"];
         };
+        /**
+         * @description A way to sign in: `github`, `google`, or `email` (a code sent to
+         *     your account's email, always available). Passkeys are listed
+         *     separately.
+         * @enum {string}
+         */
+        SignInMethodKind: "github" | "google" | "email";
+        SignInMethod: {
+            method: components["schemas"]["SignInMethodKind"];
+            connected: boolean;
+            /** @description The provider account it signs in as (a GitHub login, a Google email; your email for `email`). */
+            account?: string;
+            connected_at?: components["schemas"]["Timestamp"];
+        };
+        /** @description One of your passkeys. Nothing in it is secret; the public key stays on the server. */
+        Passkey: {
+            id: components["schemas"]["Id"];
+            name: string;
+            /** @description The passkey provider it says it is from, when Memax knows it (`iCloud Keychain`, `Google Password Manager`, `1Password`…). */
+            provider?: string;
+            created_at: components["schemas"]["Timestamp"];
+            /** @description When it last signed you in or checked a decision. */
+            last_used_at?: components["schemas"]["Timestamp"];
+            /** @description Its provider syncs it across your devices. */
+            backup_eligible: boolean;
+            /** @description It was synced when last used. */
+            synced: boolean;
+            /** @description How a browser reaches it (`internal`, `hybrid`, `usb`…), as the authenticator said. */
+            transports: string[];
+        };
+        PasskeyList: {
+            items: components["schemas"]["Passkey"][];
+        };
+        /** @description The session this request comes from. */
+        AccountSession: {
+            id?: components["schemas"]["Id"];
+            surface?: components["schemas"]["SessionSurface"];
+            signed_in_at?: components["schemas"]["Timestamp"];
+            /**
+             * @description Until when this sign-in counts as fresh, to add a passkey or a
+             *     way to sign in without one (10 minutes after signing in).
+             *     Absent once it has passed, or when Memax can't tell which
+             *     session this is.
+             */
+            fresh_until?: components["schemas"]["Timestamp"];
+        };
+        Account: {
+            id: components["schemas"]["Id"];
+            /** @description The name receipts show; your email's name when you set none. */
+            name: string;
+            email: string;
+            /** @description Your stamp on receipts (`ZZ`). */
+            initials: string;
+            /** @description Your GitHub login, when GitHub is a way you sign in. */
+            handle?: string;
+            sign_in_methods: components["schemas"]["SignInMethod"][];
+            passkeys: components["schemas"]["Passkey"][];
+            /**
+             * @description Decisions that need you (keeping a quarantined proposal, a
+             *     decision where the space needs a person on the web, raising an
+             *     agent, Forget) ask for your passkey: on whenever you have one.
+             */
+            passkey_check: boolean;
+            session: components["schemas"]["AccountSession"];
+        };
+        UpdateAccountRequest: {
+            name: string;
+        };
+        ForgetAccountRequest: {
+            /** @description Your account's email, typed, so a stray click forgets nothing. */
+            confirm: string;
+        };
+        AccountForgotten: {
+            /** @description Spaces whose record was forgotten (your personal space and the projects you own). */
+            spaces: number;
+            /** @description Agents disconnected, their credentials revoked. */
+            agents: number;
+            /** @description Team spaces you own, left with their members. */
+            team_spaces_kept: number;
+            /** @description Sessions signed out, this one included. */
+            sessions: number;
+            /** @description Passkeys taken off the account. */
+            passkeys: number;
+        };
+        ConnectSignInRequest: {
+            /**
+             * Format: uri
+             * @description Where on the web app the provider sends the browser back (with `account_linked=` or `account_link_error=`).
+             */
+            redirect_uri: string;
+        };
+        SignInRedirect: {
+            /**
+             * Format: uri
+             * @description The provider's sign-in page.
+             */
+            url: string;
+        };
+        /**
+         * @description The browser's answer to `navigator.credentials.create` or `.get`, as
+         *     `PublicKeyCredential.toJSON()` gives it (WebAuthn Level 3's
+         *     RegistrationResponseJSON or AuthenticationResponseJSON): `id`,
+         *     `rawId`, `type`, `response` with base64url members, and
+         *     `clientExtensionResults`.
+         */
+        PublicKeyCredentialJSON: {
+            [key: string]: unknown;
+        };
+        AddPasskeyRequest: {
+            credential: components["schemas"]["PublicKeyCredentialJSON"];
+            /** @description What to call it; its provider's name (or "Passkey") when left out. */
+            name?: string;
+        };
+        RenamePasskeyRequest: {
+            name: string;
+        };
+        FinishPasskeySignInRequest: {
+            credential: components["schemas"]["PublicKeyCredentialJSON"];
+        };
+        PasskeySignIn: {
+            /** @description A one-time code for a web session; exchange it at `/v1/auth/exchange`. */
+            code: string;
+            /** @description Seconds the code is good for. */
+            expires_in: number;
+        };
+        PasskeyDescriptor: {
+            /** @constant */
+            type: "public-key";
+            /** @description The credential id, base64url. */
+            id: string;
+            transports?: string[];
+        };
+        /** @description PublicKeyCredentialCreationOptionsJSON (WebAuthn Level 3), for `PublicKeyCredential.parseCreationOptionsFromJSON`. */
+        PasskeyCreationOptions: {
+            rp: {
+                /** @description The relying party ID (memax.app in production). */
+                id: string;
+                name: string;
+            };
+            user: {
+                /** @description The user handle, base64url. */
+                id: string;
+                name: string;
+                displayName: string;
+            };
+            challenge: string;
+            pubKeyCredParams: {
+                /** @constant */
+                type: "public-key";
+                /** @description A COSE algorithm (-7 ES256, -257 RS256, -8 EdDSA…). */
+                alg: number;
+            }[];
+            /** @description Milliseconds. */
+            timeout: number;
+            excludeCredentials: components["schemas"]["PasskeyDescriptor"][];
+            authenticatorSelection: {
+                /** @constant */
+                residentKey: "required";
+                /** @constant */
+                requireResidentKey: true;
+                /** @constant */
+                userVerification: "required";
+            };
+            /** @constant */
+            attestation: "none";
+        };
+        /** @description PublicKeyCredentialRequestOptionsJSON (WebAuthn Level 3), for `PublicKeyCredential.parseRequestOptionsFromJSON`. */
+        PasskeyRequestOptions: {
+            challenge: string;
+            /** @description Milliseconds. */
+            timeout: number;
+            rpId: string;
+            /** @description Your passkeys (a re-check), or none (signing in, any passkey for this site). */
+            allowCredentials: components["schemas"]["PasskeyDescriptor"][];
+            /** @constant */
+            userVerification: "required";
+        };
+        PasskeyRegistration: {
+            options: components["schemas"]["PasskeyCreationOptions"];
+            expires_at: components["schemas"]["Timestamp"];
+        };
+        /**
+         * @description A challenge for `navigator.credentials.get`. In 403 `needs_passkey`
+         *     it is bound to you, this session and the very request that was
+         *     refused: send that request again, unchanged (the same
+         *     Idempotency-Key and body), with the answer, base64url, in
+         *     `X-Memax-Passkey`.
+         */
+        PasskeyChallenge: {
+            options: components["schemas"]["PasskeyRequestOptions"];
+            expires_at: components["schemas"]["Timestamp"];
+        };
+        /**
+         * @description Why a passkey answer was refused (`passkey_invalid`): malformed (not
+         *     a WebAuthn answer), unknown (no such challenge for you), expired,
+         *     used (each challenge works once), other_session, other_request (a
+         *     check answers only the request it was issued for), no_credential
+         *     (the passkey isn't on an account, or not yours), invalid (the
+         *     signature, origin, site or flags don't verify), not_verified (the
+         *     authenticator didn't verify you), cloned (its sign count went
+         *     backwards), exists (it is on the account already), limit (20
+         *     passkeys), no_passkey, session_ended, session_needed (sign in
+         *     again).
+         * @enum {string}
+         */
+        PasskeyFailure: "malformed" | "unknown" | "expired" | "used" | "other_session" | "other_request" | "no_credential" | "invalid" | "not_verified" | "cloned" | "exists" | "limit" | "no_passkey" | "session_ended" | "session_needed";
+        AccountEnvelope: {
+            data: components["schemas"]["Account"];
+        };
+        AccountForgottenEnvelope: {
+            data: components["schemas"]["AccountForgotten"];
+        };
+        SignInRedirectEnvelope: {
+            data: components["schemas"]["SignInRedirect"];
+        };
+        PasskeyEnvelope: {
+            data: components["schemas"]["Passkey"];
+        };
+        PasskeyListEnvelope: {
+            data: components["schemas"]["PasskeyList"];
+        };
+        PasskeyRegistrationEnvelope: {
+            data: components["schemas"]["PasskeyRegistration"];
+        };
+        PasskeyChallengeEnvelope: {
+            data: components["schemas"]["PasskeyChallenge"];
+        };
+        PasskeySignInEnvelope: {
+            data: components["schemas"]["PasskeySignIn"];
+        };
     };
     responses: {
         /** @description The command was applied, or sent to Review. */
@@ -5729,7 +6253,11 @@ export interface components {
         };
         /**
          * @description `refused` (policy; see `details.policy`), `permission_denied`,
-         *     `impersonation_read_only` or `surface_unverified`.
+         *     `impersonation_read_only`, `surface_unverified`, `needs_passkey`
+         *     (you have a passkey and this decision asks for it: answer
+         *     `details.passkey` and send the same request again with
+         *     `X-Memax-Passkey`) or `passkey_invalid` (that answer didn't verify;
+         *     `details.passkey_failure` says why).
          */
         Forbidden: {
             headers: {
@@ -5896,6 +6424,19 @@ export interface components {
         RefPath: components["schemas"]["MemoryRef"];
         /** @description The agent connection's id. */
         AgentPath: components["schemas"]["Id"];
+        /**
+         * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+         *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+         *     JSON then base64url). It counts only for the request it was issued
+         *     for, from the same session, within five minutes, once, and only on
+         *     the web app (the CLI never reaches `human_web_verified`). One that
+         *     doesn't verify is 403 `passkey_invalid`.
+         */
+        PasskeyAssertion: string;
+        /** @description The provider. */
+        SignInMethodPath: "github" | "google";
+        /** @description The passkey's id. */
+        PasskeyPath: components["schemas"]["Id"];
         /** @description The session's id. */
         SessionPath: components["schemas"]["Id"];
         /** @description The `next_cursor` of the previous page. */
@@ -6280,6 +6821,15 @@ export interface operations {
                  *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
             };
             path: {
                 /** @description The space's id or slug. */
@@ -6422,6 +6972,15 @@ export interface operations {
                  *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
             };
             path: {
                 /** @description The space's id or slug. */
@@ -6508,6 +7067,15 @@ export interface operations {
                  *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
             };
             path: {
                 /** @description The space's id or slug. */
@@ -6976,6 +7544,15 @@ export interface operations {
                  *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
             };
             path: {
                 /** @description The space's id or slug. */
@@ -7076,6 +7653,15 @@ export interface operations {
                  *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
             };
             path: {
                 /** @description A display ID (M-0219, with `?space=`) or a memory id. */
@@ -7127,6 +7713,15 @@ export interface operations {
                  *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
             };
             path: {
                 /** @description A display ID (M-0219, with `?space=`) or a memory id. */
@@ -7269,6 +7864,15 @@ export interface operations {
                  *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
             };
             path: {
                 /** @description A display ID (M-0219, with `?space=`) or a memory id. */
@@ -7320,6 +7924,15 @@ export interface operations {
                  *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
             };
             path: {
                 /** @description A display ID (M-0219, with `?space=`) or a memory id. */
@@ -7677,6 +8290,15 @@ export interface operations {
                  *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
             };
             path: {
                 /** @description The agent connection's id. */
@@ -7763,6 +8385,15 @@ export interface operations {
                  *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
             };
             path: {
                 /** @description The agent connection's id. */
@@ -8672,6 +9303,15 @@ export interface operations {
                  *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
             };
             path: {
                 /** @description A gate's display ID (G-0012, with `?space=`) or its id. */
@@ -9036,6 +9676,15 @@ export interface operations {
                  *     the web app.
                  */
                 "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
             };
             path: {
                 /** @description A display ID (M-0219, with `?space=`) or a memory id. */
@@ -9501,6 +10150,447 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["InvalidTransition"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    getAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your account. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    updateAccount: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Your account now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    forgetAccount: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForgetAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description What was forgotten and ended. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountForgottenEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    connectSignInMethod: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
+            };
+            path: {
+                /** @description The provider. */
+                method: components["parameters"]["SignInMethodPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Where to send the browser. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignInRedirectEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    disconnectSignInMethod: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
+            };
+            path: {
+                /** @description The provider. */
+                method: components["parameters"]["SignInMethodPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your account now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listPasskeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your passkeys. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyListEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    addPasskey: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddPasskeyRequest"];
+            };
+        };
+        responses: {
+            /** @description The passkey, added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    startPasskeyRegistration: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The creation options. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyRegistrationEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["InvalidTransition"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    renamePasskey: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description The passkey's id. */
+                passkey: components["parameters"]["PasskeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenamePasskeyRequest"];
+            };
+        };
+        responses: {
+            /** @description The passkey. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    removePasskey: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
+            };
+            path: {
+                /** @description The passkey's id. */
+                passkey: components["parameters"]["PasskeyPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The passkey, removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    startPasskeySignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request options. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyChallengeEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    finishPasskeySignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishPasskeySignInRequest"];
+            };
+        };
+        responses: {
+            /** @description The one-time code. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeySignInEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

@@ -73,9 +73,10 @@ func quietLevel(r Role, s Space) Autonomy {
 //     above Propose. Viewers can't raise an agent at all (they may still
 //     connect theirs at Propose, which is what they can do themselves).
 //   - Raising needs a person on the web (assurance human_web), so an agent
-//     driving the CLI with the person's login can't raise itself. The one
-//     exception is connecting at no more than quietLevel. Resume counts as
-//     raising.
+//     driving the CLI with the person's login can't raise itself, and with
+//     their passkey when they have one (human_web_verified), so one holding
+//     the browser's cookies can't either. The one exception is connecting at
+//     no more than quietLevel. Resume counts as raising.
 //
 // Decide's rules for writes apply on top: an agent at Write still
 // proposes what cites an external source.
@@ -99,9 +100,13 @@ func DecideConnection(a Actor, act ConnectionAction, c Connection, s Space) Deci
 		if !c.Mine {
 			return refuse(CodeNotYourAgent, fmt.Sprintf("Only the person %s works for can %s it.", name, act))
 		}
-		if act == ConnectionResume && a.Assurance() != AssuranceHumanWeb {
-			return refuse(CodeAutonomyNeedsWeb, fmt.Sprintf(
-				"Resuming %s needs you on the web, so an agent can't resume itself. Resume it in Agents at memax.app.", name))
+		if act == ConnectionResume {
+			if d := needsPerson(a, CodeAutonomyNeedsWeb, fmt.Sprintf(
+				"Resuming %s needs you on the web, so an agent can't resume itself. Resume it in Agents at memax.app.", name),
+				"resuming "+name); d != nil {
+				return *d
+			}
+			return applyChecked(a)
 		}
 		return apply()
 	case ConnectionConnect, ConnectionSetAutonomy:
@@ -139,9 +144,13 @@ func DecideConnection(a Actor, act ConnectionAction, c Connection, s Space) Deci
 			"Only people who keep in %s can let an agent write there, so %s can propose at most.", spaceName(s), name))
 	}
 	quiet := act == ConnectionConnect && !c.To.Above(quietLevel(a.Role, s))
-	if !quiet && a.Assurance() != AssuranceHumanWeb {
-		return refuse(CodeAutonomyNeedsWeb, fmt.Sprintf(
-			"Raising what %s may do needs you on the web, so an agent can't raise itself. Change it in Agents at memax.app.", name))
+	if quiet {
+		return apply()
 	}
-	return apply()
+	if d := needsPerson(a, CodeAutonomyNeedsWeb, fmt.Sprintf(
+		"Raising what %s may do needs you on the web, so an agent can't raise itself. Change it in Agents at memax.app.", name),
+		"raising what "+name+" may do"); d != nil {
+		return *d
+	}
+	return applyChecked(a)
 }

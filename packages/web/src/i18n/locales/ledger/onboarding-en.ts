@@ -40,8 +40,7 @@ export const ledgerOnboardingEn = {
     github: "Continue with GitHub",
     google: "Continue with Google",
     passkey: "Use a passkey",
-    passkeyLater:
-      "Passkeys arrive with account settings. Use GitHub, Google or your email for now.",
+    passkeyWaiting: "Waiting for your passkey",
     or: "or",
     email: "Email",
     emailPlaceholder: "you@company.com",
@@ -70,6 +69,13 @@ export const ledgerOnboardingEn = {
         "This account can't sign in yet. Ask for an invite, or use the email that received one.",
       failed: "Signing in didn't work. Try again.",
       callback: "The sign-in didn't finish. Try again.",
+      passkeyCancelled:
+        "The passkey prompt closed before it finished. Try again when you're ready.",
+      passkeyUnsupported:
+        "This browser can't use passkeys. Use GitHub, Google or your email.",
+      passkeyUnknown:
+        "That passkey isn't on a Memax account. Sign in another way, then add it in Settings, Account.",
+      passkeyFailed: "Your passkey didn't sign you in. Try again.",
     },
   },
   callback: {

@@ -45,6 +45,13 @@ export type CommandFailure =
   | { kind: "carries"; refs: string[] }
   /** 409 `undo_refused`: why an undo can't go through, and what's in its way (`ref`). */
   | { kind: "undo-refused"; reason: UndoRefusal; ref: string | null }
+  /**
+   * The passkey re-check: 403 `needs_passkey` when the person closed the
+   * passkey prompt (`failure` null; nothing changed), or 403
+   * `passkey_invalid` when their answer didn't verify (`failure` is spec
+   * PasskeyFailure: expired, used, not_verified, …).
+   */
+  | { kind: "passkey"; failure: string | null }
   /** The request didn't reach the server, or the server had a moment. Safe to retry with the same key. */
   | { kind: "unreachable" }
   /** The source can't do this yet (no /v2 endpoint): a PLACEHOLDER. */
@@ -94,6 +101,16 @@ export function toFailure(err: unknown): CommandFailure {
         kind: "refused",
         code: policy?.code ?? null,
         message: policy?.message ?? err.message ?? null,
+      };
+    }
+    if (err.code === "needs_passkey") {
+      return { kind: "passkey", failure: null };
+    }
+    if (err.code === "passkey_invalid") {
+      const why = detail(err, "passkey_failure");
+      return {
+        kind: "passkey",
+        failure: typeof why === "string" ? why : "invalid",
       };
     }
     if (err.code === "edit_clash" || err.status === 412) {

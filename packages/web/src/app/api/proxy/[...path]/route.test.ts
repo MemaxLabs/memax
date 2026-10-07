@@ -293,6 +293,22 @@ describe("/api/proxy reads the session from its cookies", () => {
     );
   });
 
+  it("passes a passkey's answer to the re-check through, and still signs the request", async () => {
+    const { POST } = await loadRoute(VECTOR.secret);
+    const api = mockApi();
+    await POST(
+      keepRequest(cookies({ access: webToken, refresh: "refresh-1" }), {
+        "x-memax-passkey": "eyJpZCI6ImNyZWQifQ",
+      }),
+      params(keepPath),
+    );
+    const h = api.calls[0]!.init.headers;
+    expect(h.get("x-memax-passkey")).toBe("eyJpZCI6ImNyZWQifQ");
+    // The answer is the authenticator's own signature over a challenge
+    // bound to this request: the surface signature stays the same.
+    expect(h.get("x-memax-surface-signature")).toBe(VECTOR.signature);
+  });
+
   it("drops surface and client headers a client sends itself", async () => {
     const { POST } = await loadRoute(undefined);
     const api = mockApi();

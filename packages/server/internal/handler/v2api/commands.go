@@ -136,7 +136,7 @@ func (h *Handler) writeResult(w http.ResponseWriter, r *http.Request, status int
 		return
 	}
 	if res.Outcome == ledger.OutcomeRefused {
-		writeError(w, refusal(res.Policy))
+		h.writeRefusal(w, r, res.Policy)
 		return
 	}
 	if res.Replayed {

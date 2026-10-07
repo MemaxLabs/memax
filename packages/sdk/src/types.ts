@@ -27,7 +27,45 @@ export interface MemaxConfig {
   retryDelayMs?: number;
   /** Optional hook for warning headers returned by the API transport. */
   onWarning?: (warning: string) => void;
+  /**
+   * Answers the passkey re-check. When a request is refused with 403
+   * `needs_passkey` (you have a passkey, and this decision asks for it),
+   * the transport calls this with the challenge. Return the browser's
+   * answer (`PublicKeyCredential.toJSON()` from `navigator.credentials.get`
+   * with `check.options`) to send the very same request again, with the
+   * same Idempotency-Key and body, carrying it in `X-Memax-Passkey`; return
+   * null to give up, and the call throws the `needs_passkey` error. Only
+   * the web app on memax.app can answer: an assertion must come from a
+   * browser on the site's origin, and the API counts it only for the web
+   * app's own signed requests.
+   */
+  passkeyCheck?: PasskeyCheckHandler;
 }
+
+/** The challenge a 403 `needs_passkey` carries (`details.passkey`). */
+export interface PasskeyCheck {
+  /** PublicKeyCredentialRequestOptionsJSON, for `PublicKeyCredential.parseRequestOptionsFromJSON`. */
+  options: {
+    challenge: string;
+    timeout: number;
+    rpId: string;
+    allowCredentials: {
+      type: "public-key";
+      id: string;
+      transports?: string[];
+    }[];
+    userVerification: "required";
+  };
+  /** When the challenge stops working. */
+  expiresAt: string;
+  /** What the decision is, in English (`details.policy.message`). */
+  message: string;
+}
+
+/** See {@link MemaxConfig.passkeyCheck}. */
+export type PasskeyCheckHandler = (
+  check: PasskeyCheck,
+) => Promise<unknown | null>;
 
 // --- Request Options ---
 

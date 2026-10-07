@@ -396,3 +396,27 @@ export type Subprocessor = Schemas["Subprocessor"];
 export type SubprocessorUse = Schemas["SubprocessorUse"];
 /** zero, unconfirmed or provider_terms. */
 export type Retention = Schemas["Retention"];
+
+// Your account, passkeys and the passkey re-check (Settings › Account)
+/** You, how you sign in, your passkeys, and this session's sign-in. */
+export type Account = Schemas["Account"];
+/** A way to sign in: github, google, or email (a code to your account's email). */
+export type SignInMethod = Schemas["SignInMethod"];
+export type SignInMethodKind = Schemas["SignInMethodKind"];
+/** One of your passkeys. Nothing in it is secret. */
+export type Passkey = Schemas["Passkey"];
+export type PasskeyList = Schemas["PasskeyList"];
+/** The options for `navigator.credentials.create`, and when they expire. */
+export type PasskeyRegistration = Schemas["PasskeyRegistration"];
+/** The options for `navigator.credentials.get`, and when they expire. */
+export type PasskeyChallenge = Schemas["PasskeyChallenge"];
+export type PasskeyCreationOptions = Schemas["PasskeyCreationOptions"];
+export type PasskeyRequestOptions = Schemas["PasskeyRequestOptions"];
+/** Why a passkey answer was refused (`passkey_invalid`). */
+export type PasskeyFailure = Schemas["PasskeyFailure"];
+/** A passkey sign-in's one-time code, for the web app's server to exchange. */
+export type PasskeySignIn = Schemas["PasskeySignIn"];
+/** What forgetting your account forgot and ended. */
+export type AccountForgotten = Schemas["AccountForgotten"];
+/** The browser's answer, as `PublicKeyCredential.toJSON()` gives it. */
+export type PublicKeyCredentialJSON = Schemas["PublicKeyCredentialJSON"];

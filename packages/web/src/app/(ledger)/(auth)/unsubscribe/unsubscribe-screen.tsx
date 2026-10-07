@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import { Button, Logo } from "@memaxlabs/ledger";
 import { useLocale } from "@/i18n";
 import { getPublicMemaxClient } from "@/lib/memax-client";
-import { SETTINGS_HREF } from "@/lib/v2/places";
 import styles from "./unsubscribe.module.css";
 
 type State = "ready" | "working" | "done" | "failed";
@@ -64,7 +63,7 @@ export function UnsubscribeScreen() {
               {copy.confirm}
             </Button>
           ) : null}
-          <Button variant="secondary" href={`${SETTINGS_HREF}#dream`}>
+          <Button variant="secondary" href="/settings/notifications">
             {copy.settings}
           </Button>
         </div>

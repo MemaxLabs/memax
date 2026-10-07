@@ -92,6 +92,9 @@ type AuthHandler struct {
 	// clientAddress is a request's client address and, when the edge says,
 	// its city (the rate limiter's view of which proxy header to trust).
 	clientAddress func(*http.Request) (ip, city string)
+	// passkeys says who has a passkey: V1's link and unlink refuse them
+	// (auth_account.go). Nil means passkeys are off.
+	passkeys PasskeyHolders
 }
 
 // onboardingEmitter is the plan-18 producer surface. Minimal

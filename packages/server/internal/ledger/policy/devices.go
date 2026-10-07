@@ -43,7 +43,7 @@ func DecideDevice(a Actor, act DeviceAction) Decision {
 	case DeviceLookup:
 		return apply()
 	case DeviceApprove, DeviceDeny:
-		if a.Assurance() != AssuranceHumanWeb {
+		if !a.Assurance().AtLeast(AssuranceHumanWeb) {
 			return refuse(CodeDeviceNeedsWeb,
 				"Confirm this code on memax.app/device, signed in on the web, so an agent can't sign a device in for you.")
 		}

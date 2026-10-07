@@ -82,7 +82,9 @@ export type ViaPart =
   | { kind: "edition"; n: number }
   | { kind: "repository" }
   /** A source pointer from the receipt ("PR #212"). */
-  | { kind: "source"; ref: string };
+  | { kind: "source"; ref: string }
+  /** The person confirmed it with their passkey (assurance human_web_verified). */
+  | { kind: "passkey" };
 
 /** What only some sources can say about a receipt. */
 export type ActivityDetail =
@@ -124,6 +126,11 @@ export interface ActivityEntry {
   via: ViaPart[];
   /** For the CSV: the raw surface and session. */
   rawVia: ActivityVia | null;
+  /**
+   * How sure Memax is a person made it (spec Assurance): human_web_verified
+   * (with their passkey), human_web or client_attested; null for others.
+   */
+  assurance?: string | null;
   session: string | null;
   source: { kind: string; ref: string } | null;
   /** Why, if given (a reject's reason). Redacted once the memory is forgotten. */

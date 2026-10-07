@@ -114,7 +114,7 @@ func (h *Handler) createImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if res.Refused != nil {
-		writeError(w, refusal(*res.Refused))
+		h.writeRefusal(w, r, *res.Refused)
 		return
 	}
 	if res.Replayed {
@@ -221,7 +221,7 @@ func (h *Handler) settleImportConflict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if res.Outcome == ledger.OutcomeRefused {
-		writeError(w, refusal(res.Policy))
+		h.writeRefusal(w, r, res.Policy)
 		return
 	}
 	v, err := h.ledger.GetImport(r.Context(), p.scope, sp.SpaceID, id)

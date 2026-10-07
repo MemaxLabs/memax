@@ -11,7 +11,6 @@ import { CommandFailedError } from "@/lib/v2/data/command-error";
 import { createDemoSource } from "@/lib/v2/data/demo-source";
 import type { DreamSource } from "@/lib/v2/data/dream";
 import type { LedgerDataSource } from "@/lib/v2/data/source";
-import { DreamSettingsPanel } from "../../settings/account/dream-settings";
 import { renderPlace } from "../test-frame";
 import { TodayPlace } from "../today";
 import { DreamPlace } from "./index";
@@ -224,31 +223,5 @@ describe("a Dream edition", () => {
       name: "Read edition No. 214",
     });
     expect(open.getAttribute("href")).toBe("/memax-v2/dream/214");
-  });
-
-  it("changes the morning email and the zone in Settings", async () => {
-    const update = vi.fn();
-    withDream((real) => ({
-      updateSettings: async (input) => {
-        update(input);
-        return real.updateSettings(input);
-      },
-    }));
-    renderPlace(<DreamSettingsPanel />);
-    const panel = screen.getByRole("region", { name: "Dream" });
-    fireEvent.click(within(panel).getByRole("radio", { name: "Off" }));
-    await screen.findByText("Dream settings changed.");
-    expect(update.mock.calls[0]![0]).toMatchObject({ morningEmail: false });
-    fireEvent.change(
-      within(panel).getByRole("combobox", { name: "Time zone" }),
-      {
-        target: { value: "Europe/Paris" },
-      },
-    );
-    await waitFor(() =>
-      expect(update.mock.calls[1]?.[0]).toMatchObject({
-        timeZone: "Europe/Paris",
-      }),
-    );
   });
 });

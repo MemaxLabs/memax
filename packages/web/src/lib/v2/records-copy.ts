@@ -237,6 +237,26 @@ function refusalReason(
   return other.otherBare;
 }
 
+/** Why the passkey re-check didn't let a command through. */
+export function passkeyReason(
+  f: RecordsCopy["failure"],
+  failure: string | null,
+): string {
+  switch (failure) {
+    case null:
+      return f.passkeyDeclined;
+    case "expired":
+      return f.passkeyExpired;
+    case "not_verified":
+      return f.passkeyNotVerified;
+    case "session_ended":
+    case "session_needed":
+      return f.passkeySignIn;
+    default:
+      return f.passkeyInvalid;
+  }
+}
+
 /**
  * Why a command didn't go through and what to do, as one or two
  * sentences: "M-0430 wasn't kept. It quotes an outside source, so only
@@ -323,6 +343,9 @@ export function failureText(
       break;
     case "carries":
       reason = f.carriesChanged;
+      break;
+    case "passkey":
+      reason = passkeyReason(f, failure.failure);
       break;
     case "undo-refused":
     case "unknown":

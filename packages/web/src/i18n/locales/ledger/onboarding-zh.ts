@@ -42,8 +42,7 @@ export const ledgerOnboardingZh: Translations["ledger"]["onboarding"] = {
     github: "用 GitHub 继续",
     google: "用 Google 继续",
     passkey: "使用通行密钥",
-    passkeyLater:
-      "通行密钥会随账号设置一起推出。现在请用 GitHub、Google 或邮箱。",
+    passkeyWaiting: "正在等待你的通行密钥",
     or: "或",
     email: "邮箱",
     emailPlaceholder: "you@company.com",
@@ -72,6 +71,12 @@ export const ledgerOnboardingZh: Translations["ledger"]["onboarding"] = {
         "这个账号暂时还不能登录。请先获得邀请，或使用收到邀请的邮箱。",
       failed: "没能登录。再试一次。",
       callback: "登录没有完成。再试一次。",
+      passkeyCancelled: "通行密钥提示在完成前关闭了。准备好后再试一次。",
+      passkeyUnsupported:
+        "这个浏览器不支持通行密钥。请用 GitHub、Google 或邮箱。",
+      passkeyUnknown:
+        "这个通行密钥不属于任何 Memax 账户。请用其他方式登录，然后在“设置 · 账户”里添加它。",
+      passkeyFailed: "你的通行密钥没能让你登录，请重试。",
     },
   },
   callback: {

@@ -111,6 +111,7 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     targets: "{total} 个目标中的 {done} 个",
     edition: "第 {n} 期",
     repository: "仓库",
+    passkey: "已用通行密钥确认",
   },
   sentence: {
     asked: "{actor}问了你一个问题：{quote}",

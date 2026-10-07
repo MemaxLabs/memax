@@ -34,6 +34,8 @@ const DEFAULTS: Record<NotificationEvent, { inApp: boolean; email: boolean }> =
 /** Memax cloud (plan 25 §5.16, D14): the server's defaults with every key set. */
 export const DEMO_SECURITY: SecurityView = {
   assurance: "human_web",
+  // Ziyang added a passkey on Sep 2 (Account.png).
+  passkeyCheck: true,
   residency: [
     { holds: "database", provider: "neon", region: "us-west-2" },
     { holds: "compute", provider: "fly", region: "sjc" },

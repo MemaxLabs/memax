@@ -7,7 +7,13 @@ import { MemaxError, type AuthProviderName } from "memax-sdk";
 import { interpolate, useLocale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
 import { getPublicMemaxClient } from "@/lib/memax-client";
+import { trackFunnelStep } from "@/lib/v2/funnel";
 import { safeNext } from "@/lib/v2/onboarding/routes";
+import {
+  getPasskey,
+  PasskeyError,
+  type RequestOptionsJSON,
+} from "@/lib/v2/passkeys/webauthn";
 import { useLandingRedirect } from "./landing";
 import styles from "./sign-in.module.css";
 
@@ -139,15 +145,11 @@ export function SignInScreen() {
             >
               {copy.google}
             </Button>
-            <Button
-              size="lg"
-              icon="shield"
-              className={styles.wide}
-              disabled
-              disabledReason={copy.passkeyLater}
-            >
-              {copy.passkey}
-            </Button>
+            <PasskeySignIn
+              copy={copy}
+              disabled={signedIn}
+              onSignedIn={() => landing.go(next)}
+            />
           </div>
           <div className={styles.or} aria-hidden="true">
             <span />
@@ -170,6 +172,100 @@ export function SignInScreen() {
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * A passkey (plan §5.15): the web app's server asks the API for a
+ * challenge naming nobody, the browser asks for any passkey for this site
+ * with user verification, and the server trades the verified answer for
+ * the web app's session (/api/auth/passkey), as every sign-in here does.
+ * The button's press is the gesture the browser's prompt needs.
+ */
+function PasskeySignIn({
+  copy,
+  disabled,
+  onSignedIn,
+}: {
+  copy: Copy;
+  disabled: boolean;
+  onSignedIn: () => void;
+}) {
+  const { completeLogin } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const start = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const options = await fetch("/api/auth/passkey/options", {
+        method: "POST",
+      });
+      const begun = (await options.json()) as {
+        data?: { options?: RequestOptionsJSON };
+      };
+      if (!options.ok || !begun.data?.options) {
+        setError(copy.errors.passkeyFailed);
+        return;
+      }
+      const credential = await getPasskey(begun.data.options);
+      const res = await fetch("/api/auth/passkey", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential }),
+      });
+      const json = (await res.json()) as {
+        data?: { signed_in?: boolean };
+        error?: { code?: string; details?: { passkey_failure?: string } };
+      };
+      if (!res.ok || !json.data?.signed_in) {
+        setError(
+          json.error?.details?.passkey_failure === "no_credential"
+            ? copy.errors.passkeyUnknown
+            : copy.errors.passkeyFailed,
+        );
+        return;
+      }
+      if (!(await completeLogin())) {
+        setError(copy.errors.passkeyFailed);
+        return;
+      }
+      trackFunnelStep("signed_in");
+      onSignedIn();
+    } catch (err) {
+      const problem = err instanceof PasskeyError ? err.problem : "failed";
+      setError(
+        problem === "cancelled"
+          ? copy.errors.passkeyCancelled
+          : problem === "unsupported"
+            ? copy.errors.passkeyUnsupported
+            : copy.errors.passkeyFailed,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <Button
+        size="lg"
+        icon="shield"
+        className={styles.wide}
+        disabled={disabled}
+        pending={busy}
+        onClick={() => void start()}
+      >
+        {busy ? copy.passkeyWaiting : copy.passkey}
+      </Button>
+      {error ? (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      ) : null}
+    </>
   );
 }
 

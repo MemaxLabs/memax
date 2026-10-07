@@ -4,6 +4,7 @@
 // Ledger voice (handoff design-system README): sentence case; no
 // "AI", "magic", "smart", "delete", "save" or "approve"; no
 // exclamation marks or emoji. voice.test.ts checks both locales.
+import { ledgerAccountEn } from "./account-en";
 import { ledgerActivityEn } from "./activity-en";
 import { ledgerAgentsEn } from "./agents-en";
 import { ledgerAppEn } from "./app-en";
@@ -52,6 +53,7 @@ export const ledgerEn = {
   dream: ledgerDreamEn,
   onboarding: ledgerOnboardingEn,
   settings: ledgerSettingsEn,
+  account: ledgerAccountEn,
   devTokens: {
     breadcrumb: "Ledger · Dev fixture",
     title: "Tokens and type",

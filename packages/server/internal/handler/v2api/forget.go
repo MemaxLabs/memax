@@ -78,7 +78,7 @@ func (h *Handler) forgetMemory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, h.fromLedger(r, err))
 		return
 	case res.Outcome == ledger.OutcomeRefused:
-		writeError(w, refusal(res.Policy))
+		h.writeRefusal(w, r, res.Policy)
 		return
 	}
 	if res.Replayed {
@@ -111,7 +111,7 @@ func (h *Handler) requestForget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if res.Outcome == ledger.OutcomeRefused {
-		writeError(w, refusal(res.Policy))
+		h.writeRefusal(w, r, res.Policy)
 		return
 	}
 	if res.Replayed {
@@ -160,7 +160,12 @@ func (h *Handler) previewForget(w http.ResponseWriter, r *http.Request) {
 		writeError(w, e)
 		return
 	}
-	v, err := h.ledger.PreviewForget(r.Context(), scope, p.actor, p.via, ref)
+	actor, e := h.previewActor(r, p)
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	v, err := h.ledger.PreviewForget(r.Context(), scope, actor, p.via, ref)
 	if err != nil {
 		writeError(w, h.fromLedger(r, err))
 		return

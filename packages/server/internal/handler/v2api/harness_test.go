@@ -34,6 +34,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore/mockobjectstore"
+	"github.com/MemaxLabs/memax/packages/server/internal/store"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
 	"github.com/MemaxLabs/memax/packages/server/openapi"
 )
@@ -110,6 +111,8 @@ type env struct {
 	srv    http.Handler
 	svc    *compile.Service
 	store  *mockobjectstore.Store
+	// st is the V1 store over the same database (the auth handler's).
+	st store.Store
 	// server is the real HTTP server live requests go to, made on first use.
 	server *httptest.Server
 }
@@ -149,7 +152,7 @@ func newEnvOn(t *testing.T, db *testdb.DB, more func(*env) []v2api.Option, ledge
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &env{t: t, pool: pool, store: mockobjectstore.New()}
+	e := &env{t: t, pool: pool, store: mockobjectstore.New(), st: st}
 	e.ledger = ledger.New(pool, append([]ledger.Option{ledger.WithLogger(quiet), ledger.WithJobs(jobs)}, ledgerOpts...)...)
 	e.svc = compile.New(e.ledger, &compiletest.Fake{}, e.store, compile.Config{Log: quiet})
 	mux := http.NewServeMux()

@@ -1,4 +1,8 @@
-import type { MemaxConfig } from "./types.js";
+import type {
+  MemaxConfig,
+  PasskeyCheck,
+  PasskeyCheckHandler,
+} from "./types.js";
 import { MemaxError, parseRetryAfter } from "./errors.js";
 
 /**
@@ -217,6 +221,34 @@ function buildQueryString(query?: RequestOptions["query"]): string {
   return encoded ? `?${encoded}` : "";
 }
 
+/** The challenge a 403 `needs_passkey` carries, when it carries one. */
+export function passkeyCheckOf(
+  message: string,
+  details: Record<string, unknown> | undefined,
+): PasskeyCheck | undefined {
+  const passkey = details?.passkey as
+    | { options?: PasskeyCheck["options"]; expires_at?: string }
+    | undefined;
+  if (!passkey?.options || typeof passkey.options.challenge !== "string") {
+    return undefined;
+  }
+  return {
+    options: passkey.options,
+    expiresAt: passkey.expires_at ?? "",
+    message,
+  };
+}
+
+/**
+ * A passkey's answer as the `X-Memax-Passkey` header carries it: its JSON
+ * (AuthenticationResponseJSON), base64url. The JSON is ASCII (its binary
+ * members are base64url already), so btoa takes it as it is.
+ */
+export function encodePasskeyAnswer(answer: unknown): string {
+  const json = typeof answer === "string" ? answer : JSON.stringify(answer);
+  return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 export class ApiTransport {
   // Public so `Memax` (client.ts) can pass the resolved apiUrl to
   // AuthResource without duplicating the DEFAULT_API_URL fallback —
@@ -229,6 +261,7 @@ export class ApiTransport {
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
   private readonly onWarning?: (warning: string) => void;
+  private readonly passkeyCheck?: PasskeyCheckHandler;
 
   constructor(config: MemaxConfig) {
     this.apiUrl = (config.apiUrl ?? DEFAULT_API_URL).replace(/\/$/, "");
@@ -238,6 +271,7 @@ export class ApiTransport {
     this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
     this.onWarning = config.onWarning;
+    this.passkeyCheck = config.passkeyCheck;
   }
 
   async request<T>(
@@ -248,6 +282,9 @@ export class ApiTransport {
     const url = `${this.apiUrl}${path}${buildQueryString(options?.query)}`;
 
     let lastErr: unknown;
+    // The passkey re-check's answer, once the person has given it: the
+    // same request goes again with it (see MemaxConfig.passkeyCheck).
+    let passkeyAnswer: string | undefined;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       // Bail before doing any work if the caller already cancelled.
       // Matters between not_ready retries — the inter-retry sleep can
@@ -267,6 +304,9 @@ export class ApiTransport {
       };
       if (options?.hubId) {
         headers["X-Hub-ID"] = options.hubId;
+      }
+      if (passkeyAnswer) {
+        headers["X-Memax-Passkey"] = passkeyAnswer;
       }
       // Auto-detect and send client timezone for TZ-aware date handling
       try {
@@ -374,6 +414,22 @@ export class ApiTransport {
           lastErr = err;
           await sleepUnlessAborted(this.retryDelayMs, options?.signal);
           continue;
+        }
+        const check =
+          json.error.code === "needs_passkey" && !passkeyAnswer
+            ? passkeyCheckOf(json.error.message, json.error.details)
+            : undefined;
+        if (check && this.passkeyCheck) {
+          const answer = await this.passkeyCheck(check);
+          if (options?.signal?.aborted) {
+            throw signalAbortError(options.signal);
+          }
+          if (answer != null) {
+            passkeyAnswer = encodePasskeyAnswer(answer);
+            // The answered request isn't a retry: it doesn't use one up.
+            attempt--;
+            continue;
+          }
         }
         throw err;
       }

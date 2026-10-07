@@ -118,6 +118,12 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
       expired: "它已经过期，{agent} 不再等了。",
     },
     unreachable: "没连上 Memax，所以什么都没变。再试一次吧。",
+    passkeyDeclined: "这需要你的通行密钥，所以没有任何改变。",
+    passkeyExpired: "通行密钥确认用时太长，所以没有任何改变。请重试。",
+    passkeyNotVerified:
+      "你的通行密钥没有验证你的身份（指纹、面容或 PIN）。请解锁后重试。",
+    passkeySignIn: "这个会话已经退出，请重新登录。",
+    passkeyInvalid: "你的通行密钥回答没有通过验证，所以没有任何改变。请重试。",
     busy: "另一个改动正占着它。稍等一下再试。",
     busyJudge: "Memax 还在对照现行的决策检查它。稍等一下再试。",
     inConflict: "它和现行的决策 {with} 矛盾。对比两边，定下来。",

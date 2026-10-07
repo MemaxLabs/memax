@@ -359,6 +359,11 @@ func filesHolding(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID, refs []stri
 // the person named.
 func (w *writer) purgeMemory(ctx context.Context, sp spaceRow, op *forgetOp, m *Memory, carried *Carried) (Receipt, error) {
 	rc := w.receipt(sp, m.ID, m.Ref, ActionForgot, m.streamVersion+1, "")
+	if carried == nil {
+		// The person's own Forget says how sure Memax is it was them
+		// (human_web_verified after a passkey re-check).
+		rc.Assurance = w.personAssurance()
+	}
 	switch {
 	case carried != nil && carried.Reason != CarrySpace:
 		kind := ObjectMemory

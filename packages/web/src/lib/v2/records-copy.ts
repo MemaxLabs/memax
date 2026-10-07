@@ -217,7 +217,9 @@ export type FailedCommand =
   | "edit"
   | "resolve"
   | "answer"
-  | "withdraw";
+  | "withdraw"
+  | "forget"
+  | "declineForget";
 
 function refusalReason(
   refused: Record<string, string>,
@@ -265,12 +267,17 @@ export function failureText(
   let reason: string;
   switch (failure.kind) {
     case "refused": {
-      // Answering follows Keep's rules for a decision, worded for answering.
-      const answerCode =
-        command === "answer" && failure.code ? failure.code : null;
+      // Answering follows Keep's rules for a decision, worded for
+      // answering; Forget has its own codes and words.
+      const own =
+        command === "answer"
+          ? f.refusedAnswer
+          : command === "forget" || command === "declineForget"
+            ? f.refusedForget
+            : null;
       const answering =
-        answerCode && answerCode in f.refusedAnswer
-          ? f.refusedAnswer[answerCode as keyof typeof f.refusedAnswer]
+        own && failure.code && failure.code in own
+          ? own[failure.code as keyof typeof own]
           : null;
       reason = answering
         ? interpolate(answering, { space, ref })
@@ -313,6 +320,9 @@ export function failureText(
       break;
     case "unavailable":
       reason = f.unavailable;
+      break;
+    case "carries":
+      reason = f.carriesChanged;
       break;
     case "undo-refused":
     case "unknown":

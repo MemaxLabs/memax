@@ -57,6 +57,7 @@ var maxBodySize = func() int64 {
 type MemoriesHandler struct {
 	store         store.Store
 	events        events.Publisher
+	v2            V2Forgetter             // nil = V2 off
 	embedder      embed.Embedder          // nil = no embeddings, keyword search only
 	summarizer    *summarize.Summarizer   // nil = no summaries
 	extractor     *extract.Extractor      // nil = no fact extraction
@@ -2185,6 +2186,11 @@ func (h *MemoriesHandler) BatchMove(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/account/data
 func (h *MemoriesHandler) DeleteAllData(w http.ResponseWriter, r *http.Request) {
 	ownerID := GetUserID(r)
+	// The V2 record of the spaces the person owns is forgotten through the
+	// ledger first (a receipted Forget of each space; plan 25 §5.13).
+	if !forgetV2Account(w, r, h.v2, ownerID) {
+		return
+	}
 	// Count memories + sum storage bytes before deletion for meter adjustment.
 	// We use the authoritative Postgres SUM here (not the Redis cache)
 	// because an account wipe should zero the counters regardless of

@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, Receipt, Redaction } from "@memaxlabs/ledger";
+import { interpolate } from "@/i18n";
 import { formatShortDate } from "@/lib/v2/copy";
 import type { MemoryRecord } from "@/lib/v2/data/memories";
 import { useAriaKeys, useKeycap } from "@/lib/v2/keymap/react";
@@ -8,22 +9,27 @@ import { placeHref } from "@/lib/v2/places";
 import { memoryReadsText, reachText } from "@/lib/v2/reads-copy";
 import { StatementText } from "../../_components/statement-text";
 import type { RecordsView } from "../records-view";
+import { ForgetConfirm } from "./forget-confirm";
+import type { MemoryForget } from "./use-memory-forget";
 import styles from "./memory.module.css";
 
 /**
  * Memory.png's head: the statement (its type carries its state), the
- * receipt with reads and reach, and the actions. Move to space and
- * Forget are drawn with why they aren't available yet; Forget never
- * has a key.
+ * receipt with reads and reach, and the actions. Move to space is drawn
+ * with why it isn't available yet. Forget opens its inline confirmation
+ * (the States board) and never has a key; an agent's waiting request to
+ * forget it sits above, with Forget it and Keep it.
  */
 export function MemoryHead({
   view,
   record,
+  forget,
   onEdit,
   onCite,
 }: {
   view: RecordsView;
   record: MemoryRecord;
+  forget: MemoryForget;
   onEdit: () => void;
   onCite: () => void;
 }) {
@@ -32,6 +38,7 @@ export function MemoryHead({
   const editKey = useKeycap("memory.edit");
   const citeKeys = useAriaKeys("memory.cite");
   const forgotten = record.forgotten;
+  const request = record.forgetRequests?.[0] ?? null;
   // The Keep the seal is for, or the latest receipt while it isn't kept.
   const receipt = record.kept
     ? { ...record.kept, action: "kept" as const }
@@ -98,8 +105,37 @@ export function MemoryHead({
           </Button>
         </p>
       ) : null}
+      {!forgotten && request && !forget.confirming ? (
+        <p className={styles.waiting}>
+          {interpolate(
+            request.reason ? p.forgetRequest.askedWhy : p.forgetRequest.asked,
+            {
+              agent: view.agentName(request.agent),
+              reason: request.reason ?? "",
+            },
+          )}
+          <Button
+            variant="danger"
+            size="sm"
+            icon="forget"
+            onClick={forget.open}
+          >
+            {p.forgetRequest.forget}
+          </Button>
+          <Button
+            variant="quiet"
+            size="sm"
+            pending={forget.pending}
+            onClick={() => void forget.decline()}
+          >
+            {p.forgetRequest.keep}
+          </Button>
+        </p>
+      ) : null}
       {forgotten ? (
         <p className={styles.waiting}>{p.forgotten}</p>
+      ) : forget.confirming ? (
+        <ForgetConfirm view={view} record={record} forget={forget} />
       ) : (
         <div className={`mx-inline ${styles.actions}`}>
           <Button
@@ -129,12 +165,7 @@ export function MemoryHead({
           </Button>
           <span className={styles.spacer} />
           {/* Forget has no key, on purpose (HANDOFF §7). */}
-          <Button
-            variant="danger"
-            icon="forget"
-            disabled
-            disabledReason={p.forgetLater}
-          >
+          <Button variant="danger" icon="forget" onClick={forget.open}>
             {p.forget}
           </Button>
         </div>

@@ -1,8 +1,10 @@
 import { CommandFailedError } from "./command-error";
 import {
+  DEMO_FORGET_REQUESTS,
   DEMO_MEMORY_PAGES,
   DEMO_RECORDS,
   DEMO_SECTION_COUNTS,
+  DEMO_TOMBSTONES,
   DEMO_TOTALS,
 } from "./demo-memories-data";
 import { DEMO_CARDS, DEMO_FOLD, ZZ } from "./demo-review-data";
@@ -10,11 +12,14 @@ import { DEMO_TARGETS } from "./demo-targets-data";
 import { reachesTarget } from "./targets";
 import type { Decided, DemoJournal } from "./demo-records";
 import type {
+  ForgetPreview,
   MemoriesSource,
   MemoryFilter,
   MemoryListItem,
   MemoryPage,
   MemoryRecord,
+  TombstoneStepLine,
+  TombstoneView,
 } from "./memories";
 import type { DecisionResult } from "./records";
 import type { ReviewItem } from "./review";
@@ -76,6 +81,10 @@ export function createDemoMemories({
   inConflict,
 }: DemoStore): MemoriesSource {
   const isUnfolded = (slug: string, ref: string) => unfolded.has(id(slug, ref));
+  /** Forgotten this session: the tombstone, by space/ref. */
+  const forgotNow = new Map<string, TombstoneView>();
+  /** Forget requests a person kept the memory against this session. */
+  const declined = new Set<string>();
 
   /** Every row of a space, with this session's decisions, edits and new memories (on the first page). */
   function rowsOf(slug: string): MemoryListItem[][] {
@@ -112,6 +121,17 @@ export function createDemoMemories({
             state: "kept",
             note: null,
             receipt: { by: ZZ, action: "kept", at: stamp() },
+          };
+        }
+        const gone = forgotNow.get(id(slug, row.ref));
+        if (gone) {
+          next = {
+            ...next,
+            statement: "",
+            state: "forgotten",
+            note: null,
+            receipt: { by: ZZ, action: "forgot", at: gone.at },
+            forgotten: { at: gone.at, by: null, detail: null },
           };
         }
         return [next];
@@ -211,13 +231,199 @@ export function createDemoMemories({
       conditions: [],
       checked: null,
       forgotten: row.forgotten,
+      forgetRequests:
+        row.state === "forgotten" || declined.has(id(slug, ref))
+          ? []
+          : (DEMO_FORGET_REQUESTS[`${slug}/${ref}`] ?? []),
     };
+    if (row.state === "forgotten") {
+      // No words, no seal, no lineage of words: the tombstone says the rest.
+      return { ...base, kept: null, merged: null, sources: [], reaches: null };
+    }
     return keptNow ? base : { ...base, ...extra, statement: base.statement };
+  }
+
+  /** The demo's tombstone: the board's M-0201, or one forgotten this session. */
+  function tombstoneOf(slug: string, ref: string): TombstoneView | null {
+    return (
+      forgotNow.get(id(slug, ref)) ?? DEMO_TOMBSTONES[`${slug}/${ref}`] ?? null
+    );
+  }
+
+  /** What the demo's Forget would do: its files from the demo targets. */
+  function preview(slug: string, found: MemoryRecord): ForgetPreview {
+    const targets = (DEMO_TARGETS[slug] ?? []).filter(
+      (t) =>
+        t.syncState !== "off" &&
+        reachesTarget(found.ref, t, DEMO_TARGETS[slug] ?? []),
+    );
+    const copies = targets.filter((t) => t.delivery === "copy").length;
+    return {
+      version: found.version,
+      carries: [],
+      files: targets.length - copies,
+      copies,
+      agents: found.reach?.agents ?? 3,
+      refusal: null,
+    };
+  }
+
+  /** A tombstone for a memory forgotten this session, done at once. */
+  function forgetNow(
+    slug: string,
+    found: MemoryRecord,
+    note: string | null,
+  ): TombstoneView {
+    const at = stamp();
+    const p = preview(slug, found);
+    const targets = (DEMO_TARGETS[slug] ?? []).filter(
+      (t) =>
+        t.syncState !== "off" &&
+        reachesTarget(found.ref, t, DEMO_TARGETS[slug] ?? []),
+    );
+    const agents = [
+      "claude-code",
+      "codex",
+      "cursor",
+      "opencode",
+      "gemini",
+    ].slice(0, p.agents);
+    const step = (
+      kind: TombstoneStepLine["kind"],
+      fields: Partial<TombstoneStepLine> = {},
+    ): TombstoneStepLine => ({
+      key: `${kind}-${fields.target?.label ?? fields.agent ?? ""}`,
+      kind,
+      status: "done",
+      reason: null,
+      at,
+      target: null,
+      compile: null,
+      agent: null,
+      count: null,
+      ...fields,
+    });
+    return {
+      ref: found.ref,
+      at,
+      by: ZZ,
+      requestedBy: found.forgetRequests?.[0]?.agent ?? null,
+      via: "web",
+      note,
+      keptAt: found.kept?.at ?? null,
+      readsBefore: found.reads ?? 0,
+      status: "done",
+      with: [],
+      carried: null,
+      gone: {
+        versions: found.version,
+        sources: found.sources.length,
+        embeddings: 1,
+        files: p.files + p.copies,
+      },
+      agents: agents.length,
+      steps: [
+        step("asked"),
+        step("removed"),
+        ...targets.map((t) =>
+          step("target", {
+            target: { label: t.label, kind: t.kind, delivery: t.delivery },
+            reason: t.delivery === "copy" ? "copy" : null,
+          }),
+        ),
+        step("artifacts"),
+        step("caches"),
+        step("ledger"),
+        ...agents.map((a) =>
+          step("agent", {
+            agent: a,
+            status: "waiting",
+            reason: "next_read",
+            at: null,
+          }),
+        ),
+      ],
+      unreachable: [
+        {
+          kind: "git_history",
+          files: targets
+            .filter((t) => t.delivery !== "copy")
+            .map((t) => t.label),
+          repositories: ["MemaxLabs/memax"],
+          agents: [],
+          days: null,
+          processors: [],
+          targets: [],
+        },
+        {
+          kind: "agent_memory",
+          files: [],
+          repositories: [],
+          agents: [],
+          days: null,
+          processors: [],
+          targets: [],
+        },
+        {
+          kind: "backups",
+          files: [],
+          repositories: [],
+          agents: [],
+          days: 7,
+          processors: [],
+          targets: [],
+        },
+      ],
+    };
   }
 
   const memories: MemoriesSource = {
     peekList: (slug, filter) => listPage(slug, filter, undefined),
     peekRecord: (slug, ref) => record(slug, ref),
+    peekTombstone: (slug, ref) => tombstoneOf(slug, ref),
+    async tombstone({ space, ref }) {
+      return tombstoneOf(space.slug, ref);
+    },
+    async previewForget({ space, ref }) {
+      const found = record(space.slug, ref);
+      if (!found) throw new CommandFailedError({ kind: "not-found" });
+      if (found.lifecycle === "forgotten") {
+        throw new CommandFailedError({ kind: "decided" });
+      }
+      return preview(space.slug, found);
+    },
+    forget({ space, ref, version, carries, note, idempotencyKey }) {
+      return command(idempotencyKey, () => {
+        const found = record(space.slug, ref);
+        if (!found) throw new CommandFailedError({ kind: "not-found" });
+        if (found.lifecycle === "forgotten") {
+          throw new CommandFailedError({ kind: "decided" });
+        }
+        if (found.version !== version) {
+          throw new CommandFailedError({
+            kind: "clash",
+            currentVersion: found.version,
+          });
+        }
+        if (carries.length > 0) {
+          throw new CommandFailedError({ kind: "carries", refs: [] });
+        }
+        forgotNow.set(
+          id(space.slug, ref),
+          forgetNow(space.slug, found, note?.trim() || null),
+        );
+        return { ref };
+      });
+    },
+    declineForget({ space, ref, idempotencyKey }) {
+      return command(idempotencyKey, () => {
+        const found = record(space.slug, ref);
+        if (!found?.forgetRequests?.length) {
+          throw new CommandFailedError({ kind: "decided" });
+        }
+        declined.add(id(space.slug, ref));
+      });
+    },
     async list({ space, filter, cursor }) {
       return listPage(space.slug, filter, cursor);
     },

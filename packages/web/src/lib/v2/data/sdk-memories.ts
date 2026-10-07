@@ -5,6 +5,7 @@ import type {
   MemoryRecord,
   MergedNote,
 } from "./memories";
+import { previewOf, tombstoneOf } from "./sdk-forget";
 import { foldUndo, recordOf, undoneIn } from "./sdk-record";
 import { actorOf, listItemOf, receiptsFor, type V2Client } from "./sdk-records";
 import { reachesTarget } from "./targets";
@@ -12,8 +13,9 @@ import { targetsOrNull } from "./targets-sdk";
 
 /**
  * Memories through memax.v2: the list (GET /v2/spaces/{space}/memories,
- * newest first, cursor-paged), one memory (GET /v2/memories/{ref}) and
- * edit with If-Match. A memory's page has its reads and reach: the
+ * newest first, cursor-paged), one memory (GET /v2/memories/{ref}), edit
+ * with If-Match, and Forget: its preview, the Forget itself, Keep it
+ * instead of an agent's request, and the tombstone. A memory's page has its reads and reach: the
  * agents from its reads, the files from the compile targets. Section
  * counts and totals aren't served yet (PLACEHOLDER: null), and search
  * is the page's own (it filters what's loaded) until /v2 has one.
@@ -155,6 +157,49 @@ export function createSdkMemories(
         by: actorOf(change, viewerId()),
         at: change?.occurred_at ?? found.memory.updated_at,
       };
+    },
+
+    async previewForget({ space, ref, signal }) {
+      return previewOf(
+        await client.v2.memories.previewForget(ref, {
+          space: space.slug,
+          signal,
+        }),
+      );
+    },
+
+    async forget({ space, ref, version, carries, note, idempotencyKey }) {
+      const body: V2.ForgetInput = { carries };
+      if (note?.trim()) body.note = note.trim();
+      const result = await client.v2.memories.forget(ref, body, {
+        space: space.slug,
+        ifMatch: version,
+        idempotencyKey,
+      });
+      return { ref: result.memory.ref };
+    },
+
+    async declineForget({ space, ref, idempotencyKey }) {
+      await client.v2.memories.declineForget(
+        ref,
+        {},
+        { space: space.slug, idempotencyKey },
+      );
+    },
+
+    async tombstone({ space, ref, signal }) {
+      try {
+        return tombstoneOf(
+          await client.v2.memories.tombstone(ref, {
+            space: space.slug,
+            signal,
+          }),
+          viewerId(),
+        );
+      } catch (err) {
+        if (isNotFound(err)) return null;
+        throw err;
+      }
     },
 
     async edit({

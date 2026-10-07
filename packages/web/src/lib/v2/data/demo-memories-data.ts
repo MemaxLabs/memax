@@ -1,4 +1,11 @@
-import type { MemoryListItem, MemoryRecord } from "./memories";
+import type {
+  ForgetRequestLine,
+  MemoryListItem,
+  MemoryRecord,
+  TombstoneStepLine,
+  TombstoneView,
+  UnreachableLine,
+} from "./memories";
 import type { Actor } from "./records";
 import {
   agent,
@@ -453,5 +460,140 @@ export const DEMO_RECORDS: Record<string, Partial<MemoryRecord>> = {
       { key: "c2", code: null, text: "ADR 004 is unchanged" },
     ],
     checked: { at: at("14:31"), by: agent("claude-code") },
+  },
+};
+
+/** An agent's waiting request to forget a memory (memax_forget), by space/ref. */
+export const DEMO_FORGET_REQUESTS: Record<string, ForgetRequestLine[]> = {
+  "memax-v2/M-0096": [
+    {
+      agent: "codex",
+      reason: "It repeats the API style guide word for word.",
+      at: at("11:20"),
+    },
+  ],
+};
+
+const tombStep = (
+  kind: TombstoneStepLine["kind"],
+  status: TombstoneStepLine["status"],
+  when: string | null,
+): TombstoneStepLine => ({
+  key: `${kind}-${when ?? "waiting"}`,
+  kind,
+  status,
+  reason: null,
+  at: when,
+  target: null,
+  compile: null,
+  agent: null,
+  count: null,
+});
+
+const tombTarget = (
+  label: string,
+  kind: string,
+  delivery: string,
+  when: string,
+): TombstoneStepLine => ({
+  ...tombStep("target", "done", when),
+  key: `target-${label}`,
+  target: { label, kind, delivery },
+});
+
+const tombAgent = (
+  key: string,
+  status: TombstoneStepLine["status"],
+  when: string | null,
+): TombstoneStepLine => ({
+  ...tombStep("agent", status, when),
+  key: `agent-${key}`,
+  agent: key,
+  reason: status === "done" ? null : "next_read",
+});
+
+const tombReach = (
+  kind: UnreachableLine["kind"],
+  fields: Partial<UnreachableLine>,
+): UnreachableLine => ({
+  kind,
+  files: [],
+  repositories: [],
+  agents: [],
+  days: null,
+  processors: [],
+  targets: [],
+  ...fields,
+});
+
+/** Tombstone.png: M-0201, forgotten Oct 3 at ZZ's request. */
+export const DEMO_TOMBSTONES: Record<string, TombstoneView> = {
+  "memax-v2/M-0201": {
+    ref: "M-0201",
+    at: "2026-10-03T10:12:04-07:00",
+    by: ZZ,
+    requestedBy: null,
+    via: "web",
+    note: "personal, and not something agents need.",
+    keptAt: "2026-09-21T09:05:00-07:00",
+    readsBefore: 23,
+    status: "done",
+    with: [],
+    carried: null,
+    gone: { versions: 1, sources: 2, embeddings: 1, files: 4 },
+    agents: 5,
+    steps: [
+      tombStep("asked", "done", "2026-10-03T10:12:04-07:00"),
+      tombStep("removed", "done", "2026-10-03T10:12:04-07:00"),
+      tombTarget(
+        "CLAUDE.md",
+        "claude_md",
+        "local",
+        "2026-10-03T10:12:06-07:00",
+      ),
+      tombTarget(
+        "AGENTS.md",
+        "agents_md",
+        "local",
+        "2026-10-03T10:12:06-07:00",
+      ),
+      tombTarget(
+        "Cursor rules",
+        "cursor_mdc",
+        "local",
+        "2026-10-03T10:12:06-07:00",
+      ),
+      {
+        ...tombTarget(
+          "ChatGPT project",
+          "chatgpt",
+          "copy",
+          "2026-10-03T10:12:09-07:00",
+        ),
+        reason: "copy",
+      },
+      tombStep("artifacts", "done", "2026-10-03T10:12:07-07:00"),
+      tombStep("caches", "done", "2026-10-03T10:12:07-07:00"),
+      tombStep("ledger", "done", "2026-10-03T10:12:07-07:00"),
+      tombAgent("claude-code", "done", "2026-10-03T10:31:00-07:00"),
+      tombAgent("codex", "done", "2026-10-03T11:02:00-07:00"),
+      tombAgent("cursor", "done", "2026-10-03T12:30:00-07:00"),
+      tombAgent("opencode", "done", "2026-10-03T13:05:00-07:00"),
+      { ...tombAgent("gemini", "waiting", null), reason: "paused" },
+    ],
+    unreachable: [
+      tombReach("git_history", {
+        files: ["CLAUDE.md", "AGENTS.md", ".cursor/rules/memax.mdc"],
+        repositories: ["MemaxLabs/memax"],
+      }),
+      tombReach("agent_memory", { agents: ["claude-code", "codex", "cursor"] }),
+      tombReach("backups", { days: 7 }),
+      tombReach("llm", {
+        processors: [
+          { name: "Voyage AI", purpose: "embeddings", zeroRetention: false },
+        ],
+      }),
+      tombReach("copies", { targets: ["ChatGPT project"] }),
+    ],
   },
 };

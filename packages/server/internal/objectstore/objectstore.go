@@ -92,6 +92,31 @@ func NewFromEnv() Store {
 	}
 }
 
+// Lister lists the keys under a prefix. S3Store and the mock implement it;
+// cmd/v2-reapply-forgets reads the forget ledger with it.
+type Lister interface {
+	List(ctx context.Context, prefix string) ([]string, error)
+}
+
+// List implements Lister, every page of it.
+func (s *S3Store) List(ctx context.Context, prefix string) ([]string, error) {
+	var keys []string
+	p := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(s.bucket),
+		Prefix: aws.String(prefix),
+	})
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list objects %s: %w", prefix, err)
+		}
+		for _, o := range page.Contents {
+			keys = append(keys, aws.ToString(o.Key))
+		}
+	}
+	return keys, nil
+}
+
 func shouldUsePathStyle(endpoint string) bool {
 	if endpoint == "" {
 		return false

@@ -315,3 +315,144 @@ describe("one of the judge's folds", () => {
     expect(screen.queryByRole("button", { name: /Undo the fold/ })).toBeNull();
   });
 });
+
+describe("Forget on a memory's page", () => {
+  it("confirms inline with what it removes, then leaves the tombstone", async () => {
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    const forget = vi.fn(demo.memories.forget);
+    renderMemory("M-0219", {
+      ...demo,
+      memories: { ...demo.memories, forget },
+    });
+    await screen.findByRole("heading", { level: 1 });
+    // Forget has no key, and it is never the default.
+    fireEvent.click(screen.getByRole("button", { name: "Forget" }));
+    expect(await screen.findByText("Forget this everywhere?")).toBeTruthy();
+    expect(
+      await screen.findByText(
+        /^Removes the words from Memax, \d+ compiled files?, 1 copy-out and 5 agents\. A tombstone stays so you can see it happened\. This can't be undone\.$/,
+      ),
+    ).toBeTruthy();
+    // Esc takes it back.
+    fireEvent.keyDown(screen.getByRole("button", { name: /Cancel/ }), {
+      key: "Escape",
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("Forget this everywhere?")).toBeNull(),
+    );
+    expect(forget).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Forget" }));
+    const note = await screen.findByRole("textbox", {
+      name: "A note for the tombstone",
+    });
+    fireEvent.change(note, { target: { value: "superseded by the ADR" } });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Forget M-0219" }),
+    );
+    await waitFor(() => expect(forget).toHaveBeenCalledOnce());
+    expect(forget.mock.calls[0]![0]).toMatchObject({
+      ref: "M-0219",
+      version: 1,
+      carries: [],
+      note: "superseded by the ADR",
+    });
+    expect(
+      await screen.findByText("Forgot M-0219. The tombstone stays."),
+    ).toBeTruthy();
+    // The page is the tombstone now: never the words.
+    expect(await screen.findByText("How it was forgotten")).toBeTruthy();
+    expect(screen.getByText("You asked to forget it")).toBeTruthy();
+    expect(
+      screen.queryByText(
+        "Background jobs run on River, Postgres‑backed. We do not use Temporal.",
+      ),
+    ).toBeNull();
+  });
+
+  it("says why a person can't forget, before they try", async () => {
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    renderMemory("M-0219", {
+      ...demo,
+      memories: {
+        ...demo.memories,
+        previewForget: vi.fn().mockResolvedValue({
+          version: 1,
+          carries: [{ ref: "M-0220", reason: "cites" }],
+          files: 2,
+          copies: 0,
+          agents: 1,
+          refusal: { code: "forget_not_allowed", message: "Only owners." },
+        }),
+      },
+    });
+    await screen.findByRole("heading", { level: 1 });
+    fireEvent.click(screen.getByRole("button", { name: "Forget" }));
+    expect(
+      await screen.findByText(
+        "M-0219 wasn't forgotten. Only owners forget in memax-v2. Ask an owner to forget it.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Removes the words from Memax, 2 compiled files and 1 agent. It takes M-0220 (cites it) with it. A tombstone stays so you can see it happened. This can't be undone.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Forget M-0219" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+  });
+
+  it("shows an agent's request to forget it, and keeps it", async () => {
+    renderMemory(
+      "M-0096",
+      createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 }),
+    );
+    expect(
+      await screen.findByText(
+        /Codex asked you to forget it: “It repeats the API style guide word for word\.”/,
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
+    expect(
+      await screen.findByText(
+        "Kept M-0096. The request to forget it is closed.",
+      ),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Keep it" })).toBeNull(),
+    );
+  });
+
+  it("reads a forgotten memory's page as its tombstone (Tombstone.png)", async () => {
+    renderMemory(
+      "M-0201",
+      createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 }),
+    );
+    expect(await screen.findByText("How it was forgotten")).toBeTruthy();
+    expect(
+      screen.getByText(/^Forgotten Oct 3, \d\d:12, at your request$/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Kept Sep 21 · read 23 times before it was forgotten"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("CLAUDE.md, AGENTS.md and Cursor rules rewritten"),
+    ).toBeTruthy();
+    expect(screen.getByText("Gemini CLI is paused")).toBeTruthy();
+    expect(screen.getByText("The statement and its two sources")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Out of Memax's reach" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Database backups, for 7 days. Memax never restores one without forgetting it again.",
+      ),
+    ).toBeTruthy();
+    // Nothing to edit or forget on a tombstone.
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Forget" })).toBeNull();
+  });
+});

@@ -202,11 +202,39 @@ func TestDecide(t *testing.T) {
 		{"V1 admin (member + can forget) forgets", with(person(RoleMember, ViaWeb), func(a *Actor) { a.CanForget = true }), ActionForget, kept, project, EffectApply, "", false, ""},
 		{"members forget where the rule allows", person(RoleMember, ViaWeb), ActionForget, kept, membersFgt, EffectApply, "", false, ""},
 		{"viewer can't forget", person(RoleViewer, ViaWeb), ActionForget, kept, membersFgt, EffectRefuse, CodeForgetNotAllowed, false, ""},
-		{"agent forget asks the person", with(agent(RoleOwner, AutonomyWrite), func(a *Actor) { a.PersonPresent, a.CanElicit = true, true }), ActionForget, kept, project, EffectConfirm, CodeConfirm, false, "can't be undone"},
+		// An agent never forgets, even with the person present: its
+		// memax_forget is a request a person confirms on the web.
+		{"agent forget is never confirmed in the agent", with(agent(RoleOwner, AutonomyWrite), func(a *Actor) { a.PersonPresent, a.CanElicit = true, true }), ActionForget, kept, project, EffectRefuse, CodePersonMustForget, false, "on the web"},
 		{"agent forget with nobody present refused", agent(RoleOwner, AutonomyWrite), ActionForget, kept, project, EffectRefuse, CodePersonMustForget, false, "on the web"},
-		{"member's agent can't forget", with(agent(RoleMember, AutonomyWrite), func(a *Actor) { a.PersonPresent, a.CanElicit = true, true }), ActionForget, kept, project, EffectRefuse, CodeForgetNotAllowed, false, ""},
+		{"member's agent can't forget", with(agent(RoleMember, AutonomyWrite), func(a *Actor) { a.PersonPresent, a.CanElicit = true, true }), ActionForget, kept, project, EffectRefuse, CodePersonMustForget, false, ""},
 		{"agent at read can't forget", agent(RoleOwner, AutonomyRead), ActionForget, kept, project, EffectRefuse, CodeReadOnly, false, ""},
 		{"repository can't forget", Actor{Kind: ActorRepository, Via: ViaGitHub}, ActionForget, kept, project, EffectRefuse, CodePersonMustForget, false, ""},
+		// Forget needs keep rights too: a V1 admin in a space where owners keep.
+		{"a member who may forget but not keep", with(person(RoleMember, ViaWeb), func(a *Actor) { a.CanForget = true }), ActionForget, kept, ownersKeep, EffectRefuse, CodeForgetNotAllowed, false, ""},
+		// D15: forgetting a decision where decisions need the web needs the web.
+		{"forgetting a team decision on the web", person(RoleOwner, ViaWeb), ActionForget, keptDec, team, EffectApply, "", false, ""},
+		{"forgetting a team decision from the CLI (D15)", person(RoleOwner, ViaCLI), ActionForget, keptDec, team, EffectRefuse, CodeDecisionNeedsWeb, false, "on the web"},
+		{"forgetting a team fact from the CLI", person(RoleOwner, ViaCLI), ActionForget, kept, team, EffectApply, "", false, ""},
+		{"forgetting a project decision from the CLI", person(RoleOwner, ViaCLI), ActionForget, keptDec, project, EffectApply, "", false, ""},
+		{"team rule off: a decision forgotten from the CLI", person(RoleOwner, ViaCLI), ActionForget, keptDec, teamNoWeb, EffectApply, "", false, ""},
+
+		// --- forget everything in a space ---
+		{"the owner forgets a space", person(RoleOwner, ViaAPI), ActionForgetSpace, newFact, project, EffectApply, "", false, ""},
+		{"a member can't forget a space", with(person(RoleMember, ViaWeb), func(a *Actor) { a.CanForget = true }), ActionForgetSpace, newFact, membersFgt, EffectRefuse, CodeForgetNotAllowed, false, "owner"},
+		{"an agent can't forget a space", agent(RoleOwner, AutonomyWrite), ActionForgetSpace, newFact, project, EffectRefuse, CodePersonMustForget, false, ""},
+		{"a key can't forget a space", with(person(RoleOwner, ViaAPI), func(a *Actor) { a.Credential = CredentialAPIKey }), ActionForgetSpace, newFact, project, EffectRefuse, CodeKeyCannotForget, false, ""},
+
+		// --- an agent's memax_forget: a request ---
+		{"an agent asks to forget", agent(RoleOwner, AutonomyPropose), ActionRequestForget, kept, project, EffectApply, "", false, ""},
+		{"a read-only agent can't ask to forget", agent(RoleOwner, AutonomyRead), ActionRequestForget, kept, project, EffectRefuse, CodeReadOnly, false, ""},
+		{"a paused agent can't ask to forget", with(agent(RoleOwner, AutonomyWrite), func(a *Actor) { a.AgentStatus = AgentPaused }), ActionRequestForget, kept, project, EffectRefuse, CodeAgentPaused, false, ""},
+		{"a key that proposes asks to forget", with(person(RoleOwner, ViaAPI), func(a *Actor) { a.Credential, a.Autonomy = CredentialAPIKey, AutonomyPropose }), ActionRequestForget, kept, project, EffectApply, "", false, ""},
+		{"people forget, they don't ask", person(RoleMember, ViaWeb), ActionRequestForget, kept, project, EffectRefuse, CodeForgetByPerson, false, ""},
+		{"the owner keeps it instead", person(RoleOwner, ViaCLI), ActionDeclineForget, keptDec, team, EffectApply, "", false, ""},
+		{"a member can't keep it instead by default", person(RoleMember, ViaWeb), ActionDeclineForget, kept, project, EffectRefuse, CodeForgetNotAllowed, false, ""},
+		{"an agent can't keep it instead", agent(RoleOwner, AutonomyWrite), ActionDeclineForget, kept, project, EffectRefuse, CodePersonMustForget, false, ""},
+		{"Memax re-applies the forget ledger", Actor{Kind: ActorMemax, Via: ViaSystem}, ActionReapplyForget, kept, project, EffectApply, "", false, ""},
+		{"a person can't re-apply it", person(RoleOwner, ViaWeb), ActionReapplyForget, kept, project, EffectRefuse, CodePersonMustForget, false, ""},
 
 		// --- the Brief ---
 		{"owner revises the Brief", person(RoleOwner, ViaWeb), ActionReviseBrief, newFact, project, EffectApply, "", false, ""},

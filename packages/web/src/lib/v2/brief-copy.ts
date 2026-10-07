@@ -255,6 +255,7 @@ export function commandReason(
       return failure.judge ? f.busyJudge : f.busy;
     case "in-conflict":
     case "undo-refused":
+    case "carries":
       return f.unknown;
     case "unknown":
       return failure.message ?? f.unknown;

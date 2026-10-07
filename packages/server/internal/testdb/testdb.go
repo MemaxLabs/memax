@@ -173,6 +173,51 @@ func AcquireWithContext(t *testing.T, ctx context.Context) (store.Store, *pgxpoo
 	return store.NewPostgresStore(pool), pool
 }
 
+// Copy copies a test's database as it is now into a new one, the stand-in
+// for a backup or a point-in-time restore, and returns a pool on the copy
+// (dropped at cleanup, like Acquire's). CREATE DATABASE … TEMPLATE needs
+// the source idle, so pool's connections are closed first (it reconnects
+// on its next use); the caller must not hold one across the call.
+func Copy(t *testing.T, pool *pgxpool.Pool) *pgxpool.Pool {
+	t.Helper()
+	ctx := context.Background()
+	src := pool.Config().ConnConfig.Database
+	admin, err := getAdminPool(ctx)
+	if err != nil {
+		t.Fatalf("testdb: copy: %v", err)
+	}
+	dbName := fmt.Sprintf("memax_copy_%d_%d", time.Now().UnixNano(), rand.Int64N(1_000_000))
+	pool.Reset()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		_, err = admin.Exec(ctx, fmt.Sprintf("CREATE DATABASE %q TEMPLATE %q", dbName, src))
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) || !strings.Contains(err.Error(), "being accessed by other users") {
+			t.Fatalf("testdb: copy %s: %v", src, err)
+		}
+		pool.Reset()
+		time.Sleep(50 * time.Millisecond)
+	}
+	cp, err := pgxpool.New(ctx, connStringFor(dbName))
+	if err != nil {
+		_, _ = admin.Exec(context.Background(), fmt.Sprintf("DROP DATABASE %q", dbName))
+		t.Fatalf("testdb: copy: %v", err)
+	}
+	t.Cleanup(func() {
+		cp.Close()
+		termCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, _ = admin.Exec(termCtx,
+			"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()", dbName)
+		if _, err := admin.Exec(termCtx, fmt.Sprintf("DROP DATABASE IF EXISTS %q", dbName)); err != nil {
+			t.Logf("testdb: DROP DATABASE %q failed (non-fatal): %v", dbName, err)
+		}
+	})
+	return cp
+}
+
 // ensureTemplate creates and migrates the shared template DB
 // exactly once per process. Returns the template DB name (or an
 // error if Postgres isn't reachable).

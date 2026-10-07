@@ -52,7 +52,9 @@ export {
   V2BriefsResource,
   V2TargetsResource,
   V2GatesResource,
+  V2NoticesResource,
   refusalOf,
+  forgetCarriesOf,
   askEventOf,
 } from "./v2/resources.js";
 export { EventStreamParser, readEventStream } from "./v2/sse.js";

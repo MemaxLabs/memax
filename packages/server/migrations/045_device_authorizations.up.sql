@@ -1,4 +1,4 @@
--- 044: device_authorizations
+-- 045: device_authorizations
 --
 -- The device authorization grant (RFC 8628) for `memax login` and
 -- `npx memax-cli init` where no browser can open on the machine: over

@@ -93,6 +93,34 @@ export type GatePage = Schemas["GatePage"];
 /** A gate command's answer; for an answer, `memory` is the kept decision. */
 export type GateResult = Schemas["GateResult"];
 
+// Forget (rule 7)
+/** What a Forget did: never words. Read one for its steps. */
+export type Tombstone = Schemas["Tombstone"];
+export type TombstonePage = Schemas["TombstonePage"];
+/** One step of how a memory was forgotten, with where it stands now. */
+export type TombstoneStep = Schemas["TombstoneStep"];
+export type TombstoneActor = Schemas["TombstoneActor"];
+export type TombstoneAgent = Schemas["TombstoneAgent"];
+export type TombstoneTarget = Schemas["TombstoneTarget"];
+/** How many of each kind of thing held the words and are gone. */
+export type TombstoneGone = Schemas["TombstoneGone"];
+/** A copy Memax can't reach, said as data (git history, backups, …). */
+export type UnreachableCopy = Schemas["UnreachableCopy"];
+/** An outside model provider that processed the words. */
+export type Processor = Schemas["Processor"];
+export type ForgetResult = Schemas["ForgetResult"];
+/** What a Forget would do: what goes with it, the files, the agents told. */
+export type ForgetPreview = Schemas["ForgetPreview"];
+/** A memory that goes with a Forget (`details.carries` of `forget_carries`). */
+export type ForgetCarry = Schemas["ForgetCarry"];
+/** An agent's request that a person forget a memory. */
+export type ForgetRequestRecord = Schemas["ForgetRequestRecord"];
+export type ForgetRequestResult = Schemas["ForgetRequestResult"];
+/** Something an agent is told once: a memory or a space it read was forgotten. */
+export type Notice = Schemas["Notice"];
+export type NoticeList = Schemas["NoticeList"];
+export type AckNoticesResult = Schemas["AckNoticesResult"];
+
 // The sealed receipt chain
 /** One signed checkpoint of a space's receipt chain. */
 export type Checkpoint = Schemas["Checkpoint"];
@@ -196,6 +224,8 @@ export type AnswerGateInput = Schemas["AnswerGateRequest"];
 export type WithdrawGateInput = Schemas["ReviewRequest"];
 /** A session start's report of the compile its agent loaded. */
 export type CompileLoadInput = Schemas["CompileLoadRequest"];
+export type ForgetInput = Schemas["ForgetRequest"];
+export type AckNoticesInput = Schemas["AckNoticesRequest"];
 export type CreateSpaceInput = Schemas["CreateSpaceRequest"];
 export type ImportInput = Schemas["ImportRequest"];
 export type ImportItemInput = Schemas["ImportItemInput"];
@@ -257,6 +287,19 @@ export type GateStatus = Schemas["GateStatus"];
 /** recall, search, get, list, digest or compile_load. */
 export type ReadKind = Schemas["ReadKind"];
 export type ReaderKind = Schemas["ReaderKind"];
+/** folded, updates, cites or space. */
+export type CarryReason = Schemas["CarryReason"];
+/** memory, or space for a Forget of everything in a space. */
+export type TombstoneKind = Schemas["TombstoneKind"];
+/** propagating or done. */
+export type TombstoneStatus = Schemas["TombstoneStatus"];
+export type StepKind = Schemas["StepKind"];
+export type StepStatus = Schemas["StepStatus"];
+export type StepReason = Schemas["StepReason"];
+export type UnreachableKind = Schemas["UnreachableKind"];
+/** waiting, forgotten or declined. */
+export type ForgetRequestStatus = Schemas["ForgetRequestStatus"];
+export type NoticeKind = Schemas["NoticeKind"];
 /** repository (shared with everyone who clones it) or home (this machine only). */
 export type ImportLocation = Schemas["ImportLocation"];
 /** proposed, folded, existing or refused. */

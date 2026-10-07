@@ -104,7 +104,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     name: "memax_recall",
     title: "Recall memories",
     description:
-      "Returns the memories relevant to a query from the spaces this connection can read. In spaces on the V2 record it returns kept memories, plus this session's own pending proposals marked proposed, and how each decision this connection asked for ended (once); without a query it returns a digest of each space (its latest compiled file, or its top kept memories by section, what changed since this connection was last seen, and the decisions it is still waiting on). In other spaces it returns ranked excerpts of saved memories.",
+      "Returns the memories relevant to a query from the spaces this connection can read. In spaces on the V2 record it returns kept memories, plus this session's own pending proposals marked proposed, and how each decision this connection asked for ended and what was forgotten since it read it (each once); without a query it returns a digest of each space (its latest compiled file, or its top kept memories by section, what changed since this connection was last seen, and the decisions it is still waiting on). In other spaces it returns ranked excerpts of saved memories.",
     inputSchema: {
       type: "object",
       properties: {
@@ -230,14 +230,26 @@ export const MCP_TOOLS: McpToolDefinition[] = [
         },
         notices: {
           type: "array",
+          description:
+            'What this connection should drop or recheck, each once: memories forgotten since it read them (or in a space it is connected to; every other tool\'s result carries these in _meta["app.memax/notices"] too), and its writes put back in Review.',
           items: {
             type: "object",
             properties: {
               kind: {
                 type: "string",
+                enum: ["forgotten", "space_forgotten", "returned"],
               },
               message: {
                 type: "string",
+              },
+              space_id: {
+                type: "string",
+              },
+              refs: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "The forgotten memories' display IDs; empty when a whole space was forgotten.",
               },
             },
             required: ["kind", "message"],
@@ -753,7 +765,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     name: "memax_forget",
     title: "Forget a memory",
     description:
-      "Forgets a memory by ID. In a space on the V2 record an agent can't forget: this asks a person, who confirms on the web, and the result says where. In other spaces it deletes the memory.",
+      "Asks to forget a memory by ID. In a space on the V2 record an agent can't forget: this records a request that a person forgets it, or keeps it, on the web, and the result says where; until then it stays kept. In other spaces it deletes the memory.",
     inputSchema: {
       type: "object",
       properties: {
@@ -764,6 +776,11 @@ export const MCP_TOOLS: McpToolDefinition[] = [
         space_id: {
           type: "string",
           description: "The space of a display ID. Optional with a UUID.",
+        },
+        reason: {
+          type: "string",
+          description:
+            "Why it should be forgotten, for the person who decides. In a space on the V2 record it goes into the request's receipt.",
         },
       },
       required: ["id"],

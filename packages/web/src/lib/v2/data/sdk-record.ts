@@ -6,6 +6,7 @@ import type {
   MemoryRecord,
   SourceLine,
 } from "./memories";
+import { forgetRequestsOf } from "./sdk-forget";
 import { actorOf, displayState, isRecordAction, railOf } from "./sdk-records";
 import { FOLD_UNDO_WINDOW_MS } from "./undo";
 
@@ -178,5 +179,7 @@ export function recordOf(
             detail: null,
           }
         : null,
+    forgetRequests:
+      state === "forgotten" ? [] : forgetRequestsOf(detail.forget_requests),
   };
 }

@@ -358,6 +358,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/tombstones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List what was forgotten
+         * @description The space's tombstones, newest first: each forgotten memory (and
+         *     each Forget of the whole space), who asked, when, what went with it,
+         *     and whether its propagation is done. Read one with
+         *     `GET /v2/memories/{ref}/tombstone` for its steps.
+         */
+        get: operations["listTombstones"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/spaces/{space}/compile-loads": {
         parameters: {
             query?: never;
@@ -738,6 +764,191 @@ export interface paths {
          *     `in_conflict` naming it: settle that first.
          */
         post: operations["resolveConflict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/memories/{ref}:forget": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Forget a memory everywhere
+         * @description Forgets a memory (rule 7). In one transaction its words leave the
+         *     record: every version's statement, its sources' quotes and
+         *     locators, its decision fields, its search entry and embeddings, the
+         *     reasons on its receipts, the judge's words about it on both sides of
+         *     every pair, a gate's question when it is the decision the gate
+         *     became, and every Brief line that cited it (the Brief gets a new
+         *     version). A tombstone stays. Every target that held it recompiles,
+         *     the stored copies of older compiles are re-rendered without it, the
+         *     caches are purged and every agent that read it (or is connected to
+         *     the space) is told on its next response; the tombstone's steps say
+         *     how far that got. It can't be undone.
+         *
+         *     Only a person who may keep and forget in the space forgets (owners,
+         *     by default; see the space's rules). A decision in a space whose
+         *     decisions need a person on the web needs the web (D15). Agents and
+         *     API keys are refused: an agent asks with `:request-forget`.
+         *
+         *     `If-Match` is required: the version you saw. Memories that carry its
+         *     words go with it (proposals folded into it or that would change it,
+         *     and memories citing it as a source, such as a kept Ask answer).
+         *     Name them in `carries`; when the list doesn't match, the answer is
+         *     409 `forget_carries` with `details.carries`, and nothing changes.
+         */
+        post: operations["forgetMemory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/memories/{ref}:request-forget": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask a person to forget a memory
+         * @description An agent's memax_forget on the V2 record: it forgets nothing and
+         *     records a request (receipted, with `reason`) that a person forgets
+         *     the memory, or keeps it, on the web. Asking again while one waits is
+         *     the same request. Agents connected at Propose or Write, and API keys
+         *     that propose, may ask; people forget it themselves (policy
+         *     `forget_by_person`).
+         */
+        post: operations["requestForget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/memories/{ref}:decline-forget": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep a memory an agent asked to forget
+         * @description A person who may forget it keeps it instead: every waiting request
+         *     to forget it is declined, with a `forget_declined` receipt. 409
+         *     `invalid_transition` when nobody asked.
+         */
+        post: operations["declineForget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/memories/{ref}/forget-preview": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What a Forget would do
+         * @description Read before anyone confirms a Forget: the memories that would go with
+         *     it (send their refs as `carries`), the compiled files and copy-outs
+         *     that hold it and would be rewritten, how many agents would be told
+         *     (`readers` of them read it; the rest are connected to the space),
+         *     the version to send as `If-Match`, and whether you may (`allowed`,
+         *     with `policy` when not). It changes nothing. 409 `invalid_transition`
+         *     when it is forgotten already.
+         */
+        get: operations["previewForget"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/memories/{ref}/tombstone": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a forgotten memory's tombstone
+         * @description What Forget did: who asked and when, what went with it, each step of
+         *     how it was forgotten (removed from Memax, each file rewritten, each
+         *     agent told) with where it stands now, and the copies Memax can't
+         *     reach (`unreachable`: git history of committed files, agents' own
+         *     memories, backups and their window, the model providers that saw
+         *     the words, files with a hand edit Memax won't write over, copies a
+         *     person pasted elsewhere). Never words. 404 when it isn't forgotten.
+         */
+        get: operations["getTombstone"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1461,6 +1672,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your agent's notices
+         * @description For an agent's own credential: what it hasn't been told yet, oldest
+         *     first: each memory forgotten since it read it (or in a space it is
+         *     connected to), and each space forgotten whole. The remote MCP server
+         *     puts them in the agent's next response; a local server (memax mcp
+         *     serve) reads them here and acknowledges them with `:ack` once it has
+         *     told the agent. A person's session has none.
+         */
+        get: operations["listNotices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/notices:ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark notices told
+         * @description Marks the agent's notices told, each once (a notice already told,
+         *     or someone else's, is skipped). Telling an agent is bookkeeping, not
+         *     a change to the record: it writes no receipt, and acknowledging
+         *     again changes nothing.
+         */
+        post: operations["ackNotices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/device-authorizations:lookup": {
         parameters: {
             query?: never;
@@ -1653,9 +1912,15 @@ export interface components {
          *     them); Undo writes undid. A decision gate's (`gate`) are asked (by
          *     the agent), answered (by a person; the kept decision it became has
          *     its own `kept` receipt) and withdrawn.
+         *     Forget writes forgot on each forgotten memory (and on a gate whose
+         *     decision it was, and on a space forgotten whole), resolved on a
+         *     memory whose only conflict was with it, and purged on a target or a
+         *     Brief whose drift evidence or older versions lost its words; an
+         *     agent's memax_forget writes forget_requested, and a person keeping
+         *     the memory instead writes forget_declined.
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space";
         /**
@@ -1681,7 +1946,8 @@ export interface components {
          *     person_must_answer (agents ask; people answer), gate_limit (the agent
          *     already has 3 decisions waiting in the space), not_your_gate (only the
          *     agent that asked, the person it works for, or someone who can answer
-         *     withdraws a question). Refused asks: ask_by_person (agents read over
+         *     withdraws a question). Refused forget requests: forget_by_person
+         *     (people forget it themselves, or ask an owner). Refused asks: ask_by_person (agents read over
          *     MCP; Ask answers people), ask_limit (the plan's asks this month are
          *     used up; `details.limit` and `details.resets_at` say how many and
          *     when they start again). Refused changes to
@@ -1709,9 +1975,9 @@ export interface components {
          *     on the web app).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "ask_by_person" | "ask_limit" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "device_by_person" | "device_needs_web";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "device_by_person" | "device_needs_web";
         /** @enum {string} */
-        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "slug_taken" | "space_has_notes";
+        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_has_notes";
         /**
          * @description A typed edge between two memories. merged_into: folded into another
          *     memory (a duplicate, or a repeat of a rejection). supersedes: replaces
@@ -2092,6 +2358,8 @@ export interface components {
             receipts: components["schemas"]["ReceiptPage"];
             /** @description How agents read it. Absent when the counts couldn't be read. */
             reads?: components["schemas"]["MemoryReads"];
+            /** @description Agents' requests to forget it, waiting for a person (forget it, or keep it with `:decline-forget`). */
+            forget_requests?: components["schemas"]["ForgetRequestRecord"][];
         };
         /**
          * @description How a memory has been read: directly (recall, search, get, list) and
@@ -2407,6 +2675,8 @@ export interface components {
             ref?: components["schemas"]["DisplayRef"];
             text?: string;
             cites?: components["schemas"]["DisplayRef"][];
+            /** @description In an older version, prose whose words Forget took out because it cited a forgotten memory; only its citations stay. */
+            forgotten?: boolean;
         };
         BriefSection: {
             key: components["schemas"]["SectionKey"];
@@ -3170,6 +3440,270 @@ export interface components {
             /** @description What happened and what to do, in English. */
             message: string;
         };
+        /** @description The body of `:forget`. Every field is optional. */
+        ForgetRequest: {
+            /**
+             * @description Your own note on why. It stays on the tombstone (it is not
+             *     forgotten), so don't repeat the words.
+             */
+            note?: string;
+            /** @description The display IDs that go with it, exactly as `forget_carries` listed them. */
+            carries?: components["schemas"]["MemoryDisplayRef"][];
+            /** @description When it happened on the client. */
+            occurred_at?: components["schemas"]["Timestamp"];
+            session_ref?: components["schemas"]["SessionRef"];
+        };
+        /**
+         * @description Why a memory goes with another one's Forget. folded: a proposal the
+         *     judge folded into it (a copy of its words). updates: a proposal that
+         *     would change it. cites: built from it (a kept Ask answer citing it).
+         *     space: everything in the space was forgotten.
+         * @enum {string}
+         */
+        CarryReason: "folded" | "updates" | "cites" | "space";
+        /** @description A memory that goes with a Forget. */
+        ForgetCarry: {
+            id: components["schemas"]["Id"];
+            ref: components["schemas"]["DisplayRef"];
+            reason: components["schemas"]["CarryReason"];
+            /** @description The memory it goes with. */
+            with: components["schemas"]["DisplayRef"];
+            lifecycle: components["schemas"]["Lifecycle"];
+            kind: components["schemas"]["MemoryKind"];
+        };
+        ForgetResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            /** @description The forgotten memory (no words, state forgotten). */
+            memory: components["schemas"]["Memory"];
+            /** @description The receipts the Forget wrote, oldest first. */
+            receipts: components["schemas"]["Receipt"][];
+            tombstone: components["schemas"]["Tombstone"];
+            /** @description The memories forgotten with it. */
+            memories: components["schemas"]["Memory"][];
+        };
+        /** @description What a Forget of a memory would do, before anyone confirms it. */
+        ForgetPreview: {
+            ref: components["schemas"]["DisplayRef"];
+            /** @description The memory's version; send it as `If-Match`. */
+            version: number;
+            /** @description The memories that go with it; send their refs as `carries`. */
+            carries: components["schemas"]["ForgetCarry"][];
+            /** @description The compiled files and copy-outs that hold it, which would be rewritten. */
+            files: components["schemas"]["TombstoneTarget"][];
+            /** @description The agents that would be told on their next read. */
+            agents: number;
+            /** @description Of those agents, how many read it. */
+            readers: number;
+            /** @description Whether you may forget it (and everything that goes with it). */
+            allowed: boolean;
+            /** @description Why you may not, when policy says so. */
+            policy?: components["schemas"]["PolicyDecision"];
+        };
+        /**
+         * @description `memory`, or `space` for a Forget of everything in a space.
+         * @enum {string}
+         */
+        TombstoneKind: "memory" | "space";
+        /**
+         * @description `propagating` until every copy has an answer (the SLO is a minute); then `done`.
+         * @enum {string}
+         */
+        TombstoneStatus: "propagating" | "done";
+        /**
+         * @description asked: who asked. removed: the words left Memax. target: a compiled
+         *     file (or copy-out) rewritten. artifacts: the stored copies of older
+         *     compiles and hand edits re-rendered. caches: the caches purged.
+         *     ledger: the forget ledger's copy (ids only) written. agent: an agent
+         *     told on its next read.
+         * @enum {string}
+         */
+        StepKind: "asked" | "removed" | "target" | "artifacts" | "caches" | "ledger" | "agent";
+        /** @enum {string} */
+        StepStatus: "done" | "waiting" | "held" | "failed" | "unreachable";
+        /**
+         * @description hand_edit: the file has a hand edit, which Memax never writes over.
+         *     stopped: compiling the target was stopped. copy: copied out (ChatGPT);
+         *     paste it again. delivery: compiled, waiting for the daemon (or a pull
+         *     request) to write it. compiling: not compiled yet. paused: the agent
+         *     is paused, and is told before it reads anything else. disconnected:
+         *     the agent can't read any more. next_read: told on its next read.
+         * @enum {string}
+         */
+        StepReason: "hand_edit" | "stopped" | "copy" | "delivery" | "compiling" | "paused" | "disconnected" | "next_read";
+        /**
+         * @description A copy Memax can't reach. git_history: earlier commits of the
+         *     compiled files. agent_memory: what agents saved in their own memory.
+         *     backups: database backups, kept for `days` and treated as beyond use
+         *     (the forget ledger is re-applied after any restore). llm: model
+         *     providers that processed the words. hand_edits: files with a hand
+         *     edit Memax won't write over. copies: copy-outs a person pasted
+         *     elsewhere.
+         * @enum {string}
+         */
+        UnreachableKind: "git_history" | "agent_memory" | "backups" | "llm" | "hand_edits" | "copies";
+        TombstoneActor: {
+            /**
+             * @description `person`, or `memax` when the forget ledger re-applied it after a restore.
+             * @enum {string}
+             */
+            kind: "person" | "memax";
+            id?: components["schemas"]["Id"];
+        };
+        TombstoneAgent: {
+            connection_id: components["schemas"]["Id"];
+            agent?: components["schemas"]["AgentKind"];
+            display_name?: string;
+            state?: components["schemas"]["AgentState"];
+        };
+        TombstoneTarget: {
+            id: components["schemas"]["Id"];
+            kind: components["schemas"]["TargetKind"];
+            label: string;
+            delivery: components["schemas"]["Delivery"];
+        };
+        /** @description What Forget took out of Memax. */
+        TombstoneGone: {
+            versions: number;
+            sources: number;
+            embeddings: number;
+            verdicts: number;
+            /** @description Verdicts a model gave (the judge's provider saw the words). */
+            model_verdicts: number;
+            gates: number;
+            /** @description Compiled files that held it. */
+            files: number;
+            /** @description Memories forgotten (a space's Forget). */
+            memories?: number;
+        };
+        TombstoneStep: {
+            kind: components["schemas"]["StepKind"];
+            status: components["schemas"]["StepStatus"];
+            at?: components["schemas"]["Timestamp"];
+            target?: components["schemas"]["TombstoneTarget"];
+            /** @description The compile run that rewrote the target. */
+            compile?: components["schemas"]["CompileRef"];
+            agent?: components["schemas"]["TombstoneAgent"];
+            reason?: components["schemas"]["StepReason"];
+            /** @description How many stored copies were re-rendered. */
+            count?: number;
+            /** @description The agent read it (else it is connected to the space). */
+            read_it?: boolean;
+        };
+        Processor: {
+            name: string;
+            /** @enum {string} */
+            purpose: "embeddings" | "judge" | "ask";
+            zero_retention: boolean;
+        };
+        UnreachableCopy: {
+            kind: components["schemas"]["UnreachableKind"];
+            repositories?: string[];
+            files?: string[];
+            agents?: string[];
+            days?: number;
+            processors?: components["schemas"]["Processor"][];
+            targets?: string[];
+        };
+        /** @description What Forget did to one memory (or a whole space). Never words. */
+        Tombstone: {
+            id: components["schemas"]["Id"];
+            /** @description The Forget it belongs to (the primary tombstone's id). */
+            op_id: components["schemas"]["Id"];
+            /** @description The forgotten memory's display ID, or `space`. */
+            ref: string;
+            kind: components["schemas"]["TombstoneKind"];
+            object_id: components["schemas"]["Id"];
+            space_id: components["schemas"]["Id"];
+            tenant_id: components["schemas"]["Id"];
+            carried?: components["schemas"]["CarryReason"];
+            /** @description The memory it went with, when carried. */
+            primary?: string;
+            /** @description The other display IDs forgotten in the same Forget. */
+            with: string[];
+            /** @description The person's note. */
+            note?: string;
+            by: components["schemas"]["TombstoneActor"];
+            /** @description The agent whose request led to it. */
+            requested_by?: components["schemas"]["TombstoneAgent"];
+            via: components["schemas"]["Via"];
+            receipt_id: components["schemas"]["Id"];
+            forgotten_at: components["schemas"]["Timestamp"];
+            kept_at?: components["schemas"]["Timestamp"];
+            /** @description Reads before it was forgotten, directly and in compiles that held it. */
+            reads_before: number;
+            gone: components["schemas"]["TombstoneGone"];
+            /** @description How many agents are told, each once on its next read. */
+            agents: number;
+            status: components["schemas"]["TombstoneStatus"];
+            completed_at?: components["schemas"]["Timestamp"];
+            /** @description From the Forget to the last step's answer. */
+            duration_ms?: number;
+            /** @description When the forget ledger re-applied it after a restore. */
+            reapplied_at?: components["schemas"]["Timestamp"];
+            /** @description How it was forgotten, in order. Empty in a list. */
+            steps: components["schemas"]["TombstoneStep"][];
+            /** @description The copies Memax can't reach. Empty in a list. */
+            unreachable: components["schemas"]["UnreachableCopy"][];
+        };
+        TombstonePage: {
+            tombstones: components["schemas"]["Tombstone"][];
+            next_cursor?: components["schemas"]["Cursor"];
+            has_more: boolean;
+        };
+        /** @enum {string} */
+        ForgetRequestStatus: "waiting" | "forgotten" | "declined";
+        /** @description An agent's request that a person forget a memory. */
+        ForgetRequestRecord: {
+            id: components["schemas"]["Id"];
+            memory_id: components["schemas"]["Id"];
+            ref: components["schemas"]["DisplayRef"];
+            space_id: components["schemas"]["Id"];
+            agent: components["schemas"]["TombstoneAgent"];
+            session_ref?: string;
+            /** @description The agent's reason, from the request's receipt (redacted if the memory is forgotten). */
+            reason?: string;
+            status: components["schemas"]["ForgetRequestStatus"];
+            decided_by?: components["schemas"]["Id"];
+            decided_at?: components["schemas"]["Timestamp"];
+            receipt_id: components["schemas"]["Id"];
+            requested_at: components["schemas"]["Timestamp"];
+        };
+        ForgetRequestResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            memory: components["schemas"]["Memory"];
+            /** @description The request's receipt; empty when it was already waiting. */
+            receipts: components["schemas"]["Receipt"][];
+            forget_request: components["schemas"]["ForgetRequestRecord"];
+        };
+        /** @enum {string} */
+        NoticeKind: "forgotten" | "space_forgotten";
+        /** @description Something an agent is told once, on its next read. */
+        Notice: {
+            id: components["schemas"]["Id"];
+            space_id: components["schemas"]["Id"];
+            /** @description The Forget (its tombstone). */
+            op_id: components["schemas"]["Id"];
+            kind: components["schemas"]["NoticeKind"];
+            /** @description The forgotten display IDs; empty when a whole space was forgotten. */
+            refs: string[];
+            /** @description The agent read it (else it is connected to the space). */
+            read_it: boolean;
+            at: components["schemas"]["Timestamp"];
+            /** @description The space's name, when the agent can still read it. */
+            space?: string;
+        };
+        NoticeList: {
+            notices: components["schemas"]["Notice"][];
+        };
+        AckNoticesRequest: {
+            ids: components["schemas"]["Id"][];
+        };
+        AckNoticesResult: {
+            /** @description How many were marked told now. */
+            acknowledged: number;
+        };
         CreateSpaceRequest: {
             name: string;
             /** @description Lowercase letters, digits and hyphens, 4 to 50 characters. Without one, Memax picks one from the name. */
@@ -3495,6 +4029,8 @@ export interface components {
             current?: number;
             /** @description When the window resets (`rate_limited`), or when asks start again (`ask_limit`, the 1st, UTC). */
             reset_at?: components["schemas"]["Timestamp"];
+            /** @description The memories that go with a Forget (`forget_carries`). */
+            carries?: components["schemas"]["ForgetCarry"][];
             /** @description The V1 memories a space holds (`space_has_notes`). */
             notes?: number;
             /** @description How a device's code ended (`invalid_transition` on a device code). */
@@ -3502,6 +4038,27 @@ export interface components {
         };
         ErrorEnvelope: {
             error: components["schemas"]["Error"];
+        };
+        ForgetResultEnvelope: {
+            data: components["schemas"]["ForgetResult"];
+        };
+        TombstoneEnvelope: {
+            data: components["schemas"]["Tombstone"];
+        };
+        ForgetPreviewEnvelope: {
+            data: components["schemas"]["ForgetPreview"];
+        };
+        TombstonePageEnvelope: {
+            data: components["schemas"]["TombstonePage"];
+        };
+        ForgetRequestResultEnvelope: {
+            data: components["schemas"]["ForgetRequestResult"];
+        };
+        NoticeListEnvelope: {
+            data: components["schemas"]["NoticeList"];
+        };
+        AckNoticesResultEnvelope: {
+            data: components["schemas"]["AckNoticesResult"];
         };
         SpaceEnvelope: {
             data: components["schemas"]["Space"];
@@ -3740,6 +4297,15 @@ export interface components {
         };
         /** @description `invalid_transition`: the memory's, agent's or gate's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one, answering a gate that was answered, withdrawn or expired). `in_conflict` (Keep, and edit then keep): the judge flagged the proposal as contradicting a decision in force; `details.ref` is that decision, and the conflict is settled with `:resolve-conflict`. On `:resolve-conflict`, `in_conflict` names a decision in force that is in the way of the answer: another conflict of the side it would keep, or one the judge found narrower words contradict. */
         InvalidTransition: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
+        /** @description `forget_carries`: other memories carry its words and go with it; `details.carries` lists them, and the Forget goes through once `carries` names exactly those. `invalid_transition`: it is forgotten already. */
+        ForgetConflict: {
             headers: {
                 [name: string]: unknown;
             };
@@ -4458,6 +5024,41 @@ export interface operations {
             503: components["responses"]["Unavailable"];
         };
     };
+    listTombstones: {
+        parameters: {
+            query?: {
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size. Larger values are capped at 200. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of tombstones. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TombstonePageEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
     recordCompileLoad: {
         parameters: {
             query?: never;
@@ -4948,6 +5549,245 @@ export interface operations {
             409: components["responses"]["InvalidTransition"];
             412: components["responses"]["EditClash"];
             422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    forgetMemory: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description The `ETag` (memory version) you started from, e.g. `"3"`. */
+                "If-Match": components["parameters"]["IfMatch"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ForgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Forgotten; the result has the tombstone. */
+            200: {
+                headers: {
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgetResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["ForgetConflict"];
+            412: components["responses"]["EditClash"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    requestForget: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description The request, waiting for a person. */
+            200: {
+                headers: {
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgetRequestResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    declineForget: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["CommandResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    previewForget: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What it would do. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgetPreviewEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    getTombstone: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tombstone. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TombstoneEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];
@@ -6108,6 +6948,67 @@ export interface operations {
             409: components["responses"]["InvalidTransition"];
             412: components["responses"]["EditClash"];
             422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notices waiting. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoticeListEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    ackNotices: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AckNoticesRequest"];
+            };
+        };
+        responses: {
+            /** @description How many were marked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AckNoticesResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

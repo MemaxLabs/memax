@@ -369,9 +369,15 @@ func TestForgetPurgesEmbeddings(t *testing.T) {
 		if !whole {
 			return nil
 		}
-		_, err := tx.Exec(ctx, `UPDATE v2.memories SET lifecycle = 'forgotten', search = NULL, content_sha256 = NULL,
-			minhash_bands = NULL, last_receipt_id = $2 WHERE id = $1`, m.ID, rc)
-		return err
+		// Every version's words go, and the tombstone is written (044).
+		if _, err := tx.Exec(ctx, `UPDATE v2.memory_versions SET statement = NULL, last_receipt_id = $2 WHERE memory_id = $1`, m.ID, rc); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE v2.memories SET lifecycle = 'forgotten', search = NULL, content_sha256 = NULL,
+			minhash_bands = NULL, last_receipt_id = $2 WHERE id = $1`, m.ID, rc); err != nil {
+			return err
+		}
+		return insertTombstoneSQL(tx, m, zz, rc)
 	}
 	// Purge version 1's words only: its vector goes, version 2's stays.
 	if err := f.asV2([]uuid.UUID{space}, []uuid.UUID{m.TenantID}, func(tx pgx.Tx) error { return forget(tx, 1, false) }); err != nil {

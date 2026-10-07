@@ -235,6 +235,9 @@ export function activityCategory(
     case "stopped":
       return "compiles";
     case "forgot":
+    case "purged":
+    case "forget_requested":
+    case "forget_declined":
       return "forgets";
     default:
       return "writes";

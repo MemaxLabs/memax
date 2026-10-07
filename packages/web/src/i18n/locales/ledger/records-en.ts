@@ -118,6 +118,11 @@ export const ledgerRecordsEn = {
     resolve: "{ref} wasn't settled.",
     answer: "{ref} wasn't answered.",
     withdraw: "{ref} wasn't withdrawn.",
+    forget: "{ref} wasn't forgotten.",
+    declineForget: "{ref} wasn't kept.",
+    // 409 forget_carries: what goes with it changed after the person confirmed.
+    carriesChanged:
+      "What goes with it changed since you confirmed, so nothing was forgotten. Check it again, then forget it.",
     // A decision gate that ended before the command reached it (409 details.status).
     ended: {
       answered: "It was answered already.",
@@ -176,6 +181,20 @@ export const ledgerRecordsEn = {
       owners_keep: "Only owners answer decisions in {space}. Ask an owner.",
       key_cannot_review:
         "API keys can ask but never answer. Answer it in Review on the web.",
+    },
+    // Forget's own policy codes, and Keep's where they read differently.
+    refusedForget: {
+      forget_not_allowed:
+        "Only owners forget in {space}. Ask an owner to forget it.",
+      viewer: "Viewers can't forget. Ask an owner to forget it.",
+      key_cannot_forget:
+        "API keys can't forget. Sign in as yourself to forget it.",
+      person_must_forget:
+        "Only a person forgets. Sign in as yourself, not with an agent's key.",
+      decision_needs_web:
+        "Decisions in {space} need a web sign-in to forget. Sign out, sign in again on this page, then forget it.",
+      secret_detected:
+        "Your note looks like a credential, and Memax never stores secrets. Take it out of the note and try again.",
     },
     needsWebDev:
       "In local development, set WEB_SURFACE_SECRET for the web app and the API.",

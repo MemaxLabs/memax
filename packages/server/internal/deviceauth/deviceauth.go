@@ -193,7 +193,7 @@ type Issued struct {
 	Request  Request
 }
 
-// Store keeps device authorizations in Postgres (migration 044).
+// Store keeps device authorizations in Postgres (migration 045).
 type Store struct {
 	pool   *pgxpool.Pool
 	pepper []byte

@@ -306,6 +306,21 @@ func (w *writer) recordCompile(ctx context.Context, c *RecordCompile) (Result, e
 	case c.Generation > t.DirtyGen:
 		return Result{}, invalid("generation", "%d is ahead of the target (%d)", c.Generation, t.DirtyGen)
 	}
+	// A compile that read the record before a Forget committed holds the
+	// forgotten words: never record it, even behind (compile again).
+	if len(c.Refs) > 0 {
+		var forgotten bool
+		if err := w.tx.QueryRow(ctx, `
+			SELECT EXISTS (SELECT 1 FROM v2.memories
+			                WHERE space_id = $1 AND lifecycle = 'forgotten'
+			                  AND seq = ANY (ARRAY(SELECT substr(r, 3)::bigint FROM unnest($2::text[]) r WHERE r ~ '^M-[0-9]{1,18}$')))`,
+			sp.ID, c.Refs).Scan(&forgotten); err != nil {
+			return Result{}, fmt.Errorf("ledger: record compile: %w", err)
+		}
+		if forgotten {
+			return Result{}, ErrBehind
+		}
+	}
 	_, seq, _ := ParseRef(c.Ref)
 	id := newID()
 	rc := w.objectReceipt(sp, ObjectCompile, id, c.Ref, ActionCompiled, 1, "")

@@ -200,6 +200,9 @@ export const ledgerActivityEn = {
       "{actor} returned {ref} to Review: it contradicts a decision in force.",
     drafted:
       "{actor} wrote narrower words for {ref} to settle a conflict. They wait for Memax's check before they replace the words in force.",
+    purged: "{actor} took a forgotten memory's words out of {ref}.",
+    forgetRequested: "{actor} asked you to forget {ref}.",
+    forgetDeclined: "{actor} kept {ref} instead of forgetting it.",
     other: "{actor} changed {ref}.",
   },
 } as const;

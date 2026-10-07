@@ -32,6 +32,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
+	"github.com/MemaxLabs/memax/packages/server/internal/testdb/netsim"
 )
 
 const testSecret = "mcpv2-test-secret-0123456789abcdef"
@@ -57,6 +58,9 @@ type env struct {
 	// goes to both.
 	recorder *reads.Recorder
 	compile  *compile.Service
+	// counters hands each request the netsim.Counter its header names, so
+	// a test can count one tool call's round trips.
+	counters *netsim.Requests
 }
 
 // tee hands every read to each recorder.
@@ -107,7 +111,8 @@ func buildEnvOn(t *testing.T, st store.Store, pool *pgxpool.Pool, withV2 bool, o
 		t.Fatalf("NewAuthHandler: %v", err)
 	}
 	authH.SetStore(st)
-	e := &env{t: t, pool: pool, st: st, ledger: ledger.New(pool, ledger.WithLogger(quiet)), spaces: spacemode.New(pool), reads: &recordedReads{}}
+	e := &env{t: t, pool: pool, st: st, ledger: ledger.New(pool, ledger.WithLogger(quiet)), spaces: spacemode.New(pool), reads: &recordedReads{},
+		counters: &netsim.Requests{}}
 	e.recorder = reads.New(e.ledger, reads.Options{Logger: quiet})
 	t.Cleanup(e.recorder.Close) // before the database goes away
 	recallH := handler.NewRecallHandler(st, nil, nil, nil, nil)
@@ -133,7 +138,7 @@ func buildEnvOn(t *testing.T, st store.Store, pool *pgxpool.Pool, withV2 bool, o
 	mux.Handle("/mcp/chatgpt", chatH)
 	chain := handler.RequireAuth([]byte(testSecret), authH.ResolveAPIKey, authH.ResolveOAuthGrant)(
 		handler.HubContext(st)(handler.AuthorizeHTTP(mux)))
-	e.srv = httptest.NewServer(chain)
+	e.srv = httptest.NewServer(e.counters.Wrap(chain))
 	t.Cleanup(e.srv.Close)
 	return e
 }

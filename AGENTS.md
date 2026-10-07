@@ -149,6 +149,7 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 - **One write path.** Every change to the V2 record goes through `internal/ledger` (`Ledger.Apply(ctx, Command)`). No handler, worker, MCP tool or Dream phase writes V2 record tables directly.
 - **Receipts.** Every write carries a receipt in the same transaction, or the database refuses it (a deferred constraint trigger). Receipts never contain memory text, so Forget can purge words without rewriting history.
 - **Schema.** V2 tables live in the Postgres schema `v2`, with row-level security on every space-scoped table. The app role sets `app.space_ids` / `app.tenant_ids` per transaction, and explicit `space_id` filters stay as defence in depth.
+- **Round trips.** Production's API (Fly sjc) is about 24 ms from Neon (us-west-2) per round trip, so latency is counted in round trips. A ledger transaction (`internal/ledger/tx.go`) sends `BEGIN` and the scope's `set_config` in the same pgx pipeline as its first statement (Postgres runs a pipeline in order and skips the rest after an error, so nothing runs before the scope); a read-only one's `COMMIT` goes out after the caller has its answer; River's role switches ride with River's first statement and with `COMMIT`; `execDeferred` sends a write nobody reads with the next statement; and `meter` sends its `COMMIT` with its one statement. Send independent statements together: `tx.SendBatch`, `Ledger.ReadBatch` (`BEGIN`, scope, statements and `COMMIT` in one round trip), `attachDetails`' extras, and goroutines for independent reads (recall's notices and gates beside its search). Never send a statement on `tx.Conn()`. `netsim.Audit` reads the wire and fails any statement on a `v2` table outside a transaction, before its scope or as another role (`TestScopeComesFirst`, and every round-trip guard). The `*RoundTrips` tests in `mcpv2`, `v2api`, `judge` and `compile` hold each hot path to its count of round trips (a recall in a space is 17); a change that adds one must lower another or raise the budget with a reason.
 - **Cross-space reads.** The few background reads that span spaces (the compile sweep, the seal sweep and verifier, the reads metrics and retention) admit rows through policies keyed on `app.sweep`, which any session can set, so each such policy applies only to a role `memax_v2` can't act as: `memax_v2_compile_sweeper` (migration 040), `memax_v2_sealer` (039), or a `SECURITY DEFINER` function's owner (038). `TestSweepPoliciesAreRoleBound` fails on a new one written for every role.
 - **States.** A memory has a lifecycle (`proposed | kept | merged | faded | forgotten | rejected`) plus flags (`stale`, `conflict`). The displayed state is derived from both.
 - **IDs.** Display IDs (`M-0219`, `N-`, `H-`, `C-`, `R-`, `D-`, `B-`, `G-`) are per-tenant counters. Internal keys are uuidv7.
@@ -642,6 +643,17 @@ cd packages/server && go run ./cmd/v2-reapply-forgets -all
 # -update rewrites the golden export the SDK's and CLI's tests read, after a deliberate change
 cd packages/server && go test ./internal/export/ && go test ./internal/export/ -run 'TestGolden' -update
 cd packages/server && go test ./internal/ledger/ -run Export && go test ./internal/handler/v2api/ -run Export -v
+
+# Round trips (internal/testdb/netsim): the scope-ordering audit on the wire and the
+# round-trip budgets of the hot paths (MCP reads, /v2 reads and commands, Ask, a judge
+# job, a compile run); deterministic, so they run in CI
+cd packages/server && go test ./internal/testdb/netsim/ ./internal/ledger/ -run 'Audit|Proxy|Tracer|ScopeComesFirst|Pipelined' && \
+  go test ./internal/mcpv2/ ./internal/handler/v2api/ ./internal/judge/ ./internal/compile/ -run RoundTrips -v
+
+# Wall clock at 0 and 24 ms of round-trip time (a delaying TCP proxy in front of Postgres),
+# printed as a table, with the 24 ms bars asserted; opt-in (MEMAX_LATENCY=1), since a loaded
+# machine moves wall clock. TEST_DB_RTT=24ms puts every test database of a run behind the proxy
+cd packages/server && MEMAX_LATENCY=1 go test ./internal/mcpv2/ ./internal/handler/v2api/ ./internal/judge/ ./internal/compile/ -run 'Latency$' -v
 ```
 
 ### Compile service
@@ -723,7 +735,7 @@ Migrations use a single shared sequence. Don't hand-pick version numbers — alw
 - `packages/server/` deploys to Fly.io as two processes with per-env tomls in `packages/server/fly/`:
   - API server (`fly.server.{staging,production}.toml`, `Dockerfile.server`) — serves HTTP, insert-only queue client
   - Worker (`fly.worker.production.toml`, `Dockerfile.worker`) — processes River jobs (memory processing, dreams). Staging has no worker app: `MEMAX_EMBEDDED_WORKER=1` makes the staging API run the worker in-process (`cmd/server/worker.go`), so an idle staging machine stops and Neon's staging compute can scale to zero
-  - Sizing (Oct 2026 running-cost review): the prod API runs 2 shared-cpu-2x 1gb machines with `min_machines_running = 1`, so the second stays suspended until needed; the prod worker is shared-cpu-1x 1gb; staging is one shared-cpu-1x 512mb machine that stops when idle
+  - Sizing (Oct 2026 running-cost review): the prod API runs 2 shared-cpu-2x 1gb machines with `min_machines_running = 1`, so the second stays suspended until needed; the prod worker is shared-cpu-1x 1gb; staging is one shared-cpu-1x 512mb machine that stops when idle Each process opens one Postgres pool through `internal/dbpool`: 20 connections for the API and 32 for the worker (River's 23 workers plus its own), unless `DATABASE_URL` sets `pool_max_conns` or `DB_MAX_CONNS` is set. Production connects through Neon's pooler, which takes thousands of client connections.
 - Cloudflare Workers (one Workers Paid plan) runs everything that needn't sit next to the database. `.github/workflows/deploy-cloudflare.yml` deploys each Worker with `wrangler deploy`: staging from `ci.yml` on every push to `main`, production from `deploy-production.yml`, with secrets read from Doppler and uploaded with the version. The `staging` and `production` GitHub Environments need `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Roll a Worker back with `wrangler rollback --env <env>` in its package.
   - `packages/compile-service/` — `memax-compile-{staging,production}` at `https://compile-staging.memax.app` and `https://compile.memax.app` (custom domains; no workers.dev). The API and worker reach it through `COMPILE_SERVICE_URL` in their tomls and send `COMPILE_SERVICE_TOKEN`; CI deploys it before them. The `Dockerfile` remains for self-hosting the Node server
   - `packages/web/` — `memax-web-{staging,production}`, built by OpenNext. Vercel (`vercel.json`, its Git integration) keeps serving `memax.app` until the DNS cutover; then the Vercel project goes

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,6 +45,10 @@ type Ledger struct {
 	// readMonths are the months whose reads partitions this process has
 	// ensured (reads.go).
 	readMonths sync.Map
+	// loginRole is the role the pool's connections log in as, learned from
+	// the first transaction's opening (tx.go): River's insert switches
+	// back to it.
+	loginRole atomic.Pointer[string]
 	// honesty is what tombstones say about copies Memax can't reach
 	// (WithForgetHonesty).
 	honesty ForgetHonesty
@@ -315,6 +320,11 @@ func validateCommand(cmd Command) error {
 // Read runs fn in a read-only transaction as memax_v2, scoped to the
 // given spaces. Use it for any read of v2 tables outside this package
 // (retrieval, export), so row-level security applies to it too.
+//
+// The transaction's BEGIN and scope go out with fn's first statement, and
+// its COMMIT after Read returns (tx.go): a read costs one round trip per
+// statement that waits on another's result. Send independent statements
+// together (tx.SendBatch, or ReadBatch).
 func (l *Ledger) Read(ctx context.Context, scope Scope, fn func(pgx.Tx) error) error {
 	if l == nil {
 		return ErrDisabled
@@ -343,46 +353,55 @@ func (l *Ledger) read(ctx context.Context, scope Scope, iso pgx.TxIsoLevel, fn f
 	return tx.Commit(ctx)
 }
 
+// ReadBatch runs b's statements in one read-only transaction as memax_v2,
+// scoped like Read, in one round trip: BEGIN, the scope, b's statements
+// and COMMIT go out together. Their results come through b's callbacks
+// (QueuedQuery.Query, QueryRow and Exec), so no statement in b may need
+// another's result.
+func (l *Ledger) ReadBatch(ctx context.Context, scope Scope, b *pgx.Batch) error {
+	if l == nil {
+		return ErrDisabled
+	}
+	if b.Len() == 0 {
+		return nil
+	}
+	t, err := l.openTx(ctx, DBRole, scope, pgx.TxOptions{AccessMode: pgx.ReadOnly, IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return err
+	}
+	return mapDBError(t.readBatch(ctx, b))
+}
+
 // begin opens a transaction, switches it to memax_v2 and sets the scope.
 // set_config(..., true) is SET LOCAL: it ends with the transaction, so
 // pooled connections (including Neon's transaction pooling) never carry
 // a scope into the next transaction. It also returns the role the
 // transaction began with, which the River insert switches back to for
 // its one statement (jobs.go).
+//
+// Nothing is sent yet: the BEGIN and the scope go to the server with the
+// transaction's first statement, in the same round trip (tx.go).
 func (l *Ledger) begin(ctx context.Context, scope Scope, mode pgx.TxAccessMode) (pgx.Tx, string, error) {
 	return l.beginTx(ctx, scope, pgx.TxOptions{AccessMode: mode})
 }
 
 func (l *Ledger) beginTx(ctx context.Context, scope Scope, opts pgx.TxOptions) (pgx.Tx, string, error) {
-	tx, err := l.pool.BeginTx(ctx, opts)
+	tx, err := l.openTx(ctx, DBRole, scope, opts)
 	if err != nil {
-		return nil, "", fmt.Errorf("ledger: begin: %w", err)
+		return nil, "", err
 	}
-	person := ""
-	if scope.PersonID != uuid.Nil {
-		person = scope.PersonID.String()
+	if known := l.loginRole.Load(); known != nil {
+		// Every transaction checks, when its opening is answered, that its
+		// connection began as this role too.
+		return tx, *known, nil
 	}
-	// The login role is read before the switch: Postgres evaluates a
-	// SELECT's target list left to right.
-	var loginRole string
-	err = tx.QueryRow(ctx,
-		`SELECT current_setting('role'),
-		        set_config('role', $1, true),
-		        set_config('app.space_ids', $2, true),
-		        set_config('app.tenant_ids', $3, true),
-		        set_config('app.person_id', $4, true),
-		        set_config('lock_timeout', $5, true)`,
-		DBRole, uuidArray(scope.SpaceIDs()), uuidArray(scope.TenantIDs()), person,
-		fmt.Sprintf("%dms", l.lockTimeout.Milliseconds())).Scan(&loginRole, nil, nil, nil, nil, nil)
-	if err != nil {
+	// The process's first transaction opens at once, to learn the role
+	// the pool's connections log in as.
+	if err := tx.flush(ctx); err != nil {
 		_ = tx.Rollback(ctx)
-		return nil, "", fmt.Errorf("ledger: switch to %s: %w", DBRole, err)
+		return nil, "", err
 	}
-	if loginRole == DBRole {
-		_ = tx.Rollback(ctx)
-		return nil, "", fmt.Errorf("ledger: the connection already runs as %s; connect as the app's login role", DBRole)
-	}
-	return tx, loginRole, nil
+	return tx, tx.loginRole, nil
 }
 
 // errNoRows reports whether err is pgx's "no rows".

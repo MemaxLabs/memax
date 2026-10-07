@@ -133,17 +133,38 @@ func loadMemory(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID, lock 
 	return m, nil
 }
 
+// sourcesSQL reads the sources of the memory $1.
+const sourcesSQL = `
+	SELECT s.id, s.kind, s.ref, COALESCE(s.uri, ''), s.locator, s.external, s.trust_class,
+	       COALESCE(s.quote, ''), COALESCE(s.content_hash, ''), s.created_at
+	  FROM v2.memory_sources ms
+	  JOIN v2.sources s ON s.id = ms.source_id
+	 WHERE ms.memory_id = $1
+	 ORDER BY s.created_at, s.id`
+
 func loadSources(ctx context.Context, tx pgx.Tx, memoryID uuid.UUID) ([]Source, error) {
-	rows, err := tx.Query(ctx, `
-		SELECT s.id, s.kind, s.ref, COALESCE(s.uri, ''), s.locator, s.external, s.trust_class,
-		       COALESCE(s.quote, ''), COALESCE(s.content_hash, ''), s.created_at
-		  FROM v2.memory_sources ms
-		  JOIN v2.sources s ON s.id = ms.source_id
-		 WHERE ms.memory_id = $1
-		 ORDER BY s.created_at, s.id`, memoryID)
+	rows, err := tx.Query(ctx, sourcesSQL, memoryID)
 	if err != nil {
 		return nil, fmt.Errorf("ledger: load sources: %w", err)
 	}
+	return scanSources(rows)
+}
+
+// withSources queues the read of m's sources, for attachDetails: they go
+// out in its round trip.
+func withSources(m *Memory) func(*pgx.Batch) {
+	return func(b *pgx.Batch) {
+		b.Queue(sourcesSQL, m.ID).Query(func(rows pgx.Rows) error {
+			var err error
+			if m.Sources, err = scanSources(rows); err != nil {
+				return fmt.Errorf("ledger: load sources: %w", err)
+			}
+			return nil
+		})
+	}
+}
+
+func scanSources(rows pgx.Rows) ([]Source, error) {
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Source, error) {
 		var s Source
 		var locator []byte

@@ -264,12 +264,31 @@ type NearestQuery struct {
 // model, inside a materialized CTE, joined to each memory's current
 // version (plan §5.11). There is no approximate index to cut the pool.
 func Nearest(ctx context.Context, tx pgx.Tx, q NearestQuery) ([]Neighbor, error) {
+	sql, args, err := NearestSQL(q)
+	if err != nil || sql == "" {
+		return nil, err
+	}
+	rows, err := tx.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ledger: nearest: %w", err)
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Neighbor, error) {
+		var n Neighbor
+		err := r.Scan(&n.ID, &n.Similarity)
+		return n, err
+	})
+}
+
+// NearestSQL is Nearest's statement and arguments, for a caller that
+// reads more with it in the same statement: rows of (memory id,
+// similarity), nearest first. It is empty when q can't match anything.
+func NearestSQL(q NearestQuery) (string, []any, error) {
 	if len(q.Spaces) == 0 || len(q.Vector) == 0 || q.Model == "" {
-		return nil, nil
+		return "", nil, nil
 	}
 	lit, err := VectorLiteral(q.Vector)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	lifecycles := indexedLifecycles[1:] // kept
 	if len(q.Lifecycles) > 0 {
@@ -290,7 +309,7 @@ func Nearest(ctx context.Context, tx pgx.Tx, q NearestQuery) ([]Neighbor, error)
 	if q.Floor > 0 {
 		maxDistance = 1 - q.Floor
 	}
-	rows, err := tx.Query(ctx, `
+	return `
 		WITH knn AS MATERIALIZED (
 		    SELECT e.memory_id, e.embedding <=> $1::halfvec(1024) AS distance
 		      FROM v2.memory_embeddings e
@@ -302,15 +321,7 @@ func Nearest(ctx context.Context, tx pgx.Tx, q NearestQuery) ([]Neighbor, error)
 		     ORDER BY distance, e.memory_id
 		     LIMIT $8)
 		SELECT memory_id, 1 - distance FROM knn WHERE distance <= $9 ORDER BY distance, memory_id`,
-		lit, q.Spaces, q.Model, lifecycles, string(q.Kind), q.SkipSuperseded, except, k, maxDistance)
-	if err != nil {
-		return nil, fmt.Errorf("ledger: nearest: %w", err)
-	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Neighbor, error) {
-		var n Neighbor
-		err := r.Scan(&n.ID, &n.Similarity)
-		return n, err
-	})
+		[]any{lit, q.Spaces, q.Model, lifecycles, string(q.Kind), q.SkipSuperseded, except, k, maxDistance}, nil
 }
 
 // VectorCandidates is the judge's vector set (§5.8): the k kept memories

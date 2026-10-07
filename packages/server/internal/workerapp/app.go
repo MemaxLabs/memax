@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/MemaxLabs/memax/packages/server/internal/dbpool"
 	"log/slog"
 	"net/url"
 	"os"
@@ -75,7 +76,7 @@ func New(ctx context.Context) (*App, error) {
 		return nil, fmt.Errorf("DATABASE_URL is required for the worker")
 	}
 
-	pool, err := pgxpool.New(ctx, dbURL)
+	pool, err := dbpool.Open(ctx, dbURL, dbpool.WorkerMaxConns)
 	if err != nil {
 		return nil, fmt.Errorf("connect to database: %w", err)
 	}

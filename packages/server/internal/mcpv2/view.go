@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -96,7 +97,19 @@ func (v *view) exclude() map[string]bool { return v.v2 }
 // principal is the caller as the ledger sees them.
 func (v *view) principal(ctx context.Context) (*v2api.Principal, *mcp.CallToolResult) {
 	if !v.pDone {
+		// The hubs the spaces are built from are read at the same time as
+		// the principal: they don't depend on each other, and each round
+		// trip to Postgres is about 24 ms in production.
+		var hubs sync.WaitGroup
+		if !v.hubsDone {
+			hubs.Add(1)
+			go func() {
+				defer hubs.Done()
+				_, _ = v.allHubs()
+			}()
+		}
 		v.p, v.pErr = v.s.v2.Principal(v.c.HTTP, policy.ViaMCP)
+		hubs.Wait()
 		v.pDone = true
 		if v.pErr == nil {
 			v.spaces = v.buildSpaces()

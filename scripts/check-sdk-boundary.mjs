@@ -25,7 +25,15 @@ function walk(dir) {
     const fullPath = join(dir, entry);
     const stat = statSync(fullPath);
     if (stat.isDirectory()) {
-      if (entry === "node_modules" || entry === "dist" || entry === ".next") {
+      // Build output, including the Cloudflare Worker build (OpenNext's
+      // .open-next and Wrangler's .wrangler hold bundled copies of the SDK).
+      if (
+        entry === "node_modules" ||
+        entry === "dist" ||
+        entry === ".next" ||
+        entry === ".open-next" ||
+        entry === ".wrangler"
+      ) {
         continue;
       }
       files.push(...walk(fullPath));

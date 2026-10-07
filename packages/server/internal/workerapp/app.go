@@ -229,7 +229,8 @@ func New(ctx context.Context) (*App, error) {
 
 	// V2 compile path (plan 25 §5.7): compile_target jobs, enqueued by the
 	// ledger with each change that affects a target, run the coordinator,
-	// which calls the compile service and stores artifacts in object
+	// which calls the compile service (COMPILE_SERVICE_URL, with
+	// COMPILE_SERVICE_TOKEN for the Worker) and stores artifacts in object
 	// storage; a periodic sweep re-enqueues anything left behind. Without
 	// COMPILE_SERVICE_URL or object storage nothing compiles (nil means
 	// disabled): compile jobs cancel with the reason, and no sweep runs.
@@ -245,7 +246,7 @@ func New(ctx context.Context) (*App, error) {
 		v2Opts = append(v2Opts, ledger.WithIndexJobs())
 	}
 	v2Ledger := ledger.New(pool, v2Opts...)
-	compileSvc := compile.New(v2Ledger, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL")), blobStore,
+	compileSvc := compile.New(v2Ledger, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL"), compile.WithToken(os.Getenv("COMPILE_SERVICE_TOKEN"))), blobStore,
 		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
 	logEnabled("V2 compile", compileSvc != nil)
 	compile.AddWorkers(workers, v2Ledger, compileSvc)

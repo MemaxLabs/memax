@@ -45,7 +45,9 @@
 # # Environment & secrets
 #
 # Deploy jobs target the `production` GitHub Environment, which
-# provides scoped `DOPPLER_TOKEN` and `FLY_API_TOKEN`. Operators can
+# provides scoped `DOPPLER_TOKEN`, `FLY_API_TOKEN` and, for the
+# Cloudflare Workers (deploy-cloudflare.yml), `CLOUDFLARE_API_TOKEN` and
+# `CLOUDFLARE_ACCOUNT_ID`. Operators can
 # layer required reviewers / deployment protection rules on the env
 # without touching this file.
 #
@@ -53,12 +55,14 @@
 #
 # 1. resolve-version — computes bump + new version, fails fast if
 #    `auto` can't find a valid label.
-# 2. deploy-server — runs database + River migrations via
+# 2. deploy-compile, deploy-web, deploy-docs — the Cloudflare Workers.
+#    The compile service goes first because the API and worker call it.
+# 3. deploy-server — runs database + River migrations via
 #    `release_command` against the shared prod database.
-# 3. deploy-worker — runs after server is green so new worker code
+# 4. deploy-worker — runs after server is green so new worker code
 #    never starts against an old schema.
-# 4. tag-release — creates and pushes the annotated tag on the
-#    deployed SHA. Skipped when bump=none.
+# 5. tag-release — creates and pushes the annotated tag on the
+#    deployed SHA, once every deploy is green. Skipped when bump=none.
 
 name: Deploy to Production
 
@@ -266,9 +270,47 @@ jobs:
           echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
           echo "New version: $NEW"
 
+  # Cloudflare Workers (production), through deploy-cloudflare.yml, at the
+  # SHA resolve-version settled on. Until DNS moves to Cloudflare, Vercel's
+  # Git integration keeps serving memax.app and docs.memax.app and these
+  # Workers serve only their workers.dev URLs; the compile service has its
+  # own hostname (compile.memax.app) from the start. Rollback: `wrangler
+  # rollback --env production` in the package, or reset prod and re-run.
+  deploy-compile:
+    name: Deploy compile service to Cloudflare (production)
+    needs: [resolve-version]
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      worker: compile
+      environment: production
+      ref: ${{ needs.resolve-version.outputs.deploy_sha }}
+    secrets: inherit
+
+  deploy-web:
+    name: Deploy web app to Cloudflare (production)
+    needs: [resolve-version]
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      worker: web
+      environment: production
+      ref: ${{ needs.resolve-version.outputs.deploy_sha }}
+    secrets: inherit
+
+  deploy-docs:
+    name: Deploy docs site to Cloudflare (production)
+    needs: [resolve-version]
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      worker: docs
+      environment: production
+      ref: ${{ needs.resolve-version.outputs.deploy_sha }}
+    secrets: inherit
+
   deploy-server:
     name: Deploy API to Fly.io (production)
-    needs: [resolve-version]
+    # The API and the worker call the compile service
+    # (COMPILE_SERVICE_URL in fly/*.production.toml): deploy it first.
+    needs: [resolve-version, deploy-compile]
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -389,11 +431,17 @@ jobs:
 
   tag-release:
     name: Tag deployed SHA with new version
-    # Only runs after BOTH server and worker deploys land green, AND
+    # Only runs after every deploy (Fly and Cloudflare) lands green, AND
     # bump != none. Tagging a failed deploy would pin a broken version
-    # into git history; skipping the tag when only one process deployed
+    # into git history; skipping the tag when only some of them deployed
     # (e.g., worker failed) keeps the prod history truthful.
-    needs: [resolve-version, deploy-server, deploy-worker]
+    needs:
+      - resolve-version
+      - deploy-compile
+      - deploy-server
+      - deploy-worker
+      - deploy-web
+      - deploy-docs
     if: needs.resolve-version.outputs.bump != 'none'
     runs-on: ubuntu-latest
     permissions:

@@ -91,6 +91,31 @@ describe("parseBack: no change", () => {
     );
     expect(parseBack(content, uncited).changes).toEqual([]);
   });
+
+  it("reads back a file of thousands of lines in linear time", () => {
+    // Every cited line gone and as many new uncited ones: each gone line
+    // looks for its words among the new lines. A scan per line took
+    // seconds here (the compile service has a CPU budget per request).
+    const n = 15_000;
+    const lines = (f: (i: number) => string) =>
+      Array.from({ length: n }, (_, i) => f(i)).join("\n");
+    const last = lines((i) => `- Line ${i} keeps a statement. [M-${i + 1}]`);
+    const current = lines((i) => `- ${i} A new line someone wrote by hand.`);
+    const started = performance.now();
+    const { changes } = parseBack(last, current);
+    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(changes.filter((c) => c.kind === "new")).toHaveLength(n);
+    expect(changes.filter((c) => c.kind === "remove")).toHaveLength(n);
+    // A gone line whose words survive uncited takes the first such line.
+    const twice = `${current}\n- Line 7 keeps a statement.\n- Line 7 keeps a statement.`;
+    const kept = parseBack(last, twice).changes;
+    expect(kept.filter((c) => c.kind === "remove")).toHaveLength(n - 1);
+    expect(
+      kept.filter(
+        (c) => c.kind === "new" && c.text === "Line 7 keeps a statement.",
+      ),
+    ).toEqual([expect.objectContaining({ line: n + 2 })]);
+  });
 });
 
 describe("parseBack: proposals", () => {

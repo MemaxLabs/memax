@@ -3,6 +3,8 @@ package compiletest
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -11,9 +13,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 )
 
 // StartService runs the real compile service (packages/compile-service)
@@ -22,8 +27,17 @@ import (
 // src/ (needs the workspace's node_modules, from `pnpm install`). It skips
 // the test when Node or node_modules isn't there, unless
 // MEMAX_REQUIRE_COMPILE_SERVICE is set, which makes that a failure (CI).
+//
+// The service requires Token, so every test that reaches it through
+// Client also checks that the client authenticates. With
+// MEMAX_TEST_COMPILE_SERVICE_URL set, the tests use that service instead
+// (the Workers entry under `wrangler dev`, say) with the token in
+// MEMAX_TEST_COMPILE_SERVICE_TOKEN.
 func StartService(t testing.TB) string {
 	t.Helper()
+	if url := strings.TrimRight(strings.TrimSpace(os.Getenv("MEMAX_TEST_COMPILE_SERVICE_URL")), "/"); url != "" {
+		return url
+	}
 	root := repoRoot()
 	skip := func(format string, args ...any) {
 		t.Helper()
@@ -46,7 +60,7 @@ func StartService(t testing.TB) string {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, node, filepath.Join(root, "packages", "compile-service", "dist", "main.js"))
-	cmd.Env = append(os.Environ(), "PORT=0", "HOST=127.0.0.1", "SHUTDOWN_GRACE_MS=1000")
+	cmd.Env = append(os.Environ(), "PORT=0", "HOST=127.0.0.1", "SHUTDOWN_GRACE_MS=1000", "COMPILE_SERVICE_TOKEN="+Token())
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 5 * time.Second
 	out, err := cmd.StdoutPipe()
@@ -84,6 +98,32 @@ func StartService(t testing.TB) string {
 		t.Fatal("compile service: didn't start within 15s")
 	}
 	return ""
+}
+
+var (
+	tokenOnce sync.Once
+	token     string
+)
+
+// Token is the bearer token of the services StartService starts: random
+// for each test binary, or MEMAX_TEST_COMPILE_SERVICE_TOKEN with an
+// external service.
+func Token() string {
+	tokenOnce.Do(func() {
+		if os.Getenv("MEMAX_TEST_COMPILE_SERVICE_URL") != "" {
+			token = os.Getenv("MEMAX_TEST_COMPILE_SERVICE_TOKEN")
+			return
+		}
+		b := make([]byte, 24)
+		_, _ = rand.Read(b)
+		token = hex.EncodeToString(b)
+	})
+	return token
+}
+
+// Client is a client for a service StartService returned, with its token.
+func Client(baseURL string, opts ...compile.ClientOption) *compile.Client {
+	return compile.NewClient(baseURL, append([]compile.ClientOption{compile.WithToken(Token())}, opts...)...)
 }
 
 // build compiles the compiler and the service with tsc when stale. A lock

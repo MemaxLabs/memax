@@ -1,0 +1,48 @@
+// The compile service as a Cloudflare Worker (src/worker.ts), the same
+// handler the Node server runs (src/handler.ts).
+//
+//   pnpm --filter @memaxlabs/compiler build             # the Worker bundles the built compiler
+//   pnpm --filter @memaxlabs/compile-service dev:cf      # local workerd on :8787 (token from .dev.vars)
+//   pnpm --filter @memaxlabs/compile-service deploy:cf -- --env staging   # CI does this; never by hand
+//
+// It has a public URL, so every route but GET /health needs the secret
+// COMPILE_SERVICE_TOKEN as `Authorization: Bearer <token>`; without the
+// secret it refuses them all. Set it with
+// `wrangler secret put COMPILE_SERVICE_TOKEN --env staging` (CI syncs it
+// from Doppler), and give the API and the worker the same value.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "memax-compile",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  // node:crypto's native SHA-256 for the compiler's drift hashes (it
+  // reaches it through process.getBuiltinModule, and falls back to a
+  // portable one without it). Nothing else uses Node APIs.
+  "compatibility_flags": ["nodejs_compat"],
+  // Reached only at its custom domain (env routes below), never at
+  // *.workers.dev or a preview URL.
+  "workers_dev": false,
+  "preview_urls": false,
+  "limits": {
+    // A compile or parse-back is pure CPU: the largest input the service
+    // accepts (4 MiB) takes well under a second (packages/compile-service
+    // README, "Workers limits"). The cap stops a pathological request
+    // from billing the 30 s default.
+    "cpu_ms": 5000,
+  },
+  // Logs carry routes, statuses, sizes and timings only (src/log.ts).
+  "observability": { "enabled": true },
+  "secrets": { "required": ["COMPILE_SERVICE_TOKEN"] },
+  "env": {
+    "staging": {
+      "name": "memax-compile-staging",
+      "routes": [{ "pattern": "compile-staging.memax.app", "custom_domain": true }],
+      "secrets": { "required": ["COMPILE_SERVICE_TOKEN"] },
+    },
+    "production": {
+      "name": "memax-compile-production",
+      "routes": [{ "pattern": "compile.memax.app", "custom_domain": true }],
+      "secrets": { "required": ["COMPILE_SERVICE_TOKEN"] },
+    },
+  },
+}

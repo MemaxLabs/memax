@@ -750,7 +750,8 @@ func webSurfaceFromEnv() *websurface.Verifier {
 // v2Handler builds /v2: the ledger, which enqueues compile jobs with
 // River's InsertTx when there is a queue (plan 25 §5.7), and the compile
 // coordinator for previews, hand edits and drift, which needs
-// COMPILE_SERVICE_URL and object storage (nil means disabled). It also
+// COMPILE_SERVICE_URL (with COMPILE_SERVICE_TOKEN for the Worker) and
+// object storage (nil means disabled). It also
 // returns the searcher MCP v2's recall and search use (hybrid when V2
 // embeddings are configured, v2Retrieval; lexical otherwise), and the
 // process's read recorder, shared with MCP.
@@ -765,7 +766,7 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 		}
 	}
 	l := ledger.New(pool, opts...)
-	svc := compile.New(l, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL")), blobStore,
+	svc := compile.New(l, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL"), compile.WithToken(os.Getenv("COMPILE_SERVICE_TOKEN"))), blobStore,
 		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
 	search, vectors := v2Retrieval(l, embedCfg)
 	// Nil without a database: nothing records reads.

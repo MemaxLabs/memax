@@ -67,7 +67,7 @@ func newGateEnv(t *testing.T) (*env, string) {
 	jobs := &lateJobs{}
 	e := &env{t: t, pool: pool, store: mockobjectstore.New()}
 	e.ledger = ledger.New(pool, ledger.WithLogger(quiet), ledger.WithJobs(jobs))
-	e.svc = compile.New(e.ledger, compile.NewClient(serviceURL), e.store,
+	e.svc = compile.New(e.ledger, compiletest.Client(serviceURL), e.store,
 		compile.Config{AppBaseURL: "https://memax.app", Log: quiet})
 	workers := river.NewWorkers()
 	compile.AddWorkers(workers, e.ledger, e.svc)
@@ -288,7 +288,7 @@ func TestPhase1Gate(t *testing.T) {
 		e.do(call{method: "POST", path: space + "/targets", token: zz, body: map[string]any{"kind": kind}}).ok(http.StatusCreated, &tr)
 		ids[kind] = tr.Target.ID
 	}
-	d := &daemon{e: e, tok: zz, cl: compile.NewClient(serviceURL), disk: map[string]string{}}
+	d := &daemon{e: e, tok: zz, cl: compiletest.Client(serviceURL), disk: map[string]string{}}
 	first := d.await(20*time.Second, "the first compile")
 	t.Logf("first compile of the four targets, delivered: %v", first.Round(time.Millisecond))
 

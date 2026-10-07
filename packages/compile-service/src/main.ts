@@ -1,11 +1,15 @@
 /**
- * Entry point: `node dist/main.js`.
+ * Entry point for the Node server: `node dist/main.js`.
  *
  *   PORT            port to listen on (default 8080; 0 picks a free one)
  *   HOST            address to bind (default "::", every IPv6 and IPv4
- *                   address; Fly's private network is IPv6)
+ *                   address)
  *   MAX_BODY_BYTES  largest accepted body (default 4 MiB)
  *   SHUTDOWN_GRACE_MS  how long in-flight requests get on SIGTERM (default 10 s)
+ *   COMPILE_SERVICE_TOKEN  when set, every route but GET /health needs it
+ *                   as `Authorization: Bearer <token>`. Leave it unset only
+ *                   where nothing but the API and the worker can reach the
+ *                   port.
  */
 import { jsonLogger } from "./log.js";
 import { DEFAULT_MAX_BODY, createService } from "./server.js";
@@ -14,8 +18,10 @@ const log = jsonLogger();
 const port = intFrom("PORT", 8080, 0);
 const host = process.env.HOST?.trim() || "::";
 const grace = intFrom("SHUTDOWN_GRACE_MS", 10_000);
+const token = process.env.COMPILE_SERVICE_TOKEN?.trim() ?? "";
 const service = createService({
   maxBodyBytes: intFrom("MAX_BODY_BYTES", DEFAULT_MAX_BODY),
+  token,
   log,
 });
 
@@ -25,6 +31,7 @@ try {
     address: addr.address,
     port: addr.port,
     node: process.version,
+    auth: token === "" ? "none" : "bearer",
   });
 } catch (err) {
   log.log("error", "listen failed", {

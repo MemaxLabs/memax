@@ -166,6 +166,23 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 			part.out.Notices = append(part.out.Notices, handler.MCPNotice{Kind: "forgotten", Message: msg})
 			fmt.Fprintf(&b, "%s\n\n", msg)
 		}
+		// Rule 11: a Write-level agent's write the judge found contradicting
+		// a decision in force went back to Review. Any agent may have read
+		// it while it was kept, so every connection hears it once.
+		returned, err := s.search.ReturnedSince(ctx, scope, ids(spaces), *since)
+		if err != nil {
+			part.out.Partial = true
+			s.logReadError(ctx, "return notices", err)
+		}
+		for _, sp := range spaces {
+			rs := returned[sp.ID]
+			if len(rs) == 0 {
+				continue
+			}
+			msg := returnedNotice(sp.Hub.Name, rs)
+			part.out.Notices = append(part.out.Notices, handler.MCPNotice{Kind: "returned", Message: msg})
+			fmt.Fprintf(&b, "%s\n\n", msg)
+		}
 	}
 	s.gateNews(ctx, p, scope, bySpace, query == "", &part, &b)
 	if ctx.Err() != nil {
@@ -317,6 +334,14 @@ func (s *Server) get(ctx context.Context, c *handler.MCPToolCall, v *view) (*mcp
 	case lifecycle.Rejected:
 		return errorResult(fmt.Sprintf("Memory not found: %s", ref)), true
 	case lifecycle.Proposed:
+		if decision, ok := returnedTo(m, hist.Receipts.Receipts); ok {
+			what := "a decision in force"
+			if decision != "" {
+				what = decision + ", a decision in force"
+			}
+			return errorResult(fmt.Sprintf("%s is back in Review in %s: it was kept at once, then Memax found it contradicts %s. "+
+				"It isn't kept now, so don't act on it; a person keeps it or settles the conflict.", m.Ref, sp.Hub.Name, what)), true
+		}
 		return errorResult(fmt.Sprintf("%s is a proposal waiting in Review in %s; it can be read once a person keeps it.", m.Ref, sp.Hub.Name)), true
 	}
 	detail := handler.MCPMemoryDetail{
@@ -618,6 +643,41 @@ func spaceOf(spaces []space, id uuid.UUID) space {
 		}
 	}
 	return space{ID: id}
+}
+
+// returnedNotice says which kept writes went back to Review in a space,
+// and what they contradict.
+func returnedNotice(space string, rs []v2recall.Returned) string {
+	parts := make([]string, len(rs))
+	for i, r := range rs {
+		parts[i] = r.Ref
+		if r.Decision != "" {
+			parts[i] = fmt.Sprintf("%s (contradicts %s)", r.Ref, r.Decision)
+		}
+	}
+	return fmt.Sprintf("Back in Review in %s since this connection was last seen: %s. Each was kept at once, then found to contradict "+
+		"a decision in force. They aren't kept now: don't act on them until a person settles them.", space, strings.Join(parts, ", "))
+}
+
+// returnedTo is the decision in force a returned write contradicts, from
+// its newest `returned` receipt, and whether it was returned at all.
+func returnedTo(m *ledger.Memory, receipts []ledger.Receipt) (string, bool) {
+	if m.Lifecycle != lifecycle.Proposed || !m.Flags.Has(lifecycle.Conflict) {
+		return "", false
+	}
+	var newest *ledger.Receipt
+	for i := range receipts {
+		if rc := &receipts[i]; rc.Action == ledger.ActionReturned && (newest == nil || rc.Seq > newest.Seq) {
+			newest = rc
+		}
+	}
+	if newest == nil {
+		return "", false
+	}
+	if newest.Source != nil {
+		return newest.Source.Ref, true
+	}
+	return "", true
 }
 
 // lastSeen is when the agent's connection was last seen before this

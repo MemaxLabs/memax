@@ -1,4 +1,5 @@
 import posthog from "posthog-js";
+import { scrubEvent } from "@/lib/analytics-scrub";
 import { API_URL } from "@/lib/urls";
 
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
@@ -34,6 +35,9 @@ export function initPostHog(extras?: Record<string, any>) {
 
   posthog.init(POSTHOG_KEY, {
     api_host: POSTHOG_HOST,
+    // Never a token: every URL goes without its query, fragment or secret
+    // path segments (lib/analytics-scrub.ts), in both trees.
+    before_send: scrubEvent,
     // Defer the first pageview so we can register super properties
     // first; we manually capture immediately after register below.
     capture_pageview: false,

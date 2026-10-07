@@ -489,8 +489,19 @@ func registerAuthRoutes(root *http.ServeMux, protected *http.ServeMux, deps rout
 	// per-IP budget on the server.
 	root.HandleFunc("POST /oauth/register", ipLimit(ratelimit.IPOAuthDCRLimit, mcpOAuth.DynamicClientRegistration))
 	root.HandleFunc("GET /oauth/authorize", ipLimit(ratelimit.IPOAuthAuthorize, mcpOAuth.Authorize))
-	root.HandleFunc("GET /oauth/authorize/consent-request", ipLimit(ratelimit.IPOAuthAuthorize, mcpOAuth.ConsentRequest))
-	root.HandleFunc("POST /oauth/authorize/consent", ipLimit(ratelimit.IPOAuthAuthorize, mcpOAuth.Consent))
+	// The consent page (OAuthConsent) reads and answers a request as the
+	// person signed in on the web, through the web app's proxy: these need
+	// a web session's access token (mcp_oauth_consent.go). No per-address
+	// limit: through the proxy every person shares the web app's address,
+	// and only a signed-in person gets past RequireAuth. A request is made
+	// by GET /oauth/authorize, which is limited per address; if these are
+	// ever abused, limit them per person (GetUserID), not per address.
+	root.Handle("GET /oauth/authorize/requests/{id}", deps.authMiddleware(http.HandlerFunc(mcpOAuth.OpenRequest)))
+	root.Handle("POST /oauth/authorize/requests/{id}/decision", deps.authMiddleware(http.HandlerFunc(mcpOAuth.DecideRequest)))
+	root.Handle("POST /oauth/authorize/requests/{id}/release", deps.authMiddleware(http.HandlerFunc(mcpOAuth.ReleaseRequest)))
+	// Where V1's consent page posted; it sends a page loaded before the
+	// deploy on to the web page. Remove after one release.
+	root.HandleFunc("POST /oauth/authorize/consent", ipLimit(ratelimit.IPOAuthAuthorize, mcpOAuth.LegacyConsent))
 	root.HandleFunc("POST /oauth/token", ipLimit(ratelimit.IPOAuthTokenLimit, mcpOAuth.Token))
 	// Signing out (RFC 7009): the web app's sign-out, memax logout, and MCP
 	// clients end their session with its refresh token.

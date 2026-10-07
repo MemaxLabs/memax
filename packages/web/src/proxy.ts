@@ -84,15 +84,17 @@ export function proxy(request: NextRequest) {
 
   // V2 gating first: a V2 path without the opt-in cookie goes to the
   // V1 home. Query strings are dropped; they belong to the V2 route.
+  // The one exception carries it: V1's retired consent page sends every
+  // browser on to the Ledger one (OAuthConsent) with the same request.
   const gate = decideUiGate({
     pathname,
     uiCookie: request.cookies.get(UI_COOKIE)?.value,
     hasSession,
   });
   if (gate.action === "redirect") {
-    return NextResponse.redirect(
-      new URL(gate.pathname, request.nextUrl.origin),
-    );
+    const target = new URL(gate.pathname, request.nextUrl.origin);
+    if (gate.keepQuery) target.search = request.nextUrl.search;
+    return NextResponse.redirect(target);
   }
 
   // Silent session restore. When the session-presence cookie says this
@@ -149,6 +151,8 @@ export const config = {
     "/signin/:path*",
     "/device/:path*",
     "/unsubscribe/:path*",
+    // OAuthConsent, and V1's retired consent page, which sends browsers to it
+    "/oauth/:path*",
     "/setup/:path*",
     "/join/:path*",
     "/settings/:path+",

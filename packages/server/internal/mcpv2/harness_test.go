@@ -65,6 +65,9 @@ type env struct {
 	// metered keeps what V1's tools logged and charged (the meter's
 	// LogEvent and quota guard), for tests on what only V1 spaces get.
 	metered *metered
+	// authH resolves the server's credentials; the OAuth consent test
+	// issues an agent's token through it.
+	authH *handler.AuthHandler
 }
 
 // metered records the usage events V1's tools log and the operations they
@@ -146,7 +149,7 @@ func buildEnvOn(t *testing.T, st store.Store, pool *pgxpool.Pool, withV2 bool, o
 	}
 	authH.SetStore(st)
 	e := &env{t: t, pool: pool, st: st, ledger: ledger.New(pool, ledger.WithLogger(quiet)), spaces: spacemode.New(pool), reads: &recordedReads{},
-		counters: &netsim.Requests{}}
+		counters: &netsim.Requests{}, authH: authH}
 	e.recorder = reads.New(e.ledger, reads.Options{Logger: quiet})
 	t.Cleanup(e.recorder.Close) // before the database goes away
 	recallH := handler.NewRecallHandler(st, nil, nil, nil, nil)

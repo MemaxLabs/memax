@@ -303,7 +303,7 @@ func TestMCPRefreshRotatesWithReuseDetection(t *testing.T) {
 	loc := f.authorize(url.Values{
 		"client_id": {cimdClientID}, "redirect_uri": {cimdRedirect}, "state": {"s"},
 		"code_challenge": {challenge}, "code_challenge_method": {"S256"}, "scope": {"memax:read"},
-	}, []string{"memax:read"})
+	}, f.hubs[0])
 	status, body := f.token(url.Values{"grant_type": {"authorization_code"}, "code": {loc.Query().Get("code")},
 		"code_verifier": {verifier}, "redirect_uri": {cimdRedirect}})
 	if status != http.StatusOK {

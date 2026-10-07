@@ -28,10 +28,44 @@ const V2_AREAS = new Set(["signin", "device", "unsubscribe", "setup", "join"]);
  */
 const V2_OPEN_AREAS = new Set(["signin", "device", "unsubscribe"]);
 
-/** Whether a V2 path opens for every browser (V2_OPEN_AREAS). */
+/**
+ * OAuthConsent, the Ledger page where a person lets an outside agent (an
+ * MCP client) connect: /oauth/authorize. It opens for every browser, like
+ * /signin and /device: the API sends everyone there (V1 people too) from
+ * an agent's OAuth request, cookie or not, and the person signs in on the
+ * way if they need to.
+ *
+ * V1's consent page (/oauth/consent, in the (v1) tree) is retired: every
+ * browser that lands there, a link from before the move, goes on to the
+ * Ledger page with the same query (V1_PAGES_WITH_V2). The paths differ
+ * because the root layouts can't share one.
+ */
+const OAUTH_CONSENT_V2 = "/oauth/authorize";
+
+/**
+ * Retired V1 pages and the V2 page that took each over with the same
+ * query: every browser goes on to the V2 one, query and all.
+ */
+const V1_PAGES_WITH_V2: ReadonlyMap<string, string> = new Map([
+  ["/oauth/consent", OAUTH_CONSENT_V2],
+]);
+
+function isOAuthConsentV2(segments: string[]): boolean {
+  return segments[0] === "oauth" && segments[1] === "authorize";
+}
+
+/** Whether a V2 path opens for every browser (V2_OPEN_AREAS, OAuthConsent). */
 export function isOpenV2Path(pathname: string): boolean {
-  const first = pathname.split("/").filter(Boolean)[0];
+  const segments = pathname.split("/").filter(Boolean);
+  const first = segments[0];
+  if (isOAuthConsentV2(segments)) return true;
   return first !== undefined && V2_OPEN_AREAS.has(first);
+}
+
+/** The V2 page that took over a retired V1 page, if any. */
+export function v2PageFor(pathname: string): string | null {
+  const segments = pathname.split("/").filter(Boolean);
+  return V1_PAGES_WITH_V2.get(`/${segments.join("/")}`) ?? null;
 }
 
 /**
@@ -143,6 +177,7 @@ export function isV2Path(pathname: string): boolean {
   const [first, second] = segments;
   if (first === undefined) return false; // "/" stays V1 until cutover
   if (V2_AREAS.has(first)) return true;
+  if (isOAuthConsentV2(segments)) return true;
   if (V2_SUBPATH_AREAS.has(first)) return segments.length > 1;
   if (first === "dev") return second === "ledger";
   return second !== undefined && SPACE_PLACES.has(second) && isSpaceSlug(first);
@@ -195,7 +230,8 @@ export function bareSpaceSlug(pathname: string): string | null {
 
 export type UiGateDecision =
   | { action: "continue" }
-  | { action: "redirect"; pathname: string };
+  /** `keepQuery`: the query string goes along (V1_PAGES_WITH_V2). */
+  | { action: "redirect"; pathname: string; keepQuery?: boolean };
 
 export function decideUiGate({
   pathname,
@@ -206,6 +242,10 @@ export function decideUiGate({
   uiCookie: string | undefined;
   hasSession: boolean;
 }): UiGateDecision {
+  const v2Page = v2PageFor(pathname);
+  if (v2Page !== null) {
+    return { action: "redirect", pathname: v2Page, keepQuery: true };
+  }
   const bare = bareSpaceSlug(pathname);
   if (bare !== null) {
     // A space opens on its Today, for V2 browsers only.

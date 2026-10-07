@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -23,6 +24,7 @@ import (
 
 const (
 	oauthTestBase   = "https://api.memax.test"
+	oauthTestApp    = "https://app.memax.test"
 	oauthTestSecret = "mcp-oauth-flow-test-secret-0123456789"
 	cimdClientID    = "https://claude.example/oauth/claude-code-client-metadata"
 	cimdRedirect    = "http://localhost:53682/callback"
@@ -38,6 +40,11 @@ type oauthFlow struct {
 	// fetched counts metadata document fetches.
 	fetched int
 	doc     string
+	// web is the consent page's API, behind the real auth middleware, as
+	// the web app's proxy reaches it.
+	web http.Handler
+	// codes are the email sign-in codes sent, by address.
+	codes map[string]string
 }
 
 func newOAuthFlow(t *testing.T) *oauthFlow {
@@ -45,9 +52,21 @@ func newOAuthFlow(t *testing.T) *oauthFlow {
 	t.Setenv("API_BASE_URL", oauthTestBase)
 	st, pool := testdb.Acquire(t)
 	f := &oauthFlow{t: t, user: uuid.New()}
-	f.authH = &AuthHandler{pool: pool, jwtSecret: []byte(oauthTestSecret), store: st}
-	f.h = &MCPOAuthHandler{authH: f.authH, baseURL: oauthTestBase,
+	f.authH = &AuthHandler{pool: pool, jwtSecret: []byte(oauthTestSecret), store: st,
+		registrationMode: "open", redirectAllowlist: []string{oauthTestApp}}
+	f.codes = map[string]string{}
+	f.authH.SetEnqueueEmail(func(_, to string, vars map[string]string) error {
+		f.codes[to] = vars["Code"]
+		return nil
+	})
+	f.h = &MCPOAuthHandler{authH: f.authH, baseURL: oauthTestBase, appBaseURL: oauthTestApp,
 		ledger: ledger.New(pool, ledger.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))))}
+	chain := RequireAuth([]byte(oauthTestSecret), f.authH.ResolveAPIKey, f.authH.ResolveOAuthGrant)
+	mux := http.NewServeMux()
+	mux.Handle("GET /oauth/authorize/requests/{id}", chain(http.HandlerFunc(f.h.OpenRequest)))
+	mux.Handle("POST /oauth/authorize/requests/{id}/decision", chain(http.HandlerFunc(f.h.DecideRequest)))
+	mux.Handle("POST /oauth/authorize/requests/{id}/release", chain(http.HandlerFunc(f.h.ReleaseRequest)))
+	f.web = mux
 	f.doc = `{"client_id":"` + cimdClientID + `","client_name":"Claude Code","redirect_uris":["` + cimdRedirect + `"],"token_endpoint_auth_method":"none"}`
 	f.h.fetchMetadata = func(_ context.Context, u string) (*safefetch.FetchResult, error) {
 		f.fetched++
@@ -76,35 +95,86 @@ func pkce() (verifier, challenge string) {
 	return verifier, base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
-// authorize runs /oauth/authorize, the provider callback and consent, and
-// returns the redirect to the client.
-func (f *oauthFlow) authorize(q url.Values, permissions []string) *url.URL {
+// webSession is an access token for a session the web app was issued (its
+// surface), as signing in on the web gives one, whatever the method.
+func (f *oauthFlow) webSession(user uuid.UUID) string {
+	f.t.Helper()
+	tok, err := auth.SignSessionToken(user.String(), auth.SurfaceWeb, []byte(oauthTestSecret), time.Hour)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return tok
+}
+
+// start runs /oauth/authorize. A request it stores sends the browser to
+// the web app's page for it (request is its ID); a refusal goes back to
+// the client (loc).
+func (f *oauthFlow) start(q url.Values) (request string, loc *url.URL) {
 	f.t.Helper()
 	rec := httptest.NewRecorder()
 	f.h.Authorize(rec, httptest.NewRequest(http.MethodGet, oauthTestBase+"/oauth/authorize?"+q.Encode(), nil))
-	loc, _ := url.Parse(rec.Header().Get("Location"))
-	if rec.Code == http.StatusSeeOther {
-		return loc // an error redirect to the client
-	}
-	if rec.Code != http.StatusTemporaryRedirect || loc.Host != "github.com" {
+	loc, _ = url.Parse(rec.Header().Get("Location"))
+	if rec.Code != http.StatusSeeOther {
 		f.t.Fatalf("authorize: %d %s", rec.Code, rec.Body.String())
 	}
-	session := strings.TrimPrefix(loc.Query().Get("state"), "mcp:")
-	f.h.HandleMCPCallback(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/v1/auth/github/callback", nil), f.user.String(), session)
-	var csrf string
-	if err := f.authH.pool.QueryRow(context.Background(), `SELECT csrf_token FROM oauth_authorization_requests WHERE id = $1`, session).Scan(&csrf); err != nil {
-		f.t.Fatalf("consent request: %v", err)
+	if loc.Scheme+"://"+loc.Host == oauthTestApp && loc.Path == "/oauth/authorize" {
+		return loc.Query().Get("request"), loc
 	}
-	form := url.Values{"session_id": {session}, "csrf_token": {csrf}, "decision": {"approve"}, "permission": permissions, "hub_id": f.hubs}
-	req := httptest.NewRequest(http.MethodPost, oauthTestBase+"/oauth/authorize/consent", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec = httptest.NewRecorder()
-	f.h.Consent(rec, req)
-	if rec.Code != http.StatusSeeOther {
-		f.t.Fatalf("consent: %d %s", rec.Code, rec.Body.String())
+	return "", loc
+}
+
+// call is the consent page calling the API through the web app's proxy:
+// the session's access token, and a JSON body.
+func (f *oauthFlow) call(method, path, token string, body any) *httptest.ResponseRecorder {
+	f.t.Helper()
+	var r io.Reader
+	if body != nil {
+		b, _ := json.Marshal(body)
+		r = strings.NewReader(string(b))
 	}
-	loc, _ = url.Parse(rec.Header().Get("Location"))
+	req := httptest.NewRequest(method, oauthTestBase+path, r)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	f.web.ServeHTTP(rec, req)
+	return rec
+}
+
+// decide answers a request as the person with that session, and returns
+// where the API sends the browser.
+func (f *oauthFlow) decide(request, token, decision, space string) *url.URL {
+	f.t.Helper()
+	body := map[string]string{"decision": decision}
+	if space != "" {
+		body["space_id"] = space
+	}
+	rec := f.call(http.MethodPost, "/oauth/authorize/requests/"+request+"/decision", token, body)
+	var out struct {
+		Data oauthDecided `json:"data"`
+	}
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &out) != nil {
+		f.t.Fatalf("decide %s: %d %s", decision, rec.Code, rec.Body.String())
+	}
+	loc, _ := url.Parse(out.Data.RedirectTo)
 	return loc
+}
+
+// authorize runs /oauth/authorize, opens the request on the web as the
+// flow's person and allows it for one space, and returns the redirect to
+// the client (or Authorize's refusal).
+func (f *oauthFlow) authorize(q url.Values, space string) *url.URL {
+	f.t.Helper()
+	request, loc := f.start(q)
+	if request == "" {
+		return loc
+	}
+	token := f.webSession(f.user)
+	if rec := f.call(http.MethodGet, "/oauth/authorize/requests/"+request, token, nil); rec.Code != http.StatusOK {
+		f.t.Fatalf("open: %d %s", rec.Code, rec.Body.String())
+	}
+	return f.decide(request, token, "approve", space)
 }
 
 func (f *oauthFlow) token(form url.Values) (int, map[string]any) {
@@ -131,7 +201,7 @@ func TestMCPOAuthCIMDClientConnectsAnAudienceBoundAgent(t *testing.T) {
 		"client_id": {cimdClientID}, "redirect_uri": {cimdRedirect}, "state": {"s1"},
 		"code_challenge": {challenge}, "code_challenge_method": {"S256"},
 		"scope": {"memax:read memax:propose"}, "resource": {resource},
-	}, []string{"memax:read", "memax:propose"})
+	}, f.hubs[0])
 	if got := loc.Query().Get("iss"); got != oauthTestBase {
 		t.Errorf("authorization response iss = %q, want %q", got, oauthTestBase)
 	}
@@ -153,7 +223,7 @@ func TestMCPOAuthCIMDClientConnectsAnAudienceBoundAgent(t *testing.T) {
 		"client_id": {cimdClientID}, "redirect_uri": {cimdRedirect}, "state": {"s2"},
 		"code_challenge": {challenge}, "code_challenge_method": {"S256"},
 		"scope": {"memax:read memax:propose"}, "resource": {resource},
-	}, []string{"memax:read", "memax:propose"})
+	}, f.hubs[0])
 	if f.fetched != 1 {
 		t.Errorf("a fresh metadata document was fetched again (%d fetches)", f.fetched)
 	}
@@ -175,7 +245,8 @@ func TestMCPOAuthCIMDClientConnectsAnAudienceBoundAgent(t *testing.T) {
 	}
 
 	// The grant records the resource and scope; the agent connection the
-	// CIMD URL, at the spaces' default autonomy (Propose).
+	// CIMD URL, at the space's default autonomy (Propose), in the one space
+	// the person chose.
 	ctx := context.Background()
 	var grantResource, grantScope string
 	if err := f.authH.pool.QueryRow(ctx, `SELECT resource, scope FROM oauth_grants WHERE id = $1`, claims.GrantID).Scan(&grantResource, &grantScope); err != nil {
@@ -192,7 +263,7 @@ func TestMCPOAuthCIMDClientConnectsAnAudienceBoundAgent(t *testing.T) {
 		Scan(&agent, &clientID, &spaces); err != nil {
 		t.Fatalf("agent connection: %v", err)
 	}
-	if agent != "claude-code" || clientID != cimdClientID || spaces != 2 {
+	if agent != "claude-code" || clientID != cimdClientID || spaces != 1 {
 		t.Errorf("connection agent=%s client_id=%s spaces at propose=%d", agent, clientID, spaces)
 	}
 
@@ -239,7 +310,7 @@ func TestMCPOAuthResourceAndMetadataChecks(t *testing.T) {
 		"code_challenge": {challenge}, "code_challenge_method": {"S256"}, "scope": {"memax:read"},
 		"resource": {"https://elsewhere.example/mcp"},
 	}
-	loc := f.authorize(q, nil)
+	loc := f.authorize(q, "")
 	if loc.Query().Get("error") != "invalid_target" || loc.Query().Get("iss") != oauthTestBase {
 		t.Errorf("foreign resource: %s", loc)
 	}

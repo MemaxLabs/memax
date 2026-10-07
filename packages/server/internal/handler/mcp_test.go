@@ -157,30 +157,6 @@ func TestMCPOAuthScopeMappingRejectsUnknown(t *testing.T) {
 	}
 }
 
-func TestMCPOAuthRedirectURIValidation(t *testing.T) {
-	valid := []string{
-		"https://chat.openai.com/aip/g-123/oauth/callback",
-		"http://localhost:1455/callback",
-		"http://127.0.0.1:1455/callback",
-	}
-	for _, uri := range valid {
-		if !validOAuthRedirectURI(uri) {
-			t.Fatalf("expected valid redirect URI: %s", uri)
-		}
-	}
-
-	invalid := []string{
-		"javascript:alert(1)",
-		"http://example.com/callback",
-		"/relative/callback",
-	}
-	for _, uri := range invalid {
-		if validOAuthRedirectURI(uri) {
-			t.Fatalf("expected invalid redirect URI: %s", uri)
-		}
-	}
-}
-
 func TestMCPOAuthRedirectsToClientCallbackWithSeeOther(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/consent", nil)
 	w := httptest.NewRecorder()
@@ -213,48 +189,23 @@ func TestMCPOAuthErrorRedirectsToClientCallbackWithSeeOther(t *testing.T) {
 	}
 }
 
-func TestConsentDecisionOnlyDeniesExplicitCancel(t *testing.T) {
-	cases := map[string]bool{
-		"deny":    true,
-		" deny ":  true,
-		"DENY":    true,
-		"approve": false,
-		"":        false,
-		"unknown": false,
-	}
-	for decision, want := range cases {
-		if got := consentDecisionDenied(decision); got != want {
-			t.Fatalf("consentDecisionDenied(%q) = %t, want %t", decision, got, want)
-		}
-	}
-}
-
-func TestMCPOAuthWebConsentURLUsesConfiguredAppBaseURL(t *testing.T) {
+func TestMCPOAuthWebRequestURLUsesConfiguredAppBaseURL(t *testing.T) {
 	t.Setenv("APP_BASE_URL", "https://app.memax.test/")
 	h := NewMCPOAuthHandler(nil)
-	req := httptest.NewRequest(http.MethodGet, "/v1/auth/github/callback", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/authorize", nil)
 
-	got := h.webConsentURL(req, "request-1", "token-1")
-
-	if !strings.HasPrefix(got, "https://app.memax.test/oauth/consent?") {
-		t.Fatalf("consent URL = %q, want configured app consent route", got)
-	}
-	for _, want := range []string{"request_id=request-1", "consent_token=token-1"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("consent URL = %q, want %q", got, want)
-		}
+	if got := h.webRequestURL(req, "request-1"); got != "https://app.memax.test/oauth/authorize?request=request-1" {
+		t.Fatalf("request page = %q, want the configured app's consent page", got)
 	}
 }
 
-func TestMCPOAuthWebConsentURLInfersStagingAppFromAPIBaseURL(t *testing.T) {
+func TestMCPOAuthWebRequestURLInfersStagingAppFromAPIBaseURL(t *testing.T) {
 	t.Setenv("API_BASE_URL", "https://staging-api.memaxlabs.com")
 	h := NewMCPOAuthHandler(nil)
-	req := httptest.NewRequest(http.MethodGet, "/v1/auth/github/callback", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/authorize", nil)
 
-	got := h.webConsentURL(req, "request-1", "token-1")
-
-	if !strings.HasPrefix(got, "https://staging-app.memaxlabs.com/oauth/consent?") {
-		t.Fatalf("consent URL = %q, want staging app consent route", got)
+	if got := h.webRequestURL(req, "request-1"); got != "https://staging-app.memaxlabs.com/oauth/authorize?request=request-1" {
+		t.Fatalf("request page = %q, want the staging app's consent page", got)
 	}
 }
 

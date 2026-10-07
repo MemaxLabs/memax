@@ -338,3 +338,65 @@ session out.
   wipe, linking and unlinking a sign-in method) refuse passkey holders.
 - **Rate limits** on passkey sign-in are per address, and every sign-in
   through the web deployment shares its address (as above).
+
+## OAuth consent for MCP clients
+
+An MCP client (Claude Code, Codex, Cursor, VS Code, ChatGPT) gets a token
+for one of a person's spaces through OAuth 2.1 (`internal/handler`:
+`mcp_oauth.go`, `mcp_oauth_consent.go`). Who the person is comes from the
+web session, the same way as for everything else here:
+`GET /oauth/authorize` sends the browser to the web app's page for the
+request, the person signs in there if they need to (any method), and the
+page reads and answers the request through `/api/proxy`. So the BFF's
+defences apply: SameSite=Strict cookies and Fetch Metadata stop another
+site, and only a session the web app was issued answers (agents' tokens,
+CLI sessions and impersonation get `consent_by_person_on_web`). The first
+person to open a request is bound to it. There is no consent token: the
+request ID is the unguessable handle (256 bits, 10 minutes), the session
+is the person and the proxy the CSRF defence. Consenting connects the
+agent at the space's default, never above Propose, which policy allows
+without a person on the web (the quiet level), so it asks for no passkey
+re-check; raising the agent later in Agents does.
+
+### Redirect URIs for native apps (RFC 8252)
+
+The API answers a decision with the client's registered redirect URI and
+the code (or `access_denied`); the page follows it and never builds one.
+Which redirect URIs a client may register is one description,
+`internal/oauthredirect/redirects.json`, which the server enforces and
+the page's `followable()` reads (`src/lib/oauth-redirects.ts`), with
+shared test cases:
+
+- **https** anywhere: web clients (claude.ai, vscode.dev).
+- **http on a loopback host** (127.0.0.1, [::1], localhost), matched with
+  any port at authorize and at the token exchange (§7.3): an app listens
+  on whatever port is free (VS Code falls back from 33418 to a random
+  port; Claude Code always picks one).
+- **A private-use scheme** (§7.1): a reverse domain name
+  (`com.example.app:/cb`), or one of the native agents' own schemes
+  (`cursor`, `vscode`, `vscode-insiders`, `windsurf`), matched exactly.
+  The browser hands it to the app.
+- **Never** `javascript`, `vbscript`, `data`, `file`, `about`, `blob`,
+  `filesystem`, `ws(s)`, `ftp`, `mailto`, `tel`, `sms`, `intent` and the
+  like, userinfo (`https://user@host`) or a fragment. A redirect is never
+  anything the page could run or that names a credential.
+
+**Why PKCE is required of every client.** Any app on the device can
+register the same private scheme, or listen on the same loopback port
+once the real app lets it go, and receive the authorization code (§8.1).
+A code is worthless without the PKCE verifier, which never leaves the app
+that started the request: `GET /oauth/authorize` refuses a request
+without an S256 challenge, and the token endpoint a code without the
+matching verifier, at the redirect it was issued for. So an app that
+intercepts the code gets nothing, and the attack needs the device itself.
+
+Residual risks:
+
+- **A malicious app on the device** that starts its own request, with its
+  own verifier, under a real client's name and scheme: the consent page
+  shows the name the client gives itself, so a person can be fooled. A
+  metadata-document client's host ("from claude.ai") is verified; a
+  dynamically registered client's name is not.
+- **Dynamic registration is open.** Anyone may register a client; what
+  limits it is the redirect rules above and the per-address limit on
+  `/oauth/register`.

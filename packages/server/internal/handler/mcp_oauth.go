@@ -4,13 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -26,6 +24,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
+	"github.com/MemaxLabs/memax/packages/server/internal/oauthredirect"
 	"github.com/MemaxLabs/memax/packages/server/internal/safefetch"
 	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 )
@@ -102,7 +101,10 @@ func (h *MCPOAuthHandler) resolveAppBaseURL(r *http.Request) string {
 	return ""
 }
 
-func (h *MCPOAuthHandler) webConsentURL(r *http.Request, requestID string, consentToken string) string {
+// webRequestURL is the web app's page for a pending authorization request
+// (OAuthConsent, /oauth/authorize?request=<id>), or "" when there is no web
+// app to send the person to.
+func (h *MCPOAuthHandler) webRequestURL(r *http.Request, requestID string) string {
 	appBase := h.resolveAppBaseURL(r)
 	if appBase == "" {
 		return ""
@@ -111,17 +113,9 @@ func (h *MCPOAuthHandler) webConsentURL(r *http.Request, requestID string, conse
 	if err != nil {
 		return ""
 	}
-	u.Path = "/oauth/consent"
-	u.RawQuery = ""
-	q := u.Query()
-	q.Set("request_id", requestID)
-	q.Set("consent_token", consentToken)
-	u.RawQuery = q.Encode()
+	u.Path = consentPath
+	u.RawQuery = url.Values{"request": {requestID}}.Encode()
 	return u.String()
-}
-
-func (h *MCPOAuthHandler) consentSubmitURL(r *http.Request) string {
-	return h.resolveBaseURL(r) + "/oauth/authorize/consent"
 }
 
 // ProtectedResourceMetadata serves GET /.well-known/oauth-protected-resource
@@ -244,9 +238,12 @@ func (h *MCPOAuthHandler) DynamicClientRegistration(w http.ResponseWriter, r *ht
 		oauthError(w, "invalid_client_metadata", "redirect_uris is required")
 		return
 	}
+	// application_type isn't required (Cursor sends none): which redirects
+	// a client may use is decided by the URIs themselves (RFC 8252).
 	for _, redirectURI := range req.RedirectURIs {
-		if !validOAuthRedirectURI(redirectURI) {
-			oauthError(w, "invalid_redirect_uri", "redirect_uris must be absolute http(s) URLs or loopback URLs")
+		if !oauthredirect.Valid(redirectURI) {
+			oauthError(w, "invalid_redirect_uri",
+				"redirect_uris must be https URLs, http loopback URLs (127.0.0.1, [::1], localhost) or a native app's private-use scheme (RFC 8252)")
 			return
 		}
 	}
@@ -324,7 +321,8 @@ func (h *MCPOAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unknown OAuth client", http.StatusBadRequest)
 		return
 	}
-	if !redirectURIAllowed(redirectURI, client.RedirectURIs) {
+	// A registered loopback redirect matches with any port (RFC 8252 §7.3).
+	if !oauthredirect.Allowed(redirectURI, client.RedirectURIs) {
 		http.Error(w, "redirect_uri is not registered for this client", http.StatusBadRequest)
 		return
 	}
@@ -371,16 +369,16 @@ func (h *MCPOAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		redirectOAuthErrorIss(w, r, redirectURI, state, iss, "server_error", "Failed to start authorization")
 		return
 	}
-	// Redirect to GitHub OAuth, passing our session ID as the state
-	// After GitHub auth, our callback will look up this session and redirect
-	// to the MCP client's redirect_uri
-	githubState := "mcp:" + sessionID
-	params := url.Values{}
-	params.Set("client_id", h.authH.clientID)
-	params.Set("redirect_uri", h.authH.redirectURL)
-	params.Set("scope", "read:user,user:email,read:org")
-	params.Set("state", githubState)
-	http.Redirect(w, r, "https://github.com/login/oauth/authorize?"+params.Encode(), http.StatusTemporaryRedirect)
+	// The person signs in on the web app, with any of its sign-in methods,
+	// and answers there (OAuthConsent); the web session says who they are.
+	page := h.webRequestURL(r, sessionID)
+	if page == "" {
+		h.deleteOAuthAuthorizationRequest(sessionID)
+		redirectOAuthErrorIss(w, r, redirectURI, state, iss, "temporarily_unavailable",
+			"Memax has no web app to sign in on; set APP_BASE_URL")
+		return
+	}
+	http.Redirect(w, r, page, http.StatusSeeOther)
 }
 
 // Token serves POST /oauth/token
@@ -430,7 +428,9 @@ func (h *MCPOAuthHandler) tokenAuthCode(w http.ResponseWriter, r *http.Request) 
 		oauthError(w, "invalid_grant", "Invalid authorization code")
 		return
 	}
-	if storedRedirectURI != "" && redirectURI != storedRedirectURI {
+	// The redirect URI of the authorization request, or, for a loopback
+	// one, the same with another port (RFC 8252 §7.3).
+	if storedRedirectURI != "" && !oauthredirect.Matches(redirectURI, storedRedirectURI) {
 		oauthError(w, "invalid_grant", "redirect_uri does not match authorization request")
 		return
 	}
@@ -667,192 +667,40 @@ func (h *MCPOAuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// HandleMCPCallback is called from the GitHub OAuth callback when state starts with "mcp:".
-// It shows the Memax consent screen for the pending MCP OAuth request.
-func (h *MCPOAuthHandler) HandleMCPCallback(w http.ResponseWriter, r *http.Request, userID string, mcpSessionID string) {
-	session, err := h.loadOAuthAuthorizationRequest(r.Context(), mcpSessionID)
-	if err != nil {
-		http.Error(w, "Invalid or expired MCP OAuth session", http.StatusBadRequest)
-		return
-	}
-
-	// Check expiry (10 minutes)
-	if time.Now().After(session.expiresAt) {
-		h.deleteOAuthAuthorizationRequest(mcpSessionID)
-		http.Error(w, "MCP OAuth session expired", http.StatusBadRequest)
-		return
-	}
-
-	csrfToken := generateOAuthSession()
-	_, err = h.authH.pool.Exec(context.Background(),
-		`UPDATE oauth_authorization_requests
-		SET user_id = $1::uuid, csrf_token = $2
-		WHERE id = $3`,
-		userID, csrfToken, mcpSessionID)
-	if err != nil {
-		slog.Error("failed to prepare MCP OAuth consent", "error", err)
-		http.Error(w, "Failed to prepare consent screen", http.StatusInternalServerError)
-		return
-	}
-	session.userID = userID
-	session.csrfToken = csrfToken
-
-	if consentURL := h.webConsentURL(r, session.id, csrfToken); consentURL != "" {
-		http.Redirect(w, r, consentURL, http.StatusSeeOther)
-		return
-	}
-
-	h.renderConsent(w, r, session, "")
-}
-
-// ConsentRequest serves the pending authorization request to the web app
-// consent route. The API remains the OAuth authority; the web app only renders
-// the decision UI and posts back to Consent.
-func (h *MCPOAuthHandler) ConsentRequest(w http.ResponseWriter, r *http.Request) {
-	if h.authH == nil || h.authH.pool == nil {
-		writeError(w, http.StatusServiceUnavailable, "oauth_unavailable", "OAuth is not available")
-		return
-	}
-
-	requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
-	consentToken := strings.TrimSpace(r.URL.Query().Get("consent_token"))
-	if requestID == "" || consentToken == "" {
-		writeError(w, http.StatusBadRequest, "missing_consent_request", "Authorization request is missing.")
-		return
-	}
-
-	session, err := h.loadOAuthAuthorizationRequest(r.Context(), requestID)
-	if err != nil || session.userID == "" {
-		writeError(w, http.StatusNotFound, "consent_request_not_found", "Authorization request was not found.")
-		return
-	}
-	if time.Now().After(session.expiresAt) {
-		h.deleteOAuthAuthorizationRequest(session.id)
-		writeError(w, http.StatusGone, "consent_request_expired", "Authorization request expired.")
-		return
-	}
-	if !subtleConstantTimeCompare(consentToken, session.csrfToken) {
-		writeError(w, http.StatusForbidden, "invalid_consent_token", "Authorization request token is invalid.")
-		return
-	}
-
-	data, err := h.buildConsentData(r, session, "")
-	if err != nil {
-		slog.Error("failed to build MCP OAuth consent request", "error", err)
-		writeError(w, http.StatusInternalServerError, "consent_request_failed", "Failed to load authorization request.")
-		return
-	}
-	writeJSON(w, http.StatusOK, model.ApiResponse{Data: data})
-}
-
-// Consent handles the Memax authorization screen submission.
-func (h *MCPOAuthHandler) Consent(w http.ResponseWriter, r *http.Request) {
-	if h.authH == nil || h.authH.pool == nil {
-		http.Error(w, "OAuth is not available", http.StatusServiceUnavailable)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Invalid consent request", http.StatusBadRequest)
-		return
-	}
-
-	sessionID := r.FormValue("session_id")
-	session, err := h.loadOAuthAuthorizationRequest(r.Context(), sessionID)
-	if err != nil || session.userID == "" || time.Now().After(session.expiresAt) {
-		if sessionID != "" {
-			h.deleteOAuthAuthorizationRequest(sessionID)
-		}
-		http.Error(w, "Invalid or expired authorization request", http.StatusBadRequest)
-		return
-	}
-	if subtleConstantTimeCompare(r.FormValue("csrf_token"), session.csrfToken) == false {
-		http.Error(w, "Invalid consent token", http.StatusBadRequest)
-		return
-	}
-
-	iss := h.resolveBaseURL(r)
-	if consentDecisionDenied(r.FormValue("decision")) {
-		h.deleteOAuthAuthorizationRequest(session.id)
-		redirectOAuthErrorIss(w, r, session.redirectURI, session.state, iss, "access_denied", "The authorization request was canceled")
-		return
-	}
-
-	selectedPermissions := PermissionSet{}
-	var invalid []string
-	selectedScope := strings.TrimSpace(strings.Join(r.Form["permission"], " "))
-	if selectedScope != "" {
-		selectedPermissions, _, invalid = oauthPermissionsFromScope(selectedScope)
-		if len(invalid) > 0 {
-			h.renderConsent(w, r, session, "Only supported Memax permissions can be granted.")
-			return
-		}
-	}
-	selectedPermissions = selectedPermissions.Intersect(session.requestedPermissions)
-	grantedScope := intersectScopes(session.requestedScope, selectedScope)
-	if len(selectedPermissions) == 0 {
-		h.renderConsent(w, r, session, "Select at least one capability.")
-		return
-	}
-
-	selectedHubIDs := uniqueNonEmptyStrings(r.Form["hub_id"])
-	validHubIDs, err := h.validConsentHubIDs(session.userID, selectedHubIDs)
-	if err != nil {
-		slog.Error("failed to validate MCP OAuth consent hubs", "error", err)
-		http.Error(w, "Failed to validate hubs", http.StatusInternalServerError)
-		return
-	}
-	if len(validHubIDs) == 0 {
-		h.renderConsent(w, r, session, "Select at least one hub.")
-		return
-	}
-
-	grantID, err := h.createOAuthGrant(r.Context(), session, validHubIDs, selectedPermissions, grantedScope)
-	if err != nil {
-		slog.Error("failed to create MCP OAuth grant", "error", err)
-		http.Error(w, "Failed to create authorization grant", http.StatusInternalServerError)
-		return
-	}
-	h.connectAgent(r.Context(), session, grantID, validHubIDs, grantedScope)
-
-	authCode := generateOAuthSession()
-	_, err = h.authH.pool.Exec(context.Background(),
-		`INSERT INTO auth_codes (code, user_id, expires_at, code_challenge, grant_id, client_id, redirect_uri)
-		VALUES ($1, $2::uuid, $3, $4, $5::uuid, $6, $7)`,
-		authCode, session.userID, time.Now().Add(5*time.Minute), session.codeChallenge, grantID, session.clientID, session.redirectURI)
-	if err != nil {
-		slog.Error("failed to store MCP auth code", "error", err)
-		http.Error(w, "Failed to issue authorization code", http.StatusInternalServerError)
-		return
-	}
-	h.deleteOAuthAuthorizationRequest(session.id)
-	redirectWithCodeIss(w, r, session.redirectURI, session.state, iss, authCode)
-}
-
 // intersectScopes is the scope the person granted: the requested scope's
 // tokens they kept checked (all of them when the form sent none, as V1's
-// consent did for an unchanged form).
+// consent did for an unchanged form). A client that asked to write and was
+// allowed to propose gets memax:propose, a narrower grant than it asked
+// for (RFC 6749 §3.3: the token response names the scope granted): the
+// Ledger page grants no more than Propose.
 func intersectScopes(requested, selected string) string {
 	_, req, _ := oauthPermissionsFromScope(requested)
 	if strings.TrimSpace(selected) == "" {
 		return req
 	}
 	sel := strings.Fields(selected)
+	reqFields := strings.Fields(req)
 	var out []string
-	for _, s := range strings.Fields(req) {
-		if slices.Contains(sel, s) {
+	for _, s := range reqFields {
+		switch {
+		case slices.Contains(sel, s):
 			out = append(out, s)
+		case s == ScopeWrite && slices.Contains(sel, ScopePropose) && !slices.Contains(reqFields, ScopePropose):
+			out = append(out, ScopePropose)
 		}
 	}
 	return strings.Join(out, " ")
 }
 
-// connectAgent connects the new grant's agent to the chosen spaces on the
-// V2 record (plan 25 §5.15), at each space's default autonomy, capped by
-// the granted scope. A space whose default for new agents is above
-// Propose would need a person on the web to raise it, so the agent is
-// connected at Propose there and the person raises it in Agents. A failure
-// leaves the V1 grant working; the agent then only reads on V2 until it is
-// connected (cmd/v2-backfill-agents does it too).
+// connectAgent connects the new grant's agent to the chosen space on the
+// V2 record (plan 25 §5.15) at the level the consent page showed
+// (consentLevel): where the agent starts (Cursor and Gemini CLI read; the
+// rest take the space's default for new agents), never above Propose. The
+// grant's scope may allow more (up to memax:write, as the client asked);
+// the connection is what's enforced, and only a person on the web raises
+// it, in Agents. A failure leaves the V1 grant working; the agent then
+// only reads on V2 until it is connected (cmd/v2-backfill-agents does it
+// too).
 func (h *MCPOAuthHandler) connectAgent(ctx context.Context, session oauthPendingSession, grantID string, hubIDs []string, scope string) {
 	if h.ledger == nil {
 		return
@@ -893,24 +741,16 @@ func (h *MCPOAuthHandler) connectAgent(ctx context.Context, session oauthPending
 		},
 		Person: userID, Credential: ledger.CredentialOAuthGrant, CredentialID: credID,
 		Agent: ledger.AgentFromV1(agentSlug), DisplayName: connectionDisplayName(session.clientName),
-		ClientID: clientID, Spaces: spaces, Cap: policy.Autonomy(scopeCeiling(scope)),
+		ClientID: clientID, Spaces: spaces,
+		Cap: policy.MinAutonomy(policy.Autonomy(scopeCeiling(scope)), policy.AutonomyPropose),
 	}
 	res, err := h.ledger.Apply(ctx, cmd)
-	if err == nil && res.Outcome == ledger.OutcomeRefused && res.Policy.Code == policy.CodeAutonomyNeedsWeb {
-		cmd.Cap = policy.MinAutonomy(cmd.Cap, policy.AutonomyPropose)
-		cmd.IdempotencyKey = "oauth-consent-propose:" + grantID
-		res, err = h.ledger.Apply(ctx, cmd)
-	}
 	switch {
 	case err != nil:
 		slog.Warn("MCP OAuth: can't connect the agent on the V2 record", "grant_id", grantID, "error", err)
 	case res.Outcome == ledger.OutcomeRefused:
 		slog.Warn("MCP OAuth: connecting the agent was refused", "grant_id", grantID, "policy", res.Policy.Code)
 	}
-}
-
-func consentDecisionDenied(decision string) bool {
-	return strings.EqualFold(strings.TrimSpace(decision), "deny")
 }
 
 // --- Session storage ---
@@ -1040,194 +880,12 @@ func (h *MCPOAuthHandler) createOAuthGrant(ctx context.Context, session oauthPen
 	return grantID, err
 }
 
-type oauthConsentHub struct {
-	ID                   string   `json:"id"`
-	Name                 string   `json:"name"`
-	Slug                 string   `json:"slug"`
-	Role                 string   `json:"role"`
-	HubType              string   `json:"hub_type"`
-	MemoryCount          int      `json:"memory_count"`
-	Checked              bool     `json:"checked"`
-	Disabled             bool     `json:"disabled"`
-	CapabilityLabel      string   `json:"capability_label"`
-	SupportedPermissions []string `json:"supported_permissions"`
-}
-
-type oauthConsentPermission struct {
-	Value       string `json:"value"`
-	Label       string `json:"label"`
-	Description string `json:"description"`
-	Checked     bool   `json:"checked"`
-	// Essential permissions are pre-checked AND locked in the UI — the
-	// agent cannot meaningfully operate without them (e.g. memax:read
-	// is the minimum grant for any recall-capable agent). The frontend
-	// uses this to mark the checkbox with an "essential" badge and
-	// prevent unchecking.
-	Essential bool `json:"essential"`
-}
-
-type oauthConsentData struct {
-	SessionID    string                   `json:"session_id"`
-	CSRFToken    string                   `json:"csrf_token"`
-	ClientName   string                   `json:"client_name"`
-	AgentName    string                   `json:"agent_name"`
-	Resource     string                   `json:"resource"`
-	SubmitURL    string                   `json:"submit_url"`
-	ExpiresAt    time.Time                `json:"expires_at"`
-	Hubs         []oauthConsentHub        `json:"hubs"`
-	Permissions  []oauthConsentPermission `json:"permissions"`
-	NotRequested []string                 `json:"not_requested"`
-	Error        string                   `json:"error,omitempty"`
-}
-
-func (h *MCPOAuthHandler) buildConsentData(r *http.Request, session oauthPendingSession, message string) (oauthConsentData, error) {
-	if h.authH.store == nil {
-		return oauthConsentData{}, fmt.Errorf("store is not configured")
-	}
-	hubs, err := h.authH.store.ListUserHubs(session.userID)
-	if err != nil {
-		return oauthConsentData{}, err
-	}
-
-	consentHubs := make([]oauthConsentHub, 0, len(hubs))
-	for _, item := range hubs {
-		supportedPermissions := rolePermissionSet(item.Role, &item.Hub).Intersect(session.requestedPermissions)
-		consentHubs = append(consentHubs, oauthConsentHub{
-			ID:                   item.Hub.ID,
-			Name:                 item.Hub.Name,
-			Slug:                 item.Hub.Slug,
-			Role:                 item.Role,
-			HubType:              item.Hub.HubType,
-			MemoryCount:          item.MemoryCount,
-			Checked:              len(supportedPermissions) > 0,
-			Disabled:             len(supportedPermissions) == 0,
-			CapabilityLabel:      consentHubCapabilityLabel(supportedPermissions),
-			SupportedPermissions: supportedPermissions.Strings(),
-		})
-	}
-	return oauthConsentData{
-		SessionID:    session.id,
-		CSRFToken:    session.csrfToken,
-		ClientName:   displayOAuthClientName(session.clientName),
-		AgentName:    agentNameFromClientName(session.clientName),
-		Resource:     session.resource,
-		SubmitURL:    h.consentSubmitURL(r),
-		ExpiresAt:    session.expiresAt,
-		Hubs:         consentHubs,
-		Permissions:  consentPermissions(session.requestedPermissions, session.requestedScope),
-		NotRequested: consentNotRequested(session.requestedPermissions),
-		Error:        message,
-	}, nil
-}
-
-func (h *MCPOAuthHandler) renderConsent(w http.ResponseWriter, r *http.Request, session oauthPendingSession, message string) {
-	data, err := h.buildConsentData(r, session, message)
-	if err != nil {
-		slog.Error("failed to list hubs for MCP OAuth consent", "error", err)
-		http.Error(w, "Failed to load hubs", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := oauthConsentTemplate.Execute(w, data); err != nil {
-		slog.Error("failed to render MCP OAuth consent", "error", err)
-	}
-}
-
-func consentPermissions(requested PermissionSet, scope string) []oauthConsentPermission {
-	var out []oauthConsentPermission
-	fields := strings.Fields(scope)
-	if slices.Contains(fields, ScopePropose) && !slices.Contains(fields, ScopeWrite) {
-		out = append(out, consentPermissions(requested.Intersect(NewPermissionSet(PermMemoryRead)), ScopeRead)...)
-		out = append(out, oauthConsentPermission{
-			Value:       ScopePropose,
-			Label:       "Propose memories",
-			Description: "Save memories into selected hubs. In spaces on the V2 record they wait for you in Review.",
-			Checked:     true,
-		})
-		return out
-	}
-	if requested.Has(PermMemoryRead) {
-		out = append(out, oauthConsentPermission{
-			Value:       "memax:read",
-			Label:       "Read memories",
-			Description: "Search, recall, list, and open memories in selected hubs.",
-			Checked:     true,
-			// Read is the floor of any meaningful memax integration —
-			// without it the agent has no way to check existing state.
-			// Lock it so the user can focus on the real decisions.
-			Essential: true,
-		})
-	}
-	if requested.Has(PermMemoryWrite) {
-		out = append(out, oauthConsentPermission{
-			Value:       "memax:write",
-			Label:       "Write memories",
-			Description: "Save new memories and session captures into selected hubs.",
-			Checked:     true,
-		})
-	}
-	return out
-}
-
-func consentHubCapabilityLabel(perms PermissionSet) string {
-	switch {
-	case perms.Has(PermMemoryRead) && perms.Has(PermMemoryWrite):
-		return "Read and write available"
-	case perms.Has(PermMemoryWrite):
-		return "Write available"
-	case perms.Has(PermMemoryRead):
-		return "Read only"
-	default:
-		return "Current role cannot use the requested capabilities"
-	}
-}
-
-func consentNotRequested(requested PermissionSet) []string {
-	var out []string
-	if !requested.Has(PermMemoryDelete) {
-		out = append(out, "Delete memories")
-	}
-	if !requested.Has(PermTopicWrite) && !requested.Has(PermDreamRun) {
-		out = append(out, "Manage topics or run dreams")
-	}
-	if !requested.Has(PermHubManage) {
-		out = append(out, "Manage hub settings or members")
-	}
-	return out
-}
-
 func displayOAuthClientName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return "an AI agent"
 	}
 	return name
-}
-
-func validOAuthRedirectURI(raw string) bool {
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return false
-	}
-	switch u.Scheme {
-	case "https":
-		return true
-	case "http":
-		host := strings.ToLower(u.Hostname())
-		return host == "localhost" || host == "127.0.0.1" || host == "::1"
-	default:
-		return false
-	}
-}
-
-func redirectURIAllowed(redirectURI string, allowed []string) bool {
-	for _, candidate := range allowed {
-		if redirectURI == candidate {
-			return true
-		}
-	}
-	return false
 }
 
 func oauthPermissionsFromScope(scope string) (PermissionSet, string, []string) {
@@ -1276,21 +934,12 @@ func redirectWithCode(w http.ResponseWriter, r *http.Request, redirectURI string
 // (RFC 9207), so a client talking to several authorization servers can
 // tell which one answered (mix-up attacks).
 func redirectWithCodeIss(w http.ResponseWriter, r *http.Request, redirectURI, state, iss, code string) {
-	u, err := url.Parse(redirectURI)
+	u, err := codeResponseURL(redirectURI, state, iss, code)
 	if err != nil {
 		http.Error(w, "Invalid redirect URI", http.StatusInternalServerError)
 		return
 	}
-	q := u.Query()
-	q.Set("code", code)
-	if state != "" {
-		q.Set("state", state)
-	}
-	if iss != "" {
-		q.Set("iss", iss)
-	}
-	u.RawQuery = q.Encode()
-	http.Redirect(w, r, u.String(), http.StatusSeeOther)
+	http.Redirect(w, r, u, http.StatusSeeOther)
 }
 
 func redirectOAuthError(w http.ResponseWriter, r *http.Request, redirectURI string, state string, code string, desc string) {
@@ -1300,14 +949,34 @@ func redirectOAuthError(w http.ResponseWriter, r *http.Request, redirectURI stri
 // redirectOAuthErrorIss is an authorization error response with the
 // issuer (RFC 9207 covers error responses too).
 func redirectOAuthErrorIss(w http.ResponseWriter, r *http.Request, redirectURI, state, iss, code, desc string) {
-	u, err := url.Parse(redirectURI)
+	u, err := errorResponseURL(redirectURI, state, iss, code, desc)
 	if err != nil {
 		oauthError(w, code, desc)
 		return
 	}
+	http.Redirect(w, r, u, http.StatusSeeOther)
+}
+
+// codeResponseURL is the authorization response (RFC 6749 §4.1.2): the
+// client's redirect_uri with the code, its state and the issuer.
+func codeResponseURL(redirectURI, state, iss, code string) (string, error) {
+	return authorizationResponseURL(redirectURI, state, iss, url.Values{"code": {code}})
+}
+
+// errorResponseURL is the authorization error response (§4.1.2.1).
+func errorResponseURL(redirectURI, state, iss, code, desc string) (string, error) {
+	return authorizationResponseURL(redirectURI, state, iss, url.Values{"error": {code}, "error_description": {desc}})
+}
+
+func authorizationResponseURL(redirectURI, state, iss string, params url.Values) (string, error) {
+	u, err := url.Parse(redirectURI)
+	if err != nil {
+		return "", err
+	}
 	q := u.Query()
-	q.Set("error", code)
-	q.Set("error_description", desc)
+	for k, v := range params {
+		q[k] = v
+	}
 	if state != "" {
 		q.Set("state", state)
 	}
@@ -1315,96 +984,8 @@ func redirectOAuthErrorIss(w http.ResponseWriter, r *http.Request, redirectURI, 
 		q.Set("iss", iss)
 	}
 	u.RawQuery = q.Encode()
-	http.Redirect(w, r, u.String(), http.StatusSeeOther)
+	return u.String(), nil
 }
-
-func subtleConstantTimeCompare(a, b string) bool {
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
-}
-
-var oauthConsentTemplate = template.Must(template.New("mcp_oauth_consent").Parse(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Connect {{.ClientName}} to Memax</title>
-  <style>
-    :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f7f7f4; color: #171717; }
-    main { width: min(720px, calc(100vw - 32px)); background: rgba(255,255,255,.86); border: 1px solid rgba(0,0,0,.1); border-radius: 8px; padding: 28px; box-shadow: 0 24px 80px rgba(20,20,20,.12); }
-    h1 { margin: 0 0 8px; font-size: 28px; line-height: 1.15; }
-    p { margin: 0; color: #565656; line-height: 1.5; }
-    section { margin-top: 24px; }
-    h2 { font-size: 15px; margin: 0 0 12px; letter-spacing: 0; }
-    .item { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid rgba(0,0,0,.08); }
-    .item:first-of-type { border-top: 0; }
-    .meta { color: #6b6b6b; font-size: 13px; }
-    .muted { color: #767676; font-size: 13px; line-height: 1.5; margin: 8px 0 0 0; padding-left: 20px; }
-    .error { margin-top: 16px; padding: 10px 12px; border-radius: 8px; background: #fff0f0; color: #8a1f1f; }
-    .actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 28px; }
-    button { border-radius: 8px; border: 1px solid rgba(0,0,0,.15); padding: 10px 16px; font: inherit; cursor: pointer; }
-    button[value="approve"] { background: #171717; color: #fff; border-color: #171717; }
-    button[value="deny"] { background: transparent; color: inherit; }
-    input { margin-top: 3px; }
-    @media (prefers-color-scheme: dark) {
-      body { background: #10100f; color: #f4f4f0; }
-      main { background: rgba(28,28,26,.92); border-color: rgba(255,255,255,.12); }
-      p, .meta { color: #b8b8b0; }
-      .item { border-top-color: rgba(255,255,255,.12); }
-      .error { background: #3b1818; color: #ffd3d3; }
-      button { border-color: rgba(255,255,255,.18); }
-      button[value="approve"] { background: #f4f4f0; color: #10100f; border-color: #f4f4f0; }
-    }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>Connect {{.ClientName}} to Memax</h1>
-    <p>This agent will only access the hubs and capabilities you approve here. You can revoke the connection later from Memax.</p>
-    {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
-    <form method="post" action="{{.SubmitURL}}">
-      <input type="hidden" name="session_id" value="{{.SessionID}}">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <section>
-        <h2>Capabilities</h2>
-        {{range .Permissions}}
-          <label class="item">
-            <input type="checkbox" name="permission" value="{{.Value}}" {{if .Checked}}checked{{end}}>
-            <span>
-              <strong>{{.Label}}</strong><br>
-              <span class="meta">{{.Description}}</span>
-            </span>
-          </label>
-        {{end}}
-      </section>
-      <section>
-        <h2>Hubs</h2>
-        {{range .Hubs}}
-          <label class="item">
-            <input type="checkbox" name="hub_id" value="{{.ID}}" {{if .Checked}}checked{{end}} {{if .Disabled}}disabled{{end}}>
-            <span>
-              <strong>{{.Name}}</strong><br>
-              <span class="meta">{{.HubType}} hub &middot; {{.Role}} &middot; {{.MemoryCount}} memories &middot; {{.CapabilityLabel}}</span>
-            </span>
-          </label>
-        {{end}}
-      </section>
-      {{if .NotRequested}}
-      <section>
-        <h2>Not Requested</h2>
-        <ul class="muted">
-          {{range .NotRequested}}<li>{{.}}</li>{{end}}
-        </ul>
-      </section>
-      {{end}}
-      <div class="actions">
-        <button type="submit" name="decision" value="deny">Cancel</button>
-        <button type="submit" name="decision" value="approve">Connect</button>
-      </div>
-    </form>
-  </main>
-</body>
-</html>`))
 
 func generateOAuthSession() string {
 	b := make([]byte, 32)
@@ -1432,7 +1013,10 @@ func agentNameFromClientName(clientName string) string {
 		return "gemini"
 	case strings.Contains(lower, "codex"):
 		return "codex"
-	case strings.Contains(lower, "copilot"):
+	case strings.Contains(lower, "copilot"),
+		// VS Code's MCP client (GitHub Copilot's agent mode) registers as
+		// "Visual Studio Code".
+		strings.Contains(lower, "visual studio code"), strings.Contains(lower, "vs code"):
 		return "copilot"
 	case strings.Contains(lower, "opencode"):
 		return "opencode"

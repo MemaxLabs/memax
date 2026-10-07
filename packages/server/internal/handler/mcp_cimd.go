@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/oauthredirect"
 	"github.com/MemaxLabs/memax/packages/server/internal/safefetch"
 )
 
@@ -69,7 +69,7 @@ func (h *MCPOAuthHandler) resolveMetadataClient(ctx context.Context, clientID, r
 		`SELECT client_id, client_name, redirect_uris, metadata_fetched_at
 		   FROM oauth_clients WHERE client_id = $1 AND metadata_url = $1`, clientID,
 	).Scan(&cached.ClientID, &cached.ClientName, &cached.RedirectURIs, &fetchedAt)
-	if err == nil && fetchedAt != nil && time.Since(*fetchedAt) < cimdRefresh && slices.Contains(cached.RedirectURIs, redirectURI) {
+	if err == nil && fetchedAt != nil && time.Since(*fetchedAt) < cimdRefresh && oauthredirect.Allowed(redirectURI, cached.RedirectURIs) {
 		return cached, nil
 	}
 
@@ -128,8 +128,8 @@ func (h *MCPOAuthHandler) fetchClientMetadata(ctx context.Context, clientID stri
 		return clientMetadata{}, errors.New("it lists no redirect_uris")
 	}
 	for _, uri := range meta.RedirectURIs {
-		if !validOAuthRedirectURI(uri) {
-			return clientMetadata{}, fmt.Errorf("redirect URI %q isn't an https or loopback URL", uri)
+		if !oauthredirect.Valid(uri) {
+			return clientMetadata{}, fmt.Errorf("redirect URI %q isn't an https, loopback or native app URL (RFC 8252)", uri)
 		}
 	}
 	if meta.ClientName == "" {

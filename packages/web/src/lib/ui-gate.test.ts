@@ -12,6 +12,7 @@ import {
   RESERVED_SPACE_SLUGS,
   V2_SPACE_PLACES,
   v1HomePath,
+  v2PageFor,
 } from "./ui-gate";
 
 const webRoot = path.resolve(
@@ -121,6 +122,7 @@ describe("isV2Path", () => {
     "/memax-v2/memories/M-0219",
     "/memax-v2/review/M-0431/compare",
     "/memax-v2/dream/214",
+    "/oauth/authorize",
   ])("%s is V2", (pathname) => expect(isV2Path(pathname)).toBe(true));
 
   it.each([
@@ -143,6 +145,8 @@ describe("isV2Path", () => {
     "/memax-v2/unknown",
     "/Memax-V2/today",
     "/api/auth/me",
+    "/oauth/consent",
+    "/oauth",
   ])("%s is not V2", (pathname) => expect(isV2Path(pathname)).toBe(false));
 });
 
@@ -165,13 +169,14 @@ describe("decideUiGate", () => {
     ).toEqual({ action: "continue" });
   });
 
-  it("opens the device sign-in, the sign-in and unsubscribing for every browser", () => {
+  it("opens the device sign-in, the sign-in, unsubscribing and OAuthConsent for every browser", () => {
     for (const pathname of [
       "/device",
       "/device/",
       "/signin",
       "/signin/callback",
       "/unsubscribe",
+      "/oauth/authorize",
     ]) {
       expect(isOpenV2Path(pathname)).toBe(true);
       for (const uiCookie of [undefined, "v1", "v2"]) {
@@ -209,6 +214,23 @@ describe("decideUiGate", () => {
         hasSession: true,
       }),
     ).toEqual({ action: "redirect", pathname: "/home" });
+  });
+
+  it("sends every browser from V1's retired consent page to OAuthConsent, query and all", () => {
+    for (const pathname of ["/oauth/consent", "/oauth/consent/"]) {
+      expect(v2PageFor(pathname)).toBe("/oauth/authorize");
+      for (const uiCookie of [undefined, "v1", "v2"]) {
+        for (const hasSession of [false, true]) {
+          expect(decideUiGate({ pathname, uiCookie, hasSession })).toEqual({
+            action: "redirect",
+            pathname: "/oauth/authorize",
+            keepQuery: true,
+          });
+        }
+      }
+    }
+    expect(v2PageFor("/oauth/consent/x")).toBeNull();
+    expect(v2PageFor("/oauth/authorize")).toBeNull();
   });
 
   it("only accepts the exact v2 value", () => {

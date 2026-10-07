@@ -618,7 +618,15 @@ func (l *Ledger) VerifySpace(ctx context.Context, spaceID uuid.UUID, keys receip
 		chain[i] = c.chain
 	}
 	v := receiptchain.NewVerifier(spaceID, keys, chain)
-	rows, err = tx.Query(ctx, `SELECT DISTINCT object_id FROM v2.receipts WHERE space_id = $1 AND action = 'forgot'`, spaceID)
+	// A reason may be missing only beside a forgot receipt about its
+	// object, or, once the whole space was forgotten (migration 042), on
+	// any receipt of the space.
+	rows, err = tx.Query(ctx, `
+		SELECT DISTINCT r.object_id FROM v2.receipts r
+		 WHERE r.space_id = $1
+		   AND (r.action = 'forgot'
+		        OR EXISTS (SELECT 1 FROM v2.receipts s
+		                    WHERE s.space_id = $1 AND s.object_kind = 'space' AND s.object_id = $1 AND s.action = 'forgot'))`, spaceID)
 	if err != nil {
 		return nil, fmt.Errorf("ledger: verify: forgotten: %w", err)
 	}

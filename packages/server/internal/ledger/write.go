@@ -44,6 +44,9 @@ type writer struct {
 	// now is the ledger's clock when the command began: when a gate
 	// expires, and whether it has.
 	now time.Time
+
+	// forgetHonesty is what tombstones say about copies Memax can't reach.
+	forgetHonesty ForgetHonesty
 }
 
 // write is Remember and Propose.
@@ -693,7 +696,10 @@ func (w *writer) claimKey(ctx context.Context, spaceID uuid.UUID) (*claimed, err
 	if err != nil {
 		return nil, fmt.Errorf("ledger: read idempotency key: %w", err)
 	}
-	if command != string(w.command) || !bytes.Equal(hash, w.hash) {
+	// Forget purges the stored hash of a command that carried the words it
+	// forgot (it could confirm a guess of them); such a key replays its
+	// original result for the same command.
+	if command != string(w.command) || (hash != nil && !bytes.Equal(hash, w.hash)) {
 		return nil, fmt.Errorf("%w: key %q was used for another %s; send a new key for a new command",
 			ErrIdempotencyKeyReused, w.meta.IdempotencyKey, command)
 	}

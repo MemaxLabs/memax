@@ -126,6 +126,9 @@ const (
 	sqlstateLifecycle        = "MXL01"
 	sqlstateAgentState       = "MXL02" // migration 029
 	sqlstateGateStatus       = "MXL03" // migration 036
+	sqlstateForgetRequest    = "MXL04" // migration 042
+	sqlstateForgottenWords   = "MXF01" // migration 042: a forgotten memory kept words
+	sqlstateForgottenCompile = "MXF02" // migration 042: a compile run held a forgotten memory
 	sqlstateUniqueViolation  = "23505"
 	sqlstateLockNotAvailable = "55P03"
 	// jsonb refuses \u0000, and text refuses bytes outside the encoding.
@@ -144,8 +147,10 @@ func mapDBError(err error) error {
 		return fmt.Errorf("%w: %s", ErrReceiptRequired, pg.Message)
 	case sqlstateReceiptImmutable:
 		return fmt.Errorf("ledger: receipts are append-only: %s", pg.Message)
-	case sqlstateLifecycle, sqlstateAgentState, sqlstateGateStatus:
+	case sqlstateLifecycle, sqlstateAgentState, sqlstateGateStatus, sqlstateForgetRequest:
 		return fmt.Errorf("%w: %s", ErrInvalidTransition, pg.Message)
+	case sqlstateForgottenCompile:
+		return fmt.Errorf("%w: %s", ErrBehind, pg.Message)
 	case sqlstateLockNotAvailable:
 		return fmt.Errorf("%w: try again in a moment", ErrBusy)
 	case sqlstateUntranslatable, sqlstateNotInRepertory:

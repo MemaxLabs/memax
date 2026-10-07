@@ -4,14 +4,15 @@
 -- receipts behind (their hub is gone), which is the point: those receipts
 -- can't be re-attached to a hub.
 
-REVOKE EXECUTE ON FUNCTION v2.retire_space(uuid) FROM memax_v2;
+REVOKE EXECUTE ON FUNCTION v2.retire_space(uuid), v2.redact_space_receipt_reasons(uuid) FROM memax_v2;
 REVOKE UPDATE (status, decided_by, decided_at, last_receipt_id, updated_at) ON v2.forget_requests FROM memax_v2;
 REVOKE UPDATE (delivered_at, delivered_via) ON v2.agent_notices FROM memax_v2;
 REVOKE UPDATE (label, status, detail, done_at, updated_at) ON v2.propagations FROM memax_v2;
-REVOKE UPDATE (status, propagation, completed_at, reapplied_at, updated_at) ON v2.tombstones FROM memax_v2;
+REVOKE UPDATE (gone, status, propagation, completed_at, reapplied_at, updated_at) ON v2.tombstones FROM memax_v2;
 
 DROP FUNCTION v2.forgotten_spaces();
 DROP FUNCTION v2.retire_space(uuid);
+DROP FUNCTION v2.redact_space_receipt_reasons(uuid);
 
 ALTER TABLE v2.targets ALTER CONSTRAINT targets_last_compile_fkey NOT DEFERRABLE;
 ALTER TABLE v2.targets ALTER CONSTRAINT targets_delivered_compile_fkey NOT DEFERRABLE;

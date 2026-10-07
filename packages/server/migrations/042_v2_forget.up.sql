@@ -187,7 +187,6 @@ CREATE TABLE v2.tombstones (
     updated_at   timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT tombstones_space_fkey FOREIGN KEY (space_id, tenant_id) REFERENCES v2.space_ledgers (space_id, tenant_id),
     CONSTRAINT tombstones_op_fkey FOREIGN KEY (op_id) REFERENCES v2.tombstones (id),
-    CONSTRAINT tombstones_object_key UNIQUE (object_id),
     CONSTRAINT tombstones_kind_check CHECK (object_kind IN ('memory', 'space')),
     CONSTRAINT tombstones_ref_check CHECK (object_ref <> '' AND char_length(object_ref) <= 32),
     CONSTRAINT tombstones_carried_check CHECK (carried IS NULL OR carried IN ('folded', 'updates', 'cites', 'space')),
@@ -200,6 +199,10 @@ CREATE TABLE v2.tombstones (
     CONSTRAINT tombstones_reads_check CHECK (reads_before >= 0)
 );
 
+-- A memory is forgotten once; a space may be forgotten whole more than
+-- once (everything in it, then everything kept since).
+CREATE UNIQUE INDEX tombstones_memory_key ON v2.tombstones (object_id) WHERE object_kind = 'memory';
+CREATE INDEX tombstones_object_idx ON v2.tombstones (object_id, forgotten_at DESC);
 CREATE INDEX tombstones_space_idx ON v2.tombstones (space_id, forgotten_at DESC, id DESC);
 CREATE INDEX tombstones_op_idx ON v2.tombstones (op_id);
 
@@ -734,6 +737,33 @@ END $$;
 
 REVOKE ALL ON FUNCTION v2.retire_space(uuid) FROM PUBLIC;
 
+-- Forgetting everything in a space redacts every reason in it, beside the
+-- space's own forgot receipt (written in this transaction), whatever its
+-- object: a target's, the Brief's, an agent's. The verifier accepts a
+-- missing reason in a space forgotten whole.
+CREATE FUNCTION v2.redact_space_receipt_reasons(p_space uuid) RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    AS $$
+DECLARE
+    redacted integer;
+BEGIN
+    IF NOT (p_space = ANY ((SELECT v2.current_space_ids())::uuid[])) OR NOT EXISTS (
+        SELECT 1 FROM v2.receipts r
+         WHERE r.object_id = p_space AND r.object_kind = 'space' AND r.action = 'forgot'
+           AND r.txid = pg_current_xact_id() AND r.space_id = p_space
+    ) THEN
+        RAISE EXCEPTION 'space %: its reasons are redacted only by a Forget of the whole space in the same transaction', p_space
+            USING ERRCODE = 'MXR02';
+    END IF;
+    UPDATE v2.receipts SET reason = NULL, reason_salt = NULL
+     WHERE space_id = p_space AND reason IS NOT NULL;
+    GET DIAGNOSTICS redacted = ROW_COUNT;
+    RETURN redacted;
+END $$;
+
+REVOKE ALL ON FUNCTION v2.redact_space_receipt_reasons(uuid) FROM PUBLIC;
+
 -- ---------------------------------------------------------------------
 -- The forget ledger's sweep (cmd/v2-reapply-forgets)
 -- ---------------------------------------------------------------------
@@ -801,7 +831,7 @@ CREATE POLICY forget_requests_space ON v2.forget_requests
 GRANT SELECT ON v2.space_ledgers TO memax_v2, memax_v2_sealer;
 
 GRANT SELECT, INSERT ON v2.tombstones TO memax_v2;
-GRANT UPDATE (status, propagation, completed_at, reapplied_at, updated_at) ON v2.tombstones TO memax_v2;
+GRANT UPDATE (gone, status, propagation, completed_at, reapplied_at, updated_at) ON v2.tombstones TO memax_v2;
 
 GRANT SELECT, INSERT ON v2.propagations TO memax_v2;
 GRANT UPDATE (label, status, detail, done_at, updated_at) ON v2.propagations TO memax_v2;
@@ -812,4 +842,4 @@ GRANT UPDATE (delivered_at, delivered_via) ON v2.agent_notices TO memax_v2;
 GRANT SELECT, INSERT ON v2.forget_requests TO memax_v2;
 GRANT UPDATE (status, decided_by, decided_at, last_receipt_id, updated_at) ON v2.forget_requests TO memax_v2;
 
-GRANT EXECUTE ON FUNCTION v2.retire_space(uuid) TO memax_v2;
+GRANT EXECUTE ON FUNCTION v2.retire_space(uuid), v2.redact_space_receipt_reasons(uuid) TO memax_v2;

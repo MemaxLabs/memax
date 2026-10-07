@@ -360,6 +360,11 @@ type Result struct {
 	Memories []Memory `json:"memories,omitempty"`
 	// Gate is the decision gate's projection after a gate command.
 	Gate *Gate `json:"gate,omitempty"`
+	// Tombstone is what a Forget did (the forgotten memory's tombstone).
+	Tombstone *Tombstone `json:"tombstone,omitempty"`
+	// ForgetRequest is an agent's request to forget, after RequestForget
+	// or DeclineForget.
+	ForgetRequest *ForgetRequest `json:"forget_request,omitempty"`
 	// Unchanged is set when the command found nothing to do (an
 	// observation that matches what was delivered, a delivery already
 	// acknowledged): nothing was written and no receipt exists.

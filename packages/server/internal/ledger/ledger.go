@@ -41,6 +41,9 @@ type Ledger struct {
 	// readMonths are the months whose reads partitions this process has
 	// ensured (reads.go).
 	readMonths sync.Map
+	// honesty is what tombstones say about copies Memax can't reach
+	// (WithForgetHonesty).
+	honesty ForgetHonesty
 }
 
 // Option configures a Ledger.
@@ -62,7 +65,8 @@ func New(pool *pgxpool.Pool, opts ...Option) *Ledger {
 		return nil
 	}
 	l := &Ledger{pool: pool, now: time.Now, lockTimeout: DefaultLockTimeout, log: slog.Default(),
-		undoWindow: DefaultUndoWindow, judgeUndoWindow: DefaultJudgeUndoWindow}
+		undoWindow: DefaultUndoWindow, judgeUndoWindow: DefaultJudgeUndoWindow,
+		honesty: ForgetHonesty{BackupDays: DefaultBackupDays}}
 	for _, o := range opts {
 		o(l)
 	}
@@ -101,7 +105,8 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	w := &writer{tx: tx, meta: m, command: cmd.Name(), hash: hash, inserter: l.inserter, loginRole: loginRole,
-		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, now: now, indexJobs: l.indexJobs}
+		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, now: now, indexJobs: l.indexJobs,
+		forgetHonesty: l.honesty}
 	var res Result
 	switch c := cmd.(type) {
 	case *Remember:
@@ -150,6 +155,16 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.answerGate(ctx, c)
 	case *WithdrawGate:
 		res, err = w.withdrawGate(ctx, c)
+	case *Forget:
+		res, err = w.forget(ctx, c)
+	case *ForgetSpace:
+		res, err = w.forgetSpace(ctx, c)
+	case *RequestForget:
+		res, err = w.requestForget(ctx, c)
+	case *DeclineForget:
+		res, err = w.declineForget(ctx, c)
+	case *ReapplyForget:
+		res, err = w.reapplyForget(ctx, c)
 	}
 	if err != nil {
 		return Result{}, mapDBError(err)
@@ -222,6 +237,19 @@ func validateCommand(cmd Command) error {
 		return validateGateTarget(c.Gate, c.ExpectedVersion)
 	case *WithdrawGate:
 		return validateGateTarget(c.Gate, c.ExpectedVersion)
+	case *Forget:
+		return c.validate()
+	case *ForgetSpace:
+		if c.SpaceID == uuid.Nil {
+			return invalid("space", "say which space to forget")
+		}
+		return nil
+	case *RequestForget:
+		return validateTarget(c.Memory, 0, false)
+	case *DeclineForget:
+		return validateTarget(c.Memory, 0, false)
+	case *ReapplyForget:
+		return c.Op.validate()
 	case *Remember:
 		return c.NewMemory.validate()
 	case *Propose:

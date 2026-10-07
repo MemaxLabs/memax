@@ -16,6 +16,16 @@ export interface DaemonPaths {
   socket: string;
   /** Held only while taking the socket over from a dead daemon. */
   lock: string;
+  /**
+   * The warm-start cache the session-start hook reads (lib/hook/warm.ts):
+   * each linked space's compiles, forgets and waiting gates. Refs only,
+   * plus the question of a waiting gate.
+   */
+  warm: string;
+  /** Compile loads the hook queued, one file each, for the daemon to report. */
+  loads: string;
+  /** What each agent's last session in each repository was told (lib/hook/seen.ts). */
+  seen: string;
 }
 
 // sun_path is 104 bytes on macOS and 108 on Linux.
@@ -32,6 +42,9 @@ export function daemonPaths(
     log: join(dir, "daemon.log"),
     socket: socketPath(dir),
     lock: join(dir, "daemon.lock"),
+    warm: join(dir, "warm.json"),
+    loads: join(dir, "loads"),
+    seen: join(dir, "seen"),
   };
 }
 

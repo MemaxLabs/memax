@@ -23,6 +23,7 @@ The binary is `memax`. To set Memax up in a repository, run
 | Command                         | Description                                                              |
 | ------------------------------- | ------------------------------------------------------------------------ |
 | [`init`](/cli/init)             | Set Memax up here: import your agents' files, settle them, and compile.  |
+| [`connect <agent>`](/cli/connect) | Connect one agent: MCP, its session-start hook, its space, a first compile. |
 | [`status`](/cli/status)         | The space, its compiled files and agents, and what's waiting on you.     |
 | [`compile`](/cli/compile)       | Compile every target now, and wait for the files to reach this machine.  |
 | [`link` \| `unlink`](/cli/link) | Link this repository to a space, so its compiled files are written here. |
@@ -71,7 +72,7 @@ The binary is `memax`. To set Memax up in a repository, run
 | [`agents list`](/cli/agents)             | Combined listing of synced configs and sessions.                   |
 | [`agents configs …`](/cli/agents)        | Config-only sync, list, recovery, doctor.                          |
 | [`agents sessions …`](/cli/agents)       | Session-only sync, list, recovery, doctor.                         |
-| [`hook install \| uninstall`](/cli/hook) | Install the Claude Code hook (deprecated; prefer `setup --hooks`). |
+| [`hook session-start`](/cli/hook) | What agents run at session start: what changed since their last session. |
 | [`mcp serve`](/cli/mcp)                  | Run the local stdio MCP server.                                    |
 
 ### Setup

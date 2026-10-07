@@ -180,6 +180,7 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 - **CLI.** The install command is `npx memax-cli init`; the binary is `memax`.
 - **Init and imports (migration 043).** `memax init` (`packages/cli/src/commands/init.ts`, the flow in `src/lib/init/run.ts`) detects agents and their files, signs in, connects the agents (writes MCP settings once asked; connections start at Propose, Cursor and Gemini CLI at Read, never raised from the CLI), then splits each file into statements **on the machine**: secretlint's recommended preset plus the server's own refusal patterns (`internal/secrets`, ported; `testdata/credentials.json` is the corpus both suites read) keep secrets local, and the compiler's `cleanLine` strips hidden Unicode (counted in `lib/init/hidden.ts`). A file's kind sets its trust (`lib/init/files.ts`: repository files `repository`, `~/.claude/CLAUDE.md` and the like `person`, agents' memory `agent_own_work`, lines only on a non-default branch `external`). Statements go up as one import per space, `POST /v2/spaces/{space}/imports` (≤ 500 items, `file:line` sources, `via=import` so they only ever propose; a statement the space has is `existing`, repeats in one import are `folded`). The import enqueues `judge_import` in its transaction: one model call (`internal/judge/imports.go`, its own bar `ImportConflictBar`, not `Contradicts`) groups statements that disagree into `v2.import_conflicts`, each receipted and settled once as a group (`…/conflicts/{n}:settle`). `GET …/imports/{id}` says which proposals can be kept in bulk (`bulk`/`held`); `POST …/memories:keep` and `:reject` take up to 200. New people get spaces from `POST /v2/spaces`; an empty V1 space moves with `POST /v2/spaces/{space}:switch`.
 - **Export and verify-export.** `memax export [--space] [--out dir] [--force]` (`packages/cli/src/commands/export.ts`) writes each V2 space's export into `<out>/<slug>` through a zip reader (`src/lib/export-files.ts`) that checks every entry's CRC and never writes outside the folder; `memax verify-export <dir|zip> [--key …] [--offline]` runs the SDK's `verifyExport`, trusting `--key`, else the server's published keys, else (and saying so) the export's own. The web app's Memories **Export as Markdown** downloads the same archive.
+- **Warm start and `memax connect` (epic 2.7).** Agents' SessionStart hooks run `memax hook session-start --agent <id>` (`packages/cli/src/hook-main.ts`, reached through `src/bin.ts` without the rest of the CLI, with Node's compile cache on; the logic is `src/lib/hook/`). It reads only local files: the daemon's cache `~/.memax/daemon/warm.json` (per linked space: each compiled file's latest compile and its refs, the last 30 days' tombstones, waiting gates; refs only, plus a waiting gate's shortened question), the compiled files on disk, and what that agent's last session in that repository was told (`~/.memax/daemon/seen/`, hashes and refs). It prints a `<memax-context>` block with **only what changed** since then (new, changed and gone cited lines; never the compiled file, which the agent already loads), forgets, gates and compiles not on disk yet, and nothing when nothing changed; under 3,000 tokens and 9,000 characters (Codex 2,400), as plain text (Claude Code, Codex) or each agent's JSON (Gemini CLI, Cursor, Copilot CLI). Lines whose cites aren't in the server's compile (a hand-added cite) or name a forgotten memory are never printed. After printing it queues one compile load per compiled file in `~/.memax/daemon/loads/`; the daemon (`lib/daemon/loads.ts`, watching that directory) reports them to `POST /v2/spaces/{space}/compile-loads`, or a detached `memax hook flush` does when no daemon runs (at most one per 30 s), so the hook never opens a socket. Budget: under 100 ms from process start to exit (over 50 cold runs on a 4-core arm64 machine, p50 about 50 ms and p95 60–70 ms, against p50 30 ms for `node -e ''`). `memax connect <agent>` (`src/commands/connect.ts`, flow in `src/lib/connect/`) writes the agent's MCP settings (init's writers), installs the hook in the agent's own settings (`lib/connect/hooks.ts`: Claude Code, Codex, Gemini CLI, Cursor, Copilot CLI; OpenCode, Windsurf and ChatGPT have none), connects an existing connection to the repository's space (never raised from the CLI; a new one connects on the agent's first OAuth sign-in) and compiles once in a linked repository; running it again changes nothing. The Claude Code plugin is `plugins/memax` (remote MCP, the hook, the `memax` skill), and `.claude-plugin/marketplace.json` makes this repository its marketplace.
 - **Device sign-in (migration 045, RFC 8628).** Where no browser can open (SSH, no display, CI) or with `--device`, `memax login` and `memax init` sign in with a device code (`packages/cli/src/lib/device-login.ts`, over `memax.auth.startDeviceSignIn`/`pollDeviceSignIn`). The CLI posts `client_id=memax-cli` and what it says about itself to `POST /oauth/device_authorization` and polls `POST /oauth/token` with the `urn:ietf:params:oauth:grant-type:device_code` grant (`internal/handler/oauth_device.go`, beside the MCP OAuth server; the metadata advertises both); a person confirms or declines the code at `/device` through `/v2/device-authorizations:lookup`, `:approve` and `:deny`, and only a person on the web app may (`policy.DecideDevice`: `device_by_person`, `device_needs_web`). `internal/deviceauth` keeps the codes hashed (the device code's SHA-256, the user code's HMAC keyed by `JWT_SECRET`), 10 minutes, decided once, one session per code, `slow_down` adding 5 s; new codes are limited per address (5/min in the route limiter, 20/hour in the table) and lookups of codes that don't exist per person and address. The session issued is the CLI's (surface `cli`), so it is never `human_web`.
 
 **UI (Ledger)**
@@ -215,10 +216,11 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 
 ## Claude Code Hook Integration
 
-- Memax itself integrates with Claude Code via hooks (see `docs/plans/06-developer-surface.md`)
-- When working on the hook system (`packages/cli/src/commands/hook.ts`), test with a real Claude Code installation
-- Hook latency budget: `<500ms` total. Be aggressive with caching.
-- Context injection should use `<memax-context>` tags and stay under 3000 tokens
+- Memax integrates with Claude Code through the plugin in `plugins/memax` (remote MCP, the SessionStart hook, the `memax` skill) or `memax connect claude-code`; both run `memax hook session-start` (see "Warm start and `memax connect`" in the V2 section, and plan 25 §7.5)
+- When working on the hook (`packages/cli/src/hook-main.ts`, `src/lib/hook/`), test with a real Claude Code installation: `claude plugin validate --strict plugins/memax` and `claude plugin validate --strict .`, then `claude -p … --plugin-dir plugins/memax --output-format stream-json --include-hook-events` in a scratch repository shows the hook's output and the skill loading
+- Hook latency budget: the session-start hook must exit within 100 ms of starting and never touch the network; Claude Code's whole hook budget is `<500ms`. Keep `hook-main.ts`'s imports to Node built-ins (no `node:crypto`, no SDK) and measure p50/p95 over cold runs after changing it
+- Context injection uses `<memax-context>` tags, stays under 3000 tokens (and Claude Code's 10,000-character stdout cap), and says only what changed: a hook that prints AGENTS.md gives the agent a second copy
+- Behavioural guidance (recall first, propose, respect Review) belongs in the plugin's skill, never in MCP tool descriptions
 
 ## Monorepo Structure
 
@@ -234,11 +236,15 @@ memax/
     ui/              # @memaxlabs/ui shared design system (Tailwind + Radix) — AGPL-3.0
     docs-site/       # Fumadocs developer hub (docs.memax.app) — Apache-2.0
     sdk/             # memax-sdk — TypeScript client, published to npm — Apache-2.0
-    cli/             # memax-cli — Commander.js CLI and the local daemon (init, link, daemon, status, compile, export), published to npm — Apache-2.0
+    cli/             # memax-cli — Commander.js CLI and the local daemon (init, connect, link, daemon, status, compile, export, the session-start hook), published to npm — Apache-2.0
     ledger-tokens/   # V2 Ledger tokens, type styles, fonts, marks (@memaxlabs/ledger-tokens) — Apache-2.0
     ledger/          # V2 Ledger React components, mx- styles, en/zh strings, previews (@memaxlabs/ledger) — AGPL-3.0
     compiler/        # V2 compiler: kept record → AGENTS.md, CLAUDE.md shim, scoped rules; parse-back (@memaxlabs/compiler) — Apache-2.0
     compile-service/ # V2 compile service: the compiler over HTTP, a Cloudflare Worker or node:http (@memaxlabs/compile-service) — AGPL-3.0
+  plugins/
+    memax/           # Claude Code plugin: remote MCP, the SessionStart hook, the memax skill — Apache-2.0
+  .claude-plugin/
+    marketplace.json # makes this repository the plugin's marketplace (`claude plugin marketplace add MemaxLabs/memax`)
 
 # Design docs (docs/plans, docs/infra, docs/design, ...) live in the sibling
 # private repo MemaxLabs/memax-internal — clone alongside this repo.
@@ -693,9 +699,9 @@ pnpm --filter @memaxlabs/compile-service build:cf
 
 Every route but `/health` needs `Authorization: Bearer $COMPILE_SERVICE_TOKEN`; the Worker refuses to serve without the secret, and the API and worker send it (`compile.WithToken`). CI deploys it (`deploy-cloudflare.yml`) before the API.
 
-### CLI: init, link, the daemon, status and compile (V2 local delivery)
+### CLI: init, connect, link, the daemon, status, compile and the session-start hook (V2 local delivery)
 
-The daemon (`packages/cli/src/lib/daemon/`) writes each space's compiled files into the repositories linked on the machine and reports hand edits; it never writes over one (rule 6). Its state, log, pid and control socket live in `~/.memax/daemon/`. `memax daemon run` is reached through `src/bin.ts` without loading the rest of the CLI (the MCP SDK alone is ~30 MB of memory), and it talks to `/v2` over `node:http(s)` (`lib/daemon/http.ts`), not `fetch`. The CLI carries a verbatim copy of the compiler's managed block (`lib/daemon/compiler/`) because `@memaxlabs/compiler` isn't published yet; edit the compiler, then re-copy.
+The daemon (`packages/cli/src/lib/daemon/`) writes each space's compiled files into the repositories linked on the machine and reports hand edits; it never writes over one (rule 6). Its state, log, pid and control socket live in `~/.memax/daemon/`, beside the session-start hook's files (`warm.json`, which the daemon keeps current, `seen/` and the `loads/` queue it reports). `memax daemon run` is reached through `src/bin.ts` without loading the rest of the CLI (the MCP SDK alone is ~30 MB of memory), and it talks to `/v2` over `node:http(s)` (`lib/daemon/http.ts`), not `fetch`. The CLI carries a verbatim copy of the compiler's managed block (`lib/daemon/compiler/`) because `@memaxlabs/compiler` isn't published yet; edit the compiler, then re-copy.
 
 ```bash
 # Point the CLI at a local server, sign in, link a repository and run the daemon in the foreground
@@ -707,6 +713,20 @@ memax status && memax compile
 # --dry-run uploads nothing; --yes --space <slug> --format json for CI; --timing shows each step's budget
 MEMAX_API_URL=http://localhost:8080 memax init
 memax init --dry-run && memax init --yes --format json --timing
+
+# Connect one agent here (MCP settings, its session-start hook, its connection, a first compile);
+# running it again changes nothing. Agents: claude-code, codex, cursor, gemini, copilot, opencode, windsurf, chatgpt
+memax connect claude-code && memax connect codex --format json
+
+# The session-start hook as an agent runs it (stdin is the agent's event); --debug says why it was quiet
+echo '{"session_id":"s1","cwd":"'"$PWD"'","source":"startup"}' | memax hook session-start --agent claude-code --debug
+
+# Hook, warm cache, load reports and connect tests: the block per case, the cap, a socket recorder
+# around the built hook (it builds its own copy under node_modules/.cache), and connect in temporary homes
+pnpm --filter memax-cli exec vitest run test/hook
+
+# The plugin and its marketplace, with Claude Code's own validator
+claude plugin validate --strict plugins/memax && claude plugin validate --strict .
 
 # Export a space's whole record, and verify an export (a folder or a downloaded zip)
 memax export --space memax-v2 --out ./backup && memax verify-export ./backup/memax-v2

@@ -17,8 +17,15 @@ export interface FeedHandlers {
   fetch(signal: AbortSignal): Promise<V2.Target[]>;
   /** A cheap token that changes whenever the space does. */
   probe?(signal: AbortSignal): Promise<string>;
-  /** Handles one list; `busy` asks for the next one soon. */
-  onTargets(targets: V2.Target[]): Promise<{ busy: boolean }>;
+  /**
+   * Handles one list; `busy` asks for the next one soon. `changed` is false
+   * only for a busy re-poll (a compile in flight): any other list may
+   * follow a change the targets don't show, such as a gate or a Forget.
+   */
+  onTargets(
+    targets: V2.Target[],
+    info: { changed: boolean },
+  ): Promise<{ busy: boolean }>;
   onError(err: unknown, retryInMs: number): void;
 }
 
@@ -163,9 +170,10 @@ export class PollingFeed implements TargetFeed {
         full = token !== this.lastToken;
       }
       if (full) {
+        const changed = this.needFull || !this.lastBusy;
         this.needFull = false;
         const targets = await this.h.fetch(signal);
-        const { busy } = await this.h.onTargets(targets);
+        const { busy } = await this.h.onTargets(targets, { changed });
         this.lastFull = Date.now();
         this.lastBusy = busy;
         // The token read before this list, or none: the next probe then

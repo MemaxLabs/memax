@@ -58,12 +58,12 @@ func (s *Sample) Trips() int {
 // Row is the sample as a Markdown table row: operation, network, p50,
 // p95, round trips.
 func (s *Sample) Row() string {
-	return fmt.Sprintf("| %-34s | %5s | %7.1f | %7.1f | %3d |", s.Name, fmtRTT(s.RTT), msOf(s.P(0.5)), msOf(s.P(0.95)), s.Trips())
+	return fmt.Sprintf("| %-40s | %5s | %7.1f | %7.1f | %3d |", s.Name, fmtRTT(s.RTT), msOf(s.P(0.5)), msOf(s.P(0.95)), s.Trips())
 }
 
 // Header is the table's header for Row.
-const Header = "| operation                          |   RTT | p50 ms  | p95 ms  | RTs |\n" +
-	"|------------------------------------|-------|---------|---------|-----|"
+const Header = "| operation                                |   RTT | p50 ms  | p95 ms  | RTs |\n" +
+	"|------------------------------------------|-------|---------|---------|-----|"
 
 func fmtRTT(d time.Duration) string {
 	if d == 0 {

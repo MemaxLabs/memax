@@ -82,13 +82,17 @@ func TestCompileLatency(t *testing.T) {
 // TestCompileRoundTrips guards the round trips of one compile run's
 // database work.
 func TestCompileRoundTrips(t *testing.T) {
-	r := newCompileRig(t, testdb.Options{})
+	audit := netsim.NewAudit(ledger.DBRole)
+	r := newCompileRig(t, testdb.Options{Watch: audit.Observe})
+	audit.Arm()
+	defer audit.Require(t)
 	for range 2 {
 		r.measure(t)
 	}
 	_, c := r.measure(t)
 	t.Logf("compile run: %d round trips\n%s", c.RoundTrips(), c)
-	if got, budget := c.RoundTrips(), 99; got > budget {
+	// 30 before the pipelined ledger (Oct 7, 2026).
+	if got, budget := c.RoundTrips(), 24; got > budget {
 		t.Errorf("compile run: %d round trips, budget %d\n%s", got, budget, c)
 	}
 }

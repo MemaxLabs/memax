@@ -241,17 +241,24 @@ func TestAPILatency(t *testing.T) {
 // TestAPIRoundTrips guards the round trips of each /v2 hot path: a change
 // that adds one fails here, whatever the machine's speed. The counts are
 // steady-state (warm statement caches) and include work a request leaves
-// running after it answers, such as a read's COMMIT.
+// running after it answers, such as a read's COMMIT. The wire audit checks
+// every statement the requests send, River's inserts as the login role
+// included: none touches a v2 table before its transaction's scope.
 func TestAPIRoundTrips(t *testing.T) {
-	r := newAPIRig(t, testdb.Options{})
+	audit := netsim.NewAudit(ledger.DBRole)
+	r := newAPIRig(t, testdb.Options{Watch: audit.Observe})
+	audit.Arm()
+	defer audit.Require(t)
+	// Before the pipelined ledger (Oct 7, 2026) these were 15, 25, 16, 14,
+	// 32, 27 and 30.
 	budgets := map[string]int{
-		"/v2 memory list":               99,
-		"/v2 memory get":                99,
-		"/v2 review queue":              99,
-		"/v2 Brief":                     99,
-		"/v2 Keep (+ jobs)":             99,
-		"/v2 Remember (+ jobs)":         99,
-		"/v2 Ask, to the sources event": 99,
+		"/v2 memory list":               5,
+		"/v2 memory get":                12,
+		"/v2 review queue":              6,
+		"/v2 Brief":                     5,
+		"/v2 Keep (+ jobs)":             16,
+		"/v2 Remember (+ jobs)":         13,
+		"/v2 Ask, to the sources event": 9,
 	}
 	for _, op := range r.ops() {
 		for range 2 {

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"testing"
 )
 
 // Audit checks, statement by statement in the order Postgres receives
@@ -74,6 +75,18 @@ func (a *Audit) Violations() []Violation {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return append([]Violation(nil), a.violations...)
+}
+
+// Require fails t for every violation recorded, and when no v2 statement
+// was checked at all (the audit wasn't watching).
+func (a *Audit) Require(t testing.TB) {
+	t.Helper()
+	for _, v := range a.Violations() {
+		t.Errorf("unscoped: %s", v)
+	}
+	if a.Checked() == 0 {
+		t.Error("netsim: the audit checked no v2 statement; is it watching the pool's proxy and armed?")
+	}
 }
 
 // Checked counts the v2 statements checked while armed.

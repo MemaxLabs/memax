@@ -293,16 +293,22 @@ func TestMCPLatency(t *testing.T) {
 // round trip in the call's window (V1's, under the auth middleware and
 // beside an unscoped recall, included), steady-state (warm statement
 // caches), with what the call left running after it answered (a read's
-// COMMIT).
+// COMMIT). The wire audit checks every statement the reads send: none
+// touches a v2 table before its transaction's scope.
 func TestMCPRoundTrips(t *testing.T) {
-	r := newRig(t, testdb.Options{})
+	audit := netsim.NewAudit(ledger.DBRole)
+	r := newRig(t, testdb.Options{Watch: audit.Observe})
+	audit.Arm()
+	defer audit.Require(t)
+	// Before the pipelined ledger (Oct 7, 2026) these were 46, 39, 42, 30,
+	// 23 and 23.
 	budgets := map[string]int{
-		opRecall:      99,
-		opRecallSpace: 99,
-		opDigest:      99,
-		opSearch:      99,
-		opSearchSpace: 99,
-		opGet:         99,
+		opRecall:      24,
+		opRecallSpace: 17,
+		opDigest:      19,
+		opSearch:      21,
+		opSearchSpace: 14,
+		opGet:         13,
 	}
 	for _, op := range r.ops() {
 		for range 3 {

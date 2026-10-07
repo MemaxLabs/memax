@@ -203,7 +203,7 @@ func TestRecallLatency(t *testing.T) {
 	// The principal (scope, connection), the hub, the lanes with their hits,
 	// the session's proposals and notices, the gates' news, and the reads'
 	// COMMITs sent after the answer.
-	const tripBudget = 9
+	const tripBudget = 10
 	trips := 0
 	// A round is 60 recalls. Wall-clock latency on a shared machine (CI, or
 	// a full suite beside other test processes) has outliers that aren't

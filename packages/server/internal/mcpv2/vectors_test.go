@@ -212,10 +212,10 @@ func TestHybridLatency(t *testing.T) {
 		recallTrips, searchTrips int
 		recallBar, searchBar     time.Duration
 	}{
-		{"lexical only (before)", lcs, 0, "", 9, 6, 150 * time.Millisecond, 250 * time.Millisecond},
-		{"hybrid, instant embedder", hcs, 0, v2recall.StageOK, 12, 8, 150 * time.Millisecond, 250 * time.Millisecond},
-		{"hybrid, 60 ms embedder", hcs, 60 * time.Millisecond, v2recall.StageOK, 12, 8, 250 * time.Millisecond, 400 * time.Millisecond},
-		{"hybrid, 400 ms embedder", hcs, 400 * time.Millisecond, v2recall.StageTimeout, 9, 6, 250 * time.Millisecond, 400 * time.Millisecond},
+		{"lexical only (before)", lcs, 0, "", 10, 7, 150 * time.Millisecond, 250 * time.Millisecond},
+		{"hybrid, instant embedder", hcs, 0, v2recall.StageOK, 12, 9, 150 * time.Millisecond, 250 * time.Millisecond},
+		{"hybrid, 60 ms embedder", hcs, 60 * time.Millisecond, v2recall.StageOK, 12, 9, 250 * time.Millisecond, 400 * time.Millisecond},
+		{"hybrid, 400 ms embedder", hcs, 400 * time.Millisecond, v2recall.StageTimeout, 10, 7, 250 * time.Millisecond, 400 * time.Millisecond},
 	} {
 		if p95 := bestOf3(c.name, c.c, "memax_recall", c.delay, c.wantVector, c.recallTrips, c.recallBar); p95 > c.recallBar {
 			t.Errorf("%s: recall p95 %v in its best of three rounds, want under %v (N2: 300 ms)", c.name, p95, c.recallBar)

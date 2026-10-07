@@ -95,9 +95,12 @@ func (c *Counter) Count(kinds ...Kind) int {
 	return n
 }
 
-// RoundTrips counts the steady-state round trips: everything but the
-// statement cache's prepares, which a warm connection doesn't make.
-func (c *Counter) RoundTrips() int { return c.Count(Query, Batch, Copy, Ping) }
+// RoundTrips counts the round trips the operation itself makes: its
+// queries, batches and COPYs. It leaves out what depends on a connection's
+// history rather than on the operation: the statement cache's prepares (a
+// warm connection makes none) and the pool's liveness pings (made on a
+// connection idle over a second). Count(Prepare, Ping) has those.
+func (c *Counter) RoundTrips() int { return c.Count(Query, Batch, Copy) }
 
 // Reset forgets the trips so far.
 func (c *Counter) Reset() {

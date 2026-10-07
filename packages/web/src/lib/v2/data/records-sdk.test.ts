@@ -4,7 +4,7 @@ import { CommandFailedError, isRetryable, toFailure } from "./command-error";
 import { DEMO_SPACES } from "./demo-dataset";
 import { choiceFor, conflictOf } from "./sdk-conflict";
 import { createSdkMemories } from "./sdk-memories";
-import { conditionsOf, recordOf } from "./sdk-record";
+import { conditionsOf, flagOf, lineageOf, recordOf } from "./sdk-record";
 import {
   actorOf,
   conflictPartnerOf,
@@ -990,6 +990,79 @@ describe("mapping what the judge said", () => {
       ME,
     );
     expect(notYours.suggested).toBeNull();
+  });
+});
+
+describe("flags on a memory's page", () => {
+  const flagged = (fields: Partial<V2.Receipt>) =>
+    receipt({ action: "flagged", agent: undefined, ...fields });
+
+  it("words each flag by what it set: a conflict, or a stale fact", () => {
+    // The judge's conflict flag cites the decision it contradicts.
+    expect(
+      flagOf(
+        flagged({
+          actor_kind: "memax",
+          source: { kind: "memory", ref: "M-0174" },
+          reason: "Contradicts M-0174, a decision in force.",
+        }),
+      ),
+    ).toEqual({ kind: "conflict", with: "M-0174" });
+    // An import's disagreement does too.
+    expect(
+      flagOf(
+        flagged({
+          actor_kind: "memax",
+          source: { kind: "memory", ref: "M-0301" },
+          reason: "Disagrees with M-0301, from the same import.",
+        }),
+      ),
+    ).toEqual({ kind: "conflict", with: "M-0301" });
+    // Dream cites its edition, and says which in its reason.
+    expect(
+      flagOf(
+        flagged({
+          actor_kind: "dream",
+          source: { kind: "dream", ref: "D-0214" },
+          reason: "Contradicts M-0098. Dream found it; a person settles it.",
+        }),
+      ),
+    ).toEqual({ kind: "conflict", with: "M-0098" });
+    expect(
+      flagOf(
+        flagged({
+          actor_kind: "dream",
+          source: { kind: "dream", ref: "D-0214" },
+          reason: "Its date to check again, Oct 1, has passed. Verify it.",
+        }),
+      ),
+    ).toEqual({ kind: "stale" });
+    // A reason Forget took out leaves it unsaid; other receipts carry none.
+    expect(
+      flagOf(
+        flagged({
+          actor_kind: "dream",
+          source: { kind: "dream", ref: "D-0214" },
+        }),
+      ),
+    ).toBeNull();
+    expect(flagOf(receipt({ action: "kept" }))).toBeNull();
+    const lineage = lineageOf(
+      [
+        receipt(),
+        flagged({
+          id: "r2",
+          seq: 2,
+          actor_kind: "memax",
+          source: { kind: "memory", ref: "M-0174" },
+        }),
+      ],
+      ME,
+    );
+    expect(lineage.map((e) => e.flag ?? null)).toEqual([
+      null,
+      { kind: "conflict", with: "M-0174" },
+    ]);
   });
 });
 

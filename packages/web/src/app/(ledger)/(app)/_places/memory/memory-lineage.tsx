@@ -27,12 +27,17 @@ const MARKS: Partial<Record<LineageEntry["action"], MarkState>> = {
   proposed: "proposed",
   kept: "kept",
   merged: "merged",
-  flagged: "stale",
   faded: "faded",
   forgot: "forgotten",
   restored: "kept",
   returned: "conflict",
 };
+
+/** A flag's line wears the flag it set: stale, or a conflict. */
+function markOf(entry: LineageEntry): MarkState | undefined {
+  if (entry.action === "flagged") return entry.flag?.kind;
+  return MARKS[entry.action];
+}
 
 function title(view: RecordsView, entry: LineageEntry): string {
   const t = view.l.memory.page.titles;
@@ -57,6 +62,19 @@ function title(view: RecordsView, entry: LineageEntry): string {
             ref: entry.to.ref,
           })
         : interpolate(t.handedOff, { name });
+    case "flagged":
+      // Which flag it set: a stale fact, or a conflict (with the memory
+      // it contradicts, when the receipt names it).
+      switch (entry.flag?.kind) {
+        case "stale":
+          return interpolate(t.flagged, { name });
+        case "conflict":
+          return entry.flag.with
+            ? interpolate(t.flaggedConflict, { name, ref: entry.flag.with })
+            : interpolate(t.flaggedConflictBare, { name });
+        default:
+          return interpolate(t.flaggedBare, { name });
+      }
     case "verified":
       return t.verified;
     case "faded":
@@ -109,7 +127,7 @@ export function MemoryLineage({
     const fold = canUnfold && entry.undo ? entry.undo : null;
     return {
       key: entry.key,
-      state: MARKS[entry.action],
+      state: markOf(entry),
       agent: stamp?.agent,
       person: stamp?.person,
       title: title(view, entry),

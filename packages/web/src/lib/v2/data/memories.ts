@@ -82,7 +82,18 @@ export interface LineageEntry {
   into?: string | null;
   /** One of the judge's folds, still undoable: its receipt, and until when. */
   undo?: FoldUndo | null;
+  /**
+   * `flagged`: which flag it set, when the receipt says. A conflict names
+   * the memory it contradicts when it can (`with`); null when the receipt
+   * doesn't tell (its reason was forgotten).
+   */
+  flag?: LineageFlag | null;
 }
+
+/** The flag a `flagged` receipt set. */
+export type LineageFlag =
+  | { kind: "stale" }
+  | { kind: "conflict"; with: string | null };
 
 /** Undo for one of the judge's folds (14 days, by anyone who may keep). */
 export interface FoldUndo {

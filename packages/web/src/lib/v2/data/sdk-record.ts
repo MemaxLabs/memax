@@ -3,6 +3,7 @@ import type {
   ConditionLine,
   FoldUndo,
   LineageEntry,
+  LineageFlag,
   MemoryRecord,
   SourceLine,
 } from "./memories";
@@ -96,6 +97,26 @@ export function foldUndo(
   return { receipt, until: new Date(until).toISOString() };
 }
 
+/**
+ * Which flag a `flagged` receipt set. The receipt names no flag, but who
+ * wrote it and where it came from tell: the judge's and an import's
+ * conflict flags cite the memory they contradict (`source` kind memory);
+ * Dream cites its edition, and says which in its reason ("Contradicts
+ * M-0174. …" for a conflict, "Its date to check again … has passed" for a
+ * stale fact). A reason Forget took out leaves it unsaid.
+ */
+export function flagOf(r: V2.Receipt): LineageFlag | null {
+  if (r.action !== "flagged") return null;
+  if (r.source?.kind === "memory") {
+    return { kind: "conflict", with: r.source.ref || null };
+  }
+  const reason = r.reason?.trim() ?? "";
+  const contradicts = /^Contradicts (M-\d+)/.exec(reason);
+  if (contradicts) return { kind: "conflict", with: contradicts[1] ?? null };
+  if (/^Its date to check again\b/.test(reason)) return { kind: "stale" };
+  return null;
+}
+
 export function lineageOf(
   receipts: readonly V2.Receipt[],
   viewerId: string | undefined,
@@ -121,6 +142,7 @@ export function lineageOf(
           fold && r === lastFold && !undoneIn(sorted, r.id)
             ? foldUndo(r.id, r.occurred_at, now)
             : null,
+        flag: flagOf(r),
       },
     ];
   });

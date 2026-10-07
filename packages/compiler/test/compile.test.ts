@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   compile,
   CompileInputError,
+  DEFAULT_TARGET_KINDS,
+  defaultTargets,
+  OPT_IN_TARGET_KINDS,
   type CompileInput,
   type CompileResult,
 } from "../src/index.js";
@@ -193,6 +196,22 @@ describe("targets", () => {
       files: [],
     });
     expect(result.files.some((f) => f.target === "chatgpt")).toBe(false);
+  });
+
+  it("compiles GEMINI.md only when a space asks for it", () => {
+    for (const kind of OPT_IN_TARGET_KINDS)
+      expect(DEFAULT_TARGET_KINDS).not.toContain(kind);
+    expect(OPT_IN_TARGET_KINDS).toContain("gemini_md");
+    const byDefault = demo();
+    byDefault.targets = defaultTargets();
+    expect(
+      compile(byDefault).files.some((f) => f.path.endsWith("GEMINI.md")),
+    ).toBe(false);
+    const asked = demo();
+    asked.targets = [...defaultTargets(), { kind: "gemini_md" }];
+    expect(file(compile(asked), "GEMINI.md").content.split("\n")[1]).toBe(
+      "@./AGENTS.md",
+    );
   });
 
   it("imports the canonical file relative to the shim", () => {

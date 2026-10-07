@@ -263,6 +263,12 @@ export function contract(
         "cursor_mdc",
         "chatgpt",
       ]);
+      // GEMINI.md is compiled only for a space that asks for it.
+      expect(
+        body.adapters
+          .filter((a: { opt_in: boolean }) => a.opt_in)
+          .map((a: { kind: string }) => a.kind),
+      ).toEqual(["gemini_md"]);
       expect(
         body.adapters.find((a: { kind: string }) => a.kind === "chatgpt")
           .default_path,

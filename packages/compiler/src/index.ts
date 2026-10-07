@@ -19,6 +19,7 @@ export {
   getAdapter,
   defaultTargets,
   DEFAULT_TARGET_KINDS,
+  OPT_IN_TARGET_KINDS,
 } from "./adapters/index.js";
 export type { Adapter, Cap, Limits, Role } from "./adapters/index.js";
 export { CompileInputError, type Issue } from "./validate.js";

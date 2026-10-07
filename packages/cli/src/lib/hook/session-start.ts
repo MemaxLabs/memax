@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { cleanLine } from "../daemon/compiler/sanitize.js";
 import type { HookAgent } from "./agents.js";
-import { DEFAULT_PATHS, wrapFor } from "./agents.js";
+import { DEFAULT_PATHS, OPT_IN_KINDS, wrapFor } from "./agents.js";
 import { readCompiled, type CitedLine, type CompiledFile } from "./compiled.js";
 import type { QueuedLoad } from "./loads.js";
 import {
@@ -163,7 +163,10 @@ export function findRepo(
 
 /**
  * The files the agent loads here: the cached targets of its kinds, else
- * the default paths (a file there counts only if Memax compiled it).
+ * the default paths (a file there counts only if Memax compiled it). An
+ * opt-in kind (GEMINI.md) falls back only for a space not cached here: a
+ * cached space without that target compiles none, whatever file sits at
+ * the path.
  */
 function loadedFiles(
   agent: HookAgent,
@@ -174,7 +177,7 @@ function loadedFiles(
     const cached = warm?.targets.filter((t) => t.kind === kind) ?? [];
     if (cached.length > 0) {
       for (const t of cached) out.push({ kind, path: t.path, target: t });
-    } else if (DEFAULT_PATHS[kind]) {
+    } else if (DEFAULT_PATHS[kind] && !(warm && OPT_IN_KINDS.has(kind))) {
       out.push({ kind, path: DEFAULT_PATHS[kind] });
     }
   }

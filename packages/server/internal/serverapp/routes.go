@@ -6,6 +6,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/billing"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
+	"github.com/MemaxLabs/memax/packages/server/internal/forget"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
 	"github.com/MemaxLabs/memax/packages/server/internal/mcpv2"
@@ -90,6 +91,9 @@ type mcpDeps struct {
 	// instance is FLY_MACHINE_ID: legacy MCP sessions carry it, so their
 	// requests reach the machine that holds them.
 	instance string
+	// purge is this process's Forget cache purgers: MCP v2's compiled
+	// digest registers there (nil: none).
+	purge *forget.Local
 }
 
 // ipLimitFactory returns a helper that wraps a handler with a per-IP
@@ -407,6 +411,7 @@ func registerMCPRoutes(root *http.ServeMux, withAuth func(http.Handler) http.Han
 	}); v2 != nil {
 		mcpH.SetV2(v2)
 		chatGPTH.SetV2(v2)
+		deps.mcp.purge.Register(v2.PurgeSpace)
 	}
 	mcpH.SetInstance(deps.mcp.instance)
 	chatGPTH.SetInstance(deps.mcp.instance)

@@ -169,6 +169,11 @@ func (w *writer) recordImportCheck(ctx context.Context, c *RecordImportCheck) (R
 		for _, id := range ids {
 			if m := locked[id]; m != nil && m.SpaceID == sp.ID && m.Lifecycle == lifecycle.Proposed {
 				members = append(members, id)
+			} else if m != nil && m.Lifecycle == lifecycle.Forgotten {
+				// Forgotten since the check read it: the model's words may
+				// repeat it, and Forget can't reach words written after it
+				// (rule 7). The group keeps its members, without the words.
+				k.Subject, k.Rationale, k.Suggestion = "", "", ""
 			}
 		}
 		if len(members) < 2 {

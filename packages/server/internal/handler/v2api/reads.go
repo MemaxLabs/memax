@@ -138,9 +138,17 @@ func (h *Handler) getMemory(w http.ResponseWriter, r *http.Request) {
 		h.log.WarnContext(r.Context(), "v2: a memory's reads couldn't be read", "memory", m.Ref, "error", err)
 		reads = nil
 	}
+	var requests []ledger.ForgetRequest
+	if m.Lifecycle != "forgotten" {
+		if requests, err = h.ledger.ForgetRequests(r.Context(), scope.Narrow(m.SpaceID), m.ID); err != nil {
+			h.log.WarnContext(r.Context(), "v2: a memory's forget requests couldn't be read", "memory", m.Ref, "error", err)
+			requests = nil
+		}
+	}
 	setETag(w, m)
 	writeData(w, http.StatusOK, memoryDetail{
 		Memory: m, Versions: nonNil(hist.Versions), Receipts: toReceiptPage(hist.Receipts), Reads: reads,
+		ForgetRequests: requests,
 	})
 	if g, ok := p.scope.Grant(m.SpaceID); ok {
 		h.recordRead(p, g, ledger.ReadGet, []uuid.UUID{m.ID})

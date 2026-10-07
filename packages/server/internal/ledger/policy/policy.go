@@ -18,6 +18,11 @@
 //     decision in a space where decisions need a person on the web.
 //   - Viewer: proposed. Member and owner: kept (and Review is theirs).
 //   - API key: read or propose only; never keeps, rejects or forgets.
+//   - Forget: a person who may keep and whom the space's rule lets forget
+//     (owners, by default), with a person on the web for a decision where
+//     decisions need one (D15). Agents and keys ask (request_forget), and a
+//     person forgets or keeps it. Forgetting everything in a space, or
+//     deleting it, is its owner's. Only Memax re-applies the forget ledger.
 //   - An agent that isn't connected to the space, or is paused, only reads.
 //   - Dream, Memax and the repository: new statements are proposals.
 //   - Integrations (email, Slack, GitHub, Linear): proposed and external.
@@ -298,6 +303,12 @@ const (
 	ActionReject   Action = "reject"
 	ActionForget   Action = "forget"
 
+	// Forget's companions (plan 25 §5.13, epic 2.4).
+	ActionForgetSpace   Action = "forget_space"   // forget everything in a space (and, deleting it, retire it)
+	ActionRequestForget Action = "request_forget" // an agent asks a person to forget a memory (memax_forget)
+	ActionDeclineForget Action = "decline_forget" // a person keeps the memory an agent asked to forget
+	ActionReapplyForget Action = "reapply_forget" // Memax re-applies the forget ledger after a restore
+
 	// The Brief and compile actions (plan 25 §5.7).
 	ActionReviseBrief     Action = "revise_brief"     // write a new Brief version
 	ActionConfigureTarget Action = "configure_target" // add a target, change it, overwrite a hand edit, stop compiling
@@ -487,6 +498,7 @@ const (
 	CodePersonMustReview    = "person_must_review"
 	CodePersonMustForget    = "person_must_forget"
 	CodeForgetNotAllowed    = "forget_not_allowed"
+	CodeForgetByPerson      = "forget_by_person" // a person asked to request a forget: they forget, or ask an owner
 	CodeExternalNeedsReview = "external_needs_review"
 	CodeProposalInReview    = "proposal_in_review"
 	CodeAgentNotConnected   = "agent_not_connected"
@@ -548,7 +560,7 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return refuse(CodeNotMember, fmt.Sprintf("Only members of %s can change its record.", spaceName(s)))
 	}
 	if len(o.Secrets) > 0 && slices.Contains([]Action{ActionRemember, ActionPropose, ActionEdit, ActionReviseBrief,
-		ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate}, act) {
+		ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate, ActionForget, ActionRequestForget}, act) {
 		return refuse(CodeSecret, fmt.Sprintf(
 			"This looks like a credential (%s). Memax never stores secrets. Remove it and try again.",
 			strings.Join(o.Secrets, ", ")))
@@ -564,6 +576,17 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideReject(a, o, s)
 	case ActionForget:
 		return decideForget(a, o, s)
+	case ActionForgetSpace:
+		return decideForgetSpace(a, s)
+	case ActionRequestForget:
+		return decideRequestForget(a, s)
+	case ActionDeclineForget:
+		// Keeping it is the forgetter's call, with no more assurance than
+		// the role: nothing is lost by keeping.
+		d := decideForget(a, Object{Ref: o.Ref}, s)
+		return d
+	case ActionReapplyForget:
+		return decideReapplyForget(a)
 	case ActionReviseBrief:
 		return decideReviseBrief(a, s)
 	case ActionConfigureTarget:
@@ -795,29 +818,87 @@ func decideReject(a Actor, o Object, s Space) Decision {
 	return apply()
 }
 
+// decideForget: only a person who may keep in the space, and whom the
+// space's rule lets forget, forgets (rule 7). Forget is the one command
+// nothing undoes, so nobody else comes close: an API key never forgets,
+// and an agent's memax_forget is a request a person confirms on the web
+// (ActionRequestForget), never an in-agent confirmation, because a hook
+// can answer an elicitation by itself.
+//
+// D15: forgetting a decision where decisions need a person on the web
+// (team spaces, by default) needs assurance human_web. Keeping a decision
+// there already does, and forgetting one is the larger change: it can't
+// be undone, it takes the decision out of every file the whole team's
+// agents read, and an agent driving the CLI with the person's login would
+// otherwise be able to erase the team's record of why something was
+// decided.
 func decideForget(a Actor, o Object, s Space) Decision {
 	if a.Credential == CredentialAPIKey {
 		return refuse(CodeKeyCannotForget, "API keys can't forget. Forget it on the web.")
 	}
 	switch a.Kind {
 	case ActorPerson:
-		if canForget(a, s) {
-			return apply()
-		}
-		return refuse(CodeForgetNotAllowed, forgetNotAllowed(s))
 	case ActorAgent:
 		if a.autonomy() == AutonomyRead {
 			return refuseReadOnly(a, s)
 		}
-		if !canForget(a, s) {
-			return refuse(CodeForgetNotAllowed, forgetNotAllowed(s))
-		}
-		if a.PersonPresent && a.CanElicit {
-			return Decision{Effect: EffectConfirm, Code: CodeConfirm, Message: fmt.Sprintf(
-				"Forget %s everywhere? This can't be undone.", refOr(o, "this memory"))}
-		}
+		return refuse(CodePersonMustForget, fmt.Sprintf(
+			"Agents ask and people forget. Ask the person to forget %s on the web.", refOr(o, "it")))
+	default:
+		return refuse(CodePersonMustForget, "Forget needs a person. Forget it on the web.")
 	}
-	return refuse(CodePersonMustForget, "Forget needs a person. Forget it on the web.")
+	switch {
+	case a.Role == RoleViewer:
+		return refuse(CodeForgetNotAllowed, fmt.Sprintf("Viewers can't forget in %s. Ask an owner to forget it.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules) || !canForget(a, s):
+		return refuse(CodeForgetNotAllowed, forgetNotAllowed(s))
+	case o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) && a.Assurance() != AssuranceHumanWeb:
+		return refuse(CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web, and so does forgetting one. Forget %s at memax.app.",
+			spaceName(s), refOr(o, "it")))
+	}
+	return apply()
+}
+
+// decideForgetSpace: forgetting everything in a space, or deleting it, is
+// its owner's, signed in as themselves (not an API key or an agent). It is
+// the V1 owner-only delete, and the same person's "Delete all my data",
+// so it needs no more assurance than those always did.
+func decideForgetSpace(a Actor, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson:
+		return refuse(CodePersonMustForget, fmt.Sprintf("Only %s's owner can forget everything in it.", spaceName(s)))
+	case a.Credential == CredentialAPIKey:
+		return refuse(CodeKeyCannotForget, "API keys can't forget. Forget it on the web.")
+	case a.Role != RoleOwner:
+		return refuse(CodeForgetNotAllowed, fmt.Sprintf(
+			"Only %s's owner can forget everything in it. Ask an owner.", spaceName(s)))
+	}
+	return apply()
+}
+
+// decideRequestForget: an agent that may write in the space asks a person
+// to forget a memory (memax_forget on V2). The request is a receipted write
+// that puts a question in front of people, so it needs what proposing
+// needs: connected at Propose or Write, not paused. An API key may ask,
+// since it proposes. People forget directly, or ask an owner.
+func decideRequestForget(a Actor, s Space) Decision {
+	if a.Kind != ActorAgent && a.Credential != CredentialAPIKey {
+		return refuse(CodeForgetByPerson, "People forget it themselves, or ask an owner to.")
+	}
+	if a.autonomy() == AutonomyRead {
+		return refuseReadOnly(a, s)
+	}
+	return apply()
+}
+
+// decideReapplyForget: only Memax re-applies the forget ledger, after a
+// restore brought back words a person had forgotten.
+func decideReapplyForget(a Actor) Decision {
+	if a.Kind == ActorMemax {
+		return apply()
+	}
+	return refuse(CodePersonMustForget, "Only Memax re-applies the forget ledger.")
 }
 
 // decideResolve: settling a conflict is a person's Keep of one answer

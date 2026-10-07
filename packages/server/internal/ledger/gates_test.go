@@ -853,7 +853,16 @@ func TestGateGuaranteesInSQL(t *testing.T) {
 		{"a waiting gate keeps its words", func(tx pgx.Tx) error {
 			_, err := tx.Exec(ctx, `UPDATE v2.decision_gates SET question = 'Rewritten?' WHERE id = $1`, g.ID)
 			return err
-		}, "42501"},
+		}, "MXL03"},
+		{"a waiting gate's words aren't purged", func(tx pgx.Tx) error {
+			rid, err := gateReceipt(tx, g.ID, "forgot", 2)
+			if err != nil {
+				return err
+			}
+			_, err = tx.Exec(ctx, `UPDATE v2.decision_gates SET question = NULL, context = NULL, options = NULL,
+			                       stream_version = 2, last_receipt_id = $2 WHERE id = $1`, g.ID, rid)
+			return err
+		}, "MXL03"},
 		{"withdrawing with its receipt commits", func(tx pgx.Tx) error {
 			rid, err := gateReceipt(tx, g.ID, "withdrawn", 2)
 			if err != nil {

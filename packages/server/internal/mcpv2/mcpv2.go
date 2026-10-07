@@ -20,7 +20,7 @@
 //     client that can't elicit gets the proposal's ID and the Review link.
 //   - memax_recall reads kept memories (hybrid when V2 embeddings are on,
 //     else lexical; plan §5.11, and _meta says which),
-//     plus this session's own pending proposals, forget notices, how the
+//     plus this session's own pending proposals, how the
 //     connection's decision gates ended, and without a query a digest of
 //     each space (with the gates still waiting). A decision a newer one
 //     superseded stays kept but is left out, as in the compiled files.
@@ -28,7 +28,10 @@
 //   - memax_push says so when a write touches a decision in force and so
 //     waits for the judge in Review (policy touches_decision).
 //   - memax_get reads one memory with its receipts and sources.
-//   - memax_forget asks a person: an agent never forgets.
+//   - memax_forget records a forget request: a person forgets the memory
+//     (or keeps it) on the web; an agent never forgets.
+//   - every response carries the connection's waiting Forget notices
+//     (notices.go): each memory forgotten since it read it, once.
 //   - memax_capture writes notes (V1's note path), never proposals.
 //   - memax_request_decision asks a decision gate (G-) through the ledger
 //     and returns its ID at once; on 2026-07-28 clients that can elicit it
@@ -171,31 +174,39 @@ func (s *Server) CallTool(ctx context.Context, c *handler.MCPToolCall) (*mcp.Cal
 	if !ok {
 		return nil, false
 	}
+	var res *mcp.CallToolResult
 	switch c.Tool {
 	case "memax_push":
-		return s.push(ctx, c, v)
+		res, ok = s.push(ctx, c, v)
 	case "memax_recall":
-		return s.recall(ctx, c, v)
+		res, ok = s.recall(ctx, c, v)
 	case "memax_search":
-		return s.searchTool(ctx, c, v)
+		res, ok = s.searchTool(ctx, c, v)
 	case "memax_get":
-		return s.get(ctx, c, v)
+		res, ok = s.get(ctx, c, v)
 	case "memax_list":
-		return s.list(ctx, c, v)
+		res, ok = s.list(ctx, c, v)
 	case "memax_hubs":
-		return s.hubs(ctx, c, v)
+		res, ok = s.hubs(ctx, c, v)
 	case "memax_hub_members":
-		return s.members(ctx, c, v)
+		res, ok = s.members(ctx, c, v)
 	case "memax_topics":
-		return s.topics(ctx, c, v)
+		res, ok = s.topics(ctx, c, v)
 	case "memax_forget":
-		return s.forget(ctx, c, v)
+		res, ok = s.forget(ctx, c, v)
 	case "memax_capture":
-		return s.noteWrite(ctx, c, v)
+		res, ok = s.noteWrite(ctx, c, v)
 	case "memax_request_decision":
-		return s.requestDecision(ctx, c, v)
+		res, ok = s.requestDecision(ctx, c, v)
+	default:
+		return nil, false
 	}
-	return nil, false
+	// Forget's notices ride on the next response, whichever tool it is,
+	// except a question put to the person (input_required).
+	if ok && res != nil && len(res.InputRequests) == 0 {
+		res = s.deliverNotices(ctx, v, c.Tool, res)
+	}
+	return res, ok
 }
 
 // StepUp implements handler.MCPV2: an OAuth token whose scope only reads,

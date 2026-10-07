@@ -266,11 +266,15 @@ test("a memory's page: Copy citation, Edit, and not found", async ({
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     `[M-0219] ${baseURL}/memax-v2/memories/M-0219`,
   );
-  // Forget is there, has no key, and says why it isn't available yet.
-  await expect(page.getByRole("button", { name: "Forget" })).toHaveAttribute(
-    "title",
-    "Forget arrives with propagation",
-  );
+  // Forget is there and has no key: it opens its confirmation, and Esc
+  // takes it back without forgetting anything.
+  const forget = page.getByRole("button", { name: "Forget", exact: true });
+  await expect(forget).not.toHaveAttribute("aria-keyshortcuts", /.+/);
+  await forget.click();
+  await expect(page.getByText("Forget this everywhere?")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Cancel/ })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Forget this everywhere?")).toHaveCount(0);
   await page.locator("#main").focus();
   await page.keyboard.press("e");
   await expect(page.getByRole("textbox", { name: "Statement" })).toBeFocused();
@@ -281,6 +285,39 @@ test("a memory's page: Copy citation, Edit, and not found", async ({
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "There's no memory with this ID that you can open.",
   );
+});
+
+test("Forget: confirmed inline, then the tombstone, and Activity's line", async ({
+  page,
+}) => {
+  await open(page, "/memax-v2/memories/M-0102");
+  await page.getByRole("button", { name: "Forget", exact: true }).click();
+  await expect(
+    page.getByText(/^Removes the words from Memax, .* agents\./),
+  ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "A note for the tombstone" })
+    .fill("superseded by the MCP spec page");
+  await page.getByRole("button", { name: "Forget M-0102" }).click();
+  await expect(toasts(page)).toContainText(
+    "Forgot M-0102. The tombstone stays.",
+  );
+  // The page is its tombstone now, and never the words.
+  await expect(page.getByText("How it was forgotten")).toBeVisible();
+  await expect(page.getByText("You asked to forget it")).toBeVisible();
+  await expect(
+    page.getByText("From its page. Your note: superseded by the MCP spec page"),
+  ).toBeVisible();
+  await expect(page.getByText(/Remote MCP is stateless/)).toHaveCount(0);
+
+  // The board's tombstone: how it was forgotten, gone, kept, out of reach.
+  await open(page, "/memax-v2/memories/M-0201");
+  await expect(
+    page.getByText("CLAUDE.md, AGENTS.md and Cursor rules rewritten"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Out of Memax's reach" }),
+  ).toBeVisible();
 });
 
 // Self-baselines: the boards' states on the demo dataset.
@@ -306,6 +343,20 @@ const SHOTS = [
     width: 1440,
     height: 1100,
   },
+  // Tombstone.png, and the States board's inline Forget on Memory.png.
+  {
+    name: "tombstone",
+    path: "/memax-v2/memories/M-0201",
+    width: 1440,
+    height: 1000,
+  },
+  {
+    name: "forget-confirm",
+    path: "/memax-v2/memories/M-0219",
+    width: 1440,
+    height: 1020,
+    forget: true,
+  },
 ] as const;
 
 for (const shot of SHOTS) {
@@ -327,6 +378,12 @@ for (const shot of SHOTS) {
             "Cloud agents run with nobody watching, so they can't confirm in place.",
           );
         await field.focus();
+      }
+      if ("forget" in shot) {
+        await page.getByRole("button", { name: "Forget", exact: true }).click();
+        await expect(
+          page.getByText(/^Removes the words from Memax/),
+        ).toBeVisible();
       }
       await settle(page);
       await expect(page).toHaveScreenshot(

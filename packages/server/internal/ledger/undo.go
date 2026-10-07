@@ -286,6 +286,11 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 		if m == nil {
 			return Result{}, ErrNotFound
 		}
+		// Nothing brings a forgotten memory back, Undo included.
+		if m.Lifecycle == lifecycle.Forgotten {
+			return Result{}, &UndoError{Reason: UndoNotUndoable, Ref: m.Ref, Message: fmt.Sprintf(
+				"%s was forgotten, and forgetting can't be undone. If it becomes true again, remember it fresh.", m.Ref)}
+		}
 		if m.streamVersion != um.AfterStreamVersion {
 			later, err := w.changedSince(ctx, e.spaceID, m.ID, um.AfterStreamVersion)
 			if err != nil {
@@ -431,7 +436,7 @@ func (w *writer) changedSince(ctx context.Context, spaceID, memoryID uuid.UUID, 
 		SELECT EXISTS (
 		  SELECT 1 FROM v2.receipts r
 		   WHERE r.stream_id = $1 AND r.space_id = $2 AND r.stream_version > $3
-		     AND r.action NOT IN ('judged', 'drafted')
+		     AND r.action NOT IN ('judged', 'drafted', 'forget_requested', 'forget_declined')
 		     AND NOT EXISTS (
 		       SELECT 1 FROM v2.undo_entries u
 		        WHERE u.space_id = $2 AND u.undone_receipt_id IS NOT NULL
@@ -487,6 +492,8 @@ func (w *writer) loadUndoEntry(ctx context.Context, receiptID uuid.UUID) (*undoE
 		switch action {
 		case ActionUndid:
 			msg = "That receipt is itself an undo. Make the change again instead."
+		case ActionForgot:
+			msg = fmt.Sprintf("Forgetting can't be undone: %s's words are gone. If it becomes true again, remember it fresh; it gets a new ID.", ref)
 		case ActionReturned:
 			msg = fmt.Sprintf("Memax put %s back in Review because it contradicts a decision in force, so it can't simply be kept again. "+
 				"Settle the conflict instead: compare both sides and keep it, keep the decision, or keep both.", ref)

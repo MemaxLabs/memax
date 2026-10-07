@@ -13,7 +13,7 @@
 //   - nobody is asked to keep in the agent: an API key proposes, and the
 //     person keeps in Review (the result links there).
 import { createHash } from "node:crypto";
-import { MemaxError, type V2 } from "memax-sdk";
+import { MemaxError, refusalOf, type V2 } from "memax-sdk";
 import { getClient, usesAPIKey } from "../lib/client.js";
 import { loadConfig } from "../lib/config.js";
 
@@ -300,15 +300,167 @@ export async function v2Push(
   }
 }
 
-/** memax_forget in a space on V2: an agent can't forget; a person does. */
+/**
+ * memax_forget in a space on V2. An agent never forgets (rule 7): it asks,
+ * and the request (receipted) waits for a person to forget the memory, or
+ * keep it, on the web. There is no in-agent confirmation, as on the remote
+ * server: Forget can't be undone. A person's own session is pointed to the
+ * web, where they see everything it goes with.
+ */
 export async function v2Forget(
   sp: V2.Space,
   ref: string,
+  args: { reason?: string; session_ref?: string } = {},
 ): Promise<McpTextResult> {
-  const where = memoryURL(sp, ref);
-  return textResult(
-    `${ref} wasn't forgotten: an agent can't forget in ${sp.name}. Forget needs a person; ask them to forget it on the web${where ? ` at ${where}` : ""}. Until they do, it stays kept.`,
-  );
+  const client = getClient();
+  let m: V2.Memory;
+  try {
+    m = (await client.v2.memories.get(ref, { space: sp.id })).memory;
+  } catch (err) {
+    if (err instanceof MemaxError && err.status === 404)
+      return errorResult(`Memory not found: ${ref}`);
+    return errorResult(
+      err instanceof MemaxError ? err.message : (err as Error).message,
+    );
+  }
+  if (m.lifecycle === "forgotten")
+    return textResult(
+      `${m.ref} is already forgotten: its words are gone from Memax, every compiled file and every agent.`,
+    );
+  const where = memoryURL(sp, m.ref);
+  if (!usesAPIKey())
+    return textResult(
+      `${m.ref} wasn't forgotten: forget it yourself on the web${where ? ` at ${where}` : ""}, where you see everything it goes with.`,
+    );
+  const reason = args.reason?.trim() ?? "";
+  const day = new Date().toISOString().slice(0, 10);
+  // Asking again the same day, for the same reason, is the same request.
+  const idempotencyKey =
+    "mcp-forget:" +
+    createHash("sha256")
+      .update([sp.id, m.id, reason, day].join("\0"))
+      .digest("base64url");
+  try {
+    const res = await client.v2.memories.requestForget(
+      m.id,
+      {
+        ...(reason ? { reason } : {}),
+        ...(args.session_ref?.trim()
+          ? { session_ref: args.session_ref.trim() }
+          : {}),
+      },
+      { idempotencyKey, via: "mcp" },
+    );
+    let text =
+      res.forget_request.status === "declined"
+        ? `A person kept ${m.ref} when it was asked before`
+        : `${m.ref} wasn't forgotten yet: an agent can't forget. It now waits for a person to forget it`;
+    if (where) text += ` on the web: ${where}`;
+    text += `. Until then it stays kept in ${sp.name}. Forgetting it removes it from Memax, every compiled file and every agent, and can't be undone.`;
+    return textResult(text);
+  } catch (err) {
+    const refusal = refusalOf(err);
+    if (refusal?.message) return errorResult(refusal.message);
+    return errorResult(
+      err instanceof MemaxError
+        ? err.message
+        : `Forget failed: ${(err as Error).message}`,
+    );
+  }
+}
+
+/** The _meta key of the notices a response carries (as the remote server's). */
+export const META_NOTICES = "app.memax/notices";
+const MAX_NOTICES = 20;
+
+/** What the agent reads about a Forget (the remote server's words). */
+export function noticeMessage(n: V2.Notice, space: string): string {
+  if (n.kind === "space_forgotten")
+    return `Everything in ${space} was forgotten. Drop anything you took from it, including what you saved in your own memory.`;
+  return `Forgotten in ${space}: ${n.refs.join(", ")}. Drop anything you took from it, including what you saved in your own memory; it is gone from Memax and every compiled file.`;
+}
+
+/**
+ * Forget's notices (rule 7: every agent that read it is told on its next
+ * read). An API key's waiting notices ride on its next response, whatever
+ * the tool, as on the remote server: a paragraph in the text,
+ * _meta["app.memax/notices"], and recall's (and search's) `notices`. They
+ * are acknowledged once the response is built, so each is told once.
+ */
+export async function withNotices(
+  res: McpTextResult,
+  tool: string,
+): Promise<McpTextResult> {
+  if (!usesAPIKey()) return res;
+  let state: V2State;
+  let notices: V2.Notice[];
+  try {
+    state = await v2State();
+    if (state.spaces.size === 0) return res;
+    notices = (await getClient().v2.notices.list()).notices.slice(
+      0,
+      MAX_NOTICES,
+    );
+  } catch {
+    return res; // Telling the agent never fails its call.
+  }
+  if (!notices.length) return res;
+  const meta = notices.map((n) => {
+    const space = state.spaces.get(n.space_id)?.name ?? n.space ?? "a space";
+    return {
+      kind: n.kind,
+      space_id: n.space_id,
+      space,
+      refs: n.refs,
+      message: noticeMessage(n, space),
+    };
+  });
+  const text = meta.map((m) => m.message).join("\n");
+  const content = [...res.content];
+  if (content.length)
+    content[0] = { ...content[0], text: `${content[0].text}\n\n${text}` };
+  else content.push({ type: "text", text });
+  const out: McpTextResult = {
+    ...res,
+    content,
+    _meta: {
+      ...((res._meta as Record<string, unknown> | undefined) ?? {}),
+      [META_NOTICES]: meta,
+    },
+  };
+  if (
+    (tool === "memax_recall" || tool === "memax_search") &&
+    out.structuredContent
+  ) {
+    const existing = Array.isArray(out.structuredContent.notices)
+      ? (out.structuredContent.notices as unknown[])
+      : [];
+    out.structuredContent = {
+      ...out.structuredContent,
+      notices: [
+        ...existing,
+        ...meta.map(({ kind, message, space_id, refs }) => ({
+          kind,
+          message,
+          space_id,
+          refs,
+        })),
+      ],
+    };
+  }
+  const ids = notices.map((n) => n.id);
+  await getClient()
+    .v2.notices.ack(
+      { ids },
+      {
+        idempotencyKey:
+          "mcp-notices:" +
+          createHash("sha256").update(ids.join(",")).digest("base64url"),
+        via: "mcp",
+      },
+    )
+    .catch(() => undefined); // told again next time, rather than never
+  return out;
 }
 
 // --- Reads ---

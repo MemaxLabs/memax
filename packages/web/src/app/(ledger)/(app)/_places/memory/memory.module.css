@@ -187,6 +187,110 @@ a.sourceLabel:hover {
   max-width: 760px;
 }
 
+/* Forget, confirmed inline (States.dc.html): a vermilion wash, the
+ * question, what it removes, then Cancel and Forget. */
+.forgetConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 760px;
+  margin-top: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--vermilion-wash);
+}
+
+.forgetText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.forgetTitle {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.forgetDetail {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.forgetRefusal {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--vermilion);
+}
+
+.forgetNote {
+  max-width: 480px;
+}
+
+.forgetButtons {
+  display: flex;
+  gap: 8px;
+}
+
+/* Tombstone.dc.html: the redaction, the mark and its line, the lede. */
+.tombHead {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 40px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 760px;
+}
+
+.bar {
+  display: block;
+  height: 30px;
+  background: var(--redact);
+  border-radius: var(--radius-xs);
+}
+
+.tombMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lede {
+  margin: 0;
+  max-width: 40em;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 28px;
+  color: var(--ink-2);
+}
+
+.panelList {
+  list-style: none;
+  margin: 0;
+  padding: 8px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.footnote {
+  margin: 0;
+}
+
 @media (max-width: 1023px) {
   .body {
     grid-template-columns: minmax(0, 1fr);

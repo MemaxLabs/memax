@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -205,7 +206,19 @@ func (l *Ledger) SpaceScope(ctx context.Context, spaceID uuid.UUID) (Scope, erro
 	err := l.pool.QueryRow(ctx, `SELECT id, tenant_id, space_kind FROM public.hubs WHERE id = $1`, spaceID).
 		Scan(&g.SpaceID, &g.TenantID, &kind)
 	if errNoRows(err) {
-		return Scope{}, ErrNotFound
+		// A retired space: its hub is gone, its receipts and seals stay
+		// (migration 044), and the sealer and the verifier still need its
+		// tenant.
+		var retired *time.Time
+		err = l.pool.QueryRow(ctx, `SELECT tenant_id, retired_at FROM v2.space_ledger($1)`, spaceID).Scan(&g.TenantID, &retired)
+		if errNoRows(err) || (err == nil && retired == nil) {
+			return Scope{}, ErrNotFound
+		}
+		if err != nil {
+			return Scope{}, fmt.Errorf("ledger: space scope: %w", err)
+		}
+		g.SpaceID = spaceID
+		return Scope{Spaces: []SpaceGrant{g}}, nil
 	}
 	if err != nil {
 		return Scope{}, fmt.Errorf("ledger: space scope: %w", err)

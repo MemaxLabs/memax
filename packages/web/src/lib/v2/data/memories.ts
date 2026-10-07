@@ -152,6 +152,121 @@ export interface MemoryRecord {
   /** The last time someone checked it against its conditions. */
   checked: { at: string; by: Actor | null } | null;
   forgotten: Forgotten | null;
+  /** Agents' requests that a person forget it, waiting (Forget, or Keep it). */
+  forgetRequests?: ForgetRequestLine[];
+}
+
+/** Why a memory goes with another one's Forget (spec CarryReason). */
+export type CarryReason = "folded" | "updates" | "cites" | "space";
+
+/**
+ * What a Forget would do, read before the person confirms it (GET
+ * /v2/memories/{ref}/forget-preview): States' "Removes the words from
+ * Memax, 4 compiled files and 5 agents."
+ */
+export interface ForgetPreview {
+  /** Sent as If-Match. */
+  version: number;
+  /** What goes with it, forgotten in the same step. */
+  carries: { ref: string; reason: CarryReason }[];
+  /** The compiled files that hold it. */
+  files: number;
+  /** The copy-outs (ChatGPT) that hold it. */
+  copies: number;
+  /** The agents told on their next read. */
+  agents: number;
+  /** Null when the person may forget it; else why not (spec PolicyCode). */
+  refusal: { code: string | null; message: string | null } | null;
+}
+
+/** An agent's request that a person forget a memory, still waiting. */
+export interface ForgetRequestLine {
+  /** A Ledger registry key, or the agent's name when it has none. */
+  agent: string;
+  reason: string | null;
+  at: string;
+}
+
+/** A step of how a memory was forgotten (spec StepKind). */
+export type TombstoneStepKind =
+  | "asked"
+  | "removed"
+  | "target"
+  | "artifacts"
+  | "caches"
+  | "ledger"
+  | "agent";
+
+export interface TombstoneStepLine {
+  key: string;
+  kind: TombstoneStepKind;
+  /** done, waiting, held, failed or unreachable (spec StepStatus). */
+  status: "done" | "waiting" | "held" | "failed" | "unreachable";
+  /** Spec StepReason: hand_edit, stopped, copy, delivery, compiling, paused, disconnected, next_read. */
+  reason: string | null;
+  at: string | null;
+  target: { label: string; kind: string; delivery: string } | null;
+  /** The compile (C-) that rewrote it. */
+  compile: string | null;
+  /** An agent told: its registry key (or name). */
+  agent: string | null;
+  count: number | null;
+}
+
+/** A copy Memax can't reach (spec UnreachableCopy), said as data. */
+export interface UnreachableLine {
+  kind:
+    | "git_history"
+    | "agent_memory"
+    | "backups"
+    | "llm"
+    | "hand_edits"
+    | "copies";
+  files: string[];
+  repositories: string[];
+  agents: string[];
+  days: number | null;
+  processors: {
+    name: string;
+    purpose: "embeddings" | "judge" | "ask";
+    zeroRetention: boolean;
+  }[];
+  targets: string[];
+}
+
+/**
+ * A forgotten memory's tombstone (Tombstone.png): who asked and when,
+ * what went with it, each step and where it stands, what is gone, and
+ * the copies Memax can't reach. Never words.
+ */
+export interface TombstoneView {
+  ref: string;
+  at: string;
+  /** Who forgot it; null for Memax re-applying the forget ledger. */
+  by: Actor | null;
+  /** The agent whose request led to it, a registry key. */
+  requestedBy: string | null;
+  /** Where it was forgotten (spec Via): web, cli, mcp, api or system. */
+  via: string;
+  /** The person's own note on why (it stays). */
+  note: string | null;
+  keptAt: string | null;
+  readsBefore: number;
+  status: "propagating" | "done";
+  /** The other memories forgotten in the same step. */
+  with: string[];
+  /** It went with another memory's Forget. */
+  carried: { reason: CarryReason; primary: string } | null;
+  gone: {
+    versions: number;
+    sources: number;
+    embeddings: number;
+    files: number;
+  };
+  /** How many agents are told. */
+  agents: number;
+  steps: TombstoneStepLine[];
+  unreachable: UnreachableLine[];
 }
 
 /** A memory's newest version, after an edit clash. */
@@ -198,4 +313,37 @@ export interface MemoriesSource {
     keep?: boolean;
     idempotencyKey: string;
   }): Promise<DecisionResult>;
+  /** What a Forget would do. Changes nothing. */
+  previewForget(input: {
+    space: SpaceSummary;
+    ref: string;
+    signal?: AbortSignal;
+  }): Promise<ForgetPreview>;
+  /**
+   * Forget it everywhere, from `version` (If-Match), with what goes with
+   * it named (`carries`). It can't be undone. A failure throws (see
+   * command-error.ts; `carries` when what goes with it changed).
+   */
+  forget(input: {
+    space: SpaceSummary;
+    ref: string;
+    version: number;
+    carries: string[];
+    note?: string;
+    idempotencyKey: string;
+  }): Promise<{ ref: string }>;
+  /** Keep it instead: every waiting request to forget it is declined. */
+  declineForget(input: {
+    space: SpaceSummary;
+    ref: string;
+    idempotencyKey: string;
+  }): Promise<void>;
+  /** A forgotten memory's tombstone; null when it isn't forgotten. */
+  tombstone(input: {
+    space: SpaceSummary;
+    ref: string;
+    signal?: AbortSignal;
+  }): Promise<TombstoneView | null>;
+  /** The demo's tombstone, on hand for the first render. */
+  peekTombstone?(slug: string, ref: string): TombstoneView | null | undefined;
 }

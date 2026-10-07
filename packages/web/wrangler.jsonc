@@ -1,0 +1,58 @@
+// memax.app on Cloudflare Workers, built by OpenNext (open-next.config.ts).
+// The other two ways to run the app stay: Vercel (vercel.json, until DNS
+// moves) and `next build && next start` for self-hosting.
+//
+//   pnpm --filter @memaxlabs/web build:cf     # next build, then OpenNext's Worker in .open-next/
+//   pnpm --filter @memaxlabs/web preview:cf   # that Worker under workerd on :8787
+//   pnpm --filter @memaxlabs/web deploy:cf -- --env staging   # CI does this; never by hand
+//
+// Configuration (AGENTS.md has the full mapping):
+//   - NEXT_PUBLIC_* are inlined by `next build`, so they are build
+//     environment, set in CI per environment, never Worker settings.
+//   - WEB_SURFACE_SECRET is a Worker secret (`wrangler secret put
+//     WEB_SURFACE_SECRET --env production`; CI syncs it from Doppler). The
+//     runtime exposes secrets on process.env (nodejs_compat), where
+//     /api/proxy reads it.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "memax-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": [
+    // Next's Node runtime: node:crypto (the proxy's signing), Buffer,
+    // streams, AsyncLocalStorage, and secrets on process.env.
+    "nodejs_compat",
+    // fetch() to a hostname on our own zone (api.memax.app) goes out as
+    // ordinary internet traffic, as it did from Vercel.
+    "global_fetch_strictly_public",
+    // request.signal aborts when the browser goes away. OpenNext passes it
+    // to Next, so /api/proxy's upstream fetch (Ask's stream, V1's events)
+    // stops on the API too.
+    "enable_request_signal",
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "observability": { "enabled": true },
+  "secrets": { "required": ["WEB_SURFACE_SECRET"] },
+  // No preview URLs: every deploy is staging or production.
+  "preview_urls": false,
+  "env": {
+    "staging": {
+      "name": "memax-web-staging",
+      "secrets": { "required": ["WEB_SURFACE_SECRET"] },
+      // Cutover (AGENTS.md, "Moving to Cloudflare"): replace the
+      // workers.dev URL with the staging hostname once its DNS is on
+      // Cloudflare.
+      // "routes": [{ "pattern": "staging.memax.app", "custom_domain": true }],
+    },
+    "production": {
+      "name": "memax-web-production",
+      "secrets": { "required": ["WEB_SURFACE_SECRET"] },
+      // Cutover: uncomment once memax.app is on Cloudflare and staging has
+      // been checked; Vercel keeps serving until then.
+      // "routes": [{ "pattern": "memax.app", "custom_domain": true }],
+    },
+  },
+}

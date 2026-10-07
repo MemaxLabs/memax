@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -93,7 +94,15 @@ type scopedTx struct {
 	failed    error
 	closed    bool
 	savepoint int64
+	// commitNext sends COMMIT with the next statement (commitWithNext);
+	// committing says it went, and commitTag and commitErr are its answer.
+	commitNext, committing bool
+	commitTag              pgconn.CommandTag
+	commitErr              error
 }
+
+// errCommitted refuses a statement after the one that carried COMMIT.
+var errCommitted = errors.New("ledger: the transaction committed with its last statement; nothing more runs in it")
 
 var _ pgx.Tx = (*scopedTx)(nil)
 
@@ -181,10 +190,27 @@ func execDeferred(ctx context.Context, tx pgx.Tx, sql string, args ...any) error
 }
 
 func (t *scopedTx) usable() error {
-	if t.closed {
+	switch {
+	case t.closed:
 		return pgx.ErrTxClosed
+	case t.committing:
+		return errCommitted
 	}
 	return t.failed
+}
+
+// commitWithNext sends the transaction's COMMIT in the same round trip as
+// its next statement, which must be its last: a write whose answer the
+// caller reads, then commits (meter). Postgres skips the COMMIT if the
+// statement fails, and Commit reports the COMMIT's answer; any statement
+// after that one is refused, so nothing can run outside the transaction.
+func (t *scopedTx) commitWithNext() { t.commitNext = true }
+
+// batchClosed records how the batch that carried COMMIT ended.
+func (t *scopedTx) batchClosed(err error) {
+	if t.committing && t.commitErr == nil {
+		t.commitErr = err
+	}
 }
 
 // send sends the pending statements and then queued, in one batch, and
@@ -196,6 +222,13 @@ func (t *scopedTx) send(ctx context.Context, queued []*pgx.QueuedQuery) (pgx.Bat
 		b.Queue(p.sql, p.args...)
 	}
 	b.QueuedQueries = append(b.QueuedQueries, queued...)
+	if t.commitNext && len(queued) > 0 {
+		t.commitNext, t.committing = false, true
+		b.Queue("commit").Exec(func(ct pgconn.CommandTag) error {
+			t.commitTag = ct
+			return nil
+		})
+	}
 	pend := t.pending
 	t.pending, t.begun = nil, true
 	br := t.conn.SendBatch(ctx, b)
@@ -252,20 +285,24 @@ func (t *scopedTx) Exec(ctx context.Context, sql string, args ...any) (pgconn.Co
 	if err := t.usable(); err != nil {
 		return pgconn.CommandTag{}, err
 	}
-	if len(t.pending) > 0 && !batchable(sql, args) {
+	if (len(t.pending) > 0 || t.commitNext) && !batchable(sql, args) {
 		if err := t.flush(ctx); err != nil {
 			return pgconn.CommandTag{}, err
 		}
+		t.commitNext = false // Commit sends it alone
 	}
-	if len(t.pending) == 0 {
+	if len(t.pending) == 0 && !t.commitNext {
 		return t.conn.Exec(ctx, sql, args...)
 	}
 	br, err := t.send(ctx, []*pgx.QueuedQuery{{SQL: sql, Arguments: args}})
 	if err != nil {
+		t.batchClosed(err)
 		return pgconn.CommandTag{}, err
 	}
 	tag, err := br.Exec()
-	if cerr := br.Close(); err == nil {
+	cerr := br.Close()
+	t.batchClosed(cerr)
+	if err == nil {
 		err = cerr
 	}
 	return tag, err
@@ -276,29 +313,31 @@ func (t *scopedTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows
 	if err := t.usable(); err != nil {
 		return errRows{err}, err
 	}
-	if len(t.pending) > 0 && !batchable(sql, args) {
+	if (len(t.pending) > 0 || t.commitNext) && !batchable(sql, args) {
 		if err := t.flush(ctx); err != nil {
 			return errRows{err}, err
 		}
+		t.commitNext = false // Commit sends it alone
 	}
-	if len(t.pending) == 0 {
+	if len(t.pending) == 0 && !t.commitNext {
 		return t.conn.Query(ctx, sql, args...)
 	}
 	br, err := t.send(ctx, []*pgx.QueuedQuery{{SQL: sql, Arguments: args}})
 	if err != nil {
+		t.batchClosed(err)
 		return errRows{err}, err
 	}
 	rows, err := br.Query()
 	if err != nil {
-		_ = br.Close()
+		t.batchClosed(br.Close())
 		return errRows{err}, err
 	}
-	return &pipelinedRows{Rows: rows, br: br}, nil
+	return &pipelinedRows{Rows: rows, br: br, closed: t.batchClosed}, nil
 }
 
 // QueryRow implements pgx.Tx.
 func (t *scopedTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
-	if t.usable() == nil && len(t.pending) == 0 {
+	if t.usable() == nil && len(t.pending) == 0 && !t.commitNext {
 		return t.conn.QueryRow(ctx, sql, args...)
 	}
 	rows, _ := t.Query(ctx, sql, args...)
@@ -389,6 +428,8 @@ func (t *scopedTx) Commit(ctx context.Context) error {
 	}
 	t.closed = true
 	switch {
+	case t.committing:
+		return t.committed(ctx)
 	case t.failed != nil:
 		t.end(ctx, "rollback")
 		return t.failed
@@ -421,6 +462,27 @@ func (t *scopedTx) Commit(ctx context.Context) error {
 	return nil
 }
 
+// committed ends a transaction whose COMMIT went with its last statement:
+// it reports the COMMIT's answer, and rolls back if the statement failed
+// (Postgres skipped the COMMIT).
+func (t *scopedTx) committed(ctx context.Context) error {
+	if t.conn.Conn().PgConn().TxStatus() != 'I' {
+		_ = t.end(ctx, "rollback")
+		if t.commitErr != nil {
+			return t.commitErr
+		}
+		return pgx.ErrTxCommitRollback
+	}
+	t.conn.Release()
+	switch {
+	case t.commitErr != nil:
+		return t.commitErr
+	case t.commitTag.String() == "ROLLBACK":
+		return pgx.ErrTxCommitRollback
+	}
+	return nil
+}
+
 // Rollback implements pgx.Tx: safe to call after Commit (ErrTxClosed), as
 // pgx's is. A read-only transaction rolls back after Rollback returns.
 func (t *scopedTx) Rollback(ctx context.Context) error {
@@ -429,6 +491,11 @@ func (t *scopedTx) Rollback(ctx context.Context) error {
 	}
 	t.closed = true
 	t.pending = nil
+	if t.committing && t.conn.Conn().PgConn().TxStatus() == 'I' {
+		// The COMMIT that went with the last statement ended it.
+		t.conn.Release()
+		return nil
+	}
 	switch {
 	case !t.begun:
 		t.conn.Release()
@@ -524,6 +591,8 @@ type pipelinedRows struct {
 	br   pgx.BatchResults
 	done bool
 	err  error
+	// closed hears how the batch ended (scopedTx.batchClosed).
+	closed func(error)
 }
 
 func (r *pipelinedRows) Next() bool {
@@ -549,8 +618,12 @@ func (r *pipelinedRows) finish() {
 	}
 	r.done = true
 	r.Rows.Close()
-	if err := r.br.Close(); err != nil && r.Rows.Err() == nil {
+	err := r.br.Close()
+	if err != nil && r.Rows.Err() == nil {
 		r.err = err
+	}
+	if r.closed != nil {
+		r.closed(err)
 	}
 }
 

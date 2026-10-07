@@ -124,6 +124,10 @@ func TestScopeComesFirst(t *testing.T) {
 	f.remember(zz, space, "Deploys go through Fly.")
 	p := f.apply(&ledger.Propose{Meta: meta(agentFor(policy.AutonomyPropose), scope, policy.ViaMCP), NewMemory: fact(space, "Use pnpm.")})
 	f.apply(&ledger.Keep{Meta: meta(person(zz), scope, policy.ViaWeb), Memory: p.Memory.Ref, ExpectedVersion: 1})
+	// A metered write, whose COMMIT goes with its one statement.
+	if _, err := f.l.CountAsk(ctx, scope, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 
 	if !netsim.Settle(db.Pool, 5*time.Second) {
 		t.Fatal("connections still checked out")
@@ -167,6 +171,15 @@ func TestPipelinedRoundTrips(t *testing.T) {
 		b.Queue(`SELECT count(*) FROM v2.receipts`).QueryRow(func(r pgx.Row) error { return r.Scan(&m) })
 		return f.l.ReadBatch(ctx, scope, b)
 	}
+	asks := 0
+	meter := func(ctx context.Context) error {
+		n, err := f.l.CountAsk(ctx, scope, time.Now())
+		if err == nil && n != asks+1 {
+			t.Errorf("CountAsk = %d, want %d: the count must be committed", n, asks+1)
+		}
+		asks = n
+		return err
+	}
 	nothing := func(ctx context.Context) error {
 		return f.l.Read(ctx, scope, func(pgx.Tx) error { return nil })
 	}
@@ -178,6 +191,7 @@ func TestPipelinedRoundTrips(t *testing.T) {
 		{"a one-statement read", read, 1, 2},
 		{"a batch read", batch, 1, 1},
 		{"a read that sends nothing", nothing, 0, 0},
+		{"a metered write, its COMMIT with its statement", meter, 1, 1},
 	} {
 		for range 2 {
 			if err := c.op(context.Background()); err != nil { // warm the statement cache

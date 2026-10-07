@@ -104,7 +104,6 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 	since := lastSeen(p)
 	var b strings.Builder
 
-	var digestForgotten map[uuid.UUID][]string
 	if query == "" {
 		refs := make([]SpaceRef, len(spaces))
 		for i, sp := range spaces {
@@ -116,7 +115,7 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 			s.logReadError(ctx, "digest", err)
 		}
 		part.out.Digest = d.Spaces
-		digestForgotten = d.Forgotten
+
 		for _, sd := range d.Spaces {
 			writeDigest(&b, sd)
 		}
@@ -150,23 +149,7 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 		}
 	}
 
-	if since != nil {
-		forgotten := digestForgotten
-		if query != "" {
-			var err error
-			forgotten, err = s.search.ForgottenSince(ctx, scope, ids(spaces), *since)
-			if err != nil {
-				part.out.Partial = true
-				s.logReadError(ctx, "forget notices", err)
-			}
-		}
-		for spaceID, refs := range forgotten {
-			sp := bySpace[spaceID]
-			msg := fmt.Sprintf("Forgotten in %s since this connection was last seen: %s. Drop anything taken from them.", sp.Hub.Name, strings.Join(refs, ", "))
-			part.out.Notices = append(part.out.Notices, handler.MCPNotice{Kind: "forgotten", Message: msg})
-			fmt.Fprintf(&b, "%s\n\n", msg)
-		}
-	}
+	// Forget notices ride on every response (notices.go), once each.
 	s.gateNews(ctx, p, scope, bySpace, query == "", &part, &b)
 	if ctx.Err() != nil {
 		part.out.Partial = true

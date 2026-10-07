@@ -124,6 +124,16 @@ func NewVectors(l *ledger.Ledger, query, document embed.Embedder, cfg VectorConf
 // Model is the index model the vectors are searched in.
 func (v *Vectors) Model() string { return v.cfg.Model }
 
+// Purge drops every cached embedding. Forget's propagation calls it: the
+// cache is keyed by a hash of the text, and a forgotten memory's words (a
+// statement the judge compared, a draft) may be among them.
+func (v *Vectors) Purge() {
+	if v == nil || v.cache == nil {
+		return
+	}
+	v.cache.purge()
+}
+
 // NearDuplicateFloor is the least similarity of a near repeat.
 func (v *Vectors) NearDuplicateFloor() float64 { return v.cfg.NearDuplicateFloor }
 
@@ -263,6 +273,13 @@ func (c *vectorCache) get(k [32]byte) ([]float32, bool) {
 		return nil, false
 	}
 	return it.vec, true
+}
+
+func (c *vectorCache) purge() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items = map[[32]byte]cached{}
+	c.order = nil
 }
 
 func (c *vectorCache) put(k [32]byte, vec []float32) {

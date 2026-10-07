@@ -108,6 +108,11 @@ var routes = []Route{
 	{"POST", "/v2/memories/{ref}:reject", "rejectMemory", (*Handler).reject},
 	{"GET", "/v2/memories/{ref}/conflict", "getConflict", (*Handler).getConflict},
 	{"POST", "/v2/memories/{ref}:resolve-conflict", "resolveConflict", (*Handler).resolveConflict},
+	{"POST", "/v2/memories/{ref}:forget", "forgetMemory", (*Handler).forgetMemory},
+	{"POST", "/v2/memories/{ref}:request-forget", "requestForget", (*Handler).requestForget},
+	{"POST", "/v2/memories/{ref}:decline-forget", "declineForget", (*Handler).declineForget},
+	{"GET", "/v2/memories/{ref}/tombstone", "getTombstone", (*Handler).getTombstone},
+	{"GET", "/v2/spaces/{space}/tombstones", "listTombstones", (*Handler).listTombstones},
 	{"POST", "/v2/receipts/{receipt}:undo", "undoReceipt", (*Handler).undoReceipt},
 	{"GET", "/v2/agents", "listAgents", (*Handler).listAgents},
 	{"GET", "/v2/spaces/{space}/agents", "listSpaceAgents", (*Handler).listSpaceAgents},
@@ -136,6 +141,8 @@ var routes = []Route{
 	{"GET", "/v2/gates/{ref}", "getGate", (*Handler).getGate},
 	{"POST", "/v2/gates/{ref}:answer", "answerGate", (*Handler).answerGate},
 	{"POST", "/v2/gates/{ref}:withdraw", "withdrawGate", (*Handler).withdrawGate},
+	{"GET", "/v2/notices", "listNotices", (*Handler).listNotices},
+	{"POST", "/v2/notices:ack", "ackNotices", (*Handler).ackNotices},
 }
 
 // Routes lists every /v2 operation this package serves, named as in

@@ -99,6 +99,10 @@ type MCPDigestSection struct {
 type MCPNotice struct {
 	Kind    string `json:"kind"`
 	Message string `json:"message"`
+	// SpaceID and Refs name what was forgotten (refs empty for a whole
+	// space).
+	SpaceID string   `json:"space_id,omitempty"`
+	Refs    []string `json:"refs,omitempty"`
 }
 
 // MCPSearchOutput is memax_search's structured result.

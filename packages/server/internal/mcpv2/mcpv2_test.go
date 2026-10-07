@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/mcpv2"
 )
 
 // The protocol eras the tests drive with the official go-sdk client.
@@ -290,16 +292,77 @@ func TestSessionScopedReadAfterWrite(t *testing.T) {
 	}
 }
 
-// Forget needs a person: the agent's request forgets nothing and says
-// where the person forgets it.
-func TestForgetNeedsAPerson(t *testing.T) {
+// memax_forget is a request: it forgets nothing, records a forget request
+// (receipted, with the agent's reason) that a person forgets or keeps on
+// the web, says where, and never asks the person in the agent, even when
+// the client can elicit.
+func TestForgetIsARequest(t *testing.T) {
 	e, f := newFixture(t, policy.AutonomyWrite)
 	m := e.keep(f.user, f.sp, "The staging database is shared", ledger.SectionConventions)
-	cs := e.connectClient(f.token, "/mcp", modern, &elicitor{answer: accept("keep", "")})
-	res := call(t, cs, "memax_forget", map[string]any{"id": m.Ref, "space_id": f.sp.id.String()})
-	mustContain(t, text(res), m.Ref+" wasn't forgotten", "Forget needs a person", "https://memax.test/"+f.sp.slug+"/memories/"+m.Ref)
+	el := &elicitor{answer: accept("keep", "")}
+	cs := e.connectClient(f.token, "/mcp", modern, el)
+	res := call(t, cs, "memax_forget", map[string]any{"id": m.Ref, "space_id": f.sp.id.String(), "reason": "it was a test value"})
+	mustContain(t, text(res), m.Ref+" wasn't forgotten yet", "waits for a person to forget it",
+		"https://memax.test/"+f.sp.slug+"/memories/"+m.Ref, "can't be undone")
+	if len(el.asked) != 0 {
+		t.Errorf("asked in the agent: %+v", el.asked)
+	}
 	if lc, _, _ := e.memory(f.sp, m.Ref); lc != "kept" {
 		t.Errorf("lifecycle = %s after an agent's forget", lc)
+	}
+	rc := e.receipts(f.sp, m.Ref)
+	if last := rc[len(rc)-1]; last.Action != "forget_requested" || last.ActorKind != "agent" || last.Agent != "claude-code" {
+		t.Errorf("receipts = %+v", rc)
+	}
+	if n := e.count(`SELECT count(*) FROM v2.forget_requests WHERE memory_id = $1 AND status = 'waiting'`, m.ID); n != 1 {
+		t.Errorf("%d waiting requests", n)
+	}
+	// Asking again is the same request.
+	call(t, cs, "memax_forget", map[string]any{"id": m.Ref, "space_id": f.sp.id.String(), "reason": "it was a test value"})
+	if n := e.count(`SELECT count(*) FROM v2.forget_requests WHERE memory_id = $1`, m.ID); n != 1 {
+		t.Errorf("%d requests after asking twice", n)
+	}
+}
+
+// Once a person forgets a memory the agent read, the agent's next
+// response, whatever the tool, tells it once: in the text, in
+// _meta["app.memax/notices"], and in recall's notices.
+func TestForgetNoticeRidesOnTheNextResponse(t *testing.T) {
+	e, f := newFixture(t, policy.AutonomyPropose)
+	m := e.keep(f.user, f.sp, "The staging database is memax-staging-2", ledger.SectionConventions)
+	other := e.keep(f.user, f.sp, "Use pnpm workspaces only", ledger.SectionConventions)
+	cs := e.connectClient(f.token, "/mcp", modern, nil)
+	if res := call(t, cs, "memax_get", map[string]any{"id": m.Ref, "space_id": f.sp.id.String()}); res.IsError {
+		t.Fatalf("get: %s", text(res))
+	}
+	e.recorder.Close() // flush the read
+	ctx := context.Background()
+	scope, err := e.ledger.UserScope(ctx, f.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.ledger.Apply(ctx, &ledger.Forget{
+		Meta:   ledger.Meta{Actor: ledger.Actor{Kind: policy.ActorPerson, ID: f.user}, Scope: scope.Narrow(f.sp.id), Via: policy.ViaWeb, IdempotencyKey: uuid.NewString()},
+		Memory: m.Ref, ExpectedVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res := call(t, cs, "memax_get", map[string]any{"id": other.Ref, "space_id": f.sp.id.String()})
+	mustContain(t, text(res), "Forgotten in memax-v2: "+m.Ref, "Drop anything you took from it")
+	notices, ok := res.Meta[mcpv2.MetaNotices].([]any)
+	if !ok || len(notices) != 1 {
+		t.Fatalf("_meta notices = %#v", res.Meta[mcpv2.MetaNotices])
+	}
+	if n, _ := notices[0].(map[string]any); n["kind"] != "forgotten" || fmt.Sprint(n["refs"]) != "["+m.Ref+"]" {
+		t.Errorf("notice = %#v", notices[0])
+	}
+	// Told once.
+	again := call(t, cs, "memax_recall", map[string]any{"query": "pnpm"})
+	if strings.Contains(text(again), "Forgotten in") || again.Meta[mcpv2.MetaNotices] != nil {
+		t.Errorf("told twice: %s", text(again))
+	}
+	if n := e.count(`SELECT count(*) FROM v2.agent_notices WHERE delivered_at IS NOT NULL AND delivered_via = 'memax_get'`); n != 1 {
+		t.Errorf("%d notices marked delivered by memax_get", n)
 	}
 }
 

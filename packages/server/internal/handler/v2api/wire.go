@@ -53,6 +53,8 @@ type memoryDetail struct {
 	Versions []ledger.MemoryVersion `json:"versions"`
 	Receipts receiptPage            `json:"receipts"`
 	Reads    *ledger.MemoryReads    `json:"reads,omitempty"`
+	// ForgetRequests wait for a person to forget it, or keep it.
+	ForgetRequests []ledger.ForgetRequest `json:"forget_requests,omitempty"`
 }
 
 // commandResult is ledger.Result without Replayed: a replay returns the

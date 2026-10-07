@@ -34,6 +34,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/dreams"
 	"github.com/MemaxLabs/memax/packages/server/internal/email"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
+	"github.com/MemaxLabs/memax/packages/server/internal/forget"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/categorize"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/embed"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/extract"
@@ -268,9 +269,14 @@ func New(ctx context.Context) (*App, error) {
 	// (JUDGE_VECTOR_FLOOR, 0.65).
 	judgeCfg := judge.ConfigFromEnv(os.LookupEnv)
 	var judgeOpts []judge.Option
+	// Forget's cache purge (plan 25 §5.13): the worker drops its own
+	// in-memory copies and signals every API process over Redis.
+	forgetBus := forget.NewBusFromEnv(slog.Default())
+	app.addCleanup(func(context.Context) error { return forgetBus.Close() })
 	if vectors := v2recall.NewVectors(v2Ledger, indexEmbedder, indexEmbedder,
 		v2recall.VectorConfig{Model: embedCfg.IndexModel}); vectors != nil {
 		judgeOpts = append(judgeOpts, judge.WithVectors(vectors))
+		forgetBus.Local.Register(func(uuid.UUID) { vectors.Purge() })
 	}
 	v2Judge := judge.New(v2Ledger, judge.NewAnthropicModel(llm, judgeCfg.ZeroDataRetention), judgeCfg, judgeOpts...)
 	logEnabled("V2 judge (model stage)", v2Judge.Stage1())
@@ -280,6 +286,16 @@ func New(ctx context.Context) (*App, error) {
 			"strong", judgeCfg.Strong.Model, "zdr", judgeCfg.ZeroDataRetention, "conditions", judgeCfg.Conditions)
 	}
 	judge.AddWorkers(workers, v2Judge)
+
+	// V2 Forget propagation (plan 25 §5.13, rule 7): forget_propagate, queued
+	// in every Forget's transaction, recompiles the targets that held the
+	// memory, re-renders the stored artifacts without it, purges the caches
+	// and copies the forget ledger to object storage, within the minute.
+	var forgetCompiler forget.Compiler
+	if compileSvc != nil {
+		forgetCompiler = compileSvc
+	}
+	forget.AddWorkers(workers, forget.New(v2Ledger, forgetCompiler, forgetBus, slog.Default()))
 
 	// V2 reads (plan 25 §5.3): the API records them; the worker keeps the
 	// monthly partitions ahead, prunes past retention and reports the north
@@ -2043,6 +2059,8 @@ func workerRiverConfig(workers *river.Workers, periodicJobs []*river.PeriodicJob
 			ledger.QueueIndex: {MaxWorkers: v2index.MaxWorkers},
 			// The receipt sealer: short, database-bound jobs, one per space.
 			ledger.QueueSeal: {MaxWorkers: sealer.MaxWorkers},
+			// Forget propagation: a minute's SLO, so its own slots.
+			ledger.QueueForget: {MaxWorkers: forget.MaxWorkers},
 		},
 		Workers: workers,
 		// Global worker middleware: every job's Work() runs inside a

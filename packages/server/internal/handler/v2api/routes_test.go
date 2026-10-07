@@ -102,6 +102,14 @@ var sampleRequests = map[string]struct {
 	"getGate":         {path: "/v2/gates/G-0012?space=memax-v2"},
 	"answerGate":      {path: "/v2/gates/G-0012:answer?space=memax-v2", body: `{"option":1}`, header: map[string]string{"If-Match": `"1"`}},
 	"withdrawGate":    {path: "/v2/gates/" + sampleID + ":withdraw"},
+
+	"forgetMemory":   {path: "/v2/memories/M-0001:forget?space=memax-v2", body: `{"note":"personal","carries":["M-0002"]}`, header: map[string]string{"If-Match": `"1"`}},
+	"requestForget":  {path: "/v2/memories/M-0001:request-forget?space=memax-v2", body: `{"reason":"a test value"}`},
+	"declineForget":  {path: "/v2/memories/" + sampleID + ":decline-forget"},
+	"getTombstone":   {path: "/v2/memories/M-0001/tombstone?space=memax-v2"},
+	"listTombstones": {path: "/v2/spaces/memax-v2/tombstones?limit=5"},
+	"listNotices":    {path: "/v2/notices"},
+	"ackNotices":     {path: "/v2/notices:ack", body: `{"ids":["` + sampleID + `"]}`},
 }
 
 const sampleID = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
@@ -154,7 +162,7 @@ func TestRoutingErrorsUseTheEnvelope(t *testing.T) {
 		{"DELETE", "/v2/spaces", 405, "method_not_allowed", "GET"},
 		{"PUT", "/v2/spaces/x/memories", 405, "method_not_allowed", "GET, POST"},
 		{"POST", "/v2/memories/M-0001", 405, "method_not_allowed", "GET"},
-		{"POST", "/v2/memories/M-0001:forget", 404, "not_found", ""},
+		{"POST", "/v2/memories/M-0001:bury", 404, "not_found", ""},
 	}
 	for _, c := range cases {
 		rec := httptest.NewRecorder()

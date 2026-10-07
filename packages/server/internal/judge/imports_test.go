@@ -120,9 +120,10 @@ func TestImportCheckIsCarefulAndDegrades(t *testing.T) {
 	sp := f.space(zz, "memax-v2")
 	lines := [][2]string{{"CLAUDE.md:12", "Run tests with `pnpm test`."}, {"AGENTS.md:8", "Run `npm run test` before committing."}}
 
-	// Below the bar: nothing is flagged.
+	// Below the bar: nothing is flagged. 0.7 clears the judge's Contradicts
+	// threshold but not the import check's own bar.
 	res, _ := f.importFiles(zz, sp, lines...)
-	low := withModel(f, &fakeModel{answer: conflictOracle("Test command", 0.5, "pnpm test", "npm run test")},
+	low := withModel(f, &fakeModel{answer: conflictOracle("Test command", 0.7, "pnpm test", "npm run test")},
 		judge.Config{Primary: judge.Tier{Model: "primary"}})
 	run, err := low.CheckImport(f.ctx, ledger.JudgeImportArgs{ImportID: res.Import.ID, SpaceID: sp})
 	if err != nil || run.State != ledger.CheckChecked || run.Conflicts != 0 {

@@ -32,8 +32,18 @@ import (
 // Like stage 1, it runs only with a model; without one the check records
 // no_model, and the proposals are reviewed as usual. A model failure
 // records failed and flags nothing (Dream still catches what it missed).
-// Its bar is the judge's `contradicts` threshold: a false conflict costs a
-// person's attention.
+// Its bar is its own, ImportConflictBar: a false conflict costs a person's
+// attention.
+
+// ImportConflictBar is the confidence a group of disagreeing statements
+// needs. It is not the judge's Contradicts threshold (0.6 since the live
+// eval of Oct 6, 2026): that bar was calibrated on pairs against decisions
+// in force, each verdict confirmed by the strong tier, and the import check
+// is one call on the primary (or fallback) tier among statements nobody has
+// settled, with no eval set of its own yet. Until it has one, it keeps the
+// judge's first, higher bar rather than follow a calibration of another
+// task.
+const ImportConflictBar = 0.8
 
 // ImportBatch is how many proposals one call compares; an import with more
 // is checked in batches of related statements, by section.
@@ -147,7 +157,7 @@ func (j *Judge) askImport(ctx context.Context, batch []ledger.ImportCandidate) (
 			text, err := j.callImport(ctx, Call{Tier: t, System: importSystem, Prompt: prompt, Schema: importSchemaRaw})
 			if err == nil {
 				var groups []ledger.ImportConflictInput
-				if groups, err = parseImport(text, batch, j.cfg.Thresholds.Contradicts); err == nil {
+				if groups, err = parseImport(text, batch, ImportConflictBar); err == nil {
 					return groups, t, calls, nil
 				}
 			}

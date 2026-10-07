@@ -24,7 +24,7 @@ export function hookCommand(action: string, agent: string): void {
 
   console.log(
     chalk.yellow(
-      "  Note: `memax hook` is deprecated. Use `memax setup --hooks` instead.\n",
+      "  Note: `memax hook install|uninstall` is deprecated. Use `memax connect claude-code`, which installs the session-start hook.\n",
     ),
   );
 
@@ -45,11 +45,39 @@ export function hookCommand(action: string, agent: string): void {
 
 export function registerHookCommand(program: Command): void {
   program
-    .command("hook <action> <agent>")
+    .command("hook <action> [agent]")
     .description(
-      "Manage agent hooks (deprecated — use `memax setup --hooks` instead)",
+      "Agent hooks: `session-start` prints what changed since the agent's last session here (agents run it at session start; memax connect installs it). `install|uninstall <agent>` are deprecated",
     )
-    .action(hookCommand);
+    .option(
+      "--agent <id>",
+      "With session-start: claude-code, codex, gemini, cursor or copilot",
+    )
+    .option("--debug", "With session-start: say why it printed nothing")
+    .allowUnknownOption()
+    .action(
+      async (
+        action: string,
+        agent: string | undefined,
+        opts: { agent?: string; debug?: boolean },
+      ) => {
+        // `memax hook session-start|flush` normally never gets here: bin.ts
+        // runs them without loading the CLI (hook-main.ts).
+        if (action === "session-start" || action === "flush") {
+          const { runHook } = await import("../hook-main.js");
+          const argv = [
+            ...(opts.agent ? ["--agent", opts.agent] : []),
+            ...(opts.debug ? ["--debug"] : []),
+          ];
+          process.exit(await runHook(action, argv));
+        }
+        if (!agent) {
+          console.error(chalk.red(`Usage: memax hook ${action} <agent>`));
+          process.exit(1);
+        }
+        hookCommand(action, agent);
+      },
+    );
 }
 
 function installHook(agent: Agent): void {

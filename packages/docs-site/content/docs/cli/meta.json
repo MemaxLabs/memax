@@ -4,6 +4,7 @@
     "index",
     "init",
     "connect",
+    "switch",
     "status",
     "compile",
     "link",

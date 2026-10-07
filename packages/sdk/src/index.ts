@@ -53,6 +53,7 @@ export {
   V2TargetsResource,
   V2GatesResource,
   V2NoticesResource,
+  V2SessionsResource,
   V2DreamResource,
   undoableAction,
   refusalOf,
@@ -116,6 +117,7 @@ export type {
   GateCommandOptions as V2GateCommandOptions,
   AskOptions as V2AskOptions,
   SpaceExport as V2SpaceExport,
+  SessionCommandOptions as V2SessionCommandOptions,
 } from "./v2/resources.js";
 export type {
   // Config

@@ -50,31 +50,27 @@
 // A leaked WEB_SURFACE_SECRET. Whoever holds it can sign; they still need
 // a "web" session token for the user. Rotate the secret on both sides.
 //
-// Residual risks, which this mechanism does not address:
+// The web session itself lives only in the proxy (a backend-for-frontend,
+// packages/web/src/lib/bff): HttpOnly, Secure, SameSite=Strict __Host-
+// cookies that only the web app's server reads, so page script never sees
+// a token and XSS can't take one away (it can still act through the proxy
+// while the page is open). The API side of this package doesn't change:
+// the proxy keeps signing, and fact 1 keeps the CLI out.
 //
-//   - Browser XSS on memax.app. Script in the page can call the proxy as
-//     the person, and today it can also read the session tokens, which
-//     the web app keeps in localStorage, and replay them through the proxy
-//     from anywhere for their lifetime (refresh tokens: 30 days).
-//   - A local agent reading the browser's storage on disk. localStorage
-//     is a plaintext LevelDB under the browser profile, so an agent with
-//     the person's shell can lift a "web" token and send it through the
-//     proxy.
+// Residual risks, which this mechanism does not address
+// (THREAT_MODEL.md has all of them):
+//
+//   - A local agent with OS-level access reading the browser's cookie
+//     store. Browsers encrypt it at rest, but an agent running as the
+//     person can usually decrypt it, and a non-browser client can send
+//     the cookies to the proxy with a matching Origin.
 //   - An agent driving the person's real browser (computer use, a browser
 //     automation server attached to their profile) is indistinguishable
 //     from the person. Only a user-verification step (a passkey with UV)
-//     at Keep time would tell them apart.
+//     at Keep time would tell them apart; that is the next step.
 //   - Someone who can sign in as the person (their GitHub account, their
-//     inbox for the email code) gets a web session of their own.
-//
-// The recommended follow-up is a backend-for-frontend: keep the web
-// session in an httpOnly, Secure, SameSite cookie that only the proxy
-// reads, and have the proxy attach the bearer token itself. Page script
-// then never sees a token, which removes token theft by XSS (script can
-// still act through the proxy while the page is open), and browsers store
-// cookies encrypted at rest, unlike localStorage, which raises the bar
-// for a local agent. The API side of this package doesn't change: the
-// proxy keeps signing, and fact 1 keeps the CLI out.
+//     inbox for the email code) gets a web session of their own, which
+//     the person sees in their sessions list.
 //
 // # Configuration
 //
@@ -94,6 +90,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -355,4 +352,77 @@ func (c *nonceCache) add(nonce string, now time.Time) bool {
 	}
 	c.seen[nonce] = now.Add(c.ttl)
 	return true
+}
+
+// # Where the person's browser is
+//
+// The web app's server (its BFF: /api/auth/* and /api/proxy) is what
+// calls the API, so the API sees the web deployment's address and user
+// agent, not the person's. When the BFF signs a session in or refreshes
+// it, it says where the browser is, signed with the same secret, so the
+// sessions list shows the person's own address, city and browser:
+//
+//	X-Memax-Client-IP          the browser's address, as the edge saw it
+//	X-Memax-Client-City        its city, percent-encoded UTF-8 (may be empty)
+//	X-Memax-Client-User-Agent  the browser's User-Agent
+//	X-Memax-Client-Timestamp   unix seconds
+//	X-Memax-Client-Signature   "v1=" + base64url HMAC-SHA256 over
+//	                           "memax-web-client/v1", the timestamp, the
+//	                           address, the city (as sent) and the user
+//	                           agent, one per line
+//
+// Unsigned, wrong or stale (MaxSkew), these headers are ignored and the
+// API records what it sees itself. They are informational: they never
+// decide what a request may do.
+const (
+	HeaderClientIP        = "X-Memax-Client-IP"
+	HeaderClientCity      = "X-Memax-Client-City"
+	HeaderClientUserAgent = "X-Memax-Client-User-Agent"
+	HeaderClientTimestamp = "X-Memax-Client-Timestamp"
+	HeaderClientSignature = "X-Memax-Client-Signature"
+)
+
+// ClientInfo is where the person's browser is, as the web app saw it.
+type ClientInfo struct {
+	IP        string
+	City      string
+	UserAgent string
+}
+
+// SignClientInfo is the X-Memax-Client-Signature value at timestamp ts;
+// cityHeader is the city as sent (percent-encoded).
+func SignClientInfo(secret []byte, ts int64, ip, cityHeader, userAgent string) string {
+	mac := hmac.New(sha256.New, secret)
+	canonical := strings.Join([]string{"memax-web-client/" + version, strconv.FormatInt(ts, 10), ip, cityHeader, userAgent}, "\n")
+	mac.Write([]byte(canonical))
+	return version + "=" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// ClientInfo returns where the browser behind a request from the web app's
+// server is, when the request carries those headers signed and fresh.
+func (v *Verifier) ClientInfo(r *http.Request) (ClientInfo, bool) {
+	if v == nil {
+		return ClientInfo{}, false
+	}
+	h := r.Header
+	sig, ts := h.Get(HeaderClientSignature), h.Get(HeaderClientTimestamp)
+	if sig == "" || ts == "" {
+		return ClientInfo{}, false
+	}
+	t, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return ClientInfo{}, false
+	}
+	if d := v.now().Sub(time.Unix(t, 0)); d > MaxSkew || d < -MaxSkew {
+		return ClientInfo{}, false
+	}
+	ip, cityHeader, ua := h.Get(HeaderClientIP), h.Get(HeaderClientCity), h.Get(HeaderClientUserAgent)
+	if !hmac.Equal([]byte(sig), []byte(SignClientInfo(v.key, t, ip, cityHeader, ua))) {
+		return ClientInfo{}, false
+	}
+	city, err := url.PathUnescape(cityHeader)
+	if err != nil {
+		city = ""
+	}
+	return ClientInfo{IP: ip, City: city, UserAgent: ua}, true
 }

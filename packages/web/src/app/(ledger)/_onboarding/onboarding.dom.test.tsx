@@ -41,7 +41,7 @@ const h = vi.hoisted(() => ({
   user: null as { id: string; name: string; email: string } | null,
   login: vi.fn(),
   completeLogin: vi.fn(async () => true),
-  token: null as string | null,
+  session: null as { surface: string | null; impersonating: boolean } | null,
   publicClient: {} as Record<string, unknown>,
   client: {} as Record<string, unknown>,
 }));
@@ -61,8 +61,8 @@ vi.mock("@/lib/auth", () => ({
     loading: false,
     login: h.login,
     completeLogin: h.completeLogin,
+    session: h.session,
   }),
-  getAccessToken: () => h.token,
 }));
 vi.mock("@/lib/memax-client", () => ({
   getMemaxClient: () => h.client,
@@ -83,7 +83,7 @@ beforeEach(() => {
   h.user = null;
   h.login = vi.fn();
   h.completeLogin = vi.fn(async () => true);
-  h.token = null;
+  h.session = null;
 });
 
 afterEach(() => {
@@ -245,7 +245,7 @@ describe("the sign-in callback", () => {
     const fetchMock = vi.fn(
       async () =>
         new Response(
-          JSON.stringify({ data: { access_token: "a", refresh_token: "r" } }),
+          JSON.stringify({ data: { signed_in: true, surface: "web" } }),
         ),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -258,7 +258,9 @@ describe("the sign-in callback", () => {
       "/api/auth/exchange",
       expect.objectContaining({ method: "POST" }),
     );
-    expect(h.completeLogin).toHaveBeenCalledWith("a", "r");
+    // The tokens stay with the web app's server; the page only loads the
+    // session it now has.
+    expect(h.completeLogin).toHaveBeenCalledWith();
   });
 
   it("says when it didn't finish, and starts over", async () => {
@@ -348,9 +350,9 @@ describe("CliAuth", () => {
   });
 
   it("sends a session the web app wasn't issued to sign in again first", async () => {
-    // A CLI login used in the browser: its token says surface cli.
-    const payload = btoa(JSON.stringify({ sub: "u", surface: "cli" }));
-    h.token = `x.${payload}.y`;
+    // A CLI login used in the browser: the web app's server reports its
+    // token's surface, cli.
+    h.session = { surface: "cli", impersonating: false };
     const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
     h.source = { ...demo, kind: "sdk" } as LedgerDataSource;
     at("/device", "code=WQRT-4821");

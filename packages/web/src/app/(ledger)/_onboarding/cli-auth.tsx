@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Field, Terminal, type TerminalLine } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
-import { getAccessToken, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import {
   DeviceCommandError,
   normalizeUserCode,
@@ -139,7 +139,7 @@ function Confirm({
   const source = useSource();
   const queryClient = useQueryClient();
   const viewer = useViewer();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const keys = useRef(new IntentKeys());
   const confirmKey = useKeycap("setup.next");
   const [failure, setFailure] = useState<DeviceCommandError | null>(null);
@@ -155,7 +155,7 @@ function Confirm({
   });
   // Only a session the web app was issued can sign a device in (the API
   // decides; this says so before the person tries).
-  const web = source.kind === "demo" ? true : webSessionOf(getAccessToken());
+  const web = source.kind === "demo" ? true : webSessionOf(session);
   const decide = useMutation({
     mutationFn: async (to: "approve" | "deny") => {
       const intent = `${to}:${code}`;

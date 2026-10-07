@@ -293,6 +293,34 @@ describe("/api/proxy reads the session from its cookies", () => {
     );
   });
 
+  it("forwards a PUT with its body, and refuses one another site starts", async () => {
+    const { PUT } = await loadRoute(VECTOR.secret);
+    const api = mockApi();
+    const path = ["v1", "admin", "users", VECTOR.user, "v2-ui"];
+    const put = (site: string) =>
+      PUT(
+        new Request(`https://memax.app/api/proxy/${path.join("/")}`, {
+          method: "PUT",
+          headers: {
+            cookie: cookies({ access: webToken }),
+            "sec-fetch-site": site,
+            "content-type": "application/json",
+          },
+          body: '{"setting":"on"}',
+        }),
+        params(path),
+      );
+    expect((await put("same-origin")).status).toBe(200);
+    expect(api.calls).toHaveLength(1);
+    expect(api.calls[0]!.init.method).toBe("PUT");
+    expect(api.calls[0]!.init.body).toBe('{"setting":"on"}');
+    expect(api.calls[0]!.init.headers.get("authorization")).toBe(
+      `Bearer ${webToken}`,
+    );
+    expect((await put("cross-site")).status).toBe(403);
+    expect(api.calls).toHaveLength(1);
+  });
+
   it("passes a passkey's answer to the re-check through, and still signs the request", async () => {
     const { POST } = await loadRoute(VECTOR.secret);
     const api = mockApi();

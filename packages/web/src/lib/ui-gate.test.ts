@@ -240,6 +240,15 @@ describe("decideUiGate", () => {
       search: "?next=%2Fsettings%2Fplan",
       recheck: true,
     });
+    // A client navigation's router query isn't the page's.
+    expect(
+      decideUiGate({
+        pathname: "/memax-v2/search",
+        search: "?q=river&_rsc=1x2y",
+        uiCookie: undefined,
+        hasSession: true,
+      }),
+    ).toMatchObject({ search: "?next=%2Fmemax-v2%2Fsearch%3Fq%3Driver" });
     // Re-checked a moment ago, and still no hint: the person doesn't see
     // V2 (or the hint can't be set), so V1's home, never a loop.
     expect(

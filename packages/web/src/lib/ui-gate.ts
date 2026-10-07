@@ -26,10 +26,6 @@
  * request.
  */
 
-import type { WebUi } from "memax-sdk";
-
-export type { WebUi };
-
 export const UI_COOKIE = "memax_ui";
 export const UI_COOKIE_V2 = "v2";
 
@@ -312,7 +308,14 @@ export function decideUiGate({
   // fixtures, which aren't anyone's page.
   const dev = pathname.split("/").filter(Boolean)[0] === "dev";
   if (hasSession && !rechecked && !dev) {
-    const next = new URLSearchParams({ next: `${pathname}${search}` });
+    // The page's own query goes along; the router's (_rsc, on a client
+    // navigation's fetch) doesn't.
+    const query = new URLSearchParams(search);
+    query.delete("_rsc");
+    const own = query.toString();
+    const next = new URLSearchParams({
+      next: `${pathname}${own ? `?${own}` : ""}`,
+    });
     return {
       action: "redirect",
       pathname: "/signin",

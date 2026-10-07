@@ -297,6 +297,16 @@ export async function PATCH(
   return proxy(req, path);
 }
 
+// The admin client's PUTs (a person's V2 UI flag, limit overrides, email
+// templates and brand) go through here like every other command.
+export async function PUT(
+  req: Request,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  const { path } = await context.params;
+  return proxy(req, path);
+}
+
 export async function DELETE(
   req: Request,
   context: { params: Promise<{ path: string[] }> },

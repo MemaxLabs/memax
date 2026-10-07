@@ -296,6 +296,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setUser(data);
         setSession({ surface: null, impersonating: false });
+        setUi(null);
         import("@/lib/posthog")
           .then(({ identifyUser }) => {
             identifyUser(data.id, { name: data.name, email: data.email });

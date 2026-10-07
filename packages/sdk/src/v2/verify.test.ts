@@ -235,6 +235,43 @@ describe("the receipt chain, format 1", () => {
     expect(report.receipts).toBe(4);
   });
 
+  it("allows every redaction once the whole space was forgotten", async () => {
+    const redacted = receipts();
+    redacted[2] = { ...redacted[2], reason: null, reason_salt: null };
+    const forgotSpace: ChainReceipt = {
+      ...redacted[0],
+      id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a84",
+      seq: 4,
+      object_kind: "space",
+      object_id: space,
+      object_ref: "space",
+      action: "forgot",
+      actor_kind: "person",
+      actor_id: person,
+      agent: null,
+      via: "web",
+      session_ref: null,
+      source: null,
+      stream_id: space,
+      stream_version: 1,
+    };
+    const report = await verifyReceiptChain({
+      spaceId: space,
+      receipts: [...redacted, forgotSpace],
+      checkpoints: [checkpoint],
+      keys,
+    });
+    expect(report.problems).toEqual([]);
+    // Another space's forget doesn't count.
+    const elsewhere = await verifyReceiptChain({
+      spaceId: space,
+      receipts: [...redacted, { ...forgotSpace, object_id: tenant }],
+      checkpoints: [checkpoint],
+      keys,
+    });
+    expect(elsewhere.problems.map((p) => p.kind)).toEqual(["redaction"]);
+  });
+
   it("rejects a forged checkpoint or an unknown key", async () => {
     const forged = { ...checkpoint, merkle_root: "00".repeat(32) };
     let report = await verifyReceiptChain({

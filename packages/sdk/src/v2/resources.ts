@@ -168,8 +168,57 @@ function asList<T>(v: T | T[] | undefined): T[] | undefined {
   return Array.isArray(v) ? v : [v];
 }
 
+/** An export of a space, as {@link V2SpacesResource.export} downloads it. */
+export interface SpaceExport {
+  /** The zip archive (memax.export.v1): one folder, named by the space's slug. */
+  bytes: Uint8Array;
+  /** The download's name: `memax-<slug>-<yyyy-mm-dd>.zip`. */
+  filename: string;
+  /** The export's own `exported` receipt. */
+  receipt: string;
+  /** A retry with the same idempotency key: nothing new was written. */
+  replayed: boolean;
+}
+
 export class V2SpacesResource {
-  constructor(private readonly req: RequestFn) {}
+  constructor(
+    private readonly req: RequestFn,
+    private readonly open?: OpenFn,
+  ) {}
+
+  /**
+   * Export the space's whole record as a zip archive (memax.export.v1):
+   * every memory as Markdown with frontmatter, tombstones without words,
+   * the Brief's versions, gates, targets, agents, read counts, every
+   * receipt in chain order and the signed checkpoints, with a manifest of
+   * every file's SHA-256. Check it with {@link verifyExport}. Any person
+   * who may read the space exports it; agents and API keys get a
+   * MemaxError `refused` (policy `export_by_person`). Each export is one
+   * `exported` receipt; a retry with the same idempotency key writes none.
+   * Rate-limited per person (`rate_limited`, with `retryAfter`).
+   */
+  async export(space: string, opts: CommandOptions): Promise<SpaceExport> {
+    if (!this.open) {
+      throw new MemaxError(
+        "This client can't download an export.",
+        "invalid_request",
+        0,
+      );
+    }
+    const res = await this.open("POST", `/v2/spaces/${seg(space)}:export`, {
+      extraHeaders: { ...commandHeaders(opts), Accept: "application/zip" },
+      signal: opts.signal,
+    });
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const disposition = res.headers.get("Content-Disposition") ?? "";
+    const named = /filename="([^"]+)"/.exec(disposition)?.[1];
+    return {
+      bytes,
+      filename: named ?? `memax-${space}.zip`,
+      receipt: res.headers.get("X-Memax-Export-Receipt") ?? "",
+      replayed: res.headers.get("Idempotent-Replayed") === "true",
+    };
+  }
 
   /** The spaces you belong to, with your role in each. */
   async list(opts?: { signal?: AbortSignal }): Promise<SpaceList> {
@@ -1072,7 +1121,7 @@ export class V2Resource {
   private readonly openStream?: OpenFn;
 
   constructor(req: RequestFn, open?: OpenFn) {
-    this.spaces = new V2SpacesResource(req);
+    this.spaces = new V2SpacesResource(req, open);
     this.memories = new V2MemoriesResource(req);
     this.review = new V2ReviewResource(req);
     this.receipts = new V2ReceiptsResource(req);

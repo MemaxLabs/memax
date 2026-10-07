@@ -155,8 +155,20 @@ export function processorRows(
   const p = copy.processors;
   return processors.map((proc) => {
     const name = named(NAMES.processors, proc.name);
-    const gets = proc.uses.map((u) => {
-      const use = p.uses[u.use];
+    // Uses that send to the same model on the same hosts read as one line.
+    const groups: { uses: string[]; u: ProcessorView["uses"][number] }[] = [];
+    for (const u of proc.uses) {
+      const same = groups.find(
+        (g) =>
+          g.u.model === u.model &&
+          g.u.minPrecision === u.minPrecision &&
+          g.u.hosts.join() === u.hosts.join(),
+      );
+      if (same) same.uses.push(p.uses[u.use]);
+      else groups.push({ uses: [p.uses[u.use]], u });
+    }
+    const gets = groups.map(({ uses, u }) => {
+      const use = joinList(uses, locale);
       if (!u.model) return use;
       const parts = [
         interpolate(p.model, {

@@ -107,9 +107,17 @@ describe("Settings › Security in words", () => {
       "Voyage AI",
       "Resend",
     ]);
-    expect(rows[0]!.gets[0]).toBe(
-      "The judge's first pass: DeepSeek V4.1 Flash, on Together AI, Baseten, CoreWeave and DeepInfra, fp8 or better",
-    );
+    // Uses on the same model and hosts read as one line.
+    expect(rows[0]!.gets).toEqual([
+      "The judge's first pass, Ask's answers and Dream: DeepSeek V4.1 Flash, on Together AI, Baseten, CoreWeave and DeepInfra, fp8 or better",
+      "The judge's fallback and Dream's fallback: Claude Haiku 4.5, on Amazon Bedrock and Google Vertex AI, fp8 or better",
+      "The judge's check on decisions in force and Dream's check on decisions in force: Claude Sonnet 5.5, on Google Vertex AI, fp8 or better",
+    ]);
+    expect(rows[1]!.gets).toEqual([
+      "Embeddings of what you keep and propose: voyage-4",
+      "Embeddings of searches: voyage-4-lite",
+      "Reranking search results: rerank-3-lite",
+    ]);
     expect(rows[0]!.keeps).toBe(
       "Nothing. Every call goes to zero-retention endpoints only.",
     );
@@ -120,7 +128,7 @@ describe("Settings › Security in words", () => {
     expect(rows[2]!.gets).toEqual(["The morning email, to you"]);
     const zh = processorRows(sec("zh"), DEMO_SECURITY.processors, "zh");
     expect(zh[0]!.gets[0]).toBe(
-      "核对的第一轮：DeepSeek V4.1 Flash，运行在 Together AI、Baseten、CoreWeave和 DeepInfra，fp8 或更高精度",
+      "核对的第一轮、提问的回答和 Dream：DeepSeek V4.1 Flash，运行在 Together AI、Baseten、CoreWeave和 DeepInfra，fp8 或更高精度",
     );
     // Once the opt-out is confirmed, the server says zero.
     const confirmed = processorRows(

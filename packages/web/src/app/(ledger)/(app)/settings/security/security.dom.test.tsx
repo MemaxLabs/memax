@@ -138,7 +138,7 @@ describe("Settings › Security", () => {
     });
     expect(
       within(openrouter).getByText(
-        "Confirming the judge on decisions in force: Claude Sonnet 5.5, on Google Vertex AI, fp8 or better",
+        "The judge's check on decisions in force and Dream's check on decisions in force: Claude Sonnet 5.5, on Google Vertex AI, fp8 or better",
       ),
     ).toBeTruthy();
     expect(

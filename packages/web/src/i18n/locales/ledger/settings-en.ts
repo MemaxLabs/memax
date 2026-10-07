@@ -162,11 +162,11 @@ export const ledgerSettingsEn = {
       uses: {
         judge: "The judge's first pass",
         judge_fallback: "The judge's fallback",
-        judge_strong: "Confirming the judge on decisions in force",
+        judge_strong: "The judge's check on decisions in force",
         ask: "Ask's answers",
         dream: "Dream",
         dream_fallback: "Dream's fallback",
-        dream_strong: "Confirming Dream on decisions in force",
+        dream_strong: "Dream's check on decisions in force",
         embeddings: "Embeddings of what you keep and propose",
         queries: "Embeddings of searches",
         rerank: "Reranking search results",

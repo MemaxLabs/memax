@@ -76,6 +76,8 @@ test("pages have their landmarks and every control a name", async ({
     "/memax-v2/memories",
     "/memax-web/agents",
     "/settings/account",
+    "/settings/notifications",
+    "/settings/security",
   ]) {
     await page.goto(path);
     await expect(page.getByRole("main")).toHaveCount(1);

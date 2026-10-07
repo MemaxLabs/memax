@@ -155,11 +155,11 @@ export const ledgerSettingsZh: Translations["ledger"]["settings"] = {
       uses: {
         judge: "核对的第一轮",
         judge_fallback: "核对的备用模型",
-        judge_strong: "对生效中的决策复核",
+        judge_strong: "核对里对生效中决策的复核",
         ask: "提问的回答",
         dream: "Dream",
         dream_fallback: "Dream 的备用模型",
-        dream_strong: "对生效中的决策复核 Dream",
+        dream_strong: "Dream 里对生效中决策的复核",
         embeddings: "你保留和提议的内容的向量",
         queries: "搜索的向量",
         rerank: "搜索结果重排",

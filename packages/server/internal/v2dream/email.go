@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	texttemplate "text/template"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -36,6 +37,8 @@ type MailerConfig struct {
 	// unsubscribe).
 	AppURL, APIURL string
 	Log            *slog.Logger
+	// Now is the clock quiet hours are read against (tests); time.Now when nil.
+	Now func() time.Time
 }
 
 // Mailer sends editions' morning emails.
@@ -64,48 +67,62 @@ func NewMailer(l *ledger.Ledger, s email.Sender, cfg MailerConfig) *Mailer {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
 	return &Mailer{ledger: l, sender: s, cfg: cfg}
 }
 
-// Send sends an edition's email to every recipient who hasn't had it.
-func (m *Mailer) Send(ctx context.Context, spaceID, editionID uuid.UUID) error {
+// Send sends an edition's email to every recipient who hasn't had it and
+// isn't in their quiet hours (notification settings, in their time zone).
+// wait, when positive, is how long until the first of those quiet hours
+// ends: send again then (the job snoozes), and they get it.
+func (m *Mailer) Send(ctx context.Context, spaceID, editionID uuid.UUID) (wait time.Duration, err error) {
 	sp, recipients, err := m.ledger.DreamRecipients(ctx, spaceID, editionID)
 	if err != nil {
-		return err
+		return 0, err
 	}
+	now := m.cfg.Now()
 	var todo []ledger.DreamRecipient
 	for _, r := range recipients {
-		if !r.Sent {
-			todo = append(todo, r)
+		if r.Sent {
+			continue
 		}
+		if w := r.Quiet.Wait(now, location(r.TimeZone)); w > 0 {
+			if wait == 0 || w < wait {
+				wait = w
+			}
+			continue
+		}
+		todo = append(todo, r)
 	}
 	if len(todo) == 0 {
-		return nil
+		return wait, nil
 	}
 	scope, err := m.ledger.SpaceScope(ctx, spaceID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	e, err := m.ledger.GetEdition(ctx, scope, spaceID, editionID.String())
 	if err != nil {
-		return err
+		return 0, err
 	}
 	for _, r := range todo {
 		msg, err := m.Render(e, sp, r)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		res, err := m.sender.Send(ctx, msg)
 		if err != nil {
-			return fmt.Errorf("dream: send the morning email: %w", err)
+			return 0, fmt.Errorf("dream: send the morning email: %w", err)
 		}
 		if err := m.ledger.MarkDreamEmailSent(ctx, spaceID, editionID, r.PersonID, res.MessageID); err != nil {
-			return err
+			return 0, err
 		}
 		m.cfg.Log.InfoContext(ctx, "dream: sent the morning email", "edition", e.Ref, "space_id", spaceID.String(),
 			"metric", "dream_email_sent")
 	}
-	return nil
+	return wait, nil
 }
 
 // mailLine is one line of the card or of "Waiting on you".

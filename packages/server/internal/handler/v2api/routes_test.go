@@ -21,6 +21,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/trust"
 )
 
 // TestRoutesMatchSpec holds the Go route table and v2.yaml equal: every
@@ -131,16 +132,20 @@ var sampleRequests = map[string]struct {
 	"getImport":            {path: "/v2/spaces/memax-v2/imports/" + sampleID},
 	"settleImportConflict": {path: "/v2/spaces/memax-v2/imports/" + sampleID + "/conflicts/1:settle", body: `{"choice":"keep_all"}`},
 	// Dream.
-	"listEditions":          {path: "/v2/spaces/memax-v2/dream/editions?limit=5", header: map[string]string{"X-Timezone": "America/Vancouver"}},
-	"getEdition":            {path: "/v2/spaces/memax-v2/dream/editions/D-0214"},
-	"listDreamActions":      {path: "/v2/spaces/memax-v2/dream/editions/latest/actions?kind=fade"},
-	"undoEdition":           {path: "/v2/spaces/memax-v2/dream/editions/214:undo", body: `{"kind":"fade"}`},
-	"runDream":              {path: "/v2/spaces/memax-v2/dream:run"},
-	"undoDreamAction":       {path: "/v2/dream/actions/" + sampleID + ":undo"},
-	"restoreMemory":         {path: "/v2/memories/M-0001:restore?space=memax-v2"},
-	"getDreamSettings":      {path: "/v2/dream/settings"},
-	"updateDreamSettings":   {path: "/v2/dream/settings", body: `{"time_zone":"America/Vancouver"}`},
-	"unsubscribeDreamEmail": {path: "/v2/dream/email:unsubscribe?token=0123456789abcdef0123456789abcdef"},
+	"listEditions":            {path: "/v2/spaces/memax-v2/dream/editions?limit=5", header: map[string]string{"X-Timezone": "America/Vancouver"}},
+	"getEdition":              {path: "/v2/spaces/memax-v2/dream/editions/D-0214"},
+	"listDreamActions":        {path: "/v2/spaces/memax-v2/dream/editions/latest/actions?kind=fade"},
+	"undoEdition":             {path: "/v2/spaces/memax-v2/dream/editions/214:undo", body: `{"kind":"fade"}`},
+	"runDream":                {path: "/v2/spaces/memax-v2/dream:run"},
+	"undoDreamAction":         {path: "/v2/dream/actions/" + sampleID + ":undo"},
+	"restoreMemory":           {path: "/v2/memories/M-0001:restore?space=memax-v2"},
+	"getDreamSettings":        {path: "/v2/dream/settings"},
+	"updateDreamSettings":     {path: "/v2/dream/settings", body: `{"time_zone":"America/Vancouver"}`},
+	"unsubscribeDreamEmail":   {path: "/v2/dream/email:unsubscribe?token=0123456789abcdef0123456789abcdef"},
+	"getNotificationSettings": {path: "/v2/me/notifications"},
+	"updateNotificationSettings": {path: "/v2/me/notifications", body: `{"quiet_hours":{"from":"21:00"}}`,
+		header: map[string]string{"If-Match": `"1"`}},
+	"getSecurity": {path: "/v2/security"},
 }
 
 const sampleID = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
@@ -336,6 +341,13 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "ImportCheckState", specEnum(t, "ImportCheckState"), ledger.ImportCheckStates)
 	sameSet(t, "ImportHeld", specEnum(t, "ImportHeld"), ledger.ImportHelds)
 	sameSet(t, "ImportChoice", specEnum(t, "ImportChoice"), strs(ledger.ImportChoices))
+
+	// Settings (migration 049) and the Security page.
+	sameSet(t, "NotificationEvent", specEnum(t, "NotificationEvent"), strs(ledger.NotificationEvents))
+	sameSet(t, "DataHolds", specEnum(t, "DataHolds"), trust.Holds)
+	sameSet(t, "Retention", specEnum(t, "Retention"), trust.Retentions)
+	sameSet(t, "SubprocessorName", specEnum(t, "SubprocessorName"), trust.ProcessorNames)
+	sameSet(t, "SubprocessorUseKind", specEnum(t, "SubprocessorUseKind"), trust.Uses)
 }
 
 // stringConsts parses a Go file for string constants whose names start

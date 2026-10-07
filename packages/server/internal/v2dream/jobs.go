@@ -105,12 +105,22 @@ type EmailWorker struct {
 	Mailer *Mailer
 }
 
-// Work sends the edition's morning email to whoever hasn't had it.
+// Work sends the edition's morning email to whoever hasn't had it. Someone
+// in their quiet hours gets it when they end: the job snoozes until then
+// (a snooze uses no attempt), and the people it already reached are
+// skipped (v2.dream_email_sends).
 func (w *EmailWorker) Work(ctx context.Context, job *river.Job[ledger.DreamEmailArgs]) error {
 	if w.Mailer == nil {
 		return nil // no email configured: nothing to send
 	}
-	return w.Mailer.Send(ctx, job.Args.SpaceID, job.Args.EditionID)
+	wait, err := w.Mailer.Send(ctx, job.Args.SpaceID, job.Args.EditionID)
+	if err != nil {
+		return err
+	}
+	if wait > 0 {
+		return river.JobSnooze(wait)
+	}
+	return nil
 }
 
 // PeriodicJobs is the sweep, every interval, from the start.

@@ -1,6 +1,6 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`, `.imports`,
 // `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets`, `.gates`,
-// `.notices`, `.devices`, `.dream` and `.notes`. Thin, typed
+// `.notices`, `.devices`, `.dream`, `.notes` and `.settings`. Thin, typed
 // wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
 // as on /v1.
@@ -42,6 +42,9 @@ import type {
   DreamRun,
   DreamSettings,
   DreamSettingsInput,
+  NotificationSettings,
+  NotificationSettingsInput,
+  Security,
   DreamUndoResult,
   UndoEditionInput,
   UndoEditionResult,
@@ -1469,6 +1472,58 @@ export class V2DreamResource {
   }
 }
 
+/** Options for changing your settings. */
+export interface SettingsEditOptions {
+  /** Required. Reuse it when you retry the same change. */
+  idempotencyKey: string;
+  /** Required: the settings' version you read (`version`, also the ETag). */
+  ifMatch: number;
+  signal?: AbortSignal;
+}
+
+/** `memax.v2.settings`: your notification settings, and how this Memax keeps your data. */
+export class V2SettingsResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /**
+   * For each event, whether it reaches you by email (`email_sent` says
+   * whether Memax sends that email today), your quiet hours in your time
+   * zone, and the Review reminder's wait. The morning edition's email is
+   * Dream's setting, the same one its unsubscribe link turns off.
+   */
+  async notifications(opts?: {
+    signal?: AbortSignal;
+  }): Promise<NotificationSettings> {
+    return this.req("GET", "/v2/me/notifications", { signal: opts?.signal });
+  }
+
+  /**
+   * Change what you send; the rest stays. A version that's no longer
+   * current (the unsubscribe link, another tab) throws `edit_clash`
+   * rather than undoing that change.
+   */
+  async updateNotifications(
+    input: NotificationSettingsInput,
+    opts: SettingsEditOptions,
+  ): Promise<NotificationSettings> {
+    return this.req("PATCH", "/v2/me/notifications", {
+      body: input,
+      extraHeaders: commandHeaders(opts, opts.ifMatch),
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * What this Memax says about itself: what a Keep from this session
+   * counts as, where data lives, every outside service that sees a
+   * memory's words and what it keeps, and how long backups keep what
+   * Forget removed. A space's seals are `receipts.checkpoints`.
+   */
+  async security(opts?: { signal?: AbortSignal }): Promise<Security> {
+    return this.req("GET", "/v2/security", { signal: opts?.signal });
+  }
+}
+
 /** Whether a Dream action can still be undone, as the server last said. */
 export function undoableAction(a: DreamAction): boolean {
   return a.undoable && !a.undone;
@@ -1490,6 +1545,7 @@ export class V2Resource {
   readonly devices: V2DevicesResource;
   readonly notes: V2NotesResource;
   readonly dream: V2DreamResource;
+  readonly settings: V2SettingsResource;
   private readonly openStream?: OpenFn;
 
   constructor(req: RequestFn, open?: OpenFn) {
@@ -1507,6 +1563,7 @@ export class V2Resource {
     this.devices = new V2DevicesResource(req);
     this.notes = new V2NotesResource(req);
     this.dream = new V2DreamResource(req);
+    this.settings = new V2SettingsResource(req);
     this.openStream = open;
   }
 

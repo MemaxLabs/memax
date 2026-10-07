@@ -453,6 +453,9 @@ type DreamRecipient struct {
 	Token string
 	// TimeZone is theirs, for the edition's date ("UTC" until known).
 	TimeZone string
+	// Quiet are their quiet hours (notification settings, migration 049),
+	// in TimeZone: the email waits until they end.
+	Quiet QuietHours
 	// Sent is set when this edition's email already went to them.
 	Sent bool
 }
@@ -534,8 +537,10 @@ func (l *Ledger) DreamRecipients(ctx context.Context, spaceID, editionID uuid.UU
 		}
 		rows, err := tx.Query(ctx, `
 			SELECT u.id, u.email, COALESCE(NULLIF(u.display_name, ''), u.name), d.unsubscribe_token, d.time_zone,
-			       EXISTS (SELECT 1 FROM v2.dream_email_sends s WHERE s.edition_id = $2 AND s.person_id = u.id)
+			       EXISTS (SELECT 1 FROM v2.dream_email_sends s WHERE s.edition_id = $2 AND s.person_id = u.id),
+			       n.person_id IS NOT NULL, n.quiet_on, left(n.quiet_from::text, 5), left(n.quiet_until::text, 5)
 			  FROM public.users u JOIN v2.dream_settings d ON d.person_id = u.id
+			  LEFT JOIN v2.notification_settings n ON n.person_id = u.id
 			 WHERE u.id = ANY ($1) AND d.morning_email AND u.email <> ''
 			 ORDER BY u.id`, keepers, editionID)
 		if err != nil {
@@ -543,8 +548,18 @@ func (l *Ledger) DreamRecipients(ctx context.Context, spaceID, editionID uuid.UU
 		}
 		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (DreamRecipient, error) {
 			var d DreamRecipient
-			err := r.Scan(&d.PersonID, &d.Email, &d.Name, &d.Token, &d.TimeZone, &d.Sent)
-			return d, err
+			var chose bool
+			var on *bool
+			var from, until *string
+			if err := r.Scan(&d.PersonID, &d.Email, &d.Name, &d.Token, &d.TimeZone, &d.Sent, &chose, &on, &from, &until); err != nil {
+				return d, err
+			}
+			// Without a row, the defaults (DefaultNotificationSettings).
+			d.Quiet = DefaultNotificationSettings().QuietHours
+			if chose {
+				d.Quiet = QuietHours{On: *on, From: *from, Until: *until}
+			}
+			return d, nil
 		})
 		return err
 	})

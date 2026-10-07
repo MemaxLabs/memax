@@ -119,11 +119,14 @@ export function todayFooter(
   {
     compiledAt,
     dreamAt,
+    dreamWeekday = null,
     kept,
     space,
   }: {
     compiledAt: string | null;
     dreamAt: string | null;
+    /** When Dream runs weekly, the day (0 is Sunday). */
+    dreamWeekday?: number | null;
     kept: number | null;
     space: string;
   },
@@ -142,9 +145,27 @@ export function todayFooter(
           }),
     );
   }
-  if (dreamAt) parts.push(interpolate(f.dreamAt, { time: dreamAt }));
+  if (dreamAt) {
+    parts.push(
+      dreamWeekday !== null
+        ? interpolate(f.dreamWeekly, {
+            day: weekdayName(dreamWeekday, locale),
+            time: dreamAt,
+          })
+        : interpolate(f.dreamAt, { time: dreamAt }),
+    );
+  }
   if (kept !== null) parts.push(count(f.keptOne, f.kept, kept, { space }));
   return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/** "Tuesday" / "星期二" for a weekday (0 is Sunday). */
+export function weekdayName(day: number, locale: Locale): string {
+  // 4 Oct 2026 was a Sunday; noon UTC, formatted in UTC, stays on its day.
+  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
+    timeZone: "UTC",
+    weekday: "long",
+  }).format(new Date(Date.UTC(2026, 9, 4 + (((day % 7) + 7) % 7), 12)));
 }
 
 /** The Dream card's date: "Mon 5 Oct" / "10月5日周一". */

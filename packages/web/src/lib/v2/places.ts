@@ -2,7 +2,7 @@
  * The places of a V2 space and their URLs (plan §6.3, HANDOFF §6). The
  * rail order is Today, Review, Briefs, Memories, Handoffs, Agents; a
  * team space adds Decisions after Memories. Activity has a route but no
- * rail item.
+ * rail item; Dream's editions are reached from Today, and light it.
  */
 import type { SpaceKind } from "./data/types";
 
@@ -15,6 +15,7 @@ export const PLACE_ROUTES = [
   "decisions",
   "handoffs",
   "agents",
+  "dream",
   "activity",
 ] as const;
 
@@ -58,12 +59,19 @@ export function routeOfRail(place: RailPlace): PlaceRoute {
   return RAIL_ROUTE[place];
 }
 
-/** Which rail item a route lights up; Activity lights none. */
+/** Which rail item a route lights up; Activity lights none, an edition Today. */
 export function railOfRoute(
   route: PlaceRoute | undefined,
 ): RailPlace | undefined {
   if (!route || route === "activity") return undefined;
+  if (route === "dream") return "today";
   return route === "brief" ? "briefs" : route;
+}
+
+/** An edition's page: /memax-v2/dream/214, or the latest at /memax-v2/dream. */
+export function editionHref(space: string, n?: number): string {
+  const base = placeHref(space, "dream");
+  return n === undefined ? base : `${base}/${n}`;
 }
 
 /** Whether a space has this place: Decisions is a team space's. */

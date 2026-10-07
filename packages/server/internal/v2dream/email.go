@@ -134,7 +134,7 @@ func (m *Mailer) Render(e *ledger.DreamEdition, sp ledger.DreamEmailSpace, r led
 		Issue: fmt.Sprintf("No. %d", e.N), Date: e.Slot.In(loc).Format("Mon 2 Jan"), Space: sp.Name,
 		Notes: e.NotesRead, Facts: len(e.FactRefs), NoNotes: e.NotesRead == 0,
 		ReviewURL:      m.cfg.AppURL + "/" + url.PathEscape(sp.Slug) + "/review",
-		SettingsURL:    m.cfg.AppURL + "/" + url.PathEscape(sp.Slug) + "/dream/" + fmt.Sprint(e.N) + "#email",
+		SettingsURL:    m.cfg.AppURL + "/settings/account#dream",
 		UnsubscribeURL: m.cfg.AppURL + "/unsubscribe?token=" + url.QueryEscape(r.Token),
 	}
 	d.FactsText = plural(d.Facts, "fact", "facts")

@@ -103,6 +103,8 @@ export const KEYMAP = [
 
   // One page or layer
   { id: "today.review", keys: ["R"], group: "pages" },
+  // An edition of Dream's (DreamEdition.png): C compares the conflict it found.
+  { id: "dream.resolve", keys: ["C"], group: "pages" },
   { id: "memories.remember", keys: ["N"], group: "pages" },
   // Keeps what's in front of you: Ask's answer, or the Brief's edits
   // when you press Done.

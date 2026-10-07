@@ -2,6 +2,7 @@ import type { ActivityData } from "./activity";
 import type { AgentsData } from "./agents";
 import type { BriefSource } from "./brief";
 import type { DevicesSource } from "./devices";
+import type { DreamSource } from "./dream";
 import type { GatesSource } from "./gates";
 import type { ImportsSource } from "./imports";
 import type { MemoriesSource } from "./memories";
@@ -33,7 +34,7 @@ import type {
  * Each domain declares its part in its own module and is mixed in here:
  * activity.ts (Activity), agents.ts (Agents, keys), undo.ts (Undo), or
  * hangs off it as a member (review, memories, brief, targets, today,
- * gates).
+ * gates, dream).
  */
 export interface LedgerDataSource extends ActivityData, AgentsData, UndoSource {
   readonly kind: "sdk" | "demo";
@@ -89,4 +90,6 @@ export interface LedgerDataSource extends ActivityData, AgentsData, UndoSource {
   readonly imports: ImportsSource;
   /** Confirming the CLI's device code (devices.ts). */
   readonly devices: DevicesSource;
+  /** Dream's editions, undoing them, run now and the settings (dream.ts). */
+  readonly dream: DreamSource;
 }

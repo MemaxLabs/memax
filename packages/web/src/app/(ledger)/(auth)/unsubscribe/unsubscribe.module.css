@@ -1,0 +1,50 @@
+/* The morning email's unsubscribe page: one card on the paper. */
+
+.page {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 96px 24px 48px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 480px;
+}
+
+.title {
+  margin: 16px 0 0;
+  font-family: var(--font-serif);
+  font-size: 32px;
+  line-height: 38px;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
+.lede {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--ink-2);
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--vermilion);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}

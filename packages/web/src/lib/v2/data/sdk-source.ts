@@ -6,6 +6,7 @@ import { createSdkBrief } from "./brief-sdk";
 import type { WebSession } from "./gates";
 import { createSdkGates } from "./gates-sdk";
 import { createSdkDevices } from "./devices-sdk";
+import { createSdkDream } from "./dream-sdk";
 import { createSdkImports } from "./imports-sdk";
 import { checkRememberOver } from "./remember-sdk";
 import { createSdkMemories } from "./sdk-memories";
@@ -23,10 +24,10 @@ import type { KeepResult, SpaceOverview, Viewer } from "./types";
  * decision gates waiting on an answer (together the rail's ochre count),
  * memories, receipts, agents, the Brief and its compile targets (which
  * feed the status line), Remember's near-duplicate check and Ask.
- * Everything else the frame shows is marked PLACEHOLDER below and returns
- * "not served" (null) or a neutral value until its endpoint lands:
- * Handoffs and Dream. The demo source has all of them, for comparison
- * with the boards.
+ * Dream's editions come from memax.v2.dream. Everything else the frame
+ * shows is marked PLACEHOLDER below and returns "not served" (null) or a
+ * neutral value until its endpoint lands: Handoffs. The demo source has
+ * all of them, for comparison with the boards.
  */
 
 // `auth` for API keys (V1's auth.keys), until /v2 serves them.
@@ -46,6 +47,7 @@ export function createSdkSource({
   const viewerId = () => viewer?.id;
   const agents = createSdkAgents({ client, viewer });
   const gates = createSdkGates({ client, viewerId, webSession });
+  const dream = createSdkDream(client, viewerId);
   return {
     ...createSdkActivity({ client, viewer }),
     ...agents,
@@ -56,10 +58,11 @@ export function createSdkSource({
     memories: createSdkMemories(client, viewerId),
     brief: createSdkBrief(client, viewerId),
     targets: createSdkTargets(client),
-    today: createSdkToday({ client, viewer, agents, gates }),
+    today: createSdkToday({ client, viewer, agents, gates, dream }),
     gates,
     imports: createSdkImports(client),
     devices: createSdkDevices(client),
+    dream,
     async spaces(signal) {
       const { items } = await client.v2.spaces.list({ signal });
       return items.map((space) => ({

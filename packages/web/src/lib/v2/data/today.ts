@@ -5,8 +5,9 @@
  * today-demo.ts implement it. The compiled files come from
  * `source.targets`, and the space's counts from the overview.
  *
- * What /v2 doesn't serve yet is said so, never invented: Dream editions
- * (plan §5.10) and handoffs in flight (Phase 4). No words live here.
+ * What /v2 doesn't serve yet is said so, never invented: handoffs in
+ * flight (Phase 4). Dream's edition comes from `source.dream` (dream.ts).
+ * No words live here.
  */
 import type { GateView } from "./gates";
 import type { MemoryNote } from "./memories";
@@ -18,7 +19,10 @@ export type DreamItemKind = "merged" | "conflict" | "faded";
 /** One line of an edition, as the card lists it. */
 export interface DreamLine {
   kind: DreamItemKind;
-  text: string;
+  /** A memory's statement; null for a summary the card words ("11 memories faded"). */
+  text: string | null;
+  /** How many a summary line counts. */
+  count?: number;
   /** "9 notes → M-0219", "needs you", "restorable". */
   meta:
     | { kind: "folded"; notes: number; into: string }
@@ -29,6 +33,8 @@ export interface DreamLine {
 /** Last night's edition (D-). */
 export interface DreamEdition {
   n: number;
+  /** Its display ID ("D-0214"), for the link to its page. */
+  ref: string;
   at: string;
   /** How long the run took, in seconds. */
   seconds: number | null;
@@ -43,7 +49,7 @@ export type TodayDream =
   | { kind: "edition"; edition: DreamEdition }
   /** Nothing new to read last night, so no edition (empty nights cost nothing). */
   | { kind: "quiet" }
-  /** PLACEHOLDER: Dream editions aren't built yet (plan §5.10). */
+  /** No edition yet: Dream publishes the first the night after there's something to read. */
   | { kind: "unavailable" };
 
 /** A session passed on and still running (H-). */
@@ -86,8 +92,10 @@ export interface TodayData {
     notes: Record<string, MemoryNote>;
   };
   dream: TodayDream;
-  /** When Dream runs, in the viewer's day ("03:00"); null while Dream isn't scheduled by /v2. */
+  /** When Dream runs, in the viewer's day ("03:00"); null until the space is scheduled. */
   dreamAt: string | null;
+  /** The weekday Dream runs on (0 is Sunday) when it runs weekly; null or absent when nightly. */
+  dreamWeekday?: number | null;
   /** PLACEHOLDER: undefined until handoffs are served; null when none is in flight. */
   inFlight: HandoffInFlight | null | undefined;
   /** The space's connected agents, active first; null when they didn't load. */

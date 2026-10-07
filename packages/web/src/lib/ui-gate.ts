@@ -16,16 +16,17 @@ export const UI_COOKIE = "memax_ui";
 export const UI_COOKIE_V2 = "v2";
 
 /** Top-level areas that are V2 in full, with any sub-path (§6.3). */
-const V2_AREAS = new Set(["signin", "device", "setup", "join"]);
+const V2_AREAS = new Set(["signin", "device", "unsubscribe", "setup", "join"]);
 
 /**
  * V2 areas that open without the opt-in. The memax CLI sends anyone to
  * /device to confirm its sign-in code (RFC 8628), and V1 has no such
  * page, so a person who never opted in must reach it; signing in on the
- * way there goes through /signin (and /signin/callback). Neither shows a
- * space: once signed in, a browser without the opt-in lands back in V1.
+ * way there goes through /signin (and /signin/callback). Dream's morning
+ * email links to /unsubscribe, which needs no sign-in at all. None shows
+ * a space: once signed in, a browser without the opt-in lands back in V1.
  */
-const V2_OPEN_AREAS = new Set(["signin", "device"]);
+const V2_OPEN_AREAS = new Set(["signin", "device", "unsubscribe"]);
 
 /** Whether a V2 path opens for every browser (V2_OPEN_AREAS). */
 export function isOpenV2Path(pathname: string): boolean {
@@ -77,6 +78,7 @@ export const RESERVED_SPACE_SLUGS: ReadonlySet<string> = new Set([
   "setup",
   "signin",
   "device",
+  "unsubscribe",
   "join",
   "oauth",
   "pricing",

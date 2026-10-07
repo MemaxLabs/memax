@@ -148,6 +148,7 @@ export const config = {
     // V2 Ledger areas
     "/signin/:path*",
     "/device/:path*",
+    "/unsubscribe/:path*",
     "/setup/:path*",
     "/join/:path*",
     "/settings/:path+",

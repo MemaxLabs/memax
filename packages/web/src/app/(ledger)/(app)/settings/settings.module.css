@@ -99,6 +99,14 @@ a.navItem:hover {
   color: var(--ink-3);
 }
 
+/* A row's controls, side by side: a field and a button beside it. */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .rowLabel {
   font-size: 14px;
   line-height: 20px;

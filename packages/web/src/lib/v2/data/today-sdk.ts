@@ -1,5 +1,6 @@
 import type { V2 } from "memax-sdk";
 import type { AgentConnectionView, AgentsData } from "./agents";
+import { dreamTimeOf, todayDreamOf, type DreamSource } from "./dream";
 import { askingAgents, type GatesSource } from "./gates";
 import type { MemoryNote } from "./memories";
 import { receiptsFor, reviewItemOf, type V2Client } from "./sdk-records";
@@ -10,9 +11,9 @@ import type { Viewer } from "./types";
  * Today through memax.v2: Review's queue (its counts and first items),
  * the decision gates waiting on an answer (the questions, and who asked
  * them), the space's agents and what each wrote today, from today's
- * receipts, and read today, from the space's reads (R-). What /v2
- * doesn't serve is said so: Dream editions (unavailable), the Dream
- * schedule and handoffs (PLACEHOLDER).
+ * receipts, and read today, from the space's reads (R-), and Dream's
+ * latest edition and schedule (source.dream). What /v2 doesn't serve is
+ * said so: handoffs (PLACEHOLDER).
  */
 
 const QUEUE = 200;
@@ -98,17 +99,30 @@ export function createSdkToday({
   viewer,
   agents,
   gates,
+  dream,
 }: {
   client: V2Client;
   viewer: Viewer | null;
   agents: Pick<AgentsData, "spaceAgents">;
   gates: Pick<GatesSource, "waiting">;
+  dream: Pick<DreamSource, "editions" | "edition">;
 }): TodaySource {
   return {
     async get({ space, signal }) {
       const timeZone =
         viewer?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
       const dayStart = startOfDay(new Date(), timeZone);
+      // Dream's edition is Today's lead, but a slow or failed read of
+      // it never holds the rest up.
+      const lastNight = dream
+        .editions({ space, limit: 1, signal })
+        .then(async (page) => ({
+          page,
+          latest: page.items[0]
+            ? await dream.edition({ space, ref: page.items[0].ref, signal })
+            : null,
+        }))
+        .catch(() => null);
       const [queue, asked, connections, log] = await Promise.all([
         client.v2.review.list(space.slug, { limit: QUEUE, signal }),
         gates.waiting({ space, signal }),
@@ -144,6 +158,8 @@ export function createSdkToday({
       // Review lists proposals, then conflicts, then stale facts: what
       // didn't fit the page is at the stale end.
       const unseen = Math.max(0, queue.total - items.length);
+      const night = await lastNight;
+      const when = dreamTimeOf(night?.page.schedule ?? null, timeZone);
       return {
         waiting: {
           items,
@@ -154,9 +170,11 @@ export function createSdkToday({
           questions: askingAgents(asked),
           notes,
         },
-        // PLACEHOLDER: Dream editions aren't built yet (plan §5.10).
-        dream: { kind: "unavailable" },
-        dreamAt: null,
+        dream: night
+          ? todayDreamOf(night.latest, night.page.schedule, new Date())
+          : { kind: "unavailable" },
+        dreamAt: when.at,
+        dreamWeekday: when.weekday,
         // PLACEHOLDER: handoffs arrive in Phase 4.
         inFlight: undefined,
         agents: connections

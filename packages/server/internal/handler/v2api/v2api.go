@@ -51,6 +51,8 @@ type Handler struct {
 	near   nearLimiter
 	// asker answers ⌘K Ask (ask.go); nil answers 503.
 	asker *ask.Service
+	// exports rate-limits exports (export.go).
+	exports exportLimiter
 }
 
 // Option configures a Handler.
@@ -95,6 +97,7 @@ var routes = []Route{
 	{"GET", "/v2/spaces", "listSpaces", (*Handler).listSpaces},
 	{"POST", "/v2/spaces", "createSpace", (*Handler).createSpace},
 	{"POST", "/v2/spaces/{space}:switch", "switchSpace", (*Handler).switchSpace},
+	{"POST", "/v2/spaces/{space}:export", "exportSpace", (*Handler).exportSpace},
 	{"POST", "/v2/spaces/{space}/memories", "rememberMemory", (*Handler).remember},
 	{"GET", "/v2/spaces/{space}/memories", "listMemories", (*Handler).listMemories},
 	{"POST", "/v2/spaces/{space}/memories:near-duplicates", "findNearDuplicates", (*Handler).findNearDuplicates},

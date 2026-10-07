@@ -113,6 +113,7 @@ var sampleRequests = map[string]struct {
 	"ackNotices":           {path: "/v2/notices:ack", body: `{"ids":["` + sampleID + `"]}`},
 	"createSpace":          {path: "/v2/spaces", body: `{"name":"Acme web","repository":"acme/web"}`},
 	"switchSpace":          {path: "/v2/spaces/personal:switch"},
+	"exportSpace":          {path: "/v2/spaces/memax-v2:export"},
 	"keepMemories":         {path: "/v2/spaces/memax-v2/memories:keep", body: `{"items":[{"memory":"M-0001","version":1}]}`},
 	"rejectMemories":       {path: "/v2/spaces/memax-v2/memories:reject", body: `{"items":[{"memory":"M-0001"}]}`},
 	"createImport":         {path: "/v2/spaces/memax-v2/imports", body: `{"items":[{"key":"a","location":"repository","statement":"Use pnpm.","section":"conventions"}]}`},

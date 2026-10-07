@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// ZipMediaType is the archive's media type.
+const ZipMediaType = "application/zip"
+
 // ZipSink writes the export as a zip archive, every file under the
 // space's folder (its slug), deflated, dated at the export's as-of time,
 // so the same record gives the same archive. The archive is written as it

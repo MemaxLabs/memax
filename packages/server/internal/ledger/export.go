@@ -84,7 +84,9 @@ func (w *writer) export(ctx context.Context, c *Export) (Result, error) {
 // would serialise the writers, and two writers reading the same max would
 // collide on (stream_id, stream_version).
 func nextSpaceStreamVersion(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (int, error) {
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+	// The lock's answer is never read, so it rides with the next statement
+	// (execDeferred): no round trip of its own.
+	if err := execDeferred(ctx, tx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
 		"memax.v2.space_stream:"+spaceID.String()); err != nil {
 		return 0, fmt.Errorf("ledger: lock the space's stream: %w", err)
 	}
@@ -211,6 +213,13 @@ const (
 
 // ReadExport reads the space's whole record in one snapshot and hands it
 // to sink. A space outside the scope is ErrNotFound.
+//
+// It reads through the ledger's read path (one read-only transaction,
+// scoped before its first statement) and pipelines what it can: the
+// space, its Brief, gates, agents, tombstones and read counts go in one
+// round trip, and each batch of memories in two. A small space exports in
+// about a dozen round trips; an export is no hot path, and it touches
+// none.
 func (l *Ledger) ReadExport(ctx context.Context, scope Scope, spaceID uuid.UUID, sink ExportSink) error {
 	if l == nil {
 		return ErrDisabled
@@ -221,61 +230,41 @@ func (l *Ledger) ReadExport(ctx context.Context, scope Scope, spaceID uuid.UUID,
 	}
 	scope = scope.Narrow(spaceID)
 	return l.readSnapshot(ctx, scope, func(tx pgx.Tx) error {
-		info, err := exportSpaceInfo(ctx, tx, spaceID)
+		h, err := readExportHead(ctx, tx, spaceID)
 		if err != nil {
 			return err
 		}
-		info.Role = grant.Role
-		if err := sink.Space(info); err != nil {
+		h.info.Role = grant.Role
+		// The rest of what the parts need: a gate's rule (one query, only
+		// with gates), a tombstone's companions (only with tombstones).
+		gates := make([]*Gate, len(h.gates))
+		for i := range h.gates {
+			gates[i] = &h.gates[i]
+		}
+		if err := needsWeb(ctx, tx, gates); err != nil {
 			return err
 		}
-		briefs, err := exportBriefs(ctx, tx, spaceID)
-		if err != nil {
-			return err
-		}
-		if err := sink.Briefs(briefs); err != nil {
-			return err
-		}
-		gates, err := exportGates(ctx, tx, spaceID)
-		if err != nil {
-			return err
-		}
-		if err := sink.Gates(gates); err != nil {
+		if err := attachWith(ctx, tx, h.tombs); err != nil {
 			return err
 		}
 		targets, err := exportTargets(ctx, tx, scope, spaceID)
 		if err != nil {
 			return err
 		}
-		if err := sink.Targets(targets); err != nil {
-			return err
-		}
-		agents, err := exportAgents(ctx, tx, spaceID)
-		if err != nil {
-			return err
-		}
-		if err := sink.Agents(agents); err != nil {
-			return err
-		}
-		tombs, err := exportTombstones(ctx, tx, spaceID)
-		if err != nil {
-			return err
-		}
-		if err := sink.Tombstones(tombs); err != nil {
-			return err
-		}
-		reads, err := exportReads(ctx, tx, spaceID)
-		if err != nil {
-			return err
-		}
-		if err := sink.Reads(reads); err != nil {
-			return err
-		}
-		if err := exportMemories(ctx, tx, spaceID, sink); err != nil {
-			return err
-		}
-		if err := exportReceipts(ctx, tx, spaceID, sink); err != nil {
-			return err
+		for _, step := range []func() error{
+			func() error { return sink.Space(h.info) },
+			func() error { return sink.Briefs(h.briefs) },
+			func() error { return sink.Gates(h.gates) },
+			func() error { return sink.Targets(targets) },
+			func() error { return sink.Agents(h.agents) },
+			func() error { return sink.Tombstones(h.tombs) },
+			func() error { return sink.Reads(h.reads) },
+			func() error { return exportMemories(ctx, tx, spaceID, sink) },
+			func() error { return exportReceipts(ctx, tx, spaceID, sink) },
+		} {
+			if err := step(); err != nil {
+				return err
+			}
 		}
 		seal, err := exportSeal(ctx, tx, grant, spaceID)
 		if err != nil {
@@ -285,67 +274,149 @@ func (l *Ledger) ReadExport(ctx context.Context, scope Scope, spaceID uuid.UUID,
 	})
 }
 
-func exportSpaceInfo(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (ExportSpaceInfo, error) {
-	var info ExportSpaceInfo
-	err := tx.QueryRow(ctx, `
-		SELECT id, tenant_id, slug, name, kind, COALESCE(repository, ''), v2_enabled_at
-		  FROM v2.spaces WHERE id = $1`, spaceID).
-		Scan(&info.ID, &info.TenantID, &info.Slug, &info.Name, &info.Kind, &info.Repository, &info.V2EnabledAt)
-	if errNoRows(err) {
-		return info, ErrNotFound
-	}
-	if err != nil {
-		return info, fmt.Errorf("ledger: export: space: %w", err)
-	}
-	var asOf *time.Time
-	if err := tx.QueryRow(ctx, `SELECT max(recorded_at), count(*) FROM v2.receipts WHERE space_id = $1`, spaceID).
-		Scan(&asOf, &info.Receipts); err != nil {
-		return info, fmt.Errorf("ledger: export: receipts: %w", err)
-	}
-	if asOf != nil {
-		info.AsOf = asOf.UTC()
-	}
-	return info, nil
+// exportHead is what ReadExport reads in its first round trip.
+type exportHead struct {
+	info   ExportSpaceInfo
+	briefs []Brief
+	gates  []Gate
+	agents []ExportAgent
+	tombs  []Tombstone
+	reads  ReadSummary
 }
 
-func exportBriefs(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) ([]Brief, error) {
-	rows, err := tx.Query(ctx, briefSelect+` WHERE v.space_id = $1 ORDER BY v.version`, spaceID)
-	if err != nil {
-		return nil, fmt.Errorf("ledger: export: Brief: %w", err)
-	}
-	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Brief, error) {
-		b, err := scanBrief(r)
-		if err != nil {
-			return Brief{}, err
+// readExportHead reads the space, its Brief versions, gates, agents,
+// tombstones and read counts in one pipelined round trip.
+func readExportHead(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (*exportHead, error) {
+	h := &exportHead{reads: ReadSummary{ByReader: []ReaderReads{}, Memories: []SubjectReads{}, Compiles: []SubjectReads{},
+		Days: []DayReads{}}}
+	found := false
+	b := &pgx.Batch{}
+	b.Queue(`SELECT id, tenant_id, slug, name, kind, COALESCE(repository, ''), v2_enabled_at
+	           FROM v2.spaces WHERE id = $1`, spaceID).Query(func(rows pgx.Rows) error {
+		for rows.Next() {
+			found = true
+			i := &h.info
+			if err := rows.Scan(&i.ID, &i.TenantID, &i.Slug, &i.Name, &i.Kind, &i.Repository, &i.V2EnabledAt); err != nil {
+				return err
+			}
 		}
-		return *b, nil
+		return rows.Err()
 	})
-	if err != nil {
-		return nil, fmt.Errorf("ledger: export: Brief: %w", err)
-	}
-	return out, nil
-}
-
-func exportGates(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) ([]Gate, error) {
-	rows, err := tx.Query(ctx, gateSelect+` WHERE g.space_id = $1 ORDER BY g.seq`, spaceID)
-	if err != nil {
-		return nil, fmt.Errorf("ledger: export: gates: %w", err)
-	}
+	b.Queue(`SELECT max(recorded_at), count(*) FROM v2.receipts WHERE space_id = $1`, spaceID).
+		QueryRow(func(r pgx.Row) error {
+			var asOf *time.Time
+			if err := r.Scan(&asOf, &h.info.Receipts); err != nil {
+				return err
+			}
+			if asOf != nil {
+				h.info.AsOf = asOf.UTC()
+			}
+			return nil
+		})
+	b.Queue(briefSelect+` WHERE v.space_id = $1 ORDER BY v.version`, spaceID).Query(func(rows pgx.Rows) error {
+		var err error
+		h.briefs, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Brief, error) {
+			b, err := scanBrief(r)
+			if err != nil {
+				return Brief{}, err
+			}
+			return *b, nil
+		})
+		return err
+	})
 	// The zero time keeps each gate's stored status: whether a waiting gate
 	// has expired depends on when the export is read, so the export says
 	// waiting and gives expires_at.
-	gates, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (*Gate, error) { return scanGate(r, time.Time{}) })
-	if err != nil {
-		return nil, fmt.Errorf("ledger: export: gates: %w", err)
+	b.Queue(gateSelect+` WHERE g.space_id = $1 ORDER BY g.seq`, spaceID).Query(func(rows pgx.Rows) error {
+		var err error
+		h.gates, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Gate, error) {
+			g, err := scanGate(r, time.Time{})
+			if err != nil {
+				return Gate{}, err
+			}
+			return *g, nil
+		})
+		return err
+	})
+	b.Queue(`
+		SELECT c.id, c.agent, c.display_name, c.surface, c.state, COALESCE(s.autonomy, ''), c.person_id,
+		       c.created_receipt_id, c.last_receipt_id, c.created_at
+		  FROM v2.agent_connections c
+		  LEFT JOIN v2.agent_connection_spaces s ON s.connection_id = c.id AND s.space_id = $1
+		 WHERE s.space_id IS NOT NULL
+		    OR c.id IN (SELECT DISTINCT actor_id FROM v2.receipts
+		                 WHERE space_id = $1 AND actor_kind = 'agent' AND actor_id IS NOT NULL)
+		 ORDER BY c.created_at, c.id`, spaceID).Query(func(rows pgx.Rows) error {
+		var err error
+		h.agents, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (ExportAgent, error) {
+			var a ExportAgent
+			err := r.Scan(&a.ID, &a.Agent, &a.DisplayName, &a.Surface, &a.State, &a.Autonomy, &a.PersonID,
+				&a.CreatedReceiptID, &a.LastReceiptID, &a.CreatedAt)
+			return a, err
+		})
+		return err
+	})
+	b.Queue(tombstoneSelect+` WHERE t.space_id = $1 ORDER BY t.forgotten_at, t.id`, spaceID).
+		Query(func(rows pgx.Rows) error {
+			var err error
+			h.tombs, err = pgx.CollectRows(rows, scanTombstone)
+			return err
+		})
+	queueReads(b, spaceID, &h.reads)
+	if err := tx.SendBatch(ctx, b).Close(); err != nil {
+		return nil, fmt.Errorf("ledger: export: %w", err)
 	}
-	if err := needsWeb(ctx, tx, gates); err != nil {
-		return nil, err
+	if !found {
+		return nil, ErrNotFound
 	}
-	out := make([]Gate, len(gates))
-	for i, g := range gates {
-		out[i] = *g
+	return h, nil
+}
+
+// queueReads queues the space's read counts (from the rollups) on b.
+func queueReads(b *pgx.Batch, spaceID uuid.UUID, out *ReadSummary) {
+	b.Queue(`SELECT COALESCE(sum(reads), 0) FROM v2.read_rollups WHERE space_id = $1`, spaceID).
+		QueryRow(func(r pgx.Row) error { return r.Scan(&out.Total) })
+	b.Queue(`
+		SELECT reader_kind, agent, sum(reads), count(DISTINCT reader_key)
+		  FROM v2.read_rollups WHERE space_id = $1
+		 GROUP BY reader_kind, agent ORDER BY reader_kind, agent`, spaceID).Query(func(rows pgx.Rows) error {
+		var err error
+		out.ByReader, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (ReaderReads, error) {
+			var x ReaderReads
+			err := r.Scan(&x.ReaderKind, &x.Agent, &x.Reads, &x.Readers)
+			return x, err
+		})
+		return err
+	})
+	subjects := func(kind, table string, prefix Prefix, into *[]SubjectReads) {
+		b.Queue(`
+			SELECT s.seq, sum(r.reads), count(DISTINCT r.reader_key), min(r.day)::text, max(r.last_read_at)
+			  FROM v2.read_rollups r JOIN `+table+` s ON s.id = r.subject_id
+			 WHERE r.space_id = $1 AND r.subject_kind = $2
+			 GROUP BY s.seq ORDER BY s.seq`, spaceID, kind).Query(func(rows pgx.Rows) error {
+			var err error
+			*into, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (SubjectReads, error) {
+				var x SubjectReads
+				var seq int64
+				err := r.Scan(&seq, &x.Reads, &x.Readers, &x.FirstDay, &x.LastReadAt)
+				x.Ref, x.LastReadAt = FormatRef(prefix, seq), x.LastReadAt.UTC()
+				return x, err
+			})
+			return err
+		})
 	}
-	return out, nil
+	subjects("memory", "v2.memories", PrefixMemory, &out.Memories)
+	subjects("compile", "v2.compile_runs", PrefixCompile, &out.Compiles)
+	b.Queue(`SELECT day::text, sum(reads) FROM v2.read_rollups WHERE space_id = $1 GROUP BY day ORDER BY day`, spaceID).
+		Query(func(rows pgx.Rows) error {
+			var err error
+			out.Days, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (DayReads, error) {
+				var x DayReads
+				err := r.Scan(&x.Day, &x.Reads)
+				return x, err
+			})
+			return err
+		})
 }
 
 func exportTargets(ctx context.Context, tx pgx.Tx, scope Scope, spaceID uuid.UUID) ([]Target, error) {
@@ -365,104 +436,6 @@ func exportTargets(ctx context.Context, tx pgx.Tx, scope Scope, spaceID uuid.UUI
 	out := make([]Target, len(targets))
 	for i, t := range targets {
 		out[i] = *t
-	}
-	return out, nil
-}
-
-func exportAgents(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) ([]ExportAgent, error) {
-	rows, err := tx.Query(ctx, `
-		SELECT c.id, c.agent, c.display_name, c.surface, c.state, COALESCE(s.autonomy, ''), c.person_id,
-		       c.created_receipt_id, c.last_receipt_id, c.created_at
-		  FROM v2.agent_connections c
-		  LEFT JOIN v2.agent_connection_spaces s ON s.connection_id = c.id AND s.space_id = $1
-		 WHERE s.space_id IS NOT NULL
-		    OR c.id IN (SELECT DISTINCT actor_id FROM v2.receipts
-		                 WHERE space_id = $1 AND actor_kind = 'agent' AND actor_id IS NOT NULL)
-		 ORDER BY c.created_at, c.id`, spaceID)
-	if err != nil {
-		return nil, fmt.Errorf("ledger: export: agents: %w", err)
-	}
-	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (ExportAgent, error) {
-		var a ExportAgent
-		err := r.Scan(&a.ID, &a.Agent, &a.DisplayName, &a.Surface, &a.State, &a.Autonomy, &a.PersonID,
-			&a.CreatedReceiptID, &a.LastReceiptID, &a.CreatedAt)
-		return a, err
-	})
-	if err != nil {
-		return nil, fmt.Errorf("ledger: export: agents: %w", err)
-	}
-	return out, nil
-}
-
-func exportTombstones(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) ([]Tombstone, error) {
-	rows, err := tx.Query(ctx, tombstoneSelect+` WHERE t.space_id = $1 ORDER BY t.forgotten_at, t.id`, spaceID)
-	if err != nil {
-		return nil, fmt.Errorf("ledger: export: tombstones: %w", err)
-	}
-	ts, err := pgx.CollectRows(rows, scanTombstone)
-	if err != nil {
-		return nil, fmt.Errorf("ledger: export: tombstones: %w", err)
-	}
-	if err := attachWith(ctx, tx, ts); err != nil {
-		return nil, err
-	}
-	return ts, nil
-}
-
-func exportReads(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (ReadSummary, error) {
-	out := ReadSummary{ByReader: []ReaderReads{}, Memories: []SubjectReads{}, Compiles: []SubjectReads{}, Days: []DayReads{}}
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(reads), 0) FROM v2.read_rollups WHERE space_id = $1`, spaceID).
-		Scan(&out.Total); err != nil {
-		return out, fmt.Errorf("ledger: export: reads: %w", err)
-	}
-	rows, err := tx.Query(ctx, `
-		SELECT reader_kind, agent, sum(reads), count(DISTINCT reader_key)
-		  FROM v2.read_rollups WHERE space_id = $1
-		 GROUP BY reader_kind, agent ORDER BY reader_kind, agent`, spaceID)
-	if err != nil {
-		return out, fmt.Errorf("ledger: export: reads: %w", err)
-	}
-	if out.ByReader, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (ReaderReads, error) {
-		var x ReaderReads
-		err := r.Scan(&x.ReaderKind, &x.Agent, &x.Reads, &x.Readers)
-		return x, err
-	}); err != nil {
-		return out, fmt.Errorf("ledger: export: reads: %w", err)
-	}
-	subjects := func(kind, table string, prefix Prefix) ([]SubjectReads, error) {
-		rows, err := tx.Query(ctx, `
-			SELECT s.seq, sum(r.reads), count(DISTINCT r.reader_key), min(r.day)::text, max(r.last_read_at)
-			  FROM v2.read_rollups r JOIN `+table+` s ON s.id = r.subject_id
-			 WHERE r.space_id = $1 AND r.subject_kind = $2
-			 GROUP BY s.seq ORDER BY s.seq`, spaceID, kind)
-		if err != nil {
-			return nil, err
-		}
-		return pgx.CollectRows(rows, func(r pgx.CollectableRow) (SubjectReads, error) {
-			var x SubjectReads
-			var seq int64
-			err := r.Scan(&seq, &x.Reads, &x.Readers, &x.FirstDay, &x.LastReadAt)
-			x.Ref, x.LastReadAt = FormatRef(prefix, seq), x.LastReadAt.UTC()
-			return x, err
-		})
-	}
-	if out.Memories, err = subjects("memory", "v2.memories", PrefixMemory); err != nil {
-		return out, fmt.Errorf("ledger: export: reads: %w", err)
-	}
-	if out.Compiles, err = subjects("compile", "v2.compile_runs", PrefixCompile); err != nil {
-		return out, fmt.Errorf("ledger: export: reads: %w", err)
-	}
-	rows, err = tx.Query(ctx, `
-		SELECT day::text, sum(reads) FROM v2.read_rollups WHERE space_id = $1 GROUP BY day ORDER BY day`, spaceID)
-	if err != nil {
-		return out, fmt.Errorf("ledger: export: reads: %w", err)
-	}
-	if out.Days, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (DayReads, error) {
-		var x DayReads
-		err := r.Scan(&x.Day, &x.Reads)
-		return x, err
-	}); err != nil {
-		return out, fmt.Errorf("ledger: export: reads: %w", err)
 	}
 	return out, nil
 }
@@ -499,82 +472,71 @@ func exportMemories(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID, sink Expo
 	}
 }
 
+// exportMemoryBatchOf reads a batch's links, sources, versions and
+// receipts in one pipelined round trip.
 func exportMemoryBatchOf(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID, ms []*Memory) ([]ExportMemory, error) {
 	ids := make([]uuid.UUID, len(ms))
 	for i, m := range ms {
 		ids[i] = m.ID
 	}
-	links, err := activeLinks(ctx, tx, ids)
-	if err != nil {
-		return nil, err
-	}
+	links := map[uuid.UUID][]Link{}
 	sources := map[uuid.UUID][]Source{}
-	rows, err := tx.Query(ctx, `
+	versions := map[uuid.UUID][]MemoryVersion{}
+	stamps := map[uuid.UUID][]ReceiptStamp{}
+	b := &pgx.Batch{}
+	b.Queue(linksSQL, ids).Query(func(rows pgx.Rows) error { return scanLinks(rows, ids, links) })
+	b.Queue(`
 		SELECT ms.memory_id, s.id, s.kind, s.ref, COALESCE(s.uri, ''), s.locator, s.external, s.trust_class,
 		       COALESCE(s.quote, ''), COALESCE(s.content_hash, ''), s.created_at
 		  FROM v2.memory_sources ms
 		  JOIN v2.sources s ON s.id = ms.source_id
 		 WHERE ms.memory_id = ANY($1) AND ms.space_id = $2
-		 ORDER BY ms.memory_id, s.created_at, s.id`, ids, spaceID)
-	if err != nil {
-		return nil, fmt.Errorf("ledger: export: sources: %w", err)
-	}
-	for rows.Next() {
-		var memory uuid.UUID
-		var s Source
-		var locator []byte
-		if err := rows.Scan(&memory, &s.ID, &s.Kind, &s.Ref, &s.URI, &locator, &s.External, &s.Trust, &s.Quote,
-			&s.ContentHash, &s.CreatedAt); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("ledger: export: sources: %w", err)
+		 ORDER BY ms.memory_id, s.created_at, s.id`, ids, spaceID).Query(func(rows pgx.Rows) error {
+		for rows.Next() {
+			var memory uuid.UUID
+			var s Source
+			var locator []byte
+			if err := rows.Scan(&memory, &s.ID, &s.Kind, &s.Ref, &s.URI, &locator, &s.External, &s.Trust, &s.Quote,
+				&s.ContentHash, &s.CreatedAt); err != nil {
+				return err
+			}
+			s.Locator = json.RawMessage(locator)
+			sources[memory] = append(sources[memory], s)
 		}
-		s.Locator = json.RawMessage(locator)
-		sources[memory] = append(sources[memory], s)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("ledger: export: sources: %w", err)
-	}
-	versions := map[uuid.UUID][]MemoryVersion{}
-	rows, err = tx.Query(ctx, `
+		return rows.Err()
+	})
+	b.Queue(`
 		SELECT memory_id, version, COALESCE(statement, ''), receipt_id, created_at
 		  FROM v2.memory_versions
 		 WHERE memory_id = ANY($1) AND space_id = $2
-		 ORDER BY memory_id, version`, ids, spaceID)
-	if err != nil {
-		return nil, fmt.Errorf("ledger: export: versions: %w", err)
-	}
-	for rows.Next() {
-		var memory uuid.UUID
-		var v MemoryVersion
-		if err := rows.Scan(&memory, &v.Version, &v.Statement, &v.ReceiptID, &v.CreatedAt); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("ledger: export: versions: %w", err)
+		 ORDER BY memory_id, version`, ids, spaceID).Query(func(rows pgx.Rows) error {
+		for rows.Next() {
+			var memory uuid.UUID
+			var v MemoryVersion
+			if err := rows.Scan(&memory, &v.Version, &v.Statement, &v.ReceiptID, &v.CreatedAt); err != nil {
+				return err
+			}
+			versions[memory] = append(versions[memory], v)
 		}
-		versions[memory] = append(versions[memory], v)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("ledger: export: versions: %w", err)
-	}
-	stamps := map[uuid.UUID][]ReceiptStamp{}
-	rows, err = tx.Query(ctx, `
+		return rows.Err()
+	})
+	b.Queue(`
 		SELECT object_id, id, seq, action, occurred_at
 		  FROM v2.receipts
 		 WHERE space_id = $1 AND object_id = ANY($2)
-		 ORDER BY seq`, spaceID, ids)
-	if err != nil {
-		return nil, fmt.Errorf("ledger: export: receipts: %w", err)
-	}
-	for rows.Next() {
-		var object uuid.UUID
-		var st ReceiptStamp
-		if err := rows.Scan(&object, &st.ID, &st.Seq, &st.Action, &st.OccurredAt); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("ledger: export: receipts: %w", err)
+		 ORDER BY seq`, spaceID, ids).Query(func(rows pgx.Rows) error {
+		for rows.Next() {
+			var object uuid.UUID
+			var st ReceiptStamp
+			if err := rows.Scan(&object, &st.ID, &st.Seq, &st.Action, &st.OccurredAt); err != nil {
+				return err
+			}
+			stamps[object] = append(stamps[object], st)
 		}
-		stamps[object] = append(stamps[object], st)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("ledger: export: receipts: %w", err)
+		return rows.Err()
+	})
+	if err := tx.SendBatch(ctx, b).Close(); err != nil {
+		return nil, fmt.Errorf("ledger: export: memories: %w", err)
 	}
 	out := make([]ExportMemory, len(ms))
 	for i, m := range ms {

@@ -4,12 +4,15 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
+	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
+	"github.com/MemaxLabs/memax/packages/server/internal/testdb/netsim"
 )
 
 // collector keeps what ReadExport hands over.
@@ -148,5 +151,65 @@ func TestReadExportReadsTheWholeRecord(t *testing.T) {
 	}
 	if c.memories[0].Memory.Statement == "" || len(c.memories[0].Receipts) != 1 || c.memories[0].Receipts[0].Action != ledger.ActionKept {
 		t.Errorf("first memory = %+v", c.memories[0])
+	}
+}
+
+// An export reads through the ledger's read path: every statement on a v2
+// table runs inside its transaction, after its scope, as memax_v2
+// (netsim.Audit), and the read is pipelined. Its round trips are counted
+// so a change that adds some shows here; an export is no hot path, and
+// ForgetSpace, which shares the space's stream lock, gains none from it.
+func TestExportIsScopedAndPipelined(t *testing.T) {
+	t.Parallel()
+	audit := netsim.NewAudit(ledger.DBRole)
+	db := testdb.Open(t, testdb.Options{Watch: audit.Observe})
+	f := newFixtureOn(t, db)
+	zz := f.user("zz")
+	space := f.space(zz, policy.SpaceProject, "memax-v2")
+	scope := f.scope(zz).Narrow(space)
+	for _, s := range []string{"River is our queue.", "pnpm workspaces only.", "Tabs in Go."} {
+		f.remember(zz, space, s)
+	}
+	gone := f.remember(zz, space, "A word to forget: periwinkle.")
+	f.apply(&ledger.Forget{Meta: meta(person(zz), scope, policy.ViaWeb), Memory: gone.Ref, ExpectedVersion: 1})
+	audit.Arm()
+	defer audit.Require(t)
+
+	trips := func(run func(ctx context.Context)) int {
+		t.Helper()
+		ctx, c := netsim.Track(context.Background())
+		db.Trips.SetFallback(c)
+		defer db.Trips.SetFallback(nil)
+		run(ctx)
+		if !netsim.Settle(db.Pool, 2*time.Second) {
+			t.Fatal("connections still checked out after 2 s")
+		}
+		return c.RoundTrips()
+	}
+	command := trips(func(ctx context.Context) {
+		if _, err := f.l.Apply(ctx, &ledger.Export{Meta: meta(person(zz), scope, policy.ViaCLI), SpaceID: space}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	read := trips(func(ctx context.Context) {
+		if err := f.l.ReadExport(ctx, scope, space, &collector{}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	forgetSpace := trips(func(ctx context.Context) {
+		if _, err := f.l.Apply(ctx, &ledger.ForgetSpace{Meta: meta(person(zz), scope, policy.ViaWeb), SpaceID: space}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Logf("export: the command %d round trips, the read %d; a Forget of the space %d", command, read, forgetSpace)
+	// The command: open with the space, claim the key, the stream (its
+	// lock riding along), the receipt, COMMIT with the key's record. The
+	// read: the head in one, the gates' rule, the tombstones' companions,
+	// the targets, the memories in two per batch, the receipts, the seal.
+	if command > 6 || read > 12 {
+		t.Errorf("export: %d and %d round trips, budgets 6 and 12", command, read)
+	}
+	if audit.Checked() == 0 {
+		t.Error("the audit saw no statement")
 	}
 }

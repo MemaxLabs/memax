@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
+	"github.com/MemaxLabs/memax/packages/server/internal/deviceauth"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
@@ -75,6 +76,8 @@ type errorDetails struct {
 	Carries []ledger.Carried `json:"carries,omitempty"`
 	// Notes counts a space's V1 memories (space_has_notes).
 	Notes int `json:"notes,omitempty"`
+	// State is how a device's code ended (device.go).
+	State deviceauth.State `json:"state,omitempty"`
 }
 
 func writeError(w http.ResponseWriter, e *apiError) {

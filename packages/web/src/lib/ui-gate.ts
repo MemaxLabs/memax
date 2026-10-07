@@ -19,6 +19,21 @@ export const UI_COOKIE_V2 = "v2";
 const V2_AREAS = new Set(["signin", "device", "setup", "join"]);
 
 /**
+ * V2 areas that open without the opt-in. The memax CLI sends anyone to
+ * /device to confirm its sign-in code (RFC 8628), and V1 has no such
+ * page, so a person who never opted in must reach it; signing in on the
+ * way there goes through /signin (and /signin/callback). Neither shows a
+ * space: once signed in, a browser without the opt-in lands back in V1.
+ */
+const V2_OPEN_AREAS = new Set(["signin", "device"]);
+
+/** Whether a V2 path opens for every browser (V2_OPEN_AREAS). */
+export function isOpenV2Path(pathname: string): boolean {
+  const first = pathname.split("/").filter(Boolean)[0];
+  return first !== undefined && V2_OPEN_AREAS.has(first);
+}
+
+/**
  * Areas where V1 keeps the bare path: /settings is V1's settings page,
  * while /settings/{plan,account,keys,…} are V2.
  */
@@ -196,7 +211,7 @@ export function decideUiGate({
       ? { action: "redirect", pathname: `/${bare}/today` }
       : { action: "continue" };
   }
-  if (!isV2Path(pathname) || hasV2Opt(uiCookie)) {
+  if (!isV2Path(pathname) || hasV2Opt(uiCookie) || isOpenV2Path(pathname)) {
     return { action: "continue" };
   }
   return { action: "redirect", pathname: v1HomePath(hasSession) };

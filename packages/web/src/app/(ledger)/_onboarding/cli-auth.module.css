@@ -1,0 +1,135 @@
+/* CliAuth (CliAuth.dc.html): the code and the device on the left, what
+ * the terminal shows on the right. */
+
+.split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr));
+  gap: 64px;
+  align-items: center;
+}
+
+.left,
+.enter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.enter {
+  max-width: 480px;
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 44px;
+  line-height: 50px;
+  font-weight: 380;
+  letter-spacing: -0.022em;
+}
+
+.lede {
+  margin: 0;
+  max-width: 30em;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 28px;
+  color: var(--ink-2);
+}
+
+.code {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.char {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 56px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.dash {
+  width: 14px;
+  height: 2px;
+  margin: 0 var(--space-1);
+  background: var(--line-strong);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.facts dt {
+  color: var(--ink-3);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.enterForm {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.enterForm > :first-child {
+  flex: 1;
+}
+
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--ochre);
+  border-radius: var(--radius-md);
+  background: var(--ochre-wash);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.notice strong {
+  font-weight: 600;
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--vermilion);
+}
+
+@media (max-width: 639px) {
+  .title {
+    font-size: 34px;
+    line-height: 40px;
+  }
+  .char {
+    width: 34px;
+    height: 46px;
+    font-size: 20px;
+  }
+}

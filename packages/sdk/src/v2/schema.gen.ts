@@ -1720,6 +1720,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/device-authorizations:lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read a device's sign-in code
+         * @description What a waiting device code says about the device asking (CliAuth):
+         *     the client and its version, the machine's name and system, the
+         *     space it will use, and the address its request came from. All of
+         *     it but the address is what the device says about itself. A code
+         *     you decided reads as it ended; anyone else's is 404, as a code that
+         *     doesn't exist is, and naming codes that don't exist too often is
+         *     429 `rate_limited`. It is a `POST` so the code stays out of URLs
+         *     and access logs, and it takes no `Idempotency-Key`. Only a person
+         *     on a session reads one (`device_by_person`).
+         */
+        post: operations["lookupDeviceAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/device-authorizations:approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign a device in
+         * @description Confirms a waiting code: the device's next poll of the token
+         *     endpoint collects a session for you, once. The session is the
+         *     CLI's (`surface` cli), so what the device does with it is
+         *     `client_attested`, never `human_web`. Only a person on the web app
+         *     confirms a code (`device_needs_web` otherwise; `device_by_person`
+         *     for agents and keys), so an agent holding your CLI login can't sign
+         *     more machines in. Confirming a code you already confirmed answers
+         *     it as it is; a code you declined or that expired is 409
+         *     `invalid_transition` with `details.state`.
+         */
+        post: operations["approveDeviceAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/device-authorizations:deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline a device's code
+         * @description Declines a waiting code ("It doesn't match"): the device hears
+         *     `access_denied` and nothing is signed in. The same rules as
+         *     confirming apply: a person on the web app, once; a code you
+         *     confirmed, or that expired, is 409 `invalid_transition`.
+         */
+        post: operations["denyDeviceAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1891,9 +1970,12 @@ export interface components {
          *     creates or switches a space), space_kind (only project spaces are
          *     created here), space_limit (the most project spaces one person owns
          *     during the alpha), switch_by_owner (only the owner switches a space).
+         *     Refused device codes: device_by_person (only a person signs a device
+         *     in), device_needs_web (confirming or declining a code needs a person
+         *     on the web app).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "device_by_person" | "device_needs_web";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_has_notes";
         /**
@@ -3951,6 +4033,8 @@ export interface components {
             carries?: components["schemas"]["ForgetCarry"][];
             /** @description The V1 memories a space holds (`space_has_notes`). */
             notes?: number;
+            /** @description How a device's code ended (`invalid_transition` on a device code). */
+            state?: components["schemas"]["DeviceAuthorizationState"];
         };
         ErrorEnvelope: {
             error: components["schemas"]["Error"];
@@ -4080,6 +4164,51 @@ export interface components {
         };
         CheckpointPageEnvelope: {
             data: components["schemas"]["CheckpointPage"];
+        };
+        DeviceCodeRequest: {
+            /** @description The code the terminal shows, e.g. "WQRT-4821". Case, spaces and the dash don't matter. */
+            user_code: string;
+        };
+        /**
+         * @description Where a device's code stands: `pending` (waiting for a person),
+         *     `approved` (confirmed; the device hasn't collected its session
+         *     yet), `signed_in` (the device collected it), `denied` or `expired`
+         *     (its 10 minutes are up).
+         * @enum {string}
+         */
+        DeviceAuthorizationState: "pending" | "approved" | "signed_in" | "denied" | "expired";
+        /**
+         * @description A device asking to sign in with a code. Everything about the device
+         *     but `address` is what it says about itself.
+         */
+        DeviceAuthorization: {
+            /** @description The code, as people read it ("WQRT-4821"). */
+            user_code: string;
+            state: components["schemas"]["DeviceAuthorizationState"];
+            /** @description The client asking; only the memax CLI (`memax-cli`) signs in this way. */
+            client_id: string;
+            /** @description The client's version, e.g. "2.0.0". */
+            client_version?: string;
+            /** @description The machine's name, e.g. "ziyang-mbp". */
+            device_name?: string;
+            /**
+             * @description The machine's system.
+             * @enum {string}
+             */
+            device_os?: "macOS" | "Linux" | "Windows" | "FreeBSD" | "other";
+            /** @description The space the CLI will use, by slug; it can switch in the terminal. */
+            space?: string;
+            /** @description The address the request came from, as Memax saw it. */
+            address?: string;
+            requested_at: components["schemas"]["Timestamp"];
+            expires_at: components["schemas"]["Timestamp"];
+            /** @description When you confirmed or declined it. */
+            decided_at?: components["schemas"]["Timestamp"];
+            /** @description When the device collected its session. */
+            signed_in_at?: components["schemas"]["Timestamp"];
+        };
+        DeviceAuthorizationEnvelope: {
+            data: components["schemas"]["DeviceAuthorization"];
         };
     };
     responses: {
@@ -6880,6 +7009,113 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    lookupDeviceAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The code and the device asking. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceAuthorizationEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    approveDeviceAuthorization: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The code, confirmed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceAuthorizationEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    denyDeviceAuthorization: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The code, declined. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceAuthorizationEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

@@ -1,0 +1,116 @@
+/* Pieces the setup screens share: a command to run, and FirstRun's steps
+ * (FirstRun.dc.html, EmptySpace.dc.html). */
+
+.command {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 480px;
+  height: 40px;
+  padding: 0 6px 0 14px;
+  box-sizing: border-box;
+  background: var(--ink);
+  color: var(--on-ink);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.command code {
+  flex: 1;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.prompt {
+  opacity: 0.6;
+}
+
+.copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.copy:hover {
+  opacity: 1;
+}
+
+.copy:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: var(--space-3);
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.n {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: 0 auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.done .n {
+  color: var(--ink);
+}
+
+.now .n {
+  border-radius: var(--radius-xs);
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.stepTitle {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.later .stepTitle {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.stepDetail {
+  margin: -6px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}

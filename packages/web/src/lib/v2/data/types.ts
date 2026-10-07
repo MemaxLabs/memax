@@ -49,6 +49,13 @@ export interface SpaceSummary {
   people: number | null;
   /** Waiting on the viewer: the switcher's badge for other spaces. */
   waiting: number | null;
+  /**
+   * Whether the space is on the V2 record (spec Space.v2_enabled_at). A
+   * new person's spaces aren't until `memax init` moves them, which is how
+   * the routing after sign-in tells a first run. Undefined: the source
+   * doesn't say (the demo, whose spaces all are).
+   */
+  onV2?: boolean;
 }
 
 /** The rail's status line (plan §6.4): "5 agents in sync", "Cursor file drifted". */

@@ -75,6 +75,21 @@ export type DownloadFn = (
   options?: DownloadOptions,
 ) => Promise<Response>;
 
+/** An OAuth protocol answer: its status and JSON body, unwrapped. */
+export interface FormResult {
+  status: number;
+  body: Record<string, unknown>;
+  /** Seconds, from Retry-After, when the server sent one. */
+  retryAfter?: number;
+}
+
+/** Posts an OAuth form; see {@link ApiTransport.form}. */
+export type FormFn = (
+  path: string,
+  fields: Record<string, string | undefined>,
+  signal?: AbortSignal,
+) => Promise<FormResult>;
+
 /** Opens an event stream; see {@link ApiTransport.open}. */
 export type OpenFn = (
   method: string,
@@ -367,6 +382,65 @@ export class ApiTransport {
     }
 
     throw lastErr;
+  }
+
+  /**
+   * Posts an OAuth protocol form (`application/x-www-form-urlencoded`) with
+   * no credentials and returns its status and JSON body as they are: OAuth
+   * answers in its own JSON (`{error, error_description}`), not the
+   * `{data}` envelope, and its 400s are expected answers, not failures.
+   * Only a network failure or a body that isn't JSON throws.
+   */
+  async form(
+    path: string,
+    fields: Record<string, string | undefined>,
+    signal?: AbortSignal,
+  ): Promise<FormResult> {
+    const url = `${this.apiUrl}${path}`;
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined && value !== "") params.set(key, value);
+    }
+    if (signal?.aborted) throw signalAbortError(signal);
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        method: "POST",
+        headers: {
+          ...this.headers,
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: params.toString(),
+        signal,
+        cache: "no-store",
+      });
+    } catch (error) {
+      if (signal?.aborted) throw signalAbortError(signal);
+      if (isAbortShaped(error)) throw error;
+      throw new MemaxError(
+        `Cannot reach API at ${url} — is the server running?`,
+        "network_error",
+        0,
+      );
+    }
+    const text = await res.text();
+    try {
+      return {
+        status: res.status,
+        body: (text ? JSON.parse(text) : {}) as Record<string, unknown>,
+        retryAfter: parseRetryAfter(res.headers.get("Retry-After")),
+      };
+    } catch {
+      const preview = summarizeResponseText(text);
+      throw new MemaxError(
+        preview
+          ? `${formatRequestLabel("POST", url)} returned ${res.status} with non-JSON response: ${preview}`
+          : `${formatRequestLabel("POST", url)} returned ${res.status} with non-JSON response`,
+        "invalid_response",
+        res.status,
+      );
+    }
   }
 
   /**

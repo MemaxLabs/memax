@@ -180,6 +180,9 @@ func (s *Searcher) Search(ctx context.Context, scope ledger.Scope, q Query) (Res
 		pending = s.vectors.startQuery(ctx, q.Text)
 	}
 	var rankings []ranking
+	// loaded holds the hits the lanes returned with their ranking (the
+	// built-in lexical lanes do, so their hits cost no second statement).
+	loaded := map[uuid.UUID]Hit{}
 	lexical := func(tx pgx.Tx) error {
 		found := map[uuid.UUID]bool{}
 		for _, lane := range s.lanes {
@@ -189,7 +192,7 @@ func (s *Searcher) Search(ctx context.Context, scope ledger.Scope, q Query) (Res
 			if fb, ok := lane.(interface{ Fallback() bool }); ok && fb.Fallback() && len(found) >= q.Limit {
 				continue
 			}
-			ids, err := lane.Rank(ctx, tx, q, pool)
+			ids, err := rankLane(ctx, tx, lane, q, pool, loaded)
 			if err != nil {
 				return fmt.Errorf("v2recall: %s lane: %w", lane.Name(), err)
 			}
@@ -201,7 +204,8 @@ func (s *Searcher) Search(ctx context.Context, scope ledger.Scope, q Query) (Res
 		return nil
 	}
 	// load fuses the lanes and reads the best hits: q.Limit of them, or
-	// the reranker's pool when it may rerank.
+	// the reranker's pool when it may rerank. Only hits no lane returned
+	// are read (the vector lane's), so a lexical answer reads nothing more.
 	load := func(tx pgx.Tx) error {
 		ids, scores := fuse(rankings)
 		if len(ids) == 0 {
@@ -212,7 +216,7 @@ func (s *Searcher) Search(ctx context.Context, scope ledger.Scope, q Query) (Res
 			n = max(n, s.rerank.TopN())
 		}
 		ids = ids[:min(n, len(ids))]
-		hits, err := loadHits(ctx, tx, q.Filter.Spaces, ids)
+		hits, err := hitsOf(ctx, tx, q.Filter.Spaces, ids, loaded)
 		if err != nil {
 			return err
 		}
@@ -315,6 +319,60 @@ func loadHits(ctx context.Context, tx pgx.Tx, spaces, ids []uuid.UUID) ([]Hit, e
 	return hits, nil
 }
 
+// hitsOf returns the hits of ids: those in loaded as they are, the rest
+// read in one statement. The order is the caller's to set.
+func hitsOf(ctx context.Context, tx pgx.Tx, spaces, ids []uuid.UUID, loaded map[uuid.UUID]Hit) ([]Hit, error) {
+	hits := make([]Hit, 0, len(ids))
+	var missing []uuid.UUID
+	for _, id := range ids {
+		if h, ok := loaded[id]; ok {
+			hits = append(hits, h)
+		} else {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) == 0 {
+		return hits, nil
+	}
+	more, err := loadHits(ctx, tx, spaces, missing)
+	if err != nil {
+		return nil, err
+	}
+	return append(hits, more...), nil
+}
+
+// hitLane is a lane that returns its hits with its ranking, in the same
+// statement.
+type hitLane interface {
+	rankHits(ctx context.Context, tx pgx.Tx, q Query, limit int) ([]Hit, error)
+}
+
+// rankLane ranks with lane, keeping the hits it returns in loaded.
+func rankLane(ctx context.Context, tx pgx.Tx, lane Lane, q Query, limit int, loaded map[uuid.UUID]Hit) ([]uuid.UUID, error) {
+	hl, ok := lane.(hitLane)
+	if !ok {
+		return lane.Rank(ctx, tx, q, limit)
+	}
+	hits, err := hl.rankHits(ctx, tx, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, len(hits))
+	for i, h := range hits {
+		ids[i] = h.ID
+		loaded[h.ID] = h
+	}
+	return ids, nil
+}
+
+// withHits wraps a lane's ranking (rows of id, score, seq, best first) so
+// the statement returns the ranked hits in the same order.
+func withHits(ranking string) string {
+	return `WITH ranked AS (` + ranking + `)` + hitSelect + `
+	  JOIN ranked r ON r.id = m.id
+	 ORDER BY r.score DESC, r.seq DESC`
+}
+
 // filterSQL is the WHERE clause every lane shares, from $2 on: spaces,
 // lifecycle, kind, proposer, session. A superseded decision stays kept,
 // with its history, but is no longer in force, so recall and search leave
@@ -349,23 +407,47 @@ type FullText struct{}
 // Name implements Lane.
 func (FullText) Name() string { return "fts" }
 
-// Rank implements Lane.
-func (FullText) Rank(ctx context.Context, tx pgx.Tx, q Query, limit int) ([]uuid.UUID, error) {
+// ranking is the lane's query: rows of (id, score, seq), best first; ok
+// is false when the text has nothing to search for.
+func (FullText) ranking(q Query, limit int) (string, []any, bool) {
 	tsq := tsQuery(q.Text)
 	if tsq == "" {
-		return nil, nil
+		return "", nil, false
 	}
 	args := append([]any{tsq}, filterArgs(q.Filter)...)
 	args = append(args, limit)
-	rows, err := tx.Query(ctx, `
-		SELECT m.id FROM v2.memories m, to_tsquery('simple', public.immutable_unaccent($1)) tq
-		 WHERE m.search @@ tq AND `+filterSQL+`
+	return `
+		SELECT m.id, ts_rank_cd(m.search, tq) AS score, m.seq
+		  FROM v2.memories m, to_tsquery('simple', public.immutable_unaccent($1)) tq
+		 WHERE m.search @@ tq AND ` + filterSQL + `
 		 ORDER BY ts_rank_cd(m.search, tq) DESC, m.seq DESC
-		 LIMIT $7`, args...)
+		 LIMIT $7`, args, true
+}
+
+// Rank implements Lane.
+func (l FullText) Rank(ctx context.Context, tx pgx.Tx, q Query, limit int) ([]uuid.UUID, error) {
+	sql, args, ok := l.ranking(q, limit)
+	if !ok {
+		return nil, nil
+	}
+	rows, err := tx.Query(ctx, `SELECT id FROM (`+sql+`) ranked ORDER BY score DESC, seq DESC`, args...)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+}
+
+// rankHits is Rank returning the hits, in one statement.
+func (l FullText) rankHits(ctx context.Context, tx pgx.Tx, q Query, limit int) ([]Hit, error) {
+	sql, args, ok := l.ranking(q, limit)
+	if !ok {
+		return nil, nil
+	}
+	rows, err := tx.Query(ctx, withHits(sql), args...)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, scanHit)
 }
 
 // Trigram ranks by how well the query matches part of the statement
@@ -382,34 +464,70 @@ func (Trigram) Fallback() bool { return true }
 // trigramThreshold is the least word similarity that counts as a match.
 const trigramThreshold = 0.3
 
-// Rank implements Lane.
-func (Trigram) Rank(ctx context.Context, tx pgx.Tx, q Query, limit int) ([]uuid.UUID, error) {
+// ranking is the lane's query: rows of (id, score, seq), best first; ok
+// is false when the text is too short to match by trigrams.
+func (Trigram) ranking(q Query, limit int) (string, []any, bool) {
 	text := normalize(q.Text)
 	if utf8.RuneCountInString(text) < 3 {
-		return nil, nil
-	}
-	// The <% operator is word similarity at the transaction's threshold,
-	// and memory_versions_trgm_idx (migration 034) serves it, so only
-	// statements that share trigrams with the query are scored.
-	if _, err := tx.Exec(ctx, `SELECT set_config('pg_trgm.word_similarity_threshold', $1, true)`,
-		fmt.Sprintf("%g", trigramThreshold)); err != nil {
-		return nil, err
+		return "", nil, false
 	}
 	args := append([]any{text}, filterArgs(q.Filter)...)
 	args = append(args, limit)
-	rows, err := tx.Query(ctx, `
-		WITH q AS (SELECT public.immutable_unaccent($1) AS t)
-		SELECT m.id
-		  FROM q, v2.memory_versions v
+	return `
+		SELECT m.id, word_similarity(q.t, public.immutable_unaccent(lower(v.statement))) AS score, m.seq
+		  FROM (SELECT public.immutable_unaccent($1) AS t) q, v2.memory_versions v
 		  JOIN v2.memories m ON m.id = v.memory_id AND v.version = m.current_version
 		 WHERE q.t <% public.immutable_unaccent(lower(v.statement))
-		   AND v.space_id = ANY($2) AND `+filterSQL+`
+		   AND v.space_id = ANY($2) AND ` + filterSQL + `
 		 ORDER BY word_similarity(q.t, public.immutable_unaccent(lower(v.statement))) DESC, m.seq DESC
-		 LIMIT $7`, args...)
-	if err != nil {
-		return nil, err
+		 LIMIT $7`, args, true
+}
+
+// threshold sets the word-similarity threshold the <% operator uses for
+// the rest of the transaction. The <% operator is word similarity at the
+// transaction's threshold, and memory_versions_trgm_idx (migration 034)
+// serves it, so only statements that share trigrams with the query are
+// scored.
+func (Trigram) threshold(b *pgx.Batch) {
+	b.Queue(`SELECT set_config('pg_trgm.word_similarity_threshold', $1, true)`, fmt.Sprintf("%g", trigramThreshold))
+}
+
+// Rank implements Lane.
+func (l Trigram) Rank(ctx context.Context, tx pgx.Tx, q Query, limit int) ([]uuid.UUID, error) {
+	sql, args, ok := l.ranking(q, limit)
+	if !ok {
+		return nil, nil
 	}
-	return pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	var ids []uuid.UUID
+	err := l.send(ctx, tx, `SELECT id FROM (`+sql+`) ranked ORDER BY score DESC, seq DESC`, args, func(rows pgx.Rows) error {
+		var err error
+		ids, err = pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		return err
+	})
+	return ids, err
+}
+
+// rankHits is Rank returning the hits, in one statement.
+func (l Trigram) rankHits(ctx context.Context, tx pgx.Tx, q Query, limit int) ([]Hit, error) {
+	sql, args, ok := l.ranking(q, limit)
+	if !ok {
+		return nil, nil
+	}
+	var hits []Hit
+	err := l.send(ctx, tx, withHits(sql), args, func(rows pgx.Rows) error {
+		var err error
+		hits, err = pgx.CollectRows(rows, scanHit)
+		return err
+	})
+	return hits, err
+}
+
+// send runs the threshold and the query in one round trip.
+func (l Trigram) send(ctx context.Context, tx pgx.Tx, sql string, args []any, read func(pgx.Rows) error) error {
+	b := &pgx.Batch{}
+	l.threshold(b)
+	b.Queue(sql, args...).Query(read)
+	return tx.SendBatch(ctx, b).Close()
 }
 
 var wordRE = regexp.MustCompile(`[\p{L}\p{N}]+`)
@@ -443,27 +561,105 @@ func tsQuery(text string) string {
 // tokens comparable).
 func normalize(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
 
-// SessionProposals returns one connection's pending proposals from one
-// session, newest first: read-after-write for the proposer (plan 25
-// §5.6). A session's own proposals are few, so they all come back rather
-// than being ranked against the query.
-func (s *Searcher) SessionProposals(ctx context.Context, scope ledger.Scope, spaces []uuid.UUID, proposer uuid.UUID, sessionRef string, limit int) ([]Hit, error) {
-	if s == nil || proposer == uuid.Nil || sessionRef == "" || len(spaces) == 0 {
-		return nil, nil
+// ExtrasQuery is what a recall reads beside its search or its digest
+// (Extras), all in one round trip.
+type ExtrasQuery struct {
+	Spaces []uuid.UUID
+	// Proposer and SessionRef ask for one connection's pending proposals
+	// from one session, newest first, up to ProposalLimit: read-after-write
+	// for the proposer (plan 25 §5.6). A session's own proposals are few,
+	// so they all come back rather than being ranked against the query.
+	Proposer      uuid.UUID
+	SessionRef    string
+	ProposalLimit int
+	// Since asks for what changed after it: the writes the judge returned
+	// to Review, and, with Forgotten, the memories forgotten (a digest
+	// reads its own).
+	Since     *time.Time
+	Forgotten bool
+}
+
+// Extras is what an ExtrasQuery found.
+type Extras struct {
+	Proposals []Hit
+	// Forgotten lists memories forgotten since, as space id → refs (the
+	// words are gone): forget notices.
+	Forgotten map[uuid.UUID][]string
+	// Returned lists the writes the judge returned to Review since, as space
+	// id → returns: the notices a connection gets on its next recall, since
+	// it may have read them while they were kept. One that has since been
+	// kept again, or settled, is still listed: what the agent read before
+	// was not what stands.
+	Returned map[uuid.UUID][]Returned
+}
+
+// Returned is a Write-level agent's write the judge put back in Review
+// (rule 11): its ref, and the decision in force it contradicts.
+type Returned struct {
+	Ref      string
+	Decision string
+}
+
+// Extras reads what q asks for in one round trip (ledger.ReadBatch): its
+// statements don't depend on each other.
+func (s *Searcher) Extras(ctx context.Context, scope ledger.Scope, q ExtrasQuery) (Extras, error) {
+	out := Extras{Forgotten: map[uuid.UUID][]string{}, Returned: map[uuid.UUID][]Returned{}}
+	if s == nil || len(q.Spaces) == 0 {
+		return out, nil
 	}
-	f := Filter{Spaces: spaces, Lifecycle: "proposed", Proposer: proposer, SessionRef: sessionRef}
-	var hits []Hit
-	err := s.ledger.Read(ctx, scope, func(tx pgx.Tx) error {
+	b := &pgx.Batch{}
+	if q.Proposer != uuid.Nil && q.SessionRef != "" {
+		f := Filter{Spaces: q.Spaces, Lifecycle: "proposed", Proposer: q.Proposer, SessionRef: q.SessionRef}
 		args := append([]any{nil}, filterArgs(f)...)
-		args = append(args, limit)
-		rows, err := tx.Query(ctx, hitSelect+` WHERE ($1::text IS NULL) AND `+filterSQL+` ORDER BY m.seq DESC LIMIT $7`, args...)
-		if err != nil {
+		args = append(args, q.ProposalLimit)
+		b.Queue(hitSelect+` WHERE ($1::text IS NULL) AND `+filterSQL+` ORDER BY m.seq DESC LIMIT $7`, args...).
+			Query(func(rows pgx.Rows) error {
+				var err error
+				out.Proposals, err = pgx.CollectRows(rows, scanHit)
+				return err
+			})
+	}
+	if q.Since != nil {
+		if q.Forgotten {
+			b.Queue(`
+				SELECT space_id, object_ref FROM v2.receipts
+				 WHERE space_id = ANY($1) AND object_kind = 'memory' AND action = 'forgot' AND recorded_at > $2
+				 ORDER BY seq LIMIT 50`, q.Spaces, *q.Since).
+				Query(func(rows pgx.Rows) error { return collectRefs(rows, out.Forgotten) })
+		}
+		b.Queue(`
+			SELECT space_id, object_ref, COALESCE(source->>'ref', '') FROM v2.receipts
+			 WHERE space_id = ANY($1) AND object_kind = 'memory' AND action = 'returned' AND recorded_at > $2
+			 ORDER BY seq LIMIT 50`, q.Spaces, *q.Since).
+			Query(func(rows pgx.Rows) error {
+				for rows.Next() {
+					var id uuid.UUID
+					var r Returned
+					if err := rows.Scan(&id, &r.Ref, &r.Decision); err != nil {
+						return err
+					}
+					out.Returned[id] = append(out.Returned[id], r)
+				}
+				return rows.Err()
+			})
+	}
+	if b.Len() == 0 {
+		return out, nil
+	}
+	return out, s.ledger.ReadBatch(ctx, scope, b)
+}
+
+// collectRefs reads rows of (space id, ref) into out.
+func collectRefs(rows pgx.Rows, out map[uuid.UUID][]string) error {
+	for rows.Next() {
+		var id uuid.UUID
+		var ref string
+		if err := rows.Scan(&id, &ref); err != nil {
 			return err
 		}
-		hits, err = pgx.CollectRows(rows, scanHit)
-		return err
-	})
-	return hits, err
+		out[id] = append(out[id], ref)
+	}
+	return rows.Err()
 }
 
 // SpaceDigest is the lexical stand-in for a space's compiled digest: its
@@ -482,6 +678,7 @@ type SpaceDigest struct {
 
 // Digest reads each space's digest: up to perSection newest kept
 // memories per section, and, when since isn't nil, what changed after it.
+// Its statements go out together, in one round trip (ledger.ReadBatch).
 func (s *Searcher) Digest(ctx context.Context, scope ledger.Scope, spaces []uuid.UUID, perSection int, since *time.Time) ([]SpaceDigest, error) {
 	if s == nil {
 		return nil, ledger.ErrDisabled
@@ -495,142 +692,63 @@ func (s *Searcher) Digest(ctx context.Context, scope ledger.Scope, spaces []uuid
 		out[i] = SpaceDigest{SpaceID: id, Sections: map[ledger.Section][]Hit{}}
 		byID[id] = &out[i]
 	}
-	err := s.ledger.Read(ctx, scope, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `
-			SELECT id, seq, space_id, statement, section, kind, state, lifecycle, trust, current_version, updated_at
-			  FROM (SELECT m.id, m.seq, m.space_id, COALESCE(v.statement, '') AS statement, m.section, m.kind,
-			               m.state, m.lifecycle, m.trust, m.current_version, m.updated_at,
-			               row_number() OVER (PARTITION BY m.space_id, m.section ORDER BY m.updated_at DESC, m.seq DESC) AS n
-			          FROM v2.memories m
-			          LEFT JOIN v2.memory_versions v ON v.memory_id = m.id AND v.version = m.current_version
-			         WHERE m.space_id = ANY($1) AND m.lifecycle = 'kept' AND `+notSuperseded+`) ranked
-			 WHERE n <= $2
-			 ORDER BY space_id, section, n`, spaces, perSection)
-		if err != nil {
-			return err
-		}
-		hits, err := pgx.CollectRows(rows, scanHit)
-		if err != nil {
-			return err
-		}
-		for _, h := range hits {
-			d := byID[h.SpaceID]
-			d.Sections[h.Section] = append(d.Sections[h.Section], h)
-		}
-		rows, err = tx.Query(ctx, `
-			SELECT space_id, count(*) FROM v2.memories m
-			 WHERE m.space_id = ANY($1)
-			   AND (m.lifecycle = 'proposed' OR (m.lifecycle = 'kept' AND cardinality(m.flags) > 0))
-			 GROUP BY space_id`, spaces)
-		if err != nil {
-			return err
-		}
-		if err := collectCounts(rows, func(id uuid.UUID, n int) { byID[id].Waiting = n }); err != nil {
-			return err
-		}
-		if since == nil {
-			return nil
-		}
-		rows, err = tx.Query(ctx, `
-			SELECT space_id, count(DISTINCT object_id) FROM v2.receipts
-			 WHERE space_id = ANY($1) AND object_kind = 'memory' AND action IN ('kept', 'edited') AND recorded_at > $2
-			 GROUP BY space_id`, spaces, *since)
-		if err != nil {
-			return err
-		}
-		if err := collectCounts(rows, func(id uuid.UUID, n int) { byID[id].Changed = n }); err != nil {
-			return err
-		}
-		rows, err = tx.Query(ctx, `
-			SELECT space_id, object_ref FROM v2.receipts
-			 WHERE space_id = ANY($1) AND object_kind = 'memory' AND action = 'forgot' AND recorded_at > $2
-			 ORDER BY seq`, spaces, *since)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id uuid.UUID
-			var ref string
-			if err := rows.Scan(&id, &ref); err != nil {
+	b := &pgx.Batch{}
+	b.Queue(`
+		SELECT id, seq, space_id, statement, section, kind, state, lifecycle, trust, current_version, updated_at
+		  FROM (SELECT m.id, m.seq, m.space_id, COALESCE(v.statement, '') AS statement, m.section, m.kind,
+		               m.state, m.lifecycle, m.trust, m.current_version, m.updated_at,
+		               row_number() OVER (PARTITION BY m.space_id, m.section ORDER BY m.updated_at DESC, m.seq DESC) AS n
+		          FROM v2.memories m
+		          LEFT JOIN v2.memory_versions v ON v.memory_id = m.id AND v.version = m.current_version
+		         WHERE m.space_id = ANY($1) AND m.lifecycle = 'kept' AND `+notSuperseded+`) ranked
+		 WHERE n <= $2
+		 ORDER BY space_id, section, n`, spaces, perSection).
+		Query(func(rows pgx.Rows) error {
+			hits, err := pgx.CollectRows(rows, scanHit)
+			if err != nil {
 				return err
 			}
-			byID[id].Forgotten = append(byID[id].Forgotten, ref)
-		}
-		return rows.Err()
-	})
-	if err != nil {
+			for _, h := range hits {
+				d := byID[h.SpaceID]
+				d.Sections[h.Section] = append(d.Sections[h.Section], h)
+			}
+			return nil
+		})
+	b.Queue(`
+		SELECT space_id, count(*) FROM v2.memories m
+		 WHERE m.space_id = ANY($1)
+		   AND (m.lifecycle = 'proposed' OR (m.lifecycle = 'kept' AND cardinality(m.flags) > 0))
+		 GROUP BY space_id`, spaces).
+		Query(func(rows pgx.Rows) error {
+			return collectCounts(rows, func(id uuid.UUID, n int) { byID[id].Waiting = n })
+		})
+	if since != nil {
+		b.Queue(`
+			SELECT space_id, count(DISTINCT object_id) FROM v2.receipts
+			 WHERE space_id = ANY($1) AND object_kind = 'memory' AND action IN ('kept', 'edited') AND recorded_at > $2
+			 GROUP BY space_id`, spaces, *since).
+			Query(func(rows pgx.Rows) error {
+				return collectCounts(rows, func(id uuid.UUID, n int) { byID[id].Changed = n })
+			})
+		b.Queue(`
+			SELECT space_id, object_ref FROM v2.receipts
+			 WHERE space_id = ANY($1) AND object_kind = 'memory' AND action = 'forgot' AND recorded_at > $2
+			 ORDER BY seq`, spaces, *since).
+			Query(func(rows pgx.Rows) error {
+				forgotten := map[uuid.UUID][]string{}
+				if err := collectRefs(rows, forgotten); err != nil {
+					return err
+				}
+				for id, refs := range forgotten {
+					byID[id].Forgotten = refs
+				}
+				return nil
+			})
+	}
+	if err := s.ledger.ReadBatch(ctx, scope, b); err != nil {
 		return nil, err
 	}
 	return out, nil
-}
-
-// ForgottenSince lists memories forgotten in the spaces after since, as
-// space id → refs. Forget notices for recalls with a query.
-func (s *Searcher) ForgottenSince(ctx context.Context, scope ledger.Scope, spaces []uuid.UUID, since time.Time) (map[uuid.UUID][]string, error) {
-	out := map[uuid.UUID][]string{}
-	if s == nil || len(spaces) == 0 {
-		return out, nil
-	}
-	err := s.ledger.Read(ctx, scope, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `
-			SELECT space_id, object_ref FROM v2.receipts
-			 WHERE space_id = ANY($1) AND object_kind = 'memory' AND action = 'forgot' AND recorded_at > $2
-			 ORDER BY seq LIMIT 50`, spaces, since)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id uuid.UUID
-			var ref string
-			if err := rows.Scan(&id, &ref); err != nil {
-				return err
-			}
-			out[id] = append(out[id], ref)
-		}
-		return rows.Err()
-	})
-	return out, err
-}
-
-// Returned is a Write-level agent's write the judge put back in Review
-// (rule 11): its ref, and the decision in force it contradicts.
-type Returned struct {
-	Ref      string
-	Decision string
-}
-
-// ReturnedSince lists the writes the judge returned to Review in the
-// spaces after since (refs only), as space id → returns: the notices a
-// connection gets on its next recall, since it may have read them while
-// they were kept. One that has since been kept again, or settled, is
-// still listed: what the agent read before was not what stands.
-func (s *Searcher) ReturnedSince(ctx context.Context, scope ledger.Scope, spaces []uuid.UUID, since time.Time) (map[uuid.UUID][]Returned, error) {
-	out := map[uuid.UUID][]Returned{}
-	if s == nil || len(spaces) == 0 {
-		return out, nil
-	}
-	err := s.ledger.Read(ctx, scope, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `
-			SELECT space_id, object_ref, COALESCE(source->>'ref', '') FROM v2.receipts
-			 WHERE space_id = ANY($1) AND object_kind = 'memory' AND action = 'returned' AND recorded_at > $2
-			 ORDER BY seq LIMIT 50`, spaces, since)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id uuid.UUID
-			var r Returned
-			if err := rows.Scan(&id, &r.Ref, &r.Decision); err != nil {
-				return err
-			}
-			out[id] = append(out[id], r)
-		}
-		return rows.Err()
-	})
-	return out, err
 }
 
 // KeptCounts counts each space's kept memories.

@@ -274,18 +274,30 @@ func (s *Server) gateItem(sp space, g *ledger.Gate) handler.MCPGate {
 	return item
 }
 
-// gateNews adds how this connection's gates ended (once), and without a
-// query the ones still waiting, to a recall.
-func (s *Server) gateNews(ctx context.Context, p *v2api.Principal, scope ledger.Scope, bySpace map[uuid.UUID]space, digest bool, part *v2Part, b *strings.Builder) {
-	if p.Actor.Kind != policy.ActorAgent || p.Connection == nil {
-		return
-	}
+// gateNews is what takeGateNews took: how this connection's gates ended
+// (once), and without a query the ones still waiting; or why not.
+type gateNews struct {
+	news ledger.GateNews
+	err  error
+}
+
+// takeGateNews takes the connection's gate news (TakeGateNews marks the
+// ended gates delivered); recall reads it beside its search.
+func (s *Server) takeGateNews(ctx context.Context, p *v2api.Principal, scope ledger.Scope, digest bool) gateNews {
 	news, err := s.ledger.TakeGateNews(ctx, scope, p.Actor.ID, digest)
-	if err != nil {
+	return gateNews{news: news, err: err}
+}
+
+// writeGateNews adds the gates' news to a recall (nothing for a caller
+// that isn't an agent's connection: takeGateNews didn't run, and its
+// news is empty).
+func (s *Server) writeGateNews(ctx context.Context, g gateNews, bySpace map[uuid.UUID]space, part *v2Part, b *strings.Builder) {
+	if g.err != nil {
 		part.out.Partial = true
-		s.logReadError(ctx, "gate news", err)
+		s.logReadError(ctx, "gate news", g.err)
 		return
 	}
+	news := g.news
 	if len(news.Ended)+len(news.Waiting) == 0 {
 		return
 	}

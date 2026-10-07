@@ -104,6 +104,32 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 	since := lastSeen(p)
 	var b strings.Builder
 
+	// What the answer carries beside the search (or the digest) doesn't
+	// depend on it, so it's read at the same time: the session's own
+	// proposals with the forget and return notices in one round trip, and
+	// the decision gates' news. Each round trip is about 24 ms in
+	// production.
+	var side sync.WaitGroup
+	extrasQ := v2recall.ExtrasQuery{Spaces: ids(spaces), Since: since, Forgotten: query != ""}
+	if sessionRef != "" && p.Actor.Kind == policy.ActorAgent {
+		extrasQ.Proposer, extrasQ.SessionRef, extrasQ.ProposalLimit = p.Actor.ID, sessionRef, 10
+	}
+	var extras v2recall.Extras
+	var extrasErr error
+	side.Add(1)
+	go func() {
+		defer side.Done()
+		extras, extrasErr = s.search.Extras(ctx, scope, extrasQ)
+	}()
+	var news gateNews
+	if p.Actor.Kind == policy.ActorAgent && p.Connection != nil {
+		side.Add(1)
+		go func() {
+			defer side.Done()
+			news = s.takeGateNews(ctx, p, scope, query == "")
+		}()
+	}
+
 	var digestForgotten map[uuid.UUID][]string
 	if query == "" {
 		refs := make([]SpaceRef, len(spaces))
@@ -136,13 +162,13 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 		writeItems(&b, "Kept", part.out.Results)
 	}
 
-	if sessionRef != "" && p.Actor.Kind == policy.ActorAgent {
-		proposals, err := s.search.SessionProposals(ctx, scope, ids(spaces), p.Actor.ID, sessionRef, 10)
-		if err != nil {
-			part.out.Partial = true
-			s.logReadError(ctx, "session proposals", err)
-		}
-		for _, h := range proposals {
+	side.Wait()
+	if extrasErr != nil {
+		part.out.Partial = true
+		s.logReadError(ctx, "session proposals and notices", extrasErr)
+	}
+	if extrasQ.Proposer != uuid.Nil {
+		for _, h := range extras.Proposals {
 			part.out.Proposals = append(part.out.Proposals, s.hitItem(bySpace[h.SpaceID], h))
 		}
 		if len(part.out.Proposals) > 0 {
@@ -153,12 +179,7 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 	if since != nil {
 		forgotten := digestForgotten
 		if query != "" {
-			var err error
-			forgotten, err = s.search.ForgottenSince(ctx, scope, ids(spaces), *since)
-			if err != nil {
-				part.out.Partial = true
-				s.logReadError(ctx, "forget notices", err)
-			}
+			forgotten = extras.Forgotten
 		}
 		for spaceID, refs := range forgotten {
 			sp := bySpace[spaceID]
@@ -169,13 +190,8 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 		// Rule 11: a Write-level agent's write the judge found contradicting
 		// a decision in force went back to Review. Any agent may have read
 		// it while it was kept, so every connection hears it once.
-		returned, err := s.search.ReturnedSince(ctx, scope, ids(spaces), *since)
-		if err != nil {
-			part.out.Partial = true
-			s.logReadError(ctx, "return notices", err)
-		}
 		for _, sp := range spaces {
-			rs := returned[sp.ID]
+			rs := extras.Returned[sp.ID]
 			if len(rs) == 0 {
 				continue
 			}
@@ -184,7 +200,7 @@ func (s *Server) recallV2(ctx context.Context, c *handler.MCPToolCall, p *v2api.
 			fmt.Fprintf(&b, "%s\n\n", msg)
 		}
 	}
-	s.gateNews(ctx, p, scope, bySpace, query == "", &part, &b)
+	s.writeGateNews(ctx, news, bySpace, &part, &b)
 	if ctx.Err() != nil {
 		part.out.Partial = true
 		b.WriteString("Some spaces didn't answer in time; results may be incomplete.\n")

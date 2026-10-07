@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/deviceauth"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
@@ -97,11 +98,14 @@ var sampleRequests = map[string]struct {
 	"overwriteDrift":    {path: "/v2/targets/" + sampleID + "/drift:overwrite", body: `{"reason":"the record wins"}`},
 	"stopDrift":         {path: "/v2/targets/" + sampleID + "/drift:stop"},
 
-	"listGates":       {path: "/v2/spaces/memax-v2/gates?status=waiting&status=expired"},
-	"requestDecision": {path: "/v2/spaces/memax-v2/gates", body: `{"question":"Which deploy target?","options":[{"label":"Fly.io"},{"label":"Railway"}]}`},
-	"getGate":         {path: "/v2/gates/G-0012?space=memax-v2"},
-	"answerGate":      {path: "/v2/gates/G-0012:answer?space=memax-v2", body: `{"option":1}`, header: map[string]string{"If-Match": `"1"`}},
-	"withdrawGate":    {path: "/v2/gates/" + sampleID + ":withdraw"},
+	"listGates":                  {path: "/v2/spaces/memax-v2/gates?status=waiting&status=expired"},
+	"requestDecision":            {path: "/v2/spaces/memax-v2/gates", body: `{"question":"Which deploy target?","options":[{"label":"Fly.io"},{"label":"Railway"}]}`},
+	"getGate":                    {path: "/v2/gates/G-0012?space=memax-v2"},
+	"answerGate":                 {path: "/v2/gates/G-0012:answer?space=memax-v2", body: `{"option":1}`, header: map[string]string{"If-Match": `"1"`}},
+	"withdrawGate":               {path: "/v2/gates/" + sampleID + ":withdraw"},
+	"lookupDeviceAuthorization":  {path: "/v2/device-authorizations:lookup", body: `{"user_code":"WQRT-4821"}`},
+	"approveDeviceAuthorization": {path: "/v2/device-authorizations:approve", body: `{"user_code":"WQRT-4821"}`},
+	"denyDeviceAuthorization":    {path: "/v2/device-authorizations:deny", body: `{"user_code":"WQRT-4821"}`},
 
 	"forgetMemory":         {path: "/v2/memories/M-0001:forget?space=memax-v2", body: `{"note":"personal","carries":["M-0002"]}`, header: map[string]string{"If-Match": `"1"`}},
 	"requestForget":        {path: "/v2/memories/M-0001:request-forget?space=memax-v2", body: `{"reason":"a test value"}`},
@@ -259,8 +263,12 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "Outcome", specEnum(t, "Outcome"), []string{string(ledger.OutcomeApplied), string(ledger.OutcomeProposed), string(ledger.OutcomeNeedsConfirmation)})
 	sameSet(t, "PolicyEffect", specEnum(t, "PolicyEffect"),
 		[]string{string(policy.EffectApply), string(policy.EffectPropose), string(policy.EffectConfirm), string(policy.EffectRefuse)})
-	sameSet(t, "PolicyCode", specEnum(t, "PolicyCode"), append(stringConsts(t, "../../ledger/policy/policy.go", "Code"),
-		stringConsts(t, "../../ledger/policy/spaces.go", "Code")...))
+	sameSet(t, "PolicyCode", specEnum(t, "PolicyCode"), append(append(stringConsts(t, "../../ledger/policy/policy.go", "Code"),
+		stringConsts(t, "../../ledger/policy/spaces.go", "Code")...),
+		stringConsts(t, "../../ledger/policy/devices.go", "Code")...))
+	sameSet(t, "DeviceAuthorizationState", specEnum(t, "DeviceAuthorizationState"), []string{
+		string(deviceauth.StatePending), string(deviceauth.StateApproved), string(deviceauth.StateSignedIn),
+		string(deviceauth.StateDenied), string(deviceauth.StateExpired)})
 	// rate_limited (codeRateLimited) also comes from the rate-limit
 	// middleware in front of /v2.
 	sameSet(t, "ErrorCode", specEnum(t, "ErrorCode"), stringConsts(t, "errors.go", "code"))

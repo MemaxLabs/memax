@@ -1,0 +1,148 @@
+/* SignIn (SignIn.dc.html): the product on the left, the ways in on the
+ * right, side by side down to 1120px and stacked below. */
+
+.page {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+.story {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 48px;
+  padding: var(--space-8) clamp(24px, 5vw, 64px) var(--space-10);
+  border-right: 1px solid var(--line);
+  --receipt-rail: 150px;
+}
+
+.storyBody {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: 520px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 52px;
+  line-height: 56px;
+  font-weight: 360;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.lede {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 26px;
+  color: var(--ink-2);
+}
+
+.form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px var(--space-6);
+}
+
+.formBody {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.heading h2 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.heading p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.buttons,
+.email {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wide {
+  width: 100%;
+}
+
+.or {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.or span {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.legal {
+  margin: 0;
+  text-align: center;
+}
+
+.legal a {
+  color: var(--ink-2);
+}
+
+.sent {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.emailLinks {
+  display: flex;
+  justify-content: space-between;
+}
+
+.error {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--vermilion);
+  border-radius: var(--radius-sm);
+  background: var(--vermilion-wash);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+@media (max-width: 1119px) {
+  .story {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .title {
+    font-size: 40px;
+    line-height: 44px;
+  }
+}

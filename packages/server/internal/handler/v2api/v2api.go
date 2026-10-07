@@ -23,6 +23,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ask"
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
+	"github.com/MemaxLabs/memax/packages/server/internal/deviceauth"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
@@ -53,6 +54,10 @@ type Handler struct {
 	asker *ask.Service
 	// dream queues run-now (dream.go); nil answers 503 there.
 	dream *dreamDeps
+	// devices confirms the CLI's device codes (device.go); nil answers
+	// 503. deviceMisses slows down guessing codes.
+	devices      *deviceauth.Store
+	deviceMisses deviceMisses
 }
 
 // Option configures a Handler.
@@ -164,6 +169,9 @@ var routes = []Route{
 	{"POST", "/v2/dream/email:unsubscribe", "unsubscribeDreamEmail", (*Handler).unsubscribeDreamEmail},
 	{"GET", "/v2/notices", "listNotices", (*Handler).listNotices},
 	{"POST", "/v2/notices:ack", "ackNotices", (*Handler).ackNotices},
+	{"POST", "/v2/device-authorizations:lookup", "lookupDeviceAuthorization", (*Handler).lookupDevice},
+	{"POST", "/v2/device-authorizations:approve", "approveDeviceAuthorization", (*Handler).approveDevice},
+	{"POST", "/v2/device-authorizations:deny", "denyDeviceAuthorization", (*Handler).denyDevice},
 }
 
 // Routes lists every /v2 operation this package serves, named as in

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Shell } from "@memaxlabs/ledger";
 import { useAuth } from "@/lib/auth";
 import { isSpaceSlug } from "@/lib/ui-gate";
+import { signInHref } from "@/lib/v2/onboarding/routes";
 import { waitingOnYou, type SpaceSummary } from "@/lib/v2/data/types";
 import { KeymapProvider } from "@/lib/v2/keymap/react";
 import {
@@ -58,11 +59,10 @@ export function AppFrame({
 function useSignIn() {
   const router = useRouter();
   const pathname = usePathname();
-  return () =>
-    router.replace(`/login?returnTo=${encodeURIComponent(pathname ?? "/")}`);
+  return () => router.replace(signInHref(pathname ?? "/"));
 }
 
-/** No session and no dev fixtures: sign in (V1's page until V2's lands). */
+/** No session and no dev fixtures: sign in, then come back. */
 function SignInRedirect() {
   const signIn = useSignIn();
   useEffect(() => {

@@ -10,6 +10,7 @@ import { placeHref } from "@/lib/v2/places";
 import { EmptyState } from "../../_components/empty-state";
 import { PlaceError } from "../../_components/status";
 import { useRecordsView, type RecordsView } from "../records-view";
+import { ReviewImportPlace } from "../review-import";
 import { CardColumn } from "./card-column";
 import { Queue } from "./queue";
 import { useReviewKeys } from "./review-keys";
@@ -28,6 +29,14 @@ export function ReviewPlace() {
   const pathname = usePathname();
   const params = useSearchParams();
   const asked = params.get("filter") ?? "";
+  // What `memax init` imported, kept in bulk (ReviewImport.png).
+  if (asked === "import") {
+    return (
+      <KeyScopeBoundary name="review">
+        <ReviewImportPlace />
+      </KeyScopeBoundary>
+    );
+  }
   const filter = (REVIEW_FILTERS as readonly string[]).includes(asked)
     ? (asked as ReviewFilter)
     : "all";

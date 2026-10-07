@@ -442,7 +442,7 @@ func (w *writer) changedSince(ctx context.Context, spaceID, memoryID uuid.UUID, 
 		        WHERE u.space_id = $2 AND u.undone_receipt_id IS NOT NULL
 		          AND (r.id = ANY (u.receipt_ids)
 		               OR (r.action = 'undid' AND r.source->>'kind' = 'receipt' AND r.source->>'ref' = u.receipt_id::text)))
-		     -- The same for one of Dream's actions, undone (migration 045).
+		     -- The same for one of Dream's actions, undone (migration 046).
 		     AND NOT EXISTS (
 		       SELECT 1 FROM v2.dream_actions d
 		        WHERE d.space_id = $2 AND d.undone_by IS NOT NULL

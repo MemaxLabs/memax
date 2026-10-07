@@ -1,4 +1,4 @@
--- Revert 045: v2_dream. It fails once Dream has published an edition
+-- Revert 046: v2_dream. It fails once Dream has published an edition
 -- (receipts with the verbs published or folded can't be re-checked
 -- against 044's list), which is the point: receipts are never deleted.
 

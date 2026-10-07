@@ -25,6 +25,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/cache"
 	"github.com/MemaxLabs/memax/packages/server/internal/chatstream"
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
+	"github.com/MemaxLabs/memax/packages/server/internal/deviceauth"
 	"github.com/MemaxLabs/memax/packages/server/internal/email"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	"github.com/MemaxLabs/memax/packages/server/internal/forget"
@@ -811,6 +812,9 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 	if queueClient != nil {
 		hopts = append(hopts, v2api.WithDream(v2dream.New(l, nil, dreamCfg), queueClient))
 	}
+	// Device sign-in for the CLI (RFC 8628): the codes, keyed by the JWT
+	// secret; off without a database.
+	hopts = append(hopts, v2api.WithDevices(deviceauth.New(pool, []byte(os.Getenv("JWT_SECRET")))))
 	return v2api.New(l, slog.Default(), hopts...), search, rec
 }
 

@@ -15,7 +15,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
 
-// Dream's schedule, settings and morning email (migration 045). None of it
+// Dream's schedule, settings and morning email (migration 046). None of it
 // is the record: schedules and email sends are bookkeeping, settings are a
 // person's preferences, so none of it carries receipts. The cross-space
 // parts run as DreamSweeperRole, whose policies are keyed on app.sweep =

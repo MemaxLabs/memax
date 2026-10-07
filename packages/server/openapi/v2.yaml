@@ -171,6 +171,18 @@ info:
     conflicts and settled once, as a group. Nothing is kept until a person
     keeps it: one by one, in bulk (`memories:keep`), or by settling.
 
+    ## Device sign-in
+
+    Where no browser can open (over SSH, in a container), `memax login`
+    and `memax init` sign in with a device code (RFC 8628). The CLI asks
+    the OAuth server for one (`POST /oauth/device_authorization`, outside
+    /v2) and shows a short code and memax.app/device; the person, signed in
+    on the web app, checks the code against the terminal and confirms it
+    (`/v2/device-authorizations:approve`); the CLI, polling `POST
+    /oauth/token` with the `urn:ietf:params:oauth:grant-type:device_code`
+    grant, collects a CLI session once. Codes last 10 minutes and are
+    decided once.
+
     ## Dream
 
     Each night (weekly on Free), if a space has something new since its
@@ -251,6 +263,8 @@ tags:
     description: Decisions agents ask people to make, and the answers, kept as decisions.
   - name: reads
     description: What agents read (R-). Reads are not receipts.
+  - name: devices
+    description: Signing the memax CLI in on a machine with no browser, with a code you confirm on the web.
   - name: ask
     description: Cited answers from a space's kept memories, for people.
   - name: dream
@@ -3354,6 +3368,140 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/Unavailable'
+
+  /v2/device-authorizations:lookup:
+    post:
+      operationId: lookupDeviceAuthorization
+      tags: [devices]
+      summary: Read a device's sign-in code
+      x-memax-read: true
+      description: |
+        What a waiting device code says about the device asking (CliAuth):
+        the client and its version, the machine's name and system, the
+        space it will use, and the address its request came from. All of
+        it but the address is what the device says about itself. A code
+        you decided reads as it ended; anyone else's is 404, as a code that
+        doesn't exist is, and naming codes that don't exist too often is
+        429 `rate_limited`. It is a `POST` so the code stays out of URLs
+        and access logs, and it takes no `Idempotency-Key`. Only a person
+        on a session reads one (`device_by_person`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCodeRequest'
+      responses:
+        '200':
+          description: The code and the device asking.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceAuthorizationEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/device-authorizations:approve:
+    post:
+      operationId: approveDeviceAuthorization
+      tags: [devices]
+      summary: Sign a device in
+      description: |
+        Confirms a waiting code: the device's next poll of the token
+        endpoint collects a session for you, once. The session is the
+        CLI's (`surface` cli), so what the device does with it is
+        `client_attested`, never `human_web`. Only a person on the web app
+        confirms a code (`device_needs_web` otherwise; `device_by_person`
+        for agents and keys), so an agent holding your CLI login can't sign
+        more machines in. Confirming a code you already confirmed answers
+        it as it is; a code you declined or that expired is 409
+        `invalid_transition` with `details.state`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCodeRequest'
+      responses:
+        '200':
+          description: The code, confirmed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceAuthorizationEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/device-authorizations:deny:
+    post:
+      operationId: denyDeviceAuthorization
+      tags: [devices]
+      summary: Decline a device's code
+      description: |
+        Declines a waiting code ("It doesn't match"): the device hears
+        `access_denied` and nothing is signed in. The same rules as
+        confirming apply: a person on the web app, once; a code you
+        confirmed, or that expired, is 409 `invalid_transition`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCodeRequest'
+      responses:
+        '200':
+          description: The code, declined.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceAuthorizationEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
 components:
   securitySchemes:
     bearer:
@@ -4000,6 +4148,9 @@ components:
         creates or switches a space), space_kind (only project spaces are
         created here), space_limit (the most project spaces one person owns
         during the alpha), switch_by_owner (only the owner switches a space).
+        Refused device codes: device_by_person (only a person signs a device
+        in), device_needs_web (confirming or declining a code needs a person
+        on the web app).
       type: string
       enum:
         - unknown_actor
@@ -4056,6 +4207,8 @@ components:
         - switch_by_owner
         - dream_by_dream
         - dream_run_by_owner
+        - device_by_person
+        - device_needs_web
     ErrorCode:
       type: string
       enum:
@@ -8210,6 +8363,9 @@ components:
         notes:
           description: The V1 memories a space holds (`space_has_notes`).
           type: integer
+        state:
+          description: How a device's code ended (`invalid_transition` on a device code).
+          $ref: '#/components/schemas/DeviceAuthorizationState'
 
     # ------------------------------------------------------------------
     # Dream editions (plan 25 §5.10)
@@ -8968,3 +9124,77 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/CheckpointPage'
+
+    # ------------------------------------------------------------------
+    # Device sign-in (CliAuth, /device)
+    # ------------------------------------------------------------------
+    DeviceCodeRequest:
+      type: object
+      additionalProperties: false
+      required: [user_code]
+      properties:
+        user_code:
+          description: The code the terminal shows, e.g. "WQRT-4821". Case, spaces and the dash don't matter.
+          type: string
+          minLength: 1
+          maxLength: 32
+
+    DeviceAuthorizationState:
+      description: |
+        Where a device's code stands: `pending` (waiting for a person),
+        `approved` (confirmed; the device hasn't collected its session
+        yet), `signed_in` (the device collected it), `denied` or `expired`
+        (its 10 minutes are up).
+      type: string
+      enum: [pending, approved, signed_in, denied, expired]
+
+    DeviceAuthorization:
+      description: |
+        A device asking to sign in with a code. Everything about the device
+        but `address` is what it says about itself.
+      type: object
+      additionalProperties: false
+      required: [user_code, state, client_id, requested_at, expires_at]
+      properties:
+        user_code:
+          description: The code, as people read it ("WQRT-4821").
+          type: string
+        state:
+          $ref: '#/components/schemas/DeviceAuthorizationState'
+        client_id:
+          description: The client asking; only the memax CLI (`memax-cli`) signs in this way.
+          type: string
+        client_version:
+          description: The client's version, e.g. "2.0.0".
+          type: string
+        device_name:
+          description: The machine's name, e.g. "ziyang-mbp".
+          type: string
+        device_os:
+          description: The machine's system.
+          type: string
+          enum: [macOS, Linux, Windows, FreeBSD, other]
+        space:
+          description: The space the CLI will use, by slug; it can switch in the terminal.
+          type: string
+        address:
+          description: The address the request came from, as Memax saw it.
+          type: string
+        requested_at:
+          $ref: '#/components/schemas/Timestamp'
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+        decided_at:
+          description: When you confirmed or declined it.
+          $ref: '#/components/schemas/Timestamp'
+        signed_in_at:
+          description: When the device collected its session.
+          $ref: '#/components/schemas/Timestamp'
+
+    DeviceAuthorizationEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DeviceAuthorization'

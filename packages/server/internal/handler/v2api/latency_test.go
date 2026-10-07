@@ -55,6 +55,7 @@ func newAPIRig(t *testing.T, o testdb.Options) *apiRig {
 		return []v2api.Option{v2api.WithAsk(ask.New(e.ledger, search, model, ask.Config{Model: "test/answer-tier", Log: quiet}))}
 	}, ledger.WithIndexJobs())
 	zz := e.user("zz")
+	e.space(zz, policy.SpacePersonal, "zz") // as every account has
 	sp := e.space(zz, policy.SpaceProject, "memax-v2")
 	r := &apiRig{e: e, db: db, sp: sp, tok: e.session(zz)}
 

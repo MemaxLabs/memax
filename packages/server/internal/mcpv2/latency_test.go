@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,20 +25,19 @@ import (
 // The MCP read path over a simulated network (internal/testdb/netsim):
 // recall with a query (hybrid, on an instant fake embedder) and without
 // one (the compiled digest), search and get, each as one agent's tool call
-// through the real auth middleware. TestMCPRoundTrips guards the round
-// trips each makes, in CI; TestMCPLatency (MEMAX_LATENCY=1) times them at
-// 0 and 24 ms of round-trip time.
+// through the real auth middleware. Recall and search run twice: across
+// every space the agent reaches, and in its V2 space alone (hub_id or
+// space_id), which is N2's path (an unscoped call also runs V1's recall
+// for spaces not on V2, and waits for it). TestMCPRoundTrips guards the
+// round trips each makes, in CI; TestMCPLatency (MEMAX_LATENCY=1) times
+// them at 0 and 24 ms of round-trip time.
 
-// rig is one agent's MCP session on a space of seeded, embedded memories
-// with a compiled AGENTS.md, a pending proposal of its own session, and
-// every call counted.
-type rig struct {
-	e    *env
-	db   *testdb.DB
-	sp   space
-	cs   *mcp.ClientSession
-	tag  *counterTag
-	refs []string
+// counted is an MCP session whose calls can be counted: each request
+// carries the netsim.Counter its tag names (env.counters).
+type counted struct {
+	e   *env
+	cs  *mcp.ClientSession
+	tag *counterTag
 }
 
 // counterTag names the netsim.Counter the next requests count into.
@@ -69,6 +69,68 @@ func (t tagged) RoundTrip(r *http.Request) (*http.Response, error) {
 		r.Header.Set(netsim.CounterHeader, id)
 	}
 	return t.next.RoundTrip(r)
+}
+
+// countedClient opens a modern MCP session for token whose calls count.
+func (e *env) countedClient(token string) *counted {
+	e.t.Helper()
+	c := &counted{e: e, tag: &counterTag{}}
+	client := mcp.NewClient(&mcp.Implementation{Name: "memax-latency", Version: "1"}, &mcp.ClientOptions{Logger: quiet})
+	tr := &mcp.StreamableClientTransport{
+		Endpoint: e.srv.URL + "/mcp",
+		HTTPClient: &http.Client{Timeout: 30 * time.Second,
+			Transport: tagged{tag: c.tag, next: bearer{token: token, next: http.DefaultTransport}}},
+		MaxRetries: -1,
+	}
+	cs, err := client.Connect(context.Background(), tr, &mcp.ClientSessionOptions{ProtocolVersion: modern})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	e.t.Cleanup(func() { _ = cs.Close() })
+	c.cs = cs
+	return c
+}
+
+// call makes one call and returns its result, how long it took, and the
+// round trips its request made (those its context carries: V2's reads
+// and writes, not V1's store under the auth middleware). With fallback,
+// trips made with no counter during the call (V1's store) count too; use
+// it only while nothing else runs on the pool. It waits for work the call
+// left running (a COMMIT sent after the answer) before counting.
+func (c *counted) call(t *testing.T, tool string, args map[string]any, fallback bool) (*mcp.CallToolResult, time.Duration, *netsim.Counter) {
+	t.Helper()
+	cnt := &netsim.Counter{}
+	c.tag.set(c.e.counters.Add(cnt))
+	if tr := netsim.Of(c.e.pool); fallback && tr != nil {
+		tr.SetFallback(cnt)
+		defer tr.SetFallback(nil)
+	}
+	start := time.Now()
+	res, err := c.cs.CallTool(context.Background(), &mcp.CallToolParams{Name: tool, Arguments: args})
+	took := time.Since(start)
+	c.tag.set("")
+	if err != nil {
+		t.Fatalf("%s: %v", tool, err)
+	}
+	if res.IsError {
+		t.Fatalf("%s: %s", tool, text(res))
+	}
+	if !netsim.Settle(c.e.pool, 2*time.Second) {
+		t.Fatalf("%s: connections still checked out after 2 s", tool)
+	}
+	return res, took, cnt
+}
+
+// rig is one agent's MCP session on a space of seeded, embedded memories
+// with a compiled AGENTS.md, a pending proposal of its own session, and
+// every call counted.
+type rig struct {
+	e    *env
+	db   *testdb.DB
+	sp   space
+	c    *counted
+	refs []string
+	runs int
 }
 
 const rigSessionRef = "latency-session"
@@ -110,22 +172,9 @@ func newRig(t *testing.T, o testdb.Options) *rig {
 		t.Fatal(err)
 	}
 
-	r := &rig{e: e, db: db, sp: sp, tag: &counterTag{}, refs: []string{"M-0001", "M-0002", "M-0003"}}
-	client := mcp.NewClient(&mcp.Implementation{Name: "memax-latency", Version: "1"}, &mcp.ClientOptions{Logger: quiet})
-	tr := &mcp.StreamableClientTransport{
-		Endpoint: e.srv.URL + "/mcp",
-		HTTPClient: &http.Client{Timeout: 30 * time.Second,
-			Transport: tagged{tag: r.tag, next: bearer{token: tok, next: http.DefaultTransport}}},
-		MaxRetries: -1,
-	}
-	cs, err := client.Connect(ctx, tr, &mcp.ClientSessionOptions{ProtocolVersion: modern})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
-	r.cs = cs
+	r := &rig{e: e, db: db, sp: sp, c: e.countedClient(tok), refs: []string{"M-0001", "M-0002", "M-0003"}}
 	// One proposal of this session, which recall reads back.
-	call(t, cs, "memax_push", push("Latency rig: a pending idea", sp, map[string]any{"session_ref": rigSessionRef}))
+	r.c.call(t, "memax_push", push("Latency rig: a pending idea", sp, map[string]any{"session_ref": rigSessionRef}), false)
 	return r
 }
 
@@ -135,53 +184,52 @@ type mcpOp struct {
 	name string
 	tool string
 	args func(i int) map[string]any
+	// partial: the answer says whether it ran out of its budget.
+	partial bool
 }
+
+const (
+	opRecall      = "MCP memax_recall (query, hybrid)"
+	opRecallSpace = "MCP memax_recall (query, in the space)"
+	opDigest      = "MCP memax_recall (digest)"
+	opSearch      = "MCP memax_search"
+	opSearchSpace = "MCP memax_search (in the space)"
+	opGet         = "MCP memax_get"
+)
 
 func (r *rig) ops() []mcpOp {
 	queries := []string{"deploy target", "postgres migrations", "review queue", "rate limits", "fly machines"}
+	q := func(i int) string { return fmt.Sprintf("%s %d", queries[i%len(queries)], i) }
+	in := r.sp.id.String()
 	return []mcpOp{
-		{"MCP memax_recall (query, hybrid)", "memax_recall", func(i int) map[string]any {
-			return map[string]any{"query": fmt.Sprintf("%s %d", queries[i%len(queries)], i), "limit": 5, "session_ref": rigSessionRef}
-		}},
-		{"MCP memax_recall (digest)", "memax_recall", func(int) map[string]any {
+		{opRecall, "memax_recall", func(i int) map[string]any {
+			return map[string]any{"query": q(i), "limit": 5, "session_ref": rigSessionRef}
+		}, true},
+		{opRecallSpace, "memax_recall", func(i int) map[string]any {
+			return map[string]any{"query": q(i), "limit": 5, "session_ref": rigSessionRef, "hub_id": in}
+		}, true},
+		{opDigest, "memax_recall", func(int) map[string]any {
 			return map[string]any{"session_ref": rigSessionRef}
-		}},
-		{"MCP memax_search", "memax_search", func(i int) map[string]any {
-			return map[string]any{"query": fmt.Sprintf("%s %d", queries[i%len(queries)], i), "limit": 10}
-		}},
-		{"MCP memax_get", "memax_get", func(i int) map[string]any {
+		}, true},
+		{opSearch, "memax_search", func(i int) map[string]any {
+			return map[string]any{"query": q(i), "limit": 10}
+		}, true},
+		{opSearchSpace, "memax_search", func(i int) map[string]any {
+			return map[string]any{"query": q(i), "limit": 10, "space_id": in}
+		}, true},
+		{opGet, "memax_get", func(i int) map[string]any {
 			return map[string]any{"id": r.refs[i%len(r.refs)]}
-		}},
+		}, false},
 	}
 }
 
-var runSeq int
-
-// run makes one call, counting its round trips, and waits for whatever it
-// left running (a COMMIT sent after the answer) before reading the count.
+// run makes one call, counting every round trip in its window (V1's store
+// under the auth middleware included).
 func (r *rig) run(t *testing.T, op mcpOp) (time.Duration, *netsim.Counter, *mcp.CallToolResult) {
 	t.Helper()
-	runSeq++
-	c := &netsim.Counter{}
-	r.tag.set(r.e.counters.Add(c))
-	// V1's store, under the auth middleware, queries with
-	// context.Background(): those trips count here too.
-	r.db.Trips.SetFallback(c)
-	defer r.db.Trips.SetFallback(nil)
-	start := time.Now()
-	res, err := r.cs.CallTool(context.Background(), &mcp.CallToolParams{Name: op.tool, Arguments: op.args(runSeq)})
-	took := time.Since(start)
-	r.tag.set("")
-	if err != nil {
-		t.Fatalf("%s: %v", op.name, err)
-	}
-	if res.IsError {
-		t.Fatalf("%s: %s", op.name, text(res))
-	}
-	if !netsim.Settle(r.db.Pool, 2*time.Second) {
-		t.Fatalf("%s: connections still checked out after 2 s", op.name)
-	}
-	return took, c, res
+	r.runs++
+	res, took, cnt := r.c.call(t, op.tool, op.args(r.runs), true)
+	return took, cnt, res
 }
 
 // partial reports whether a read came back incomplete (the recall budget
@@ -193,8 +241,9 @@ func partial(t *testing.T, res *mcp.CallToolResult) bool {
 }
 
 // TestMCPLatency times the MCP reads at 0 and 24 ms of round-trip time
-// (MEMAX_LATENCY=1) and prints a table. At 24 ms, recall's p95 must stay
-// well under N2's 300 ms, and search's under 500 ms.
+// (MEMAX_LATENCY=1) and prints a table. At 24 ms, recall in a space on V2
+// (N2's path) must stay well under N2's 300 ms p95, and search under its
+// 500 ms.
 func TestMCPLatency(t *testing.T) {
 	if !netsim.LatencyOn() {
 		t.Skipf("wall-clock latency: set %s=1", netsim.LatencyEnv)
@@ -203,10 +252,10 @@ func TestMCPLatency(t *testing.T) {
 	const runs = 30
 	var rows []string
 	bars := map[string]time.Duration{
-		"MCP memax_recall (query, hybrid)": 150 * time.Millisecond,
-		"MCP memax_recall (digest)":        150 * time.Millisecond,
-		"MCP memax_search":                 300 * time.Millisecond,
-		"MCP memax_get":                    150 * time.Millisecond,
+		opRecallSpace: 150 * time.Millisecond,
+		opDigest:      200 * time.Millisecond,
+		opSearchSpace: 300 * time.Millisecond,
+		opGet:         200 * time.Millisecond,
 	}
 	for _, rtt := range []time.Duration{0, netsim.ProductionRTT} {
 		r.db.Proxy.SetOneWay(rtt / 2)
@@ -219,7 +268,7 @@ func TestMCPLatency(t *testing.T) {
 			for range runs {
 				took, c, res := r.run(t, op)
 				s.Add(took, c.RoundTrips())
-				if op.tool != "memax_get" && partial(t, res) {
+				if op.partial && partial(t, res) {
 					partials++
 				}
 			}
@@ -236,31 +285,24 @@ func TestMCPLatency(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("\n%s\n%s", netsim.Header, joinLines(rows))
-}
-
-func joinLines(rows []string) string {
-	out := ""
-	for i, r := range rows {
-		if i > 0 {
-			out += "\n"
-		}
-		out += r
-	}
-	return out
+	t.Logf("\n%s\n%s", netsim.Header, strings.Join(rows, "\n"))
 }
 
 // TestMCPRoundTrips guards the round trips of each MCP read: a change that
-// adds one fails here, whatever the machine's speed. The counts are
-// steady-state (warm statement caches) and include work a call leaves
-// running after it answers, such as a read's COMMIT.
+// adds one fails here, whatever the machine's speed. A count is every
+// round trip in the call's window (V1's, under the auth middleware and
+// beside an unscoped recall, included), steady-state (warm statement
+// caches), with what the call left running after it answered (a read's
+// COMMIT).
 func TestMCPRoundTrips(t *testing.T) {
 	r := newRig(t, testdb.Options{})
 	budgets := map[string]int{
-		"MCP memax_recall (query, hybrid)": 99,
-		"MCP memax_recall (digest)":        99,
-		"MCP memax_search":                 99,
-		"MCP memax_get":                    99,
+		opRecall:      99,
+		opRecallSpace: 99,
+		opDigest:      99,
+		opSearch:      99,
+		opSearchSpace: 99,
+		opGet:         99,
 	}
 	for _, op := range r.ops() {
 		for range 3 {

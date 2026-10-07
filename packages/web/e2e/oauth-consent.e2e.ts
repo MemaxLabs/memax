@@ -163,8 +163,13 @@ test("a person allows the agent one space, and the browser goes back to it", asy
     decision: "approve",
     space_id: "22222222-2222-4222-8222-222222222222",
   });
-  // Same-origin, through the web app's proxy, which refuses anything else.
-  expect((await decision.allHeaders())["sec-fetch-site"]).toBe("same-origin");
+  // Same-origin, through the web app's proxy (which refuses other sites),
+  // never to the API directly.
+  const sent = new URL(decision.url());
+  expect(sent.origin).toBe(new URL(baseURL!).origin);
+  expect(sent.pathname).toBe(
+    `/api/proxy/oauth/authorize/requests/${request.request_id}/decision`,
+  );
 });
 
 test("Cancel answers the agent access_denied", async ({ page, baseURL }) => {

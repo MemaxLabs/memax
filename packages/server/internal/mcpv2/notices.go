@@ -13,10 +13,13 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
 
-// Forget's notices (plan 25 §5.13, rule 7: "tells every agent on its next
-// read"). A Forget queues one notice for every agent connection that read
-// the memory, or is connected to its space; the connection's next response
-// from any V2 tool carries it, once, in two places:
+// Notices: Forget's (plan 25 §5.13, rule 7: "tells every agent on its next
+// read"), and the switch to V2's (plan 25 §10: "Agents are told in their
+// next MCP response" that their autonomy changed). A Forget queues one
+// notice for every agent connection that read the memory, or is connected
+// to its space; a switch, one for every connection connected to the space.
+// The connection's next response from any V2 tool carries it, once, in two
+// places:
 //
 //   - the text, a short paragraph the model reads ("Forgotten in memax-v2:
 //     M-0201. Drop anything you took from it …");
@@ -95,6 +98,15 @@ func (s *Server) deliverNotices(ctx context.Context, v *view, tool string, res *
 
 // noticeMessage is what the agent reads.
 func noticeMessage(n ledger.Notice, space string) string {
+	if n.Kind == ledger.NoticeSwitched {
+		switch n.Autonomy {
+		case policy.AutonomyRead:
+			return fmt.Sprintf("%s moved to Memax V2, and you can only read there now: memax_push and memax_capture are refused. A person can change that in Agents.", space)
+		case policy.AutonomyWrite:
+			return fmt.Sprintf("%s moved to Memax V2. You keep your own work there; anything that touches a decision in force goes to a person in Review.", space)
+		}
+		return fmt.Sprintf("%s moved to Memax V2. What you save there is now proposed, and a person keeps it in Review; recall serves what people kept. A person can change what you may do in Agents.", space)
+	}
 	if n.Kind == ledger.NoticeSpaceForgotten {
 		return fmt.Sprintf("Everything in %s was forgotten. Drop anything you took from it, including what you saved in your own memory.", space)
 	}

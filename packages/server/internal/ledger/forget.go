@@ -360,7 +360,11 @@ func (w *writer) purgeMemory(ctx context.Context, sp spaceRow, op *forgetOp, m *
 	rc := w.receipt(sp, m.ID, m.Ref, ActionForgot, m.streamVersion+1, "")
 	switch {
 	case carried != nil && carried.Reason != CarrySpace:
-		rc.Source = &ReceiptSource{Kind: ObjectMemory, Ref: carried.With}
+		kind := ObjectMemory
+		if p, _, ok := ParseRef(carried.With); ok && p == PrefixNote {
+			kind = ObjectNote // a note's Forget carried it (forget_note.go)
+		}
+		rc.Source = &ReceiptSource{Kind: kind, Ref: carried.With}
 	case op.kind == ObjectSpace:
 		rc.Source = &ReceiptSource{Kind: ObjectSpace, Ref: SpaceObjectRef}
 	}

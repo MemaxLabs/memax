@@ -319,6 +319,13 @@ export function activitySentences(
       return [one(s.forgetDeclined, { ref: text(entry.object.ref) })];
     case "exported":
       return [one(s.exported)];
+    // Switch to V2 (on the space's own stream).
+    case "noted":
+      return [one(s.noted)];
+    case "switched":
+      return [one(s.switched)];
+    case "switched_back":
+      return [one(s.switchedBack)];
     default: {
       // Every verb the API can send has words above; this fails to compile
       // when the spec gains one. A newer server can still send a verb this

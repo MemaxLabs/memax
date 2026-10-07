@@ -3,7 +3,7 @@
 // machine-local memory (plan 25 §7.3 step 5).
 import { basename } from "node:path";
 import { randomUUID } from "node:crypto";
-import { MemaxError, type V2 } from "memax-sdk";
+import type { V2 } from "memax-sdk";
 import { findLinkedRepo } from "../daemon/registry.js";
 import { normalizeRepoUrl, readMemaxYmlConfig } from "../project-context.js";
 import type { InitDeps, InitOptions } from "./types.js";
@@ -31,22 +31,25 @@ function find(spaces: V2.Space[], key: string): V2.Space | undefined {
   return spaces.find((s) => s.id === key || s.slug === key);
 }
 
-/** A space on V1 moves to V2 if it is empty; otherwise the person switches it in the app. */
+/**
+ * A space on V1 moves to V2 here if it holds no V1 memories; one that does
+ * switches with `memax switch` (or in the app), which shows what moves
+ * first.
+ */
 async function onV2(d: InitDeps, sp: V2.Space): Promise<V2.Space> {
   if (sp.v2_enabled_at) return sp;
-  try {
-    return await d.memax.v2.spaces.switchToV2(sp.id, {
-      idempotencyKey: randomUUID(),
-      via: "cli",
-    });
-  } catch (err) {
-    if (err instanceof MemaxError && err.code === "space_has_notes") {
-      throw new InitError(
-        `${sp.slug} is still on Memax V1, with ${(err.details?.notes as number | undefined) ?? "some"} memories. Switch it to V2 in the app first, or leave out --space to start a new project space.`,
-      );
-    }
-    throw err;
+  const status = await d.memax.v2.spaces.switchStatus(sp.id);
+  const notes = status.preview.notes.total;
+  if (notes > 0) {
+    throw new InitError(
+      `${sp.slug} is still on Memax V1, with ${notes} ${notes === 1 ? "memory" : "memories"}. Run memax switch --space ${sp.slug} to see what moves and switch it, or leave out --space to start a new project space.`,
+    );
   }
+  const res = await d.memax.v2.spaces.switchToV2(sp.id, {
+    idempotencyKey: randomUUID(),
+    via: "cli",
+  });
+  return res.space;
 }
 
 /** The repository's project space: named, linked, matched by its remote, chosen, or created. */

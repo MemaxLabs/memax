@@ -373,8 +373,15 @@ export async function v2Forget(
 export const META_NOTICES = "app.memax/notices";
 const MAX_NOTICES = 20;
 
-/** What the agent reads about a Forget (the remote server's words). */
+/** What the agent reads about a notice (the remote server's words). */
 export function noticeMessage(n: V2.Notice, space: string): string {
+  if (n.kind === "switched") {
+    if (n.autonomy === "read")
+      return `${space} moved to Memax V2, and you can only read there now: memax_push and memax_capture are refused. A person can change that in Agents.`;
+    if (n.autonomy === "write")
+      return `${space} moved to Memax V2. You keep your own work there; anything that touches a decision in force goes to a person in Review.`;
+    return `${space} moved to Memax V2. What you save there is now proposed, and a person keeps it in Review; recall serves what people kept. A person can change what you may do in Agents.`;
+  }
   if (n.kind === "space_forgotten")
     return `Everything in ${space} was forgotten. Drop anything you took from it, including what you saved in your own memory.`;
   return `Forgotten in ${space}: ${n.refs.join(", ")}. Drop anything you took from it, including what you saved in your own memory; it is gone from Memax and every compiled file.`;
@@ -541,6 +548,46 @@ async function latestCompiled(
     content: truncated ? output.content.slice(0, MAX_COMPILED) : output.content,
     ...(truncated ? { truncated: true } : {}),
   };
+}
+
+/**
+ * memax_search's include_notes: the notes (V1 memories of spaces on the V2
+ * record) the person the key works for may read, as the remote server
+ * returns them.
+ */
+export async function v2Notes(
+  spaces: V2.Space[],
+  query: string,
+  limit: number,
+): Promise<{ results: Record<string, unknown>[]; text: string }> {
+  const client = getClient();
+  const results: Record<string, unknown>[] = [];
+  for (const sp of spaces) {
+    const page = await client.v2.notes.search(sp.id, { q: query, limit });
+    for (const n of page.items) {
+      results.push({
+        id: n.id,
+        ...(n.ref ? { ref: n.ref } : {}),
+        record: "note",
+        space_id: n.space_id,
+        space: sp.name,
+        title: n.title,
+        text: n.excerpt.trim() || n.title,
+        ...(n.path ? { source: n.path } : {}),
+        ...(n.score ? { score: n.score } : {}),
+        state: "note",
+      });
+    }
+  }
+  results.splice(limit);
+  if (results.length === 0) return { results, text: "" };
+  const lines = ["Notes (V1 memories, never kept context):"];
+  results.forEach((it, i) =>
+    lines.push(
+      `[${i + 1}] ${String(it.ref ?? it.id)} (${String(it.space)}) ${String(it.text)}`,
+    ),
+  );
+  return { results, text: lines.join("\n") };
 }
 
 /** The V2 part of a recall or search over the readable spaces. */

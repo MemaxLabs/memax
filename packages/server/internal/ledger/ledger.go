@@ -181,6 +181,8 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.settleImportConflict(ctx, c)
 	case *Export:
 		res, err = w.export(ctx, c)
+	case *ForgetNote:
+		res, err = w.forgetNote(ctx, c)
 	}
 	if err != nil {
 		return Result{}, mapDBError(err)
@@ -277,6 +279,8 @@ func validateCommand(cmd Command) error {
 			return invalid("space", "say which space to export")
 		}
 		return nil
+	case *ForgetNote:
+		return c.validate()
 	case *Remember:
 		return c.NewMemory.validate()
 	case *Propose:

@@ -1,6 +1,6 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`, `.imports`,
-// `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets`, `.gates` and
-// `.notices` and `.devices`. Thin, typed
+// `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets`, `.gates`,
+// `.notices`, `.devices` and `.notes`. Thin, typed
 // wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
 // as on /v1.
@@ -78,6 +78,14 @@ import type {
   SettleImportConflictInput,
   Space,
   SpaceList,
+  SpaceSwitch,
+  SwitchSpaceInput,
+  Note,
+  NotePage,
+  NoteForgetPreview,
+  NoteForgetResult,
+  ForgetNoteInput,
+  V1DreamRunList,
   State,
   TargetList,
   TargetPreview,
@@ -254,16 +262,131 @@ export class V2SpacesResource {
   }
 
   /**
-   * Switch a space that holds no V1 memories to the V2 record (a new
-   * person's personal space, say). One with V1 memories throws a
-   * MemaxError `space_has_notes` (409, `details.notes`): it switches in the
-   * app. Only the space's owner may.
+   * Where the space's Switch to V2 stands, with a fresh preview of what
+   * switching moves (the dry run; it changes nothing): the members and the
+   * roles they keep, how many V1 memories become notes and how many of a
+   * person's own are offered for bulk keep, the agent files, the agents
+   * connected at Propose, waiting decisions, V1 Dream runs and the plan.
    */
-  async switchToV2(space: string, opts: CommandOptions): Promise<Space> {
+  async switchStatus(
+    space: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<SpaceSwitch> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/switch`, {
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Switch a space to the V2 record (plan 25 §10). Nothing is lost and no
+   * V1 row changes: V1 memories become notes, a person's own short ones go
+   * up as one import for bulk keep ("From V1"), agents' wait for Dream,
+   * the members' agents are connected at Propose and told. A space with
+   * nothing to import switches in the call; otherwise `background` is set
+   * and `state` is `running`: read it again with {@link switchStatus}. A
+   * `failed` switch resumes when asked again. `kind: "project"` lets a V1
+   * team hub switch as a project space while it has no V2 record (a
+   * MemaxError `space_kind` otherwise). Only the space's owner may.
+   */
+  async switchToV2(
+    space: string,
+    opts: CommandOptions & { kind?: "project" | "team"; repository?: string },
+  ): Promise<SpaceSwitch> {
+    const body: SwitchSpaceInput = { to: "v2" };
+    if (opts.kind) body.kind = opts.kind;
+    if (opts.repository !== undefined) body.repository = opts.repository;
     return this.req("POST", `/v2/spaces/${seg(space)}:switch`, {
+      body,
       extraHeaders: commandHeaders(opts),
       signal: opts.signal,
     });
+  }
+
+  /**
+   * Switch a space back to V1: every surface serves it as V1 again, and
+   * its V1 rows answer exactly as before. Its V2 record stays, for a later
+   * switch. Only the space's owner may.
+   */
+  async switchToV1(space: string, opts: CommandOptions): Promise<SpaceSwitch> {
+    return this.req("POST", `/v2/spaces/${seg(space)}:switch`, {
+      body: { to: "v1" },
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** The space's V1 Dream runs, newest first: read-only history. */
+  async v1DreamRuns(
+    space: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<V1DreamRunList> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/v1-dream-runs`, {
+      signal: opts?.signal,
+    });
+  }
+}
+
+/**
+ * `memax.v2.notes`: a space's notes (N-), its raw material (V1 memories,
+ * personas and agent files, and what agents capture). Notes are never
+ * compiled. You see the notes you wrote and, in a space you own, all of
+ * them.
+ */
+export class V2NotesResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /** Search a space's notes (the newest, without `q`). */
+  async search(
+    space: string,
+    query?: { q?: string; limit?: number },
+    opts?: { signal?: AbortSignal },
+  ): Promise<NotePage> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/notes`, {
+      query: { q: query?.q, limit: query?.limit },
+      signal: opts?.signal,
+    });
+  }
+
+  /** One note, by its ref (N-0042) or id. */
+  async get(
+    space: string,
+    note: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<Note> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/notes/${seg(note)}`, {
+      signal: opts?.signal,
+    });
+  }
+
+  /** What forgetting a note would take with it, and whether you may. */
+  async previewForget(
+    space: string,
+    note: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<NoteForgetPreview> {
+    return this.req(
+      "GET",
+      `/v2/spaces/${seg(space)}/notes/${seg(note)}/forget-preview`,
+      { signal: opts?.signal },
+    );
+  }
+
+  /**
+   * Forget a note everywhere (rule 7): its V1 row goes, with what V1
+   * derived from it, and the memories carrying its words (name them in
+   * `carries`, as `forget_carries` listed them). It can't be undone.
+   */
+  async forget(
+    space: string,
+    note: string,
+    input: ForgetNoteInput,
+    opts: CommandOptions,
+  ): Promise<NoteForgetResult> {
+    return this.req(
+      "POST",
+      `/v2/spaces/${seg(space)}/notes/${seg(note)}:forget`,
+      { body: input, extraHeaders: commandHeaders(opts), signal: opts.signal },
+    );
   }
 }
 
@@ -1198,6 +1321,7 @@ export class V2Resource {
   readonly notices: V2NoticesResource;
   readonly imports: V2ImportsResource;
   readonly devices: V2DevicesResource;
+  readonly notes: V2NotesResource;
   private readonly openStream?: OpenFn;
 
   constructor(req: RequestFn, open?: OpenFn) {
@@ -1213,6 +1337,7 @@ export class V2Resource {
     this.notices = new V2NoticesResource(req);
     this.imports = new V2ImportsResource(req);
     this.devices = new V2DevicesResource(req);
+    this.notes = new V2NotesResource(req);
     this.openStream = open;
   }
 

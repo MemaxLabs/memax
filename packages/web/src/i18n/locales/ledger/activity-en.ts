@@ -205,6 +205,11 @@ export const ledgerActivityEn = {
     forgetDeclined: "{actor} kept {ref} instead of forgetting it.",
     exported:
       "{actor} exported this space's whole record as Markdown, with its receipts.",
+    noted:
+      "{actor} switched this space to V2. Its V1 content became notes, for Review and Dream.",
+    switched:
+      "{actor} switched this space to V2. Agents now read what people keep here.",
+    switchedBack: "{actor} switched this space back to V1.",
     other: "{actor} changed {ref}.",
   },
 } as const;

@@ -142,7 +142,9 @@ func (p *Propagator) Run(ctx context.Context, args ledger.ForgetPropagateArgs) (
 			case ledger.PropagationStopped:
 				rep.Stopped++
 			}
-		case "artifacts":
+		case "artifacts", "attachments":
+			// attachments: a forgotten note's V1 attached files, deleted by
+			// key (their detail lists them, as a retired space's artifacts).
 			err = p.artifacts(ctx, scope, op, s, &rep)
 		case "caches":
 			p.purge.Purge(ctx, op.SpaceID)

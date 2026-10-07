@@ -58,6 +58,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/sealer"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2switch"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 )
 
@@ -298,6 +299,11 @@ func New(ctx context.Context) (*App, error) {
 		forgetCompiler = compileSvc
 	}
 	forget.AddWorkers(workers, forget.New(v2Ledger, forgetCompiler, forgetBus, slog.Default()))
+
+	// V2 Switch to V2 (plan 25 §10, epic 2.8): space_switch, queued when a
+	// space with V1 memories to import switches, runs the switch's steps
+	// through the ledger, resuming at a failed step.
+	v2switch.AddWorkers(workers, v2Ledger)
 
 	// V2 reads (plan 25 §5.3): the API records them; the worker keeps the
 	// monthly partitions ahead, prunes past retention and reports the north
@@ -2063,6 +2069,8 @@ func workerRiverConfig(workers *river.Workers, periodicJobs []*river.PeriodicJob
 			ledger.QueueSeal: {MaxWorkers: sealer.MaxWorkers},
 			// Forget propagation: a minute's SLO, so its own slots.
 			ledger.QueueForget: {MaxWorkers: forget.MaxWorkers},
+			// Switches to V2: rare and long, kept off the default queue.
+			ledger.QueueSwitch: {MaxWorkers: v2switch.MaxWorkers},
 		},
 		Workers: workers,
 		// Global worker middleware: every job's Work() runs inside a

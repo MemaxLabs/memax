@@ -116,7 +116,13 @@ var sampleRequests = map[string]struct {
 	"listNotices":          {path: "/v2/notices"},
 	"ackNotices":           {path: "/v2/notices:ack", body: `{"ids":["` + sampleID + `"]}`},
 	"createSpace":          {path: "/v2/spaces", body: `{"name":"Acme web","repository":"acme/web"}`},
-	"switchSpace":          {path: "/v2/spaces/personal:switch"},
+	"switchSpace":          {path: "/v2/spaces/personal:switch", body: `{"to":"v2","kind":"project","repository":"acme/web"}`},
+	"getSpaceSwitch":       {path: "/v2/spaces/personal/switch"},
+	"listV1DreamRuns":      {path: "/v2/spaces/memax-v2/v1-dream-runs"},
+	"searchNotes":          {path: "/v2/spaces/memax-v2/notes?q=pnpm&limit=5"},
+	"getNote":              {path: "/v2/spaces/memax-v2/notes/N-0042"},
+	"previewForgetNote":    {path: "/v2/spaces/memax-v2/notes/N-0042/forget-preview"},
+	"forgetNote":           {path: "/v2/spaces/memax-v2/notes/N-0042:forget", body: `{"note":"mine","carries":["M-0007"]}`},
 	"exportSpace":          {path: "/v2/spaces/memax-v2:export"},
 	"keepMemories":         {path: "/v2/spaces/memax-v2/memories:keep", body: `{"items":[{"memory":"M-0001","version":1}]}`},
 	"rejectMemories":       {path: "/v2/spaces/memax-v2/memories:reject", body: `{"items":[{"memory":"M-0001"}]}`},
@@ -306,7 +312,14 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "GateStatus", specEnum(t, "GateStatus"), strs(ledger.GateStatuses))
 
 	// Imports.
-	sameSet(t, "ImportLocation", specEnum(t, "ImportLocation"), []string{string(ledger.ImportRepository), string(ledger.ImportHome)})
+	sameSet(t, "ImportLocation", specEnum(t, "ImportLocation"), []string{string(ledger.ImportRepository), string(ledger.ImportHome), string(ledger.ImportV1)})
+	// Switch to V2 and notes (migration 047).
+	sameSet(t, "SwitchState", specEnum(t, "SwitchState"), []string{ledger.SwitchStateV1, ledger.SwitchStateRunning,
+		ledger.SwitchStateSwitched, ledger.SwitchStateFailed, ledger.SwitchStateOff})
+	sameSet(t, "SwitchStep", specEnum(t, "SwitchStep"), append(slices.Clone(ledger.SwitchSteps), ledger.SwitchStepDone))
+	sameSet(t, "NoteOrigin", specEnum(t, "NoteOrigin"), strs(ledger.NoteOrigins))
+	sameSet(t, "NoteDisposition", specEnum(t, "NoteDisposition"), strs(ledger.NoteDispositions))
+	sameSet(t, "NoteHold", specEnum(t, "NoteHold"), strs(ledger.NoteHolds))
 	sameSet(t, "ImportOutcome", specEnum(t, "ImportOutcome"), strs(ledger.ImportOutcomes))
 	sameSet(t, "ImportSkipReason", specEnum(t, "ImportSkipReason"), strs(ledger.ImportSkipReasons))
 	sameSet(t, "ImportCheckState", specEnum(t, "ImportCheckState"), ledger.ImportCheckStates)
@@ -391,4 +404,8 @@ func TestReceiptEnumsMatchTheSchema(t *testing.T) {
 	sameSet(t, "JudgeStage", specEnum(t, "JudgeStage"), check("judge_verdicts_stage_check"))
 	sameSet(t, "Relation", specEnum(t, "Relation"), check("judge_verdicts_verdict_check"))
 	sameSet(t, "VerdictOutcome", specEnum(t, "VerdictOutcome"), check("judge_verdicts_outcome_check"))
+	// Notes and the switch (migration 047).
+	sameSet(t, "NoteDisposition", specEnum(t, "NoteDisposition"), check("note_refs_disposition_check"))
+	sameSet(t, "NoteOrigin", specEnum(t, "NoteOrigin"), check("note_refs_origin_check"))
+	sameSet(t, "SwitchStep", specEnum(t, "SwitchStep"), check("space_switches_step_check"))
 }

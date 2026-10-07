@@ -67,6 +67,7 @@ const imp: V2.Import = {
     conflicts: 0,
   },
   check: { state: "pending" },
+  origin: "init",
   created_at: "2026-10-06T09:30:00Z",
 };
 
@@ -86,11 +87,12 @@ describe("memax.v2 spaces, imports and bulk review", () => {
     expect(call().headers["Idempotency-Key"]).toBe("k1");
     expect(call().headers["X-Memax-Via"]).toBe("cli");
 
-    const sw = client(space);
+    const sw = client({ space, state: "switched" });
     await sw.memax.v2.spaces.switchToV2("personal", { idempotencyKey: "k2" });
     expect(sw.call()).toMatchObject({
       url: "https://api.memax.app/v2/spaces/personal:switch",
       method: "POST",
+      body: { to: "v2" },
     });
   });
 

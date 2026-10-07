@@ -29,7 +29,7 @@ memax init [--space <slug>] [--yes] [--no-personal] [--no-connect]
 | `--space <slug>`   | The project space. Without it: `.memax.yml`, then this repository's link, then the git remote; else a new one. |
 | `-y, --yes`        | Take the recommended answer to every question. For CI and scripts.                                         |
 | `--no-personal`    | Leave machine-local memory (`~/.claude`, `~/.codex`, `~/.gemini`) where it is.                             |
-| `--no-connect`     | Don't write the agents' MCP settings.                                                                      |
+| `--no-connect`     | Don't write the agents' MCP settings or hooks.                                                             |
 | `--no-daemon`      | Write the files once instead of starting [the daemon](/cli/daemon).                                        |
 | `--dry-run`        | Show what would be uploaded, and upload nothing.                                                           |
 | `--wait <seconds>` | How long to wait for the judge (default 20).                                                               |
@@ -75,9 +75,14 @@ memax init [--space <slug>] [--yes] [--no-personal] [--no-connect]
    remote.
 3. **Connect.** It asks once, naming the agents whose MCP settings don't
    point at Memax yet, then writes them (as `memax setup --mcp` does). Each
-   agent connects on its first start, at **Propose**: it can suggest
-   memories, and you keep them. Cursor and Gemini CLI start at **Read**. From
-   the CLI a level can only stay or go down; raising one is done on the web.
+   agent it connects also gets its session-start hook, as
+   [`memax connect`](/cli/connect) installs it (Claude Code, Codex, Gemini
+   CLI, Cursor and Copilot CLI; not while the Memax plugin for Claude Code
+   runs it, and not on Windows yet); running init again leaves a hook that's
+   there alone. Each agent connects on its first start, at **Propose**: it
+   can suggest memories, and you keep them. Cursor and Gemini CLI start at
+   **Read**. From the CLI a level can only stay or go down; raising one is
+   done on the web.
 4. **Scan, on this machine.** Each file is split into statements (a bullet,
    a numbered step, a paragraph) with its `file:line`. Before anything is
    sent, every file is scanned for secrets and hidden characters (below).

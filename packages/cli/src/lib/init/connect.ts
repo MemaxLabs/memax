@@ -2,11 +2,14 @@
 // §7.3). An agent connects over OAuth, the way memax setup --mcp sets it
 // up: init writes its MCP settings, and the agent's own sign-in (on its
 // first use) creates its connection, at Propose (Cursor and Gemini CLI at
-// Read). An agent already connected is connected to the new spaces here,
-// at the same levels; from the CLI a level can only be lowered or kept,
-// never raised (raising needs a person on the web).
+// Read). Each agent connected gets its session-start hook, through memax
+// connect's installer (lib/connect/hooks.ts), where it has one. An agent
+// already connected is connected to the new spaces here, at the same
+// levels; from the CLI a level can only be lowered or kept, never raised
+// (raising needs a person on the web).
 import { randomUUID } from "node:crypto";
 import type { Memax, V2 } from "memax-sdk";
+import { hookSupport, installHook } from "../connect/hooks.js";
 import { detectAgents, type AgentEntry, type DetectedAgent } from "./agents.js";
 import type { InitDeps, InitReport } from "./types.js";
 
@@ -58,13 +61,30 @@ export async function connectToSpaces(
   return { autonomy, added };
 }
 
-/** Finds the agents, writes their MCP settings (when allowed), and connects existing connections to the spaces. */
+/**
+ * The session-start hook of an agent init connected, through memax
+ * connect's installer (idempotent: an entry that already says the same is
+ * left alone). Nothing on Windows, where the hook doesn't run yet.
+ */
+function hookFor(a: AgentEntry, d: InitDeps): string {
+  if (!hookSupport(a.kind).file) return "unsupported";
+  if (d.env.platform === "win32") return "windows";
+  const res = installHook(a.kind, d.home);
+  return typeof res === "string" ? res : `failed: ${res.error}`;
+}
+
+/**
+ * Finds the agents, writes their MCP settings (when allowed), installs
+ * the session-start hook of each agent it connects, and connects existing
+ * connections to the spaces. `hooks: false` (--no-connect) writes no hook.
+ */
 export async function connectAgents(
   d: InitDeps,
   root: string | null,
   spaces: V2.Space[],
   /** Asked once, with the agents whose MCP settings don't name Memax yet. */
   allow: (need: AgentEntry[]) => Promise<boolean>,
+  { hooks = true }: { hooks?: boolean } = {},
 ): Promise<ConnectResult> {
   const detected = detectAgents({
     home: d.home,
@@ -92,6 +112,12 @@ export async function connectAgents(
       const res = await d.writeMcp(a);
       mcp = typeof res === "string" ? res : `failed: ${res.error}`;
     }
+    // An agent init connects (its MCP settings name Memax now) gets its
+    // session-start hook, as memax connect installs it.
+    const hook =
+      hooks && det.found && (mcp === "written" || mcp === "present")
+        ? hookFor(a, d)
+        : null;
     const conn = connections.find(
       (c) => c.agent === a.kind && c.state === "active",
     );
@@ -104,6 +130,7 @@ export async function connectAgents(
       where: det.found ? det.evidence : "",
       found: det.found,
       mcp,
+      hook,
       autonomy: autonomy ?? (det.found ? a.start : null),
     });
   }

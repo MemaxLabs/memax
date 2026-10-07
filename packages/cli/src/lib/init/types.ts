@@ -15,7 +15,7 @@ export interface InitOptions {
   dryRun?: boolean;
   /** --no-personal: leave machine-local memory where it is. */
   personal?: boolean;
-  /** --no-connect: don't write the agents' MCP settings. */
+  /** --no-connect: don't write the agents' MCP settings or hooks. */
   connect?: boolean;
   /** --no-daemon: write the files once instead of starting the daemon. */
   daemon?: boolean;
@@ -103,6 +103,12 @@ export interface InitReport {
     where: string;
     found: boolean;
     mcp: string;
+    /**
+     * Its session-start hook, for an agent init connected (null for the
+     * rest): written, present, plugin (the Claude Code plugin runs it),
+     * unsupported (the agent has none), windows, or "failed: …".
+     */
+    hook: string | null;
     autonomy: V2.Autonomy | null;
   }>;
   files: Array<{

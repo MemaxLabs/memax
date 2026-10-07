@@ -226,6 +226,18 @@ fieldset.decision > .decision {
   border-top: 1px solid var(--line);
 }
 
+/* "Both" waiting for the judge, or what came of it. Empty, it takes no room. */
+.checking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.checking:empty {
+  display: none;
+}
+
 /* A sentence: proportional figures, or the font's tabular full stops and
  * commas read as a space before the punctuation. */
 .footText {

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -7,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemaxError } from "memax-sdk";
 import { LedgerProvider } from "@memaxlabs/ledger";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "@/i18n";
@@ -157,6 +159,133 @@ describe("ReviewConflict", () => {
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
   });
+
+  // Rule 11: narrower words that touch another decision in force are
+  // saved and wait for the judge before both are kept.
+  const held = {
+    ref: "M-0431",
+    outcome: "proposed" as const,
+    version: 2,
+    recompiled: null,
+    receipt: null,
+    judgePending: true,
+  };
+  const judgePending = () =>
+    new MemaxError(
+      "Memax is still checking M-0431 against the decisions in force.",
+      "judge_pending",
+      503,
+      { ref: "M-0431", retry_after: 1 },
+      1,
+    );
+  const checkingLine =
+    "Checking the narrower words against the other decisions in force. Both are kept once the check is done.";
+
+  it("holds “both” for the judge, then keeps it with the same answer", async () => {
+    const { source, push } = setup();
+    const resolve = vi
+      .fn(source.review.resolveConflict)
+      .mockResolvedValueOnce(held)
+      .mockRejectedValueOnce(judgePending())
+      .mockResolvedValueOnce({
+        ref: "M-0431",
+        outcome: "kept",
+        version: 2,
+        recompiled: null,
+        receipt: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+      });
+    source.review.resolveConflict = resolve;
+    await screen.findByRole("heading", { level: 1 });
+    fireEvent.keyDown(radio(/Both/), { key: "Enter" });
+    // The working mark and the checking line, never a spinner.
+    expect(await screen.findByText(checkingLine)).toBeTruthy();
+    expect(screen.getByText("Checking")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Stop checking/ })).toBeTruthy();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/memax-v2/review"), {
+      timeout: 6000,
+    });
+    expect(
+      await screen.findByText("Kept M-0431 and M-0174, each narrowed"),
+    ).toBeTruthy();
+    // Saved, then the same answer on the saved version, with one key
+    // across its wait.
+    const calls = resolve.mock.calls.map(([input]) => input);
+    expect(calls).toHaveLength(3);
+    expect(calls[0]).toMatchObject({ version: 1, option: "both" });
+    expect(calls[1]).toMatchObject({
+      version: 2,
+      option: "both",
+      statement: calls[0].statement,
+      otherStatement: calls[0].otherStatement,
+    });
+    expect(calls[2].idempotencyKey).toBe(calls[1].idempotencyKey);
+    expect(calls[1].idempotencyKey).not.toBe(calls[0].idempotencyKey);
+  }, 10_000);
+
+  it("says so when the narrower words contradict another decision in force", async () => {
+    const { source, push } = setup();
+    source.review.resolveConflict = vi
+      .fn(source.review.resolveConflict)
+      .mockResolvedValueOnce(held)
+      .mockRejectedValueOnce(
+        new MemaxError(
+          "M-0431 also conflicts with M-0102.",
+          "in_conflict",
+          409,
+          {
+            ref: "M-0102",
+          },
+        ),
+      );
+    await screen.findByRole("heading", { level: 1 });
+    fireEvent.keyDown(radio(/Both/), { key: "Enter" });
+    expect(
+      await screen.findByText(
+        "The narrower words contradict M-0102, a decision in force. Change them, or choose another answer.",
+        undefined,
+        { timeout: 4000 },
+      ),
+    ).toBeTruthy();
+    // Still here, with the words as written, to change them.
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.queryByText(checkingLine)).toBeNull();
+    const mine = screen.getByRole("textbox", {
+      name: "M-0431, as it will read",
+    }) as HTMLTextAreaElement;
+    expect(mine.value).toBe("The v2 API runs on Fly.io in iad and ams.");
+    expect(mine.readOnly).toBe(false);
+  }, 10_000);
+
+  it("stops checking on Esc, and keeps the words", async () => {
+    const { source, push } = setup();
+    const resolve = vi
+      .fn(source.review.resolveConflict)
+      .mockResolvedValueOnce(held)
+      .mockRejectedValue(judgePending());
+    source.review.resolveConflict = resolve;
+    await screen.findByRole("heading", { level: 1 });
+    fireEvent.keyDown(radio(/Both/), { key: "Enter" });
+    await screen.findByText(checkingLine);
+    fireEvent.keyDown(radio(/Both/), { key: "Escape" });
+    expect(
+      await screen.findByText(
+        "Stopped checking. Your narrower words stay as you wrote them: keep the decision again to check them.",
+      ),
+    ).toBeTruthy();
+    expect(push).not.toHaveBeenCalled();
+    const asked = resolve.mock.calls.length;
+    await act(() => new Promise((resolve) => setTimeout(resolve, 1300)));
+    expect(resolve.mock.calls.length).toBe(asked);
+    // Keeping again checks again, on the saved version, rather than failing.
+    fireEvent.keyDown(radio(/Both/), { key: "Enter" });
+    expect(await screen.findByText(checkingLine)).toBeTruthy();
+    expect(resolve.mock.calls.at(-1)?.[0]).toMatchObject({ version: 2 });
+    fireEvent.keyDown(radio(/Both/), { key: "Escape" });
+    await screen.findByText(/^Stopped checking/);
+    // Esc again leaves for the queue.
+    fireEvent.keyDown(radio(/Both/), { key: "Escape" });
+    expect(push).toHaveBeenCalledWith("/memax-v2/review");
+  }, 10_000);
 
   it("asks by area when nobody wrote a question, and says why an answer isn't yours", async () => {
     const board = DEMO_CONFLICTS["M-0431"];

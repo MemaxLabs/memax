@@ -79,7 +79,7 @@ const wait = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, ms)));
 
 /** Resolves true after `ms`, false as soon as `signal` aborts. */
-function pause(ms: number, signal: AbortSignal): Promise<boolean> {
+export function pause(ms: number, signal: AbortSignal): Promise<boolean> {
   return new Promise((resolve) => {
     if (signal.aborted) return resolve(false);
     const timer = setTimeout(() => resolve(true), ms);

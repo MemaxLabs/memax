@@ -1,5 +1,5 @@
 // Package passkeys keeps people's passkeys (WebAuthn credentials) and runs
-// the three ceremonies Memax uses them for (plan 25 §5.15; migration 050):
+// the three ceremonies Memax uses them for (plan 25 §5.15; migration 051):
 //
 //   - Registration: a person on the web adds a passkey to their account.
 //     Discoverable credentials only (residentKey required), user

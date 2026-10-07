@@ -106,6 +106,7 @@ var sampleRequests = map[string]struct {
 	"forgetMemory":   {path: "/v2/memories/M-0001:forget?space=memax-v2", body: `{"note":"personal","carries":["M-0002"]}`, header: map[string]string{"If-Match": `"1"`}},
 	"requestForget":  {path: "/v2/memories/M-0001:request-forget?space=memax-v2", body: `{"reason":"a test value"}`},
 	"declineForget":  {path: "/v2/memories/" + sampleID + ":decline-forget"},
+	"previewForget":  {path: "/v2/memories/M-0001/forget-preview?space=memax-v2"},
 	"getTombstone":   {path: "/v2/memories/M-0001/tombstone?space=memax-v2"},
 	"listTombstones": {path: "/v2/spaces/memax-v2/tombstones?limit=5"},
 	"listNotices":    {path: "/v2/notices"},

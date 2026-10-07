@@ -111,6 +111,7 @@ var routes = []Route{
 	{"POST", "/v2/memories/{ref}:forget", "forgetMemory", (*Handler).forgetMemory},
 	{"POST", "/v2/memories/{ref}:request-forget", "requestForget", (*Handler).requestForget},
 	{"POST", "/v2/memories/{ref}:decline-forget", "declineForget", (*Handler).declineForget},
+	{"GET", "/v2/memories/{ref}/forget-preview", "previewForget", (*Handler).previewForget},
 	{"GET", "/v2/memories/{ref}/tombstone", "getTombstone", (*Handler).getTombstone},
 	{"GET", "/v2/spaces/{space}/tombstones", "listTombstones", (*Handler).listTombstones},
 	{"POST", "/v2/receipts/{receipt}:undo", "undoReceipt", (*Handler).undoReceipt},

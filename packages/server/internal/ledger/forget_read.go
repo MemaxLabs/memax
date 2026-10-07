@@ -42,6 +42,104 @@ func (l *Ledger) GetTombstone(ctx context.Context, scope Scope, ref string) (*To
 	return out, err
 }
 
+// ForgetPreview is what a Forget of a memory would do, read before anyone
+// confirms it: what goes with it, the files it would rewrite, how many
+// agents would be told, and whether the actor may.
+type ForgetPreview struct {
+	Ref     string            `json:"ref"`
+	Version int               `json:"version"`
+	Carries []Carried         `json:"carries"`
+	Files   []TombstoneTarget `json:"files"`
+	// Agents is every agent connection that would be told: those that read
+	// it (Readers of them) and those connected to the space.
+	Agents  int              `json:"agents"`
+	Readers int              `json:"readers"`
+	Allowed bool             `json:"allowed"`
+	Policy  *policy.Decision `json:"policy,omitempty"`
+}
+
+// PreviewForget reads what a Forget of ref would do, as actor. A memory
+// that can't be forgotten (it is already) is an *lifecycle.TransitionError.
+func (l *Ledger) PreviewForget(ctx context.Context, scope Scope, actor Actor, via policy.Via, ref string) (*ForgetPreview, error) {
+	if l == nil {
+		return nil, ErrDisabled
+	}
+	var out *ForgetPreview
+	err := l.Read(ctx, scope, func(tx pgx.Tx) error {
+		id, err := resolveRef(ctx, tx, scope, ref)
+		if err != nil {
+			return err
+		}
+		mem, err := loadMemory(ctx, tx, scope, id, false)
+		if err != nil {
+			return err
+		}
+		if _, err := transition(mem, lifecycle.VerbForget); err != nil {
+			return err
+		}
+		sp, err := loadSpace(ctx, tx, mem.SpaceID)
+		if err != nil {
+			return err
+		}
+		carried, err := carriedBy(ctx, tx, mem.SpaceID, []*Memory{mem})
+		if err != nil {
+			return err
+		}
+		p := &ForgetPreview{Ref: mem.Ref, Version: mem.Version, Carries: nonNilSlice(carried),
+			Files: []TombstoneTarget{}, Allowed: true}
+		grant, _ := scope.Grant(mem.SpaceID)
+		pa := toPolicyActor(actor, via, grant)
+		decide := func(m Carried, decision bool) {
+			if !p.Allowed {
+				return
+			}
+			d := policy.Decide(pa, policy.ActionForget, policy.Object{Ref: m.Ref, Lifecycle: m.Lifecycle, Decision: decision}, sp.policy())
+			if d.Effect == policy.EffectRefuse {
+				if m.Ref != mem.Ref {
+					d.Message = fmt.Sprintf("%s goes with %s, and you can't forget it: %s", m.Ref, mem.Ref, d.Message)
+				}
+				p.Allowed, p.Policy = false, &d
+			}
+		}
+		decide(Carried{Ref: mem.Ref, Lifecycle: mem.Lifecycle}, mem.Kind == KindDecision)
+		refs := []string{mem.Ref}
+		ids := []uuid.UUID{mem.ID}
+		for _, c := range carried {
+			decide(c, c.Kind == KindDecision)
+			refs = append(refs, c.Ref)
+			ids = append(ids, c.ID)
+		}
+		files, err := filesHolding(ctx, tx, mem.SpaceID, refs)
+		if err != nil {
+			return err
+		}
+		for _, fid := range files {
+			t, err := loadTarget(ctx, tx, scope, fid, false)
+			if err != nil {
+				return err
+			}
+			p.Files = append(p.Files, TombstoneTarget{ID: t.ID, Kind: t.Kind, Label: t.Label, Delivery: t.Delivery})
+		}
+		if err := tx.QueryRow(ctx, `
+			WITH readers AS (
+			    SELECT r.reader_key AS connection_id, true AS read_it
+			      FROM v2.read_rollups r
+			     WHERE r.space_id = $1 AND r.reader_kind = 'agent'
+			       AND (r.subject_id = ANY ($2) OR r.subject_id IN (
+			           SELECT c.id FROM v2.compile_runs c WHERE c.space_id = $1 AND c.refs && $3))
+			    UNION ALL
+			    SELECT s.connection_id, false FROM v2.agent_connection_spaces s WHERE s.space_id = $1
+			), each AS (SELECT connection_id, bool_or(read_it) AS read_it FROM readers GROUP BY connection_id)
+			SELECT count(*), count(*) FILTER (WHERE read_it) FROM each`,
+			mem.SpaceID, ids, refs).Scan(&p.Agents, &p.Readers); err != nil {
+			return fmt.Errorf("ledger: forget preview: %w", err)
+		}
+		out = p
+		return nil
+	})
+	return out, err
+}
+
 // TombstoneQuery pages through a space's tombstones, newest first.
 type TombstoneQuery struct {
 	SpaceID uuid.UUID

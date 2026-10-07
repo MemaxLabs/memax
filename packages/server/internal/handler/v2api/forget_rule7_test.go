@@ -428,6 +428,14 @@ func TestForgetLeavesTheWordsNowhere(t *testing.T) {
 	}
 	t.Logf("before the Forget the words are in %d columns: %v", len(before), before)
 
+	// The preview: what goes with it, the two targets that hold it, and the
+	// one agent that read it.
+	var pv forgetPreview
+	s.do(call{method: "GET", path: "/v2/memories/" + m.Ref + "/forget-preview?space=" + sp.slug, token: tok}).ok(http.StatusOK, &pv)
+	if !pv.Allowed || len(pv.Carries) != 2 || len(pv.Files) != 2 || pv.Agents != 1 || pv.Readers != 1 {
+		t.Errorf("preview = %+v", pv)
+	}
+
 	// Forget: first it says what goes with it, then it goes.
 	path := "/v2/memories/" + m.Ref + ":forget?space=" + sp.slug
 	ifm := map[string]string{"If-Match": `"1"`}

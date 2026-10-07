@@ -1203,6 +1203,46 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/memories/{ref}/forget-preview:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    get:
+      operationId: previewForget
+      tags: [memories]
+      summary: What a Forget would do
+      description: |
+        Read before anyone confirms a Forget: the memories that would go with
+        it (send their refs as `carries`), the compiled files and copy-outs
+        that hold it and would be rewritten, how many agents would be told
+        (`readers` of them read it; the rest are connected to the space),
+        the version to send as `If-Match`, and whether you may (`allowed`,
+        with `policy` when not). It changes nothing. 409 `invalid_transition`
+        when it is forgotten already.
+      responses:
+        '200':
+          description: What it would do.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgetPreviewEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
   /v2/memories/{ref}/tombstone:
     parameters:
       - $ref: '#/components/parameters/RefPath'
@@ -6184,6 +6224,43 @@ components:
           items:
             $ref: '#/components/schemas/Memory'
 
+    ForgetPreview:
+      description: What a Forget of a memory would do, before anyone confirms it.
+      type: object
+      additionalProperties: false
+      required: [ref, version, carries, files, agents, readers, allowed]
+      properties:
+        ref:
+          $ref: '#/components/schemas/DisplayRef'
+        version:
+          description: The memory's version; send it as `If-Match`.
+          type: integer
+          minimum: 1
+        carries:
+          description: The memories that go with it; send their refs as `carries`.
+          type: array
+          items:
+            $ref: '#/components/schemas/ForgetCarry'
+        files:
+          description: The compiled files and copy-outs that hold it, which would be rewritten.
+          type: array
+          items:
+            $ref: '#/components/schemas/TombstoneTarget'
+        agents:
+          description: The agents that would be told on their next read.
+          type: integer
+          minimum: 0
+        readers:
+          description: Of those agents, how many read it.
+          type: integer
+          minimum: 0
+        allowed:
+          description: Whether you may forget it (and everything that goes with it).
+          type: boolean
+        policy:
+          description: Why you may not, when policy says so.
+          $ref: '#/components/schemas/PolicyDecision'
+
     TombstoneKind:
       description: '`memory`, or `space` for a Forget of everything in a space.'
       type: string
@@ -6650,6 +6727,14 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/Tombstone'
+
+    ForgetPreviewEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ForgetPreview'
 
     TombstonePageEnvelope:
       type: object

@@ -668,6 +668,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/memories/{ref}/forget-preview": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What a Forget would do
+         * @description Read before anyone confirms a Forget: the memories that would go with
+         *     it (send their refs as `carries`), the compiled files and copy-outs
+         *     that hold it and would be rewritten, how many agents would be told
+         *     (`readers` of them read it; the rest are connected to the space),
+         *     the version to send as `If-Match`, and whether you may (`allowed`,
+         *     with `policy` when not). It changes nothing. 409 `invalid_transition`
+         *     when it is forgotten already.
+         */
+        get: operations["previewForget"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/memories/{ref}/tombstone": {
         parameters: {
             query?: {
@@ -3134,6 +3169,24 @@ export interface components {
             /** @description The memories forgotten with it. */
             memories: components["schemas"]["Memory"][];
         };
+        /** @description What a Forget of a memory would do, before anyone confirms it. */
+        ForgetPreview: {
+            ref: components["schemas"]["DisplayRef"];
+            /** @description The memory's version; send it as `If-Match`. */
+            version: number;
+            /** @description The memories that go with it; send their refs as `carries`. */
+            carries: components["schemas"]["ForgetCarry"][];
+            /** @description The compiled files and copy-outs that hold it, which would be rewritten. */
+            files: components["schemas"]["TombstoneTarget"][];
+            /** @description The agents that would be told on their next read. */
+            agents: number;
+            /** @description Of those agents, how many read it. */
+            readers: number;
+            /** @description Whether you may forget it (and everything that goes with it). */
+            allowed: boolean;
+            /** @description Why you may not, when policy says so. */
+            policy?: components["schemas"]["PolicyDecision"];
+        };
         /**
          * @description `memory`, or `space` for a Forget of everything in a space.
          * @enum {string}
@@ -3377,6 +3430,9 @@ export interface components {
         };
         TombstoneEnvelope: {
             data: components["schemas"]["Tombstone"];
+        };
+        ForgetPreviewEnvelope: {
+            data: components["schemas"]["ForgetPreview"];
         };
         TombstonePageEnvelope: {
             data: components["schemas"]["TombstonePage"];
@@ -4604,6 +4660,43 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["InvalidTransition"];
             422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    previewForget: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What it would do. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgetPreviewEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

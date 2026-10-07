@@ -220,6 +220,10 @@ func (w *writer) replayForget(ctx context.Context, replay *Result) (Result, erro
 // every memory citing one of them as a source. Forgotten memories are
 // left out (their words are gone already).
 func (w *writer) carriedBy(ctx context.Context, spaceID uuid.UUID, roots []*Memory) ([]Carried, error) {
+	return carriedBy(ctx, w.tx, spaceID, roots)
+}
+
+func carriedBy(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID, roots []*Memory) ([]Carried, error) {
 	seen := map[uuid.UUID]bool{}
 	frontier := make([]uuid.UUID, 0, len(roots))
 	refOf := map[uuid.UUID]string{}
@@ -234,7 +238,7 @@ func (w *writer) carriedBy(ctx context.Context, spaceID uuid.UUID, roots []*Memo
 		for i, id := range frontier {
 			texts[i] = id.String()
 		}
-		rows, err := w.tx.Query(ctx, `
+		rows, err := tx.Query(ctx, `
 			SELECT m.id, m.seq, m.lifecycle, m.kind, 'folded', l.to_memory_id
 			  FROM v2.memory_links l JOIN v2.memories m ON m.id = l.from_memory_id
 			 WHERE l.space_id = $1 AND l.kind = 'merged_into' AND l.ended_receipt_id IS NULL
@@ -326,7 +330,11 @@ func (w *writer) forgetRequester(ctx context.Context, memoryID uuid.UUID) (*uuid
 // filesHolding lists the targets whose latest good compile, or the one on
 // disk, holds any of refs: the files a Forget rewrites.
 func (w *writer) filesHolding(ctx context.Context, spaceID uuid.UUID, refs []string) ([]uuid.UUID, error) {
-	rows, err := w.tx.Query(ctx, `
+	return filesHolding(ctx, w.tx, spaceID, refs)
+}
+
+func filesHolding(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID, refs []string) ([]uuid.UUID, error) {
+	rows, err := tx.Query(ctx, `
 		SELECT t.id FROM v2.targets t
 		 WHERE t.space_id = $1
 		   AND (EXISTS (SELECT 1 FROM v2.compile_runs c WHERE c.id = t.delivered_compile_id AND c.refs && $2)

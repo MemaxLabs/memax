@@ -30,6 +30,24 @@ type tombstone struct {
 	} `json:"unreachable"`
 }
 
+type forgetPreview struct {
+	Ref     string `json:"ref"`
+	Version int    `json:"version"`
+	Carries []struct {
+		Ref    string `json:"ref"`
+		Reason string `json:"reason"`
+	} `json:"carries"`
+	Files []struct {
+		Label string `json:"label"`
+	} `json:"files"`
+	Agents  int  `json:"agents"`
+	Readers int  `json:"readers"`
+	Allowed bool `json:"allowed"`
+	Policy  *struct {
+		Code string `json:"code"`
+	} `json:"policy"`
+}
+
 type forgetResult struct {
 	Outcome   string    `json:"outcome"`
 	Memory    memory    `json:"memory"`
@@ -53,6 +71,14 @@ func TestForgetOverV2(t *testing.T) {
 		"statement": "Reviews go to Ziyang until Oct 26.", "section": "conventions",
 		"sources": []map[string]any{{"kind": "memory", "ref": a.Ref}}}}).ok(http.StatusCreated, &cited)
 	path := "/v2/memories/" + a.Ref + ":forget?space=" + sp.slug
+
+	// The preview says what goes with it, before anything changes.
+	var pv forgetPreview
+	e.do(call{method: "GET", path: "/v2/memories/" + a.Ref + "/forget-preview?space=" + sp.slug, token: tok}).ok(http.StatusOK, &pv)
+	if pv.Ref != a.Ref || pv.Version != 1 || !pv.Allowed || len(pv.Carries) != 1 || pv.Carries[0].Ref != cited.Memory.Ref ||
+		pv.Carries[0].Reason != "cites" || len(pv.Files) != 0 || pv.Agents != 0 {
+		t.Fatalf("preview = %+v", pv)
+	}
 
 	e.do(call{method: "POST", path: path, token: tok, invalid: true}).fails(http.StatusPreconditionRequired, "precondition_required")
 	e.do(call{method: "POST", path: path, token: tok, header: map[string]string{"If-Match": `"7"`}}).fails(http.StatusPreconditionFailed, "edit_clash")
@@ -129,6 +155,11 @@ func TestForgetIsRefusedOverV2(t *testing.T) {
 	m := e.remember(e.session(zz), sp, "Pin Node 24 in CI.").Memory
 	path := "/v2/memories/" + m.Ref + ":forget?space=" + sp.id.String()
 	ifm := map[string]string{"If-Match": `"1"`}
+	var pv forgetPreview
+	e.do(call{method: "GET", path: "/v2/memories/" + m.Ref + "/forget-preview?space=" + sp.slug, token: e.session(vi)}).ok(http.StatusOK, &pv)
+	if pv.Allowed || pv.Policy == nil || pv.Policy.Code != policy.CodeForgetNotAllowed {
+		t.Errorf("a viewer's preview: %+v", pv)
+	}
 	if c := e.do(call{method: "POST", path: path, token: e.session(vi), header: ifm}).fails(http.StatusForbidden, "refused"); c.Details.Policy.Code != policy.CodeForgetNotAllowed {
 		t.Errorf("viewer: %+v", c)
 	}

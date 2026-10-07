@@ -148,6 +148,26 @@ func (h *Handler) getTombstone(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, t)
 }
 
+// GET /v2/memories/{ref}/forget-preview
+func (h *Handler) previewForget(w http.ResponseWriter, r *http.Request) {
+	p, e := h.principalFor(r)
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	ref, scope, e := h.target(r, p)
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	v, err := h.ledger.PreviewForget(r.Context(), scope, p.actor, p.via, ref)
+	if err != nil {
+		writeError(w, h.fromLedger(r, err))
+		return
+	}
+	writeData(w, http.StatusOK, v)
+}
+
 // GET /v2/spaces/{space}/tombstones
 func (h *Handler) listTombstones(w http.ResponseWriter, r *http.Request) {
 	p, sp, cursor, limit, e := h.spaceList(r)

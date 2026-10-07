@@ -26,6 +26,7 @@ import {
   type McpTextResult,
   textResult,
   v2Forget,
+  withNotices,
   v2Get,
   v2HubLines,
   v2List,
@@ -230,479 +231,487 @@ function createServer(agentId: string = ""): Server {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name } = request.params;
     const args = (request.params.arguments ?? {}) as Args;
-
-    switch (name) {
-      case "memax_recall":
-        return recallTool(args, agentId, false);
-
-      case "memax_search":
-        return recallTool(args, agentId, true);
-
-      case "memax_push": {
-        const typedArgs = args as {
-          content: string;
-          title?: string;
-          hint?: string;
-          tags?: string[];
-          initiation_type?: string;
-          project_context?: Record<string, string>;
-          hub_id?: string;
-          space_id?: string;
-          hub_reason?: string;
-          section?: string;
-          session_ref?: string;
-          sources?: { kind: string; ref: string; uri?: string }[];
-        };
-        const hubRef = typedArgs.hub_id ?? typedArgs.space_id;
-        try {
-          const target = await resolveHubReference(hubRef).catch(
-            () => undefined,
-          );
-          const sp = target ? await v2Space(target) : undefined;
-          if (sp) {
-            const denied = await guardWrite(sp);
-            if (denied) return denied;
-            if (
-              typedArgs.content?.trim() &&
-              [...typedArgs.content.trim()].length <= MAX_STATEMENT
-            ) {
-              return v2Push(sp, typedArgs);
-            }
-            // Longer than one statement: a note, for Dream to fold.
-          }
-          const memory = await getClient().push(typedArgs.content, {
-            title: typedArgs.title ?? "",
-            hint: typedArgs.hint ?? "",
-            tags: typedArgs.tags ?? [],
-            source: "mcp",
-            sourceAgent: agentId,
-            // A tool call is never human_direct (same rule as the Go MCP
-            // server drops server-side); keep the wire honest here too.
-            initiationType:
-              typedArgs.initiation_type === "human_direct"
-                ? undefined
-                : ((typedArgs.initiation_type as
-                    | "human_requested_agent"
-                    | "agent_proactive"
-                    | "agent_automatic"
-                    | "import"
-                    | "unknown"
-                    | undefined) ?? undefined),
-            projectContext: typedArgs.project_context,
-            hubId: hubRef,
-            hubReason: typedArgs.hub_reason,
-          });
-          if (sp) {
-            const message = `Saved as a note in ${sp.name}: a memory is one statement of at most ${MAX_STATEMENT} characters. Dream folds notes into proposals for Review.`;
-            return textResult(
-              `Saved as a note (id: ${memory.id}). ${message}`,
-              { status: "note", id: memory.id, space_id: sp.id, message },
-            );
-          }
-          return textResult(`Saved: ${memory.title} (id: ${memory.id})`, {
-            status: "saved",
-            id: memory.id,
-            ...(memory.hub_id ? { space_id: memory.hub_id } : {}),
-          });
-        } catch (err) {
-          return errorResult(`Push failed: ${(err as Error).message}`);
-        }
-      }
-
-      case "memax_get": {
-        const id = str(args.id) ?? "";
-        try {
-          const spaceRef = str(args.space_id);
-          const spaceId = spaceRef
-            ? await resolveHubReference(spaceRef)
-            : undefined;
-          const sp = spaceId ? await v2Space(spaceId) : undefined;
-          if (isDisplayRef(id) || sp || (await v2State()).spaces.size > 0) {
-            const res = await v2Get(id, sp);
-            if (res) return res;
-            if (isDisplayRef(id)) return errorResult(`Memory not found: ${id}`);
-          }
-          const client = getClient();
-          const memory = await client.memories.get(id);
-          if (memory.hub_id && (await v2Space(memory.hub_id))) {
-            return errorResult(
-              `${id} is a note in a space on the V2 record. Notes are raw material for Dream, not context; search kept memories with memax_search.`,
-            );
-          }
-          // Agent calling memax_get is deliberate intent to read the
-          // full memory — same contract as the web modal / detail page
-          // and the remote Go MCP toolGet. Fire-and-forget so the
-          // signal never blocks the response.
-          void client.memories.trackAccessed(id).catch(() => {});
-
-          const parts = [
-            `# ${memory.title}`,
-            `Classification: ${memoryClassification(memory)} | Source: ${memory.source} | Created: ${memory.created_at}`,
-          ];
-          if (memory.tags?.length > 0) {
-            parts.push(`Tags: ${memory.tags.join(", ")}`);
-          }
-          if (memory.source_path) {
-            parts.push(`Source: ${memory.source_path}`);
-          }
-          if (memory.summary) {
-            parts.push(`\n## Summary\n${memory.summary}`);
-          }
-          parts.push(`\n## Content\n${memory.content}`);
-
-          return textResult(parts.join("\n"), {
-            memory: {
-              id: memory.id,
-              record: "v1",
-              ...(memory.hub_id ? { space_id: memory.hub_id } : {}),
-              title: memory.title,
-              text: memory.content,
-              ...(memory.summary ? { summary: memory.summary } : {}),
-              kind: memory.kind,
-              stability: memory.stability,
-              source: memory.source,
-              tags: memory.tags ?? [],
-              created_at: memory.created_at,
-            },
-          });
-        } catch (err) {
-          return errorResult(`Get failed: ${(err as Error).message}`);
-        }
-      }
-
-      case "memax_list": {
-        const typedArgs = args as {
-          limit?: number;
-          cursor?: string;
-          sort?: string;
-          hub_id?: string;
-          space_id?: string;
-          topic_id?: string;
-        };
-        try {
-          let hubId: string | undefined;
-          const ref = typedArgs.hub_id ?? typedArgs.space_id;
-          if (ref) {
-            hubId = await resolveHubReference(ref);
-            const sp = await v2Space(hubId);
-            if (sp) return v2List(sp, typedArgs);
-          }
-          const res = await getClient().memories.list({
-            limit: typedArgs.limit ?? 20,
-            cursor: typedArgs.cursor,
-            sort: typedArgs.sort as "newest" | "relevant" | undefined,
-            hubId,
-            topicId: typedArgs.topic_id,
-          });
-
-          const state = await v2State();
-          const memories = (res.memories ?? []).filter(
-            (m) => !m.hub_id || !state.spaces.has(m.hub_id),
-          );
-          const total = res.total ?? 0;
-          const nextCursor = res.next_cursor ?? "";
-          const hasMore = res.has_more ?? false;
-          const structured = {
-            memories: memories.map((m) => ({
-              id: m.id,
-              record: "v1",
-              ...(m.hub_id ? { space_id: m.hub_id } : {}),
-              title: m.title,
-              text: m.title,
-              kind: m.kind,
-              stability: m.stability,
-              source: m.source,
-            })),
-            ...(nextCursor ? { next_cursor: nextCursor } : {}),
-            ...(hasMore ? { has_more: true } : {}),
-            ...(total ? { total } : {}),
-          };
-
-          if (memories.length === 0) {
-            return textResult(
-              `No memories found. (${total} total in workspace)`,
-              structured,
-            );
-          }
-
-          let formatted = memories
-            .map(
-              (m) =>
-                `- ${m.title} [${memoryClassification(m)}] — ${m.source} (id: ${m.id})`,
-            )
-            .join("\n");
-
-          formatted += `\n\nShowing ${memories.length} of ${total} total.`;
-          if (hasMore) {
-            formatted += ` More available — pass cursor: "${nextCursor}" to get next page.`;
-          }
-          return textResult(formatted, structured);
-        } catch (err) {
-          return errorResult(`List failed: ${(err as Error).message}`);
-        }
-      }
-
-      case "memax_hubs": {
-        try {
-          const hubs = await getClient().hubs.list();
-          const state = await v2State();
-          const activeHubID = getActiveHubID();
-          const lines = hubs
-            .filter(({ hub }) => !state.spaces.has(hub.id))
-            .map(({ hub, role, memory_count }) => {
-              const active = hub.id === activeHubID ? " active" : "";
-              return `- **${hub.name}** (${hub.hub_type}, ${role}${active}) ref: ${getHubReference(hub)} id: ${hub.id} memories: ${memory_count}`;
-            });
-          lines.push(...(await v2HubLines(hubs, activeHubID)));
-          if (lines.length === 0) return textResult("No hubs found.");
-          return textResult(lines.join("\n"));
-        } catch (err) {
-          return errorResult(`Hubs failed: ${(err as Error).message}`);
-        }
-      }
-
-      case "memax_hub_members": {
-        const typedArgs = args as { hub_id?: string; space_id?: string };
-        try {
-          const hubID = await resolveHubReference(
-            typedArgs.hub_id ?? typedArgs.space_id,
-          );
-          const state = await v2State();
-          const sp = state.spaces.get(hubID);
-          if (sp && !state.readable.has(sp.id)) {
-            return errorResult(
-              `This agent isn't connected to ${sp.name}, so it can't read it. Connect it in Agents.`,
-            );
-          }
-          const result = await getClient().hubs.get(hubID);
-          const members = result.members ?? [];
-          let text = `## ${result.hub.name} members\n\n`;
-          if (members.length === 0) {
-            text += "No members found.";
-          } else {
-            text += members
-              .map((member) => {
-                const email = member.user_email
-                  ? ` <${member.user_email}>`
-                  : "";
-                return `- **${memberDisplayName(member)}**${email} [${member.role}] joined: ${member.joined_at}`;
-              })
-              .join("\n");
-          }
-          return textResult(text);
-        } catch (err) {
-          return errorResult(`Hub members failed: ${(err as Error).message}`);
-        }
-      }
-
-      case "memax_forget": {
-        const id = str(args.id);
-        if (!id) {
-          return errorResult("Memory ID is required.");
-        }
-        try {
-          const spaceRef = str(args.space_id);
-          const spaceId = spaceRef
-            ? await resolveHubReference(spaceRef)
-            : undefined;
-          const sp = spaceId ? await v2Space(spaceId) : undefined;
-          if (isDisplayRef(id) || sp) {
-            if (!sp)
-              return errorResult(
-                `Pass space_id with ${id}: display IDs live in a space.`,
-              );
-            return v2Forget(sp, id.toUpperCase());
-          }
-          const state = await v2State();
-          if (state.spaces.size > 0) {
-            const found = await v2Get(id, undefined);
-            if (found && !found.isError) {
-              const memory = (found.structuredContent?.memory ?? {}) as {
-                ref?: string;
-                space_id?: string;
-              };
-              const space = memory.space_id
-                ? state.spaces.get(memory.space_id)
-                : undefined;
-              if (space && memory.ref) return v2Forget(space, memory.ref);
-            }
-            const v1 = await getClient()
-              .memories.get(id)
-              .catch(() => undefined);
-            if (v1?.hub_id && state.spaces.has(v1.hub_id)) {
-              return errorResult(
-                `${id} is a note in a space on the V2 record, and an agent can't forget there. Ask the person to forget it on the web.`,
-              );
-            }
-          }
-          await getClient().memories.delete(id);
-          return textResult(`Forgotten: ${id}`);
-        } catch (err) {
-          return errorResult(`Forget failed: ${(err as Error).message}`);
-        }
-      }
-
-      case "memax_capture": {
-        const typedArgs = args as {
-          summary: string;
-          decisions?: string[];
-          learnings?: string[];
-        };
-        if (!typedArgs.summary) {
-          return errorResult("Summary is required.");
-        }
-
-        // Build structured content for the extraction pipeline
-        let content = `## Session Summary\n${typedArgs.summary}\n`;
-        if (typedArgs.decisions?.length) {
-          content += `\n## Decisions Made\n${typedArgs.decisions.map((d) => `- ${d}`).join("\n")}\n`;
-        }
-        if (typedArgs.learnings?.length) {
-          content += `\n## Learnings\n${typedArgs.learnings.map((l) => `- ${l}`).join("\n")}\n`;
-        }
-
-        try {
-          const target = await resolveHubReference(undefined).catch(
-            () => undefined,
-          );
-          const sp = target ? await v2Space(target) : undefined;
-          if (sp) {
-            const denied = await guardWrite(sp);
-            if (denied) return denied;
-          }
-          const memory = await getClient().push(content, {
-            title: `Session capture — ${new Date().toLocaleDateString()}`,
-            contentType: "transcript",
-            source: "mcp/capture",
-            sourceAgent: agentId,
-            initiationType: "agent_automatic",
-          });
-          if (sp) {
-            return textResult(
-              `Session captured (id: ${memory.id}). Saved as notes in ${sp.name}: Dream folds them into proposals for Review, and nothing is kept until a person keeps it.`,
-            );
-          }
-          return textResult(
-            `Session captured (id: ${memory.id}). Key facts will be extracted and stored as separate memories.`,
-          );
-        } catch (err) {
-          return errorResult(`Capture failed: ${(err as Error).message}`);
-        }
-      }
-
-      case "memax_request_decision": {
-        const typedArgs = args as {
-          question: string;
-          options?: string[];
-          context?: string;
-          space_id?: string;
-        };
-        if (!typedArgs.question || (typedArgs.options?.length ?? 0) < 2) {
-          return errorResult(
-            "memax_request_decision requires 'question' and 2-4 'options'.",
-          );
-        }
-        try {
-          // Resolve to a real hub UUID: the REST path is
-          // /v1/hubs/{id}/… and the server's membership check can't
-          // read an alias like "personal".
-          // space_id names a space on V2 to ask in; V1 has no such
-          // argument, so naming a V1 space leaves the default hub, as on
-          // the remote server.
-          const named = str(typedArgs.space_id);
-          const namedV2 = named
-            ? await v2Space(await resolveHubReference(named))
-            : undefined;
-          const hubId = namedV2?.id ?? (await resolveHubReference(undefined));
-          const sp = namedV2 ?? (await v2Space(hubId));
-          if (sp) {
-            const denied = await guardWrite(sp);
-            if (denied) return denied;
-            return v2RequestDecision(sp, {
-              question: typedArgs.question,
-              options: typedArgs.options ?? [],
-              context: typedArgs.context,
-            });
-          }
-          const { slot } = await getClient().boards.requestDecision(hubId, {
-            question: typedArgs.question,
-            options: typedArgs.options ?? [],
-            context: typedArgs.context,
-            source_agent: agentId,
-          });
-          return textResult(
-            `Decision card created (id: ${slot.slot_key}). The user has been pinged; their choice will be saved to memory. Recall with keywords from your question later to read it. Continue with other work now.`,
-          );
-        } catch (err) {
-          return errorResult(
-            `Decision request failed: ${(err as Error).message}`,
-          );
-        }
-      }
-
-      case "memax_topics": {
-        const typedArgs = args as {
-          topic_id?: string;
-          hub_id?: string;
-          space_id?: string;
-        };
-        try {
-          const ref = typedArgs.hub_id ?? typedArgs.space_id;
-          const hubId = ref
-            ? await resolveHubReference(ref)
-            : await resolveHubReference(undefined).catch(() => undefined);
-          const sp = hubId ? await v2Space(hubId) : undefined;
-          if (sp) return v2Topics(sp, typedArgs.topic_id);
-
-          if (typedArgs.topic_id) {
-            // Browse specific topic's memories
-            const res = await getClient().topics.listMemories(
-              typedArgs.topic_id,
-            );
-            const topic = await getClient().topics.get(typedArgs.topic_id);
-            const memories = res.memories ?? [];
-            let text = `## ${topic.name} (${memories.length} memories)\n\n`;
-            for (const [i, m] of memories.entries()) {
-              text += `${i + 1}. **${m.title}** [${memoryClassification(m)}] (id: ${m.id})\n`;
-              if (m.summary) text += `   ${m.summary}\n`;
-            }
-            if (memories.length === 0)
-              text += "No memories in this topic yet.\n";
-            return textResult(text);
-          }
-
-          // Full topic tree
-          const res = await getClient().topics.list(ref);
-          const topics = res.topics ?? [];
-          let text = "## Topics\n\n";
-          if (topics.length === 0) {
-            text +=
-              "No topics yet. Push memories and run a dream cycle to auto-organize.\n";
-          } else {
-            for (const t of topics) {
-              const indent = t.parent_id ? "  " : "";
-              text += `${indent}- **${t.name}** (${t.memory_count} memories) [id: ${t.id}]\n`;
-              if (t.description) text += `${indent}  ${t.description}\n`;
-              for (const child of t.children) {
-                text += `  - **${child.name}** (${child.memory_count} memories) [id: ${child.id}]\n`;
-              }
-            }
-          }
-          if (res.unassigned_count > 0) {
-            text += `\n📥 **Inbox**: ${res.unassigned_count} unassigned memories\n`;
-          }
-          return textResult(text);
-        } catch (err) {
-          return errorResult(`Topics failed: ${(err as Error).message}`);
-        }
-      }
-
-      default:
-        return errorResult(`Unknown tool: ${name}`);
-    }
+    // Forget's notices ride on the agent's next response (rule 7).
+    return withNotices(await callTool(name, args, agentId), name);
   });
 
   return server;
+}
+
+async function callTool(
+  name: string,
+  args: Args,
+  agentId: string,
+): Promise<McpTextResult> {
+  switch (name) {
+    case "memax_recall":
+      return recallTool(args, agentId, false);
+
+    case "memax_search":
+      return recallTool(args, agentId, true);
+
+    case "memax_push": {
+      const typedArgs = args as {
+        content: string;
+        title?: string;
+        hint?: string;
+        tags?: string[];
+        initiation_type?: string;
+        project_context?: Record<string, string>;
+        hub_id?: string;
+        space_id?: string;
+        hub_reason?: string;
+        section?: string;
+        session_ref?: string;
+        sources?: { kind: string; ref: string; uri?: string }[];
+      };
+      const hubRef = typedArgs.hub_id ?? typedArgs.space_id;
+      try {
+        const target = await resolveHubReference(hubRef).catch(() => undefined);
+        const sp = target ? await v2Space(target) : undefined;
+        if (sp) {
+          const denied = await guardWrite(sp);
+          if (denied) return denied;
+          if (
+            typedArgs.content?.trim() &&
+            [...typedArgs.content.trim()].length <= MAX_STATEMENT
+          ) {
+            return v2Push(sp, typedArgs);
+          }
+          // Longer than one statement: a note, for Dream to fold.
+        }
+        const memory = await getClient().push(typedArgs.content, {
+          title: typedArgs.title ?? "",
+          hint: typedArgs.hint ?? "",
+          tags: typedArgs.tags ?? [],
+          source: "mcp",
+          sourceAgent: agentId,
+          // A tool call is never human_direct (same rule as the Go MCP
+          // server drops server-side); keep the wire honest here too.
+          initiationType:
+            typedArgs.initiation_type === "human_direct"
+              ? undefined
+              : ((typedArgs.initiation_type as
+                  | "human_requested_agent"
+                  | "agent_proactive"
+                  | "agent_automatic"
+                  | "import"
+                  | "unknown"
+                  | undefined) ?? undefined),
+          projectContext: typedArgs.project_context,
+          hubId: hubRef,
+          hubReason: typedArgs.hub_reason,
+        });
+        if (sp) {
+          const message = `Saved as a note in ${sp.name}: a memory is one statement of at most ${MAX_STATEMENT} characters. Dream folds notes into proposals for Review.`;
+          return textResult(`Saved as a note (id: ${memory.id}). ${message}`, {
+            status: "note",
+            id: memory.id,
+            space_id: sp.id,
+            message,
+          });
+        }
+        return textResult(`Saved: ${memory.title} (id: ${memory.id})`, {
+          status: "saved",
+          id: memory.id,
+          ...(memory.hub_id ? { space_id: memory.hub_id } : {}),
+        });
+      } catch (err) {
+        return errorResult(`Push failed: ${(err as Error).message}`);
+      }
+    }
+
+    case "memax_get": {
+      const id = str(args.id) ?? "";
+      try {
+        const spaceRef = str(args.space_id);
+        const spaceId = spaceRef
+          ? await resolveHubReference(spaceRef)
+          : undefined;
+        const sp = spaceId ? await v2Space(spaceId) : undefined;
+        if (isDisplayRef(id) || sp || (await v2State()).spaces.size > 0) {
+          const res = await v2Get(id, sp);
+          if (res) return res;
+          if (isDisplayRef(id)) return errorResult(`Memory not found: ${id}`);
+        }
+        const client = getClient();
+        const memory = await client.memories.get(id);
+        if (memory.hub_id && (await v2Space(memory.hub_id))) {
+          return errorResult(
+            `${id} is a note in a space on the V2 record. Notes are raw material for Dream, not context; search kept memories with memax_search.`,
+          );
+        }
+        // Agent calling memax_get is deliberate intent to read the
+        // full memory — same contract as the web modal / detail page
+        // and the remote Go MCP toolGet. Fire-and-forget so the
+        // signal never blocks the response.
+        void client.memories.trackAccessed(id).catch(() => {});
+
+        const parts = [
+          `# ${memory.title}`,
+          `Classification: ${memoryClassification(memory)} | Source: ${memory.source} | Created: ${memory.created_at}`,
+        ];
+        if (memory.tags?.length > 0) {
+          parts.push(`Tags: ${memory.tags.join(", ")}`);
+        }
+        if (memory.source_path) {
+          parts.push(`Source: ${memory.source_path}`);
+        }
+        if (memory.summary) {
+          parts.push(`\n## Summary\n${memory.summary}`);
+        }
+        parts.push(`\n## Content\n${memory.content}`);
+
+        return textResult(parts.join("\n"), {
+          memory: {
+            id: memory.id,
+            record: "v1",
+            ...(memory.hub_id ? { space_id: memory.hub_id } : {}),
+            title: memory.title,
+            text: memory.content,
+            ...(memory.summary ? { summary: memory.summary } : {}),
+            kind: memory.kind,
+            stability: memory.stability,
+            source: memory.source,
+            tags: memory.tags ?? [],
+            created_at: memory.created_at,
+          },
+        });
+      } catch (err) {
+        return errorResult(`Get failed: ${(err as Error).message}`);
+      }
+    }
+
+    case "memax_list": {
+      const typedArgs = args as {
+        limit?: number;
+        cursor?: string;
+        sort?: string;
+        hub_id?: string;
+        space_id?: string;
+        topic_id?: string;
+      };
+      try {
+        let hubId: string | undefined;
+        const ref = typedArgs.hub_id ?? typedArgs.space_id;
+        if (ref) {
+          hubId = await resolveHubReference(ref);
+          const sp = await v2Space(hubId);
+          if (sp) return v2List(sp, typedArgs);
+        }
+        const res = await getClient().memories.list({
+          limit: typedArgs.limit ?? 20,
+          cursor: typedArgs.cursor,
+          sort: typedArgs.sort as "newest" | "relevant" | undefined,
+          hubId,
+          topicId: typedArgs.topic_id,
+        });
+
+        const state = await v2State();
+        const memories = (res.memories ?? []).filter(
+          (m) => !m.hub_id || !state.spaces.has(m.hub_id),
+        );
+        const total = res.total ?? 0;
+        const nextCursor = res.next_cursor ?? "";
+        const hasMore = res.has_more ?? false;
+        const structured = {
+          memories: memories.map((m) => ({
+            id: m.id,
+            record: "v1",
+            ...(m.hub_id ? { space_id: m.hub_id } : {}),
+            title: m.title,
+            text: m.title,
+            kind: m.kind,
+            stability: m.stability,
+            source: m.source,
+          })),
+          ...(nextCursor ? { next_cursor: nextCursor } : {}),
+          ...(hasMore ? { has_more: true } : {}),
+          ...(total ? { total } : {}),
+        };
+
+        if (memories.length === 0) {
+          return textResult(
+            `No memories found. (${total} total in workspace)`,
+            structured,
+          );
+        }
+
+        let formatted = memories
+          .map(
+            (m) =>
+              `- ${m.title} [${memoryClassification(m)}] — ${m.source} (id: ${m.id})`,
+          )
+          .join("\n");
+
+        formatted += `\n\nShowing ${memories.length} of ${total} total.`;
+        if (hasMore) {
+          formatted += ` More available — pass cursor: "${nextCursor}" to get next page.`;
+        }
+        return textResult(formatted, structured);
+      } catch (err) {
+        return errorResult(`List failed: ${(err as Error).message}`);
+      }
+    }
+
+    case "memax_hubs": {
+      try {
+        const hubs = await getClient().hubs.list();
+        const state = await v2State();
+        const activeHubID = getActiveHubID();
+        const lines = hubs
+          .filter(({ hub }) => !state.spaces.has(hub.id))
+          .map(({ hub, role, memory_count }) => {
+            const active = hub.id === activeHubID ? " active" : "";
+            return `- **${hub.name}** (${hub.hub_type}, ${role}${active}) ref: ${getHubReference(hub)} id: ${hub.id} memories: ${memory_count}`;
+          });
+        lines.push(...(await v2HubLines(hubs, activeHubID)));
+        if (lines.length === 0) return textResult("No hubs found.");
+        return textResult(lines.join("\n"));
+      } catch (err) {
+        return errorResult(`Hubs failed: ${(err as Error).message}`);
+      }
+    }
+
+    case "memax_hub_members": {
+      const typedArgs = args as { hub_id?: string; space_id?: string };
+      try {
+        const hubID = await resolveHubReference(
+          typedArgs.hub_id ?? typedArgs.space_id,
+        );
+        const state = await v2State();
+        const sp = state.spaces.get(hubID);
+        if (sp && !state.readable.has(sp.id)) {
+          return errorResult(
+            `This agent isn't connected to ${sp.name}, so it can't read it. Connect it in Agents.`,
+          );
+        }
+        const result = await getClient().hubs.get(hubID);
+        const members = result.members ?? [];
+        let text = `## ${result.hub.name} members\n\n`;
+        if (members.length === 0) {
+          text += "No members found.";
+        } else {
+          text += members
+            .map((member) => {
+              const email = member.user_email ? ` <${member.user_email}>` : "";
+              return `- **${memberDisplayName(member)}**${email} [${member.role}] joined: ${member.joined_at}`;
+            })
+            .join("\n");
+        }
+        return textResult(text);
+      } catch (err) {
+        return errorResult(`Hub members failed: ${(err as Error).message}`);
+      }
+    }
+
+    case "memax_forget": {
+      const id = str(args.id);
+      if (!id) {
+        return errorResult("Memory ID is required.");
+      }
+      const forgetArgs = {
+        reason: str(args.reason),
+        session_ref: str(args.session_ref),
+      };
+      try {
+        const spaceRef = str(args.space_id);
+        const spaceId = spaceRef
+          ? await resolveHubReference(spaceRef)
+          : undefined;
+        const sp = spaceId ? await v2Space(spaceId) : undefined;
+        if (isDisplayRef(id) || sp) {
+          if (!sp)
+            return errorResult(
+              `Pass space_id with ${id}: display IDs live in a space.`,
+            );
+          return v2Forget(sp, id.toUpperCase(), forgetArgs);
+        }
+        const state = await v2State();
+        if (state.spaces.size > 0) {
+          const found = await v2Get(id, undefined);
+          if (found && !found.isError) {
+            const memory = (found.structuredContent?.memory ?? {}) as {
+              ref?: string;
+              space_id?: string;
+            };
+            const space = memory.space_id
+              ? state.spaces.get(memory.space_id)
+              : undefined;
+            if (space && memory.ref)
+              return v2Forget(space, memory.ref, forgetArgs);
+          }
+          const v1 = await getClient()
+            .memories.get(id)
+            .catch(() => undefined);
+          if (v1?.hub_id && state.spaces.has(v1.hub_id)) {
+            return errorResult(
+              `${id} is a note in a space on the V2 record, and an agent can't forget there. Ask the person to forget it on the web.`,
+            );
+          }
+        }
+        await getClient().memories.delete(id);
+        return textResult(`Forgotten: ${id}`);
+      } catch (err) {
+        return errorResult(`Forget failed: ${(err as Error).message}`);
+      }
+    }
+
+    case "memax_capture": {
+      const typedArgs = args as {
+        summary: string;
+        decisions?: string[];
+        learnings?: string[];
+      };
+      if (!typedArgs.summary) {
+        return errorResult("Summary is required.");
+      }
+
+      // Build structured content for the extraction pipeline
+      let content = `## Session Summary\n${typedArgs.summary}\n`;
+      if (typedArgs.decisions?.length) {
+        content += `\n## Decisions Made\n${typedArgs.decisions.map((d) => `- ${d}`).join("\n")}\n`;
+      }
+      if (typedArgs.learnings?.length) {
+        content += `\n## Learnings\n${typedArgs.learnings.map((l) => `- ${l}`).join("\n")}\n`;
+      }
+
+      try {
+        const target = await resolveHubReference(undefined).catch(
+          () => undefined,
+        );
+        const sp = target ? await v2Space(target) : undefined;
+        if (sp) {
+          const denied = await guardWrite(sp);
+          if (denied) return denied;
+        }
+        const memory = await getClient().push(content, {
+          title: `Session capture — ${new Date().toLocaleDateString()}`,
+          contentType: "transcript",
+          source: "mcp/capture",
+          sourceAgent: agentId,
+          initiationType: "agent_automatic",
+        });
+        if (sp) {
+          return textResult(
+            `Session captured (id: ${memory.id}). Saved as notes in ${sp.name}: Dream folds them into proposals for Review, and nothing is kept until a person keeps it.`,
+          );
+        }
+        return textResult(
+          `Session captured (id: ${memory.id}). Key facts will be extracted and stored as separate memories.`,
+        );
+      } catch (err) {
+        return errorResult(`Capture failed: ${(err as Error).message}`);
+      }
+    }
+
+    case "memax_request_decision": {
+      const typedArgs = args as {
+        question: string;
+        options?: string[];
+        context?: string;
+        space_id?: string;
+      };
+      if (!typedArgs.question || (typedArgs.options?.length ?? 0) < 2) {
+        return errorResult(
+          "memax_request_decision requires 'question' and 2-4 'options'.",
+        );
+      }
+      try {
+        // Resolve to a real hub UUID: the REST path is
+        // /v1/hubs/{id}/… and the server's membership check can't
+        // read an alias like "personal".
+        // space_id names a space on V2 to ask in; V1 has no such
+        // argument, so naming a V1 space leaves the default hub, as on
+        // the remote server.
+        const named = str(typedArgs.space_id);
+        const namedV2 = named
+          ? await v2Space(await resolveHubReference(named))
+          : undefined;
+        const hubId = namedV2?.id ?? (await resolveHubReference(undefined));
+        const sp = namedV2 ?? (await v2Space(hubId));
+        if (sp) {
+          const denied = await guardWrite(sp);
+          if (denied) return denied;
+          return v2RequestDecision(sp, {
+            question: typedArgs.question,
+            options: typedArgs.options ?? [],
+            context: typedArgs.context,
+          });
+        }
+        const { slot } = await getClient().boards.requestDecision(hubId, {
+          question: typedArgs.question,
+          options: typedArgs.options ?? [],
+          context: typedArgs.context,
+          source_agent: agentId,
+        });
+        return textResult(
+          `Decision card created (id: ${slot.slot_key}). The user has been pinged; their choice will be saved to memory. Recall with keywords from your question later to read it. Continue with other work now.`,
+        );
+      } catch (err) {
+        return errorResult(
+          `Decision request failed: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    case "memax_topics": {
+      const typedArgs = args as {
+        topic_id?: string;
+        hub_id?: string;
+        space_id?: string;
+      };
+      try {
+        const ref = typedArgs.hub_id ?? typedArgs.space_id;
+        const hubId = ref
+          ? await resolveHubReference(ref)
+          : await resolveHubReference(undefined).catch(() => undefined);
+        const sp = hubId ? await v2Space(hubId) : undefined;
+        if (sp) return v2Topics(sp, typedArgs.topic_id);
+
+        if (typedArgs.topic_id) {
+          // Browse specific topic's memories
+          const res = await getClient().topics.listMemories(typedArgs.topic_id);
+          const topic = await getClient().topics.get(typedArgs.topic_id);
+          const memories = res.memories ?? [];
+          let text = `## ${topic.name} (${memories.length} memories)\n\n`;
+          for (const [i, m] of memories.entries()) {
+            text += `${i + 1}. **${m.title}** [${memoryClassification(m)}] (id: ${m.id})\n`;
+            if (m.summary) text += `   ${m.summary}\n`;
+          }
+          if (memories.length === 0) text += "No memories in this topic yet.\n";
+          return textResult(text);
+        }
+
+        // Full topic tree
+        const res = await getClient().topics.list(ref);
+        const topics = res.topics ?? [];
+        let text = "## Topics\n\n";
+        if (topics.length === 0) {
+          text +=
+            "No topics yet. Push memories and run a dream cycle to auto-organize.\n";
+        } else {
+          for (const t of topics) {
+            const indent = t.parent_id ? "  " : "";
+            text += `${indent}- **${t.name}** (${t.memory_count} memories) [id: ${t.id}]\n`;
+            if (t.description) text += `${indent}  ${t.description}\n`;
+            for (const child of t.children) {
+              text += `  - **${child.name}** (${child.memory_count} memories) [id: ${child.id}]\n`;
+            }
+          }
+        }
+        if (res.unassigned_count > 0) {
+          text += `\n📥 **Inbox**: ${res.unassigned_count} unassigned memories\n`;
+        }
+        return textResult(text);
+      } catch (err) {
+        return errorResult(`Topics failed: ${(err as Error).message}`);
+      }
+    }
+
+    default:
+      return errorResult(`Unknown tool: ${name}`);
+  }
 }
 
 async function mcpServeCommand(options: { agent?: string }): Promise<void> {

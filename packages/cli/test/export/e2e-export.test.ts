@@ -93,15 +93,21 @@ describe.skipIf(!enabled)("memax export against the real server", () => {
     const preview = await memax.v2.memories.previewForget(victim.ref, {
       space: "memax-v2",
     });
-    await memax.v2.memories.forget(
-      victim.ref,
-      { carries: preview.carries.map((c) => c.ref) },
-      {
-        space: "memax-v2",
-        ifMatch: preview.version,
-        idempotencyKey: "e2e-forget",
-      },
-    );
+    await memax.v2.memories
+      .forget(
+        victim.ref,
+        { carries: preview.carries.map((c) => c.ref) },
+        {
+          space: "memax-v2",
+          ifMatch: preview.version,
+          idempotencyKey: "e2e-forget",
+        },
+      )
+      .catch((err: unknown) => {
+        throw new Error(
+          `forget ${victim.ref}: ${String(err)}\n${stack.logs.slice(-40).join("\n")}`,
+        );
+      });
     // The sealer signs a checkpoint over it within its interval.
     const start = Date.now();
     for (;;) {

@@ -373,7 +373,16 @@ func (r *runState) fade(ctx context.Context) error {
 		return err
 	}
 	r.considered["fade_candidates"] = len(cands)
+	inConflict := map[uuid.UUID]bool{}
+	for _, a := range r.actions {
+		if a.Kind == ledger.DreamConflict {
+			inConflict[a.Memory], inConflict[a.Related] = true, true
+		}
+	}
 	for _, c := range cands {
+		if inConflict[c.ID] {
+			continue
+		}
 		unread := c.Unread
 		r.add(ledger.PlannedAction{Kind: ledger.DreamFade, Memory: c.ID, Version: c.Version, Unread: &unread})
 	}

@@ -85,9 +85,9 @@ func (c Config) Decide(now time.Time, s ledger.SweepSpace) ledger.SweepDecision 
 	}
 	cadence := c.cadenceFor(c.Plan, s.BusyRank)
 	d := ledger.SweepDecision{Cadence: string(cadence), TimeZone: zone,
-		DueAt: NextSlot(now, zone, cadence, c.LocalHour, c.WeeklyDay)}
+		DueAt: NextSlot(now, zone, cadence, c.LocalHour, c.weekday())}
 	if s.HasSchedule && !s.DueAt.After(now) {
-		slot := LatestSlot(now, zone, cadence, c.LocalHour, c.WeeklyDay)
+		slot := LatestSlot(now, zone, cadence, c.LocalHour, c.weekday())
 		// The slot that came due under the old zone or cadence, if the
 		// latest one under the new is before it was even due.
 		if slot.Before(s.DueAt) && !s.DueAt.After(now) {

@@ -58,10 +58,10 @@ type Config struct {
 	FreeCadence, ProCadence Cadence
 	ProSpaces               int
 	// LocalHour is the hour of the owner's local night Dream runs at, 1 to
-	// 23 (0 is the default, 3), and WeeklyDay the day a weekly space runs on
-	// (Monday).
+	// 23 (0 is the default, 3), and WeeklyDay the day a weekly space runs
+	// on, ISO style: 1 is Monday … 7 is Sunday (0 is Monday).
 	LocalHour int
-	WeeklyDay time.Weekday
+	WeeklyDay int
 	// ManualPerDay caps run-now per space per rolling day on Pro, and
 	// ManualPerWeek on Free.
 	ManualPerDay, ManualPerWeek int
@@ -121,6 +121,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.ProSpaces <= 0 {
 		c.ProSpaces = DefaultProSpaces
+	}
+	if c.WeeklyDay <= 0 || c.WeeklyDay > 7 {
+		c.WeeklyDay = 1
 	}
 	if c.LocalHour <= 0 || c.LocalHour > 23 {
 		c.LocalHour = DefaultLocalHour
@@ -185,6 +188,9 @@ func (c Config) withDefaults() Config {
 	}
 	return c
 }
+
+// weekday is WeeklyDay as a time.Weekday.
+func (c Config) weekday() time.Weekday { return time.Weekday(c.WeeklyDay % 7) }
 
 // judgeConfig is the judge's configuration on Dream's tiers, for the
 // classifier Dream reuses for duplicates and conflicts.
@@ -267,7 +273,6 @@ func ConfigFromEnv(lookup func(string) (string, bool)) Config {
 		ManualPerWeek:     num("DREAM_MANUAL_PER_WEEK"),
 		MaxNotes:          num("DREAM_MAX_NOTES"),
 		MaxCalls:          num("DREAM_MAX_CALLS"),
-		WeeklyDay:         time.Monday,
 	}
 	if ms := num("DREAM_TIMEOUT_MS"); ms > 0 {
 		c.CallTimeout = time.Duration(ms) * time.Millisecond
@@ -289,7 +294,10 @@ func ConfigFromEnv(lookup func(string) (string, bool)) Config {
 	if v, ok := str("DREAM_WEEKLY_DAY"); ok {
 		for d := time.Sunday; d <= time.Saturday; d++ {
 			if strings.EqualFold(v, d.String()) || strings.EqualFold(v, d.String()[:3]) {
-				c.WeeklyDay = d
+				c.WeeklyDay = int(d)
+				if d == time.Sunday {
+					c.WeeklyDay = 7
+				}
 			}
 		}
 	}

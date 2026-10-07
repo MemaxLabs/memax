@@ -404,7 +404,7 @@ type FadeCandidate struct {
 // `after` (60 days), by ReadStatus: never one in a file whose loads Memax
 // can't observe (plan 25 §5.10: otherwise the facts agents use most would
 // fade), a decision in force, a flagged memory, or one the Brief places or
-// cites. Oldest first, at most limit.
+// cites, or one side of an open conflict. Oldest first, at most limit.
 func (l *Ledger) FadeCandidates(ctx context.Context, scope Scope, spaceID uuid.UUID, after time.Duration, limit int) ([]FadeCandidate, error) {
 	if l == nil {
 		return nil, ErrDisabled
@@ -442,7 +442,10 @@ func (l *Ledger) FadeCandidates(ctx context.Context, scope Scope, spaceID uuid.U
 			       COALESCE((SELECT max(r.recorded_at) FROM v2.receipts r
 			                  WHERE r.stream_id = m.id AND r.space_id = m.space_id AND r.actor_kind IN ('person', 'agent')), m.created_at)
 			  FROM v2.memories m
-			 WHERE m.space_id = $1 AND m.id = ANY ($2) AND m.lifecycle = 'kept' AND cardinality(m.flags) = 0`, spaceID, ids)
+			 WHERE m.space_id = $1 AND m.id = ANY ($2) AND m.lifecycle = 'kept' AND cardinality(m.flags) = 0
+			   AND NOT EXISTS (SELECT 1 FROM v2.memory_links l
+			                    WHERE l.kind = 'conflicts_with' AND l.ended_receipt_id IS NULL
+			                      AND (l.from_memory_id = m.id OR l.to_memory_id = m.id))`, spaceID, ids)
 		if err != nil {
 			return fmt.Errorf("ledger: fade candidates: %w", err)
 		}

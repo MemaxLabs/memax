@@ -23,6 +23,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -134,6 +136,20 @@ func (s *Store) Keys() []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// List implements objectstore.Lister: the keys under prefix, sorted.
+func (s *Store) List(_ context.Context, prefix string) ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []string
+	for k := range s.objects {
+		if strings.HasPrefix(k, prefix) {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // Has reports whether a key is stored. Cheap without pulling the

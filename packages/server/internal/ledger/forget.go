@@ -1006,7 +1006,8 @@ func (w *writer) insertStep(ctx context.Context, sp spaceRow, op *forgetOp, kind
 // (directly, or in a compile that held it), and every connection connected
 // to the space, once, on its next MCP response.
 func (w *writer) queueNotices(ctx context.Context, sp spaceRow, op *forgetOp) error {
-	kind, refs := NoticeForgotten, op.refs
+	// A space forgotten again (its gates' words, say) may forget no memory.
+	kind, refs := NoticeForgotten, append([]string{}, op.refs...)
 	if op.kind == ObjectSpace {
 		kind = NoticeSpaceForgotten
 		if len(refs) > 1000 {

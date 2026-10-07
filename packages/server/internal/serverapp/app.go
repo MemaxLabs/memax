@@ -27,6 +27,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/email"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
+	"github.com/MemaxLabs/memax/packages/server/internal/forget"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/categorize"
@@ -645,8 +646,24 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 	// process, shared by /v2 and MCP; it flushes what is buffered at
 	// shutdown, after the HTTP server has drained and before the pool
 	// closes (cleanups run last-registered first).
-	v2h, v2Search, readRecorder := v2Handler(pool, queueClient, blobStore, llm)
+	//
+	// Forget's cache purge (plan 25 §5.13): the propagation job, in the
+	// worker, signals every API process over Redis, and each drops its own
+	// copies (MCP's compiled digest, the embeddings cache).
+	forgetBus := forget.NewBusFromEnv(slog.Default())
+	listenCtx, stopListening := context.WithCancel(context.Background())
+	forgetBus.Listen(listenCtx)
+	app.addCleanup(func(context.Context) error { stopListening(); return forgetBus.Close() })
+	v2h, v2Search, readRecorder := v2Handler(pool, queueClient, blobStore, llm, forgetBus)
 	app.addClose(readRecorder.Close)
+	// V1's deletes of a hub and of a person's data forget the V2 record
+	// through the ledger first, when there is one.
+	if l := v2h.Ledger(); l != nil {
+		hubsH.SetV2Forgetter(l)
+		memories.SetV2Forgetter(l)
+	}
+	mcp := mcpDepsFromEnv(pool, readRecorder)
+	mcp.purge = forgetBus.Local
 
 	registerRoutes(mux, routeDeps{
 		memories:               memories,
@@ -696,7 +713,7 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		// every /v2 route answers 503 unavailable.
 		v2:       v2h,
 		v2Search: v2Search,
-		mcp:      mcpDepsFromEnv(pool, readRecorder),
+		mcp:      mcp,
 	})
 
 	configured = true
@@ -752,10 +769,13 @@ func webSurfaceFromEnv() *websurface.Verifier {
 // COMPILE_SERVICE_URL and object storage (nil means disabled). It also
 // returns the searcher MCP v2's recall and search use (hybrid when V2
 // embeddings are configured, v2Retrieval; lexical otherwise), and the
-// process's read recorder, shared with MCP.
-func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store, llm *anthropic.Client) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
+// process's read recorder, shared with MCP. Tombstones say what Forget
+// can't reach from the same configuration (forget.HonestyFromEnv), and the
+// embeddings cache is purged when a Forget's propagation signals bus.
+func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store, llm *anthropic.Client,
+	bus *forget.Bus) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
 	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
-	var opts []ledger.Option
+	opts := []ledger.Option{ledger.WithForgetHonesty(forget.HonestyFromEnv(os.LookupEnv))}
 	if queueClient != nil {
 		opts = append(opts, ledger.WithJobs(queueClient))
 		if embedCfg.Enabled() {
@@ -767,6 +787,9 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 	svc := compile.New(l, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL")), blobStore,
 		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
 	search, vectors := v2Retrieval(l, embedCfg)
+	if vectors != nil && bus != nil {
+		bus.Local.Register(func(uuid.UUID) { vectors.Purge() })
+	}
 	// Nil without a database: nothing records reads.
 	rec := reads.New(l, reads.Options{})
 	if l != nil {

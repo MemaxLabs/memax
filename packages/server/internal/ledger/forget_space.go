@@ -186,15 +186,41 @@ func (w *writer) tombstoneIDExists(ctx context.Context, id uuid.UUID) (bool, err
 // a Forget of it would take: a memory not forgotten, a gate's question, a
 // receipt's reason, the Brief's prose or title, drift evidence.
 func (w *writer) spaceHoldsWords(ctx context.Context, spaceID uuid.UUID) (bool, error) {
+	return spaceHoldsWords(ctx, w.tx, spaceID)
+}
+
+// SpaceHoldsWords reports whether a Forget of the space would take
+// anything: V1's delete of a person's data asks before it forgets.
+func (l *Ledger) SpaceHoldsWords(ctx context.Context, spaceID uuid.UUID) (bool, error) {
+	if l == nil {
+		return false, ErrDisabled
+	}
+	scope, err := l.SpaceScope(ctx, spaceID)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
 	var yes bool
-	err := w.tx.QueryRow(ctx, `
+	err = l.Read(ctx, scope, func(tx pgx.Tx) error {
+		var err error
+		yes, err = spaceHoldsWords(ctx, tx, spaceID)
+		return err
+	})
+	return yes, err
+}
+
+func spaceHoldsWords(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (bool, error) {
+	var yes bool
+	err := tx.QueryRow(ctx, `
 		SELECT EXISTS (SELECT 1 FROM v2.memories WHERE space_id = $1 AND lifecycle <> 'forgotten')
 		    OR EXISTS (SELECT 1 FROM v2.decision_gates WHERE space_id = $1 AND (question IS NOT NULL OR options IS NOT NULL))
 		    OR EXISTS (SELECT 1 FROM v2.receipts WHERE space_id = $1 AND reason IS NOT NULL)
 		    OR EXISTS (SELECT 1 FROM v2.brief_versions WHERE space_id = $1 AND (title <> 'Brief' OR summary IS NOT NULL))
 		    OR EXISTS (SELECT 1 FROM v2.brief_versions v, jsonb_array_elements(v.structure -> 'sections') s,
 		                             jsonb_array_elements(s -> 'items') i
-		                WHERE v.space_id = $1 AND (i ? 'text' OR i ? 'ref'))
+		                WHERE v.space_id = $1 AND i ? 'text')
 		    OR EXISTS (SELECT 1 FROM v2.target_observations WHERE space_id = $1 AND jsonb_array_length(changeset -> 'changes') > 0)`,
 		spaceID).Scan(&yes)
 	if err != nil {
@@ -323,46 +349,19 @@ type AccountForget struct {
 	Kept []uuid.UUID
 }
 
-// ForgetAccount forgets a person's record (V1's DELETE /v1/account/data,
-// and the Account page's Delete): everything in their personal space and
-// the project spaces they own, each through ForgetSpace (the spaces stay,
-// empty), then every agent connection of theirs is disconnected and its
-// credential revoked. Team spaces stay with their members: their record is
-// the team's. Each space is its own transaction, so a failure leaves the
-// spaces done so far forgotten and the call can be repeated.
+// ForgetAccount is deleting a person's account: ForgetAccountRecord, then
+// every agent connection of theirs is disconnected and its credential
+// revoked, so nothing can write to their record again.
 func (l *Ledger) ForgetAccount(ctx context.Context, person uuid.UUID, via policy.Via) (AccountForget, error) {
-	var out AccountForget
-	if l == nil {
-		return out, ErrDisabled
+	out, err := l.ForgetAccountRecord(ctx, person, via)
+	if err != nil {
+		return out, err
 	}
 	scope, err := l.UserScope(ctx, person)
 	if err != nil {
 		return out, err
 	}
-	actor := Actor{Kind: policy.ActorPerson, ID: person}
-	for _, g := range scope.Spaces {
-		if g.Role != policy.RoleOwner {
-			continue
-		}
-		if g.Kind == policy.SpaceTeam {
-			out.Kept = append(out.Kept, g.SpaceID)
-			continue
-		}
-		held, err := l.SpaceHasRecord(ctx, g.SpaceID)
-		if err != nil {
-			return out, err
-		}
-		if !held {
-			continue
-		}
-		if _, err := l.Apply(ctx, &ForgetSpace{
-			Meta:    Meta{Actor: actor, Scope: scope.Narrow(g.SpaceID), Via: via, IdempotencyKey: "forget-account:" + uuid.NewString()},
-			SpaceID: g.SpaceID,
-		}); err != nil {
-			return out, fmt.Errorf("ledger: forget account: space %s: %w", g.SpaceID, err)
-		}
-		out.Spaces = append(out.Spaces, g.SpaceID)
-	}
+	actor := Actor{Kind: policy.ActorPerson, ID: person, Credential: policy.CredentialSession}
 	conns, err := l.ListConnections(ctx, scope, ConnectionQuery{})
 	if err != nil {
 		return out, err
@@ -383,6 +382,75 @@ func (l *Ledger) ForgetAccount(ctx context.Context, person uuid.UUID, via policy
 		}
 	}
 	return out, nil
+}
+
+// ForgetAccountRecord forgets a person's record (V1's DELETE
+// /v1/account/data, its "Forget all", which keeps the account and its
+// agents): everything in their personal space and the project spaces they
+// own, each through ForgetSpace (the spaces stay, empty). Team spaces stay
+// with their members: their record is the team's. Each space is its own
+// transaction, so a failure leaves the spaces done so far forgotten and
+// the call can be repeated.
+func (l *Ledger) ForgetAccountRecord(ctx context.Context, person uuid.UUID, via policy.Via) (AccountForget, error) {
+	var out AccountForget
+	if l == nil {
+		return out, ErrDisabled
+	}
+	scope, err := l.UserScope(ctx, person)
+	if err != nil {
+		return out, err
+	}
+	actor := Actor{Kind: policy.ActorPerson, ID: person, Credential: policy.CredentialSession}
+	for _, g := range scope.Spaces {
+		if g.Role != policy.RoleOwner {
+			continue
+		}
+		if g.Kind == policy.SpaceTeam {
+			out.Kept = append(out.Kept, g.SpaceID)
+			continue
+		}
+		held, err := l.SpaceHoldsWords(ctx, g.SpaceID)
+		if err != nil {
+			return out, err
+		}
+		if !held {
+			continue
+		}
+		res, err := l.Apply(ctx, &ForgetSpace{
+			Meta:    Meta{Actor: actor, Scope: scope.Narrow(g.SpaceID), Via: via, IdempotencyKey: "forget-account:" + uuid.NewString()},
+			SpaceID: g.SpaceID,
+		})
+		if err != nil {
+			return out, fmt.Errorf("ledger: forget account: space %s: %w", g.SpaceID, err)
+		}
+		if res.Outcome == OutcomeRefused {
+			return out, &RefusedError{Decision: res.Policy}
+		}
+		out.Spaces = append(out.Spaces, g.SpaceID)
+	}
+	return out, nil
+}
+
+// HasAccountRecord reports whether ForgetAccountRecord has anything to
+// forget: a personal or project space the person owns holds words.
+func (l *Ledger) HasAccountRecord(ctx context.Context, person uuid.UUID) (bool, error) {
+	if l == nil {
+		return false, ErrDisabled
+	}
+	scope, err := l.UserScope(ctx, person)
+	if err != nil {
+		return false, err
+	}
+	for _, g := range scope.Spaces {
+		if g.Role != policy.RoleOwner || g.Kind == policy.SpaceTeam {
+			continue
+		}
+		held, err := l.SpaceHoldsWords(ctx, g.SpaceID)
+		if err != nil || held {
+			return held, err
+		}
+	}
+	return false, nil
 }
 
 // SpaceHasRecord reports whether a space holds V2 records (any receipt):
@@ -422,7 +490,8 @@ func (l *Ledger) ForgetSpaceForV1(ctx context.Context, person, spaceID uuid.UUID
 		return false, ErrNotFound
 	}
 	res, err := l.Apply(ctx, &ForgetSpace{
-		Meta: Meta{Actor: Actor{Kind: policy.ActorPerson, ID: person}, Scope: scope.Narrow(spaceID), Via: policy.ViaAPI,
+		Meta: Meta{Actor: Actor{Kind: policy.ActorPerson, ID: person, Credential: policy.CredentialSession},
+			Scope: scope.Narrow(spaceID), Via: policy.ViaAPI,
 			IdempotencyKey: "v1-delete:" + uuid.NewString()},
 		SpaceID: spaceID, Retire: retire,
 	})

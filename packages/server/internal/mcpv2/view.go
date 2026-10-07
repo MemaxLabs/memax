@@ -26,6 +26,9 @@ type view struct {
 	c *handler.MCPToolCall
 	// v2 holds the reachable hubs that are on the V2 record.
 	v2 map[string]bool
+	// v1 reports whether any reachable hub is still on V1: without one,
+	// an unscoped read has nothing to ask V1's tools for.
+	v1 bool
 
 	hubs     []model.HubWithRole
 	hubsErr  error
@@ -72,6 +75,7 @@ func (s *Server) resolve(ctx context.Context, c *handler.MCPToolCall) (*view, bo
 		return nil, false
 	}
 	v.v2 = on
+	v.v1 = slices.ContainsFunc(ids, func(id string) bool { return !on[id] })
 	return v, true
 }
 

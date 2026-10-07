@@ -27,6 +27,7 @@ import { registerLinkCommands } from "./commands/link.js";
 import { registerDaemonCommands } from "./commands/daemon.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerInitCommand } from "./commands/init.js";
+import { registerConnectCommand } from "./commands/connect.js";
 import { registerCompileCommand } from "./commands/compile.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,7 @@ program
 // --- Command registration (order defines help layout) ---
 
 registerInitCommand(program);
+registerConnectCommand(program);
 registerStatusCommand(program);
 registerCompileCommand(program);
 registerLinkCommands(program);

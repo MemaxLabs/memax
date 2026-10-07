@@ -51,13 +51,13 @@ function mcpPresent(
   }
 }
 
-function hasMcp(agent: AgentEntry): boolean {
+export function hasMcp(agent: AgentEntry): boolean {
   const def = getAgents().find((a) => a.id === agent.setupId);
   return !!def && mcpPresent(def.id, def.configPath, def.mcpKey, def.format);
 }
 
 /** Writes an agent's MCP settings for OAuth, as memax setup --mcp does. */
-async function writeMcp(agent: AgentEntry): Promise<McpOutcome> {
+export async function writeMcp(agent: AgentEntry): Promise<McpOutcome> {
   const def = getAgents().find((a) => a.id === agent.setupId);
   if (!def) return "unsupported";
   try {
@@ -68,7 +68,7 @@ async function writeMcp(agent: AgentEntry): Promise<McpOutcome> {
   }
 }
 
-async function compileHere(
+export async function compileHere(
   space: string,
   timeout: number,
 ): Promise<CompileOutcome | null> {

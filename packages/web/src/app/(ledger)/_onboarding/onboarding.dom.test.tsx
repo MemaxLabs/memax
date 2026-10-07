@@ -19,7 +19,9 @@ import type { LedgerDataSource } from "@/lib/v2/data/source";
 import { CleanupScreen } from "./cleanup";
 import { CliAuthScreen } from "./cli-auth";
 import { CompileDoneScreen } from "./compile-done";
-import { ConnectScreen } from "./connect";
+import { connectCommand, ConnectScreen } from "./connect";
+import { ledgerOnboardingEn } from "@/i18n/locales/ledger/onboarding-en";
+import { ledgerOnboardingZh } from "@/i18n/locales/ledger/onboarding-zh";
 import { FirstRunScreen } from "./first-run";
 import { OnboardingFrame } from "./frame";
 import { SignInScreen } from "./sign-in";
@@ -382,15 +384,20 @@ describe("Connect", () => {
         .getByRole("radio", { name: "Propose" })
         .getAttribute("aria-checked"),
     ).toBe("true");
-    expect(
-      screen.getByText("npx memax-cli setup --mcp --only copilot"),
-    ).toBeTruthy();
+    expect(screen.getByText("npx memax-cli connect copilot")).toBeTruthy();
     expect(
       screen
         .getByRole("link", { name: /Read their files/ })
         .getAttribute("href"),
     ).toBe("/setup/import?space=memax-v2");
     expect(screen.getByText("What each level means")).toBeTruthy();
+  });
+
+  it("says memax connect, in English and Chinese", () => {
+    // The CLI takes the board's agent ids (gemini included) as they are.
+    expect(connectCommand("gemini")).toBe("npx memax-cli connect gemini");
+    for (const copy of [ledgerOnboardingEn, ledgerOnboardingZh])
+      expect(copy.connect.runIt).toContain("{command}");
   });
 });
 

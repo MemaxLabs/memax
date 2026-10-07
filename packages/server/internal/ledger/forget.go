@@ -439,6 +439,14 @@ func (w *writer) purgeMemory(ctx context.Context, sp spaceRow, op *forgetOp, m *
 		m.ID, rc.ID, sp.ID, candidate); err != nil {
 		return Receipt{}, fmt.Errorf("ledger: forget %s: verdicts: %w", m.Ref, err)
 	}
+	// The model's words about an import disagreement it is a member of.
+	if _, err := w.tx.Exec(ctx, `
+		UPDATE v2.import_conflicts SET subject = NULL, rationale = NULL, suggestion = NULL, last_receipt_id = $2
+		 WHERE space_id = $3 AND $1 = ANY (members)
+		   AND (subject IS NOT NULL OR rationale IS NOT NULL OR suggestion IS NOT NULL)`,
+		m.ID, rc.ID, sp.ID); err != nil {
+		return Receipt{}, fmt.Errorf("ledger: forget %s: import conflicts: %w", m.Ref, err)
+	}
 	// The stored request hashes of the commands that carried its words.
 	if _, err := w.tx.Exec(ctx, `
 		UPDATE v2.command_keys SET request_hash = NULL

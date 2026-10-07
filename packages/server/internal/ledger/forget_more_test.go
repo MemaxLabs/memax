@@ -445,3 +445,78 @@ func TestForgetPurgesDrafts(t *testing.T) {
 		t.Errorf("the other side still in conflict: %v", p.Flags)
 	}
 }
+
+// An import's disagreement (memax init) holds the model's words about its
+// members: forgetting any member takes them, before the group is settled
+// and after, and the group keeps its members and its settlement.
+func TestForgetPurgesImportConflictWords(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	zz := f.user("zz")
+	sp := f.space(zz, policy.SpaceProject, "memax-v2")
+	words := `(subject IS NOT NULL OR rationale IS NOT NULL OR suggestion IS NOT NULL)`
+
+	res := f.importAs(person(zz), f.scope(zz), sp, "init",
+		fileItem("a", "CLAUDE.md:12", "Run tests with `pnpm test`."),
+		fileItem("b", "AGENTS.md:8", "Run `npm run test` before committing."),
+		fileItem("c", "CLAUDE.md:20", "Lint with `pnpm lint` before pushing."),
+		fileItem("d", "AGENTS.md:30", "Lint with `npm run lint` only in CI."))
+	a, c, d := res.Items[0].Memory, res.Items[2].Memory, res.Items[3].Memory
+	b := res.Items[1].Memory
+	f.checkImport(sp, res.Import.ID, "Test command", "Run tests with `pnpm test` everywhere.", a.ID, b.ID)
+	if n := f.count(`SELECT count(*) FROM v2.import_conflicts WHERE import_id = $1 AND `+words, res.Import.ID); n != 1 {
+		t.Fatalf("%d groups with words", n)
+	}
+	scope := f.scope(zz).Narrow(sp)
+	f.apply(forgetCmd(person(zz), scope, policy.ViaWeb, a.Ref, 1))
+	if n := f.count(`SELECT count(*) FROM v2.import_conflicts WHERE import_id = $1 AND `+words, res.Import.ID); n != 0 {
+		t.Errorf("an open group keeps the model's words about a forgotten member")
+	}
+	if n := f.count(`SELECT count(*) FROM v2.import_conflicts WHERE import_id = $1 AND cardinality(members) = 2 AND state = 'open'`, res.Import.ID); n != 1 {
+		t.Error("the group lost its members or its state")
+	}
+
+	// A second import, its group settled, then a member forgotten.
+	res2 := f.importAs(person(zz), f.scope(zz), sp, "init-2",
+		fileItem("e", "CLAUDE.md:40", "Deploy with `fly deploy`."),
+		fileItem("g", "AGENTS.md:41", "Deploy through the Railway dashboard."))
+	e, g := res2.Items[0].Memory, res2.Items[1].Memory
+	f.checkImport(sp, res2.Import.ID, "Deploy target", "", e.ID, g.ID)
+	f.apply(&ledger.SettleImportConflict{Meta: meta(person(zz), f.scope(zz), policy.ViaCLI),
+		SpaceID: sp, Import: res2.Import.ID, N: 1, Choice: ledger.ChooseKeepAll})
+	if n := f.count(`SELECT count(*) FROM v2.import_conflicts WHERE import_id = $1 AND state = 'settled' AND `+words, res2.Import.ID); n != 1 {
+		t.Fatalf("the settled group: %d with words", n)
+	}
+	kept, err := f.l.GetMemory(context.Background(), scope, e.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.apply(forgetCmd(person(zz), scope, policy.ViaWeb, e.Ref, kept.Version))
+	if n := f.count(`SELECT count(*) FROM v2.import_conflicts WHERE import_id = $1 AND `+words, res2.Import.ID); n != 0 {
+		t.Error("a settled group keeps the model's words about a forgotten member")
+	}
+	if n := f.count(`SELECT count(*) FROM v2.import_conflicts WHERE import_id = $1 AND state = 'settled' AND choice = 'keep_all'`, res2.Import.ID); n != 1 {
+		t.Error("forgetting a member changed the settlement")
+	}
+	// The settlement itself is still final.
+	if _, err := f.pool.Exec(context.Background(), `UPDATE v2.import_conflicts SET state = 'open', settled_at = NULL, choice = NULL WHERE import_id = $1`, res2.Import.ID); err == nil {
+		t.Error("a settled group reopened")
+	}
+
+	// The check comes back after a member was forgotten: the model's words
+	// may repeat it, so the group is recorded without them.
+	res3 := f.importAs(person(zz), f.scope(zz), sp, "init-3",
+		fileItem("h", "CLAUDE.md:50", "Format with Prettier on save."),
+		fileItem("i", "AGENTS.md:51", "Format with Biome in CI."),
+		fileItem("j", "AGENTS.md:52", "Never run a formatter on generated files."))
+	h, i, j := res3.Items[0].Memory, res3.Items[1].Memory, res3.Items[2].Memory
+	f.apply(forgetCmd(person(zz), scope, policy.ViaWeb, j.Ref, 1))
+	f.checkImport(sp, res3.Import.ID, "Formatter", "Format with Prettier.", h.ID, i.ID, j.ID)
+	if n := f.count(`SELECT count(*) FROM v2.import_conflicts WHERE import_id = $1 AND cardinality(members) = 2`, res3.Import.ID); n != 1 {
+		t.Fatalf("the group of the two left: %d", n)
+	}
+	if n := f.count(`SELECT count(*) FROM v2.import_conflicts WHERE import_id = $1 AND `+words, res3.Import.ID); n != 0 {
+		t.Error("a group recorded after a member was forgotten keeps the model's words")
+	}
+	_, _, _ = c, d, g
+}

@@ -3,6 +3,7 @@ package v2api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -79,6 +80,7 @@ type sourceInput struct {
 	URI         string            `json:"uri"`
 	Locator     json.RawMessage   `json:"locator"`
 	External    bool              `json:"external"`
+	Trust       policy.Trust      `json:"trust"`
 	Quote       string            `json:"quote"`
 	ContentHash string            `json:"content_hash"`
 }
@@ -103,17 +105,25 @@ func (req *rememberRequest) newMemory(spaceID uuid.UUID) ledger.NewMemory {
 		Decision: req.Decision, StaleAfter: req.StaleAfter, Conditions: req.Conditions,
 		Applies: req.Scope, ValidFrom: req.ValidFrom, ValidTo: req.ValidTo,
 	}
-	for _, s := range req.Sources {
-		in := ledger.SourceInput{Kind: s.Kind, Ref: s.Ref, URI: s.URI, Locator: s.Locator, Quote: s.Quote, ContentHash: s.ContentHash}
-		if s.External {
-			// The caller may only lower trust; URL, email and issue
-			// sources are external whatever it says (the ledger enforces
-			// both).
-			in.Trust = policy.TrustExternal
-		}
-		nm.Sources = append(nm.Sources, in)
-	}
+	nm.Sources = toSources(req.Sources)
 	return nm
+}
+
+// toSources maps the request's sources onto the ledger's. The ledger holds
+// a source's class to what the actor could write itself (an agent's own
+// work at most, for an agent), and keeps URL, email and issue sources
+// external whatever the request says.
+func toSources(in []sourceInput) []ledger.SourceInput {
+	var out []ledger.SourceInput
+	for _, s := range in {
+		src := ledger.SourceInput{Kind: s.Kind, Ref: s.Ref, URI: s.URI, Locator: s.Locator, Quote: s.Quote,
+			ContentHash: s.ContentHash, Trust: s.Trust}
+		if s.External {
+			src.Trust = policy.TrustExternal
+		}
+		out = append(out, src)
+	}
+	return out
 }
 
 type editRequest struct {
@@ -152,7 +162,12 @@ const maxBody = 1 << 20
 // decodeBody reads a JSON body into dst, refusing unknown fields so a
 // misspelt field is an error rather than silently ignored.
 func decodeBody(w http.ResponseWriter, r *http.Request, dst any, required bool) *apiError {
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+	return decodeBodyMax(w, r, dst, required, maxBody)
+}
+
+// decodeBodyMax is decodeBody with its own size bound (an import's body).
+func decodeBodyMax(w http.ResponseWriter, r *http.Request, dst any, required bool, limit int64) *apiError {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	dec.DisallowUnknownFields()
 	err := dec.Decode(dst)
 	var tooLarge *http.MaxBytesError
@@ -164,7 +179,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request, dst any, required bool) 
 		}
 		return nil
 	case errors.As(err, &tooLarge):
-		return invalidRequest("body", "The body is too large; send at most 1 MiB.")
+		return invalidRequest("body", fmt.Sprintf("The body is too large; send at most %d MiB.", limit>>20))
 	case errors.As(err, &typeErr):
 		return invalidRequest(typeErr.Field, typeErr.Field+" has the wrong type; see the API reference.")
 	case err != nil && strings.HasPrefix(err.Error(), "json: unknown field "):

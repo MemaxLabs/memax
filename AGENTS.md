@@ -154,7 +154,7 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
 - **IDs.** Display IDs (`M-0219`, `N-`, `H-`, `C-`, `R-`, `D-`, `B-`, `G-`) are per-tenant counters. Internal keys are uuidv7.
 - **Trust.** Agents propose and people keep. Autonomy (read / propose / write), roles, quarantine of external content and plan limits are decided in one place: `policy.Decide`. A memory's trust is the minimum of its sources, and Dream can't raise it.
 - **Agent connections.** Every API key and OAuth grant resolves to an agent connection (`v2.agent_connections`, migration 029) with autonomy per space; receipts name the connection. A credential with no connection, a paused one, or a space it isn't connected to only reads. Only people change connections (`policy.DecideConnection`), and raising autonomy needs `human_web`.
-- **Compiles.** A space's Brief (`B-`) and targets (`AGENTS.md`, the `CLAUDE.md` shim, scoped Cursor rules, the ChatGPT copy-out) live in migration 031. A command that changes what compiles bumps `targets.dirty_gen` and inserts the `compile_target` River jobs with `InsertManyTx` **in the command's transaction** (`internal/ledger/jobs.go` switches back to the login role for River's tables), so a failed insert rolls back the whole command. `internal/compile` runs the jobs against the stateless compile service (`packages/compile-service`, internal-only) and records each run (`C-`) through the ledger as Memax. Hand edits come back as proposals (`file:line` sources) through observations and `ResolveDrift`; a deleted line never forgets anything by itself.
+- **Compiles.** A space's Brief (`B-`) and targets (`AGENTS.md`, the `CLAUDE.md` shim, scoped Cursor rules, the ChatGPT copy-out) live in migration 031. A command that changes what compiles bumps `targets.dirty_gen` and inserts the `compile_target` River jobs with `InsertManyTx` **in the command's transaction** (`internal/ledger/jobs.go` switches back to the login role for River's tables), so a failed insert rolls back the whole command. `internal/compile` runs the jobs against the stateless compile service (`packages/compile-service`, a Cloudflare Worker that requires `COMPILE_SERVICE_TOKEN`) and records each run (`C-`) through the ledger as Memax. Hand edits come back as proposals (`file:line` sources) through observations and `ResolveDrift`; a deleted line never forgets anything by itself.
 - **The judge.** Every proposal, and every memory a Write-level agent kept at once, is judged by the River job `judge_proposal` (`internal/judge`), enqueued in the command's transaction: repeats are folded, updates linked, and a contradiction of a decision in force is flagged as a conflict before anyone keeps it (rule 11). It acts only through `ledger.RecordVerdict`, as Memax. Model tiers are explicit config (`JUDGE_*`), never inferred from a model name. A person settles a conflict with `ResolveConflict`, and undoes their own decisions (and the judge's folds) with `Undo`, addressed by receipt.
 - **Rule 11 after the write (migration 042).** A Write-level agent's write that the judge finds contradicting a decision in force goes back to Review (kept → proposed, in conflict) with a `returned` receipt naming the decision, but only within `DefaultReturnWindow` (10 min) of the agent's own keep or edit and while nothing has changed or built on it (`returnable`); otherwise it is flagged where it stands. The lifecycle guard admits that move only beside Memax's same-transaction `returned` receipt. A return isn't undoable: the person settles the conflict. "Keep both" words that touch another decision in force wait for the judge (mode `settling`, `JudgeArgs.Beside` the conflict's other side): a proposal's are its new version, a kept side's a draft (a version above the current one, `drafted` receipt) that only the applied resolution makes current. The answer is 200 `judge_pending`; the same resolution, sent again, waits (503 `judge_pending`), then applies or answers 409 `in_conflict`.
 - **Assurance.** A person's Keep is `human_web` only when the session was issued to the web app (the token's `surface` claim, migration 030) **and** `/api/proxy` signed the request with `WEB_SURFACE_SECRET` (`internal/websurface`, which has the threat model). Everything else, the CLI included, is `client_attested`.
@@ -175,6 +175,7 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
   4. Regenerate the SDK types (`pnpm --filter memax-sdk gen:v2`), add the typed method under `memax.v2`, and commit the spec, server, SDK and `src/v2/schema.gen.ts` together. `pnpm lint` fails when the generated types are stale.
 - **MCP.** All 17 V1 tool names keep working (both profiles), and remote and stdio parity still applies.
 - **CLI.** The install command is `npx memax-cli init`; the binary is `memax`.
+- **Init and imports (migration 043).** `memax init` (`packages/cli/src/commands/init.ts`, the flow in `src/lib/init/run.ts`) detects agents and their files, signs in, connects the agents (writes MCP settings once asked; connections start at Propose, Cursor and Gemini CLI at Read, never raised from the CLI), then splits each file into statements **on the machine**: secretlint's recommended preset plus the server's own refusal patterns (`internal/secrets`, ported; `testdata/credentials.json` is the corpus both suites read) keep secrets local, and the compiler's `cleanLine` strips hidden Unicode (counted in `lib/init/hidden.ts`). A file's kind sets its trust (`lib/init/files.ts`: repository files `repository`, `~/.claude/CLAUDE.md` and the like `person`, agents' memory `agent_own_work`, lines only on a non-default branch `external`). Statements go up as one import per space, `POST /v2/spaces/{space}/imports` (≤ 500 items, `file:line` sources, `via=import` so they only ever propose; a statement the space has is `existing`, repeats in one import are `folded`). The import enqueues `judge_import` in its transaction: one model call (`internal/judge/imports.go`, its own bar `ImportConflictBar`, not `Contradicts`) groups statements that disagree into `v2.import_conflicts`, each receipted and settled once as a group (`…/conflicts/{n}:settle`). `GET …/imports/{id}` says which proposals can be kept in bulk (`bulk`/`held`); `POST …/memories:keep` and `:reject` take up to 200. New people get spaces from `POST /v2/spaces`; an empty V1 space moves with `POST /v2/spaces/{space}:switch`.
 
 **UI (Ledger)**
 
@@ -228,11 +229,11 @@ memax/
     ui/              # @memaxlabs/ui shared design system (Tailwind + Radix) — AGPL-3.0
     docs-site/       # Fumadocs developer hub (docs.memax.app) — Apache-2.0
     sdk/             # memax-sdk — TypeScript client, published to npm — Apache-2.0
-    cli/             # memax-cli — Commander.js CLI and the local daemon (link, daemon, status, compile), published to npm — Apache-2.0
+    cli/             # memax-cli — Commander.js CLI and the local daemon (init, link, daemon, status, compile), published to npm — Apache-2.0
     ledger-tokens/   # V2 Ledger tokens, type styles, fonts, marks (@memaxlabs/ledger-tokens) — Apache-2.0
     ledger/          # V2 Ledger React components, mx- styles, en/zh strings, previews (@memaxlabs/ledger) — AGPL-3.0
     compiler/        # V2 compiler: kept record → AGENTS.md, CLAUDE.md shim, scoped rules; parse-back (@memaxlabs/compiler) — Apache-2.0
-    compile-service/ # V2 compile service: the compiler over HTTP (node:http), internal on Fly (@memaxlabs/compile-service) — AGPL-3.0
+    compile-service/ # V2 compile service: the compiler over HTTP, a Cloudflare Worker or node:http (@memaxlabs/compile-service) — AGPL-3.0
 
 # Design docs (docs/plans, docs/infra, docs/design, ...) live in the sibling
 # private repo MemaxLabs/memax-internal — clone alongside this repo.
@@ -246,7 +247,7 @@ memax/
 | SDK                                   | TypeScript (`memax-sdk`, `packages/sdk`)                                  |
 | API Server (includes retrieval)       | Go (stdlib net/http)                                                      |
 | Web App                               | Next.js 16 (App Router), Tailwind, Radix UI, TanStack Query, Tiptap, cmdk |
-| Developer Hub                         | Fumadocs (Next.js), Pagefind, Scalar                                      |
+| Developer Hub                         | Fumadocs (Next.js, static export), Pagefind, Scalar                       |
 | Design System                         | @memaxlabs/ui — Tailwind + Radix primitives                               |
 | Database                              | PostgreSQL (Neon) + pgvector                                              |
 | Cache                                 | Redis (Upstash)                                                           |
@@ -256,9 +257,9 @@ memax/
 | LLM (distillation + classification)   | DeepSeek V4 Flash via OpenRouter (Anthropic-compatible Messages API)      |
 | LLM (answer synthesis + agent/dreams) | DeepSeek V4.1 Flash via OpenRouter (Anthropic-compatible Messages API)    |
 | Queue                                 | River (Postgres-backed, Go)                                               |
-| Compile service (V2)                  | Node 24, `node:http`, `@memaxlabs/compiler` (`packages/compile-service`)  |
+| Compile service (V2)                  | `@memaxlabs/compiler`: a Cloudflare Worker, or `node:http` on Node 24     |
 | Auth                                  | OAuth2 (GitHub/Google)                                                    |
-| Deployment                            | Fly.io (API + worker + compile service), Vercel (web)                     |
+| Deployment                            | Fly.io (API, worker); Cloudflare Workers (web, docs, compile service)     |
 | CI/CD                                 | GitHub Actions                                                            |
 | Package Manager                       | pnpm (workspaces)                                                         |
 | Monorepo                              | Turborepo                                                                 |
@@ -511,6 +512,22 @@ E2E_BASE_URL=http://localhost:3100 pnpm --filter @memaxlabs/web test:e2e   # reu
 pnpm --filter @memaxlabs/web test:e2e --project=handoff
 ```
 
+**On Cloudflare Workers.** `@opennextjs/cloudflare` builds the same app into a Worker (`wrangler.jsonc`, `open-next.config.ts`); `next build`/`next start` (self-hosting) and the Vercel deploy (`vercel.json`) are unchanged. The app uses nothing Vercel-only: no `next/image`, `next/og`, ISR, `"use cache"` or edge runtime, so prerendered pages are served from the Worker's static assets (no R2, KV or queue). `proxy.ts` runs as Next 16's Node middleware, which OpenNext supports (and labels experimental). Settings:
+
+- **Build time** (`next build` inlines them; CI reads them from Doppler per environment): `NEXT_PUBLIC_API_URL` (also where `/api/proxy` and `/api/auth/*` forward), `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_DOCS_URL`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`. `NEXT_PUBLIC_DEV_FIXTURES` is for test builds only; the deploy workflow refuses it.
+- **Worker secret**: `WEB_SURFACE_SECRET`, read from `process.env` at runtime (`nodejs_compat` puts secrets there). Locally it goes in `packages/web/.dev.vars`. Never keep secrets in `packages/web/.env*`: OpenNext copies those files into the bundle.
+- **Compatibility flags**: `nodejs_compat` (the proxy's `node:crypto` signing, `Buffer`, streams), `global_fetch_strictly_public`, and `enable_request_signal`, without which a browser that leaves an Ask (or V1's `/v1/events`) doesn't stop the stream on the API.
+
+```bash
+# Build the Worker (the SDK first) and run it under workerd, then Playwright against it
+pnpm --filter memax-sdk build
+NEXT_PUBLIC_DEV_FIXTURES=1 pnpm --filter @memaxlabs/web build:cf
+pnpm --filter @memaxlabs/web preview:cf --port 8790 --ip 127.0.0.1
+E2E_BASE_URL=http://localhost:8790 pnpm --filter @memaxlabs/web test:e2e
+# Worker size: OPEN_NEXT_DEPLOY=true makes wrangler bundle instead of calling OpenNext
+cd packages/web && OPEN_NEXT_DEPLOY=true pnpm exec wrangler deploy --dry-run --env production --outdir /tmp/web-worker
+```
+
 ### Server-specific commands
 
 ```bash
@@ -612,18 +629,29 @@ cd packages/server && go run ./cmd/v2-reapply-forgets -all
 ### Compile service
 
 ```bash
-# Build (it imports the built compiler) and test
+# Build (it imports the built compiler) and test: one contract, against the Node server and
+# against the Worker entry under workerd
 pnpm --filter @memaxlabs/compiler build && pnpm --filter @memaxlabs/compile-service build
 pnpm --filter @memaxlabs/compile-service test
 
 # Run it locally; point the server and worker at it with COMPILE_SERVICE_URL=http://localhost:8090
+# (and COMPILE_SERVICE_TOKEN, if you set one on the service)
 PORT=8090 pnpm --filter @memaxlabs/compile-service start
+# Or the Worker under workerd
+pnpm --filter @memaxlabs/compile-service dev:cf --port 8788 --var COMPILE_SERVICE_TOKEN:dev-token
 
-# Deploy to Fly.io from the REPOSITORY ROOT (staging; swap to fly.compile.production.toml for prod)
-fly deploy . -c packages/compile-service/fly/fly.compile.staging.toml
+# The Go compile tests and the Phase 1 gate against a running service instead of the Node one they spawn
+cd packages/server && export MEMAX_TEST_COMPILE_SERVICE_URL=http://127.0.0.1:8788 MEMAX_TEST_COMPILE_SERVICE_TOKEN=dev-token && \
+  go test ./internal/compile/ && go test ./internal/handler/v2api/ -run TestPhase1Gate
+
+# CPU, memory and bundle size against the Workers limits (README, "Workers limits")
+node packages/compile-service/scripts/measure.mjs
+pnpm --filter @memaxlabs/compile-service build:cf
 ```
 
-### CLI: link, the daemon, status and compile (V2 local delivery)
+Every route but `/health` needs `Authorization: Bearer $COMPILE_SERVICE_TOKEN`; the Worker refuses to serve without the secret, and the API and worker send it (`compile.WithToken`). CI deploys it (`deploy-cloudflare.yml`) before the API.
+
+### CLI: init, link, the daemon, status and compile (V2 local delivery)
 
 The daemon (`packages/cli/src/lib/daemon/`) writes each space's compiled files into the repositories linked on the machine and reports hand edits; it never writes over one (rule 6). Its state, log, pid and control socket live in `~/.memax/daemon/`. `memax daemon run` is reached through `src/bin.ts` without loading the rest of the CLI (the MCP SDK alone is ~30 MB of memory), and it talks to `/v2` over `node:http(s)` (`lib/daemon/http.ts`), not `fetch`. The CLI carries a verbatim copy of the compiler's managed block (`lib/daemon/compiler/`) because `@memaxlabs/compiler` isn't published yet; edit the compiler, then re-copy.
 
@@ -633,8 +661,18 @@ MEMAX_API_URL=http://localhost:8080 memax login
 memax link --space memax-v2 && memax daemon run        # or: memax daemon start | stop | status
 memax status && memax compile
 
-# Re-copy the compiler's managed block into the CLI after changing it (lint checks the copy)
+# Set a repository up (what a new user runs): detect, sign in, connect, import, settle, compile.
+# --dry-run uploads nothing; --yes --space <slug> --format json for CI; --timing shows each step's budget
+MEMAX_API_URL=http://localhost:8080 memax init
+memax init --dry-run && memax init --yes --format json --timing
+
+# Re-copy the compiler's managed block (and init's cleanLine, lib/daemon/compiler/sanitize.ts)
+# into the CLI after changing them (lint checks the copy)
 node packages/cli/scripts/sync-compiler.mjs
+
+# Init tests: detection fixtures in temporary homes, the splitter, the secret scan (against the
+# server's corpus), hidden characters, and the whole flow against the fake /v2 server
+pnpm --filter memax-cli exec vitest run test/init
 
 # Daemon tests (a fake /v2 server built on the real compiler)
 pnpm --filter memax-cli exec vitest run test/daemon
@@ -643,6 +681,14 @@ pnpm --filter memax-cli exec vitest run test/daemon
 # DATABASE), migrations, devseed, the compile service, the worker and the API server. Skipped
 # without the flag. MEMAX_E2E_BIN can point at prebuilt server, worker, migrate and devseed.
 MEMAX_E2E_SERVER=1 pnpm --filter memax-cli exec vitest run test/daemon/e2e-server.test.ts
+
+# memax init end to end on the same stack, the judge on a fake model: conflicting CLAUDE.md and
+# AGENTS.md, the conflict flagged, bulk keep, compile, files on disk, timed against five minutes
+MEMAX_E2E_SERVER=1 pnpm --filter memax-cli exec vitest run test/init/e2e-init.test.ts
+
+# The import endpoints, the import check and settling (real Postgres)
+cd packages/server && go test ./internal/ledger/ ./internal/judge/ -run Import && \
+  go test ./internal/handler/v2api/ -run 'Import|Spaces|Bulk'
 ```
 
 Migrations use a single shared sequence. Don't hand-pick version numbers — always use `migrate:new`. CI enforces sequential numbering (`internal/migrate/migrate_test.go`) and rejects gaps, duplicates, orphan up/down files, and non-padded versions.
@@ -653,11 +699,25 @@ Migrations use a single shared sequence. Don't hand-pick version numbers — alw
   - API server (`fly.server.{staging,production}.toml`, `Dockerfile.server`) — serves HTTP, insert-only queue client
   - Worker (`fly.worker.production.toml`, `Dockerfile.worker`) — processes River jobs (memory processing, dreams). Staging has no worker app: `MEMAX_EMBEDDED_WORKER=1` makes the staging API run the worker in-process (`cmd/server/worker.go`), so an idle staging machine stops and Neon's staging compute can scale to zero
   - Sizing (Oct 2026 running-cost review): the prod API runs 2 shared-cpu-2x 1gb machines with `min_machines_running = 1`, so the second stays suspended until needed; the prod worker is shared-cpu-1x 1gb; staging is one shared-cpu-1x 512mb machine that stops when idle
-- `packages/compile-service/` deploys to Fly.io as an internal-only app (`fly.compile.{staging,production}.toml`, `Dockerfile` built from the repo root): no `[http_service]`, no public IPs, reached by the API server and worker at `http://memax-compile-{staging,production}.internal:8080` (`COMPILE_SERVICE_URL`). Run 2 machines in production
-- `packages/web/` deploys to Vercel (`memax.app`)
-- `packages/docs-site/` deploys to Vercel (`docs.memax.app`)
+- Cloudflare Workers (one Workers Paid plan) runs everything that needn't sit next to the database. `.github/workflows/deploy-cloudflare.yml` deploys each Worker with `wrangler deploy`: staging from `ci.yml` on every push to `main`, production from `deploy-production.yml`, with secrets read from Doppler and uploaded with the version. The `staging` and `production` GitHub Environments need `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Roll a Worker back with `wrangler rollback --env <env>` in its package.
+  - `packages/compile-service/` — `memax-compile-{staging,production}` at `https://compile-staging.memax.app` and `https://compile.memax.app` (custom domains; no workers.dev). The API and worker reach it through `COMPILE_SERVICE_URL` in their tomls and send `COMPILE_SERVICE_TOKEN`; CI deploys it before them. The `Dockerfile` remains for self-hosting the Node server
+  - `packages/web/` — `memax-web-{staging,production}`, built by OpenNext. Vercel (`vercel.json`, its Git integration) keeps serving `memax.app` until the DNS cutover; then the Vercel project goes
+  - `packages/docs-site/` — `memax-docs-{staging,production}`, the static export (`out/`) as Workers static assets with no script. Vercel keeps serving `docs.memax.app` until the cutover
 - This repo publishes `memax-sdk` and `memax-cli` to npm
 - CI runs on GitHub Actions — check `.github/workflows/` for pipeline config
+
+#### Moving to Cloudflare (cutover checklist)
+
+Each step can be undone on its own; do them in order.
+
+1. **Cloudflare account.** Subscribe to Workers Paid. Create an API token with Workers Scripts: Edit, Workers Routes: Edit, Zone: Read and DNS: Edit on `memax.app`. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` to the `staging` and `production` GitHub Environments.
+2. **Zone.** Add `memax.app` to Cloudflare and copy every record from the current DNS host (the apex and `docs` for Vercel, `api` and `staging-api` for Fly, mail records for Resend, any verification TXT records). Keep proxying off on the Fly and Vercel records so nothing changes, then switch the nameservers at the registrar. Rollback: point the nameservers back.
+3. **Doppler** (staging and production configs). Add `COMPILE_SERVICE_TOKEN` (`openssl rand -hex 32`, a different value per environment). Make sure `WEB_SURFACE_SECRET` is there (the API already uses it). Add the web's build settings, taken from the Vercel project's environment variables: `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_APP_URL` (required for staging), `NEXT_PUBLIC_DOCS_URL`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`.
+4. **Compile service, staging.** Merge to `main`: CI deploys `memax-compile-staging` (it creates `compile-staging.memax.app` and its certificate), checks `/health`, then deploys the staging API, which now calls it with the token. Check a compile in staging. Rollback: `wrangler rollback --env staging`, or revert `COMPILE_SERVICE_URL` in `fly/fly.server.staging.toml` to a Node compile service.
+5. **Web and docs, staging.** The same push deploys `memax-web-staging` and `memax-docs-staging` to their workers.dev URLs. Check that pages load there; sign-in needs the real hostname (the API's `APP_BASE_URL` decides which logins are web sessions), so it is checked in step 7.
+6. **Production deploy.** Promote to `prod`: the workflow deploys `memax-compile-production` (`compile.memax.app`) before the API and worker, plus the web and docs Workers. Rollback: reset `prod` and re-run with `bump=none`; `wrangler rollback --env production` for a Worker alone.
+7. **DNS cutover, staging first.** Uncomment the staging `routes` (with the staging web hostname) and `workers_dev: false` in `packages/web/wrangler.jsonc`, remove the Vercel record for that hostname, and deploy: a Workers custom domain creates its DNS record and certificate. Sign in, run an Ask, keep a proposal and check its receipt says `human_web`. Then do the same for `memax.app` (production `routes` in `packages/web/wrangler.jsonc`) and `docs.memax.app` (`packages/docs-site/wrangler.jsonc`). OAuth redirect URIs and `APP_BASE_URL` don't change, since the hostnames don't. Rollback: delete the custom domain in the Workers dashboard and restore the Vercel record; Vercel is still deployed.
+8. **Retire the old hosts** after a week without a rollback: destroy the Fly apps `memax-compile-staging` and `memax-compile-production` (their tomls are gone; recreate from git history if ever needed), delete the Vercel projects, and remove `packages/web/vercel.json`.
 
 ## Keeping Documentation Up To Date
 

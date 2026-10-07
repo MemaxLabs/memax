@@ -1,10 +1,13 @@
-# Memax compile service: @memaxlabs/compiler over HTTP.
+# Memax compile service: @memaxlabs/compiler over HTTP, as the Node server.
+#
+# Memax runs it as a Cloudflare Worker (wrangler.jsonc); this image is for
+# self-hosting it, next to the API and worker. Set COMPILE_SERVICE_TOKEN on
+# it and on them unless only they can reach its port.
 #
 # The build context is the REPOSITORY ROOT, because the service depends on
 # the workspace package packages/compiler:
 #
 #   docker build -f packages/compile-service/Dockerfile .
-#   fly deploy . -c packages/compile-service/fly/fly.compile.staging.toml
 #
 # Dockerfile.dockerignore (next to this file) keeps node_modules, .git and
 # every other package out of the context.
@@ -31,6 +34,6 @@ COPY --from=build /out/dist ./dist
 COPY --from=build /out/node_modules ./node_modules
 USER node
 EXPOSE 8080
-# A health check for plain Docker (Fly uses the toml's checks instead).
+# A health check for plain Docker.
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:8080/health > /dev/null || exit 1
 CMD ["node", "dist/main.js"]

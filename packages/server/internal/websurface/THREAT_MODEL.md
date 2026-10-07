@@ -66,7 +66,14 @@ API either; it has to go through the proxy.
 - **Someone who can sign in as the person** (their GitHub account, their
   inbox for the email code) gets a web session of their own.
 - **A leaked `WEB_SURFACE_SECRET`** lets the holder sign, but they still
-  need a `web` token for the user. Rotate it on both sides.
+  need a `web` token for the user. Rotate it on both sides. On
+  Cloudflare Workers it is a Worker secret, which CI uploads from Doppler
+  with each version and nobody can read back; it must never sit in
+  `packages/web/.env*`, because OpenNext copies those files into the
+  Worker's bundle. The proxy's path is unchanged by the move: the browser
+  reaches the Worker, which calls the API over HTTPS like any client, and
+  forwards only the allowlisted headers (it drops any `X-Memax-Surface-*`
+  a client sends; Cloudflare adds `CF-Worker`, which the API ignores).
 - **Sessions from before migration 030** have no surface and stay
   `client_attested` until the person signs in again.
 

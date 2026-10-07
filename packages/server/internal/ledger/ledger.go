@@ -168,6 +168,12 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.declineForget(ctx, c)
 	case *ReapplyForget:
 		res, err = w.reapplyForget(ctx, c)
+	case *ImportStatement:
+		res, err = w.importStatement(ctx, c)
+	case *RecordImportCheck:
+		res, err = w.recordImportCheck(ctx, c)
+	case *SettleImportConflict:
+		res, err = w.settleImportConflict(ctx, c)
 	}
 	if err != nil {
 		return Result{}, mapDBError(err)
@@ -253,6 +259,12 @@ func validateCommand(cmd Command) error {
 		return validateTarget(c.Memory, 0, false)
 	case *ReapplyForget:
 		return c.Op.validate()
+	case *ImportStatement:
+		return c.validate()
+	case *RecordImportCheck:
+		return c.validate()
+	case *SettleImportConflict:
+		return c.validate()
 	case *Remember:
 		return c.NewMemory.validate()
 	case *Propose:

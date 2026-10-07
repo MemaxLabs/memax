@@ -15,8 +15,10 @@ swap_size_mb = 512
   dockerfile = "../Dockerfile.worker"
 
 [env]
-  # V2 compile service, internal only (packages/compile-service/fly).
-  COMPILE_SERVICE_URL = "http://memax-compile-production.internal:8080"
+  # V2 compile service: a Cloudflare Worker (packages/compile-service/
+  # wrangler.jsonc, deployed before this app by CI). It needs
+  # COMPILE_SERVICE_TOKEN, a secret synced from Doppler with the rest.
+  COMPILE_SERVICE_URL = "https://compile.memax.app"
   HEALTH_PORT = "9090"
 
 [deploy]

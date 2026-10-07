@@ -221,7 +221,9 @@ func spaceHoldsWords(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (bool, e
 		    OR EXISTS (SELECT 1 FROM v2.brief_versions v, jsonb_array_elements(v.structure -> 'sections') s,
 		                             jsonb_array_elements(s -> 'items') i
 		                WHERE v.space_id = $1 AND i ? 'text')
-		    OR EXISTS (SELECT 1 FROM v2.target_observations WHERE space_id = $1 AND jsonb_array_length(changeset -> 'changes') > 0)`,
+		    OR EXISTS (SELECT 1 FROM v2.target_observations WHERE space_id = $1 AND jsonb_array_length(changeset -> 'changes') > 0)
+		    OR EXISTS (SELECT 1 FROM v2.import_conflicts WHERE space_id = $1
+		                  AND (subject IS NOT NULL OR rationale IS NOT NULL OR suggestion IS NOT NULL))`,
 		spaceID).Scan(&yes)
 	if err != nil {
 		return false, fmt.Errorf("ledger: forget space: %w", err)
@@ -679,6 +681,8 @@ func (w *writer) purgeWordsOnly(ctx context.Context, sp spaceRow, op *forgetOp, 
 		`UPDATE v2.sources s SET quote = NULL, uri = NULL, content_hash = NULL, ref = s.kind, locator = '{}'::jsonb, last_receipt_id = $2
 		   FROM v2.memory_sources ms WHERE ms.source_id = s.id AND ms.memory_id = $1
 		    AND (s.quote IS NOT NULL OR s.uri IS NOT NULL OR s.content_hash IS NOT NULL)`,
+		`UPDATE v2.import_conflicts SET subject = NULL, rationale = NULL, suggestion = NULL, last_receipt_id = $2
+		  WHERE $1 = ANY (members) AND (subject IS NOT NULL OR rationale IS NOT NULL OR suggestion IS NOT NULL)`,
 	}
 	for _, q := range steps {
 		if _, err := w.tx.Exec(ctx, q, m.ID, rc.ID); err != nil {

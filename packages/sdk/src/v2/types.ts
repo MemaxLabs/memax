@@ -157,6 +157,30 @@ export type AskFailure = Schemas["AskFailure"];
 export type AskOutcome = Schemas["AskOutcome"];
 export type AskInput = Schemas["AskRequest"];
 
+// Imports (`memax init`, Cleanup, ReviewImport)
+/** One upload of statements read from agent files. */
+export type Import = Schemas["Import"];
+export type ImportFile = Schemas["ImportFile"];
+export type ImportSkip = Schemas["ImportSkip"];
+export type ImportCounts = Schemas["ImportCounts"];
+export type ImportCheck = Schemas["ImportCheck"];
+/** What `imports.create` returns: the import and each statement's outcome. */
+export type ImportResult = Schemas["ImportResult"];
+export type ImportItemResult = Schemas["ImportItemResult"];
+/** One import in full: items, the memories they became, disagreements, progress. */
+export type ImportView = Schemas["ImportView"];
+export type ImportItem = Schemas["ImportItem"];
+/** A memory an import proposed or found, and whether it can be kept in bulk. */
+export type ImportMemory = Schemas["ImportMemory"];
+/** A disagreement among an import's proposals, settled once as a group. */
+export type ImportConflict = Schemas["ImportConflict"];
+export type ImportProgress = Schemas["ImportProgress"];
+export type ImportPage = Schemas["ImportPage"];
+export type ImportConflictResult = Schemas["ImportConflictResult"];
+/** What a bulk keep or reject did to each memory. */
+export type BulkReviewResult = Schemas["BulkReviewResult"];
+export type BulkReviewItem = Schemas["BulkReviewItem"];
+
 // Agents
 export type AgentConnection = Schemas["AgentConnection"];
 export type AgentSpace = Schemas["AgentSpace"];
@@ -195,6 +219,11 @@ export type WithdrawGateInput = Schemas["ReviewRequest"];
 export type CompileLoadInput = Schemas["CompileLoadRequest"];
 export type ForgetInput = Schemas["ForgetRequest"];
 export type AckNoticesInput = Schemas["AckNoticesRequest"];
+export type CreateSpaceInput = Schemas["CreateSpaceRequest"];
+export type ImportInput = Schemas["ImportRequest"];
+export type ImportItemInput = Schemas["ImportItemInput"];
+export type SettleImportConflictInput = Schemas["SettleImportConflictRequest"];
+export type BulkReviewInput = Schemas["BulkReviewRequest"];
 
 // Vocabulary
 export type Section = Schemas["Section"];
@@ -264,5 +293,19 @@ export type UnreachableKind = Schemas["UnreachableKind"];
 /** waiting, forgotten or declined. */
 export type ForgetRequestStatus = Schemas["ForgetRequestStatus"];
 export type NoticeKind = Schemas["NoticeKind"];
+/** repository (shared with everyone who clones it) or home (this machine only). */
+export type ImportLocation = Schemas["ImportLocation"];
+/** proposed, folded, existing or refused. */
+export type ImportOutcome = Schemas["ImportOutcome"];
+/** secret, too_long or limit. */
+export type ImportSkipReason = Schemas["ImportSkipReason"];
+/** pending, checked, no_model, failed or skipped. */
+export type ImportCheckState = Schemas["ImportCheckState"];
+/** Why a proposal can't be kept in bulk. */
+export type ImportHeld = Schemas["ImportHeld"];
+/** keep_one, keep_all, leave_open or keep_suggestion. */
+export type ImportChoice = Schemas["ImportChoice"];
+/** applied, refused or failed. */
+export type BulkOutcome = Schemas["BulkOutcome"];
 /** The surfaces a client may declare in `X-Memax-Via`. */
 export type ClientVia = components["parameters"]["Via"];

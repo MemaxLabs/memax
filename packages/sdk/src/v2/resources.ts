@@ -1,4 +1,4 @@
-// The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`,
+// The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`, `.imports`,
 // `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets`, `.gates` and
 // `.notices`. Thin, typed
 // wrappers over the shared
@@ -19,6 +19,8 @@ import type {
   Brief,
   BriefResult,
   BriefVersionPage,
+  BulkReviewInput,
+  BulkReviewResult,
   ClientVia,
   CommandResult,
   CompileLoadInput,
@@ -26,6 +28,7 @@ import type {
   CompileRunPage,
   ConfigureTargetInput,
   Conflict,
+  CreateSpaceInput,
   CreateTargetInput,
   DeliveryInput,
   DeliveryResult,
@@ -47,6 +50,11 @@ import type {
   GatePage,
   GateResult,
   GateStatus,
+  ImportConflictResult,
+  ImportInput,
+  ImportPage,
+  ImportResult,
+  ImportView,
   MemoriesCommandResult,
   MemoryDetail,
   MemoryPage,
@@ -65,6 +73,8 @@ import type {
   ReviewPage,
   ReviseBriefInput,
   Section,
+  SettleImportConflictInput,
+  Space,
   SpaceList,
   State,
   TargetList,
@@ -165,6 +175,102 @@ export class V2SpacesResource {
   async list(opts?: { signal?: AbortSignal }): Promise<SpaceList> {
     return this.req("GET", "/v2/spaces", { signal: opts?.signal });
   }
+
+  /**
+   * Create a project space on the V2 record, owned by you (`memax init`
+   * for a repository with no space yet). Without a `slug`, Memax picks one
+   * from the name; a slug you name that is taken throws a MemaxError
+   * `slug_taken` (409). Only a signed-in person creates spaces. The same
+   * idempotency key finds the space the first call created.
+   */
+  async create(input: CreateSpaceInput, opts: CommandOptions): Promise<Space> {
+    return this.req("POST", "/v2/spaces", {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Switch a space that holds no V1 memories to the V2 record (a new
+   * person's personal space, say). One with V1 memories throws a
+   * MemaxError `space_has_notes` (409, `details.notes`): it switches in the
+   * app. Only the space's owner may.
+   */
+  async switchToV2(space: string, opts: CommandOptions): Promise<Space> {
+    return this.req("POST", `/v2/spaces/${seg(space)}:switch`, {
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+}
+
+export class V2ImportsResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /**
+   * Upload statements read from agent files (`memax init`). Each becomes
+   * its own proposal (`via: import`) with its `file:line` sources; repeats
+   * within the upload fold into one, and what the space already has is
+   * skipped. Nothing is kept. Retrying with the same idempotency key
+   * resumes the same import. At most 500 statements per import.
+   */
+  async create(
+    space: string,
+    input: ImportInput,
+    opts: CommandOptions,
+  ): Promise<ImportResult> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/imports`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** The space's imports, newest first. */
+  async list(space: string, opts?: PageOptions): Promise<ImportPage> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/imports`, {
+      query: pageQuery(opts),
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * One import in full: what became of each statement, the memories they
+   * became with the judge's verdicts, the disagreements found, and which
+   * proposals can be kept in bulk. Poll it until `progress.ready`.
+   */
+  async get(
+    space: string,
+    importId: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<ImportView> {
+    return this.req(
+      "GET",
+      `/v2/spaces/${seg(space)}/imports/${seg(importId)}`,
+      { signal: opts?.signal },
+    );
+  }
+
+  /**
+   * Settle one of an import's disagreements, once, as a group:
+   * `keep_one` (with `keep`), `keep_all`, `leave_open` or
+   * `keep_suggestion`. It follows Keep's rules; a refusal throws a
+   * MemaxError `refused` (see {@link refusalOf}).
+   */
+  async settle(
+    space: string,
+    importId: string,
+    n: number,
+    input: SettleImportConflictInput,
+    opts: CommandOptions,
+  ): Promise<ImportConflictResult> {
+    return this.req(
+      "POST",
+      `/v2/spaces/${seg(space)}/imports/${seg(importId)}/conflicts/${n}:settle`,
+      { body: input, extraHeaders: commandHeaders(opts), signal: opts.signal },
+    );
+  }
 }
 
 export class V2MemoriesResource {
@@ -207,6 +313,37 @@ export class V2MemoriesResource {
       `/v2/spaces/${seg(space)}/memories:near-duplicates`,
       { body: input, signal: opts?.signal },
     );
+  }
+
+  /**
+   * Keep several proposals, each as its own Keep with its own receipt.
+   * One that can't be kept is reported in its item (`refused`, with the
+   * policy, or `failed`, with the error) and the rest are kept. Send each
+   * item's `version` as seen. The same idempotency key keeps nothing twice.
+   */
+  async keepMany(
+    space: string,
+    input: BulkReviewInput,
+    opts: CommandOptions,
+  ): Promise<BulkReviewResult> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/memories:keep`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** Reject several proposals, each as its own Reject. */
+  async rejectMany(
+    space: string,
+    input: BulkReviewInput,
+    opts: CommandOptions,
+  ): Promise<BulkReviewResult> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/memories:reject`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
   }
 
   /** A page of the space's memories, newest first. */
@@ -931,6 +1068,7 @@ export class V2Resource {
   readonly targets: V2TargetsResource;
   readonly gates: V2GatesResource;
   readonly notices: V2NoticesResource;
+  readonly imports: V2ImportsResource;
   private readonly openStream?: OpenFn;
 
   constructor(req: RequestFn, open?: OpenFn) {
@@ -944,6 +1082,7 @@ export class V2Resource {
     this.targets = new V2TargetsResource(req);
     this.gates = new V2GatesResource(req);
     this.notices = new V2NoticesResource(req);
+    this.imports = new V2ImportsResource(req);
     this.openStream = open;
   }
 

@@ -73,7 +73,7 @@ func newForgetStack(t *testing.T) *forgetStack {
 	jobs := &lateJobs{}
 	e := &env{t: t, pool: pool, store: mockobjectstore.New()}
 	e.ledger = ledger.New(pool, ledger.WithLogger(quiet), ledger.WithJobs(jobs), ledger.WithIndexJobs())
-	e.svc = compile.New(e.ledger, compile.NewClient(serviceURL), e.store,
+	e.svc = compile.New(e.ledger, compiletest.Client(serviceURL), e.store,
 		compile.Config{AppBaseURL: "https://memax.app", Log: quiet})
 
 	// Redis: the worker signals; an API process listens.

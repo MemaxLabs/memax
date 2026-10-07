@@ -1,4 +1,4 @@
--- 043: v2_forget
+-- 044: v2_forget
 --
 -- Forget (plan 25 §5.13, rule 7; Phase 2 epic 2.4), and account and space
 -- deletion through the ledger.
@@ -28,7 +28,9 @@
 -- (v2.redact_receipt_reasons); the judge's rationale and merged statement
 -- on every verdict that names the memory, on either side of the pair; the
 -- stored idempotency request hashes; a gate's question, context and
--- options when the memory is its answer; and, in the Brief, every prose
+-- options when the memory is its answer; the model's subject, rationale
+-- and suggestion on every import disagreement it is a member of (043);
+-- and, in the Brief, every prose
 -- line that cites it (the current version gets a new B- without it, and
 -- older versions keep the line's citations without its words). A deferred
 -- constraint trigger (memories_forgotten_words) refuses the commit if a
@@ -526,6 +528,34 @@ CREATE TRIGGER compile_runs_forgotten_guard
     BEFORE INSERT ON v2.compile_runs
     FOR EACH ROW EXECUTE FUNCTION v2.compile_runs_forgotten_guard();
 
+-- An import's disagreement (043) holds the model's words about its
+-- members: they go when any member is forgotten, with the member's forgot
+-- receipt as the group's last receipt (043's receipt check accepts a
+-- receipt about a member). A settled group stays settled; only its words
+-- may still go.
+GRANT UPDATE (subject, rationale, suggestion) ON v2.import_conflicts TO memax_v2;
+
+CREATE OR REPLACE FUNCTION v2.import_conflicts_guard() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.import_id IS DISTINCT FROM OLD.import_id
+       OR NEW.space_id IS DISTINCT FROM OLD.space_id OR NEW.n IS DISTINCT FROM OLD.n
+       OR NEW.members IS DISTINCT FROM OLD.members OR NEW.created_receipt_id IS DISTINCT FROM OLD.created_receipt_id THEN
+        RAISE EXCEPTION 'an import conflict''s members are fixed when it is found (conflict %)', OLD.id;
+    END IF;
+    IF OLD.state = 'settled' THEN
+        -- Forget: the words go, nothing else about the settlement changes.
+        IF NEW.subject IS NULL AND NEW.rationale IS NULL AND NEW.suggestion IS NULL
+           AND (NEW.state, NEW.choice, NEW.chosen_memory_id, NEW.settled_at, NEW.confidence)
+               IS NOT DISTINCT FROM (OLD.state, OLD.choice, OLD.chosen_memory_id, OLD.settled_at, OLD.confidence) THEN
+            RETURN NEW;
+        END IF;
+        RAISE EXCEPTION 'import conflict % is already settled', OLD.id;
+    END IF;
+    RETURN NEW;
+END $$;
+
 -- A gate's words go when the decision it became is forgotten: Forget
 -- writes a forgot receipt about the gate and nulls its question, context
 -- and options. Nothing else about an ended gate changes.
@@ -714,6 +744,11 @@ BEGIN
         RAISE EXCEPTION 'space %: forget every memory before retiring it', p_space USING ERRCODE = 'MXR02';
     END IF;
     SET CONSTRAINTS v2.targets_last_compile_fkey, v2.targets_delivered_compile_fkey DEFERRED;
+    -- memax init's uploads (043): bookkeeping that refers to the hub and
+    -- the memories, so it goes first.
+    DELETE FROM v2.import_conflicts WHERE space_id = p_space;
+    DELETE FROM v2.import_items WHERE space_id = p_space;
+    DELETE FROM v2.imports WHERE space_id = p_space;
     DELETE FROM v2.memory_embeddings WHERE space_id = p_space;
     DELETE FROM v2.judge_verdicts WHERE space_id = p_space;
     DELETE FROM v2.memory_links WHERE space_id = p_space;

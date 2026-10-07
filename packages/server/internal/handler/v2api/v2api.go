@@ -93,9 +93,17 @@ type Route struct {
 
 var routes = []Route{
 	{"GET", "/v2/spaces", "listSpaces", (*Handler).listSpaces},
+	{"POST", "/v2/spaces", "createSpace", (*Handler).createSpace},
+	{"POST", "/v2/spaces/{space}:switch", "switchSpace", (*Handler).switchSpace},
 	{"POST", "/v2/spaces/{space}/memories", "rememberMemory", (*Handler).remember},
 	{"GET", "/v2/spaces/{space}/memories", "listMemories", (*Handler).listMemories},
 	{"POST", "/v2/spaces/{space}/memories:near-duplicates", "findNearDuplicates", (*Handler).findNearDuplicates},
+	{"POST", "/v2/spaces/{space}/memories:keep", "keepMemories", (*Handler).keepMemories},
+	{"POST", "/v2/spaces/{space}/memories:reject", "rejectMemories", (*Handler).rejectMemories},
+	{"POST", "/v2/spaces/{space}/imports", "createImport", (*Handler).createImport},
+	{"GET", "/v2/spaces/{space}/imports", "listImports", (*Handler).listImports},
+	{"GET", "/v2/spaces/{space}/imports/{import}", "getImport", (*Handler).getImport},
+	{"POST", "/v2/spaces/{space}/imports/{import}/conflicts/{n}:settle", "settleImportConflict", (*Handler).settleImportConflict},
 	{"POST", "/v2/spaces/{space}/ask", "askSpace", (*Handler).askSpace},
 	{"GET", "/v2/spaces/{space}/review", "listReview", (*Handler).listReview},
 	{"GET", "/v2/spaces/{space}/receipts", "listReceipts", (*Handler).listReceipts},

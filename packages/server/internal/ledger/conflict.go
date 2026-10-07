@@ -254,6 +254,9 @@ func (w *writer) resolveConflict(ctx context.Context, c *ResolveConflict) (Resul
 	if err != nil {
 		return Result{}, err
 	}
+	if err := w.refuseImportPair(ctx, sp.ID, this, p.link.MemoryID); err != nil {
+		return Result{}, err
+	}
 	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, []uuid.UUID{p.link.MemoryID}, "FOR UPDATE")
 	if err != nil {
 		return Result{}, err

@@ -1,8 +1,26 @@
--- 043 down: v2_forget. Puts back 042's receipt vocabulary, 035's receipt
--- check and purge constraint, 036's gate guard, and the foreign keys from
--- receipts and seals to public.hubs. It fails if a retired space left
--- receipts behind (their hub is gone), which is the point: those receipts
--- can't be re-attached to a hub.
+-- 044 down: v2_forget. Puts back 042's receipt vocabulary (043 kept it),
+-- 035's receipt check and purge constraint, 036's gate guard, 043's import
+-- conflict guard, and the foreign keys from receipts and seals to
+-- public.hubs. It fails if a retired space left receipts behind (their hub
+-- is gone), which is the point: those receipts can't be re-attached to a
+-- hub.
+
+REVOKE UPDATE (subject, rationale, suggestion) ON v2.import_conflicts FROM memax_v2;
+
+CREATE OR REPLACE FUNCTION v2.import_conflicts_guard() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.import_id IS DISTINCT FROM OLD.import_id
+       OR NEW.space_id IS DISTINCT FROM OLD.space_id OR NEW.n IS DISTINCT FROM OLD.n
+       OR NEW.members IS DISTINCT FROM OLD.members OR NEW.created_receipt_id IS DISTINCT FROM OLD.created_receipt_id THEN
+        RAISE EXCEPTION 'an import conflict''s members are fixed when it is found (conflict %)', OLD.id;
+    END IF;
+    IF OLD.state = 'settled' THEN
+        RAISE EXCEPTION 'import conflict % is already settled', OLD.id;
+    END IF;
+    RETURN NEW;
+END $$;
 
 REVOKE EXECUTE ON FUNCTION v2.retire_space(uuid), v2.redact_space_receipt_reasons(uuid) FROM memax_v2;
 REVOKE UPDATE (status, decided_by, decided_at, last_receipt_id, updated_at) ON v2.forget_requests FROM memax_v2;

@@ -288,9 +288,16 @@ func (w *writer) dreamNotes(ctx context.Context, ed *editionWrite) error {
 		ed.notes = append(ed.notes, n)
 		ed.present[n.ID] = n
 	}
-	for _, id := range ids {
+	// Numbered in the order they were read (oldest first), then any other
+	// note an action names.
+	order := make([]uuid.UUID, 0, len(ids)+len(ed.c.Notes))
+	for _, n := range ed.c.Notes {
+		order = append(order, n.ID)
+	}
+	order = append(order, ids...)
+	for _, id := range order {
 		seq, ok := have[id]
-		if !ok {
+		if _, done := ed.noteRef[id]; !ok || done || slices.Contains(fresh, id) {
 			continue
 		}
 		if seq != nil {
@@ -723,7 +730,8 @@ func (w *writer) dreamConflict(ctx context.Context, ed *editionWrite, a *Planned
 
 // dreamStale flags a kept memory whose stale_after date has passed, unless
 // a person has acted on it since that date (which is a verify in all but
-// name, and so is undoing an earlier stale flag).
+// name, and so is undoing an earlier stale flag). Writing it with a date
+// already past doesn't count.
 func (w *writer) dreamStale(ctx context.Context, ed *editionWrite, a *PlannedAction) (string, *actionWrite, error) {
 	m, err := w.dreamMemory(ctx, ed, a.Memory)
 	if err != nil || m == nil {
@@ -735,8 +743,9 @@ func (w *writer) dreamStale(ctx context.Context, ed *editionWrite, a *PlannedAct
 	}
 	var touched bool
 	if err := w.tx.QueryRow(ctx, `
-		SELECT EXISTS (SELECT 1 FROM v2.receipts WHERE stream_id = $1 AND space_id = $2 AND actor_kind = 'person' AND recorded_at > $3)`,
-		m.ID, ed.sp.ID, *m.StaleAfter).Scan(&touched); err != nil {
+		SELECT EXISTS (SELECT 1 FROM v2.receipts WHERE stream_id = $1 AND space_id = $2 AND actor_kind = 'person'
+		                 AND recorded_at > $3 AND id <> $4)`,
+		m.ID, ed.sp.ID, *m.StaleAfter, m.CreatedReceiptID).Scan(&touched); err != nil {
 		return "", nil, fmt.Errorf("ledger: read history: %w", err)
 	}
 	if touched {
@@ -847,6 +856,7 @@ func (w *writer) dreamBrief(ctx context.Context, ed *editionWrite, a *PlannedAct
 	if err := checkBriefCites(ctx, w.tx, ed.sp.ID, sections); err != nil {
 		return DreamSkipInvalid, nil, nil
 	}
+	baseVersion := cur.version
 	what := "a small change"
 	if n := len(a.Brief.Ops); n > 1 {
 		what = fmt.Sprintf("%d small changes", n)
@@ -858,7 +868,7 @@ func (w *writer) dreamBrief(ctx context.Context, ed *editionWrite, a *PlannedAct
 	}
 	ed.receipts = append(ed.receipts, rc)
 	ed.dirty = true
-	b, err := marshalInverse(dreamInverse{BriefID: cur.id, BriefBefore: cur.version, BriefAfter: version, BriefOps: len(a.Brief.Ops)})
+	b, err := marshalInverse(dreamInverse{BriefID: cur.id, BriefBefore: baseVersion, BriefAfter: version, BriefOps: len(a.Brief.Ops)})
 	if err != nil {
 		return "", nil, err
 	}

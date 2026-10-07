@@ -134,7 +134,7 @@ GRANT USAGE ON SCHEMA v2 TO memax_v2_dream_sweeper;
 
 -- Which spaces are on V2, whose they are, and who may keep in them (the
 -- morning email's recipients). Ids, roles and addresses; no memory text.
-GRANT SELECT (id, tenant_id, owner_id, space_kind, name, slug, v2_enabled_at) ON public.hubs TO memax_v2_dream_sweeper;
+GRANT SELECT (id, tenant_id, owner_id, space_kind, name, slug, rules, v2_enabled_at) ON public.hubs TO memax_v2_dream_sweeper;
 GRANT SELECT (hub_id, user_id, role) ON public.hub_members TO memax_v2_dream_sweeper;
 GRANT SELECT (id, email, name, display_name) ON public.users TO memax_v2_dream_sweeper;
 

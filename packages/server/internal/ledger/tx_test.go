@@ -198,16 +198,28 @@ func TestPipelinedRoundTrips(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		netsim.Settle(db.Pool, 2*time.Second)
-		ctx, cnt := netsim.Track(context.Background())
-		if err := c.op(ctx); err != nil {
-			t.Fatal(err)
+		// A read's COMMIT goes out after the caller has its answer, so on a
+		// loaded machine it can reach the wire before the count below is
+		// read. A COMMIT the caller waits for is counted on every attempt;
+		// the race only on some, so the best of three decides.
+		var before, total int
+		var cnt *netsim.Counter
+		for range 3 {
+			netsim.Settle(db.Pool, 2*time.Second)
+			var ctx context.Context
+			ctx, cnt = netsim.Track(context.Background())
+			if err := c.op(ctx); err != nil {
+				t.Fatal(err)
+			}
+			before = cnt.RoundTrips()
+			netsim.Settle(db.Pool, 2*time.Second)
+			if total = cnt.RoundTrips(); before <= c.before && total == c.total {
+				break
+			}
 		}
-		before := cnt.RoundTrips()
-		netsim.Settle(db.Pool, 2*time.Second)
-		if before > c.before || cnt.RoundTrips() != c.total {
+		if before > c.before || total != c.total {
 			t.Errorf("%s: %d round trips before it returned, %d in all; want at most %d and %d\n%s",
-				c.name, before, cnt.RoundTrips(), c.before, c.total, cnt)
+				c.name, before, total, c.before, c.total, cnt)
 		}
 	}
 }

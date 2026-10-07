@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -114,6 +116,26 @@ func runOnce(connStr string, migrationsDir string, opts Options) error {
 		slog.Info("migrations: current version", "version", version, "dirty", dirty)
 	}
 
+	// A database ahead of these files was migrated by a newer release: this
+	// is an older one deployed back over it (a rollback). Its migrations
+	// only add, so there is nothing to apply; failing here would make the
+	// rollback's release step refuse to deploy. A dirty one stays an error:
+	// only the release that wrote that migration can repair it.
+	if err == nil {
+		newest, nerr := newestMigration(migrationsDir)
+		if nerr != nil {
+			return nerr
+		}
+		if newest > 0 && version > newest {
+			if dirty {
+				return fmt.Errorf("migrations: the database is at %d (dirty), ahead of these migrations (newest %d); deploy the release that has %d to repair it", version, newest, version)
+			}
+			slog.Warn("migrations: the database is ahead of these migrations; nothing to apply",
+				"version", version, "newest", newest)
+			return nil
+		}
+	}
+
 	// Auto-recover from dirty state: force the version back so the
 	// migrator retries from the failed migration. This handles the
 	// case where a previous deploy's migration partially applied and
@@ -148,4 +170,29 @@ func isLockError(err error) bool {
 		strings.Contains(msg, "lock_timeout") ||
 		strings.Contains(msg, "canceling statement due to lock timeout") ||
 		(strings.Contains(msg, "lock") && strings.Contains(msg, "failed"))
+}
+
+// newestMigration is the highest version among dir's up files (0 if none).
+func newestMigration(dir string) (uint, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, fmt.Errorf("read migrations: %w", err)
+	}
+	var newest uint
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".up.sql") {
+			continue
+		}
+		digits, _, ok := strings.Cut(name, "_")
+		if !ok {
+			continue
+		}
+		v, err := strconv.ParseUint(digits, 10, 64)
+		if err != nil {
+			continue
+		}
+		newest = max(newest, uint(v))
+	}
+	return newest, nil
 }

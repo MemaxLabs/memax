@@ -17,6 +17,8 @@ package-lock.json
 
 # Generated / vendored
 .turbo/
+# Fumadocs writes these at install (fumadocs-mdx); they aren't tracked.
+packages/docs-site/.source/
 .vercel/
 .fly/
 # Generated from packages/server/openapi/v2.yaml; `pnpm lint` compares it

@@ -34,6 +34,9 @@ func TestMigrationsRunAsNeonsOwner(t *testing.T) {
 		t.Skipf("Postgres unavailable (%v)", err)
 	}
 	t.Cleanup(admin.Close)
+	if err := admin.Ping(ctx); err != nil {
+		t.Skipf("Postgres unavailable (%v)", err)
+	}
 
 	owner := fmt.Sprintf("memax_neonlike_%d", rand.Int64N(1_000_000_000))
 	const password = "neonlike"

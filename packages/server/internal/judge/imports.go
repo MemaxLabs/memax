@@ -36,13 +36,14 @@ import (
 // attention.
 
 // ImportConflictBar is the confidence a group of disagreeing statements
-// needs. It is not the judge's Contradicts threshold (0.6 since the live
-// eval of Oct 6, 2026): that bar was calibrated on pairs against decisions
-// in force, each verdict confirmed by the strong tier, and the import check
-// is one call on the primary (or fallback) tier among statements nobody has
-// settled, with no eval set of its own yet. Until it has one, it keeps the
-// judge's first, higher bar rather than follow a calibration of another
-// task.
+// needs. It is the import check's own, not the judge's Contradicts
+// threshold (0.6), which was calibrated on pairs against decisions in
+// force with the strong tier confirming each verdict. The import eval
+// (eval/imports, Oct 7, 2026) kept it at 0.8: over eight runs of both
+// sets, every planted conflict came back at 0.85 or more, so every bar up
+// to 0.85 finds all 284; the wrong groups sat at 0.6–0.9, and 0.8 keeps
+// out those under it (9 of 16) and holds 0.7% of the statements that
+// agree out of bulk keep. At 0.9, 8 conflicts are lost.
 const ImportConflictBar = 0.8
 
 // ImportBatch is how many proposals one call compares: a whole import
@@ -125,9 +126,9 @@ func (j *Judge) CheckImport(ctx context.Context, args ledger.JudgeImportArgs) (*
 type ImportGroup struct {
 	// Members are the group's proposals, each a proposal of the batch the
 	// model was shown, at least two and none twice.
-	Members                       []uuid.UUID
+	Members                        []uuid.UUID
 	Subject, Rationale, Suggestion string
-	Confidence                    float64
+	Confidence                     float64
 }
 
 // ImportCheck is what the model found among an import's proposals.
@@ -259,7 +260,7 @@ func (c *Classifier) callImport(ctx context.Context, call Call) (string, error) 
 	return text, err
 }
 
-const importSystem = `You check a project's agent files for disagreements. A developer's coding agents keep instruction and memory files (CLAUDE.md, AGENTS.md, Cursor rules, agents' memory notes). Each statement below was read from one of those files; none of them is settled yet. Find the statements that disagree: two or more that an agent can't all follow, or that can't all be true, at the same time and in the same place.
+const importSystem = `You check a developer's agent files for disagreements. Coding agents keep instruction and memory files: a project's CLAUDE.md, AGENTS.md and Cursor rules, the developer's own instruction files, and the notes agents keep. Each statement below was read from one of those files; none of them is settled yet. Most are rules for the code; some are facts about the developer, such as their preferences, setup or schedule. Find the statements that disagree: two or more that an agent can't all follow, or that can't all be true, at the same time and in the same place.
 
 Group them by subject. For each group give:
 - subject: a few words naming what they disagree about, in sentence case ("Test command", "Where the API deploys").
@@ -269,8 +270,9 @@ Group them by subject. For each group give:
 - suggestion: when one statement could say what is true for all of them (each in its own scope, say), that statement; otherwise "".
 
 Rules:
-- Disagree means following one breaks another: a different command, tool, version, value, place or rule for the same thing. "Run tests with pnpm test" and "Run npm run test before committing" disagree; "Run tests with pnpm test" and "Run pnpm test before you push" don't (the second adds when).
-- Statements that apply in different places (different paths, packages, files or environments, from their applies attribute or their words) don't disagree: "pnpm at the root" and "npm inside /tools" are both true.
+- Disagree means following one breaks another: a different command, tool, version, value, place or rule for the same thing. "Run tests with pnpm test" and "Run npm run test before committing" disagree; "Run tests with pnpm test" and "Run pnpm test before you push" don't (the second adds when). Facts about the developer disagree the same way, when both can't be true.
+- Statements that apply in different places (different paths, packages, files or environments, from their applies attribute, the headings they sit under (under) or their words) don't disagree: "pnpm at the root" and "npm inside /tools" are both true.
+- An exception is not a disagreement. When a general rule and a narrower one for part of its places (some files, a package, one kind of code, which the narrower statement's applies attribute, headings or words name) differ, the narrower one holds there and the general one everywhere else: "Indent with 4 spaces" and "Makefiles indent with tabs" are both true. Two rules for the same thing in the same files do disagree, whichever of them names its files.
 - More detail, an example, or a stricter version of the same rule is not a disagreement.
 - Two statements that say the same thing in other words are not a disagreement.
 - Leave out any group you aren't sure of. A false disagreement costs a person's attention.
@@ -292,6 +294,9 @@ func importPrompt(batch []ledger.ImportCandidate, strict bool) string {
 		}
 		if len(c.Paths) > 0 {
 			fmt.Fprintf(&b, " applies=%q", attr(truncate(strings.Join(c.Paths, ", "), 300)))
+		}
+		if c.Under != "" {
+			fmt.Fprintf(&b, " under=%q", attr(truncate(c.Under, 200)))
 		}
 		b.WriteString(">\n")
 		b.WriteString(escape.Replace(truncate(c.Statement, 600)))

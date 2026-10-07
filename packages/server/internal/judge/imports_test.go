@@ -162,6 +162,39 @@ func TestImportCheckIsCarefulAndDegrades(t *testing.T) {
 	}
 }
 
+// The headings above a statement, which init sends in its source's
+// locator, reach the prompt: a heading can be all that says where a
+// statement applies ("Use Jest here" under "Mobile").
+func TestImportCheckSendsTheHeadings(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	zz := f.user("zz")
+	sp := f.space(zz, "memax-v2")
+	item := func(ref, heading, statement string) ledger.ImportItem {
+		loc, _ := json.Marshal(map[string]any{"path": "AGENTS.md", "heading": heading})
+		return ledger.ImportItem{Key: ref, Location: ledger.ImportRepository, NewMemory: ledger.NewMemory{Statement: statement,
+			Section: ledger.SectionConventions, Sources: []ledger.SourceInput{{Kind: ledger.SourceFile, Ref: ref, Locator: loc}}}}
+	}
+	res, err := f.l.Import(f.ctx, ledger.ImportRequest{
+		Meta:    ledger.Meta{Actor: person(zz), Scope: f.scope(zz), Via: policy.ViaCLI, IdempotencyKey: uuid.NewString()},
+		SpaceID: sp,
+		Items: []ledger.ImportItem{item("AGENTS.md:8", "Orbit › Mobile (packages/mobile)", "Use Jest here."),
+			item("AGENTS.md:3", "", "Unit tests run on Vitest.")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &fakeModel{answer: conflictOracle("Test runner", 0.9, "nothing disagrees")}
+	if _, err := withModel(f, model, judge.Config{Primary: judge.Tier{Model: "primary"}}).
+		CheckImport(f.ctx, ledger.JudgeImportArgs{ImportID: res.Import.ID, SpaceID: sp}); err != nil {
+		t.Fatal(err)
+	}
+	p := model.calls[0].Prompt
+	if !strings.Contains(p, `under="Orbit › Mobile (packages/mobile)">`+"\nUse Jest here.") || strings.Count(p, "under=") != 1 {
+		t.Errorf("prompt: %s", p)
+	}
+}
+
 // The primary leaves suggestion out when it has none; at temperature 0 it
 // does so again on a retry, so the answer is taken as it is (import eval,
 // Oct 7, 2026).

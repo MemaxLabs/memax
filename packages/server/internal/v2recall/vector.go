@@ -212,14 +212,22 @@ func (v *Vectors) startQuery(ctx context.Context, text string) *pendingQuery {
 // even for an embedder that ignores its context; the goroutine's fields
 // are read only once it is done.
 func (p *pendingQuery) wait() ([]float32, string, time.Duration, error) {
-	timer := time.NewTimer(time.Until(p.deadline))
-	defer timer.Stop()
+	// An embedding that's done counts, however late the search asks for it
+	// (one started early, Embed, may be done before the deadline and asked
+	// for after it): select would pick at random between it and an expired
+	// timer.
 	select {
 	case <-p.done:
-	case <-timer.C:
-		return nil, StageTimeout, time.Since(p.start), context.DeadlineExceeded
-	case <-p.parent.Done():
-		return nil, StageTimeout, time.Since(p.start), p.parent.Err()
+	default:
+		timer := time.NewTimer(time.Until(p.deadline))
+		defer timer.Stop()
+		select {
+		case <-p.done:
+		case <-timer.C:
+			return nil, StageTimeout, time.Since(p.start), context.DeadlineExceeded
+		case <-p.parent.Done():
+			return nil, StageTimeout, time.Since(p.start), p.parent.Err()
+		}
 	}
 	switch {
 	case p.err == nil:

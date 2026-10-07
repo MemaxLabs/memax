@@ -29,6 +29,7 @@
       // Cutover (AGENTS.md, "Moving to Cloudflare"): uncomment once
       // memax.app is on Cloudflare; Vercel keeps serving until then.
       // "routes": [{ "pattern": "docs.memax.app", "custom_domain": true }],
+      // "workers_dev": false,
     },
   },
 }

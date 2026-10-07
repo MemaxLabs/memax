@@ -42,10 +42,11 @@
     "staging": {
       "name": "memax-web-staging",
       "secrets": { "required": ["WEB_SURFACE_SECRET"] },
-      // Cutover (AGENTS.md, "Moving to Cloudflare"): replace the
-      // workers.dev URL with the staging hostname once its DNS is on
-      // Cloudflare.
+      // Cutover (AGENTS.md, "Moving to Cloudflare"): serve the staging
+      // hostname (check it's the one Vercel serves now) instead of the
+      // workers.dev URL once memax.app is on Cloudflare.
       // "routes": [{ "pattern": "staging.memax.app", "custom_domain": true }],
+      // "workers_dev": false,
     },
     "production": {
       "name": "memax-web-production",
@@ -53,6 +54,7 @@
       // Cutover: uncomment once memax.app is on Cloudflare and staging has
       // been checked; Vercel keeps serving until then.
       // "routes": [{ "pattern": "memax.app", "custom_domain": true }],
+      // "workers_dev": false,
     },
   },
 }

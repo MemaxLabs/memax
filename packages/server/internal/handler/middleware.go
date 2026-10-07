@@ -389,16 +389,25 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 			// not up to four (the API is about 24 ms from the database). A
 			// personal hub missing from the list (its owner has no
 			// membership row), or a failed list, is looked up as before.
+			var personal struct {
+				id         string
+				ok, looked bool
+			}
 			personalHub := func() (string, bool) {
+				if personal.looked {
+					return personal.id, personal.ok
+				}
+				personal.looked = true
 				for _, item := range allHubs {
 					if item.Hub.HubType == "personal" && item.Hub.OwnerID == userID {
-						return item.Hub.ID, true
+						personal.id, personal.ok = item.Hub.ID, true
+						return personal.id, true
 					}
 				}
 				if hub, err := s.GetPersonalHub(userID); err == nil {
-					return hub.ID, true
+					personal.id, personal.ok = hub.ID, true
 				}
-				return "", false
+				return personal.id, personal.ok
 			}
 			memberRole := func(hubID string) string {
 				if listErr != nil {

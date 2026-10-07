@@ -188,6 +188,8 @@ async function waitHealthy(url: string, ms: number): Promise<void> {
 export interface StackOptions {
   /** More environment for the worker (a fake model for the judge, say). */
   workerEnv?: Record<string, string>;
+  /** More environment for every process (the receipt signing key, say). */
+  env?: Record<string, string>;
 }
 
 export async function startStack(opts: StackOptions = {}): Promise<Stack> {
@@ -261,6 +263,7 @@ export async function startStack(opts: StackOptions = {}): Promise<Stack> {
       MEMAX_ENV: "dev",
       REDIS_URL: "",
       APP_BASE_URL: "https://memax.app",
+      ...opts.env,
     };
     execFileSync(join(bin, "migrate"), {
       env: { ...env, MIGRATIONS_DIR: join(SERVER, "migrations") },

@@ -99,6 +99,20 @@ export function createSdkMemories(
   }
 
   return {
+    async exportSpace({ space, idempotencyKey, signal }) {
+      const got = await client.v2.spaces.export(space.slug, {
+        idempotencyKey,
+        signal,
+      });
+      return {
+        blob: new Blob([new Uint8Array(got.bytes)], {
+          type: "application/zip",
+        }),
+        filename: got.filename,
+        receipt: got.receipt,
+      };
+    },
+
     async list({ space, filter, cursor, signal }) {
       const page = await client.v2.memories.list(space.slug, {
         state: FILTER_STATES[filter],

@@ -1,4 +1,4 @@
--- 046: v2_dream
+-- 047: v2_dream
 --
 -- Dream editions (plan 25 §5.10, Phase 2 epic 2.2). Dream is the
 -- overnight upkeep of a space, done in the open: each run is an edition
@@ -67,7 +67,7 @@
 -- receipts_action_check gains published (an edition) and folded (notes
 -- folded into a memory as lineage). flagged, merged, proposed, faded,
 -- restored, revised and undid were already there. The list keeps every
--- verb 028, 029, 031, 035, 036, 042 and 044 admit.
+-- verb 028, 029, 031, 035, 036, 042, 044 and 046 admit.
 
 -- ---------------------------------------------------------------------
 -- Receipt actions
@@ -83,6 +83,7 @@ ALTER TABLE v2.receipts ADD CONSTRAINT receipts_action_check CHECK (action IN
      'asked', 'withdrawn',
      'returned', 'drafted',
      'purged', 'forget_requested', 'forget_declined',
+     'exported',
      'published', 'folded'));
 
 -- What changed in a space since a time: Dream's input check, and the

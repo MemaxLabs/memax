@@ -345,6 +345,10 @@ const (
 	ActionUndoDream      Action = "undo_dream"      // a person undoes one of an edition's actions
 	ActionRestore        Action = "restore"         // a person brings a faded memory back
 	ActionRunDream       Action = "run_dream"       // a space's owner asks Dream to run now
+	// Export (plan 25 §7.2, epic 2.4): a person takes a space's whole record
+	// (`memax export`, Memories' Export as Markdown). It changes nothing and
+	// writes one receipt, exported; decided here for who may.
+	ActionExport Action = "export"
 )
 
 // FreeAskLimit is how many asks a month Free answers (D9: "Ask 50/mo").
@@ -531,6 +535,8 @@ const (
 	// Dream; all refusals.
 	CodeDreamByDream    = "dream_by_dream"     // only Dream publishes editions
 	CodeDreamRunByOwner = "dream_run_by_owner" // only the space's owner asks Dream to run now
+	// Export; a refusal.
+	CodeExportByPerson = "export_by_person" // agents read the record over MCP; export is for people
 
 	// Changes to agent connections (DecideConnection); all refusals.
 	CodePersonMustManage   = "person_must_manage"
@@ -649,6 +655,8 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideKeep(a, o, s)
 	case ActionRunDream:
 		return decideRunDream(a, s)
+	case ActionExport:
+		return decideExport(a, s)
 	}
 	return refuse(CodeUnknownAction, fmt.Sprintf("Memax doesn't know how to %q.", act))
 }
@@ -678,6 +686,19 @@ func decideAsk(a Actor, o Object) Decision {
 		return refuse(CodeAskLimit, fmt.Sprintf(
 			"You've asked %d questions this month, all your plan answers. Asks start again on the 1st; Pro answers as many as you like.",
 			o.AskLimit))
+	}
+	return apply()
+}
+
+// decideExport: a person who may read the space exports it, any role (a
+// viewer reads the whole record too), on every plan (D9). Agents and API
+// keys don't: they read the record over MCP, and an export is a person's
+// copy of their record, with its receipt naming who took it.
+func decideExport(a Actor, s Space) Decision {
+	if a.Kind != ActorPerson || a.Credential != CredentialSession {
+		return refuse(CodeExportByPerson, fmt.Sprintf(
+			"Only a signed-in person exports %s. Agents read the record over MCP with memax_recall and memax_search.",
+			spaceName(s)))
 	}
 	return apply()
 }

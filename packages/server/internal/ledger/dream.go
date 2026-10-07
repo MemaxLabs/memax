@@ -74,7 +74,7 @@ const (
 	DreamManual    DreamTrigger = "manual"   // its owner asked Dream to run now
 )
 
-// Dream's receipt verbs and object kind (migration 046).
+// Dream's receipt verbs and object kind (migration 047).
 const (
 	ActionPublished Action = "published" // an edition
 	ActionFolded    Action = "folded"    // notes folded into a memory as lineage

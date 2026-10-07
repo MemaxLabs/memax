@@ -77,6 +77,30 @@ export type {
   ChainCrypto,
   VerifyChainInput,
 } from "./v2/verify.js";
+export {
+  EXPORT_FORMAT,
+  ExportFormatError,
+  parseExport,
+  parseFrontmatter,
+  parseReceipts,
+  splitDocument,
+  verifyExport,
+} from "./v2/export.js";
+export type {
+  ExportFiles,
+  ExportManifest,
+  ExportManifestFile,
+  ExportCheckpoints,
+  ExportReceiptStamp,
+  ExportedMemory,
+  ExportedTombstone,
+  ExportedBrief,
+  ParsedExport,
+  ExportProblem,
+  ExportProblemKind,
+  ExportReport,
+  VerifyExportInput,
+} from "./v2/export.js";
 export type {
   CommandOptions as V2CommandOptions,
   MemoryRefOptions as V2MemoryRefOptions,
@@ -91,6 +115,7 @@ export type {
   GateRefOptions as V2GateRefOptions,
   GateCommandOptions as V2GateCommandOptions,
   AskOptions as V2AskOptions,
+  SpaceExport as V2SpaceExport,
 } from "./v2/resources.js";
 export type {
   // Config

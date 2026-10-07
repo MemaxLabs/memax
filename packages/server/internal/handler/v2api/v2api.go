@@ -54,6 +54,8 @@ type Handler struct {
 	asker *ask.Service
 	// dream queues run-now (dream.go); nil answers 503 there.
 	dream *dreamDeps
+	// exports rate-limits exports (export.go).
+	exports exportLimiter
 	// devices confirms the CLI's device codes (device.go); nil answers
 	// 503. deviceMisses slows down guessing codes.
 	devices      *deviceauth.Store
@@ -102,6 +104,7 @@ var routes = []Route{
 	{"GET", "/v2/spaces", "listSpaces", (*Handler).listSpaces},
 	{"POST", "/v2/spaces", "createSpace", (*Handler).createSpace},
 	{"POST", "/v2/spaces/{space}:switch", "switchSpace", (*Handler).switchSpace},
+	{"POST", "/v2/spaces/{space}:export", "exportSpace", (*Handler).exportSpace},
 	{"POST", "/v2/spaces/{space}/memories", "rememberMemory", (*Handler).remember},
 	{"GET", "/v2/spaces/{space}/memories", "listMemories", (*Handler).listMemories},
 	{"POST", "/v2/spaces/{space}/memories:near-duplicates", "findNearDuplicates", (*Handler).findNearDuplicates},

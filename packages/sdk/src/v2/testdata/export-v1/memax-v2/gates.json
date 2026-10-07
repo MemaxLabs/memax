@@ -1,0 +1,70 @@
+{
+  "format": "memax.gates.v1",
+  "note": "A waiting gate keeps its stored status; it has expired once expires_at is past.",
+  "gates": [
+    {
+      "id": "0199a1b2-c3d4-7e5f-8a9b-000000000201",
+      "ref": "G-0001",
+      "space_id": "0199a1b2-c3d4-7e5f-8a9b-000000000001",
+      "tenant_id": "0199a1b2-c3d4-7e5f-8a9b-000000000002",
+      "question": "River or Temporal for background jobs?",
+      "context": "Both are fine; River keeps one database.",
+      "options": [
+        {
+          "label": "Temporal"
+        },
+        {
+          "label": "River",
+          "detail": "Postgres"
+        }
+      ],
+      "status": "answered",
+      "expires_at": "2026-10-13T09:30:00.123456Z",
+      "asked_by": "0199a1b2-c3d4-7e5f-8a9b-000000000004",
+      "agent": "codex",
+      "session_ref": "cx-7f3a",
+      "needs_web": false,
+      "answer": {
+        "option": 2,
+        "label": "River",
+        "memory": {
+          "id": "0199a1b2-c3d4-7e5f-8a9b-000000000101",
+          "ref": "M-0001"
+        },
+        "answered_by": "0199a1b2-c3d4-7e5f-8a9b-000000000003",
+        "answered_at": "2026-10-06T09:30:00.123456Z",
+        "assurance": "human_web"
+      },
+      "version": 2,
+      "created_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000000402",
+      "last_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000000405",
+      "created_at": "2026-10-06T09:29:00.123456Z",
+      "updated_at": "2026-10-06T09:30:00.123456Z"
+    },
+    {
+      "id": "0199a1b2-c3d4-7e5f-8a9b-000000000202",
+      "ref": "G-0002",
+      "space_id": "0199a1b2-c3d4-7e5f-8a9b-000000000001",
+      "tenant_id": "0199a1b2-c3d4-7e5f-8a9b-000000000002",
+      "question": "Fly.io in iad or ams?",
+      "options": [
+        {
+          "label": "iad"
+        },
+        {
+          "label": "ams"
+        }
+      ],
+      "status": "waiting",
+      "expires_at": "2026-10-13T09:30:00.123456Z",
+      "asked_by": "0199a1b2-c3d4-7e5f-8a9b-000000000004",
+      "agent": "codex",
+      "needs_web": false,
+      "version": 1,
+      "created_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000000412",
+      "last_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000000412",
+      "created_at": "2026-10-06T09:39:00.123456Z",
+      "updated_at": "2026-10-06T09:39:00.123456Z"
+    }
+  ]
+}

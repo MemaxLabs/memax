@@ -1,0 +1,62 @@
+{
+  "format": "memax.checkpoints.v1",
+  "space_id": "0199a1b2-c3d4-7e5f-8a9b-000000000001",
+  "seal": {
+    "sealed_receipts": 13,
+    "sealed_through_seq": 13,
+    "sealed_through_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-00000000040d",
+    "head_sha256": "59064159136fb40ef37fccda8f1ab7569642aa30f0f0df49b6b06d5781a79266",
+    "checkpoints": 2,
+    "sealed_at": "2026-10-06T09:36:01.135456Z",
+    "unsealed": 5
+  },
+  "keys": [
+    {
+      "key_id": "ed25519:dbc298251c51321b",
+      "algorithm": "ed25519",
+      "public_key": "/RckOFqgx1tk+3jNYC+h2ZH96/drE8WO1wLqyDXp9hg="
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "0199a1b2-c3d4-7e5f-8a9b-000000000800",
+      "space_id": "0199a1b2-c3d4-7e5f-8a9b-000000000001",
+      "tenant_id": "0199a1b2-c3d4-7e5f-8a9b-000000000002",
+      "number": 1,
+      "position_from": 1,
+      "position_to": 6,
+      "receipts": 6,
+      "first_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000000401",
+      "last_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000000406",
+      "last_seq": 6,
+      "prev_sha256": "44d3ea22f2baa652614778124f598db29158a4ff1c92832bef43833e5cd524df",
+      "chain_sha256": "d4e9a376199cb2e2b66628f3aad9a2e6a95e060e45740be1f3681dc9832a4601",
+      "merkle_root": "da1132be85de4485ede91767762c43b7e3313cfc528ed0efdaa73176928496d2",
+      "format": 1,
+      "signed": true,
+      "key_id": "ed25519:dbc298251c51321b",
+      "signature": "nfhYLy/xjGdzGl1WZWaQNJWDgd8Nu8U26SU9tpLlMSG48nnoAbzOeUPTIzfUe0oqWX04l+N4NuHsaxQ2L7XUDQ==",
+      "sealed_at": "2026-10-06T09:30:01.128456Z"
+    },
+    {
+      "id": "0199a1b2-c3d4-7e5f-8a9b-000000000801",
+      "space_id": "0199a1b2-c3d4-7e5f-8a9b-000000000001",
+      "tenant_id": "0199a1b2-c3d4-7e5f-8a9b-000000000002",
+      "number": 2,
+      "position_from": 7,
+      "position_to": 13,
+      "receipts": 7,
+      "first_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000000407",
+      "last_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-00000000040d",
+      "last_seq": 13,
+      "prev_sha256": "d4e9a376199cb2e2b66628f3aad9a2e6a95e060e45740be1f3681dc9832a4601",
+      "chain_sha256": "59064159136fb40ef37fccda8f1ab7569642aa30f0f0df49b6b06d5781a79266",
+      "merkle_root": "393e488cf1982ba206eeccb931fe0c5c1f925b4cfeccb75cd16df90e676974e7",
+      "format": 1,
+      "signed": true,
+      "key_id": "ed25519:dbc298251c51321b",
+      "signature": "5p1Py4Y6NaZVuLhr+KYX+8Az4B71etkqTFIu3wlAxuFKr6/GxdKlWRIVymQfYhTyQEs2Hn4J/QeFBAiu3l0fAg==",
+      "sealed_at": "2026-10-06T09:36:01.135456Z"
+    }
+  ]
+}

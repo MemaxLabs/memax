@@ -8,12 +8,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/riverqueue/river"
-	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/queue"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream/dreamtest"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
@@ -56,7 +55,9 @@ type dreamEnv struct {
 func newDreamEnv(t *testing.T) *dreamEnv {
 	t.Helper()
 	e := newEnvWith(t, func(e *env) []v2api.Option {
-		jobs, err := river.NewClient(riverpgxv5.New(e.pool), &river.Config{Logger: quiet})
+		// The API's own insert-only client (its workers bundle), as
+		// serverapp wires it: a kind it doesn't register fails run now.
+		jobs, err := queue.InsertClient(e.pool)
 		if err != nil {
 			t.Fatal(err)
 		}

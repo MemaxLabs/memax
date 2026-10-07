@@ -191,7 +191,7 @@ func main() {
 // drop them (TestCORSCoversTheV2Contract).
 const (
 	corsAllowHeaders  = "Content-Type, Authorization, X-Hub-ID, X-Timezone, Mcp-Session-Id, Idempotency-Key, If-Match, X-Memax-Via"
-	corsExposeHeaders = "Mcp-Session-Id, WWW-Authenticate, ETag, Location, Idempotent-Replayed, Retry-After"
+	corsExposeHeaders = "Mcp-Session-Id, WWW-Authenticate, ETag, Location, Idempotent-Replayed, Retry-After, Content-Disposition, X-Memax-Export-Receipt"
 )
 
 func corsMiddleware(next http.Handler) http.Handler {

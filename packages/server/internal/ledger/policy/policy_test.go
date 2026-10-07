@@ -518,6 +518,41 @@ func TestAskMatrix(t *testing.T) {
 	}
 }
 
+// TestExportMatrix: a signed-in person in the space exports it, at any
+// role and on any surface; agents, API keys and OAuth grants never do.
+func TestExportMatrix(t *testing.T) {
+	t.Parallel()
+	roles := []Role{RoleNone, RoleOwner, RoleMember, RoleViewer}
+	creds := []Credential{CredentialSession, CredentialOAuth, CredentialAPIKey}
+	banned := []string{"!", " AI", "magic", "smart", "delete", "Delete"}
+	for _, kind := range ActorKinds {
+		for _, role := range roles {
+			for _, cred := range creds {
+				for _, via := range Vias {
+					a := Actor{Kind: kind, Role: role, Credential: cred, Via: via, Autonomy: AutonomyWrite, AgentStatus: AgentConnected}
+					d := Decide(a, ActionExport, Object{}, team)
+					for _, b := range banned {
+						if strings.Contains(d.Message, b) {
+							t.Fatalf("message breaks the voice rules (%s): %s", b, d.Message)
+						}
+					}
+					member := role != RoleNone || (kind != ActorPerson && kind != ActorAgent)
+					want := kind == ActorPerson && cred == CredentialSession && member
+					if (d.Effect == EffectApply) != want {
+						t.Fatalf("%+v → %+v, want apply=%v", a, d, want)
+					}
+					if d.Effect != EffectApply && d.Effect != EffectRefuse {
+						t.Fatalf("%+v: export is applied or refused, got %+v", a, d)
+					}
+				}
+			}
+		}
+	}
+	if d := Decide(agent(RoleOwner, AutonomyWrite), ActionExport, Object{}, project); d.Code != CodeExportByPerson {
+		t.Errorf("agent: %+v", d)
+	}
+}
+
 func TestRules(t *testing.T) {
 	t.Parallel()
 	var zero Rules

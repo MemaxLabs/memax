@@ -1,0 +1,1008 @@
+{
+  "version": 1,
+  "description": "Labelled import batches for the import conflict check (plan 25 §11, Import cleanup). Each batch is one import as `memax init` sends it: the statements its agent files split into, file by file in init's order, each with its file:line, the headings above it (under) and its file's kind, which sets its trust. conflicts are the planted disagreements (members must all be in one group; also may join it), traps are statements that look alike but don't disagree. Labelling rules are in RESULTS.md.",
+  "batches": [
+    {
+      "id": "acme-payments",
+      "space": "project",
+      "about": "A card-payments API in TypeScript on Node and Postgres; the e2e-init fixture, grown.",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "kind": "agents_md",
+          "statements": [
+            { "line": 3, "under": "Acme payments", "text": "Acme payments is the card-payments API behind the Acme checkout: a TypeScript service on Node with Postgres." },
+            { "line": 5, "under": "Acme payments", "text": "Run tests with `make test`." },
+            { "line": 6, "under": "Acme payments", "text": "Handlers return errors as JSON with a `code` field." },
+            { "line": 7, "under": "Acme payments", "text": "Deploys go out from the `release` branch, never from `main`." },
+            { "line": 8, "under": "Acme payments", "text": "Use Node 20 LTS." },
+            { "line": 9, "under": "Acme payments", "text": "Amounts are stored as integer minor units (cents), never as floats." },
+            { "line": 10, "under": "Acme payments", "text": "One migration per file, in `migrations/`, named with a timestamp prefix." },
+            { "line": 11, "under": "Acme payments", "text": "Webhook deliveries retry after 1 s, 5 s and 30 s, then give up." },
+            { "line": 12, "under": "Acme payments", "text": "Never log card numbers or CVCs; log the last four digits at most." },
+            { "line": 13, "under": "Acme payments", "text": "Every endpoint checks the merchant's API scope before doing anything else." },
+            { "line": 14, "under": "Acme payments", "text": "List endpoints return 50 items by default." }
+          ]
+        },
+        {
+          "path": "CLAUDE.md",
+          "kind": "claude_md",
+          "statements": [
+            { "line": 5, "under": "Acme payments › Commands", "text": "Run tests with `pnpm test`." },
+            { "line": 6, "under": "Acme payments › Commands", "text": "Use pnpm workspaces; never run `npm install` at the root." },
+            { "line": 7, "under": "Acme payments › Commands", "text": "`pnpm dev` starts the API on port 4000 with a local Postgres from Docker Compose." },
+            { "line": 8, "under": "Acme payments › Commands", "text": "The `.nvmrc` pins Node 22; use it." },
+            { "line": 12, "under": "Acme payments › Conventions", "text": "Handlers return errors as JSON with a `code` field." },
+            { "line": 13, "under": "Acme payments › Conventions", "text": "Error codes are snake_case and listed in `src/errors.ts`." },
+            { "line": 14, "under": "Acme payments › Conventions", "text": "Every migration lives in its own file under `migrations/`." },
+            { "line": 15, "under": "Acme payments › Conventions", "text": "Store amounts in `NUMERIC(12,2)` columns." },
+            { "line": 16, "under": "Acme payments › Conventions", "text": "Requests to the card processor time out after 5 s." },
+            { "line": 17, "under": "Acme payments › Conventions", "text": "Never use `any`; use `unknown` and narrow it." },
+            { "line": 18, "under": "Acme payments › Conventions", "text": "Merging to `main` deploys to production." },
+            { "line": 19, "under": "Acme payments › Conventions", "text": "Validate request bodies with `zod`." },
+            { "line": 20, "under": "Acme payments › Conventions", "text": "Every POST takes an `Idempotency-Key` header." },
+            { "line": 21, "under": "Acme payments › Conventions", "text": "Retry failed webhook deliveries with exponential backoff for up to 24 hours." },
+            { "line": 22, "under": "Acme payments › Conventions", "text": "Clients can ask for up to 200 items with `limit`." },
+            { "line": 26, "under": "Acme payments › Decisions", "text": "Stripe is the only card processor; Adyen was dropped in 2025." },
+            { "line": 27, "under": "Acme payments › Decisions", "text": "We use Postgres advisory locks for payouts instead of a job queue." }
+          ]
+        },
+        {
+          "path": ".cursor/rules/testing.mdc",
+          "kind": "cursor_rule",
+          "globs": ["src/**/*.test.ts"],
+          "statements": [
+            { "line": 7, "text": "Name each test file after the module it tests." },
+            { "line": 8, "text": "Prefer table-driven tests over one test per case." },
+            { "line": 9, "text": "In tests, `as any` is fine for partial fixtures of large objects." },
+            { "line": 10, "text": "Use the fake clock (`vi.useFakeTimers()`) for anything with retries or timeouts." },
+            { "line": 11, "text": "Hit the real Postgres from Docker Compose; never mock the database." }
+          ]
+        }
+      ],
+      "conflicts": [
+        { "id": "acme-test", "subject": "test", "members": ["AGENTS.md:5", "CLAUDE.md:5"], "note": "make test against pnpm test." },
+        { "id": "acme-node", "subject": "version", "hinge": "version", "members": ["AGENTS.md:8", "CLAUDE.md:8"], "note": "Node 20 against Node 22." },
+        { "id": "acme-deploy", "subject": "deploy", "members": ["AGENTS.md:7", "CLAUDE.md:18"], "note": "release, never main, against main deploys." },
+        { "id": "acme-amounts", "subject": "data", "members": ["AGENTS.md:9", "CLAUDE.md:15"], "note": "Integer cents against NUMERIC(12,2)." },
+        { "id": "acme-webhooks", "subject": "other", "hinge": "number", "members": ["AGENTS.md:11", "CLAUDE.md:21"], "note": "Three retries within a minute against up to 24 hours." }
+      ],
+      "traps": [
+        { "id": "acme-any", "trap": "scope", "members": ["CLAUDE.md:17", ".cursor/rules/testing.mdc:9"], "note": "A rule for test files carves out an exception." },
+        { "id": "acme-error-codes", "trap": "complementary", "members": ["AGENTS.md:6", "CLAUDE.md:13"], "note": "The error body has a code; the codes are snake_case." },
+        { "id": "acme-migrations", "trap": "repeat", "members": ["AGENTS.md:10", "CLAUDE.md:14"], "note": "One migration a file, with a detail more." },
+        { "id": "acme-page-size", "trap": "number", "members": ["AGENTS.md:14", "CLAUDE.md:22"], "note": "50 by default, up to 200 when asked." }
+      ]
+    },
+    {
+      "id": "ledgerline",
+      "space": "project",
+      "about": "A double-entry ledger service in Go, with a separate tools module.",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "kind": "agents_md",
+          "statements": [
+            { "line": 3, "under": "Ledgerline", "text": "Ledgerline is the double-entry ledger service behind our billing: a Go HTTP API over Postgres." },
+            { "line": 7, "under": "Ledgerline › Build and test", "text": "Requires Go 1.22." },
+            { "line": 8, "under": "Ledgerline › Build and test", "text": "`make build` builds `bin/ledgerline`." },
+            { "line": 9, "under": "Ledgerline › Build and test", "text": "Run tests with `go test ./...`; the integration tests need `docker compose up -d postgres`." },
+            { "line": 10, "under": "Ledgerline › Build and test", "text": "`make lint` runs golangci-lint, and it must pass before merging." },
+            { "line": 11, "under": "Ledgerline › Build and test", "text": "Postgres 16 in every environment." },
+            { "line": 15, "under": "Ledgerline › Code", "text": "Use `log/slog` for structured logging." },
+            { "line": 16, "under": "Ledgerline › Code", "text": "Use `sqlc` for queries; never build SQL strings by hand." },
+            { "line": 17, "under": "Ledgerline › Code", "text": "Money is an `int64` count of minor units with a currency code; never `float64`." },
+            { "line": 18, "under": "Ledgerline › Code", "text": "Every exported function has a doc comment." },
+            { "line": 19, "under": "Ledgerline › Code", "text": "Errors go to clients as `{\"error\": \"message\"}` with the HTTP status." },
+            { "line": 20, "under": "Ledgerline › Code", "text": "Accept interfaces, return structs." },
+            { "line": 21, "under": "Ledgerline › Code", "text": "Context is the first parameter of every function that does I/O." },
+            { "line": 25, "under": "Ledgerline › The tools module", "text": "`tools/` is its own Go module: run `go test ./...` from inside `tools/`, because the root's `./...` skips it." },
+            { "line": 26, "under": "Ledgerline › The tools module", "text": "Pin tool versions in `tools/go.mod`." },
+            { "line": 30, "under": "Ledgerline › Decisions", "text": "Postings are immutable; a correction is a new reversing entry." },
+            { "line": 31, "under": "Ledgerline › Decisions", "text": "Balances are computed from postings and cached per account; the cache is never the source of truth." }
+          ]
+        },
+        {
+          "path": "CLAUDE.md",
+          "kind": "claude_md",
+          "statements": [
+            { "line": 5, "under": "Ledgerline › Commands", "text": "`make run` starts the API on :8080 against the local database." },
+            { "line": 6, "under": "Ledgerline › Commands", "text": "Regenerate the queries with `make sqlc` after changing `query.sql`." },
+            { "line": 7, "under": "Ledgerline › Commands", "text": "The CI database is `postgres:16-alpine`." },
+            { "line": 11, "under": "Ledgerline › Style", "text": "Wrap errors with `fmt.Errorf(\"...: %w\", err)` and check them with `errors.Is` and `errors.As`." },
+            { "line": 12, "under": "Ledgerline › Style", "text": "Log with zerolog; the logger comes from the request context." },
+            { "line": 13, "under": "Ledgerline › Style", "text": "Don't use `init()` functions." },
+            { "line": 14, "under": "Ledgerline › Style", "text": "Write table-driven tests with `t.Run`, and call `t.Parallel()` where the test allows it." },
+            { "line": 15, "under": "Ledgerline › Style", "text": "Keep packages small and named for what they provide, never `util` or `common`." },
+            { "line": 16, "under": "Ledgerline › Style", "text": "Never panic in a request handler; return an error." }
+          ]
+        },
+        {
+          "path": ".github/copilot-instructions.md",
+          "kind": "copilot_instructions",
+          "statements": [
+            { "line": 3, "under": "Copilot: Ledgerline", "text": "Use Go 1.23 features such as range-over-func iterators where they make code clearer." },
+            { "line": 4, "under": "Copilot: Ledgerline", "text": "Error responses are `{\"code\": \"...\", \"message\": \"...\"}`." },
+            { "line": 5, "under": "Copilot: Ledgerline", "text": "Don't add golangci-lint configuration; the project uses `go vet` and `staticcheck` only." },
+            { "line": 6, "under": "Copilot: Ledgerline", "text": "Avoid `init()`; set things up explicitly in `main`." },
+            { "line": 7, "under": "Copilot: Ledgerline", "text": "Keep lines under 120 characters." },
+            { "line": 8, "under": "Copilot: Ledgerline", "text": "Prefer the standard library's `net/http` router to third-party routers." },
+            { "line": 9, "under": "Copilot: Ledgerline", "text": "Use `testify/require` in tests only where it removes boilerplate." }
+          ]
+        },
+        {
+          "path": ".windsurf/rules/go.md",
+          "kind": "windsurf_rule",
+          "statements": [
+            { "line": 3, "under": "Go rules", "text": "Wrap errors with `github.com/pkg/errors` (`errors.Wrap`) so they carry a stack trace." },
+            { "line": 4, "under": "Go rules", "text": "Use zap's sugared logger." },
+            { "line": 5, "under": "Go rules", "text": "Keep functions under 60 lines." },
+            { "line": 6, "under": "Go rules", "text": "Name receivers with one or two letters, the same for every method of a type." },
+            { "line": 7, "under": "Go rules", "text": "Return early; avoid `else` after a `return`." }
+          ]
+        }
+      ],
+      "conflicts": [
+        { "id": "ledger-go", "subject": "version", "hinge": "version", "members": ["AGENTS.md:7", ".github/copilot-instructions.md:3"], "note": "Go 1.22 can't build range-over-func iterators." },
+        { "id": "ledger-errors", "subject": "error_format", "members": ["AGENTS.md:19", ".github/copilot-instructions.md:4"], "note": "Two error bodies." },
+        { "id": "ledger-lint", "subject": "lint", "members": ["AGENTS.md:10", ".github/copilot-instructions.md:5"], "note": "golangci-lint must pass, against go vet and staticcheck only." },
+        { "id": "ledger-logging", "subject": "architecture", "members": ["AGENTS.md:15", "CLAUDE.md:12", ".windsurf/rules/go.md:4"], "note": "slog, zerolog or zap: three-way." },
+        { "id": "ledger-wrapping", "subject": "style", "members": ["CLAUDE.md:11", ".windsurf/rules/go.md:3"], "note": "fmt.Errorf with %w against pkg/errors." }
+      ],
+      "traps": [
+        { "id": "ledger-tools", "trap": "scope", "members": ["AGENTS.md:9", "AGENTS.md:25"], "note": "tools/ is its own module; the root's command doesn't reach it." },
+        { "id": "ledger-sqlc", "trap": "complementary", "members": ["AGENTS.md:16", "CLAUDE.md:6"], "note": "Use sqlc; regenerate after changing the queries." },
+        { "id": "ledger-init", "trap": "repeat", "members": ["CLAUDE.md:13", ".github/copilot-instructions.md:6"], "note": "No init() in both." },
+        { "id": "ledger-postgres", "trap": "version", "members": ["AGENTS.md:11", "CLAUDE.md:7"], "note": "postgres:16-alpine is Postgres 16." },
+        { "id": "ledger-limits", "trap": "number", "members": [".github/copilot-instructions.md:7", ".windsurf/rules/go.md:5"], "note": "120 characters a line, 60 lines a function." }
+      ]
+    },
+    {
+      "id": "orbit",
+      "space": "project",
+      "about": "A TypeScript monorepo (web, API, mobile, shared packages) whose agent files grew apart: over 120 statements, so the check runs in more than one batch at the default size.",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "kind": "agents_md",
+          "statements": [
+            { "line": 3, "under": "Orbit", "text": "Orbit books group travel for companies: a Next.js web app, a Hono API, an Expo mobile app and shared packages, in one monorepo." },
+            { "line": 7, "under": "Orbit › Repository layout", "text": "`packages/web`: the Next.js 16 app (App Router)." },
+            { "line": 8, "under": "Orbit › Repository layout", "text": "`packages/api`: the Hono API, deployed as a container on Fly.io." },
+            { "line": 9, "under": "Orbit › Repository layout", "text": "`packages/mobile`: the Expo app for iOS and Android." },
+            { "line": 10, "under": "Orbit › Repository layout", "text": "`packages/shared`: zod schemas and types shared by the API, the web app and the mobile app." },
+            { "line": 11, "under": "Orbit › Repository layout", "text": "`packages/ui`: the design system, published internally as `@orbit/ui`." },
+            { "line": 12, "under": "Orbit › Repository layout", "text": "`infra/`: Pulumi programs for AWS." },
+            { "line": 16, "under": "Orbit › Setup", "text": "Use Node 22; `.nvmrc` pins it." },
+            { "line": 17, "under": "Orbit › Setup", "text": "Use pnpm; never run `npm install` or `yarn` in this repository." },
+            { "line": 18, "under": "Orbit › Setup", "text": "Run `pnpm install` at the root; internal packages depend on each other with `workspace:*`." },
+            { "line": 19, "under": "Orbit › Setup", "text": "Copy `.env.example` to `.env.local` in each package that has one." },
+            { "line": 20, "under": "Orbit › Setup", "text": "Never commit secrets; `.env.local` is ignored by git." },
+            { "line": 21, "under": "Orbit › Setup", "text": "Start everything with `pnpm dev`, which runs every package's dev script through Turborepo." },
+            { "line": 22, "under": "Orbit › Setup", "text": "Docker Desktop must be running for the API's local Postgres." },
+            { "line": 26, "under": "Orbit › Commands", "text": "`pnpm build` builds every package with Turborepo's cache." },
+            { "line": 27, "under": "Orbit › Commands", "text": "Lint with `pnpm lint`, which runs ESLint's flat config across the workspace." },
+            { "line": 28, "under": "Orbit › Commands", "text": "`pnpm typecheck` runs `tsc --noEmit` in every package." },
+            { "line": 29, "under": "Orbit › Commands", "text": "Unit tests run on Vitest: `pnpm test` at the root, or `pnpm --filter <package> test`." },
+            { "line": 30, "under": "Orbit › Commands", "text": "End-to-end tests use Playwright: `pnpm test:e2e`, against a production build." },
+            { "line": 31, "under": "Orbit › Commands", "text": "Coverage must stay above 80% of lines in `packages/api` and `packages/shared`." },
+            { "line": 32, "under": "Orbit › Commands", "text": "`pnpm db:migrate` applies the API's migrations to the local database." },
+            { "line": 33, "under": "Orbit › Commands", "text": "`pnpm db:studio` opens Drizzle Studio on the local database." },
+            { "line": 37, "under": "Orbit › TypeScript", "text": "TypeScript 5.6 with `strict` on, plus `noUncheckedIndexedAccess`." },
+            { "line": 38, "under": "Orbit › TypeScript", "text": "Never use default exports; use named exports." },
+            { "line": 39, "under": "Orbit › TypeScript", "text": "Never use `any`: use `unknown`, then narrow it." },
+            { "line": 40, "under": "Orbit › TypeScript", "text": "Use `import type` for imports that are only types." },
+            { "line": 41, "under": "Orbit › TypeScript", "text": "Use `zod` for runtime validation at every boundary." },
+            { "line": 42, "under": "Orbit › TypeScript", "text": "Prefer `function` declarations at the top level and arrow functions for callbacks." },
+            { "line": 43, "under": "Orbit › TypeScript", "text": "Don't use enums; use unions of string literals." },
+            { "line": 44, "under": "Orbit › TypeScript", "text": "Keep modules small; a file over 300 lines is a sign it does too much." },
+            { "line": 48, "under": "Orbit › API (`packages/api`)", "text": "Routes live in `packages/api/src/routes`, one file per resource." },
+            { "line": 49, "under": "Orbit › API (`packages/api`)", "text": "List endpoints take `page` and `per_page` query parameters." },
+            { "line": 50, "under": "Orbit › API (`packages/api`)", "text": "Every route has an integration test that hits a real Postgres through Testcontainers." },
+            { "line": 51, "under": "Orbit › API (`packages/api`)", "text": "Database access uses Drizzle ORM; generate migrations with `drizzle-kit generate`." },
+            { "line": 52, "under": "Orbit › API (`packages/api`)", "text": "Background work runs on pg-boss queues in `packages/api/src/jobs`." },
+            { "line": 53, "under": "Orbit › API (`packages/api`)", "text": "Times are stored in UTC and sent as ISO 8601 strings." },
+            { "line": 54, "under": "Orbit › API (`packages/api`)", "text": "Health checks answer on `/healthz` without touching the database." },
+            { "line": 55, "under": "Orbit › API (`packages/api`)", "text": "Rate limits are per API key, enforced in the gateway middleware." },
+            { "line": 59, "under": "Orbit › Web (`packages/web`)", "text": "Fetch data in server components; client components get their data through props." },
+            { "line": 60, "under": "Orbit › Web (`packages/web`)", "text": "Use TanStack Query only in client components that poll or paginate." },
+            { "line": 61, "under": "Orbit › Web (`packages/web`)", "text": "Styles are CSS modules plus the tokens from `@orbit/ui`; no Tailwind." },
+            { "line": 62, "under": "Orbit › Web (`packages/web`)", "text": "Every page exports `metadata` with a title and a description." },
+            { "line": 63, "under": "Orbit › Web (`packages/web`)", "text": "Import UI components from `@orbit/ui`, never from `packages/web/components/legacy`." },
+            { "line": 64, "under": "Orbit › Web (`packages/web`)", "text": "Strings go through `next-intl`; English and German are required." },
+            { "line": 65, "under": "Orbit › Web (`packages/web`)", "text": "Track product events with the `track()` helper, never by calling PostHog directly." },
+            { "line": 69, "under": "Orbit › Mobile (`packages/mobile`)", "text": "Build the app locally with `npx expo run:ios` or `npx expo run:android`; we don't use EAS." },
+            { "line": 70, "under": "Orbit › Mobile (`packages/mobile`)", "text": "Use Jest here; Expo's preset doesn't support Vitest." },
+            { "line": 71, "under": "Orbit › Mobile (`packages/mobile`)", "text": "Navigation uses Expo Router." },
+            { "line": 72, "under": "Orbit › Mobile (`packages/mobile`)", "text": "Share validation with the API through `@orbit/shared`." },
+            { "line": 76, "under": "Orbit › Infrastructure (`infra/`)", "text": "Pulumi previews run on every pull request that touches `infra/`." },
+            { "line": 77, "under": "Orbit › Infrastructure (`infra/`)", "text": "Every AWS resource is tagged with `service` and `env`." },
+            { "line": 78, "under": "Orbit › Infrastructure (`infra/`)", "text": "Never change production stacks from a laptop; CI applies them." },
+            { "line": 82, "under": "Orbit › Deploys", "text": "Merging to `main` deploys the API and the web app to production." },
+            { "line": 83, "under": "Orbit › Deploys", "text": "Feature flags live in LaunchDarkly; new features ship dark." },
+            { "line": 84, "under": "Orbit › Deploys", "text": "Database migrations run before the new API version starts, and must work with the previous version." },
+            { "line": 88, "under": "Orbit › Pull requests", "text": "Keep pull requests small, one concern each." },
+            { "line": 89, "under": "Orbit › Pull requests", "text": "Every bug fix adds a test that fails without the fix." },
+            { "line": 90, "under": "Orbit › Pull requests", "text": "The pull request description says how it was tested." },
+            { "line": 91, "under": "Orbit › Pull requests", "text": "Rebase on `main` before asking for review; don't merge `main` into your branch." },
+            { "line": 95, "under": "Orbit › Decisions", "text": "We chose Hono over Express for the API because it runs on Node and on Workers." },
+            { "line": 96, "under": "Orbit › Decisions", "text": "We chose Drizzle over Prisma to keep the SQL visible." },
+            { "line": 97, "under": "Orbit › Decisions", "text": "Postgres is the only datastore; no Redis until the API needs a cache." },
+            { "line": 101, "under": "Orbit › Open questions", "text": "Should the mobile app move to the API's v2 endpoints before launch?" },
+            { "line": 102, "under": "Orbit › Open questions", "text": "Do we keep LaunchDarkly after the trial ends?" }
+          ]
+        },
+        {
+          "path": "CLAUDE.md",
+          "kind": "claude_md",
+          "statements": [
+            { "line": 5, "under": "Orbit › Commands", "text": "`pnpm dev` starts the web app on port 3000 and the API on port 8787." },
+            { "line": 6, "under": "Orbit › Commands", "text": "`pnpm test` runs the unit tests; `pnpm test:e2e` runs Playwright." },
+            { "line": 7, "under": "Orbit › Commands", "text": "Biome replaced ESLint and Prettier; run `pnpm biome check --write`." },
+            { "line": 8, "under": "Orbit › Commands", "text": "Run `pnpm openapi` after changing a route, to regenerate `packages/api/openapi.json`." },
+            { "line": 9, "under": "Orbit › Commands", "text": "Add a changeset (`pnpm changeset`) for every user-facing change." },
+            { "line": 10, "under": "Orbit › Commands", "text": "`pnpm storybook` runs the design system's Storybook on port 6006." },
+            { "line": 14, "under": "Orbit › Code style", "text": "Use `zod` for runtime validation at every boundary." },
+            { "line": 15, "under": "Orbit › Code style", "text": "Prefer server components; add `\"use client\"` only where state or effects need it." },
+            { "line": 16, "under": "Orbit › Code style", "text": "Use TypeScript 5.x features freely, such as `satisfies` and `const` type parameters." },
+            { "line": 17, "under": "Orbit › Code style", "text": "Errors thrown in route handlers are caught by the error middleware; don't catch them just to rethrow." },
+            { "line": 18, "under": "Orbit › Code style", "text": "Name booleans as questions: `isLoading`, `hasAccess`." },
+            { "line": 19, "under": "Orbit › Code style", "text": "Dates go through `date-fns`; never Moment." },
+            { "line": 20, "under": "Orbit › Code style", "text": "Avoid barrel files (an `index.ts` that re-exports everything); import from the module itself." },
+            { "line": 21, "under": "Orbit › Code style", "text": "Use early returns instead of nested conditionals." },
+            { "line": 22, "under": "Orbit › Code style", "text": "Prefer `Map` and `Set` to plain objects used as dictionaries." },
+            { "line": 26, "under": "Orbit › API", "text": "The v1 REST API is removed on 2026-12-01; build new endpoints under `/v2`." },
+            { "line": 27, "under": "Orbit › API", "text": "Auth uses session cookies from `better-auth`; never put JWTs in localStorage." },
+            { "line": 28, "under": "Orbit › API", "text": "Every write endpoint takes an `Idempotency-Key` header." },
+            { "line": 29, "under": "Orbit › API", "text": "Webhooks to customers are signed with HMAC-SHA256 and retried for 24 hours." },
+            { "line": 33, "under": "Orbit › Working with Claude", "text": "Read `docs/architecture.md` before changing how packages depend on each other." },
+            { "line": 34, "under": "Orbit › Working with Claude", "text": "Ask before adding a dependency to `packages/shared`." },
+            { "line": 35, "under": "Orbit › Working with Claude", "text": "Don't edit files under `packages/api/src/generated`." },
+            { "line": 36, "under": "Orbit › Working with Claude", "text": "When a test fails, read the failure before changing the test." },
+            { "line": 37, "under": "Orbit › Working with Claude", "text": "Run `pnpm typecheck` before saying a change is done." },
+            { "line": 38, "under": "Orbit › Working with Claude", "text": "Prefer editing existing files to creating new ones." }
+          ]
+        },
+        {
+          "path": ".claude/rules/api.md",
+          "kind": "claude_rule",
+          "globs": ["packages/api/**"],
+          "statements": [
+            { "line": 8, "under": "API rules", "text": "Errors are JSON: `{ \"error\": { \"code\": \"snake_case_code\", \"message\": \"...\" } }`." },
+            { "line": 9, "under": "API rules", "text": "Paginate list endpoints with `cursor` and `limit`; never offsets." },
+            { "line": 10, "under": "API rules", "text": "Request bodies may be up to 1 MB." },
+            { "line": 11, "under": "API rules", "text": "Every endpoint has an OpenAPI description generated from its zod schema." },
+            { "line": 12, "under": "API rules", "text": "Create endpoints return `201` with a `Location` header." },
+            { "line": 13, "under": "API rules", "text": "Read validated bodies with `c.req.valid('json')`, never `await c.req.json()`." },
+            { "line": 14, "under": "API rules", "text": "Log with the request logger (`c.var.log`), never `console.log`." },
+            { "line": 15, "under": "API rules", "text": "SQL goes through Drizzle's query builder; raw SQL only in migrations." },
+            { "line": 16, "under": "API rules", "text": "Every handler checks the caller's organization before reading a row." }
+          ]
+        },
+        {
+          "path": ".cursor/rules/tests.mdc",
+          "kind": "cursor_rule",
+          "globs": ["**/*.test.ts", "**/*.test.tsx"],
+          "statements": [
+            { "line": 7, "text": "Tests use Jest; mock modules with `jest.mock`." },
+            { "line": 8, "text": "Name tests after the behaviour: `it(\"rejects an expired token\")`." },
+            { "line": 9, "text": "One behaviour per test; several `expect`s are fine if they check that behaviour." },
+            { "line": 10, "text": "Build test data with the factories in `test/factories`, not object literals." },
+            { "line": 11, "text": "Never hit the network in unit tests; use MSW handlers." },
+            { "line": 12, "text": "`as any` is fine for partial fixtures in tests." }
+          ]
+        },
+        {
+          "path": ".cursor/rules/web.mdc",
+          "kind": "cursor_rule",
+          "globs": ["packages/web/**"],
+          "statements": [
+            { "line": 6, "text": "Component files are PascalCase: `UserCard.tsx`." },
+            { "line": 7, "text": "Components are server components unless they need interactivity." },
+            { "line": 8, "text": "Next.js pages and layouts use default exports, because the framework requires them." },
+            { "line": 9, "text": "Use `next/link` for internal links, never a bare `<a>`." },
+            { "line": 10, "text": "Put components used by one route next to it, in a `_components` folder." },
+            { "line": 11, "text": "Images go through `next/image` with an explicit width and height." },
+            { "line": 12, "text": "Forms use server actions with `useActionState`." },
+            { "line": 13, "text": "Every interactive element is reachable by keyboard and has a visible focus style." },
+            { "line": 14, "text": "Use `@orbit/ui`'s `Button`, never a styled `<button>`." }
+          ]
+        },
+        {
+          "path": ".github/copilot-instructions.md",
+          "kind": "copilot_instructions",
+          "statements": [
+            { "line": 3, "under": "Orbit: instructions for Copilot", "text": "This is a yarn workspace; add dependencies with `yarn workspace <name> add`." },
+            { "line": 4, "under": "Orbit: instructions for Copilot", "text": "Pushing a tag `vX.Y.Z` deploys production; `main` deploys to staging." },
+            { "line": 5, "under": "Orbit: instructions for Copilot", "text": "CI fails below 90% line coverage." },
+            { "line": 6, "under": "Orbit: instructions for Copilot", "text": "In `packages/web`, component files are kebab-case: `user-card.tsx`." },
+            { "line": 7, "under": "Orbit: instructions for Copilot", "text": "Changesets decide version bumps; don't edit `version` fields by hand." },
+            { "line": 8, "under": "Orbit: instructions for Copilot", "text": "File uploads go straight to S3 through presigned URLs, up to 50 MB each." },
+            { "line": 9, "under": "Orbit: instructions for Copilot", "text": "Releases go out every second Wednesday." },
+            { "line": 10, "under": "Orbit: instructions for Copilot", "text": "Prefer small pure functions; avoid classes except for errors." },
+            { "line": 11, "under": "Orbit: instructions for Copilot", "text": "Write JSDoc for exported functions in `packages/shared`." },
+            { "line": 12, "under": "Orbit: instructions for Copilot", "text": "Don't suggest Moment.js; the project uses `date-fns`." },
+            { "line": 13, "under": "Orbit: instructions for Copilot", "text": "Never edit generated files under `packages/api/src/generated` by hand." },
+            { "line": 14, "under": "Orbit: instructions for Copilot", "text": "Every image has `alt` text." },
+            { "line": 15, "under": "Orbit: instructions for Copilot", "text": "Suggest tests next to the code they test, as `*.test.ts`." }
+          ]
+        },
+        {
+          "path": ".github/instructions/mobile.instructions.md",
+          "kind": "copilot_scoped",
+          "globs": ["packages/mobile/**"],
+          "statements": [
+            { "line": 5, "text": "Build with EAS: `eas build --profile preview` for test builds." },
+            { "line": 6, "text": "Start the app with `npx expo start --dev-client`." },
+            { "line": 7, "text": "Use `expo-image` instead of React Native's `Image`." },
+            { "line": 8, "text": "Store tokens with `expo-secure-store`, never AsyncStorage." },
+            { "line": 9, "text": "Test gesture changes on a real iPhone before merging." }
+          ]
+        },
+        {
+          "path": "GEMINI.md",
+          "kind": "gemini_md",
+          "statements": [
+            { "line": 3, "under": "Orbit", "text": "Install dependencies with `npm install` at the root." },
+            { "line": 4, "under": "Orbit", "text": "The project runs on Node 20." },
+            { "line": 5, "under": "Orbit", "text": "API errors are plain-text bodies with the HTTP status code." },
+            { "line": 6, "under": "Orbit", "text": "v1 endpoints stay until the end of Q1 2027." },
+            { "line": 7, "under": "Orbit", "text": "The next release is on Wednesday, October 21, 2026." },
+            { "line": 8, "under": "Orbit", "text": "Secrets live in `.env.local` and must never be committed." },
+            { "line": 9, "under": "Orbit", "text": "The design system lives in `packages/ui`; check it before writing a new component." },
+            { "line": 10, "under": "Orbit", "text": "Prefer editing existing files to adding new ones." },
+            { "line": 11, "under": "Orbit", "text": "Explain the plan before a large refactor." },
+            { "line": 12, "under": "Orbit", "text": "Use the GitHub CLI (`gh`) for pull requests." },
+            { "line": 13, "under": "Orbit", "text": "Don't run `pulumi up` yourself." },
+            { "line": 14, "under": "Orbit", "text": "Summaries end with the commands you ran." }
+          ]
+        }
+      ],
+      "conflicts": [
+        { "id": "orbit-package-manager", "subject": "package_manager", "members": ["AGENTS.md:17", ".github/copilot-instructions.md:3", "GEMINI.md:3"], "also": ["AGENTS.md:18"], "note": "pnpm, yarn or npm: three-way. Installing with pnpm at the root takes pnpm's side." },
+        { "id": "orbit-node", "subject": "version", "hinge": "version", "members": ["AGENTS.md:16", "GEMINI.md:4"], "note": "Node 22 against Node 20." },
+        { "id": "orbit-deploy", "subject": "deploy", "members": ["AGENTS.md:82", ".github/copilot-instructions.md:4"], "note": "main deploys production, against tags do and main is staging." },
+        { "id": "orbit-errors", "subject": "error_format", "members": [".claude/rules/api.md:8", "GEMINI.md:5"], "note": "A JSON envelope against plain text." },
+        { "id": "orbit-component-files", "subject": "style", "members": [".cursor/rules/web.mdc:6", ".github/copilot-instructions.md:6"], "note": "PascalCase against kebab-case, both for packages/web." },
+        { "id": "orbit-test-framework", "subject": "test", "members": ["AGENTS.md:29", ".cursor/rules/tests.mdc:7"], "note": "Vitest against Jest, for the same test files." },
+        { "id": "orbit-mobile-build", "subject": "build", "members": ["AGENTS.md:69", ".github/instructions/mobile.instructions.md:5"], "note": "Local expo run against EAS builds." },
+        { "id": "orbit-lint", "subject": "lint", "members": ["AGENTS.md:27", "CLAUDE.md:7"], "note": "ESLint against Biome, which replaced it." },
+        { "id": "orbit-v1-removal", "subject": "api", "hinge": "date", "members": ["CLAUDE.md:26", "GEMINI.md:6"], "note": "Removed on 2026-12-01, against kept until the end of Q1 2027." },
+        { "id": "orbit-coverage", "subject": "test", "hinge": "number", "members": ["AGENTS.md:31", ".github/copilot-instructions.md:5"], "note": "80% against a 90% floor." },
+        { "id": "orbit-pagination", "subject": "api", "members": ["AGENTS.md:49", ".claude/rules/api.md:9"], "note": "page and per_page against cursor and limit, never offsets." }
+      ],
+      "traps": [
+        { "id": "orbit-dev-mobile", "trap": "scope", "members": ["AGENTS.md:21", ".github/instructions/mobile.instructions.md:6"], "note": "The root's dev command, and how to start the mobile app alone." },
+        { "id": "orbit-default-exports", "trap": "scope", "members": ["AGENTS.md:38", ".cursor/rules/web.mdc:8"], "note": "Pages and layouts are the framework's exception." },
+        { "id": "orbit-mobile-jest", "trap": "scope", "members": ["AGENTS.md:29", "AGENTS.md:70"], "note": "The mobile package keeps Jest, under its own heading." },
+        { "id": "orbit-any", "trap": "scope", "members": ["AGENTS.md:39", ".cursor/rules/tests.mdc:12"], "note": "A rule for test files carves out an exception." },
+        { "id": "orbit-openapi", "trap": "complementary", "members": ["CLAUDE.md:8", ".claude/rules/api.md:11"], "note": "The description is generated; regenerate it after a change." },
+        { "id": "orbit-changesets", "trap": "complementary", "members": ["CLAUDE.md:9", ".github/copilot-instructions.md:7"], "note": "Add a changeset; changesets decide versions." },
+        { "id": "orbit-ui", "trap": "complementary", "members": ["AGENTS.md:63", "GEMINI.md:9"], "note": "Import from @orbit/ui; check it first." },
+        { "id": "orbit-secrets", "trap": "repeat", "members": ["AGENTS.md:20", "GEMINI.md:8"], "note": "Secrets stay in .env.local." },
+        { "id": "orbit-server-components", "trap": "repeat", "members": ["CLAUDE.md:15", ".cursor/rules/web.mdc:7"], "note": "Server components unless interactive." },
+        { "id": "orbit-dates", "trap": "repeat", "members": ["CLAUDE.md:19", ".github/copilot-instructions.md:12"], "note": "date-fns, not Moment." },
+        { "id": "orbit-generated", "trap": "repeat", "members": ["CLAUDE.md:35", ".github/copilot-instructions.md:13"], "note": "Hands off the generated files." },
+        { "id": "orbit-editing", "trap": "repeat", "members": ["CLAUDE.md:38", "GEMINI.md:10"], "note": "Edit before adding." },
+        { "id": "orbit-sizes", "trap": "number", "members": [".claude/rules/api.md:10", ".github/copilot-instructions.md:8"], "note": "1 MB request bodies; 50 MB uploads go to S3, not the API." },
+        { "id": "orbit-release-day", "trap": "date", "members": [".github/copilot-instructions.md:9", "GEMINI.md:7"], "note": "October 21, 2026 is a Wednesday." },
+        { "id": "orbit-typescript", "trap": "version", "members": ["AGENTS.md:37", "CLAUDE.md:16"], "note": "5.6 is a 5.x." }
+      ]
+    },
+    {
+      "id": "atlas",
+      "space": "project",
+      "about": "A freight platform: Go services on GKE, a Next.js web app, Python models and Terraform, with a long AGENTS.md. Added after the first live runs, to measure one call over an import well past 142 proposals.",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "kind": "agents_md",
+          "statements": [
+            { "line": 3, "under": "Atlas", "text": "Atlas plans and tracks freight for mid-size shippers: Go services on GKE, a Next.js web app, Python models for ETAs, and Terraform for Google Cloud." },
+            { "line": 7, "under": "Atlas › Repository layout", "text": "`services/`: one Go module per service, each with its own `cmd/` and `internal/`." },
+            { "line": 8, "under": "Atlas › Repository layout", "text": "`services/gateway`: the public gateway, the only service browsers talk to." },
+            { "line": 9, "under": "Atlas › Repository layout", "text": "`proto/`: the protobuf definitions every service shares." },
+            { "line": 10, "under": "Atlas › Repository layout", "text": "`web/`: the Next.js app for shippers and dispatchers." },
+            { "line": 11, "under": "Atlas › Repository layout", "text": "`ml/`: ETA and pricing models, trained and served from Python." },
+            { "line": 12, "under": "Atlas › Repository layout", "text": "`infra/`: Terraform for every Google Cloud project." },
+            { "line": 13, "under": "Atlas › Repository layout", "text": "`scripts/`: one-off tools, in Python." },
+            { "line": 14, "under": "Atlas › Repository layout", "text": "`legacy/monolith`: the old Rails app, kept read-only." },
+            { "line": 18, "under": "Atlas › Getting started", "text": "Install Go 1.24, Node 22 and pnpm 9 with mise: `mise install`." },
+            { "line": 19, "under": "Atlas › Getting started", "text": "`make dev` starts every service, the web app and a local Postgres in Docker Compose." },
+            { "line": 20, "under": "Atlas › Getting started", "text": "`make seed` loads the demo shippers and their loads." },
+            { "line": 21, "under": "Atlas › Getting started", "text": "Copy `.env.example` to `.env`; git ignores it." },
+            { "line": 22, "under": "Atlas › Getting started", "text": "Authenticate to Google Cloud with `gcloud auth application-default login` before running anything against staging." },
+            { "line": 26, "under": "Atlas › Go services", "text": "Services talk to each other over gRPC; there is no REST between services." },
+            { "line": 27, "under": "Atlas › Go services", "text": "Generate protobuf code with `buf generate`; the generated code is committed." },
+            { "line": 28, "under": "Atlas › Go services", "text": "Lint protobufs with `buf lint`, and check compatibility with `buf breaking` against `main`." },
+            { "line": 29, "under": "Atlas › Go services", "text": "Format Go with `gofumpt`." },
+            { "line": 30, "under": "Atlas › Go services", "text": "Lint Go with `golangci-lint run`, using the shared `.golangci.yml`." },
+            { "line": 31, "under": "Atlas › Go services", "text": "Each service owns its tables; no service reads another's schema." },
+            { "line": 32, "under": "Atlas › Go services", "text": "Database access uses `pgx` directly, with the queries in `queries/*.sql`." },
+            { "line": 33, "under": "Atlas › Go services", "text": "Migrations use `goose`, one directory per service." },
+            { "line": 34, "under": "Atlas › Go services", "text": "HTTP client timeouts are 30 seconds unless the call sets its own." },
+            { "line": 35, "under": "Atlas › Go services", "text": "Services keep p99 latency under 200 ms." },
+            { "line": 36, "under": "Atlas › Go services", "text": "Every service exposes `/healthz` and `/readyz`." },
+            { "line": 37, "under": "Atlas › Go services", "text": "Metrics go through OpenTelemetry to Cloud Monitoring." },
+            { "line": 38, "under": "Atlas › Go services", "text": "Traces are sampled at 10% in production." },
+            { "line": 39, "under": "Atlas › Go services", "text": "Feature flags come from the `flags` service; never read environment variables for flags." },
+            { "line": 40, "under": "Atlas › Go services", "text": "Use `errgroup` for concurrent work that shares a context." },
+            { "line": 41, "under": "Atlas › Go services", "text": "Background jobs run on Cloud Tasks queues, one queue per job type." },
+            { "line": 42, "under": "Atlas › Go services", "text": "Retries use exponential backoff with jitter, at most 5 attempts." },
+            { "line": 43, "under": "Atlas › Go services", "text": "Never log personal data: names, emails, phone numbers or addresses." },
+            { "line": 44, "under": "Atlas › Go services", "text": "HTTP APIs return errors as RFC 9457 problem details." },
+            { "line": 48, "under": "Atlas › Web app (`web/`)", "text": "The web app is Next.js 15 with the App Router and React 19." },
+            { "line": 49, "under": "Atlas › Web app (`web/`)", "text": "Use pnpm in `web/`; the lockfile is `pnpm-lock.yaml`." },
+            { "line": 50, "under": "Atlas › Web app (`web/`)", "text": "Lint the web app with `pnpm lint`, which runs ESLint." },
+            { "line": 51, "under": "Atlas › Web app (`web/`)", "text": "Type-check with `pnpm typecheck` before pushing." },
+            { "line": 52, "under": "Atlas › Web app (`web/`)", "text": "Server components fetch from the gateway with the user's session token." },
+            { "line": 53, "under": "Atlas › Web app (`web/`)", "text": "Client state lives in Zustand stores, one per feature." },
+            { "line": 54, "under": "Atlas › Web app (`web/`)", "text": "Forms use React Hook Form with zod resolvers." },
+            { "line": 55, "under": "Atlas › Web app (`web/`)", "text": "Dates are shown in the shipper's time zone, from their profile." },
+            { "line": 56, "under": "Atlas › Web app (`web/`)", "text": "Maps use MapLibre with our own tiles; never Google Maps in the web app." },
+            { "line": 57, "under": "Atlas › Web app (`web/`)", "text": "Every user-facing string goes through `next-intl`." },
+            { "line": 58, "under": "Atlas › Web app (`web/`)", "text": "Supported languages: English, Spanish and Polish." },
+            { "line": 62, "under": "Atlas › ML (`ml/`)", "text": "`ml/` uses Python 3.12." },
+            { "line": 63, "under": "Atlas › ML (`ml/`)", "text": "Use pip-tools here (`requirements.in` compiled to `requirements.txt`), not uv." },
+            { "line": 64, "under": "Atlas › ML (`ml/`)", "text": "Models are trained in Vertex AI pipelines defined in `ml/pipelines`." },
+            { "line": 65, "under": "Atlas › ML (`ml/`)", "text": "Every model has a model card in `ml/cards/` before it ships." },
+            { "line": 66, "under": "Atlas › ML (`ml/`)", "text": "Features are computed in BigQuery and read through the feature store." },
+            { "line": 67, "under": "Atlas › ML (`ml/`)", "text": "Serve models with FastAPI behind the gateway; no service calls Vertex endpoints directly." },
+            { "line": 68, "under": "Atlas › ML (`ml/`)", "text": "Notebooks stay in `ml/notebooks` and never go into a pipeline unchanged." },
+            { "line": 72, "under": "Atlas › Scripts (`scripts/`)", "text": "Python tooling in `scripts/` uses uv; run a script with `uv run scripts/<name>.py`." },
+            { "line": 73, "under": "Atlas › Scripts (`scripts/`)", "text": "Scripts must be idempotent and print what they change." },
+            { "line": 74, "under": "Atlas › Scripts (`scripts/`)", "text": "Scripts that touch production need `--confirm`." },
+            { "line": 78, "under": "Atlas › Infrastructure (`infra/`)", "text": "Terraform state lives in the GCS bucket `atlas-tfstate`, one prefix per project." },
+            { "line": 79, "under": "Atlas › Infrastructure (`infra/`)", "text": "Every change goes through a pull request with a `terraform plan` comment." },
+            { "line": 80, "under": "Atlas › Infrastructure (`infra/`)", "text": "Production is `atlas-prod` and staging `atlas-staging`; nobody applies to production from a laptop." },
+            { "line": 81, "under": "Atlas › Infrastructure (`infra/`)", "text": "The database is Postgres 16 on Cloud SQL." },
+            { "line": 82, "under": "Atlas › Infrastructure (`infra/`)", "text": "GKE clusters run in `us-central1` and `europe-west3`." },
+            { "line": 86, "under": "Atlas › Git and reviews", "text": "Branch names are `<user>/<ticket>-<slug>`, like `ana/ATL-412-eta-cache`." },
+            { "line": 87, "under": "Atlas › Git and reviews", "text": "Commit messages are imperative and name the ticket: `ATL-412: Cache ETA lookups`." },
+            { "line": 88, "under": "Atlas › Git and reviews", "text": "One approval is enough for most changes; `infra/` and `proto/` need two." },
+            { "line": 89, "under": "Atlas › Git and reviews", "text": "Squash-merge into `main`." },
+            { "line": 90, "under": "Atlas › Git and reviews", "text": "Delete the branch after merging." },
+            { "line": 91, "under": "Atlas › Git and reviews", "text": "A pull request that changes a public API updates `docs/api/` too." },
+            { "line": 95, "under": "Atlas › Releases", "text": "Services deploy continuously from `main` through Cloud Deploy." },
+            { "line": 96, "under": "Atlas › Releases", "text": "Database migrations must be backwards compatible with the version before." },
+            { "line": 97, "under": "Atlas › Releases", "text": "Mobile releases are not in this repository." },
+            { "line": 101, "under": "Atlas › Ownership", "text": "On-call rotations are in PagerDuty, one per service." },
+            { "line": 102, "under": "Atlas › Ownership", "text": "The platform team owns `infra/`, `proto/` and `services/gateway`." },
+            { "line": 106, "under": "Atlas › Decisions", "text": "We chose gRPC with protobuf over REST between services, for typed contracts." },
+            { "line": 107, "under": "Atlas › Decisions", "text": "We chose Cloud Tasks over Pub/Sub for jobs, because each job has one handler." },
+            { "line": 108, "under": "Atlas › Decisions", "text": "We split the monolith into services in 2024; `legacy/monolith` is read-only." },
+            { "line": 109, "under": "Atlas › Decisions", "text": "We use Cloud SQL rather than self-managed Postgres." },
+            { "line": 113, "under": "Atlas › Open questions", "text": "Should ETAs move from batch scoring to online scoring?" },
+            { "line": 114, "under": "Atlas › Open questions", "text": "Do we keep MapLibre once the tile costs are known?" },
+            { "line": 118, "under": "Atlas › Testing", "text": "Go tests run with `go test ./...` inside each service's module." },
+            { "line": 119, "under": "Atlas › Testing", "text": "Integration tests use Testcontainers for Postgres and the Cloud Tasks emulator." },
+            { "line": 120, "under": "Atlas › Testing", "text": "Contract tests check every service against the shared protobufs." },
+            { "line": 121, "under": "Atlas › Testing", "text": "End-to-end tests use Playwright against a preview environment." },
+            { "line": 122, "under": "Atlas › Testing", "text": "A flaky test is quarantined with `t.Skip` and a ticket, never deleted." },
+            { "line": 123, "under": "Atlas › Testing", "text": "Load tests run weekly with k6 against staging." },
+            { "line": 124, "under": "Atlas › Testing", "text": "Test data never contains real shipper names." },
+            { "line": 128, "under": "Atlas › Security", "text": "Secrets live in Secret Manager; services read them at start." },
+            { "line": 129, "under": "Atlas › Security", "text": "Service accounts get the least privilege they need, granted in Terraform." },
+            { "line": 130, "under": "Atlas › Security", "text": "Every endpoint checks the tenant in the token before reading data." },
+            { "line": 131, "under": "Atlas › Security", "text": "Dependencies are scanned by Dependabot and Trivy in CI." },
+            { "line": 132, "under": "Atlas › Security", "text": "Never turn off TLS verification, even in tests." },
+            { "line": 136, "under": "Atlas › Observability", "text": "Logs are JSON, with `trace_id` and `tenant_id` on every line." },
+            { "line": 137, "under": "Atlas › Observability", "text": "Alerts page only for user-facing symptoms; everything else is a ticket." },
+            { "line": 138, "under": "Atlas › Observability", "text": "Dashboards live in `infra/monitoring` as code." },
+            { "line": 142, "under": "Atlas › API conventions", "text": "Public endpoints live under `/v1` on the gateway." },
+            { "line": 143, "under": "Atlas › API conventions", "text": "Resource names are plural nouns: `/v1/loads`, `/v1/carriers`." },
+            { "line": 144, "under": "Atlas › API conventions", "text": "IDs are prefixed strings, like `load_01J9…`." },
+            { "line": 145, "under": "Atlas › API conventions", "text": "Timestamps are RFC 3339 in UTC." },
+            { "line": 146, "under": "Atlas › API conventions", "text": "List endpoints paginate with `page_token` and `page_size`." },
+            { "line": 147, "under": "Atlas › API conventions", "text": "`page_size` defaults to 50 and is at most 500." },
+            { "line": 148, "under": "Atlas › API conventions", "text": "Write endpoints accept an `Idempotency-Key` header." },
+            { "line": 149, "under": "Atlas › API conventions", "text": "A breaking API change needs a new version; an additive change doesn't." },
+            { "line": 150, "under": "Atlas › API conventions", "text": "Webhooks are signed with HMAC-SHA256 and retried for 72 hours." },
+            { "line": 151, "under": "Atlas › API conventions", "text": "Every endpoint is documented in `docs/api/` with an example." },
+            { "line": 155, "under": "Atlas › Data", "text": "Weights are stored in grams and distances in meters, as integers." },
+            { "line": 156, "under": "Atlas › Data", "text": "Money is stored in minor units with an ISO 4217 currency." },
+            { "line": 157, "under": "Atlas › Data", "text": "Addresses are geocoded once, on write, and the coordinates stored." },
+            { "line": 158, "under": "Atlas › Data", "text": "Soft-delete with `deleted_at`; nothing a shipper sees is hard-deleted." },
+            { "line": 159, "under": "Atlas › Data", "text": "Shipper data is partitioned by tenant; every table has a `tenant_id`." },
+            { "line": 160, "under": "Atlas › Data", "text": "Analytics copies go to BigQuery nightly, without personal data." },
+            { "line": 164, "under": "Atlas › Glossary", "text": "A load is one shipment from pickup to delivery." },
+            { "line": 165, "under": "Atlas › Glossary", "text": "A lane is a pickup region and a delivery region." },
+            { "line": 166, "under": "Atlas › Glossary", "text": "A carrier is a company that moves loads; a driver works for a carrier." },
+            { "line": 167, "under": "Atlas › Glossary", "text": "A tender is an offer of a load to a carrier." },
+            { "line": 168, "under": "Atlas › Glossary", "text": "ETA means the predicted delivery time, not the promised one." },
+            { "line": 172, "under": "Atlas › Runbooks", "text": "Runbooks live in `docs/runbooks`, one per alert." },
+            { "line": 173, "under": "Atlas › Runbooks", "text": "During an incident, the incident lead posts an update in `#incidents` every 30 minutes." },
+            { "line": 174, "under": "Atlas › Runbooks", "text": "Postmortems are blameless and due within five working days." },
+            { "line": 175, "under": "Atlas › Runbooks", "text": "Rollbacks go through Cloud Deploy, never by hand." },
+            { "line": 179, "under": "Atlas › Performance", "text": "Cache ETA lookups for 60 seconds in Memorystore." },
+            { "line": 180, "under": "Atlas › Performance", "text": "Avoid N+1 queries; load related rows in one query." },
+            { "line": 181, "under": "Atlas › Performance", "text": "Large exports run as jobs and email a link when they are done." }
+          ]
+        },
+        {
+          "path": "CLAUDE.md",
+          "kind": "claude_md",
+          "statements": [
+            { "line": 5, "under": "Atlas › Commands", "text": "`make dev` brings up the whole stack; `make dev SERVICE=eta` starts one service and what it depends on." },
+            { "line": 6, "under": "Atlas › Commands", "text": "`make test` runs the Go tests of every service." },
+            { "line": 7, "under": "Atlas › Commands", "text": "`make lint` runs every linter CI runs." },
+            { "line": 8, "under": "Atlas › Commands", "text": "`pnpm --dir web dev` runs the web app alone against staging's gateway." },
+            { "line": 9, "under": "Atlas › Commands", "text": "`make migrate SERVICE=<name>` applies a service's migrations locally." },
+            { "line": 13, "under": "Atlas › How we write Go", "text": "Use `context.Context` as the first argument of every function that does I/O." },
+            { "line": 14, "under": "Atlas › How we write Go", "text": "Return errors; don't panic outside `main`." },
+            { "line": 15, "under": "Atlas › How we write Go", "text": "Wrap errors with `fmt.Errorf(\"...: %w\", err)`." },
+            { "line": 16, "under": "Atlas › How we write Go", "text": "Domain errors are `*apperr.Error`, mapped to gRPC codes at the edge." },
+            { "line": 17, "under": "Atlas › How we write Go", "text": "Prefer table-driven tests." },
+            { "line": 18, "under": "Atlas › How we write Go", "text": "Keep interfaces small and define them where they are used." },
+            { "line": 19, "under": "Atlas › How we write Go", "text": "The latency budget for every service is 300 ms at p99." },
+            { "line": 20, "under": "Atlas › How we write Go", "text": "Don't add a dependency without a note in the pull request on why." },
+            { "line": 21, "under": "Atlas › How we write Go", "text": "Use `slog` for logging." },
+            { "line": 25, "under": "Atlas › Web", "text": "Keep components under 150 lines." },
+            { "line": 26, "under": "Atlas › Web", "text": "Data fetching goes in server components or route handlers, never in `useEffect`." },
+            { "line": 27, "under": "Atlas › Web", "text": "Use the shared `Button`, `Input` and `Dialog` from `web/components/ui`." },
+            { "line": 28, "under": "Atlas › Web", "text": "Every page has a loading state and an error state." },
+            { "line": 32, "under": "Atlas › Process", "text": "The web app's release train leaves on Thursdays." },
+            { "line": 33, "under": "Atlas › Process", "text": "Every change has a ticket in Linear, named in the commit." },
+            { "line": 34, "under": "Atlas › Process", "text": "Write the pull request description for a reviewer who hasn't seen the ticket." },
+            { "line": 35, "under": "Atlas › Process", "text": "Don't add code to `legacy/monolith`; it has been read-only since the 2024 split." },
+            { "line": 36, "under": "Atlas › Process", "text": "Every service has a `README.md` naming its owners and its on-call rotation." },
+            { "line": 37, "under": "Atlas › Process", "text": "Ask before changing anything in `proto/`; other teams depend on it." },
+            { "line": 41, "under": "Atlas › Working with Claude", "text": "Read the service's `README.md` before changing it." },
+            { "line": 42, "under": "Atlas › Working with Claude", "text": "Run `make lint` and the service's tests before saying a change is done." },
+            { "line": 43, "under": "Atlas › Working with Claude", "text": "Don't touch `infra/` unless the task says so." },
+            { "line": 44, "under": "Atlas › Working with Claude", "text": "Keep a change inside one service when you can." },
+            { "line": 45, "under": "Atlas › Working with Claude", "text": "Prefer small pull requests." },
+            { "line": 49, "under": "Atlas › Data model", "text": "Every new table gets `tenant_id`, `created_at` and `updated_at`." },
+            { "line": 50, "under": "Atlas › Data model", "text": "Index every foreign key." },
+            { "line": 51, "under": "Atlas › Data model", "text": "Enums are `text` columns with a `CHECK`, not Postgres enum types." },
+            { "line": 52, "under": "Atlas › Data model", "text": "Large tables are partitioned by month." },
+            { "line": 56, "under": "Atlas › Reviews", "text": "Review for correctness first, then naming." },
+            { "line": 57, "under": "Atlas › Reviews", "text": "A reviewer runs the change locally when it touches the web app." },
+            { "line": 58, "under": "Atlas › Reviews", "text": "Approve with nits; don't block on style the linters don't check." },
+            { "line": 62, "under": "Atlas › Debugging", "text": "Use `make logs SERVICE=<name>` to tail a service's logs locally." },
+            { "line": 63, "under": "Atlas › Debugging", "text": "Staging traces are in Cloud Trace under the `atlas-staging` project." },
+            { "line": 64, "under": "Atlas › Debugging", "text": "Reproduce a bug with a failing test before fixing it." }
+          ]
+        },
+        {
+          "path": ".claude/rules/go.md",
+          "kind": "claude_rule",
+          "globs": ["services/**"],
+          "statements": [
+            { "line": 7, "under": "Go services", "text": "Services build with Go 1.22; don't use features from 1.23 or later." },
+            { "line": 8, "under": "Go services", "text": "`ctx` comes first in every signature that takes one." },
+            { "line": 9, "under": "Go services", "text": "gRPC deadlines default to 5 seconds." },
+            { "line": 10, "under": "Go services", "text": "At the edge, return gRPC errors with `status.Error` and a code from `codes`." },
+            { "line": 11, "under": "Go services", "text": "Don't share database connections between services." },
+            { "line": 12, "under": "Go services", "text": "Every handler logs with the request's logger." },
+            { "line": 13, "under": "Go services", "text": "Name packages for what they provide; no `util`." },
+            { "line": 14, "under": "Go services", "text": "Unexported by default; export only what another package uses." },
+            { "line": 15, "under": "Go services", "text": "Benchmarks go next to the code, in `_test.go` files." },
+            { "line": 16, "under": "Go services", "text": "Read the time only through the injected clock, never `time.Now` directly." }
+          ]
+        },
+        {
+          "path": ".claude/rules/ml.md",
+          "kind": "claude_rule",
+          "globs": ["ml/**"],
+          "statements": [
+            { "line": 7, "under": "ML", "text": "Pin Python 3.10 in `ml/`; the CUDA base image has nothing newer." },
+            { "line": 8, "under": "ML", "text": "Every training run logs its parameters and metrics to Vertex Experiments." },
+            { "line": 9, "under": "ML", "text": "Set random seeds from the pipeline's config, never inline." },
+            { "line": 10, "under": "ML", "text": "Evaluate a new model against the current one on the same holdout before shipping it." },
+            { "line": 11, "under": "ML", "text": "Feature names are `snake_case`, matching BigQuery." },
+            { "line": 12, "under": "ML", "text": "Type-annotate pipeline components." }
+          ]
+        },
+        {
+          "path": ".cursor/rules/frontend.mdc",
+          "kind": "cursor_rule",
+          "globs": ["web/**"],
+          "statements": [
+            { "line": 6, "text": "oxlint replaced ESLint in `web/`; run `pnpm oxlint`." },
+            { "line": 7, "text": "Component tests use Testing Library with Vitest." },
+            { "line": 8, "text": "Use the `@/` import alias for anything under `web/src`." },
+            { "line": 9, "text": "Combine Tailwind classes only through the `cn()` helper." },
+            { "line": 10, "text": "No inline styles." },
+            { "line": 11, "text": "Icons come from `lucide-react`." },
+            { "line": 12, "text": "Prefer server actions to API routes for mutations." },
+            { "line": 13, "text": "Every interactive element has an accessible name." },
+            { "line": 14, "text": "Keep client components at the leaves of the tree." }
+          ]
+        },
+        {
+          "path": ".github/copilot-instructions.md",
+          "kind": "copilot_instructions",
+          "statements": [
+            { "line": 3, "under": "Atlas: notes for Copilot", "text": "Run `protoc` through `make proto` to generate code; buf isn't used here." },
+            { "line": 4, "under": "Atlas: notes for Copilot", "text": "The web app releases every Tuesday." },
+            { "line": 5, "under": "Atlas: notes for Copilot", "text": "Name branches `feature/<ticket>`, like `feature/ATL-412`." },
+            { "line": 6, "under": "Atlas: notes for Copilot", "text": "CODEOWNERS lists the team that owns each service." },
+            { "line": 7, "under": "Atlas: notes for Copilot", "text": "Prefer composition to inheritance." },
+            { "line": 8, "under": "Atlas: notes for Copilot", "text": "Suggest table-driven tests for Go." },
+            { "line": 9, "under": "Atlas: notes for Copilot", "text": "Use `pnpm` for packages in `web/`." },
+            { "line": 10, "under": "Atlas: notes for Copilot", "text": "Use `mockery` for Go mocks." },
+            { "line": 11, "under": "Atlas: notes for Copilot", "text": "Comments explain why, not what." },
+            { "line": 12, "under": "Atlas: notes for Copilot", "text": "Keep functions short." },
+            { "line": 13, "under": "Atlas: notes for Copilot", "text": "Use early returns." },
+            { "line": 14, "under": "Atlas: notes for Copilot", "text": "Prefer `errors.Is` to comparing error strings." },
+            { "line": 15, "under": "Atlas: notes for Copilot", "text": "Use `slices` and `maps` from the standard library." },
+            { "line": 16, "under": "Atlas: notes for Copilot", "text": "In the web app, prefer async server components to fetching on the client." },
+            { "line": 17, "under": "Atlas: notes for Copilot", "text": "Avoid default exports in `web/`, except where Next.js requires them." },
+            { "line": 18, "under": "Atlas: notes for Copilot", "text": "SQL keywords are uppercase." },
+            { "line": 19, "under": "Atlas: notes for Copilot", "text": "Don't suggest `any` in TypeScript." }
+          ]
+        },
+        {
+          "path": ".github/instructions/terraform.instructions.md",
+          "kind": "copilot_scoped",
+          "globs": ["infra/**"],
+          "statements": [
+            { "line": 5, "text": "State is kept in Terraform Cloud workspaces, one per project." },
+            { "line": 6, "text": "Set `database_version = \"POSTGRES_16\"` on Cloud SQL instances." },
+            { "line": 7, "text": "Use the modules in `infra/modules`; don't use providers' resources directly in a project." },
+            { "line": 8, "text": "Every resource has `labels` with `team` and `env`." },
+            { "line": 9, "text": "Use `for_each` over `count`." },
+            { "line": 10, "text": "Run `terraform fmt` and `tflint` before pushing." }
+          ]
+        },
+        {
+          "path": "GEMINI.md",
+          "kind": "gemini_md",
+          "statements": [
+            { "line": 3, "under": "Atlas", "text": "Python 3.11 everywhere, `ml/` included." },
+            { "line": 4, "under": "Atlas", "text": "HTTP errors are `{\"message\": \"...\"}` with the status code." },
+            { "line": 5, "under": "Atlas", "text": "The web app's component tests use Cypress component testing." },
+            { "line": 6, "under": "Atlas", "text": "Personal data stays out of logs." },
+            { "line": 7, "under": "Atlas", "text": "The public gateway (`services/gateway`) serves REST to browsers." },
+            { "line": 8, "under": "Atlas", "text": "Explain a plan before editing many files." },
+            { "line": 9, "under": "Atlas", "text": "Use `rg` to search the code." },
+            { "line": 10, "under": "Atlas", "text": "Don't run `terraform apply`." },
+            { "line": 11, "under": "Atlas", "text": "Summaries list the files changed." }
+          ]
+        }
+      ],
+      "conflicts": [
+        { "id": "atlas-go-version", "subject": "version", "hinge": "version", "members": ["AGENTS.md:18", ".claude/rules/go.md:7"], "note": "Go 1.24 against nothing past 1.22 in services/." },
+        { "id": "atlas-proto", "subject": "build", "members": ["AGENTS.md:27", ".github/copilot-instructions.md:3"], "also": ["AGENTS.md:28"], "note": "buf against protoc with buf unused; buf lint takes buf's side." },
+        { "id": "atlas-latency", "subject": "other", "hinge": "number", "members": ["AGENTS.md:35", "CLAUDE.md:19"], "note": "200 ms against 300 ms at p99." },
+        { "id": "atlas-errors", "subject": "error_format", "members": ["AGENTS.md:44", "GEMINI.md:4"], "note": "Problem details against a message body." },
+        { "id": "atlas-web-lint", "subject": "lint", "members": ["AGENTS.md:50", ".cursor/rules/frontend.mdc:6"], "note": "ESLint against oxlint, which replaced it." },
+        { "id": "atlas-ml-python", "subject": "version", "hinge": "version", "members": ["AGENTS.md:62", ".claude/rules/ml.md:7", "GEMINI.md:3"], "note": "3.12, 3.10 or 3.11 in ml/: three-way." },
+        { "id": "atlas-tf-state", "subject": "architecture", "members": ["AGENTS.md:78", ".github/instructions/terraform.instructions.md:5"], "note": "A GCS bucket against Terraform Cloud." },
+        { "id": "atlas-branches", "subject": "style", "members": ["AGENTS.md:86", ".github/copilot-instructions.md:5"], "note": "Two branch-name patterns." },
+        { "id": "atlas-web-release", "subject": "schedule", "hinge": "date", "members": ["CLAUDE.md:32", ".github/copilot-instructions.md:4"], "note": "Thursdays against Tuesdays." },
+        { "id": "atlas-component-tests", "subject": "test", "members": [".cursor/rules/frontend.mdc:7", "GEMINI.md:5"], "note": "Testing Library with Vitest against Cypress, for the same tests." }
+      ],
+      "traps": [
+        { "id": "atlas-gateway-rest", "trap": "scope", "members": ["AGENTS.md:26", "GEMINI.md:7"], "note": "No REST between services; the gateway serves REST to browsers." },
+        { "id": "atlas-python-tools", "trap": "scope", "members": ["AGENTS.md:63", "AGENTS.md:72"], "note": "pip-tools under the ML heading, uv in scripts/." },
+        { "id": "atlas-go-tests", "trap": "complementary", "members": ["CLAUDE.md:6", "AGENTS.md:118"], "note": "make test runs every service's go test." },
+        { "id": "atlas-owners", "trap": "complementary", "members": ["CLAUDE.md:36", ".github/copilot-instructions.md:6"], "note": "A README names the owners; CODEOWNERS routes reviews." },
+        { "id": "atlas-pii", "trap": "repeat", "members": ["AGENTS.md:43", "GEMINI.md:6"], "note": "No personal data in logs." },
+        { "id": "atlas-ctx", "trap": "repeat", "members": ["CLAUDE.md:13", ".claude/rules/go.md:8"], "note": "Context first." },
+        { "id": "atlas-pnpm", "trap": "repeat", "members": ["AGENTS.md:49", ".github/copilot-instructions.md:9"], "note": "pnpm in web/." },
+        { "id": "atlas-timeouts", "trap": "number", "members": ["AGENTS.md:34", ".claude/rules/go.md:9"], "note": "HTTP clients and gRPC deadlines are different timeouts." },
+        { "id": "atlas-monolith", "trap": "date", "members": ["AGENTS.md:108", "CLAUDE.md:35"], "note": "The same 2024 split." },
+        { "id": "atlas-postgres", "trap": "version", "members": ["AGENTS.md:81", ".github/instructions/terraform.instructions.md:6"], "note": "POSTGRES_16 is Postgres 16." }
+      ]
+    },
+    {
+      "id": "pyflow",
+      "space": "project",
+      "about": "Python data pipelines: Airflow DAGs, batch transforms and a streaming service.",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "kind": "agents_md",
+          "statements": [
+            { "line": 3, "under": "pyflow", "text": "pyflow runs the nightly data pipelines: Airflow DAGs in `dags/`, the transforms in `pyflow/`, and a streaming service in `pyflow/stream`." },
+            { "line": 7, "under": "pyflow › Setup", "text": "Python 3.11." },
+            { "line": 8, "under": "pyflow › Setup", "text": "Manage dependencies with uv: `uv add <package>`, and commit `uv.lock`." },
+            { "line": 9, "under": "pyflow › Setup", "text": "Run tests with `pytest -q`." },
+            { "line": 10, "under": "pyflow › Setup", "text": "Build the image with `docker build -f docker/Dockerfile .`." },
+            { "line": 14, "under": "pyflow › Code", "text": "Line length is 88." },
+            { "line": 15, "under": "pyflow › Code", "text": "Type hints on every public function." },
+            { "line": 16, "under": "pyflow › Code", "text": "Never use mutable default arguments." },
+            { "line": 17, "under": "pyflow › Code", "text": "Use pandas for dataframes in the batch transforms." },
+            { "line": 18, "under": "pyflow › Code", "text": "Retry every external call 3 times, with exponential backoff." },
+            { "line": 19, "under": "pyflow › Code", "text": "Read configuration from environment variables through `pyflow/settings.py`; never read `os.environ` anywhere else." },
+            { "line": 20, "under": "pyflow › Code", "text": "DAG files only define DAGs; the logic lives in `pyflow/` so that it can be tested." },
+            { "line": 21, "under": "pyflow › Code", "text": "Every task is idempotent: rerunning a day overwrites that day's partition." },
+            { "line": 25, "under": "pyflow › pyflow/stream (low latency)", "text": "Use polars here; pandas is too slow for the streaming jobs." },
+            { "line": 26, "under": "pyflow › pyflow/stream (low latency)", "text": "The stream consumer commits Kafka offsets only after the write succeeds." }
+          ]
+        },
+        {
+          "path": "CLAUDE.md",
+          "kind": "claude_md",
+          "statements": [
+            { "line": 5, "under": "pyflow › Commands", "text": "Use Poetry; add packages with `poetry add`." },
+            { "line": 6, "under": "pyflow › Commands", "text": "Run the test suite with `python -m unittest discover -s tests`." },
+            { "line": 7, "under": "pyflow › Commands", "text": "Format with black." },
+            { "line": 8, "under": "pyflow › Commands", "text": "`mypy --strict` runs in CI and must pass." },
+            { "line": 9, "under": "pyflow › Commands", "text": "Images are built with `make image`; never call `docker build` directly, because it skips the build arguments." },
+            { "line": 13, "under": "pyflow › Style", "text": "Google-style docstrings." },
+            { "line": 14, "under": "pyflow › Style", "text": "Support for Python 3.9 ended in January 2026." },
+            { "line": 15, "under": "pyflow › Style", "text": "Tasks time out after 3 minutes unless the DAG sets `execution_timeout`." },
+            { "line": 16, "under": "pyflow › Style", "text": "Use `logging.getLogger(__name__)`; never `print`." },
+            { "line": 17, "under": "pyflow › Style", "text": "Prefer dataclasses for plain records, and pydantic only at I/O boundaries." }
+          ]
+        },
+        {
+          "path": ".cursorrules",
+          "kind": "cursorrules",
+          "statements": [
+            { "line": 1, "text": "You are working on pyflow, a Python data pipeline." },
+            { "line": 3, "text": "Target Python 3.12 and use `type` aliases (PEP 695)." },
+            { "line": 4, "text": "Install packages with `pip install -r requirements.txt`, and keep `requirements.txt` pinned." },
+            { "line": 5, "text": "Write NumPy-style docstrings." },
+            { "line": 6, "text": "Prefer list comprehensions to `map` and `filter`." },
+            { "line": 7, "text": "Use f-strings, never `%` formatting." }
+          ]
+        },
+        {
+          "path": ".windsurf/rules/style.md",
+          "kind": "windsurf_rule",
+          "statements": [
+            { "line": 3, "under": "Style", "text": "Format with `ruff format`; black is not installed." },
+            { "line": 4, "under": "Style", "text": "The maximum line length is 100." },
+            { "line": 5, "under": "Style", "text": "Default arguments must be immutable: `None`, not `[]` or `{}`." },
+            { "line": 6, "under": "Style", "text": "Sort imports with ruff's `I` rules." }
+          ]
+        }
+      ],
+      "conflicts": [
+        { "id": "py-version", "subject": "version", "hinge": "version", "members": ["AGENTS.md:7", ".cursorrules:3"], "note": "3.11 can't run PEP 695 aliases." },
+        { "id": "py-packages", "subject": "package_manager", "members": ["AGENTS.md:8", "CLAUDE.md:5", ".cursorrules:4"], "note": "uv, Poetry or pip: three-way." },
+        { "id": "py-tests", "subject": "test", "members": ["AGENTS.md:9", "CLAUDE.md:6"], "note": "pytest against unittest." },
+        { "id": "py-image", "subject": "build", "members": ["AGENTS.md:10", "CLAUDE.md:9"], "note": "docker build against never docker build directly." },
+        { "id": "py-formatter", "subject": "lint", "members": ["CLAUDE.md:7", ".windsurf/rules/style.md:3"], "note": "black against ruff format, black not installed." },
+        { "id": "py-line-length", "subject": "style", "hinge": "number", "members": ["AGENTS.md:14", ".windsurf/rules/style.md:4"], "note": "88 against 100." },
+        { "id": "py-docstrings", "subject": "style", "members": ["CLAUDE.md:13", ".cursorrules:5"], "note": "Google against NumPy style." }
+      ],
+      "traps": [
+        { "id": "py-mypy", "trap": "complementary", "members": ["AGENTS.md:15", "CLAUDE.md:8"], "note": "Type hints, checked strictly in CI." },
+        { "id": "py-defaults", "trap": "repeat", "members": ["AGENTS.md:16", ".windsurf/rules/style.md:5"], "note": "No mutable defaults, with examples." },
+        { "id": "py-polars", "trap": "scope", "members": ["AGENTS.md:17", "AGENTS.md:25"], "note": "pandas in the batch transforms, polars in the streaming jobs." },
+        { "id": "py-retries", "trap": "number", "members": ["AGENTS.md:18", "CLAUDE.md:15"], "note": "3 attempts and 3 minutes are different things." },
+        { "id": "py-39", "trap": "date", "members": ["CLAUDE.md:14", ".cursorrules:3"], "note": "Dropping 3.9 agrees with 3.12." }
+      ]
+    },
+    {
+      "id": "trailhead",
+      "space": "project",
+      "about": "A Rails 8 booking site with a React admin.",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "kind": "agents_md",
+          "statements": [
+            { "line": 3, "under": "Trailhead", "text": "Trailhead is the booking site for guided hikes: a Rails 8 monolith with Hotwire." },
+            { "line": 7, "under": "Trailhead › Development", "text": "Ruby 3.3." },
+            { "line": 8, "under": "Trailhead › Development", "text": "`bin/dev` starts Rails, the CSS watcher and the job worker." },
+            { "line": 9, "under": "Trailhead › Development", "text": "Run tests with `bin/rails test` (Minitest), and system tests with `bin/rails test:system`." },
+            { "line": 10, "under": "Trailhead › Development", "text": "Background jobs use Sidekiq." },
+            { "line": 11, "under": "Trailhead › Development", "text": "Public lists paginate at 25 per page with Pagy." },
+            { "line": 15, "under": "Trailhead › Code", "text": "Never put business logic in controllers." },
+            { "line": 16, "under": "Trailhead › Code", "text": "Use Hotwire (Turbo and Stimulus) for interactivity; no React on the public site." },
+            { "line": 17, "under": "Trailhead › Code", "text": "Every controller action that writes uses strong parameters." },
+            { "line": 18, "under": "Trailhead › Code", "text": "Money uses the `money-rails` gem." },
+            { "line": 22, "under": "Trailhead › Release", "text": "The code freeze for the holidays starts December 15." },
+            { "line": 23, "under": "Trailhead › Release", "text": "Every migration must be reversible." },
+            { "line": 27, "under": "Trailhead › Admin (`app/admin`)", "text": "The admin dashboard is a React app built with `jsbundling-rails`." },
+            { "line": 28, "under": "Trailhead › Admin (`app/admin`)", "text": "Admin routes require the `staff` role." }
+          ]
+        },
+        {
+          "path": "CLAUDE.md",
+          "kind": "claude_md",
+          "statements": [
+            { "line": 3, "under": "Trailhead", "text": "The `.ruby-version` says 3.2.4; use it." },
+            { "line": 4, "under": "Trailhead", "text": "Keep controllers thin; logic goes in models or in service objects under `app/services`." },
+            { "line": 5, "under": "Trailhead", "text": "Run `bin/rubocop -a` before committing." },
+            { "line": 6, "under": "Trailhead", "text": "Deploy with `kamal deploy` from `main`." },
+            { "line": 7, "under": "Trailhead", "text": "The holiday code freeze begins on December 20." },
+            { "line": 8, "under": "Trailhead", "text": "PostgreSQL 16 in every environment." },
+            { "line": 9, "under": "Trailhead", "text": "Admin tables show 100 rows per page." },
+            { "line": 10, "under": "Trailhead", "text": "Use `has_many :through`, never `has_and_belongs_to_many`." }
+          ]
+        },
+        {
+          "path": ".github/copilot-instructions.md",
+          "kind": "copilot_instructions",
+          "statements": [
+            { "line": 3, "under": "Trailhead: Copilot", "text": "Specs live in `spec/`; run them with `bundle exec rspec`." },
+            { "line": 4, "under": "Trailhead: Copilot", "text": "Heroku deploys from the `production` branch." },
+            { "line": 5, "under": "Trailhead: Copilot", "text": "The RuboCop config is `rubocop-rails-omakase`; don't add cops." },
+            { "line": 6, "under": "Trailhead: Copilot", "text": "Use `I18n.t` for every user-facing string." },
+            { "line": 7, "under": "Trailhead: Copilot", "text": "Prefer `find_each` to `each` when iterating over large tables." }
+          ]
+        },
+        {
+          "path": ".devin/rules/jobs.md",
+          "kind": "devin_rule",
+          "statements": [
+            { "line": 3, "under": "Background jobs", "text": "Use Solid Queue for background jobs; Sidekiq was removed with the Rails 8 upgrade." },
+            { "line": 4, "under": "Background jobs", "text": "CI runs the tests against `postgres:16.4`." },
+            { "line": 5, "under": "Background jobs", "text": "Jobs must be idempotent, because they can run more than once." }
+          ]
+        }
+      ],
+      "conflicts": [
+        { "id": "trail-ruby", "subject": "version", "hinge": "version", "members": ["AGENTS.md:7", "CLAUDE.md:3"], "note": "Ruby 3.3 against 3.2.4." },
+        { "id": "trail-tests", "subject": "test", "members": ["AGENTS.md:9", ".github/copilot-instructions.md:3"], "note": "Minitest against RSpec." },
+        { "id": "trail-deploy", "subject": "deploy", "members": ["CLAUDE.md:6", ".github/copilot-instructions.md:4"], "note": "Kamal from main against Heroku from production." },
+        { "id": "trail-freeze", "subject": "schedule", "hinge": "date", "members": ["AGENTS.md:22", "CLAUDE.md:7"], "note": "December 15 against December 20." },
+        { "id": "trail-jobs", "subject": "architecture", "members": ["AGENTS.md:10", ".devin/rules/jobs.md:3"], "note": "Sidekiq against Solid Queue, Sidekiq removed." }
+      ],
+      "traps": [
+        { "id": "trail-controllers", "trap": "repeat", "members": ["AGENTS.md:15", "CLAUDE.md:4"], "note": "Thin controllers." },
+        { "id": "trail-rubocop", "trap": "complementary", "members": ["CLAUDE.md:5", ".github/copilot-instructions.md:5"], "note": "Run RuboCop; its config is omakase." },
+        { "id": "trail-pages", "trap": "number", "members": ["AGENTS.md:11", "CLAUDE.md:9"], "note": "Public lists and admin tables page differently." },
+        { "id": "trail-admin", "trap": "scope", "members": ["AGENTS.md:16", "AGENTS.md:27"], "note": "No React on the public site; the admin is React." },
+        { "id": "trail-postgres", "trap": "version", "members": ["CLAUDE.md:8", ".devin/rules/jobs.md:4"], "note": "16.4 is 16." }
+      ]
+    },
+    {
+      "id": "ferrous",
+      "space": "project",
+      "about": "A Rust command-line tool: a library crate and a thin binary.",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "kind": "agents_md",
+          "statements": [
+            { "line": 3, "under": "ferrous", "text": "ferrous is a command-line tool for syncing dotfiles across machines, written in Rust as a library crate and a thin binary." },
+            { "line": 7, "under": "ferrous › Build", "text": "MSRV is 1.75; CI checks it with `cargo +1.75 check`." },
+            { "line": 8, "under": "ferrous › Build", "text": "The crate uses the 2021 edition." },
+            { "line": 9, "under": "ferrous › Build", "text": "Run `cargo clippy --all-targets -- -D warnings` before pushing." },
+            { "line": 10, "under": "ferrous › Build", "text": "Format with `cargo fmt`." },
+            { "line": 11, "under": "ferrous › Build", "text": "Run the tests with `cargo nextest run`." },
+            { "line": 15, "under": "ferrous › Code", "text": "Never call `unwrap()` outside tests." },
+            { "line": 16, "under": "ferrous › Code", "text": "The binary (`src/main.rs`) uses `anyhow` for errors." },
+            { "line": 17, "under": "ferrous › Code", "text": "Keep `main.rs` under 100 lines; everything else goes in the library." },
+            { "line": 18, "under": "ferrous › Code", "text": "Paths are `camino::Utf8PathBuf`." },
+            { "line": 19, "under": "ferrous › Code", "text": "No `unsafe` code." }
+          ]
+        },
+        {
+          "path": "CLAUDE.md",
+          "kind": "claude_md",
+          "statements": [
+            { "line": 3, "under": "ferrous", "text": "The minimum supported Rust version is 1.80, so `std::sync::LazyLock` is fine." },
+            { "line": 4, "under": "ferrous", "text": "Use `thiserror` for errors in the library crate." },
+            { "line": 5, "under": "ferrous", "text": "Parse arguments with `clap`'s derive API." },
+            { "line": 6, "under": "ferrous", "text": "Clippy warnings are allowed; don't pass `-D warnings`, CI only reports them." },
+            { "line": 7, "under": "ferrous", "text": "Integration tests go in `tests/` and run the real binary with `assert_cmd`." },
+            { "line": 8, "under": "ferrous", "text": "Snapshots use `insta`; review them with `cargo insta review`." }
+          ]
+        },
+        {
+          "path": ".cursor/rules/rust.mdc",
+          "kind": "cursor_rule",
+          "globs": ["**/*.rs"],
+          "statements": [
+            { "line": 5, "text": "`unwrap()` is fine where a comment states the invariant that makes it safe." },
+            { "line": 6, "text": "Use `argh` for argument parsing; clap is too heavy for this tool." },
+            { "line": 7, "text": "Run rustfmt on every file before committing." },
+            { "line": 8, "text": "Don't use features that need the 2024 edition, such as `gen` blocks." },
+            { "line": 9, "text": "Prefer iterators to index loops." }
+          ]
+        }
+      ],
+      "conflicts": [
+        { "id": "ferrous-msrv", "subject": "version", "hinge": "version", "members": ["AGENTS.md:7", "CLAUDE.md:3"], "note": "1.75 against 1.80." },
+        { "id": "ferrous-unwrap", "subject": "style", "members": ["AGENTS.md:15", ".cursor/rules/rust.mdc:5"], "note": "Never, against fine with a comment, in the same files." },
+        { "id": "ferrous-args", "subject": "architecture", "members": ["CLAUDE.md:5", ".cursor/rules/rust.mdc:6"], "note": "clap against argh." },
+        { "id": "ferrous-clippy", "subject": "lint", "members": ["AGENTS.md:9", "CLAUDE.md:6"], "note": "-D warnings against don't pass it." }
+      ],
+      "traps": [
+        { "id": "ferrous-errors", "trap": "scope", "members": ["AGENTS.md:16", "CLAUDE.md:4"], "note": "anyhow in the binary, thiserror in the library." },
+        { "id": "ferrous-fmt", "trap": "repeat", "members": ["AGENTS.md:10", ".cursor/rules/rust.mdc:7"], "note": "cargo fmt runs rustfmt." },
+        { "id": "ferrous-edition", "trap": "version", "members": ["AGENTS.md:8", ".cursor/rules/rust.mdc:8"], "note": "2021 edition, so nothing from 2024." }
+      ]
+    },
+    {
+      "id": "zz-personal",
+      "space": "personal",
+      "about": "A developer's Personal space: their own files for Claude Code and Codex, a project's CLAUDE.local.md, and what Claude Code, Codex and Gemini CLI noted about them.",
+      "files": [
+        {
+          "path": "CLAUDE.local.md",
+          "kind": "claude_local",
+          "statements": [
+            { "line": 3, "under": "Notes for this repo", "text": "Skip the e2e suite locally; CI runs it." },
+            { "line": 4, "under": "Notes for this repo", "text": "The local database runs on port 5433, because 5432 is taken by another project." },
+            { "line": 5, "under": "Notes for this repo", "text": "This repo's services are Kotlin; stick to Kotlin here." },
+            { "line": 6, "under": "Notes for this repo", "text": "Use the `staging` AWS profile for anything that touches cloud resources." },
+            { "line": 7, "under": "Notes for this repo", "text": "Explain the plan and wait for my go-ahead before writing any code." }
+          ]
+        },
+        {
+          "path": "~/.claude/CLAUDE.md",
+          "kind": "claude_user",
+          "statements": [
+            { "line": 3, "under": "How I work", "text": "Write in British English." },
+            { "line": 4, "under": "How I work", "text": "Use pnpm for JavaScript." },
+            { "line": 5, "under": "How I work", "text": "Prefer single quotes in JavaScript." },
+            { "line": 6, "under": "How I work", "text": "Don't hard-wrap Markdown; one paragraph per line." },
+            { "line": 7, "under": "How I work", "text": "Prefer Go for new services." },
+            { "line": 8, "under": "How I work", "text": "Don't add comments that restate the code." },
+            { "line": 9, "under": "How I work", "text": "I review diffs in the terminal, so keep them small." },
+            { "line": 10, "under": "How I work", "text": "Ask before running any command that takes more than 5 minutes." },
+            { "line": 11, "under": "How I work", "text": "Never force-push a shared branch." },
+            { "line": 12, "under": "How I work", "text": "When unsure, ask one question rather than guessing." },
+            { "line": 13, "under": "How I work", "text": "Don't wait for a go-ahead: make the change, then explain it." }
+          ]
+        },
+        {
+          "path": "~/.claude/projects/…/memory/MEMORY.md",
+          "kind": "claude_memory",
+          "statements": [
+            { "line": 3, "under": "Project memory", "text": "User prefers American spelling in docs." },
+            { "line": 4, "under": "Project memory", "text": "Always run the e2e suite before committing in this project." },
+            { "line": 5, "under": "Project memory", "text": "User is on leave from December 22 to January 5." },
+            { "line": 6, "under": "Project memory", "text": "The full test suite takes about 4 minutes." },
+            { "line": 7, "under": "Project memory", "text": "User started at the company in March 2025." },
+            { "line": 8, "under": "Project memory", "text": "User uses delta as the git pager." },
+            { "line": 9, "under": "Project memory", "text": "User's laptop runs macOS 15." }
+          ]
+        },
+        {
+          "path": "~/.claude/projects/…/memory/debugging.md",
+          "kind": "claude_memory",
+          "statements": [
+            { "line": 3, "under": "Debugging notes", "text": "The flaky `checkout.spec.ts` fails when the API container starts slowly; rerun it once before investigating." },
+            { "line": 4, "under": "Debugging notes", "text": "Logs for the local stack are in `.logs/`, rotated daily." }
+          ]
+        },
+        {
+          "path": "~/.codex/AGENTS.md",
+          "kind": "codex_user",
+          "statements": [
+            { "line": 3, "under": "Codex", "text": "I use bun for everything JavaScript." },
+            { "line": 4, "under": "Codex", "text": "Use double quotes in JavaScript and TypeScript." },
+            { "line": 5, "under": "Codex", "text": "Wrap Markdown at 80 columns." },
+            { "line": 6, "under": "Codex", "text": "Comments explain why, never what the code does." },
+            { "line": 7, "under": "Codex", "text": "Run the formatter before you finish." }
+          ]
+        },
+        {
+          "path": "~/.codex/memories/notes.md",
+          "kind": "codex_memory",
+          "statements": [
+            { "line": 1, "text": "User is away from December 18 to January 2." },
+            { "line": 2, "text": "User has been on the payments team since 2025." },
+            { "line": 3, "text": "User is on macOS Sequoia." }
+          ]
+        },
+        {
+          "path": "~/.gemini/GEMINI.md",
+          "kind": "gemini_user",
+          "statements": [
+            { "line": 2, "under": "Gemini Added Memories", "text": "User wants double quotes in JS and TS." },
+            { "line": 3, "under": "Gemini Added Memories", "text": "User prefers concise answers." }
+          ]
+        }
+      ],
+      "conflicts": [
+        { "id": "zz-spelling", "subject": "preference", "members": ["~/.claude/CLAUDE.md:3", "~/.claude/projects/…/memory/MEMORY.md:3"], "note": "The person says British; Claude's memory says American." },
+        { "id": "zz-js-tool", "subject": "package_manager", "members": ["~/.claude/CLAUDE.md:4", "~/.codex/AGENTS.md:3"], "note": "Two of the person's own files: pnpm against bun." },
+        { "id": "zz-quotes", "subject": "style", "members": ["~/.claude/CLAUDE.md:5", "~/.codex/AGENTS.md:4", "~/.gemini/GEMINI.md:2"], "note": "Single against double quotes, twice: three-way." },
+        { "id": "zz-wrap", "subject": "style", "members": ["~/.claude/CLAUDE.md:6", "~/.codex/AGENTS.md:5"], "note": "Don't wrap against wrap at 80." },
+        { "id": "zz-e2e", "subject": "test", "members": ["CLAUDE.local.md:3", "~/.claude/projects/…/memory/MEMORY.md:4"], "note": "The person's file for this repository against Claude's memory of it." },
+        { "id": "zz-leave", "subject": "schedule", "hinge": "date", "members": ["~/.claude/projects/…/memory/MEMORY.md:5", "~/.codex/memories/notes.md:1"], "note": "Two agents remember different dates." },
+        { "id": "zz-code-first", "subject": "preference", "members": ["CLAUDE.local.md:7", "~/.claude/CLAUDE.md:13"], "note": "Wait for a go-ahead against don't wait; neither names a scope. Rewritten after the first live runs: its first words (plan first, code first) could both be followed." }
+      ],
+      "traps": [
+        { "id": "zz-kotlin", "trap": "scope", "members": ["CLAUDE.local.md:5", "~/.claude/CLAUDE.md:7"], "note": "This repository is the stated exception." },
+        { "id": "zz-comments", "trap": "repeat", "members": ["~/.claude/CLAUDE.md:8", "~/.codex/AGENTS.md:6"], "note": "Comments say why." },
+        { "id": "zz-diffs", "trap": "complementary", "members": ["~/.claude/CLAUDE.md:9", "~/.claude/projects/…/memory/MEMORY.md:8"], "note": "Diffs in the terminal, through delta." },
+        { "id": "zz-suite-time", "trap": "number", "members": ["~/.claude/CLAUDE.md:10", "~/.claude/projects/…/memory/MEMORY.md:6"], "note": "A 4-minute suite is under the 5-minute bar." },
+        { "id": "zz-tenure", "trap": "date", "members": ["~/.claude/projects/…/memory/MEMORY.md:7", "~/.codex/memories/notes.md:2"], "note": "March 2025 is in 2025." },
+        { "id": "zz-macos", "trap": "version", "members": ["~/.claude/projects/…/memory/MEMORY.md:9", "~/.codex/memories/notes.md:3"], "note": "macOS 15 is Sequoia." }
+      ]
+    }
+  ]
+}

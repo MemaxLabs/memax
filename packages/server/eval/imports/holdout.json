@@ -1,0 +1,288 @@
+{
+  "version": 1,
+  "description": "Held-out import batches for the import conflict check (plan 25 §11, Import cleanup), written before batches.json and before any change to the import prompt or its bar. Same format and labelling rules as batches.json; no statement or batch id is shared with it.",
+  "batches": [
+    {
+      "id": "tern-android",
+      "space": "project",
+      "about": "A Kotlin Android app for planning bird-watching trips: Compose UI, feature modules, a benchmark module.",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "kind": "agents_md",
+          "statements": [
+            { "line": 3, "under": "Tern", "text": "Tern is an Android app for planning bird-watching trips: sightings, routes and checklists, offline first." },
+            { "line": 7, "under": "Tern › Build and run", "text": "Build a debug APK with `./gradlew assembleDebug`." },
+            { "line": 8, "under": "Tern › Build and run", "text": "Install it on a connected device with `./gradlew installDebug`." },
+            { "line": 9, "under": "Tern › Build and run", "text": "The project builds with JDK 17." },
+            { "line": 10, "under": "Tern › Build and run", "text": "minSdk is 26; targetSdk and compileSdk are 35." },
+            { "line": 11, "under": "Tern › Build and run", "text": "Kotlin 2.1, with the Compose compiler Gradle plugin." },
+            { "line": 15, "under": "Tern › Testing", "text": "Run the unit tests with `./gradlew test` before every commit." },
+            { "line": 16, "under": "Tern › Testing", "text": "Instrumented tests live in `app/src/androidTest` and run on an emulator or a device." },
+            { "line": 17, "under": "Tern › Testing", "text": "Test Flows with Turbine." },
+            { "line": 18, "under": "Tern › Testing", "text": "Screenshot tests use Roborazzi; record new baselines with `./gradlew recordRoborazziDebug`." },
+            { "line": 22, "under": "Tern › Architecture", "text": "The app is a single activity with Jetpack Compose screens and Navigation Compose." },
+            { "line": 23, "under": "Tern › Architecture", "text": "Use Hilt for dependency injection." },
+            { "line": 24, "under": "Tern › Architecture", "text": "Each feature is a Gradle module under `feature/`, and features never depend on each other." },
+            { "line": 25, "under": "Tern › Architecture", "text": "Repositories expose `Flow`s; ViewModels collect them into a `StateFlow` of UI state." },
+            { "line": 26, "under": "Tern › Architecture", "text": "Disk and network calls run off the main thread, on `Dispatchers.IO`." },
+            { "line": 27, "under": "Tern › Architecture", "text": "Room is the only local database; migrations are tested with `MigrationTestHelper`." },
+            { "line": 31, "under": "Tern › Style", "text": "Use Gradle's Kotlin DSL (`build.gradle.kts`) for every module." },
+            { "line": 32, "under": "Tern › Style", "text": "Run `./gradlew ktlintCheck` before pushing." },
+            { "line": 33, "under": "Tern › Style", "text": "Prefer `sealed interface` over `sealed class` for UI state." },
+            { "line": 34, "under": "Tern › Style", "text": "Keep files under 400 lines." },
+            { "line": 38, "under": "Tern › Benchmark module", "text": "Run the macrobenchmarks with `./gradlew :benchmark:connectedCheck` on a physical device only; emulator numbers are meaningless." },
+            { "line": 39, "under": "Tern › Benchmark module", "text": "Baseline profiles are regenerated before each release." }
+          ]
+        },
+        {
+          "path": "CLAUDE.md",
+          "kind": "claude_md",
+          "statements": [
+            { "line": 5, "under": "Tern › Commands", "text": "`./gradlew assembleDebug` builds the debug APK; `./gradlew bundleRelease` builds the release bundle." },
+            { "line": 6, "under": "Tern › Commands", "text": "Use JDK 21 to build; the Gradle toolchain is set to 21." },
+            { "line": 7, "under": "Tern › Commands", "text": "Lint with `./gradlew ktlintCheck detekt`." },
+            { "line": 11, "under": "Tern › Code", "text": "Composable function names start with a lowercase verb, like `showProfile()`." },
+            { "line": 12, "under": "Tern › Code", "text": "Dependency injection is done with Koin; modules are declared in `di/`." },
+            { "line": 13, "under": "Tern › Code", "text": "Never block the main thread: do disk and network work in a coroutine on `Dispatchers.IO`." },
+            { "line": 14, "under": "Tern › Code", "text": "Strings shown to people go in `res/values/strings.xml`, never inline." },
+            { "line": 15, "under": "Tern › Code", "text": "Use `kotlinx.serialization` for JSON, not Gson or Moshi." },
+            { "line": 16, "under": "Tern › Code", "text": "Keep composables under 60 lines; split larger ones into private composables." },
+            { "line": 17, "under": "Tern › Code", "text": "The code relies on the K2 compiler, so Kotlin 2.0 or later." },
+            { "line": 21, "under": "Tern › Releases", "text": "Release builds are signed in CI; never commit the keystore." },
+            { "line": 22, "under": "Tern › Releases", "text": "The Play Store release train ships every other Tuesday." },
+            { "line": 23, "under": "Tern › Releases", "text": "Release branches are cut on the Monday before a release train." }
+          ]
+        },
+        {
+          "path": ".cursor/rules/compose.mdc",
+          "kind": "cursor_rule",
+          "globs": ["app/src/main/**/*.kt", "feature/**/*.kt"],
+          "statements": [
+            { "line": 6, "text": "Name composables in PascalCase, as nouns: `ProfileCard`, not `showProfile`." },
+            { "line": 7, "text": "Every screen-level composable takes its state and event callbacks as parameters, with no ViewModel inside." },
+            { "line": 8, "text": "Hoist state; use `remember` only for state that belongs to the UI alone." },
+            { "line": 9, "text": "Previews go in the same file, annotated `@PreviewLightDark`." },
+            { "line": 10, "text": "Use Material 3 components from `androidx.compose.material3`." }
+          ]
+        },
+        {
+          "path": ".github/copilot-instructions.md",
+          "kind": "copilot_instructions",
+          "statements": [
+            { "line": 3, "under": "Copilot instructions for Tern", "text": "The app supports Android 7.0 (API 24) and later." },
+            { "line": 4, "under": "Copilot instructions for Tern", "text": "Don't run the Gradle test task locally; CI runs the unit tests on every push." },
+            { "line": 5, "under": "Copilot instructions for Tern", "text": "Don't use a DI framework; pass dependencies through constructors." },
+            { "line": 6, "under": "Copilot instructions for Tern", "text": "New modules use Groovy `build.gradle` files, like the existing `app` module." },
+            { "line": 7, "under": "Copilot instructions for Tern", "text": "Serialize every JSON payload with `kotlinx.serialization`." },
+            { "line": 8, "under": "Copilot instructions for Tern", "text": "Write KDoc for every public function in `core/`." },
+            { "line": 9, "under": "Copilot instructions for Tern", "text": "Network calls go through the Retrofit services in `core/network`." },
+            { "line": 10, "under": "Copilot instructions for Tern", "text": "Images load with Coil." }
+          ]
+        }
+      ],
+      "conflicts": [
+        { "id": "tern-jdk", "subject": "version", "hinge": "version", "members": ["AGENTS.md:9", "CLAUDE.md:6"], "note": "JDK 17 against JDK 21 for the same build." },
+        { "id": "tern-min-sdk", "subject": "version", "hinge": "number", "members": ["AGENTS.md:10", ".github/copilot-instructions.md:3"], "note": "minSdk 26 is Android 8.0; API 24 is Android 7.0." },
+        { "id": "tern-tests-locally", "subject": "test", "members": ["AGENTS.md:15", ".github/copilot-instructions.md:4"], "note": "Run the unit tests before every commit, against don't run them locally." },
+        { "id": "tern-composable-names", "subject": "style", "members": ["CLAUDE.md:11", ".cursor/rules/compose.mdc:6"], "note": "Lowercase verbs against PascalCase nouns; the rule's globs cover where composables live." },
+        { "id": "tern-di", "subject": "architecture", "members": ["AGENTS.md:23", "CLAUDE.md:12", ".github/copilot-instructions.md:5"], "note": "Hilt, Koin, or no framework: three-way." },
+        { "id": "tern-gradle-dsl", "subject": "build", "members": ["AGENTS.md:31", ".github/copilot-instructions.md:6"], "note": "Kotlin DSL for every module, against Groovy for new modules." }
+      ],
+      "traps": [
+        { "id": "tern-benchmark-device", "trap": "scope", "members": ["AGENTS.md:16", "AGENTS.md:38"], "note": "The benchmark module needs a physical device; the app's instrumented tests may use an emulator." },
+        { "id": "tern-io", "trap": "repeat", "members": ["AGENTS.md:26", "CLAUDE.md:13"], "note": "The same rule about Dispatchers.IO." },
+        { "id": "tern-json", "trap": "repeat", "members": ["CLAUDE.md:15", ".github/copilot-instructions.md:7"], "note": "kotlinx.serialization in both, one with more detail." },
+        { "id": "tern-lint", "trap": "complementary", "members": ["AGENTS.md:32", "CLAUDE.md:7"], "note": "ktlint before pushing; the lint command adds detekt." },
+        { "id": "tern-size-limits", "trap": "number", "members": ["AGENTS.md:34", "CLAUDE.md:16"], "note": "400 lines a file and 60 lines a composable are different limits." },
+        { "id": "tern-kotlin", "trap": "version", "members": ["AGENTS.md:11", "CLAUDE.md:17"], "note": "Kotlin 2.1 satisfies 2.0 or later." },
+        { "id": "tern-release-days", "trap": "date", "members": ["CLAUDE.md:22", "CLAUDE.md:23"], "note": "Trains ship on Tuesdays; branches are cut the Monday before." }
+      ]
+    },
+    {
+      "id": "harbor-infra",
+      "space": "project",
+      "about": "A shipping-rates platform: a Go API, a Next.js dashboard and the Terraform for both.",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "kind": "agents_md",
+          "statements": [
+            { "line": 3, "under": "Harbor", "text": "Harbor runs the shipping-rates platform: a Go API in `api/`, a Next.js dashboard in `web/` and the Terraform for both in `infra/`." },
+            { "line": 7, "under": "Harbor › Setup", "text": "Install Go 1.23, Node 22 and Terraform 1.9." },
+            { "line": 8, "under": "Harbor › Setup", "text": "Copy `.env.example` to `.env`; never commit `.env`." },
+            { "line": 9, "under": "Harbor › Setup", "text": "`make dev` starts the API, the dashboard and a local Postgres in Docker." },
+            { "line": 13, "under": "Harbor › API (`api/`)", "text": "Lint Go with `golangci-lint run ./...`." },
+            { "line": 14, "under": "Harbor › API (`api/`)", "text": "Run the API tests with `go test ./...`; they need Docker for Postgres." },
+            { "line": 15, "under": "Harbor › API (`api/`)", "text": "Errors use RFC 9457 problem details (`application/problem+json`)." },
+            { "line": 16, "under": "Harbor › API (`api/`)", "text": "Handlers take a `context.Context` first, and never both log and return the same error." },
+            { "line": 17, "under": "Harbor › API (`api/`)", "text": "Database access goes through `sqlc`-generated queries in `api/internal/db`; no hand-written SQL in handlers." },
+            { "line": 18, "under": "Harbor › API (`api/`)", "text": "Format Go with `gofmt`, which indents with tabs." },
+            { "line": 22, "under": "Harbor › Dashboard (`web/`)", "text": "In `web/`, use npm; the lockfile is `package-lock.json`." },
+            { "line": 23, "under": "Harbor › Dashboard (`web/`)", "text": "Run the dashboard's tests with `npm test` inside `web/`." },
+            { "line": 24, "under": "Harbor › Dashboard (`web/`)", "text": "Server components by default; add `\"use client\"` only for interactivity." },
+            { "line": 28, "under": "Harbor › Infrastructure (`infra/`)", "text": "Production applies run from `main` after the merge, through the `apply` workflow." },
+            { "line": 29, "under": "Harbor › Infrastructure (`infra/`)", "text": "Every change gets a `terraform plan` in the pull request." },
+            { "line": 30, "under": "Harbor › Infrastructure (`infra/`)", "text": "State lives in the S3 backend with DynamoDB locking; state files never go into git." },
+            { "line": 34, "under": "Harbor › Pull requests", "text": "Keep pull requests under 400 changed lines." },
+            { "line": 35, "under": "Harbor › Pull requests", "text": "Squash-merge; the pull request's title becomes the commit message." }
+          ]
+        },
+        {
+          "path": "CLAUDE.md",
+          "kind": "claude_md",
+          "statements": [
+            { "line": 5, "under": "Harbor › Commands", "text": "`make dev` runs everything locally." },
+            { "line": 6, "under": "Harbor › Commands", "text": "`make test` runs the Go tests and the dashboard tests." },
+            { "line": 10, "under": "Harbor › Go", "text": "API errors are returned as `{\"error\": {\"code\": \"...\", \"message\": \"...\"}}` with a matching HTTP status." },
+            { "line": 11, "under": "Harbor › Go", "text": "Go code is linted with `staticcheck` only; golangci-lint was removed in 2025." },
+            { "line": 12, "under": "Harbor › Go", "text": "Use `slog` for logging, with the request ID on every line." },
+            { "line": 13, "under": "Harbor › Go", "text": "Write table-driven tests, with `t.Run` per case." },
+            { "line": 14, "under": "Harbor › Go", "text": "`go.mod` says `go 1.23.4`, with the toolchain line removed." },
+            { "line": 18, "under": "Harbor › Infra", "text": "The change freeze for the Q4 network migration starts on November 20." },
+            { "line": 19, "under": "Harbor › Infra", "text": "Never commit `.tfstate` files." },
+            { "line": 20, "under": "Harbor › Infra", "text": "Every module has a README listing its inputs and outputs." },
+            { "line": 21, "under": "Harbor › Infra", "text": "Lambda timeouts are at most 25 seconds." }
+          ]
+        },
+        {
+          "path": ".claude/rules/terraform.md",
+          "kind": "claude_rule",
+          "globs": ["infra/**"],
+          "statements": [
+            { "line": 8, "under": "Terraform", "text": "Pin Terraform to 1.6.x; newer versions change the provider lock format we rely on." },
+            { "line": 9, "under": "Terraform", "text": "Run `terraform fmt -recursive` before committing." },
+            { "line": 10, "under": "Terraform", "text": "Generate module docs with `terraform-docs markdown table`." },
+            { "line": 11, "under": "Terraform", "text": "Never use `count` for resources with an identity of their own; use `for_each`." },
+            { "line": 12, "under": "Terraform", "text": "Tag every resource with `team`, `service` and `env`." },
+            { "line": 13, "under": "Terraform", "text": "Since February 2026 every resource lives in `vpc-main`." }
+          ]
+        },
+        {
+          "path": ".github/instructions/frontend.instructions.md",
+          "kind": "copilot_scoped",
+          "globs": ["web/**"],
+          "statements": [
+            { "line": 5, "text": "Install packages with `bun add`; bun is the dashboard's package manager." },
+            { "line": 6, "text": "Use 2-space indentation and double quotes." },
+            { "line": 7, "text": "Fetch data in server components with `fetch` and `next: { revalidate }`." },
+            { "line": 8, "text": "Use the design tokens in `web/styles/tokens.css`; no raw hex colours." },
+            { "line": 9, "text": "Format with Prettier before committing." }
+          ]
+        },
+        {
+          "path": "GEMINI.md",
+          "kind": "gemini_md",
+          "statements": [
+            { "line": 3, "under": "Harbor for Gemini", "text": "Only the `prod` branch triggers production applies; `main` applies to staging." },
+            { "line": 4, "under": "Harbor for Gemini", "text": "No infrastructure changes after November 15 until the network migration is done." },
+            { "line": 5, "under": "Harbor for Gemini", "text": "The legacy VPC (`vpc-legacy`) was retired on 2026-02-01; don't reference it." },
+            { "line": 6, "under": "Harbor for Gemini", "text": "API Gateway times out after 29 seconds." },
+            { "line": 7, "under": "Harbor for Gemini", "text": "Ask before running `terraform apply` against anything but a sandbox account." }
+          ]
+        }
+      ],
+      "conflicts": [
+        { "id": "harbor-terraform", "subject": "version", "hinge": "version", "members": ["AGENTS.md:7", ".claude/rules/terraform.md:8"], "note": "Terraform 1.9 against a 1.6.x pin, for the same infra/ code." },
+        { "id": "harbor-lint", "subject": "lint", "members": ["AGENTS.md:13", "CLAUDE.md:11"], "note": "golangci-lint against staticcheck only." },
+        { "id": "harbor-errors", "subject": "error_format", "members": ["AGENTS.md:15", "CLAUDE.md:10"], "note": "Problem details against an error envelope." },
+        { "id": "harbor-web-packages", "subject": "package_manager", "members": ["AGENTS.md:22", ".github/instructions/frontend.instructions.md:5"], "note": "npm against bun, both for web/." },
+        { "id": "harbor-prod-branch", "subject": "deploy", "members": ["AGENTS.md:28", "GEMINI.md:3"], "note": "main applies to production, against only prod does." },
+        { "id": "harbor-freeze", "subject": "schedule", "hinge": "date", "members": ["CLAUDE.md:18", "GEMINI.md:4"], "note": "The freeze starts November 20, against nothing after November 15." }
+      ],
+      "traps": [
+        { "id": "harbor-make-test", "trap": "complementary", "members": ["CLAUDE.md:6", "AGENTS.md:14", "AGENTS.md:23"], "note": "make test runs both suites; each can also run alone." },
+        { "id": "harbor-make-dev", "trap": "repeat", "members": ["AGENTS.md:9", "CLAUDE.md:5"], "note": "The same command, with less detail." },
+        { "id": "harbor-state", "trap": "repeat", "members": ["AGENTS.md:30", "CLAUDE.md:19"], "note": "State files never go into git." },
+        { "id": "harbor-module-docs", "trap": "complementary", "members": ["CLAUDE.md:20", ".claude/rules/terraform.md:10"], "note": "A README with inputs and outputs, generated by terraform-docs." },
+        { "id": "harbor-indent", "trap": "scope", "members": ["AGENTS.md:18", ".github/instructions/frontend.instructions.md:6"], "note": "Tabs for Go, two spaces in web/." },
+        { "id": "harbor-timeouts", "trap": "number", "members": ["CLAUDE.md:21", "GEMINI.md:6"], "note": "25 s Lambdas fit inside API Gateway's 29 s." },
+        { "id": "harbor-vpc", "trap": "date", "members": [".claude/rules/terraform.md:13", "GEMINI.md:5"], "note": "The same retirement, told twice." },
+        { "id": "harbor-go", "trap": "version", "members": ["AGENTS.md:7", "CLAUDE.md:14"], "note": "go 1.23.4 is Go 1.23." }
+      ]
+    },
+    {
+      "id": "kai-personal",
+      "space": "personal",
+      "about": "A backend engineer's Personal space: their own files for Claude Code and Codex, a project's CLAUDE.local.md, and what the agents noted.",
+      "files": [
+        {
+          "path": "CLAUDE.local.md",
+          "kind": "claude_local",
+          "statements": [
+            { "line": 3, "under": "Local notes", "text": "Run the dev server with `npm run dev:local`; it listens on port 4000." },
+            { "line": 4, "under": "Local notes", "text": "Indent with 2 spaces." },
+            { "line": 5, "under": "Local notes", "text": "In this repository the scripts are Python, because the data team maintains them, even though I prefer TypeScript elsewhere." },
+            { "line": 6, "under": "Local notes", "text": "Seed data comes from `scripts/seed_dev.py`." }
+          ]
+        },
+        {
+          "path": "~/.claude/CLAUDE.md",
+          "kind": "claude_user",
+          "statements": [
+            { "line": 3, "under": "About me", "text": "I'm a backend engineer; I mostly write Go and TypeScript." },
+            { "line": 4, "under": "About me", "text": "Explain changes briefly; I don't need a summary at the end." },
+            { "line": 5, "under": "About me", "text": "Commit messages: imperative mood, no prefixes like `feat:`." },
+            { "line": 6, "under": "About me", "text": "Indent with tabs." },
+            { "line": 7, "under": "About me", "text": "Prefer TypeScript for new scripts." },
+            { "line": 8, "under": "About me", "text": "Never push to `main` without asking me." },
+            { "line": 9, "under": "About me", "text": "Reply in English." },
+            { "line": 10, "under": "About me", "text": "Use pnpm for JavaScript projects." },
+            { "line": 11, "under": "About me", "text": "Keep pull requests under 400 lines." }
+          ]
+        },
+        {
+          "path": "~/.claude/projects/…/memory/MEMORY.md",
+          "kind": "claude_memory",
+          "statements": [
+            { "line": 3, "under": "Memory", "text": "The user likes a detailed summary of every change at the end of a task." },
+            { "line": 4, "under": "Memory", "text": "The user's dev server for this project runs on port 3000." },
+            { "line": 5, "under": "Memory", "text": "The user moved to the Berlin office in May 2026." },
+            { "line": 6, "under": "Memory", "text": "Tests in this project need `docker compose up -d db` first." },
+            { "line": 7, "under": "Memory", "text": "The user splits commits so each is under 100 lines." }
+          ]
+        },
+        {
+          "path": "~/.codex/AGENTS.md",
+          "kind": "codex_user",
+          "statements": [
+            { "line": 3, "under": "Codex", "text": "Use conventional commit prefixes (`feat:`, `fix:`)." },
+            { "line": 4, "under": "Codex", "text": "Ask before pushing to the main branch." },
+            { "line": 5, "under": "Codex", "text": "Run the linters before saying a task is done." },
+            { "line": 6, "under": "Codex", "text": "I install global tools with `pnpm add -g`." }
+          ]
+        },
+        {
+          "path": "~/.codex/memories/preferences.md",
+          "kind": "codex_memory",
+          "statements": [
+            { "line": 1, "text": "User's time zone is Europe/Berlin." },
+            { "line": 2, "text": "Answer in Chinese, and keep code comments in English." }
+          ]
+        },
+        {
+          "path": "~/.gemini/GEMINI.md",
+          "kind": "gemini_user",
+          "statements": [
+            { "line": 2, "under": "Gemini Added Memories", "text": "User prefers answers in Chinese." },
+            { "line": 3, "under": "Gemini Added Memories", "text": "User's editor is Neovim." }
+          ]
+        }
+      ],
+      "conflicts": [
+        { "id": "kai-summary", "subject": "preference", "members": ["~/.claude/CLAUDE.md:4", "~/.claude/projects/…/memory/MEMORY.md:3"], "note": "The person says no summary; Claude's memory says a detailed one." },
+        { "id": "kai-commit-prefixes", "subject": "style", "members": ["~/.claude/CLAUDE.md:5", "~/.codex/AGENTS.md:3"], "note": "Two of the person's own files disagree." },
+        { "id": "kai-dev-port", "subject": "preference", "hinge": "number", "members": ["CLAUDE.local.md:3", "~/.claude/projects/…/memory/MEMORY.md:4"], "note": "Port 4000 in the project's local file, 3000 in the agent's memory of the same project." },
+        { "id": "kai-language", "subject": "preference", "members": ["~/.claude/CLAUDE.md:9", "~/.codex/memories/preferences.md:2", "~/.gemini/GEMINI.md:2"], "note": "English against Chinese, twice: three-way." },
+        { "id": "kai-indent", "subject": "style", "members": ["CLAUDE.local.md:4", "~/.claude/CLAUDE.md:6"], "note": "Neither names a scope; both land in Personal unscoped." }
+      ],
+      "traps": [
+        { "id": "kai-scripts", "trap": "scope", "members": ["CLAUDE.local.md:5", "~/.claude/CLAUDE.md:7"], "note": "This repository is the stated exception." },
+        { "id": "kai-push", "trap": "repeat", "members": ["~/.claude/CLAUDE.md:8", "~/.codex/AGENTS.md:4"], "note": "The same rule for two agents." },
+        { "id": "kai-pnpm", "trap": "complementary", "members": ["~/.claude/CLAUDE.md:10", "~/.codex/AGENTS.md:6"], "note": "pnpm for projects and for global tools." },
+        { "id": "kai-berlin", "trap": "date", "members": ["~/.claude/projects/…/memory/MEMORY.md:5", "~/.codex/memories/preferences.md:1"], "note": "Moved to Berlin, so Berlin time." },
+        { "id": "kai-sizes", "trap": "number", "members": ["~/.claude/CLAUDE.md:11", "~/.claude/projects/…/memory/MEMORY.md:7"], "note": "400 lines a pull request, 100 lines a commit." }
+      ]
+    }
+  ]
+}

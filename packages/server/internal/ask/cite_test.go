@@ -1,9 +1,12 @@
 package ask
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 )
 
 // render runs chunks through a citer and writes the result as text with
@@ -118,22 +121,32 @@ func TestConfigFromEnv(t *testing.T) {
 	env := func(kv map[string]string) func(string) (string, bool) {
 		return func(k string) (string, bool) { v, ok := kv[k]; return v, ok }
 	}
+	fp8, _ := anthropic.QuantizationsAtLeast("fp8")
+	pinned := anthropic.Routing{Providers: anthropic.DefaultProviders[DefaultModel], Quantizations: fp8}
+	floorOnly := anthropic.Routing{Quantizations: fp8}
 	cases := []struct {
 		name string
 		env  map[string]string
 		want Config
 	}{
-		{"defaults", nil, Config{Model: DefaultModel, ZeroDataRetention: true}},
-		{"off", map[string]string{"ASK_MODEL": "off"}, Config{ZeroDataRetention: true}},
-		{"none", map[string]string{"ASK_MODEL": " None "}, Config{ZeroDataRetention: true}},
+		{"defaults", nil, Config{Model: DefaultModel, ZeroDataRetention: true, Routing: pinned}},
+		{"off", map[string]string{"ASK_MODEL": "off"}, Config{ZeroDataRetention: true, Routing: floorOnly}},
+		{"none", map[string]string{"ASK_MODEL": " None "}, Config{ZeroDataRetention: true, Routing: floorOnly}},
 		{"slug", map[string]string{"ASK_MODEL": "anthropic/claude-haiku-4.5", "ASK_ZDR": "false"}, Config{Model: "anthropic/claude-haiku-4.5"}},
+		{"a slug with no default hosts", map[string]string{"ASK_MODEL": "openai/gpt-6-luna"},
+			Config{Model: "openai/gpt-6-luna", ZeroDataRetention: true, Routing: floorOnly}},
 		{"timeout and limit", map[string]string{"ASK_TIMEOUT_MS": "1500", "ASK_MONTHLY_LIMIT": "50"},
-			Config{Model: DefaultModel, ZeroDataRetention: true, Timeout: 1500 * 1e6, MonthlyLimit: 50}},
-		{"junk keeps defaults", map[string]string{"ASK_ZDR": "maybe", "ASK_TIMEOUT_MS": "-3", "ASK_MONTHLY_LIMIT": "lots"},
-			Config{Model: DefaultModel, ZeroDataRetention: true}},
+			Config{Model: DefaultModel, ZeroDataRetention: true, Routing: pinned, Timeout: 1500 * 1e6, MonthlyLimit: 50}},
+		{"junk keeps defaults", map[string]string{"ASK_ZDR": "maybe", "ASK_TIMEOUT_MS": "-3", "ASK_MONTHLY_LIMIT": "lots", "ASK_MIN_QUANTIZATION": "fp7"},
+			Config{Model: DefaultModel, ZeroDataRetention: true, Routing: pinned}},
+		{"named hosts and no floor", map[string]string{"ASK_PROVIDERS": " Together , baseten,together", "ASK_MIN_QUANTIZATION": "off"},
+			Config{Model: DefaultModel, ZeroDataRetention: true, Routing: anthropic.Routing{Providers: []string{"together", "baseten"}}}},
+		{"no pin", map[string]string{"ASK_PROVIDERS": "any"}, Config{Model: DefaultModel, ZeroDataRetention: true, Routing: floorOnly}},
+		{"named routing without zero retention", map[string]string{"ASK_ZDR": "false", "ASK_PROVIDERS": "deepinfra", "ASK_MIN_QUANTIZATION": "bf16"},
+			Config{Model: DefaultModel, Routing: anthropic.Routing{Providers: []string{"deepinfra"}, Quantizations: []string{"fp16", "bf16", "fp32", "unknown"}}}},
 	}
 	for _, tc := range cases {
-		if got := ConfigFromEnv(env(tc.env)); got != tc.want {
+		if got := ConfigFromEnv(env(tc.env)); !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%s: %+v, want %+v", tc.name, got, tc.want)
 		}
 	}

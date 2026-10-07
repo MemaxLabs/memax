@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 )
 
 // Config configures Ask. The model tier is explicit configuration (plan
@@ -17,6 +19,9 @@ type Config struct {
 	// ZeroDataRetention routes every call to zero-retention providers only
 	// (OpenRouter provider.zdr, D14).
 	ZeroDataRetention bool
+	// Routing pins the hosts that may answer and the precisions they may
+	// run (D14; anthropic.RoutingFromEnv).
+	Routing anthropic.Routing
 	// Timeout bounds the whole answer, first token to last.
 	Timeout time.Duration
 	// MaxTokens bounds the answer (three short sentences need far less).
@@ -64,12 +69,16 @@ func (c Config) withDefaults() Config {
 // ConfigFromEnv reads Ask's configuration through lookup (os.LookupEnv).
 // Call it once, at startup, in the API's composition root.
 //
-//	ASK_MODEL          the answer tier (default deepseek/deepseek-v4.1-flash; "off" answers with memories only)
-//	ASK_ZDR            zero-data-retention routing (default true)
-//	ASK_TIMEOUT_MS     one answer, first token to last (default 20000)
-//	ASK_MONTHLY_LIMIT  asks a person may make a month (default none during the free alpha; 50 is Free's, D9)
+//	ASK_MODEL             the answer tier (default deepseek/deepseek-v4.1-flash; "off" answers with memories only)
+//	ASK_ZDR               zero-data-retention routing (default true)
+//	ASK_PROVIDERS         the hosts that may answer, an ordered allowlist ("together,baseten"; "any" pins none;
+//	                      default anthropic.DefaultProviders for the slug, when ASK_ZDR is on)
+//	ASK_MIN_QUANTIZATION  the lowest precision those hosts may run (default fp8 when ASK_ZDR is on; "off")
+//	ASK_TIMEOUT_MS        one answer, first token to last (default 20000)
+//	ASK_MONTHLY_LIMIT     asks a person may make a month (default none during the free alpha; 50 is Free's, D9)
 //
-// V1's /v1/ask reads ASK_MODEL too, as its strong tier; it ignores "off".
+// V1's /v1/ask reads ASK_MODEL too, as its strong tier; it ignores "off"
+// and the routing.
 func ConfigFromEnv(lookup func(string) (string, bool)) Config {
 	c := Config{Model: DefaultModel, ZeroDataRetention: true}
 	if v, ok := lookup("ASK_MODEL"); ok {
@@ -85,6 +94,10 @@ func ConfigFromEnv(lookup func(string) (string, bool)) Config {
 		if b, err := strconv.ParseBool(strings.TrimSpace(v)); err == nil {
 			c.ZeroDataRetention = b
 		}
+	}
+	var err error
+	if c.Routing, err = anthropic.RoutingFromEnv(lookup, "ASK_PROVIDERS", "ASK_MIN_QUANTIZATION", c.Model, c.ZeroDataRetention); err != nil {
+		slog.Warn("ask: config", "error", err)
 	}
 	if v, ok := lookup("ASK_TIMEOUT_MS"); ok {
 		if ms, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && ms > 0 {

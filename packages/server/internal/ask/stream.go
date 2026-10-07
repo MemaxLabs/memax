@@ -176,7 +176,7 @@ func (s *Service) Answer(ctx context.Context, p *Prepared, emit Emit) Outcome {
 		}
 	}
 	u, err := s.model.Stream(mctx, Call{Model: s.cfg.Model, System: systemPrompt(r.SpaceName),
-		Prompt: userPrompt(r.Question, p.sources), MaxTokens: s.cfg.MaxTokens}, func(text string) {
+		Prompt: userPrompt(r.Question, p.sources), MaxTokens: s.cfg.MaxTokens, Routing: s.cfg.Routing}, func(text string) {
 		if text != "" {
 			spoke = true
 		}

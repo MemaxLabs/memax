@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 )
 
@@ -22,6 +23,14 @@ type Tier struct {
 	Strict bool
 	// MaxTokens bounds the answer.
 	MaxTokens int
+	// Routing pins the hosts that may serve the tier and the precisions
+	// they may run (plan 25 D14; anthropic.RoutingFromEnv).
+	Routing anthropic.Routing
+	// Temperature, when set, is sent with every call. The judge's answers
+	// are classifications, so its tiers run at 0 where the model takes a
+	// temperature; nil leaves the model's default (Claude Sonnet 5.5
+	// refuses any other).
+	Temperature *float64
 }
 
 // Enabled reports whether the tier has a model.
@@ -135,13 +144,23 @@ func (c Config) withDefaults() Config {
 // variables through lookup (os.LookupEnv). Call it once, at startup, in
 // the worker's composition root.
 //
-//	JUDGE_MODEL           primary tier (default deepseek/deepseek-v4.1-flash; "off" disables stage 1)
-//	JUDGE_FALLBACK_MODEL  strict-schema fallback tier (default anthropic/claude-haiku-4.5; "off" disables)
-//	JUDGE_STRONG_MODEL    tier for verdicts on decisions in force (default anthropic/claude-sonnet-5.5; "off")
-//	JUDGE_ZDR             zero-data-retention routing (default true)
-//	JUDGE_CONDITIONS      propose "stays true while" conditions (default false)
-//	JUDGE_TIMEOUT_MS      one model call (default 12000)
-//	JUDGE_VECTOR_FLOOR    cosine similarity a vector candidate needs (default 0.65)
+//	JUDGE_MODEL                 primary tier (default deepseek/deepseek-v4.1-flash; "off" disables stage 1)
+//	JUDGE_FALLBACK_MODEL        strict-schema fallback tier (default anthropic/claude-haiku-4.5; "off" disables)
+//	JUDGE_STRONG_MODEL          tier for verdicts on decisions in force (default anthropic/claude-sonnet-5.5; "off")
+//	JUDGE_ZDR                   zero-data-retention routing (default true)
+//	JUDGE_PROVIDERS             the primary's hosts, an ordered allowlist ("together,baseten"; "any" pins none;
+//	                            default anthropic.DefaultProviders for the slug, when JUDGE_ZDR is on)
+//	JUDGE_FALLBACK_PROVIDERS    the same, for the fallback tier
+//	JUDGE_STRONG_PROVIDERS      the same, for the strong tier
+//	JUDGE_MIN_QUANTIZATION      the lowest precision any tier's hosts may run (default fp8 when JUDGE_ZDR is on; "off")
+//	JUDGE_TEMPERATURE           the primary's temperature (default 0; "default" sends none)
+//	JUDGE_FALLBACK_TEMPERATURE  the fallback's (default 0)
+//	JUDGE_STRONG_TEMPERATURE    the strong tier's (default none: Claude Sonnet 5.5 takes no other)
+//	JUDGE_CONDITIONS            propose "stays true while" conditions (default false)
+//	JUDGE_TIMEOUT_MS            one model call (default 12000)
+//	JUDGE_VECTOR_FLOOR          cosine similarity a vector candidate needs (default 0.65)
+//
+// A value it can't read keeps the default and is logged.
 func ConfigFromEnv(lookup func(string) (string, bool)) Config {
 	model := func(key, def string) string {
 		v, ok := lookup(key)
@@ -171,6 +190,25 @@ func ConfigFromEnv(lookup func(string) (string, bool)) Config {
 		Strong:            Tier{Model: model("JUDGE_STRONG_MODEL", DefaultStrongModel), Strict: true},
 		ZeroDataRetention: flag("JUDGE_ZDR", true),
 		Conditions:        flag("JUDGE_CONDITIONS", false),
+	}
+	zero := 0.0
+	for _, t := range []struct {
+		tier        *Tier
+		prefix      string
+		temperature *float64
+	}{
+		{&c.Primary, "JUDGE_", &zero},
+		{&c.Fallback, "JUDGE_FALLBACK_", &zero},
+		{&c.Strong, "JUDGE_STRONG_", nil},
+	} {
+		var err error
+		if t.tier.Routing, err = anthropic.RoutingFromEnv(lookup, t.prefix+"PROVIDERS", "JUDGE_MIN_QUANTIZATION",
+			t.tier.Model, c.ZeroDataRetention); err != nil {
+			slog.Warn("judge: config", "error", err)
+		}
+		if t.tier.Temperature, err = anthropic.TemperatureFromEnv(lookup, t.prefix+"TEMPERATURE", t.temperature); err != nil {
+			slog.Warn("judge: config", "error", err)
+		}
 	}
 	if v, ok := lookup("JUDGE_TIMEOUT_MS"); ok {
 		if ms, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && ms > 0 {

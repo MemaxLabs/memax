@@ -18,6 +18,8 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
     decisions: "决策",
     dream: "Dream",
     account: "账户",
+    notifications: "通知",
+    security: "安全",
     components: "组件",
   },
   frame: {
@@ -382,6 +384,7 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
       keys: "Agent 和密钥",
       plan: "套餐和用量",
       notifications: "通知",
+      security: "安全",
       integrations: "集成",
       export: "导出",
     },

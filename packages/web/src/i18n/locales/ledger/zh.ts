@@ -11,6 +11,7 @@ import { ledgerMemoryZh } from "./memory-zh";
 import { ledgerOnboardingZh } from "./onboarding-zh";
 import { ledgerRecordsZh } from "./records-zh";
 import { ledgerReviewZh } from "./review-zh";
+import { ledgerSettingsZh } from "./settings-zh";
 import { ledgerTodayZh } from "./today-zh";
 
 export const ledgerZh: Translations["ledger"] = {
@@ -46,6 +47,7 @@ export const ledgerZh: Translations["ledger"] = {
   today: ledgerTodayZh,
   dream: ledgerDreamZh,
   onboarding: ledgerOnboardingZh,
+  settings: ledgerSettingsZh,
   devTokens: {
     breadcrumb: "Ledger · 开发样张",
     title: "设计令牌与字体",

@@ -13,6 +13,7 @@ import { ledgerMemoryEn } from "./memory-en";
 import { ledgerOnboardingEn } from "./onboarding-en";
 import { ledgerRecordsEn } from "./records-en";
 import { ledgerReviewEn } from "./review-en";
+import { ledgerSettingsEn } from "./settings-en";
 import { ledgerTodayEn } from "./today-en";
 
 export const ledgerEn = {
@@ -50,6 +51,7 @@ export const ledgerEn = {
   today: ledgerTodayEn,
   dream: ledgerDreamEn,
   onboarding: ledgerOnboardingEn,
+  settings: ledgerSettingsEn,
   devTokens: {
     breadcrumb: "Ledger · Dev fixture",
     title: "Tokens and type",

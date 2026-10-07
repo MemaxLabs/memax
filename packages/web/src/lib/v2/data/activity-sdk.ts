@@ -162,6 +162,7 @@ export function sealOf(page: V2.CheckpointPage): SealView {
     sealedAt: seal.sealed_at ?? null,
     unsealed: seal.unsealed,
     signed: newest ? newest.signed : null,
+    keyId: newest?.signed ? (newest.key_id ?? null) : null,
     verified: seal.verified_at
       ? { at: seal.verified_at, problems: seal.verify_problems ?? 0 }
       : null,

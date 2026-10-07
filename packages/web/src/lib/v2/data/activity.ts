@@ -174,6 +174,8 @@ export interface SealView {
   unsealed: number;
   /** Whether the newest checkpoint is signed (false: the server has no signing key); null before the first. */
   signed: boolean | null;
+  /** The key that signed the newest checkpoint (its id); null when unsigned or before the first. */
+  keyId: string | null;
   /** The last check of the whole chain, from its first receipt; null until the verifier has run. */
   verified: { at: string; problems: number } | null;
 }

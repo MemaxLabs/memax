@@ -1672,6 +1672,256 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/dream/editions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List Dream's editions
+         * @description The space's Dream editions (`D-`), newest first, each with what it
+         *     read and the counts of what it did, and when the next one is due
+         *     (`schedule`, in the owner's local night). An edition is published
+         *     only when the space had something new since the last one: no input,
+         *     no run. A person's `X-Timezone` is how Dream learns their local
+         *     night, unless they set one in the Dream settings.
+         */
+        get: operations["listEditions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/dream/editions/{edition}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description An edition's display ID (D-0214), its number (214), its id, or `latest`. */
+                edition: components["parameters"]["EditionPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read one edition
+         * @description One edition (`D-0214`, `214` or `latest`) with every action it took
+         *     and what it found that needs a person (`surfaced`). Each action
+         *     carries the memory it is about as that memory is now, its words read
+         *     live: one forgotten since shows as forgotten, with no words.
+         */
+        get: operations["getEdition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/dream/editions/{edition}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description An edition's display ID (D-0214), its number (214), its id, or `latest`. */
+                edition: components["parameters"]["EditionPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List an edition's actions
+         * @description An edition's actions in the order it took them, of one kind or all.
+         */
+        get: operations["listDreamActions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/dream/editions/{edition}:undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description An edition's display ID (D-0214), its number (214), its id, or `latest`. */
+                edition: components["parameters"]["EditionPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo an edition's actions of one kind
+         * @description Undoes every undoable action of the edition of one kind (the
+         *     edition's "Undo both" and "Restore all"), each as its own command
+         *     with its own receipts, exactly as `POST /v2/dream/actions/{action}:undo`
+         *     would. What can't be undone is listed in `refused` with Undo's
+         *     reason; the rest goes ahead.
+         */
+        post: operations["undoEdition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/dream:run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Dream now
+         * @description Asks Dream to run on the space now, outside its night. Only the
+         *     space's owner may (`dream_run_by_owner`), a few times a day on Pro
+         *     and once a week on Free (429 `rate_limited`, with `Retry-After`).
+         *     The run is queued; it publishes an edition only if the space has
+         *     something new since the last one.
+         */
+        post: operations["runDream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/dream/actions/{action}:undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description One of Dream's actions, by id. */
+                action: components["parameters"]["DreamActionPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo one of Dream's actions
+         * @description Applies the action's inverse as a ledger command: the state before
+         *     the action comes back exactly (folded notes unlinked, a proposal
+         *     withdrawn, a folded duplicate back in Review, a conflict or stale
+         *     flag cleared, a faded memory kept again, the Brief version Dream
+         *     replaced written back). Any person who may keep undoes it, within 30
+         *     days. Each memory (or the Brief) gets an `undid` receipt whose
+         *     `source` names the action's receipt. Refused with 409
+         *     `undo_refused` when it was already undone, the window has passed, a
+         *     memory it touched was forgotten, or a later change depends on it.
+         */
+        post: operations["undoDreamAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/memories/{ref}:restore": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a faded memory
+         * @description Keeps a faded memory again (Dream fades what nobody read in 60 days,
+         *     and never deletes it). It follows Keep's rules, and the memory
+         *     compiles again. Anything that isn't faded is 409
+         *     `invalid_transition`.
+         */
+        post: operations["restoreMemory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/dream/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your Dream settings
+         * @description Your time zone (Dream runs in your local night; `default` means
+         *     Memax doesn't know it yet and uses UTC) and whether the morning
+         *     edition comes by email.
+         */
+        get: operations["getDreamSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change your Dream settings
+         * @description Sets your time zone (an IANA name, such as America/Vancouver) or
+         *     turns the morning email on or off. People only; your spaces' next
+         *     nights move to your zone at the next sweep.
+         */
+        patch: operations["updateDreamSettings"];
+        trace?: never;
+    };
+    "/v2/dream/email:unsubscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn off the morning email
+         * @description One-click unsubscribe (RFC 8058) from the morning edition: the token
+         *     from the email is the credential, so it needs no sign-in. It answers
+         *     the same whether or not the token matched.
+         */
+        post: operations["unsubscribeDreamEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/notices": {
         parameters: {
             query?: never;
@@ -1917,10 +2167,16 @@ export interface components {
          *     memory whose only conflict was with it, and purged on a target or a
          *     Brief whose drift evidence or older versions lost its words; an
          *     agent's memax_forget writes forget_requested, and a person keeping
-         *     the memory instead writes forget_declined.
+         *     the memory instead writes forget_declined. Dream (`actor_kind:
+         *     dream`, via system) writes published on its edition (`dream`, D-),
+         *     folded (notes folded into a memory as lineage), proposed, merged
+         *     (a duplicate proposal), flagged (a conflict or a stale fact), faded
+         *     and revised (the Brief), each citing the edition (`source: {kind:
+         *     dream, ref: D-0214}`); undoing one writes undid; restoring a faded
+         *     memory writes restored.
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space";
         /**
@@ -1975,7 +2231,7 @@ export interface components {
          *     on the web app).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "device_by_person" | "device_needs_web";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_has_notes";
         /**
@@ -4036,6 +4292,208 @@ export interface components {
             /** @description How a device's code ended (`invalid_transition` on a device code). */
             state?: components["schemas"]["DeviceAuthorizationState"];
         };
+        /**
+         * @description What one of an edition's actions did. fold: notes became lineage of
+         *     a kept memory (its words unchanged). propose: a new fact from notes,
+         *     waiting in Review. dedupe: a proposal that repeats one waiting was
+         *     folded into it. conflict: a memory that contradicts a kept one was
+         *     flagged. stale: a memory past its date was flagged. fade: a memory
+         *     nobody read in 60 days faded (restorable). brief: a few small, cited
+         *     changes to the Brief.
+         * @enum {string}
+         */
+        DreamActionKind: "fold" | "propose" | "dedupe" | "conflict" | "stale" | "fade" | "brief";
+        /** @enum {string} */
+        DreamTrigger: "schedule" | "manual";
+        /** @description An edition's display ID, unique per tenant. */
+        EditionRef: string;
+        /** @description A note's display ID, unique per tenant. */
+        NoteDisplayRef: string;
+        NoteAuthorCount: {
+            /**
+             * @description Who wrote the notes. `chat` is a note captured in a chat app.
+             * @enum {string}
+             */
+            kind: "agent" | "person" | "chat";
+            /** @description The agent's registry key, when an agent wrote them. */
+            agent?: string;
+            count: number;
+        };
+        /** @description The edition's actions by kind (those undone included). */
+        DreamCounts: {
+            fold: number;
+            propose: number;
+            dedupe: number;
+            conflict: number;
+            stale: number;
+            fade: number;
+            brief: number;
+        };
+        DreamBriefChange: {
+            ref?: components["schemas"]["BriefRef"];
+            version: number;
+            /** @description How many small changes it made. */
+            ops: number;
+        };
+        DreamUndone: {
+            receipt_id: components["schemas"]["Id"];
+            /** @description The person who undid it. */
+            by?: components["schemas"]["Id"];
+            at: components["schemas"]["Timestamp"];
+        };
+        /** @description One of an edition's actions, with the memory it is about as it is now. */
+        DreamAction: {
+            id: components["schemas"]["Id"];
+            edition_id: components["schemas"]["Id"];
+            edition_ref: components["schemas"]["EditionRef"];
+            /** @description Its place in the edition, from 1. */
+            n: number;
+            kind: components["schemas"]["DreamActionKind"];
+            /** @description The memory it changed or created (every kind but brief). */
+            memory?: components["schemas"]["Memory"];
+            /** @description That memory's version when Dream acted. */
+            version?: number;
+            /** @description The proposal a duplicate folded into (dedupe), or the other side (conflict). */
+            related?: components["schemas"]["Memory"];
+            /** @description The notes it rests on (fold, propose). */
+            note_refs: components["schemas"]["NoteDisplayRef"][];
+            brief?: components["schemas"]["DreamBriefChange"];
+            receipt_ids: components["schemas"]["Id"][];
+            undone?: components["schemas"]["DreamUndone"];
+            /** @description Whether Undo may still apply; a later change can still refuse it. */
+            undoable: boolean;
+            created_at: components["schemas"]["Timestamp"];
+        };
+        /** @description Something the edition lists because it needs a person, though Dream didn't do it. */
+        DreamSurfaced: {
+            /** @enum {string} */
+            kind: "conflict";
+            memory: components["schemas"]["Memory"];
+            with?: components["schemas"]["Memory"];
+        };
+        /** @description One edition (D-): what Dream read and what it did. */
+        DreamEdition: {
+            id: components["schemas"]["Id"];
+            ref: components["schemas"]["EditionRef"];
+            /** @description The edition's number ("No. 214"). */
+            n: number;
+            space_id: components["schemas"]["Id"];
+            /** @description The night (or the run-now moment) it answers. */
+            slot: components["schemas"]["Timestamp"];
+            trigger: components["schemas"]["DreamTrigger"];
+            /** @description The person who asked it to run now. */
+            requested_by?: components["schemas"]["Id"];
+            /** @description It read record changes after this (the previous edition's `until`). */
+            since?: components["schemas"]["Timestamp"];
+            until: components["schemas"]["Timestamp"];
+            started_at: components["schemas"]["Timestamp"];
+            finished_at: components["schemas"]["Timestamp"];
+            /** @description How long the run took. */
+            seconds: number;
+            notes_read: number;
+            notes_by: components["schemas"]["NoteAuthorCount"][];
+            /** @description The notes it read, oldest first. */
+            note_refs: components["schemas"]["NoteDisplayRef"][];
+            /** @description The memories the notes became, folded into or proposed. */
+            fact_refs: components["schemas"]["MemoryDisplayRef"][];
+            counts: components["schemas"]["DreamCounts"];
+            /** @description How many of its actions a person undid. */
+            undone: number;
+            /** @description Conflicts and stale facts it flagged or found that still wait on a person. */
+            needs_you: number;
+            /** @description Its `published` receipt. */
+            receipt_id: components["schemas"]["Id"];
+            /** @description Every action, in order (when one edition is read). */
+            actions?: components["schemas"]["DreamAction"][];
+            /** @description What it found that needs a person (when one edition is read). */
+            surfaced?: components["schemas"]["DreamSurfaced"][];
+        };
+        DreamSchedule: {
+            /** @enum {string} */
+            cadence: "nightly" | "weekly";
+            /** @description The owner's zone the next night is in ("UTC" until Memax knows it). */
+            time_zone: string;
+            next_at: components["schemas"]["Timestamp"];
+        };
+        DreamEditionPage: {
+            items: components["schemas"]["DreamEdition"][];
+            has_more: boolean;
+            next_cursor?: components["schemas"]["Cursor"];
+            schedule?: components["schemas"]["DreamSchedule"];
+        };
+        DreamActionPage: {
+            items: components["schemas"]["DreamAction"][];
+            has_more: boolean;
+            next_cursor?: components["schemas"]["Cursor"];
+        };
+        DreamUndoResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            action: components["schemas"]["DreamAction"];
+            /** @description Every memory the undo changed. */
+            memories: components["schemas"]["Memory"][];
+            receipts: components["schemas"]["Receipt"][];
+        };
+        UndoEditionRequest: {
+            kind: components["schemas"]["DreamActionKind"];
+            reason?: components["schemas"]["Reason"];
+        };
+        DreamUndoRefusal: {
+            action_id: components["schemas"]["Id"];
+            /** @description Undo's reason (`UndoRefusal`), or `refused` when policy refused. */
+            reason: string;
+            message: string;
+            ref?: string;
+        };
+        UndoEditionResult: {
+            undone: components["schemas"]["DreamAction"][];
+            refused: components["schemas"]["DreamUndoRefusal"][];
+        };
+        DreamRun: {
+            queued: boolean;
+            slot: components["schemas"]["Timestamp"];
+            trigger: components["schemas"]["DreamTrigger"];
+        };
+        DreamSettings: {
+            time_zone: string;
+            /**
+             * @description `default`: Memax doesn't know your zone yet (UTC). `observed`: from your app's clock. `set`: by you.
+             * @enum {string}
+             */
+            time_zone_source: "default" | "observed" | "set";
+            morning_email: boolean;
+        };
+        DreamSettingsRequest: {
+            time_zone?: string;
+            morning_email?: boolean;
+        };
+        UnsubscribeResult: {
+            unsubscribed: boolean;
+        };
+        DreamEditionPageEnvelope: {
+            data: components["schemas"]["DreamEditionPage"];
+        };
+        DreamEditionEnvelope: {
+            data: components["schemas"]["DreamEdition"];
+        };
+        DreamActionPageEnvelope: {
+            data: components["schemas"]["DreamActionPage"];
+        };
+        DreamUndoResultEnvelope: {
+            data: components["schemas"]["DreamUndoResult"];
+        };
+        UndoEditionResultEnvelope: {
+            data: components["schemas"]["UndoEditionResult"];
+        };
+        DreamRunEnvelope: {
+            data: components["schemas"]["DreamRun"];
+        };
+        DreamSettingsEnvelope: {
+            data: components["schemas"]["DreamSettings"];
+        };
+        UnsubscribeResultEnvelope: {
+            data: components["schemas"]["UnsubscribeResult"];
+        };
         ErrorEnvelope: {
             error: components["schemas"]["Error"];
         };
@@ -4464,6 +4922,15 @@ export interface components {
         Via: "api" | "cli" | "mcp";
         /** @description A receipt's id. */
         ReceiptPath: components["schemas"]["Id"];
+        /** @description An edition's display ID (D-0214), its number (214), its id, or `latest`. */
+        EditionPath: string;
+        /** @description One of Dream's actions, by id. */
+        DreamActionPath: components["schemas"]["Id"];
+        /**
+         * @description Your app's IANA time zone (the SDK sends it). Dream records it as
+         *     your zone, so it runs in your local night, unless you set one.
+         */
+        TimeZoneHeader: string;
         /** @description The import's id. */
         ImportPath: components["schemas"]["Id"];
         /** @description The disagreement's number within the import (its `n`, from 1). */
@@ -6948,6 +7415,402 @@ export interface operations {
             409: components["responses"]["InvalidTransition"];
             412: components["responses"]["EditClash"];
             422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listEditions: {
+        parameters: {
+            query?: {
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size. Larger values are capped at 200. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: {
+                /**
+                 * @description Your app's IANA time zone (the SDK sends it). Dream records it as
+                 *     your zone, so it runs in your local night, unless you set one.
+                 */
+                "X-Timezone"?: components["parameters"]["TimeZoneHeader"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of editions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DreamEditionPageEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    getEdition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description An edition's display ID (D-0214), its number (214), its id, or `latest`. */
+                edition: components["parameters"]["EditionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The edition. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DreamEditionEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listDreamActions: {
+        parameters: {
+            query?: {
+                kind?: components["schemas"]["DreamActionKind"];
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size. Larger values are capped at 200. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description An edition's display ID (D-0214), its number (214), its id, or `latest`. */
+                edition: components["parameters"]["EditionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of actions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DreamActionPageEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    undoEdition: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description An edition's display ID (D-0214), its number (214), its id, or `latest`. */
+                edition: components["parameters"]["EditionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UndoEditionRequest"];
+            };
+        };
+        responses: {
+            /** @description What was undone, and what wasn't. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UndoEditionResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    runDream: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run is queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DreamRunEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    undoDreamAction: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description One of Dream's actions, by id. */
+                action: components["parameters"]["DreamActionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description The action is undone. */
+            200: {
+                headers: {
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DreamUndoResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["UndoRefused"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    restoreMemory: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description The `ETag` (memory version) you reviewed, e.g. `"3"`. */
+                "If-Match"?: components["parameters"]["IfMatchOptional"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["CommandResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            412: components["responses"]["EditClash"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    getDreamSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DreamSettingsEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    updateDreamSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DreamSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Your settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DreamSettingsEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    unsubscribeDreamEmail: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The morning email is off, if the token was one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnsubscribeResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

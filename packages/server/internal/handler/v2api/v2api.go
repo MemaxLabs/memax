@@ -27,6 +27,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
+	"github.com/MemaxLabs/memax/packages/server/internal/trust"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
@@ -61,6 +62,10 @@ type Handler struct {
 	// 503. deviceMisses slows down guessing codes.
 	devices      *deviceauth.Store
 	deviceMisses deviceMisses
+	// delivery says which notification emails this deployment sends, and
+	// posture what Settings › Security says about it (settings.go).
+	delivery NotificationDelivery
+	posture  *trust.Posture
 	// sessions lists and signs out a person's sessions (sessions.go); nil
 	// answers 503.
 	sessions *sessions.Store
@@ -180,6 +185,9 @@ var routes = []Route{
 	{"GET", "/v2/dream/settings", "getDreamSettings", (*Handler).getDreamSettings},
 	{"PATCH", "/v2/dream/settings", "updateDreamSettings", (*Handler).updateDreamSettings},
 	{"POST", "/v2/dream/email:unsubscribe", "unsubscribeDreamEmail", (*Handler).unsubscribeDreamEmail},
+	{"GET", "/v2/me/notifications", "getNotificationSettings", (*Handler).getNotificationSettings},
+	{"PATCH", "/v2/me/notifications", "updateNotificationSettings", (*Handler).updateNotificationSettings},
+	{"GET", "/v2/security", "getSecurity", (*Handler).getSecurity},
 	{"GET", "/v2/notices", "listNotices", (*Handler).listNotices},
 	{"POST", "/v2/notices:ack", "ackNotices", (*Handler).ackNotices},
 	{"POST", "/v2/device-authorizations:lookup", "lookupDeviceAuthorization", (*Handler).lookupDevice},

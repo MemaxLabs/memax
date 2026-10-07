@@ -322,6 +322,7 @@ describe("sealOf", () => {
       sealedAt: "2026-10-05T14:02:00-07:00",
       unsealed: 2,
       signed: true,
+      keyId: "k1",
       verified: { at: "2026-10-05T03:00:00-07:00", problems: 0 },
     });
     // Without a signing key, checkpoints still chain, unsigned.
@@ -350,6 +351,7 @@ describe("sealOf", () => {
       sealedAt: null,
       unsealed: 3,
       signed: null,
+      keyId: null,
       verified: null,
     });
     const checkpoints = vi.fn().mockResolvedValue(page);

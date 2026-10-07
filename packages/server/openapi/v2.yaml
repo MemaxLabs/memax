@@ -244,7 +244,7 @@ info:
     | 409 | `undo_refused` | The command can't be undone; `details.reason` says why. |
     | 412 | `edit_clash` | `If-Match` is not the memory's current version. |
     | 422 | `idempotency_key_reused` | The key was used for a different command. |
-    | 428 | `precondition_required` | An edit (or a Brief revision) came without `If-Match`. |
+    | 428 | `precondition_required` | An edit (a Brief revision, your settings) came without `If-Match`. |
     | 429 | `rate_limited` | Too many requests; see `Retry-After`. |
     | 500 | `internal_error` | Something failed on our side. |
     | 503 | `busy` | Another change holds the memory; see `Retry-After`. |
@@ -286,6 +286,8 @@ tags:
     description: Dream's editions, the overnight upkeep of a space, in the open.
   - name: export
     description: A space's whole record, as Markdown with frontmatter, its receipts and the signed checkpoints.
+  - name: settings
+    description: Your notification settings, and how this Memax keeps your data.
 paths:
   /v2/spaces:
     get:
@@ -3659,6 +3661,124 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/me/notifications:
+    get:
+      operationId: getNotificationSettings
+      tags: [settings]
+      summary: Your notification settings
+      description: |
+        For each event Memax can tell you about, whether it reaches you by
+        email (`in_app` says where it always shows in the app; it isn't a
+        choice), your quiet hours in your time zone (Dream's, which
+        Settings › Account sets), and how long a proposal waits before the
+        daily Review reminder. `email_sent` says whether Memax sends that
+        email today: a choice for one it doesn't send yet is kept and
+        followed once it does. The morning edition's email is the same
+        setting as Dream's (`morning_email`) and its one-click unsubscribe.
+        People only.
+      responses:
+        '200':
+          description: Your settings. The ETag is their version, for `If-Match`.
+          headers:
+            ETag:
+              $ref: '#/components/headers/VersionETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettingsEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    patch:
+      operationId: updateNotificationSettings
+      tags: [settings]
+      summary: Change your notification settings
+      description: |
+        Changes what you send: an event's email, the quiet hours, whether
+        decision gates come through them, or the Review reminder's wait.
+        Everything you leave out stays. Send `If-Match` with the version you
+        read: anything that changed them since, such as the morning email's
+        unsubscribe link, makes this a 412 rather than undoing it. A retry
+        with the same Idempotency-Key replays. People only.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchSettings'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNotificationSettingsRequest'
+      responses:
+        '200':
+          description: Your settings now.
+          headers:
+            ETag:
+              $ref: '#/components/headers/VersionETag'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettingsEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/security:
+    get:
+      operationId: getSecurity
+      tags: [settings]
+      summary: How this Memax keeps your data
+      description: |
+        What Settings › Security shows, from the server's own configuration:
+        what a Keep from this session counts as (`human_web` only for the
+        web app's signed requests), where each kind of data lives, every
+        outside service that sees a memory's words with what it keeps
+        (`unconfirmed` when Memax hasn't confirmed a provider's opt-out),
+        the models and hosts each use is pinned to, and how long backups
+        keep what Forget removed. How far each space's receipts are sealed
+        is its checkpoints (`/v2/spaces/{space}/checkpoints`). People only.
+      responses:
+        '200':
+          description: The deployment's posture.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
   /v2/notices:
     get:
       operationId: listNotices
@@ -4161,6 +4281,13 @@ components:
       description: |
         The `ETag` (the Brief's or the target's version) you started from,
         e.g. `"3"`. Revising a Brief requires it once the space has one.
+      schema:
+        $ref: '#/components/schemas/VersionTag'
+    IfMatchSettings:
+      name: If-Match
+      in: header
+      required: true
+      description: The `ETag` (the settings' version) you read, e.g. `"3"`.
       schema:
         $ref: '#/components/schemas/VersionTag'
 
@@ -9687,6 +9814,258 @@ components:
       properties:
         unsubscribed:
           type: boolean
+
+    NotificationEvent:
+      description: |
+        Something Memax can tell you about. decision_gate: an agent asks you
+        to decide. morning_edition: what Dream changed overnight.
+        review_waiting: proposals have waited `review_after_days` (once a
+        day, never per proposal). drift: someone edited a file Memax writes.
+        stale: something you kept went stale. write_held: a write was
+        refused (no receipt) or held (content from outside). weekly_summary:
+        Mondays, what was kept, rejected, forgotten and read.
+        forget_done: a Forget reached every file and agent. agent_changed:
+        an agent was connected to one of your spaces, or its autonomy
+        changed, or it was paused or disconnected.
+      type: string
+      enum: [decision_gate, morning_edition, review_waiting, drift, stale, write_held, weekly_summary, forget_done,
+             agent_changed]
+    NotificationChoice:
+      type: object
+      additionalProperties: false
+      required: [event, in_app, email, email_sent]
+      properties:
+        event:
+          $ref: '#/components/schemas/NotificationEvent'
+        in_app:
+          description: It always shows in the app (Today, Review, Activity); not a choice.
+          type: boolean
+        email:
+          description: Your choice, or the default.
+          type: boolean
+        email_sent:
+          description: Memax sends this email today. A choice for one it doesn't send yet is kept for when it does.
+          type: boolean
+    QuietHours:
+      description: |
+        When email waits, in your time zone: from `from` until `until`,
+        across midnight when `from` is later. Decision gates still come
+        through when `gates_through` is set.
+      type: object
+      additionalProperties: false
+      required: [on, from, until, gates_through]
+      properties:
+        'on':
+          type: boolean
+        from:
+          $ref: '#/components/schemas/ClockTime'
+        until:
+          $ref: '#/components/schemas/ClockTime'
+        gates_through:
+          type: boolean
+    ClockTime:
+      description: A 24-hour time of day, such as 08:00.
+      type: string
+      pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+    NotificationSettings:
+      type: object
+      additionalProperties: false
+      required: [version, time_zone, time_zone_source, events, quiet_hours, review_after_days]
+      properties:
+        version:
+          description: The settings' version (also the ETag), for `If-Match`.
+          type: integer
+          minimum: 1
+        time_zone:
+          description: Your time zone, Dream's (Settings › Account); the quiet hours are read in it.
+          type: string
+        time_zone_source:
+          description: '`default`: Memax doesn''t know your zone yet (UTC). `observed`: from your app''s clock. `set`: by you.'
+          type: string
+          enum: [default, observed, set]
+        events:
+          description: Every event, in the order the page shows them.
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationChoice'
+        quiet_hours:
+          $ref: '#/components/schemas/QuietHours'
+        review_after_days:
+          description: How many days a proposal waits before the daily Review reminder.
+          type: integer
+          minimum: 1
+          maximum: 14
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+    NotificationEmailRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email:
+          type: boolean
+    NotificationEventsRequest:
+      description: The events whose email you change; the others stay.
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        decision_gate:
+          $ref: '#/components/schemas/NotificationEmailRequest'
+        morning_edition:
+          $ref: '#/components/schemas/NotificationEmailRequest'
+        review_waiting:
+          $ref: '#/components/schemas/NotificationEmailRequest'
+        drift:
+          $ref: '#/components/schemas/NotificationEmailRequest'
+        stale:
+          $ref: '#/components/schemas/NotificationEmailRequest'
+        write_held:
+          $ref: '#/components/schemas/NotificationEmailRequest'
+        weekly_summary:
+          $ref: '#/components/schemas/NotificationEmailRequest'
+        forget_done:
+          $ref: '#/components/schemas/NotificationEmailRequest'
+        agent_changed:
+          $ref: '#/components/schemas/NotificationEmailRequest'
+    QuietHoursRequest:
+      description: What changes about the quiet hours; the rest stays. `from` and `until` must differ.
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        'on':
+          type: boolean
+        from:
+          $ref: '#/components/schemas/ClockTime'
+        until:
+          $ref: '#/components/schemas/ClockTime'
+        gates_through:
+          type: boolean
+    UpdateNotificationSettingsRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        events:
+          $ref: '#/components/schemas/NotificationEventsRequest'
+        quiet_hours:
+          $ref: '#/components/schemas/QuietHoursRequest'
+        review_after_days:
+          type: integer
+          minimum: 1
+          maximum: 14
+    NotificationSettingsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/NotificationSettings'
+
+    DataHolds:
+      description: |
+        What a place holds. database: memories, receipts, sources and your
+        settings. compute: the API and the worker, which process them.
+        objects: receipt checkpoints, compiled files and the forget ledger.
+        edge: the web app and the compile service, which keep nothing
+        between requests.
+      type: string
+      enum: [database, compute, objects, edge]
+    DataPlace:
+      type: object
+      additionalProperties: false
+      required: [holds, provider]
+      properties:
+        holds:
+          $ref: '#/components/schemas/DataHolds'
+        provider:
+          description: The provider, by a short name (neon, fly, r2, cloudflare; a self-hosted server may name others).
+          type: string
+        region:
+          description: The provider's name for the region (us-west-2, sjc); absent when the provider places it.
+          type: string
+    Retention:
+      description: |
+        What a processor keeps of what Memax sends it. zero: nothing (calls
+        go to zero-data-retention endpoints only). unconfirmed: the provider
+        keeps inputs unless the account opts out, and Memax hasn't confirmed
+        its opt-out. provider_terms: kept under the provider's own terms.
+      type: string
+      enum: [zero, unconfirmed, provider_terms]
+    SubprocessorName:
+      type: string
+      enum: [openrouter, anthropic, voyage, resend]
+    SubprocessorUseKind:
+      description: |
+        What Memax sends: the judge's tiers (judge, judge_fallback,
+        judge_strong), Ask's answers, Dream's tiers, embeddings of memories,
+        embeddings of queries, reranking, and the morning email.
+      type: string
+      enum: [judge, judge_fallback, judge_strong, ask, dream, dream_fallback, dream_strong, embeddings, queries,
+             rerank, email]
+    SubprocessorUse:
+      type: object
+      additionalProperties: false
+      required: [use, zero_retention]
+      properties:
+        use:
+          $ref: '#/components/schemas/SubprocessorUseKind'
+        model:
+          description: The model slug; absent for email.
+          type: string
+        hosts:
+          description: The zero-retention hosts the call is pinned to, in order (OpenRouter's provider.only).
+          type: array
+          items:
+            type: string
+        min_precision:
+          description: The lowest precision those hosts may run, such as fp8.
+          type: string
+        zero_retention:
+          description: The call goes to zero-data-retention endpoints only.
+          type: boolean
+    Subprocessor:
+      type: object
+      additionalProperties: false
+      required: [name, retention, uses]
+      properties:
+        name:
+          $ref: '#/components/schemas/SubprocessorName'
+        retention:
+          $ref: '#/components/schemas/Retention'
+        uses:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubprocessorUse'
+    Security:
+      type: object
+      additionalProperties: false
+      required: [assurance, residency, processors, backup_days]
+      properties:
+        assurance:
+          description: What a Keep from this session counts as.
+          $ref: '#/components/schemas/Assurance'
+        residency:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataPlace'
+        processors:
+          description: Every outside service that sees a memory's words, while the feature that sends them is on.
+          type: array
+          items:
+            $ref: '#/components/schemas/Subprocessor'
+        backup_days:
+          description: How long database backups keep what Forget removed; the forget ledger is re-applied after any restore.
+          type: integer
+          minimum: 1
+    SecurityEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Security'
 
     DreamEditionPageEnvelope:
       type: object

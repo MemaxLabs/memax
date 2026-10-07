@@ -174,6 +174,7 @@ V2 rebuilds Memax as "the context layer you own". **Read `docs/plans/25-memax-v2
   4. Regenerate the SDK types (`pnpm --filter memax-sdk gen:v2`), add the typed method under `memax.v2`, and commit the spec, server, SDK and `src/v2/schema.gen.ts` together. `pnpm lint` fails when the generated types are stale.
 - **MCP.** All 17 V1 tool names keep working (both profiles), and remote and stdio parity still applies.
 - **CLI.** The install command is `npx memax-cli init`; the binary is `memax`.
+- **Init and imports (migration 043).** `memax init` (`packages/cli/src/commands/init.ts`, the flow in `src/lib/init/run.ts`) detects agents and their files, signs in, connects the agents (writes MCP settings once asked; connections start at Propose, Cursor and Gemini CLI at Read, never raised from the CLI), then splits each file into statements **on the machine**: secretlint's recommended preset plus the server's own refusal patterns (`internal/secrets`, ported; `testdata/credentials.json` is the corpus both suites read) keep secrets local, and the compiler's `cleanLine` strips hidden Unicode (counted in `lib/init/hidden.ts`). A file's kind sets its trust (`lib/init/files.ts`: repository files `repository`, `~/.claude/CLAUDE.md` and the like `person`, agents' memory `agent_own_work`, lines only on a non-default branch `external`). Statements go up as one import per space, `POST /v2/spaces/{space}/imports` (≤ 500 items, `file:line` sources, `via=import` so they only ever propose; a statement the space has is `existing`, repeats in one import are `folded`). The import enqueues `judge_import` in its transaction: one model call (`internal/judge/imports.go`, its own bar `ImportConflictBar`, not `Contradicts`) groups statements that disagree into `v2.import_conflicts`, each receipted and settled once as a group (`…/conflicts/{n}:settle`). `GET …/imports/{id}` says which proposals can be kept in bulk (`bulk`/`held`); `POST …/memories:keep` and `:reject` take up to 200. New people get spaces from `POST /v2/spaces`; an empty V1 space moves with `POST /v2/spaces/{space}:switch`.
 
 **UI (Ledger)**
 
@@ -227,7 +228,7 @@ memax/
     ui/              # @memaxlabs/ui shared design system (Tailwind + Radix) — AGPL-3.0
     docs-site/       # Fumadocs developer hub (docs.memax.app) — Apache-2.0
     sdk/             # memax-sdk — TypeScript client, published to npm — Apache-2.0
-    cli/             # memax-cli — Commander.js CLI and the local daemon (link, daemon, status, compile), published to npm — Apache-2.0
+    cli/             # memax-cli — Commander.js CLI and the local daemon (init, link, daemon, status, compile), published to npm — Apache-2.0
     ledger-tokens/   # V2 Ledger tokens, type styles, fonts, marks (@memaxlabs/ledger-tokens) — Apache-2.0
     ledger/          # V2 Ledger React components, mx- styles, en/zh strings, previews (@memaxlabs/ledger) — AGPL-3.0
     compiler/        # V2 compiler: kept record → AGENTS.md, CLAUDE.md shim, scoped rules; parse-back (@memaxlabs/compiler) — Apache-2.0
@@ -611,7 +612,7 @@ PORT=8090 pnpm --filter @memaxlabs/compile-service start
 fly deploy . -c packages/compile-service/fly/fly.compile.staging.toml
 ```
 
-### CLI: link, the daemon, status and compile (V2 local delivery)
+### CLI: init, link, the daemon, status and compile (V2 local delivery)
 
 The daemon (`packages/cli/src/lib/daemon/`) writes each space's compiled files into the repositories linked on the machine and reports hand edits; it never writes over one (rule 6). Its state, log, pid and control socket live in `~/.memax/daemon/`. `memax daemon run` is reached through `src/bin.ts` without loading the rest of the CLI (the MCP SDK alone is ~30 MB of memory), and it talks to `/v2` over `node:http(s)` (`lib/daemon/http.ts`), not `fetch`. The CLI carries a verbatim copy of the compiler's managed block (`lib/daemon/compiler/`) because `@memaxlabs/compiler` isn't published yet; edit the compiler, then re-copy.
 
@@ -621,8 +622,18 @@ MEMAX_API_URL=http://localhost:8080 memax login
 memax link --space memax-v2 && memax daemon run        # or: memax daemon start | stop | status
 memax status && memax compile
 
-# Re-copy the compiler's managed block into the CLI after changing it (lint checks the copy)
+# Set a repository up (what a new user runs): detect, sign in, connect, import, settle, compile.
+# --dry-run uploads nothing; --yes --space <slug> --format json for CI; --timing shows each step's budget
+MEMAX_API_URL=http://localhost:8080 memax init
+memax init --dry-run && memax init --yes --format json --timing
+
+# Re-copy the compiler's managed block (and init's cleanLine, lib/daemon/compiler/sanitize.ts)
+# into the CLI after changing them (lint checks the copy)
 node packages/cli/scripts/sync-compiler.mjs
+
+# Init tests: detection fixtures in temporary homes, the splitter, the secret scan (against the
+# server's corpus), hidden characters, and the whole flow against the fake /v2 server
+pnpm --filter memax-cli exec vitest run test/init
 
 # Daemon tests (a fake /v2 server built on the real compiler)
 pnpm --filter memax-cli exec vitest run test/daemon
@@ -631,6 +642,14 @@ pnpm --filter memax-cli exec vitest run test/daemon
 # DATABASE), migrations, devseed, the compile service, the worker and the API server. Skipped
 # without the flag. MEMAX_E2E_BIN can point at prebuilt server, worker, migrate and devseed.
 MEMAX_E2E_SERVER=1 pnpm --filter memax-cli exec vitest run test/daemon/e2e-server.test.ts
+
+# memax init end to end on the same stack, the judge on a fake model: conflicting CLAUDE.md and
+# AGENTS.md, the conflict flagged, bulk keep, compile, files on disk, timed against five minutes
+MEMAX_E2E_SERVER=1 pnpm --filter memax-cli exec vitest run test/init/e2e-init.test.ts
+
+# The import endpoints, the import check and settling (real Postgres)
+cd packages/server && go test ./internal/ledger/ ./internal/judge/ -run Import && \
+  go test ./internal/handler/v2api/ -run 'Import|Spaces|Bulk'
 ```
 
 Migrations use a single shared sequence. Don't hand-pick version numbers — always use `migrate:new`. CI enforces sequential numbering (`internal/migrate/migrate_test.go`) and rejects gaps, duplicates, orphan up/down files, and non-padded versions.

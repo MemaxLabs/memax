@@ -53,8 +53,9 @@ const (
 	maxResponse = 16 << 20
 )
 
-// Client calls the compile service (packages/compile-service) on the
-// private network.
+// Client calls the compile service (packages/compile-service): a
+// Cloudflare Worker at a public URL, which needs the shared token, or the
+// Node server on a private network or in tests.
 type Client struct {
 	base     string
 	http     *http.Client
@@ -62,6 +63,9 @@ type Client struct {
 	attempts int
 	backoff  time.Duration
 	log      *slog.Logger
+	// auth is the Authorization header's value, "" for none. It is never
+	// logged: errors name the path and status, not the request.
+	auth string
 }
 
 // ClientOption configures a Client.
@@ -83,9 +87,24 @@ func WithHTTPClient(hc *http.Client) ClientOption { return func(c *Client) { c.h
 // WithClientLogger replaces slog.Default().
 func WithClientLogger(l *slog.Logger) ClientOption { return func(c *Client) { c.log = l } }
 
+// WithToken sends the compile service's shared token
+// (COMPILE_SERVICE_TOKEN) as a bearer token on every request; the service
+// refuses every route but /health without it. An empty token sends none,
+// for a service on a private network.
+func WithToken(token string) ClientOption {
+	return func(c *Client) {
+		if token = strings.TrimSpace(token); token != "" {
+			c.auth = "Bearer " + token
+		} else {
+			c.auth = ""
+		}
+	}
+}
+
 // NewClient returns a client for the compile service at baseURL (for
-// example http://memax-compile.internal:8080), or nil when baseURL is
-// empty: nil means compiling is disabled.
+// example https://compile.memax.app, with WithToken, or
+// http://localhost:8090), or nil when baseURL is empty: nil means
+// compiling is disabled.
 func NewClient(baseURL string, opts ...ClientOption) *Client {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {
@@ -194,6 +213,9 @@ func (c *Client) once(ctx context.Context, method, path string, payload []byte, 
 		return &permanentError{fmt.Errorf("compile: %w", err)}
 	}
 	req.Header.Set("Accept", "application/json")
+	if c.auth != "" {
+		req.Header.Set("Authorization", c.auth)
+	}
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -224,6 +246,9 @@ func (c *Client) once(ctx context.Context, method, path string, payload []byte, 
 	switch {
 	case resp.StatusCode == http.StatusUnprocessableEntity:
 		return &InputError{Message: msg, Issues: eb.Error.Issues}
+	case resp.StatusCode == http.StatusUnauthorized:
+		return &permanentError{fmt.Errorf("compile: %s: 401: the compile service refused the token; "+
+			"set COMPILE_SERVICE_TOKEN to the value the service has", path)}
 	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
 		return fmt.Errorf("compile: %s: %d %s", path, resp.StatusCode, msg)
 	}

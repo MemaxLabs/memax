@@ -193,9 +193,54 @@ jobs:
             cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # Cloudflare Workers (staging), through deploy-cloudflare.yml: the compile
+  # service, the web app and the docs site. Vercel keeps deploying the web
+  # app and the docs from its Git integration (packages/web/vercel.json)
+  # until DNS moves to Cloudflare; then the Vercel projects go (AGENTS.md,
+  # "Moving to Cloudflare").
+  deploy-compile:
+    name: Deploy compile service to Cloudflare (staging)
+    needs: [format, typescript, go]
+    # The API calls it (COMPILE_SERVICE_URL in fly/fly.server.staging.toml),
+    # so deploy-server waits for it.
+    if: |
+      !failure() && !cancelled() &&
+      github.ref == 'refs/heads/main' && github.event_name == 'push'
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      worker: compile
+      environment: staging
+    secrets: inherit
+
+  deploy-web:
+    name: Deploy web app to Cloudflare (staging)
+    needs: [format, typescript]
+    if: |
+      !failure() && !cancelled() &&
+      github.ref == 'refs/heads/main' && github.event_name == 'push'
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      worker: web
+      environment: staging
+    secrets: inherit
+
+  deploy-docs:
+    name: Deploy docs site to Cloudflare (staging)
+    needs: [format, typescript]
+    if: |
+      !failure() && !cancelled() &&
+      github.ref == 'refs/heads/main' && github.event_name == 'push'
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      worker: docs
+      environment: staging
+    secrets: inherit
+
   deploy-server:
     name: Deploy API to Fly.io (staging)
-    needs: [format, typescript, go, eval]
+    # deploy-compile first: a new API never calls a compile service that
+    # isn't there yet.
+    needs: [format, typescript, go, eval, deploy-compile]
     # Run on every push to main when no upstream job *failed* or was
     # cancelled. `eval` / `go` are conditionally skipped when no
     # server files changed, so the default GHA "all needs must be

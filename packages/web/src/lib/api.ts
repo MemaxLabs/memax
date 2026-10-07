@@ -1,5 +1,8 @@
-import { getAccessToken } from "./auth";
 import { API_URL } from "./urls";
+
+// Every call goes through the web app's server (/api/proxy), which holds
+// the session in HttpOnly cookies and attaches its token (lib/bff); the
+// page never has one, so nothing here sends an Authorization header.
 
 const BROWSER_API_PROXY_URL = "/api/proxy";
 const BROWSER_SAFE_API_URL =
@@ -29,11 +32,6 @@ export class ApiError extends Error {
   }
 }
 
-function authHeaders(): Record<string, string> {
-  const token = getAccessToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 /**
  * Write-context hub header. Automatically reads activeHubId from localStorage
  * so all write operations (POST/PATCH/DELETE) target the correct hub without
@@ -46,10 +44,6 @@ function writeHubHeaders(explicitHubId?: string): Record<string, string> {
       ? localStorage.getItem("memax_active_hub_id")
       : null);
   return hubId ? { "X-Hub-ID": hubId } : {};
-}
-
-export function apiAuthHeaders(): Record<string, string> {
-  return authHeaders();
 }
 
 interface ApiRequestOptions {
@@ -126,7 +120,6 @@ export async function apiPost<T>(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...authHeaders(),
       ...writeHubHeaders(options?.hubId),
     },
     body: JSON.stringify(body),
@@ -140,7 +133,6 @@ export async function apiGet<T>(
   return requestWithRetry<T>(`${BROWSER_SAFE_API_URL}${path}`, {
     cache: "no-store",
     headers: {
-      ...authHeaders(),
       // GET reads use query params for hub filtering, not X-Hub-ID.
       // Explicit hubId override kept for edge cases (e.g. recall).
       ...(options?.hubId ? { "X-Hub-ID": options.hubId } : {}),
@@ -157,7 +149,6 @@ export async function apiPatch<T>(
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
-      ...authHeaders(),
       ...writeHubHeaders(options?.hubId),
     },
     body: JSON.stringify(body),
@@ -171,7 +162,6 @@ export async function apiDelete(
   await requestWithRetry<void>(`${BROWSER_SAFE_API_URL}${path}`, {
     method: "DELETE",
     headers: {
-      ...authHeaders(),
       ...writeHubHeaders(options?.hubId),
     },
   });
@@ -180,7 +170,6 @@ export async function apiDelete(
 export async function apiDownload(path: string): Promise<Response> {
   const res = await fetch(`${BROWSER_SAFE_API_URL}${path}`, {
     cache: "no-store",
-    headers: { ...authHeaders() },
   });
   if (!res.ok) {
     await parseResponse<never>(res);
@@ -206,7 +195,6 @@ export function apiStream(
       headers: {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
-        ...authHeaders(),
         ...writeHubHeaders(options?.hubId),
       },
       body: JSON.stringify(body),

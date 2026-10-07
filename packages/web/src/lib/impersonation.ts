@@ -1,102 +1,71 @@
 /**
- * Impersonation helpers for dev users.
+ * Impersonation for dev users: acting as another person to debug as them.
  *
- * When a dev impersonates another user, the original tokens are stashed in
- * localStorage under `memax_original_*` keys. The impersonated user's tokens
- * replace the normal `memax_access_token` / `memax_refresh_token`.
- *
- * The app detects impersonation by checking for the presence of the stashed
- * original tokens and shows a persistent banner.
+ * The web app's server holds every token (lib/bff): /api/auth/impersonate
+ * swaps the impersonation token into the session cookie and keeps the
+ * dev's own session aside, HttpOnly, until they stop. The page sees only
+ * the readable `memax_impersonating` marker, which holds the dev's name
+ * for the banner and no secret.
  */
 
-const TOKEN_KEY = "memax_access_token";
-const REFRESH_KEY = "memax_refresh_token";
-const ORIGINAL_TOKEN_KEY = "memax_original_access_token";
-const ORIGINAL_REFRESH_KEY = "memax_original_refresh_token";
-const ORIGINAL_USER_NAME_KEY = "memax_original_user_name";
+const IMPERSONATING_COOKIE = "memax_impersonating";
+
+function marker(): string | null {
+  if (typeof document === "undefined") return null;
+  for (const part of document.cookie.split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (name === IMPERSONATING_COOKIE) {
+      try {
+        return decodeURIComponent(rest.join("="));
+      } catch {
+        return rest.join("=");
+      }
+    }
+  }
+  return null;
+}
 
 export function isImpersonating(): boolean {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(ORIGINAL_TOKEN_KEY) !== null;
+  return marker() !== null;
 }
 
 export function getOriginalUserName(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(ORIGINAL_USER_NAME_KEY);
+  return marker();
 }
 
 /**
- * Start impersonating: stash current tokens, install impersonated access token.
- * Impersonation tokens are access-only (no refresh) and expire in 1 hour.
- * Blocks nested impersonation — must stop current session first.
+ * Start impersonating someone (by user id or email). Impersonation tokens
+ * are access-only and expire in an hour. Nested impersonation is refused.
+ * Reloads into the impersonated session; throws with the server's message
+ * when it was refused.
  */
-export function startImpersonating(
+export async function startImpersonating(
   currentUserName: string,
-  targetAccessToken: string,
-) {
-  // Block nested impersonation — preserve the real dev's original tokens
+  target: { user_id?: string; email?: string },
+): Promise<void> {
   if (isImpersonating()) {
     throw new Error("Already impersonating. Stop the current session first.");
   }
-
-  // Stash original tokens
-  const currentAccess = localStorage.getItem(TOKEN_KEY);
-  const currentRefresh = localStorage.getItem(REFRESH_KEY);
-  if (currentAccess) localStorage.setItem(ORIGINAL_TOKEN_KEY, currentAccess);
-  if (currentRefresh)
-    localStorage.setItem(ORIGINAL_REFRESH_KEY, currentRefresh);
-  localStorage.setItem(ORIGINAL_USER_NAME_KEY, currentUserName);
-
-  // Install impersonated access token (no refresh — session expires in 1h)
-  localStorage.setItem(TOKEN_KEY, targetAccessToken);
-  localStorage.removeItem(REFRESH_KEY);
-
-  // Full reload to re-initialize auth context with new identity
+  const res = await fetch("/api/auth/impersonate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...target, original_name: currentUserName }),
+  });
+  if (!res.ok) {
+    const json = (await res.json().catch(() => null)) as {
+      error?: { message?: string };
+    } | null;
+    throw new Error(json?.error?.message ?? "Impersonation failed.");
+  }
+  // Full reload to re-initialize auth context with the new identity.
   window.location.reload();
 }
 
 /**
- * Stop impersonating: restore original tokens and reload.
+ * Stop impersonating: the dev's own session comes back. Resolves once the
+ * server swapped it back; `reload` (default) reloads into it.
  */
-export function stopImpersonating() {
-  const originalAccess = localStorage.getItem(ORIGINAL_TOKEN_KEY);
-  const originalRefresh = localStorage.getItem(ORIGINAL_REFRESH_KEY);
-
-  // Restore original tokens
-  if (originalAccess) localStorage.setItem(TOKEN_KEY, originalAccess);
-  if (originalRefresh) localStorage.setItem(REFRESH_KEY, originalRefresh);
-
-  // Clean up stash
-  clearImpersonationState();
-
-  // Full reload to re-initialize auth context
-  window.location.reload();
-}
-
-/**
- * Restore original dev tokens without reloading.
- * Used by auth init when the impersonation token expires — the auth context
- * will re-fetch with the restored tokens instead of logging the dev out.
- * Returns true if original tokens were restored, false if there was nothing to restore.
- */
-export function restoreOriginalSession(): boolean {
-  const originalAccess = localStorage.getItem(ORIGINAL_TOKEN_KEY);
-  if (!originalAccess) return false;
-
-  const originalRefresh = localStorage.getItem(ORIGINAL_REFRESH_KEY);
-  localStorage.setItem(TOKEN_KEY, originalAccess);
-  if (originalRefresh) localStorage.setItem(REFRESH_KEY, originalRefresh);
-
-  clearImpersonationState();
-  return true;
-}
-
-/**
- * Clear all impersonation localStorage keys.
- * Called by logout to prevent stale original tokens from surviving.
- */
-export function clearImpersonationState() {
-  localStorage.removeItem(ORIGINAL_TOKEN_KEY);
-  localStorage.removeItem(ORIGINAL_REFRESH_KEY);
-  localStorage.removeItem(ORIGINAL_USER_NAME_KEY);
+export async function stopImpersonating(reload = true): Promise<void> {
+  await fetch("/api/auth/impersonate", { method: "DELETE" }).catch(() => {});
+  if (reload) window.location.reload();
 }

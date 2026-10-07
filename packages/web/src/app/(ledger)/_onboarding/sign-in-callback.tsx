@@ -11,11 +11,12 @@ import { useLandingRedirect } from "./landing";
 
 /**
  * Where the API sends a sign-in's one-time code (GitHub, Google or the
- * email code): it trades the code for the web app's session (surface
- * web, migration 030) through /api/auth/exchange, then goes on to `next`
- * or the person's landing. A failure says so and starts over; an error
- * the API sent (an account that may not sign in) goes back to SignIn,
- * which words it.
+ * email code): the web app's server trades the code for the web app's
+ * session (surface web, migration 030) through /api/auth/exchange and
+ * keeps its tokens in HttpOnly cookies this page never sees; then it goes
+ * on to `next` or the person's landing. A failure says so and starts
+ * over; an error the API sent (an account that may not sign in) goes back
+ * to SignIn, which words it.
  */
 export function SignInCallbackScreen() {
   const { t } = useLocale();
@@ -52,14 +53,13 @@ export function SignInCallbackScreen() {
           body: JSON.stringify({ code }),
         });
         const json = (await res.json()) as {
-          data?: { access_token?: string; refresh_token?: string };
+          data?: { signed_in?: boolean };
         };
-        const tokens = json.data;
-        if (!res.ok || !tokens?.access_token || !tokens.refresh_token) {
+        if (!res.ok || !json.data?.signed_in) {
           setState("failed");
           return;
         }
-        if (!(await completeLogin(tokens.access_token, tokens.refresh_token))) {
+        if (!(await completeLogin())) {
           setState("failed");
           return;
         }

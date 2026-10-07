@@ -488,12 +488,14 @@ export default function PrivacyPage() {
               Cookies and local storage
             </h2>
             <p>
-              We don&rsquo;t set tracking cookies. The web app uses your
-              browser&rsquo;s localStorage to keep your sign-in token, the
-              currently active hub, and your interface preferences (locale,
+              We don&rsquo;t set tracking cookies. Your sign-in session lives in
+              HttpOnly cookies that only our servers read, beside a cookie that
+              only says you are signed in; page scripts never see your session.
+              The web app uses your browser&rsquo;s localStorage for the
+              currently active hub and your interface preferences (locale,
               recent navigation). When PostHog is enabled, it stores its own
-              anonymous distinct ID in localStorage. Sign-out clears the memax
-              keys.
+              anonymous distinct ID in localStorage. Sign-out ends the session
+              on our servers and clears the memax cookies and keys.
             </p>
           </section>
 

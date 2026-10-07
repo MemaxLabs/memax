@@ -233,6 +233,8 @@ export type ResolveConflictInput = Schemas["ResolveConflictRequest"];
 export type UndoInput = Schemas["ReviewRequest"];
 export type UndoEditionInput = Schemas["UndoEditionRequest"];
 export type DreamSettingsInput = Schemas["DreamSettingsRequest"];
+export type NotificationSettingsInput =
+  Schemas["UpdateNotificationSettingsRequest"];
 export type RequestDecisionInput = Schemas["RequestDecisionRequest"];
 export type AnswerGateInput = Schemas["AnswerGateRequest"];
 /** The body of withdrawing a gate: an optional reason, for the receipt. */
@@ -377,3 +379,20 @@ export type DreamSettings = Schemas["DreamSettings"];
 export type NoteAuthorCount = Schemas["NoteAuthorCount"];
 /** The surfaces a client may declare in `X-Memax-Via`. */
 export type ClientVia = components["parameters"]["Via"];
+// Settings (epic 2.6)
+/** Your notification settings: email per event, quiet hours, the Review reminder. */
+export type NotificationSettings = Schemas["NotificationSettings"];
+/** How one event reaches you: always in the app (or not at all), and by email if you choose. */
+export type NotificationChoice = Schemas["NotificationChoice"];
+/** decision_gate, morning_edition, review_waiting, drift, stale, write_held, weekly_summary, forget_done or agent_changed. */
+export type NotificationEvent = Schemas["NotificationEvent"];
+export type QuietHours = Schemas["QuietHours"];
+/** What Settings › Security shows: this session's assurance, where data lives, who sees a memory's words. */
+export type Security = Schemas["Security"];
+export type DataPlace = Schemas["DataPlace"];
+/** database, compute, objects or edge. */
+export type DataHolds = Schemas["DataHolds"];
+export type Subprocessor = Schemas["Subprocessor"];
+export type SubprocessorUse = Schemas["SubprocessorUse"];
+/** zero, unconfirmed or provider_terms. */
+export type Retention = Schemas["Retention"];

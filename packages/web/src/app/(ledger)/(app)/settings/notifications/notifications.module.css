@@ -1,0 +1,169 @@
+/* Settings › Notifications, after Notifications.dc.html: an event ×
+ * channel matrix (the event, then four 72px columns of checkboxes) and
+ * the quiet hours. */
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 72px 72px 72px;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.head {
+  padding: 8px 16px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.head > span:not(:first-child) {
+  text-align: center;
+}
+
+.event {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.title {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 550;
+  color: var(--ink);
+}
+
+/* .mx-meta's look without its tabular figures (settings.module.css .hint). */
+.meta {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.cell {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 32px;
+}
+
+.cell label {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 32px;
+  min-height: 32px;
+  cursor: pointer;
+}
+
+.cell input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+
+.cell input:disabled {
+  cursor: default;
+}
+
+.cell input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.note {
+  margin: -8px 0 0;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.quiet {
+  display: grid;
+  grid-template-columns: 160px 160px minmax(0, 1fr);
+  gap: 12px;
+  align-items: end;
+  padding: 16px;
+}
+
+.gates {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.gates input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.gates input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.quietNote {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.zone {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+
+.zone:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.zone:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Phones: Phone and Slack aren't channels yet, so they give way. */
+@media (max-width: 639px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) 56px 56px;
+    padding: 12px;
+  }
+
+  .later {
+    display: none;
+  }
+
+  .quiet {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .gates {
+    grid-column: 1 / -1;
+  }
+}

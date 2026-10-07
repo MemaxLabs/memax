@@ -620,6 +620,7 @@ describe("the seal line", () => {
     sealedAt: "2026-10-05T14:02:00-07:00",
     unsealed: 2,
     signed: true,
+    keyId: "k1",
     verified: null,
   };
 

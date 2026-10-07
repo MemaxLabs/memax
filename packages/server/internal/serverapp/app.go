@@ -58,6 +58,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/trust"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
@@ -832,6 +833,12 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 	// Device sign-in for the CLI (RFC 8628): the codes, keyed by the JWT
 	// secret; off without a database.
 	hopts = append(hopts, v2api.WithDevices(deviceauth.New(pool, []byte(os.Getenv("JWT_SECRET")))))
+	// Settings: which notification emails go out (the worker sends the
+	// morning email with DREAM_EMAIL and an email provider), and what
+	// Settings › Security says, from the same configuration (trust.FromEnv).
+	emailProvider := os.Getenv("RESEND_API_KEY") != "" || os.Getenv("SMTP_HOST") != ""
+	hopts = append(hopts, v2api.WithNotifications(v2api.NotificationDelivery{MorningEmail: dreamCfg.Email && emailProvider}),
+		v2api.WithTrust(trust.FromEnv(os.LookupEnv)))
 	return v2api.New(l, slog.Default(), hopts...), search, rec
 }
 

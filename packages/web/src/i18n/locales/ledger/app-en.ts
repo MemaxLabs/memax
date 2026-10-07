@@ -33,6 +33,8 @@ export const ledgerAppEn = {
     decisions: "Decisions",
     dream: "Dream",
     account: "Account",
+    notifications: "Notifications",
+    security: "Security",
     components: "Components",
   },
   frame: {
@@ -409,6 +411,7 @@ export const ledgerAppEn = {
       keys: "Agents and keys",
       plan: "Plan and usage",
       notifications: "Notifications",
+      security: "Security",
       integrations: "Integrations",
       export: "Export",
     },

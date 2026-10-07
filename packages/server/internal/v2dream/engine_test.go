@@ -381,12 +381,14 @@ func TestMorningEmail(t *testing.T) {
 	w.exec(`INSERT INTO hub_members (hub_id, user_id, role) VALUES ($1, $2, 'contributor')`, w.space, member)
 	out := run(t, engine(w, oracle(), v2dream.Config{}), w, time.Now().Add(-time.Minute).Truncate(time.Second))
 	sent := &sentMail{}
-	m := v2dream.NewMailer(w.l, sent, v2dream.MailerConfig{AppURL: "https://memax.app", APIURL: "https://api.memax.app", Log: quiet})
-	if err := m.Send(ctx, w.space, out.Edition.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.Send(ctx, w.space, out.Edition.ID); err != nil {
-		t.Fatal(err)
+	// Noon in UTC, everyone's zone here: outside the default quiet hours.
+	noon := func() time.Time { return time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC) }
+	m := v2dream.NewMailer(w.l, sent, v2dream.MailerConfig{AppURL: "https://memax.app", APIURL: "https://api.memax.app",
+		Log: quiet, Now: noon})
+	for range 2 {
+		if wait, err := m.Send(ctx, w.space, out.Edition.ID); err != nil || wait != 0 {
+			t.Fatalf("send: wait %v, %v", wait, err)
+		}
 	}
 	if len(sent.got) != 2 {
 		t.Fatalf("sent %d emails, want the owner's and the member's, once", len(sent.got))
@@ -431,5 +433,62 @@ func TestMorningEmail(t *testing.T) {
 	}
 	if strings.Contains(again.HTML, "Fly.io") || strings.Contains(again.Text, "Fly.io") {
 		t.Error("a forgotten memory's words are in the email")
+	}
+}
+
+// The morning email waits for the end of each person's quiet hours, in
+// their own zone (notification settings, migration 050): the job snoozes
+// until the first ends, then sends to whoever is out of them, once.
+func TestMorningEmailWaitsForQuietHours(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.seed()
+	ctx := context.Background()
+	member := w.user("jy")
+	w.exec(`INSERT INTO hub_members (hub_id, user_id, role) VALUES ($1, $2, 'contributor')`, w.space, member)
+	out := run(t, engine(w, oracle(), v2dream.Config{}), w, time.Now().Add(-time.Minute).Truncate(time.Second))
+	// The owner sleeps in Vancouver with the default quiet hours (20:00 to
+	// 08:00); the member is in Shanghai, quiet from 22:00 to 07:30.
+	zone := func(s string) *string { return &s }
+	if _, err := w.l.UpdateDreamSettings(ctx, ledger.Scope{PersonID: w.owner}, zone("America/Vancouver"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.l.UpdateDreamSettings(ctx, ledger.Scope{PersonID: member}, zone("Asia/Shanghai"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := w.l.UpdateNotificationSettings(ctx, ledger.Scope{PersonID: member},
+		ledger.NotificationChange{QuietFrom: zone("22:00"), QuietUntil: zone("07:30")}, 1, "quiet-1"); err != nil {
+		t.Fatal(err)
+	}
+	// 03:12 in Vancouver is 18:12 in Shanghai: only the member is awake.
+	clock := time.Date(2026, 10, 5, 10, 12, 0, 0, time.UTC)
+	sent := &sentMail{}
+	m := v2dream.NewMailer(w.l, sent, v2dream.MailerConfig{Log: quiet, Now: func() time.Time { return clock }})
+	wait, err := m.Send(ctx, w.space, out.Edition.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sent.got) != 1 || wait != 4*time.Hour+48*time.Minute {
+		t.Fatalf("sent %d, wait %v; want the member's now and the owner's at 08:00 Vancouver (4h48m)", len(sent.got), wait)
+	}
+	// At 08:00 in Vancouver it goes to the owner, and to nobody twice.
+	clock = clock.Add(wait)
+	if wait, err = m.Send(ctx, w.space, out.Edition.ID); err != nil || wait != 0 || len(sent.got) != 2 {
+		t.Fatalf("at the end of quiet hours: sent %d, wait %v, %v", len(sent.got), wait, err)
+	}
+	// Quiet hours off: nothing waits, even at night.
+	off := false
+	if _, _, err := w.l.UpdateNotificationSettings(ctx, ledger.Scope{PersonID: w.owner},
+		ledger.NotificationChange{QuietOn: &off}, 1, "quiet-off"); err != nil {
+		t.Fatal(err)
+	}
+	_, rs, err := w.l.DreamRecipients(ctx, w.space, uuid.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rs {
+		if r.PersonID == w.owner && r.Quiet.Wait(clock.Add(-6*time.Hour), time.UTC) != 0 {
+			t.Errorf("quiet hours off still hold the owner's email: %+v", r.Quiet)
+		}
 	}
 }

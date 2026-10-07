@@ -55,6 +55,7 @@ export {
   V2NoticesResource,
   V2SessionsResource,
   V2DreamResource,
+  V2SettingsResource,
   undoableAction,
   refusalOf,
   forgetCarriesOf,
@@ -117,6 +118,7 @@ export type {
   GateCommandOptions as V2GateCommandOptions,
   AskOptions as V2AskOptions,
   SpaceExport as V2SpaceExport,
+  SettingsEditOptions as V2SettingsEditOptions,
   SessionCommandOptions as V2SessionCommandOptions,
 } from "./v2/resources.js";
 export type {

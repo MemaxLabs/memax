@@ -16,6 +16,7 @@ import { createDemoGates } from "./gates-demo";
 import { createDemoDevices } from "./devices-demo";
 import { createDemoDream } from "./dream-demo";
 import { createDemoImports } from "./imports-demo";
+import { createDemoSettings } from "./settings-demo";
 import { DEMO_V1_SPACE } from "./demo-switch-data";
 import { createDemoSwitch } from "./switch-demo";
 import type { LedgerDataSource } from "./source";
@@ -81,6 +82,7 @@ export function createDemoSource({
   const now = () => new Date(DEMO_NOW);
   // acme-web is on V1 until switched in this session (switch-demo.ts).
   const switching = createDemoSwitch({ commandDelayMs });
+  const dream = createDemoDream({ commandDelayMs });
   const spaces = () => [
     ...DEMO_SPACES,
     { ...DEMO_V1_SPACE, onV2: switching.onV2(DEMO_V1_SPACE.slug) },
@@ -214,8 +216,9 @@ export function createDemoSource({
       switched: switching.onV2,
     }),
     devices: createDemoDevices({ now, commandDelayMs }),
-    dream: createDemoDream({ commandDelayMs }),
+    dream,
     switch: switching,
+    settings: createDemoSettings({ dream, commandDelayMs }),
     spaces: async () => spaces(),
     overview: async (space) => {
       const found = overview(space.slug);

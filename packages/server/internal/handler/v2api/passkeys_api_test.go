@@ -705,3 +705,18 @@ func TestForgetAccount(t *testing.T) {
 	}
 	_ = session
 }
+
+func TestInitialsMatchTheWebFrame(t *testing.T) {
+	for _, tc := range []struct{ name, email, want string }{
+		{"Ziyang Zeng", "z@example.com", "ZZ"},
+		{"Mary Ann  van der Berg", "m@example.com", "MB"},
+		{"ada", "a@example.com", "AD"},
+		{"  ", "zoe@example.com", "ZO"},
+		{"张 伟", "w@example.com", "张伟"},
+		{"Jean-Luc Picard", "j@example.com", "JP"},
+	} {
+		if got := v2api.Initials(tc.name, tc.email); got != tc.want {
+			t.Errorf("Initials(%q, %q) = %q, want %q", tc.name, tc.email, got, tc.want)
+		}
+	}
+}

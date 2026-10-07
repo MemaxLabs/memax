@@ -44,6 +44,7 @@ const h = vi.hoisted(() => ({
   session: null as { surface: string | null; impersonating: boolean } | null,
   publicClient: {} as Record<string, unknown>,
   client: {} as Record<string, unknown>,
+  funnel: vi.fn(),
 }));
 
 vi.mock("@/lib/v2/data/demo-source", async (load) => {
@@ -63,6 +64,9 @@ vi.mock("@/lib/auth", () => ({
     completeLogin: h.completeLogin,
     session: h.session,
   }),
+}));
+vi.mock("@/lib/v2/funnel", () => ({
+  trackFunnelStep: (...args: unknown[]) => h.funnel(...args),
 }));
 vi.mock("@/lib/memax-client", () => ({
   getMemaxClient: () => h.client,
@@ -84,6 +88,7 @@ beforeEach(() => {
   h.login = vi.fn();
   h.completeLogin = vi.fn(async () => true);
   h.session = null;
+  h.funnel = vi.fn();
 });
 
 afterEach(() => {
@@ -171,6 +176,7 @@ describe("SignIn", () => {
     renderWith(<SignInScreen />, { frame: false });
     fireEvent.click(screen.getByRole("button", { name: "Use a passkey" }));
     await waitFor(() => expect(h.completeLogin).toHaveBeenCalled());
+    await waitFor(() => expect(h.funnel).toHaveBeenCalledWith("signed_in"));
     const publicKey = (
       get.mock.calls[0] as unknown as [
         { publicKey: PublicKeyCredentialRequestOptions },
@@ -235,6 +241,7 @@ describe("SignIn", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use a passkey" }));
     await screen.findByText(/^That passkey isn't on a Memax account/);
     expect(h.completeLogin).not.toHaveBeenCalled();
+    expect(h.funnel).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 

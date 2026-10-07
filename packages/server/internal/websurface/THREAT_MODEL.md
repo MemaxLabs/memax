@@ -8,6 +8,13 @@ agent may do, confirming a device's sign-in code and signing out another
 session. Everything else a person does through the CLI or an agent is
 recorded as `client_attested`.
 
+`human_web_verified` is one step above: the person also answered a passkey
+re-check (WebAuthn, user verification required) bound to that very
+request. A person with a passkey makes the decisions that need them with
+it; see "The passkey re-check" below. The ladder is `client_attested` <
+`human_web` < `human_web_verified` (`policy.Assurance`), and receipts,
+gate answers, Activity and the export say which.
+
 ## How the API tells
 
 Both of these must hold. Neither is enough alone.
@@ -133,12 +140,15 @@ signature (used directly against the API) is `client_attested`.
   agent running as the person can usually decrypt them. With the cookies,
   a non-browser client can send them to the proxy with a matching
   `Origin` (Fetch Metadata and `SameSite` are enforced by browsers, not
-  servers) and act as the person on the web. The next step, a passkey
-  re-check at Keep time, is what defeats this.
+  servers) and act as the person on the web. For a person with a passkey,
+  the re-check below stops it at every decision that needs them; for one
+  without, it stands.
 - **An agent driving the person's real browser** (computer use, a browser
   automation server attached to their profile) looks exactly like the
-  person. Only a user-verification step at Keep time (a passkey with UV)
-  can tell them apart.
+  person. Only user verification can tell them apart: the passkey
+  re-check asks the person to unlock their authenticator for each such
+  decision. A person who unlocks whatever their browser asks, without
+  reading what the page says, still lets it through.
 - **Someone who can sign in as the person** (their GitHub account, their
   inbox for the email code) gets a web session of their own. They show up
   in the person's sessions list, and can be signed out there.
@@ -170,14 +180,161 @@ signature (used directly against the API) is `client_attested`.
 - **Sessions from before migration 030** have no surface and stay
   `client_attested` until the person signs in again.
 
-## Next: a passkey re-check at Keep
+## The passkey re-check
 
-With the session only in the proxy, the strong guarantee for D15 and
-quarantine is a WebAuthn user-verification step-up on those Keeps. It can
-build on what is here: `/api/proxy` is the one place every web request
-passes (it can carry a fresh assertion beside the signature), the access
-token's `sid` names the session a re-check belongs to, and
-`policy.Decide*` already asks for `human_web` in the places a re-check
-should be required. The API could then also refuse a `web` token presented
-without the proxy's signature; today that would gain little, because
-anyone holding the cookies can go through the proxy.
+A person can add passkeys in Settings › Account (`internal/passkeys`,
+migration 054). Once they have one, the decisions that need a person ask
+for it again, on that request (`policy/assurance_test.go` lists them):
+
+- keeping a quarantined (external) proposal, settling a conflict about
+  one, and restoring a faded one;
+- remembering, editing, keeping or forgetting a decision in a team space,
+  and answering a team space's gate (D15);
+- raising what an agent may do, and resuming a paused one;
+- every Forget: a memory, a note, a space, the account. A passkey holder
+  forgets on the web only, since the CLI can't answer;
+- removing a passkey, disconnecting GitHub or Google, and adding a
+  passkey or a sign-in method when the sign-in isn't fresh (below).
+
+Signing another session out and confirming a device's code stay at
+`human_web`. `policy.Decide*` decides it in one place: the actor carries
+`Passkey` (they have one) and `Verified` (this request carries an answer
+that verified). With a passkey and no answer, the decision is `refuse
+needs_passkey`; with a verified answer it applies, and the receipt says
+`human_web_verified`. Without a passkey nothing changes: `human_web` still
+suffices, and the answer suggests one (`policy.suggest: passkey`, shown
+once as a nudge).
+
+### The flow
+
+1. The page sends the command through `/api/proxy` as before.
+2. The API refuses it, 403 `needs_passkey`, with a challenge in
+   `details.passkey` (WebAuthn request options: the person's credentials,
+   `userVerification: required`, the RP ID).
+3. The page asks the browser (`navigator.credentials.get`) and sends the
+   **same request** again: same method, path, query, body,
+   `Idempotency-Key` and `If-Match`, plus the assertion in
+   `X-Memax-Passkey` (base64url JSON). `memax-sdk` does this itself when
+   given a `passkeyCheck` handler, once per request; the proxy passes the
+   header through and signs the request as before.
+4. `principalFor` verifies the assertion before anything runs; the command
+   then goes through policy as usual, with `Verified` set.
+
+### What an answer is bound to
+
+The challenge row (`v2.passkey_challenges`) holds the person, the session
+(the access token's `sid`), and the SHA-256 of the request:
+`memax-passkey-check/v1`, the method, the escaped path and query, the
+`Idempotency-Key`, the `If-Match` and the body's SHA-256, one per line. An
+answer verifies only when all of these hold:
+
+- the challenge is the one in the assertion's client data, unexpired
+  (5 minutes; the database refuses more than 10), and unused: it is marked
+  used in the transaction that checks it (`SELECT … FOR UPDATE`), so two
+  answers racing for one can't both pass;
+- it was issued to this person, for this session (a session signed out
+  since is refused), for this request's hash. Another memory, body, key,
+  version or method is `other_request`; another session of the same
+  person is `other_session`;
+- the credential is one of the person's, the origin is one of
+  `WEBAUTHN_RP_ORIGINS`, the RP ID hash matches, the UP and UV flags are
+  set, the signature verifies (go-webauthn), and the signature counter
+  didn't go backwards (`cloned`).
+
+A refused answer is 403 `passkey_invalid` with the reason in
+`details.passkey_failure`, and nothing runs. A bogus answer doesn't spend
+the challenge (it never gets past verification), so it can't be used to
+deny the person their own check. An answer that verified is spent whether
+the command then applies or not; a retry after a lost response either
+replays the applied command (idempotency answers before policy) or asks
+again.
+
+### Only the web reaches it
+
+The CLI and agents never get a challenge: a needs_passkey refusal there
+says to make the decision on memax.app, and an `X-Memax-Passkey` header on
+anything but a signed web request is refused (403 `permission_denied`).
+WebAuthn binds an assertion to the page's origin, so an authenticator
+won't answer for memax.app anywhere else, and the CLI can't produce one.
+So `human_web_verified` needs both the web surface (above) and the
+person's authenticator, unlocked.
+
+### Rollout: per person, from their first passkey
+
+There is no switch. Passkeys are on for a deployment when
+`WEBAUTHN_RP_ID` or `APP_BASE_URL` names the relying party, and the
+re-check is on for each person from their first passkey. Requiring one
+from everyone was rejected: a person whose browser or device can't make a
+passkey (older Linux desktops, managed machines, some password managers)
+would lose decisions they make today, and recovery would need support.
+Per person, the people who care get the stronger guarantee at once,
+nobody loses anything, and receipts show which guarantee each decision
+had. The nudge after a decision made without one, Security's "What your
+Keep counts as" and Settings › Account ask for one.
+
+### Adding, removing and recovery
+
+- **Adding** a passkey or a sign-in method needs a fresh sign-in (within
+  10 minutes, `passkeys.EnrollWindow`) or a passkey the person already
+  has. Otherwise anyone holding the web session's cookies could add their
+  own passkey and pass every re-check after.
+- **Removing** one, or disconnecting GitHub or Google, needs the passkey
+  when the person has one; otherwise a cookie thief would remove it and
+  turn the re-check off. V1's link and unlink routes refuse people with a
+  passkey for the same reason, and so do V1's space delete and account
+  wipe (which forget through the ledger): those people use V2's Account
+  and Forget, which ask.
+- **Lost every passkey:** sign in again (GitHub, Google, an email code),
+  add a new passkey within the window, then remove the old one with it.
+  Nothing is lost, and receipts made with the old one stay as they were.
+- **D15:** a team space's decisions need `human_web` from every member,
+  and `human_web_verified` from members with a passkey. One member's
+  passkey changes nothing for the others; a member who loses theirs
+  recovers as above, and meanwhile makes none of those decisions.
+- **Signing in with a passkey** is a discoverable assertion (no user named
+  first); the credential's user handle names the person, checked against
+  `v2.passkey_owner` (the one read across people, `SECURITY DEFINER`). It
+  makes a web session like any other sign-in, and is rate limited per
+  address (60 a minute).
+
+### Storage
+
+`v2.passkeys` (credential id, public key, counter, backup flags, AAGUID,
+name) and `v2.passkey_challenges` are under RLS keyed on `app.person_id`:
+a statement sees only that person's rows. `memax_v2` may not delete them;
+removing goes through `v2.remove_passkeys` and expired challenges through
+`v2.clear_passkey_challenges`, both `SECURITY DEFINER` and scoped to the
+person. Forgetting the account removes every passkey and signs every
+session out.
+
+## Attacks the re-check defeats
+
+| Attacker | Result |
+| --- | --- |
+| Software with the web cookies (from the disk), through the proxy | 403 `needs_passkey`: it has no authenticator to answer |
+| The same, answering with an assertion captured for another decision | `other_request`: the hash names one request |
+| Replaying an answer that worked | `used` |
+| An answer from another of the person's sessions | `other_session` |
+| Holding an answer back | `expired` after 5 minutes |
+| An agent driving the person's browser | The authenticator asks the person to unlock it for each decision |
+| The CLI sending `X-Memax-Passkey` | 403 `permission_denied`: only a signed web request is checked |
+| A cookie thief removing the passkey, or adding their own | Removing needs the passkey; adding needs it or a fresh sign-in |
+| A copied credential | Its counter goes backwards: `cloned`, refused |
+
+## Residual risks of the re-check
+
+- **Recovery is as strong as the weakest sign-in.** Whoever can sign in
+  fresh as the person (their GitHub, their inbox) can add a passkey of
+  their own within 10 minutes, then remove the person's with it. The new
+  passkey and its session show in Account; Memax doesn't yet email the
+  person when a passkey is added.
+- **The fresh window.** Cookies taken within 10 minutes of a sign-in let
+  the holder add a passkey without having one. A shorter window trades
+  against people who add one right after signing in.
+- **A person who unlocks whatever the browser asks.** User verification
+  proves the person was there, not that they read the page.
+- **V1 surfaces** (the V1 web app and `/v1`) don't ask. They write V1's
+  record, not V2's; the V1 routes that reach V2 (space delete, account
+  wipe, linking and unlinking a sign-in method) refuse passkey holders.
+- **Rate limits** on passkey sign-in are per address, and every sign-in
+  through the web deployment shares its address (as above).

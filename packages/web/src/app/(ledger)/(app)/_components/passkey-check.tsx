@@ -44,6 +44,9 @@ export function PasskeyCheckHost() {
   const toast = useToast();
   const router = useRouter();
   const [asked, setAsked] = useState<Asked | null>(null);
+  // The last check asked, kept while the layer closes so it leaves with
+  // its scrim (the portal unmounts both once the exit ends).
+  const [shown, setShown] = useState<Asked | null>(null);
   const nudged = useRef(false);
 
   useEffect(
@@ -51,7 +54,9 @@ export function PasskeyCheckHost() {
       setPasskeyAsker(
         (check) =>
           new Promise((answer) => {
-            setAsked({ check, answer });
+            const next = { check, answer };
+            setAsked(next);
+            setShown(next);
           }),
       ),
     [],
@@ -87,10 +92,10 @@ export function PasskeyCheckHost() {
     >
       <Dialog.Portal>
         <Dialog.Backdrop className="mx-cmd-scrim" />
-        {asked ? (
+        {shown ? (
           <CheckBody
-            key={asked.check.options.challenge}
-            check={asked.check}
+            key={shown.check.options.challenge}
+            check={shown.check}
             onAnswer={finish}
           />
         ) : null}

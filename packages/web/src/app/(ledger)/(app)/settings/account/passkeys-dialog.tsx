@@ -33,9 +33,10 @@ export function PasskeysDialog({
     <Dialog.Root open={open} onOpenChange={(next) => onOpenChange(next)}>
       <Dialog.Portal>
         <Dialog.Backdrop className="mx-cmd-scrim" />
-        {open ? (
-          <PasskeysBody account={account} onClose={() => onOpenChange(false)} />
-        ) : null}
+        {/* Always rendered: the portal mounts it for each opening (so each
+            starts afresh) and keeps it while it closes, so the scrim's exit
+            ends with the popup's. */}
+        <PasskeysBody account={account} onClose={() => onOpenChange(false)} />
       </Dialog.Portal>
     </Dialog.Root>
   );

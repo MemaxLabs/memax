@@ -7,6 +7,7 @@ import { MemaxError, type AuthProviderName } from "memax-sdk";
 import { interpolate, useLocale } from "@/i18n";
 import { useAuth } from "@/lib/auth";
 import { getPublicMemaxClient } from "@/lib/memax-client";
+import { trackFunnelStep } from "@/lib/v2/funnel";
 import { safeNext } from "@/lib/v2/onboarding/routes";
 import {
   getPasskey,
@@ -227,8 +228,12 @@ function PasskeySignIn({
         );
         return;
       }
-      if (await completeLogin()) onSignedIn();
-      else setError(copy.errors.passkeyFailed);
+      if (!(await completeLogin())) {
+        setError(copy.errors.passkeyFailed);
+        return;
+      }
+      trackFunnelStep("signed_in");
+      onSignedIn();
     } catch (err) {
       const problem = err instanceof PasskeyError ? err.problem : "failed";
       setError(

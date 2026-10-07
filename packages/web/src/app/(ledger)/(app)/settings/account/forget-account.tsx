@@ -35,9 +35,9 @@ export function ForgetAccountPanel({ account }: { account: AccountView }) {
       <Dialog.Root open={open} onOpenChange={(next) => setOpen(next)}>
         <Dialog.Portal>
           <Dialog.Backdrop className="mx-cmd-scrim" />
-          {open ? (
-            <ForgetBody account={account} onClose={() => setOpen(false)} />
-          ) : null}
+          {/* Mounted by the portal for each opening, and kept while it
+              closes, so the scrim leaves with it. */}
+          <ForgetBody account={account} onClose={() => setOpen(false)} />
         </Dialog.Portal>
       </Dialog.Root>
     </section>

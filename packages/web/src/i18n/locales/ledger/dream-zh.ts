@@ -1,4 +1,4 @@
-// Dream 的中文文案（DreamEdition.png、Dream 卡片、晨报邮件的设置和退订页），
+// Dream 的中文文案（DreamEdition.png、Dream 卡片、晨报邮件的退订页），
 // 挂在 `t.ledger.dream` 下，键与 ./dream-en.ts 一一对应。
 import type { Translations } from "../en";
 
@@ -132,20 +132,6 @@ export const ledgerDreamZh: Translations["ledger"]["dream"] = {
     runCap: "你的套餐允许的手动运行次数已经用完。Dream 仍会每晚自动运行。",
     runOwner: "只有空间的所有者可以立即运行 Dream。",
     failed: "没有成功，请再试一次。",
-  },
-  settingsPanel: {
-    title: "Dream",
-    meta: "适用于你拥有的每个空间",
-    timeZone: "时区",
-    timeZoneHint:
-      "Dream 在你的夜里运行，当地时间 03:00。在你设置之前，它从这个应用的时钟得知你的时区。",
-    timeZoneDefault: "Memax 还不知道你的时区，所以 Dream 在 UTC 03:00 运行。",
-    useDevice: "使用 {zone}",
-    email: "晨报邮件",
-    emailHint: "每个有晨报的早上，发给你这一期和需要你处理的事。",
-    on: "开",
-    off: "关",
-    changed: "Dream 设置已更改。",
   },
   unsubscribe: {
     title: "晨报邮件",

@@ -103,15 +103,15 @@ type passkeySignIn struct {
 	ExpiresIn int    `json:"expires_in"`
 }
 
-// Initials are a person's stamp on receipts: the first letters of their
-// first two names ("Ziyang Zeng" → ZZ), or of one name's first two
-// letters, or of their email.
+// Initials are a person's stamp on receipts, as the web app's frame
+// makes them: the first letters of their first and last names ("Ziyang
+// Zeng" → ZZ), or a single name's first two letters, or their email's.
 func Initials(name, email string) string {
-	words := strings.FieldsFunc(name, func(r rune) bool { return unicode.IsSpace(r) || r == '-' || r == '.' })
+	words := strings.Fields(name)
 	var out []rune
 	switch {
 	case len(words) >= 2:
-		out = []rune{firstRune(words[0]), firstRune(words[1])}
+		out = []rune{firstRune(words[0]), firstRune(words[len(words)-1])}
 	case len(words) == 1:
 		out = []rune(words[0])
 	default:

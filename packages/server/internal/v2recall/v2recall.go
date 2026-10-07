@@ -257,15 +257,18 @@ func (s *Searcher) Search(ctx context.Context, scope ledger.Scope, q Query) (Res
 		}
 		if err := s.ledger.Read(ctx, scope, func(tx pgx.Tx) error {
 			if vec != nil {
-				near, err := ledger.Nearest(ctx, tx, ledger.NearestQuery{Spaces: q.Filter.Spaces, Model: s.vectors.cfg.Model,
+				// The neighbours come with their hits, so the answer needs no
+				// further statement.
+				near, err := nearestHits(ctx, tx, ledger.NearestQuery{Spaces: q.Filter.Spaces, Model: s.vectors.cfg.Model,
 					Vector: vec, Lifecycles: filterLifecycles(q.Filter), Kind: q.Filter.Kind, SkipSuperseded: true,
 					K: pool, Floor: s.vectors.cfg.Floor})
 				if err != nil {
 					return fmt.Errorf("v2recall: vector lane: %w", err)
 				}
 				ids := make([]uuid.UUID, len(near))
-				for i, n := range near {
-					ids[i] = n.ID
+				for i, h := range near {
+					ids[i] = h.ID
+					loaded[h.ID] = h
 				}
 				rankings = append(rankings, ranking{lane: laneVector, ids: ids})
 				res.LexicalOnly = len(ids) == 0
@@ -339,6 +342,22 @@ func hitsOf(ctx context.Context, tx pgx.Tx, spaces, ids []uuid.UUID, loaded map[
 		return nil, err
 	}
 	return append(hits, more...), nil
+}
+
+// nearestHits is ledger.Nearest returning the neighbours' hits, nearest
+// first, in one statement.
+func nearestHits(ctx context.Context, tx pgx.Tx, q ledger.NearestQuery) ([]Hit, error) {
+	sql, args, err := ledger.NearestSQL(q)
+	if err != nil || sql == "" {
+		return nil, err
+	}
+	rows, err := tx.Query(ctx, `WITH near (id, similarity) AS (`+sql+`)`+hitSelect+`
+	  JOIN near n ON n.id = m.id
+	 ORDER BY n.similarity DESC, n.id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, scanHit)
 }
 
 // hitLane is a lane that returns its hits with its ranking, in the same

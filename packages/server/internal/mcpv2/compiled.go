@@ -50,6 +50,10 @@ type cachedArtifact struct {
 
 const artifactTTL = 10 * time.Minute
 
+// maxCompiledLookups bounds the spaces whose compile a digest looks up at
+// once, so a person with many spaces doesn't take the whole pool.
+const maxCompiledLookups = 4
+
 // isNilPreviewer catches a typed nil (a nil *compile.Service in the
 // interface): the compile service is nil without a compile URL.
 func isNilPreviewer(p Previewer) bool {
@@ -62,12 +66,32 @@ func newCompiledDigest(l *ledger.Ledger, p Previewer, lexical Digester, log *slo
 }
 
 func (d *compiledDigest) Digest(ctx context.Context, scope ledger.Scope, spaces []SpaceRef, since *time.Time) (Digest, error) {
+	// Each space's latest compile is looked up while the lexical digest is
+	// read: neither depends on the other, and each round trip to Postgres
+	// is about 24 ms in production.
+	type found struct {
+		c   *handler.MCPCompiled
+		err error
+	}
+	compiled := make([]found, len(spaces))
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, maxCompiledLookups)
+	for i := range spaces {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			compiled[i].c, compiled[i].err = d.compiled(ctx, scope, spaces[i].ID)
+		}()
+	}
 	out, err := d.lexical.Digest(ctx, scope, spaces, since)
+	wg.Wait()
 	if err != nil {
 		return out, err
 	}
 	for i := range out.Spaces {
-		c, err := d.compiled(ctx, scope, spaces[i].ID)
+		c, err := compiled[i].c, compiled[i].err
 		if err != nil {
 			if ctx.Err() != nil {
 				return out, ctx.Err()

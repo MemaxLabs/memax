@@ -48,7 +48,7 @@ func newAPIRig(t *testing.T, o testdb.Options) *apiRig {
 	t.Helper()
 	db := testdb.Open(t, o)
 	words := mockembed.NewWords()
-	model := newFake(says("Deploys go through Fly.[M-0001]"))
+	model := instantModel{}
 	e := newEnvOn(t, db, func(e *env) []v2api.Option {
 		vec := v2recall.NewVectors(e.ledger, words, words, v2recall.VectorConfig{Model: embedModel, Log: quiet})
 		search := v2recall.New(e.ledger).WithVectors(vec)
@@ -97,6 +97,18 @@ func newAPIRig(t *testing.T, o testdb.Options) *apiRig {
 		r.proposals = append(r.proposals, res.Memory.Ref)
 	}
 	return r
+}
+
+// instantModel answers at once, citing the first memory it was given.
+type instantModel struct{}
+
+func (instantModel) Stream(_ context.Context, c ask.Call, onText func(string)) (ask.Usage, error) {
+	ref := "M-0001"
+	if i := strings.Index(c.Prompt, `<memory id="`); i >= 0 {
+		ref = strings.SplitN(c.Prompt[i+len(`<memory id="`):], `"`, 2)[0]
+	}
+	onText("Deploys go through Fly.[" + ref + "]")
+	return ask.Usage{InputTokens: 100, OutputTokens: 10}, nil
 }
 
 // apiOp is one request; run reports how long its answer took (Ask: until

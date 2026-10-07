@@ -1,4 +1,4 @@
--- 042: v2_forget
+-- 043: v2_forget
 --
 -- Forget (plan 25 §5.13, rule 7; Phase 2 epic 2.4), and account and space
 -- deletion through the ledger.
@@ -71,7 +71,7 @@
 -- another object: drift evidence on a target, an older Brief version),
 -- forget_requested (an agent asked a person to forget a memory) and
 -- forget_declined (a person kept it instead). forgot was in 028's list.
--- The list keeps every verb 028, 029, 031, 035 and 036 admit.
+-- The list keeps every verb 028, 029, 031, 035, 036 and 042 admit.
 
 -- ---------------------------------------------------------------------
 -- Receipt actions
@@ -85,6 +85,7 @@ ALTER TABLE v2.receipts ADD CONSTRAINT receipts_action_check CHECK (action IN
      'revised', 'configured', 'requested', 'delivered', 'observed', 'pulled', 'overwritten', 'stopped',
      'judged', 'linked', 'superseded',
      'asked', 'withdrawn',
+     'returned', 'drafted',
      'purged', 'forget_requested', 'forget_declined'));
 
 -- Forget finds a space's forgets by action.

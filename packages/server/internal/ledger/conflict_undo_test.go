@@ -25,7 +25,20 @@ func decisionIn(space uuid.UUID, statement, area string) ledger.NewMemory {
 // judgeAs records a verdict as Memax (the judge).
 func (f *fixture) judgeAs(space uuid.UUID, m *ledger.Memory, outcome ledger.VerdictOutcome, target *ledger.Memory, mode ledger.JudgeMode) ledger.Result {
 	f.t.Helper()
-	scope, err := f.l.SpaceScope(context.Background(), space)
+	return f.judgeOn(f.l, space, m, outcome, target, mode)
+}
+
+// judgeLate records a verdict after the return window has passed: a
+// Write agent's write the judge flags then stays kept, in conflict.
+func (f *fixture) judgeLate(space uuid.UUID, m *ledger.Memory, outcome ledger.VerdictOutcome, target *ledger.Memory, mode ledger.JudgeMode) ledger.Result {
+	f.t.Helper()
+	late := ledger.New(f.pool, ledger.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))), ledger.WithReturnWindow(0))
+	return f.judgeOn(late, space, m, outcome, target, mode)
+}
+
+func (f *fixture) judgeOn(l *ledger.Ledger, space uuid.UUID, m *ledger.Memory, outcome ledger.VerdictOutcome, target *ledger.Memory, mode ledger.JudgeMode) ledger.Result {
+	f.t.Helper()
+	scope, err := l.SpaceScope(context.Background(), space)
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -45,7 +58,11 @@ func (f *fixture) judgeAs(space uuid.UUID, m *ledger.Memory, outcome ledger.Verd
 	if target != nil {
 		cmd.Target, cmd.Verdict.Related = target.ID, target.ID
 	}
-	return f.apply(cmd)
+	res, err := l.Apply(context.Background(), cmd)
+	if err != nil {
+		f.t.Fatalf("record verdict: %v", err)
+	}
+	return res
 }
 
 // conflictPair is a kept decision and an agent's proposal flagged against it.
@@ -170,7 +187,8 @@ func TestResolveConflictChoices(t *testing.T) {
 		if k.Lifecycle != lifecycle.Kept {
 			t.Fatalf("write = %s", k.Lifecycle)
 		}
-		f.judgeAs(sp, k, ledger.OutcomeFlagged, d, ledger.JudgeKept)
+		// Flagged after the return window: it stays kept, in conflict.
+		f.judgeLate(sp, k, ledger.OutcomeFlagged, d, ledger.JudgeKept)
 		res := resolve(d.Ref, ledger.ChooseThis, "", "")
 		if got := actions(res.Receipts); !slices.Equal(got, []ledger.Action{ledger.ActionResolved, ledger.ActionFaded}) {
 			t.Errorf("receipts = %v", got)

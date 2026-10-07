@@ -369,7 +369,7 @@ func TestForgetPurgesEmbeddings(t *testing.T) {
 		if !whole {
 			return nil
 		}
-		// Every version's words go, and the tombstone is written (042).
+		// Every version's words go, and the tombstone is written (043).
 		if _, err := tx.Exec(ctx, `UPDATE v2.memory_versions SET statement = NULL, last_receipt_id = $2 WHERE memory_id = $1`, m.ID, rc); err != nil {
 			return err
 		}

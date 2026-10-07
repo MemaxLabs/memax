@@ -37,7 +37,14 @@ import (
 //
 // What is undoable: Keep, Reject and Edit (with or without Keep) by a
 // person, a conflict resolution, and the judge's folds (duplicates and
-// re-proposals). Forget never is.
+// re-proposals). Forget never is, and neither is the judge putting a
+// Write agent's write back in Review (`returned`): undoing it would make
+// the write kept again on the agent's authority while it contradicts a
+// decision in force, which is what rule 11 forbids, and with none of
+// Keep's assurance (a decision that needs a person on the web would go
+// back in force from the CLI). Settling the conflict is the way out, and
+// it is one step: "keep this" or "keep both" keeps the write as the
+// person's own decision, with its receipt.
 
 // UndoKind names the command an undo entry undoes.
 type UndoKind string
@@ -416,18 +423,20 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 }
 
 // changedSince reports whether a memory changed after the given stream
-// version in a way an undo would lose. Two kinds of later receipt don't
+// version in a way an undo would lose. Three kinds of later receipt don't
 // count: the judge's `judged` (a verdict that changed nothing, which every
-// proposal edit gets within seconds), and a later command that was itself
-// undone, with its `undid` receipts: undoing the later change first, as
-// the refusal says to, puts the memory back where this command left it.
+// proposal edit gets within seconds), a `drafted` one (words for a kept
+// memory held out of force for the judge, which change nothing until a
+// resolution applies them), and a later command that was itself undone,
+// with its `undid` receipts: undoing the later change first, as the
+// refusal says to, puts the memory back where this command left it.
 func (w *writer) changedSince(ctx context.Context, spaceID, memoryID uuid.UUID, version int) (bool, error) {
 	var later bool
 	if err := w.tx.QueryRow(ctx, `
 		SELECT EXISTS (
 		  SELECT 1 FROM v2.receipts r
 		   WHERE r.stream_id = $1 AND r.space_id = $2 AND r.stream_version > $3
-		     AND r.action NOT IN ('judged', 'forget_requested', 'forget_declined')
+		     AND r.action NOT IN ('judged', 'drafted', 'forget_requested', 'forget_declined')
 		     AND NOT EXISTS (
 		       SELECT 1 FROM v2.undo_entries u
 		        WHERE u.space_id = $2 AND u.undone_receipt_id IS NOT NULL
@@ -485,6 +494,9 @@ func (w *writer) loadUndoEntry(ctx context.Context, receiptID uuid.UUID) (*undoE
 			msg = "That receipt is itself an undo. Make the change again instead."
 		case ActionForgot:
 			msg = fmt.Sprintf("Forgetting can't be undone: %s's words are gone. If it becomes true again, remember it fresh; it gets a new ID.", ref)
+		case ActionReturned:
+			msg = fmt.Sprintf("Memax put %s back in Review because it contradicts a decision in force, so it can't simply be kept again. "+
+				"Settle the conflict instead: compare both sides and keep it, keep the decision, or keep both.", ref)
 		}
 		return nil, &UndoError{Reason: UndoNotUndoable, Ref: ref, Message: msg}
 	}

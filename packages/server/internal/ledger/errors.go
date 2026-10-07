@@ -92,9 +92,15 @@ func (e *EditClashError) Is(target error) bool { return target == ErrEditClash }
 type InConflictError struct {
 	Ref  string
 	With string
+	// Message, when set, says it for a case Keep's words don't fit (words
+	// narrowed to settle a conflict that contradict another decision).
+	Message string
 }
 
 func (e *InConflictError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
 	if e.With == "" {
 		return fmt.Sprintf("%s contradicts a decision in force, so it can't be kept as it is. Settle the conflict first: compare both sides and choose.", e.Ref)
 	}
@@ -126,9 +132,9 @@ const (
 	sqlstateLifecycle        = "MXL01"
 	sqlstateAgentState       = "MXL02" // migration 029
 	sqlstateGateStatus       = "MXL03" // migration 036
-	sqlstateForgetRequest    = "MXL04" // migration 042
-	sqlstateForgottenWords   = "MXF01" // migration 042: a forgotten memory kept words
-	sqlstateForgottenCompile = "MXF02" // migration 042: a compile run held a forgotten memory
+	sqlstateForgetRequest    = "MXL04" // migration 043
+	sqlstateForgottenWords   = "MXF01" // migration 043: a forgotten memory kept words
+	sqlstateForgottenCompile = "MXF02" // migration 043: a compile run held a forgotten memory
 	sqlstateUniqueViolation  = "23505"
 	sqlstateLockNotAvailable = "55P03"
 	// jsonb refuses \u0000, and text refuses bytes outside the encoding.

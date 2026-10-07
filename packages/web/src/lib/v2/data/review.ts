@@ -32,10 +32,22 @@ export interface ReviewItem {
   lifecycle: "proposed" | "kept";
   /** Quarantined: it quotes content the agent didn't write. */
   external: boolean;
-  /** The latest receipt: who proposed or flagged it, and when. */
+  /**
+   * Who wrote it and when (a proposal, or a write the judge returned), or
+   * who flagged a kept memory.
+   */
   by: Actor | null;
-  action: "proposed" | "updated" | "flagged";
+  /**
+   * The queue's verb: `returned` is a Write agent's write that was kept
+   * at once until the judge found it contradicts a decision in force.
+   */
+  action: "proposed" | "updated" | "flagged" | "returned";
   at: string;
+  /**
+   * Rule 11: the judge put this write back in Review. `decision` is the
+   * decision in force its `returned` receipt names.
+   */
+  returned?: { decision: string | null } | null;
   /** The session it came from ("3e1a"). */
   session: string | null;
   /** The kept memory this proposal would change ("Updates M-0156"). */
@@ -207,7 +219,14 @@ export interface ReviewSource {
     ref: string;
     signal?: AbortSignal;
   }): Promise<ConflictData | null>;
-  /** Settles a conflict with the person's answer, through the ledger. */
+  /**
+   * Settles a conflict with the person's answer, through the ledger.
+   * Rule 11 for `both`: narrower words that touch another decision in
+   * force are saved and wait for the judge (`judgePending`, with the
+   * flagged side's new `version`); the same answer sent again throws
+   * `busy` (judge) until the judge has looked, then settles it or throws
+   * `in-conflict` with the decision the words contradict.
+   */
   resolveConflict(input: {
     space: SpaceSummary;
     /** The flagged side: every answer is relative to it. */

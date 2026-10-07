@@ -15,7 +15,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
 
-// Forget (plan 25 §5.13, rule 7; migration 042). See forget.go.
+// Forget (plan 25 §5.13, rule 7; migration 043). See forget.go.
 
 // The Forget receipt verbs. forgot was in 028's list.
 const (

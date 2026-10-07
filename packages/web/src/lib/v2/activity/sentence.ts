@@ -298,6 +298,19 @@ export function activitySentences(
       return [one(s.linked, { ref: text(entry.object.ref) })];
     case "superseded":
       return [one(s.superseded, { ref: text(entry.object.ref) })];
+    // The judge put a Write agent's write back in Review; the receipt's
+    // source is the decision in force it contradicts.
+    case "returned":
+      return [
+        entry.source?.kind === "memory"
+          ? one(s.returned, {
+              ref: text(entry.object.ref),
+              decision: text(entry.source.ref),
+            })
+          : one(s.returnedPlain, { ref: text(entry.object.ref) }),
+      ];
+    case "drafted":
+      return [one(s.drafted, { ref: text(entry.object.ref) })];
     case "purged":
       return [one(s.purged, { ref: text(entry.object.ref) })];
     case "forget_requested":

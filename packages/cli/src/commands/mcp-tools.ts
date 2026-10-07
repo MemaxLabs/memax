@@ -231,13 +231,13 @@ export const MCP_TOOLS: McpToolDefinition[] = [
         notices: {
           type: "array",
           description:
-            'Memories forgotten since this connection read them, or that were in a space it is connected to: each once. Every other tool\'s result carries them in _meta["app.memax/notices"].',
+            'What this connection should drop or recheck, each once: memories forgotten since it read them (or in a space it is connected to; every other tool\'s result carries these in _meta["app.memax/notices"] too), and its writes put back in Review.',
           items: {
             type: "object",
             properties: {
               kind: {
                 type: "string",
-                enum: ["forgotten", "space_forgotten"],
+                enum: ["forgotten", "space_forgotten", "returned"],
               },
               message: {
                 type: "string",

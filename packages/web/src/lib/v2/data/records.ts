@@ -38,7 +38,9 @@ export type RecordAction =
   | "compiled"
   | "handed_off"
   | "answered"
-  | "undid";
+  | "undid"
+  // The judge put a Write agent's write back in Review (rule 11).
+  | "returned";
 
 /** A memory's displayed state (spec State, without the internal `rejected`). */
 export type DisplayState =

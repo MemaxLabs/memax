@@ -248,6 +248,10 @@ const (
 	ActionSuperseded Action = "superseded" // a kept decision gave way to a newer one
 	ActionFaded      Action = "faded"      // a kept memory faded (here: a fact that lost a conflict)
 	ActionUndid      Action = "undid"      // a command undone; source names the receipt
+
+	// Rule 11's two holes, closed (migration 042).
+	ActionReturned Action = "returned" // the judge put a Write agent's write back in Review; source names the decision
+	ActionDrafted  Action = "drafted"  // words for a kept memory that wait for the judge before they replace the words in force
 )
 
 // The receipts.object_kind values this package writes.

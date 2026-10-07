@@ -1,4 +1,4 @@
--- 042 down: v2_forget. Puts back 036's receipt vocabulary, 035's receipt
+-- 043 down: v2_forget. Puts back 042's receipt vocabulary, 035's receipt
 -- check and purge constraint, 036's gate guard, and the foreign keys from
 -- receipts and seals to public.hubs. It fails if a retired space left
 -- receipts behind (their hub is gone), which is the point: those receipts
@@ -186,4 +186,5 @@ ALTER TABLE v2.receipts ADD CONSTRAINT receipts_action_check CHECK (action IN
      'connected', 'autonomy_changed', 'paused', 'resumed', 'disconnected',
      'revised', 'configured', 'requested', 'delivered', 'observed', 'pulled', 'overwritten', 'stopped',
      'judged', 'linked', 'superseded',
-     'asked', 'withdrawn'));
+     'asked', 'withdrawn',
+     'returned', 'drafted'));

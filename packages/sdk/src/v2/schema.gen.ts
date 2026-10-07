@@ -528,6 +528,23 @@ export interface paths {
          *     cleared, every change has its receipt, and the whole resolution can
          *     be undone. Only a person who may keep can settle a conflict, on the
          *     web where the space needs one for decisions.
+         *
+         *     Rule 11 for `keep_both`: narrower words that touch a decision in
+         *     force other than the two sides wait for the judge. The resolution
+         *     is then saved, not applied: a proposal's words become its new
+         *     version (in `memories`), a kept memory's become a draft (its
+         *     `drafted` receipt), out of force until the resolution applies, and
+         *     the conflict stays open. The answer is 200 `outcome: proposed` with
+         *     policy code `judge_pending`, and no `Retry-After` (the judge may
+         *     answer within milliseconds). Send the same resolution again, with a
+         *     new `Idempotency-Key` and the version in `memories`: it answers 503
+         *     `judge_pending` with `Retry-After` until the judge has looked (about
+         *     5 s, at most 30 s; after that it goes ahead, so a judge that's down
+         *     never blocks it), then applies, or answers 409 `in_conflict` when
+         *     the judge found the words contradict a decision in force
+         *     (`details.ref`). Words that touch no other decision apply at once.
+         *     Keeping a side that is flagged against another decision too is 409
+         *     `in_conflict` naming it: settle that first.
          */
         post: operations["resolveConflict"];
         delete?: never;
@@ -710,7 +727,10 @@ export interface paths {
          *     has passed (`window_passed`), it was already undone
          *     (`already_undone`), a later change depends on it (`later_changes`,
          *     `details.ref` names what is in the way), or the receipt's command
-         *     can't be undone (`not_undoable`). Forget can never be undone.
+         *     can't be undone (`not_undoable`). Forget can never be undone, and
+         *     neither can the judge's `returned` (a Write-level agent's write put
+         *     back in Review for contradicting a decision in force): settle that
+         *     conflict instead.
          */
         post: operations["undoReceipt"];
         delete?: never;
@@ -1552,11 +1572,15 @@ export interface components {
          *     target's (`target`) configured, requested, observed, pulled,
          *     overwritten and stopped; a compile run's (`compile`) compiled and
          *     delivered. The judge's (by Memax) are merged (a fold), linked (an
-         *     update or explicit change), flagged (a conflict) and judged
-         *     (nothing to do); settling a conflict writes resolved, kept,
-         *     rejected, edited, superseded or faded; Undo writes undid. A decision
-         *     gate's (`gate`) are asked (by the agent), answered (by a person; the
-         *     kept decision it became has its own `kept` receipt) and withdrawn.
+         *     update or explicit change), flagged (a conflict), returned (a
+         *     Write-level agent's write it found contradicting a decision in
+         *     force, put back in Review as a conflict; `source` is that decision)
+         *     and judged (nothing to do); settling a conflict writes resolved,
+         *     kept, rejected, edited, superseded or faded, and drafted (narrower
+         *     words for a kept memory, held out of force until the judge has seen
+         *     them); Undo writes undid. A decision gate's (`gate`) are asked (by
+         *     the agent), answered (by a person; the kept decision it became has
+         *     its own `kept` receipt) and withdrawn.
          *     Forget writes forgot on each forgotten memory (and on a gate whose
          *     decision it was, and on a space forgotten whole), resolved on a
          *     memory whose only conflict was with it, and purged on a target or a
@@ -1565,7 +1589,7 @@ export interface components {
          *     the memory instead writes forget_declined.
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "purged" | "forget_requested" | "forget_declined";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space";
         /**
@@ -1607,7 +1631,9 @@ export interface components {
          *     autonomy_propose, integration, import, system_proposes, repository,
          *     person_proposed. Saved, not kept: judge_pending (a person's edit,
          *     then keep, whose new words touch a decision in force: the edit is
-         *     the proposal's new version, and Keep waits for the judge).
+         *     the proposal's new version, and Keep waits for the judge; and a
+         *     "keep both" whose narrower words touch another decision in force:
+         *     they are saved, and the same resolution waits for the judge).
          *     Confirmation: confirm_in_agent.
          * @enum {string}
          */
@@ -3536,7 +3562,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
-        /** @description `invalid_transition`: the memory's, agent's or gate's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one, answering a gate that was answered, withdrawn or expired). `in_conflict` (Keep, and edit then keep): the judge flagged the proposal as contradicting a decision in force; `details.ref` is that decision, and the conflict is settled with `:resolve-conflict`. */
+        /** @description `invalid_transition`: the memory's, agent's or gate's state doesn't allow this command (keeping a kept memory, pausing a paused agent, anything on a disconnected one, answering a gate that was answered, withdrawn or expired). `in_conflict` (Keep, and edit then keep): the judge flagged the proposal as contradicting a decision in force; `details.ref` is that decision, and the conflict is settled with `:resolve-conflict`. On `:resolve-conflict`, `in_conflict` names a decision in force that is in the way of the answer: another conflict of the side it would keep, or one the judge found narrower words contradict. */
         InvalidTransition: {
             headers: {
                 [name: string]: unknown;

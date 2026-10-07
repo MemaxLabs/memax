@@ -38,6 +38,9 @@ type Ledger struct {
 	// The undo windows (WithUndoWindows).
 	undoWindow      time.Duration
 	judgeUndoWindow time.Duration
+	// returnWindow bounds the judge's return of a Write agent's write to
+	// Review (WithReturnWindow, judge.go).
+	returnWindow time.Duration
 	// readMonths are the months whose reads partitions this process has
 	// ensured (reads.go).
 	readMonths sync.Map
@@ -65,7 +68,7 @@ func New(pool *pgxpool.Pool, opts ...Option) *Ledger {
 		return nil
 	}
 	l := &Ledger{pool: pool, now: time.Now, lockTimeout: DefaultLockTimeout, log: slog.Default(),
-		undoWindow: DefaultUndoWindow, judgeUndoWindow: DefaultJudgeUndoWindow,
+		undoWindow: DefaultUndoWindow, judgeUndoWindow: DefaultJudgeUndoWindow, returnWindow: DefaultReturnWindow,
 		honesty: ForgetHonesty{BackupDays: DefaultBackupDays}}
 	for _, o := range opts {
 		o(l)
@@ -105,8 +108,8 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	w := &writer{tx: tx, meta: m, command: cmd.Name(), hash: hash, inserter: l.inserter, loginRole: loginRole,
-		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, now: now, indexJobs: l.indexJobs,
-		forgetHonesty: l.honesty}
+		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, returnWindow: l.returnWindow, now: now,
+		indexJobs: l.indexJobs, forgetHonesty: l.honesty}
 	var res Result
 	switch c := cmd.(type) {
 	case *Remember:

@@ -210,6 +210,16 @@ describe("memax hook session-start, as a process", () => {
     );
   });
 
+  it("starts one flush for sessions that start together", async () => {
+    const a = await hook(startup());
+    const b = await hook(startup());
+    const spawns = [...eventsOf(a.pid), ...eventsOf(b.pid)].filter((e) =>
+      e.startsWith("spawn "),
+    );
+    expect(spawns).toHaveLength(1);
+    await until(() => st.loads.length >= 1, 10_000, "the flush's report");
+  });
+
   it("isn't held by a stdin pipe the agent leaves open", async () => {
     fakeDaemonPid();
     const r = await hook(startup(), { closeStdin: false });

@@ -14,6 +14,7 @@ import {
   read,
   readFileSync,
   statSync,
+  writeFileSync,
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -136,15 +137,28 @@ function daemonAlive(pidFile: string): boolean {
   }
 }
 
-/** Starts `memax hook flush` on its own, unless one is already at it. */
-async function spawnFlush(lock: string): Promise<void> {
+/** At most one flush started this often; the queue waits for the next. */
+const FLUSH_EVERY_MS = 30_000;
+
+function recent(path: string, ms: number): boolean {
   try {
-    if (Date.now() - statSync(lock).mtimeMs < 60_000) return;
+    return Date.now() - statSync(path).mtimeMs < ms;
   } catch {
-    // no flusher running
+    return false;
   }
+}
+
+/**
+ * Starts `memax hook flush` on its own, unless one is at it or started
+ * less than FLUSH_EVERY_MS ago (sessions starting together share one).
+ */
+async function spawnFlush(dir: string): Promise<void> {
+  const started = join(dir, ".flush.started");
+  if (recent(join(dir, ".flush.lock"), 60_000)) return;
+  if (recent(started, FLUSH_EVERY_MS)) return;
   const bin = fileURLToPath(new URL("./bin.js", import.meta.url));
   if (!existsSync(bin)) return;
+  writeFileSync(started, "", { mode: 0o600 });
   const { spawn } = await import("node:child_process");
   const child = spawn(process.execPath, [bin, "hook", "flush"], {
     detached: true,
@@ -203,8 +217,7 @@ export async function hookSessionStart(argv: string[]): Promise<number> {
     if (res.seen) writeSeen(res.seen.path, paths.seen, res.seen.value);
     if (res.loads.length > 0) {
       enqueueLoads(paths.loads, res.loads);
-      if (!daemonAlive(paths.pid))
-        await spawnFlush(join(paths.loads, ".flush.lock"));
+      if (!daemonAlive(paths.pid)) await spawnFlush(paths.loads);
     }
     if (debug)
       process.stderr.write(

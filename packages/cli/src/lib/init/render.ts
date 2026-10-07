@@ -36,7 +36,7 @@ export function renderAgents(rows: InitReport["agents"]): string[] {
             ? "not set up"
             : r.mcp;
     lines.push(
-      `  ${chalk.green("✓")} ${pad(mark, 4)}${pad(r.name, 13)}${pad(r.autonomy ?? "", 9)}${chalk.gray(note)}`,
+      `  ${chalk.green("✓")} ${pad(mark, 4)}${pad(r.name, 13)}${pad(r.where, 22)}${pad(r.autonomy ?? "", 9)}${chalk.gray(note)}`,
     );
   }
   return lines;

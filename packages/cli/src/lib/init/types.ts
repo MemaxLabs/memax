@@ -54,6 +54,8 @@ export interface InitDeps {
   hasCredentials: () => boolean;
   /** Signs the person in (the browser); false when they didn't. */
   signIn: () => Promise<boolean>;
+  /** Whether an agent's MCP settings already name Memax. */
+  hasMcp: (agent: AgentEntry) => boolean;
   /** Writes an agent's MCP settings, as memax setup --mcp does. */
   writeMcp: (agent: AgentEntry) => Promise<McpOutcome>;
   /** Starts the daemon; false when it couldn't. */
@@ -95,6 +97,8 @@ export interface InitReport {
   agents: Array<{
     kind: V2.AgentKind;
     name: string;
+    /** What showed it: "~/.claude", ".cursor/ in this repo". */
+    where: string;
     found: boolean;
     mcp: string;
     autonomy: V2.Autonomy | null;

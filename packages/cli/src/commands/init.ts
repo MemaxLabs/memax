@@ -50,12 +50,15 @@ function mcpPresent(
   }
 }
 
+function hasMcp(agent: AgentEntry): boolean {
+  const def = getAgents().find((a) => a.id === agent.setupId);
+  return !!def && mcpPresent(def.id, def.configPath, def.mcpKey, def.format);
+}
+
 /** Writes an agent's MCP settings for OAuth, as memax setup --mcp does. */
 async function writeMcp(agent: AgentEntry): Promise<McpOutcome> {
   const def = getAgents().find((a) => a.id === agent.setupId);
   if (!def) return "unsupported";
-  if (mcpPresent(def.id, def.configPath, def.mcpKey, def.format))
-    return "present";
   try {
     setupMcpOAuth(def);
     return "written";
@@ -119,6 +122,7 @@ export function initDeps(o: InitOptions): InitDeps {
         return false;
       return signInWithBrowser();
     },
+    hasMcp,
     writeMcp,
     startDaemon: async () =>
       (await startDaemon({

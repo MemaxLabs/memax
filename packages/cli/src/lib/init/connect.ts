@@ -7,7 +7,7 @@
 // never raised (raising needs a person on the web).
 import { randomUUID } from "node:crypto";
 import type { V2 } from "memax-sdk";
-import { detectAgents, type DetectedAgent } from "./agents.js";
+import { detectAgents, type AgentEntry, type DetectedAgent } from "./agents.js";
 import type { InitDeps, InitReport } from "./types.js";
 
 export interface ConnectResult {
@@ -22,7 +22,8 @@ export async function connectAgents(
   d: InitDeps,
   root: string | null,
   spaces: V2.Space[],
-  write: boolean,
+  /** Asked once, with the agents whose MCP settings don't name Memax yet. */
+  allow: (need: AgentEntry[]) => Promise<boolean>,
 ): Promise<ConnectResult> {
   const detected = detectAgents({
     home: d.home,
@@ -36,12 +37,17 @@ export async function connectAgents(
   } catch {
     // Connections are a convenience here; MCP settings still work.
   }
+  const need = detected
+    .filter((x) => x.found && x.agent.setupId && !d.hasMcp(x.agent))
+    .map((x) => x.agent);
+  const write = need.length > 0 && (await allow(need));
   const rows: InitReport["agents"] = [];
   for (const det of detected) {
     const a = det.agent;
     if (!det.found && !a.connector) continue;
     let mcp = a.connector ? "connector" : "not written";
-    if (det.found && a.setupId && write) {
+    if (det.found && a.setupId && !need.includes(a)) mcp = "present";
+    else if (det.found && a.setupId && write) {
       const res = await d.writeMcp(a);
       mcp = typeof res === "string" ? res : `failed: ${res.error}`;
     }
@@ -79,6 +85,7 @@ export async function connectAgents(
     rows.push({
       kind: a.kind,
       name: a.name,
+      where: det.found ? det.evidence : "",
       found: det.found,
       mcp,
       autonomy: autonomy ?? (det.found ? a.start : null),

@@ -156,23 +156,29 @@ async function flow(
   const targetSpaces = [project?.space, machine?.space].filter(
     (s): s is V2.Space => !!s,
   );
-  const write =
-    o.connect !== false &&
-    (o.yes ||
+  let declined = false;
+  const agents = await connectAgents(d, root, targetSpaces, async (need) => {
+    if (o.connect === false) return false;
+    const yes =
+      o.yes ||
       (d.interactive &&
         (await d.prompt.confirm(
-          "  Connect the agents on this machine (writes their MCP settings)? [Y/n] ",
+          `  Connect ${need.map((a) => a.name).join(", ")} (writes their MCP settings)? [Y/n] `,
           true,
-        ))));
-  const agents = await connectAgents(d, root, targetSpaces, write);
+        )));
+    declined = !yes;
+    return yes;
+  });
   report.agents = agents.rows;
   for (const l of renderAgents(agents.rows)) d.out(l);
-  if (!write && o.connect !== false)
+  if (declined)
     d.out(
       chalk.gray(
         "    Their MCP settings weren't changed. Run memax init --yes, or memax setup --mcp, to connect them.",
       ),
     );
+  if (agents.rows.some((r) => r.mcp === "present"))
+    report.done.push("The agents' MCP settings name Memax.");
 
   // 4. Scan locally: split, secrets, hidden characters, trust.
   begin("scan", 5_000);
@@ -184,7 +190,17 @@ async function flow(
   let personalOk =
     !!machine?.space &&
     scanned.personal.items.length + scanned.personal.skipped.length > 0;
-  if (personalOk && !o.yes) {
+  // Once the person has brought machine-local memory in, init does it again
+  // without asking: only what's new is proposed.
+  const before =
+    personalOk &&
+    (await d.memax.v2.imports
+      .list(machine!.space!.id, { limit: 1 })
+      .then((p) => p.items.length > 0)
+      .catch(() => false));
+  if (before)
+    report.done.push(`Machine-local memory goes to ${machine!.space!.slug}.`);
+  if (personalOk && !o.yes && !before) {
     personalOk =
       d.interactive &&
       (await d.prompt.confirm(
@@ -303,7 +319,7 @@ async function flow(
       .map((c) => `      ${chalk.italic(c.memory.statement)}`);
     d.out("");
     d.out(
-      `  ${cands.length} ${cands.length === 1 ? "statement" : "statements"} in ${u.space.slug} agree and come from your own files:`,
+      `  ${cands.length} ${cands.length === 1 ? "statement" : "statements"} in ${u.space.slug} ${cands.length === 1 ? "agrees and comes" : "agree and come"} from your own files:`,
     );
     for (const s of sample) d.out(s);
     if (cands.length > sample.length)

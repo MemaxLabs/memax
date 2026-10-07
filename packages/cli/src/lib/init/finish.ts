@@ -150,7 +150,7 @@ export async function offerOverwrite(
   );
   d.out(
     chalk.gray(
-      `    What it says is in Review now, as proposals. Replace it with the compiled Brief?`,
+      `    Its statements are in the record now, kept or waiting in Review. Replace it with the compiled Brief?`,
     ),
   );
   const yes = await d.prompt.confirm(`    Replace ${t.path}? [y/N] `, false);

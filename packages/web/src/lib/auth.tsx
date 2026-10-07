@@ -14,7 +14,7 @@ import { forgetLegacyTokens } from "@/lib/legacy-tokens";
 import { clearSessionPresence } from "@/lib/session-presence";
 import { queryClient } from "@/lib/query-client";
 import { hubListQueryKey } from "@/hooks/use-hubs";
-import type { AuthProviderName } from "memax-sdk";
+import type { AuthProviderName, WebUi } from "memax-sdk";
 
 export interface User {
   id: string;
@@ -92,6 +92,11 @@ interface AuthState {
   connectedProviders: AuthProviderName[];
   /** The signed-in session, or null when signed out. */
   session: SessionInfo | null;
+  /**
+   * The web UI this person sees (the V2 UI flag, decided by the API), or
+   * null when signed out or not said.
+   */
+  ui: WebUi | null;
   loading: boolean;
   /**
    * Picks up the session the web app's server just stored (after
@@ -124,6 +129,7 @@ const AuthContext = createContext<AuthState>({
   usage: null,
   connectedProviders: [],
   session: null,
+  ui: null,
   loading: true,
   completeLogin: async () => false,
   login: () => {},
@@ -142,6 +148,7 @@ interface MeResponse {
   admin_role?: string;
   connected_providers?: AuthProviderName[];
   session?: SessionInfo;
+  ui?: WebUi;
 }
 
 /** What loading the profile came to. */
@@ -176,6 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     AuthProviderName[]
   >([]);
   const [session, setSession] = useState<SessionInfo | null>(null);
+  const [ui, setUi] = useState<WebUi | null>(null);
   const [loading, setLoading] = useState(true);
   const sessionVersionRef = useRef(0);
 
@@ -194,6 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUsage(null);
     setConnectedProviders([]);
     setSession(null);
+    setUi(null);
     try {
       import("@/lib/posthog").then(({ resetUser }) => resetUser());
     } catch {}
@@ -246,6 +255,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           admin_role: data.admin_role,
         });
         setSession(data.session ?? { surface: null, impersonating: false });
+        setUi(data.ui ?? null);
         const hubsData = data.hubs ?? [];
         setHubs(hubsData);
         // Seed TanStack Query cache so useHubs() has data instantly.
@@ -413,6 +423,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       usage,
       connectedProviders,
       session,
+      ui,
       loading,
       completeLogin,
       login,
@@ -427,6 +438,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       usage,
       connectedProviders,
       session,
+      ui,
       loading,
       completeLogin,
       login,

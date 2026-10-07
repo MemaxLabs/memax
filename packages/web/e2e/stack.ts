@@ -31,8 +31,8 @@ export interface Stack {
   jwtSecret: string;
   /** One value from the database. */
   query(sql: string): string;
-  /** A one-time sign-in code for ZZ, delivered to the web app. */
-  webCode(): string;
+  /** A one-time sign-in code for ZZ (or `user`), delivered to the web app. */
+  webCode(user?: string): string;
   logs: string[];
   stop(): Promise<void>;
 }
@@ -142,10 +142,10 @@ export async function startStack(): Promise<Stack> {
       jwtSecret,
       query,
       logs,
-      webCode() {
+      webCode(user = zz) {
         const code = randomBytes(32).toString("hex");
         query(
-          `INSERT INTO auth_codes (code, user_id, expires_at, surface) VALUES ('${code}', '${zz}', now() + interval '1 minute', 'web')`,
+          `INSERT INTO auth_codes (code, user_id, expires_at, surface) VALUES ('${code}', '${user}', now() + interval '1 minute', 'web')`,
         );
         return code;
       },

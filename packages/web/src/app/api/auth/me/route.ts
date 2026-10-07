@@ -1,6 +1,6 @@
 import { MemaxError } from "memax-sdk";
 import { decodeClaims } from "@/lib/bff/claims";
-import { presenceCookie, withCookies } from "@/lib/bff/cookies";
+import { presenceCookie, uiCookieFor, withCookies } from "@/lib/bff/cookies";
 import { csrfRefusal } from "@/lib/bff/csrf";
 import {
   apiClient,
@@ -14,12 +14,15 @@ import {
 const PRESENCE_SECONDS = 30 * 24 * 60 * 60;
 
 /**
- * Who is signed in, for the page: the profile, and what the session is
- * (`session.surface`: "web" for a sign-in on the web app, which with the
- * proxy's signature is what keeps as a person on the web; and whether an
- * operator is impersonating). The page never sees the tokens. A browser
- * without a session, or whose session ended, gets 401 and its cookies
- * cleared; while impersonating, an expired impersonation keeps the
+ * Who is signed in, for the page: the profile (with `ui`, the web UI the
+ * person sees, which also keeps the memax_ui routing hint in step), and
+ * what the session is (`session.surface`: "web" for a sign-in on the web
+ * app, which with the proxy's signature is what keeps as a person on the
+ * web; and whether an operator is impersonating, in which case the hint
+ * follows the person being impersonated). The page never sees the tokens.
+ * A browser without a session, or whose session ended, gets 401 and its
+ * cookies cleared (the hint stays: only a sign-in or a sign-out changes
+ * it then); while impersonating, an expired impersonation keeps the
  * operator's own session for /api/auth/impersonate to restore.
  */
 export async function GET(req: Request) {
@@ -68,6 +71,12 @@ export async function GET(req: Request) {
     if (!session.setCookies.length) {
       session.setCookies.push(presenceCookie(session.secure, PRESENCE_SECONDS));
     }
+    // The V2 UI hint follows the person's flag (an operator changed it, a
+    // space switched to V2 or back, `memax init` made their first space):
+    // set or cleared when it disagrees, so the proxy routes the next load.
+    session.setCookies.push(
+      ...uiCookieFor(req, session.secure, profile.ui, PRESENCE_SECONDS),
+    );
     const res = Response.json(
       {
         data: {

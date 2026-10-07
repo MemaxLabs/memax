@@ -5,6 +5,7 @@ import { demoImportView } from "../data/demo-imports-data";
 import type { ImportView } from "../data/imports";
 import type { SpaceSummary } from "../data/types";
 import {
+  afterSignIn,
   decideLanding,
   landingHref,
   resolveLanding,
@@ -44,6 +45,54 @@ function settledEverything(view: ImportView): ImportView {
     conflicts: view.conflicts.map((c) => ({ ...c, state: "settled" })),
   };
 }
+
+describe("where a sign-in goes on, by the person's web UI", () => {
+  it("takes a person with the V2 UI flag to `next`, else their landing", () => {
+    expect(afterSignIn("/memax-v2/review?filter=import", "v2")).toEqual({
+      kind: "next",
+      href: "/memax-v2/review?filter=import",
+    });
+    expect(afterSignIn("/device?code=WQRT-4821", "v2")).toEqual({
+      kind: "next",
+      href: "/device?code=WQRT-4821",
+    });
+    expect(afterSignIn(null, "v2")).toEqual({ kind: "landing" });
+    expect(afterSignIn("https://evil.example/", "v2")).toEqual({
+      kind: "landing",
+    });
+  });
+
+  it("takes a person without it to V1's home, never into V2", () => {
+    for (const ui of ["v1", null, undefined] as const) {
+      expect(afterSignIn(null, ui)).toEqual({ kind: "v1", href: "/home" });
+      for (const next of [
+        "/memax-v2/today",
+        "/setup/import?space=memax-v2",
+        "/settings/account",
+        "/join/abc",
+      ]) {
+        expect(afterSignIn(next, ui)).toEqual({ kind: "v1", href: "/home" });
+      }
+    }
+  });
+
+  it("still takes a person without it where every browser may go", () => {
+    // The CLI's device code and an agent's OAuth request open for every
+    // browser; a V1 page is theirs.
+    for (const next of [
+      "/device?code=WQRT-4821",
+      "/oauth/authorize?request=r1",
+      "/h/personal/memories",
+      "/settings",
+    ]) {
+      expect(afterSignIn(next, "v1")).toEqual({ kind: "next", href: next });
+    }
+    expect(afterSignIn("//evil.example", "v1")).toEqual({
+      kind: "v1",
+      href: "/home",
+    });
+  });
+});
 
 describe("where a person lands after signing in", () => {
   it("starts someone with no space on the V2 record at FirstRun", () => {

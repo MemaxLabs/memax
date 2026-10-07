@@ -15,6 +15,12 @@
  * - The session-presence marker (lib/session-presence.ts) is readable and
  *   SameSite=Lax, holds no secret ("1"), and lets the middleware and the
  *   frame's layout tell a signed-in browser apart before any script runs.
+ * - The V2 UI hint (`memax_ui`, lib/ui-gate.ts) follows the person's V2 UI
+ *   flag: set or cleared from the API's answer when a session starts and
+ *   when a profile read finds it changed, cleared at sign-out. It outlives
+ *   a session that merely ended, until the next sign-in or sign-out (V2's
+ *   pages ask a browser without a session to sign in, and the dev
+ *   fixtures' demo keeps /dev/ui's choice that way).
  *
  * Over plain http (local development, the Playwright and workerd runs on
  * localhost) the names drop the prefix and the cookies drop Secure, which
@@ -22,7 +28,9 @@
  * names, so a plain cookie never stands in for a secure one.
  */
 
+import type { WebUi } from "memax-sdk";
 import { SESSION_PRESENCE_COOKIE } from "@/lib/session-presence";
+import { UI_COOKIE, UI_COOKIE_V2 } from "@/lib/ui-gate";
 
 export { SESSION_PRESENCE_COOKIE };
 
@@ -51,7 +59,7 @@ const PLAIN_NAMES: CookieNames = {
 };
 
 /** A session lives 30 days from sign-in unless the API says otherwise. */
-const DEFAULT_SESSION_SECONDS = 30 * 24 * 60 * 60;
+export const DEFAULT_SESSION_SECONDS = 30 * 24 * 60 * 60;
 
 /** Whether the browser reached us over https (directly or behind a proxy). */
 export function isSecureRequest(req: Request): boolean {
@@ -151,6 +159,45 @@ export function presenceCookie(secure: boolean, maxAge: number): string {
     httpOnly: false,
     sameSite: "Lax",
   });
+}
+
+/**
+ * The V2 UI routing hint (lib/ui-gate.ts) for a person's flag, as the API
+ * answered it: `memax_ui=v2` when they see V2, deleted otherwise. Readable
+ * by the proxy, HttpOnly and SameSite=Lax like /dev/ui's, and not a
+ * secret: the API decides what anyone may do. Its name has no `__Host-`
+ * prefix, since the proxy reads one name over http and https.
+ */
+export function uiCookie(secure: boolean, ui: WebUi, maxAge: number): string {
+  return ui === "v2"
+    ? serializeCookie(UI_COOKIE, UI_COOKIE_V2, secure, {
+        maxAge,
+        sameSite: "Lax",
+      })
+    : clearedUiCookie(secure);
+}
+
+/** The V2 UI hint, deleted (V1, or signed out). */
+export function clearedUiCookie(secure: boolean): string {
+  return expireCookie(UI_COOKIE, secure, { sameSite: "Lax" });
+}
+
+/**
+ * The hint to set when a profile read says `ui`, given the request's
+ * cookie: none when they already agree, or when the API didn't say.
+ */
+export function uiCookieFor(
+  req: Request,
+  secure: boolean,
+  ui: WebUi | undefined,
+  maxAge: number,
+): string[] {
+  if (ui !== "v1" && ui !== "v2") return [];
+  const current = readCookies(req).get(UI_COOKIE);
+  if (ui === "v2" ? current === UI_COOKIE_V2 : current === undefined) {
+    return [];
+  }
+  return [uiCookie(secure, ui, maxAge)];
 }
 
 /** Every cookie of the session, deleted: signed out. */

@@ -188,7 +188,8 @@ func TestChatGPTProfileOnV2(t *testing.T) {
 
 // Recall's V2 part holds its 250 ms budget; on a seeded corpus of a few
 // thousand kept memories, a whole tool call over HTTP stays well under the
-// 300 ms p95 of N2.
+// 300 ms p95 of N2. Every call is also held to a budget of round trips to
+// Postgres (netsim), which no machine's load can move.
 func TestRecallLatency(t *testing.T) {
 	if testing.Short() {
 		t.Skip("latency: skipped in -short")
@@ -196,9 +197,14 @@ func TestRecallLatency(t *testing.T) {
 	e, f := newFixture(t, policy.AutonomyPropose)
 	const n = 3000
 	seedKept(t, e, f.sp, n)
-	cs := e.connectClient(f.token, "/mcp", modern, nil)
+	c := e.countedClient(f.token)
 	queries := []string{"deploy target", "postgres migrations", "review queue", "rate limits", "lighthouse", "fly machines",
 		"session ref", "compile budget", "staging database", "token audience"}
+	// The principal (scope, connection), the hub, the lanes with their hits,
+	// the session's proposals and notices, the gates' news, and the reads'
+	// COMMITs sent after the answer.
+	const tripBudget = 9
+	trips := 0
 	// A round is 60 recalls. Wall-clock latency on a shared machine (CI, or
 	// a full suite beside other test processes) has outliers that aren't
 	// recall's, so the bound holds if any of three rounds meets it: a real
@@ -210,13 +216,13 @@ func TestRecallLatency(t *testing.T) {
 		for i := range 60 {
 			recalls++
 			q := queries[i%len(queries)]
-			start := time.Now()
 			// The space on V2 alone: the V1 pipeline that serves V1 hubs in a
 			// mixed recall is V1's, with V1's latency, and isn't N2's.
-			res := call(t, cs, "memax_recall", map[string]any{"query": q, "limit": 10, "session_ref": "s1", "hub_id": f.sp.id.String()})
-			took = append(took, time.Since(start))
-			if res.IsError {
-				t.Fatalf("recall: %s", text(res))
+			res, d, cnt := c.call(t, "memax_recall", map[string]any{"query": q, "limit": 10, "session_ref": "s1", "hub_id": f.sp.id.String()}, false)
+			took = append(took, d)
+			trips = max(trips, cnt.RoundTrips())
+			if got := cnt.RoundTrips(); got > tripBudget {
+				t.Fatalf("recall %q: %d round trips to Postgres, budget %d\n%s", q, got, tripBudget, cnt)
 			}
 			if out := structured[handler.MCPRecallOutput](t, res); out.Partial {
 				t.Errorf("recall %q ran out of its budget", q)
@@ -228,15 +234,14 @@ func TestRecallLatency(t *testing.T) {
 	best := time.Duration(1<<63 - 1)
 	for r := 1; r <= 3; r++ {
 		p50, p95, worst := round()
-		t.Logf("round %d, recall over %d kept memories: p50 %v, p95 %v, max %v", r, n, p50, p95, worst)
+		t.Logf("round %d, recall over %d kept memories: p50 %v, p95 %v, max %v, %d round trips", r, n, p50, p95, worst, trips)
 		best = min(best, p95)
 		if p95 <= bound {
 			break
 		}
 	}
-	digestStart := time.Now()
-	call(t, cs, "memax_recall", map[string]any{"hub_id": f.sp.id.String()})
-	t.Logf("digest %v", time.Since(digestStart))
+	_, digest, _ := c.call(t, "memax_recall", map[string]any{"hub_id": f.sp.id.String()}, false)
+	t.Logf("digest %v", digest)
 	if best > bound {
 		t.Errorf("recall p95 %v in its best of three rounds, want at most %v (N2 is 300 ms)", best, bound)
 	}

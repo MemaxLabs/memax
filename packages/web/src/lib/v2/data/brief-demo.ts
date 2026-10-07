@@ -67,6 +67,8 @@ export function createDemoBrief({
     slug: string,
     memory: { ref: string; statement: string; section: Section },
   ): void;
+  /** Undoing a Remember withdraws what it kept. */
+  withdrawn(slug: string, ref: string): void;
 } {
   const versions = new Map<string, BriefVersionView[]>();
   const extra = new Map<string, BriefInputMemory[]>();
@@ -275,6 +277,12 @@ export function createDemoBrief({
           scope: [],
         },
       ]);
+    },
+    withdrawn(slug, ref) {
+      extra.set(
+        slug,
+        (extra.get(slug) ?? []).filter((m) => m.ref !== ref),
+      );
     },
   };
 }

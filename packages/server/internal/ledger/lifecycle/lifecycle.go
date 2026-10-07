@@ -292,11 +292,14 @@ func Transition(from State, v Verb) (State, error) {
 
 // UndoAllowed reports whether Undo may move a memory from lifecycle
 // `from` back to `to` although no verb does: a kept memory back to a
-// proposal (undo a keep) and a rejected one back to a proposal (undo a
-// reject). It is the Go side of v2.lifecycle_undo_allowed; the database
-// admits these two only with an `undid` receipt (migration 035).
+// proposal (undo a keep), a rejected one back to a proposal (undo a
+// reject), and a kept memory to rejected (undo a person's Remember, which
+// withdraws it). It is the Go side of v2.lifecycle_undo_allowed; the
+// database admits these only with an `undid` receipt (migration 035), and
+// kept → rejected only when that receipt undoes the receipt that created
+// the memory (migration 051).
 func UndoAllowed(from, to Lifecycle) bool {
-	return to == Proposed && (from == Kept || from == Rejected)
+	return (to == Proposed && (from == Kept || from == Rejected)) || (from == Kept && to == Rejected)
 }
 
 // ReturnAllowed reports whether the judge may move a memory from `from`

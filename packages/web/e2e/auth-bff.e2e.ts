@@ -153,6 +153,28 @@ test("the web session: cookies only the server reads, human_web Keeps, rotation,
     )
     .toBe("human_web web");
 
+  // Remember (⌘K), then Undo on its toast: both through the proxy on the
+  // cookie session, and the memory is withdrawn.
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("Undo takes back a Remember made by mistake.");
+  await page.keyboard.press("Enter");
+  const toasts = page.getByRole("region", { name: "Notifications" });
+  await expect(toasts).toContainText(/Kept M-\d{4}/, { timeout: 20_000 });
+  const remembered = /Kept (M-\d{4})/.exec(
+    (await toasts.textContent()) ?? "",
+  )![1]!;
+  await toasts.getByRole("button", { name: "Undo" }).click();
+  await expect(toasts).toContainText(
+    `Undid remembering ${remembered}. It's withdrawn.`,
+  );
+  expect(
+    stack.query(
+      `SELECT m.lifecycle || ' ' || r.via FROM v2.memories m JOIN v2.receipts r ON r.object_id = m.id AND r.action = 'undid'
+        WHERE m.seq = ${Number(remembered.slice(2))} AND m.space_id = (SELECT id FROM hubs WHERE slug = 'memax-v2')`,
+    ),
+  ).toBe("rejected web");
+
   // A decision remembered from the page, through the proxy: human_web.
   const fromWeb = await rememberFromPage(
     page,

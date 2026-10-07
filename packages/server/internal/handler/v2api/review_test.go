@@ -413,3 +413,39 @@ func TestUndoAKeep(t *testing.T) {
 		t.Errorf("activity = %+v", rcs.Items[0])
 	}
 }
+
+// A person's own Remember is undone from its toast: the memory is
+// withdrawn (rejected), and nobody else may undo it.
+func TestUndoARemember(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	zz, jy := e.user("zz"), e.user("jy")
+	sp := e.space(zz, policy.SpaceProject, "memax-v2")
+	e.join(sp, jy, "contributor")
+	r := e.remember(e.session(zz), sp, "Pin Node 24 in CI.")
+	if r.Outcome != "applied" || r.Memory.State != "kept" {
+		t.Fatalf("remember = %+v", r)
+	}
+	path := "/v2/receipts/" + r.Receipts[0].ID.String() + ":undo"
+	if got := e.do(call{method: "POST", path: path, token: e.session(jy)}).fails(403, "refused"); got.Details.Policy.Code != "undo_by_decider" {
+		t.Errorf("policy = %+v", got.Details.Policy)
+	}
+	var undone changes
+	e.do(call{method: "POST", path: path, token: e.session(zz)}).ok(200, &undone)
+	if undone.Memory.State != "rejected" || undone.Memory.Lifecycle != "rejected" || undone.Receipts[0].Action != "undid" ||
+		undone.Receipts[0].Reason != "Withdrawn: undid remembering it." {
+		t.Errorf("undone = %+v", undone)
+	}
+	twice := e.do(call{method: "POST", path: path, token: e.session(zz)})
+	twice.fails(409, "undo_refused")
+	var body struct {
+		Error struct {
+			Details struct {
+				Reason string `json:"reason"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(twice.body, &body); err != nil || body.Error.Details.Reason != "already_undone" {
+		t.Errorf("twice = %s", twice.body)
+	}
+}

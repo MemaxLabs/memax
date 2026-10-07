@@ -148,9 +148,13 @@ export function createSdkSource({
           : { statement, section },
         { idempotencyKey },
       );
-      // The server journals no undo for a person's own Remember (its
-      // receipt answers 409 not_undoable), so the toast offers none.
-      return toKeepResult(result, false);
+      // A person's own Remember is undoable for 10 minutes, kept or sent to
+      // Review: undoing it withdraws the memory, by its receipt (through
+      // /api/proxy, like every command).
+      return {
+        ...toKeepResult(result, true),
+        receipt: result.receipts[0]?.id ?? null,
+      };
     },
     async keepProposal({ space, ref, idempotencyKey }) {
       const result = await client.v2.memories.keep(

@@ -36,8 +36,9 @@ import (
 //     the undo would take out of the kept set.
 //
 // What is undoable: Keep, Reject and Edit (with or without Keep) by a
-// person, a conflict resolution, and the judge's folds (duplicates and
-// re-proposals). Forget never is, and neither is the judge putting a
+// person, a person's own Remember (undoing it withdraws the memory: it
+// ends rejected, migration 051), a conflict resolution, and the judge's
+// folds (duplicates and re-proposals). Forget never is, and neither is the judge putting a
 // Write agent's write back in Review (`returned`): undoing it would make
 // the write kept again on the agent's authority while it contradicts a
 // decision in force, which is what rule 11 forbids, and with none of
@@ -56,6 +57,9 @@ const (
 	UndoEdit      UndoKind = "edit"
 	UndoResolve   UndoKind = "resolve_conflict"
 	UndoJudgeFold UndoKind = "judge_fold"
+	// UndoRemember undoes a person's own Remember: the memory is
+	// withdrawn (rejected), since there was nothing before it.
+	UndoRemember UndoKind = "remember"
 )
 
 // The default undo windows.
@@ -163,6 +167,18 @@ func (j *undoJournal) touch(m *Memory) {
 		snap.DecisionStatus = m.Decision.Status
 	}
 	j.Memories = append(j.Memories, undoMemory{ID: m.ID, Ref: m.Ref, Before: snap})
+}
+
+// withdraw records a memory the command created (Remember). It had no
+// state before, so Undo leaves it withdrawn: rejected, with the words,
+// section and trust it was written with.
+func (j *undoJournal) withdraw(id uuid.UUID, ref string, nm NewMemory, trust policy.Trust) {
+	snap := memorySnapshot{Lifecycle: lifecycle.Rejected, Flags: []string{}, Version: 1, Section: nm.Section, Trust: trust,
+		HasDecision: nm.Decision != nil}
+	if nm.Decision != nil {
+		snap.DecisionStatus = nm.Decision.Status
+	}
+	j.Memories = append(j.Memories, undoMemory{ID: id, Ref: ref, Before: snap})
 }
 
 // writeUndo stores the journal, if the command keeps one.
@@ -379,7 +395,11 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 	// Apply the inverse, newest change last undone first: the order of the
 	// receipts doesn't matter, but keep it stable.
 	reason := w.meta.Reason
-	if reason == "" {
+	switch {
+	case reason != "":
+	case e.kind == UndoRemember:
+		reason = "Withdrawn: undid remembering it."
+	default:
 		reason = fmt.Sprintf("Undid the %s.", undoNoun(e.kind))
 	}
 	receiptFor := map[uuid.UUID]uuid.UUID{}
@@ -522,6 +542,8 @@ func undoNoun(k UndoKind) string {
 		return "edit"
 	case UndoResolve:
 		return "conflict resolution"
+	case UndoRemember:
+		return "Remember"
 	}
 	return "fold"
 }
@@ -552,7 +574,8 @@ func (w *writer) loadUndoEntry(ctx context.Context, receiptID uuid.UUID) (*undoE
 		if err != nil {
 			return nil, fmt.Errorf("ledger: load receipt: %w", err)
 		}
-		msg := fmt.Sprintf("That receipt (%s %s) can't be undone. Keeps, rejections, edits, conflict resolutions and the judge's folds can.", action, ref)
+		msg := fmt.Sprintf("That receipt (%s %s) can't be undone. Your own Remembers, keeps, rejections and edits, "+
+			"conflict resolutions and the judge's folds can.", action, ref)
 		switch action {
 		case ActionUndid:
 			msg = "That receipt is itself an undo. Make the change again instead."

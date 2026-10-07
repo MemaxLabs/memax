@@ -2082,8 +2082,10 @@ paths:
       description: |
         Undoes the command that wrote this receipt (any of its receipts):
         Review's ⌘Z. A person undoes their own keep, reject, edit or
-        conflict resolution within 10 minutes; any person who may keep
-        undoes one of the judge's folds within 14 days. Each memory gets an
+        conflict resolution within 10 minutes, and their own Remember
+        (undoing it withdraws the memory: it ends rejected, and leaves the
+        compiled files); any person who may keep undoes one of the judge's
+        folds within 14 days. Each memory gets an
         `undid` receipt whose `source` names the receipt undone
         (`{"kind": "receipt", "ref": <id>}`), and targets recompile when the
         kept set changes. Refused with 409 `undo_refused` when the window

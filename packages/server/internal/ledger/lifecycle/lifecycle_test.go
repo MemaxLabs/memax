@@ -195,7 +195,8 @@ func TestUndoTransitions(t *testing.T) {
 		want     bool
 	}{
 		{Kept, Proposed, true}, {Rejected, Proposed, true},
-		{Merged, Proposed, false}, {Kept, Rejected, false}, {Forgotten, Proposed, false}, {Proposed, Kept, false},
+		{Kept, Rejected, true},
+		{Merged, Proposed, false}, {Faded, Rejected, false}, {Forgotten, Proposed, false}, {Proposed, Kept, false},
 	} {
 		if got := UndoAllowed(c.from, c.to); got != c.want {
 			t.Errorf("UndoAllowed(%s, %s) = %v, want %v", c.from, c.to, got, c.want)

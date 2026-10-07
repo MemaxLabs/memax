@@ -1,0 +1,139 @@
+/* Connect (Connect.dc.html): the agents and what each may do, beside
+ * what each level means. */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 48px;
+  align-items: start;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.title {
+  margin: var(--space-3) 0 14px;
+  font-family: var(--font-serif);
+  font-size: 44px;
+  line-height: 50px;
+  font-weight: 380;
+  letter-spacing: -0.022em;
+}
+
+.lede {
+  margin: 0;
+  max-width: 36em;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 28px;
+  color: var(--ink-2);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) minmax(0, 1fr) 220px;
+  align-items: center;
+  gap: 14px;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.row code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.where {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.off {
+  color: var(--ink-3);
+}
+
+/* A raise waits on the server: no spinner, just the cursor. */
+.raising {
+  cursor: progress;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-2);
+}
+
+.levels {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 10px var(--space-3);
+  margin: 0;
+  padding: 14px var(--space-4);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.levels dt {
+  font-weight: 600;
+}
+
+.levels dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.note {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 10px;
+  padding: var(--space-3) 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.noteIcon {
+  display: flex;
+  padding-top: 1px;
+  color: var(--ink-3);
+}
+
+@media (max-width: 1023px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .row {
+    grid-template-columns: 20px minmax(0, 1fr) 200px;
+  }
+  .where {
+    display: none;
+  }
+  .title {
+    font-size: 34px;
+    line-height: 40px;
+  }
+}

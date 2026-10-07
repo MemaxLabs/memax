@@ -6,6 +6,7 @@ import {
   bareSpaceSlug,
   decideUiGate,
   hasV2Opt,
+  isOpenV2Path,
   isSpaceSlug,
   isV2Path,
   RESERVED_SPACE_SLUGS,
@@ -162,6 +163,34 @@ describe("decideUiGate", () => {
         hasSession: false,
       }),
     ).toEqual({ action: "continue" });
+  });
+
+  it("opens the device sign-in and the sign-in for every browser", () => {
+    for (const pathname of [
+      "/device",
+      "/device/",
+      "/signin",
+      "/signin/callback",
+    ]) {
+      expect(isOpenV2Path(pathname)).toBe(true);
+      for (const uiCookie of [undefined, "v1", "v2"]) {
+        for (const hasSession of [false, true]) {
+          expect(decideUiGate({ pathname, uiCookie, hasSession })).toEqual({
+            action: "continue",
+          });
+        }
+      }
+    }
+    for (const pathname of ["/setup", "/setup/import", "/join/x", "/"]) {
+      expect(isOpenV2Path(pathname)).toBe(false);
+    }
+    expect(
+      decideUiGate({
+        pathname: "/setup/import",
+        uiCookie: undefined,
+        hasSession: true,
+      }),
+    ).toEqual({ action: "redirect", pathname: "/home" });
   });
 
   it("redirects V2 paths without the opt-in to the V1 home", () => {

@@ -13,6 +13,26 @@ nudges the agent to use MCP).
 
 ## Quick setup
 
+Install the [Memax plugin](/integrations/claude-code-plugin): the MCP
+server, the session-start hook and the `memax` skill in one step.
+
+```text
+/plugin marketplace add MemaxLabs/memax
+/plugin install memax@memax
+```
+
+Or connect it from your terminal, in the repository:
+
+```bash
+npx memax-cli connect claude-code
+```
+
+[`memax connect`](/cli/connect) writes the MCP settings, installs the
+[session-start hook](/cli/hook), connects Claude Code to this
+repository's space and compiles once.
+
+The V1 setup below still works for V1 hubs:
+
 ```bash
 memax setup --only claude-code --all
 ```

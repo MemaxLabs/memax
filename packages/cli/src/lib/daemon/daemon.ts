@@ -4,6 +4,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { failureOf, type DaemonApi } from "./api.js";
+import { LoadReporter } from "./loads.js";
 import { ControlServer, type ControlRequest } from "./control.js";
 import { PollingFeed, type Cadence, type TargetFeed } from "./feed.js";
 import type { FsHooks } from "./fs-atomic.js";
@@ -14,6 +15,7 @@ import { RepoDelivery } from "./repo.js";
 import type { DaemonSnapshot } from "./snapshot.js";
 import { DeviceState } from "./state.js";
 import { RepoWatcher, type WatchOptions } from "./watch.js";
+import { WarmCache } from "./warm.js";
 
 export interface DaemonOptions {
   paths: DaemonPaths;
@@ -25,6 +27,8 @@ export interface DaemonOptions {
   cadence?: Partial<Cadence>;
   watch?: Partial<WatchOptions>;
   hooks?: FsHooks;
+  /** How often the warm cache may fetch a space's forgets and gates (tests). */
+  warmRefreshMs?: number;
   /** Called after a stop request, once everything is closed. */
   onStopped?(): void;
 }
@@ -44,6 +48,9 @@ interface Space {
 
 export class Daemon {
   readonly state: DeviceState;
+  /** The session-start hook's cache: compiles, forgets and gates per space. */
+  readonly warm: WarmCache;
+  private readonly loads: LoadReporter;
   private repos = new Map<string, Repo>();
   private spaces = new Map<string, Space>();
   private stamp = "";
@@ -56,6 +63,13 @@ export class Daemon {
   constructor(private readonly o: DaemonOptions) {
     ensureDaemonDir(o.paths);
     this.state = new DeviceState(o.paths);
+    this.warm = new WarmCache({
+      paths: o.paths,
+      api: o.api,
+      log: o.log,
+      minRefreshMs: o.warmRefreshMs,
+    });
+    this.loads = new LoadReporter({ paths: o.paths, api: o.api, log: o.log });
   }
 
   /** Takes the lock and starts polling, watching and serving. */
@@ -66,6 +80,7 @@ export class Daemon {
     writeFileSync(this.o.paths.pid, `${process.pid}\n`, { mode: 0o600 });
     this.running = true;
     this.reload();
+    this.loads.start();
     try {
       this.dirWatch = watch(
         this.o.paths.dir,
@@ -118,6 +133,7 @@ export class Daemon {
     }
     for (const link of links.values())
       if (!this.repos.has(link.root)) this.addRepo(link);
+    this.warm.retain(new Set(this.spaces.keys()));
   }
 
   private addRepo(link: LinkedRepo): void {
@@ -177,10 +193,12 @@ export class Daemon {
       {
         fetch: (signal) => this.o.api.listTargets(spaceId, signal),
         probe: (signal) => this.o.api.changeToken(spaceId, signal),
-        onTargets: async (targets) => {
+        onTargets: async (targets, info) => {
           this.reload();
           const space = this.spaces.get(spaceId);
           if (!space) return { busy: false };
+          this.warm.setTargets(spaceId, space.slug, targets);
+          if (info.changed) this.warm.requestRefresh(spaceId, space.slug);
           if (space.lastError) {
             this.o.log.info("reached the space again", { space: space.slug });
             space.lastError = undefined;
@@ -236,6 +254,8 @@ export class Daemon {
       if (only && spaceId !== only) continue;
       try {
         const targets = await this.o.api.listTargets(spaceId);
+        this.warm.setTargets(spaceId, space.slug, targets);
+        await this.warm.refresh(spaceId, space.slug);
         for (const root of space.roots) {
           const repo = this.repos.get(root);
           if (!repo) continue;
@@ -250,6 +270,7 @@ export class Daemon {
             ?.delivery.setError(errorMessage(f.status, f.code, space.slug));
       }
     }
+    this.warm.flush();
     return this.snapshot();
   }
 
@@ -280,6 +301,8 @@ export class Daemon {
     this.running = false;
     this.dirWatch?.close();
     await Promise.all([...this.spaces.values()].map((s) => s.feed.stop()));
+    await this.loads.stop();
+    await this.warm.stop();
     for (const r of this.repos.values()) {
       r.watcher.stop();
       r.delivery.stop();

@@ -6,7 +6,7 @@
 // at the same levels; from the CLI a level can only be lowered or kept,
 // never raised (raising needs a person on the web).
 import { randomUUID } from "node:crypto";
-import type { V2 } from "memax-sdk";
+import type { Memax, V2 } from "memax-sdk";
 import { detectAgents, type AgentEntry, type DetectedAgent } from "./agents.js";
 import type { InitDeps, InitReport } from "./types.js";
 
@@ -16,6 +16,47 @@ export interface ConnectResult {
 }
 
 const RANK: Record<V2.Autonomy, number> = { read: 0, propose: 1, write: 2 };
+
+/**
+ * Connects an agent's existing connection to each space it isn't in yet:
+ * at the level it starts at, or lower if it is lower elsewhere (never
+ * raised from the CLI). Returns its level in the first space, and whether
+ * anything changed. Shared by memax init and memax connect.
+ */
+export async function connectToSpaces(
+  memax: Memax,
+  conn: V2.AgentConnection,
+  start: V2.Autonomy,
+  spaces: V2.Space[],
+): Promise<{ autonomy: V2.Autonomy | null; added: number }> {
+  let autonomy: V2.Autonomy | null = null;
+  let added = 0;
+  for (const sp of spaces) {
+    const there = conn.spaces.find((s) => s.space_id === sp.id);
+    if (there) {
+      autonomy ??= there.autonomy;
+      continue;
+    }
+    const elsewhere = conn.spaces
+      .map((s) => s.autonomy)
+      .sort((x, y) => RANK[x] - RANK[y])[0];
+    const level =
+      elsewhere && RANK[elsewhere] < RANK[start] ? elsewhere : start;
+    try {
+      await memax.v2.agents.setAutonomy(
+        conn.id,
+        sp.id,
+        { autonomy: level },
+        { idempotencyKey: randomUUID(), via: "cli" },
+      );
+      autonomy ??= level;
+      added++;
+    } catch {
+      // A space whose default is lower than this level: it connects there on its next sign-in.
+    }
+  }
+  return { autonomy, added };
+}
 
 /** Finds the agents, writes their MCP settings (when allowed), and connects existing connections to the spaces. */
 export async function connectAgents(
@@ -54,34 +95,9 @@ export async function connectAgents(
     const conn = connections.find(
       (c) => c.agent === a.kind && c.state === "active",
     );
-    let autonomy: V2.Autonomy | null = null;
-    if (conn) {
-      for (const sp of spaces) {
-        const there = conn.spaces.find((s) => s.space_id === sp.id);
-        if (there) {
-          autonomy ??= there.autonomy;
-          continue;
-        }
-        // Connected elsewhere: here at the level it starts at, or lower
-        // if it is lower elsewhere (never raised from the CLI).
-        const elsewhere = conn.spaces
-          .map((s) => s.autonomy)
-          .sort((x, y) => RANK[x] - RANK[y])[0];
-        const level =
-          elsewhere && RANK[elsewhere] < RANK[a.start] ? elsewhere : a.start;
-        try {
-          await d.memax.v2.agents.setAutonomy(
-            conn.id,
-            sp.id,
-            { autonomy: level },
-            { idempotencyKey: randomUUID(), via: "cli" },
-          );
-          autonomy ??= level;
-        } catch {
-          // A space whose default is lower than this level: it connects there on its next sign-in.
-        }
-      }
-    }
+    const autonomy = conn
+      ? (await connectToSpaces(d.memax, conn, a.start, spaces)).autonomy
+      : null;
     rows.push({
       kind: a.kind,
       name: a.name,

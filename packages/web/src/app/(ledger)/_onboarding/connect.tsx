@@ -261,11 +261,16 @@ function AgentLine({
 }
 
 /**
- * "Run npx memax-cli setup --mcp --only copilot where it's installed": what
- * init does for each agent it finds, for one, with the command as code.
+ * "Run npx memax-cli connect copilot where it's installed": what init does
+ * for each agent it finds, for one (its MCP settings, its session-start
+ * hook, its connection here and a first compile), with the command as code.
  */
+export function connectCommand(agent: string): string {
+  return `npx memax-cli connect ${agent}`;
+}
+
 function RunIt({ copy, agent }: { copy: Copy; agent: string }) {
-  const command = `npx memax-cli setup --mcp --only ${agent}`;
+  const command = connectCommand(agent);
   const [before, after] = copy.runIt.split("{command}");
   return (
     <>

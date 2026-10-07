@@ -1,0 +1,98 @@
+---
+title: Claude Code plugin
+description: Install Memax in Claude Code in one step. The plugin brings the MCP server, the session-start hook and a skill for working with Review.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+import { Steps, Step } from "fumadocs-ui/components/steps";
+
+The Memax plugin is everything Claude Code needs in one install:
+
+| Part                   | What it does                                                                                                                                                         |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **MCP server**         | The remote Memax server, `https://mcp.memax.app/mcp`. Claude Code signs in with OAuth the first time (`/mcp` shows it). Recall, search and propose.                 |
+| **Session-start hook** | Runs [`memax hook session-start`](/cli/hook) when the CLI is installed: each session starts with what changed since the last. Without the CLI it does nothing. |
+| **`memax` skill**      | How to work with Memax: recall before a task, propose what you learn rather than keep it, leave decisions waiting for a person to the person, respect Review.        |
+
+The tool descriptions only say what each tool does; how an agent should
+use them lives in the skill.
+
+## Install
+
+<Steps>
+<Step>
+
+Add the marketplace and install the plugin, in a Claude Code session:
+
+```text
+/plugin marketplace add MemaxLabs/memax
+/plugin install memax@memax
+```
+
+Or from your shell:
+
+```bash
+claude plugin marketplace add MemaxLabs/memax
+claude plugin install memax@memax
+```
+
+</Step>
+<Step>
+
+Sign in: run `/mcp`, choose **memax**, and confirm in your browser. The
+connection starts at **Propose**: what Claude Code writes waits for you in
+Review.
+
+</Step>
+<Step>
+
+For the session-start hook, install the CLI and link the repository, so
+its compiled files are written here and the daemon keeps the hook's cache
+current:
+
+```bash
+npx memax-cli init
+```
+
+</Step>
+</Steps>
+
+<Callout type="info">
+  With the plugin on, [`memax connect claude-code`](/cli/connect) leaves
+  the MCP server and the hook to the plugin, so you never get two of
+  either.
+</Callout>
+
+## Where it works
+
+The same plugin installs in Claude Code, and from claude.ai in Claude and
+Cowork. Each loads what it can:
+
+| Part               | Claude Code | Cowork                     | Claude (chat)                   |
+| ------------------ | ----------- | -------------------------- | ------------------------------- |
+| MCP server         | Yes         | Yes, connect it once       | Yes, as a connector             |
+| Session-start hook | Yes         | Runs; quiet without the CLI | No (chat doesn't run hooks)     |
+| `memax` skill      | Yes         | Yes                        | Yes                             |
+
+## What's in the repository
+
+The plugin lives in [`plugins/memax`](https://github.com/MemaxLabs/memax/tree/main/plugins/memax),
+and `.claude-plugin/marketplace.json` makes the repository its marketplace:
+
+```text
+.claude-plugin/marketplace.json
+plugins/memax/
+├── .claude-plugin/plugin.json
+├── .mcp.json
+├── hooks/hooks.json
+└── skills/memax/SKILL.md
+```
+
+Check it with Claude Code's own validator:
+
+```bash
+claude plugin validate --strict plugins/memax
+claude plugin validate --strict .
+```
+
+To try a change, load it for one session: `claude --plugin-dir plugins/memax`.

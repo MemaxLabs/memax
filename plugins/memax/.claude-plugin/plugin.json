@@ -1,0 +1,17 @@
+{
+  "name": "memax",
+  "displayName": "Memax",
+  "version": "0.1.0",
+  "description": "Your reviewed project context in every session: the Memax MCP server (recall, search and propose), a session-start hook that says what changed since your last session, and a skill for working with Review.",
+  "author": {
+    "name": "MemaxLabs",
+    "email": "support@memax.app",
+    "url": "https://memax.app"
+  },
+  "homepage": "https://memax.app",
+  "repository": "https://github.com/MemaxLabs/memax",
+  "license": "Apache-2.0",
+  "keywords": ["memory", "context", "agents-md", "mcp", "review"],
+  "documentationUrl": "https://docs.memax.app/integrations/claude-code-plugin",
+  "supportUrl": "https://github.com/MemaxLabs/memax/issues"
+}

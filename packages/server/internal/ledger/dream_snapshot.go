@@ -92,9 +92,11 @@ type DreamSnapshot struct {
 	// StaleDue are kept memories past their stale_after date that nobody
 	// has looked at since.
 	StaleDue []DreamMemory
-	// Brief is the version in force (nil: the space has none), and
-	// Unplaced the kept memories it doesn't place or cite.
+	// Brief is the version in force (nil: the space has none), Placed the
+	// kept memories it places or cites, by ref, and Unplaced the kept
+	// memories it doesn't.
 	Brief    *Brief
+	Placed   map[string]DreamMemory
 	Unplaced []DreamMemory
 	// Surfaced are conflicts the judge flagged since Since, still open.
 	Surfaced []Surfaced
@@ -302,15 +304,23 @@ func (l *Ledger) DreamSnapshot(ctx context.Context, scope Scope, spaceID uuid.UU
 			s.Brief.ID, s.Brief.SpaceID = cur.id, spaceID
 			s.Brief.Ref = FormatRef(PrefixBrief, cur.seq)
 			placed := briefRefs(s.Brief.Sections)
-			kept, err := dreamMemories(ctx, tx, ` WHERE m.space_id = $1 AND m.lifecycle = 'kept' ORDER BY m.seq DESC LIMIT $2`,
-				spaceID, limit)
+			seqs := make([]int64, 0, len(placed))
+			for _, r := range placed {
+				_, n, _ := ParseRef(r)
+				seqs = append(seqs, n)
+			}
+			in, err := dreamMemories(ctx, tx, ` WHERE m.space_id = $1 AND m.seq = ANY ($2)`, spaceID, seqs)
 			if err != nil {
 				return err
 			}
-			for _, m := range kept {
-				if !slices.Contains(placed, m.Ref) {
-					s.Unplaced = append(s.Unplaced, m)
-				}
+			s.Placed = map[string]DreamMemory{}
+			for _, m := range in {
+				s.Placed[m.Ref] = m
+			}
+			if s.Unplaced, err = dreamMemories(ctx, tx, `
+				 WHERE m.space_id = $1 AND m.lifecycle = 'kept' AND NOT (m.seq = ANY ($2))
+				 ORDER BY m.updated_at DESC, m.seq DESC LIMIT $3`, spaceID, seqs, limit); err != nil {
+				return err
 			}
 		}
 

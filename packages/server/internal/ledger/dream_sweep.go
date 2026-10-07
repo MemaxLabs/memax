@@ -416,6 +416,8 @@ type DreamRecipient struct {
 	Name     string
 	// Token is their one-click unsubscribe token.
 	Token string
+	// TimeZone is theirs, for the edition's date ("UTC" until known).
+	TimeZone string
 	// Sent is set when this edition's email already went to them.
 	Sent bool
 }
@@ -486,7 +488,7 @@ func (l *Ledger) DreamRecipients(ctx context.Context, spaceID, editionID uuid.UU
 			return fmt.Errorf("ledger: email recipients: %w", err)
 		}
 		rows, err = tx.Query(ctx, `
-			SELECT u.id, u.email, COALESCE(NULLIF(u.display_name, ''), u.name), d.unsubscribe_token,
+			SELECT u.id, u.email, COALESCE(NULLIF(u.display_name, ''), u.name), d.unsubscribe_token, d.time_zone,
 			       EXISTS (SELECT 1 FROM v2.dream_email_sends s WHERE s.edition_id = $2 AND s.person_id = u.id)
 			  FROM public.users u JOIN v2.dream_settings d ON d.person_id = u.id
 			 WHERE u.id = ANY ($1) AND d.morning_email AND u.email <> ''
@@ -496,7 +498,7 @@ func (l *Ledger) DreamRecipients(ctx context.Context, spaceID, editionID uuid.UU
 		}
 		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (DreamRecipient, error) {
 			var d DreamRecipient
-			err := r.Scan(&d.PersonID, &d.Email, &d.Name, &d.Token, &d.Sent)
+			err := r.Scan(&d.PersonID, &d.Email, &d.Name, &d.Token, &d.TimeZone, &d.Sent)
 			return d, err
 		})
 		return err

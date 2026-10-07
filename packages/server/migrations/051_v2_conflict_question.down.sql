@@ -1,4 +1,4 @@
--- Revert 050: v2_conflict_question
+-- Revert 051: v2_conflict_question
 --
 -- Drops the judge's question, labels and suggested answer (044's guard
 -- again). The words go with the columns.

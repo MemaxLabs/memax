@@ -1,4 +1,4 @@
--- 051: v2_undo_remember
+-- 052: v2_undo_remember
 --
 -- Undo for a person's own Remember (Review's ⌘Z and Remember's toast).
 -- Remember writes an undo entry like Keep, Reject and Edit do; undoing it
@@ -45,7 +45,7 @@ BEGIN
               AND r.action = 'undid'
               AND r.object_id = NEW.id
               AND r.txid = pg_current_xact_id()
-              -- 051: kept → rejected undoes the Remember that created it.
+              -- 052: kept → rejected undoes the Remember that created it.
               AND (NOT (from_state = 'kept' AND NEW.lifecycle = 'rejected')
                    OR (r.source ->> 'kind' = 'receipt' AND r.source ->> 'ref' = NEW.created_receipt_id::text)))
     THEN

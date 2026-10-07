@@ -37,7 +37,7 @@ import (
 //
 // What is undoable: Keep, Reject and Edit (with or without Keep) by a
 // person, a person's own Remember (undoing it withdraws the memory: it
-// ends rejected, migration 051), a conflict resolution, and the judge's
+// ends rejected, migration 052), a conflict resolution, and the judge's
 // folds (duplicates and re-proposals). Forget never is, and neither is the judge putting a
 // Write agent's write back in Review (`returned`): undoing it would make
 // the write kept again on the agent's authority while it contradicts a

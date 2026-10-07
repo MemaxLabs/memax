@@ -297,7 +297,7 @@ func Transition(from State, v Verb) (State, error) {
 // withdraws it). It is the Go side of v2.lifecycle_undo_allowed; the
 // database admits these only with an `undid` receipt (migration 035), and
 // kept → rejected only when that receipt undoes the receipt that created
-// the memory (migration 051).
+// the memory (migration 052).
 func UndoAllowed(from, to Lifecycle) bool {
 	return (to == Proposed && (from == Kept || from == Rejected)) || (from == Kept && to == Rejected)
 }

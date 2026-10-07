@@ -1,4 +1,4 @@
--- Revert 051: v2_undo_remember
+-- Revert 052: v2_undo_remember
 --
 -- Restores 042's lifecycle guard, 035's undo transitions and 035's undo
 -- commands. Remember's undo entries go (bookkeeping without words); a

@@ -458,8 +458,12 @@ func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, e
 			return Result{}, err
 		}
 	case OutcomeFlagged:
-		if next, err = transition(mem, lifecycle.VerbFlagConflict); err != nil {
-			return Result{}, err
+		// A proposal can disagree with more than one thing: an import's
+		// conflict check may have flagged it already (imports_check.go).
+		if !mem.Flags.Has(lifecycle.Conflict) {
+			if next, err = transition(mem, lifecycle.VerbFlagConflict); err != nil {
+				return Result{}, err
+			}
 		}
 		for _, d := range conflicts {
 			if _, err := w.insertLink(ctx, sp.ID, LinkConflictsWith, mem.ID, d.ID, rc.ID); err != nil {

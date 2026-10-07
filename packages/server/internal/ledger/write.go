@@ -59,9 +59,15 @@ func (w *writer) write(ctx context.Context, nm NewMemory, propose bool) (Result,
 	if replay, err := w.claim(ctx, sp.ID); err != nil || replay != nil {
 		return deref(replay), err
 	}
+	return w.writeMemory(ctx, sp, grant, nm, propose)
+}
 
+// writeMemory is Remember and Propose once the key is claimed (an import's
+// statements come here too, after their repeat check).
+func (w *writer) writeMemory(ctx context.Context, sp spaceRow, grant SpaceGrant, nm NewMemory, propose bool) (Result, error) {
 	actorTrust := policy.ActorTrust(w.meta.Actor.Kind, w.meta.Via)
 	srcs := resolveSources(nm.Sources, actorTrust)
+	var err error
 	if srcs, err = w.resolveMemorySources(ctx, sp.ID, srcs, actorTrust); err != nil {
 		return Result{}, err
 	}

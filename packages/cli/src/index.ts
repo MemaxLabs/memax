@@ -17,6 +17,7 @@ import { registerHookCommand } from "./commands/hook.js";
 import { registerConfigCommand } from "./commands/config.js";
 import { registerLoginCommands } from "./commands/login.js";
 import { registerAuthCommand } from "./commands/auth.js";
+import { registerSessionsCommand } from "./commands/sessions.js";
 import { registerMcpCommand } from "./commands/mcp.js";
 import { registerSetupCommands } from "./commands/setup.js";
 import { registerHubCommands } from "./commands/hub.js";
@@ -71,6 +72,7 @@ registerHookCommand(program);
 registerMcpCommand(program);
 registerLoginCommands(program);
 registerAuthCommand(program);
+registerSessionsCommand(program);
 registerConfigCommand(program);
 
 program.parse();

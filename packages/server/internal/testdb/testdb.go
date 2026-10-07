@@ -65,6 +65,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/migrate"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/testdb/catalock"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb/netsim"
 )
 
@@ -210,7 +211,7 @@ func OpenWithContext(t *testing.T, ctx context.Context, o Options) *DB {
 			"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
 			dbName,
 		)
-		if _, err := admin.Exec(termCtx, fmt.Sprintf("DROP DATABASE IF EXISTS %q", dbName)); err != nil {
+		if err := catalock.DropDatabase(termCtx, admin, dbName); err != nil {
 			t.Logf("testdb: DROP DATABASE %q failed (non-fatal): %v", dbName, err)
 		}
 	}
@@ -308,7 +309,7 @@ func Copy(t *testing.T, pool *pgxpool.Pool) *pgxpool.Pool {
 	}
 	cp, err := pgxpool.New(ctx, connStringFor(dbName))
 	if err != nil {
-		_, _ = admin.Exec(context.Background(), fmt.Sprintf("DROP DATABASE %q", dbName))
+		_ = catalock.DropDatabase(context.Background(), admin, dbName)
 		t.Fatalf("testdb: copy: %v", err)
 	}
 	t.Cleanup(func() {
@@ -317,7 +318,7 @@ func Copy(t *testing.T, pool *pgxpool.Pool) *pgxpool.Pool {
 		defer cancel()
 		_, _ = admin.Exec(termCtx,
 			"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()", dbName)
-		if _, err := admin.Exec(termCtx, fmt.Sprintf("DROP DATABASE IF EXISTS %q", dbName)); err != nil {
+		if err := catalock.DropDatabase(termCtx, admin, dbName); err != nil {
 			t.Logf("testdb: DROP DATABASE %q failed (non-fatal): %v", dbName, err)
 		}
 	})
@@ -348,7 +349,7 @@ func ensureTemplate(ctx context.Context) (string, error) {
 		// inherit the fully-migrated schema.
 		if err := migrate.Run(connStringFor(templateName), findMigrationsDir()); err != nil {
 			// Best-effort cleanup if migrations fail.
-			_, _ = admin.Exec(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %q", templateName))
+			_ = catalock.DropDatabase(context.Background(), admin, templateName)
 			templateErr = fmt.Errorf("migrate template: %w", err)
 			return
 		}
@@ -360,7 +361,7 @@ func ensureTemplate(ctx context.Context) (string, error) {
 		// errors. River migrations are idempotent + advisory-
 		// locked.
 		if err := runRiverMigrations(ctx, connStringFor(templateName)); err != nil {
-			_, _ = admin.Exec(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %q", templateName))
+			_ = catalock.DropDatabase(context.Background(), admin, templateName)
 			templateErr = fmt.Errorf("migrate river template: %w", err)
 			return
 		}

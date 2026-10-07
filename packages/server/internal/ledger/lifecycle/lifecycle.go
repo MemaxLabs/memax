@@ -299,6 +299,27 @@ func UndoAllowed(from, to Lifecycle) bool {
 	return to == Proposed && (from == Kept || from == Rejected)
 }
 
+// ReturnAllowed reports whether the judge may move a memory from `from`
+// to `to` although no verb does: a kept memory back to Review, when a
+// Write-level agent kept it at once and the judge then found it
+// contradicts a decision in force (rule 11, plan 25 §5.6 downgrade (b)).
+// It is the Go side of v2.lifecycle_return_allowed; the database admits
+// it only beside Memax's `returned` receipt (migration 042).
+func ReturnAllowed(from, to Lifecycle) bool {
+	return from == Kept && to == Proposed
+}
+
+// ReturnToReview is the state the judge's return leaves: a proposal in
+// conflict. Stale goes, since only kept memories go stale; conflict is
+// set, since a return is always for one.
+func ReturnToReview(from State) (State, error) {
+	if from.Lifecycle != Kept {
+		return State{}, &TransitionError{From: from, Verb: "return", Message: fmt.Sprintf(
+			"only kept memories go back to Review; this memory is %s", from.Lifecycle)}
+	}
+	return State{Lifecycle: Proposed, Flags: from.Flags.Without(Stale).With(Conflict)}, nil
+}
+
 // CanRestore checks that Undo may put a memory back into the state it was
 // in before a command: the state must be storable (flags only on proposed
 // and kept memories, stale only on kept ones), and the move must be one a

@@ -194,6 +194,12 @@ export const ledgerActivityEn = {
     judged: "{actor} checked {ref} for duplicates and conflicts.",
     linked: "{actor} linked {ref} to the memory it updates.",
     superseded: "{actor} superseded {ref} with a newer decision.",
+    returned:
+      "{actor} returned {ref} to Review: it contradicts {decision}, a decision in force.",
+    returnedPlain:
+      "{actor} returned {ref} to Review: it contradicts a decision in force.",
+    drafted:
+      "{actor} wrote narrower words for {ref} to settle a conflict. They wait for Memax's check before they replace the words in force.",
     other: "{actor} changed {ref}.",
   },
 } as const;

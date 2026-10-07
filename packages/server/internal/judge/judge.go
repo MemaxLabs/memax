@@ -146,6 +146,9 @@ func (j *Judge) Run(ctx context.Context, args ledger.JudgeArgs, opts RunOptions)
 				vecs = nil
 			}
 			vecs = aboveFloor(vecs, j.cfg.VectorFloor)
+			// The conflict a settling version is written for: its other side
+			// stays out, as the snapshot's lanes leave it out.
+			vecs = slices.DeleteFunc(vecs, func(c ledger.JudgeCandidate) bool { return c.ID == args.Beside })
 		}
 		cands := gather(m.Statement, area, snap, vecs, j.cfg.Candidates)
 		timings["candidates_ms"] = j.now().Sub(t1).Milliseconds()
@@ -284,7 +287,8 @@ type Decision struct {
 //  4. an update of a kept fact: link, so Review shows a diff.
 //
 // Each needs its threshold; a pair the strong tier didn't confirm never
-// acts. A kept memory (mode kept) is only ever flagged.
+// acts. A kept memory (mode kept) and words written to settle a conflict
+// (mode settling) are only ever flagged.
 func Decide(mode ledger.JudgeMode, proposalIsDecision bool, statement string, cands []Candidate, pairs []Pair, th Thresholds) Decision {
 	best := func(ok func(i int, p Pair) bool) []int {
 		var idx []int
@@ -307,7 +311,7 @@ func Decide(mode ledger.JudgeMode, proposalIsDecision bool, statement string, ca
 	if len(conflicts) > 0 {
 		return Decision{Outcome: ledger.OutcomeFlagged, Pair: conflicts[0], Also: conflicts[1:]}
 	}
-	if mode == ledger.JudgeKept {
+	if mode != ledger.JudgeProposal {
 		return Decision{Outcome: ledger.OutcomeNone, Pair: notable(pairs)}
 	}
 	if s := best(supersedes); len(s) > 0 {

@@ -167,6 +167,48 @@ func (j *undoJournal) touch(m *Memory) {
 
 // writeUndo stores the journal, if the command keeps one.
 func (w *writer) writeUndo(ctx context.Context, sp spaceRow, receipts []Receipt) error {
+	ids := w.journaled(receipts)
+	if ids == nil {
+		return nil
+	}
+	after, err := streamVersions(w.tx.Query(ctx, journalSQL, ids, sp.ID))
+	if err != nil {
+		return err
+	}
+	return w.storeUndo(ctx, sp, receipts, ids, after)
+}
+
+// markDirtyAndJournal is markDirty(sp) then writeUndo, with the targets'
+// UPDATE and the journal's read in one round trip: neither needs the
+// other's answer, and they reach the server in the same order as before.
+func (w *writer) markDirtyAndJournal(ctx context.Context, sp spaceRow, receipts []Receipt) error {
+	ids := w.journaled(receipts)
+	if ids == nil {
+		return w.markDirty(ctx, sp.ID)
+	}
+	b := &pgx.Batch{}
+	b.Queue(dirtySQL, sp.ID, []uuid.UUID(nil))
+	b.Queue(journalSQL, ids, sp.ID)
+	br := w.tx.SendBatch(ctx, b)
+	targets, err := dirtyTargets(br.Query())
+	if err != nil {
+		_ = br.Close()
+		return err
+	}
+	after, err := streamVersions(br.Query())
+	if cerr := br.Close(); err == nil && cerr != nil {
+		err = fmt.Errorf("ledger: journal: %w", cerr)
+	}
+	if err != nil {
+		return err
+	}
+	w.queueCompiles(sp.ID, targets)
+	return w.storeUndo(ctx, sp, receipts, ids, after)
+}
+
+// journaled is the ids of the memories the journal holds, or nil when the
+// command keeps none.
+func (w *writer) journaled(receipts []Receipt) []uuid.UUID {
 	j := w.undo
 	if j == nil || len(j.Memories) == 0 || len(receipts) == 0 {
 		return nil
@@ -175,24 +217,38 @@ func (w *writer) writeUndo(ctx context.Context, sp spaceRow, receipts []Receipt)
 	for i, m := range j.Memories {
 		ids[i] = m.ID
 	}
-	rows, err := w.tx.Query(ctx, `SELECT id, stream_version FROM v2.memories WHERE id = ANY ($1) AND space_id = $2`, ids, sp.ID)
+	return ids
+}
+
+// journalSQL reads the stream versions of the memories $1 in the space $2,
+// after the command's changes.
+const journalSQL = `SELECT id, stream_version FROM v2.memories WHERE id = ANY ($1) AND space_id = $2`
+
+// streamVersions reads journalSQL's answer.
+func streamVersions(rows pgx.Rows, err error) (map[uuid.UUID]int, error) {
 	if err != nil {
-		return fmt.Errorf("ledger: journal: %w", err)
+		return nil, fmt.Errorf("ledger: journal: %w", err)
 	}
+	defer rows.Close()
 	after := map[uuid.UUID]int{}
 	for rows.Next() {
 		var id uuid.UUID
 		var v int
 		if err := rows.Scan(&id, &v); err != nil {
-			rows.Close()
-			return fmt.Errorf("ledger: journal: %w", err)
+			return nil, fmt.Errorf("ledger: journal: %w", err)
 		}
 		after[id] = v
 	}
-	rows.Close()
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("ledger: journal: %w", err)
+		return nil, fmt.Errorf("ledger: journal: %w", err)
 	}
+	return after, nil
+}
+
+// storeUndo stores the journal with the memories' versions after the
+// command.
+func (w *writer) storeUndo(ctx context.Context, sp spaceRow, receipts []Receipt, ids []uuid.UUID, after map[uuid.UUID]int) error {
+	j := w.undo
 	for i := range j.Memories {
 		j.Memories[i].AfterStreamVersion = after[j.Memories[i].ID]
 	}

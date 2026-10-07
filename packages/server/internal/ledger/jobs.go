@@ -92,26 +92,43 @@ func (w *writer) markDirty(ctx context.Context, spaceID uuid.UUID, targets ...uu
 	if len(targets) > 0 {
 		only = targets
 	}
-	rows, err := w.tx.Query(ctx, `
-		UPDATE v2.targets
-		   SET dirty_gen = dirty_gen + 1, dirty_at = now(), updated_at = now(),
-		       sync_state = CASE WHEN sync_state IN ('in_sync', 'pending_delivery') THEN 'compiling' ELSE sync_state END
-		 WHERE space_id = $1 AND sync_state <> 'off' AND ($2::uuid[] IS NULL OR id = ANY ($2))
-		RETURNING id`, spaceID, only)
+	ids, err := dirtyTargets(w.tx.Query(ctx, dirtySQL, spaceID, only))
 	if err != nil {
-		return fmt.Errorf("ledger: mark targets dirty: %w", err)
+		return err
+	}
+	w.queueCompiles(spaceID, ids)
+	return nil
+}
+
+// dirtySQL bumps the generation of the space $1's targets that aren't
+// off (or only the targets $2), and returns their ids.
+const dirtySQL = `
+	UPDATE v2.targets
+	   SET dirty_gen = dirty_gen + 1, dirty_at = now(), updated_at = now(),
+	       sync_state = CASE WHEN sync_state IN ('in_sync', 'pending_delivery') THEN 'compiling' ELSE sync_state END
+	 WHERE space_id = $1 AND sync_state <> 'off' AND ($2::uuid[] IS NULL OR id = ANY ($2))
+	RETURNING id`
+
+// dirtyTargets reads dirtySQL's answer.
+func dirtyTargets(rows pgx.Rows, err error) ([]uuid.UUID, error) {
+	if err != nil {
+		return nil, fmt.Errorf("ledger: mark targets dirty: %w", err)
 	}
 	ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
 	if err != nil {
-		return fmt.Errorf("ledger: mark targets dirty: %w", err)
+		return nil, fmt.Errorf("ledger: mark targets dirty: %w", err)
 	}
+	return ids, nil
+}
+
+// queueCompiles queues a compile job for each target, once.
+func (w *writer) queueCompiles(spaceID uuid.UUID, ids []uuid.UUID) {
 	for _, id := range ids {
 		args := CompileTargetArgs{TargetID: id, SpaceID: spaceID}
 		if !slices.ContainsFunc(w.jobs, func(p river.InsertManyParams) bool { return p.Args == args }) {
 			w.jobs = append(w.jobs, river.InsertManyParams{Args: args})
 		}
 	}
-	return nil
 }
 
 // Finisher runs in a command's transaction, as the login role, right

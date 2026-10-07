@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -103,6 +104,48 @@ func TestDisplayIDsArePerTenant(t *testing.T) {
 	}
 	if _, err := f.l.GetMemory(ctx, scope, "M-0004"); err != nil {
 		t.Errorf("M-0004 exists only in zz's tenant: %v", err)
+	}
+
+	// A command resolves the display ID in the statement that locks the
+	// memory (lockRef), with the same answers: ambiguous across tenants,
+	// without waiting on a lock another transaction holds on either
+	// memory; one memory once narrowed (kept already, so the Keep is an
+	// invalid transition); unknown as not found; another prefix refused.
+	team1, err := f.l.GetMemory(ctx, scope.Narrow(team), "M-0001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hold, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = hold.Rollback(ctx) }()
+	if _, err := hold.Exec(ctx, `SELECT 1 FROM v2.memories WHERE id = $1 FOR UPDATE`, team1.ID); err != nil {
+		t.Fatal(err)
+	}
+	keep := func(sc ledger.Scope, ref string) error {
+		_, err := f.l.Apply(ctx, &ledger.Keep{Meta: meta(person(zz), sc, policy.ViaWeb), Memory: ref})
+		return err
+	}
+	start := time.Now()
+	if err := keep(scope, "M-0001"); !errors.Is(err, ledger.ErrAmbiguousRef) {
+		t.Errorf("Keep M-0001 across personal and team: %v, want ErrAmbiguousRef", err)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Errorf("an ambiguous ref waited %v on a lock", took)
+	}
+	if err := hold.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var te *ledger.TransitionError
+	if err := keep(scope.Narrow(zzPersonal), "M-0001"); !errors.As(err, &te) {
+		t.Errorf("Keep M-0001 narrowed to the personal space: %v, want a transition error (it is kept)", err)
+	}
+	if err := keep(scope, "M-0999"); !errors.Is(err, ledger.ErrNotFound) {
+		t.Errorf("Keep M-0999: %v, want ErrNotFound", err)
+	}
+	if err := keep(scope, "G-0001"); err == nil || errors.Is(err, ledger.ErrNotFound) {
+		t.Errorf("Keep G-0001: %v, want refused as not a memory", err)
 	}
 }
 

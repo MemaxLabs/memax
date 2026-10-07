@@ -202,16 +202,18 @@ type Tombstone struct {
 	Carried string `json:"carried,omitempty"`
 	Primary string `json:"primary,omitempty"`
 	// With are the other refs forgotten in the same Forget.
-	With        []string          `json:"with"`
-	Note        string            `json:"note,omitempty"`
-	By          TombstoneActor    `json:"by"`
-	RequestedBy *TombstoneAgent   `json:"requested_by,omitempty"`
-	Via         policy.Via        `json:"via"`
-	ReceiptID   uuid.UUID         `json:"receipt_id"`
-	ForgottenAt time.Time         `json:"forgotten_at"`
-	KeptAt      *time.Time        `json:"kept_at,omitempty"`
-	ReadsBefore int               `json:"reads_before"`
-	Gone        TombstoneGone     `json:"gone"`
+	With        []string        `json:"with"`
+	Note        string          `json:"note,omitempty"`
+	By          TombstoneActor  `json:"by"`
+	RequestedBy *TombstoneAgent `json:"requested_by,omitempty"`
+	Via         policy.Via      `json:"via"`
+	ReceiptID   uuid.UUID       `json:"receipt_id"`
+	ForgottenAt time.Time       `json:"forgotten_at"`
+	KeptAt      *time.Time      `json:"kept_at,omitempty"`
+	ReadsBefore int             `json:"reads_before"`
+	Gone        TombstoneGone   `json:"gone"`
+	// Agents is how many agent connections are told (each once).
+	Agents      int               `json:"agents"`
 	Status      string            `json:"status"`
 	CompletedAt *time.Time        `json:"completed_at,omitempty"`
 	DurationMS  *int64            `json:"duration_ms,omitempty"`

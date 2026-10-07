@@ -57,6 +57,7 @@ const tombstone: V2.Tombstone = {
   receipt_id: ids.receipt,
   forgotten_at: "2026-10-07T09:30:00Z",
   reads_before: 41,
+  agents: 5,
   gone: {
     versions: 2,
     sources: 1,

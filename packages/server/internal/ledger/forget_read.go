@@ -236,7 +236,8 @@ func decodeTombstoneCursor(s string) (time.Time, uuid.UUID, bool) {
 const tombstoneSelect = `
 	SELECT t.id, t.op_id, t.object_kind, t.object_id, t.object_ref, t.space_id, t.tenant_id, COALESCE(t.carried, ''),
 	       COALESCE(p.object_ref, ''), COALESCE(t.note, ''), t.by_kind, t.by_id, t.requested_by, t.via, t.receipt_id,
-	       t.forgotten_at, t.kept_at, t.reads_before, t.gone, t.status, t.completed_at, t.reapplied_at
+	       t.forgotten_at, t.kept_at, t.reads_before, t.gone, t.status, t.completed_at, t.reapplied_at,
+	       (SELECT count(*) FROM v2.agent_notices n WHERE n.op_id = t.op_id)
 	  FROM v2.tombstones t
 	  JOIN v2.tombstones p ON p.id = t.op_id`
 
@@ -248,7 +249,7 @@ func scanTombstone(row pgx.CollectableRow) (Tombstone, error) {
 	var primary string
 	if err := row.Scan(&t.ID, &t.OpID, &t.Kind, &t.ObjectID, &t.Ref, &t.SpaceID, &t.TenantID, &t.Carried,
 		&primary, &t.Note, &t.By.Kind, &by, &request, &t.Via, &t.ReceiptID,
-		&t.ForgottenAt, &t.KeptAt, &t.ReadsBefore, &gone, &t.Status, &t.CompletedAt, &t.ReappliedAt); err != nil {
+		&t.ForgottenAt, &t.KeptAt, &t.ReadsBefore, &gone, &t.Status, &t.CompletedAt, &t.ReappliedAt, &t.Agents); err != nil {
 		return Tombstone{}, err
 	}
 	t.By.ID = by

@@ -3320,6 +3320,8 @@ export interface components {
             /** @description Reads before it was forgotten, directly and in compiles that held it. */
             reads_before: number;
             gone: components["schemas"]["TombstoneGone"];
+            /** @description How many agents are told, each once on its next read. */
+            agents: number;
             status: components["schemas"]["TombstoneStatus"];
             completed_at?: components["schemas"]["Timestamp"];
             /** @description From the Forget to the last step's answer. */

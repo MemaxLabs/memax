@@ -20,15 +20,18 @@ import { useRecordsView, type RecordsView } from "../records-view";
 import { MemoryHead } from "./memory-head";
 import { MemoryLineage } from "./memory-lineage";
 import { MemorySide } from "./memory-side";
+import { Tombstone } from "./tombstone";
 import { useMemoryEdit } from "./use-memory-edit";
+import { useMemoryForget } from "./use-memory-forget";
 import styles from "./memory.module.css";
 
 /**
  * One memory (Memory.png) at /[space]/memories/[ref]: the statement
  * under its seal, its receipt and reach, Edit (E), Copy citation (⌘⇧C),
- * Move to space and Forget (not yet: Forget arrives with propagation,
- * and never has a key), then its lineage, merged notes, sources, the
- * files it reaches and what keeps it true. Not found is States2's.
+ * Move to space and Forget (confirmed inline, never a key), then its
+ * lineage, merged notes, sources, the files it reaches and what keeps it
+ * true. A forgotten memory's page is its tombstone (Tombstone.png). Not
+ * found is States2's.
  */
 export function MemoryPlace({ memoryRef }: { memoryRef: string }) {
   const view = useRecordsView();
@@ -81,6 +84,9 @@ export function MemoryPlace({ memoryRef }: { memoryRef: string }) {
       />
     );
   }
+  if (record.data.lifecycle === "forgotten") {
+    return <Tombstone view={view} record={record.data} />;
+  }
   return <Memory view={view} record={record.data} />;
 }
 
@@ -89,6 +95,7 @@ function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {
   const p = l.memory.page;
   const toast = useToast();
   const edit = useMemoryEdit(space, record);
+  const forget = useMemoryForget(space, record);
   const submitKey = useKeycap("command.keep");
   const forgotten = record.forgotten;
 
@@ -106,7 +113,7 @@ function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {
   };
 
   useHotkey("memory.edit", () => edit.start(), {
-    enabled: edit.mode.kind === "view" && !forgotten,
+    enabled: edit.mode.kind === "view" && !forgotten && !forget.confirming,
   });
   useHotkey("memory.cite", () => void cite(), { enabled: !forgotten });
 
@@ -171,6 +178,7 @@ function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {
       <MemoryHead
         view={view}
         record={record}
+        forget={forget}
         onEdit={() => edit.start()}
         onCite={() => void cite()}
       />

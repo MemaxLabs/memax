@@ -108,6 +108,10 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     resolve: "{ref} 没裁定成。",
     answer: "{ref} 没回答上。",
     withdraw: "{ref} 没撤回成。",
+    forget: "{ref} 没忘记成。",
+    declineForget: "{ref} 没保留上。",
+    carriesChanged:
+      "你确认之后，跟它一起被忘记的内容变了，所以什么都没忘记。再看一遍，然后再忘记它。",
     ended: {
       answered: "它已经有人回答了。",
       withdrawn: "{agent} 把这个问题撤回了。",
@@ -158,6 +162,17 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
       viewer: "查看者可以看问题，回答要由成员来。",
       owners_keep: "在 {space} 里只有所有者能回答决策。请所有者来回答吧。",
       key_cannot_review: "API 密钥只能提问，不能回答。在网页上的审阅里回答吧。",
+    },
+    refusedForget: {
+      forget_not_allowed: "在 {space} 里只有所有者能忘记。请所有者来忘记它吧。",
+      viewer: "查看者不能忘记。请所有者来忘记它吧。",
+      key_cannot_forget: "API 密钥不能忘记。用你自己的账号登录后再忘记它。",
+      person_must_forget:
+        "只有真人才能忘记。用你自己的账号登录，别用 Agent 的密钥。",
+      decision_needs_web:
+        "{space} 里的决策要在网页上登录才能忘记。退出后在这个页面重新登录，再忘记它。",
+      secret_detected:
+        "你的备注看起来像是密钥之类的凭据，Memax 从不存这种东西。从备注里去掉之后再试。",
     },
     needsWebDev: "本地开发时，给网页端和 API 都配上 WEB_SURFACE_SECRET。",
     signInAgain: "重新登录",

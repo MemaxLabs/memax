@@ -6444,7 +6444,7 @@ components:
       type: object
       additionalProperties: false
       required: [id, op_id, ref, kind, object_id, space_id, tenant_id, with, by, via, receipt_id, forgotten_at,
-                 reads_before, gone, status, steps, unreachable]
+                 reads_before, gone, agents, status, steps, unreachable]
       properties:
         id:
           $ref: '#/components/schemas/Id'
@@ -6493,6 +6493,10 @@ components:
           type: integer
         gone:
           $ref: '#/components/schemas/TombstoneGone'
+        agents:
+          description: How many agents are told, each once on its next read.
+          type: integer
+          minimum: 0
         status:
           $ref: '#/components/schemas/TombstoneStatus'
         completed_at:

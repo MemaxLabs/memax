@@ -2,6 +2,7 @@ package judge_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -287,5 +288,59 @@ func TestDecidePrecedence(t *testing.T) {
 		if d.Outcome != c.want || d.Pair != c.pair {
 			t.Errorf("%s: %s at %d, want %s at %d", c.name, d.Outcome, d.Pair, c.want, c.pair)
 		}
+	}
+}
+
+// The strong tier only confirms: a conflict's question, labels and
+// suggestion stay the primary tier's, whether the strong tier agrees or
+// reads the pair as an update (both are flagged), and its prompt says to
+// leave them empty (writing them again made verdicts on decisions miss 5 s).
+func TestStrongTierConfirmsWithoutRewritingTheWords(t *testing.T) {
+	t.Parallel()
+	for _, rel := range []ledger.Relation{ledger.RelationContradicts, ledger.RelationUpdates} {
+		t.Run(string(rel), func(t *testing.T) {
+			t.Parallel()
+			primary := map[string]verdict{"M-0174": {ledger.RelationContradicts, 0.95, false, ""}}
+			strong := map[string]verdict{"M-0174": {rel, 0.9, false, ""}}
+			m := &fakeModel{answer: func(call judge.Call, n int) (string, error) {
+				if call.Tier.Name != ledger.TierStrong {
+					return answerFor(call.Prompt, primary, nil), nil
+				}
+				var a map[string]any
+				if err := json.Unmarshal([]byte(answerFor(call.Prompt, strong, nil)), &a); err != nil {
+					return "", err
+				}
+				for _, p := range a["pairs"].([]any) {
+					pm := p.(map[string]any)
+					pm["question"], pm["suggested"] = "", "none"
+					pm["labels"] = map[string]string{"proposal": "", "decision": "", "both": "", "open": ""}
+				}
+				b, err := json.Marshal(a)
+				return string(b), err
+			}}
+			cls, err := judge.NewClassifier(m, tiers(true, true)).Classify(context.Background(), proposal, []judge.Candidate{pnpm, railway})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := cls.Pairs[1]
+			if got.Tier != ledger.TierStrong || got.Relation != rel {
+				t.Fatalf("pair = %+v, want the strong tier's %s", got, rel)
+			}
+			if got.Question != fakeQuestion("M-0174") || got.Labels != fakeLabels || got.Suggested != ledger.SuggestBoth {
+				t.Errorf("words = %q, %+v, %q; want the primary tier's", got.Question, got.Labels, got.Suggested)
+			}
+			asked := false
+			for _, call := range m.calls {
+				if call.Tier.Name == ledger.TierStrong {
+					asked = true
+					if !strings.Contains(call.Prompt, "the first reader's are kept") {
+						t.Error("the strong tier wasn't told to leave the words to the first reader")
+					}
+				}
+			}
+			if !asked {
+				t.Fatal("the strong tier wasn't asked")
+			}
+		})
 	}
 }

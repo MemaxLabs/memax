@@ -108,3 +108,8 @@ func userPrompt(p Proposal, cands []Candidate, strict bool, schema json.RawMessa
 	fmt.Fprintf(&b, "Give one entry in pairs for each of the %d candidates, by its id.", len(cands))
 	return b.String()
 }
+
+// strongNote tells the strong tier, which only confirms verdicts on
+// decisions in force, to leave a conflict's settling words to the first
+// reader: Classify keeps those when both agree on the relation.
+const strongNote = "\n\nYou are confirming another reader's verdicts on decisions in force. Judge each relation afresh; leave question \"\", every label \"\" and suggested \"none\": the first reader's are kept."

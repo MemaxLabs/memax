@@ -169,7 +169,17 @@ func (c *Classifier) Classify(ctx context.Context, p Proposal, cands []Candidate
 	}
 	cls.StrongModel = st.Model
 	for j, i := range idx {
-		cls.Pairs[i] = strong[j]
+		// The strong tier only confirms the relation (strongNote): the
+		// words a person settles a conflict with stay the first reader's,
+		// which wrote them for contradicts and updates alike, both flagged
+		// on a decision in force. Writing them again cost the strong tier
+		// a second or more per verdict (live eval, Oct 7). A conflict only
+		// the strong tier found has none, and Review words it generically.
+		sp := strong[j]
+		if sp.Question == "" {
+			sp.Question, sp.Labels, sp.Suggested = cls.Pairs[i].Question, cls.Pairs[i].Labels, cls.Pairs[i].Suggested
+		}
+		cls.Pairs[i] = sp
 	}
 	return cls, nil
 }
@@ -183,7 +193,11 @@ func (c *Classifier) ask(ctx context.Context, cls *Classification, tiers []Tier,
 		if !t.Enabled() {
 			continue
 		}
-		prompt := userPrompt(p, cands, t.Strict, c.raw)
+		base := userPrompt(p, cands, t.Strict, c.raw)
+		if t.Name == ledger.TierStrong {
+			base += strongNote
+		}
+		prompt := base
 		for attempt := 0; attempt < 2; attempt++ {
 			cls.Calls[t.Name]++
 			text, err := c.call(ctx, Call{Tier: t, System: system, Prompt: prompt, Schema: c.raw})
@@ -199,7 +213,7 @@ func (c *Classifier) ask(ctx context.Context, cls *Classification, tiers []Tier,
 				return nil, nil, Tier{}, fmt.Errorf("%w: %v", ErrNoAnswer, ctx.Err())
 			}
 			// The retry says what was wrong, so the model can fix it.
-			prompt = userPrompt(p, cands, t.Strict, c.raw) + "\n\nYour previous answer was not usable (" +
+			prompt = base + "\n\nYour previous answer was not usable (" +
 				truncate(err.Error(), 200) + "). Answer again with only the JSON object."
 		}
 	}

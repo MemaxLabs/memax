@@ -9,6 +9,30 @@ JUDGE_EVAL_LIVE=1 JUDGE_EVAL_SET=holdout.json JUDGE_EVAL_TIERS=pipeline,primary 
 V2_EVAL_LIVE=1 go test ./eval/judge/ -run Candidates -v
 ```
 
+## Oct 7, later: the strong tier confirms
+
+The judge now writes the words a person settles a conflict with: a question, four labels and a suggestion (`e3089d1`). On the first live run with them, Sonnet wrote them again for every verdict on a decision in force, and verdict p95 went from about 2 s to **5.56 s**, past the 5 s target. Sonnet now only confirms the relation (`strongNote`, `internal/judge/prompt.go`) and leaves the words empty. `Classify` keeps the primary's words, which it writes for contradicts and updates alike, since both are flagged on a decision in force. A conflict that only the strong tier found has no words, so Review words it generically. Raw verdicts are in `results-2026-10-07-confirm.json`.
+
+```bash
+cd packages/server
+JUDGE_EVAL_LIVE=1 JUDGE_EVAL_TIERS=pipeline go test ./eval/judge/ -run Live -v      # three times
+JUDGE_EVAL_LIVE=1 JUDGE_EVAL_SET=holdout.json JUDGE_EVAL_TIERS=pipeline go test ./eval/judge/ -run Live -v
+```
+
+| Strong tier           | Run      | `contradicts` P / R | Flag P / R at 0.6 | Verdict p50 / p95 / max | Confirmed by Sonnet p95 | Sonnet call p50 / p95 | Cost   |
+| --------------------- | -------- | ------------------- | ----------------- | ----------------------- | ----------------------- | --------------------- | ------ |
+| Writes the words too  | 1        | 0.97 / 1.00         | not recorded      | 0.48 / 5.56 / 7.10 s    | 6.11 s                  | 1.86 / 5.64 s         | $0.29  |
+| **Confirms only**     | 1        | 0.96 / 0.96         | **1.00 / 1.00**   | 0.51 / **2.22** / 3.91 s | 2.48 s                 | 1.45 / 1.67 s         | $0.28  |
+| **Confirms only**     | 2        | 0.96 / 0.96         | **1.00 / 1.00**   | 0.48 / **2.27** / 4.82 s | 3.81 s                 | 1.41 / 1.69 s         | $0.28  |
+| **Confirms only**     | 3        | 0.96 / 0.96         | **1.00 / 1.00**   | 0.52 / **2.06** / 2.93 s | 2.28 s                 | 1.40 / 1.77 s         | $0.28  |
+| **Confirms only**     | held out | 1.00 / 1.00         | **1.00 / 1.00**   | 0.61 / 4.59 / 5.83 s    | 5.83 s                  | 1.37 / 3.66 s         | $0.07  |
+
+- **Back inside 5 s.** Verdict p95 is 2.06–2.27 s on `pairs.json`, as on Oct 7 before the words (1.84–2.06 s). The held-out set has only 30 verdicts, so its p95 is close to its slowest verdict: one 5.83 s verdict, when Together and Vertex were both slow at once (the primary's p95 that run was 3.65 s).
+- **Not all of the earlier tail was the words.** Sonnet's output fell by about a fifth (8,621 → about 6,900 tokens for 40–41 calls), and its p50 fell from 1.86 s to 1.40–1.45 s, close to the 1.3 s it took before the words. The 5.64 s p95 of that one run was more than the words alone explain, so part of it was Vertex that hour. In one call of most runs, Sonnet spent 240–320 tokens thinking.
+- **The bars hold.** `contradicts` precision is 0.96 (bar 0.90) and recall 0.96 (bar 0.75), and the judge's flag on decisions in force is 1.00 / 1.00 in every run. The one false `contradicts` is ext-21, which has no decision in force, so nothing is flagged. The primary has read ext-21 as contradicts at 0.85 since its prompt started asking for the words, the same in every run at temperature 0. ext-21 says that a target's compile is skipped when its output is unchanged, against "A Keep recompiles every target". con-28 is still read as updates and is still flagged.
+- **Extensions:** the primary reads 10–11 of the 22 extensions as unrelated (Oct 7: 13). Both lead to the same outcome (none).
+- **Cost:** $1.19 by the meter for these four runs, all served on the pinned hosts (Together, Google Vertex). $14.48 remains on the key.
+
 ## Oct 7: pinned hosts and temperature 0 (D14)
 
 The Phase 2 rescan found that `provider.zdr` alone let OpenRouter pick any of 22 zero-retention hosts for V4.1 Flash, weighted towards the cheapest, fp4 ones included. Each tier now names its hosts, in order (`provider.only` and `provider.order`), and the precisions they may run (`provider.quantizations`, fp8 or better), through the shared client (`internal/anthropic/routing.go`). The primary and fallback answer at temperature 0. Same prompt, thresholds and sets as Oct 6.
@@ -21,7 +45,7 @@ JUDGE_EVAL_LIVE=1 JUDGE_EVAL_TIERS=primary,fallback go test ./eval/judge/ -run L
 ```
 
 - **The bars still hold.** `contradicts` precision **1.00** and recall **0.96** in all three pipeline runs (bars 0.90 and 0.75), the same as Oct 6. The flag at 0.6 was 1.00/0.96, 1.00/1.00 and 1.00/0.96. Held out: 1.00/1.00, in the pipeline and with the primary alone.
-- **Temperature 0 makes the runs repeat.** All three pipeline runs gave every one of the 124 pairs the same relation; on Oct 6, 9 pairs changed between runs (14 with the Phase 1 prompt). The misclassifications are the same four each time (con-28 as updates, three extensions as unrelated). The one outcome that moved is con-28's flag: Sonnet, which keeps its default temperature, scored it 0.55, 0.60 and 0.55, on the 0.6 bar.
+- **Temperature 0 makes the runs repeat.** All three pipeline runs gave every one of the 124 pairs the same relation; on Oct 6, 9 pairs changed between runs (14 with the Phase 1 prompt). The misclassifications are the same 14 each time: con-28 as updates, and 13 of the 22 extensions as unrelated (no outcome changes; `results-2026-10-07.json`). The one outcome that moved is con-28's flag: Sonnet, which keeps its default temperature, scored it 0.55, 0.60 and 0.55, on the 0.6 bar.
 - **Faster, with a shorter tail.** Verdict p95 **1.84–2.06 s** (Oct 6: 2.36–2.91 s), and the slowest verdict 2.15–4.12 s (Oct 6: up to 7.05 s). The primary's calls: p50 360–380 ms, p95 570–690 ms (Oct 6: 0.58–0.86 s and 1.48–1.73 s), because every one went to Together. Sonnet is unchanged (p50 1.3 s).
 - **Every call ran where it was pinned.** The meter now fails a run if any call is served by a host its tier didn't name, or by one whose endpoints all run below the floor. Of 820 metered calls: V4.1 Flash 566 of 566 on Together, Sonnet 130 of 130 on Google Vertex, Haiku 124 of 124 on Amazon Bedrock. None fell back to a second host.
 - **The tiers alone:**

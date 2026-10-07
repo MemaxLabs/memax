@@ -42,7 +42,7 @@ func DecideSession(a Actor, act SessionAction) Decision {
 	case SessionList, SessionRevokeOwn:
 		return apply()
 	case SessionRevoke:
-		if a.Assurance() != AssuranceHumanWeb {
+		if !a.Assurance().AtLeast(AssuranceHumanWeb) {
 			return refuse(CodeSessionNeedsWeb,
 				"Sign other sessions out on memax.app, in Settings, so an agent using this login can't sign you out elsewhere.")
 		}

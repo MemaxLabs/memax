@@ -596,6 +596,7 @@ func toPolicyActor(a Actor, via policy.Via, g SpaceGrant) policy.Actor {
 		Kind: a.Kind, Name: a.Name, Role: g.Role, CanForget: g.CanForget,
 		Autonomy: autonomy, AgentStatus: g.AgentStatus, Credential: a.Credential, Via: via,
 		PersonPresent: a.PersonPresent, CanElicit: a.CanElicit,
+		Passkey: a.Passkey, Verified: a.Verified,
 	}
 }
 

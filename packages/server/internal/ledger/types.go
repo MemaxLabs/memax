@@ -313,6 +313,12 @@ type Actor struct {
 	// in-agent confirmation.
 	PersonPresent bool
 	CanElicit     bool
+	// Passkey and Verified are the person's passkey re-check (policy's
+	// assurance.go): they have a passkey, and this command carries a fresh
+	// assertion bound to it (internal/passkeys, checked by the API before
+	// the command reaches the ledger).
+	Passkey  bool
+	Verified bool
 }
 
 // Outcome is what Apply did.

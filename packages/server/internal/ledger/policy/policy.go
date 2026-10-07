@@ -218,14 +218,9 @@ func (v Via) Integration() bool {
 
 // Assurance is how sure we are that a person, not an automation, made a
 // Keep (plan 25 §5.12): Claude Code hooks can auto-accept elicitations,
-// and an agent can run the CLI with the person's login.
+// and an agent can run the CLI with the person's login. The levels and the
+// passkey re-check are in assurance.go.
 type Assurance string
-
-// The assurance levels.
-const (
-	AssuranceHumanWeb       Assurance = "human_web"
-	AssuranceClientAttested Assurance = "client_attested"
-)
 
 // SpaceKind is personal, project or team.
 type SpaceKind string
@@ -390,10 +385,19 @@ type Actor struct {
 	// is at the keyboard, and the client supports MCP elicitation.
 	PersonPresent bool
 	CanElicit     bool
+	// Passkey says the person has a passkey, so the decisions that need a
+	// person ask for it (assurance.go). The server loads it; nothing a
+	// client sends sets it.
+	Passkey bool
+	// Verified says this request carries a fresh, user-verified passkey
+	// assertion bound to the person, their session and the request
+	// (internal/passkeys). It counts only on the web.
+	Verified bool
 }
 
-// Assurance is the assurance a Keep by this actor carries: human_web
-// only for the web app and Review; everything else (MCP confirmations,
+// Assurance is the assurance a Keep by this actor carries:
+// human_web_verified for the web app and Review with a fresh passkey
+// assertion, human_web without one; everything else (MCP confirmations,
 // the CLI) is client_attested. It is derived, never claimed. Non-person
 // actors have none.
 func (a Actor) Assurance() Assurance {
@@ -401,6 +405,9 @@ func (a Actor) Assurance() Assurance {
 		return ""
 	}
 	if a.Via == ViaWeb || a.Via == ViaReview {
+		if a.Verified {
+			return AssuranceHumanWebVerified
+		}
 		return AssuranceHumanWeb
 	}
 	return AssuranceClientAttested
@@ -495,6 +502,9 @@ type Decision struct {
 	Code       string `json:"code,omitempty"`
 	Message    string `json:"message,omitempty"`
 	Quarantine bool   `json:"quarantine,omitempty"`
+	// Suggest is a hint for the person, on a decision that went through:
+	// SuggestPasskey when it needed a person and they have no passkey.
+	Suggest string `json:"suggest,omitempty"`
 }
 
 // Decision codes. Refusals, then downgrades to a proposal, then the
@@ -731,8 +741,16 @@ func decideWrite(a Actor, act Action, o Object, s Space) Decision {
 		if act == ActionPropose {
 			return propose(CodePersonProposed)
 		}
-		if needsWeb && a.Assurance() != AssuranceHumanWeb {
-			return propose(CodeDecisionNeedsWeb)
+		if needsWeb {
+			// D15: below human_web the decision waits in Review; with a
+			// passkey, the web asks for it before keeping.
+			if !a.Assurance().AtLeast(AssuranceHumanWeb) {
+				return propose(CodeDecisionNeedsWeb)
+			}
+			if !a.Assurance().AtLeast(a.verified()) {
+				return refuse(CodeNeedsPasskey, passkeyMessage("keeping a decision in "+spaceName(s)))
+			}
+			return applyChecked(a)
 		}
 		return apply()
 	}
@@ -786,10 +804,15 @@ func decideEdit(a Actor, o Object, s Space) Decision {
 	case keepCap(a, s) != "":
 		d = propose(keepCap(a, s))
 	case a.Kind == ActorPerson:
-		if needsWeb && a.Assurance() != AssuranceHumanWeb {
-			d = propose(CodeDecisionNeedsWeb)
-		} else {
+		switch {
+		case !needsWeb:
 			d = apply()
+		case !a.Assurance().AtLeast(AssuranceHumanWeb):
+			d = propose(CodeDecisionNeedsWeb)
+		case !a.Assurance().AtLeast(a.verified()):
+			return refuse(CodeNeedsPasskey, passkeyMessage("changing a decision in "+spaceName(s)))
+		default:
+			d = applyChecked(a)
 		}
 	case a.autonomy() == AutonomyWrite:
 		switch {
@@ -834,13 +857,25 @@ func decideKeep(a Actor, o Object, s Space) Decision {
 	if !canKeep(a.Role, s.Rules) {
 		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners keep in %s. Ask an owner to keep it.", spaceName(s)))
 	}
-	if o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) && a.Assurance() != AssuranceHumanWeb {
-		return refuse(CodeDecisionNeedsWeb, fmt.Sprintf(
-			"Decisions in %s need a person on the web. Keep it in Review.", spaceName(s)))
+	gated := false
+	if o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) {
+		if d := needsPerson(a, CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web. Keep it in Review.", spaceName(s)),
+			"keeping "+refOr(o, "a decision")); d != nil {
+			return *d
+		}
+		gated = true
 	}
-	if o.External && a.Assurance() != AssuranceHumanWeb {
-		return refuse(CodeExternalNeedsReview, fmt.Sprintf(
-			"%s comes from an outside source. Keep it in Review on the web.", refOr(o, "This proposal")))
+	if o.External {
+		if d := needsPerson(a, CodeExternalNeedsReview, fmt.Sprintf(
+			"%s comes from an outside source. Keep it in Review on the web.", refOr(o, "This proposal")),
+			"keeping "+refOr(o, "a quarantined proposal")); d != nil {
+			return *d
+		}
+		gated = true
+	}
+	if gated {
+		return applyChecked(a)
 	}
 	return apply()
 }
@@ -897,10 +932,19 @@ func decideForget(a Actor, o Object, s Space) Decision {
 		return refuse(CodeForgetNotAllowed, fmt.Sprintf("Viewers can't forget in %s. Ask an owner to forget it.", spaceName(s)))
 	case !canKeep(a.Role, s.Rules) || !canForget(a, s):
 		return refuse(CodeForgetNotAllowed, forgetNotAllowed(s))
-	case o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) && a.Assurance() != AssuranceHumanWeb:
-		return refuse(CodeDecisionNeedsWeb, fmt.Sprintf(
+	case o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind):
+		if d := needsPerson(a, CodeDecisionNeedsWeb, fmt.Sprintf(
 			"Decisions in %s need a person on the web, and so does forgetting one. Forget %s at memax.app.",
-			spaceName(s), refOr(o, "it")))
+			spaceName(s), refOr(o, "it")), "forgetting "+refOr(o, "it")); d != nil {
+			return *d
+		}
+		return applyChecked(a)
+	case a.Passkey && !a.Assurance().AtLeast(AssuranceHumanWebVerified):
+		// Forget is the one change nothing undoes: with a passkey, every
+		// Forget asks for it, from any surface, so an agent holding any of
+		// the person's logins can't erase words. The CLI can't make an
+		// assertion, so its forgets go to the web.
+		return refuse(CodeNeedsPasskey, passkeyMessage("forgetting "+refOr(o, "it")))
 	}
 	return apply()
 }
@@ -961,12 +1005,26 @@ func decideResolve(a Actor, o Object, s Space) Decision {
 		return refuse(CodeViewer, fmt.Sprintf("Viewers can't settle conflicts in %s. Ask a member.", spaceName(s)))
 	case !canKeep(a.Role, s.Rules):
 		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners settle conflicts in %s. Ask an owner.", spaceName(s)))
-	case o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) && a.Assurance() != AssuranceHumanWeb:
-		return refuse(CodeDecisionNeedsWeb, fmt.Sprintf(
-			"Decisions in %s need a person on the web. Settle it in Review.", spaceName(s)))
-	case o.External && a.Assurance() != AssuranceHumanWeb:
-		return refuse(CodeExternalNeedsReview, fmt.Sprintf(
-			"%s comes from an outside source. Settle it in Review on the web.", refOr(o, "This proposal")))
+	}
+	gated := false
+	if o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) {
+		if d := needsPerson(a, CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web. Settle it in Review.", spaceName(s)),
+			"settling "+refOr(o, "a decision")); d != nil {
+			return *d
+		}
+		gated = true
+	}
+	if o.External {
+		if d := needsPerson(a, CodeExternalNeedsReview, fmt.Sprintf(
+			"%s comes from an outside source. Settle it in Review on the web.", refOr(o, "This proposal")),
+			"settling "+refOr(o, "a quarantined proposal")); d != nil {
+			return *d
+		}
+		gated = true
+	}
+	if gated {
+		return applyChecked(a)
 	}
 	return apply()
 }
@@ -1067,9 +1125,13 @@ func decideAnswerGate(a Actor, o Object, s Space) Decision {
 		return refuse(CodeViewer, fmt.Sprintf("Viewers can't answer decisions in %s. Ask a member.", spaceName(s)))
 	case !canKeep(a.Role, s.Rules):
 		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners answer decisions in %s. Ask an owner.", spaceName(s)))
-	case s.Rules.DecisionsNeedPersonOnWeb(s.Kind) && a.Assurance() != AssuranceHumanWeb:
-		return refuse(CodeDecisionNeedsWeb, fmt.Sprintf(
-			"Decisions in %s need a person on the web. Answer %s in Review at memax.app.", spaceName(s), refOr(o, "it")))
+	case s.Rules.DecisionsNeedPersonOnWeb(s.Kind):
+		if d := needsPerson(a, CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web. Answer %s in Review at memax.app.", spaceName(s), refOr(o, "it")),
+			"answering "+refOr(o, "a decision")); d != nil {
+			return *d
+		}
+		return applyChecked(a)
 	}
 	return apply()
 }

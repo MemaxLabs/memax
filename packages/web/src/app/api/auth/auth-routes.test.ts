@@ -410,3 +410,121 @@ describe("/api/auth/impersonate", () => {
     expect(set.some((c) => c.startsWith("memax_impersonating=;"))).toBe(true);
   });
 });
+
+describe("POST /api/auth/passkey", () => {
+  const OPTIONS = {
+    challenge: "Y2g",
+    timeout: 300000,
+    rpId: "memax.app",
+    allowCredentials: [],
+    userVerification: "required",
+  };
+
+  it("asks the API for a challenge naming nobody", async () => {
+    const { POST } = await load<{ POST: Handler }>("./passkey/options/route");
+    const api = mockApi({
+      "/v2/passkey-sign-ins": () =>
+        Response.json({
+          data: { options: OPTIONS, expires_at: "2026-10-05T21:45:00Z" },
+        }),
+    });
+    const res = await POST(
+      req("/api/auth/passkey/options", { method: "POST" }),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      data: { options: OPTIONS, expires_at: "2026-10-05T21:45:00Z" },
+    });
+    expect(api.to("/v2/passkey-sign-ins")[0]!.init.method).toBe("POST");
+    expect(
+      api.to("/v2/passkey-sign-ins")[0]!.init.headers.get("authorization"),
+    ).toBeNull();
+  });
+
+  it("trades a verified answer's code for the web session, in HttpOnly cookies", async () => {
+    const { POST } = await load<{ POST: Handler }>("./passkey/route");
+    const credential = { id: "cred", type: "public-key", response: {} };
+    const api = mockApi({
+      "/v2/passkey-sign-ins:finish": () =>
+        Response.json({ data: { code: "one-time", expires_in: 60 } }),
+      [EXCHANGE]: () =>
+        Response.json({
+          data: {
+            access_token: webAccess,
+            refresh_token: "refresh-pk",
+            expires_in: HOUR,
+            refresh_expires_in: 30 * 24 * HOUR,
+          },
+        }),
+    });
+    const res = await POST(
+      req("/api/auth/passkey", { method: "POST", body: { credential } }),
+    );
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(JSON.parse(text)).toEqual({
+      data: { signed_in: true, surface: "web" },
+    });
+    expect(text).not.toContain("refresh-pk");
+    expect(text).not.toContain("one-time");
+    expect(
+      JSON.parse(String(api.to("/v2/passkey-sign-ins:finish")[0]!.init.body)),
+    ).toEqual({ credential });
+    expect(JSON.parse(String(api.to(EXCHANGE)[0]!.init.body))).toEqual({
+      code: "one-time",
+    });
+    const set = res.headers.getSetCookie();
+    const refresh = [...set]
+      .reverse()
+      .find((c) => c.startsWith("__Host-memax_refresh="))!;
+    expect(refresh).toContain("refresh-pk");
+    expect(refresh).toContain("HttpOnly");
+  });
+
+  it("passes a refused answer through and sets nothing", async () => {
+    const { POST } = await load<{ POST: Handler }>("./passkey/route");
+    const api = mockApi({
+      "/v2/passkey-sign-ins:finish": () =>
+        Response.json(
+          {
+            error: {
+              code: "passkey_invalid",
+              message: "That passkey isn't on a Memax account.",
+              details: { passkey_failure: "no_credential" },
+            },
+          },
+          { status: 401 },
+        ),
+    });
+    const res = await POST(
+      req("/api/auth/passkey", {
+        method: "POST",
+        body: { credential: { id: "x" } },
+      }),
+    );
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      "passkey_invalid",
+    );
+    expect(res.headers.getSetCookie()).toHaveLength(0);
+    expect(api.to(EXCHANGE)).toHaveLength(0);
+  });
+
+  it("refuses another site, and a body without a credential", async () => {
+    const { POST } = await load<{ POST: Handler }>("./passkey/route");
+    const api = mockApi({});
+    const cross = await POST(
+      req("/api/auth/passkey", {
+        method: "POST",
+        body: { credential: { id: "x" } },
+        site: "cross-site",
+      }),
+    );
+    expect(cross.status).toBe(403);
+    const empty = await POST(
+      req("/api/auth/passkey", { method: "POST", body: { nothing: true } }),
+    );
+    expect(empty.status).toBe(400);
+    expect(api.calls).toHaveLength(0);
+  });
+});

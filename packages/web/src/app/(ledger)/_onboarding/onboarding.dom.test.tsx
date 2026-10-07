@@ -132,12 +132,110 @@ describe("SignIn", () => {
       expect.stringContaining("/signin/callback"),
       "google",
     );
-    // Passkeys come later, and say so.
     const passkey = screen.getByRole("button", { name: "Use a passkey" });
-    expect(passkey.getAttribute("aria-disabled")).toBe("true");
+    expect(passkey.getAttribute("aria-disabled")).toBeNull();
     expect(screen.getByText(/after signing in/).textContent).toContain(
       "/device",
     );
+  });
+
+  it("signs in with a passkey through the web app's server, then lands", async () => {
+    at("/signin", "next=/device?code=WQRT-4821");
+    const options = {
+      challenge: "Y2g",
+      timeout: 300000,
+      rpId: "localhost",
+      allowCredentials: [],
+      userVerification: "required",
+    };
+    const answer = {
+      id: "cred",
+      rawId: "cred",
+      type: "public-key",
+      response: {},
+    };
+    vi.stubGlobal("PublicKeyCredential", function PublicKeyCredential() {});
+    const get = vi.fn(async () => ({ toJSON: () => answer }));
+    Object.defineProperty(navigator, "credentials", {
+      configurable: true,
+      value: { create: vi.fn(), get },
+    });
+    const fetchMock = vi.fn(async (url: string) =>
+      url === "/api/auth/passkey/options"
+        ? Response.json({
+            data: { options, expires_at: "2026-10-05T21:45:00Z" },
+          })
+        : Response.json({ data: { signed_in: true, surface: "web" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderWith(<SignInScreen />, { frame: false });
+    fireEvent.click(screen.getByRole("button", { name: "Use a passkey" }));
+    await waitFor(() => expect(h.completeLogin).toHaveBeenCalled());
+    const publicKey = (
+      get.mock.calls[0] as unknown as [
+        { publicKey: PublicKeyCredentialRequestOptions },
+      ]
+    )[0].publicKey;
+    expect(publicKey.userVerification).toBe("required");
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/auth/passkey", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: answer }),
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("says when a passkey isn't on an account, or the prompt was closed", async () => {
+    at("/signin");
+    vi.stubGlobal("PublicKeyCredential", function PublicKeyCredential() {});
+    const closed = Object.assign(new Error("closed"), {
+      name: "NotAllowedError",
+    });
+    const get = vi
+      .fn()
+      .mockRejectedValueOnce(closed)
+      .mockResolvedValueOnce({
+        toJSON: () => ({ id: "x", type: "public-key" }),
+      });
+    Object.defineProperty(navigator, "credentials", {
+      configurable: true,
+      value: { create: vi.fn(), get },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url === "/api/auth/passkey/options"
+          ? Response.json({
+              data: {
+                options: {
+                  challenge: "Y2g",
+                  timeout: 1,
+                  rpId: "localhost",
+                  allowCredentials: [],
+                  userVerification: "required",
+                },
+              },
+            })
+          : Response.json(
+              {
+                error: {
+                  code: "passkey_invalid",
+                  details: { passkey_failure: "no_credential" },
+                },
+              },
+              { status: 401 },
+            ),
+      ),
+    );
+    renderWith(<SignInScreen />, { frame: false });
+    fireEvent.click(screen.getByRole("button", { name: "Use a passkey" }));
+    await screen.findByText(
+      "The passkey prompt closed before it finished. Try again when you're ready.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Use a passkey" }));
+    await screen.findByText(/^That passkey isn't on a Memax account/);
+    expect(h.completeLogin).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it("sends the email code with this app's callback, so verifying hands back a redirect", async () => {

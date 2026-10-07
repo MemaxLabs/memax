@@ -1,4 +1,4 @@
--- 051: v2_passkeys
+-- 054: v2_passkeys
 --
 -- Passkeys (WebAuthn) and the passkey re-check (plan 25 §5.15 and the
 -- carry-over "a passkey re-check at Keep time is the strong guarantee for

@@ -165,6 +165,29 @@ describe("Settings › Security", () => {
     ).toBeTruthy();
   });
 
+  it("says a passkey makes those keeps human_web_verified, or offers one", () => {
+    withSecurity({ ...DEMO_SECURITY, passkeyCheck: true });
+    renderPlace(<SecuritySettings />);
+    let assurance = section("What your Keep counts as");
+    expect(within(assurance).getByText("human_web_verified")).toBeTruthy();
+    expect(
+      within(assurance).getByText(/^You have a passkey, so those keeps/),
+    ).toBeTruthy();
+    cleanup();
+    withSecurity({ ...DEMO_SECURITY, passkeyCheck: false });
+    renderPlace(<SecuritySettings />);
+    assurance = section("What your Keep counts as");
+    expect(within(assurance).queryByText("human_web_verified")).toBeNull();
+    expect(
+      within(assurance).getByText(/^Add a passkey in Account/),
+    ).toBeTruthy();
+    expect(
+      within(assurance)
+        .getByRole("link", { name: "Account" })
+        .getAttribute("href"),
+    ).toBe("/settings/account");
+  });
+
   it("sums up the agents, links to them, and says what this session's Keep counts as", () => {
     withSecurity();
     renderPlace(<SecuritySettings />);

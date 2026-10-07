@@ -1,8 +1,15 @@
 import { Command } from "commander";
 import { createServer } from "node:http";
+import { hostname } from "node:os";
 import { getActiveHubID, loadConfig, setActiveHubID } from "../lib/config.js";
 import { getClient, getPublicClient, resetClient } from "../lib/client.js";
 import { saveCredentials } from "../lib/credentials.js";
+import {
+  canOpenBrowser,
+  deviceLoginFailure,
+  signInWithDeviceCode,
+} from "../lib/device-login.js";
+import { cliVersion } from "../lib/version.js";
 import type { AuthProviderName } from "memax-sdk";
 
 interface TokenPair {
@@ -13,10 +20,99 @@ interface TokenPair {
 
 interface LoginOptions {
   provider?: string;
+  /** Sign in with a code confirmed in any browser (RFC 8628). */
+  device?: boolean;
+  /** The space the CLI will use, shown on the confirmation page. */
+  space?: string;
 }
 
 export async function loginCommand(options: LoginOptions = {}): Promise<void> {
-  if (!(await signInWithBrowser(options))) process.exit(1);
+  if (!(await signIn(options))) process.exit(1);
+}
+
+/**
+ * Signs in the way this machine allows: in a browser here, or with a
+ * device code when no browser can open (SSH, no display, CI) or when
+ * asked for (`--device`). `memax login` and `memax init` both use it.
+ */
+export async function signIn(options: LoginOptions = {}): Promise<boolean> {
+  const device =
+    options.device ||
+    !canOpenBrowser({ platform: process.platform, env: process.env });
+  return device ? signInWithDevice(options) : signInWithBrowser(options);
+}
+
+/** Signs in with a device code and saves the credentials. */
+export async function signInWithDevice(
+  options: LoginOptions = {},
+): Promise<boolean> {
+  try {
+    const result = await signInWithDeviceCode({
+      auth: getPublicClient().auth,
+      out: (l) => console.log(l),
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      now: () => performance.now(),
+      // Here a browser can open (--device on a desktop): open the page.
+      open: canOpenBrowser({ platform: process.platform, env: process.env })
+        ? openBrowser
+        : undefined,
+      device: {
+        clientVersion: cliVersion(),
+        deviceName: hostname(),
+        deviceOs: process.platform,
+        space: options.space,
+      },
+    });
+    if (!result.ok) {
+      console.error(`\n  ${deviceLoginFailure(result.reason)}\n`);
+      return false;
+    }
+    await finishSignIn(result.tokens);
+    return true;
+  } catch (err) {
+    console.error(`  Login failed: ${(err as Error).message}\n`);
+    return false;
+  }
+}
+
+/** Saves a new session and picks the personal hub for V1 commands. */
+async function finishSignIn(tokens: TokenPair): Promise<void> {
+  saveCredentials({
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expires_at: Date.now() + tokens.expires_in * 1000,
+  });
+  resetClient();
+
+  // Auto-set personal hub so commands work without `memax hub switch`
+  try {
+    const hubs = await getClient().hubs.list();
+    const personal = hubs.find((h) => h.hub.hub_type === "personal");
+    if (personal) {
+      setActiveHubID(personal.hub.id);
+    }
+  } catch {
+    // Non-fatal — user can manually run `memax hub switch personal`
+  }
+
+  console.log(
+    "  Logged in successfully. Credentials saved to ~/.memax/credentials.json\n",
+  );
+}
+
+/** Opens a URL in the default browser; a failure leaves the printed link. */
+function openBrowser(url: string): void {
+  void import("node:child_process")
+    .then(({ execFile }) => {
+      const [cmd, args] =
+        process.platform === "darwin"
+          ? ["open", [url]]
+          : process.platform === "win32"
+            ? ["cmd", ["/c", "start", "", url]]
+            : ["xdg-open", [url]];
+      execFile(cmd, args, () => {});
+    })
+    .catch(() => {});
 }
 
 /**
@@ -131,27 +227,7 @@ export async function signInWithBrowser(
 
   try {
     const tokens = await tokenPromise;
-    saveCredentials({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      expires_at: Date.now() + tokens.expires_in * 1000,
-    });
-    resetClient();
-
-    // Auto-set personal hub so commands work without `memax hub switch`
-    try {
-      const hubs = await getClient().hubs.list();
-      const personal = hubs.find((h) => h.hub.hub_type === "personal");
-      if (personal) {
-        setActiveHubID(personal.hub.id);
-      }
-    } catch {
-      // Non-fatal — user can manually run `memax hub switch personal`
-    }
-
-    console.log(
-      "  Logged in successfully. Credentials saved to ~/.memax/credentials.json\n",
-    );
+    await finishSignIn(tokens);
     return true;
   } catch (err) {
     console.error(`  Login failed: ${(err as Error).message}\n`);
@@ -222,6 +298,10 @@ export function registerLoginCommands(program: Command): void {
     .option(
       "--provider <name>",
       "OAuth provider to use: github or google (default: github)",
+    )
+    .option(
+      "--device",
+      "Sign in with a code you confirm in any browser (the default over SSH and where no browser can open)",
     )
     .action(loginCommand);
   program

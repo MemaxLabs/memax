@@ -18,7 +18,47 @@ export interface paths {
          */
         get: operations["listSpaces"];
         put?: never;
-        post?: never;
+        /**
+         * Create a project space
+         * @description Creates a project space on the V2 record, owned by you: `memax init`
+         *     does this for a repository that has no space yet. Without a `slug`,
+         *     the name's slug is used, with a number added when it is taken; a
+         *     slug you name must be free (409 `slug_taken`). Only a signed-in
+         *     person creates spaces, and here only project spaces: your personal
+         *     space exists already, and team spaces come with Team. A space isn't
+         *     part of its own record, so creating one writes no receipt; its
+         *     Activity starts with its first change. The same `Idempotency-Key`
+         *     finds the space the first call created.
+         */
+        post: operations["createSpace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}:switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch an empty space to the V2 record
+         * @description Moves a space that holds no V1 memories to the V2 record, so agents
+         *     are served from it over MCP too: a new person's personal space, say,
+         *     before `memax init` brings machine-local memory into it. A space
+         *     with V1 memories switches in the app, where they are cleaned up
+         *     first (409 `space_has_notes`, with `details.notes`). Only the
+         *     space's owner may. A space already on V2 is returned as it is.
+         */
+        post: operations["switchSpace"];
         delete?: never;
         options?: never;
         head?: never;
@@ -93,6 +133,63 @@ export interface paths {
          *     caller: 429 `rate_limited` with `Retry-After`.
          */
         post: operations["findNearDuplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/memories:keep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep proposals in bulk
+         * @description Keeps several proposals of the space, each as its own Keep: its own
+         *     receipt, by Keep's rules, so one that can't be kept (in conflict,
+         *     quarantined outside the web, a decision where decisions need a
+         *     person on the web, not judged yet) is reported and the rest are
+         *     kept. ReviewImport's "Keep 30" and `memax init`'s "keep the ones
+         *     that agree" send the proposals the person chose. Each item's
+         *     `version` is the version the person saw, as `If-Match` is for one
+         *     Keep. Retrying with the same `Idempotency-Key` keeps nothing twice.
+         *     Every target recompiles once the keeps land.
+         */
+        post: operations["keepMemories"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/memories:reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject proposals in bulk
+         * @description Rejects several proposals of the space, each as its own Reject with
+         *     its own receipt, by Reject's rules; one that can't be rejected is
+         *     reported and the rest are. Retrying with the same `Idempotency-Key`
+         *     rejects nothing twice.
+         */
+        post: operations["rejectMemories"];
         delete?: never;
         options?: never;
         head?: never;
@@ -288,6 +385,126 @@ export interface paths {
          *     `Idempotency-Key` records it once.
          */
         post: operations["recordCompileLoad"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List imports
+         * @description The space's imports, newest first, each with its counts.
+         */
+        get: operations["listImports"];
+        put?: never;
+        /**
+         * Import statements from agent files
+         * @description Uploads what agents already know, read from their files (`memax
+         *     init`): statements, each with its source `file:line`, plus what the
+         *     client kept on the machine and why (a ref and a rule, never the
+         *     words). Each statement is written as its own proposal, with its own
+         *     receipt (`via: import`), and is always a proposal, whoever sends it:
+         *     nothing an import brings is kept until a person keeps it.
+         *
+         *     Statements of the upload that repeat each other (the same words, or
+         *     a near-verbatim repeat) become one proposal citing every file that
+         *     says it (`folded`). A statement the space already has, in any state
+         *     but forgotten, is skipped (`existing`), so running `memax init` again
+         *     proposes only what is new. A statement policy refuses (a credential
+         *     the client missed) is `refused`. A repository file's statements are
+         *     held to the repository class whatever the request says; lines only
+         *     on another branch arrive `external` and are quarantined.
+         *
+         *     The judge then looks at each proposal, and the import's conflict
+         *     check groups the proposals that disagree (`conflicts` on the
+         *     import), within seconds; read the import to follow it.
+         *
+         *     A retry with the same `Idempotency-Key` resumes the same import and
+         *     writes nothing twice. At most 500 statements; split more into
+         *     several imports.
+         */
+        post: operations["createImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/imports/{import}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description The import's id. */
+                import: components["parameters"]["ImportPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read an import
+         * @description One import in full: its files, what the client kept on the machine,
+         *     what became of every statement, the memories they became (with the
+         *     judge's verdicts) and the disagreements found (Cleanup, ReviewImport).
+         *     A proposal can be kept in bulk (`bulk`) when it waits in Review, the
+         *     judge and the conflict check have looked at it and found nothing,
+         *     it cites no outside source and its line had no hidden characters;
+         *     `held` says why one can't. `progress.ready` is set once nothing is
+         *     being judged and the conflict check is done.
+         */
+        get: operations["getImport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/imports/{import}/conflicts/{n}:settle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description The import's id. */
+                import: components["parameters"]["ImportPath"];
+                /** @description The disagreement's number within the import (its `n`, from 1). */
+                n: components["parameters"]["ConflictNumber"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle an import's disagreement
+         * @description Settles one of an import's disagreements, once, as a group:
+         *     `keep_one` keeps `keep` and rejects the rest; `keep_all` keeps them
+         *     all (they don't disagree after all); `leave_open` keeps them as open
+         *     questions, so agents read that it isn't decided; `keep_suggestion`
+         *     keeps one new statement (the check's `suggestion`, or your
+         *     `statement`), citing every member's sources, and rejects the members.
+         *     The group's flags and links end, and every change has its receipt.
+         *     It follows Keep's rules: a person who may keep, on the web where the
+         *     space needs one for decisions, and on the web to keep a quarantined
+         *     statement. A member that also contradicts a decision in force can't
+         *     be kept until that is settled (409 `in_conflict`). The members of an
+         *     open import disagreement can't be settled two at a time with
+         *     `:resolve-conflict`.
+         */
+        post: operations["settleImportConflict"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1404,11 +1621,15 @@ export interface components {
          *     "keep both" whose narrower words touch another decision in force:
          *     they are saved, and the same resolution waits for the judge).
          *     Confirmation: confirm_in_agent.
+         *     Refused changes to spaces: space_by_person (only a signed-in person
+         *     creates or switches a space), space_kind (only project spaces are
+         *     created here), space_limit (the most project spaces one person owns
+         *     during the alpha), switch_by_owner (only the owner switches a space).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "ask_by_person" | "ask_limit" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "ask_by_person" | "ask_limit" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner";
         /** @enum {string} */
-        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable";
+        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "slug_taken" | "space_has_notes";
         /**
          * @description A typed edge between two memories. merged_into: folded into another
          *     memory (a duplicate, or a repeat of a rejection). supersedes: replaces
@@ -2524,6 +2745,16 @@ export interface components {
              *     whatever this says.
              */
             external?: boolean;
+            /**
+             * @description The source's class as you assert it: `person` for your own
+             *     words (your global instructions file), `agent_own_work` for an
+             *     agent's notes. Memax holds it to what you could write yourself
+             *     (an agent's own work at most, for an agent); without it, a file
+             *     or PR is `repository` and an import `external`. An import holds
+             *     a repository file's statements to `repository`, whatever this
+             *     says.
+             */
+            trust?: components["schemas"]["Trust"];
             /** @description The supporting excerpt. */
             quote?: string;
             content_hash?: string;
@@ -2857,6 +3088,301 @@ export interface components {
             /** @description What happened and what to do, in English. */
             message: string;
         };
+        CreateSpaceRequest: {
+            name: string;
+            /** @description Lowercase letters, digits and hyphens, 4 to 50 characters. Without one, Memax picks one from the name. */
+            slug?: string;
+            /**
+             * @description Only project spaces are created here; the default.
+             * @enum {string}
+             */
+            kind?: "project";
+            /** @description The repository the space compiles for, "owner/name". */
+            repository?: string;
+        };
+        /**
+         * @description Where a file an import read lives: `repository` (shared with
+         *     everyone who clones it) or `home` (on the person's machine only).
+         * @enum {string}
+         */
+        ImportLocation: "repository" | "home";
+        /**
+         * @description What became of one statement: `proposed` (a new proposal),
+         *     `folded` (it repeats another statement of the upload, whose proposal
+         *     cites it too), `existing` (the space already has it) or `refused`
+         *     (policy refused it; see `policy`).
+         * @enum {string}
+         */
+        ImportOutcome: "proposed" | "folded" | "existing" | "refused";
+        /**
+         * @description Why the client kept a statement on the machine: `secret` (it holds
+         *     a credential), `too_long` (longer than a statement can be) or
+         *     `limit` (the file has more statements than one import takes).
+         * @enum {string}
+         */
+        ImportSkipReason: "secret" | "too_long" | "limit";
+        /**
+         * @description How far the import's conflict check got: `pending`, `checked`,
+         *     `no_model` (no model is configured: only the judge's repeats check
+         *     ran), `failed` (the model gave no answer; nothing was flagged) or
+         *     `skipped` (fewer than two proposals to compare).
+         * @enum {string}
+         */
+        ImportCheckState: "pending" | "checked" | "no_model" | "failed" | "skipped";
+        /**
+         * @description Why a proposal can't be kept in bulk: `decided` (it isn't waiting in
+         *     Review any more), `conflict` (it disagrees with another statement or
+         *     a decision in force), `quarantined` (it cites an outside source),
+         *     `checking` (the judge or the conflict check hasn't finished),
+         *     `unchecked` (the judge couldn't reach a verdict), `stale`, or
+         *     `hidden_characters` (its line had hidden characters: read it first).
+         * @enum {string}
+         */
+        ImportHeld: "decided" | "conflict" | "quarantined" | "checking" | "hidden_characters" | "stale" | "unchecked";
+        /**
+         * @description How a disagreement is settled: `keep_one`, `keep_all`, `leave_open`
+         *     or `keep_suggestion`.
+         * @enum {string}
+         */
+        ImportChoice: "keep_one" | "keep_all" | "leave_open" | "keep_suggestion";
+        /** @description The client's name for a file's role, e.g. claude_md, agents_md, cursor_rule, claude_memory, codex_memory. */
+        ImportFileKind: string;
+        /** @description One file an import read. Never its contents. */
+        ImportFile: {
+            /** @description What people see, e.g. "CLAUDE.md" or "~/.codex/memories/notes.md". */
+            path: string;
+            kind: components["schemas"]["ImportFileKind"];
+            /** @description The agent the file belongs to, e.g. claude-code. */
+            agent?: string;
+            location: components["schemas"]["ImportLocation"];
+            /** @description The class the file's statements were sent at. */
+            trust?: components["schemas"]["Trust"];
+            /** @description The statements found in it. */
+            statements: number;
+            /** @description The statements the client kept on the machine. */
+            skipped: number;
+            /** @description The hidden characters the client removed from it. */
+            hidden_characters: number;
+        };
+        /** @description A statement the client didn't send, and why. A ref and a rule, never its words. */
+        ImportSkip: {
+            /** @description Where it is, e.g. "CLAUDE.md:31". */
+            ref: string;
+            reason: components["schemas"]["ImportSkipReason"];
+            /** @description The rule that matched, e.g. "GitHub token". Never the matched text. */
+            detail?: string;
+        };
+        /** @description One statement of an import. */
+        ImportItemInput: {
+            /** @description Unique within the request; the item's result carries it back. */
+            key: string;
+            /** @description Where it came from, e.g. "CLAUDE.md:12". Defaults to its first source's ref. */
+            ref?: string;
+            location: components["schemas"]["ImportLocation"];
+            /** @description The hidden characters the client removed from it. */
+            hidden_characters?: number;
+            statement: string;
+            section: components["schemas"]["Section"];
+            kind?: components["schemas"]["MemoryKind"];
+            decision?: components["schemas"]["Decision"];
+            sources?: components["schemas"]["SourceInput"][];
+            /** @description Where it applies, e.g. {"paths": ["**\/*.test.ts"]} from a scoped rule. */
+            scope?: {
+                [key: string]: unknown;
+            };
+        };
+        ImportRequest: {
+            /** @description The uploader, e.g. "memax-cli 0.3.0". */
+            client?: string;
+            files?: components["schemas"]["ImportFile"][];
+            skipped?: components["schemas"]["ImportSkip"][];
+            items: components["schemas"]["ImportItemInput"][];
+            /** @description When the files were read. */
+            occurred_at?: components["schemas"]["Timestamp"];
+            /** @description The run that read them, e.g. "init-7f3a"; every statement's receipt carries it. */
+            session_ref?: components["schemas"]["SessionRef"];
+        };
+        /** @description An import's statements by outcome, and its disagreements. */
+        ImportCounts: {
+            items: number;
+            proposed: number;
+            folded: number;
+            existing: number;
+            refused: number;
+            conflicts: number;
+        };
+        ImportCheck: {
+            state: components["schemas"]["ImportCheckState"];
+            checked_at?: components["schemas"]["Timestamp"];
+            tier?: components["schemas"]["ModelTier"];
+            model?: string;
+        };
+        /** @description One upload of statements read from agent files. */
+        Import: {
+            id: components["schemas"]["Id"];
+            space_id: components["schemas"]["Id"];
+            tenant_id: components["schemas"]["Id"];
+            actor_kind: components["schemas"]["ActorKind"];
+            /** @description The person, or the agent connection, that uploaded it. */
+            actor_id?: components["schemas"]["Id"];
+            agent?: string;
+            client?: string;
+            files: components["schemas"]["ImportFile"][];
+            skipped: components["schemas"]["ImportSkip"][];
+            counts: components["schemas"]["ImportCounts"];
+            /** @description When every statement was written. */
+            uploaded_at?: components["schemas"]["Timestamp"];
+            check: components["schemas"]["ImportCheck"];
+            created_at: components["schemas"]["Timestamp"];
+        };
+        /** @description What became of one statement of the request. */
+        ImportItemResult: {
+            key: string;
+            /** @description Its index in the request. */
+            position: number;
+            ref: string;
+            outcome: components["schemas"]["ImportOutcome"];
+            /** @description The proposal it became (folded, the one it folded into), or the memory the space already had. */
+            memory?: components["schemas"]["MemoryPointer"];
+            /** @description That memory's lifecycle, for an existing one. */
+            lifecycle?: components["schemas"]["Lifecycle"];
+            /** @description The key of the item it folded into. */
+            folded_into?: string;
+            /** @description Why it was refused. */
+            policy?: components["schemas"]["PolicyDecision"];
+        };
+        ImportResult: {
+            import: components["schemas"]["Import"];
+            items: components["schemas"]["ImportItemResult"][];
+        };
+        /** @description What became of one statement, as the import shows it. */
+        ImportItem: {
+            position: number;
+            key: string;
+            ref: string;
+            location: components["schemas"]["ImportLocation"];
+            outcome: components["schemas"]["ImportOutcome"];
+            memory?: components["schemas"]["MemoryPointer"];
+            /** @description The position of the item it folded into. */
+            folded_into?: number;
+            /** @description The policy code it was refused with. */
+            code?: string;
+            hidden_characters: number;
+        };
+        /** @description A memory an import proposed or found, and whether it can be kept in bulk. */
+        ImportMemory: {
+            memory: components["schemas"]["Memory"];
+            /** @description proposed (this import proposed it) or existing. */
+            outcome: components["schemas"]["ImportOutcome"];
+            /** @description The import's statements it stands for, folded repeats included ("Three files agree"). */
+            items: number;
+            /** @description It can be kept in bulk with the ones that agree. */
+            bulk: boolean;
+            held?: components["schemas"]["ImportHeld"];
+            /** @description The import disagreement it is in, by its `n`. */
+            conflict?: number;
+        };
+        /** @description A disagreement among an import's proposals (Test command, 3 files disagree). */
+        ImportConflict: {
+            id: components["schemas"]["Id"];
+            /** @description Its number within the import ("1 of 3"). */
+            n: number;
+            /** @description What they disagree about, in the model's words. */
+            subject?: string;
+            /** @description How they disagree, in the model's words. */
+            rationale?: string;
+            /** @description One statement that says what holds for all of them, when the model found one. */
+            suggestion?: string;
+            confidence?: number;
+            /** @description The proposals that disagree, in the import's order. */
+            members: components["schemas"]["MemoryPointer"][];
+            /** @enum {string} */
+            state: "open" | "settled";
+            choice?: components["schemas"]["ImportChoice"];
+            /** @description The memory that holds (keep_one, keep_suggestion). */
+            chosen?: components["schemas"]["MemoryPointer"];
+            created_receipt_id: components["schemas"]["Id"];
+            last_receipt_id: components["schemas"]["Id"];
+            created_at: components["schemas"]["Timestamp"];
+            settled_at?: components["schemas"]["Timestamp"];
+        };
+        /** @description How far the judge got with the import's proposals. */
+        ImportProgress: {
+            proposals: number;
+            working: number;
+            judged: number;
+            failed: number;
+            /** @description Nothing is being judged and the conflict check is done. */
+            ready: boolean;
+        };
+        ImportView: {
+            import: components["schemas"]["Import"];
+            items: components["schemas"]["ImportItem"][];
+            /** @description The memories the items became or matched, once each, in the order the items first name them. */
+            memories: components["schemas"]["ImportMemory"][];
+            conflicts: components["schemas"]["ImportConflict"][];
+            progress: components["schemas"]["ImportProgress"];
+        };
+        ImportPage: {
+            items: components["schemas"]["Import"][];
+            has_more: boolean;
+            next_cursor?: components["schemas"]["Cursor"];
+        };
+        SettleImportConflictRequest: {
+            choice: components["schemas"]["ImportChoice"];
+            /** @description keep_one only. The member to keep. */
+            keep?: components["schemas"]["MemoryRef"];
+            /** @description keep_suggestion only. The words to keep; without them, the check's suggestion. */
+            statement?: string;
+            reason?: components["schemas"]["Reason"];
+            /** @description When it happened on the client; offline queues keep the original time. */
+            occurred_at?: components["schemas"]["Timestamp"];
+            session_ref?: components["schemas"]["SessionRef"];
+        };
+        ImportConflictResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            conflict: components["schemas"]["ImportConflict"];
+            /** @description Every memory it changed, the members first. */
+            memories: components["schemas"]["Memory"][];
+            /** @description The receipts it wrote, oldest first. */
+            receipts: components["schemas"]["Receipt"][];
+        };
+        BulkReviewItemInput: {
+            memory: components["schemas"]["MemoryRef"];
+            /** @description The version the person saw (its ETag); a newer one is reported as `edit_clash`. */
+            version?: number;
+        };
+        BulkReviewRequest: {
+            items: components["schemas"]["BulkReviewItemInput"][];
+            reason?: components["schemas"]["Reason"];
+            /** @description When it happened on the client; offline queues keep the original time. */
+            occurred_at?: components["schemas"]["Timestamp"];
+            session_ref?: components["schemas"]["SessionRef"];
+        };
+        /**
+         * @description `applied` (kept, or rejected), `refused` (policy; see `policy`) or `failed` (see `error`).
+         * @enum {string}
+         */
+        BulkOutcome: "applied" | "refused" | "failed";
+        BulkReviewItem: {
+            /** @description The memory as the request named it. */
+            memory: string;
+            ref?: components["schemas"]["DisplayRef"];
+            outcome: components["schemas"]["BulkOutcome"];
+            /** @description Its state now. */
+            state?: components["schemas"]["State"];
+            version?: number;
+            policy?: components["schemas"]["PolicyDecision"];
+            /** @description Why it failed, as the one-memory command would have answered. */
+            error?: components["schemas"]["Error"];
+        };
+        BulkReviewResult: {
+            items: components["schemas"]["BulkReviewItem"][];
+            applied: number;
+            refused: number;
+            failed: number;
+        };
         Error: {
             code: components["schemas"]["ErrorCode"];
             /** @description What went wrong and what to do, in English. */
@@ -2887,9 +3413,29 @@ export interface components {
             current?: number;
             /** @description When the window resets (`rate_limited`), or when asks start again (`ask_limit`, the 1st, UTC). */
             reset_at?: components["schemas"]["Timestamp"];
+            /** @description The V1 memories a space holds (`space_has_notes`). */
+            notes?: number;
         };
         ErrorEnvelope: {
             error: components["schemas"]["Error"];
+        };
+        SpaceEnvelope: {
+            data: components["schemas"]["Space"];
+        };
+        ImportResultEnvelope: {
+            data: components["schemas"]["ImportResult"];
+        };
+        ImportViewEnvelope: {
+            data: components["schemas"]["ImportView"];
+        };
+        ImportPageEnvelope: {
+            data: components["schemas"]["ImportPage"];
+        };
+        ImportConflictResultEnvelope: {
+            data: components["schemas"]["ImportConflictResult"];
+        };
+        BulkReviewResultEnvelope: {
+            data: components["schemas"]["BulkReviewResult"];
         };
         SpaceListEnvelope: {
             data: components["schemas"]["SpaceList"];
@@ -3136,6 +3682,15 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
+        /** @description `slug_taken` (the slug belongs to another space) or `space_has_notes` (the space holds V1 memories, `details.notes`; switch it in the app). */
+        SpaceConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
         /** @description The target after the command. */
         TargetResult: {
             headers: {
@@ -3214,6 +3769,10 @@ export interface components {
         Via: "api" | "cli" | "mcp";
         /** @description A receipt's id. */
         ReceiptPath: components["schemas"]["Id"];
+        /** @description The import's id. */
+        ImportPath: components["schemas"]["Id"];
+        /** @description The disagreement's number within the import (its `n`, from 1). */
+        ConflictNumber: string;
         /** @description A gate's display ID (G-0012, with `?space=`) or its id. */
         GateRefPath: components["schemas"]["GateRef"];
         /**
@@ -3247,6 +3806,8 @@ export interface components {
         TargetLocation: string;
         /** @description The gate's URL, by id. */
         GateLocation: string;
+        /** @description The import's URL. */
+        ImportURL: string;
     };
     pathItems: never;
 }
@@ -3272,6 +3833,98 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    createSpace: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSpaceRequest"];
+            };
+        };
+        responses: {
+            /** @description The space, with you as its owner. */
+            201: {
+                headers: {
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpaceEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["SpaceConflict"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    switchSpace: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The space, on the V2 record. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpaceEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["SpaceConflict"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];
@@ -3397,6 +4050,104 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    keepMemories: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description What happened to each proposal, in request order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkReviewResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    rejectMemories: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description What happened to each proposal, in request order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkReviewResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];
@@ -3613,6 +4364,179 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listImports: {
+        parameters: {
+            query?: {
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size. Larger values are capped at 200. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of imports. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPageEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    createImport: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRequest"];
+            };
+        };
+        responses: {
+            /** @description The import, and what became of each statement. */
+            201: {
+                headers: {
+                    Location: components["headers"]["ImportURL"];
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    getImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description The import's id. */
+                import: components["parameters"]["ImportPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The import. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportViewEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    settleImportConflict: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description The import's id. */
+                import: components["parameters"]["ImportPath"];
+                /** @description The disagreement's number within the import (its `n`, from 1). */
+                n: components["parameters"]["ConflictNumber"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettleImportConflictRequest"];
+            };
+        };
+        responses: {
+            /** @description The disagreement, settled, and every memory it changed. */
+            200: {
+                headers: {
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportConflictResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
             422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];

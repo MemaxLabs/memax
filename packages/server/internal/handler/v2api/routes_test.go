@@ -102,6 +102,15 @@ var sampleRequests = map[string]struct {
 	"getGate":         {path: "/v2/gates/G-0012?space=memax-v2"},
 	"answerGate":      {path: "/v2/gates/G-0012:answer?space=memax-v2", body: `{"option":1}`, header: map[string]string{"If-Match": `"1"`}},
 	"withdrawGate":    {path: "/v2/gates/" + sampleID + ":withdraw"},
+
+	"createSpace":          {path: "/v2/spaces", body: `{"name":"Acme web","repository":"acme/web"}`},
+	"switchSpace":          {path: "/v2/spaces/personal:switch"},
+	"keepMemories":         {path: "/v2/spaces/memax-v2/memories:keep", body: `{"items":[{"memory":"M-0001","version":1}]}`},
+	"rejectMemories":       {path: "/v2/spaces/memax-v2/memories:reject", body: `{"items":[{"memory":"M-0001"}]}`},
+	"createImport":         {path: "/v2/spaces/memax-v2/imports", body: `{"items":[{"key":"a","location":"repository","statement":"Use pnpm.","section":"conventions"}]}`},
+	"listImports":          {path: "/v2/spaces/memax-v2/imports"},
+	"getImport":            {path: "/v2/spaces/memax-v2/imports/" + sampleID},
+	"settleImportConflict": {path: "/v2/spaces/memax-v2/imports/" + sampleID + "/conflicts/1:settle", body: `{"choice":"keep_all"}`},
 }
 
 const sampleID = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
@@ -151,7 +160,7 @@ func TestRoutingErrorsUseTheEnvelope(t *testing.T) {
 		code, allow  string
 	}{
 		{"GET", "/v2/nowhere", 404, "not_found", ""},
-		{"DELETE", "/v2/spaces", 405, "method_not_allowed", "GET"},
+		{"DELETE", "/v2/spaces", 405, "method_not_allowed", "GET, POST"},
 		{"PUT", "/v2/spaces/x/memories", 405, "method_not_allowed", "GET, POST"},
 		{"POST", "/v2/memories/M-0001", 405, "method_not_allowed", "GET"},
 		{"POST", "/v2/memories/M-0001:forget", 404, "not_found", ""},
@@ -242,7 +251,8 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 	sameSet(t, "Outcome", specEnum(t, "Outcome"), []string{string(ledger.OutcomeApplied), string(ledger.OutcomeProposed), string(ledger.OutcomeNeedsConfirmation)})
 	sameSet(t, "PolicyEffect", specEnum(t, "PolicyEffect"),
 		[]string{string(policy.EffectApply), string(policy.EffectPropose), string(policy.EffectConfirm), string(policy.EffectRefuse)})
-	sameSet(t, "PolicyCode", specEnum(t, "PolicyCode"), stringConsts(t, "../../ledger/policy/policy.go", "Code"))
+	sameSet(t, "PolicyCode", specEnum(t, "PolicyCode"), append(stringConsts(t, "../../ledger/policy/policy.go", "Code"),
+		stringConsts(t, "../../ledger/policy/spaces.go", "Code")...))
 	// rate_limited (codeRateLimited) also comes from the rate-limit
 	// middleware in front of /v2.
 	sameSet(t, "ErrorCode", specEnum(t, "ErrorCode"), stringConsts(t, "errors.go", "code"))
@@ -277,6 +287,14 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 
 	// Decision gates.
 	sameSet(t, "GateStatus", specEnum(t, "GateStatus"), strs(ledger.GateStatuses))
+
+	// Imports.
+	sameSet(t, "ImportLocation", specEnum(t, "ImportLocation"), []string{string(ledger.ImportRepository), string(ledger.ImportHome)})
+	sameSet(t, "ImportOutcome", specEnum(t, "ImportOutcome"), strs(ledger.ImportOutcomes))
+	sameSet(t, "ImportSkipReason", specEnum(t, "ImportSkipReason"), strs(ledger.ImportSkipReasons))
+	sameSet(t, "ImportCheckState", specEnum(t, "ImportCheckState"), ledger.ImportCheckStates)
+	sameSet(t, "ImportHeld", specEnum(t, "ImportHeld"), ledger.ImportHelds)
+	sameSet(t, "ImportChoice", specEnum(t, "ImportChoice"), strs(ledger.ImportChoices))
 }
 
 // stringConsts parses a Go file for string constants whose names start

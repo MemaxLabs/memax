@@ -34,8 +34,10 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[ledger.JudgeArgs]) err
 	return err
 }
 
-// AddWorkers registers the judge's worker. j may be nil in an insert-only
-// client, which never works jobs.
+// AddWorkers registers the judge's workers: judge_proposal, and
+// judge_import (imports.go). j may be nil in an insert-only client, which
+// never works jobs.
 func AddWorkers(workers *river.Workers, j *Judge) {
 	river.AddWorker(workers, &Worker{Judge: j})
+	river.AddWorker(workers, &ImportWorker{Judge: j})
 }

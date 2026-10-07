@@ -16,12 +16,23 @@ interface LoginOptions {
 }
 
 export async function loginCommand(options: LoginOptions = {}): Promise<void> {
+  if (!(await signInWithBrowser(options))) process.exit(1);
+}
+
+/**
+ * Signs in through the browser (OAuth with a local callback) and saves the
+ * credentials; false, with the reason printed, when it didn't work.
+ * `memax login` and `memax init` both sign in this way.
+ */
+export async function signInWithBrowser(
+  options: LoginOptions = {},
+): Promise<boolean> {
   let provider: AuthProviderName;
   try {
     provider = normalizeProvider(options.provider);
   } catch (err) {
     console.error(`  Login failed: ${(err as Error).message}\n`);
-    process.exit(1);
+    return false;
   }
 
   // Start a temporary local server to receive the OAuth callback
@@ -141,9 +152,10 @@ export async function loginCommand(options: LoginOptions = {}): Promise<void> {
     console.log(
       "  Logged in successfully. Credentials saved to ~/.memax/credentials.json\n",
     );
+    return true;
   } catch (err) {
     console.error(`  Login failed: ${(err as Error).message}\n`);
-    process.exit(1);
+    return false;
   }
 }
 

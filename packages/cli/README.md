@@ -54,6 +54,14 @@ memax ask "How do we handle breaking schema changes?"
 memax setup
 ```
 
+## Set up a repository
+
+```bash
+npx memax-cli init
+```
+
+`memax init` finds your agents and the files they already read (`CLAUDE.md`, `AGENTS.md`, Cursor rules, their memory notes), scans them for secrets and hidden characters on your machine, and imports what they say as proposals. It shows you where the files disagree, keeps what you agree with, and compiles the space back into those files, never over one you wrote. Run it again any time; `--dry-run` uploads nothing, and `--yes --format json` is for CI.
+
 ## Compiled files: the record on your disk
 
 A Memax space compiles to the files your agents already read: `AGENTS.md`, a `CLAUDE.md` that imports it, and path-scoped Cursor rules. Link a repository once, and a small daemon writes each compile into it within seconds of a Keep. It never writes over a hand edit: it reports the edit, and you pull it in, overwrite it or stop compiling the file in the app. A pulled edit stays in the file until its proposals are kept or rejected in Review.

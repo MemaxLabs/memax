@@ -13,7 +13,8 @@ It's designed to feel like `git` — composable commands, Unix-friendly
 npm install -g memax-cli
 ```
 
-The binary is `memax`.
+The binary is `memax`. To set Memax up in a repository, run
+[`npx memax-cli init`](/cli/init).
 
 ## Command overview
 
@@ -21,6 +22,7 @@ The binary is `memax`.
 
 | Command                         | Description                                                              |
 | ------------------------------- | ------------------------------------------------------------------------ |
+| [`init`](/cli/init)             | Set Memax up here: import your agents' files, settle them, and compile.  |
 | [`status`](/cli/status)         | The space, its compiled files and agents, and what's waiting on you.     |
 | [`compile`](/cli/compile)       | Compile every target now, and wait for the files to reach this machine.  |
 | [`link` \| `unlink`](/cli/link) | Link this repository to a space, so its compiled files are written here. |

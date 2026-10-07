@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -27,7 +28,7 @@ import (
 )
 
 // The judge's candidate sets on the labelled pairs (plan 25 §5.8): every
-// pair's candidate is kept in one space with all the others (105 distinct
+// pair's candidate is kept in one space with all the others (99 distinct
 // statements), each proposal is judged there, and we count whether the
 // labelled candidate reached the model (or stage 0 folded into it), with
 // lexical candidates only and with the vector set added.
@@ -37,26 +38,32 @@ import (
 //
 // The fake embedder shares the lexical lanes' view of words, so its gain
 // says only that the vector set flows through; the live run is the
-// measurement, and it also prints each class's cosine similarities, to
-// calibrate JUDGE_VECTOR_FLOOR (0.65) and V2_NEAR_DUPLICATE_FLOOR (0.90).
+// measurement. It also sweeps JUDGE_VECTOR_FLOOR end to end, says why each
+// pair the lexical lanes miss is or isn't won by the vectors, and prints
+// each class's cosine similarities: the judge's (voyage-4 to voyage-4) and
+// Remember's near-duplicate check (a draft on the query model,
+// voyage-4-lite, to kept memories on voyage-4), to calibrate
+// JUDGE_VECTOR_FLOOR (0.65) and V2_NEAR_DUPLICATE_FLOOR (0.90). Results are
+// in RESULTS.md.
 
 var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 const evalModel = "voyage-4"
 
-// liveEmbedder is Voyage with the index model, when the live run is asked
-// for; else the bag-of-words fake.
-func liveEmbedder(t *testing.T) (embed.Embedder, string) {
+// liveEmbedders are Voyage's index and query models when the live run is
+// asked for; else the bag-of-words fake for both.
+func liveEmbedders(t *testing.T) (index, query embed.Embedder, mode string) {
 	t.Helper()
 	if os.Getenv("V2_EVAL_LIVE") != "1" {
-		return mockembed.NewWords(), "fake (bag of words)"
+		w := mockembed.NewWords()
+		return w, w, "fake (bag of words)"
 	}
 	cfg := v2index.ConfigFromEnv(os.LookupEnv)
-	e := cfg.IndexEmbedder()
-	if e == nil {
+	index, query = cfg.IndexEmbedder(), cfg.QueryEmbedder()
+	if index == nil {
 		t.Fatal("V2_EVAL_LIVE=1 needs VOYAGE_API_KEY")
 	}
-	return e, "live (" + cfg.IndexModel + ")"
+	return index, query, "live (" + cfg.IndexModel + ", queries and drafts " + cfg.QueryModel + ")"
 }
 
 // recorder is a stage-1 model that records which candidates it was asked
@@ -106,7 +113,7 @@ func TestCandidates(t *testing.T) {
 		t.Skip("candidates: skipped in -short")
 	}
 	pairs := load(t)
-	emb, mode := liveEmbedder(t)
+	emb, queryEmb, mode := liveEmbedders(t)
 	_, pool := testdb.Acquire(t)
 	ctx := context.Background()
 	l := ledger.New(pool, ledger.WithLogger(quiet))
@@ -174,20 +181,37 @@ func TestCandidates(t *testing.T) {
 			break
 		}
 	}
-	cfg := judge.Config{Primary: judge.Tier{Model: "recorder"}, Log: quiet}
-	run := func(sp uuid.UUID, opts ...judge.Option) (map[string]bool, map[string]int) {
+	vectors := v2recall.NewVectors(l, emb, emb, v2recall.VectorConfig{Model: evalModel, Log: quiet})
+	// run judges every proposal of a space. Round 0 is the first verdict;
+	// a later round judges again (Force), except the proposals stage 0
+	// folded in round 0, which are no longer proposals: their fold doesn't
+	// depend on the vectors, so it carries over.
+	folded := map[uuid.UUID]map[string]bool{} // space → pair id → whether its round-0 fold hit the labelled candidate
+	run := func(sp uuid.UUID, floor float64, round int, opts ...judge.Option) (map[string]bool, map[string]int) {
 		rec := &recorder{asked: map[string][]string{}}
-		j := judge.New(l, rec, cfg, opts...)
+		j := judge.New(l, rec, judge.Config{Primary: judge.Tier{Model: "recorder"}, VectorFloor: floor, Log: quiet}, opts...)
 		found, sizes := map[string]bool{}, map[string]int{}
+		if folded[sp] == nil {
+			folded[sp] = map[string]bool{}
+		}
 		for _, p := range pairs {
+			if hit, ok := folded[sp][p.ID]; ok && round > 0 {
+				found[p.ID] = hit
+				continue
+			}
 			m := proposals[sp][p.ID]
-			r, err := j.Run(ctx, ledger.JudgeArgs{MemoryID: m.ID, SpaceID: sp, Version: 1, Mode: ledger.JudgeProposal}, judge.RunOptions{})
+			r, err := j.Run(ctx, ledger.JudgeArgs{MemoryID: m.ID, SpaceID: sp, Version: 1, Mode: ledger.JudgeProposal,
+				Round: round, Force: round > 0}, judge.RunOptions{})
 			if err != nil {
 				t.Fatalf("%s: %v", p.ID, err)
+			}
+			if r.Skipped {
+				t.Fatalf("%s: round %d was skipped", p.ID, round)
 			}
 			want := targets[sp][p.Candidate.Statement]
 			if r.Stage == ledger.StageExact || r.Stage == ledger.StageNear {
 				found[p.ID] = r.Target == want
+				folded[sp][p.ID] = found[p.ID]
 				continue
 			}
 			refs := rec.asked[m.Statement]
@@ -198,8 +222,8 @@ func TestCandidates(t *testing.T) {
 		}
 		return found, sizes
 	}
-	lexFound, _ := run(lexicalSpace)
-	vecFound, vecSizes := run(vectorSpace, judge.WithVectors(v2recall.NewVectors(l, emb, emb, v2recall.VectorConfig{Model: evalModel, Log: quiet})))
+	lexFound, _ := run(lexicalSpace, judge.DefaultVectorFloor, 0)
+	vecFound, vecSizes := run(vectorSpace, judge.DefaultVectorFloor, 0, judge.WithVectors(vectors))
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "judge candidates over %d pairs, %d kept candidates per space, embedder %s\n", len(pairs), len(targets[lexicalSpace]), mode)
@@ -238,62 +262,158 @@ func TestCandidates(t *testing.T) {
 	}
 	fmt.Fprintf(&b, "related pairs (all but unrelated): candidate recall %.2f lexical → %.2f with vectors (%d gained: %v)\n",
 		float64(lex)/float64(related), float64(vec)/float64(related), len(gained), gained)
-	fmt.Fprintf(&b, "related pairs the lexical lanes miss (what vectors can win): %v\n", missed)
-	total := 0
-	for _, n := range vecSizes {
-		total += n
-	}
+	fmt.Fprintf(&b, "related pairs the lexical lanes miss: %v (some fold at stage 0 into another pair's memory with the same words; see below)\n", missed)
 	fmt.Fprintf(&b, "mean candidates per model call with vectors: %.1f (cap %d + keyed decisions)\n",
-		float64(total)/float64(max(len(vecSizes), 1)), judge.DefaultCandidates)
+		meanSize(vecSizes), judge.DefaultCandidates)
 	t.Log(b.String())
 	if vec < lex {
 		t.Errorf("the vector set lost candidates: %d → %d", lex, vec)
 	}
 
-	// The cosine similarity of each pair, by class, for the floors.
+	// Why each pair the lexical lanes miss is, or isn't, won by the
+	// vectors: the target's rank and similarity among the proposal's 10
+	// nearest kept memories (what judge.Vectors returns before the floor).
+	b.Reset()
+	fmt.Fprintf(&b, "lexical misses, at the vector floor %.2f:\n", judge.DefaultVectorFloor)
+	var notNear, belowFloor, cutByFusion, won, foldedElsewhere int
+	for _, id := range missed {
+		p := pairByID(pairs, id)
+		m := proposals[vectorSpace][id]
+		near, err := vectors.Similar(ctx, scope, vectorSpace, m.ID, m.Statement, judge.DefaultCandidates)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := targets[vectorSpace][p.Candidate.Statement]
+		at := slices.IndexFunc(near, func(c ledger.JudgeCandidate) bool { return c.Ref == want })
+		var why string
+		hit, wasFolded := folded[vectorSpace][id]
+		switch {
+		case wasFolded && !hit:
+			foldedElsewhere++
+			why = "stage 0 folded it into another memory with the same words, so no model call"
+		case at < 0:
+			notNear++
+			why = "not among the 10 nearest"
+		case near[at].Score < judge.DefaultVectorFloor:
+			belowFloor++
+			why = fmt.Sprintf("rank %d, similarity %.2f: below the floor", at+1, near[at].Score)
+		case !vecFound[id]:
+			cutByFusion++
+			why = fmt.Sprintf("rank %d, similarity %.2f: above the floor, cut when fused with the lexical lanes to %d", at+1, near[at].Score, judge.DefaultCandidates)
+		default:
+			won++
+			why = fmt.Sprintf("rank %d, similarity %.2f: won", at+1, near[at].Score)
+		}
+		fmt.Fprintf(&b, "  %s (%s): %s\n", id, p.Class, why)
+	}
+	fmt.Fprintf(&b, "  won %d, cut by fusion %d, below the floor %d, not near %d, folded into another memory %d\n", won, cutByFusion,
+		belowFloor, notNear, foldedElsewhere)
+	t.Log(b.String())
+
+	// JUDGE_VECTOR_FLOOR end to end: candidate recall on related pairs, how
+	// often an unrelated pair's candidate still reaches the model, and the
+	// candidates per call.
+	b.Reset()
+	b.WriteString("JUDGE_VECTOR_FLOOR sweep (the vector space):\n")
+	for i, floor := range []float64{0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75} {
+		found, sizes := run(vectorSpace, floor, i+1, judge.WithVectors(vectors))
+		var rel, unrel int
+		for _, p := range pairs {
+			if !found[p.ID] {
+				continue
+			}
+			if p.Class == ledger.RelationUnrelated {
+				unrel++
+			} else {
+				rel++
+			}
+		}
+		fmt.Fprintf(&b, "  floor %.2f: related candidate recall %.2f (%d/%d), unrelated candidates reaching the model %d/%d, mean candidates %.1f\n",
+			floor, float64(rel)/float64(related), rel, related, unrel, len(pairs)-related, meanSize(sizes))
+	}
+	t.Log(b.String())
+
+	// The cosine similarity of each pair, by class, for the floors: the
+	// judge compares stored voyage-4 vectors; Remember compares a draft
+	// embedded with the query model to stored voyage-4 vectors.
 	texts := make([]string, 0, 2*len(pairs))
+	drafts := make([]string, 0, len(pairs))
 	for _, p := range pairs {
 		texts = append(texts, p.Proposal.Statement, p.Candidate.Statement)
+		drafts = append(drafts, p.Proposal.Statement)
 	}
 	vecs, err := emb.EmbedContext(ctx, texts, "document")
 	if err != nil {
 		t.Fatal(err)
 	}
-	byClass := map[ledger.Relation][]float64{}
+	draftVecs, err := queryEmb.EmbedContext(ctx, drafts, "document")
+	if err != nil {
+		t.Fatal(err)
+	}
+	judgeSim, draftSim := map[ledger.Relation][]float64{}, map[ledger.Relation][]float64{}
 	for i, p := range pairs {
-		byClass[p.Class] = append(byClass[p.Class], cosine(vecs[2*i], vecs[2*i+1]))
+		judgeSim[p.Class] = append(judgeSim[p.Class], cosine(vecs[2*i], vecs[2*i+1]))
+		draftSim[p.Class] = append(draftSim[p.Class], cosine(draftVecs[i], vecs[2*i+1]))
 	}
-	b.Reset()
-	fmt.Fprintf(&b, "cosine similarity of the pairs (%s): min / p10 / median / max\n", mode)
+	t.Log(similarityReport("judge, proposal to candidate (index model both sides)", mode, judgeSim,
+		[]float64{0.5, 0.55, 0.6, 0.65, 0.7, 0.8, 0.9}))
+	t.Log(similarityReport("Remember, draft (query model) to kept memory (index model)", mode, draftSim,
+		[]float64{0.8, 0.85, 0.88, 0.9, 0.92, 0.94, 0.96}))
+}
+
+func meanSize(sizes map[string]int) float64 {
+	total := 0
+	for _, n := range sizes {
+		total += n
+	}
+	return float64(total) / float64(max(len(sizes), 1))
+}
+
+func pairByID(pairs []pair, id string) pair {
+	for _, p := range pairs {
+		if p.ID == id {
+			return p
+		}
+	}
+	return pair{}
+}
+
+func similarityReport(what, mode string, byClass map[ledger.Relation][]float64, floors []float64) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "cosine similarity, %s (%s): min / p10 / p25 / median / p75 / max\n", what, mode)
 	for _, c := range classes {
-		s := byClass[c]
+		s := slices.Clone(byClass[c])
 		sort.Float64s(s)
-		fmt.Fprintf(&b, "%-12s %.2f / %.2f / %.2f / %.2f\n", c, s[0], s[len(s)/10], s[len(s)/2], s[len(s)-1])
+		q := func(f float64) float64 { return s[min(len(s)-1, int(f*float64(len(s))))] }
+		fmt.Fprintf(&b, "%-12s %.2f / %.2f / %.2f / %.2f / %.2f / %.2f\n", c, s[0], q(0.1), q(0.25), q(0.5), q(0.75), s[len(s)-1])
 	}
-	above := func(floor float64, keep func(ledger.Relation) bool) (int, int) {
-		var in, of int
-		for _, c := range classes {
-			if !keep(c) {
-				continue
-			}
-			for _, x := range byClass[c] {
-				of++
-				if x >= floor {
-					in++
+	for _, floor := range floors {
+		count := func(keep func(ledger.Relation) bool) (int, int) {
+			var in, of int
+			for _, c := range classes {
+				if !keep(c) {
+					continue
+				}
+				for _, x := range byClass[c] {
+					of++
+					if x >= floor {
+						in++
+					}
 				}
 			}
+			return in, of
 		}
-		return in, of
+		rel, relN := count(func(c ledger.Relation) bool { return c != ledger.RelationUnrelated })
+		unr, unrN := count(func(c ledger.Relation) bool { return c == ledger.RelationUnrelated })
+		dup, dupN := count(func(c ledger.Relation) bool { return c == ledger.RelationDuplicate })
+		upd, updN := count(func(c ledger.Relation) bool { return c == ledger.RelationUpdates })
+		other, otherN := count(func(c ledger.Relation) bool {
+			return c != ledger.RelationDuplicate && c != ledger.RelationUpdates
+		})
+		fmt.Fprintf(&b, "floor %.2f: related %d/%d, unrelated %d/%d; duplicates %d/%d, updates %d/%d, extends+contradicts+unrelated %d/%d\n",
+			floor, rel, relN, unr, unrN, dup, dupN, upd, updN, other, otherN)
 	}
-	for _, floor := range []float64{0.5, 0.6, 0.65, 0.7, 0.8, 0.9} {
-		rel, relN := above(floor, func(c ledger.Relation) bool { return c != ledger.RelationUnrelated })
-		unr, unrN := above(floor, func(c ledger.Relation) bool { return c == ledger.RelationUnrelated })
-		dup, dupN := above(floor, func(c ledger.Relation) bool { return c == ledger.RelationDuplicate })
-		other, otherN := above(floor, func(c ledger.Relation) bool { return c != ledger.RelationDuplicate })
-		fmt.Fprintf(&b, "floor %.2f: related kept %d/%d, unrelated let in %d/%d; duplicates %d/%d, non-duplicates %d/%d\n",
-			floor, rel, relN, unr, unrN, dup, dupN, other, otherN)
-	}
-	t.Log(b.String())
+	return b.String()
 }
 
 func cosine(a, b []float64) float64 {

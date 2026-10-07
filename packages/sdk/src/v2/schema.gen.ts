@@ -946,8 +946,10 @@ export interface paths {
          *     flagged memory and the decision in force it contradicts), each with
          *     its sources, links and the judge's verdict; their latest receipts;
          *     and the four answers with what each does and whether you may take
-         *     it. Pass `with` when the memory has more than one conflict. A memory
-         *     with no conflict is 409 `invalid_transition`.
+         *     it. When the judge found the conflict, it also wrote a short
+         *     `question`, a `label` per answer and, when the sources settle it, a
+         *     `suggested` answer. Pass `with` when the memory has more than one
+         *     conflict. A memory with no conflict is 409 `invalid_transition`.
          */
         get: operations["getConflict"];
         put?: never;
@@ -2974,6 +2976,11 @@ export interface components {
             allowed: boolean;
             /** @description Why you may not, when policy says so. */
             policy?: components["schemas"]["PolicyDecision"];
+            /**
+             * @description The judge's short label for this answer ("Fly.io everywhere"),
+             *     when it wrote one. One line, in the language of the memories.
+             */
+            label?: string;
         };
         /** @description Both sides of a conflict, for ReviewConflict. */
         Conflict: {
@@ -2989,6 +2996,19 @@ export interface components {
             /** @description Both sides' latest receipts, newest first. */
             receipts: components["schemas"]["Receipt"][];
             options: components["schemas"]["ConflictOption"][];
+            /**
+             * @description The judge's short question for settling it ("Fly.io or Railway
+             *     for the v2 API?"), when it wrote one (the verdict that flagged
+             *     it). One line, in the language of the memories. Forgetting
+             *     either side takes it out.
+             */
+            question?: string;
+            /**
+             * @description The answer the judge suggests, relative to this memory, when the
+             *     flagged memory's sources settle it. A suggestion: a person
+             *     decides.
+             */
+            suggested?: components["schemas"]["ConflictChoice"];
         };
         MemoryDetail: {
             memory: components["schemas"]["Memory"];

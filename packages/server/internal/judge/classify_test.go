@@ -52,6 +52,44 @@ func TestClassifyAnswersEveryCandidate(t *testing.T) {
 	}
 }
 
+// A contradiction comes with the words a person settles it with: a
+// question, a label per answer and a suggestion, each one line. Any other
+// relation carries none, and the schema holds every answer to the shape.
+func TestClassifyWritesTheConflictsQuestion(t *testing.T) {
+	t.Parallel()
+	answer := `{"pairs":[
+	  {"candidate":"M-0174","relation":"contradicts","confidence":0.9,"explicit_change":false,"rationale":"r","merged_statement":"",
+	   "question":"Fly.io or Railway\nfor the v2 API?","labels":{"proposal":"Fly.io everywhere","decision":"Railway, as kept",
+	   "both":"Both, each scoped","open":"Leave it open"},"suggested":"both"},
+	  {"candidate":"M-0071","relation":"unrelated","confidence":0.9,"explicit_change":false,"rationale":"r","merged_statement":"",
+	   "question":"Stray?","labels":{"proposal":"x","decision":"y","both":"z","open":"w"},"suggested":"proposal"}],
+	 "conditions":[]}`
+	m := &fakeModel{answer: func(judge.Call, int) (string, error) { return answer, nil }}
+	cls, err := judge.NewClassifier(m, tiers(false, false)).Classify(context.Background(), proposal, []judge.Candidate{railway, pnpm})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, u := cls.Pairs[0], cls.Pairs[1]
+	if c.Question != "Fly.io or Railway for the v2 API?" || c.Suggested != ledger.SuggestBoth ||
+		c.Labels != (ledger.ConflictLabels{Proposal: "Fly.io everywhere", Decision: "Railway, as kept", Both: "Both, each scoped", Open: "Leave it open"}) {
+		t.Errorf("contradiction = %+v", c)
+	}
+	if u.Question != "" || u.Suggested != "" || u.Labels != (ledger.ConflictLabels{}) {
+		t.Errorf("an unrelated pair keeps words for a conflict: %+v", u)
+	}
+	// An answer without them, or with an unknown suggestion, doesn't match
+	// the schema: it is retried, then refused.
+	for _, bad := range []string{
+		`{"pairs":[{"candidate":"M-0174","relation":"contradicts","confidence":0.9,"explicit_change":false,"rationale":"","merged_statement":""}],"conditions":[]}`,
+		strings.Replace(answer, `"suggested":"both"`, `"suggested":"maybe"`, 1),
+	} {
+		m := &fakeModel{answer: func(judge.Call, int) (string, error) { return bad, nil }}
+		if _, err := judge.NewClassifier(m, tiers(false, false)).Classify(context.Background(), proposal, []judge.Candidate{railway, pnpm}); !errors.Is(err, judge.ErrNoAnswer) {
+			t.Errorf("an answer off the schema: %v", err)
+		}
+	}
+}
+
 func TestClassifyEscapesTheRecord(t *testing.T) {
 	t.Parallel()
 	m := &fakeModel{answer: oracle(nil)}
@@ -100,13 +138,13 @@ func TestClassifyRetriesThenFallsBack(t *testing.T) {
 			"", []string{"primary", "primary"}, true},
 		{"confidence out of range", true, func(c judge.Call, n int) (string, error) {
 			if c.Tier.Name == ledger.TierPrimary {
-				return `{"pairs":[{"candidate":"M-0071","relation":"duplicate","confidence":7,"explicit_change":false,"rationale":"","merged_statement":""}],"conditions":[]}`, nil
+				return `{"pairs":[{"candidate":"M-0071","relation":"duplicate","confidence":7,"explicit_change":false,"rationale":"","merged_statement":"","question":"","labels":{"proposal":"","decision":"","both":"","open":""},"suggested":"none"}],"conditions":[]}`, nil
 			}
 			return good(c, n)
 		}, ledger.TierFallback, []string{"primary", "primary", "fallback"}, false},
 		{"names no candidate", true, func(c judge.Call, n int) (string, error) {
 			if n == 0 {
-				return `{"pairs":[{"candidate":"M-9999","relation":"duplicate","confidence":1,"explicit_change":false,"rationale":"","merged_statement":""}],"conditions":[]}`, nil
+				return `{"pairs":[{"candidate":"M-9999","relation":"duplicate","confidence":1,"explicit_change":false,"rationale":"","merged_statement":"","question":"","labels":{"proposal":"","decision":"","both":"","open":""},"suggested":"none"}],"conditions":[]}`, nil
 			}
 			return good(c, n)
 		}, ledger.TierPrimary, []string{"primary", "primary"}, false},

@@ -936,6 +936,60 @@ describe("mapping what the judge said", () => {
       ],
     });
     expect(choiceFor("proposal")).toBe("keep_this");
+
+    // The judge's question, labels and suggestion, relative to the side
+    // asked from; a suggestion the person may not take isn't preselected.
+    const labelled = (choice: V2.ConflictChoice, label: string) => ({
+      ...options.find((o) => o.choice === choice)!,
+      label,
+    });
+    const judged = conflictOf(
+      {
+        memory: railway,
+        other: fly,
+        flagged_ref: "M-0431",
+        decision_ref: "M-0174",
+        link: link({ direction: "in", ref: "M-0431" }),
+        receipts: [proposed, keptBy],
+        options: [
+          {
+            ...labelled("keep_other", "Railway, as kept"),
+            choice: "keep_this",
+          },
+          {
+            ...labelled("keep_this", "Fly.io everywhere"),
+            choice: "keep_other",
+          },
+          labelled("keep_both", "Both, each scoped"),
+          labelled("leave_open", " "),
+        ],
+        question: "Fly.io or Railway for the v2 API?",
+        suggested: "keep_other",
+      },
+      ME,
+    );
+    expect(judged.question).toBe("Fly.io or Railway for the v2 API?");
+    expect(judged.options.map((o) => [o.kind, o.label])).toEqual([
+      ["proposal", "Fly.io everywhere"],
+      ["kept", "Railway, as kept"],
+      ["both", "Both, each scoped"],
+      ["open", null],
+    ]);
+    expect(judged.suggested).toBe(0);
+    const notYours = conflictOf(
+      {
+        memory: fly,
+        other: railway,
+        flagged_ref: "M-0431",
+        decision_ref: "M-0174",
+        link: link({}),
+        receipts: [proposed, keptBy],
+        options,
+        suggested: "keep_both",
+      },
+      ME,
+    );
+    expect(notYours.suggested).toBeNull();
   });
 });
 

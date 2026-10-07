@@ -90,7 +90,7 @@ func (r *recorder) Complete(_ context.Context, c judge.Call) (string, error) {
 	r.mu.Unlock()
 	pairs := make([]string, len(refs))
 	for i, ref := range refs {
-		pairs[i] = fmt.Sprintf(`{"candidate":%q,"relation":"unrelated","confidence":0.9,"explicit_change":false,"rationale":"x","merged_statement":""}`, ref)
+		pairs[i] = fmt.Sprintf(`{"candidate":%q,"relation":"unrelated","confidence":0.9,"explicit_change":false,"rationale":"x","merged_statement":"","question":"","labels":{"proposal":"","decision":"","both":"","open":""},"suggested":"none"}`, ref)
 	}
 	return `{"pairs":[` + strings.Join(pairs, ",") + `],"conditions":[]}`, nil
 }

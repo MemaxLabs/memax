@@ -58,6 +58,12 @@ type Pair struct {
 	MergedStatement string
 	// ExplicitChange: the proposal itself says the earlier choice changed.
 	ExplicitChange bool
+	// Question, Labels and Suggested settle a contradiction: a short
+	// question a person answers, one label per answer, and the answer the
+	// sources support ("" for none). Empty for any other relation.
+	Question  string
+	Labels    ledger.ConflictLabels
+	Suggested string
 	// Tier is the tier whose answer this is.
 	Tier string
 	// Unconfirmed is set when the pair needed the strong tier and it gave
@@ -217,12 +223,15 @@ func (c *Classifier) call(ctx context.Context, call Call) (string, error) {
 // answer is the JSON the model returns.
 type answer struct {
 	Pairs []struct {
-		Candidate       string  `json:"candidate"`
-		Relation        string  `json:"relation"`
-		Confidence      float64 `json:"confidence"`
-		ExplicitChange  bool    `json:"explicit_change"`
-		Rationale       string  `json:"rationale"`
-		MergedStatement string  `json:"merged_statement"`
+		Candidate       string                `json:"candidate"`
+		Relation        string                `json:"relation"`
+		Confidence      float64               `json:"confidence"`
+		ExplicitChange  bool                  `json:"explicit_change"`
+		Rationale       string                `json:"rationale"`
+		MergedStatement string                `json:"merged_statement"`
+		Question        string                `json:"question"`
+		Labels          ledger.ConflictLabels `json:"labels"`
+		Suggested       string                `json:"suggested"`
 	} `json:"pairs"`
 	Conditions []Condition `json:"conditions"`
 }
@@ -256,9 +265,24 @@ func (c *Classifier) parse(text string, cands []Candidate, tier string) ([]Pair,
 		if rel != ledger.RelationDuplicate && rel != ledger.RelationExtends {
 			merged = ""
 		}
-		byRef[ref] = Pair{Ref: ref, Relation: rel, Confidence: pr.Confidence, ExplicitChange: pr.ExplicitChange,
+		p := Pair{Ref: ref, Relation: rel, Confidence: pr.Confidence, ExplicitChange: pr.ExplicitChange,
 			Rationale: truncate(strings.TrimSpace(pr.Rationale), 300), MergedStatement: truncate(merged, ledger.MaxStatementRunes),
 			Tier: tier}
+		// A person settles a contradiction (or an implicit update of a
+		// decision in force, which is flagged too) by answering a question.
+		if rel == ledger.RelationContradicts || rel == ledger.RelationUpdates {
+			p.Question = oneLine(pr.Question, ledger.MaxConflictQuestion)
+			p.Labels = ledger.ConflictLabels{
+				Proposal: oneLine(pr.Labels.Proposal, ledger.MaxConflictLabel),
+				Decision: oneLine(pr.Labels.Decision, ledger.MaxConflictLabel),
+				Both:     oneLine(pr.Labels.Both, ledger.MaxConflictLabel),
+				Open:     oneLine(pr.Labels.Open, ledger.MaxConflictLabel),
+			}
+			if slices.Contains(ledger.Suggestions, pr.Suggested) {
+				p.Suggested = pr.Suggested
+			}
+		}
+		byRef[ref] = p
 	}
 	if len(byRef) == 0 {
 		return nil, nil, errors.New("it names none of the candidates")
@@ -275,6 +299,13 @@ func (c *Classifier) parse(text string, cands []Candidate, tier string) ([]Pair,
 		a.Conditions = nil
 	}
 	return out, a.Conditions, nil
+}
+
+// oneLine is one of the model's lines for a person: control characters
+// become spaces, and it is trimmed and bounded.
+func oneLine(s string, n int) string {
+	s = strings.Join(strings.FieldsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f }), " ")
+	return truncate(strings.TrimSpace(s), n)
 }
 
 func firstLine(s string) string {
@@ -304,14 +335,27 @@ var outputSchema = json.RawMessage(`{
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["candidate", "relation", "confidence", "explicit_change", "rationale", "merged_statement"],
+        "required": ["candidate", "relation", "confidence", "explicit_change", "rationale", "merged_statement", "question", "labels", "suggested"],
         "properties": {
           "candidate": {"type": "string"},
           "relation": {"type": "string", "enum": ["duplicate", "updates", "extends", "contradicts", "unrelated"]},
           "confidence": {"type": "number"},
           "explicit_change": {"type": "boolean"},
           "rationale": {"type": "string"},
-          "merged_statement": {"type": "string"}
+          "merged_statement": {"type": "string"},
+          "question": {"type": "string"},
+          "labels": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["proposal", "decision", "both", "open"],
+            "properties": {
+              "proposal": {"type": "string"},
+              "decision": {"type": "string"},
+              "both": {"type": "string"},
+              "open": {"type": "string"}
+            }
+          },
+          "suggested": {"type": "string", "enum": ["proposal", "decision", "both", "open", "none"]}
         }
       }
     },

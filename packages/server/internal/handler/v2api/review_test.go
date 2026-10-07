@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -29,15 +30,26 @@ func (contradicting) Complete(_ context.Context, c judge.Call) (string, error) {
 		ExplicitChange  bool    `json:"explicit_change"`
 		Rationale       string  `json:"rationale"`
 		MergedStatement string  `json:"merged_statement"`
+		Question        string  `json:"question"`
+		Labels          struct {
+			Proposal string `json:"proposal"`
+			Decision string `json:"decision"`
+			Both     string `json:"both"`
+			Open     string `json:"open"`
+		} `json:"labels"`
+		Suggested string `json:"suggested"`
 	}
 	out := struct {
 		Pairs      []pair `json:"pairs"`
 		Conditions []any  `json:"conditions"`
 	}{Pairs: []pair{}, Conditions: []any{}}
 	for _, m := range candidateTag.FindAllStringSubmatch(c.Prompt, -1) {
-		p := pair{Candidate: m[1], Relation: "unrelated", Confidence: 0.9, Rationale: "Different subject."}
+		p := pair{Candidate: m[1], Relation: "unrelated", Confidence: 0.9, Rationale: "Different subject.", Suggested: "none"}
 		if m[2] == "true" {
 			p.Relation, p.Confidence, p.Rationale = "contradicts", 0.93, "It picks another host than "+m[1]+"."
+			p.Question, p.Suggested = "Which host holds for the v2 API?", "both"
+			p.Labels.Proposal, p.Labels.Decision = "The new host", "The host as kept"
+			p.Labels.Both, p.Labels.Open = "Both, each with its own scope", "Leave it undecided"
 		}
 		out.Pairs = append(out.Pairs, p)
 	}
@@ -167,12 +179,15 @@ func TestConflictFlaggedSettledAndUndone(t *testing.T) {
 		Options     []struct {
 			Choice  string `json:"choice"`
 			Allowed bool   `json:"allowed"`
+			Label   string `json:"label"`
 			Effects []struct {
 				Ref    string `json:"ref"`
 				Change string `json:"change"`
 			} `json:"effects"`
 		} `json:"options"`
-		Receipts []receipt `json:"receipts"`
+		Receipts  []receipt `json:"receipts"`
+		Question  string    `json:"question"`
+		Suggested string    `json:"suggested"`
 	}
 	e.do(call{method: "GET", path: "/v2/memories/" + fly.Memory.Ref + "/conflict?space=" + sp.slug, token: owner}).ok(200, &cf)
 	if cf.Memory.ID != fly.Memory.ID || cf.Other.ID != railway.Memory.ID || cf.FlaggedRef != fly.Memory.Ref ||
@@ -181,6 +196,28 @@ func TestConflictFlaggedSettledAndUndone(t *testing.T) {
 	}
 	if o := cf.Options[0]; o.Choice != "keep_this" || o.Effects[1].Change != "superseded" {
 		t.Errorf("keep_this = %+v", o)
+	}
+	// The judge's question, a label per answer and its suggestion.
+	labels := []string{}
+	for _, o := range cf.Options {
+		labels = append(labels, o.Choice+": "+o.Label)
+	}
+	if cf.Question != "Which host holds for the v2 API?" || cf.Suggested != "keep_both" || strings.Join(labels, " | ") !=
+		"keep_this: The new host | keep_other: The host as kept | keep_both: Both, each with its own scope | leave_open: Leave it undecided" {
+		t.Errorf("question %q, suggested %q, labels %v", cf.Question, cf.Suggested, labels)
+	}
+	// From the decision's side, the same words for the same answers.
+	var fromDecision struct {
+		Options []struct {
+			Choice string `json:"choice"`
+			Label  string `json:"label"`
+		} `json:"options"`
+		Question string `json:"question"`
+	}
+	e.do(call{method: "GET", path: memoryPath(railway.Memory, "/conflict"), token: owner}).ok(200, &fromDecision)
+	if fromDecision.Question != cf.Question || fromDecision.Options[0].Label != "The host as kept" ||
+		fromDecision.Options[1].Label != "The new host" {
+		t.Errorf("from the decision = %+v", fromDecision)
 	}
 	// The agent can read the conflict but no option is open to it.
 	var agentView struct {

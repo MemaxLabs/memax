@@ -64,14 +64,23 @@ func oracle(table map[string]verdict, conds ...judge.Condition) func(judge.Call,
 	}
 }
 
+// fakeQuestion is the fake's question about a pair it finds contradicting,
+// and fakeLabels its labels.
+func fakeQuestion(ref string) string { return "Which holds, the proposal or " + ref + "?" }
+
+var fakeLabels = ledger.ConflictLabels{Proposal: "The proposal", Decision: "As kept", Both: "Both, each scoped", Open: "Leave it open"}
+
 func answerFor(prompt string, table map[string]verdict, conds []judge.Condition) string {
 	type pair struct {
-		Candidate       string  `json:"candidate"`
-		Relation        string  `json:"relation"`
-		Confidence      float64 `json:"confidence"`
-		ExplicitChange  bool    `json:"explicit_change"`
-		Rationale       string  `json:"rationale"`
-		MergedStatement string  `json:"merged_statement"`
+		Candidate       string                `json:"candidate"`
+		Relation        string                `json:"relation"`
+		Confidence      float64               `json:"confidence"`
+		ExplicitChange  bool                  `json:"explicit_change"`
+		Rationale       string                `json:"rationale"`
+		MergedStatement string                `json:"merged_statement"`
+		Question        string                `json:"question"`
+		Labels          ledger.ConflictLabels `json:"labels"`
+		Suggested       string                `json:"suggested"`
 	}
 	out := struct {
 		Pairs      []pair            `json:"pairs"`
@@ -85,8 +94,12 @@ func answerFor(prompt string, table map[string]verdict, conds []judge.Condition)
 		if !ok {
 			v = verdict{relation: ledger.RelationUnrelated, confidence: 0.9}
 		}
-		out.Pairs = append(out.Pairs, pair{Candidate: m[1], Relation: string(v.relation), Confidence: v.confidence,
-			ExplicitChange: v.explicit, Rationale: "Compared with " + m[1] + ".", MergedStatement: v.merged})
+		p := pair{Candidate: m[1], Relation: string(v.relation), Confidence: v.confidence,
+			ExplicitChange: v.explicit, Rationale: "Compared with " + m[1] + ".", MergedStatement: v.merged, Suggested: "none"}
+		if v.relation == ledger.RelationContradicts || v.relation == ledger.RelationUpdates {
+			p.Question, p.Labels, p.Suggested = fakeQuestion(m[1]), fakeLabels, ledger.SuggestBoth
+		}
+		out.Pairs = append(out.Pairs, p)
 	}
 	b, _ := json.Marshal(out)
 	return string(b)

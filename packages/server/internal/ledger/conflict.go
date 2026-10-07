@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -870,6 +871,9 @@ type ConflictOption struct {
 	Allowed bool             `json:"allowed"`
 	// Policy says why it isn't allowed.
 	Policy *policy.Decision `json:"policy,omitempty"`
+	// Label is the judge's short label for this answer ("Fly.io
+	// everywhere"), when it wrote one.
+	Label string `json:"label,omitempty"`
 }
 
 // ConflictView is both sides of a conflict, side by side.
@@ -888,6 +892,72 @@ type ConflictView struct {
 	Receipts []Receipt `json:"receipts"`
 	// Options are ReviewConflict's four answers.
 	Options []ConflictOption `json:"options"`
+	// Question is the judge's short question for settling it ("Fly.io or
+	// Railway for the v2 API?"), and Suggested the answer it suggests,
+	// relative to this side, when it wrote them.
+	Question  string         `json:"question,omitempty"`
+	Suggested ConflictChoice `json:"suggested,omitempty"`
+}
+
+// conflictWords reads the judge's question, labels and suggestion for a
+// conflict: from the latest verdict that flagged the flagged side against
+// the decision, if it wrote them.
+func conflictWords(ctx context.Context, tx pgx.Tx, p conflictPair) (question string, labels ConflictLabels, suggested string, err error) {
+	var raw []byte
+	err = tx.QueryRow(ctx, `
+		SELECT COALESCE(question, ''), labels, COALESCE(suggested, '')
+		  FROM v2.judge_verdicts
+		 WHERE memory_id = $1 AND related_memory_id = $2 AND space_id = $3 AND outcome = 'flagged'
+		   AND (question IS NOT NULL OR labels IS NOT NULL OR suggested IS NOT NULL)
+		 ORDER BY version DESC, round DESC LIMIT 1`,
+		p.flagged.ID, p.decision.ID, p.flagged.SpaceID).Scan(&question, &raw, &suggested)
+	if errNoRows(err) {
+		return "", ConflictLabels{}, "", nil
+	}
+	if err != nil {
+		return "", ConflictLabels{}, "", fmt.Errorf("ledger: read the conflict's question: %w", err)
+	}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &labels); err != nil {
+			return "", ConflictLabels{}, "", fmt.Errorf("ledger: read the conflict's labels: %w", err)
+		}
+	}
+	return question, labels, suggested, nil
+}
+
+// choiceFor turns the judge's answer, by side, into a choice relative to
+// this side, and label picks its label.
+func (p *conflictPair) choiceFor(answer string) ConflictChoice {
+	flaggedIsThis := p.flagged == p.this
+	switch {
+	case answer == SuggestProposal && flaggedIsThis, answer == SuggestDecision && !flaggedIsThis:
+		return ChooseThis
+	case answer == SuggestProposal, answer == SuggestDecision:
+		return ChooseOther
+	case answer == SuggestBoth:
+		return ChooseBoth
+	case answer == SuggestOpen:
+		return ChooseOpen
+	}
+	return ""
+}
+
+func (p *conflictPair) label(l ConflictLabels, choice ConflictChoice) string {
+	for _, answer := range Suggestions {
+		if p.choiceFor(answer) == choice {
+			switch answer {
+			case SuggestProposal:
+				return l.Proposal
+			case SuggestDecision:
+				return l.Decision
+			case SuggestBoth:
+				return l.Both
+			case SuggestOpen:
+				return l.Open
+			}
+		}
+	}
+	return ""
 }
 
 // GetConflict reads one of this memory's conflicts (the one with other,
@@ -937,10 +1007,14 @@ func (l *Ledger) GetConflict(ctx context.Context, scope Scope, actor Actor, via 
 		}
 		grant, _ := scope.Grant(this.SpaceID)
 		pa := toPolicyActor(actor, via, grant)
+		question, labels, suggested, err := conflictWords(ctx, tx, p)
+		if err != nil {
+			return err
+		}
 		v := &ConflictView{Memory: this, Other: that, FlaggedRef: p.flagged.Ref, DecisionRef: p.decision.Ref,
-			Link: p.link, Receipts: nonNilSlice(receipts)}
+			Link: p.link, Receipts: nonNilSlice(receipts), Question: question, Suggested: p.choiceFor(suggested)}
 		for _, ch := range ConflictChoices {
-			opt := ConflictOption{Choice: ch, Effects: p.plan(ch), Allowed: true}
+			opt := ConflictOption{Choice: ch, Effects: p.plan(ch), Allowed: true, Label: p.label(labels, ch)}
 			d := policy.Decide(pa, policy.ActionResolveConflict, p.object(ch), sp.policy())
 			if d.Effect == policy.EffectRefuse {
 				opt.Allowed, opt.Policy = false, &d

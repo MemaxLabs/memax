@@ -250,6 +250,14 @@ type Verdict struct {
 	// memories; they are purged at Forget.
 	Rationale       string
 	MergedStatement string
+	// Question, Labels and Suggested are the model's words for settling a
+	// conflict it found (ReviewConflict): a short question, one label per
+	// answer and the answer it suggests ("" for none). They are kept only
+	// with a verdict that flags a conflict, and the question and labels
+	// are purged at Forget, like the rationale.
+	Question  string
+	Labels    ConflictLabels
+	Suggested string
 	Tier            string
 	Model           string
 	Candidates      []VerdictCandidate
@@ -296,7 +304,41 @@ const CommandRecordVerdict CommandName = "record_verdict"
 const (
 	maxVerdictRationale = 500
 	maxVerdictModel     = 200
+	// MaxConflictQuestion and MaxConflictLabel bound the judge's words for
+	// settling a conflict: one line each.
+	MaxConflictQuestion = 160
+	MaxConflictLabel    = 80
 )
+
+// ConflictLabels are the judge's short labels for the ways to settle a
+// conflict, by the flagged memory (proposal) and the decision in force it
+// contradicts (decision), whichever side asks.
+type ConflictLabels struct {
+	Proposal string `json:"proposal"`
+	Decision string `json:"decision"`
+	Both     string `json:"both"`
+	Open     string `json:"open"`
+}
+
+func (l ConflictLabels) empty() bool { return l == ConflictLabels{} }
+
+// The answers the judge may suggest (Verdict.Suggested), by side.
+const (
+	SuggestProposal = "proposal"
+	SuggestDecision = "decision"
+	SuggestBoth     = "both"
+	SuggestOpen     = "open"
+)
+
+// Suggestions lists every answer the judge may suggest.
+var Suggestions = []string{SuggestProposal, SuggestDecision, SuggestBoth, SuggestOpen}
+
+// conflictLine trims, bounds and flattens one of the judge's lines for a
+// conflict: a question or a label is one line of text.
+func conflictLine(s string, maxRunes int) string {
+	s = strings.Join(strings.FieldsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f }), " ")
+	return truncateRunes(strings.TrimSpace(s), maxRunes)
+}
 
 func (c *RecordVerdict) validate() error {
 	if c.Memory == uuid.Nil || c.Version < 1 || c.Round < 0 {
@@ -327,7 +369,19 @@ func (c *RecordVerdict) validate() error {
 	v.Rationale = truncateRunes(strings.TrimSpace(v.Rationale), maxVerdictRationale)
 	v.MergedStatement = truncateRunes(strings.TrimSpace(v.MergedStatement), MaxStatementRunes)
 	v.Model = truncateRunes(v.Model, maxVerdictModel)
-	for _, s := range []string{v.Rationale, v.MergedStatement, v.Model} {
+	if c.Outcome != OutcomeFlagged {
+		// Only a conflict is settled by a person's answer.
+		v.Question, v.Labels, v.Suggested = "", ConflictLabels{}, ""
+	}
+	v.Question = conflictLine(v.Question, MaxConflictQuestion)
+	for _, l := range []*string{&v.Labels.Proposal, &v.Labels.Decision, &v.Labels.Both, &v.Labels.Open} {
+		*l = conflictLine(*l, MaxConflictLabel)
+	}
+	if v.Suggested != "" && !slices.Contains(Suggestions, v.Suggested) {
+		return invalid("verdict.suggested", "use proposal, decision, both or open")
+	}
+	for _, s := range []string{v.Rationale, v.MergedStatement, v.Model, v.Question, v.Labels.Proposal, v.Labels.Decision,
+		v.Labels.Both, v.Labels.Open} {
 		if err := checkText("verdict", s, MaxStatementRunes, false); err != nil {
 			return err
 		}
@@ -721,14 +775,26 @@ func (w *writer) insertVerdict(ctx context.Context, spaceID, memoryID uuid.UUID,
 	if err != nil {
 		return err
 	}
+	// The words for settling a conflict stay only with a verdict that
+	// flagged one.
+	var question, suggested string
+	var labels []byte
+	if outcome == OutcomeFlagged {
+		question, suggested = v.Question, v.Suggested
+		if !v.Labels.empty() {
+			if labels, err = json.Marshal(v.Labels); err != nil {
+				return err
+			}
+		}
+	}
 	if _, err := w.tx.Exec(ctx, `
 		INSERT INTO v2.judge_verdicts (memory_id, version, round, space_id, mode, stage, verdict, outcome, related_memory_id,
 		                               confidence, rationale, merged_statement, tier, model, candidates, error, timings,
-		                               receipt_id, last_receipt_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18)`,
+		                               question, labels, suggested, receipt_id, last_receipt_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $21)`,
 		memoryID, c.Version, c.Round, spaceID, string(c.Mode), string(v.Stage), string(v.Relation), string(outcome), relatedArg,
 		v.Confidence, nullText(v.Rationale), nullText(v.MergedStatement), nullText(v.Tier), nullText(v.Model),
-		cands, nullText(v.Error), tj, receiptID); err != nil {
+		cands, nullText(v.Error), tj, nullText(question), labels, nullText(suggested), receiptID); err != nil {
 		return fmt.Errorf("ledger: write verdict: %w", err)
 	}
 	return nil

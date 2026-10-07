@@ -1715,8 +1715,10 @@ paths:
         flagged memory and the decision in force it contradicts), each with
         its sources, links and the judge's verdict; their latest receipts;
         and the four answers with what each does and whether you may take
-        it. Pass `with` when the memory has more than one conflict. A memory
-        with no conflict is 409 `invalid_transition`.
+        it. When the judge found the conflict, it also wrote a short
+        `question`, a `label` per answer and, when the sources settle it, a
+        `suggested` answer. Pass `with` when the memory has more than one
+        conflict. A memory with no conflict is 409 `invalid_transition`.
       parameters:
         - name: with
           in: query
@@ -5459,6 +5461,12 @@ components:
         policy:
           description: Why you may not, when policy says so.
           $ref: '#/components/schemas/PolicyDecision'
+        label:
+          description: |
+            The judge's short label for this answer ("Fly.io everywhere"),
+            when it wrote one. One line, in the language of the memories.
+          type: string
+          maxLength: 80
 
     Conflict:
       description: Both sides of a conflict, for ReviewConflict.
@@ -5489,6 +5497,20 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConflictOption'
+        question:
+          description: |
+            The judge's short question for settling it ("Fly.io or Railway
+            for the v2 API?"), when it wrote one (the verdict that flagged
+            it). One line, in the language of the memories. Forgetting
+            either side takes it out.
+          type: string
+          maxLength: 160
+        suggested:
+          description: |
+            The answer the judge suggests, relative to this memory, when the
+            flagged memory's sources settle it. A suggestion: a person
+            decides.
+          $ref: '#/components/schemas/ConflictChoice'
 
     MemoryDetail:
       type: object

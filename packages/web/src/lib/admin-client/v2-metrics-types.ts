@@ -1,6 +1,6 @@
 // Wire types for GET /v1/admin/v2/metrics: plan 25's phase gates (§12),
 // computed from the V2 record by weekly signup cohort (server:
-// internal/ledger/product_metrics.go, migration 051). Counts and seconds
+// internal/ledger/product_metrics.go, migration 053). Counts and seconds
 // only. Admin-only: never in the public SDK.
 
 export type AdminCohortKind = "new" | "from_v1";

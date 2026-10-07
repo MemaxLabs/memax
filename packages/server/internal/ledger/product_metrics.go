@@ -20,7 +20,7 @@ import (
 // plus review health. They are computed by weekly signup cohort from
 // receipts, reads, agent connections and imports, across every space, by
 // two SECURITY DEFINER functions only memax_v2_metrics may execute
-// (migration 051), and come back as counts and durations: no memory text,
+// (migration 053), and come back as counts and durations: no memory text,
 // no ids. The SQL there and the definitions here say the same thing:
 //
 //   - V2 start: the first time the person was a member of a space on the
@@ -63,7 +63,7 @@ import (
 // FirstSession is how long after signup the first session lasts.
 const FirstSession = 24 * time.Hour
 
-// MetricsRole is the role the product metrics run as (migration 051): it
+// MetricsRole is the role the product metrics run as (migration 053): it
 // alone may execute v2.product_metrics and v2.review_health, and it can
 // read nothing else.
 const MetricsRole = "memax_v2_metrics"

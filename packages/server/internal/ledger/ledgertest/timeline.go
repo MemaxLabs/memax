@@ -1,5 +1,5 @@
 // Package ledgertest builds V2 records with exact timelines for tests of
-// what is computed from them (the product metrics, migration 051).
+// what is computed from them (the product metrics, migration 053).
 //
 // The ledger stamps every receipt with the database's clock, so a record
 // written through commands can't say "this person connected Codex at

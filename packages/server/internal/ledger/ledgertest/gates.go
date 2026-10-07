@@ -14,7 +14,7 @@ type GateFixture struct {
 }
 
 // SeedGateFixture writes people with known timelines for the product
-// metrics (migration 051) and returns the range to ask for and the moment
+// metrics (migration 053) and returns the range to ask for and the moment
 // to ask at (2026-10-03 00:00 UTC). Every time is UTC.
 //
 // New people, week of Aug 3:

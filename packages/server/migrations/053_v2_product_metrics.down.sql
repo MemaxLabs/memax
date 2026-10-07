@@ -1,4 +1,4 @@
--- Revert 051: v2_product_metrics. Nothing is stored: the metrics are
+-- Revert 053: v2_product_metrics. Nothing is stored: the metrics are
 -- computed when asked, so rolling back drops the two functions, their
 -- policies and the role that runs them.
 

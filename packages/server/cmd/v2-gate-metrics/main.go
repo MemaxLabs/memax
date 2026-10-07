@@ -1,6 +1,6 @@
 // Command v2-gate-metrics prints plan 25's phase gates (§12) for people
 // who signed up in a date range, with the cohorts, review health and the
-// north star behind them (ledger.GetProductMetrics, migration 051). It
+// north star behind them (ledger.GetProductMetrics, migration 053). It
 // reads only: counts and durations, as the metrics role.
 //
 //	DATABASE_URL=… go run ./cmd/v2-gate-metrics                          # the last 8 signup weeks

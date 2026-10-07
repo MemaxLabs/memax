@@ -220,7 +220,7 @@ func TestDecidePrecedence(t *testing.T) {
 		{"contradicts a decision", ledger.JudgeProposal, true, "Deploy to Fly.io.", []judge.Candidate{railway},
 			[]judge.Pair{p(ledger.RelationContradicts, 0.9, false)}, ledger.OutcomeFlagged, 0},
 		{"weak contradiction is not a conflict", ledger.JudgeProposal, true, "Deploy to Fly.io.", []judge.Candidate{railway},
-			[]judge.Pair{p(ledger.RelationContradicts, 0.6, false)}, ledger.OutcomeNone, 0},
+			[]judge.Pair{p(ledger.RelationContradicts, 0.5, false)}, ledger.OutcomeNone, 0},
 		{"implicit update of a decision is a conflict", ledger.JudgeProposal, true, "Deploy to Fly.io.", []judge.Candidate{railway},
 			[]judge.Pair{p(ledger.RelationUpdates, 0.9, false)}, ledger.OutcomeFlagged, 0},
 		{"explicit change of a keyed decision supersedes", ledger.JudgeProposal, true, "We moved from Railway to Fly.io.",

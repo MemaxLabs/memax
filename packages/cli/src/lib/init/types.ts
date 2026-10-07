@@ -21,6 +21,8 @@ export interface InitOptions {
   daemon?: boolean;
   /** Seconds to wait for the judge (default 20). */
   wait?: string;
+  /** Sign in with a code confirmed in any browser (RFC 8628). */
+  device?: boolean;
 }
 
 /** The answers a person gives; tests script them. */

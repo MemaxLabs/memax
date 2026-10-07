@@ -77,6 +77,19 @@ export class FakeV2 {
    * spaces, imports, bulk review and the Brief: test/init/fake-init.ts).
    */
   readonly extra: Route[] = [];
+  /**
+   * The OAuth server's form endpoints (/oauth/…), answered in OAuth's own
+   * JSON before any credential is checked (test/login/fake-device.ts).
+   */
+  oauth?: (
+    path: string,
+    form: URLSearchParams,
+    headers: IncomingMessage["headers"],
+  ) => {
+    status: number;
+    body: unknown;
+    headers?: Record<string, string>;
+  } | null;
   reviewTotal = 0;
   keptCount = 0;
   /** Receipts written, as the server writes them (compile runs write none). */
@@ -312,9 +325,28 @@ export class FakeV2 {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
     const raw = Buffer.concat(chunks).toString("utf8");
-    const body = raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
     const url = new URL(req.url ?? "/", this.url);
     const path = decodeURIComponent(url.pathname);
+    // The OAuth server's forms (device sign-in), before any credential.
+    if (path.startsWith("/oauth/") && this.oauth) {
+      const form = new URLSearchParams(raw);
+      const out = this.oauth(path, form, req.headers);
+      this.log.push({
+        method: req.method ?? "",
+        path,
+        headers: req.headers,
+        body: Object.fromEntries(form),
+        status: out?.status ?? 404,
+      });
+      res.writeHead(out?.status ?? 404, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+        ...(out?.headers ?? {}),
+      });
+      res.end(JSON.stringify(out?.body ?? { error: "not_found" }));
+      return;
+    }
+    const body = raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
     const send = (
       status: number,
       payload: unknown,

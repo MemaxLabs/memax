@@ -17,7 +17,7 @@ import (
 // space's whole record. Two halves:
 //
 //   - Export, a command, writes the one `exported` receipt an export is
-//     counted by, on the space's own stream (migration 045). It changes
+//     counted by, on the space's own stream (migration 046). It changes
 //     nothing else.
 //   - ReadExport reads the record in one snapshot (REPEATABLE READ, read
 //     only, as memax_v2 in the person's scope) and hands it to an
@@ -29,7 +29,7 @@ import (
 // includes it, so an export lists its own receipt. Its reads record no R-
 // reads: those measure agents.
 
-// The export's receipt verb (migration 045) and command.
+// The export's receipt verb (migration 046) and command.
 const (
 	ActionExported Action      = "exported"
 	CommandExport  CommandName = "export"

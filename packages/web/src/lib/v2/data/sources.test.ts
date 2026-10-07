@@ -203,6 +203,8 @@ describe("the SDK source", () => {
       kind: "project",
       role: "owner",
       repository: "MemaxLabs/memax",
+      // No v2_enabled_at: the space is still on V1 (a first run).
+      onV2: false,
       kept: null,
       agents: null,
       people: null,

@@ -998,6 +998,49 @@ export interface AuthTokenPair {
   expires_in: number;
 }
 
+/**
+ * What the memax CLI says about itself when it asks for a device code
+ * (RFC 8628). The person sees it on memax.app/device before confirming.
+ */
+export interface DeviceSignInOptions {
+  /** The CLI's version, e.g. "2.0.0". */
+  clientVersion?: string;
+  /** The machine's name (its hostname). */
+  deviceName?: string;
+  /** The machine's system: darwin, linux or win32 (Node's names) work. */
+  deviceOs?: string;
+  /** The space the CLI will use, by slug. */
+  space?: string;
+  signal?: AbortSignal;
+}
+
+/** A device code to show the person (RFC 8628 §3.2). */
+export interface DeviceSignIn {
+  /** Secret: poll with it, never show it. */
+  deviceCode: string;
+  /** What the person checks and confirms, e.g. "WQRT-4821". */
+  userCode: string;
+  /** Where the person confirms it, e.g. https://memax.app/device. */
+  verificationUri: string;
+  /** The same page with the code filled in, to open in a browser. */
+  verificationUriComplete?: string;
+  /** Seconds the code lives. */
+  expiresIn: number;
+  /** Seconds to wait between polls. */
+  interval: number;
+}
+
+/**
+ * One poll of the token endpoint with a device code (RFC 8628 §3.5):
+ * `signed_in` with the person's CLI session, `pending` (keep waiting),
+ * `slow_down` (wait 5 seconds longer from now on), or how it ended:
+ * `denied` (the person declined), `expired` (the code ran out) or
+ * `invalid` (the code was already used, or isn't one).
+ */
+export type DeviceSignInPoll =
+  | { status: "signed_in"; tokens: AuthTokenPair }
+  | { status: "pending" | "slow_down" | "denied" | "expired" | "invalid" };
+
 export interface ImpersonationResult {
   access_token: string;
   expires_in: number;

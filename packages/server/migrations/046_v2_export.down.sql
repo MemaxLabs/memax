@@ -1,4 +1,4 @@
--- Revert 045: v2_export
+-- Revert 046: v2_export
 --
 -- Restores 044's receipt verbs. Receipts are append-only, so `exported`
 -- receipts written meanwhile stay, and the restored CHECK is NOT VALID.

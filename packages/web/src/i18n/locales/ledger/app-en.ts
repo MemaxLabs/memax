@@ -393,6 +393,10 @@ export const ledgerAppEn = {
       "gate.choose": "Choose an answer to a question",
       "gate.answer": "Answer a question, then confirm",
       "gate.cancel": "Go back from the confirmation",
+      "setup.next": "Go on, setting up",
+      "cleanup.choose": "Choose what holds, in the cleanup",
+      "cleanup.keep": "Keep the choice, in the cleanup",
+      "cleanup.review": "Review the proposals, from the cleanup",
     },
   },
   settings: {

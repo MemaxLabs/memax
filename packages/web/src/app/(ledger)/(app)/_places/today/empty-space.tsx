@@ -1,10 +1,15 @@
 "use client";
 
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button, Icon, PageHeader } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
+import { setupHref } from "@/lib/v2/onboarding/routes";
 import { placeHref } from "@/lib/v2/places";
+import { useImports } from "../../../_onboarding/queries";
 import { useToast } from "../../_components/toasts";
-import { useSpaces } from "../../_lib/data";
+import { useSource, useSpaces } from "../../_lib/data";
+import { recordKeys } from "../../_lib/records";
 import type { RecordsView } from "../records-view";
 import styles from "./today.module.css";
 
@@ -24,6 +29,18 @@ export function EmptySpace({
 }) {
   const { l, copy, space, overview } = view;
   const spaces = useSpaces().data ?? [];
+  // While the space is empty, look for `memax init`'s import; once one
+  // lands, the space has proposals and Today shows them.
+  const source = useSource();
+  const queryClient = useQueryClient();
+  const imports = useImports(space, { poll: true });
+  const landed = (imports.data?.length ?? 0) > 0;
+  useEffect(() => {
+    if (!landed) return;
+    void queryClient.invalidateQueries({
+      queryKey: recordKeys.space(source.kind, space.slug),
+    });
+  }, [landed, queryClient, source.kind, space.slug]);
   const e = l.today.empty;
   const toast = useToast();
   const agents = overview?.agents?.connected ?? 0;
@@ -100,7 +117,7 @@ export function EmptySpace({
                             <Icon name="copy" size={14} />
                           </button>
                         </div>
-                        <span>
+                        <span className={styles.emptyActions}>
                           <Button
                             variant="secondary"
                             size="sm"
@@ -108,6 +125,13 @@ export function EmptySpace({
                             href={`${placeHref(space.slug, "agents")}?overlay=connect`}
                           >
                             {e.connectHere}
+                          </Button>
+                          <Button
+                            variant="quiet"
+                            size="sm"
+                            href={setupHref("import", { space: space.slug })}
+                          >
+                            {l.onboarding.emptySpace.follow}
                           </Button>
                         </span>
                       </>

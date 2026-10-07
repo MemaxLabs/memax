@@ -7,6 +7,7 @@ import { ledgerAgentsZh } from "./agents-zh";
 import { ledgerAppZh } from "./app-zh";
 import { ledgerBriefZh } from "./brief-zh";
 import { ledgerMemoryZh } from "./memory-zh";
+import { ledgerOnboardingZh } from "./onboarding-zh";
 import { ledgerRecordsZh } from "./records-zh";
 import { ledgerReviewZh } from "./review-zh";
 import { ledgerTodayZh } from "./today-zh";
@@ -42,6 +43,7 @@ export const ledgerZh: Translations["ledger"] = {
   memory: ledgerMemoryZh,
   brief: ledgerBriefZh,
   today: ledgerTodayZh,
+  onboarding: ledgerOnboardingZh,
   devTokens: {
     breadcrumb: "Ledger · 开发样张",
     title: "设计令牌与字体",

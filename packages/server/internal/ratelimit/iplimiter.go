@@ -63,6 +63,11 @@ var (
 	// surface for a known code. Per-code attempt count is the primary
 	// defense; this IP cap is the floor.
 	IPEmailOTPVerify = EndpointLimit{Name: "email_otp_verify", RPM: 20}
+	// IPDeviceAuthorization — /oauth/device_authorization issues a code a
+	// person may confirm on the web (RFC 8628). A CLI asks once per sign-in;
+	// the handler also caps codes per address per hour across machines.
+	// Polling for the token rides IPOAuthTokenLimit (every 5 s is 12/min).
+	IPDeviceAuthorization = EndpointLimit{Name: "device_auth", RPM: 5}
 )
 
 // trustedProxyMode controls how extractClientIP derives the client IP.
@@ -158,6 +163,10 @@ func (l *Limiter) WrapIP(limit EndpointLimit, h http.HandlerFunc) http.HandlerFu
 		h(w, r)
 	}
 }
+
+// ClientIP is the request's client address as the rate limiter sees it
+// (TRUSTED_PROXY decides which header, if any, is believed), or "".
+func ClientIP(r *http.Request) string { return extractClientIP(r) }
 
 // extractClientIP returns the canonical client IP for rate-limit
 // keying. The trust source is chosen by the TRUSTED_PROXY env var at

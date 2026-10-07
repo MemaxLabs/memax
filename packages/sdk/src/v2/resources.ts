@@ -1,6 +1,6 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`, `.imports`,
 // `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets`, `.gates` and
-// `.notices`. Thin, typed
+// `.notices` and `.devices`. Thin, typed
 // wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
 // as on /v1.
@@ -32,6 +32,8 @@ import type {
   CreateTargetInput,
   DeliveryInput,
   DeliveryResult,
+  DeviceAuthorization,
+  DeviceCodeInput,
   Drift,
   DriftResolutionResult,
   EditInput,
@@ -1077,6 +1079,72 @@ export class V2GatesResource {
   }
 }
 
+/** Options for confirming or declining a device's code. */
+export interface DeviceCommandOptions {
+  /** One per intent, the same on a retry (see {@link CommandOptions}). */
+  idempotencyKey: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * `memax.v2.devices`: a person confirming, on the web, the code the memax
+ * CLI shows on a machine with no browser (CliAuth). The CLI's side of the
+ * flow is `memax.auth.startDeviceSignIn` and `pollDeviceSignIn` (RFC 8628).
+ */
+export class V2DevicesResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /**
+   * What a waiting code says about the device asking. A code that doesn't
+   * exist, or that someone else decided, throws `not_found`; naming too many
+   * that don't exist throws `rate_limited`.
+   */
+  async lookup(
+    userCode: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<DeviceAuthorization> {
+    const body: DeviceCodeInput = { user_code: userCode };
+    return this.req("POST", "/v2/device-authorizations:lookup", {
+      body,
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Sign the device in as you: its next poll collects a CLI session, once.
+   * Only a person on the web app may (`refused` with `device_needs_web`
+   * otherwise). A code you declined or that expired throws
+   * `invalid_transition` with `details.state`.
+   */
+  async approve(
+    userCode: string,
+    opts: DeviceCommandOptions,
+  ): Promise<DeviceAuthorization> {
+    return this.command("approve", userCode, opts);
+  }
+
+  /** Decline the code ("It doesn't match"): nothing is signed in. */
+  async deny(
+    userCode: string,
+    opts: DeviceCommandOptions,
+  ): Promise<DeviceAuthorization> {
+    return this.command("deny", userCode, opts);
+  }
+
+  private async command(
+    verb: "approve" | "deny",
+    userCode: string,
+    opts: DeviceCommandOptions,
+  ): Promise<DeviceAuthorization> {
+    const body: DeviceCodeInput = { user_code: userCode };
+    return this.req("POST", `/v2/device-authorizations:${verb}`, {
+      body,
+      extraHeaders: { "Idempotency-Key": opts.idempotencyKey },
+      signal: opts.signal,
+    });
+  }
+}
+
 export class V2NoticesResource {
   constructor(private readonly req: RequestFn) {}
 
@@ -1118,6 +1186,7 @@ export class V2Resource {
   readonly gates: V2GatesResource;
   readonly notices: V2NoticesResource;
   readonly imports: V2ImportsResource;
+  readonly devices: V2DevicesResource;
   private readonly openStream?: OpenFn;
 
   constructor(req: RequestFn, open?: OpenFn) {
@@ -1132,6 +1201,7 @@ export class V2Resource {
     this.gates = new V2GatesResource(req);
     this.notices = new V2NoticesResource(req);
     this.imports = new V2ImportsResource(req);
+    this.devices = new V2DevicesResource(req);
     this.openStream = open;
   }
 

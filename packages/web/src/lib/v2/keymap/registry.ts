@@ -120,6 +120,22 @@ export const KEYMAP = [
   // A hand edit (DriftResolve.png): 1, 2 or 3 chooses, ↵ does it.
   { id: "drift.choose", keys: ["1", "2", "3"], group: "pages" },
   { id: "drift.confirm", keys: ["Enter"], group: "pages" },
+  // The first session, settling what the agents' files say. Listed under
+  // Review: like a gate's keys they share chords with page keys, and only
+  // their own screens (outside the app frame) handle them.
+  // Setting up (Connect, FirstRun, CliAuth): ↵ takes the page's one
+  // primary action ("See where they disagree", "Confirm").
+  { id: "setup.next", keys: ["Enter"], group: "review" },
+  // The day-one cleanup (Cleanup.png): 1–4 chooses in the first open
+  // disagreement, ↵ keeps the choice, R reviews the rest.
+  {
+    id: "cleanup.choose",
+    keys: ["1", "2", "3", "4"],
+    group: "review",
+    display: "range",
+  },
+  { id: "cleanup.keep", keys: ["Enter"], group: "review" },
+  { id: "cleanup.review", keys: ["R"], group: "review" },
 ] as const satisfies readonly KeyBinding[];
 
 export type KeyActionId = (typeof KEYMAP)[number]["id"];

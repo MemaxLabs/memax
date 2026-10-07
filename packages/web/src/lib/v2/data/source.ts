@@ -1,7 +1,9 @@
 import type { ActivityData } from "./activity";
 import type { AgentsData } from "./agents";
 import type { BriefSource } from "./brief";
+import type { DevicesSource } from "./devices";
 import type { GatesSource } from "./gates";
+import type { ImportsSource } from "./imports";
 import type { MemoriesSource } from "./memories";
 import type { ReviewSource } from "./review";
 import type { TargetsSource } from "./targets";
@@ -83,4 +85,8 @@ export interface LedgerDataSource extends ActivityData, AgentsData, UndoSource {
   readonly today: TodaySource;
   /** Decision gates: what agents asked, answering and withdrawing (gates.ts). */
   readonly gates: GatesSource;
+  /** What `memax init` imported: FirstRun, Cleanup, ReviewImport (imports.ts). */
+  readonly imports: ImportsSource;
+  /** Confirming the CLI's device code (devices.ts). */
+  readonly devices: DevicesSource;
 }

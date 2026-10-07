@@ -1,4 +1,4 @@
--- 045: v2_export
+-- 046: v2_export
 --
 -- Export (plan 25 §7.2, rule 14; Phase 2 epic 2.4): a person takes a
 -- space's whole record as Markdown with frontmatter, its receipts in their

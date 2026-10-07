@@ -366,6 +366,10 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
       "gate.choose": "给问题选一个回答",
       "gate.answer": "回答问题，再确认",
       "gate.cancel": "从确认退回",
+      "setup.next": "继续设置",
+      "cleanup.choose": "选择成立的说法（整理页）",
+      "cleanup.keep": "保留所选（整理页）",
+      "cleanup.review": "审阅提议（整理页）",
     },
   },
   settings: {

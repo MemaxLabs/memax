@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/auth"
+	"github.com/MemaxLabs/memax/packages/server/internal/deviceauth"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
@@ -46,6 +47,10 @@ type MCPOAuthHandler struct {
 	ledger *ledger.Ledger
 	// fetchMetadata fetches a Client ID Metadata Document. Tests replace it.
 	fetchMetadata func(ctx context.Context, url string) (*safefetch.FetchResult, error)
+	// device serves the device authorization grant (oauth_device.go); nil
+	// leaves it off. clientIP reads the CLI's address for its rate limit.
+	device   *deviceauth.Store
+	clientIP func(*http.Request) string
 }
 
 func NewMCPOAuthHandler(authH *AuthHandler) *MCPOAuthHandler {
@@ -186,8 +191,7 @@ func (h *MCPOAuthHandler) protectedResourceURL(base string, r *http.Request) str
 // Standard OAuth 2.0 Authorization Server Metadata (RFC 8414).
 func (h *MCPOAuthHandler) AuthorizationServerMetadata(w http.ResponseWriter, r *http.Request) {
 	base := h.resolveBaseURL(r)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	meta := map[string]any{
 		"issuer":                 base,
 		"authorization_endpoint": base + "/oauth/authorize",
 		"token_endpoint":         base + "/oauth/token",
@@ -202,7 +206,15 @@ func (h *MCPOAuthHandler) AuthorizationServerMetadata(w http.ResponseWriter, r *
 		"grant_types_supported":                          []string{"authorization_code", "refresh_token"},
 		"token_endpoint_auth_methods_supported":          []string{"none"},
 		"code_challenge_methods_supported":               []string{"S256"},
-	})
+	}
+	// The device grant signs the memax CLI in (RFC 8628 §4); MCP clients
+	// never use it.
+	if h.device != nil {
+		meta["device_authorization_endpoint"] = base + "/oauth/device_authorization"
+		meta["grant_types_supported"] = []string{"authorization_code", "refresh_token", deviceauth.GrantType}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(meta)
 }
 
 // DynamicClientRegistration serves POST /oauth/register
@@ -377,6 +389,8 @@ func (h *MCPOAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 		h.tokenAuthCode(w, r)
 	case "refresh_token":
 		h.tokenRefresh(w, r)
+	case deviceauth.GrantType:
+		h.tokenDeviceCode(w, r)
 	default:
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)

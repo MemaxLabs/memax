@@ -23,7 +23,8 @@ import { ask, confirm, confirmDefault } from "../lib/prompt.js";
 import { cliVersion } from "../lib/version.js";
 import { compile, type CompileReport } from "./compile.js";
 import { startDaemon } from "./daemon-control.js";
-import { signInWithBrowser } from "./login.js";
+import { canOpenBrowser } from "../lib/device-login.js";
+import { signIn } from "./login.js";
 import { appBaseURL } from "./mcp-v2.js";
 import { getAgents } from "./setup.js";
 import { getNestedKey, setupMcpOAuth } from "./setup-mcp.js";
@@ -117,10 +118,17 @@ export function initDeps(o: InitOptions): InitDeps {
     hasCredentials: () => usesAPIKey() || !!loadCredentials()?.access_token,
     signIn: async () => {
       if (!interactive) return false;
+      // No browser here (SSH, no display) or --device: a code to confirm
+      // in any browser (plan 25 §7.3 step 2).
+      const device =
+        !!o.device ||
+        !canOpenBrowser({ platform: process.platform, env: process.env });
       console.log("");
-      if (!(await confirmDefault("  Sign in to Memax in your browser? [Y/n] ")))
-        return false;
-      return signInWithBrowser();
+      const question = device
+        ? "  Sign in to Memax with a code you confirm in a browser? [Y/n] "
+        : "  Sign in to Memax in your browser? [Y/n] ";
+      if (!(await confirmDefault(question))) return false;
+      return signIn({ device, space: o.space });
     },
     hasMcp,
     writeMcp,
@@ -165,6 +173,10 @@ export function registerInitCommand(program: Command): void {
     .option("--wait <seconds>", "How long to wait for the judge", "20")
     .option("--timing", "Show how long each step took, against its budget")
     .option("--format <format>", "Output format: text, json", "text")
+    .option(
+      "--device",
+      "Sign in with a code you confirm in any browser (the default over SSH and where no browser can open)",
+    )
     .action(async (opts: InitOptions) => {
       try {
         process.exitCode = await runInit(opts, initDeps(opts));

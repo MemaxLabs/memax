@@ -18,10 +18,19 @@ function makeRequest(
   });
 }
 
-// Representative V2 paths, one or more per area in lib/ui-gate.ts.
-const V2_PATHS = [
+// The V2 areas every browser may open: the CLI's device sign-in and the
+// sign-in on the way to it (lib/ui-gate.ts V2_OPEN_AREAS).
+const OPEN_V2_PATHS = [
   "/signin",
+  "/signin/callback",
   "/device",
+  "/device?code=WQRT-4821",
+];
+
+// Representative V2 paths, one or more per gated area in lib/ui-gate.ts.
+const V2_PATHS = [
+  "/setup",
+  "/setup/import",
   "/setup/agents",
   "/setup/done",
   "/join/abc123",
@@ -85,8 +94,27 @@ describe("proxy V2 gating", () => {
   });
 
   it("ignores any other memax_ui value", () => {
-    const res = proxy(makeRequest("/signin", { ui: "v1" }));
+    const res = proxy(makeRequest("/setup/import", { ui: "v1" }));
     expect(res.status).toBe(307);
+  });
+
+  it.each(OPEN_V2_PATHS)(
+    "opens %s without the opt-in, signed in or not",
+    (path) => {
+      for (const sessionPresence of [false, true]) {
+        for (const ui of [undefined, "v1", "v2"]) {
+          const res = proxy(makeRequest(path, { sessionPresence, ui }));
+          expect(res.status).toBe(200);
+          expect(res.headers.get("location")).toBeNull();
+        }
+      }
+    },
+  );
+
+  it.each(OPEN_V2_PATHS)("runs the proxy for %s", (path) => {
+    expect(
+      unstable_doesMiddlewareMatch({ config, url: path.split("?")[0]! }),
+    ).toBe(true);
   });
 
   it.each(V1_PATHS)("leaves V1 path %s to the V1 rules", (path) => {

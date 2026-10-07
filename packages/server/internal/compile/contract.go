@@ -193,4 +193,6 @@ type Adapter struct {
 	Role        string  `json:"role"`
 	DefaultPath *string `json:"default_path"`
 	Default     bool    `json:"default"`
+	// OptIn: compiled only for a space that asks for it, never by default.
+	OptIn bool `json:"opt_in"`
 }

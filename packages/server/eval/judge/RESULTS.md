@@ -1,6 +1,6 @@
 # Judge eval: live results
 
-Run on Oct 6, 2026, against OpenRouter's Anthropic-compatible Messages API (staging key) and Voyage, from a dev machine (not Fly's `sjc`). Every call went through `eval/livemeter`, which records each call's routing, serving provider, tokens and cost without changing it. Raw verdicts (pair ids, labels, relations, confidences, tiers, timings; no memory text) are in `results-2026-10-06.json`.
+Run on Oct 6, 2026, against OpenRouter's Anthropic-compatible Messages API (staging key) and Voyage, from a dev machine (not Fly's `sjc`), and again on Oct 7 with every tier pinned to named zero-retention hosts (the first section). Every call went through `eval/livemeter`, which records each call's routing, serving provider, tokens and cost without changing it. Raw verdicts (pair ids, labels, relations, confidences, tiers, timings; no memory text) are in `results-2026-10-06.json` and `results-2026-10-07.json`.
 
 ```bash
 cd packages/server
@@ -9,7 +9,57 @@ JUDGE_EVAL_LIVE=1 JUDGE_EVAL_SET=holdout.json JUDGE_EVAL_TIERS=pipeline,primary 
 V2_EVAL_LIVE=1 go test ./eval/judge/ -run Candidates -v
 ```
 
-## Summary
+## Oct 7: pinned hosts and temperature 0 (D14)
+
+The Phase 2 rescan found that `provider.zdr` alone let OpenRouter pick any of 22 zero-retention hosts for V4.1 Flash, weighted towards the cheapest, fp4 ones included. Each tier now names its hosts, in order (`provider.only` and `provider.order`), and the precisions they may run (`provider.quantizations`, fp8 or better), through the shared client (`internal/anthropic/routing.go`). The primary and fallback answer at temperature 0. Same prompt, thresholds and sets as Oct 6.
+
+```bash
+cd packages/server
+JUDGE_EVAL_LIVE=1 JUDGE_EVAL_TIERS=pipeline go test ./eval/judge/ -run Live -v      # three times
+JUDGE_EVAL_LIVE=1 JUDGE_EVAL_SET=holdout.json JUDGE_EVAL_TIERS=pipeline,primary go test ./eval/judge/ -run Live -v
+JUDGE_EVAL_LIVE=1 JUDGE_EVAL_TIERS=primary,fallback go test ./eval/judge/ -run Live -v
+```
+
+- **The bars still hold.** `contradicts` precision **1.00** and recall **0.96** in all three pipeline runs (bars 0.90 and 0.75), the same as Oct 6. The flag at 0.6 was 1.00/0.96, 1.00/1.00 and 1.00/0.96. Held out: 1.00/1.00, in the pipeline and with the primary alone.
+- **Temperature 0 makes the runs repeat.** All three pipeline runs gave every one of the 124 pairs the same relation; on Oct 6, 9 pairs changed between runs (14 with the Phase 1 prompt). The misclassifications are the same four each time (con-28 as updates, three extensions as unrelated). The one outcome that moved is con-28's flag: Sonnet, which keeps its default temperature, scored it 0.55, 0.60 and 0.55, on the 0.6 bar.
+- **Faster, with a shorter tail.** Verdict p95 **1.84–2.06 s** (Oct 6: 2.36–2.91 s), and the slowest verdict 2.15–4.12 s (Oct 6: up to 7.05 s). The primary's calls: p50 360–380 ms, p95 570–690 ms (Oct 6: 0.58–0.86 s and 1.48–1.73 s), because every one went to Together. Sonnet is unchanged (p50 1.3 s).
+- **Every call ran where it was pinned.** The meter now fails a run if any call is served by a host its tier didn't name, or by one whose endpoints all run below the floor. Of 820 metered calls: V4.1 Flash 566 of 566 on Together, Sonnet 130 of 130 on Google Vertex, Haiku 124 of 124 on Amazon Bedrock. None fell back to a second host.
+- **The tiers alone:**
+
+  | Tier                          | Pairs | `contradicts` P / R | duplicate R | updates P / R | Verdict p50 / p95 | Cost   |
+  | ----------------------------- | ----- | ------------------- | ----------- | ------------- | ----------------- | ------ |
+  | V4.1 Flash, prompted, t=0     | 124   | 1.00 / 1.00         | 1.00        | 1.00 / 1.00   | 0.38 s / 0.62 s   | $0.016 |
+  | Haiku 4.5, strict, t=0        | 124   | 0.90 / 0.96         | 1.00        | 0.96 / 0.96   | 1.75 s / 2.40 s   | $0.22  |
+
+  Both score as they did on Oct 6; Haiku stays the fallback.
+- **Cost:** $0.92 of OpenRouter spend for these runs and the routing probes, and $0.93 with the Ask runs: $17.009 → $16.082 remaining on the key, matching the meter's sum. A pipeline run costs $0.20, $0.18 of it Sonnet; Haiku alone, $0.22. Together serves V4.1 Flash at its list price ($0.30 / $1.20), which is what §5.17 budgets.
+
+### The hosts, and why
+
+Chosen on Oct 7 from OpenRouter's endpoints API (`/api/v1/models/<slug>/endpoints`; the latency figures need an API key) and its zero-retention list (`/api/v1/endpoints/zdr`). The defaults are `anthropic.DefaultProviders`; `JUDGE_PROVIDERS`, `JUDGE_FALLBACK_PROVIDERS`, `JUDGE_STRONG_PROVIDERS` and `ASK_PROVIDERS` override them. The docs site's Security page lists them as sub-processors.
+
+**DeepSeek V4.1 Flash** (the judge's primary and Ask). OpenRouter listed 29 endpoints, 23 of them zero-retention. Price per 1M tokens in / out; first token in the last 30 minutes, p50 / p90:
+
+| Host                                    | Precision | Price           | First token p50 / p90 | Output tok/s p50 | Uptime 1 d | Chosen                                                          |
+| --------------------------------------- | --------- | --------------- | --------------------- | ---------------- | ---------- | --------------------------------------------------------------- |
+| Together                                | undeclared | $0.30 / $1.20  | 0.30 / 0.67 s         | 256              | 99.89%     | **1st**: the quickest, and by far the most traffic              |
+| Baseten (two endpoints)                 | fp8       | $0.30 / $1.20   | 0.34–0.47 / 1.2–1.9 s | 173–199          | 99.86–99.96% | **2nd**: nearly as quick                                      |
+| CoreWeave                               | fp8       | $0.20 / $0.65   | 1.04 / 2.59 s         | 88               | 98.81%     | **3rd**: cheaper, and steady in the Oct 6 probes                |
+| DeepInfra                               | fp8       | $0.14 / $0.42   | 1.42 / 3.82 s         | 59               | 99.97%     | **4th**: the cheapest and the most available, but slow          |
+| Venice, Modal, DigitalOcean, Parasail   | fp8 or undeclared | $0.18–0.30 in | 0.57–0.95 / 1.8–2.6 s | 115–175      | 98.5–99.9% | No: good enough, left out to keep the sub-processor list short  |
+| Wafer, Makora, InferenceNet, Novita, SiliconFlow, Phala, Ionstream, Relace, Morph | fp8 or undeclared | $0.05–0.30 in | 1.0–6.1 s p50, or a p99 over 14 s | 20–93 | 94.5–99.9% | No: slower, or a long tail |
+| DekaLLM, Fireworks (two)                | undeclared | $0.12–0.45 in  | 2.1–5.6 s p50         | 67–123           | 72–97%     | No: degraded or down                                            |
+| Decart, Sail Research                   | **fp4**   | $0.08–0.09 in   | 2.8–13.5 s p50        | 16–64            | 96–99%     | **No: fp4** (D14). The floor refuses them even if named         |
+| DeepSeek, Alibaba, Baidu, AtlasCloud, StreamLake, GMICloud | fp8 or undeclared | | | |        | **No: not zero-retention** (DeepSeek's own API also processes in China) |
+
+- **Undeclared precision.** Together doesn't say what precision it runs, so OpenRouter lists it as `unknown`. The floor admits `unknown` (every Claude endpoint is `unknown` too), so such a host gets in only by being named. A probe with Decart pinned behind the floor was refused: "No endpoints found for the request with quantization: int8,fp8,mxfp8,fp16,bf16,fp32,unknown".
+- **Order, not price weighting.** With `order` set, OpenRouter tries the hosts in turn and stops load-balancing, so all traffic goes to Together until it fails. `only` keeps every fallback inside the list.
+
+**Claude Haiku 4.5** (the judge's fallback): Amazon Bedrock, then Google Vertex. Both are zero-retention, enforce `output_config.format` and take a temperature; the global endpoints cost $1 / $5, the regional ones $1.10 / $5.50. Anthropic's own API and Azure aren't zero-retention for it.
+
+**Claude Sonnet 5.5** (the strong tier): Google Vertex only. Bedrock is zero-retention for it too, but its endpoint doesn't list structured outputs, and this tier is strict. It sends no temperature: Sonnet 5.5 refuses any value but its default on Anthropic's API (OpenRouter accepted `temperature: 0` for it on Vertex in a probe, presumably by dropping it).
+
+## Oct 6 summary
 
 - **The bar passes, after one prompt change.**
   - With the Phase 1 prompt, the pipeline's `contradicts` precision was 0.85, 0.93 and 0.90 over three runs (bar 0.90).
@@ -42,7 +92,7 @@ V2_EVAL_LIVE=1 go test ./eval/judge/ -run Candidates -v
 | Strong (decisions)       | `anthropic/claude-sonnet-5.5`  | $2 / $10                               | Google Vertex                                                                                                         |
 | Tried as primary/fallback | `openai/gpt-6-luna`            | $0.10 / $0.50                          | Azure                                                                                                                 |
 
-The primary's routing varies by the hour: one run went 121 of 125 calls to Together, and later runs 123 of 124 to InferenceNet. DeepSeek V4.1 Flash's zero-retention hosts include fp8 and fp4 quantizations, and OpenRouter chooses between them. The shared client sends only `provider.zdr`, so it can't pin a quantization (see the follow-ups).
+On Oct 6 the primary's routing varied by the hour: one run went 121 of 125 calls to Together, and later runs 123 of 124 to InferenceNet. DeepSeek V4.1 Flash's zero-retention hosts include fp8 and fp4 quantizations, and OpenRouter chose between them, because the shared client sent only `provider.zdr`. Since Oct 7 each tier names its hosts and a precision floor (the first section).
 
 ## The bars
 
@@ -233,8 +283,9 @@ Voyage usage for the candidates runs was a few thousand short texts.
 
 ## Follow-ups
 
-- **Pin or exclude quantizations for the primary**, if quality varies by host. The shared client sends only `provider.zdr`. OpenRouter's `provider.quantizations` (for example excluding `fp4`) or `provider.sort` would need a `CompleteRequest` field. Nothing measured here shows a host-dependent quality difference, so this is a watch item.
-- **Temperature.** The client sets none, so each provider's default applies. The run-to-run flips with the Phase 1 prompt were sampling. A judge at temperature 0 would be steadier, but it needs a `CompleteRequest` field and a re-run.
+- ~~**Pin or exclude quantizations for the primary.**~~ Done Oct 7: named hosts and an fp8 floor per tier.
+- ~~**Temperature.**~~ Done Oct 7: the primary and fallback run at 0, and the pipeline's relations no longer change between runs.
+- **Recheck the hosts** when OpenRouter's list changes, or quarterly: a host that starts declaring fp4, or drops zero retention, fails the next live run.
 - **Write the eval set out further** past 28 conflicts:
   - contradictions of kept facts (none today; every planted contradiction is against a decision in force);
   - multi-candidate prompts (every live call here judges one pair; production sends up to 10 candidates, and false flags on longer lists are untested).

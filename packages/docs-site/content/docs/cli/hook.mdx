@@ -46,7 +46,9 @@ memax hook session-start [--agent <id>] [--debug]
 The agent passes its session as JSON on stdin (its id, its directory and
 whether it's a new session, a resume or a compaction). `--agent` is
 `claude-code` (the default), `codex`, `gemini`, `cursor` or `copilot`,
-and sets the output each agent reads. `--debug` says on stderr why
+and sets the output each agent reads, and which compiled files it counts:
+`AGENTS.md`, plus the agent's own `CLAUDE.md` or `GEMINI.md` when the
+space compiles one. `--debug` says on stderr why
 nothing was printed and how long it took.
 
 ## What it says

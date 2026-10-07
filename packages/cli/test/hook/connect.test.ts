@@ -394,6 +394,74 @@ describe("memax connect", () => {
     expect(connectFailed(r)).toBe(false);
   });
 
+  it("adds GEMINI.md for Gemini CLI only when asked, and once", async () => {
+    execFileSync("git", ["init", "-q", h.repo]);
+    const space = h.fake.addSpace("acme-web");
+    h.link(space);
+    h.fake.agents.push(connection("gemini-cli"));
+    h.fake.addTarget(space, "agents_md");
+    const gemini = agentFor("gemini")!;
+    const created = () => h.fake.calls("POST", /\/v2\/spaces\/[^/]+\/targets$/);
+
+    const plain = await runConnect(gemini, { space: "acme-web" }, deps().d);
+    expect(plain.shim).toEqual({ state: "not_asked" });
+    expect(created()).toHaveLength(0);
+    expect(
+      renderConnect(plain, "https://memax.app")
+        .map((l) => l.replace(/\u001b\[[0-9;]*m/g, ""))
+        .find((l) => l.includes("GEMINI.md")),
+    ).toBe(
+      "  - GEMINI.md not compiled: Antigravity CLI reads AGENTS.md. For Gemini CLI, add --gemini-md",
+    );
+
+    const asked = await runConnect(
+      gemini,
+      { space: "acme-web", geminiMd: true },
+      deps().d,
+    );
+    expect(asked.shim).toEqual({ state: "created", path: "GEMINI.md" });
+    expect(created()).toHaveLength(1);
+    const shim = [...h.fake.targets.values()].find(
+      (e) => e.target.kind === "gemini_md",
+    )!.target;
+    expect(shim.settings.user_owned).toBeUndefined();
+
+    const again = await runConnect(
+      gemini,
+      { space: "acme-web", geminiMd: true },
+      deps().d,
+    );
+    expect(again.shim).toEqual({ state: "present", path: "GEMINI.md" });
+    expect(created()).toHaveLength(1);
+
+    // Other agents never get the line.
+    h.fake.agents.push(connection("codex"));
+    const codex = await runConnect(
+      agentFor("codex")!,
+      { space: "acme-web" },
+      deps().d,
+    );
+    expect(codex.shim).toBeUndefined();
+  });
+
+  it("keeps a GEMINI.md someone wrote theirs, with one Memax block", async () => {
+    execFileSync("git", ["init", "-q", h.repo]);
+    writeFileSync(join(h.repo, "GEMINI.md"), "# My Gemini notes\n");
+    const space = h.fake.addSpace("acme-web");
+    h.link(space);
+    h.fake.agents.push(connection("gemini-cli"));
+    const r = await runConnect(
+      agentFor("gemini")!,
+      { space: "acme-web", geminiMd: true },
+      deps().d,
+    );
+    expect(r.shim?.state).toBe("created");
+    const shim = [...h.fake.targets.values()].find(
+      (e) => e.target.kind === "gemini_md",
+    )!.target;
+    expect(shim.settings.user_owned).toBe(true);
+  });
+
   it("skips the hook on Windows, and with --no-hook", async () => {
     const win = await runConnect(
       agentFor("codex")!,

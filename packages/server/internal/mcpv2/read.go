@@ -39,7 +39,11 @@ type v2Part struct {
 }
 
 // readTarget narrows a read to the space it names, when that space is on
-// V2: v1 = false then means the V1 tools have nothing to add.
+// V2: v1 = false then means the V1 tools have nothing to add. An unscoped
+// read asks them only while a reachable hub is still on V1: V1's pipeline
+// would find nothing it may return (every hit in a hub on V2 is left out),
+// but it would still cost its round trips (about 90 ms at 24 ms each),
+// count a recall against the plan and log V1's usage and activity.
 func (v *view) readTarget(ctx context.Context, ref string) (spaces []space, v1 bool, res *mcp.CallToolResult) {
 	// The hub the call names is resolved while the caller's principal is:
 	// neither depends on the other, and each round trip to Postgres is
@@ -61,7 +65,7 @@ func (v *view) readTarget(ctx context.Context, ref string) (spaces []space, v1 b
 		return nil, false, res
 	}
 	if ref == "" {
-		return readable, true, nil
+		return readable, v.v1, nil
 	}
 	if err != nil || !v.onV2(hub.Hub.ID) {
 		return nil, true, nil // a V1 hub (or none): V1 answers

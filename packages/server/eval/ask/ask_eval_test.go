@@ -233,6 +233,7 @@ func TestAskEval(t *testing.T) {
 	modes := []mode{{"fake (overlap)", overlapModel{}, ask.Config{Model: "fake/overlap", Log: quiet}, lexical}}
 	live := os.Getenv("ASK_EVAL_LIVE") == "1"
 	var meter *livemeter.Meter
+	var askRouting anthropic.Routing
 	if live {
 		key := os.Getenv("ANTHROPIC_API_KEY")
 		if key == "" {
@@ -256,6 +257,8 @@ func TestAskEval(t *testing.T) {
 		}
 		cfg.Log = quiet
 		model := ask.NewAnthropicModel(client, cfg.ZeroDataRetention)
+		t.Logf("answer tier %s; zdr %v; hosts %v at %v", cfg.Model, cfg.ZeroDataRetention, cfg.Routing.Providers, cfg.Routing.Quantizations)
+		askRouting = cfg.Routing
 		modes = append(modes, mode{"live " + cfg.Model, model, cfg, lexical})
 		// With Voyage too, the search production Ask runs: hybrid, at the
 		// recall floor.
@@ -380,10 +383,21 @@ func TestAskEval(t *testing.T) {
 			if len(s.NotZDR) > 0 {
 				t.Errorf("%s was served by providers that aren't zero-retention for it: %v", s.Model, s.NotZDR)
 			}
+			if len(s.Unpinned) > 0 {
+				t.Errorf("%s was served by providers ASK_PROVIDERS didn't pin: %v", s.Model, s.Unpinned)
+			}
+			if len(s.BelowFloor) > 0 {
+				t.Errorf("%s was served below ASK_MIN_QUANTIZATION by %v", s.Model, s.BelowFloor)
+			}
 		}
 		for _, cl := range calls {
 			if !cl.Stream {
 				t.Errorf("%s: an answer that didn't stream", cl.Model)
+			}
+			if !slices.Equal(cl.Only, askRouting.Providers) || !slices.Equal(cl.Quantizations, askRouting.Quantizations) {
+				t.Errorf("%s: an answer pinned %v at %v, the config %v at %v", cl.Model, cl.Only, cl.Quantizations,
+					askRouting.Providers, askRouting.Quantizations)
+				break
 			}
 		}
 	}

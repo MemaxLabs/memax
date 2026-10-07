@@ -253,8 +253,10 @@ func TestMCPLatency(t *testing.T) {
 	const runs = 30
 	var rows []string
 	bars := map[string]time.Duration{
+		opRecall:      275 * time.Millisecond,
 		opRecallSpace: 275 * time.Millisecond,
 		opDigest:      300 * time.Millisecond,
+		opSearch:      500 * time.Millisecond,
 		opSearchSpace: 500 * time.Millisecond,
 		opGet:         300 * time.Millisecond,
 	}
@@ -306,12 +308,14 @@ func TestMCPRoundTrips(t *testing.T) {
 	audit.Arm()
 	defer audit.Require(t)
 	// Before the pipelined ledger (Oct 7, 2026) these were 46, 39, 42, 30,
-	// 23 and 23.
+	// 23 and 23. Unscoped recall and search were 24 and 21 until they
+	// stopped running V1's pipeline with no space on V1 in reach (the rig
+	// has none).
 	budgets := map[string]int{
-		opRecall:      24,
+		opRecall:      16,
 		opRecallSpace: 17,
 		opDigest:      19,
-		opSearch:      21,
+		opSearch:      13,
 		opSearchSpace: 14,
 		opGet:         13,
 	}

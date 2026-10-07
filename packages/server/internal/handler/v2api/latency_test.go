@@ -265,14 +265,16 @@ func TestAPIRoundTrips(t *testing.T) {
 	// 32, 27 and 30. Keep and Remember count River's insert notification
 	// (PGNotifyMany), which River sends at most once per queue per fetch
 	// cooldown (100 ms): a call right after another skips it, but at alpha
-	// traffic nearly every one sends it.
+	// traffic nearly every one sends it. Keep was 16 and Remember 13 until
+	// the ref resolved in the locking statement, the space's read went with
+	// the idempotency claim, and Keep's target bump with its undo read.
 	budgets := map[string]int{
 		"/v2 memory list":               5,
 		"/v2 memory get":                11,
 		"/v2 review queue":              6,
 		"/v2 Brief":                     5,
-		"/v2 Keep (+ jobs)":             16,
-		"/v2 Remember (+ jobs)":         13,
+		"/v2 Keep (+ jobs)":             13,
+		"/v2 Remember (+ jobs)":         12,
 		"/v2 Ask, to the sources event": 9,
 	}
 	for _, op := range r.ops() {

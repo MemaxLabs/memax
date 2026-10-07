@@ -12,7 +12,7 @@ again: what's already set up stays as it is.
 ## Usage
 
 ```bash
-memax connect <agent> [--space <slug>] [--no-hook] [--no-compile] [--format json]
+memax connect <agent> [--space <slug>] [--no-hook] [--no-compile] [--gemini-md] [--format json]
 ```
 
 `<agent>` is one of `claude-code`, `codex`, `cursor`, `gemini`, `copilot`,
@@ -24,6 +24,7 @@ with npx: `npx memax-cli connect codex`.
 | `--space <slug>`      | The space. Defaults to this repository's (`.memax.yml`, or its link). |
 | `--no-hook`           | Don't install the session-start hook.                                 |
 | `--no-compile`        | Don't compile, even in a linked repository.                           |
+| `--gemini-md`         | Gemini CLI only: give the space a `GEMINI.md` that imports `AGENTS.md`. |
 | `--timeout <seconds>` | How long to wait for the first compile. Default 30.                   |
 | `--format <fmt>`      | `text` (default) or `json`.                                           |
 
@@ -58,7 +59,13 @@ Run it again and each line says `=`: already set up, nothing changed.
    Review. If the agent is already connected elsewhere, `memax connect`
    connects it to this space at that level, or lower if it's lower
    elsewhere. It never raises an agent; you do that in the app.
-4. **A first compile.** In a [linked](/cli/link) repository whose files
+4. **GEMINI.md, when you ask.** Gemini CLI reads `GEMINI.md`, not
+   `AGENTS.md`. With `--gemini-md`, `memax connect gemini` gives the space
+   a `GEMINI.md` that imports `AGENTS.md`; a `GEMINI.md` you wrote stays
+   yours, with one Memax block in it. Without the flag nothing is added:
+   Antigravity CLI, which replaced Gemini CLI for most people, reads
+   `AGENTS.md` as it is.
+5. **A first compile.** In a [linked](/cli/link) repository whose files
    aren't compiled and written yet, it compiles once, like
    [`memax compile`](/cli/compile).
 
@@ -74,7 +81,7 @@ Run it again and each line says `=`: already set up, nothing changed.
 | ----------- | --------------------------- | ----------------------------------------------------------- |
 | Claude Code | `~/.claude/settings.json`   | Or the plugin.                                              |
 | Codex       | `~/.codex/hooks.json`       | Codex asks you to trust a new hook once, with `/hooks`.     |
-| Gemini CLI  | `~/.gemini/settings.json`   |                                                             |
+| Gemini CLI  | `~/.gemini/settings.json`   | Reads `GEMINI.md`: add `--gemini-md` for one that imports `AGENTS.md`. |
 | Cursor      | `~/.cursor/hooks.json`      | The editor and the Cursor CLI.                              |
 | Copilot CLI | `~/.copilot/hooks/memax.json` |                                                           |
 | OpenCode    | none                        | No session-start hook; it reads `AGENTS.md` and MCP.        |

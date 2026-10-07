@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -203,8 +204,10 @@ func TestLiveModel(t *testing.T) {
 		}
 
 		// Routing: every call asked for zero retention, and was served by a
-		// zero-retention endpoint of its model (plan 25 D14); strict tiers
-		// sent their schema as output_config.format.
+		// zero-retention endpoint of its model (plan 25 D14), from the hosts
+		// its tier pinned, at a precision its tier admitted; strict tiers
+		// sent their schema as output_config.format, and every call its
+		// tier's temperature.
 		for _, s := range livemeter.Summarize(calls, zdr) {
 			if run.cfg.ZeroDataRetention && s.ZDRAsked != s.Calls {
 				t.Errorf("%s: %s: %d of %d calls didn't ask for zero retention", run.name, s.Model, s.Calls-s.ZDRAsked, s.Calls)
@@ -212,10 +215,26 @@ func TestLiveModel(t *testing.T) {
 			if len(s.NotZDR) > 0 {
 				t.Errorf("%s: %s was served by providers that aren't zero-retention for it: %v", run.name, s.Model, s.NotZDR)
 			}
+			if len(s.Unpinned) > 0 {
+				t.Errorf("%s: %s was served by providers its tier didn't pin: %v", run.name, s.Model, s.Unpinned)
+			}
+			if len(s.BelowFloor) > 0 {
+				t.Errorf("%s: %s was served below its tier's precision floor by %v", run.name, s.Model, s.BelowFloor)
+			}
 		}
 		for _, cl := range calls {
-			if strict := strictModel(run.cfg, cl.Model); strict != cl.Strict {
-				t.Errorf("%s: a %s call had output_config %v, the tier's strict is %v", run.name, cl.Model, cl.Strict, strict)
+			tier := tierOf(run.cfg, cl.Model)
+			if tier.Strict != cl.Strict {
+				t.Errorf("%s: a %s call had output_config %v, the tier's strict is %v", run.name, cl.Model, cl.Strict, tier.Strict)
+				break
+			}
+			if !slices.Equal(tier.Routing.Providers, cl.Only) || !slices.Equal(tier.Routing.Quantizations, cl.Quantizations) {
+				t.Errorf("%s: a %s call pinned %v at %v, the tier %v at %v", run.name, cl.Model, cl.Only, cl.Quantizations,
+					tier.Routing.Providers, tier.Routing.Quantizations)
+				break
+			}
+			if (tier.Temperature == nil) != (cl.Temperature == nil) || (cl.Temperature != nil && *cl.Temperature != *tier.Temperature) {
+				t.Errorf("%s: a %s call's temperature isn't its tier's", run.name, cl.Model)
 				break
 			}
 		}
@@ -233,13 +252,14 @@ func TestLiveModel(t *testing.T) {
 	}
 }
 
-func strictModel(cfg judge.Config, model string) bool {
+// tierOf is the run's tier for a model slug.
+func tierOf(cfg judge.Config, model string) judge.Tier {
 	for _, tier := range []judge.Tier{cfg.Primary, cfg.Fallback, cfg.Strong} {
 		if tier.Model == model {
-			return tier.Strict
+			return tier
 		}
 	}
-	return false
+	return judge.Tier{}
 }
 
 func durations(outs []outcome) []time.Duration {
@@ -250,7 +270,7 @@ func durations(outs []outcome) []time.Duration {
 	return ds
 }
 
-func liveReport(run liveRun, outs []outcome, calls []timedCall, gateway []livemeter.Call, zdr map[string][]string, wall time.Duration) string {
+func liveReport(run liveRun, outs []outcome, calls []timedCall, gateway []livemeter.Call, zdr livemeter.ZDRList, wall time.Duration) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: %d verdicts in %v\n", run.name, len(outs), wall.Round(time.Second))
 
@@ -407,10 +427,17 @@ func writeVerdicts(path string, run liveRun, outs []outcome) error {
 		}
 		recs[i] = r
 	}
+	hosts := map[string]any{}
+	for _, tier := range []judge.Tier{run.cfg.Primary, run.cfg.Fallback, run.cfg.Strong} {
+		if tier.Enabled() {
+			hosts[tier.Model] = map[string]any{"only": tier.Routing.Providers, "quantizations": tier.Routing.Quantizations,
+				"temperature": tier.Temperature}
+		}
+	}
 	doc := map[string]any{
 		"run": run.name, "date": time.Now().UTC().Format(time.RFC3339),
 		"primary": run.cfg.Primary.Model, "primary_strict": run.cfg.Primary.Strict,
-		"fallback": run.cfg.Fallback.Model, "strong": run.cfg.Strong.Model, "verdicts": recs,
+		"fallback": run.cfg.Fallback.Model, "strong": run.cfg.Strong.Model, "routing": hosts, "verdicts": recs,
 	}
 	b, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {

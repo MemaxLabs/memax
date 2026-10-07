@@ -27,6 +27,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/mcpv2"
+	"github.com/MemaxLabs/memax/packages/server/internal/meterctx"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore/mockobjectstore"
 	"github.com/MemaxLabs/memax/packages/server/internal/reads"
 	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
@@ -61,6 +62,39 @@ type env struct {
 	// counters hands each request the netsim.Counter its header names, so
 	// a test can count one tool call's round trips.
 	counters *netsim.Requests
+	// metered keeps what V1's tools logged and charged (the meter's
+	// LogEvent and quota guard), for tests on what only V1 spaces get.
+	metered *metered
+}
+
+// metered records the usage events V1's tools log and the operations they
+// charge against the plan.
+type metered struct {
+	mu     sync.Mutex
+	events []string // "op source"
+	ops    []string
+}
+
+func (m *metered) logEvent(_, op, _, source, _ string, _ map[string]any) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.events = append(m.events, op+" "+source)
+}
+
+func (m *metered) beginOp(_ *http.Request, _, op, _ string) (func(bool), *meterctx.OpDenial) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ops = append(m.ops, op)
+	return func(bool) {}, nil
+}
+
+// take returns what was logged and charged since the last take.
+func (m *metered) take() (events, ops []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	events, ops = m.events, m.ops
+	m.events, m.ops = nil, nil
+	return events, ops
 }
 
 // tee hands every read to each recorder.
@@ -118,6 +152,11 @@ func buildEnvOn(t *testing.T, st store.Store, pool *pgxpool.Pool, withV2 bool, o
 	recallH := handler.NewRecallHandler(st, nil, nil, nil, nil)
 	agentH := handler.NewMCPHandler(st, recallH, nil, nil)
 	chatH := handler.NewChatGPTMCPHandler(st, recallH, nil, nil)
+	e.metered = &metered{}
+	for _, h := range []*handler.MCPHandler{agentH, chatH} {
+		h.SetLogEvent(e.metered.logEvent)
+		h.SetOpGuard(e.metered.beginOp, func(*meterctx.OpDenial) string { return "" })
+	}
 	if withV2 {
 		// The compile pipeline with the in-process compiler: the digest
 		// serves a space's latest compile once it has one.

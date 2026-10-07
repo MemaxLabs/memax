@@ -18,6 +18,7 @@ COMMENT ON FUNCTION v2.dirty_targets(integer) IS
 
 REVOKE ALL ON v2.targets FROM memax_v2_compile_sweeper;
 REVOKE USAGE ON SCHEMA v2 FROM memax_v2_compile_sweeper;
+REVOKE USAGE ON SCHEMA public FROM memax_v2_compile_sweeper;
 
 -- The role is cluster-wide: other databases (test clones, another
 -- environment) may still hold grants to it, and then it stays.

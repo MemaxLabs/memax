@@ -47,7 +47,7 @@
 -- # Cross-space reads
 --
 -- v2.unsealed_spaces (the sweep) and v2.receipt_spaces (the nightly
--- verifier) each SET app.sweep for their own execution, a SELECT-only
+-- verifier) each set app.sweep while they run and put it back, a SELECT-only
 -- policy admits receipts while it is set, and they return space ids only.
 -- Unlike v2.dirty_targets (031), the policies apply to memax_v2_sealer
 -- only, so memax_v2 (every request) can't borrow them by setting app.sweep
@@ -75,15 +75,12 @@ BEGIN
             USING HINT = 'Row-level security on schema v2 depends on it. Fix the role with ALTER ROLE, then rerun the migration.';
     END IF;
 
-    IF NOT EXISTS (
-        SELECT 1
-          FROM pg_auth_members m
-          JOIN pg_roles r ON r.oid = m.roleid
-          JOIN pg_roles u ON u.oid = m.member
-         WHERE r.rolname = 'memax_v2_sealer' AND u.rolname = current_user
-    ) THEN
+    -- The migrating role must be able to SET ROLE to it. A role made by a
+    -- non-superuser with CREATEROLE (Neon's owner) comes with ADMIN but not
+    -- SET (Postgres 16), so a membership alone isn't enough: grant SET.
+    IF NOT pg_has_role(current_user, 'memax_v2_sealer', 'SET') THEN
         BEGIN
-            EXECUTE format('GRANT memax_v2_sealer TO %I', current_user);
+            EXECUTE format('GRANT memax_v2_sealer TO %I WITH SET TRUE', current_user);
         EXCEPTION WHEN duplicate_object OR unique_violation THEN
             NULL; -- granted concurrently
         END;
@@ -91,6 +88,11 @@ BEGIN
 END $$;
 
 GRANT USAGE ON SCHEMA v2 TO memax_v2_sealer;
+-- The extensions (vector, pg_trgm, unaccent, pgcrypto) live in schema
+-- public. Postgres lets PUBLIC use it by default, but a public schema owned
+-- by another role (Neon's owner) lets nobody, so the role needs its own
+-- USAGE: it resolves names (halfvec, similarity, unaccent), not tables.
+GRANT USAGE ON SCHEMA public TO memax_v2_sealer;
 
 -- ---------------------------------------------------------------------
 -- Receipts: the reason commitment, the source's shape, the sealer's index
@@ -292,12 +294,15 @@ INSERT INTO v2.receipt_seal_cursor DEFAULT VALUES;
 -- same transaction, so a failed enqueue leaves the cursor where it was.
 CREATE FUNCTION v2.unsealed_spaces(p_limit integer) RETURNS TABLE (space_id uuid)
     LANGUAGE plpgsql
-    SET app.sweep = 'unsealed_spaces'
     AS $$
 DECLARE
     c v2.receipt_seal_cursor;
     w xid8 := pg_snapshot_xmin(pg_current_snapshot());
+    prev text := current_setting('app.sweep', true);
 BEGIN
+    -- Set here and put back below, not with the function's own SET: only a
+    -- superuser may SET a custom setting that way, and Neon's owner isn't one.
+    PERFORM set_config('app.sweep', 'unsealed_spaces', true);
     SELECT * INTO c FROM v2.receipt_seal_cursor WHERE id FOR UPDATE;
     RETURN QUERY
     WITH batch AS (
@@ -316,6 +321,7 @@ BEGIN
         RETURNING 1
     )
     SELECT DISTINCT b.space_id FROM batch b;
+    PERFORM set_config('app.sweep', coalesce(prev, ''), true);
 END $$;
 
 COMMENT ON FUNCTION v2.unsealed_spaces(integer) IS
@@ -323,9 +329,17 @@ COMMENT ON FUNCTION v2.unsealed_spaces(integer) IS
 
 -- Every space with receipts, for the nightly verifier.
 CREATE FUNCTION v2.receipt_spaces() RETURNS TABLE (space_id uuid)
-    LANGUAGE sql STABLE
-    SET app.sweep = 'receipt_spaces'
-    AS $$ SELECT DISTINCT r.space_id FROM v2.receipts r $$;
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+    prev text := current_setting('app.sweep', true);
+BEGIN
+    -- Set here and put back below, not with the function's own SET: only a
+    -- superuser may SET a custom setting that way, and Neon's owner isn't one.
+    PERFORM set_config('app.sweep', 'receipt_spaces', true);
+    RETURN QUERY SELECT DISTINCT r.space_id FROM v2.receipts r;
+    PERFORM set_config('app.sweep', coalesce(prev, ''), true);
+END $$;
 
 COMMENT ON FUNCTION v2.receipt_spaces() IS
     'The nightly verifier''s listing: every space that has receipts, as ids.';

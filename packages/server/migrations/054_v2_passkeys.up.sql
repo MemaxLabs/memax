@@ -107,11 +107,32 @@ GRANT EXECUTE ON FUNCTION v2.remove_passkeys(uuid) TO memax_v2;
 -- The person a credential belongs to, for signing in with it. Nothing
 -- else about the credential leaves: the caller then reads it in that
 -- person's scope.
-CREATE FUNCTION v2.passkey_owner(p_credential_id bytea) RETURNS uuid
-    LANGUAGE sql STABLE SECURITY DEFINER
+-- Only a superuser may give a function its own SET of a custom setting such
+-- as app.sweep (Neon's owner role isn't one), so v2.passkey_owner sets it and puts it
+-- back itself, around v2.passkey_owner_as_owner, which holds the query and runs as
+-- the owner inside it.
+CREATE FUNCTION v2.passkey_owner_as_owner(p_credential_id bytea)
+    RETURNS uuid
+    LANGUAGE sql STABLE
     SET search_path = pg_catalog, pg_temp
-    SET app.sweep = 'passkey_sign_in'
     AS $$ SELECT person_id FROM v2.passkeys WHERE credential_id = p_credential_id $$;
+
+REVOKE ALL ON FUNCTION v2.passkey_owner_as_owner(bytea) FROM PUBLIC;
+
+CREATE FUNCTION v2.passkey_owner(p_credential_id bytea)
+    RETURNS uuid
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    AS $$
+DECLARE
+    prev text := current_setting('app.sweep', true);
+    result uuid;
+BEGIN
+    PERFORM set_config('app.sweep', 'passkey_sign_in', true);
+    result := v2.passkey_owner_as_owner(p_credential_id);
+    PERFORM set_config('app.sweep', coalesce(prev, ''), true);
+    RETURN result;
+END $$;
 
 REVOKE ALL ON FUNCTION v2.passkey_owner(bytea) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION v2.passkey_owner(bytea) TO memax_v2;

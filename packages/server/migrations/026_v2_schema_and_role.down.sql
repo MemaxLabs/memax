@@ -10,6 +10,7 @@
 DROP FUNCTION IF EXISTS v2.current_tenant_ids();
 DROP FUNCTION IF EXISTS v2.current_space_ids();
 REVOKE USAGE ON SCHEMA v2 FROM memax_v2;
+REVOKE USAGE ON SCHEMA public FROM memax_v2;
 DROP SCHEMA v2;
 
 DO $$

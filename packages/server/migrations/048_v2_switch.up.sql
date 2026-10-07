@@ -151,10 +151,15 @@ COMMENT ON FUNCTION v2.hubs_space_columns() IS
 CREATE FUNCTION v2.hubs_space_ledger_tenant() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path = pg_catalog, pg_temp
-    SET app.sweep = 'space_ledger_hub'
     AS $$
+DECLARE
+    prev text := current_setting('app.sweep', true);
 BEGIN
+    -- Set here and put back below, not with the function's own SET: only a
+    -- superuser may SET a custom setting that way, and Neon's owner isn't one.
+    PERFORM set_config('app.sweep', 'space_ledger_hub', true);
     UPDATE v2.space_ledgers SET tenant_id = NEW.tenant_id WHERE space_id = NEW.id AND tenant_id = OLD.tenant_id;
+    PERFORM set_config('app.sweep', coalesce(prev, ''), true);
     RETURN NULL;
 END $$;
 

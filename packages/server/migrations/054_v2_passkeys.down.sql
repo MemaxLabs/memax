@@ -16,4 +16,5 @@ DROP FUNCTION IF EXISTS v2.clear_passkey_challenges(timestamptz, boolean);
 DROP FUNCTION IF EXISTS v2.remove_passkeys(uuid);
 DROP TABLE IF EXISTS v2.passkey_challenges;
 DROP FUNCTION IF EXISTS v2.passkey_owner(bytea);
+DROP FUNCTION IF EXISTS v2.passkey_owner_as_owner(bytea);
 DROP TABLE IF EXISTS v2.passkeys;

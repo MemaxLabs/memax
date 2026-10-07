@@ -53,7 +53,7 @@
 -- §5.7's sweeper re-enqueues every target whose dirty_gen > compiled_gen,
 -- across all spaces, so it can't run inside one space's scope.
 -- v2.dirty_targets() is the only way to do that read: it sets app.sweep
--- for its own execution (a function-level SET, restored when it returns),
+-- while it runs and puts it back before it returns,
 -- and a SELECT-only policy on v2.targets admits dirty rows while app.sweep
 -- has that value. It returns ids only. No other code sets app.sweep.
 --
@@ -435,19 +435,27 @@ CREATE CONSTRAINT TRIGGER target_observations_require_receipt
 -- ---------------------------------------------------------------------
 
 -- Targets whose latest compile is behind, oldest change first, as ids.
--- The function-level SET makes app.sweep visible only while it runs; the
+-- It sets app.sweep only while it runs (in its body: a function's own SET
+-- of a custom setting needs a superuser, and Neon's owner isn't one); the
 -- policy targets_dirty_sweep below admits exactly the rows it returns.
 CREATE FUNCTION v2.dirty_targets(p_limit integer)
     RETURNS TABLE (target_id uuid, space_id uuid)
-    LANGUAGE sql STABLE
-    SET app.sweep = 'dirty_targets'
+    LANGUAGE plpgsql STABLE
     AS $$
+DECLARE
+    prev text := current_setting('app.sweep', true);
+BEGIN
+    -- Set here and put back below, not with the function's own SET: only a
+    -- superuser may SET a custom setting that way, and Neon's owner isn't one.
+    PERFORM set_config('app.sweep', 'dirty_targets', true);
+    RETURN QUERY
     SELECT t.id, t.space_id
       FROM v2.targets t
      WHERE t.dirty_gen > t.compiled_gen AND t.sync_state <> 'off'
      ORDER BY t.dirty_at, t.id
-     LIMIT least(greatest(p_limit, 1), 1000)
-$$;
+     LIMIT least(greatest(p_limit, 1), 1000);
+    PERFORM set_config('app.sweep', coalesce(prev, ''), true);
+END $$;
 
 COMMENT ON FUNCTION v2.dirty_targets(integer) IS
     'The compile sweeper''s cross-space read: ids of targets whose dirty_gen is ahead of compiled_gen.';

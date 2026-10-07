@@ -73,8 +73,8 @@
 --
 -- # Cross-space reads
 --
--- Two functions read across spaces, both SECURITY DEFINER with a
--- function-level SET of app.sweep, and both return aggregates only:
+-- Two functions read across spaces, both SECURITY DEFINER, setting
+-- app.sweep while they run, and both return aggregates only:
 --   v2.read_metrics   the north star and its coverage (§5.18).
 --   v2.prune_reads    the retention sweep.
 -- Their policies admit rows only to the function owner (the migrating
@@ -216,11 +216,15 @@ SELECT v2.ensure_reads_partitions(now(), 2);
 -- Drops every reads partition that ends on or before p_before's month
 -- and every rollup day before p_before. p_before must be at least 90 days
 -- ago. Returns the partitions dropped.
-CREATE FUNCTION v2.prune_reads(p_before timestamptz) RETURNS integer
-    LANGUAGE plpgsql SECURITY DEFINER
+-- Only a superuser may give a function its own SET of a custom setting such
+-- as app.sweep (Neon's owner role isn't one), so v2.prune_reads sets it and puts it
+-- back itself, around v2.prune_reads_as_owner, which holds the query and runs as
+-- the owner inside it.
+CREATE FUNCTION v2.prune_reads_as_owner(p_before timestamptz)
+    RETURNS integer
+    LANGUAGE plpgsql
     SET search_path = pg_catalog, pg_temp
     SET TimeZone = 'UTC'
-    SET app.sweep = 'prune_reads'
     AS $$
 DECLARE
     cutoff timestamp := date_trunc('month', p_before AT TIME ZONE 'UTC');
@@ -249,6 +253,24 @@ BEGIN
     RETURN dropped;
 END $$;
 
+REVOKE ALL ON FUNCTION v2.prune_reads_as_owner(timestamptz) FROM PUBLIC;
+
+CREATE FUNCTION v2.prune_reads(p_before timestamptz)
+    RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    SET TimeZone = 'UTC'
+    AS $$
+DECLARE
+    prev text := current_setting('app.sweep', true);
+    result integer;
+BEGIN
+    PERFORM set_config('app.sweep', 'prune_reads', true);
+    result := v2.prune_reads_as_owner(p_before);
+    PERFORM set_config('app.sweep', coalesce(prev, ''), true);
+    RETURN result;
+END $$;
+
 COMMENT ON FUNCTION v2.prune_reads(timestamptz) IS
     'Retention: drops reads partitions that ended by p_before''s month, and rollup days before it.';
 
@@ -268,12 +290,14 @@ COMMENT ON FUNCTION v2.prune_reads(timestamptz) IS
 --                         is seen but never read)
 -- An agent kind is the reader's agent slug; a reader that named none counts
 -- by its connection.
-CREATE FUNCTION v2.read_metrics(p_day date)
-    RETURNS TABLE (spaces_read bigint, spaces_two_agents bigint, spaces_two_connections bigint,
-                   spaces_hook_loads bigint, connections_reading bigint, connections_seen bigint)
-    LANGUAGE sql STABLE SECURITY DEFINER
+-- Only a superuser may give a function its own SET of a custom setting such
+-- as app.sweep (Neon's owner role isn't one), so v2.read_metrics sets it and puts it
+-- back itself, around v2.read_metrics_as_owner, which holds the query and runs as
+-- the owner inside it.
+CREATE FUNCTION v2.read_metrics_as_owner(p_day date)
+    RETURNS TABLE (spaces_read bigint, spaces_two_agents bigint, spaces_two_connections bigint, spaces_hook_loads bigint, connections_reading bigint, connections_seen bigint)
+    LANGUAGE sql STABLE
     SET search_path = pg_catalog, pg_temp
-    SET app.sweep = 'read_metrics'
     AS $$
     WITH week AS (
         SELECT r.space_id, r.reader_key, r.reader_kind,
@@ -303,6 +327,21 @@ CREATE FUNCTION v2.read_metrics(p_day date)
              WHERE c.state <> 'disconnected'
                AND c.last_seen_at >= (p_day - 6)::timestamp AT TIME ZONE 'UTC')
 $$;
+
+REVOKE ALL ON FUNCTION v2.read_metrics_as_owner(date) FROM PUBLIC;
+
+CREATE FUNCTION v2.read_metrics(p_day date)
+    RETURNS TABLE (spaces_read bigint, spaces_two_agents bigint, spaces_two_connections bigint, spaces_hook_loads bigint, connections_reading bigint, connections_seen bigint)
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    AS $$
+DECLARE
+    prev text := current_setting('app.sweep', true);
+BEGIN
+    PERFORM set_config('app.sweep', 'read_metrics', true);
+    RETURN QUERY SELECT * FROM v2.read_metrics_as_owner(p_day);
+    PERFORM set_config('app.sweep', coalesce(prev, ''), true);
+END $$;
 
 COMMENT ON FUNCTION v2.read_metrics(date) IS
     'The north star (spaces read by 2+ agents in a week) and its coverage. Counts only.';

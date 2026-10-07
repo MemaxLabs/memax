@@ -61,7 +61,7 @@
 -- # Who may compute them
 --
 -- Both functions read across spaces, so they follow 038's v2.read_metrics:
--- SECURITY DEFINER, with a function-level SET of app.sweep, and SELECT
+-- SECURITY DEFINER, setting app.sweep while they run, and SELECT
 -- policies keyed on that value that apply to the function's owner only
 -- (the migrating role, `TO CURRENT_USER`), so memax_v2 setting app.sweep
 -- itself sees nothing more than its scope (TestSweepPoliciesAreRoleBound).
@@ -96,15 +96,12 @@ BEGIN
             USING HINT = 'Row-level security on schema v2 depends on it. Fix the role with ALTER ROLE, then rerun the migration.';
     END IF;
 
-    IF NOT EXISTS (
-        SELECT 1
-          FROM pg_auth_members m
-          JOIN pg_roles r ON r.oid = m.roleid
-          JOIN pg_roles u ON u.oid = m.member
-         WHERE r.rolname = 'memax_v2_metrics' AND u.rolname = current_user
-    ) THEN
+    -- The migrating role must be able to SET ROLE to it. A role made by a
+    -- non-superuser with CREATEROLE (Neon's owner) comes with ADMIN but not
+    -- SET (Postgres 16), so a membership alone isn't enough: grant SET.
+    IF NOT pg_has_role(current_user, 'memax_v2_metrics', 'SET') THEN
         BEGIN
-            EXECUTE format('GRANT memax_v2_metrics TO %I', current_user);
+            EXECUTE format('GRANT memax_v2_metrics TO %I WITH SET TRUE', current_user);
         EXCEPTION WHEN duplicate_object OR unique_violation THEN
             NULL; -- granted concurrently
         END;
@@ -122,16 +119,15 @@ GRANT USAGE ON SCHEMA v2 TO memax_v2_metrics;
 -- of p_now: anything recorded after p_now is left out, and a window that
 -- hasn't closed by p_now is in no denominator. Durations are seconds, to
 -- a tenth.
-CREATE FUNCTION v2.product_metrics(p_from timestamptz, p_to timestamptz, p_first_session interval, p_now timestamptz)
-    RETURNS TABLE (week date, cohort text, people bigint, sessions_closed bigint,
-                   two_connections bigint, two_agent_kinds bigint, compiled bigint, activated bigint, agents_read bigint,
-                   first_files bigint, first_files_under_5m bigint, first_file_p50 double precision,
-                   first_file_p90 double precision, signup_to_file_p50 double precision,
-                   retention_eligible bigint, retained bigint, team_eligible bigint, team_pulled bigint)
-    LANGUAGE sql STABLE SECURITY DEFINER
+-- Only a superuser may give a function its own SET of a custom setting such
+-- as app.sweep (Neon's owner role isn't one), so v2.product_metrics sets it and puts it
+-- back itself, around v2.product_metrics_as_owner, which holds the query and runs as
+-- the owner inside it.
+CREATE FUNCTION v2.product_metrics_as_owner(p_from timestamptz, p_to timestamptz, p_first_session interval, p_now timestamptz)
+    RETURNS TABLE (week date, cohort text, people bigint, sessions_closed bigint, two_connections bigint, two_agent_kinds bigint, compiled bigint, activated bigint, agents_read bigint, first_files bigint, first_files_under_5m bigint, first_file_p50 double precision, first_file_p90 double precision, signup_to_file_p50 double precision, retention_eligible bigint, retained bigint, team_eligible bigint, team_pulled bigint)
+    LANGUAGE sql STABLE
     SET search_path = pg_catalog, pg_temp
     SET TimeZone = 'UTC'
-    SET app.sweep = 'product_metrics'
     AS $$
     WITH switched AS (
         -- When each space first moved to the V2 record (a switch back
@@ -280,6 +276,22 @@ CREATE FUNCTION v2.product_metrics(p_from timestamptz, p_to timestamptz, p_first
      ORDER BY x.kind, x.week NULLS LAST
 $$;
 
+REVOKE ALL ON FUNCTION v2.product_metrics_as_owner(timestamptz, timestamptz, interval, timestamptz) FROM PUBLIC;
+
+CREATE FUNCTION v2.product_metrics(p_from timestamptz, p_to timestamptz, p_first_session interval, p_now timestamptz)
+    RETURNS TABLE (week date, cohort text, people bigint, sessions_closed bigint, two_connections bigint, two_agent_kinds bigint, compiled bigint, activated bigint, agents_read bigint, first_files bigint, first_files_under_5m bigint, first_file_p50 double precision, first_file_p90 double precision, signup_to_file_p50 double precision, retention_eligible bigint, retained bigint, team_eligible bigint, team_pulled bigint)
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    SET TimeZone = 'UTC'
+    AS $$
+DECLARE
+    prev text := current_setting('app.sweep', true);
+BEGIN
+    PERFORM set_config('app.sweep', 'product_metrics', true);
+    RETURN QUERY SELECT * FROM v2.product_metrics_as_owner(p_from, p_to, p_first_session, p_now);
+    PERFORM set_config('app.sweep', coalesce(prev, ''), true);
+END $$;
+
 COMMENT ON FUNCTION v2.product_metrics(timestamptz, timestamptz, interval, timestamptz) IS
     'The gates'' cohort metrics (plan 25 §5.18, §12): activation, first file, week-4 keeping, team pull. Counts and seconds only; memax_v2_metrics only.';
 
@@ -290,13 +302,15 @@ COMMENT ON FUNCTION v2.product_metrics(timestamptz, timestamptz, interval, times
 -- One row per week (Monday, UTC) in which proposals were made in
 -- [p_from, p_to), and one for the whole range (week NULL): how many, what
 -- decided each first, and the time from proposal to Keep or Reject.
-CREATE FUNCTION v2.review_health(p_from timestamptz, p_to timestamptz, p_now timestamptz)
-    RETURNS TABLE (week date, proposals bigint, kept bigint, rejected bigint, folded bigint, forgotten bigint,
-                   open bigint, decision_p50 double precision, decision_p90 double precision)
-    LANGUAGE sql STABLE SECURITY DEFINER
+-- Only a superuser may give a function its own SET of a custom setting such
+-- as app.sweep (Neon's owner role isn't one), so v2.review_health sets it and puts it
+-- back itself, around v2.review_health_as_owner, which holds the query and runs as
+-- the owner inside it.
+CREATE FUNCTION v2.review_health_as_owner(p_from timestamptz, p_to timestamptz, p_now timestamptz)
+    RETURNS TABLE (week date, proposals bigint, kept bigint, rejected bigint, folded bigint, forgotten bigint, open bigint, decision_p50 double precision, decision_p90 double precision)
+    LANGUAGE sql STABLE
     SET search_path = pg_catalog, pg_temp
     SET TimeZone = 'UTC'
-    SET app.sweep = 'product_metrics'
     AS $$
     WITH proposed AS MATERIALIZED (
         SELECT r.object_id, r.space_id, r.seq, r.recorded_at AS proposed_at,
@@ -329,6 +343,22 @@ CREATE FUNCTION v2.review_health(p_from timestamptz, p_to timestamptz, p_now tim
      GROUP BY GROUPING SETS ((o.week), ())
      ORDER BY o.week NULLS LAST
 $$;
+
+REVOKE ALL ON FUNCTION v2.review_health_as_owner(timestamptz, timestamptz, timestamptz) FROM PUBLIC;
+
+CREATE FUNCTION v2.review_health(p_from timestamptz, p_to timestamptz, p_now timestamptz)
+    RETURNS TABLE (week date, proposals bigint, kept bigint, rejected bigint, folded bigint, forgotten bigint, open bigint, decision_p50 double precision, decision_p90 double precision)
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    SET TimeZone = 'UTC'
+    AS $$
+DECLARE
+    prev text := current_setting('app.sweep', true);
+BEGIN
+    PERFORM set_config('app.sweep', 'product_metrics', true);
+    RETURN QUERY SELECT * FROM v2.review_health_as_owner(p_from, p_to, p_now);
+    PERFORM set_config('app.sweep', coalesce(prev, ''), true);
+END $$;
 
 COMMENT ON FUNCTION v2.review_health(timestamptz, timestamptz, timestamptz) IS
     'Review health (plan 25 §5.18): proposals per week, how each was first decided, and the time to Keep or Reject. Counts and seconds only; memax_v2_metrics only.';

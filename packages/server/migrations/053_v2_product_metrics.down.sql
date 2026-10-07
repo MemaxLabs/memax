@@ -8,7 +8,9 @@ DROP POLICY IF EXISTS agent_connections_product_metrics ON v2.agent_connections;
 DROP POLICY IF EXISTS receipts_product_metrics ON v2.receipts;
 
 DROP FUNCTION IF EXISTS v2.review_health(timestamptz, timestamptz, timestamptz);
+DROP FUNCTION IF EXISTS v2.review_health_as_owner(timestamptz, timestamptz, timestamptz);
 DROP FUNCTION IF EXISTS v2.product_metrics(timestamptz, timestamptz, interval, timestamptz);
+DROP FUNCTION IF EXISTS v2.product_metrics_as_owner(timestamptz, timestamptz, interval, timestamptz);
 
 REVOKE USAGE ON SCHEMA v2 FROM memax_v2_metrics;
 

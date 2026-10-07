@@ -24,6 +24,7 @@ DROP POLICY IF EXISTS receipts_dream_sweep ON v2.receipts;
 REVOKE ALL ON v2.receipts FROM memax_v2_dream_sweeper;
 REVOKE ALL ON public.hubs, public.hub_members, public.users FROM memax_v2_dream_sweeper;
 REVOKE USAGE ON SCHEMA v2 FROM memax_v2_dream_sweeper;
+REVOKE USAGE ON SCHEMA public FROM memax_v2_dream_sweeper;
 -- The role is cluster-wide (other databases' migrations may use it), so
 -- it stays, with no privileges here.
 

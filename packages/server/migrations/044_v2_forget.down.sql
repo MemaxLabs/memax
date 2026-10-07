@@ -29,6 +29,7 @@ REVOKE UPDATE (label, status, detail, done_at, updated_at) ON v2.propagations FR
 REVOKE UPDATE (gone, status, propagation, completed_at, reapplied_at, updated_at) ON v2.tombstones FROM memax_v2;
 
 DROP FUNCTION v2.forgotten_spaces();
+DROP FUNCTION IF EXISTS v2.forgotten_spaces_as_owner();
 DROP FUNCTION v2.retire_space(uuid);
 DROP FUNCTION v2.redact_space_receipt_reasons(uuid);
 
@@ -190,6 +191,7 @@ ALTER TABLE v2.receipts ADD CONSTRAINT receipts_space_fkey
     FOREIGN KEY (space_id, tenant_id) REFERENCES public.hubs (id, tenant_id);
 
 DROP FUNCTION v2.space_ledger(uuid);
+DROP FUNCTION IF EXISTS v2.space_ledger_as_owner(uuid);
 DROP TRIGGER hubs_space_ledger ON public.hubs;
 DROP FUNCTION v2.hubs_space_ledger();
 DROP TABLE v2.space_ledgers;

@@ -116,15 +116,12 @@ BEGIN
             USING HINT = 'Row-level security on schema v2 depends on it. Fix the role with ALTER ROLE, then rerun the migration.';
     END IF;
 
-    IF NOT EXISTS (
-        SELECT 1
-          FROM pg_auth_members m
-          JOIN pg_roles r ON r.oid = m.roleid
-          JOIN pg_roles u ON u.oid = m.member
-         WHERE r.rolname = 'memax_v2_dream_sweeper' AND u.rolname = current_user
-    ) THEN
+    -- The migrating role must be able to SET ROLE to it. A role made by a
+    -- non-superuser with CREATEROLE (Neon's owner) comes with ADMIN but not
+    -- SET (Postgres 16), so a membership alone isn't enough: grant SET.
+    IF NOT pg_has_role(current_user, 'memax_v2_dream_sweeper', 'SET') THEN
         BEGIN
-            EXECUTE format('GRANT memax_v2_dream_sweeper TO %I', current_user);
+            EXECUTE format('GRANT memax_v2_dream_sweeper TO %I WITH SET TRUE', current_user);
         EXCEPTION WHEN duplicate_object OR unique_violation THEN
             NULL; -- granted concurrently
         END;
@@ -132,6 +129,11 @@ BEGIN
 END $$;
 
 GRANT USAGE ON SCHEMA v2 TO memax_v2_dream_sweeper;
+-- The extensions (vector, pg_trgm, unaccent, pgcrypto) live in schema
+-- public. Postgres lets PUBLIC use it by default, but a public schema owned
+-- by another role (Neon's owner) lets nobody, so the role needs its own
+-- USAGE: it resolves names (halfvec, similarity, unaccent), not tables.
+GRANT USAGE ON SCHEMA public TO memax_v2_dream_sweeper;
 
 -- Which spaces are on V2, whose they are, and who may keep in them (the
 -- morning email's recipients). Ids, roles and addresses; no memory text.

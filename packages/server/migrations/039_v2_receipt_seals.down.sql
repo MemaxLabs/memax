@@ -75,6 +75,7 @@ END $$;
 
 REVOKE ALL ON v2.receipts FROM memax_v2_sealer;
 REVOKE USAGE ON SCHEMA v2 FROM memax_v2_sealer;
+REVOKE USAGE ON SCHEMA public FROM memax_v2_sealer;
 
 -- memax_v2_sealer is cluster-wide: other databases (test clones, another
 -- environment) may still hold grants to it, and then it stays.

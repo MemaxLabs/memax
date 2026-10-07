@@ -116,19 +116,24 @@ INSERT INTO v2.space_ledgers (space_id, tenant_id) SELECT id, tenant_id FROM pub
 CREATE FUNCTION v2.hubs_space_ledger() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path = pg_catalog, pg_temp
-    SET app.sweep = 'space_ledger_hub'
     AS $$
+DECLARE
+    prev text := current_setting('app.sweep', true);
 BEGIN
+    -- Set here and put back below, not with the function's own SET: only a
+    -- superuser may SET a custom setting that way, and Neon's owner isn't one.
+    PERFORM set_config('app.sweep', 'space_ledger_hub', true);
     IF TG_OP = 'INSERT' THEN
         INSERT INTO v2.space_ledgers (space_id, tenant_id) VALUES (NEW.id, NEW.tenant_id)
         ON CONFLICT (space_id) DO NOTHING;
-        RETURN NULL;
+    ELSE
+        BEGIN
+            DELETE FROM v2.space_ledgers WHERE space_id = OLD.id AND retired_at IS NULL;
+        EXCEPTION WHEN foreign_key_violation THEN
+            NULL; -- receipts, seals or tombstones refer to it: it stays
+        END;
     END IF;
-    BEGIN
-        DELETE FROM v2.space_ledgers WHERE space_id = OLD.id AND retired_at IS NULL;
-    EXCEPTION WHEN foreign_key_violation THEN
-        NULL; -- receipts, seals or tombstones refer to it: it stays
-    END;
+    PERFORM set_config('app.sweep', coalesce(prev, ''), true);
     RETURN NULL;
 END $$;
 
@@ -150,12 +155,30 @@ ALTER TABLE v2.receipt_checkpoints ADD CONSTRAINT receipt_checkpoints_space_fkey
 
 -- A space's tenant, for the sealer and the verifier when the space's hub
 -- is gone (ledger.SpaceScope). Ids only.
+-- Only a superuser may give a function its own SET of a custom setting such
+-- as app.sweep (Neon's owner role isn't one), so v2.space_ledger sets it and puts it
+-- back itself, around v2.space_ledger_as_owner, which holds the query and runs as
+-- the owner inside it.
+CREATE FUNCTION v2.space_ledger_as_owner(p_space uuid)
+    RETURNS TABLE (tenant_id uuid, retired_at timestamptz)
+    LANGUAGE sql STABLE
+    SET search_path = pg_catalog, pg_temp
+    AS $$ SELECT l.tenant_id, l.retired_at FROM v2.space_ledgers l WHERE l.space_id = p_space $$;
+
+REVOKE ALL ON FUNCTION v2.space_ledger_as_owner(uuid) FROM PUBLIC;
+
 CREATE FUNCTION v2.space_ledger(p_space uuid)
     RETURNS TABLE (tenant_id uuid, retired_at timestamptz)
-    LANGUAGE sql STABLE SECURITY DEFINER
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
     SET search_path = pg_catalog, pg_temp
-    SET app.sweep = 'space_ledger'
-    AS $$ SELECT l.tenant_id, l.retired_at FROM v2.space_ledgers l WHERE l.space_id = p_space $$;
+    AS $$
+DECLARE
+    prev text := current_setting('app.sweep', true);
+BEGIN
+    PERFORM set_config('app.sweep', 'space_ledger', true);
+    RETURN QUERY SELECT * FROM v2.space_ledger_as_owner(p_space);
+    PERFORM set_config('app.sweep', coalesce(prev, ''), true);
+END $$;
 
 REVOKE ALL ON FUNCTION v2.space_ledger(uuid) FROM PUBLIC;
 
@@ -806,11 +829,30 @@ REVOKE ALL ON FUNCTION v2.redact_space_receipt_reasons(uuid) FROM PUBLIC;
 
 -- Every space with a tombstone, for re-applying the forget ledger after a
 -- restore. Ids only; the owner's role alone may run it (as 038's).
-CREATE FUNCTION v2.forgotten_spaces() RETURNS TABLE (space_id uuid)
-    LANGUAGE sql STABLE SECURITY DEFINER
+-- Only a superuser may give a function its own SET of a custom setting such
+-- as app.sweep (Neon's owner role isn't one), so v2.forgotten_spaces sets it and puts it
+-- back itself, around v2.forgotten_spaces_as_owner, which holds the query and runs as
+-- the owner inside it.
+CREATE FUNCTION v2.forgotten_spaces_as_owner()
+    RETURNS TABLE (space_id uuid)
+    LANGUAGE sql STABLE
     SET search_path = pg_catalog, pg_temp
-    SET app.sweep = 'forgotten_spaces'
     AS $$ SELECT DISTINCT t.space_id FROM v2.tombstones t $$;
+
+REVOKE ALL ON FUNCTION v2.forgotten_spaces_as_owner() FROM PUBLIC;
+
+CREATE FUNCTION v2.forgotten_spaces()
+    RETURNS TABLE (space_id uuid)
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    AS $$
+DECLARE
+    prev text := current_setting('app.sweep', true);
+BEGIN
+    PERFORM set_config('app.sweep', 'forgotten_spaces', true);
+    RETURN QUERY SELECT * FROM v2.forgotten_spaces_as_owner();
+    PERFORM set_config('app.sweep', coalesce(prev, ''), true);
+END $$;
 
 REVOKE ALL ON FUNCTION v2.forgotten_spaces() FROM PUBLIC;
 

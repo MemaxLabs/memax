@@ -21,6 +21,7 @@ import { IntentKeys } from "@/lib/v2/intent-keys";
 import { useHotkey, useKeycap } from "@/lib/v2/keymap/react";
 import { reviewImportHref } from "@/lib/v2/onboarding/routes";
 import { useSource } from "../(app)/_lib/data";
+import { useFunnelStep } from "./funnel";
 import { useTargets } from "../(app)/_lib/compile";
 import { recordKeys } from "../(app)/_lib/records";
 import { StatementText } from "../(app)/_components/statement-text";
@@ -87,6 +88,12 @@ export function CleanupScreen() {
   const view = viewQuery.data ?? null;
   const reviewKey = useKeycap("cleanup.review");
   const waiting = view ? waitingMemories(view).length : 0;
+  const disagreements = view?.conflicts.length ?? 0;
+  useFunnelStep(
+    "cleanup_settled",
+    view !== null && disagreements > 0 && openConflicts(view).length === 0,
+    { conflicts: disagreements },
+  );
   const reviewHref =
     space && view ? reviewImportHref(space.slug, view.summary.id) : null;
   useHotkey(

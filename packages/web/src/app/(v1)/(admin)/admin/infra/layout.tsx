@@ -8,18 +8,20 @@ import {
   Activity,
   Inbox,
   ListChecks,
+  Gauge,
   type LucideIcon,
 } from "lucide-react";
 import { MemaxLoader } from "@memaxlabs/ui";
 import { useLocale } from "@/i18n";
 
-type TabId = "config" | "pulse" | "ingestion" | "jobs";
+type TabId = "config" | "pulse" | "ingestion" | "jobs" | "metrics";
 
 const TABS: readonly { id: TabId; href: string; icon: LucideIcon }[] = [
   { id: "config", href: "/admin/infra/config", icon: Settings },
   { id: "pulse", href: "/admin/infra/pulse", icon: Activity },
   { id: "ingestion", href: "/admin/infra/ingestion", icon: Inbox },
   { id: "jobs", href: "/admin/infra/jobs", icon: ListChecks },
+  { id: "metrics", href: "/admin/infra/metrics", icon: Gauge },
 ] as const;
 
 export default function InfraLayout({

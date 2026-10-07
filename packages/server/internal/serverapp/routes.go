@@ -61,19 +61,22 @@ type routeDeps struct {
 	adminDreams            *handler.AdminDreamsHandler
 	adminWaitlist          *handler.AdminWaitlistReconcileHandler
 	adminOps               *handler.AdminOpsHandler
-	resendWebhook          *handler.ResendWebhookHandler
-	unsubscribe            *handler.UnsubscribeHandler
-	bar                    *handler.BarHandler
-	billing                *billing.Service
-	meter                  *meter.Meter
-	rateLimiter            *ratelimit.Limiter
-	hubResolver            hubAwarePlanResolver
-	planRegistry           *plans.Registry
-	authMiddleware         func(http.Handler) http.Handler
-	hubMiddleware          func(http.Handler) http.Handler
-	store                  store.Store
-	eventsBroker           events.Publisher
-	v2                     *v2api.Handler
+	// adminV2Metrics serves the phase gates' metrics; nil without a V2
+	// record.
+	adminV2Metrics *handler.AdminV2MetricsHandler
+	resendWebhook  *handler.ResendWebhookHandler
+	unsubscribe    *handler.UnsubscribeHandler
+	bar            *handler.BarHandler
+	billing        *billing.Service
+	meter          *meter.Meter
+	rateLimiter    *ratelimit.Limiter
+	hubResolver    hubAwarePlanResolver
+	planRegistry   *plans.Registry
+	authMiddleware func(http.Handler) http.Handler
+	hubMiddleware  func(http.Handler) http.Handler
+	store          store.Store
+	eventsBroker   events.Publisher
+	v2             *v2api.Handler
 	// v2Search answers MCP v2's recall and search: hybrid with V2
 	// embeddings, lexical without (nil: MCP v2 builds the lexical one).
 	v2Search *v2recall.Searcher
@@ -650,6 +653,12 @@ func registerAdminRoutes(root *http.ServeMux, deps routeDeps) {
 		admin.HandleFunc("POST /v1/admin/ops/jobs/{id}/retry", deps.adminOps.RetryJob)
 		admin.HandleFunc("POST /v1/admin/ops/jobs/{id}/cancel", deps.adminOps.CancelJob)
 		admin.HandleFunc("POST /v1/admin/ops/memories/{id}/force-active", deps.adminOps.ForceActiveMemory)
+	}
+
+	// V2's product metrics (plan 25 §5.18): the phase gates by weekly
+	// signup cohort, beside the north star. Counts only.
+	if deps.adminV2Metrics != nil {
+		admin.HandleFunc("GET /v1/admin/v2/metrics", deps.adminV2Metrics.Get)
 	}
 
 	// Audiences — saved recipient rules

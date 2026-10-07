@@ -3761,6 +3761,7 @@ export const en = {
         pulse: "Pulse",
         ingestion: "Ingestion",
         jobs: "Jobs",
+        metrics: "Gate metrics",
       },
       ops: {
         title: "Operations",
@@ -3945,6 +3946,99 @@ export const en = {
           cancelled: "Cancelled",
           retryable: "Retryable",
           pending: "Pending",
+        },
+      },
+      metrics: {
+        title: "Gate metrics",
+        description:
+          "The V2 plan's phase gates, counted from receipts: people by the week they signed up. A person counts once they reach a V2 space; staff are left out.",
+        weeks: "Signup weeks",
+        weeksOption: "{n} weeks",
+        asOf: "As of {time} UTC",
+        loadError: "Couldn't load the gate metrics. Reload to try again.",
+        none: "–",
+        gates: {
+          title: "Phase gates",
+          description:
+            "Judged on new people. People who came from V1 are shown beside them, never inside.",
+          activation: "Phase 2 · 2+ agents and a compile in the first session",
+          first_file: "Phase 2 · first file, median from init's import",
+          week4_keeping: "Phase 3 · activated people keeping in week 4",
+          team_pull: "Phase 4 · a teammate within 60 days",
+          ratioHint: "{numerator} of {denominator} · bar {bar}",
+          fileHint: "{numerator} of {denominator} under 5 min · bar {bar}",
+          fromV1: "From V1: {value}",
+          status: {
+            pass: "At the bar",
+            fail: "Below the bar",
+            pending: "Waiting for windows to close",
+          },
+        },
+        northStar: {
+          title: "North star",
+          value: "{two} of {read}",
+          hint: "Spaces read by 2+ agents in the week ending {week}. Coverage {coverage}: {reading} of {seen} connections seen were also seen reading.",
+        },
+        cohorts: {
+          title: "Cohorts by signup week",
+          description:
+            "First-session counts are of people whose first {hours} hours have ended.",
+          empty: "No one reached a V2 space in these weeks.",
+          all: "All",
+          kind: {
+            new: "New",
+            from_v1: "From V1",
+          },
+          columns: {
+            week: "Week",
+            cohort: "Cohort",
+            people: "People",
+            closed: "Closed",
+            twoAgents: "2+ agents",
+            compiled: "Compiled",
+            activated: "Activated",
+            read: "Read",
+            firstFile: "First file p50 / p90",
+            under5m: "Under 5 min",
+            signupToFile: "Signup to file",
+            week4: "Week 4",
+            teammate: "Teammate",
+          },
+        },
+        review: {
+          title: "Review health",
+          description:
+            "Proposals by the week they were made, and what decided each one first.",
+          empty: "No proposals in these weeks.",
+          columns: {
+            week: "Week",
+            proposals: "Proposals",
+            kept: "Kept",
+            rejected: "Rejected",
+            folded: "Folded",
+            forgotten: "Forgotten",
+            open: "Open",
+            rejectRate: "Reject rate",
+            decision: "To decision p50",
+            decisionP90: "p90",
+          },
+        },
+        definitions: {
+          title: "How these are counted",
+          signup:
+            "Signup: when a new person's account was created. For someone who wrote memories in V1 first, when they first had a V2 space.",
+          session:
+            "First session: the {hours} hours after signup, long enough to run init and open a second agent.",
+          activated:
+            "Activated: by the end of the first session, 2+ agent connections and a compile their own CLI or daemon wrote to disk.",
+          firstFile:
+            "First file: from init's first import to the first compile written to disk.",
+          week4:
+            "Week 4: activated people who kept something themselves 21 to 28 days after signup.",
+          teammate:
+            "Teammate: another person joined a V2 space they own within 60 days. Plans aren't billed yet, so this is everyone, not only Pro.",
+          review:
+            "Reject rate: rejected out of kept and rejected. Folded proposals were repeats the judge merged.",
         },
       },
     },

@@ -15,6 +15,7 @@ import { TargetStatus } from "../(app)/_components/target-row";
 import { OnboardingPage } from "./frame";
 import { useSetupImport, useSetupSpace } from "./queries";
 import styles from "./compile-done.module.css";
+import { useFunnelStep } from "./funnel";
 
 type Copy = ReturnType<typeof useLocale>["t"]["ledger"]["onboarding"]["done"];
 
@@ -88,6 +89,9 @@ function Done({ space }: { space: SpaceSummary }) {
     return s === "in_sync" || s === "reads" || s === "live";
   });
   const files = list.filter((x) => x.kind !== "chatgpt").length;
+  useFunnelStep("compile_done_reached", targets.data !== undefined, {
+    written: written.length,
+  });
   const { kept, settled } = importOutcome(view.data ?? null);
   const compiled = written.length > 0;
   const title = compiled

@@ -166,6 +166,20 @@ func (t *scopedTx) deferStatement(sql string, args ...any) {
 	t.pending = append(t.pending, pending{sql: sql, args: args})
 }
 
+// execDeferred runs a write whose result nobody reads (no RETURNING, no
+// row count): on a ledger transaction it goes out with the next statement,
+// in that round trip, ahead of it. If it fails, Postgres skips the rest of
+// that pipeline and the next statement returns its error; the transaction
+// is aborted either way, so the command fails as it would have.
+func execDeferred(ctx context.Context, tx pgx.Tx, sql string, args ...any) error {
+	if t, ok := tx.(*scopedTx); ok && t.usable() == nil && batchable(sql, args) {
+		t.deferStatement(sql, args...)
+		return nil
+	}
+	_, err := tx.Exec(ctx, sql, args...)
+	return err
+}
+
 func (t *scopedTx) usable() error {
 	if t.closed {
 		return pgx.ErrTxClosed
@@ -336,23 +350,22 @@ func (t *scopedTx) Prepare(ctx context.Context, name, sql string) (*pgconn.State
 // value it returns can't be used.
 func (t *scopedTx) LargeObjects() pgx.LargeObjects { return pgx.LargeObjects{} }
 
-// Conn implements pgx.Tx. River reads its configuration through it. The
-// transaction is opened first if it hasn't been, so nothing sent on the
-// connection directly can run before the scope; statements deferred since
-// stay deferred.
+// Conn implements pgx.Tx. Everything pending goes out first (the opening
+// included), so a statement sent on the connection directly can run
+// neither before the scope nor ahead of a deferred write; a failure there
+// fails the transaction's next statement.
 func (t *scopedTx) Conn() *pgx.Conn {
-	if !t.begun && t.usable() == nil {
-		n := 0
-		for n < len(t.pending) && t.pending[n].opening {
-			n++
-		}
-		rest := t.pending[n:]
-		t.pending = t.pending[:n]
+	if t.usable() == nil {
 		_ = t.flush(context.Background())
-		t.pending = append(t.pending, rest...)
 	}
 	return t.conn.Conn()
 }
+
+// Config is the pool's configuration. River's driver reads its exec mode
+// here before each statement (it would otherwise call Conn, which sends
+// what's pending, such as the role switch meant to ride with River's own
+// first statement).
+func (t *scopedTx) Config() *pgxpool.Config { return t.l.pool.Config() }
 
 // Begin implements pgx.Tx with a savepoint, as pgx does.
 func (t *scopedTx) Begin(ctx context.Context) (pgx.Tx, error) {

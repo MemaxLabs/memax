@@ -43,10 +43,7 @@ func (l *Ledger) GetMemory(ctx context.Context, scope Scope, ref string) (*Memor
 		if err != nil {
 			return err
 		}
-		if m.Sources, err = loadSources(ctx, tx, m.ID); err != nil {
-			return err
-		}
-		if err := attachDetails(ctx, tx, []*Memory{m}); err != nil {
+		if err := attachDetails(ctx, tx, []*Memory{m}, withSources(m)); err != nil {
 			return err
 		}
 		out = m
@@ -199,16 +196,26 @@ func (l *Ledger) ListReceipts(ctx context.Context, scope Scope, q ReceiptQuery) 
 // receiptPage reads one page of a space's receipts, newest first,
 // optionally for one object.
 func receiptPage(ctx context.Context, tx pgx.Tx, scope Scope, spaceID uuid.UUID, object *uuid.UUID, after int64, limit int) (ReceiptPage, error) {
-	rows, err := tx.Query(ctx, receiptSelect+`
+	sql, args := receiptPageSQL(scope, spaceID, object, after, limit)
+	rows, err := tx.Query(ctx, sql, args...)
+	if err != nil {
+		return ReceiptPage{}, fmt.Errorf("ledger: list receipts: %w", err)
+	}
+	return scanReceiptPage(rows, limit)
+}
+
+// receiptPageSQL is receiptPage's statement.
+func receiptPageSQL(scope Scope, spaceID uuid.UUID, object *uuid.UUID, after int64, limit int) (string, []any) {
+	return receiptSelect + `
 		 WHERE space_id = $1 AND space_id = ANY($2)
 		   AND ($3::uuid IS NULL OR object_id = $3)
 		   AND ($4::bigint = 0 OR seq < $4)
 		 ORDER BY seq DESC
-		 LIMIT $5`,
-		spaceID, scope.SpaceIDs(), object, after, limit+1)
-	if err != nil {
-		return ReceiptPage{}, fmt.Errorf("ledger: list receipts: %w", err)
-	}
+		 LIMIT $5`, []any{spaceID, scope.SpaceIDs(), object, after, limit + 1}
+}
+
+// scanReceiptPage reads receiptPageSQL's rows into a page of limit.
+func scanReceiptPage(rows pgx.Rows, limit int) (ReceiptPage, error) {
 	receipts, err := pgx.CollectRows(rows, scanReceipt)
 	if err != nil {
 		return ReceiptPage{}, fmt.Errorf("ledger: list receipts: %w", err)
@@ -280,30 +287,37 @@ func (l *Ledger) GetMemoryHistory(ctx context.Context, scope Scope, ref string) 
 		if err != nil {
 			return err
 		}
-		if m.Sources, err = loadSources(ctx, tx, m.ID); err != nil {
-			return err
+		// Its sources, details, versions and receipts in one round trip.
+		var versions []MemoryVersion
+		var receipts ReceiptPage
+		withVersions := func(b *pgx.Batch) {
+			b.Queue(`
+				SELECT version, COALESCE(statement, ''), receipt_id, created_at
+				  FROM v2.memory_versions
+				 WHERE memory_id = $1 AND space_id = $2
+				 ORDER BY version DESC`, m.ID, m.SpaceID).
+				Query(func(rows pgx.Rows) error {
+					var err error
+					versions, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (MemoryVersion, error) {
+						var v MemoryVersion
+						err := r.Scan(&v.Version, &v.Statement, &v.ReceiptID, &v.CreatedAt)
+						return v, err
+					})
+					if err != nil {
+						return fmt.Errorf("ledger: list versions: %w", err)
+					}
+					return nil
+				})
 		}
-		if err := attachDetails(ctx, tx, []*Memory{m}); err != nil {
-			return err
+		withReceipts := func(b *pgx.Batch) {
+			sql, args := receiptPageSQL(scope, m.SpaceID, &m.ID, 0, DefaultPageSize)
+			b.Queue(sql, args...).Query(func(rows pgx.Rows) error {
+				var err error
+				receipts, err = scanReceiptPage(rows, DefaultPageSize)
+				return err
+			})
 		}
-		rows, err := tx.Query(ctx, `
-			SELECT version, COALESCE(statement, ''), receipt_id, created_at
-			  FROM v2.memory_versions
-			 WHERE memory_id = $1 AND space_id = $2
-			 ORDER BY version DESC`, m.ID, m.SpaceID)
-		if err != nil {
-			return fmt.Errorf("ledger: list versions: %w", err)
-		}
-		versions, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (MemoryVersion, error) {
-			var v MemoryVersion
-			err := r.Scan(&v.Version, &v.Statement, &v.ReceiptID, &v.CreatedAt)
-			return v, err
-		})
-		if err != nil {
-			return fmt.Errorf("ledger: list versions: %w", err)
-		}
-		receipts, err := receiptPage(ctx, tx, scope, m.SpaceID, &m.ID, 0, DefaultPageSize)
-		if err != nil {
+		if err := attachDetails(ctx, tx, []*Memory{m}, withSources(m), withVersions, withReceipts); err != nil {
 			return err
 		}
 		out = &MemoryHistory{Memory: m, Versions: versions, Receipts: receipts}

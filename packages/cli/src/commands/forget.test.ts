@@ -281,6 +281,24 @@ describe("memax forget", () => {
     expect(state.forgot).toHaveLength(0);
   });
 
+  it("sends a person with a passkey to the web, where it asks for it", async () => {
+    // The CLI can't answer a passkey check: the refusal says where to go.
+    state.preview = preview({
+      allowed: false,
+      policy: {
+        effect: "refuse",
+        code: "needs_passkey",
+        message:
+          "You have a passkey, so forgetting M-0201 asks for it. Confirm with your passkey on memax.app.",
+      },
+    });
+    await expect(forgetCommand("M-0201", {})).rejects.toThrow("exit 1");
+    expect(errs.join("\n")).toContain(
+      "You have a passkey, so forgetting M-0201 asks for it. Confirm with your passkey on memax.app.",
+    );
+    expect(state.forgot).toHaveLength(0);
+  });
+
   it("asks again when what goes with it changed meanwhile", async () => {
     prompt.answer = "M-0201";
     state.forgetError = new MemaxError(

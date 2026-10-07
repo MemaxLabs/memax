@@ -45,6 +45,13 @@
 //   - Dream: only Dream publishes an edition, and its new facts are
 //     proposals. Any person who may keep undoes one of its actions or
 //     restores a faded memory; a space's owner asks it to run now.
+//   - Passkeys (assurance.go, plan 25 §5.15): what needs a person on the
+//     web (human_web) needs their passkey too when they have one
+//     (Actor.Passkey): refused with CodeNeedsPasskey unless this request
+//     answered a re-check (Actor.Verified, human_web_verified), and so
+//     does every Forget by a passkey holder. Without a passkey the
+//     decision applies at human_web and suggests one (Decision.Suggest).
+//     DecideAccount covers the account itself.
 //
 // Messages follow the product voice (sentence case, actionable, no
 // exclamation marks). Clients localise by Code; Message is the English

@@ -4,7 +4,6 @@
  * Pure (catalogue in, string out), so the rules are unit-tested in both
  * locales.
  */
-import type { IconName } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n/interpolate";
 import type { Locale } from "@/i18n";
 import type { Translations } from "@/i18n/locales/en";
@@ -45,8 +44,13 @@ export function sessionLabel(
   return { label: s.client, meta: null };
 }
 
-/** The icon a session's row shows: the web, a phone, a terminal or an agent. */
-export function sessionIcon(s: SessionView): IconName {
+/**
+ * The icon a session's row shows: the web, a phone, a terminal or an
+ * agent. Ledger's icon names, spelled here: lib/ stays free of the Ledger.
+ */
+export type SessionIcon = "globe" | "today" | "terminal" | "agents";
+
+export function sessionIcon(s: SessionView): SessionIcon {
   if (s.surface === "cli" || s.surface === "device") return "terminal";
   if (s.surface === "mcp") return "agents";
   return /\b(iOS|iPadOS|Android)\b/.test(s.client) ? "today" : "globe";

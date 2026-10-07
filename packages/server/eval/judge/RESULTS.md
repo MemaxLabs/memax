@@ -238,4 +238,8 @@ Voyage usage for the candidates runs was a few thousand short texts.
 - **Write the eval set out further** past 28 conflicts:
   - contradictions of kept facts (none today; every planted contradiction is against a decision in force);
   - multi-candidate prompts (every live call here judges one pair; production sends up to 10 candidates, and false flags on longer lists are untested).
-- **Re-run this eval** once the branch `v2-rule11` lands, since a flag will then move a Write agent's kept memory back to Review. The bar's stakes go up, and the evidence above should be re-checked against that code.
+- **`v2-rule11` has since merged into `v2`.**
+  - A flag now moves a Write agent's kept memory back to Review, so a false flag costs more than it did when these runs were made.
+  - Its change leaves `Decide`'s proposal path, which these runs score, as it was.
+  - This branch merges into it without conflicts. On the merged tree the judge, ledger, `/v2`, MCP and eval tests pass with these defaults.
+  - The multi-candidate test above is the one to add before relying on the 0.6 bar for Write agents' writes.

@@ -435,7 +435,7 @@ type DreamAction struct {
 	Version int     `json:"version,omitempty"`
 	Related *Memory `json:"related,omitempty"`
 	// NoteRefs are the N- refs of the notes it rests on.
-	NoteRefs []string `json:"note_refs,omitempty"`
+	NoteRefs []string `json:"note_refs"`
 	// Brief is the Brief version a Brief action wrote, and how many
 	// changes it made.
 	Brief      *DreamBriefChange `json:"brief,omitempty"`

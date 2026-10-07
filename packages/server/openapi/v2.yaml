@@ -8507,7 +8507,7 @@ components:
         with:
           $ref: '#/components/schemas/Memory'
     DreamEdition:
-      description: One edition (D-): what Dream read and what it did.
+      description: 'One edition (D-): what Dream read and what it did.'
       type: object
       additionalProperties: false
       required: [id, ref, n, space_id, slot, trigger, until, started_at, finished_at, seconds, notes_read, notes_by,

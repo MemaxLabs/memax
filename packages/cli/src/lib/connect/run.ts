@@ -10,13 +10,17 @@
 //    Propose (Cursor and Gemini CLI at Read). If it already has a
 //    connection, connect it to this repository's space at that level, or
 //    lower where it is lower elsewhere: never raised from the CLI.
-// 4. Compile: in a linked repository whose files aren't in sync yet,
+// 4. GEMINI.md, for Gemini CLI only and only when asked (--gemini-md):
+//    Antigravity CLI, which replaced Gemini CLI for most people, reads
+//    AGENTS.md, so the shim is opt-in (the compiler's OPT_IN_TARGET_KINDS).
+// 5. Compile: in a linked repository whose files aren't in sync yet,
 //    compile once and write the files here.
 import type { Memax, V2 } from "memax-sdk";
 import type { DaemonPaths } from "../daemon/paths.js";
 import { findLinkedRepo } from "../daemon/registry.js";
 import { AGENTS, type AgentEntry } from "../init/agents.js";
 import { connectToSpaces } from "../init/connect.js";
+import { handWritten } from "../init/finish.js";
 import type { CompileOutcome, McpOutcome } from "../init/types.js";
 import { gitRoot } from "../project-context.js";
 import { resolveSpace, SpaceChoiceError } from "../v2-space.js";
@@ -37,6 +41,8 @@ export interface ConnectOptions {
   format?: string;
   /** Seconds to wait for the first compile. */
   timeout?: string;
+  /** --gemini-md: give the space the GEMINI.md shim (Gemini CLI only). */
+  geminiMd?: boolean;
 }
 
 export interface ConnectDeps {
@@ -76,6 +82,11 @@ export interface ConnectReport {
     space?: string;
     autonomy?: V2.Autonomy;
     note?: string;
+  };
+  /** Gemini CLI only: the space's GEMINI.md shim. */
+  shim?: {
+    state: "created" | "present" | "not_asked";
+    path?: string;
   };
   compile: {
     state:
@@ -196,15 +207,45 @@ export async function runConnect(
     }
   }
 
-  // 4. A first compile, in a linked repository.
-  if (o.compile === false) return r;
+  // 4. GEMINI.md, when asked for.
   const root = gitRoot(d.cwd);
+  let targets: V2.Target[] | undefined;
+  if (a.kind === "gemini-cli") {
+    targets = (await d.memax.v2.targets.list(space.id)).items;
+    const shim = targets.find((t) => t.kind === "gemini_md");
+    if (shim) r.shim = { state: "present", path: shim.path ?? "GEMINI.md" };
+    else if (!o.geminiMd) r.shim = { state: "not_asked" };
+    else {
+      // A GEMINI.md someone wrote stays theirs, with one Memax block in
+      // it, as init does for CLAUDE.md.
+      const own = !!root && handWritten(root, "GEMINI.md");
+      await d.memax.v2.targets.create(
+        space.id,
+        own
+          ? {
+              kind: "gemini_md",
+              settings: { user_owned: true },
+              reason: "GEMINI.md already existed in the repository",
+            }
+          : { kind: "gemini_md", reason: "memax connect gemini --gemini-md" },
+        {
+          idempotencyKey: `connect-target:${space.id}:gemini_md`,
+          via: "cli",
+        },
+      );
+      targets = (await d.memax.v2.targets.list(space.id)).items;
+      r.shim = { state: "created", path: "GEMINI.md" };
+    }
+  }
+
+  // 5. A first compile, in a linked repository.
+  if (o.compile === false) return r;
   const link = root ? findLinkedRepo(d.paths, root) : undefined;
   if (!link || link.space_id !== space.id) {
     r.compile = { state: "not_linked" };
     return r;
   }
-  const targets = (await d.memax.v2.targets.list(space.id)).items;
+  targets ??= (await d.memax.v2.targets.list(space.id)).items;
   if (targets.length === 0) {
     r.compile = { state: "no_targets" };
     return r;

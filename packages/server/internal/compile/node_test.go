@@ -21,7 +21,8 @@ import (
 )
 
 // The Go side and the compiler agree on the adapters: every kind, the
-// default set (the Phase 1 targets) and each default path.
+// default set (the Phase 1 targets), the opt-in set (never a default) and
+// each default path.
 func TestRealServiceMatchesTheLedgersTargets(t *testing.T) {
 	t.Parallel()
 	client := compiletest.Client(compiletest.StartService(t))
@@ -32,11 +33,17 @@ func TestRealServiceMatchesTheLedgersTargets(t *testing.T) {
 	if h.Status != "ok" || h.ContractVersion != compile.ContractVersion {
 		t.Fatalf("health = %+v", h)
 	}
-	var kinds, defaults []string
+	var kinds, defaults, optIn []string
 	for _, a := range h.Adapters {
 		kinds = append(kinds, a.Kind)
 		if a.Default {
 			defaults = append(defaults, a.Kind)
+		}
+		if a.OptIn {
+			optIn = append(optIn, a.Kind)
+			if a.Default {
+				t.Errorf("%s is both opt-in and a default", a.Kind)
+			}
 		}
 		want := ledger.TargetKind(a.Kind).DefaultPath()
 		got := ""
@@ -56,6 +63,16 @@ func TestRealServiceMatchesTheLedgersTargets(t *testing.T) {
 	}
 	if !slices.Equal(kinds, goKinds) || !slices.Equal(defaults, goDefaults) {
 		t.Errorf("compiler kinds %v (defaults %v), ledger %v (defaults %v)", kinds, defaults, goKinds, goDefaults)
+	}
+	var goOptIn []string
+	for _, k := range ledger.OptInTargetKinds {
+		goOptIn = append(goOptIn, string(k))
+		if slices.Contains(ledger.DefaultTargetKinds, k) {
+			t.Errorf("%s is both opt-in and a default in the ledger", k)
+		}
+	}
+	if !slices.Equal(optIn, goOptIn) {
+		t.Errorf("compiler opt-in kinds %v, ledger %v", optIn, goOptIn)
 	}
 }
 

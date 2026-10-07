@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/riverqueue/river"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
@@ -59,11 +60,8 @@ func (w *writer) write(ctx context.Context, nm NewMemory, propose bool) (Result,
 	if !ok {
 		return Result{}, ErrNotFound
 	}
-	sp, err := loadSpace(ctx, w.tx, nm.SpaceID)
-	if err != nil {
-		return Result{}, err
-	}
-	if replay, err := w.claim(ctx, sp.ID); err != nil || replay != nil {
+	sp, replay, err := w.spaceAndClaim(ctx, nm.SpaceID)
+	if err != nil || replay != nil {
 		return deref(replay), err
 	}
 	return w.writeMemory(ctx, sp, grant, nm, propose)
@@ -198,11 +196,11 @@ func (w *writer) review(ctx context.Context, ref string, expected int, cmd Comma
 		if receipts, err = w.supersedeOnKeep(ctx, sp, mem, receipts); err != nil {
 			return Result{}, err
 		}
-		if err := w.markDirty(ctx, sp.ID); err != nil {
+		// The targets' bump and the journal's read go out together.
+		if err := w.markDirtyAndJournal(ctx, sp, receipts); err != nil {
 			return Result{}, err
 		}
-	}
-	if err := w.writeUndo(ctx, sp, receipts); err != nil {
+	} else if err := w.writeUndo(ctx, sp, receipts); err != nil {
 		return Result{}, err
 	}
 	return w.finish(ctx, Result{Outcome: OutcomeApplied, Policy: dec, Receipts: receipts}, mem.ID)
@@ -411,13 +409,11 @@ func (w *writer) supersede(ctx context.Context, sp spaceRow, grant SpaceGrant, o
 }
 
 // open loads and locks the target memory, then claims the idempotency
-// key in its space (returning the original result on a replay).
+// key in its space (returning the original result on a replay). That is
+// two round trips: the ref resolves inside the locking statement
+// (lockRef), and the space's read goes out with the claim (spaceAndClaim).
 func (w *writer) open(ctx context.Context, ref string) (*Memory, SpaceGrant, spaceRow, *Result, error) {
-	id, err := resolveRef(ctx, w.tx, w.meta.Scope, ref)
-	if err != nil {
-		return nil, SpaceGrant{}, spaceRow{}, nil, err
-	}
-	mem, err := loadMemory(ctx, w.tx, w.meta.Scope, id, true)
+	mem, err := lockRef(ctx, w.tx, w.meta.Scope, ref)
 	if err != nil {
 		return nil, SpaceGrant{}, spaceRow{}, nil, err
 	}
@@ -425,11 +421,10 @@ func (w *writer) open(ctx context.Context, ref string) (*Memory, SpaceGrant, spa
 	if !ok {
 		return nil, SpaceGrant{}, spaceRow{}, nil, ErrNotFound
 	}
-	sp, err := loadSpace(ctx, w.tx, mem.SpaceID)
-	if err != nil {
+	sp, replay, err := w.spaceAndClaim(ctx, mem.SpaceID)
+	if err != nil && sp.ID == uuid.Nil {
 		return nil, SpaceGrant{}, spaceRow{}, nil, err
 	}
-	replay, err := w.claim(ctx, sp.ID)
 	return mem, grant, sp, replay, err
 }
 
@@ -629,8 +624,60 @@ func (w *writer) personKept(ctx context.Context, id uuid.UUID) (bool, error) {
 // reused for different content is ErrIdempotencyKeyReused.
 func (w *writer) claim(ctx context.Context, spaceID uuid.UUID) (*Result, error) {
 	c, err := w.claimKey(ctx, spaceID)
-	if err != nil || c == nil {
+	if err != nil {
 		return nil, err
+	}
+	return w.replay(ctx, c)
+}
+
+// spaceAndClaim is loadSpace then claim, in one round trip: the claim
+// needs only the space's id, and the two statements reach the server in
+// the same order as before. A replay's original result is read after, as
+// claim reads it.
+func (w *writer) spaceAndClaim(ctx context.Context, spaceID uuid.UUID) (spaceRow, *Result, error) {
+	w.space = spaceID
+	var sp spaceRow
+	var spaceErr error
+	read, inserted := false, false
+	b := &pgx.Batch{}
+	b.Queue(spaceSQL, spaceID).QueryRow(func(row pgx.Row) error {
+		read = true
+		sp, spaceErr = scanSpace(row, spaceID)
+		// The claim's answer is read either way; the space's error wins.
+		return nil
+	})
+	b.Queue(claimSQL, w.claimArgs(spaceID)...).Exec(func(tag pgconn.CommandTag) error {
+		inserted = tag.RowsAffected() == 1
+		return nil
+	})
+	err := w.tx.SendBatch(ctx, b).Close()
+	switch {
+	case !read:
+		// What went out ahead of the space's read failed (the
+		// transaction's opening or a deferred write): it fails the
+		// command as it failed loadSpace.
+		if err == nil {
+			err = errors.New("no answer")
+		}
+		return spaceRow{}, nil, fmt.Errorf("ledger: load space: %w", err)
+	case spaceErr != nil:
+		return spaceRow{}, nil, spaceErr
+	case err != nil:
+		return sp, nil, fmt.Errorf("ledger: claim idempotency key: %w", err)
+	}
+	c, err := w.earlierClaim(ctx, spaceID, inserted)
+	if err != nil {
+		return sp, nil, err
+	}
+	replay, err := w.replay(ctx, c)
+	return sp, replay, err
+}
+
+// replay is the original result of a key applied before; nil when the key
+// was new.
+func (w *writer) replay(ctx context.Context, c *claimed) (*Result, error) {
+	if c == nil {
+		return nil, nil
 	}
 	res, err := c.result(ctx, w)
 	if err != nil {
@@ -672,28 +719,39 @@ func (c *claimed) result(ctx context.Context, w *writer) (Result, error) {
 	return res, nil
 }
 
+// claimSQL takes a command's idempotency key in a space (claimArgs).
+const claimSQL = `
+	INSERT INTO v2.command_keys (space_id, actor_kind, actor_id, idempotency_key, command, request_hash)
+	VALUES ($1, $2, $3, $4, $5, $6)
+	ON CONFLICT ON CONSTRAINT command_keys_key DO NOTHING`
+
+func (w *writer) claimArgs(spaceID uuid.UUID) []any {
+	return []any{spaceID, string(w.meta.Actor.Kind), w.actorID(), w.meta.IdempotencyKey, string(w.command), w.hash}
+}
+
 // claimKey takes the key, returning nil, or the record of its earlier
 // application.
 func (w *writer) claimKey(ctx context.Context, spaceID uuid.UUID) (*claimed, error) {
 	w.space = spaceID
-	actorID := w.actorID()
-	tag, err := w.tx.Exec(ctx, `
-		INSERT INTO v2.command_keys (space_id, actor_kind, actor_id, idempotency_key, command, request_hash)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT ON CONSTRAINT command_keys_key DO NOTHING`,
-		spaceID, string(w.meta.Actor.Kind), actorID, w.meta.IdempotencyKey, string(w.command), w.hash)
+	tag, err := w.tx.Exec(ctx, claimSQL, w.claimArgs(spaceID)...)
 	if err != nil {
 		return nil, fmt.Errorf("ledger: claim idempotency key: %w", err)
 	}
-	if tag.RowsAffected() == 1 {
+	return w.earlierClaim(ctx, spaceID, tag.RowsAffected() == 1)
+}
+
+// earlierClaim is nil when the claim inserted the key, and otherwise the
+// record of the key's earlier application.
+func (w *writer) earlierClaim(ctx context.Context, spaceID uuid.UUID, inserted bool) (*claimed, error) {
+	if inserted {
 		return nil, nil
 	}
-
+	actorID := w.actorID()
 	var command string
 	var hash []byte
 	var outcome *string
 	c := &claimed{}
-	err = w.tx.QueryRow(ctx, `
+	err := w.tx.QueryRow(ctx, `
 		SELECT command, request_hash, outcome, policy, object_id, receipt_ids
 		  FROM v2.command_keys
 		 WHERE space_id = $1 AND actor_kind = $2 AND actor_id IS NOT DISTINCT FROM $3 AND idempotency_key = $4`,

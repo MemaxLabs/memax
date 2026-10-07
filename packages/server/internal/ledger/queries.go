@@ -3,11 +3,13 @@ package ledger
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
@@ -30,11 +32,18 @@ func (s spaceRow) policy() policy.Space {
 	return policy.Space{Name: s.Name, Kind: s.Kind, Rules: s.Rules}
 }
 
+// spaceSQL reads the space $1.
+const spaceSQL = `SELECT id, tenant_id, kind, name, rules FROM v2.spaces WHERE id = $1`
+
 func loadSpace(ctx context.Context, tx pgx.Tx, id uuid.UUID) (spaceRow, error) {
+	return scanSpace(tx.QueryRow(ctx, spaceSQL, id), id)
+}
+
+// scanSpace reads spaceSQL's row.
+func scanSpace(row pgx.Row, id uuid.UUID) (spaceRow, error) {
 	var s spaceRow
 	var rules []byte
-	err := tx.QueryRow(ctx, `SELECT id, tenant_id, kind, name, rules FROM v2.spaces WHERE id = $1`, id).
-		Scan(&s.ID, &s.TenantID, &s.Kind, &s.Name, &rules)
+	err := row.Scan(&s.ID, &s.TenantID, &s.Kind, &s.Name, &rules)
 	if errNoRows(err) {
 		return spaceRow{}, ErrNotFound
 	}
@@ -55,12 +64,9 @@ func resolveRef(ctx context.Context, tx pgx.Tx, scope Scope, ref string) (uuid.U
 	if id, err := uuid.Parse(ref); err == nil {
 		return id, nil
 	}
-	p, n, ok := ParseRef(ref)
-	if !ok {
-		return uuid.Nil, invalid("memory", "use a display ID like M-0219 or a memory id")
-	}
-	if p != PrefixMemory {
-		return uuid.Nil, invalid("memory", "%s is not a memory; memory IDs start with M-", ref)
+	n, err := memorySeq(ref)
+	if err != nil {
+		return uuid.Nil, err
 	}
 	rows, err := tx.Query(ctx,
 		`SELECT id FROM v2.memories WHERE seq = $1 AND space_id = ANY($2) LIMIT 2`, n, scope.SpaceIDs())
@@ -78,6 +84,52 @@ func resolveRef(ctx context.Context, tx pgx.Tx, scope Scope, ref string) (uuid.U
 		return ids[0], nil
 	}
 	return uuid.Nil, ErrAmbiguousRef
+}
+
+// memorySeq is a memory display ID's number ("M-0219" is 219).
+func memorySeq(ref string) (int64, error) {
+	p, n, ok := ParseRef(ref)
+	if !ok {
+		return 0, invalid("memory", "use a display ID like M-0219 or a memory id")
+	}
+	if p != PrefixMemory {
+		return 0, invalid("memory", "%s is not a memory; memory IDs start with M-", ref)
+	}
+	return n, nil
+}
+
+// sqlstateCardinality is a scalar subquery that returned more than one row.
+const sqlstateCardinality = "21000"
+
+// lockRef is resolveRef then loadMemory with the row lock, in one
+// statement and one round trip. The display ID is resolved by a scalar
+// subquery, which locks nothing and raises cardinality_violation when the
+// ID matches memories in more than one space of the scope
+// (ErrAmbiguousRef); then the one memory is read and locked, its space
+// checked again once the lock is held, as before.
+func lockRef(ctx context.Context, tx pgx.Tx, scope Scope, ref string) (*Memory, error) {
+	ref = strings.TrimSpace(ref)
+	if id, err := uuid.Parse(ref); err == nil {
+		return loadMemory(ctx, tx, scope, id, true)
+	}
+	n, err := memorySeq(ref)
+	if err != nil {
+		return nil, err
+	}
+	m, err := scanMemory(tx.QueryRow(ctx, memorySelect+`
+		 WHERE m.id = (SELECT id FROM v2.memories WHERE seq = $1 AND space_id = ANY($2))
+		   AND m.space_id = ANY($2)
+		   FOR UPDATE OF m`, n, scope.SpaceIDs()))
+	var pg *pgconn.PgError
+	switch {
+	case errNoRows(err):
+		return nil, ErrNotFound
+	case errors.As(err, &pg) && pg.Code == sqlstateCardinality:
+		return nil, ErrAmbiguousRef
+	case err != nil:
+		return nil, fmt.Errorf("ledger: load memory: %w", err)
+	}
+	return m, nil
 }
 
 const memorySelect = `

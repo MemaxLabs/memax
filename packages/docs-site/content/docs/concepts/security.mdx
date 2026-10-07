@@ -95,6 +95,33 @@ and are never blocked.
 - Admin surfaces use a separate auth model and are never exposed in the
   published SDK.
 
+## Sub-processors
+
+Some features send memory text to outside services. These are the ones
+the reviewed record (Memax V2) uses, each only while the feature is on:
+
+| Sub-processor | What it receives | Used for | Retention |
+| ------------- | ---------------- | -------- | --------- |
+| [OpenRouter](https://openrouter.ai) | A proposal and the memories it's compared with; an Ask question and the kept memories it may cite | Routing each model call to one of the hosts below | Zero data retention: every call sets `provider.zdr`, so OpenRouter refuses any host that retains prompts |
+| Together AI, Baseten, CoreWeave, DeepInfra (through OpenRouter, in that order) | The same, for DeepSeek V4.1 Flash | The judge's first pass, and Ask's answers | Zero-retention endpoints only, at fp8 precision or better. Never DeepSeek's own API |
+| Amazon Bedrock, then Google Vertex AI (through OpenRouter) | The same, for Claude Haiku 4.5 | The judge's fallback, when the first pass gives no usable answer | Zero-retention endpoints only |
+| Google Vertex AI (through OpenRouter) | A proposal and the decisions in force it touches, for Claude Sonnet 5.5 | Confirming any verdict about a decision in force | Zero-retention endpoints only |
+| [Voyage AI](https://www.voyageai.com) | Each kept memory and proposal, and each search query | Embeddings for search, and reranking | Voyage stores API inputs for training unless the account opts out, which gives zero-day retention. Treat embeddings as held under Voyage's terms until we publish that the opt-out is on |
+
+Each model call names its hosts as an allowlist (OpenRouter's
+`provider.only`) and the precisions they may run
+(`provider.quantizations`), so a host that isn't listed here never
+serves it, even as a fallback. The lists are server configuration
+(`JUDGE_PROVIDERS`, `ASK_PROVIDERS` and the `*_MIN_QUANTIZATION`
+settings), and a self-hosted server can change them.
+
+<Callout type="warn">
+  The original Memax features (memory processing, dreams, and the first
+  Ask) still call OpenRouter without this routing, and rerank with Cohere
+  when it's configured. They get bug fixes only and are replaced by the
+  reviewed record.
+</Callout>
+
 ## What we don't claim (yet)
 
 Honesty about limits is part of the posture:

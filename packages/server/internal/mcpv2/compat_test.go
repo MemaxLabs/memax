@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -166,6 +167,46 @@ func TestMixedRecall(t *testing.T) {
 	reads := e.reads.all()
 	if len(reads) != 1 || reads[0].SpaceID != onV2.id || len(reads[0].Memories) != 1 || reads[0].Kind != ledger.ReadRecall {
 		t.Errorf("the read wasn't recorded once, for the space on V2: %+v", reads)
+	}
+}
+
+// An unscoped recall or search runs V1's pipeline only while a reachable
+// space is still on V1: with every one on V2 it would find nothing it may
+// return, so it isn't run, and V1's recall isn't charged to the plan or
+// logged. With a V1 space in reach, V1 answers for it as before.
+func TestV1PipelineOnlyWithAV1Space(t *testing.T) {
+	e := newEnv(t)
+	for _, mixed := range []bool{false, true} {
+		user := e.user(fmt.Sprintf("mixed-%v", mixed))
+		onV2 := e.space(user, policy.SpaceProject, "on-v2")
+		e.toV2(onV2, e.personal(user))
+		e.seedV1(user, onV2, "Lighthouse note inside the space that moved to V2")
+		e.keep(user, onV2, "Lighthouse lamps are checked every morning", ledger.SectionConventions)
+		if mixed {
+			e.seedV1(user, e.space(user, policy.SpaceTeam, "v1-team"), "Lighthouse rotation happens every night in the v1 hub")
+		}
+		tok, grant := e.grant(user, "claude-code", "memax:read memax:propose")
+		e.connect(user, grant, ledger.AgentClaudeCode, policy.AutonomyPropose, onV2)
+		cs := e.connectClient(tok, "/mcp", modern, nil)
+		e.metered.take()
+		for _, tool := range []string{"memax_recall", "memax_search"} {
+			got := text(call(t, cs, tool, map[string]any{"query": "lighthouse", "limit": 10}))
+			mustContain(t, got, "Lighthouse lamps are checked every morning")
+			if strings.Contains(got, "note inside the space") {
+				t.Errorf("%s served a V1 note from a space on V2:\n%s", tool, got)
+			}
+			events, ops := e.metered.take()
+			if !mixed {
+				if strings.Contains(got, "not on V2 yet") || len(events)+len(ops) > 0 {
+					t.Errorf("%s, every space on V2: V1 ran (logged %v, charged %v):\n%s", tool, events, ops, got)
+				}
+				continue
+			}
+			mustContain(t, got, "From spaces not on V2 yet:", "rotation happens every night")
+			if !slices.Contains(events, "recall mcp") || !slices.Contains(ops, "recall") {
+				t.Errorf("%s with a V1 space: V1's recall wasn't logged and charged (logged %v, charged %v)", tool, events, ops)
+			}
+		}
 	}
 }
 

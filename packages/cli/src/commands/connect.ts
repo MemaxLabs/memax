@@ -125,6 +125,23 @@ function connectionLine(r: ConnectReport): Line {
   }
 }
 
+function shimLine(r: ConnectReport): Line | null {
+  switch (r.shim?.state) {
+    case "created":
+      return [done, "GEMINI.md", "added: it imports AGENTS.md"];
+    case "present":
+      return [same, "GEMINI.md", `compiled in this space (${r.shim.path})`];
+    case "not_asked":
+      return [
+        skip,
+        "GEMINI.md",
+        "not compiled: Antigravity CLI reads AGENTS.md. For Gemini CLI, add --gemini-md",
+      ];
+    default:
+      return null;
+  }
+}
+
 function compileLine(r: ConnectReport): Line | null {
   const c = r.compile;
   switch (c.state) {
@@ -159,6 +176,8 @@ function compileLine(r: ConnectReport): Line | null {
 
 export function renderConnect(r: ConnectReport, app: string): string[] {
   const lines: Line[] = [mcpLine(r, app), ...hookLines(r), connectionLine(r)];
+  const shim = shimLine(r);
+  if (shim) lines.push(shim);
   const c = compileLine(r);
   if (c) lines.push(c);
   return [
@@ -191,6 +210,10 @@ export function registerConnectCommand(program: Command): void {
     .option("--no-hook", "Don't install the session-start hook")
     .option("--no-compile", "Don't compile, even in a linked repository")
     .option(
+      "--gemini-md",
+      "Gemini CLI only: add a GEMINI.md that imports AGENTS.md (Antigravity CLI reads AGENTS.md as it is)",
+    )
+    .option(
       "--timeout <seconds>",
       "How long to wait for the first compile",
       "30",
@@ -202,6 +225,15 @@ export function registerConnectCommand(program: Command): void {
         console.error(
           chalk.red(
             `  memax connect doesn't know ${arg}. Agents: ${CONNECT_AGENTS.join(", ")}.`,
+          ),
+        );
+        process.exitCode = 2;
+        return;
+      }
+      if (opts.geminiMd && agent.kind !== "gemini-cli") {
+        console.error(
+          chalk.red(
+            "  --gemini-md is for Gemini CLI: memax connect gemini --gemini-md.",
           ),
         );
         process.exitCode = 2;

@@ -83,6 +83,12 @@ var TargetKinds = []TargetKind{TargetAgentsMD, TargetClaudeMD, TargetCursorMDC, 
 // scoped Cursor rules and the ChatGPT copy-out).
 var DefaultTargetKinds = []TargetKind{TargetAgentsMD, TargetClaudeMD, TargetCursorMDC, TargetChatGPT}
 
+// OptInTargetKinds are compiled only for a space that asks for one, never
+// by default: the compiler's OPT_IN_TARGET_KINDS. The GEMINI.md shim is
+// for people still on Gemini CLI; Antigravity CLI, which replaced it for
+// most people, reads AGENTS.md.
+var OptInTargetKinds = []TargetKind{TargetGeminiMD}
+
 // Valid reports whether k is a known kind.
 func (k TargetKind) Valid() bool { return slices.Contains(TargetKinds, k) }
 

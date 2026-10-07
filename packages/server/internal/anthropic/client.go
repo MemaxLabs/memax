@@ -235,6 +235,17 @@ type CompleteRequest struct {
 	// nothing (OpenRouter's provider.zdr, plan 25 D14). Leave it off for
 	// gateways that don't take OpenRouter's provider routing.
 	ZeroDataRetention bool
+	// Providers pins the hosts that may serve the request, in order of
+	// preference (OpenRouter's provider.only and provider.order; see
+	// DefaultProviders). Empty lets the gateway choose.
+	Providers []string
+	// Quantizations admits only hosts that run the model at these
+	// precisions (provider.quantizations; see QuantizationsAtLeast).
+	// Empty admits any.
+	Quantizations []string
+	// Temperature, when set, is sent as the request's temperature. Nil
+	// leaves the model's default (Claude Sonnet 5.5 refuses any other).
+	Temperature *float64
 }
 
 // CompleteResponse is the output of a single LLM completion call.
@@ -284,8 +295,11 @@ func (c *Client) Complete(ctx context.Context, req CompleteRequest) (*CompleteRe
 			"format": map[string]any{"type": "json_schema", "schema": req.OutputSchema},
 		}
 	}
-	if req.ZeroDataRetention {
-		body["provider"] = map[string]any{"zdr": true}
+	if req.Temperature != nil {
+		body["temperature"] = *req.Temperature
+	}
+	if provider := providerObject(req); provider != nil {
+		body["provider"] = provider
 	}
 
 	reqBody, err := json.Marshal(body)
@@ -478,8 +492,9 @@ type StreamUsage struct {
 }
 
 // CompleteStreamUsage is CompleteStream that also reports the input
-// tokens and the stop reason. It honours ZeroDataRetention as Complete
-// does (OutputSchema doesn't apply to a stream). Cancelling ctx aborts
+// tokens and the stop reason. It honours the routing (ZeroDataRetention,
+// Providers, Quantizations) and Temperature as Complete does
+// (OutputSchema doesn't apply to a stream). Cancelling ctx aborts
 // the upstream request, and the call returns ctx's error.
 func (c *Client) CompleteStreamUsage(ctx context.Context, req CompleteRequest, onDelta func(text string)) (StreamUsage, error) {
 	req, budget := FitCompleteRequest(req)
@@ -515,8 +530,11 @@ func (c *Client) CompleteStreamUsage(ctx context.Context, req CompleteRequest, o
 	if thinking := thinkingDisabledFor(req.Model); thinking != nil {
 		body["thinking"] = thinking
 	}
-	if req.ZeroDataRetention {
-		body["provider"] = map[string]any{"zdr": true}
+	if req.Temperature != nil {
+		body["temperature"] = *req.Temperature
+	}
+	if provider := providerObject(req); provider != nil {
+		body["provider"] = provider
 	}
 
 	var usage StreamUsage

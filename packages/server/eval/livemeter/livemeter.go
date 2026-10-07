@@ -8,7 +8,9 @@
 //
 // It never records a key, a prompt or an answer: only metadata. The evals
 // use it to check that every call was served by a zero-retention endpoint
-// (plan 25 D14), and to report each tier's latency and cost.
+// (plan 25 D14), by a host its tier pinned (provider.only) and at a
+// precision its tier admitted (provider.quantizations), and to report each
+// tier's latency and cost.
 package livemeter
 
 import (
@@ -35,7 +37,13 @@ type Call struct {
 	ZDR      bool   // the request asked for provider.zdr
 	Strict   bool   // the request carried output_config.format
 	Thinking string // the request's thinking.type ("" when omitted)
-	Status   int
+	// Only and Quantizations are the request's provider.only (the hosts
+	// it pinned) and provider.quantizations.
+	Only          []string
+	Quantizations []string
+	// Temperature is the request's temperature (nil when omitted).
+	Temperature *float64
+	Status      int
 	// Provider served the call (the response's "provider", OpenRouter's
 	// provider name).
 	Provider       string
@@ -125,7 +133,9 @@ func requestCall(body []byte) Call {
 		Model    string `json:"model"`
 		Stream   bool   `json:"stream"`
 		Provider struct {
-			ZDR bool `json:"zdr"`
+			ZDR           bool     `json:"zdr"`
+			Only          []string `json:"only"`
+			Quantizations []string `json:"quantizations"`
 		} `json:"provider"`
 		OutputConfig *struct {
 			Format json.RawMessage `json:"format"`
@@ -133,10 +143,12 @@ func requestCall(body []byte) Call {
 		Thinking *struct {
 			Type string `json:"type"`
 		} `json:"thinking"`
+		Temperature *float64 `json:"temperature"`
 	}
 	_ = json.Unmarshal(body, &req)
 	c := Call{Model: req.Model, Stream: req.Stream, ZDR: req.Provider.ZDR,
-		Strict: req.OutputConfig != nil && len(req.OutputConfig.Format) > 0}
+		Strict: req.OutputConfig != nil && len(req.OutputConfig.Format) > 0,
+		Only:   req.Provider.Only, Quantizations: req.Provider.Quantizations, Temperature: req.Temperature}
 	if req.Thinking != nil {
 		c.Thinking = req.Thinking.Type
 	}
@@ -293,10 +305,35 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
-// ZDREndpoints is OpenRouter's list of zero-data-retention endpoints:
-// model slug → the provider names that serve it with zero retention. The
+// Endpoint is one zero-retention endpoint of a model on OpenRouter.
+type Endpoint struct {
+	// Provider is the provider's name, as responses give it ("DeepInfra").
+	Provider string
+	// Tag is the endpoint's routing slug ("deepinfra/fp8"); its base
+	// ("deepinfra") is what provider.only names.
+	Tag string
+	// Quantization is the precision the host declares ("fp8", "unknown").
+	Quantization string
+}
+
+// ZDRList is OpenRouter's zero-retention endpoints: model slug → endpoints.
+type ZDRList map[string][]Endpoint
+
+// providerEndpoints are a model's zero-retention endpoints served under one
+// provider name.
+func (l ZDRList) providerEndpoints(model, provider string) []Endpoint {
+	var out []Endpoint
+	for _, e := range l[model] {
+		if e.Provider == provider {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// ZDREndpoints is OpenRouter's list of zero-data-retention endpoints. The
 // list is public (no key).
-func ZDREndpoints(ctx context.Context) (map[string][]string, error) {
+func ZDREndpoints(ctx context.Context) (ZDRList, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://openrouter.ai/api/v1/endpoints/zdr", nil)
 	if err != nil {
 		return nil, err
@@ -311,20 +348,42 @@ func ZDREndpoints(ctx context.Context) (map[string][]string, error) {
 	}
 	var list struct {
 		Data []struct {
-			ModelID  string `json:"model_id"`
-			Provider string `json:"provider_name"`
+			ModelID      string `json:"model_id"`
+			Provider     string `json:"provider_name"`
+			Tag          string `json:"tag"`
+			Quantization string `json:"quantization"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		return nil, fmt.Errorf("livemeter: ZDR endpoints: %w", err)
 	}
-	out := map[string][]string{}
+	out := ZDRList{}
 	for _, e := range list.Data {
-		if !slices.Contains(out[e.ModelID], e.Provider) {
-			out[e.ModelID] = append(out[e.ModelID], e.Provider)
-		}
+		out[e.ModelID] = append(out[e.ModelID], Endpoint{Provider: e.Provider, Tag: e.Tag, Quantization: e.Quantization})
 	}
 	return out, nil
+}
+
+// pinnedBy reports whether one of eps answers to a slug in only: the slug
+// is the endpoint's tag or its base ("baseten" pins "baseten/fp8").
+func pinnedBy(eps []Endpoint, only []string) bool {
+	for _, e := range eps {
+		base, _, _ := strings.Cut(e.Tag, "/")
+		if slices.Contains(only, e.Tag) || slices.Contains(only, base) {
+			return true
+		}
+	}
+	return false
+}
+
+// admittedBy reports whether one of eps runs at a precision quants admits.
+func admittedBy(eps []Endpoint, quants []string) bool {
+	for _, e := range eps {
+		if slices.Contains(quants, e.Quantization) {
+			return true
+		}
+	}
+	return false
 }
 
 // Summary is one model's calls.
@@ -334,6 +393,10 @@ type Summary struct {
 	ZDRAsked, Strict       int
 	Providers              map[string]int
 	NotZDR                 []string // providers that served a call but aren't zero-retention for the model
+	Pinned                 int      // calls that named their hosts (provider.only)
+	Unpinned               []string // providers that served a pinned call without being among its hosts
+	BelowFloor             []string // providers whose endpoints all run below the call's quantizations
+	Temperatures           map[string]int
 	Latency, FirstToken    Quantiles
 	In, Out, Thinking      int
 	Cost                   float64
@@ -365,21 +428,29 @@ func (q Quantiles) String() string {
 }
 
 // Summarize groups calls by model. zdr is ZDREndpoints' list (nil skips
-// the check).
-func Summarize(calls []Call, zdr map[string][]string) []Summary {
+// the routing checks).
+func Summarize(calls []Call, zdr ZDRList) []Summary {
 	by := map[string]*Summary{}
 	lat := map[string][]time.Duration{}
 	first := map[string][]time.Duration{}
 	for _, c := range calls {
 		s := by[c.Model]
 		if s == nil {
-			s = &Summary{Model: c.Model, Providers: map[string]int{}, ThinkingTypes: map[string]int{}}
+			s = &Summary{Model: c.Model, Providers: map[string]int{}, ThinkingTypes: map[string]int{}, Temperatures: map[string]int{}}
 			by[c.Model] = s
 		}
 		s.Calls++
 		if c.ZDR {
 			s.ZDRAsked++
 		}
+		if len(c.Only) > 0 {
+			s.Pinned++
+		}
+		temp := "default"
+		if c.Temperature != nil {
+			temp = fmt.Sprint(*c.Temperature)
+		}
+		s.Temperatures[temp]++
 		if c.Strict {
 			s.Strict++
 		}
@@ -392,8 +463,17 @@ func Summarize(calls []Call, zdr map[string][]string) []Summary {
 			continue
 		}
 		s.Providers[c.Provider]++
-		if zdr != nil && !slices.Contains(zdr[c.Model], c.Provider) && !slices.Contains(s.NotZDR, c.Provider) {
-			s.NotZDR = append(s.NotZDR, c.Provider)
+		if zdr != nil {
+			eps := zdr.providerEndpoints(c.Model, c.Provider)
+			if len(eps) == 0 && !slices.Contains(s.NotZDR, c.Provider) {
+				s.NotZDR = append(s.NotZDR, c.Provider)
+			}
+			if len(eps) > 0 && len(c.Only) > 0 && !pinnedBy(eps, c.Only) && !slices.Contains(s.Unpinned, c.Provider) {
+				s.Unpinned = append(s.Unpinned, c.Provider)
+			}
+			if len(eps) > 0 && len(c.Quantizations) > 0 && !admittedBy(eps, c.Quantizations) && !slices.Contains(s.BelowFloor, c.Provider) {
+				s.BelowFloor = append(s.BelowFloor, c.Provider)
+			}
 		}
 		s.In += c.InputTokens
 		s.Out += c.OutputTokens
@@ -425,11 +505,22 @@ func Format(sums []Summary) string {
 			provs = append(provs, fmt.Sprintf("%s %d", p, n))
 		}
 		sort.Strings(provs)
-		fmt.Fprintf(&b, "%s: %d calls (%d errors), zdr asked on %d, strict on %d; tokens in %d, out %d (thinking %d, max %d a call); $%.4f\n",
-			s.Model, s.Calls, s.Errors, s.ZDRAsked, s.Strict, s.In, s.Out, s.Thinking, s.MaxThinkingTokensACall, s.Cost)
-		fmt.Fprintf(&b, "    served by: %s\n", strings.Join(provs, ", "))
+		temps := make([]string, 0, len(s.Temperatures))
+		for t, n := range s.Temperatures {
+			temps = append(temps, fmt.Sprintf("%s %d", t, n))
+		}
+		sort.Strings(temps)
+		fmt.Fprintf(&b, "%s: %d calls (%d errors), zdr asked on %d, hosts pinned on %d, strict on %d; tokens in %d, out %d (thinking %d, max %d a call); $%.4f\n",
+			s.Model, s.Calls, s.Errors, s.ZDRAsked, s.Pinned, s.Strict, s.In, s.Out, s.Thinking, s.MaxThinkingTokensACall, s.Cost)
+		fmt.Fprintf(&b, "    served by: %s; temperature: %s\n", strings.Join(provs, ", "), strings.Join(temps, ", "))
 		if len(s.NotZDR) > 0 {
 			fmt.Fprintf(&b, "    NOT zero-retention for this model: %v\n", s.NotZDR)
+		}
+		if len(s.Unpinned) > 0 {
+			fmt.Fprintf(&b, "    NOT among the pinned hosts: %v\n", s.Unpinned)
+		}
+		if len(s.BelowFloor) > 0 {
+			fmt.Fprintf(&b, "    BELOW the precision floor: %v\n", s.BelowFloor)
 		}
 		fmt.Fprintf(&b, "    gateway latency %s", s.Latency)
 		if s.FirstToken.Max > 0 {

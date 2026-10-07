@@ -1,5 +1,27 @@
 # Ask eval: live results
 
+## Oct 7: pinned hosts
+
+Re-run with the answer tier pinned to named zero-retention hosts at fp8 or better (D14): `ASK_PROVIDERS` defaults to Together, Baseten, CoreWeave and DeepInfra, in that order, and `ASK_MIN_QUANTIZATION` to fp8 (`eval/judge/RESULTS.md` has why). Same corpus, same command, three runs, from the same dev machine.
+
+| Run | Search  | Cited the answering memory | Said "not covered" | Invalid citations | Leaked | First token p50 / p95 |
+| --- | ------- | -------------------------- | ------------------ | ----------------- | ------ | --------------------- |
+| 1   | lexical | 19/19                      | 8/8                | 0                 | 0      | 176 ms / 287 ms       |
+| 1   | hybrid  | 19/19                      | 8/8                | 0                 | 0      | 271 ms / 283 ms       |
+| 2   | lexical | 19/19                      | 8/8                | 0                 | 0      | 180 ms / 221 ms       |
+| 2   | hybrid  | 19/19                      | 8/8                | 0                 | 0      | 270 ms / 463 ms       |
+| 3   | lexical | 19/19                      | 8/8                | 0                 | 0      | 180 ms / 224 ms       |
+| 3   | hybrid  | 19/19                      | 8/8                | 0                 | 0      | 259 ms / 488 ms       |
+
+- **The first-token miss is gone.** p95 was 1.23–2.73 s on Oct 6 (over 1.5 s in 2 of 6 runs); now it is 221–488 ms in every run, and p50 fell from 0.47–0.71 s to 176–271 ms. The tail was the hosts': the gateway's own first token went from p50 450–540 ms and p95 1.14–1.55 s to p50 180 ms and p95 220–280 ms (slowest 0.46–1.01 s, against 1.79–3.19 s).
+- **Quality is unchanged:** every answerable question cited its memory, every uncovered one said so, and nothing invalid, superseded, quarantined or from another tenant reached an answer.
+- **Routing:** all 182 answers streamed from Together, each asking for zero retention, the four hosts and the fp8 floor, which the meter now checks on every call. Ask sends no temperature.
+- **Cost:** $0.01 for the three runs.
+
+Hybrid search's extra ~90 ms is the query embedding from this machine to Voyage, as before.
+
+## Oct 6
+
 Run on Oct 6, 2026 against OpenRouter's Anthropic-compatible Messages API (staging key), with `ASK_MODEL` at its default `deepseek/deepseek-v4.1-flash` and `ASK_ZDR` on, from a dev machine (not Fly's `sjc`). Every answer streamed through `eval/livemeter`, which records its routing, serving provider, cost and the gateway's first token without changing it.
 
 ```bash
@@ -14,7 +36,7 @@ The corpus (`corpus.json`, version 2) grew from 12 statements and 15 questions t
 
 Version 2 adds a second superseded decision and a second quarantined memory. Each question was asked twice per run: with lexical search, and with the hybrid search production Ask runs (voyage-4 / voyage-4-lite, recall floor 0.35).
 
-## Results, three runs
+### Results, three runs
 
 | Run | Search  | Cited the answering memory | Said "not covered" | Invalid citations | Leaked | First token p50 / p95 |
 | --- | ------- | -------------------------- | ------------------ | ----------------- | ------ | --------------------- |
@@ -32,7 +54,7 @@ Version 2 adds a second superseded decision and a second quarantined memory. Eac
 
 The corpus is still small, and its questions are direct. Before tightening the bar, extend it with partly answerable questions, questions in Chinese, and memories that answer only together.
 
-## First token (target: under 1.5 s)
+### First token (target: under 1.5 s)
 
 The first token is measured by the eval from the request's start, so it includes the search, through to the first `delta` event.
 
@@ -49,7 +71,7 @@ The tail is the model host's. The gateway's own first token, measured at the met
 
 Hybrid search adds the query embedding (about 90 ms from here) on top. The server's own work stays about 10 ms, as the fake-model test measures.
 
-## Routing (D14)
+### Routing (D14)
 
 **`provider.zdr` is honoured on streams.** Every one of the 183 streamed answers asked for zero retention and was served by a provider on OpenRouter's zero-retention list for V4.1 Flash. The harness asserts this on every run. The hosts were:
 
@@ -65,14 +87,11 @@ Hybrid search adds the query embedding (about 90 ms from here) on top. The serve
 
 None was DeepSeek's own API. The stream's `message_start` names the provider.
 
-## Cost
+### Cost
 
 About $0.001 a run, since only the 61 answers a run that had sources reached the model. All six Ask runs here (three on each corpus version) cost under $0.01.
 
 ## Follow-ups
 
-- **Measure first-token p95 from `sjc`** in the nightly run. If the tail holds there, prefer low-latency hosts:
-  - with OpenRouter's `provider.sort: "latency"` or an explicit `provider.order`;
-  - either needs a `CompleteRequest` field in the shared client, which sends only `provider.zdr` today.
-  - The quantized fp4 hosts that served some answers are also worth excluding if answer quality turns out to vary.
+- **Measure first-token p95 from `sjc`** in the nightly run. On Oct 7 the explicit `provider.order` (Together first) brought the tail inside 1.5 s from here, and the fp8 floor keeps fp4 hosts out.
 - **Extend the corpus** as above before calibrating the 0.75 bars upward.

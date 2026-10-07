@@ -10,6 +10,7 @@ import {
   CONTRACT_VERSION,
   CompileInputError,
   DEFAULT_TARGET_KINDS,
+  OPT_IN_TARGET_KINDS,
   adapters,
   compile,
   driftHash,
@@ -124,6 +125,7 @@ export interface HealthResponse {
     role: string;
     default_path: string | null;
     default: boolean;
+    opt_in: boolean;
   }[];
   uptime_seconds: number;
 }
@@ -143,6 +145,7 @@ export function healthRoute(
       role: a.role,
       default_path: a.defaultPath,
       default: DEFAULT_TARGET_KINDS.includes(a.kind),
+      opt_in: OPT_IN_TARGET_KINDS.includes(a.kind),
     })),
     uptime_seconds: Math.floor((now - startedAt) / 1000),
   };

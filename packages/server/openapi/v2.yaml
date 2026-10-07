@@ -240,6 +240,8 @@ tags:
     description: What agents read (R-). Reads are not receipts.
   - name: ask
     description: Cited answers from a space's kept memories, for people.
+  - name: export
+    description: A space's whole record, as Markdown with frontmatter, its receipts and the signed checkpoints.
 paths:
   /v2/spaces:
     get:
@@ -349,6 +351,80 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/SpaceConflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v2/spaces/{space}:export:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    post:
+      operationId: exportSpace
+      tags: [export]
+      summary: Export a space's whole record
+      description: |
+        The space's whole record as a zip archive in the export format
+        (`memax.export.v1`; see the docs' Export page), one folder named by
+        the space's slug: every memory as Markdown with YAML frontmatter
+        (its statement as the body; state, sources with their `file:line`,
+        versions, decision fields, conditions, links and receipts in the
+        frontmatter), a tombstone without words for every forgotten memory,
+        every Brief version as it reads, the decision gates, the targets
+        with their latest compile, the agents, read counts, every receipt in
+        chain order with its canonical fields (`receipts.jsonl`), every
+        signed checkpoint with the public keys (`checkpoints.json`), and a
+        manifest with every file's SHA-256 (`export.json`).
+        `memax verify-export` (or the SDK's `verifyExport`) checks it.
+
+        Any person who may read the space exports it, on every plan; agents
+        and API keys are refused with policy `export_by_person`. An export
+        changes nothing, and is counted by one receipt (`exported`, on the
+        space, by you), written before the record is read, so the export
+        lists it. It records no reads. A retry with the same
+        `Idempotency-Key` writes no new receipt and, if nothing else changed
+        meanwhile, returns the same bytes. Exports are rate-limited per
+        person (429 `rate_limited`, with `Retry-After`).
+
+        The archive streams as it is read, from one consistent snapshot of
+        the record. A failure after the first byte ends the response early,
+        so the archive is incomplete and can't be opened; export again.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      responses:
+        '200':
+          description: The export, as a zip archive.
+          headers:
+            Content-Disposition:
+              description: '`attachment; filename="memax-<slug>-<yyyy-mm-dd>.zip"`, dated as of the newest receipt.'
+              required: true
+              schema:
+                type: string
+                pattern: '^attachment; filename="memax-[^"]+\.zip"$'
+            X-Memax-Export-Receipt:
+              description: The id of the export's own `exported` receipt (also in `export.json`).
+              required: true
+              schema:
+                type: string
+                format: uuid
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/zip:
+              schema:
+                $ref: '#/components/schemas/ExportArchive'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -3459,7 +3535,8 @@ components:
         memory whose only conflict was with it, and purged on a target or a
         Brief whose drift evidence or older versions lost its words; an
         agent's memax_forget writes forget_requested, and a person keeping
-        the memory instead writes forget_declined.
+        the memory instead writes forget_declined. An export of the space is
+        one exported receipt on the space (`object_kind: space`).
       type: string
       enum:
         - proposed
@@ -3501,6 +3578,7 @@ components:
         - purged
         - forget_requested
         - forget_declined
+        - exported
     ObjectKind:
       type: string
       enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space]
@@ -3533,7 +3611,8 @@ components:
         (people forget it themselves, or ask an owner). Refused asks: ask_by_person (agents read over
         MCP; Ask answers people), ask_limit (the plan's asks this month are
         used up; `details.limit` and `details.resets_at` say how many and
-        when they start again). Refused changes to
+        when they start again). A refused export: export_by_person (only a
+        signed-in person exports a space). Refused changes to
         agents: person_must_manage (only a person changes what an agent may
         do), not_your_agent, autonomy_not_allowed, key_max_propose,
         autonomy_needs_web (raising an agent needs a person on the web).
@@ -3587,6 +3666,7 @@ components:
         - forget_by_person
         - ask_by_person
         - ask_limit
+        - export_by_person
         - viewer
         - owners_keep
         - decision_needs_web
@@ -4387,6 +4467,16 @@ components:
           minimum: 0
         last_read_at:
           $ref: '#/components/schemas/Timestamp'
+
+    ExportArchive:
+      description: |
+        A zip archive in the export format `memax.export.v1`: one folder,
+        named by the space's slug, holding README.md, export.json,
+        memories/, tombstones/, brief/, decisions.md, gates.json,
+        targets.json, agents.json, reads.json, receipts.jsonl and
+        checkpoints.json. The same record gives the same bytes.
+      type: string
+      contentMediaType: application/zip
 
     Checkpoint:
       description: |

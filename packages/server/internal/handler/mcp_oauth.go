@@ -102,7 +102,12 @@ func (h *MCPOAuthHandler) resolveAppBaseURL(r *http.Request) string {
 	return ""
 }
 
-func (h *MCPOAuthHandler) webConsentURL(r *http.Request, requestID string, consentToken string) string {
+// webConsentURL is the web app's consent page for a request: the Ledger
+// page (/oauth/authorize) for a person with a space on the V2 record, V1's
+// (/oauth/consent) for everyone else. The web app also sends a browser
+// that opted into the V2 UI from V1's page to the Ledger one, with the
+// same query (src/lib/ui-gate.ts).
+func (h *MCPOAuthHandler) webConsentURL(r *http.Request, requestID string, consentToken string, v2 bool) string {
 	appBase := h.resolveAppBaseURL(r)
 	if appBase == "" {
 		return ""
@@ -111,7 +116,10 @@ func (h *MCPOAuthHandler) webConsentURL(r *http.Request, requestID string, conse
 	if err != nil {
 		return ""
 	}
-	u.Path = "/oauth/consent"
+	u.Path = consentPathV1
+	if v2 {
+		u.Path = consentPathV2
+	}
 	u.RawQuery = ""
 	q := u.Query()
 	q.Set("request_id", requestID)
@@ -374,13 +382,7 @@ func (h *MCPOAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	// Redirect to GitHub OAuth, passing our session ID as the state
 	// After GitHub auth, our callback will look up this session and redirect
 	// to the MCP client's redirect_uri
-	githubState := "mcp:" + sessionID
-	params := url.Values{}
-	params.Set("client_id", h.authH.clientID)
-	params.Set("redirect_uri", h.authH.redirectURL)
-	params.Set("scope", "read:user,user:email,read:org")
-	params.Set("state", githubState)
-	http.Redirect(w, r, "https://github.com/login/oauth/authorize?"+params.Encode(), http.StatusTemporaryRedirect)
+	http.Redirect(w, r, h.githubAuthorizeURL(sessionID, false), http.StatusTemporaryRedirect)
 }
 
 // Token serves POST /oauth/token
@@ -697,7 +699,7 @@ func (h *MCPOAuthHandler) HandleMCPCallback(w http.ResponseWriter, r *http.Reque
 	session.userID = userID
 	session.csrfToken = csrfToken
 
-	if consentURL := h.webConsentURL(r, session.id, csrfToken); consentURL != "" {
+	if consentURL := h.webConsentURL(r, session.id, csrfToken, h.personOnV2(r.Context(), userID)); consentURL != "" {
 		http.Redirect(w, r, consentURL, http.StatusSeeOther)
 		return
 	}
@@ -745,27 +747,43 @@ func (h *MCPOAuthHandler) ConsentRequest(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, model.ApiResponse{Data: data})
 }
 
-// Consent handles the Memax authorization screen submission.
+// Consent handles the Memax authorization screen submission: V1's page,
+// the Ledger page (ui=v2) and the API's own HTML page all post here.
 func (h *MCPOAuthHandler) Consent(w http.ResponseWriter, r *http.Request) {
 	if h.authH == nil || h.authH.pool == nil {
 		http.Error(w, "OAuth is not available", http.StatusServiceUnavailable)
+		return
+	}
+	if problem := consentFetchProblem(r, h.consentOrigins(r)); problem != "" {
+		slog.Warn("MCP OAuth: refused a consent post from another site", "reason", problem)
+		http.Error(w, "This form was sent from another site, so Memax didn't accept it. Start again from your agent.", http.StatusForbidden)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Invalid consent request", http.StatusBadRequest)
 		return
 	}
+	// The Ledger page hears about a request that can't go on as a page of
+	// its own, not as the API's text or V1's HTML.
+	ledgerPage := r.FormValue("ui") == "v2"
 
 	sessionID := r.FormValue("session_id")
 	session, err := h.loadOAuthAuthorizationRequest(r.Context(), sessionID)
 	if err != nil || session.userID == "" || time.Now().After(session.expiresAt) {
+		expired := err == nil && time.Now().After(session.expiresAt)
 		if sessionID != "" {
 			h.deleteOAuthAuthorizationRequest(sessionID)
+		}
+		if ledgerPage && h.consentEnded(w, r, expired) {
+			return
 		}
 		http.Error(w, "Invalid or expired authorization request", http.StatusBadRequest)
 		return
 	}
 	if subtleConstantTimeCompare(r.FormValue("csrf_token"), session.csrfToken) == false {
+		if ledgerPage && h.consentEnded(w, r, false) {
+			return
+		}
 		http.Error(w, "Invalid consent token", http.StatusBadRequest)
 		return
 	}
@@ -776,6 +794,15 @@ func (h *MCPOAuthHandler) Consent(w http.ResponseWriter, r *http.Request) {
 		redirectOAuthErrorIss(w, r, session.redirectURI, session.state, iss, "access_denied", "The authorization request was canceled")
 		return
 	}
+	if strings.TrimSpace(r.FormValue("decision")) == consentSwitch {
+		h.switchAccount(w, r, session)
+		return
+	}
+	retry := func(code, message string) {
+		if !ledgerPage || !h.consentRetry(w, r, session, code) {
+			h.renderConsent(w, r, session, message)
+		}
+	}
 
 	selectedPermissions := PermissionSet{}
 	var invalid []string
@@ -783,14 +810,14 @@ func (h *MCPOAuthHandler) Consent(w http.ResponseWriter, r *http.Request) {
 	if selectedScope != "" {
 		selectedPermissions, _, invalid = oauthPermissionsFromScope(selectedScope)
 		if len(invalid) > 0 {
-			h.renderConsent(w, r, session, "Only supported Memax permissions can be granted.")
+			retry("permission", "Only supported Memax permissions can be granted.")
 			return
 		}
 	}
 	selectedPermissions = selectedPermissions.Intersect(session.requestedPermissions)
 	grantedScope := intersectScopes(session.requestedScope, selectedScope)
 	if len(selectedPermissions) == 0 {
-		h.renderConsent(w, r, session, "Select at least one capability.")
+		retry("permission", "Select at least one capability.")
 		return
 	}
 
@@ -802,7 +829,7 @@ func (h *MCPOAuthHandler) Consent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(validHubIDs) == 0 {
-		h.renderConsent(w, r, session, "Select at least one hub.")
+		retry("space", "Select at least one hub.")
 		return
 	}
 
@@ -830,17 +857,24 @@ func (h *MCPOAuthHandler) Consent(w http.ResponseWriter, r *http.Request) {
 
 // intersectScopes is the scope the person granted: the requested scope's
 // tokens they kept checked (all of them when the form sent none, as V1's
-// consent did for an unchanged form).
+// consent did for an unchanged form). A client that asked to write and was
+// allowed to propose gets memax:propose, a narrower grant than it asked
+// for (RFC 6749 §3.3: the token response names the scope granted): the
+// Ledger page grants no more than Propose.
 func intersectScopes(requested, selected string) string {
 	_, req, _ := oauthPermissionsFromScope(requested)
 	if strings.TrimSpace(selected) == "" {
 		return req
 	}
 	sel := strings.Fields(selected)
+	reqFields := strings.Fields(req)
 	var out []string
-	for _, s := range strings.Fields(req) {
-		if slices.Contains(sel, s) {
+	for _, s := range reqFields {
+		switch {
+		case slices.Contains(sel, s):
 			out = append(out, s)
+		case s == ScopeWrite && slices.Contains(sel, ScopePropose) && !slices.Contains(reqFields, ScopePropose):
+			out = append(out, ScopePropose)
 		}
 	}
 	return strings.Join(out, " ")
@@ -910,7 +944,7 @@ func (h *MCPOAuthHandler) connectAgent(ctx context.Context, session oauthPending
 }
 
 func consentDecisionDenied(decision string) bool {
-	return strings.EqualFold(strings.TrimSpace(decision), "deny")
+	return strings.EqualFold(strings.TrimSpace(decision), consentDeny)
 }
 
 // --- Session storage ---
@@ -1051,6 +1085,22 @@ type oauthConsentHub struct {
 	Disabled             bool     `json:"disabled"`
 	CapabilityLabel      string   `json:"capability_label"`
 	SupportedPermissions []string `json:"supported_permissions"`
+
+	// What the Ledger page shows (mcp_oauth_v2.go); V1's page ignores it.
+	// SpaceKind is personal, project or team; OnV2 whether the space is on
+	// the V2 record. KeptCount (V2 only) and Targets, the files it
+	// compiles to, are absent when the ledger can't say.
+	SpaceKind   string               `json:"space_kind,omitempty"`
+	OnV2        bool                 `json:"on_v2"`
+	PeopleCount int                  `json:"people_count,omitempty"`
+	KeptCount   *int                 `json:"kept_count,omitempty"`
+	Targets     []oauthConsentTarget `json:"targets,omitempty"`
+	// Autonomy is the level the agent is connected at here (V2 only).
+	Autonomy string `json:"autonomy,omitempty"`
+	// Can and Cannot are abilities (abilityReadBrief, …), decided by policy
+	// for that level and the scope the Ledger page grants.
+	Can    []string `json:"can,omitempty"`
+	Cannot []string `json:"cannot,omitempty"`
 }
 
 type oauthConsentPermission struct {
@@ -1078,6 +1128,14 @@ type oauthConsentData struct {
 	Permissions  []oauthConsentPermission `json:"permissions"`
 	NotRequested []string                 `json:"not_requested"`
 	Error        string                   `json:"error,omitempty"`
+
+	// For the Ledger page: who the request is signed in as, the host a
+	// metadata-document client's client_id is served from (verified, unlike
+	// its name), the scope the page grants, and the seconds left.
+	Person       *oauthConsentPerson `json:"person,omitempty"`
+	ClientHost   string              `json:"client_host,omitempty"`
+	ConsentScope string              `json:"consent_scope,omitempty"`
+	ExpiresIn    int                 `json:"expires_in"`
 }
 
 func (h *MCPOAuthHandler) buildConsentData(r *http.Request, session oauthPendingSession, message string) (oauthConsentData, error) {
@@ -1105,7 +1163,12 @@ func (h *MCPOAuthHandler) buildConsentData(r *http.Request, session oauthPending
 			SupportedPermissions: supportedPermissions.Strings(),
 		})
 	}
+	h.describeSpaces(r.Context(), session, hubs, consentHubs)
 	return oauthConsentData{
+		Person:       h.consentPerson(r.Context(), session.userID),
+		ClientHost:   clientHost(session.clientID),
+		ConsentScope: consentScope(session.requestedScope),
+		ExpiresIn:    consentExpiresIn(session.expiresAt),
 		SessionID:    session.id,
 		CSRFToken:    session.csrfToken,
 		ClientName:   displayOAuthClientName(session.clientName),

@@ -215,6 +215,7 @@ export type {
   OAuthConsentHub,
   OAuthConsentPermission,
   OAuthConsentRequest,
+  OAuthConsentTarget,
   UpdateProfileResult,
   DeleteAllDataResult,
   // Hubs

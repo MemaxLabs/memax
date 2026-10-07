@@ -1163,6 +1163,32 @@ export interface OAuthConsentHub {
   disabled: boolean;
   capability_label: string;
   supported_permissions: string[];
+  // What the V2 consent page shows. Older servers send none of it.
+  /** personal, project or team. */
+  space_kind?: "personal" | "project" | "team";
+  /** Whether the space is on the V2 record. */
+  on_v2?: boolean;
+  people_count?: number;
+  /** Memories kept in it (V2 only); absent when the server can't say. */
+  kept_count?: number;
+  /** The files it compiles to (V2 only), the canonical one first. */
+  targets?: OAuthConsentTarget[];
+  /** The autonomy the agent is connected at here (V2 only). */
+  autonomy?: "read" | "propose" | "write";
+  /**
+   * What the agent will and won't be able to do here, decided by the
+   * server's policy: read_brief, read_memories, propose, keep, add, gate,
+   * forget, other_spaces. Unknown values may appear; skip them.
+   */
+  can?: string[];
+  cannot?: string[];
+}
+
+export interface OAuthConsentTarget {
+  /** agents_md, claude_md, cursor_mdc, chatgpt, … */
+  kind: string;
+  /** Repository-relative; absent for ChatGPT. */
+  path?: string;
 }
 
 export interface OAuthConsentPermission {
@@ -1189,6 +1215,17 @@ export interface OAuthConsentRequest {
   hubs: OAuthConsentHub[];
   permissions: OAuthConsentPermission[];
   not_requested: string[];
+  /** Who the request is signed in as. */
+  person?: { name: string };
+  /**
+   * For a client known by its metadata document, the host it is served
+   * from: Memax fetched it there, unlike the name, which the client says.
+   */
+  client_host?: string;
+  /** The scope the V2 page grants: never above memax:propose. */
+  consent_scope?: string;
+  /** Seconds left before the request expires. */
+  expires_in?: number;
 }
 
 // --- Hubs ---

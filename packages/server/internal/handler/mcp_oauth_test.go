@@ -74,7 +74,7 @@ func TestMCPOAuthConsentURLsShape(t *testing.T) {
 	h := &MCPOAuthHandler{baseURL: "https://api.memax.app", appBaseURL: "https://memax.app"}
 	req := httptest.NewRequest(http.MethodGet, "https://api.memax.app/x", nil)
 
-	got := h.webConsentURL(req, "req-123", "tok-abc")
+	got := h.webConsentURL(req, "req-123", "tok-abc", false)
 	if !strings.Contains(got, "https://memax.app/oauth/consent") {
 		t.Errorf("webConsentURL prefix wrong: %q", got)
 	}

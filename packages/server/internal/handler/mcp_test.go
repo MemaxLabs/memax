@@ -234,7 +234,7 @@ func TestMCPOAuthWebConsentURLUsesConfiguredAppBaseURL(t *testing.T) {
 	h := NewMCPOAuthHandler(nil)
 	req := httptest.NewRequest(http.MethodGet, "/v1/auth/github/callback", nil)
 
-	got := h.webConsentURL(req, "request-1", "token-1")
+	got := h.webConsentURL(req, "request-1", "token-1", false)
 
 	if !strings.HasPrefix(got, "https://app.memax.test/oauth/consent?") {
 		t.Fatalf("consent URL = %q, want configured app consent route", got)
@@ -244,6 +244,11 @@ func TestMCPOAuthWebConsentURLUsesConfiguredAppBaseURL(t *testing.T) {
 			t.Fatalf("consent URL = %q, want %q", got, want)
 		}
 	}
+	// A person with a space on V2 gets the Ledger page, same query.
+	got = h.webConsentURL(req, "request-1", "token-1", true)
+	if !strings.HasPrefix(got, "https://app.memax.test/oauth/authorize?") || !strings.Contains(got, "consent_token=token-1") {
+		t.Fatalf("V2 consent URL = %q, want the Ledger consent route", got)
+	}
 }
 
 func TestMCPOAuthWebConsentURLInfersStagingAppFromAPIBaseURL(t *testing.T) {
@@ -251,7 +256,7 @@ func TestMCPOAuthWebConsentURLInfersStagingAppFromAPIBaseURL(t *testing.T) {
 	h := NewMCPOAuthHandler(nil)
 	req := httptest.NewRequest(http.MethodGet, "/v1/auth/github/callback", nil)
 
-	got := h.webConsentURL(req, "request-1", "token-1")
+	got := h.webConsentURL(req, "request-1", "token-1", false)
 
 	if !strings.HasPrefix(got, "https://staging-app.memaxlabs.com/oauth/consent?") {
 		t.Fatalf("consent URL = %q, want staging app consent route", got)

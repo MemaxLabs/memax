@@ -25,6 +25,17 @@ export interface DaemonApi {
     key: string,
     signal?: AbortSignal,
   ): Promise<V2.ObservationResult>;
+  /** The space's gates waiting for a person, newest first (the warm cache). */
+  waitingGates(space: string, signal?: AbortSignal): Promise<V2.Gate[]>;
+  /** The space's latest tombstones, newest first (the warm cache). */
+  tombstones(space: string, signal?: AbortSignal): Promise<V2.Tombstone[]>;
+  /** Reports a compile a session-start hook saw its agent load. */
+  recordCompileLoad(
+    space: string,
+    input: V2.CompileLoadInput,
+    key: string,
+    signal?: AbortSignal,
+  ): Promise<V2.CompileLoadResult>;
 }
 
 /** No single request may hold the loop up for longer than this. */
@@ -83,6 +94,33 @@ export function sdkDaemonApi(memax: Memax): DaemonApi {
     observe: (target, input, key, outer) =>
       timed(outer, (signal) =>
         t.observe(target, input, { idempotencyKey: key, via: "cli", signal }),
+      ),
+    waitingGates: (space, outer) =>
+      timed(
+        outer,
+        async (signal) =>
+          (
+            await memax.v2.gates.list(space, {
+              status: "waiting",
+              limit: 20,
+              signal,
+            })
+          ).items,
+      ),
+    tombstones: (space, outer) =>
+      timed(
+        outer,
+        async (signal) =>
+          (await memax.v2.memories.tombstones(space, { limit: 50, signal }))
+            .tombstones,
+      ),
+    recordCompileLoad: (space, input, key, outer) =>
+      timed(outer, (signal) =>
+        memax.v2.reads.recordCompileLoad(space, input, {
+          idempotencyKey: key,
+          via: "cli",
+          signal,
+        }),
       ),
   };
 }

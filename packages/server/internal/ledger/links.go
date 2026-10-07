@@ -145,21 +145,83 @@ func attachDetails(ctx context.Context, tx pgx.Tx, ms []*Memory, extra ...func(*
 	for i, m := range ms {
 		ids[i] = m.ID
 	}
-	links := map[uuid.UUID][]Link{}
-	var verdicts map[uuid.UUID]*JudgeInfo
 	b := &pgx.Batch{}
-	b.Queue(linksSQL, ids).Query(func(rows pgx.Rows) error { return scanLinks(rows, ids, links) })
-	b.Queue(verdictsSQL, ids).Query(func(rows pgx.Rows) error {
-		var err error
-		verdicts, err = scanVerdicts(rows)
-		return err
-	})
+	d := queueDetails(b, ids)
 	for _, queue := range extra {
 		queue(b)
 	}
 	if err := tx.SendBatch(ctx, b).Close(); err != nil {
 		return err
 	}
+	return d.apply(ctx, tx, ms)
+}
+
+// loadFull reads one memory in scope as GetMemory shows it: its row, its
+// sources, links and verdict in one round trip, and the memory it
+// updates, when there is one, in a second. extra queues more into the
+// first.
+func loadFull(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID, extra ...func(*pgx.Batch)) (*Memory, error) {
+	var m *Memory
+	b := &pgx.Batch{}
+	b.Queue(memorySelect+` WHERE m.id = $1 AND m.space_id = ANY($2)`, id, scope.SpaceIDs()).
+		Query(func(rows pgx.Rows) error {
+			ms, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (*Memory, error) { return scanMemory(r) })
+			if err != nil {
+				return fmt.Errorf("ledger: load memory: %w", err)
+			}
+			if len(ms) == 1 {
+				m = ms[0]
+			}
+			return nil
+		})
+	var sources []Source
+	b.Queue(sourcesSQL, id).Query(func(rows pgx.Rows) error {
+		var err error
+		if sources, err = scanSources(rows); err != nil {
+			return fmt.Errorf("ledger: load sources: %w", err)
+		}
+		return nil
+	})
+	d := queueDetails(b, []uuid.UUID{id})
+	for _, queue := range extra {
+		queue(b)
+	}
+	if err := tx.SendBatch(ctx, b).Close(); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return nil, ErrNotFound
+	}
+	m.Sources = sources
+	if err := d.apply(ctx, tx, []*Memory{m}); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// details are memories' links and verdicts, read in a batch the caller
+// sends (queueDetails), then applied to the memories.
+type details struct {
+	links    map[uuid.UUID][]Link
+	verdicts map[uuid.UUID]*JudgeInfo
+}
+
+// queueDetails queues the read of the links and verdicts of ids into b.
+func queueDetails(b *pgx.Batch, ids []uuid.UUID) *details {
+	d := &details{links: map[uuid.UUID][]Link{}}
+	b.Queue(linksSQL, ids).Query(func(rows pgx.Rows) error { return scanLinks(rows, ids, d.links) })
+	b.Queue(verdictsSQL, ids).Query(func(rows pgx.Rows) error {
+		var err error
+		d.verdicts, err = scanVerdicts(rows)
+		return err
+	})
+	return d
+}
+
+// apply fills each memory's links, the memory it updates (read now, when
+// there is one) and the judge's verdict.
+func (d *details) apply(ctx context.Context, tx pgx.Tx, ms []*Memory) error {
+	links, verdicts := d.links, d.verdicts
 	var updates []uuid.UUID
 	for _, m := range ms {
 		m.Links = links[m.ID]

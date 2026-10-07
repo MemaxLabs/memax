@@ -39,11 +39,8 @@ func (l *Ledger) GetMemory(ctx context.Context, scope Scope, ref string) (*Memor
 		if err != nil {
 			return err
 		}
-		m, err := loadMemory(ctx, tx, scope, id, false)
+		m, err := loadFull(ctx, tx, scope, id)
 		if err != nil {
-			return err
-		}
-		if err := attachDetails(ctx, tx, []*Memory{m}, withSources(m)); err != nil {
 			return err
 		}
 		out = m
@@ -283,11 +280,10 @@ func (l *Ledger) GetMemoryHistory(ctx context.Context, scope Scope, ref string) 
 		if err != nil {
 			return err
 		}
-		m, err := loadMemory(ctx, tx, scope, id, false)
-		if err != nil {
-			return err
-		}
-		// Its sources, details, versions and receipts in one round trip.
+		// Its sources, details, versions and receipts in one round trip (with
+		// its row too, when the scope's one space says where to look).
+		var m *Memory
+		var space uuid.UUID // the memory's, once known
 		var versions []MemoryVersion
 		var receipts ReceiptPage
 		withVersions := func(b *pgx.Batch) {
@@ -295,7 +291,7 @@ func (l *Ledger) GetMemoryHistory(ctx context.Context, scope Scope, ref string) 
 				SELECT version, COALESCE(statement, ''), receipt_id, created_at
 				  FROM v2.memory_versions
 				 WHERE memory_id = $1 AND space_id = $2
-				 ORDER BY version DESC`, m.ID, m.SpaceID).
+				 ORDER BY version DESC`, id, space).
 				Query(func(rows pgx.Rows) error {
 					var err error
 					versions, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (MemoryVersion, error) {
@@ -310,15 +306,28 @@ func (l *Ledger) GetMemoryHistory(ctx context.Context, scope Scope, ref string) 
 				})
 		}
 		withReceipts := func(b *pgx.Batch) {
-			sql, args := receiptPageSQL(scope, m.SpaceID, &m.ID, 0, DefaultPageSize)
+			sql, args := receiptPageSQL(scope, space, &id, 0, DefaultPageSize)
 			b.Queue(sql, args...).Query(func(rows pgx.Rows) error {
 				var err error
 				receipts, err = scanReceiptPage(rows, DefaultPageSize)
 				return err
 			})
 		}
-		if err := attachDetails(ctx, tx, []*Memory{m}, withSources(m), withVersions, withReceipts); err != nil {
-			return err
+		if spaces := scope.SpaceIDs(); len(spaces) == 1 {
+			// The memory's space is the scope's one: its versions and
+			// receipts can be asked for with its row.
+			space = spaces[0]
+			if m, err = loadFull(ctx, tx, scope, id, withVersions, withReceipts); err != nil {
+				return err
+			}
+		} else {
+			if m, err = loadMemory(ctx, tx, scope, id, false); err != nil {
+				return err
+			}
+			space = m.SpaceID
+			if err := attachDetails(ctx, tx, []*Memory{m}, withSources(m), withVersions, withReceipts); err != nil {
+				return err
+			}
 		}
 		out = &MemoryHistory{Memory: m, Versions: versions, Receipts: receipts}
 		return nil

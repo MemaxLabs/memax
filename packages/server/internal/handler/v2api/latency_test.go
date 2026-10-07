@@ -253,11 +253,11 @@ func TestAPIRoundTrips(t *testing.T) {
 	// 32, 27 and 30.
 	budgets := map[string]int{
 		"/v2 memory list":               5,
-		"/v2 memory get":                12,
+		"/v2 memory get":                11,
 		"/v2 review queue":              6,
 		"/v2 Brief":                     5,
-		"/v2 Keep (+ jobs)":             16,
-		"/v2 Remember (+ jobs)":         13,
+		"/v2 Keep (+ jobs)":             15,
+		"/v2 Remember (+ jobs)":         12,
 		"/v2 Ask, to the sources event": 9,
 	}
 	for _, op := range r.ops() {

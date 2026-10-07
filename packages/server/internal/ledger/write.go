@@ -641,10 +641,7 @@ func (w *writer) claim(ctx context.Context, spaceID uuid.UUID) (*Result, error) 
 		return &res, nil
 	}
 	if c.objectID != nil {
-		if res.Memory, err = loadMemory(ctx, w.tx, w.meta.Scope, *c.objectID, false); err != nil {
-			return nil, err
-		}
-		if err := attachDetails(ctx, w.tx, []*Memory{res.Memory}, withSources(res.Memory)); err != nil {
+		if res.Memory, err = loadFull(ctx, w.tx, w.meta.Scope, *c.objectID); err != nil {
 			return nil, err
 		}
 	}
@@ -750,10 +747,7 @@ func (w *writer) finish(ctx context.Context, res Result, memoryID uuid.UUID) (Re
 		return Result{}, err
 	}
 	var err error
-	if res.Memory, err = loadMemory(ctx, w.tx, w.meta.Scope, memoryID, false); err != nil {
-		return Result{}, err
-	}
-	if err := attachDetails(ctx, w.tx, []*Memory{res.Memory}, withSources(res.Memory)); err != nil {
+	if res.Memory, err = loadFull(ctx, w.tx, w.meta.Scope, memoryID); err != nil {
 		return Result{}, err
 	}
 	return res, nil

@@ -102,7 +102,7 @@ func TestJudgeRoundTrips(t *testing.T) {
 	_, c := r.measure(t)
 	t.Logf("judge job: %d round trips\n%s", c.RoundTrips(), c)
 	// 27 before the pipelined ledger (Oct 7, 2026).
-	if got, budget := c.RoundTrips(), 20; got > budget {
+	if got, budget := c.RoundTrips(), 19; got > budget {
 		t.Errorf("judge job: %d round trips, budget %d\n%s", got, budget, c)
 	}
 }

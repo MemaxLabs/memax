@@ -12,16 +12,18 @@ import {
 
 skipWithoutBrowser();
 
-test("V2 paths send a browser without memax_ui=v2 to the V1 home", async ({
+test("V2 paths send a signed-out browser without memax_ui=v2 to sign in", async ({
   page,
 }) => {
-  for (const path of [
-    "/dev/ledger/tokens",
-    "/memax-v2/today",
-    "/setup/import",
-  ]) {
+  // The person signs in and lands by their flag; the dev fixtures, which
+  // aren't anyone's page, still go to the V1 home.
+  await page.goto("/dev/ledger/tokens");
+  await expect(page).toHaveURL("/");
+  for (const path of ["/memax-v2/today", "/setup/import"]) {
     await page.goto(path);
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL(
+      `/signin?${new URLSearchParams({ next: path })}`,
+    );
   }
   // Sign-in and device confirmation are open to everyone: the CLI sends
   // any person to /device, and V1 has neither page.

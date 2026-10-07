@@ -104,8 +104,11 @@ test("a person with a space on V2 signs in and lands in V2", async ({
   // their own flag.
   await page.evaluate(() => fetch("/api/auth/logout", { method: "POST" }));
   expect(await cookieValue(page, "memax_ui")).toBeUndefined();
+  // Signed out, a V2 link asks to sign in and comes back after.
   await page.goto("/memax-v2/today");
-  await expect(page).toHaveURL("/");
+  await expect(page).toHaveURL(
+    `/signin?${new URLSearchParams({ next: "/memax-v2/today" })}`,
+  );
 });
 
 test("a V1 person lands in V1, and V2's pages stay shut", async ({ page }) => {

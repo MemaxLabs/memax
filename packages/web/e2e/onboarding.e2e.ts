@@ -138,9 +138,14 @@ test.describe("without the opt-in", () => {
     ).toBeVisible();
   });
 
-  test("the setup screens stay behind it", async ({ page }) => {
+  test("the setup screens stay behind it: signed out, they ask to sign in", async ({
+    page,
+  }) => {
     await page.goto("/setup/import");
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL(
+      `/signin?${new URLSearchParams({ next: "/setup/import" })}`,
+    );
+    expect(await cookieValue(page, "memax_ui")).toBeUndefined();
   });
 });
 

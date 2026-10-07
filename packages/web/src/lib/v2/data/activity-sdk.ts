@@ -64,8 +64,13 @@ export function receiptToEntry(
   if (r.actor_kind === "repository") via.push({ kind: "repository" });
   else via.push({ kind: "via", via: r.via });
   if (r.session_ref) via.push({ kind: "session", ref: r.session_ref });
-  // The autonomy "source" is the level, said in the sentence instead.
-  if (r.source && !autonomy) via.push({ kind: "source", ref: r.source.ref });
+  // The autonomy "source" is the level, said in the sentence instead; an
+  // action of Dream's cites its edition ("edition 214").
+  const edition =
+    r.source?.kind === "dream" ? /^D-0*(\d+)$/.exec(r.source.ref) : null;
+  if (edition) via.push({ kind: "edition", n: Number(edition[1]) });
+  else if (r.source && !autonomy)
+    via.push({ kind: "source", ref: r.source.ref });
   const entry: ActivityEntry = {
     id: r.id,
     at: r.occurred_at,

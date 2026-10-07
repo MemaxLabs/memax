@@ -11,7 +11,7 @@ export const ledgerTodayEn = {
     restorable: "restorable",
     none: "No edition yet",
     noneDetail:
-      "Each morning Dream publishes an edition here: the notes it folded into facts, the conflicts it found and what faded. It isn't running for this space yet.",
+      "Each morning Dream publishes an edition here: the notes it folded into facts, the conflicts it found and what faded. The first comes the night after there's something to read.",
     quiet: "No edition last night",
     quietDetail:
       "Dream had nothing new to read, so there's no edition. Empty nights cost nothing.",
@@ -63,6 +63,7 @@ export const ledgerTodayEn = {
     compiledAt: "Compiled at {time}",
     compiledOn: "Compiled {date} at {time}",
     dreamAt: "Dream runs nightly at {time}",
+    dreamWeekly: "Dream runs weekly, on {day} at {time}",
     kept: "{n} memories kept in {space}",
     keptOne: "1 memory kept in {space}",
   },

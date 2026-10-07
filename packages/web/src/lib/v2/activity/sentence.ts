@@ -97,6 +97,12 @@ export function foldUndoable(
   );
 }
 
+/** An edition's number from its display ID: "D-0214" is 214. */
+export function editionNumber(ref: string): number | string {
+  const m = /^D-0*(\d+)$/.exec(ref);
+  return m ? Number(m[1]) : ref;
+}
+
 function pick(one: string, other: string, n: number) {
   return interpolate(n === 1 ? one : other, { n });
 }
@@ -220,6 +226,10 @@ export function activitySentences(
           }),
         ];
       }
+      // One of an edition's dedupes: a proposal folded into the one it repeats.
+      if (entry.actor.kind === "dream" && entry.source?.kind === "dream") {
+        return [one(s.dreamDuplicate, { ref: text(entry.object.ref) })];
+      }
       return [one(entry.actor.kind === "dream" ? s.dreamPlain : s.merged)];
     case "flagged":
       return [one(s.flagged)];
@@ -319,6 +329,11 @@ export function activitySentences(
       return [one(s.forgetDeclined, { ref: text(entry.object.ref) })];
     case "exported":
       return [one(s.exported)];
+    // Dream's edition (D-), and notes it folded into a memory as lineage.
+    case "published":
+      return [one(s.published, { n: text(editionNumber(entry.object.ref)) })];
+    case "folded":
+      return [one(s.foldedNotes, { ref: text(entry.object.ref) })];
     default: {
       // Every verb the API can send has words above; this fails to compile
       // when the spec gains one. A newer server can still send a verb this

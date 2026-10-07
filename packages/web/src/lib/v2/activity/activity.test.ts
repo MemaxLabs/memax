@@ -359,6 +359,61 @@ describe("the judge's receipts", () => {
   });
 });
 
+describe("Dream's receipts", () => {
+  const say = (e: ActivityEntry, locale: "en" | "zh") =>
+    sentenceText(
+      activitySentences(
+        (locale === "en" ? en : zh).ledger.activity,
+        e,
+        names(locale),
+      ),
+      locale,
+    );
+  const dream = (over: Partial<ActivityEntry>) =>
+    entry({
+      actor: { kind: "dream" },
+      via: [
+        { kind: "via", via: "system" },
+        { kind: "edition", n: 214 },
+      ],
+      rawVia: "system",
+      source: { kind: "dream", ref: "D-0214" },
+      ...over,
+    });
+
+  it("words an edition, a fold and a duplicate in en and zh", () => {
+    const published = dream({
+      action: "published",
+      object: { kind: "dream", ref: "D-0214", id: "d1" },
+      source: null,
+    });
+    expect(say(published, "en")).toBe("Dream published edition No. 214.");
+    expect(say(published, "zh")).toBe("Dream 发布了第 214 期。");
+    const folded = dream({
+      action: "folded",
+      object: { kind: "memory", ref: "M-0219", id: "m1" },
+    });
+    expect(say(folded, "en")).toBe(
+      "Dream folded notes into M-0219. Its words are unchanged.",
+    );
+    expect(say(folded, "zh")).toContain("M-0219");
+    const duplicate = dream({
+      action: "merged",
+      object: { kind: "memory", ref: "M-0435", id: "m2" },
+    });
+    expect(say(duplicate, "en")).toBe(
+      "Dream folded M-0435 into the proposal it repeats.",
+    );
+    for (const e of [published, folded, duplicate]) {
+      expect(say(e, "zh")).not.toContain("{");
+      expect(activityCategory(e)).toBe("writes");
+    }
+    expect(viaText(en.ledger.activity, folded.via, names("en"))).toBe(
+      "Memax · edition 214",
+    );
+  });
+});
+
 describe("decision gate receipts", () => {
   const say = (e: ActivityEntry, locale: "en" | "zh") =>
     sentenceText(

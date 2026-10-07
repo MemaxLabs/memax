@@ -478,6 +478,18 @@ func requestHash(cmd Command) ([]byte, error) {
 		cp := *c
 		cp.Meta = strip
 		v = cp
+	case *PublishEdition:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *UndoDreamAction:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *Restore:
+		cp := *c
+		cp.Meta = strip
+		v = cp
 	case *Export:
 		cp := *c
 		cp.Meta = strip

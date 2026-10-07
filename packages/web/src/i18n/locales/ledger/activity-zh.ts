@@ -161,6 +161,9 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     dream:
       "{actor}把 {notes}合并成 {facts}，标出 {stale} 条过时，淡出 {faded} 条。",
     dreamPlain: "{actor}在夜里整理了记录。",
+    dreamDuplicate: "{actor}把重复的 {ref} 合并进了它所重复的提议。",
+    published: "{actor}发布了第 {n} 期。",
+    foldedNotes: "{actor}把笔记归入 {ref}，它的内容没有改动。",
     notes: "{n} 条笔记",
     notesOne: "1 条笔记",
     facts: "{n} 条事实",

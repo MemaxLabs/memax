@@ -52,6 +52,7 @@ export default defineConfig({
       testIgnore: [
         "**/ledger-components.e2e.ts",
         "**/onboarding-boards.e2e.ts",
+        "**/dream-boards.e2e.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -78,7 +79,7 @@ export default defineConfig({
       // (screens/png), read in place like the previews; it measures how
       // far each is from its board (e2e/onboarding-boards.e2e.ts).
       name: "boards",
-      testMatch: "**/onboarding-boards.e2e.ts",
+      testMatch: ["**/onboarding-boards.e2e.ts", "**/dream-boards.e2e.ts"],
       snapshotPathTemplate: `${handoffScreensDir() ?? "{testDir}/__handoff_missing__"}/{arg}{ext}`,
       use: {
         ...devices["Desktop Chrome"],

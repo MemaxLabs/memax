@@ -57,6 +57,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/rerank"
 	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
@@ -778,7 +779,9 @@ func webSurfaceFromEnv() *websurface.Verifier {
 func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store, llm *anthropic.Client,
 	bus *forget.Bus) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
 	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
-	opts := []ledger.Option{ledger.WithForgetHonesty(forget.HonestyFromEnv(os.LookupEnv))}
+	dreamCfg := v2dream.ConfigFromEnv(os.LookupEnv)
+	opts := []ledger.Option{ledger.WithForgetHonesty(forget.HonestyFromEnv(os.LookupEnv)),
+		ledger.WithDreamUndoWindow(dreamCfg.UndoWindow)}
 	if queueClient != nil {
 		opts = append(opts, ledger.WithJobs(queueClient))
 		if embedCfg.Enabled() {
@@ -805,6 +808,11 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 		hopts = append(hopts, v2api.WithDrafts(vectors))
 	}
 	hopts = append(hopts, v2api.WithAsk(askService(l, search, llm)))
+	// Dream runs in the worker; here, run-now queues a run under the plan's
+	// caps (the engine needs no model for that).
+	if queueClient != nil {
+		hopts = append(hopts, v2api.WithDream(v2dream.New(l, nil, dreamCfg), queueClient))
+	}
 	// Device sign-in for the CLI (RFC 8628): the codes, keyed by the JWT
 	// secret; off without a database.
 	hopts = append(hopts, v2api.WithDevices(deviceauth.New(pool, []byte(os.Getenv("JWT_SECRET")))))

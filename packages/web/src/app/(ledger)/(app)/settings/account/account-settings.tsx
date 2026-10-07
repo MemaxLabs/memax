@@ -3,14 +3,16 @@
 import { PageHeader, Segmented } from "@memaxlabs/ledger";
 import { useLocale, type Locale } from "@/i18n";
 import { ThemeControl } from "../../../_components/theme-control";
+import { DreamSettingsPanel } from "./dream-settings";
 import styles from "../settings.module.css";
 
 const LOCALES: Locale[] = ["en", "zh"];
 
 /**
  * Settings › Account, the Phase 0 placeholder: the device's appearance
- * (Paper, Carbon or System) and language. Profile, sign-in methods and
- * sessions (Account.png) arrive with epic 2.6.
+ * (Paper, Carbon or System) and language, and Dream's time zone and
+ * morning email. Profile, sign-in methods and sessions (Account.png)
+ * arrive with epic 2.6.
  */
 export function AccountSettings() {
   const { t, locale, setLocale } = useLocale();
@@ -52,6 +54,7 @@ export function AccountSettings() {
           />
         </div>
       </section>
+      <DreamSettingsPanel />
     </>
   );
 }

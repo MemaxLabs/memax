@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   AgentStamp,
   Button,
@@ -22,7 +23,7 @@ import {
   type TodayData,
 } from "@/lib/v2/data/today";
 import { agentDay, dreamDate } from "@/lib/v2/today-copy";
-import { gateHref, placeHref } from "@/lib/v2/places";
+import { editionHref, gateHref, placeHref } from "@/lib/v2/places";
 import { GateRow } from "../../_components/gate-row";
 import { StatementText } from "../../_components/statement-text";
 import { TargetRow } from "../../_components/target-row";
@@ -35,7 +36,10 @@ const ROW_STATE = {
   stale: "stale",
 } as const;
 
-/** Main.png's Dream card; the designed placeholder while Dream editions aren't built. */
+/**
+ * Main.png's Dream card: last night's edition, which opens on its page
+ * (DreamEdition.png), or why there's none.
+ */
 export function TodayDream({
   view,
   data,
@@ -43,9 +47,10 @@ export function TodayDream({
   view: RecordsView;
   data: TodayData;
 }) {
-  const { l, timeZone, locale } = view;
+  const { l, timeZone, locale, space } = view;
   const { strings } = useLedger();
   const d = l.today.dream;
+  const card = l.dream.card;
   const dream = data.dream;
   if (dream.kind !== "edition") {
     return (
@@ -64,32 +69,41 @@ export function TodayDream({
   }
   const e = dream.edition;
   return (
-    <DreamCard
-      headingLevel={2}
-      issue={e.n}
-      date={dreamDate(e.at, timeZone, locale)}
-      time={formatClock(e.at, timeZone, locale)}
-      duration={
-        e.seconds === null
-          ? undefined
-          : interpolate(d.seconds, { n: e.seconds })
-      }
-      notes={e.notes}
-      facts={e.facts}
-      noteIds={e.noteIds}
-      factIds={e.factIds}
-      items={e.lines.map((line, i) => ({
-        key: String(i),
-        kind: line.kind,
-        text: line.text,
-        meta:
-          line.meta.kind === "folded"
-            ? interpolate(d.folded, { n: line.meta.notes, ref: line.meta.into })
-            : line.meta.kind === "needs-you"
-              ? d.needsYou
-              : d.restorable,
-      }))}
-    />
+    <div className={styles.dreamEdition}>
+      <DreamCard
+        headingLevel={2}
+        issue={e.n}
+        date={dreamDate(e.at, timeZone, locale)}
+        time={formatClock(e.at, timeZone, locale)}
+        duration={
+          e.seconds === null
+            ? undefined
+            : interpolate(d.seconds, { n: e.seconds })
+        }
+        notes={e.notes}
+        facts={e.facts}
+        noteIds={e.noteIds}
+        factIds={e.factIds}
+        items={e.lines.map((line, i) => ({
+          key: String(i),
+          kind: line.kind,
+          text: line.text ?? count(card.fadedOne, card.faded, line.count ?? 0),
+          meta:
+            line.meta.kind === "folded"
+              ? interpolate(d.folded, {
+                  n: line.meta.notes,
+                  ref: line.meta.into,
+                })
+              : line.meta.kind === "needs-you"
+                ? d.needsYou
+                : d.restorable,
+        }))}
+      />
+      {/* The whole card opens the edition; its words stay readable as they are. */}
+      <Link className={styles.dreamOpen} href={editionHref(space.slug, e.n)}>
+        <span className="mx-sr">{interpolate(card.open, { n: e.n })}</span>
+      </Link>
+    </div>
   );
 }
 

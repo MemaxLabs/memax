@@ -165,12 +165,13 @@ describe("decideUiGate", () => {
     ).toEqual({ action: "continue" });
   });
 
-  it("opens the device sign-in and the sign-in for every browser", () => {
+  it("opens the device sign-in, the sign-in and unsubscribing for every browser", () => {
     for (const pathname of [
       "/device",
       "/device/",
       "/signin",
       "/signin/callback",
+      "/unsubscribe",
     ]) {
       expect(isOpenV2Path(pathname)).toBe(true);
       for (const uiCookie of [undefined, "v1", "v2"]) {

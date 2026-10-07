@@ -31,6 +31,7 @@ const MARKS: Partial<Record<LineageEntry["action"], MarkState>> = {
   faded: "faded",
   forgot: "forgotten",
   restored: "kept",
+  returned: "conflict",
 };
 
 function title(view: RecordsView, entry: LineageEntry): string {

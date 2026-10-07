@@ -22,7 +22,21 @@ export function judgeLine(
   if (waiting) return { working: j.checking, note: j.waiting };
   if (item.judge === "working") return { working: j.checking, note: j.working };
   if (item.judge === "failed") return { note: j.failed };
+  if (item.returned) return { note: returnedLine(view, item) };
   return {};
+}
+
+/**
+ * A Write agent's write the judge put back in Review (rule 11): its
+ * `returned` receipt, said as Activity says it, after who kept it.
+ */
+export function returnedLine(view: RecordsView, item: ReviewItem): string {
+  const r = view.l.review;
+  const agent = view.name(item.by);
+  const decision = item.returned?.decision ?? item.conflictsWith;
+  return decision
+    ? interpolate(r.returned, { agent, decision })
+    : interpolate(r.returnedBare, { agent });
 }
 
 /**

@@ -95,7 +95,8 @@ type MCPDigestSection struct {
 }
 
 // MCPNotice is something the agent should know on its next read: a
-// forgotten memory, a change in its autonomy.
+// forgotten memory (kind forgotten), a kept write the judge sent back to
+// Review (returned), a change in its autonomy.
 type MCPNotice struct {
 	Kind    string `json:"kind"`
 	Message string `json:"message"`

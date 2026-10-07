@@ -23,6 +23,8 @@ export const ledgerRecordsEn = {
     handed_off: "handed off",
     answered: "answered",
     undid: "undone",
+    // The judge put a write kept at once back in Review (rule 11).
+    returned: "back in Review",
     // A decision gate's receipts.
     asked: "asked",
     withdrawn: "withdrawn",

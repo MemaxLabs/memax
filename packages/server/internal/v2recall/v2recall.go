@@ -594,6 +594,45 @@ func (s *Searcher) ForgottenSince(ctx context.Context, scope ledger.Scope, space
 	return out, err
 }
 
+// Returned is a Write-level agent's write the judge put back in Review
+// (rule 11): its ref, and the decision in force it contradicts.
+type Returned struct {
+	Ref      string
+	Decision string
+}
+
+// ReturnedSince lists the writes the judge returned to Review in the
+// spaces after since (refs only), as space id → returns: the notices a
+// connection gets on its next recall, since it may have read them while
+// they were kept. One that has since been kept again, or settled, is
+// still listed: what the agent read before was not what stands.
+func (s *Searcher) ReturnedSince(ctx context.Context, scope ledger.Scope, spaces []uuid.UUID, since time.Time) (map[uuid.UUID][]Returned, error) {
+	out := map[uuid.UUID][]Returned{}
+	if s == nil || len(spaces) == 0 {
+		return out, nil
+	}
+	err := s.ledger.Read(ctx, scope, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT space_id, object_ref, COALESCE(source->>'ref', '') FROM v2.receipts
+			 WHERE space_id = ANY($1) AND object_kind = 'memory' AND action = 'returned' AND recorded_at > $2
+			 ORDER BY seq LIMIT 50`, spaces, since)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id uuid.UUID
+			var r Returned
+			if err := rows.Scan(&id, &r.Ref, &r.Decision); err != nil {
+				return err
+			}
+			out[id] = append(out[id], r)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
 // KeptCounts counts each space's kept memories.
 func (s *Searcher) KeptCounts(ctx context.Context, scope ledger.Scope, spaces []uuid.UUID) (map[uuid.UUID]int, error) {
 	out := map[uuid.UUID]int{}

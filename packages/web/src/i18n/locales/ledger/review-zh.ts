@@ -44,6 +44,10 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
   },
   keptOver: "已保留 {ref}，替换了 {other}",
   nowConflict: "{ref} 和现行的决策 {other} 矛盾。对比两边，定下来。",
+  returned:
+    "{agent} 当即保留了这条。Memax 把它退回了审阅：它和现行的决策 {decision} 矛盾。",
+  returnedBare:
+    "{agent} 当即保留了这条。Memax 把它退回了审阅：它和一条现行的决策矛盾。",
   edit: {
     title: "正在编辑提议",
   },
@@ -180,6 +184,13 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
     stays: "{kept} 继续生效。已拒绝 {proposal}",
     keptBoth: "已保留 {proposal} 和 {kept}，各自缩小了范围",
     leftOpen: "{proposal} 和 {kept} 先不定",
+    checkingBoth:
+      "正在对照其他现行的决策检查缩小后的说法。检查完，两边都会保留。",
+    stopChecking: "停止检查",
+    stoppedChecking:
+      "已停止检查。你写的说法还在：再保留一次这个决策，就会重新检查。",
+    inConflictBoth:
+      "缩小后的说法和现行的决策 {with} 矛盾。改一改说法，或换一个答案。",
     nothing: {
       title: "{ref} 没有可以对比的东西。",
       detail:

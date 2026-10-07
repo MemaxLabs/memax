@@ -64,6 +64,7 @@ const RECORD_ACTIONS = new Set<string>([
   "handed_off",
   "answered",
   "undid",
+  "returned",
 ]);
 
 export function isRecordAction(action: string): action is RecordAction {
@@ -156,6 +157,11 @@ export function reviewItemOf(
   // the judge's conflict), and the queue says who. A proposal shows who
   // proposed it, whatever Memax noted on it since (Review.png's M-0431).
   const flagged = memory.lifecycle !== "proposed" && last?.action === "flagged";
+  // Rule 11: a write the agent kept at once, back in Review because the
+  // judge found it contradicts a decision in force. It shows who wrote it;
+  // the card says what happened since.
+  const returned =
+    memory.lifecycle === "proposed" && last?.action === "returned";
   return {
     ref: memory.ref,
     version: memory.version,
@@ -167,8 +173,23 @@ export function reviewItemOf(
       memory.trust === "external" ||
       Boolean(memory.sources?.some((s) => s.external)),
     by: actorOf(flagged ? last : created, viewerId),
-    action: flagged ? "flagged" : updates ? "updated" : "proposed",
-    at: (flagged ? last : created)?.occurred_at ?? memory.created_at,
+    action: flagged
+      ? "flagged"
+      : returned
+        ? "returned"
+        : updates
+          ? "updated"
+          : "proposed",
+    at:
+      (flagged || returned ? last : created)?.occurred_at ?? memory.created_at,
+    returned: returned
+      ? {
+          decision:
+            last?.source?.kind === "memory"
+              ? last.source.ref
+              : conflictPartnerOf(memory),
+        }
+      : null,
     session: sessionOf(created),
     updates,
     conflictsWith: state === "conflict" ? conflictPartnerOf(memory) : null,

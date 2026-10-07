@@ -78,6 +78,7 @@ export const ledgerMemoryZh: Translations["ledger"]["memory"] = {
       handedOff: "{name} 交接过",
       answered: "{name} 回答了",
       undid: "{name} 撤销了",
+      returned: "{name} 退回了审阅",
     },
     mergedInto: "合并进来的",
     unfold: "撤销",

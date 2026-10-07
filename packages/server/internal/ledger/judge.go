@@ -18,8 +18,9 @@ import (
 )
 
 // The judge (plan 25 §5.8) runs as a River job on every proposal (and on
-// every memory a Write-level agent kept, after the fact). The ledger's
-// part is small and keeps the one-write-path rule:
+// every memory a Write-level agent kept, after the fact, and on the words
+// a person writes to settle a conflict). The ledger's part is small and
+// keeps the one-write-path rule:
 //
 //   - every command that writes a proposal, or a new version of one,
 //     enqueues judge_proposal for that memory version in its own
@@ -29,7 +30,8 @@ import (
 //   - RecordVerdict applies the verdict as Memax: fold a duplicate into
 //     the memory it repeats, fold a re-proposal into its rejection, link
 //     an update to what it updates, flag a contradiction of a decision in
-//     force, or record that nothing was found. Each is receipted, and a
+//     force (and put a Write agent's write that contradicts one back in
+//     Review), or record that nothing was found. Each is receipted, and a
 //     fold is undoable.
 //
 // The judge's own logic (fingerprints, candidates, the model call) lives
@@ -47,9 +49,22 @@ const (
 	JudgeProposal JudgeMode = "proposal"
 	// JudgeKept: a memory a Write-level agent kept at once. The inline
 	// pre-check let it through; the judge only looks for a contradiction
-	// with a decision in force, and flags it.
+	// with a decision in force. A contradiction puts the write back in
+	// Review as a conflict while nothing has changed or built on it, inside
+	// the return window; otherwise it is flagged where it stands
+	// (returnable).
 	JudgeKept JudgeMode = "kept"
+	// JudgeSettling: words a person wrote to settle a conflict with "keep
+	// both" that touch another decision in force: a proposal's narrowed
+	// version, or a kept memory's draft (a version above its current one,
+	// out of force until the resolution is applied). The judge only looks
+	// for a contradiction with a decision in force other than the
+	// conflict's other side (JudgeArgs.Beside), and never folds or links.
+	JudgeSettling JudgeMode = "settling"
 )
+
+// JudgeModes lists every mode.
+var JudgeModes = []JudgeMode{JudgeProposal, JudgeKept, JudgeSettling}
 
 // JudgeArgs is the River job that judges one memory version.
 //
@@ -71,6 +86,12 @@ type JudgeArgs struct {
 	// Cause is the undo entry that queued this round, if any, so two undos
 	// of the same version never collapse into one job.
 	Cause string `json:"cause,omitempty"`
+	// Beside is the other side of the conflict a settling version is
+	// written for. It is left out of the candidates: the person is
+	// narrowing both sides to stand together, and that pair is theirs to
+	// judge. omitzero keeps every other job's arguments (and uniqueness)
+	// as they were.
+	Beside uuid.UUID `json:"beside,omitzero"`
 }
 
 // Kind implements river.JobArgs.
@@ -281,8 +302,8 @@ func (c *RecordVerdict) validate() error {
 	if c.Memory == uuid.Nil || c.Version < 1 || c.Round < 0 {
 		return invalid("memory", "say which memory version the verdict is about")
 	}
-	if c.Mode != JudgeProposal && c.Mode != JudgeKept {
-		return invalid("mode", "use proposal or kept")
+	if !slices.Contains(JudgeModes, c.Mode) {
+		return invalid("mode", "use proposal, kept or settling")
 	}
 	if !slices.Contains(VerdictOutcomes, c.Outcome) || c.Outcome == OutcomeSkipped {
 		return invalid("outcome", "use folded, suppressed, linked, superseding, flagged, none or failed")
@@ -290,8 +311,8 @@ func (c *RecordVerdict) validate() error {
 	if c.Outcome != OutcomeNone && c.Outcome != OutcomeFailed && c.Target == uuid.Nil {
 		return invalid("target", "a %s verdict needs the memory it points at", c.Outcome)
 	}
-	if c.Mode == JudgeKept && c.Outcome != OutcomeFlagged && c.Outcome != OutcomeNone && c.Outcome != OutcomeFailed {
-		return invalid("outcome", "a kept memory is only ever flagged")
+	if c.Mode != JudgeProposal && c.Outcome != OutcomeFlagged && c.Outcome != OutcomeNone && c.Outcome != OutcomeFailed {
+		return invalid("outcome", "a %s verdict only ever flags", c.Mode)
 	}
 	v := &c.Verdict
 	if !slices.Contains(JudgeStages, v.Stage) || !v.Relation.Valid() {
@@ -343,10 +364,6 @@ func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, e
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
 	}
-	want := lifecycle.Proposed
-	if c.Mode == JudgeKept {
-		want = lifecycle.Kept
-	}
 	var done bool
 	if err := w.tx.QueryRow(ctx, `
 		SELECT EXISTS (SELECT 1 FROM v2.judge_verdicts
@@ -356,7 +373,11 @@ func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, e
 	}
 	// The memory moved on (kept, rejected, edited) or this round is
 	// already recorded: the verdict is about words nobody is reviewing.
-	if done || mem.Version != c.Version || mem.Lifecycle != want || (c.Mode == JudgeKept && mem.Flags.Has(lifecycle.Conflict)) {
+	eligible, draft, err := w.verdictEligible(ctx, mem, c.Mode, c.Version)
+	if err != nil {
+		return Result{}, err
+	}
+	if done || !eligible {
 		return Result{Outcome: OutcomeApplied, Policy: dec, Memory: mem, Unchanged: true}, nil
 	}
 
@@ -395,6 +416,38 @@ func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, e
 		}
 	}
 
+	// A contradiction acts only on decisions the memory isn't already in
+	// conflict with: a flagged proposal judged again (new words, or words
+	// narrowed to settle its conflict) keeps the conflict it has, and a
+	// pair already linked is a person's to settle. A draft's words aren't
+	// in force, so they change nothing; the resolution that would apply
+	// them reads the verdict. A Write agent's write goes back to Review
+	// when it may (returnable).
+	var fresh []*Memory
+	returned := false
+	if outcome == OutcomeFlagged {
+		linked, err := conflictPartners(ctx, w.tx, mem.ID)
+		if err != nil {
+			return Result{}, err
+		}
+		for _, d := range conflicts {
+			if !linked[d.ID] {
+				fresh = append(fresh, d)
+			}
+		}
+		if draft {
+			fresh = nil
+		}
+		if len(fresh) > 0 && !slices.ContainsFunc(fresh, func(x *Memory) bool { return x.ID == target.ID }) {
+			target = fresh[0]
+		}
+		if len(fresh) > 0 && c.Mode == JudgeKept {
+			if returned, err = w.returnable(ctx, sp, mem); err != nil {
+				return Result{}, err
+			}
+		}
+	}
+
 	action := ActionJudged
 	var reason string
 	switch outcome {
@@ -418,12 +471,20 @@ func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, e
 		action = ActionLinked
 		reason = fmt.Sprintf("Supersedes %s, a decision in force, by saying it changed.", target.Ref)
 	case OutcomeFlagged:
-		action = ActionFlagged
-		refs := make([]string, len(conflicts))
-		for i, m := range conflicts {
-			refs[i] = m.Ref
+		switch {
+		case draft:
+			reason = fmt.Sprintf("The words drafted for %s (version %d) contradict %s, %s in force. They stay out of force.",
+				mem.Ref, c.Version, refsOf(conflicts), pluralDecision(len(conflicts)))
+		case len(fresh) == 0:
+			reason = fmt.Sprintf("Still contradicts %s; the conflict waits to be settled.", refsOf(conflicts))
+		case returned:
+			action = ActionReturned
+			reason = fmt.Sprintf("Contradicts %s, %s in force. An agent kept it at once; it waits in Review until a person settles it.",
+				refsOf(fresh), pluralDecision(len(fresh)))
+		default:
+			action = ActionFlagged
+			reason = fmt.Sprintf("Contradicts %s, %s in force.", refsOf(fresh), pluralDecision(len(fresh)))
 		}
-		reason = fmt.Sprintf("Contradicts %s, %s in force.", strings.Join(refs, " and "), pluralDecision(len(refs)))
 	case OutcomeFailed:
 		reason = "The judge couldn't reach a verdict. Review it as usual."
 	case OutcomeSkipped:
@@ -458,10 +519,18 @@ func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, e
 			return Result{}, err
 		}
 	case OutcomeFlagged:
-		if next, err = transition(mem, lifecycle.VerbFlagConflict); err != nil {
-			return Result{}, err
+		switch {
+		case len(fresh) == 0:
+		case returned:
+			if next, err = lifecycle.ReturnToReview(mem.state()); err != nil {
+				return Result{}, fmt.Errorf("ledger: return %s to Review: %w", mem.Ref, err)
+			}
+		case !mem.Flags.Has(lifecycle.Conflict):
+			if next, err = transition(mem, lifecycle.VerbFlagConflict); err != nil {
+				return Result{}, err
+			}
 		}
-		for _, d := range conflicts {
+		for _, d := range fresh {
 			if _, err := w.insertLink(ctx, sp.ID, LinkConflictsWith, mem.ID, d.ID, rc.ID); err != nil {
 				return Result{}, err
 			}
@@ -479,8 +548,10 @@ func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, e
 		mem.ID, string(next.Lifecycle), next.Flags.Strings(), []byte(conditions), rc.StreamVersion, rc.ID, sp.ID); err != nil {
 		return Result{}, fmt.Errorf("ledger: update memory: %w", err)
 	}
-	// A kept memory in conflict compiles with an "In conflict" marker.
-	if c.Mode == JudgeKept && outcome == OutcomeFlagged {
+	// A kept memory in conflict compiles with an "In conflict" marker, and
+	// one back in Review leaves every compiled file (proposals never
+	// compile).
+	if c.Mode == JudgeKept && len(fresh) > 0 {
 		if err := w.markDirty(ctx, sp.ID); err != nil {
 			return Result{}, err
 		}
@@ -500,6 +571,132 @@ func pluralDecision(n int) string {
 		return "a decision"
 	}
 	return "decisions"
+}
+
+func refsOf(ms []*Memory) string {
+	refs := make([]string, len(ms))
+	for i, m := range ms {
+		refs[i] = m.Ref
+	}
+	return strings.Join(refs, " and ")
+}
+
+// verdictEligible reports whether a verdict on version may still act:
+// the memory is where the job found it. A settling verdict on a kept
+// memory is about a draft (draft is set): a version above the current
+// one, written by a `drafted` receipt.
+func (w *writer) verdictEligible(ctx context.Context, mem *Memory, mode JudgeMode, version int) (eligible, draft bool, err error) {
+	switch mode {
+	case JudgeProposal:
+		return mem.Lifecycle == lifecycle.Proposed && mem.Version == version, false, nil
+	case JudgeKept:
+		return mem.Lifecycle == lifecycle.Kept && mem.Version == version && !mem.Flags.Has(lifecycle.Conflict), false, nil
+	case JudgeSettling:
+		switch mem.Lifecycle {
+		case lifecycle.Proposed:
+			return mem.Version == version, false, nil
+		case lifecycle.Kept:
+			_, ok, err := draftWords(ctx, w.tx, mem, version)
+			return ok, ok, err
+		}
+	}
+	return false, false, nil
+}
+
+// draftWords reads a kept memory's draft: the words of a version above
+// its current one that a `drafted` receipt wrote (ResolveConflict's
+// "keep both", held for the judge). ok is false when there's no such
+// draft (an undone edit's version is above the current one too, but it
+// is no draft).
+func draftWords(ctx context.Context, tx pgx.Tx, mem *Memory, version int) (statement string, ok bool, err error) {
+	err = tx.QueryRow(ctx, `
+		SELECT COALESCE(v.statement, '')
+		  FROM v2.memory_versions v
+		  JOIN v2.receipts r ON r.id = v.receipt_id
+		 WHERE v.memory_id = $1 AND v.space_id = $2 AND v.version = $3 AND v.version > $4 AND r.action = 'drafted'`,
+		mem.ID, mem.SpaceID, version, mem.Version).Scan(&statement)
+	if errNoRows(err) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("ledger: read draft: %w", err)
+	}
+	return statement, true, nil
+}
+
+// conflictPartners lists the memories a memory has an active
+// conflicts_with link with, in either direction.
+func conflictPartners(ctx context.Context, tx pgx.Tx, id uuid.UUID) (map[uuid.UUID]bool, error) {
+	links, err := activeLinks(ctx, tx, []uuid.UUID{id})
+	if err != nil {
+		return nil, err
+	}
+	out := map[uuid.UUID]bool{}
+	for _, l := range links[id] {
+		if l.Kind == LinkConflictsWith {
+			out[l.MemoryID] = true
+		}
+	}
+	return out, nil
+}
+
+// DefaultReturnWindow is how long after a Write-level agent's write the
+// judge may still put it back in Review (WithReturnWindow). One judge
+// attempt is bounded at 2 minutes (judge.Worker.Timeout: up to four model
+// calls and the strong tier's confirmation, 12 s each), and River retries
+// a failed attempt twice (after about 1 s and 16 s), so a verdict lands
+// within about 6½ minutes of the write even when the database fails
+// twice; 10 minutes leaves room for a queue a few minutes behind. Past
+// it, agents have been reading the write in their compiled files long
+// enough that pulling it out unannounced does more harm than good: it
+// stays kept, flagged, and compiles marked "(In conflict)" until a person
+// settles it, which Review asks for.
+const DefaultReturnWindow = 10 * time.Minute
+
+// WithReturnWindow replaces DefaultReturnWindow (tests).
+func WithReturnWindow(d time.Duration) Option { return func(l *Ledger) { l.returnWindow = d } }
+
+// returnable decides whether the judge may put a Write-level agent's
+// kept memory back in Review (rule 11, plan 25 §5.6 downgrade (b)), now
+// that it contradicts a decision in force. Only while the write is the
+// agent's own and nothing has changed or built on it:
+//
+//   - the last thing that happened to it is the agent's keep or edit that
+//     wrote these words (so no person has kept, edited, settled or undone
+//     anything on it since, and no later version exists);
+//   - no person ever touched its stream;
+//   - nothing links to it (no proposal updates it, no conflict names it,
+//     nothing folded into it) and the Brief doesn't place or cite it (the
+//     Brief places only kept memories);
+//   - it is inside the return window of the write.
+//
+// Otherwise it is flagged where it stands. The database holds the first
+// rule too (migration 042's lifecycle guard).
+func (w *writer) returnable(ctx context.Context, sp spaceRow, mem *Memory) (bool, error) {
+	var ok bool
+	err := w.tx.QueryRow(ctx, `
+		SELECT r.actor_kind = 'agent' AND r.action IN ('kept', 'edited')
+		       AND r.recorded_at > now() - make_interval(secs => $3)
+		       AND NOT EXISTS (SELECT 1 FROM v2.receipts p
+		                        WHERE p.stream_id = m.id AND p.space_id = m.space_id AND p.actor_kind = 'person')
+		       AND NOT EXISTS (SELECT 1 FROM v2.memory_links l
+		                        WHERE l.to_memory_id = m.id AND l.space_id = m.space_id AND l.ended_receipt_id IS NULL)
+		  FROM v2.memories m
+		  JOIN v2.memory_versions v ON v.memory_id = m.id AND v.version = m.current_version
+		  JOIN v2.receipts r ON r.id = v.receipt_id
+		 WHERE m.id = $1 AND m.space_id = $2 AND m.last_receipt_id = r.id`,
+		mem.ID, sp.ID, w.returnWindow.Seconds()).Scan(&ok)
+	if errNoRows(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("ledger: read the write's history: %w", err)
+	}
+	if !ok {
+		return false, nil
+	}
+	b, err := w.briefCiting(ctx, sp.ID, mem.Ref)
+	return b == "", err
 }
 
 func (w *writer) insertVerdict(ctx context.Context, spaceID, memoryID uuid.UUID, c *RecordVerdict, outcome VerdictOutcome, target *Memory, receiptID uuid.UUID) error {
@@ -719,13 +916,27 @@ func (l *Ledger) JudgeSnapshot(ctx context.Context, scope Scope, args JudgeArgs,
 			return fmt.Errorf("ledger: read verdicts: %w", err)
 		}
 		s.Judged = maxRound != nil
-		want := lifecycle.Proposed
-		if args.Mode == JudgeKept {
-			want = lifecycle.Kept
+		switch args.Mode {
+		case JudgeProposal:
+			s.Eligible = m.Version == args.Version && m.Lifecycle == lifecycle.Proposed
+		case JudgeKept:
+			s.Eligible = m.Version == args.Version && m.Lifecycle == lifecycle.Kept && !m.Flags.Has(lifecycle.Conflict)
+		case JudgeSettling:
+			switch m.Lifecycle {
+			case lifecycle.Proposed:
+				s.Eligible = m.Version == args.Version
+			case lifecycle.Kept:
+				// A draft: the judge reads its words, not the ones in force.
+				words, ok, err := draftWords(ctx, tx, m, args.Version)
+				if err != nil {
+					return err
+				}
+				if ok {
+					m.Statement, m.Version, s.Eligible = words, args.Version, true
+				}
+			}
 		}
-		s.Eligible = m.Version == args.Version && m.Lifecycle == want &&
-			(maxRound == nil || (args.Force && *maxRound < args.Round)) &&
-			!(args.Mode == JudgeKept && m.Flags.Has(lifecycle.Conflict))
+		s.Eligible = s.Eligible && (maxRound == nil || (args.Force && *maxRound < args.Round))
 		if !s.Eligible {
 			out = s
 			return nil
@@ -762,6 +973,13 @@ func (l *Ledger) JudgeSnapshot(ctx context.Context, scope Scope, args JudgeArgs,
 		}
 		if s.Decisions, err = decisionsInForce(ctx, tx, m.SpaceID, m.ID); err != nil {
 			return err
+		}
+		if args.Beside != uuid.Nil {
+			// The conflict's other side: the person is narrowing both.
+			beside := func(c JudgeCandidate) bool { return c.ID == args.Beside }
+			for _, lane := range []*[]JudgeCandidate{&s.Exact, &s.Near, &s.FTS, &s.Trigram, &s.Decisions} {
+				*lane = slices.DeleteFunc(*lane, beside)
+			}
 		}
 		out = s
 		return nil
@@ -973,10 +1191,22 @@ func heldForJudge(ref string) policy.Decision {
 // write: does it touch a decision in force (Touches)? It runs inside the
 // command's transaction.
 func (w *writer) touchesDecision(ctx context.Context, spaceID, except uuid.UUID, statement, area string) (bool, error) {
-	ds, err := decisionsInForce(ctx, w.tx, spaceID, except)
+	return w.touchesOther(ctx, spaceID, []uuid.UUID{except}, statement, area)
+}
+
+// touchesOther is touchesDecision leaving several memories out: "keep
+// both" checks narrowed words against the decisions in force other than
+// the two sides of the conflict being settled.
+func (w *writer) touchesOther(ctx context.Context, spaceID uuid.UUID, except []uuid.UUID, statement, area string) (bool, error) {
+	first := uuid.Nil
+	if len(except) > 0 {
+		first = except[0]
+	}
+	ds, err := decisionsInForce(ctx, w.tx, spaceID, first)
 	if err != nil {
 		return false, err
 	}
+	ds = slices.DeleteFunc(ds, func(d JudgeCandidate) bool { return slices.Contains(except, d.ID) })
 	return len(Touches(statement, area, ds)) > 0, nil
 }
 

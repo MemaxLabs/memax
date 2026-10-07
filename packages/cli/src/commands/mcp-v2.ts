@@ -521,10 +521,26 @@ export async function v2Get(
   if (!state.readable.has(space.id)) return notConnected(space);
   if (m.lifecycle === "rejected")
     return errorResult(`Memory not found: ${ref}`);
-  if (m.lifecycle === "proposed")
+  if (m.lifecycle === "proposed") {
+    // Rule 11: a write kept at once that the judge then found contradicting
+    // a decision in force is back in Review (the remote server says the same).
+    const returned = m.flags.includes("conflict")
+      ? [...detail.receipts.items]
+          .sort((a, b) => b.seq - a.seq)
+          .find((r) => r.action === "returned")
+      : undefined;
+    if (returned) {
+      const what = returned.source?.ref
+        ? `${returned.source.ref}, a decision in force`
+        : "a decision in force";
+      return errorResult(
+        `${m.ref} is back in Review in ${space.name}: it was kept at once, then Memax found it contradicts ${what}. It isn't kept now, so don't act on it; a person keeps it or settles the conflict.`,
+      );
+    }
     return errorResult(
       `${m.ref} is a proposal waiting in Review in ${space.name}; it can be read once a person keeps it.`,
     );
+  }
   const lines = [
     `# ${m.ref} · ${space.name}`,
     `State: ${m.state} | Section: ${m.section} | Kind: ${m.kind} | Trust: ${m.trust} | Version: ${m.version}`,

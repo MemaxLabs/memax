@@ -312,6 +312,51 @@ describe("the judge's receipts", () => {
     expect(say("zh")).toContain("M-0431");
     expect(say("zh")).not.toMatch(/[A-Za-z]{4,} [a-z]/); // no English left in zh
   });
+
+  // Rule 11: the judge returns a Write agent's write to Review, naming the
+  // decision in force it contradicts; "keep both" holds narrower words
+  // for a kept memory as a draft until the judge has seen them.
+  it("words a return and a draft in en and zh", () => {
+    const say = (e: ActivityEntry, locale: "en" | "zh") =>
+      sentenceText(
+        activitySentences(
+          (locale === "en" ? en : zh).ledger.activity,
+          e,
+          names(locale),
+        ),
+        locale,
+      );
+    const returned = entry({
+      action: "returned",
+      actor: { kind: "memax" },
+      object: { kind: "memory", ref: "M-0431", id: "m1" },
+      source: { kind: "memory", ref: "M-0156" },
+      via: [{ kind: "via", via: "system" }],
+      rawVia: "system",
+    });
+    expect(say(returned, "en")).toBe(
+      "Memax returned M-0431 to Review: it contradicts M-0156, a decision in force.",
+    );
+    expect(say(returned, "zh")).toBe(
+      "Memax 把 M-0431 退回了审阅：它和现行的决策 M-0156 矛盾。",
+    );
+    expect(say({ ...returned, source: null }, "en")).toBe(
+      "Memax returned M-0431 to Review: it contradicts a decision in force.",
+    );
+    expect(say({ ...returned, source: null }, "zh")).not.toContain("{");
+    const drafted = entry({
+      action: "drafted",
+      object: { kind: "memory", ref: "M-0156", id: "m2" },
+    });
+    expect(say(drafted, "en")).toBe(
+      "You wrote narrower words for M-0156 to settle a conflict. They wait for Memax's check before they replace the words in force.",
+    );
+    expect(say(drafted, "zh")).toContain("M-0156");
+    expect(say(drafted, "zh")).not.toContain("{");
+    // Both are changes to the record, filed under writes.
+    expect(activityCategory(returned)).toBe("writes");
+    expect(activityCategory(drafted)).toBe("writes");
+  });
 });
 
 describe("decision gate receipts", () => {

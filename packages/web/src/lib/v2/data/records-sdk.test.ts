@@ -629,6 +629,84 @@ describe("mapping what the judge said", () => {
     ).toBe("M-0174");
   });
 
+  it("reads a write the judge returned to Review: its writer, and the decision it names", () => {
+    // Rule 11: Codex kept M-0431 at once; the judge returned it.
+    const returned = receipt({
+      id: "r2",
+      seq: 2,
+      action: "returned",
+      actor_kind: "memax",
+      agent: undefined,
+      via: "system",
+      occurred_at: "2026-10-05T20:41:00Z",
+      source: { kind: "memory", ref: "M-0174" },
+    });
+    const item = reviewItemOf(
+      memory({
+        ref: "M-0431",
+        state: "conflict",
+        lifecycle: "proposed",
+        flags: ["conflict"],
+        last_receipt_id: "r2",
+        links: [link({})],
+        judge: { state: "judged", version: 1, verdict: "contradicts" },
+      }),
+      new Map([
+        ["r1", receipt({ action: "kept", agent: "codex" })],
+        ["r2", returned],
+      ]),
+      ME,
+    );
+    expect(item).toMatchObject({
+      state: "conflict",
+      lifecycle: "proposed",
+      conflictsWith: "M-0174",
+      by: { kind: "agent", agent: "codex" },
+      action: "returned",
+      at: "2026-10-05T20:41:00Z",
+      returned: { decision: "M-0174" },
+    });
+    // Another proposal in conflict wasn't returned.
+    expect(
+      reviewItemOf(
+        memory({ state: "conflict", flags: ["conflict"] }),
+        new Map([["r1", receipt()]]),
+        ME,
+      ).returned,
+    ).toBeNull();
+  });
+
+  it("reads a held “both” as saved for the judge, with the flagged side's new version", async () => {
+    const client = fakeClient();
+    client.v2.memories.resolveConflict.mockResolvedValueOnce({
+      ...command("M-0431"),
+      outcome: "proposed",
+      policy: { effect: "propose", code: "judge_pending" },
+      memory: memory({ ref: "M-0431", version: 2 }),
+      memories: [memory({ ref: "M-0431", version: 2 })],
+      receipts: [receipt({ id: "r-edited", action: "edited" })],
+    });
+    const review = createSdkReview(client as never, () => ME);
+    const result = await review.resolveConflict({
+      space: v2,
+      ref: "M-0431",
+      other: "M-0174",
+      version: 1,
+      option: "both",
+      statement: "Previews deploy to Fly.io.",
+      otherStatement: "Production stays on Railway.",
+      idempotencyKey: "k1",
+    });
+    expect(result).toEqual({
+      ref: "M-0431",
+      outcome: "proposed",
+      version: 2,
+      recompiled: null,
+      receipt: null,
+      judgePending: true,
+    });
+  });
+
   it("reads an update from the judge's link, with the words to diff", async () => {
     const updates = {
       id: "m0",

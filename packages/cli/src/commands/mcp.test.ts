@@ -482,6 +482,50 @@ describe("the stdio MCP server", () => {
     expect(state.asked).toHaveLength(0);
   });
 
+  it("says a write the judge returned to Review isn't kept", async () => {
+    const memory = {
+      ...kept("M-0433", "Preview builds run on Fly.io machines."),
+      state: "conflict",
+      lifecycle: "proposed",
+      flags: ["conflict"],
+    };
+    fakeClient.v2.memories.get.mockResolvedValueOnce({
+      memory,
+      receipts: {
+        items: [
+          {
+            id: "r2",
+            seq: 2,
+            action: "returned",
+            actor_kind: "memax",
+            via: "system",
+            source: { kind: "memory", ref: "M-0156" },
+            occurred_at: "2026-10-06T14:31:00Z",
+          },
+          {
+            id: "r1",
+            seq: 1,
+            action: "kept",
+            actor_kind: "agent",
+            agent: "codex",
+            via: "mcp",
+            occurred_at: "2026-10-06T14:30:00Z",
+          },
+        ],
+        has_more: false,
+      },
+    });
+    const client = await connect();
+    const res = await client.callTool({
+      name: "memax_get",
+      arguments: { id: "M-0433", space_id: "memax-v2" },
+    });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toBe(
+      "M-0433 is back in Review in memax-v2: it was kept at once, then Memax found it contradicts M-0156, a decision in force. It isn't kept now, so don't act on it; a person keeps it or settles the conflict.",
+    );
+  });
+
   it("never forgets in a space on V2", async () => {
     const client = await connect();
     const res = await client.callTool({

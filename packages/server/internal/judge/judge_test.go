@@ -541,8 +541,9 @@ func TestWriteAgentsArePrechecked(t *testing.T) {
 	if a.Mode != ledger.JudgeKept {
 		t.Fatalf("kept write job = %+v", a)
 	}
-	// The judge finds what the pre-check couldn't: the kept memory is
-	// flagged, and every target recompiles to mark it.
+	// The judge finds what the pre-check couldn't: the kept memory goes
+	// back to Review as a conflict (rule 11, §5.6 downgrade (b)), and every
+	// target recompiles without it.
 	f.apply(&ledger.ReviseBrief{Meta: meta(person(zz), f.scope(zz), policy.ViaWeb), SpaceID: sp, Title: "Brief",
 		Sections: []ledger.BriefSection{{Key: "decisions", Heading: "Decisions", Items: []ledger.BriefItem{{Ref: railway.Ref}}}}})
 	f.apply(&ledger.ConfigureTarget{Meta: meta(person(zz), f.scope(zz), policy.ViaWeb), SpaceID: sp, Kind: ledger.TargetAgentsMD})
@@ -553,11 +554,14 @@ func TestWriteAgentsArePrechecked(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := f.get(zz, kept.Memory.ID)
-	if r.Outcome != ledger.OutcomeFlagged || got.Lifecycle != lifecycle.Kept || !got.Flags.Has(lifecycle.Conflict) {
+	if r.Outcome != ledger.OutcomeFlagged || got.Lifecycle != lifecycle.Proposed || !got.Flags.Has(lifecycle.Conflict) {
 		t.Errorf("post-hoc: %+v, %s %v", r, got.Lifecycle, got.Flags)
 	}
+	if r.Receipt == nil || r.Receipt.Action != ledger.ActionReturned || r.Receipt.Source == nil || r.Receipt.Source.Ref != railway.Ref {
+		t.Errorf("post-hoc receipt = %+v", r.Receipt)
+	}
 	if n := f.count(`SELECT dirty_gen FROM v2.targets WHERE space_id = $1`, sp); n != before+1 {
-		t.Errorf("dirty_gen %d → %d; the flag must recompile", before, n)
+		t.Errorf("dirty_gen %d → %d; the return must recompile", before, n)
 	}
 }
 

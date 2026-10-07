@@ -203,6 +203,74 @@ func TestDecisionGatesMigrationStepsBack(t *testing.T) {
 	}
 }
 
+// rule11Version is migration 042 (the judge's return to Review, and
+// "keep both" drafts). Renumber it with the file if a merge moves it.
+const rule11Version = 42
+
+// TestRule11MigrationStepsBack rolls back only 042 while a `returned`
+// receipt exists: the receipt stays (receipts are append-only), 036's
+// action CHECK and 035's lifecycle guard come back, so a new `returned`
+// receipt is refused, and 042 applies again on top.
+func TestRule11MigrationStepsBack(t *testing.T) {
+	cs := withFreshDB(t)
+	if err := Run(cs, migrationsDir()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cs)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	returned := func(version int) error {
+		_, err := pool.Exec(ctx, `
+			INSERT INTO v2.receipts (id, tenant_id, space_id, object_kind, object_id, object_ref, action, actor_kind, via, occurred_at, stream_id, stream_version)
+			VALUES (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222',
+			        'memory', '33333333-3333-3333-3333-333333333333', 'M-0001', 'returned', 'memax', 'system', now(),
+			        '33333333-3333-3333-3333-333333333333', $1)`, version)
+		return err
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO users (id, email, name) VALUES ('11111111-1111-1111-1111-111111111111', 'rt@test', 'rt');
+		INSERT INTO hubs (id, name, slug, hub_type, owner_id) VALUES
+			('22222222-2222-2222-2222-222222222222', 'P', 'rt-p', 'personal', '11111111-1111-1111-1111-111111111111')`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := returned(1); err != nil {
+		t.Fatalf("a returned receipt after 042: %v", err)
+	}
+	returnFunc := func() bool {
+		var ok bool
+		if err := pool.QueryRow(ctx, `SELECT to_regproc('v2.lifecycle_return_allowed') IS NOT NULL`).Scan(&ok); err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	m := newMigrator(t, cs)
+	if err := m.Migrate(rule11Version - 1); err != nil {
+		t.Fatalf("migrate down to %03d: %v", rule11Version-1, err)
+	}
+	if returnFunc() {
+		t.Error("after down: v2.lifecycle_return_allowed remains")
+	}
+	var receipts int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM v2.receipts WHERE action = 'returned'`).Scan(&receipts); err != nil || receipts != 1 {
+		t.Errorf("the returned receipt: %d, %v; receipts are never dropped", receipts, err)
+	}
+	if err := returned(2); err == nil {
+		t.Error("036's action CHECK isn't back: a new 'returned' receipt was accepted")
+	}
+	if err := m.Up(); err != nil && !errors.Is(err, gomigrate.ErrNoChange) {
+		t.Fatalf("migrate up again: %v", err)
+	}
+	if !returnFunc() {
+		t.Error("after second up: no v2.lifecycle_return_allowed")
+	}
+	if err := returned(2); err != nil {
+		t.Errorf("a returned receipt after 042 again: %v", err)
+	}
+}
+
 func newMigrator(t *testing.T, cs string) *gomigrate.Migrate {
 	t.Helper()
 	u, err := url.Parse(cs)

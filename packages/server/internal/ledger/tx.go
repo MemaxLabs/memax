@@ -34,9 +34,11 @@ import (
 //     caller has its answer, and nobody waits for it: ending a transaction
 //     that wrote nothing can't change what it read, and no deferred check
 //     fires. The connection returns to the pool when the server answers.
-//   - Statements a command defers, the role switches around River's insert
-//     (jobs.go), ride with the next statement, or with COMMIT, keeping
-//     their order.
+//   - Statements a command defers ride with the next statement, or with
+//     COMMIT, keeping their order: the role switches around River's insert
+//     (jobs.go), and writes whose result nobody reads (execDeferred).
+//   - A one-statement write (meter) sends its COMMIT in that statement's
+//     pipeline (commitWithNext).
 //   - ReadBatch sends a read's independent statements with BEGIN, the scope
 //     and COMMIT, all in one round trip.
 //

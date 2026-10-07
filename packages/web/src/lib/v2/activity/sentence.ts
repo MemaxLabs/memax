@@ -329,6 +329,13 @@ export function activitySentences(
       return [one(s.forgetDeclined, { ref: text(entry.object.ref) })];
     case "exported":
       return [one(s.exported)];
+    // Switch to V2 (on the space's own stream).
+    case "noted":
+      return [one(s.noted)];
+    case "switched":
+      return [one(s.switched)];
+    case "switched_back":
+      return [one(s.switchedBack)];
     // Dream's edition (D-), and notes it folded into a memory as lineage.
     case "published":
       return [one(s.published, { n: text(editionNumber(entry.object.ref)) })];

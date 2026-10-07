@@ -229,6 +229,34 @@ export type CompileLoadInput = Schemas["CompileLoadRequest"];
 export type ForgetInput = Schemas["ForgetRequest"];
 export type AckNoticesInput = Schemas["AckNoticesRequest"];
 export type CreateSpaceInput = Schemas["CreateSpaceRequest"];
+
+// Switch to V2 (plan 25 §10) and notes (N-)
+/** Where a space's Switch to V2 stands, with a fresh preview of what moves. */
+export type SpaceSwitch = Schemas["SpaceSwitch"];
+/** v1, running, switched, failed (send it again to resume) or off. */
+export type SwitchState = Schemas["SwitchState"];
+export type SwitchStep = Schemas["SwitchStep"];
+/** What switching moves, read from V1: the dry run. */
+export type SwitchPreview = Schemas["SwitchPreview"];
+export type SwitchNotes = Schemas["SwitchNotes"];
+export type SwitchMember = Schemas["SwitchMember"];
+export type SwitchConfig = Schemas["SwitchConfig"];
+export type SwitchAgent = Schemas["SwitchAgent"];
+export type SwitchProgress = Schemas["SwitchProgress"];
+export type SwitchSpaceInput = Schemas["SwitchSpaceRequest"];
+/** A note: raw material (a V1 memory, persona or agent file), never compiled. */
+export type Note = Schemas["Note"];
+export type NotePage = Schemas["NotePage"];
+export type NoteOrigin = Schemas["NoteOrigin"];
+/** candidate (offered for bulk keep), fold (for Dream) or note (stays a note). */
+export type NoteDisposition = Schemas["NoteDisposition"];
+export type NoteHold = Schemas["NoteHold"];
+export type ForgetNoteInput = Schemas["ForgetNoteRequest"];
+export type NoteForgetResult = Schemas["NoteForgetResult"];
+export type NoteForgetPreview = Schemas["NoteForgetPreview"];
+/** A Dream run from V1: read-only history, no undo. */
+export type V1DreamRun = Schemas["V1DreamRun"];
+export type V1DreamRunList = Schemas["V1DreamRunList"];
 export type ImportInput = Schemas["ImportRequest"];
 export type ImportItemInput = Schemas["ImportItemInput"];
 export type SettleImportConflictInput = Schemas["SettleImportConflictRequest"];

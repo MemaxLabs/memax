@@ -15,6 +15,7 @@ import { useCompile } from "../brief/use-compile";
 import { NotYetButton } from "../place";
 import { useRecordsView, type RecordsView } from "../records-view";
 import { EmptySpace } from "./empty-space";
+import { SwitchToV2 } from "./switch-to-v2";
 import {
   AgentsPanel,
   CompiledPanel,
@@ -31,10 +32,16 @@ import styles from "./today.module.css";
  * in flight, the agents' day and the compiled files; the footer. A new,
  * empty space shows its three steps instead (EmptySpace.png), and a
  * phone shows the date, one headline, the edition and what's waiting
- * (MobileToday.png).
+ * (MobileToday.png). A space still on V1 shows what switching it to V2
+ * moves, and the switch (switch-to-v2.tsx).
  */
 export function TodayPlace() {
   const view = useRecordsView();
+  if (view.space.onV2 === false) return <SwitchToV2 view={view} />;
+  return <TodayOnV2 view={view} />;
+}
+
+function TodayOnV2({ view }: { view: RecordsView }) {
   const { space, overview, overviewFailed, retryOverview, l, copy } = view;
   const today = useToday(space);
   const router = useRouter();

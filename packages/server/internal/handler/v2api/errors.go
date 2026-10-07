@@ -42,8 +42,8 @@ const (
 	// near-duplicate check also answers with (near.go).
 	codeRateLimited = "rate_limited"
 	// Spaces (imports.go).
-	codeSlugTaken     = "slug_taken"
-	codeSpaceHasNotes = "space_has_notes"
+	codeSlugTaken = "slug_taken"
+	codeSpaceKind = "space_kind"
 )
 
 // apiError is an error response: a status, an ErrorCode and a sentence
@@ -74,8 +74,6 @@ type errorDetails struct {
 	ResetAt *time.Time `json:"reset_at,omitempty"`
 	// Carries are the memories that go with a Forget (forget_carries).
 	Carries []ledger.Carried `json:"carries,omitempty"`
-	// Notes counts a space's V1 memories (space_has_notes).
-	Notes int `json:"notes,omitempty"`
 	// State is how a device's code ended (device.go).
 	State deviceauth.State `json:"state,omitempty"`
 }

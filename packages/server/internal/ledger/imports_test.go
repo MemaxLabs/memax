@@ -502,24 +502,25 @@ func TestCreateAndSwitchSpaces(t *testing.T) {
 		t.Errorf("scope grant %+v %v", g, ok)
 	}
 
-	// Switching: an empty space switches; one with V1 memories doesn't.
+	// Switching: an empty space switches within the call; one with V1
+	// memories to import does too here (no River), with the import.
 	personal := f.space(zz, policy.SpacePersonal, "Personal")
-	got, err := f.l.SwitchSpace(ctx, person(zz), f.scope(zz), personal)
-	if err != nil || got.V2EnabledAt == nil {
-		t.Fatalf("switch empty: %v %v", got, err)
+	got, err := f.l.StartSwitch(ctx, person(zz), policy.ViaCLI, f.scope(zz), personal, ledger.SwitchOptions{Key: "s1"})
+	if err != nil || got.Space.V2EnabledAt == nil || got.Background || !got.Preview.Empty {
+		t.Fatalf("switch empty: %+v %v", got, err)
 	}
 	busy := f.space(zz, policy.SpaceProject, "old")
 	f.exec(`INSERT INTO memories (hub_id, owner_id, title, content) VALUES ($1, $2, 'note', 'a V1 memory')`, busy, zz)
-	var notes *ledger.SpaceHasNotesError
-	if _, err := f.l.SwitchSpace(ctx, person(zz), f.scope(zz), busy); !errors.As(err, &notes) || notes.Notes != 1 {
-		t.Errorf("switch with notes: %v", err)
+	got, err = f.l.StartSwitch(ctx, person(zz), policy.ViaCLI, f.scope(zz), busy, ledger.SwitchOptions{Key: "s2"})
+	if err != nil || got.Space.V2EnabledAt == nil || got.Progress.Proposed != 1 {
+		t.Errorf("switch with notes: %+v %v", got, err)
 	}
 	jy := f.user("jy")
 	f.join(busy, jy, "contributor")
-	if _, err := f.l.SwitchSpace(ctx, person(jy), f.scope(jy), personal); !errors.Is(err, ledger.ErrNotFound) {
+	if _, err := f.l.StartSwitch(ctx, person(jy), policy.ViaCLI, f.scope(jy), personal, ledger.SwitchOptions{Key: "s3"}); !errors.Is(err, ledger.ErrNotFound) {
 		t.Errorf("a stranger switches: %v", err)
 	}
-	if _, err := f.l.SwitchSpace(ctx, person(jy), f.scope(jy), busy); !errors.As(err, &refused) {
+	if _, err := f.l.StartSwitch(ctx, person(jy), policy.ViaCLI, f.scope(jy), busy, ledger.SwitchOptions{Key: "s4"}); !errors.As(err, &refused) {
 		t.Errorf("a member switches: %v", err)
 	}
 }

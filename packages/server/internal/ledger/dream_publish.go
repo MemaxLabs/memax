@@ -203,10 +203,14 @@ type editionWrite struct {
 	grant SpaceGrant
 	c     *PublishEdition
 
-	notes    []NoteRead             // the notes read that still exist
-	present  map[uuid.UUID]NoteRead // by id
-	noteRef  map[uuid.UUID]string   // N- ref of every note read
-	noteRefs []struct {             // the N- numbers allocated now
+	notes   []NoteRead             // the notes read that still exist
+	present map[uuid.UUID]NoteRead // by id
+	noteRef map[uuid.UUID]string   // N- ref of every note read
+	// noteTrust is the class the switch to V2 recorded for a V1 note (a
+	// repository's agent file is repository, not the person's), which a
+	// proposal citing it never rises above.
+	noteTrust map[uuid.UUID]policy.Trust
+	noteRefs  []struct { // the N- numbers allocated now
 		id  uuid.UUID
 		seq int64
 	}
@@ -250,7 +254,7 @@ func intOrNil(n int) any {
 // dreamNotes keeps the notes still in the space and numbers them (N-):
 // the ones an earlier edition read keep their numbers.
 func (w *writer) dreamNotes(ctx context.Context, ed *editionWrite) error {
-	ed.present, ed.noteRef = map[uuid.UUID]NoteRead{}, map[uuid.UUID]string{}
+	ed.present, ed.noteRef, ed.noteTrust = map[uuid.UUID]NoteRead{}, map[uuid.UUID]string{}, map[uuid.UUID]policy.Trust{}
 	ids := make([]uuid.UUID, 0, len(ed.c.Notes))
 	for _, n := range ed.c.Notes {
 		ids = append(ids, n.ID)
@@ -261,7 +265,7 @@ func (w *writer) dreamNotes(ctx context.Context, ed *editionWrite) error {
 	slices.SortFunc(ids, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
 	ids = slices.Compact(ids)
 	rows, err := w.tx.Query(ctx, `
-		SELECT n.id, r.seq FROM v2.notes n LEFT JOIN v2.note_refs r ON r.note_id = n.id
+		SELECT n.id, r.seq, COALESCE(r.trust, '') FROM v2.notes n LEFT JOIN v2.note_refs r ON r.note_id = n.id
 		 WHERE n.space_id = $1 AND n.id = ANY ($2)`, ed.sp.ID, ids)
 	if err != nil {
 		return fmt.Errorf("ledger: read notes: %w", err)
@@ -270,11 +274,15 @@ func (w *writer) dreamNotes(ctx context.Context, ed *editionWrite) error {
 	for rows.Next() {
 		var id uuid.UUID
 		var seq *int64
-		if err := rows.Scan(&id, &seq); err != nil {
+		var trust policy.Trust
+		if err := rows.Scan(&id, &seq, &trust); err != nil {
 			rows.Close()
 			return fmt.Errorf("ledger: read notes: %w", err)
 		}
 		have[id] = seq
+		if trust != "" {
+			ed.noteTrust[id] = trust
+		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -571,6 +579,9 @@ func (w *writer) dreamPropose(ctx context.Context, ed *editionWrite, a *PlannedA
 		}
 		locator, _ := json.Marshal(map[string]string{dreamNoteSourceKey: id.String()})
 		t := noteTrust(n, external[id])
+		if recorded, ok := ed.noteTrust[id]; ok {
+			t = policy.MinTrust(t, recorded)
+		}
 		srcs = append(srcs, SourceInput{Kind: SourceNote, Ref: ed.noteRef[id], Locator: locator, Trust: t})
 		trusts = append(trusts, t)
 	}

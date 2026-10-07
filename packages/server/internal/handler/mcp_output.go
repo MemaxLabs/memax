@@ -30,6 +30,9 @@ type MCPItem struct {
 const (
 	MCPRecordV1 = "v1"
 	MCPRecordV2 = "v2"
+	// MCPRecordNote is a note: a V1 memory in a space on the V2 record,
+	// raw material that is never kept context (memax_search include_notes).
+	MCPRecordNote = "note"
 )
 
 // MCPRecallOutput is memax_recall's structured result.

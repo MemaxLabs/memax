@@ -14,7 +14,9 @@
 import type { SpaceSummary } from "./types";
 
 /** Where a file lives: shared with everyone who clones it, or on the person's machine. */
-export type ImportLocation = "repository" | "home";
+/** Where an imported statement came from: a repository file, the person's
+ * machine, or (`v1`) the space's own V1 memory, imported when it switched. */
+export type ImportLocation = "repository" | "home" | "v1";
 /** Why init kept a statement on the machine. */
 export type ImportSkipReason = "secret" | "too_long" | "limit";
 /** How far the import's conflict check got. */
@@ -82,6 +84,12 @@ export interface ImportSummary {
   skipped: ImportSkipView[];
   counts: ImportCounts;
   check: ImportCheckState;
+  /**
+   * init: what `memax init` read from agent files. v1: the person's own V1
+   * memories, offered for bulk keep when the space switched to V2
+   * (ReviewImport "From V1"); each item's ref is its note (N-).
+   */
+  origin: "init" | "v1";
 }
 
 /** A memory the import proposed or found, as ReviewImport lists it. */

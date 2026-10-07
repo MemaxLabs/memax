@@ -89,6 +89,7 @@ const wire: V2.ImportView = {
       conflicts: 1,
     },
     check: { state: "checked" },
+    origin: "init",
     created_at: "2026-10-05T16:02:00Z",
   },
   items: [

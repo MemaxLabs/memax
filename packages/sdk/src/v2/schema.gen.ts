@@ -37,6 +37,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Where a space's Switch to V2 stands, with a preview
+         * @description Where the space's Switch to V2 stands (`state`: `v1`, `running`,
+         *     `switched`, `failed` or `off` once switched back), what each step
+         *     did, and a fresh `preview` of what switching moves: the dry run.
+         *     The preview is read from V1 and changes nothing: who the members are
+         *     and the roles they keep (owner → owner, admin → member who can
+         *     forget, contributor → member, viewer → viewer); how many V1 memories
+         *     become notes, and of those, how many of a person's own are offered
+         *     for bulk keep (`notes.candidates`), how many an agent wrote and
+         *     Dream folds into proposals (`notes.fold`), and how many stay notes
+         *     only; personas and agent files that become notes, and the compile
+         *     targets the agent files stand for; the agents connected at Propose;
+         *     decisions waiting on V1's board; V1 Dream runs, kept as read-only
+         *     history; and the V1 plan, grandfathered. Any member may read it.
+         */
+        get: operations["getSpaceSwitch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/spaces/{space}:switch": {
         parameters: {
             query?: never;
@@ -50,15 +85,176 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Switch an empty space to the V2 record
-         * @description Moves a space that holds no V1 memories to the V2 record, so agents
-         *     are served from it over MCP too: a new person's personal space, say,
-         *     before `memax init` brings machine-local memory into it. A space
-         *     with V1 memories switches in the app, where they are cleaned up
-         *     first (409 `space_has_notes`, with `details.notes`). Only the
-         *     space's owner may. A space already on V2 is returned as it is.
+         * Switch a space to V2, or back to V1
+         * @description Moves a space to the V2 record, so agents are served from it over
+         *     MCP and its V1 content is ready for Review (plan 25 §10). Nothing is
+         *     lost and no V1 row changes: every V1 memory becomes a note (N-),
+         *     searchable by its owner and never compiled; a person's own short V1
+         *     memories go up as one import (`import_id`, origin `v1`) through the
+         *     import conflict check, so Review's "From V1" shows disagreements
+         *     first and keeps the rest in one go; what agents wrote waits for
+         *     Dream, which folds it into proposals; personas and agent files
+         *     become notes, and the agent files' compile targets are added, with
+         *     V1's two-way config sync off for those files while the space is on
+         *     V2; the members' API keys and OAuth grants are connected at Propose,
+         *     and each connected agent is told on its next MCP response; a
+         *     decision waiting on V1's board moves to the record. Read the preview
+         *     first: `GET /v2/spaces/{space}/switch`.
+         *
+         *     A space with nothing to import switches within the request (200).
+         *     Otherwise the switch continues in the background (202): read it
+         *     again until `state` is `switched`. A step that fails leaves it
+         *     `failed` at that step; sending this again resumes it there. While it
+         *     runs, or once it has switched, sending it again changes nothing.
+         *     `kind` lets a V1 team hub switch as a project space, until it has a
+         *     V2 record (409 `space_kind` otherwise); `repository` sets the
+         *     repository it compiles for.
+         *
+         *     `to: v1` switches it back: every surface serves it as V1 again, and
+         *     its V1 rows, which the switch never changed, answer as before. Its
+         *     V2 record stays, for a later switch, which moves only what V1 gained
+         *     meanwhile. Only the space's owner may, signed in.
          */
         post: operations["switchSpace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/v1-dream-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * V1's Dream runs, as read-only history
+         * @description The space's Dream runs from V1, newest first: when each ran and what
+         *     it counted. Read-only edition history: V1's reports aren't served,
+         *     and V1's actions can't be undone (plan 25 §10).
+         */
+        get: operations["listV1DreamRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Search a space's notes
+         * @description Notes (N-) are a space's raw material: its V1 memories, personas and
+         *     agent files, kept when it switched to V2, and what agents capture
+         *     since. They are never compiled and never served as kept context.
+         *     Notes are their owner's: you see the notes you wrote and, in a space
+         *     you own, every note in it. With `q`, the best matches first (by V1's
+         *     own index of the words); without, the newest.
+         */
+        get: operations["searchNotes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/notes/{note}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description A note's display ID (N-0042) or id. */
+                note: components["parameters"]["NotePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a note
+         * @description A note you may read (yours, or any in a space you own), by its N- ref or id.
+         */
+        get: operations["getNote"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/notes/{note}/forget-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description A note's display ID (N-0042) or id. */
+                note: components["parameters"]["NotePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What forgetting a note would do
+         * @description The memories that carry the note's words and go with it, and whether you may forget it.
+         */
+        get: operations["previewForgetNote"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/notes/{note}:forget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description A note's display ID (N-0042) or id. */
+                note: components["parameters"]["NotePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Forget a note everywhere
+         * @description Forgets a note (rule 7). In one transaction its words leave the V1
+         *     row that holds them, as V1's own delete takes it (a memory with its
+         *     chunks, attachments and topic links; a persona; an agent file), with
+         *     what V1 derived from it that names it (board cards citing it,
+         *     notifications about it, Dream's reasons, the activity summary of its
+         *     title). Memories carrying its words go with it: the proposal the
+         *     switch made of it and Dream's proposals citing it. Name them in
+         *     `carries`; otherwise the answer is 409 `forget_carries` with
+         *     `details.carries`, and nothing changes. A tombstone stays, its
+         *     attachments' stored objects are deleted, and every agent connected
+         *     to the space is told on its next read. It can't be undone. Only a
+         *     person who may forget in the space forgets (owners, by default).
+         */
+        post: operations["forgetNote"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2110,6 +2306,12 @@ export interface components {
         MemoryRef: string;
         /** @description A memory's display ID, unique within its tenant. */
         DisplayRef: string;
+        /** @description A memory's (M-) or a note's (N-) display ID, unique within its tenant. */
+        RecordRef: string;
+        /** @description A note's display ID, unique within its tenant. */
+        NoteRef: string;
+        /** @description A note's display ID (N-0042, any case and padding) or its id. */
+        NoteKey: string;
         /** @description A memory version as an entity tag, `"3"`. A bare `3` is accepted too. */
         VersionTag: string;
         /** @description Opaque. Pass it back as `cursor`. */
@@ -2221,10 +2423,13 @@ export interface components {
          *     merged (a duplicate proposal), flagged (a conflict or a stale fact),
          *     faded and revised (the Brief), each citing the edition (`source: {kind:
          *     dream, ref: D-0214}`); undoing one writes undid; restoring a faded
-         *     memory writes restored.
+         *     memory writes restored. Switching to V2 writes noted on the space (its
+         *     V1 content numbered as notes) and switched once it is on the V2
+         *     record; switching back writes switched_back. A note's Forget writes
+         *     forgot on the note (`object_kind: note`).
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded" | "exported";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded" | "exported" | "noted" | "switched" | "switched_back";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space";
         /**
@@ -2282,7 +2487,7 @@ export interface components {
          */
         PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web";
         /** @enum {string} */
-        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_has_notes";
+        ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_kind";
         /**
          * @description A typed edge between two memories. merged_into: folded into another
          *     memory (a duplicate, or a repeat of a rejection). supersedes: replaces
@@ -3779,8 +3984,8 @@ export interface components {
             id: components["schemas"]["Id"];
             ref: components["schemas"]["DisplayRef"];
             reason: components["schemas"]["CarryReason"];
-            /** @description The memory it goes with. */
-            with: components["schemas"]["DisplayRef"];
+            /** @description The memory (or note) it goes with. */
+            with: components["schemas"]["RecordRef"];
             lifecycle: components["schemas"]["Lifecycle"];
             kind: components["schemas"]["MemoryKind"];
         };
@@ -3814,10 +4019,10 @@ export interface components {
             policy?: components["schemas"]["PolicyDecision"];
         };
         /**
-         * @description `memory`, or `space` for a Forget of everything in a space.
+         * @description `memory`; `note` for a note (N-); or `space` for a Forget of everything in a space.
          * @enum {string}
          */
-        TombstoneKind: "memory" | "space";
+        TombstoneKind: "memory" | "space" | "note";
         /**
          * @description `propagating` until every copy has an answer (the SLO is a minute); then `done`.
          * @enum {string}
@@ -3923,7 +4128,7 @@ export interface components {
             id: components["schemas"]["Id"];
             /** @description The Forget it belongs to (the primary tombstone's id). */
             op_id: components["schemas"]["Id"];
-            /** @description The forgotten memory's display ID, or `space`. */
+            /** @description The forgotten memory's or note's display ID, or `space`. */
             ref: string;
             kind: components["schemas"]["TombstoneKind"];
             object_id: components["schemas"]["Id"];
@@ -3990,14 +4195,22 @@ export interface components {
             receipts: components["schemas"]["Receipt"][];
             forget_request: components["schemas"]["ForgetRequestRecord"];
         };
-        /** @enum {string} */
-        NoticeKind: "forgotten" | "space_forgotten";
+        /**
+         * @description forgotten: memories forgotten since the agent read them (or in a
+         *     space it is connected to). space_forgotten: everything in a space.
+         *     switched: a space it is connected to moved to the V2 record, and
+         *     `autonomy` is what it may do there now.
+         * @enum {string}
+         */
+        NoticeKind: "forgotten" | "space_forgotten" | "switched";
         /** @description Something an agent is told once, on its next read. */
         Notice: {
             id: components["schemas"]["Id"];
             space_id: components["schemas"]["Id"];
-            /** @description The Forget (its tombstone). */
-            op_id: components["schemas"]["Id"];
+            /** @description The Forget (its tombstone); absent for `switched`. */
+            op_id?: components["schemas"]["Id"];
+            /** @description What the agent may do in the space now (`switched`). */
+            autonomy?: components["schemas"]["Autonomy"];
             kind: components["schemas"]["NoticeKind"];
             /** @description The forgotten display IDs; empty when a whole space was forgotten. */
             refs: string[];
@@ -4031,10 +4244,12 @@ export interface components {
         };
         /**
          * @description Where a file an import read lives: `repository` (shared with
-         *     everyone who clones it) or `home` (on the person's machine only).
+         *     everyone who clones it) or `home` (on the person's machine only);
+         *     `v1` for a space's own V1 memory, imported when it switched to V2
+         *     (clients don't send it).
          * @enum {string}
          */
-        ImportLocation: "repository" | "home";
+        ImportLocation: "repository" | "home" | "v1";
         /**
          * @description What became of one statement: `proposed` (a new proposal),
          *     `folded` (it repeats another statement of the upload, whose proposal
@@ -4146,7 +4361,7 @@ export interface components {
             tier?: components["schemas"]["ModelTier"];
             model?: string;
         };
-        /** @description One upload of statements read from agent files. */
+        /** @description One upload of statements read from agent files, or a space's own V1 memories when it switched. */
         Import: {
             id: components["schemas"]["Id"];
             space_id: components["schemas"]["Id"];
@@ -4162,6 +4377,13 @@ export interface components {
             /** @description When every statement was written. */
             uploaded_at?: components["schemas"]["Timestamp"];
             check: components["schemas"]["ImportCheck"];
+            /**
+             * @description `init`, statements `memax init` read from agent files; or `v1`, the
+             *     person's own V1 memories, offered for bulk keep when the space
+             *     switched to V2 (Review's "From V1"; each item's ref is its note).
+             * @enum {string}
+             */
+            origin: "init" | "v1";
             created_at: components["schemas"]["Timestamp"];
         };
         /** @description What became of one statement of the request. */
@@ -4312,6 +4534,255 @@ export interface components {
             refused: number;
             failed: number;
         };
+        /**
+         * @description v1: on V1, never switched. running: switching (in the background).
+         *     switched: on the V2 record. failed: a step failed; send `:switch`
+         *     again to resume it. off: switched back to V1.
+         * @enum {string}
+         */
+        SwitchState: "v1" | "running" | "switched" | "failed" | "off";
+        /**
+         * @description The step a switch stands at (the next to run), or `done`.
+         * @enum {string}
+         */
+        SwitchStep: "space" | "notes" | "personas" | "configs" | "candidates" | "agents" | "gates" | "switch" | "done";
+        /** @description The body of `:switch`. Every field is optional. */
+        SwitchSpaceRequest: {
+            /**
+             * @description `v2` (the default) switches the space to the V2 record; `v1` switches it back.
+             * @enum {string}
+             */
+            to?: "v2" | "v1";
+            /**
+             * @description The kind it switches as. A V1 team hub may switch as a project space while it has no V2 record.
+             * @enum {string}
+             */
+            kind?: "project" | "team";
+            /** @description The repository it compiles for ("owner/name"); empty clears it. */
+            repository?: string;
+        };
+        /** @description A person in the space, with their V1 role and the V2 role it maps to. */
+        SwitchMember: {
+            person_id: components["schemas"]["Id"];
+            name: string;
+            /** @description owner, admin, contributor or viewer. */
+            v1_role: string;
+            role: components["schemas"]["Role"];
+            /** @description An admin in V1 is a member who can forget. */
+            can_forget: boolean;
+        };
+        /** @description What the space's V1 memories become. */
+        SwitchNotes: {
+            /** @description The V1 memories that become notes. */
+            total: number;
+            /** @description Of those, the ones people wrote. */
+            person: number;
+            /** @description Of those, the ones agents wrote. */
+            agent: number;
+            /** @description A person's own, short enough to be one statement, offered for bulk keep. */
+            candidates: number;
+            /** @description For Dream to fold into proposals (agents', and documents longer than one statement). */
+            fold: number;
+            /** @description Notes only, never proposed (archived in V1, or holding a credential). */
+            kept: number;
+            /** @description A person's notes longer than one statement. */
+            long: number;
+            /** @description Notes holding a credential. */
+            secret: number;
+            /** @description Notes archived in V1. */
+            archived: number;
+            /** @description A person's notes that are files or pages, not typed text. */
+            format: number;
+            /** @description Notes from the web or an email (quarantined when proposed). */
+            external: number;
+            /** @description V1's onboarding memories, left out. */
+            seeds: number;
+        };
+        /** @description A V1 agent file that belongs to the space. */
+        SwitchConfig: {
+            path: string;
+            agent: string;
+            /** @description V1's sync scope (global, profile:<name> or project:<url>). */
+            scope: string;
+            /** @description The compile targets it stands for. */
+            targets: components["schemas"]["TargetKind"][];
+        };
+        /** @description A V1 API key or OAuth grant the switch connects to the space (or found connected). */
+        SwitchAgent: {
+            credential: components["schemas"]["CredentialKind"];
+            name: string;
+            agent: components["schemas"]["AgentKind"];
+            /** @description The person it works for. */
+            person_id: components["schemas"]["Id"];
+            /** @description What it may do in the space after the switch. */
+            autonomy: components["schemas"]["Autonomy"];
+            /** @description It was connected to the space already, and keeps its level. */
+            connected: boolean;
+        };
+        /** @description What switching the space moves, read fresh from V1. Nothing changes. */
+        SwitchPreview: {
+            kind: components["schemas"]["SpaceKind"];
+            /** @description The kinds it may switch as. */
+            kinds: components["schemas"]["SpaceKind"][];
+            repository?: string;
+            /** @description The repository most of its V1 memories came from. */
+            suggested_repository?: string;
+            members: components["schemas"]["SwitchMember"][];
+            notes: components["schemas"]["SwitchNotes"];
+            /** @description Personas that become notes (the personal space). */
+            personas: number;
+            configs: components["schemas"]["SwitchConfig"][];
+            /** @description The compile targets the agent files stand for. */
+            targets: components["schemas"]["TargetKind"][];
+            agents: components["schemas"]["SwitchAgent"][];
+            /** @description Decisions waiting on V1's board, which move to the record when their agent is connected. */
+            gates: number;
+            /** @description V1 Dream runs, kept as read-only history. */
+            dream_runs: number;
+            /** @description The V1 plan, grandfathered. */
+            plan?: string;
+            /** @description Nothing to import, so it switches within the request. */
+            empty: boolean;
+        };
+        /** @description What the switch's steps did so far. */
+        SwitchProgress: {
+            /** @description V1 memories numbered as notes. */
+            notes: number;
+            personas: number;
+            /** @description Agent files numbered as notes. */
+            configs: number;
+            /** @description Compile targets added. */
+            targets: components["schemas"]["TargetKind"][];
+            /** @description A person's own V1 memories proposed for bulk keep. */
+            proposed: number;
+            /** @description Repeats among them, folded into one proposal. */
+            folded: number;
+            /** @description Already in the record. */
+            existing: number;
+            refused: number;
+            /** @description The V1 imports (at most 500 statements each). */
+            imports: components["schemas"]["Id"][];
+            /** @description Agents connected to the space. */
+            connected: number;
+            already_connected: number;
+            /** @description Agents told on their next MCP response. */
+            notified: number;
+            gates_moved: number;
+            /** @description Decisions left on V1's board (their agent isn't connected). */
+            gates_left: number;
+        };
+        /** @description Where a space's Switch to V2 stands. */
+        SpaceSwitch: {
+            space: components["schemas"]["Space"];
+            state: components["schemas"]["SwitchState"];
+            step: components["schemas"]["SwitchStep"];
+            preview: components["schemas"]["SwitchPreview"];
+            progress: components["schemas"]["SwitchProgress"];
+            /** @description The V1 import, for Review's "From V1". */
+            import_id?: components["schemas"]["Id"];
+            /** @description Why a step failed (a code). */
+            error?: string;
+            attempts: number;
+            started_at?: components["schemas"]["Timestamp"];
+            switched_at?: components["schemas"]["Timestamp"];
+            switched_back_at?: components["schemas"]["Timestamp"];
+            /** @description It continues in the background. */
+            background: boolean;
+        };
+        /**
+         * @description Where a note's words live until cutover. memory, a V1 memory; persona, a V1 persona; agent_config, a synced agent file.
+         * @enum {string}
+         */
+        NoteOrigin: "memory" | "persona" | "agent_config";
+        /**
+         * @description What the switch did with it. candidate: a person's own V1 memory,
+         *     offered for bulk keep. fold: for Dream to fold into proposals. note:
+         *     it stays a note, never proposed.
+         * @enum {string}
+         */
+        NoteDisposition: "candidate" | "fold" | "note";
+        /**
+         * @description Why a note isn't a bulk-keep candidate. long: longer than one
+         *     statement. secret: it holds a credential. archived: archived in V1.
+         *     format: a file or a page, not typed text. external: from the web or
+         *     an email.
+         * @enum {string}
+         */
+        NoteHold: "long" | "secret" | "archived" | "format" | "external";
+        /** @description A note (N-), raw material that is never compiled. */
+        Note: {
+            id: components["schemas"]["Id"];
+            ref?: components["schemas"]["NoteRef"];
+            space_id: components["schemas"]["Id"];
+            /** @description Whose it is in V1 (the person, or the person the agent that wrote it worked for). */
+            owner_id: components["schemas"]["Id"];
+            origin: components["schemas"]["NoteOrigin"];
+            title: string;
+            /** @description The start of its words (280 characters). */
+            excerpt: string;
+            /**
+             * @description person or agent.
+             * @enum {string}
+             */
+            author_kind: "person" | "agent";
+            agent?: string;
+            /** @description V1's state (active, processing, archived). */
+            state: string;
+            disposition: components["schemas"]["NoteDisposition"];
+            hold?: components["schemas"]["NoteHold"];
+            trust?: components["schemas"]["Trust"];
+            /** @description Where it came from (a source path, a persona's or agent file's path). */
+            path?: string;
+            /** @description Its length in characters. */
+            length: number;
+            /** @description How well it matches the search. */
+            score?: number;
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        NotePage: {
+            items: components["schemas"]["Note"][];
+        };
+        /** @description The body of a note's `:forget`. Every field is optional. */
+        ForgetNoteRequest: {
+            /** @description Your own note on why. It stays on the tombstone, so don't repeat the words. */
+            note?: string;
+            /** @description The memories that go with it, exactly as `forget_carries` listed them. */
+            carries?: components["schemas"]["MemoryDisplayRef"][];
+        };
+        NoteForgetResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            receipts: components["schemas"]["Receipt"][];
+            tombstone: components["schemas"]["Tombstone"];
+            /** @description The memories forgotten with it. */
+            memories: components["schemas"]["Memory"][];
+        };
+        /** @description What forgetting a note would do, before anyone confirms it. */
+        NoteForgetPreview: {
+            ref?: components["schemas"]["NoteRef"];
+            carries: components["schemas"]["ForgetCarry"][];
+            allowed: boolean;
+            policy?: components["schemas"]["PolicyDecision"];
+        };
+        /** @description A Dream run from V1 (read-only history; no undo). */
+        V1DreamRun: {
+            id: components["schemas"]["Id"];
+            status: string;
+            mode: string;
+            started_at: components["schemas"]["Timestamp"];
+            finished_at?: components["schemas"]["Timestamp"];
+            scanned: number;
+            merged: number;
+            contradictions: number;
+            archived: number;
+            organized: number;
+            restructured: number;
+            actions: number;
+        };
+        V1DreamRunList: {
+            items: components["schemas"]["V1DreamRun"][];
+        };
         Error: {
             code: components["schemas"]["ErrorCode"];
             /** @description What went wrong and what to do, in English. */
@@ -4344,8 +4815,6 @@ export interface components {
             reset_at?: components["schemas"]["Timestamp"];
             /** @description The memories that go with a Forget (`forget_carries`). */
             carries?: components["schemas"]["ForgetCarry"][];
-            /** @description The V1 memories a space holds (`space_has_notes`). */
-            notes?: number;
             /** @description How a device's code ended (`invalid_transition` on a device code). */
             state?: components["schemas"]["DeviceAuthorizationState"];
         };
@@ -4574,6 +5043,24 @@ export interface components {
         };
         AckNoticesResultEnvelope: {
             data: components["schemas"]["AckNoticesResult"];
+        };
+        SpaceSwitchEnvelope: {
+            data: components["schemas"]["SpaceSwitch"];
+        };
+        NotePageEnvelope: {
+            data: components["schemas"]["NotePage"];
+        };
+        NoteEnvelope: {
+            data: components["schemas"]["Note"];
+        };
+        NoteForgetResultEnvelope: {
+            data: components["schemas"]["NoteForgetResult"];
+        };
+        NoteForgetPreviewEnvelope: {
+            data: components["schemas"]["NoteForgetPreview"];
+        };
+        V1DreamRunListEnvelope: {
+            data: components["schemas"]["V1DreamRunList"];
         };
         SpaceEnvelope: {
             data: components["schemas"]["Space"];
@@ -4892,7 +5379,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
-        /** @description `slug_taken` (the slug belongs to another space) or `space_has_notes` (the space holds V1 memories, `details.notes`; switch it in the app). */
+        /** @description `slug_taken` (the slug belongs to another space) or `space_kind` (the space can't switch as that kind: only a V1 team hub with no V2 record yet may become a project space). */
         SpaceConflict: {
             headers: {
                 [name: string]: unknown;
@@ -4952,6 +5439,8 @@ export interface components {
          *     display ID; optional with a memory id, where it must match.
          */
         SpaceContext: components["schemas"]["SpaceKey"];
+        /** @description A note's display ID (N-0042) or id. */
+        NotePath: components["schemas"]["NoteKey"];
         /** @description A display ID (M-0219, with `?space=`) or a memory id. */
         RefPath: components["schemas"]["MemoryRef"];
         /** @description The agent connection's id. */
@@ -5104,6 +5593,35 @@ export interface operations {
             503: components["responses"]["Unavailable"];
         };
     };
+    getSpaceSwitch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The switch, with its preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpaceSwitchEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
     switchSpace: {
         parameters: {
             query?: never;
@@ -5128,15 +5646,28 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SwitchSpaceRequest"];
+            };
+        };
         responses: {
-            /** @description The space, on the V2 record. */
+            /** @description Switched (or switched back) within the request, or it already had. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SpaceEnvelope"];
+                    "application/json": components["schemas"]["SpaceSwitchEnvelope"];
+                };
+            };
+            /** @description The switch continues in the background; read it with `GET /v2/spaces/{space}/switch`. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpaceSwitchEnvelope"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -5144,6 +5675,185 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["SpaceConflict"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listV1DreamRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The runs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["V1DreamRunListEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    searchNotes: {
+        parameters: {
+            query?: {
+                /** @description Words to search for. */
+                q?: string;
+                /** @description Page size. Larger values are capped at 200. */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotePageEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    getNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description A note's display ID (N-0042) or id. */
+                note: components["parameters"]["NotePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The note. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    previewForgetNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description A note's display ID (N-0042) or id. */
+                note: components["parameters"]["NotePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteForgetPreviewEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    forgetNote: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+                /** @description A note's display ID (N-0042) or id. */
+                note: components["parameters"]["NotePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ForgetNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Forgotten; the result has the tombstone. */
+            200: {
+                headers: {
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteForgetResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["ForgetConflict"];
+            422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

@@ -58,6 +58,9 @@ const (
 	// ImportHome: on the person's machine only (their home directory, or a
 	// file their tools keep out of git).
 	ImportHome ImportLocation = "home"
+	// ImportV1: a space's own V1 memory, imported by its switch to V2
+	// (switch.go). Clients don't send it.
+	ImportV1 ImportLocation = "v1"
 )
 
 // Valid reports whether l is a known location.
@@ -174,7 +177,10 @@ type Import struct {
 	Counts     ImportCounts     `json:"counts"`
 	UploadedAt *time.Time       `json:"uploaded_at,omitempty"`
 	Check      ImportCheck      `json:"check"`
-	CreatedAt  time.Time        `json:"created_at"`
+	// Origin is init (memax init's upload) or v1 (a space's own V1
+	// memories, offered for bulk keep when it switched to V2).
+	Origin    string    `json:"origin"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // ImportCounts counts an import's statements by outcome, and its conflicts.
@@ -377,15 +383,41 @@ func (l *Ledger) Import(ctx context.Context, req ImportRequest) (*ImportResult, 
 	for i := range req.Items {
 		req.Items[i].capRepositoryTrust()
 	}
+	return l.importItems(ctx, meta, req, importOriginInit)
+}
+
+// importOrigin is where an import came from: memax init's upload, or a
+// space's V1 memories at the switch (switch.go).
+type importOrigin string
+
+const (
+	importOriginInit importOrigin = "init"
+	importOriginV1   importOrigin = "v1"
+)
+
+// importItems is Import once the request is valid: open the import, write
+// each statement (or group of repeats) as its own command, then close it
+// and queue its conflict check.
+func (l *Ledger) importItems(ctx context.Context, meta Meta, req ImportRequest, origin importOrigin) (*ImportResult, error) {
 	if _, ok := meta.Scope.Grant(req.SpaceID); !ok {
 		return nil, ErrNotFound
+	}
+	meta.Via = policy.ViaImport
+	if err := validateMeta(&meta, l.now()); err != nil {
+		return nil, err
+	}
+	for i := range req.Items {
+		req.Items[i].SpaceID = req.SpaceID
+		if err := req.Items[i].NewMemory.validate(); err != nil {
+			return nil, err
+		}
 	}
 	meta.Scope = meta.Scope.Narrow(req.SpaceID)
 	hash, err := req.hash()
 	if err != nil {
 		return nil, err
 	}
-	imp, replayed, refusal, err := l.openImport(ctx, meta, &req, hash)
+	imp, replayed, refusal, err := l.openImport(ctx, meta, &req, hash, origin)
 	if err != nil {
 		return nil, err
 	}
@@ -554,7 +586,7 @@ func scopePaths(raw json.RawMessage) []string {
 // openImport opens the import for the request's key, or finds the one it
 // opened before (replayed). Policy first decides whether the actor may
 // write in the space at all.
-func (l *Ledger) openImport(ctx context.Context, meta Meta, req *ImportRequest, hash []byte) (*Import, bool, *policy.Decision, error) {
+func (l *Ledger) openImport(ctx context.Context, meta Meta, req *ImportRequest, hash []byte, origin importOrigin) (*Import, bool, *policy.Decision, error) {
 	tx, _, err := l.begin(ctx, meta.Scope, pgx.ReadWrite)
 	if err != nil {
 		return nil, false, nil, err
@@ -584,11 +616,11 @@ func (l *Ledger) openImport(ctx context.Context, meta Meta, req *ImportRequest, 
 	imp := &Import{ID: newID(), SpaceID: sp.ID, TenantID: sp.TenantID}
 	tag, err := tx.Exec(ctx, `
 		INSERT INTO v2.imports (id, tenant_id, space_id, actor_kind, actor_id, agent, idempotency_key, request_sha256,
-		                        client, files, skipped, items_total)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		                        client, files, skipped, items_total, origin)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT ON CONSTRAINT imports_key DO NOTHING`,
 		imp.ID, sp.TenantID, sp.ID, string(meta.Actor.Kind), actorID, nullText(meta.Actor.Agent),
-		meta.IdempotencyKey, hash, nullText(req.Client), files, skipped, len(req.Items))
+		meta.IdempotencyKey, hash, nullText(req.Client), files, skipped, len(req.Items), string(origin))
 	if err != nil {
 		return nil, false, nil, fmt.Errorf("ledger: open import: %w", err)
 	}

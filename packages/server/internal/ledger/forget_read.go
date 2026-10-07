@@ -365,7 +365,7 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 		  LEFT JOIN v2.targets t ON t.id = p.destination_id
 		  LEFT JOIN v2.compile_runs dc ON dc.id = t.delivered_compile_id
 		 WHERE p.op_id = $1
-		 ORDER BY CASE p.destination_kind WHEN 'target' THEN 0 WHEN 'artifacts' THEN 1 WHEN 'caches' THEN 2 ELSE 3 END,
+		 ORDER BY CASE p.destination_kind WHEN 'target' THEN 0 WHEN 'artifacts' THEN 1 WHEN 'attachments' THEN 1 WHEN 'caches' THEN 2 ELSE 3 END,
 		          p.created_at, p.id`, t.OpID)
 	if err != nil {
 		return fmt.Errorf("ledger: tombstone steps: %w", err)
@@ -406,7 +406,12 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 			Count      *int       `json:"count"`
 		}
 		_ = json.Unmarshal(d.detail, &detail)
-		s := TombstoneStep{Kind: d.kind, At: d.doneAt, Compile: detail.Compile, Count: detail.Count}
+		stepKind := d.kind
+		if stepKind == "attachments" {
+			// A note's attached files: stored copies, deleted (forget_note.go).
+			stepKind = StepArtifacts
+		}
+		s := TombstoneStep{Kind: stepKind, At: d.doneAt, Compile: detail.Compile, Count: detail.Count}
 		switch d.status {
 		case "done":
 			s.Status = StepDone

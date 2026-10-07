@@ -109,6 +109,8 @@ test("the switcher lists spaces and switches to the same place", async ({
     /^memax-v2/,
     /^memax-web/,
     /^Memax team/,
+    // Still on V1: its Today offers the switch (switch.e2e.ts).
+    /^acme-web/,
     "New space",
     "Join with an invite link",
   ]);

@@ -20,6 +20,13 @@ import (
 const (
 	memaxWarningClaimRejected   = "agent_identity_claim_rejected"
 	memaxWarningReconnectNeeded = "reconnect_required"
+	// memaxWarningSpaceOnV2: the request touched a space on V2 through V1's
+	// API (plan 25 §10). A push still saves, as a note Dream folds into
+	// proposals; a config sync leaves the space's files alone.
+	memaxWarningSpaceOnV2 = "space_on_v2"
+	// configSyncOffReason is a sync action's reason for a file of a space
+	// on V2.
+	configSyncOffReason = "space_on_v2"
 )
 
 var (

@@ -82,6 +82,7 @@ export const DEMO_IMPORT_SUMMARY: ImportSummary = {
     conflicts: 3,
   },
   check: "checked",
+  origin: "init",
 };
 
 const AGENT_OF: Record<string, string> = {

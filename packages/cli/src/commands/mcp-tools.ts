@@ -18,13 +18,13 @@ export const MCP_ITEM_SCHEMA: Record<string, unknown> = {
     ref: {
       type: "string",
       description:
-        "The display ID of a memory on the V2 record, such as M-0219.",
+        "The display ID on the V2 record: M-0219 for a memory, N-0042 for a note.",
     },
     record: {
       type: "string",
-      enum: ["v1", "v2"],
+      enum: ["v1", "v2", "note"],
       description:
-        "v2 for a statement on the V2 record; v1 for a saved memory in a space that hasn't switched.",
+        "v2 for a statement on the V2 record; note for a note (a V1 memory in a space on the V2 record, never kept context); v1 for a saved memory in a space that hasn't switched.",
     },
     space_id: {
       type: "string",
@@ -231,13 +231,13 @@ export const MCP_TOOLS: McpToolDefinition[] = [
         notices: {
           type: "array",
           description:
-            'What this connection should drop or recheck, each once: memories forgotten since it read them (or in a space it is connected to; every other tool\'s result carries these in _meta["app.memax/notices"] too), and its writes put back in Review.',
+            'What this connection should drop or recheck, each once: memories forgotten since it read them (or in a space it is connected to; every other tool\'s result carries these in _meta["app.memax/notices"] too), its writes put back in Review, and a space it is connected to moving to the V2 record (what it may do there now).',
           items: {
             type: "object",
             properties: {
               kind: {
                 type: "string",
-                enum: ["forgotten", "space_forgotten", "returned"],
+                enum: ["forgotten", "space_forgotten", "returned", "switched"],
               },
               message: {
                 type: "string",
@@ -320,7 +320,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     name: "memax_search",
     title: "Search memories",
     description:
-      "Searches kept memories and decisions in the spaces this connection can read and returns the matches with their display IDs. In spaces that haven't switched to the V2 record it searches saved memories.",
+      "Searches kept memories and decisions in the spaces this connection can read and returns the matches with their display IDs. With include_notes it also searches notes: the V1 memories of spaces on the V2 record that the person it works for wrote, or that sit in a space they own. In spaces that haven't switched to the V2 record it searches saved memories.",
     inputSchema: {
       type: "object",
       properties: {
@@ -341,6 +341,11 @@ export const MCP_TOOLS: McpToolDefinition[] = [
         limit: {
           type: "number",
           description: "Maximum number of results (default 10).",
+        },
+        include_notes: {
+          type: "boolean",
+          description:
+            "Also search notes, which are raw material and never kept context.",
         },
       },
       required: ["query"],

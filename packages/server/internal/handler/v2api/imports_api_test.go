@@ -64,16 +64,17 @@ func TestCreateAndSwitchSpaces(t *testing.T) {
 		t.Errorf("the new space isn't listed on V2: %+v", list.Items)
 	}
 
-	// An empty personal space switches; one with V1 memories doesn't.
+	// An empty personal space switches within the request.
 	personal := e.space(zz, policy.SpacePersonal, "personal")
-	var switched spaceOut
+	var switched struct {
+		Space      spaceOut `json:"space"`
+		State      string   `json:"state"`
+		Background bool     `json:"background"`
+	}
 	e.do(call{method: "POST", path: "/v2/spaces/" + personal.slug + ":switch", token: tok}).ok(http.StatusOK, &switched)
-	if switched.V2EnabledAt == nil || switched.ID != personal.id {
+	if switched.Space.V2EnabledAt == nil || switched.Space.ID != personal.id || switched.State != "switched" || switched.Background {
 		t.Errorf("switched %+v", switched)
 	}
-	old := e.space(zz, policy.SpaceProject, "old")
-	e.exec(`INSERT INTO memories (hub_id, owner_id, title, content) VALUES ($1, $2, 'note', 'a V1 memory')`, old.id, zz)
-	e.do(call{method: "POST", path: "/v2/spaces/" + old.slug + ":switch", token: tok}).fails(http.StatusConflict, "space_has_notes")
 	e.do(call{method: "POST", path: "/v2/spaces/" + uuid.NewString() + ":switch", token: tok}).fails(http.StatusNotFound, "not_found")
 }
 

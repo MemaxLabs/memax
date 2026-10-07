@@ -28,6 +28,7 @@ import { registerDaemonCommands } from "./commands/daemon.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerConnectCommand } from "./commands/connect.js";
+import { registerSwitchCommand } from "./commands/switch.js";
 import { registerCompileCommand } from "./commands/compile.js";
 import { registerExportCommands } from "./commands/export.js";
 
@@ -47,6 +48,7 @@ program
 
 registerInitCommand(program);
 registerConnectCommand(program);
+registerSwitchCommand(program);
 registerStatusCommand(program);
 registerCompileCommand(program);
 registerLinkCommands(program);

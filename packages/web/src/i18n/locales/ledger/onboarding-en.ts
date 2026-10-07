@@ -341,6 +341,20 @@ export const ledgerOnboardingEn = {
     noneDetail:
       "Run memax init in this space's repository. What it reads waits here as proposals.",
     codexMemory: "Codex's memory",
+    // ReviewImport "From V1" (plan §10): the V1 memories the person wrote,
+    // offered to keep in one go when the space switched to V2.
+    v1: {
+      eyebrow: "Review · from V1 · switched {when}",
+      title: "You wrote these {n} in V1. Keep them in one go?",
+      titleOne: "You wrote this one in V1. Keep it?",
+      lede: "Each was one of your own V1 memories and is a note (N-) now. Keep what's still true. The rest stay notes, searchable but never compiled, and what agents wrote waits for Dream.",
+      sorted: "In the order you wrote them",
+      repeated: "You wrote it {n} times in V1",
+      doneTitle: "Every V1 memory you wrote is decided.",
+      doneDetail:
+        "What you kept compiles into the files your agents read. The rest stay notes.",
+      openToday: "Open Today",
+    },
     labels: {
       claude_md: "CLAUDE.md",
       agents_md: "AGENTS.md",

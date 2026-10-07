@@ -249,6 +249,8 @@ tags:
     description: What agents already know, read from their files by `memax init`, arriving as proposals.
   - name: memories
     description: One statement each, under a seal.
+  - name: notes
+    description: A space's notes (N-), the raw material it keeps but never compiles, such as its V1 memories after the switch.
   - name: review
     description: What needs a person.
   - name: activity
@@ -346,30 +348,105 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/spaces/{space}/switch:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: getSpaceSwitch
+      tags: [spaces]
+      summary: Where a space's Switch to V2 stands, with a preview
+      description: |
+        Where the space's Switch to V2 stands (`state`: `v1`, `running`,
+        `switched`, `failed` or `off` once switched back), what each step
+        did, and a fresh `preview` of what switching moves: the dry run.
+        The preview is read from V1 and changes nothing: who the members are
+        and the roles they keep (owner → owner, admin → member who can
+        forget, contributor → member, viewer → viewer); how many V1 memories
+        become notes, and of those, how many of a person's own are offered
+        for bulk keep (`notes.candidates`), how many an agent wrote and
+        Dream folds into proposals (`notes.fold`), and how many stay notes
+        only; personas and agent files that become notes, and the compile
+        targets the agent files stand for; the agents connected at Propose;
+        decisions waiting on V1's board; V1 Dream runs, kept as read-only
+        history; and the V1 plan, grandfathered. Any member may read it.
+      responses:
+        '200':
+          description: The switch, with its preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpaceSwitchEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
   /v2/spaces/{space}:switch:
     parameters:
       - $ref: '#/components/parameters/SpacePath'
     post:
       operationId: switchSpace
       tags: [spaces]
-      summary: Switch an empty space to the V2 record
+      summary: Switch a space to V2, or back to V1
       description: |
-        Moves a space that holds no V1 memories to the V2 record, so agents
-        are served from it over MCP too: a new person's personal space, say,
-        before `memax init` brings machine-local memory into it. A space
-        with V1 memories switches in the app, where they are cleaned up
-        first (409 `space_has_notes`, with `details.notes`). Only the
-        space's owner may. A space already on V2 is returned as it is.
+        Moves a space to the V2 record, so agents are served from it over
+        MCP and its V1 content is ready for Review (plan 25 §10). Nothing is
+        lost and no V1 row changes: every V1 memory becomes a note (N-),
+        searchable by its owner and never compiled; a person's own short V1
+        memories go up as one import (`import_id`, origin `v1`) through the
+        import conflict check, so Review's "From V1" shows disagreements
+        first and keeps the rest in one go; what agents wrote waits for
+        Dream, which folds it into proposals; personas and agent files
+        become notes, and the agent files' compile targets are added, with
+        V1's two-way config sync off for those files while the space is on
+        V2; the members' API keys and OAuth grants are connected at Propose,
+        and each connected agent is told on its next MCP response; a
+        decision waiting on V1's board moves to the record. Read the preview
+        first: `GET /v2/spaces/{space}/switch`.
+
+        A space with nothing to import switches within the request (200).
+        Otherwise the switch continues in the background (202): read it
+        again until `state` is `switched`. A step that fails leaves it
+        `failed` at that step; sending this again resumes it there. While it
+        runs, or once it has switched, sending it again changes nothing.
+        `kind` lets a V1 team hub switch as a project space, until it has a
+        V2 record (409 `space_kind` otherwise); `repository` sets the
+        repository it compiles for.
+
+        `to: v1` switches it back: every surface serves it as V1 again, and
+        its V1 rows, which the switch never changed, answer as before. Its
+        V2 record stays, for a later switch, which moves only what V1 gained
+        meanwhile. Only the space's owner may, signed in.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SwitchSpaceRequest'
       responses:
         '200':
-          description: The space, on the V2 record.
+          description: Switched (or switched back) within the request, or it already had.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SpaceEnvelope'
+                $ref: '#/components/schemas/SpaceSwitchEnvelope'
+        '202':
+          description: The switch continues in the background; read it with `GET /v2/spaces/{space}/switch`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpaceSwitchEnvelope'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -380,6 +457,198 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/SpaceConflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/v1-dream-runs:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listV1DreamRuns
+      tags: [spaces]
+      summary: V1's Dream runs, as read-only history
+      description: |
+        The space's Dream runs from V1, newest first: when each ran and what
+        it counted. Read-only edition history: V1's reports aren't served,
+        and V1's actions can't be undone (plan 25 §10).
+      responses:
+        '200':
+          description: The runs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1DreamRunListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/notes:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: searchNotes
+      tags: [notes]
+      summary: Search a space's notes
+      description: |
+        Notes (N-) are a space's raw material: its V1 memories, personas and
+        agent files, kept when it switched to V2, and what agents capture
+        since. They are never compiled and never served as kept context.
+        Notes are their owner's: you see the notes you wrote and, in a space
+        you own, every note in it. With `q`, the best matches first (by V1's
+        own index of the words); without, the newest.
+      parameters:
+        - name: q
+          in: query
+          description: Words to search for.
+          schema:
+            type: string
+            maxLength: 500
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: The notes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotePageEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/notes/{note}:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+      - $ref: '#/components/parameters/NotePath'
+    get:
+      operationId: getNote
+      tags: [notes]
+      summary: Read a note
+      description: A note you may read (yours, or any in a space you own), by its N- ref or id.
+      responses:
+        '200':
+          description: The note.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/notes/{note}/forget-preview:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+      - $ref: '#/components/parameters/NotePath'
+    get:
+      operationId: previewForgetNote
+      tags: [notes]
+      summary: What forgetting a note would do
+      description: The memories that carry the note's words and go with it, and whether you may forget it.
+      responses:
+        '200':
+          description: The preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteForgetPreviewEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/notes/{note}:forget:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+      - $ref: '#/components/parameters/NotePath'
+    post:
+      operationId: forgetNote
+      tags: [notes]
+      summary: Forget a note everywhere
+      description: |
+        Forgets a note (rule 7). In one transaction its words leave the V1
+        row that holds them, as V1's own delete takes it (a memory with its
+        chunks, attachments and topic links; a persona; an agent file), with
+        what V1 derived from it that names it (board cards citing it,
+        notifications about it, Dream's reasons, the activity summary of its
+        title). Memories carrying its words go with it: the proposal the
+        switch made of it and Dream's proposals citing it. Name them in
+        `carries`; otherwise the answer is 409 `forget_carries` with
+        `details.carries`, and nothing changes. A tombstone stays, its
+        attachments' stored objects are deleted, and every agent connected
+        to the space is told on its next read. It can't be undone. Only a
+        person who may forget in the space forgets (owners, by default).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgetNoteRequest'
+      responses:
+        '200':
+          description: Forgotten; the result has the tombstone.
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteForgetResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ForgetConflict'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -3607,6 +3876,13 @@ components:
         display ID; optional with a memory id, where it must match.
       schema:
         $ref: '#/components/schemas/SpaceKey'
+    NotePath:
+      name: note
+      in: path
+      required: true
+      description: A note's display ID (N-0042) or id.
+      schema:
+        $ref: '#/components/schemas/NoteKey'
     RefPath:
       name: ref
       in: path
@@ -3937,7 +4213,7 @@ components:
             $ref: '#/components/schemas/ErrorEnvelope'
 
     SpaceConflict:
-      description: '`slug_taken` (the slug belongs to another space) or `space_has_notes` (the space holds V1 memories, `details.notes`; switch it in the app).'
+      description: '`slug_taken` (the slug belongs to another space) or `space_kind` (the space can''t switch as that kind: only a V1 team hub with no V2 record yet may become a project space).'
       content:
         application/json:
           schema:
@@ -4007,6 +4283,18 @@ components:
       description: A memory's display ID, unique within its tenant.
       type: string
       pattern: '^M-[0-9]{4,18}$'
+    RecordRef:
+      description: A memory's (M-) or a note's (N-) display ID, unique within its tenant.
+      type: string
+      pattern: '^[MN]-[0-9]{4,18}$'
+    NoteRef:
+      description: A note's display ID, unique within its tenant.
+      type: string
+      pattern: '^N-[0-9]{4,18}$'
+    NoteKey:
+      description: A note's display ID (N-0042, any case and padding) or its id.
+      type: string
+      pattern: '^(?:[Nn]-[0-9]{1,18}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$'
     VersionTag:
       description: A memory version as an entity tag, `"3"`. A bare `3` is accepted too.
       type: string
@@ -4129,7 +4417,10 @@ components:
         merged (a duplicate proposal), flagged (a conflict or a stale fact),
         faded and revised (the Brief), each citing the edition (`source: {kind:
         dream, ref: D-0214}`); undoing one writes undid; restoring a faded
-        memory writes restored.
+        memory writes restored. Switching to V2 writes noted on the space (its
+        V1 content numbered as notes) and switched once it is on the V2
+        record; switching back writes switched_back. A note's Forget writes
+        forgot on the note (`object_kind: note`).
       type: string
       enum:
         - proposed
@@ -4174,6 +4465,9 @@ components:
         - published
         - folded
         - exported
+        - noted
+        - switched
+        - switched_back
     ObjectKind:
       type: string
       enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space]
@@ -4316,7 +4610,7 @@ components:
         - unavailable
         - forget_carries
         - slug_taken
-        - space_has_notes
+        - space_kind
 
     LinkKind:
       description: |
@@ -7329,8 +7623,8 @@ components:
         reason:
           $ref: '#/components/schemas/CarryReason'
         with:
-          description: The memory it goes with.
-          $ref: '#/components/schemas/DisplayRef'
+          description: The memory (or note) it goes with.
+          $ref: '#/components/schemas/RecordRef'
         lifecycle:
           $ref: '#/components/schemas/Lifecycle'
         kind:
@@ -7400,9 +7694,9 @@ components:
           $ref: '#/components/schemas/PolicyDecision'
 
     TombstoneKind:
-      description: '`memory`, or `space` for a Forget of everything in a space.'
+      description: '`memory`; `note` for a note (N-); or `space` for a Forget of everything in a space.'
       type: string
-      enum: [memory, space]
+      enum: [memory, space, note]
     TombstoneStatus:
       description: '`propagating` until every copy has an answer (the SLO is a minute); then `done`.'
       type: string
@@ -7590,7 +7884,7 @@ components:
           description: The Forget it belongs to (the primary tombstone's id).
           $ref: '#/components/schemas/Id'
         ref:
-          description: The forgotten memory's display ID, or `space`.
+          description: The forgotten memory's or note's display ID, or `space`.
           type: string
         kind:
           $ref: '#/components/schemas/TombstoneKind'
@@ -7726,22 +8020,30 @@ components:
           $ref: '#/components/schemas/ForgetRequestRecord'
 
     NoticeKind:
+      description: |
+        forgotten: memories forgotten since the agent read them (or in a
+        space it is connected to). space_forgotten: everything in a space.
+        switched: a space it is connected to moved to the V2 record, and
+        `autonomy` is what it may do there now.
       type: string
-      enum: [forgotten, space_forgotten]
+      enum: [forgotten, space_forgotten, switched]
 
     Notice:
       description: Something an agent is told once, on its next read.
       type: object
       additionalProperties: false
-      required: [id, space_id, op_id, kind, refs, read_it, at]
+      required: [id, space_id, kind, refs, read_it, at]
       properties:
         id:
           $ref: '#/components/schemas/Id'
         space_id:
           $ref: '#/components/schemas/Id'
         op_id:
-          description: The Forget (its tombstone).
+          description: The Forget (its tombstone); absent for `switched`.
           $ref: '#/components/schemas/Id'
+        autonomy:
+          description: What the agent may do in the space now (`switched`).
+          $ref: '#/components/schemas/Autonomy'
         kind:
           $ref: '#/components/schemas/NoticeKind'
         refs:
@@ -7817,9 +8119,11 @@ components:
     ImportLocation:
       description: |
         Where a file an import read lives: `repository` (shared with
-        everyone who clones it) or `home` (on the person's machine only).
+        everyone who clones it) or `home` (on the person's machine only);
+        `v1` for a space's own V1 memory, imported when it switched to V2
+        (clients don't send it).
       type: string
-      enum: [repository, home]
+      enum: [repository, home, v1]
     ImportOutcome:
       description: |
         What became of one statement: `proposed` (a new proposal),
@@ -8028,10 +8332,10 @@ components:
           type: string
 
     Import:
-      description: One upload of statements read from agent files.
+      description: One upload of statements read from agent files, or a space's own V1 memories when it switched.
       type: object
       additionalProperties: false
-      required: [id, space_id, tenant_id, actor_kind, files, skipped, counts, check, created_at]
+      required: [id, space_id, tenant_id, actor_kind, files, skipped, counts, check, origin, created_at]
       properties:
         id:
           $ref: '#/components/schemas/Id'
@@ -8063,6 +8367,13 @@ components:
           $ref: '#/components/schemas/Timestamp'
         check:
           $ref: '#/components/schemas/ImportCheck'
+        origin:
+          description: |
+            `init`, statements `memax init` read from agent files; or `v1`, the
+            person's own V1 memories, offered for bulk keep when the space
+            switched to V2 (Review's "From V1"; each item's ref is its note).
+          type: string
+          enum: [init, v1]
         created_at:
           $ref: '#/components/schemas/Timestamp'
 
@@ -8394,6 +8705,438 @@ components:
           type: integer
           minimum: 0
 
+    SwitchState:
+      description: |
+        v1: on V1, never switched. running: switching (in the background).
+        switched: on the V2 record. failed: a step failed; send `:switch`
+        again to resume it. off: switched back to V1.
+      type: string
+      enum: [v1, running, switched, failed, off]
+    SwitchStep:
+      description: The step a switch stands at (the next to run), or `done`.
+      type: string
+      enum: [space, notes, personas, configs, candidates, agents, gates, switch, done]
+    SwitchSpaceRequest:
+      description: The body of `:switch`. Every field is optional.
+      type: object
+      additionalProperties: false
+      properties:
+        to:
+          description: '`v2` (the default) switches the space to the V2 record; `v1` switches it back.'
+          type: string
+          enum: [v2, v1]
+        kind:
+          description: The kind it switches as. A V1 team hub may switch as a project space while it has no V2 record.
+          type: string
+          enum: [project, team]
+        repository:
+          description: The repository it compiles for ("owner/name"); empty clears it.
+          type: string
+          maxLength: 200
+    SwitchMember:
+      description: A person in the space, with their V1 role and the V2 role it maps to.
+      type: object
+      additionalProperties: false
+      required: [person_id, name, v1_role, role, can_forget]
+      properties:
+        person_id:
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+        v1_role:
+          description: owner, admin, contributor or viewer.
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+        can_forget:
+          description: An admin in V1 is a member who can forget.
+          type: boolean
+    SwitchNotes:
+      description: What the space's V1 memories become.
+      type: object
+      additionalProperties: false
+      required: [total, person, agent, candidates, fold, kept, long, secret, archived, format, external, seeds]
+      properties:
+        total:
+          description: The V1 memories that become notes.
+          type: integer
+        person:
+          description: Of those, the ones people wrote.
+          type: integer
+        agent:
+          description: Of those, the ones agents wrote.
+          type: integer
+        candidates:
+          description: A person's own, short enough to be one statement, offered for bulk keep.
+          type: integer
+        fold:
+          description: For Dream to fold into proposals (agents', and documents longer than one statement).
+          type: integer
+        kept:
+          description: Notes only, never proposed (archived in V1, or holding a credential).
+          type: integer
+        long:
+          description: A person's notes longer than one statement.
+          type: integer
+        secret:
+          description: Notes holding a credential.
+          type: integer
+        archived:
+          description: Notes archived in V1.
+          type: integer
+        format:
+          description: A person's notes that are files or pages, not typed text.
+          type: integer
+        external:
+          description: Notes from the web or an email (quarantined when proposed).
+          type: integer
+        seeds:
+          description: V1's onboarding memories, left out.
+          type: integer
+    SwitchConfig:
+      description: A V1 agent file that belongs to the space.
+      type: object
+      additionalProperties: false
+      required: [path, agent, scope, targets]
+      properties:
+        path:
+          type: string
+        agent:
+          type: string
+        scope:
+          description: V1's sync scope (global, profile:<name> or project:<url>).
+          type: string
+        targets:
+          description: The compile targets it stands for.
+          type: array
+          items:
+            $ref: '#/components/schemas/TargetKind'
+    SwitchAgent:
+      description: A V1 API key or OAuth grant the switch connects to the space (or found connected).
+      type: object
+      additionalProperties: false
+      required: [credential, name, agent, person_id, autonomy, connected]
+      properties:
+        credential:
+          $ref: '#/components/schemas/CredentialKind'
+        name:
+          type: string
+        agent:
+          $ref: '#/components/schemas/AgentKind'
+        person_id:
+          description: The person it works for.
+          $ref: '#/components/schemas/Id'
+        autonomy:
+          description: What it may do in the space after the switch.
+          $ref: '#/components/schemas/Autonomy'
+        connected:
+          description: It was connected to the space already, and keeps its level.
+          type: boolean
+    SwitchPreview:
+      description: What switching the space moves, read fresh from V1. Nothing changes.
+      type: object
+      additionalProperties: false
+      required: [kind, kinds, members, notes, personas, configs, targets, agents, gates, dream_runs, empty]
+      properties:
+        kind:
+          $ref: '#/components/schemas/SpaceKind'
+        kinds:
+          description: The kinds it may switch as.
+          type: array
+          items:
+            $ref: '#/components/schemas/SpaceKind'
+        repository:
+          type: string
+        suggested_repository:
+          description: The repository most of its V1 memories came from.
+          type: string
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/SwitchMember'
+        notes:
+          $ref: '#/components/schemas/SwitchNotes'
+        personas:
+          description: Personas that become notes (the personal space).
+          type: integer
+        configs:
+          type: array
+          items:
+            $ref: '#/components/schemas/SwitchConfig'
+        targets:
+          description: The compile targets the agent files stand for.
+          type: array
+          items:
+            $ref: '#/components/schemas/TargetKind'
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/SwitchAgent'
+        gates:
+          description: Decisions waiting on V1's board, which move to the record when their agent is connected.
+          type: integer
+        dream_runs:
+          description: V1 Dream runs, kept as read-only history.
+          type: integer
+        plan:
+          description: The V1 plan, grandfathered.
+          type: string
+        empty:
+          description: Nothing to import, so it switches within the request.
+          type: boolean
+    SwitchProgress:
+      description: What the switch's steps did so far.
+      type: object
+      additionalProperties: false
+      required: [notes, personas, configs, targets, proposed, folded, existing, refused, imports, connected,
+                 already_connected, notified, gates_moved, gates_left]
+      properties:
+        notes:
+          description: V1 memories numbered as notes.
+          type: integer
+        personas:
+          type: integer
+        configs:
+          description: Agent files numbered as notes.
+          type: integer
+        targets:
+          description: Compile targets added.
+          type: array
+          items:
+            $ref: '#/components/schemas/TargetKind'
+        proposed:
+          description: A person's own V1 memories proposed for bulk keep.
+          type: integer
+        folded:
+          description: Repeats among them, folded into one proposal.
+          type: integer
+        existing:
+          description: Already in the record.
+          type: integer
+        refused:
+          type: integer
+        imports:
+          description: The V1 imports (at most 500 statements each).
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+        connected:
+          description: Agents connected to the space.
+          type: integer
+        already_connected:
+          type: integer
+        notified:
+          description: Agents told on their next MCP response.
+          type: integer
+        gates_moved:
+          type: integer
+        gates_left:
+          description: Decisions left on V1's board (their agent isn't connected).
+          type: integer
+    SpaceSwitch:
+      description: Where a space's Switch to V2 stands.
+      type: object
+      additionalProperties: false
+      required: [space, state, step, preview, progress, attempts, background]
+      properties:
+        space:
+          $ref: '#/components/schemas/Space'
+        state:
+          $ref: '#/components/schemas/SwitchState'
+        step:
+          $ref: '#/components/schemas/SwitchStep'
+        preview:
+          $ref: '#/components/schemas/SwitchPreview'
+        progress:
+          $ref: '#/components/schemas/SwitchProgress'
+        import_id:
+          description: The V1 import, for Review's "From V1".
+          $ref: '#/components/schemas/Id'
+        error:
+          description: Why a step failed (a code).
+          type: string
+        attempts:
+          type: integer
+        started_at:
+          $ref: '#/components/schemas/Timestamp'
+        switched_at:
+          $ref: '#/components/schemas/Timestamp'
+        switched_back_at:
+          $ref: '#/components/schemas/Timestamp'
+        background:
+          description: It continues in the background.
+          type: boolean
+
+    NoteOrigin:
+      description: Where a note's words live until cutover. memory, a V1 memory; persona, a V1 persona; agent_config, a synced agent file.
+      type: string
+      enum: [memory, persona, agent_config]
+    NoteDisposition:
+      description: |
+        What the switch did with it. candidate: a person's own V1 memory,
+        offered for bulk keep. fold: for Dream to fold into proposals. note:
+        it stays a note, never proposed.
+      type: string
+      enum: [candidate, fold, note]
+    NoteHold:
+      description: |
+        Why a note isn't a bulk-keep candidate. long: longer than one
+        statement. secret: it holds a credential. archived: archived in V1.
+        format: a file or a page, not typed text. external: from the web or
+        an email.
+      type: string
+      enum: [long, secret, archived, format, external]
+    Note:
+      description: A note (N-), raw material that is never compiled.
+      type: object
+      additionalProperties: false
+      required: [id, space_id, owner_id, origin, title, excerpt, author_kind, state, disposition, length, created_at, updated_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        ref:
+          $ref: '#/components/schemas/NoteRef'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        owner_id:
+          description: Whose it is in V1 (the person, or the person the agent that wrote it worked for).
+          $ref: '#/components/schemas/Id'
+        origin:
+          $ref: '#/components/schemas/NoteOrigin'
+        title:
+          type: string
+        excerpt:
+          description: The start of its words (280 characters).
+          type: string
+        author_kind:
+          description: person or agent.
+          type: string
+          enum: [person, agent]
+        agent:
+          type: string
+        state:
+          description: V1's state (active, processing, archived).
+          type: string
+        disposition:
+          $ref: '#/components/schemas/NoteDisposition'
+        hold:
+          $ref: '#/components/schemas/NoteHold'
+        trust:
+          $ref: '#/components/schemas/Trust'
+        path:
+          description: Where it came from (a source path, a persona's or agent file's path).
+          type: string
+        length:
+          description: Its length in characters.
+          type: integer
+        score:
+          description: How well it matches the search.
+          type: number
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+    NotePage:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Note'
+    ForgetNoteRequest:
+      description: The body of a note's `:forget`. Every field is optional.
+      type: object
+      additionalProperties: false
+      properties:
+        note:
+          description: Your own note on why. It stays on the tombstone, so don't repeat the words.
+          type: string
+          maxLength: 500
+        carries:
+          description: The memories that go with it, exactly as `forget_carries` listed them.
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/MemoryDisplayRef'
+    NoteForgetResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, receipts, tombstone, memories]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        receipts:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Receipt'
+        tombstone:
+          $ref: '#/components/schemas/Tombstone'
+        memories:
+          description: The memories forgotten with it.
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
+    NoteForgetPreview:
+      description: What forgetting a note would do, before anyone confirms it.
+      type: object
+      additionalProperties: false
+      required: [carries, allowed]
+      properties:
+        ref:
+          $ref: '#/components/schemas/NoteRef'
+        carries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForgetCarry'
+        allowed:
+          type: boolean
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+    V1DreamRun:
+      description: A Dream run from V1 (read-only history; no undo).
+      type: object
+      additionalProperties: false
+      required: [id, status, mode, started_at, scanned, merged, contradictions, archived, organized, restructured, actions]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        status:
+          type: string
+        mode:
+          type: string
+        started_at:
+          $ref: '#/components/schemas/Timestamp'
+        finished_at:
+          $ref: '#/components/schemas/Timestamp'
+        scanned:
+          type: integer
+        merged:
+          type: integer
+        contradictions:
+          type: integer
+        archived:
+          type: integer
+        organized:
+          type: integer
+        restructured:
+          type: integer
+        actions:
+          type: integer
+    V1DreamRunList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/V1DreamRun'
+
     Error:
       type: object
       additionalProperties: false
@@ -8450,9 +9193,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ForgetCarry'
-        notes:
-          description: The V1 memories a space holds (`space_has_notes`).
-          type: integer
         state:
           description: How a device's code ended (`invalid_transition` on a device code).
           $ref: '#/components/schemas/DeviceAuthorizationState'
@@ -8935,6 +9675,48 @@ components:
         data:
           $ref: '#/components/schemas/AckNoticesResult'
 
+    SpaceSwitchEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SpaceSwitch'
+    NotePageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/NotePage'
+    NoteEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Note'
+    NoteForgetResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/NoteForgetResult'
+    NoteForgetPreviewEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/NoteForgetPreview'
+    V1DreamRunListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/V1DreamRunList'
     SpaceEnvelope:
       type: object
       additionalProperties: false

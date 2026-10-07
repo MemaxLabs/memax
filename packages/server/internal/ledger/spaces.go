@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
@@ -67,30 +66,10 @@ func init() {
 // ErrSlugTaken: the slug the caller named belongs to another space.
 var ErrSlugTaken = errors.New("ledger: the slug is taken")
 
-// SpaceHasNotesError: a space switches to the V2 record on its own only
-// while it holds no V1 memories; one that does switches in the app, with
-// the import cleanup (plan 25 §10, epic 2.8).
-type SpaceHasNotesError struct {
-	Slug  string
-	Notes int
-}
-
-func (e *SpaceHasNotesError) Error() string {
-	return fmt.Sprintf("%s holds %d V1 %s. Switch it to V2 in the app, where they are cleaned up first.",
-		e.Slug, e.Notes, plural(e.Notes, "memory", "memories"))
-}
-
 // SpaceRefusedError is a policy refusal of a space change.
 type SpaceRefusedError struct{ Decision policy.Decision }
 
 func (e *SpaceRefusedError) Error() string { return e.Decision.Message }
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return one
-	}
-	return many
-}
 
 // slugify makes a slug out of a name: lower case, letters and digits,
 // hyphens between words.
@@ -255,58 +234,4 @@ func (l *Ledger) CreateSpace(ctx context.Context, actor Actor, in NewSpace) (*Sp
 	sp.Role = policy.RoleOwner
 	l.log.Info("ledger: space created", "space_id", sp.ID.String(), "slug", sp.Slug, "kind", string(sp.Kind))
 	return &sp, false, nil
-}
-
-// SwitchSpace moves a space in the actor's scope to the V2 record, if it
-// holds no V1 memories (*SpaceHasNotesError otherwise). Only its owner
-// may. A space already on V2 is returned as it is.
-func (l *Ledger) SwitchSpace(ctx context.Context, actor Actor, scope Scope, spaceID uuid.UUID) (*Space, error) {
-	if l == nil {
-		return nil, ErrDisabled
-	}
-	grant, ok := scope.Grant(spaceID)
-	if !ok {
-		return nil, ErrNotFound
-	}
-	pa := policy.Actor{Kind: actor.Kind, Credential: actor.Credential, Role: grant.Role}
-	if d := policy.DecideSwitchSpace(pa); d.Effect == policy.EffectRefuse {
-		return nil, &SpaceRefusedError{Decision: d}
-	}
-	tx, err := l.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("ledger: begin: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	var sp Space
-	err = tx.QueryRow(ctx, `
-		SELECT id, tenant_id, slug, name, space_kind, COALESCE(repository, ''), v2_enabled_at
-		  FROM public.hubs WHERE id = $1 FOR UPDATE`, spaceID).
-		Scan(&sp.ID, &sp.TenantID, &sp.Slug, &sp.Name, &sp.Kind, &sp.Repository, &sp.V2EnabledAt)
-	if errNoRows(err) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, fmt.Errorf("ledger: switch space: %w", err)
-	}
-	sp.Role = grant.Role
-	if sp.V2EnabledAt != nil {
-		return &sp, nil
-	}
-	var notes int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM public.memories WHERE hub_id = $1`, spaceID).Scan(&notes); err != nil {
-		return nil, fmt.Errorf("ledger: switch space: %w", err)
-	}
-	if notes > 0 {
-		return nil, &SpaceHasNotesError{Slug: sp.Slug, Notes: notes}
-	}
-	now := l.now().UTC().Truncate(time.Microsecond)
-	if _, err := tx.Exec(ctx, `UPDATE public.hubs SET v2_enabled_at = $2 WHERE id = $1 AND v2_enabled_at IS NULL`, spaceID, now); err != nil {
-		return nil, fmt.Errorf("ledger: switch space: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("ledger: switch space: %w", err)
-	}
-	sp.V2EnabledAt = &now
-	l.log.Info("ledger: space switched to V2", "space_id", sp.ID.String(), "slug", sp.Slug)
-	return &sp, nil
 }

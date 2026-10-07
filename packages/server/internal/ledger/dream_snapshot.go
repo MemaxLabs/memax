@@ -267,7 +267,9 @@ func (l *Ledger) DreamSnapshot(ctx context.Context, scope Scope, spaceID uuid.UU
 		}
 
 		b = &pgx.Batch{}
-		// Notes after the cursor, oldest first.
+		// Notes after the cursor, oldest first: the ones left for Dream to
+		// fold (a switch offered a person's own V1 memories for bulk keep
+		// instead, and kept archived and credential-bearing ones as notes).
 		b.Queue(`
 			SELECT n.id, n.created_at, n.author_kind, COALESCE(n.agent, ''), COALESCE(n.source, ''), COALESCE(n.title, ''),
 			       COALESCE(n.body, ''), r.seq,
@@ -275,7 +277,8 @@ func (l *Ledger) DreamSnapshot(ctx context.Context, scope Scope, spaceID uuid.UU
 			        OR COALESCE(n.content_type, '') IN ('html', 'url', 'link')
 			        OR COALESCE(n.source_path, '') ~* '^https?://')
 			  FROM v2.notes n LEFT JOIN v2.note_refs r ON r.note_id = n.id
-			 WHERE n.space_id = $1 AND n.state <> 'archived' AND (n.created_at, n.id) > ($2, $3)
+			 WHERE n.space_id = $1 AND n.state <> 'archived' AND n.disposition = 'fold'
+			   AND (n.created_at, n.id) > ($2, $3)
 			 ORDER BY n.created_at, n.id LIMIT $4`, spaceID, afterAt, afterID, o.MaxNotes+1).
 			Query(func(rows pgx.Rows) error {
 				var err error

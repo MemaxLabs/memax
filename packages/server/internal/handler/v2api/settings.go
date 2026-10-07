@@ -149,10 +149,13 @@ func (h *Handler) updateNotificationSettings(w http.ResponseWriter, r *http.Requ
 type securityView struct {
 	// Assurance is what a Keep from this session counts as: human_web only
 	// for the web app's own signed requests (internal/websurface).
-	Assurance  policy.Assurance  `json:"assurance"`
-	Residency  []trust.Place     `json:"residency"`
-	Processors []trust.Processor `json:"processors"`
-	BackupDays int               `json:"backup_days"`
+	Assurance policy.Assurance `json:"assurance"`
+	// PasskeyCheck says the person has a passkey, so keeps that need them
+	// ask for it and count as human_web_verified.
+	PasskeyCheck bool              `json:"passkey_check"`
+	Residency    []trust.Place     `json:"residency"`
+	Processors   []trust.Processor `json:"processors"`
+	BackupDays   int               `json:"backup_days"`
 }
 
 // GET /v2/security
@@ -174,7 +177,15 @@ func (h *Handler) getSecurity(w http.ResponseWriter, r *http.Request) {
 	if p.via == policy.ViaWeb {
 		assurance = policy.AssuranceHumanWeb
 	}
-	out := securityView{Assurance: assurance, Residency: nonNil(posture.Residency),
+	check := false
+	if h.passkeys != nil {
+		var err error
+		if check, err = h.passkeys.Has(r.Context(), p.actor.ID); err != nil {
+			writeError(w, h.fromLedger(r, err))
+			return
+		}
+	}
+	out := securityView{Assurance: assurance, PasskeyCheck: check, Residency: nonNil(posture.Residency),
 		Processors: nonNil(posture.Processors), BackupDays: posture.BackupDays}
 	for i := range out.Processors {
 		out.Processors[i].Uses = nonNil(out.Processors[i].Uses)

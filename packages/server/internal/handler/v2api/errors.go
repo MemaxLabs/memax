@@ -12,6 +12,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
+	"github.com/MemaxLabs/memax/packages/server/internal/passkeys"
 )
 
 // Error codes. They are the ErrorCode enum of v2.yaml (TestErrorCodesMatchSpec).
@@ -44,6 +45,9 @@ const (
 	// Spaces (imports.go).
 	codeSlugTaken = "slug_taken"
 	codeSpaceKind = "space_kind"
+	// The passkey re-check (passkeys.go).
+	codeNeedsPasskey   = "needs_passkey"
+	codePasskeyInvalid = "passkey_invalid"
 )
 
 // apiError is an error response: a status, an ErrorCode and a sentence
@@ -76,6 +80,10 @@ type errorDetails struct {
 	Carries []ledger.Carried `json:"carries,omitempty"`
 	// State is how a device's code ended (device.go).
 	State deviceauth.State `json:"state,omitempty"`
+	// Passkey is the challenge to answer (needs_passkey), and
+	// PasskeyFailure why an answer was refused (passkey_invalid).
+	Passkey        *passkeyChallenge `json:"passkey,omitempty"`
+	PasskeyFailure passkeys.Reason   `json:"passkey_failure,omitempty"`
 }
 
 func writeError(w http.ResponseWriter, e *apiError) {

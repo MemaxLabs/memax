@@ -237,7 +237,7 @@ func (h *Handler) undoDreamAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if res.Outcome == ledger.OutcomeRefused {
-		writeError(w, refusal(res.Policy))
+		h.writeRefusal(w, r, res.Policy)
 		return
 	}
 	if res.Replayed {
@@ -337,7 +337,7 @@ func (h *Handler) runDream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if dec.Effect == policy.EffectRefuse {
-		writeError(w, refusal(dec))
+		h.writeRefusal(w, r, dec)
 		return
 	}
 	now := h.now()

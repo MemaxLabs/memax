@@ -110,6 +110,7 @@ describe("securityOf", () => {
   it("maps the posture, absent fields as null or empty", () => {
     const s = securityOf({
       assurance: "client_attested",
+      passkey_check: false,
       residency: [
         { holds: "database", provider: "neon", region: "us-west-2" },
         { holds: "objects", provider: "r2" },

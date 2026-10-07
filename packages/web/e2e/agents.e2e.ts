@@ -113,6 +113,14 @@ test("Connect an agent opens, traps focus and gives it back", async ({
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     "npx memax-cli connect opencode --space memax-v2",
   );
+  // Its scrim goes with it: the page takes clicks again, and the dialog
+  // opens afresh.
+  await open.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  await open.click();
+  await expect(dialog).toBeVisible();
 });
 
 test("Activity moves row by row, and Enter opens the memory", async ({

@@ -10,7 +10,7 @@ import type { Translations } from "@/i18n/locales/en";
 import { count, formatClock, formatShortDate, type AppCopy } from "./copy";
 import type { CommandFailure } from "./data/command-error";
 import type { BriefRow } from "./data/brief";
-import type { RecordsCopy } from "./records-copy";
+import { passkeyReason, type RecordsCopy } from "./records-copy";
 import type { Actor } from "./data/records";
 import {
   driftAgent,
@@ -253,6 +253,8 @@ export function commandReason(
       return f.unavailable;
     case "busy":
       return failure.judge ? f.busyJudge : f.busy;
+    case "passkey":
+      return passkeyReason(f, failure.failure);
     case "in-conflict":
     case "undo-refused":
     case "carries":

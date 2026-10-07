@@ -107,7 +107,7 @@ func (h *Handler) device(w http.ResponseWriter, r *http.Request, act policy.Devi
 	}
 	actor := policy.Actor{Kind: p.actor.Kind, Credential: p.actor.Credential, Via: p.via}
 	if d := policy.DecideDevice(actor, act); d.Effect == policy.EffectRefuse {
-		writeError(w, refusal(d))
+		h.writeRefusal(w, r, d)
 		return
 	}
 	var req deviceCodeRequest

@@ -72,6 +72,7 @@ export function notificationsInput(
 export function securityOf(s: V2.Security): SecurityView {
   return {
     assurance: s.assurance,
+    passkeyCheck: s.passkey_check,
     residency: s.residency.map((p) => ({
       holds: p.holds,
       provider: p.provider,

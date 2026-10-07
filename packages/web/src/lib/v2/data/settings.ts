@@ -117,8 +117,13 @@ export interface ProcessorView {
 
 /** Settings › Security's data from the server; seals and agents come from their own reads. */
 export interface SecurityView {
-  /** What a Keep from this session counts as. */
-  assurance: "human_web" | "client_attested";
+  /** What a Keep from this session counts as without a passkey check. */
+  assurance: "human_web" | "human_web_verified" | "client_attested";
+  /**
+   * The person has a passkey, so keeps that need them ask for it and
+   * count as human_web_verified.
+   */
+  passkeyCheck: boolean;
   residency: DataPlaceView[];
   processors: ProcessorView[];
   /** How long backups keep what Forget removed. */

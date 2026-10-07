@@ -199,6 +199,12 @@ export const ledgerSettingsZh: Translations["ledger"]["settings"] = {
       body: "只有当你在 Memax 网页应用里登录、并由它的服务器为请求签名时，保留才算作 human_web。从 CLI、Agent 或其他客户端保留，算作 client_attested，因为 Agent 可以用你的登录去操作它们。",
       needs: "在团队空间里保留决策，或保留来自外部的内容，需要 human_web。",
       session: "这次会话",
+      verifiedLabel: "使用通行密钥时",
+      verified:
+        "你已添加通行密钥，所以这些保留、提高 Agent 的权限和遗忘都会要求用它确认，并算作 human_web_verified：被复制的浏览器会话或操控你浏览器的 Agent 都做不到。",
+      nudge:
+        "在“账户”里添加通行密钥后，这些保留会要求用它确认，并算作 human_web_verified，被复制的浏览器会话无法做到。",
+      account: "账户",
     },
   },
 };

@@ -11,12 +11,13 @@ import {
   usingDevServer,
 } from "./fixtures";
 
-// Settings › Notifications against its board (Notifications.png in the
-// private handoff, read in place, never written), at the board's size in
-// Paper. Like dream-boards.e2e.ts it measures how far the screen is from
-// the board (E2E_BOARDS_MAX_RATIO; 0 prints the difference); the
-// self-baselines in settings.e2e.ts guard it. Security has no board of
-// its own (Security.png is the public Trust page), so it isn't here.
+// Settings › Account and Notifications against their boards (Account.png
+// and Notifications.png in the private handoff, read in place, never
+// written), at the board's size in Paper. Like dream-boards.e2e.ts it
+// measures how far the screen is from the board (E2E_BOARDS_MAX_RATIO; 0
+// prints the difference); the self-baselines in settings.e2e.ts guard
+// it. Security has no board of its own (Security.png is the public Trust
+// page), so it isn't here.
 
 skipWithoutBrowser();
 
@@ -24,6 +25,12 @@ const MAX_RATIO = Number(process.env.E2E_BOARDS_MAX_RATIO ?? 0.08);
 const dir = handoffScreensDir();
 
 const BOARDS = [
+  {
+    board: "Account",
+    path: "/settings/account",
+    heading: "Account",
+    height: 1040,
+  },
   {
     board: "Notifications",
     path: "/settings/notifications",

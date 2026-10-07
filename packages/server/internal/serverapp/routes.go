@@ -758,7 +758,10 @@ func registerV2Routes(root *http.ServeMux, withAuth func(http.Handler) http.Hand
 		return
 	}
 	ipLimit := ipLimitFactory(deps)
-	deps.v2.Mount(root, withAuth, func(h http.Handler) http.Handler {
+	deps.v2.Mount(root, withAuth, func(op string, h http.Handler) http.Handler {
+		if op == "startPasskeySignIn" || op == "finishPasskeySignIn" {
+			return ipLimit(ratelimit.IPPasskeySignIn, h.ServeHTTP)
+		}
 		return ipLimit(ratelimit.IPUnsubscribe, h.ServeHTTP)
 	})
 }

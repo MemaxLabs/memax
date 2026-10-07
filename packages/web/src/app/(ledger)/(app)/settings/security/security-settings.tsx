@@ -277,11 +277,25 @@ export function SecuritySettings() {
           <span className={styles.session}>
             <span className="mx-meta">{copy.assurance.session}</span>
             <span className={styles.mono}>{s.assurance}</span>
+            {s.passkeyCheck ? (
+              <>
+                <span className="mx-meta">{copy.assurance.verifiedLabel}</span>
+                <span className={styles.mono}>human_web_verified</span>
+              </>
+            ) : null}
           </span>
         </header>
         <div className={styles.body}>
           <p>{copy.assurance.body}</p>
           <p>{copy.assurance.needs}</p>
+          {s.passkeyCheck ? (
+            <p>{copy.assurance.verified}</p>
+          ) : (
+            <p>
+              {copy.assurance.nudge}{" "}
+              <Link href="/settings/account">{copy.assurance.account}</Link>
+            </p>
+          )}
         </div>
       </section>
     </>

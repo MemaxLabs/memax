@@ -51,7 +51,7 @@ describe("unsubscribing from the morning email", () => {
     expect(h.unsubscribe).toHaveBeenCalledWith("tok_1");
     expect(
       screen.getByRole("link", { name: "Open Settings" }).getAttribute("href"),
-    ).toBe("/settings/account#dream");
+    ).toBe("/settings/notifications");
   });
 
   it("says when it didn't go through, or the link has no token", async () => {

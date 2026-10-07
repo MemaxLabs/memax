@@ -11,7 +11,7 @@ import {
 
 // Dream's edition (DreamEdition.png) on the demo dataset: opened from
 // Today's card, an Undo and Restore all, C to compare the conflict it
-// found, and Settings' Dream panel. Then self-baselined screenshots; the
+// found, and where Dream's settings live. Then self-baselined screenshots; the
 // board itself is compared in dream-boards.e2e.ts.
 
 skipWithoutBrowser();
@@ -73,14 +73,26 @@ test("undo a fold, restore what faded, and compare the conflict with C", async (
   await expect(page).toHaveURL("/memax-v2/review/M-0431/compare");
 });
 
-test("Dream settings: the morning email and the zone", async ({ page }) => {
+test("Dream settings: the zone in Profile, the morning email in Notifications", async ({
+  page,
+}) => {
   await open(page, "/memax-v2/dream/214");
   await page.getByRole("link", { name: "Dream settings" }).click();
   await expect(page).toHaveURL("/settings/account#dream");
-  const panel = page.getByRole("region", { name: "Dream" });
-  await panel.getByRole("radio", { name: "Off" }).click();
-  await expect(toasts(page)).toContainText("Dream settings changed.");
-  await expect(panel.getByRole("radio", { name: "Off" })).toBeChecked();
+  const profile = page.getByRole("region", { name: "Profile" });
+  const zone = profile.getByRole("combobox", { name: "Time zone" });
+  await expect(zone).toHaveValue("America/Vancouver");
+  await zone.fill("Europe/Paris");
+  await profile.getByRole("button", { name: "Update" }).click();
+  await expect(toasts(page)).toContainText("Your profile is updated.");
+
+  await page.goto("/settings/notifications");
+  const email = page.getByRole("checkbox", {
+    name: "The morning edition: Email",
+  });
+  await expect(email).toBeChecked();
+  await email.click();
+  await expect(email).not.toBeChecked();
 });
 
 const SHOTS = [

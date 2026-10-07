@@ -56,6 +56,8 @@ export {
   V2SessionsResource,
   V2DreamResource,
   V2SettingsResource,
+  V2AccountResource,
+  V2PasskeysResource,
   undoableAction,
   refusalOf,
   forgetCarriesOf,
@@ -120,11 +122,15 @@ export type {
   SpaceExport as V2SpaceExport,
   SettingsEditOptions as V2SettingsEditOptions,
   SessionCommandOptions as V2SessionCommandOptions,
+  AccountCommandOptions as V2AccountCommandOptions,
 } from "./v2/resources.js";
+export { passkeyCheckOf, encodePasskeyAnswer } from "./transport.js";
 export type {
   // Config
   MemaxConfig,
   AuthProvider,
+  PasskeyCheck,
+  PasskeyCheckHandler,
   // Request options
   PushOptions,
   RecallOptions,

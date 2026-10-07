@@ -7,6 +7,7 @@ import {
   DEMO_SPACES,
   DEMO_VIEWER,
 } from "./demo-dataset";
+import { createDemoAccount } from "./account-demo";
 import { createDemoActivity } from "./activity-demo";
 import { createDemoAgents } from "./agents-demo";
 import { createDemoBrief } from "./brief-demo";
@@ -219,6 +220,7 @@ export function createDemoSource({
     dream,
     switch: switching,
     settings: createDemoSettings({ dream, commandDelayMs }),
+    account: createDemoAccount({ commandDelayMs }),
     spaces: async () => spaces(),
     overview: async (space) => {
       const found = overview(space.slug);

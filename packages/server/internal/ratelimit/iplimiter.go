@@ -46,6 +46,11 @@ var (
 	// still allowing a mail client's one-click POST + redirect GET +
 	// possible pre-fetch, which can briefly triple-hit from one IP.
 	IPUnsubscribe = EndpointLimit{Name: "unsubscribe", RPM: 30}
+	// IPPasskeySignIn — the two public halves of a passkey sign-in
+	// (/v2/passkey-sign-ins). Each needs a passkey to get anywhere; the
+	// cap bounds the challenges a flood could store. The web app's server
+	// calls them, so like the token endpoints they see its address.
+	IPPasskeySignIn = EndpointLimit{Name: "passkey_sign_in", RPM: 60}
 	// IPWebhookResend — provider delivery webhooks. Resend fan-out on a
 	// broadcast campaign can burst well over 100 req/s from a small
 	// pool of egress IPs, so the cap is sized to accommodate legitimate

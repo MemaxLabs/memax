@@ -87,7 +87,7 @@ func (h *Handler) sessionCaller(w http.ResponseWriter, r *http.Request, act poli
 	current, _ := uuid.Parse(handler.GetGrant(r).SessionID)
 	actor := policy.Actor{Kind: p.actor.Kind, Credential: p.actor.Credential, Via: p.via}
 	if d := policy.DecideSession(actor, act); d.Effect == policy.EffectRefuse {
-		writeError(w, refusal(d))
+		h.writeRefusal(w, r, d)
 		return nil, uuid.Nil, false
 	}
 	return p, current, true

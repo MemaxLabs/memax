@@ -70,6 +70,9 @@ func (h *Handler) principalFor(r *http.Request) (*principal, *apiError) {
 	if apiErr != nil {
 		return nil, apiErr
 	}
+	isAgent := grant.PrincipalType == "api_key" || grant.PrincipalType == "oauth_grant" || grant.AgentName != ""
+	// Whether a person has a passkey (the re-check), beside their scope.
+	hasPasskey := h.startHasPasskey(r, userID, isAgent)
 	scope, err := h.ledger.UserScope(r.Context(), userID)
 	if err != nil {
 		return nil, h.fromLedger(r, err)
@@ -82,10 +85,15 @@ func (h *Handler) principalFor(r *http.Request) (*principal, *apiError) {
 	}
 
 	p := &principal{scope: scope, via: via, impersonated: handler.GetImpersonatorID(r) != ""}
-	isAgent := grant.PrincipalType == "api_key" || grant.PrincipalType == "oauth_grant" || grant.AgentName != ""
 	if !isAgent {
 		p.actor = ledger.Actor{Kind: policy.ActorPerson, ID: userID, Credential: policy.CredentialSession}
 		if e := h.webSurface(r, userID, grant, p); e != nil {
+			if hasPasskey != nil {
+				<-hasPasskey
+			}
+			return nil, e
+		}
+		if e := h.passkeyFacts(r, userID, p, hasPasskey); e != nil {
 			return nil, e
 		}
 		return p, nil

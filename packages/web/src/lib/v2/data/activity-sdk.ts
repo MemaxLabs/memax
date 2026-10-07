@@ -63,6 +63,8 @@ export function receiptToEntry(
   const via: ViaPart[] = [];
   if (r.actor_kind === "repository") via.push({ kind: "repository" });
   else via.push({ kind: "via", via: r.via });
+  // A decision confirmed with the person's passkey says so (plan §5.15).
+  if (r.assurance === "human_web_verified") via.push({ kind: "passkey" });
   if (r.session_ref) via.push({ kind: "session", ref: r.session_ref });
   // The autonomy "source" is the level, said in the sentence instead; an
   // action of Dream's cites its edition ("edition 214").
@@ -84,6 +86,7 @@ export function receiptToEntry(
     },
     via,
     rawVia: r.via,
+    assurance: r.assurance ?? null,
     session: r.session_ref ?? null,
     source: r.source ?? null,
     reason: r.reason ?? null,

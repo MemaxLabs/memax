@@ -130,6 +130,15 @@ export const ledgerRecordsEn = {
       expired: "It expired, so {agent} stopped waiting.",
     },
     unreachable: "It didn't reach Memax, so nothing changed. Try again.",
+    // The passkey re-check (403 needs_passkey, passkey_invalid).
+    passkeyDeclined: "It needs your passkey, so nothing changed.",
+    passkeyExpired:
+      "The passkey check took too long, so nothing changed. Try again.",
+    passkeyNotVerified:
+      "Your passkey didn't verify you (a fingerprint, face or PIN). Try again and unlock it.",
+    passkeySignIn: "This session was signed out. Sign in again.",
+    passkeyInvalid:
+      "Your passkey's answer didn't verify, so nothing changed. Try again.",
     busy: "Another change is holding it. Try again in a moment.",
     busyJudge:
       "Memax is still checking it against the decision in force. Try again in a moment.",

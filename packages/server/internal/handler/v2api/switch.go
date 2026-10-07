@@ -180,7 +180,12 @@ func (h *Handler) previewForgetNote(w http.ResponseWriter, r *http.Request) {
 		writeError(w, e)
 		return
 	}
-	v, err := h.ledger.PreviewForgetNote(r.Context(), p.actor, p.via, p.scope, g.SpaceID, r.PathValue("note"))
+	actor, e := h.previewActor(r, p)
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	v, err := h.ledger.PreviewForgetNote(r.Context(), actor, p.via, p.scope, g.SpaceID, r.PathValue("note"))
 	if err != nil {
 		writeError(w, h.fromLedger(r, err))
 		return
@@ -231,7 +236,7 @@ func (h *Handler) forgetNote(w http.ResponseWriter, r *http.Request) {
 		writeError(w, h.fromLedger(r, err))
 		return
 	case res.Outcome == ledger.OutcomeRefused:
-		writeError(w, refusal(res.Policy))
+		h.writeRefusal(w, r, res.Policy)
 		return
 	}
 	if res.Replayed {

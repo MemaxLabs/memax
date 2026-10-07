@@ -1,3 +1,4 @@
+import type { AccountSource } from "./account";
 import type { ActivityData } from "./activity";
 import type { AgentsData } from "./agents";
 import type { BriefSource } from "./brief";
@@ -98,4 +99,6 @@ export interface LedgerDataSource extends ActivityData, AgentsData, UndoSource {
   readonly switch: SwitchSource;
   /** The person's notification settings and the Security page (settings.ts). */
   readonly settings: SettingsSource;
+  /** Settings › Account: the person, sign-in methods, passkeys, sessions (account.ts). */
+  readonly account: AccountSource;
 }

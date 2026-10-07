@@ -29,6 +29,7 @@ class FakeSessions {
   reuse = 0;
   userAgents: string[] = [];
   revokedWith: string[] = [];
+  spaceAuth: string[] = [];
   graceMs = 60_000;
 
   refresh(token: string): { status: number; body: unknown } {
@@ -92,6 +93,47 @@ const sessions: V2.Session[] = [
   },
 ];
 
+const PERSONAL = {
+  id: "0199b0f3-2c4e-7000-8000-0000000000aa",
+  tenant_id: "0199b0f3-2c4e-7000-8000-0000000000bb",
+  slug: "personal",
+  name: "Personal",
+  kind: "personal",
+  role: "owner",
+};
+
+/** The switch's answers: a V1 space, then switched. */
+function switchAnswer(
+  method: string,
+  url: string,
+  raw: string,
+): { status: number; body: unknown } {
+  const path = url.split("?")[0];
+  if (method === "GET" && path === "/v2/spaces") {
+    return { status: 200, body: { data: { items: [PERSONAL] } } };
+  }
+  if (method === "GET" && path === `/v2/spaces/${PERSONAL.id}/switch`) {
+    return {
+      status: 200,
+      body: { data: { space: PERSONAL, state: "v1", step: "space" } },
+    };
+  }
+  if (method === "POST" && path === `/v2/spaces/${PERSONAL.id}:switch`) {
+    const to = (JSON.parse(raw) as { to?: string }).to;
+    return {
+      status: 200,
+      body: {
+        data: {
+          space: { ...PERSONAL, v2_enabled_at: "2026-10-07T09:00:00Z" },
+          state: to === "v2" ? "switched" : "off",
+          step: "done",
+        },
+      },
+    };
+  }
+  return { status: 404, body: { error: { code: "not_found" } } };
+}
+
 let fake: FakeSessions;
 let server: Server;
 
@@ -117,6 +159,10 @@ beforeAll(async () => {
         out = { status: 200 };
       } else if (req.url === "/v2/sessions") {
         out = { status: 200, body: { data: { items: sessions } } };
+      } else if (req.url?.startsWith("/v2/spaces")) {
+        // memax switch: every call must carry the current access token.
+        fake.spaceAuth.push(String(req.headers.authorization ?? ""));
+        out = switchAnswer(req.method ?? "GET", req.url, raw);
       } else {
         out = { status: 404, body: { error: { code: "not_found" } } };
       }
@@ -208,6 +254,24 @@ describe("refresh-token rotation in the CLI", () => {
     const { getAuthHeaders } = await import("../../src/lib/client.js");
     expect(await getAuthHeaders()).toEqual({ Authorization: "Bearer stale" });
     expect(stored().refresh_token).toBe("r0");
+  });
+});
+
+describe("memax switch on rotated credentials", () => {
+  it("refreshes first, stores the next token, and switches with the new access token", async () => {
+    const { getClient } = await import("../../src/lib/client.js");
+    const { runSwitch } = await import("../../src/lib/switch/run.js");
+    const { daemonPaths } = await import("../../src/lib/daemon/paths.js");
+    const report = await runSwitch(
+      { space: "personal", yes: true },
+      { memax: getClient(), paths: daemonPaths(), cwd: home, confirm: null },
+    );
+    expect(report.outcome).toBe("switched");
+    expect(stored().refresh_token).toBe("r1");
+    // The list, the status and the switch all went with the rotated token.
+    expect(fake.spaceAuth.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(fake.spaceAuth)).toEqual(new Set(["Bearer a-r1"]));
+    expect(fake.reuse).toBe(0);
   });
 });
 

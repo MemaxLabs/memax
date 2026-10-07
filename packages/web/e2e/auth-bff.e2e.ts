@@ -209,6 +209,39 @@ test("the web session: cookies only the server reads, human_web Keeps, rotation,
     ),
   ).toBe("1");
 
+  // Switch to V2 (Today's Switch) on the rotated cookie session: a V1
+  // space of ZZ's switches through the proxy.
+  const v1Space = `acme-${Date.now()}`;
+  stack.query(
+    `WITH h AS (INSERT INTO hubs (name, slug, hub_type, owner_id, space_kind) VALUES ('${v1Space}', '${v1Space}', 'team', '${stack.zz}', 'team') RETURNING id)
+     INSERT INTO hub_members (hub_id, user_id, role) SELECT id, '${stack.zz}', 'owner' FROM h RETURNING hub_id`,
+  );
+  const switched = await page.evaluate(async (slug) => {
+    const r = await fetch(`/api/proxy/v2/spaces/${slug}:switch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": crypto.randomUUID(),
+      },
+      body: JSON.stringify({
+        to: "v2",
+        kind: "project",
+        repository: "acme/web",
+      }),
+    });
+    return {
+      status: r.status,
+      body: (await r.json()) as { data?: { state: string } },
+    };
+  }, v1Space);
+  expect(switched.status).toBe(200);
+  expect(switched.body.data?.state).toBe("switched");
+  expect(
+    stack.query(
+      `SELECT v2_enabled_at IS NOT NULL FROM hubs WHERE slug = '${v1Space}'`,
+    ),
+  ).toBe("t");
+
   // CSRF: a request with the cookies that didn't come from our pages (no
   // Origin, no Sec-Fetch-Site) is refused, and so is a form another site
   // submits (Strict cookies don't go, and Sec-Fetch-Site says cross-site).

@@ -215,6 +215,69 @@ func TestSessionsListAndSignOut(t *testing.T) {
 		fails(http.StatusConflict, "invalid_transition")
 }
 
+// TestSwitchOnRotatedSessions: Switch to V2 (`memax switch`, and the web
+// app's Today) works on sessions whose refresh tokens rotate. The CLI's
+// token after a refresh switches one V1 space; the web app's, signed in
+// through the exchange, refreshed and sent through the proxy, the other.
+func TestSwitchOnRotatedSessions(t *testing.T) {
+	t.Parallel()
+	e := newSessionsEnv(t)
+	zz := e.user("zz")
+	fromCLI := e.space(zz, policy.SpacePersonal, "cli-switch")
+	fromWeb := e.space(zz, policy.SpaceProject, "web-switch")
+
+	// The CLI: signed in, then refreshed (rotated), as the daemon does.
+	_, cli := e.signIn(zz, sessions.KindCLI, "memax CLI")
+	cliAccess := e.v1RefreshPair(cli.RefreshToken)
+	var st struct {
+		State string `json:"state"`
+	}
+	e.do(call{method: "POST", path: "/v2/spaces/" + fromCLI.slug + ":switch", token: cliAccess}).ok(http.StatusOK, &st)
+	if st.State != "switched" {
+		t.Errorf("the CLI's switch: %+v", st)
+	}
+
+	// The web app: its session from the exchange, refreshed by the BFF,
+	// and the proxy's signature.
+	code := uuid.NewString()
+	e.exec(`INSERT INTO auth_codes (code, user_id, expires_at, surface) VALUES ($1, $2, now() + interval '1 minute', 'web')`, code, zz)
+	body, _ := json.Marshal(map[string]string{"code": code})
+	rec := httptest.NewRecorder()
+	e.authH.ExchangeCode(rec, httptest.NewRequest(http.MethodPost, "/v1/auth/exchange", strings.NewReader(string(body))))
+	var signedIn struct {
+		Data model.TokenPair `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &signedIn); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("exchange: %d %s", rec.Code, rec.Body.String())
+	}
+	webAccess := e.v1RefreshPair(signedIn.Data.RefreshToken)
+	e.do(call{method: "POST", path: "/v2/spaces/" + fromWeb.slug + ":switch", token: webAccess,
+		body: map[string]any{"kind": "project", "repository": "acme/web"}, sign: webSigned(zz, tamper{})}).ok(http.StatusOK, &st)
+	if st.State != "switched" {
+		t.Errorf("the web app's switch: %+v", st)
+	}
+	if n := e.count(`SELECT count(*) FROM hubs WHERE id IN ($1, $2) AND v2_enabled_at IS NOT NULL`, fromCLI.id, fromWeb.id); n != 2 {
+		t.Errorf("%d of 2 spaces switched", n)
+	}
+}
+
+// v1RefreshPair refreshes through /v1/auth/refresh and returns the new
+// access token, checking the refresh token rotated.
+func (e *sessionsEnv) v1RefreshPair(token string) string {
+	e.t.Helper()
+	body, _ := json.Marshal(map[string]string{"refresh_token": token})
+	rec := httptest.NewRecorder()
+	e.authH.Refresh(rec, httptest.NewRequest(http.MethodPost, "/v1/auth/refresh", strings.NewReader(string(body))))
+	var env struct {
+		Data model.TokenPair `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil || rec.Code != http.StatusOK ||
+		env.Data.RefreshToken == "" || env.Data.RefreshToken == token {
+		e.t.Fatalf("refresh: %d %s", rec.Code, rec.Body.String())
+	}
+	return env.Data.AccessToken
+}
+
 // v1Refresh is /v1/auth/refresh on the env's store.
 func (e *sessionsEnv) v1Refresh(token string) (int, string) {
 	e.t.Helper()

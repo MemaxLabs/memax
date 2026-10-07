@@ -3,12 +3,13 @@
 // recall ≥ 0.75).
 //
 //	go test ./eval/judge/ -v                      # the set, stage 0, the harness on a fake model, the candidate sets (fake embedder)
-//	JUDGE_EVAL_LIVE=1 go test ./eval/judge/ -v    # also the real model tiers (needs ANTHROPIC_API_KEY)
+//	JUDGE_EVAL_LIVE=1 go test ./eval/judge/ -run Live -v    # also the real model tiers (needs ANTHROPIC_API_KEY); see live_test.go
 //	V2_EVAL_LIVE=1 go test ./eval/judge/ -run Candidates -v   # candidates and floors on voyage-4 (needs VOYAGE_API_KEY)
 //
 // The live run reads the same JUDGE_* configuration as the worker
 // (judge.ConfigFromEnv) and scores each pair's relation, plus the outcome
-// the judge would act on for decisions in force (flag or not).
+// the judge would act on for decisions in force (flag or not). Results and
+// how they were run are in RESULTS.md.
 package judgeeval
 
 import (
@@ -23,7 +24,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	"github.com/MemaxLabs/memax/packages/server/internal/judge"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/textsig"
@@ -57,7 +57,13 @@ var classes = []ledger.Relation{ledger.RelationDuplicate, ledger.RelationUpdates
 
 func load(t *testing.T) []pair {
 	t.Helper()
-	raw, err := os.ReadFile("pairs.json")
+	return loadSet(t, "pairs.json")
+}
+
+// loadSet reads a set of labelled pairs (pairs.json, or holdout.json).
+func loadSet(t *testing.T, name string) []pair {
+	t.Helper()
+	raw, err := os.ReadFile(name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +75,7 @@ func load(t *testing.T) []pair {
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&f); err != nil {
-		t.Fatalf("pairs.json: %v", err)
+		t.Fatalf("%s: %v", name, err)
 	}
 	return f.Pairs
 }
@@ -87,6 +93,46 @@ func TestPairsAreWellFormed(t *testing.T) {
 	if len(pairs) < 120 {
 		t.Errorf("%d pairs; the set needs at least 120", len(pairs))
 	}
+	byClass, traps := checkPairs(t, pairs)
+	for _, c := range classes {
+		if byClass[c] < 15 {
+			t.Errorf("%s: %d pairs, want at least 15", c, byClass[c])
+		}
+	}
+	for trap, least := range map[string]int{"number": 8, "date": 2, "qualifier": 4, "negation": 8, "reversal": 12, "paraphrase": 8, "verbatim": 10} {
+		if traps[trap] < least {
+			t.Errorf("trap %s: %d pairs, want at least %d", trap, traps[trap], least)
+		}
+	}
+	t.Logf("%d pairs: %v; traps %v", len(pairs), byClass, traps)
+}
+
+// The held-out set follows the same rules, and shares no id or statement
+// with pairs.json, so a prompt tuned on one can be checked on the other.
+func TestHoldoutIsWellFormed(t *testing.T) {
+	t.Parallel()
+	hold := loadSet(t, "holdout.json")
+	byClass, _ := checkPairs(t, hold)
+	for _, c := range classes {
+		if byClass[c] < 5 {
+			t.Errorf("%s: %d held-out pairs, want at least 5", c, byClass[c])
+		}
+	}
+	seen := map[string]bool{}
+	for _, p := range load(t) {
+		seen[p.ID], seen[p.Proposal.Statement], seen[p.Candidate.Statement] = true, true, true
+	}
+	for _, p := range hold {
+		if seen[p.ID] || seen[p.Proposal.Statement] {
+			t.Errorf("%s: its id or proposal is in pairs.json", p.ID)
+		}
+	}
+}
+
+// checkPairs checks each pair against the labelling rules and counts the
+// classes and traps.
+func checkPairs(t *testing.T, pairs []pair) (map[ledger.Relation]int, map[string]int) {
+	t.Helper()
 	ids := map[string]bool{}
 	byClass := map[ledger.Relation]int{}
 	traps := map[string]int{}
@@ -118,17 +164,7 @@ func TestPairsAreWellFormed(t *testing.T) {
 			}
 		}
 	}
-	for _, c := range classes {
-		if byClass[c] < 15 {
-			t.Errorf("%s: %d pairs, want at least 15", c, byClass[c])
-		}
-	}
-	for trap, least := range map[string]int{"number": 8, "date": 2, "qualifier": 4, "negation": 8, "reversal": 12, "paraphrase": 8, "verbatim": 10} {
-		if traps[trap] < least {
-			t.Errorf("trap %s: %d pairs, want at least %d", trap, traps[trap], least)
-		}
-	}
-	t.Logf("%d pairs: %v; traps %v", len(pairs), byClass, traps)
+	return byClass, traps
 }
 
 // Stage 0 as the judge runs it: the exact hash, then LSH candidates
@@ -225,10 +261,22 @@ type outcome struct {
 	relation ledger.Relation
 	flagged  bool
 	err      error
+	// What the live report needs: the pair's verdict as the judge would act
+	// on it, which tier gave it, and how long the whole verdict took.
+	confidence  float64
+	explicit    bool
+	tier        string
+	unconfirmed bool
+	decided     ledger.VerdictOutcome
+	escalation  string // the classification's error (escalation_failed)
+	calls       map[string]int
+	took        time.Duration
 }
 
-// classifyAll runs the classifier over every pair, a few at a time.
-func classifyAll(t *testing.T, c *judge.Classifier, pairs []pair, parallel int) []outcome {
+// classifyAll runs the classifier over every pair, a few at a time, and
+// decides each verdict at thresholds (judge.DefaultThresholds in the
+// worker).
+func classifyAll(t *testing.T, c *judge.Classifier, pairs []pair, parallel int, thresholds judge.Thresholds) []outcome {
 	t.Helper()
 	out := make([]outcome, len(pairs))
 	sem := make(chan struct{}, parallel)
@@ -240,13 +288,17 @@ func classifyAll(t *testing.T, c *judge.Classifier, pairs []pair, parallel int) 
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			prop, cand := toJudge(p)
+			start := time.Now()
 			cls, err := c.Classify(context.Background(), prop, []judge.Candidate{cand})
-			o := outcome{pair: p, err: err, relation: ledger.RelationNone}
+			o := outcome{pair: p, err: err, relation: ledger.RelationNone, took: time.Since(start), calls: cls.Calls,
+				escalation: cls.Error}
 			if err == nil && len(cls.Pairs) == 1 {
-				o.relation = cls.Pairs[0].Relation
+				pr := cls.Pairs[0]
+				o.relation, o.confidence, o.explicit, o.tier, o.unconfirmed = pr.Relation, pr.Confidence, pr.ExplicitChange, pr.Tier, pr.Unconfirmed
 				d := judge.Decide(ledger.JudgeProposal, prop.Kind == "decision", prop.Statement, []judge.Candidate{cand},
-					cls.Pairs, judge.DefaultThresholds)
+					cls.Pairs, thresholds)
 				o.flagged = d.Outcome == ledger.OutcomeFlagged
+				o.decided = d.Outcome
 			}
 			out[i] = o
 		}()
@@ -367,7 +419,7 @@ func TestHarnessOnAFakeModel(t *testing.T) {
 		}
 		byStatement[strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(p.Proposal.Statement)] = p
 	}
-	outs := classifyAll(t, judge.NewClassifier(oracle{byStatement}, fakeTiers()), pairs, 8)
+	outs := classifyAll(t, judge.NewClassifier(oracle{byStatement}, fakeTiers()), pairs, 8, judge.DefaultThresholds)
 	per, flag := report(t, "fake model", outs)
 	for _, c := range classes {
 		if s := per[c]; s.precision() != 1 || s.recall() != 1 {
@@ -403,31 +455,5 @@ func TestScore(t *testing.T) {
 	}
 	if flag.tp != 2 || flag.fp != 1 || flag.fn != 1 {
 		t.Errorf("flag = %+v", flag)
-	}
-}
-
-// The real model tiers (JUDGE_EVAL_LIVE=1, ANTHROPIC_API_KEY): contradicts
-// precision ≥ 0.90 and recall ≥ 0.75.
-func TestLiveModel(t *testing.T) {
-	if os.Getenv("JUDGE_EVAL_LIVE") != "1" {
-		t.Skip("set JUDGE_EVAL_LIVE=1 (with ANTHROPIC_API_KEY, and ANTHROPIC_BASE_URL for OpenRouter) to score the real model")
-	}
-	client := anthropic.NewFromEnv()
-	if client == nil {
-		t.Fatal("JUDGE_EVAL_LIVE=1 needs ANTHROPIC_API_KEY")
-	}
-	cfg := judge.ConfigFromEnv(os.LookupEnv)
-	c := judge.NewClassifier(judge.NewAnthropicModel(client, cfg.ZeroDataRetention), cfg)
-	if c == nil {
-		t.Fatal("JUDGE_MODEL is off")
-	}
-	start := time.Now()
-	outs := classifyAll(t, c, load(t), 4)
-	t.Logf("tiers: primary %s, fallback %s, strong %s; %s", cfg.Primary.Model, cfg.Fallback.Model, cfg.Strong.Model, time.Since(start).Round(time.Second))
-	per, _ := report(t, "live model", outs)
-	con := per[ledger.RelationContradicts]
-	if con.precision() < minContradictsPrecision || con.recall() < minContradictsRecall {
-		t.Errorf("contradicts: precision %.2f (bar %.2f), recall %.2f (bar %.2f)", con.precision(), minContradictsPrecision,
-			con.recall(), minContradictsRecall)
 	}
 }

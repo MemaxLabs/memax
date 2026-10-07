@@ -7,12 +7,16 @@
 //
 //	go test ./eval/ask/ -v                                              # a deterministic fake model (CI)
 //	ASK_EVAL_LIVE=1 ANTHROPIC_API_KEY=… ANTHROPIC_BASE_URL=… go test ./eval/ask/ -v   # also the real answer tier (ASK_MODEL)
+//	ASK_EVAL_LIVE=1 V2_EVAL_LIVE=1 … VOYAGE_API_KEY=… go test ./eval/ask/ -v          # and again on hybrid search
 //
 // The fake model answers like a careful one: it cites the memories that
 // share a content word with the question, and says NOT_COVERED when none
 // does, but it also invents two citations every time ([M-9999], [N-0882])
 // so the citation filter is exercised. Its numbers check the pipeline,
-// not answer quality; the live run is the gate for the answer tier.
+// not answer quality; the live run is the gate for the answer tier. It
+// streams through eval/livemeter, which checks each answer's routing (zero
+// retention) and reports cost and the gateway's first token. Results are in
+// RESULTS.md.
 package askeval
 
 import (
@@ -24,18 +28,19 @@ import (
 	"os"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/MemaxLabs/memax/packages/server/eval/livemeter"
 	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	"github.com/MemaxLabs/memax/packages/server/internal/ask"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 )
 
@@ -160,9 +165,10 @@ type outcome struct {
 }
 
 type mode struct {
-	name  string
-	model ask.Model
-	cfg   ask.Config
+	name   string
+	model  ask.Model
+	cfg    ask.Config
+	search *v2recall.Searcher
 }
 
 func TestAskEval(t *testing.T) {
@@ -223,19 +229,54 @@ func TestAskEval(t *testing.T) {
 	}
 	grant, _ := scope.Grant(spaces["mine"])
 
-	modes := []mode{{"fake (overlap)", overlapModel{}, ask.Config{Model: "fake/overlap", Log: quiet}}}
+	lexical := v2recall.New(l)
+	modes := []mode{{"fake (overlap)", overlapModel{}, ask.Config{Model: "fake/overlap", Log: quiet}, lexical}}
 	live := os.Getenv("ASK_EVAL_LIVE") == "1"
+	var meter *livemeter.Meter
 	if live {
-		client := anthropic.NewFromEnv()
-		if client == nil {
+		key := os.Getenv("ANTHROPIC_API_KEY")
+		if key == "" {
 			t.Fatal("ASK_EVAL_LIVE=1 needs ANTHROPIC_API_KEY (and ANTHROPIC_BASE_URL for OpenRouter)")
 		}
+		base := os.Getenv("ANTHROPIC_BASE_URL")
+		if base == "" {
+			base = anthropic.DefaultBaseURL
+		}
+		// The meter sits between the shared client and the gateway: it sees
+		// each stream's routing, provider, cost and first token, and changes
+		// nothing.
+		if meter, err = livemeter.Start(base); err != nil {
+			t.Fatal(err)
+		}
+		defer meter.Close()
+		client := anthropic.New(key, meter.URL())
 		cfg := ask.ConfigFromEnv(os.LookupEnv)
 		if cfg.Model == "" {
 			t.Fatal("ASK_EVAL_LIVE=1 needs an ASK_MODEL other than off")
 		}
 		cfg.Log = quiet
-		modes = append(modes, mode{"live " + cfg.Model, ask.NewAnthropicModel(client, cfg.ZeroDataRetention), cfg})
+		model := ask.NewAnthropicModel(client, cfg.ZeroDataRetention)
+		modes = append(modes, mode{"live " + cfg.Model, model, cfg, lexical})
+		// With Voyage too, the search production Ask runs: hybrid, at the
+		// recall floor.
+		if vcfg := v2index.ConfigFromEnv(os.LookupEnv); os.Getenv("V2_EVAL_LIVE") == "1" && vcfg.Enabled() {
+			ix := v2index.New(l, vcfg.IndexEmbedder(), vcfg.IndexModel, 128, quiet)
+			for _, sp := range spaces {
+				for {
+					n, err := ix.Index(ctx, ledger.IndexArgs{SpaceID: sp})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if n == 0 {
+						break
+					}
+				}
+			}
+			vc := v2recall.VectorConfigFromEnv(os.LookupEnv, vcfg.IndexModel)
+			vc.Log = quiet
+			hybrid := v2recall.New(l).WithVectors(v2recall.NewVectors(l, vcfg.QueryEmbedder(), vcfg.IndexEmbedder(), vc))
+			modes = append(modes, mode{"live " + cfg.Model + ", hybrid search", model, cfg, hybrid})
+		}
 	}
 
 	type score struct {
@@ -248,7 +289,7 @@ func TestAskEval(t *testing.T) {
 	}
 	scores := map[string]*score{}
 	for _, m := range modes {
-		svc := ask.New(l, v2recall.New(l), m.model, m.cfg)
+		svc := ask.New(l, m.search, m.model, m.cfg)
 		s := &score{}
 		scores[m.name] = s
 		for _, q := range c.Questions {
@@ -307,21 +348,45 @@ func TestAskEval(t *testing.T) {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Ask over %d statements, %d questions\n", len(c.Memories), len(c.Questions))
-	fmt.Fprintf(&b, "%-34s %8s %8s %9s %8s %8s %8s %10s\n", "mode", "cited", "said so", "invalid", "leaked", "dropped", "failed", "1st tok p50")
+	fmt.Fprintf(&b, "%-40s %8s %8s %9s %8s %8s %8s %10s %10s\n", "mode", "cited", "said so", "invalid", "leaked", "dropped", "failed",
+		"1st tok p50", "p95")
 	for _, m := range modes {
 		s := scores[m.name]
-		p50 := "-"
+		p50, p95 := "-", "-"
 		if len(s.firstTokens) > 0 {
-			sort.Slice(s.firstTokens, func(i, j int) bool { return s.firstTokens[i] < s.firstTokens[j] })
-			p50 = s.firstTokens[len(s.firstTokens)/2].Round(time.Millisecond).String()
+			q := livemeter.QuantilesOf(s.firstTokens)
+			p50, p95 = q.P50.Round(time.Millisecond).String(), q.P95.Round(time.Millisecond).String()
 		}
-		fmt.Fprintf(&b, "%-34s %4d/%-3d %4d/%-3d %9d %8d %8d %8d %10s\n", m.name, s.cited, s.answerable, s.saidSo, s.uncovered,
-			s.invalid, s.leaked, s.dropped, s.failed, p50)
+		fmt.Fprintf(&b, "%-40s %4d/%-3d %4d/%-3d %9d %8d %8d %8d %10s %10s\n", m.name, s.cited, s.answerable, s.saidSo, s.uncovered,
+			s.invalid, s.leaked, s.dropped, s.failed, p50, p95)
 		if len(s.missed)+len(s.guessed)+len(s.leaks)+len(s.invalidQ) > 0 {
 			fmt.Fprintf(&b, "    missed %v; guessed %v; leaked %v; invalid %v\n", s.missed, s.guessed, s.leaks, s.invalidQ)
 		}
 	}
 	t.Log(b.String())
+	if meter != nil {
+		// Every answer streamed through a zero-retention endpoint of its
+		// model (plan 25 D14), and asked for one.
+		zdr, err := livemeter.ZDREndpoints(ctx)
+		if err != nil {
+			t.Logf("no ZDR list, so the routing check is skipped: %v", err)
+		}
+		calls := meter.Calls()
+		t.Log("gateway (first token here is the gateway's, before the server's own work):\n" + livemeter.Format(livemeter.Summarize(calls, zdr)))
+		for _, s := range livemeter.Summarize(calls, zdr) {
+			if s.ZDRAsked != s.Calls {
+				t.Errorf("%s: %d of %d streams didn't ask for zero retention", s.Model, s.Calls-s.ZDRAsked, s.Calls)
+			}
+			if len(s.NotZDR) > 0 {
+				t.Errorf("%s was served by providers that aren't zero-retention for it: %v", s.Model, s.NotZDR)
+			}
+		}
+		for _, cl := range calls {
+			if !cl.Stream {
+				t.Errorf("%s: an answer that didn't stream", cl.Model)
+			}
+		}
+	}
 
 	for _, m := range modes {
 		s := scores[m.name]
@@ -340,8 +405,8 @@ func TestAskEval(t *testing.T) {
 			// The answer tier's bars (plan §11: an answer the record can't
 			// support says so). Calibrate once the live run has a history.
 			bar = 0.75
-			if p50 := s.firstTokens; len(p50) > 0 && p50[len(p50)/2] > 1500*time.Millisecond {
-				t.Errorf("%s: first token p50 %v, over the 1.5 s budget", m.name, p50[len(p50)/2])
+			if q := livemeter.QuantilesOf(s.firstTokens); q.P50 > 1500*time.Millisecond {
+				t.Errorf("%s: first token p50 %v, over the 1.5 s budget", m.name, q.P50)
 			}
 		} else if s.dropped == 0 {
 			t.Errorf("%s: no citation was dropped; the fake invents two per answer", m.name)

@@ -41,7 +41,16 @@ type Thresholds struct {
 }
 
 // DefaultThresholds are the bars the eval set (eval/judge) is scored at.
-var DefaultThresholds = Thresholds{Duplicate: 0.9, Contradicts: 0.8, Supersede: 0.8, Updates: 0.7}
+//
+// Contradicts is 0.6, not the first guess of 0.8 (live eval, Oct 6, 2026,
+// eval/judge/RESULTS.md): every verdict on a decision in force is
+// confirmed by the strong tier, which across 5 pipeline runs (pairs.json
+// three times, holdout.json twice) flagged nothing that wasn't a conflict
+// at any confidence, but put 3 of the 28 planted conflicts at 0.55–0.72.
+// At 0.8 the judge flagged 25 of 28; at 0.6, 27–28. The bar assumes the
+// strong tier is on; without it the primary's false flags came at 0.8 or
+// more, so the bar doesn't guard them either way.
+var DefaultThresholds = Thresholds{Duplicate: 0.9, Contradicts: 0.6, Supersede: 0.8, Updates: 0.7}
 
 // Config configures the judge.
 type Config struct {

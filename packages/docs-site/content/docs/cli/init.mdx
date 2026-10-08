@@ -35,7 +35,7 @@ memax init [--space <slug>] [--yes] [--no-personal] [--no-connect]
 | `--wait <seconds>` | How long to wait for the judge (default 20).                                                               |
 | `--timing`         | Show how long each step took, against its budget.                                                          |
 | `--format json`    | Print one JSON report instead of text. Implies no questions.                                               |
-| `--device`         | Sign in with a code you confirm at memax.app/device, from any browser. The default over SSH and where no browser can open. |
+| `--device`         | Sign in with a code you confirm at memax.app/device. The default; kept for scripts that pass it.            |
 
 ## What it does
 
@@ -68,11 +68,11 @@ memax init [--space <slug>] [--yes] [--no-personal] [--no-connect]
    commands (it never runs them) and every agent file in the repository and
    your home folder. Claude Code's auto memory is read only for this
    repository. Files over 256 KB are listed, not read.
-2. **Sign in.** In your browser, if the CLI isn't signed in yet. Where
-   no browser can open (over SSH, with no display), or with `--device`,
-   it shows a code to confirm at `memax.app/device` from any browser
-   instead. A new repository gets a new project space, named after its
-   remote.
+2. **Sign in.** If the CLI isn't signed in yet, it shows a code and opens
+   `memax.app/device`, where you confirm it signed in as you always are
+   (over SSH or with no display, open that page in any browser). The CLI
+   is then the same account as the browser. A new repository gets a new
+   project space, named after its remote.
 3. **Connect.** It asks once, naming the agents whose MCP settings don't
    point at Memax yet, then writes them (as `memax setup --mcp` does). Each
    agent it connects also gets its session-start hook, as

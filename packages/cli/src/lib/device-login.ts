@@ -1,14 +1,17 @@
-// Device-code sign-in (RFC 8628; plan 25 §5.15, §7.3 step 2): for a
-// machine where no browser can open, such as over SSH, in a container or
-// on a headless box. The CLI asks for a code, shows it with
-// memax.app/device, and polls until the person confirms it on the web
-// (CliAuth), declines it, or it runs out. The session it collects is the
-// CLI's own (surface cli), the same as `memax login` in a browser gives.
-import type {
-  AuthTokenPair,
-  DeviceSignIn,
-  DeviceSignInOptions,
-  DeviceSignInPoll,
+// Device-code sign-in (RFC 8628; plan 25 §5.15, §7.3 step 2), the way the
+// CLI signs in: it asks for a code, shows it with memax.app/device (and
+// opens that page where a browser can), and polls until the person
+// confirms it on the web (CliAuth), declines it, or it runs out. The web
+// app signs the person in however they do (GitHub, Google, an email code,
+// a passkey), so the CLI's session is the same account as the browser's;
+// a provider's own page (`memax login --provider`) can't say the same.
+// The session it collects is the CLI's own (surface cli).
+import {
+  MemaxError,
+  type AuthTokenPair,
+  type DeviceSignIn,
+  type DeviceSignInOptions,
+  type DeviceSignInPoll,
 } from "memax-sdk";
 
 /** What the flow needs from the SDK's public (signed-out) client. */
@@ -114,6 +117,17 @@ export function deviceLoginFailure(
     case "aborted":
       return "Sign-in stopped.";
   }
+}
+
+/**
+ * Whether starting a device sign-in failed because the server has no
+ * device grant (an API from before it answers 404), rather than refusing
+ * this sign-in.
+ */
+export function noDeviceGrant(err: unknown): boolean {
+  return (
+    err instanceof MemaxError && (err.status === 404 || err.status === 405)
+  );
 }
 
 export interface BrowserEnv {

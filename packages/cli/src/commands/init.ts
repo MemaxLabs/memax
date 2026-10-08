@@ -118,17 +118,18 @@ export function initDeps(o: InitOptions): InitDeps {
     hasCredentials: () => usesAPIKey() || !!loadCredentials()?.access_token,
     signIn: async () => {
       if (!interactive) return false;
-      // No browser here (SSH, no display) or --device: a code to confirm
-      // in any browser (plan 25 §7.3 step 2).
-      const device =
-        !!o.device ||
-        !canOpenBrowser({ platform: process.platform, env: process.env });
+      // A code confirmed on the web app, which opens here when a browser
+      // can (plan 25 §7.3 step 2): the CLI is the account the browser is.
+      const browser = canOpenBrowser({
+        platform: process.platform,
+        env: process.env,
+      });
       console.log("");
-      const question = device
-        ? "  Sign in to Memax with a code you confirm in a browser? [Y/n] "
-        : "  Sign in to Memax in your browser? [Y/n] ";
+      const question = browser
+        ? "  Sign in to Memax in your browser? [Y/n] "
+        : "  Sign in to Memax with a code you confirm in a browser? [Y/n] ";
       if (!(await confirmDefault(question))) return false;
-      return signIn({ device, space: o.space });
+      return signIn({ device: true, space: o.space });
     },
     hasMcp,
     writeMcp,
@@ -175,7 +176,7 @@ export function registerInitCommand(program: Command): void {
     .option("--format <format>", "Output format: text, json", "text")
     .option(
       "--device",
-      "Sign in with a code you confirm in any browser (the default over SSH and where no browser can open)",
+      "Sign in with a code you confirm in a browser signed in to Memax (the default)",
     )
     .action(async (opts: InitOptions) => {
       try {

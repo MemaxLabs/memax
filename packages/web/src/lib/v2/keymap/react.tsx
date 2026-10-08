@@ -4,6 +4,7 @@ import {
   createContext,
   use,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -106,7 +107,9 @@ export function useHotkey(
 ) {
   const scope = use(ScopeContext);
   const latest = useRef(handler);
-  useEffect(() => {
+  // At commit, not after it: a key that arrives once the DOM shows a
+  // render, before its passive effects run, gets that render's handler.
+  useLayoutEffect(() => {
     latest.current = handler;
   });
   useEffect(() => {

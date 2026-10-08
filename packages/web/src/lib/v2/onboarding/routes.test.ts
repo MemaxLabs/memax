@@ -13,6 +13,7 @@ import {
   safeNext,
   setupHref,
   signInHref,
+  skipSpace,
 } from "./routes";
 
 const NOW = new Date("2026-10-05T14:40:00-07:00");
@@ -91,6 +92,19 @@ describe("where a sign-in goes on, by the person's web UI", () => {
       kind: "v1",
       href: "/home",
     });
+  });
+});
+
+describe("skipping the first run before init has made a space", () => {
+  it("opens a space still on V1 the person owns, where they can switch it", () => {
+    const shared = space("acme", { kind: "team", role: "member", onV2: false });
+    const personal = space("personal", { kind: "personal", onV2: false });
+    expect(skipSpace([shared, personal])?.slug).toBe("personal");
+    expect(skipSpace([shared])?.slug).toBe("acme");
+  });
+
+  it("has nowhere to go for someone with no space at all", () => {
+    expect(skipSpace([])).toBeNull();
   });
 });
 

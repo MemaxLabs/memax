@@ -37,7 +37,7 @@ export const ledgerBriefEn = {
     compile: "Compile",
     compileLabel: "Compile every file now",
     noTargets:
-      "Nothing compiles yet. `npx memax-cli init` picks the files in your repository.",
+      "Nothing compiles yet. `{cli} init` picks the files in your repository.",
     readThisWeek: "Read this week",
     reads: "{n} reads",
     readsOne: "1 read",

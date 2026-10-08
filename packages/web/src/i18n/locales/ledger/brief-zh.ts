@@ -33,8 +33,7 @@ export const ledgerBriefZh: Translations["ledger"]["brief"] = {
     compiledTo: "编译到",
     compile: "编译",
     compileLabel: "现在编译所有文件",
-    noTargets:
-      "还没有要编译的文件。在仓库里运行 `npx memax-cli init`，它会选好文件。",
+    noTargets: "还没有要编译的文件。在仓库里运行 `{cli} init`，它会选好文件。",
     readThisWeek: "本周读取",
     reads: "{n} 次读取",
     readsOne: "1 次读取",

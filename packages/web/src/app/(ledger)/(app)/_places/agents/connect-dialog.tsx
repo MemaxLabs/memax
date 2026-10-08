@@ -14,6 +14,7 @@ import { interpolate, useLocale } from "@/i18n";
 import { isComposing } from "@/lib/v2/keymap/keymap";
 import { KeyScopeBoundary } from "@/lib/v2/keymap/react";
 import { isRaise, type AgentConnectionView } from "@/lib/v2/data/agents";
+import { cliCommand } from "@/lib/v2/cli";
 import { useSource, useSpaces } from "../../_lib/data";
 import { useSpaceView } from "../../_lib/space-context";
 import { useToast } from "../../_components/toasts";
@@ -124,7 +125,7 @@ function ConnectBody({
   // From the CLI an agent connects at most at the space's default; a
   // lower level is a flag, a higher one is raised here afterwards.
   const command = [
-    `npx memax-cli connect ${cliName(agent)}`,
+    cliCommand(`connect ${cliName(agent)}`),
     ...chosen.map((slug) => `--space ${slug}`),
     ...(isRaise(autonomy, start) ? [`--autonomy ${autonomy}`] : []),
   ].join(" ");

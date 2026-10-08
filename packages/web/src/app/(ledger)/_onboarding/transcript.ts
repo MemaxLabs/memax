@@ -17,6 +17,7 @@ import {
   type ImportView,
 } from "@/lib/v2/data/imports";
 import type { TargetView } from "@/lib/v2/data/targets";
+import { cliCommand } from "@/lib/v2/cli";
 
 type FirstRunCopy = Translations["ledger"]["onboarding"]["firstRun"];
 
@@ -90,7 +91,7 @@ export function firstRunLines(
   },
 ): TerminalLine[] {
   const t = copy.t;
-  const lines: TerminalLine[] = [{ kind: "cmd", text: "npx memax-cli init" }];
+  const lines: TerminalLine[] = [{ kind: "cmd", text: cliCommand("init") }];
   const { view } = input;
   if (!view || !input.space) {
     lines.push({ kind: "dim", text: t.waiting });

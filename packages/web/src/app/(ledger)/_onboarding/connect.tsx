@@ -20,6 +20,7 @@ import { agentsOfImport } from "@/lib/v2/data/imports";
 import type { SpaceSummary } from "@/lib/v2/data/types";
 import { useHotkey, useKeycap } from "@/lib/v2/keymap/react";
 import { setupHref } from "@/lib/v2/onboarding/routes";
+import { cliCommand } from "@/lib/v2/cli";
 import { AGENT_START, AGENT_WHERE } from "./transcript";
 import { useSpaceAgents } from "../(app)/_places/agents/queries";
 import { useUnavailable } from "../(app)/_places/agents/agent-row-control";
@@ -130,11 +131,9 @@ export function ConnectScreen() {
               {copy.primary}
             </Button>
             <CopyCommandButton
-              command={
-                space
-                  ? `npx memax-cli init --space ${space.slug}`
-                  : "npx memax-cli init"
-              }
+              command={cliCommand(
+                space ? `init --space ${space.slug}` : "init",
+              )}
               variant="quiet"
               size="lg"
             >
@@ -266,7 +265,7 @@ function AgentLine({
  * hook, its connection here and a first compile), with the command as code.
  */
 export function connectCommand(agent: string): string {
-  return `npx memax-cli connect ${agent}`;
+  return cliCommand(`connect ${agent}`);
 }
 
 function RunIt({ copy, agent }: { copy: Copy; agent: string }) {

@@ -26,6 +26,7 @@ import { IntentKeys } from "@/lib/v2/intent-keys";
 import { useHotkey, useKeycap } from "@/lib/v2/keymap/react";
 import { placeHref } from "@/lib/v2/places";
 import { setupHref } from "@/lib/v2/onboarding/routes";
+import { cliCommand } from "@/lib/v2/cli";
 import { EmptyState } from "../../_components/empty-state";
 import { StatementText } from "../../_components/statement-text";
 import { useToast } from "../../_components/toasts";
@@ -209,8 +210,8 @@ function ReviewImport({ view, data }: { view: RecordsView; data: ImportView }) {
   }, [picked, data, r, fromV1]);
 
   const client = data.summary.client?.startsWith("memax-cli")
-    ? "npx memax-cli init"
-    : (data.summary.client ?? "npx memax-cli init");
+    ? cliCommand("init")
+    : (data.summary.client ?? cliCommand("init"));
   const when = interpolate(l.app.time.on, {
     date: new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
       timeZone,

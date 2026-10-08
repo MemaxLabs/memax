@@ -15,7 +15,12 @@ import {
 } from "@/lib/v2/data/imports";
 import type { SpaceSummary } from "@/lib/v2/data/types";
 import { useHotkey, useKeycap } from "@/lib/v2/keymap/react";
-import { reviewImportHref, setupHref } from "@/lib/v2/onboarding/routes";
+import {
+  reviewImportHref,
+  setupHref,
+  skipSpace,
+} from "@/lib/v2/onboarding/routes";
+import { cliCommand } from "@/lib/v2/cli";
 import { AGENT_START, firstRunLines, type TranscriptAgent } from "./transcript";
 import { useViewer } from "../(app)/_lib/data";
 import { useLedger } from "@memaxlabs/ledger";
@@ -73,6 +78,9 @@ export function FirstRunScreen() {
   const { agents: registry } = useLedger();
   const setup = useSetupSpace({ poll: true });
   const space = setup.space ?? null;
+  // Before init has made a space, a space still on V1 (its Today is the
+  // switch to V2): the page never holds someone who'd rather look around.
+  const skipTo = space ?? skipSpace(setup.spaces);
   const { imports, view: viewQuery } = useSetupImport(space, { poll: true });
   const view = viewQuery.data ?? null;
   const { agents, chatgptPending } = useTranscriptAgents(space, view);
@@ -173,11 +181,9 @@ export function FirstRunScreen() {
           extra: (
             <>
               <CommandBox
-                command={
-                  space
-                    ? `npx memax-cli init --space ${space.slug}`
-                    : "npx memax-cli init"
-                }
+                command={cliCommand(
+                  space ? `init --space ${space.slug}` : "init",
+                )}
               />
               <span className="mx-meta">{copy.follow}</span>
             </>
@@ -240,11 +246,11 @@ export function FirstRunScreen() {
                 {primary.label}
               </Button>
             ) : null}
-            {space ? (
+            {skipTo ? (
               <Button
                 variant="quiet"
                 size="lg"
-                href={`/${encodeURIComponent(space.slug)}/today`}
+                href={`/${encodeURIComponent(skipTo.slug)}/today`}
               >
                 {copy.skip}
               </Button>

@@ -631,6 +631,23 @@ describe("FirstRun", () => {
       screen.queryByRole("link", { name: /See where they disagree/ }),
     ).toBeNull();
   });
+
+  it("lets someone leave before init has made a space, for one they can switch", async () => {
+    // Every space still on V1: nothing for init's import to land in yet.
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    const onV1 = (await demo.spaces()).map((s) => ({ ...s, onV2: false }));
+    h.source = {
+      ...demo,
+      peek: undefined,
+      spaces: async () => onV1,
+    } as LedgerDataSource;
+    at("/setup/import");
+    renderWith(<FirstRunScreen />);
+    // In the box to copy and on the terminal beside it.
+    expect(screen.getAllByText("npx memax-cli init")).toHaveLength(2);
+    const skip = await screen.findByRole("link", { name: "Skip for now" });
+    expect(skip.getAttribute("href")).toBe("/personal/today");
+  });
 });
 
 describe("Cleanup", () => {

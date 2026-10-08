@@ -215,7 +215,7 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
       title: "还没有连接 Agent。",
       detail:
         "在你的仓库里运行这条命令。它会找到 Claude Code、Codex、Cursor 等等。",
-      command: "npx memax-cli init --space {space}",
+      command: "{cli} init --space {space}",
       copy: "复制命令",
     },
     activity: {

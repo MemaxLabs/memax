@@ -3,7 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { AgentStamp, Button } from "@memaxlabs/ledger";
+import { interpolate } from "@/i18n";
 import { driftNotice } from "@/lib/v2/brief-copy";
+import { cliPrefix } from "@/lib/v2/cli";
 import { count } from "@/lib/v2/copy";
 import type { BriefView } from "@/lib/v2/data/brief";
 import type { TargetView } from "@/lib/v2/data/targets";
@@ -60,7 +62,9 @@ export function BriefSide({
             <TargetRow key={target.id} space={space.slug} target={target} />
           ))
         ) : (
-          <p className={styles.panelNote}>{s.noTargets}</p>
+          <p className={styles.panelNote}>
+            {interpolate(s.noTargets, { cli: cliPrefix() })}
+          </p>
         )}
         {drifted ? <DriftNotice view={view} target={drifted} /> : null}
       </section>

@@ -190,12 +190,19 @@ jobs:
           tgz=$(ls "$RUNNER_TEMP"/cli-pack/memax-cli-*.tgz)
           dir="$RUNNER_TEMP/cli-install"
           mkdir -p "$dir" && cd "$dir" && npm init -y >/dev/null
-          # The SDK it needs may be a minute old: give the registry time.
-          for i in 1 2 3 4 5 6; do
-            if npm install --no-audit --no-fund "$tgz"; then break; fi
-            if [ "$i" = 6 ]; then exit 1; fi
+          # The SDK it needs may have been published minutes ago, and npm
+          # processes a new version before serving it (4.5 min on Oct 8):
+          # wait up to 15 minutes for that exact version, then install.
+          want=$(tar -xOzf "$tgz" package/package.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).dependencies["memax-sdk"]))')
+          for i in $(seq 1 45); do
+            if npm view "memax-sdk@$want" version >/dev/null 2>&1; then break; fi
+            if [ "$i" = 45 ]; then
+              echo "::error::memax-sdk@$want isn't on npm after 15 minutes"
+              exit 1
+            fi
             sleep 20
           done
+          npm install --no-audit --no-fund "$tgz"
           sdk=$(node -p "require('./node_modules/memax-sdk/package.json').version")
           got=$(./node_modules/.bin/memax --version)
           echo "memax $got with memax-sdk $sdk"

@@ -181,7 +181,10 @@ jobs:
         run: |
           set -euo pipefail
           SECRETS_FILE="$RUNNER_TEMP/worker-secrets.json"
-          message="$(git rev-parse --short=12 HEAD) (run ${GITHUB_RUN_ID})"
+          # One word: opennextjs-cloudflare passes it to wrangler through a
+          # shell unquoted, where "(" was a syntax error and a space would
+          # split it into arguments.
+          message="$(git rev-parse --short=12 HEAD)-run-${GITHUB_RUN_ID}"
           case "$WORKER" in
             web)
               pnpm --filter @memaxlabs/web run deploy:cf --env "$TARGET_ENV" --secrets-file "$SECRETS_FILE" --message "$message"

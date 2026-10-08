@@ -45,18 +45,26 @@ func TestSealOrdersReceiptsAcrossAPowerOfTen(t *testing.T) {
 	}
 	f.exec(`ALTER TABLE v2.receipts ENABLE TRIGGER receipts_stamp`)
 
-	deadline := time.Now().Add(time.Minute)
+	// The watermark is the cluster's oldest running transaction, which
+	// another package's test may hold below these for a while: wait, as
+	// the export tests do, until all four are sealed.
+	deadline := time.Now().Add(90 * time.Second)
 	for {
-		res, err := f.l.SealSpace(ctx, sp, nil, 2)
-		if err != nil {
+		if _, err := f.l.SealSpace(ctx, sp, nil, 2); err != nil {
 			t.Fatal(err)
 		}
-		if !res.More && res.Sealed == 0 {
+		var sealed int64
+		if err := f.pool.QueryRow(ctx, `SELECT COALESCE(max(position), 0) FROM v2.receipt_chain_heads WHERE space_id = $1`, sp).
+			Scan(&sealed); err != nil {
+			t.Fatal(err)
+		}
+		if sealed >= 4 {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("sealing never caught up")
+			t.Fatalf("sealed %d of 4 within 90 s", sealed)
 		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	rows, err := f.pool.Query(ctx, `SELECT first_receipt_id, last_receipt_id, position_from, position_to FROM v2.receipt_checkpoints
 	                                 WHERE space_id = $1 ORDER BY number`, sp)

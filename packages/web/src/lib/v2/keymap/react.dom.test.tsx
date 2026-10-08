@@ -6,7 +6,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   KeymapProvider,
@@ -41,6 +41,33 @@ describe("the keymap in React", () => {
     fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
     expect(second).toHaveBeenCalledOnce();
     expect(first).toHaveBeenCalledOnce();
+  });
+
+  it("calls the latest handler for a key pressed as a render commits", () => {
+    // A key can arrive after the DOM shows a render but before its passive
+    // effects run (a person typing fast, a test acting on what it sees);
+    // the layout effect below presses it at that moment.
+    const seen: string[] = [];
+    function Phase({ phase }: { phase: string }) {
+      useHotkey("help.keys", () => void seen.push(phase));
+      return null;
+    }
+    function PressOn({ phase }: { phase: string }) {
+      useLayoutEffect(() => {
+        if (phase === "two")
+          fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+      }, [phase]);
+      return null;
+    }
+    const tree = (phase: string) => (
+      <KeymapProvider>
+        <Phase phase={phase} />
+        <PressOn phase={phase} />
+      </KeymapProvider>
+    );
+    const { rerender } = render(tree("one"));
+    rerender(tree("two"));
+    expect(seen).toEqual(["two"]);
   });
 
   it("stops listening when the component unmounts", () => {

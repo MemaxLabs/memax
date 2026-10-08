@@ -11,6 +11,7 @@ import {
   useLedger,
 } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
+import { cliPrefix } from "@/lib/v2/cli";
 import { agentsLede } from "@/lib/v2/copy";
 import type { AgentConnectionView } from "@/lib/v2/data/agents";
 import { EmptyState } from "../../_components/empty-state";
@@ -124,7 +125,12 @@ export function AgentsPlace() {
             <Terminal
               title={agentsCopy.terminal.title}
               lines={[
-                { kind: "cmd", text: agentsCopy.terminal.command },
+                {
+                  kind: "cmd",
+                  text: interpolate(agentsCopy.terminal.command, {
+                    cli: cliPrefix(),
+                  }),
+                },
                 { kind: "dim", text: agentsCopy.terminal.found },
                 { kind: "ok", text: agentsCopy.terminal.added },
                 {
@@ -186,7 +192,10 @@ export function TrustRules() {
 function NoAgents({ slug }: { slug: string }) {
   const { copy } = usePlace();
   const toast = useToast();
-  const command = interpolate(copy.empty.agents.command, { space: slug });
+  const command = interpolate(copy.empty.agents.command, {
+    cli: cliPrefix(),
+    space: slug,
+  });
   const copyCommand = async () => {
     try {
       await navigator.clipboard.writeText(command);

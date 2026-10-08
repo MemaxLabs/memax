@@ -33,7 +33,7 @@ export const ledgerAgentsEn = {
   // What `memax-cli connect` prints, as the board draws it.
   terminal: {
     title: "connect from your terminal",
-    command: "npx memax-cli connect opencode",
+    command: "{cli} connect opencode",
     found: "Found OpenCode 0.9 in ~/.config/opencode",
     added: "MCP server added · autonomy: propose",
     compiled: "AGENTS.md compiled from {space} · in sync",

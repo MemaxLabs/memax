@@ -74,7 +74,7 @@ export const ledgerTodayZh: Translations["ledger"]["today"] = {
       "在 {repository} 里运行这条命令。它会找到 Claude Code、Codex、Cursor 等。",
     connectDetailAnywhere:
       "在你的仓库里运行这条命令。它会找到 Claude Code、Codex、Cursor 等。",
-    command: "npx memax-cli init --space {space}",
+    command: "{cli} init --space {space}",
     copy: "复制命令",
     connectHere: "或者在这里连接",
     settle: "把它们的分歧定下来",
@@ -88,8 +88,7 @@ export const ledgerTodayZh: Translations["ledger"]["today"] = {
     conventionsLater: "暂时还不能从别的空间开始。",
     drop: "拖入 CLAUDE.md 或 AGENTS.md",
     dropMeta: "读成提议，不会一进来就保留",
-    dropLater:
-      "暂时还不能读拖进来的文件。`npx memax-cli init` 会从仓库里读取它们。",
+    dropLater: "暂时还不能读拖进来的文件。`{cli} init` 会从仓库里读取它们。",
     dreamTonight: "等有内容可读，Dream 今晚 {time} 就会运行。",
   },
   switch: {

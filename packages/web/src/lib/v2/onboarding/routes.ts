@@ -139,6 +139,18 @@ export function homeSpace(spaces: readonly SpaceSummary[]): SpaceSummary {
 }
 
 /**
+ * Where FirstRun's "Skip for now" goes before init has made a space: one
+ * still on V1 that the person owns, whose Today is the switch to V2, else
+ * any of theirs; null when they have none.
+ */
+export function skipSpace(
+  spaces: readonly SpaceSummary[],
+): SpaceSummary | null {
+  const onV1 = spaces.filter((s) => s.onV2 === false);
+  return onV1.find((s) => s.role === "owner") ?? onV1[0] ?? spaces[0] ?? null;
+}
+
+/**
  * Decides the landing from the spaces and the newest import of each (as
  * read: null when a space has none). Pure, so the rules are tested.
  */

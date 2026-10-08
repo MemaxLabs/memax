@@ -77,7 +77,7 @@ export const ledgerTodayEn = {
       "Run this in {repository}. It finds Claude Code, Codex, Cursor and the rest.",
     connectDetailAnywhere:
       "Run this in your repository. It finds Claude Code, Codex, Cursor and the rest.",
-    command: "npx memax-cli init --space {space}",
+    command: "{cli} init --space {space}",
     copy: "Copy the command",
     connectHere: "Or connect one here",
     settle: "Settle what they disagree on",
@@ -93,7 +93,7 @@ export const ledgerTodayEn = {
     drop: "Drop a CLAUDE.md or AGENTS.md",
     dropMeta: "Read as proposals, never kept on arrival",
     dropLater:
-      "Reading a dropped file isn't available yet. `npx memax-cli init` reads them from the repository.",
+      "Reading a dropped file isn't available yet. `{cli} init` reads them from the repository.",
     dreamTonight:
       "Dream runs tonight at {time} once there's something to read.",
   },

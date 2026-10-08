@@ -18,7 +18,8 @@
 #   web      build time: NEXT_PUBLIC_API_URL and NEXT_PUBLIC_APP_URL
 #                        (required for staging; production falls back to
 #                        api.memax.app and memax.app), NEXT_PUBLIC_DOCS_URL,
-#                        NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_POSTHOG_HOST
+#                        NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_POSTHOG_HOST,
+#                        NEXT_PUBLIC_CLI_TAG (alpha on staging)
 #            secret:     WEB_SURFACE_SECRET (the same value as the API's)
 #   docs     build time: NEXT_PUBLIC_DOCS_URL, NEXT_PUBLIC_APP_URL,
 #                        NEXT_PUBLIC_API_URL (all optional)
@@ -136,7 +137,7 @@ jobs:
           }
           case "$WORKER" in
             web)
-              public NEXT_PUBLIC_API_URL NEXT_PUBLIC_APP_URL NEXT_PUBLIC_DOCS_URL NEXT_PUBLIC_POSTHOG_KEY NEXT_PUBLIC_POSTHOG_HOST
+              public NEXT_PUBLIC_API_URL NEXT_PUBLIC_APP_URL NEXT_PUBLIC_DOCS_URL NEXT_PUBLIC_POSTHOG_KEY NEXT_PUBLIC_POSTHOG_HOST NEXT_PUBLIC_CLI_TAG
               if [ "$TARGET_ENV" = staging ]; then
                 # Without them a staging build would talk to production.
                 for name in NEXT_PUBLIC_API_URL NEXT_PUBLIC_APP_URL; do

@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Icon, PageHeader } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
+import { cliPrefix } from "@/lib/v2/cli";
 import { setupHref } from "@/lib/v2/onboarding/routes";
 import { placeHref } from "@/lib/v2/places";
 import { useImports } from "../../../_onboarding/queries";
@@ -46,7 +47,8 @@ export function EmptySpace({
   const agents = overview?.agents?.connected ?? 0;
   // The step to do now: connect, then settle, then keep and compile.
   const now = agents === 0 ? 1 : overview?.waiting ? 2 : 3;
-  const command = interpolate(e.command, { space: space.slug });
+  const cli = cliPrefix();
+  const command = interpolate(e.command, { cli, space: space.slug });
   const where = space.repository ?? space.name;
   const other = spaces.find((s) => s.id !== space.id && s.kind !== "personal");
 
@@ -175,7 +177,7 @@ export function EmptySpace({
               <div
                 className={styles.drop}
                 aria-disabled="true"
-                title={e.dropLater}
+                title={interpolate(e.dropLater, { cli })}
               >
                 <span className={styles.dropIcon}>
                   <Icon name="file" />

@@ -238,7 +238,7 @@ export const ledgerAppEn = {
       title: "No agents are connected.",
       detail:
         "Run this in your repository. It finds Claude Code, Codex, Cursor and the rest.",
-      command: "npx memax-cli init --space {space}",
+      command: "{cli} init --space {space}",
       copy: "Copy the command",
     },
     activity: {

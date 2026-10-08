@@ -11,7 +11,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { V2 } from "memax-sdk";
 import { harness, until, type Harness } from "../daemon/harness.js";
 import { header } from "./fixture.js";
-import { installHookRoutes, type HookState } from "./fake-hook.js";
+import { gateFixture, installHookRoutes, type HookState } from "./fake-hook.js";
 
 const cli = join(import.meta.dirname, "..", "..");
 // Its own build, so it never races the daemon's process test over dist/.
@@ -45,6 +45,13 @@ beforeEach(async () => {
   st = installHookRoutes(h.fake);
   space = h.fake.addSpace("acme-web");
   h.link(space);
+  // The server has the gate the cache below holds, so a daemon that
+  // refreshes the cache before the hook reads it keeps it (without it, a
+  // refresh emptied the gates and the first session had nothing to say).
+  const expires = new Date(Date.now() + 86_400_000);
+  st.gates.set(space.id, [
+    gateFixture(space, "G-0012", "Fly.io or Railway?", expires),
+  ]);
   events = join(h.home, "events.log");
   writeFileSync(
     join(h.repo, "AGENTS.md"),
@@ -67,7 +74,7 @@ beforeEach(async () => {
               question: "Fly.io or Railway?",
               agent: "codex",
               asked_at: new Date().toISOString(),
-              expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+              expires_at: expires.toISOString(),
             },
           ],
         },
@@ -172,22 +179,6 @@ describe("memax hook session-start, as a process", () => {
     const d = h.daemon();
     await d.start();
     fakeDaemonPid(); // the daemon here runs in the test's process
-    // The daemon writes the warm cache after it starts; a hook that runs
-    // first has nothing to say (CI, Oct 8).
-    await until(
-      () => {
-        try {
-          return (
-            JSON.parse(readFileSync(h.paths.warm, "utf8")).spaces[space.id]
-              ?.targets !== undefined
-          );
-        } catch {
-          return false;
-        }
-      },
-      5_000,
-      "the daemon's warm cache",
-    );
     const r = await hook(startup());
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('<memax-context space="acme-web">');

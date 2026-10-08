@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/jackc/pgx/v5"
 	"io"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/compile"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
@@ -302,27 +303,59 @@ func TestQuietWindow(t *testing.T) {
 	if d := time.Since(start); d > 1500*time.Millisecond {
 		t.Errorf("quiet run took %v, want no more than the 1.5s cap", d)
 	}
-	// Under constant change, waits no longer than the cap.
+	// Under constant change, waits no longer than the cap. A change every
+	// 100 ms keeps the target from going quiet, unless a loaded machine
+	// takes a quiet window between two of them (CI, Oct 8: one took over
+	// 300 ms), when compiling before the cap is right. So each change is
+	// recorded, from the call (before its commit) to its return (after).
+	type change struct{ from, to time.Time }
+	var mu sync.Mutex
+	from := time.Now()
 	f.apply(&ledger.RequestCompile{Meta: f.meta(s.owner, policy.ViaWeb), Target: tg.ID})
+	changes := []change{{from, time.Now()}}
 	stop := make(chan struct{})
+	pumped := make(chan struct{})
 	go func() {
+		defer close(pumped)
 		for {
 			select {
 			case <-stop:
 				return
 			case <-time.After(100 * time.Millisecond):
-				_, _ = f.l.Apply(ctx, &ledger.RequestCompile{Meta: f.meta(s.owner, policy.ViaWeb), Target: tg.ID})
+				from := time.Now()
+				if _, err := f.l.Apply(ctx, &ledger.RequestCompile{Meta: f.meta(s.owner, policy.ViaWeb), Target: tg.ID}); err == nil {
+					mu.Lock()
+					changes = append(changes, change{from, time.Now()})
+					mu.Unlock()
+				}
 			}
 		}
 	}()
 	start = time.Now()
 	_, err := f.svc.Run(ctx, args, compile.RunOptions{})
+	end := time.Now()
 	close(stop)
+	<-pumped
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d := time.Since(start); d < 1400*time.Millisecond || d > 3*time.Second {
-		t.Errorf("busy run took %v, want about the 1.5s cap", d)
+	d := end.Sub(start)
+	if d > 3*time.Second {
+		t.Errorf("busy run took %v, want no more than about the 1.5s cap", d)
+	}
+	if d >= 1400*time.Millisecond {
+		return
+	}
+	// Before the cap, the run must follow a quiet window: two changes (or
+	// the last one and the run's end) at least 400 ms apart. Commits sit
+	// inside each call, so a gap between commits is at most from one
+	// call's start to the next one's return.
+	quiet := end.Sub(changes[len(changes)-1].from) >= 400*time.Millisecond
+	for i := 1; i < len(changes) && !quiet; i++ {
+		quiet = changes[i].to.Sub(changes[i-1].from) >= 400*time.Millisecond
+	}
+	if !quiet {
+		t.Errorf("busy run took %v with a change at least every 400ms, want about the 1.5s cap", d)
 	}
 }
 

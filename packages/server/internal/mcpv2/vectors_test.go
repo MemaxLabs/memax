@@ -63,16 +63,28 @@ func (e *env) index(emb embed.Embedder, sp space) {
 // retrievalMeta is a result's _meta["app.memax/retrieval"].
 func retrievalMeta(t *testing.T, res *mcp.CallToolResult) map[string]any {
 	t.Helper()
+	r, ok := retrievalOf(t, res)
+	if !ok {
+		b, _ := json.Marshal(res.Meta)
+		t.Fatalf("no %s in _meta %s", mcpv2.MetaRetrieval, b)
+	}
+	return r
+}
+
+// recallBudget is the server's deadline on a recall's V2 part (search has
+// twice it): the least a read that ran out of time took.
+const recallBudget = 250 * time.Millisecond
+
+// retrievalOf is res's retrieval, if it has one.
+func retrievalOf(t *testing.T, res *mcp.CallToolResult) (map[string]any, bool) {
+	t.Helper()
 	b, _ := json.Marshal(res.Meta)
 	var meta map[string]map[string]any
 	if err := json.Unmarshal(b, &meta); err != nil {
 		t.Fatalf("_meta %s: %v", b, err)
 	}
 	r, ok := meta[mcpv2.MetaRetrieval]
-	if !ok {
-		t.Fatalf("no %s in _meta %s", mcpv2.MetaRetrieval, b)
-	}
-	return r
+	return r, ok
 }
 
 // Recall and search find by meaning over MCP, say so (lexical_only false,
@@ -172,9 +184,16 @@ func TestHybridLatency(t *testing.T) {
 			took = append(took, d)
 			trips = max(trips, cnt.RoundTrips())
 			if wantVector != "" {
-				if r := retrievalMeta(t, res); r["vector"] != wantVector {
-					t.Fatalf("%s %s: vector %v, want %s", name, tool, r["vector"], wantVector)
+				if r, ok := retrievalOf(t, res); ok {
+					if r["vector"] != wantVector {
+						t.Fatalf("%s %s: vector %v, want %s", name, tool, r["vector"], wantVector)
+					}
+				} else if !partial(t, res) || d < recallBudget {
+					t.Fatalf("%s %s: no %s in _meta of an answer that didn't run out of time", name, tool, mcpv2.MetaRetrieval)
 				}
+				// Else the search ran out of the recall budget on a loaded
+				// machine and answered partial, without a retrieval: a slow
+				// call, which the p95 counts.
 			}
 			if got := cnt.RoundTrips(); got > budget {
 				t.Fatalf("%s %s: %d round trips to Postgres, budget %d\n%s", name, tool, got, budget, cnt)

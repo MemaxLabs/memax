@@ -172,6 +172,22 @@ describe("memax hook session-start, as a process", () => {
     const d = h.daemon();
     await d.start();
     fakeDaemonPid(); // the daemon here runs in the test's process
+    // The daemon writes the warm cache after it starts; a hook that runs
+    // first has nothing to say (CI, Oct 8).
+    await until(
+      () => {
+        try {
+          return (
+            JSON.parse(readFileSync(h.paths.warm, "utf8")).spaces[space.id]
+              ?.targets !== undefined
+          );
+        } catch {
+          return false;
+        }
+      },
+      5_000,
+      "the daemon's warm cache",
+    );
     const r = await hook(startup());
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('<memax-context space="acme-web">');

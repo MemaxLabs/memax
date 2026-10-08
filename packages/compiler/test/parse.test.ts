@@ -96,14 +96,33 @@ describe("parseBack: no change", () => {
     // Every cited line gone and as many new uncited ones: each gone line
     // looks for its words among the new lines. A scan per line took
     // seconds here (the compile service has a CPU budget per request).
-    const n = 15_000;
-    const lines = (f: (i: number) => string) =>
-      Array.from({ length: n }, (_, i) => f(i)).join("\n");
-    const last = lines((i) => `- Line ${i} keeps a statement. [M-${i + 1}]`);
-    const current = lines((i) => `- ${i} A new line someone wrote by hand.`);
-    const started = performance.now();
+    // A shared runner's load moves wall clock tenfold, so the test
+    // compares sizes: eight times the lines took about eight times as
+    // long here, and the scan per line fifty to eighty times.
+    const file = (n: number) => {
+      const lines = (f: (i: number) => string) =>
+        Array.from({ length: n }, (_, i) => f(i)).join("\n");
+      return {
+        last: lines((i) => `- Line ${i} keeps a statement. [M-${i + 1}]`),
+        current: lines((i) => `- ${i} A new line someone wrote by hand.`),
+      };
+    };
+    const fastest = (n: number) => {
+      const { last, current } = file(n);
+      let ms = Infinity;
+      for (let i = 0; i < 3; i++) {
+        const started = performance.now();
+        parseBack(last, current);
+        ms = Math.min(ms, performance.now() - started);
+      }
+      return ms;
+    };
+    fastest(1_000); // compiled before it's timed
+    const n = 16_000;
+    expect(fastest(n) / fastest(n / 8)).toBeLessThan(24);
+
+    const { last, current } = file(n);
     const { changes } = parseBack(last, current);
-    expect(performance.now() - started).toBeLessThan(2_000);
     expect(changes.filter((c) => c.kind === "new")).toHaveLength(n);
     expect(changes.filter((c) => c.kind === "remove")).toHaveLength(n);
     // A gone line whose words survive uncited takes the first such line.
@@ -115,7 +134,7 @@ describe("parseBack: no change", () => {
         (c) => c.kind === "new" && c.text === "Line 7 keeps a statement.",
       ),
     ).toEqual([expect.objectContaining({ line: n + 2 })]);
-  });
+  }, 60_000);
 });
 
 describe("parseBack: proposals", () => {

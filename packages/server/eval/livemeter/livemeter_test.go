@@ -84,7 +84,12 @@ func TestMeterRecordsMetadata(t *testing.T) {
 	resp = post(`{"model":"deepseek/deepseek-v4.1-flash","provider":{"zdr":true,"only":["refuse"]}}`)
 	resp.Body.Close()
 
+	// The meter records a call once its response has gone back, so the
+	// last one may land a moment after the client has read it.
 	calls := m.Calls()
+	for deadline := time.Now().Add(2 * time.Second); len(calls) < 3 && time.Now().Before(deadline); calls = m.Calls() {
+		time.Sleep(5 * time.Millisecond)
+	}
 	if len(calls) != 3 {
 		t.Fatalf("%d calls", len(calls))
 	}

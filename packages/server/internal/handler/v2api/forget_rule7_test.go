@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -119,7 +120,9 @@ func newForgetStack(t *testing.T) *forgetStack {
 		cancel()
 	})
 	mux := http.NewServeMux()
-	h := v2api.New(e.ledger, quiet, v2api.WithCompile(e.svc))
+	// Errors reach the test's output: a 500 here once failed only on CI,
+	// and the quiet logger kept its cause.
+	h := v2api.New(e.ledger, slog.New(slog.NewTextHandler(testWriter{t}, &slog.HandlerOptions{Level: slog.LevelError})), v2api.WithCompile(e.svc))
 	t.Cleanup(h.Wait)
 	h.Mount(mux, chain)
 	e.h, e.srv = h, spec.Handler(t, mux)
@@ -651,4 +654,13 @@ func TestV1AccountDataDeleteForgetsTheRecord(t *testing.T) {
 	if n := s.count(`SELECT count(*) FROM v2.tombstones WHERE object_kind = 'space'`); n != tombstones {
 		t.Errorf("repeating it forgot the spaces again (%d tombstones, was %d)", n, tombstones)
 	}
+}
+
+// testWriter sends a logger's lines to the test's log.
+type testWriter struct{ t *testing.T }
+
+func (w testWriter) Write(p []byte) (int, error) {
+	w.t.Helper()
+	w.t.Log(strings.TrimRight(string(p), "\n"))
+	return len(p), nil
 }

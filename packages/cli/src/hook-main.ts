@@ -38,8 +38,13 @@ flush reports the compile loads session-start queued (the daemon does
 this when it runs).
 `;
 
-/** How long to wait for the agent's stdin event before going without it. */
-const STDIN_WAIT_MS = 50;
+/**
+ * How long to wait for the agent's stdin event before going without it.
+ * MEMAX_HOOK_STDIN_WAIT_MS raises it for tests on a loaded machine, where
+ * the timer can fire before the read callback brings an event already
+ * written (CI, Oct 8); agents get the 50 ms the budget allows.
+ */
+const STDIN_WAIT_MS = Number(process.env.MEMAX_HOOK_STDIN_WAIT_MS) || 50;
 
 function flag(argv: string[], name: string): string | undefined {
   const i = argv.indexOf(name);

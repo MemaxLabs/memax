@@ -88,6 +88,10 @@ function env(): NodeJS.ProcessEnv {
     MEMAX_API_URL: h.fake.url,
     MEMAX_API_KEY: "test-token",
     MEMAX_TEST_EVENTS: events,
+    // These tests are about what prints and what opens, not the budget
+    // (measured on its own): a loaded CI runner can take more than 50 ms
+    // to read an event already written.
+    MEMAX_HOOK_STDIN_WAIT_MS: "2000",
     NODE_OPTIONS: `--import ${preload}`,
     XDG_CONFIG_HOME: "",
   };

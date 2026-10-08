@@ -159,10 +159,14 @@ func (l *Ledger) beginRole(ctx context.Context, role string, scope Scope, opts p
 	return tx, loginRole, nil
 }
 
+// sealReceiptSelect never names an output column txid: ORDER BY resolves a
+// bare name to an output column first, and a text txid sorts "10001" before
+// "9982", so the chain's order broke wherever a space's transaction ids
+// crossed a power of ten (CI found it, Oct 8).
 const sealReceiptSelect = `
 	SELECT id, seq, tenant_id, space_id, object_kind, object_id, object_ref, action, actor_kind, actor_id, agent, via,
 	       assurance, session_ref, source ->> 'kind', source ->> 'ref', reason, reason_salt, reason_sha256,
-	       occurred_at, recorded_at, stream_id, stream_version, txid::text
+	       occurred_at, recorded_at, stream_id, stream_version, txid::text AS txid_text
 	  FROM v2.receipts`
 
 func scanChainReceipt(row pgx.CollectableRow) (sealedReceipt, error) {

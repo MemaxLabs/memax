@@ -225,3 +225,45 @@ func TestSwitchToV2OverTheAPI(t *testing.T) {
 	e.do(call{method: "POST", path: "/v2/spaces/" + personal.slug + ":switch", token: tok,
 		body: map[string]any{"kind": "project"}}).fails(http.StatusConflict, "space_kind")
 }
+
+// V1 named every personal space after its owner: the slug is the owner's
+// user id, a uuid that isn't the space's id. /v2 finds the space by that
+// slug, as the web's links name it, and such a key never reaches a space
+// outside the caller's own.
+func TestAPersonalSpaceNamedForItsOwner(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	ctx := context.Background()
+	zz, ot := e.user("zz"), e.user("ot")
+	mine := e.space(zz, policy.SpacePersonal, "memory-hub")
+	e.exec(`UPDATE hubs SET slug = $1 WHERE id = $2`, zz.String(), mine.id)
+	theirs := e.space(ot, policy.SpacePersonal, "memory-hub")
+	e.exec(`UPDATE hubs SET slug = $1 WHERE id = $2`, ot.String(), theirs.id)
+	e.v1Note(mine, zz, "We use pnpm workspaces for every package.")
+	tok := e.session(zz)
+
+	var st switchOut
+	for _, key := range []string{zz.String(), mine.id.String()} {
+		e.do(call{method: "GET", path: "/v2/spaces/" + key + "/switch", token: tok}).ok(http.StatusOK, &st)
+		if st.State != "v1" || st.Space.ID != mine.id || st.Space.Slug != zz.String() {
+			t.Errorf("by %s: %+v", key, st)
+		}
+	}
+	// Another person's personal space isn't found by its slug or its id.
+	for _, key := range []string{ot.String(), theirs.id.String()} {
+		e.do(call{method: "GET", path: "/v2/spaces/" + key + "/switch", token: tok}).fails(http.StatusNotFound, "not_found")
+	}
+
+	// It switches by that slug, and its record reads by it.
+	base := "/v2/spaces/" + zz.String()
+	e.do(call{method: "POST", path: base + ":switch", token: tok}).ok(http.StatusAccepted, &st)
+	if _, err := e.ledger.RunSwitch(ctx, mine.id); err != nil {
+		t.Fatal(err)
+	}
+	e.do(call{method: "GET", path: base + "/switch", token: tok}).ok(http.StatusOK, &st)
+	if st.State != "switched" || st.Progress.Proposed != 1 {
+		t.Fatalf("switched = %+v", st)
+	}
+	e.do(call{method: "GET", path: base + "/review", token: tok}).ok(http.StatusOK, nil)
+	e.do(call{method: "GET", path: base + "/memories", token: tok}).ok(http.StatusOK, nil)
+}

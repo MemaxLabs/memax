@@ -23,15 +23,18 @@
   "env": {
     "staging": {
       "name": "memax-docs-staging",
-      // A deploy from CI replaces the DNS record that pointed at Vercel.
+      // Zone routes, as the web app's (packages/web/wrangler.jsonc).
       "routes": [
-        { "pattern": "staging-docs.memaxlabs.com", "custom_domain": true },
+        {
+          "pattern": "staging-docs.memaxlabs.com/*",
+          "zone_name": "memaxlabs.com",
+        },
       ],
       "workers_dev": false,
     },
     "production": {
       "name": "memax-docs-production",
-      "routes": [{ "pattern": "docs.memax.app", "custom_domain": true }],
+      "routes": [{ "pattern": "docs.memax.app/*", "zone_name": "memax.app" }],
       "workers_dev": false,
     },
   },

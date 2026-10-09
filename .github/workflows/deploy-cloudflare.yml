@@ -198,6 +198,67 @@ jobs:
               ;;
           esac
 
+      - name: Serve the hostnames from the Worker
+        # The routes in wrangler.jsonc send a hostname's requests to the
+        # Worker once Cloudflare proxies its DNS record. A record that
+        # pointed at Vercel is switched to proxied here, never removed, so no
+        # resolver caches a missing name; one still holding the old answer
+        # reaches Vercel's last build until it expires. Rollback: switch the
+        # record back to DNS only (and Vercel serves it again).
+        if: inputs.worker == 'web' || inputs.worker == 'docs'
+        run: |
+          set -euo pipefail
+          case "$WORKER/$TARGET_ENV" in
+            web/staging) hosts="staging-app.memaxlabs.com:memaxlabs.com" ;;
+            web/production) hosts="memax.app:memax.app www.memax.app:memax.app" ;;
+            docs/staging) hosts="staging-docs.memaxlabs.com:memaxlabs.com" ;;
+            docs/production) hosts="docs.memax.app:memax.app" ;;
+          esac
+          api=https://api.cloudflare.com/client/v4
+          auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json")
+          command -v dig > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils; }
+          for pair in $hosts; do
+            host="${pair%%:*}"
+            zone="${pair#*:}"
+            zone_id=$(curl -fsS "${auth[@]}" "$api/zones?name=$zone" | python3 -c 'import json, sys; print(json.load(sys.stdin)["result"][0]["id"])')
+            records=$(curl -fsS "${auth[@]}" "$api/zones/$zone_id/dns_records?name=$host" | python3 -c '
+          import json, sys
+          rs = [r for r in json.load(sys.stdin)["result"] if r["type"] in ("A", "AAAA", "CNAME")]
+          print(" ".join("%s:%s" % (r["id"], str(r["proxied"]).lower()) for r in rs))')
+            if [ -z "$records" ]; then
+              echo "::error::$host has no A, AAAA or CNAME record in $zone. Add one, proxied, so its route serves it."
+              exit 1
+            fi
+            for record in $records; do
+              if [ "${record#*:}" = true ]; then
+                echo "$host is proxied already"
+              else
+                curl -fsS -X PATCH "${auth[@]}" "$api/zones/$zone_id/dns_records/${record%%:*}" -d '{"proxied":true}' > /dev/null
+                echo "$host is proxied now, so its route serves it from the Worker"
+              fi
+            done
+            # Ask the zone's own nameserver, which answers with Cloudflare's
+            # addresses at once, then check the answer is the Worker's.
+            ns=$(dig +short NS "$zone" | head -n 1)
+            served=""
+            for _ in $(seq 1 12); do
+              ip=$(dig +short A "$host" "@$ns" | grep -E '^[0-9.]+$' | head -n 1 || true)
+              if [ -n "$ip" ]; then
+                headers=$(curl -sS -o /dev/null -D - --max-time 15 --resolve "$host:443:$ip" "https://$host/" || true)
+                if echo "$headers" | grep -qi '^cf-ray:' && ! echo "$headers" | grep -qi '^x-vercel-id:'; then
+                  served=1
+                  break
+                fi
+              fi
+              sleep 10
+            done
+            if [ -z "$served" ]; then
+              echo "::error::https://$host/ isn't answered by the Worker. Check the routes in wrangler.jsonc, or switch its record back to DNS only."
+              exit 1
+            fi
+            echo "https://$host/ is served by the Worker"
+          done
+
       - name: Check health
         if: inputs.worker == 'compile'
         # The compile service answers GET /health without the token. Its

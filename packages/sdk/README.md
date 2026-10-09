@@ -43,25 +43,22 @@ const memax = new Memax({
 });
 
 // Push a memory
-await memax.push({
-  content: "Our staging DB is pooled through PgBouncer in transaction mode.",
-  tags: ["ops", "db"],
-});
+await memax.push(
+  "Our staging DB is pooled through PgBouncer in transaction mode.",
+  { tags: ["ops", "db"] },
+);
 
 // Recall with natural language
-const { memories } = await memax.recall({
-  query: "pooling strategy",
-  limit: 10,
-});
+const { memories } = await memax.recall("pooling strategy", { limit: 10 });
 
 // Ask — grounded answer with citations
-const { answer, citations } = await memax.ask({
-  query: "What mode does PgBouncer run in for staging?",
-});
+const { answer, citations } = await memax.ask(
+  "What mode does PgBouncer run in for staging?",
+);
 
 console.log(answer);
 for (const c of citations) {
-  console.log(`  ↳ ${c.memoryId} — ${c.snippet}`);
+  console.log(`  ↳ [${c.index}] ${c.memory_id} — ${c.title}`);
 }
 ```
 
@@ -70,16 +67,16 @@ for (const c of citations) {
 - **`push`** — save content, files, URLs, structured data; idempotent on content hash
 - **`recall`** — vector + lexical hybrid search with optional reranking
 - **`ask`** — AI-synthesized answer from your memory, with citations
-- **`memories.*`** — list, get, update, delete; filter by hub, tags, date, source
-- **`hubs.*`** — create, list, transfer, update members, manage roles
-- **`invites.*`** — create hub invites, list outstanding, revoke
+- **`memories.*`** — list, get, update, delete; filter by hub, kind, topic, date
+- **`hubs.*`** — create, list, transfer, update members, manage roles and invites
+- **`invites.*`** — look up and accept a hub invite
 - **`topics.*`** — inspect auto-generated topic clusters over your memory base
 - **`events.subscribe()`** — live server-sent events: new memories, hub changes, dream completion
-- **`capture.*`** — start and append to a capture session for streaming ingest
-- **Typed errors** — `MemaxError` with `code`, `status`, `retryable` for clean client handling
+- **`v2.*`** — the `/v2` API: the V2 record, Review, receipts, compiled files, Ask, export (below)
+- **Typed errors** — `MemaxError` with `code`, `status` and getters such as `isRateLimited` for clean client handling
 - **Runtime-portable** — works wherever `fetch` works
 
-## V2 API (preview)
+## V2 API
 
 `memax.v2` talks to the `/v2` API, the V2 record: every change is a
 command with a receipt, agents propose and people keep. Its types are
@@ -124,15 +121,21 @@ const queue = await memax.v2.review.list("memax-v2"); // queue.total waiting
 const activity = await memax.v2.receipts.list("memax-v2", { limit: 50 });
 ```
 
+`memax.v2.ask` streams a cited answer as server-sent events, and
+`verifyExport` and `verifyReceiptChain` check an export and a space's
+receipt chain against its signed checkpoints, with no dependencies.
+
 The types are regenerated from `packages/server/openapi/v2.yaml` with
 `pnpm --filter memax-sdk gen:v2`; `pnpm lint` fails when they are stale.
 
 ## Authentication
 
-Get an API key at [memax.app → Settings → API Keys](https://memax.app/settings/api-keys). For browser / user-session auth (OAuth flow), pass a bearer token instead:
+Create an API key in Settings on [memax.app](https://memax.app). For browser / user-session auth (OAuth flow), pass the session's token through `auth` instead:
 
 ```ts
-const memax = new Memax({ bearerToken: session.accessToken });
+const memax = new Memax({
+  auth: async () => ({ Authorization: `Bearer ${session.accessToken}` }),
+});
 ```
 
 To target a non-default Memax API endpoint:
@@ -140,7 +143,7 @@ To target a non-default Memax API endpoint:
 ```ts
 const memax = new Memax({
   apiKey: "...",
-  baseUrl: "https://api.memax.app",
+  apiUrl: "https://api.memax.app",
 });
 ```
 
@@ -152,12 +155,12 @@ All failures throw `MemaxError`. The instance carries enough to drive retry and 
 import { Memax, MemaxError } from "memax-sdk";
 
 try {
-  await memax.recall({ query: "..." });
+  await memax.recall("...");
 } catch (err) {
   if (err instanceof MemaxError) {
-    if (err.retryable) {
-      // transient — back off and retry
-    } else if (err.status === 401) {
+    if (err.isRateLimited || err.isServerError || err.isNetwork) {
+      // transient — back off (err.retryAfterSeconds when the server says) and retry
+    } else if (err.isUnauthorized) {
       // auth issue — prompt re-login
     }
     console.error(err.code, err.message);
@@ -169,15 +172,14 @@ try {
 ## Live events
 
 ```ts
-const unsubscribe = memax.events.subscribe(
-  { types: ["memory.created", "hub.updated"] },
-  (event) => {
-    console.log(event.type, event.data);
+const stream = memax.events.subscribe({
+  onEvent: (event, data) => {
+    console.log(event, data);
   },
-);
+});
 
 // later
-unsubscribe();
+stream.abort();
 ```
 
 ## Links

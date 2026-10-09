@@ -72,6 +72,21 @@ var pathLimitOverrides = map[string]int{
 	"POST /v1/memories/batch-move":   15,
 }
 
+// v2ReadMultiplier sets a person's /v2 reads per minute (OpClassV2Read)
+// against their plan's light rate, which their /v2 writes keep: free 60 →
+// 600 reads, early access 120 → 1,200. Derived from the plan rather than
+// stored, so no plans column holds it.
+const v2ReadMultiplier = 10
+
+// v2ReadLimit is a person's /v2 reads per minute for a plan's light rate.
+// A light rate of 0 or less (no limit) stays as it is.
+func v2ReadLimit(lightRPM int) int {
+	if lightRPM <= 0 {
+		return lightRPM
+	}
+	return lightRPM * v2ReadMultiplier
+}
+
 // applyPathOverride returns min(defaultLimit, pathLimitOverrides[key])
 // when an override exists, else defaultLimit. method+path gets
 // normalized to "METHOD /normalized/path" before lookup so trailing
@@ -199,23 +214,18 @@ func resolveLimitWithHub(r *http.Request, userID, path string, opClass OpClass, 
 	} else if registry != nil && users != nil {
 		user, err := users.GetUser(userID)
 		if err != nil || user == nil {
-			return 60
+			// The defensive 60 rpm in every class (and /v2 reads' multiple of it).
+			limits = model.UserLimits{RateLimitRPM: 60, RateLimitHeavyRPM: 60, RateLimitLightRPM: 60}
+		} else {
+			// Prefer scoped personal_plan_id for limit resolution
+			planID := user.PersonalPlanID
+			if planID == "" {
+				planID = user.Plan
+			}
+			limits = registry.GetUserLimits(r.Context(), userID, planID)
 		}
-		// Prefer scoped personal_plan_id for limit resolution
-		planID := user.PersonalPlanID
-		if planID == "" {
-			planID = user.Plan
-		}
-		limits = registry.GetUserLimits(r.Context(), userID, planID)
 	} else {
-		switch opClass {
-		case OpClassHeavy:
-			return 10
-		case OpClassLight:
-			return 60
-		default:
-			return 120
-		}
+		limits = model.UserLimits{RateLimitRPM: 120, RateLimitHeavyRPM: 10, RateLimitLightRPM: 60}
 	}
 
 	switch opClass {
@@ -223,6 +233,8 @@ func resolveLimitWithHub(r *http.Request, userID, path string, opClass OpClass, 
 		return limits.RateLimitHeavyRPM
 	case OpClassLight:
 		return limits.RateLimitLightRPM
+	case OpClassV2Read:
+		return v2ReadLimit(limits.RateLimitLightRPM)
 	case OpClassMetadata:
 		return limits.RateLimitRPM
 	default:

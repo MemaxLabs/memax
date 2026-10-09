@@ -71,6 +71,8 @@ export function apiClient(
   return new Memax({
     apiUrl: API_URL,
     maxRetries: 0,
+    // The web server answers the browser at once; it never waits out a 429.
+    rateLimitRetries: 0,
     headers,
     auth: access
       ? async () => ({ Authorization: `Bearer ${access}` })

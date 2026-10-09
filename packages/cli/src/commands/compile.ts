@@ -279,6 +279,13 @@ export function renderCompile(
   return lines;
 }
 
+/** The line memax compile ends on when it stops on an error. */
+export function compileFailureMessage(err: unknown): string {
+  return err instanceof SpaceChoiceError
+    ? err.message
+    : apiFailureMessage(err, "memax compile");
+}
+
 function openOneShot(d: CompileDeps): Promise<OneShotDelivery | null> {
   return OneShotDelivery.open({
     paths: d.paths,
@@ -309,11 +316,7 @@ export function registerCompileCommand(program: Command): void {
           out: (l) => console.log(l),
         });
       } catch (err) {
-        console.error(
-          chalk.red(
-            `  ${err instanceof SpaceChoiceError ? err.message : apiFailureMessage(err)}`,
-          ),
-        );
+        console.error(chalk.red(`  ${compileFailureMessage(err)}`));
         process.exitCode = 1;
       }
     });

@@ -29,6 +29,7 @@ let publicInstance: Memax | null = null;
 const seenWarnings = new Set<string>();
 let scopedAgentID = "";
 let fetchImpl: typeof globalThis.fetch | undefined;
+let rateLimitRetries: number | undefined;
 
 /** Get the shared SDK client instance (lazily created) */
 export function getClient(): Memax {
@@ -39,6 +40,7 @@ export function getClient(): Memax {
       auth: cliAuthProvider,
       onWarning: printApiWarning,
       fetch: fetchImpl,
+      rateLimitRetries,
       headers: { "User-Agent": cliUserAgent() },
     });
   }
@@ -79,6 +81,16 @@ export function resetClient(): void {
  */
 export function setClientFetch(f: typeof globalThis.fetch): void {
   fetchImpl = f;
+  resetClient();
+}
+
+/**
+ * How many 429s the shared client waits out (the SDK's default unless set).
+ * The daemon sets 0: its feed backs off by the server's Retry-After itself,
+ * and each of its requests times out long before a 30 s wait would end.
+ */
+export function setClientRateLimitRetries(n: number): void {
+  rateLimitRetries = n;
   resetClient();
 }
 

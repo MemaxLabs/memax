@@ -85,8 +85,46 @@ beforeEach(async () => {
 afterEach(async () => {
   for (const c of children) if (c.exitCode === null) c.kill("SIGKILL");
   children.length = 0;
+  // A process a hook started (the detached flush) can still be writing
+  // under the home: wait for every process in the events file to end
+  // before the home goes, so its removal never races a write.
+  await processesGone(pidsInEvents(), 15_000);
   await h.cleanup();
 });
+
+/** Every process the preload recorded, but this one. */
+function pidsInEvents(): number[] {
+  let raw = "";
+  try {
+    raw = readFileSync(events, "utf8");
+  } catch {
+    return [];
+  }
+  const pids = new Set<number>();
+  for (const line of raw.split("\n")) {
+    const pid = Number(line.split(" ", 1)[0]);
+    if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) pids.add(pid);
+  }
+  return [...pids];
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Waits for the processes to end; any still running after `ms` is killed. */
+async function processesGone(pids: number[], ms: number): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (pids.some(alive) && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  for (const pid of pids.filter(alive)) process.kill(pid, "SIGKILL");
+}
 
 function env(): NodeJS.ProcessEnv {
   return {

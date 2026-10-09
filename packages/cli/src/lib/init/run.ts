@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import chalk from "chalk";
 import { MemaxError, type V2 } from "memax-sdk";
+import { apiFailureMessage } from "../../commands/v2-output.js";
 import { gitRoot } from "../project-context.js";
 import { connectAgents } from "./connect.js";
 import { findFiles } from "./files.js";
@@ -73,10 +74,13 @@ export async function runInit(o: InitOptions, d0: InitDeps): Promise<number> {
     return finish(await flow(o, d, report, begin, end));
   } catch (err) {
     end();
+    // Init is safe to run again, so a rate limit says to wait and do that.
     const msg =
-      err instanceof InitError || err instanceof MemaxError
-        ? err.message
-        : String(err);
+      err instanceof MemaxError && err.isRateLimited
+        ? apiFailureMessage(err, "memax init")
+        : err instanceof InitError || err instanceof MemaxError
+          ? err.message
+          : String(err);
     if (json) d0.out(JSON.stringify({ ...report, error: msg }, null, 2));
     else d.out(chalk.red(`  ${msg}`));
     return 1;

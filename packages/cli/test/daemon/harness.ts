@@ -78,7 +78,15 @@ export async function harness(): Promise<Harness> {
     async cleanup() {
       for (const d of daemons) await d.stop().catch(() => {});
       await fake.stop();
-      rmSync(base, { recursive: true, force: true });
+      // A process a test started (the hook's detached flush) may still be
+      // writing under ~/.memax: retry the removal instead of failing on
+      // ENOTEMPTY.
+      rmSync(base, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
     },
   };
 }

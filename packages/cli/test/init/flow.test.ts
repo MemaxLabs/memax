@@ -354,6 +354,36 @@ describe("memax init", () => {
     expect(bodies().length).toBe(1);
     expect(personal.v2_enabled_at).toBeUndefined();
   });
+
+  it("stops on a rate limit with what to do, and carries on when run again", async () => {
+    // The upload is refused with a 429 that the SDK can't wait out (it
+    // doesn't say when), after init made the space.
+    h.fake.fail(/\/imports$/, 429, "rate_limited");
+    const r = await init({ yes: true, personal: false });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain(
+      "Memax is limiting how fast this account sends requests. Wait a minute, then run memax init again: it carries on from where it stopped.",
+    );
+    expect(r.out).not.toContain("Injected.");
+    expect(imports().map((c) => c.status)).toEqual([429]);
+
+    const again = await init({ yes: true, personal: false, format: "json" });
+    expect(again.code).toBe(0);
+    const report = JSON.parse(again.out);
+    expect(report.error).toBeUndefined();
+    expect(report.space.created).toBe(false);
+    expect(report.imports.length).toBe(1);
+    expect(imports().length).toBe(2);
+  });
+
+  it("says so in --format json too", async () => {
+    h.fake.fail(/\/imports$/, 429, "rate_limited");
+    const r = await init({ yes: true, personal: false, format: "json" });
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out).error).toBe(
+      "Memax is limiting how fast this account sends requests. Wait a minute, then run memax init again: it carries on from where it stopped.",
+    );
+  });
 });
 
 // The session-start hook, as memax connect installs it, for each agent

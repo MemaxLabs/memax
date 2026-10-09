@@ -25,20 +25,22 @@ Memax is the shared memory layer for you and your AI agents. Push knowledge once
 
 ## Install
 
+Set a repository up with one command (see [Set up a repository](#set-up-a-repository)):
+
 ```bash
-npm install -g memax-cli
+npx memax-cli init
 ```
 
-Or run once without installing:
+To keep the `memax` command, which the daemon needs, install it globally:
 
 ```bash
-npx memax-cli recall "jwt session rotation policy"
+npm install -g memax-cli
 ```
 
 ## Quick start
 
 ```bash
-# One-time: log in via browser
+# One-time: sign in with a code you confirm in your browser
 memax login
 
 # Remember something
@@ -95,6 +97,13 @@ The daemon writes a file only when it is absent, already holds the run, or holds
 
 ## What it does
 
+- **`memax init`** — set a repository up: connect its agents, import what their files say, compile
+- **`memax connect <agent>`** — connect one agent here: MCP settings, session-start hook, a first compile
+- **`memax link` / `daemon` / `status` / `compile`** — the compiled files on your disk (above)
+- **`memax switch`** — move a space from V1 to the V2 record, and back with `--back`
+- **`memax forget`** — forget a memory everywhere: Memax, every compiled file and every agent
+- **`memax gate`** — answer the decisions agents are waiting on you for
+- **`memax export` / `verify-export`** — a space's whole record as Markdown, with its receipts, and a check of it
 - **`memax push`** — save a thought, file, URL, or piped stdin
 - **`memax recall`** — natural-language search across personal + team knowledge
 - **`memax ask`** — AI-synthesized answer grounded in your memory, with citations
@@ -102,11 +111,12 @@ The daemon writes a file only when it is absent, already holds the run, or holds
 - **`memax hub`** — create, invite, and switch between team hubs
 - **`memax topic`** — inspect auto-generated topic clusters
 - **`memax dreams`** — view the ingestion/organization pipeline status
-- **`memax agents sync`** — device-aware sync of agent configs and session artifacts
+- **`memax agents sync`** — device-aware sync of agent configs (spaces on V2 compile their files instead)
 - **`memax import <dir>`** — one-way ingest of a directory into memory
 - **`memax mcp serve`** — start a local MCP server for agent integration
 - **`memax setup`** — detect installed agents and wire up MCP + hooks
-- **`memax hook`** — Claude Code hook for automatic context injection
+- **`memax hook session-start`** — the hook agents run at session start (below)
+- **`memax login` / `logout` / `sessions`** — sign in, sign out, and see where you are signed in
 
 Run `memax --help` or `memax <command> --help` for the full surface.
 
@@ -114,8 +124,8 @@ Run `memax --help` or `memax <command> --help` for the full surface.
 
 Memax is built agent-first. Three integration paths:
 
-1. **MCP (recommended for IDE agents)** — `memax setup` writes the right MCP server entry for Claude Code, Cursor, Codex, or Windsurf. The agent can then call `memax_recall`, `memax_push`, `memax_ask`, and friends directly.
-2. **Claude Code hooks** — automatic context injection before each prompt (`memax hook`). Latency budget is under 500ms; context is injected as `<memax-context>` blocks.
+1. **MCP (recommended for IDE agents)** — `memax connect <agent>` (or `memax setup`, for every agent it finds) writes the right MCP server entry for Claude Code, Codex, Cursor, Gemini CLI, Copilot CLI, OpenCode or Windsurf. The agent can then call `memax_recall`, `memax_search`, `memax_push`, and friends directly.
+2. **Session-start hook** — `memax connect` installs `memax hook session-start` in Claude Code, Codex, Gemini CLI, Cursor and Copilot CLI. At the start of a session it prints a `<memax-context>` block with only what changed since that agent's last session in this repository, from local files, in under 100 ms. The Claude Code plugin brings the same hook.
 3. **Direct CLI piping** — works with any agent and in CI. `memax recall … | your-agent`.
 
 ## Configuration
@@ -123,7 +133,7 @@ Memax is built agent-first. Three integration paths:
 The CLI reads from `~/.memax/config.json` after first login. For CI and non-interactive use:
 
 ```bash
-export MEMAX_API_KEY="mk_live_..."   # from memax.app → Settings → API Keys
+export MEMAX_API_KEY="mxk_..."   # create one in Settings on memax.app
 export MEMAX_API_URL="https://api.memax.app"   # default
 ```
 

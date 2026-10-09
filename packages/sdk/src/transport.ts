@@ -15,6 +15,11 @@ import { MemaxError, parseRetryAfter } from "./errors.js";
 const DEFAULT_API_URL = "https://api.memax.app";
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_DELAY_MS = 1500;
+const DEFAULT_RATE_LIMIT_RETRIES = 2;
+/** The longest Retry-After a 429 may ask for and still be waited out. */
+const MAX_RATE_LIMIT_RETRY_AFTER_SECONDS = 30;
+/** The most one request waits out rate limits, in all. */
+const MAX_RATE_LIMIT_WAIT_MS = 60_000;
 
 /**
  * A value that can be serialized into a query string. Arrays produce
@@ -194,6 +199,21 @@ function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/**
+ * Whether a request can go again as it is: a read, or a command the server
+ * answers once per `Idempotency-Key` (a repeat replays the first answer).
+ */
+function safeToRepeat(
+  method: string,
+  headers: Record<string, string>,
+): boolean {
+  const m = method.toUpperCase();
+  if (m === "GET" || m === "HEAD") return true;
+  return Object.entries(headers).some(
+    ([name, value]) => name.toLowerCase() === "idempotency-key" && !!value,
+  );
+}
+
 function buildQueryString(query?: RequestOptions["query"]): string {
   if (!query) {
     return "";
@@ -260,6 +280,7 @@ export class ApiTransport {
   private readonly headers: Record<string, string>;
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
+  private readonly rateLimitRetries: number;
   private readonly onWarning?: (warning: string) => void;
   private readonly passkeyCheck?: PasskeyCheckHandler;
 
@@ -270,8 +291,37 @@ export class ApiTransport {
     this.headers = config.headers ?? {};
     this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+    this.rateLimitRetries =
+      config.rateLimitRetries ?? DEFAULT_RATE_LIMIT_RETRIES;
     this.onWarning = config.onWarning;
     this.passkeyCheck = config.passkeyCheck;
+  }
+
+  /**
+   * How long to wait before sending a rate-limited (429) request again, or
+   * undefined when it shouldn't go again: retries are off or used up, the
+   * request isn't safe to repeat, the 429 didn't say when (no Retry-After)
+   * or asked for more than 30 seconds, or waiting would take this request
+   * past 60 seconds of waiting in all.
+   */
+  private rateLimitWaitMs(
+    method: string,
+    headers: Record<string, string>,
+    retryAfter: string | null,
+    retried: number,
+    waitedMs: number,
+  ): number | undefined {
+    if (retried >= this.rateLimitRetries || !safeToRepeat(method, headers)) {
+      return undefined;
+    }
+    const seconds = parseRetryAfter(retryAfter);
+    if (seconds === undefined || seconds > MAX_RATE_LIMIT_RETRY_AFTER_SECONDS) {
+      return undefined;
+    }
+    // A Retry-After of 0 still waits a second: going again at once would
+    // meet the same limit.
+    const ms = Math.max(1, seconds) * 1000;
+    return waitedMs + ms <= MAX_RATE_LIMIT_WAIT_MS ? ms : undefined;
   }
 
   async request<T>(
@@ -285,6 +335,9 @@ export class ApiTransport {
     // The passkey re-check's answer, once the person has given it: the
     // same request goes again with it (see MemaxConfig.passkeyCheck).
     let passkeyAnswer: string | undefined;
+    // 429s waited out so far, and how long that took.
+    let rateLimited = 0;
+    let rateLimitWaitedMs = 0;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       // Bail before doing any work if the caller already cancelled.
       // Matters between not_ready retries — the inter-retry sleep can
@@ -352,6 +405,27 @@ export class ApiTransport {
       const warning = res.headers.get("X-Memax-Warning");
       if (warning) {
         this.onWarning?.(warning);
+      }
+      if (res.status === 429) {
+        // Rate limited, and told when to come back: a request that's safe
+        // to send again waits that long and goes again, with the same
+        // headers (so a command keeps its Idempotency-Key).
+        const wait = this.rateLimitWaitMs(
+          method,
+          headers,
+          res.headers.get("Retry-After"),
+          rateLimited,
+          rateLimitWaitedMs,
+        );
+        if (wait !== undefined) {
+          rateLimited++;
+          rateLimitWaitedMs += wait;
+          await sleepUnlessAborted(wait, options?.signal);
+          // Waiting out a rate limit has its own budget: it doesn't use
+          // up a not_ready retry.
+          attempt--;
+          continue;
+        }
       }
       if (!text && res.ok) {
         return undefined as T;

@@ -17,6 +17,7 @@ function client(response: Response) {
     apiKey: "mxk_test",
     fetch: fetchMock,
     maxRetries: 0,
+    rateLimitRetries: 0,
   });
   const call = (i = 0) => {
     const [url, init] = fetchMock.mock.calls[i] as unknown as [

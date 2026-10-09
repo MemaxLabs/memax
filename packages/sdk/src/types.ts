@@ -25,6 +25,16 @@ export interface MemaxConfig {
   maxRetries?: number;
   /** Delay between retry attempts in milliseconds */
   retryDelayMs?: number;
+  /**
+   * How many times a request refused with 429 goes again after waiting
+   * out its `Retry-After` (default 2; 0 turns it off). Only a 429 that asks
+   * for 30 seconds or less is waited out, only for a request that is safe
+   * to send again (GET, HEAD, or one with an `Idempotency-Key`, as every
+   * /v2 command has), and never more than 60 seconds in all; an abort ends
+   * the wait. Otherwise the call throws the `rate_limited` MemaxError, with
+   * `retryAfterSeconds`.
+   */
+  rateLimitRetries?: number;
   /** Optional hook for warning headers returned by the API transport. */
   onWarning?: (warning: string) => void;
   /**

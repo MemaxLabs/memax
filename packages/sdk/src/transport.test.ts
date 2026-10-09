@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemaxError } from "./errors.js";
 import { ApiTransport } from "./transport.js";
 
@@ -110,7 +110,11 @@ describe("ApiTransport", () => {
           headers: { "Retry-After": "5" },
         }),
     );
-    const transport = new ApiTransport({ fetch: fetchMock });
+    // Not waited out here (see "rate limits" below for that).
+    const transport = new ApiTransport({
+      fetch: fetchMock,
+      rateLimitRetries: 0,
+    });
     const err = (await transport
       .request("GET", "/v1/test")
       .catch((e: MemaxError) => e)) as MemaxError;
@@ -305,5 +309,221 @@ describe("ApiTransport", () => {
 
     const calledUrl = String(fetchMock.mock.calls[0]?.[0] ?? "");
     expect(calledUrl.startsWith("https://api.memax.app")).toBe(true);
+  });
+});
+
+describe("ApiTransport rate limits", () => {
+  // Only setTimeout is faked: the response body still reads on its own.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function rateLimited(retryAfter?: string): Response {
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: "rate_limited",
+          message: "Rate limit exceeded. Try again in 45 seconds.",
+        },
+      }),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          ...(retryAfter !== undefined ? { "Retry-After": retryAfter } : {}),
+        },
+      },
+    );
+  }
+
+  /** Lets the request run until it waits on its Retry-After. */
+  async function untilWaiting(): Promise<void> {
+    for (let i = 0; i < 100 && vi.getTimerCount() === 0; i++) {
+      await new Promise((r) => setImmediate(r));
+    }
+    expect(vi.getTimerCount()).toBe(1);
+  }
+
+  async function waitOut(ms: number): Promise<void> {
+    await untilWaiting();
+    await vi.advanceTimersByTimeAsync(ms);
+  }
+
+  it("waits out a 429 that says when, then sends a read again", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(rateLimited("2"))
+      .mockResolvedValueOnce(jsonResponse({ data: { ok: true } }));
+    const transport = new ApiTransport({ fetch: fetchMock });
+
+    const got = transport.request<{ ok: boolean }>("GET", "/v2/spaces");
+    await untilWaiting();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(got).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends a command again with the same Idempotency-Key and body", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(rateLimited("1"))
+      .mockResolvedValueOnce(jsonResponse({ data: { kept: 2 } }));
+    const transport = new ApiTransport({ fetch: fetchMock });
+
+    const got = transport.request("POST", "/v2/spaces/s/memories:keep", {
+      body: { refs: ["M-0001", "M-0002"] },
+      extraHeaders: { "Idempotency-Key": "init-k1" },
+    });
+    await waitOut(1000);
+
+    await expect(got).resolves.toEqual({ kept: 2 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [first, second] = fetchMock.mock.calls.map(
+      (c) => c[1] as RequestInit & { headers: Record<string, string> },
+    );
+    expect(second.headers["Idempotency-Key"]).toBe("init-k1");
+    expect(second.headers["Idempotency-Key"]).toBe(
+      first.headers["Idempotency-Key"],
+    );
+    expect(second.body).toBe(first.body);
+  });
+
+  it("never sends a write without an Idempotency-Key again", async () => {
+    const fetchMock = vi.fn(async () => rateLimited("1"));
+    const transport = new ApiTransport({ fetch: fetchMock });
+
+    const err = (await transport
+      .request("POST", "/v1/memories", { body: { content: "x" } })
+      .catch((e: MemaxError) => e)) as MemaxError;
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(err.isRateLimited).toBe(true);
+    expect(err.retryAfterSeconds).toBe(1);
+  });
+
+  it("goes again at most twice, then throws the rate_limited error with retryAfter", async () => {
+    const fetchMock = vi.fn(async () => rateLimited("1"));
+    const transport = new ApiTransport({ fetch: fetchMock });
+
+    const got = transport
+      .request("GET", "/v2/spaces/s/targets")
+      .catch((e: MemaxError) => e);
+    await waitOut(1000);
+    await waitOut(1000);
+    const err = (await got) as MemaxError;
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(err).toBeInstanceOf(MemaxError);
+    expect(err.status).toBe(429);
+    expect(err.code).toBe("rate_limited");
+    expect(err.retryAfterSeconds).toBe(1);
+  });
+
+  it("leaves a 429 that asks for more than 30 seconds, or doesn't say, to the caller", async () => {
+    for (const retryAfter of ["31", undefined, "soon"]) {
+      const fetchMock = vi.fn(async () => rateLimited(retryAfter));
+      const transport = new ApiTransport({ fetch: fetchMock });
+      const err = (await transport
+        .request("GET", "/v2/spaces")
+        .catch((e: MemaxError) => e)) as MemaxError;
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(err.isRateLimited).toBe(true);
+    }
+  });
+
+  it("waits a second when told to come back at once", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(rateLimited("0"))
+      .mockResolvedValueOnce(jsonResponse({ data: { ok: true } }));
+    const transport = new ApiTransport({ fetch: fetchMock });
+
+    const got = transport.request("HEAD", "/v2/spaces");
+    await untilWaiting();
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(got).resolves.toEqual({ ok: true });
+  });
+
+  it("never waits more than 60 seconds in all", async () => {
+    const fetchMock = vi.fn(async () => rateLimited("25"));
+    const transport = new ApiTransport({
+      fetch: fetchMock,
+      rateLimitRetries: 5,
+    });
+
+    const got = transport
+      .request("GET", "/v2/spaces")
+      .catch((e: MemaxError) => e);
+    await waitOut(25_000);
+    await waitOut(25_000);
+    // A third wait would take it to 75 seconds.
+    const err = (await got) as MemaxError;
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(err.retryAfterSeconds).toBe(25);
+  });
+
+  it("is off with rateLimitRetries: 0", async () => {
+    const fetchMock = vi.fn(async () => rateLimited("1"));
+    const transport = new ApiTransport({
+      fetch: fetchMock,
+      rateLimitRetries: 0,
+    });
+
+    const err = (await transport
+      .request("GET", "/v2/spaces")
+      .catch((e: MemaxError) => e)) as MemaxError;
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(err.retryAfterSeconds).toBe(1);
+  });
+
+  it("stops waiting when the signal aborts", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn(async () => rateLimited("20"));
+    const transport = new ApiTransport({ fetch: fetchMock });
+
+    const got = transport.request("GET", "/v2/spaces", {
+      signal: controller.signal,
+    });
+    await untilWaiting();
+    controller.abort();
+
+    await expect(got).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("doesn't use up a not_ready retry", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(rateLimited("1"))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { error: { code: "not_ready", message: "warming up" } },
+          { status: 503 },
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: { ok: true } }));
+    const transport = new ApiTransport({
+      fetch: fetchMock,
+      maxRetries: 1,
+      retryDelayMs: 10,
+    });
+
+    const got = transport.request("GET", "/v2/spaces");
+    await waitOut(1000);
+    await waitOut(10);
+
+    await expect(got).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

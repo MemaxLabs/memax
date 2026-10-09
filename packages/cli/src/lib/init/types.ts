@@ -62,10 +62,14 @@ export interface InitDeps {
   writeMcp: (agent: AgentEntry) => Promise<McpOutcome>;
   /** Starts the daemon; false when it couldn't. */
   startDaemon: () => Promise<boolean>;
-  /** Compiles every target and writes the files here (memax compile). */
+  /**
+   * Compiles every target and writes the files here (memax compile);
+   * pending waits for the compiles already asked for instead.
+   */
   compile: (
     space: string,
     timeoutSeconds: number,
+    opts?: { pending?: boolean },
   ) => Promise<CompileOutcome | null>;
   /** The web app's origin, for links ("" when unknown). */
   appUrl: string;

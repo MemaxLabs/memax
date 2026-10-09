@@ -87,24 +87,26 @@ export async function ensureTargets(
     return { targets, created: false, claudeOwned };
   }
   claudeOwned = await ownClaude();
-  for (const kind of DEFAULT_KINDS) {
-    try {
-      await d.memax.v2.targets.create(
-        space.id,
-        kind === "claude_md" && claudeOwned
-          ? {
-              kind,
-              settings: { user_owned: true },
-              reason: "CLAUDE.md already existed in the repository",
-            }
-          : { kind },
-        { idempotencyKey: `init-target:${space.id}:${kind}`, via: "cli" },
-      );
-    } catch (err) {
-      // A kind this server doesn't compile yet stays out; the rest go on.
-      if (!(err instanceof MemaxError) || err.status !== 400) throw err;
-    }
-  }
+  await Promise.all(
+    DEFAULT_KINDS.map(async (kind) => {
+      try {
+        await d.memax.v2.targets.create(
+          space.id,
+          kind === "claude_md" && claudeOwned
+            ? {
+                kind,
+                settings: { user_owned: true },
+                reason: "CLAUDE.md already existed in the repository",
+              }
+            : { kind },
+          { idempotencyKey: `init-target:${space.id}:${kind}`, via: "cli" },
+        );
+      } catch (err) {
+        // A kind this server doesn't compile yet stays out; the rest go on.
+        if (!(err instanceof MemaxError) || err.status !== 400) throw err;
+      }
+    }),
+  );
   targets = (await d.memax.v2.targets.list(space.id)).items;
   return { targets, created: true, claudeOwned };
 }

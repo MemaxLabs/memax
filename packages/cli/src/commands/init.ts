@@ -71,10 +71,11 @@ export async function writeMcp(agent: AgentEntry): Promise<McpOutcome> {
 export async function compileHere(
   space: string,
   timeout: number,
+  opts: { pending?: boolean } = {},
 ): Promise<CompileOutcome | null> {
   let json = "";
   await compile(
-    { space, format: "json", timeout: String(timeout) },
+    { space, format: "json", timeout: String(timeout), pending: opts.pending },
     {
       memax: getClient(),
       paths: daemonPaths(),

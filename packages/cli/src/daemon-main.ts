@@ -5,7 +5,11 @@
 // command set pulls in the MCP SDK and friends, about 30 MB of memory a
 // process that runs all day shouldn't carry. So no commander here: only
 // the daemon and the CLI's auth (lib/client.ts).
-import { getClient, setClientFetch } from "./lib/client.js";
+import {
+  getClient,
+  setClientFetch,
+  setClientRateLimitRetries,
+} from "./lib/client.js";
 import { lightFetch } from "./lib/daemon/http.js";
 import { getOrCreateDeviceID, loadConfig } from "./lib/config.js";
 import { sdkDaemonApi } from "./lib/daemon/api.js";
@@ -50,6 +54,7 @@ export async function runDaemon(argv: string[]): Promise<number> {
     mirror: process.stderr.isTTY ? process.stderr : undefined,
   });
   setClientFetch(lightFetch);
+  setClientRateLimitRetries(0);
   const daemon = new Daemon({
     paths,
     api: sdkDaemonApi(getClient()),

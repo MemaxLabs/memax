@@ -68,6 +68,9 @@ function createAuthedClient(): Memax {
     // The passkey re-check (lib/v2/passkeys/check.ts): a decision that
     // asks for the person's passkey is answered and sent again.
     passkeyCheck: answerPasskeyCheck,
+    // A page says a rate limit at once (Dream's Run now says when to try
+    // again) rather than wait it out with nothing on screen.
+    rateLimitRetries: 0,
   });
 }
 
@@ -76,7 +79,7 @@ function getBrowserSafeAPIURL(): string {
 }
 
 function createPublicClient(): Memax {
-  return new Memax({ apiUrl: getBrowserSafeAPIURL() });
+  return new Memax({ apiUrl: getBrowserSafeAPIURL(), rateLimitRetries: 0 });
 }
 
 export function getMemaxClient(): Memax {

@@ -206,9 +206,9 @@ func TestResolveLimitWithHubFallbackWhenAllResolversMissing(t *testing.T) {
 	t.Parallel()
 
 	// No resolver, no registry, no users — function should emit
-	// the per-opClass hardcoded defaults (10 heavy, 60 light, 120
-	// metadata) so a misconfiguration still produces SOME limit
-	// rather than 0 (which would deny every request).
+	// the per-opClass hardcoded defaults (10 heavy, 60 light, 600
+	// /v2 reads, 120 metadata) so a misconfiguration still produces
+	// SOME limit rather than 0 (which would deny every request).
 	req := httptest.NewRequest(http.MethodPost, "/v1/recall", nil)
 	for _, tc := range []struct {
 		op   OpClass
@@ -216,6 +216,7 @@ func TestResolveLimitWithHubFallbackWhenAllResolversMissing(t *testing.T) {
 	}{
 		{OpClassHeavy, 10},
 		{OpClassLight, 60},
+		{OpClassV2Read, 600},
 		{OpClassMetadata, 120},
 	} {
 		got := resolveLimitWithHub(req, "u1", "/v1/recall", tc.op, nil, nil, nil)
@@ -239,6 +240,121 @@ func TestResolveLimitWithHubRegistryPath(t *testing.T) {
 	if got := resolveLimitWithHub(req, "u1", "/v1/memories", OpClassLight, registry, users, nil); got != 33 {
 		t.Errorf("light class via registry: got %d, want 33", got)
 	}
+	if got := resolveLimitWithHub(req, "u1", "/v2/spaces", OpClassV2Read, registry, users, nil); got != 330 {
+		t.Errorf("v2 read class via registry: got %d, want 330", got)
+	}
+}
+
+func TestV2ReadLimitIsTenTimesThePlansLightRate(t *testing.T) {
+	t.Parallel()
+
+	users := &mockUsers{user: &model.User{ID: "u1", PersonalPlanID: "personal_free"}}
+	req := httptest.NewRequest(http.MethodGet, "/v2/spaces", nil)
+	for _, tc := range []struct {
+		plan             string
+		light            int
+		wantRead         int
+		wantLightUnmoved int
+	}{
+		{"free", 60, 600, 60},
+		{"early access", 120, 1200, 120},
+		{"team", 240, 2400, 240},
+		{"no limit (0)", 0, 0, 0},
+		{"no limit (-1)", -1, -1, -1},
+	} {
+		t.Run(tc.plan, func(t *testing.T) {
+			registry := &mockPlanLimits{limits: model.UserLimits{RateLimitRPM: tc.light, RateLimitHeavyRPM: 10, RateLimitLightRPM: tc.light}}
+			if got := resolveLimitWithHub(req, "u1", "/v2/spaces", OpClassV2Read, registry, users, nil); got != tc.wantRead {
+				t.Errorf("/v2 reads: got %d, want %d", got, tc.wantRead)
+			}
+			if got := resolveLimitWithHub(req, "u1", "/v2/spaces", OpClassLight, registry, users, nil); got != tc.wantLightUnmoved {
+				t.Errorf("/v2 writes: got %d, want the plan's light rate %d", got, tc.wantLightUnmoved)
+			}
+		})
+	}
+}
+
+func TestMiddlewareV2ReadsDontUseUpWrites(t *testing.T) {
+	t.Parallel()
+
+	_, l := setupMiddleware(t)
+	limits := &mockPlanLimits{limits: model.UserLimits{RateLimitRPM: 60, RateLimitHeavyRPM: 10, RateLimitLightRPM: 60}}
+	users := &mockUsers{user: &model.User{ID: "u1", PersonalPlanID: "personal_free"}}
+	h := l.Middleware(limits, users)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	do := func(method, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		req = handler.InjectUserIDForTest(req, "u1")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// A burst of reads as large as the whole light limit (the daemon
+	// polling, a page view, memax init's checks)...
+	for i := 0; i < 60; i++ {
+		rec := do(http.MethodGet, "/v2/spaces/memax-v2/targets")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("read %d: got %d, want 200", i+1, rec.Code)
+		}
+		if got := rec.Header().Get("X-RateLimit-Limit"); got != "600" {
+			t.Fatalf("read %d: X-RateLimit-Limit = %q, want 600 (10 × light)", i+1, got)
+		}
+	}
+	// ...still leaves every write the minute allows.
+	rec := do(http.MethodPost, "/v2/spaces/memax-v2/imports")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("write after 60 reads: got %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Get("X-RateLimit-Limit"); got != "60" {
+		t.Errorf("write: X-RateLimit-Limit = %q, want 60", got)
+	}
+	if got := rec.Header().Get("X-RateLimit-Remaining"); got != "59" {
+		t.Errorf("write: X-RateLimit-Remaining = %q, want 59 (reads used none)", got)
+	}
+
+	// And the other way: writes up to their limit leave reads alone.
+	for i := 1; i < 60; i++ {
+		if rec := do(http.MethodPatch, "/v2/memories/M-0219"); rec.Code != http.StatusOK {
+			t.Fatalf("write %d: got %d, want 200", i+1, rec.Code)
+		}
+	}
+	if rec := do(http.MethodPost, "/v2/spaces/memax-v2/imports"); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("write 61: got %d, want 429", rec.Code)
+	}
+	if rec := do(http.MethodGet, "/v2/spaces/memax-v2/targets"); rec.Code != http.StatusOK {
+		t.Fatalf("read after the writes ran out: got %d, want 200", rec.Code)
+	}
+}
+
+func TestMiddlewareV2ReadsHaveTheirOwnLimit(t *testing.T) {
+	t.Parallel()
+
+	_, l := setupMiddleware(t)
+	limits := &mockPlanLimits{limits: model.UserLimits{RateLimitRPM: 2, RateLimitHeavyRPM: 1, RateLimitLightRPM: 2}}
+	users := &mockUsers{user: &model.User{ID: "u1"}}
+	h := l.Middleware(limits, users)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	// Light 2 → 20 reads a minute, then 429 with Retry-After.
+	for i := 0; i < 21; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/v2/spaces", nil)
+		req = handler.InjectUserIDForTest(req, "u1")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if i < 20 && rec.Code != http.StatusOK {
+			t.Fatalf("read %d: got %d, want 200", i+1, rec.Code)
+		}
+		if i == 20 {
+			if rec.Code != http.StatusTooManyRequests {
+				t.Fatalf("read 21: got %d, want 429", rec.Code)
+			}
+			if rec.Header().Get("Retry-After") == "" {
+				t.Error("429 missing Retry-After")
+			}
+		}
+	}
 }
 
 func TestResolveLimitWithHubReturnsDefaultWhenUserMissing(t *testing.T) {
@@ -251,6 +367,12 @@ func TestResolveLimitWithHubReturnsDefaultWhenUserMissing(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/memories", nil)
 	if got := resolveLimitWithHub(req, "u1", "/v1/memories", OpClassLight, registry, users, nil); got != 60 {
 		t.Errorf("missing user: got %d, want 60 default", got)
+	}
+	if got := resolveLimitWithHub(req, "u1", "/v1/recall", OpClassHeavy, registry, users, nil); got != 60 {
+		t.Errorf("missing user, heavy: got %d, want 60 default", got)
+	}
+	if got := resolveLimitWithHub(req, "u1", "/v2/spaces", OpClassV2Read, registry, users, nil); got != 600 {
+		t.Errorf("missing user, v2 reads: got %d, want 600 (10 × the 60 default)", got)
 	}
 }
 

@@ -30,6 +30,19 @@ func TestClassifyRequest(t *testing.T) {
 		{"PATCH", "/v1/memories/abc", OpClassLight},
 		{"POST", "/v1/memories/batch-delete", OpClassLight},
 		{"POST", "/v1/memories/batch-move", OpClassLight},
+		// V2 writes stay light (Ask's POST is heavy, above)
+		{"POST", "/v2/spaces/memax-v2/imports", OpClassLight},
+		{"PATCH", "/v2/memories/M-0219", OpClassLight},
+		{"DELETE", "/v2/me/passkeys/abc", OpClassLight},
+		// V2 reads have their own class
+		{"GET", "/v2/spaces", OpClassV2Read},
+		{"GET", "/v2/spaces/memax-v2/targets", OpClassV2Read},
+		{"GET", "/v2/memories/M-0219/", OpClassV2Read},
+		{"HEAD", "/v2/spaces/memax-v2/targets", OpClassV2Read},
+		{"GET", "/v2/spaces/memax-v2/ask", OpClassV2Read},
+		// V1 is frozen: its reads stay light, and HEAD stays unmetered
+		{"GET", "/v1/memories/search", OpClassLight},
+		{"HEAD", "/v1/memories", OpClassNone},
 		// Metadata ops
 		{"GET", "/v1/hubs", OpClassMetadata},
 		{"GET", "/v1/hubs/abc", OpClassMetadata},
@@ -106,6 +119,7 @@ func TestApplyPathOverride(t *testing.T) {
 		{"override floors to plan when plan is tighter", "POST", "/v1/ask", 10, 10}, // plan wins when plan < override
 		{"override ignored for non-matching method", "GET", "/v1/ask", 120, 120},
 		{"v2 ask, any space", "POST", "/v2/spaces/memax-v2/ask", 120, 30},
+		{"v2 reads have no override", "GET", "/v2/spaces/memax-v2/ask", 600, 600},
 		{"batch-delete override applied", "POST", "/v1/memories/batch-delete", 120, 15},
 		{"zero default passes through", "POST", "/v1/ask", 0, 0},
 	}

@@ -69,6 +69,10 @@ Upgrading from 0.2.1, see "Changed" and "Removed".
 
 ### Changed
 
+- When Memax limits how fast an account sends requests, the CLI waits a
+  short limit out; `memax init` and `memax compile` say to wait a minute
+  and run the command again when it doesn't pass, and both carry on
+  from where they stopped.
 - `memax login` and `memax init` sign in with a code you confirm on the
   web (memax.app/device, opened when a browser can), so the CLI is the
   account the browser is signed in to, however you sign in there

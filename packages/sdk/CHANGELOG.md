@@ -27,6 +27,11 @@ read Breaking first.
 
 ### Added
 
+- A request refused with 429 waits out a `Retry-After` of 30 seconds or
+  less and goes again, when it is safe to send again (GET, HEAD, or one
+  with an `Idempotency-Key`, as every `/v2` command has): at most twice,
+  never more than 60 seconds in all, and an abort ends the wait.
+  `rateLimitRetries` sets how many times (default 2; 0 turns it off).
 - `memax.v2`, the `/v2` API. Its resources: `spaces` (list, create,
   export, and Switch to V2 and back), `memories` (Remember, Keep, Edit,
   Reject, Restore, bulk keep and reject, the near-duplicate check,

@@ -4,8 +4,13 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { V2 } from "memax-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { compile, type CompileDeps } from "../../src/commands/compile.js";
+import {
+  compile,
+  compileFailureMessage,
+  type CompileDeps,
+} from "../../src/commands/compile.js";
 import { buildStatus, renderStatus } from "../../src/commands/status.js";
+import { apiFailureMessage } from "../../src/commands/v2-output.js";
 import { writeMemaxYmlSpace } from "../../src/lib/project-context.js";
 import { OneShotDelivery } from "../../src/lib/daemon/oneshot.js";
 import { harness, type Harness } from "./harness.js";
@@ -333,5 +338,40 @@ describe("memax compile", () => {
     expect(plain(out)).toContain(
       "memax-v2 is still compiling. Check again with: memax status",
     );
+  });
+
+  it("goes on after a rate limit that says when (the SDK waits it out)", async () => {
+    const space = h.fake.addSpace("memax-v2");
+    const agents = h.fake.addTarget(space, "agents_md");
+    h.link(space);
+    h.fake.fail(/\/targets$/, 429, "rate_limited", 1, { "Retry-After": "1" });
+    const stop = worker({ [agents.id]: { "AGENTS.md": "# Brief\n" } });
+    const out: string[] = [];
+    try {
+      expect(await compile({}, deps(out))).toBe(0);
+    } finally {
+      stop();
+    }
+    expect(h.fake.calls("GET", /\/targets$/).map((c) => c.status)).toContain(
+      429,
+    );
+    expect(plain(out)).toContain("✓ memax-v2 is compiled into 1 file.");
+  });
+
+  it("says what to do when the rate limit lasts", async () => {
+    const space = h.fake.addSpace("memax-v2");
+    h.fake.addTarget(space, "agents_md");
+    h.link(space);
+    // No Retry-After: the SDK leaves it to the command.
+    h.fake.fail(/\/targets$/, 429, "rate_limited");
+    const err = await compile({}, deps([])).catch((e: unknown) => e);
+    expect((err as { status?: number }).status).toBe(429);
+    expect(compileFailureMessage(err)).toBe(
+      "Memax is limiting how fast this account sends requests. Wait a minute, then run memax compile again: it carries on from where it stopped.",
+    );
+    expect(h.fake.calls("POST", /:compile$/)).toHaveLength(0);
+    // A command that doesn't say it carries on keeps the server's words
+    // (memax export's own limit says when to export again).
+    expect(apiFailureMessage(err)).toBe("Injected.");
   });
 });

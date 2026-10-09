@@ -102,6 +102,7 @@ export class FakeV2 {
     status: number;
     code: string;
     times: number;
+    headers?: Record<string, string>;
   }> = [];
   url = "";
 
@@ -121,9 +122,15 @@ export class FakeV2 {
     return this.log.filter((l) => l.method === method && path.test(l.path));
   }
 
-  /** The next `times` requests matching `path` fail with `status`. */
-  fail(path: RegExp, status: number, code = "busy", times = 1): void {
-    this.faults.push({ match: path, status, code, times });
+  /** The next `times` requests matching `path` fail with `status` (and `headers`, such as Retry-After). */
+  fail(
+    path: RegExp,
+    status: number,
+    code = "busy",
+    times = 1,
+    headers?: Record<string, string>,
+  ): void {
+    this.faults.push({ match: path, status, code, times, headers });
   }
 
   addSpace(slug: string, name = slug): V2.Space {
@@ -370,7 +377,11 @@ export class FakeV2 {
     const fault = this.faults.find((f) => f.match.test(path) && f.times > 0);
     if (fault) {
       fault.times--;
-      return fail(fault.status, fault.code, "Injected.");
+      return send(
+        fault.status,
+        { error: { code: fault.code, message: "Injected." } },
+        fault.headers,
+      );
     }
     const key = req.headers["idempotency-key"] as string | undefined;
     if (req.method === "POST" || req.method === "PATCH") {

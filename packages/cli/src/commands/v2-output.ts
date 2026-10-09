@@ -98,11 +98,18 @@ export function clock(iso: string | undefined, now = new Date()): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-/** What a failed call means for the person, and what to do about it. */
-export function apiFailureMessage(err: unknown): string {
+/**
+ * What a failed call means for the person, and what to do about it.
+ * `command` (`memax init`) is the command that failed, when running it
+ * again carries on from where it stopped.
+ */
+export function apiFailureMessage(err: unknown, command?: string): string {
   const e = err as { status?: number; code?: string; message?: string };
   if (e?.status === 401 || e?.code === "unauthorized")
     return "Sign in first: memax login";
+  // Still limited after the SDK waited out what it could.
+  if (command && (e?.status === 429 || e?.code === "rate_limited"))
+    return `Memax is limiting how fast this account sends requests. Wait a minute, then run ${command} again: it carries on from where it stopped.`;
   if (e?.code === "network_error") return e.message ?? "Can't reach Memax.";
   if (e?.status === 404) return e.message ?? "Not found in your spaces.";
   return e?.message ?? String(err);

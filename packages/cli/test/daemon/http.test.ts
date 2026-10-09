@@ -121,6 +121,8 @@ describe("lightFetch", () => {
       apiKey: "k",
       fetch: lightFetch,
       maxRetries: 0,
+      // The 429 itself, not the SDK waiting it out.
+      rateLimitRetries: 0,
     });
     expect((await memax.v2.spaces.list()).items[0].slug).toBe("memax-v2");
     await expect(memax.v2.targets.list("x")).rejects.toMatchObject({

@@ -314,7 +314,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     if (!memaxBin && !useRemote) {
       console.error(
         chalk.red(
-          "\n  Could not find memax binary.\n  Install globally: npm install -g memax-cli@alpha\n",
+          "\n  Could not find memax binary.\n  Install globally: npm install -g memax-cli\n",
         ),
       );
       process.exit(1);

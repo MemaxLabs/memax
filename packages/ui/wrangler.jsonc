@@ -1,0 +1,26 @@
+// ui.memaxlabs.com on Cloudflare: the kitchen's static export in out/
+// (next.config.ts) as Workers static assets, like the docs site
+// (packages/docs-site/wrangler.jsonc). There is no Worker script. The kitchen
+// has one deployment, from main (ci.yml).
+//
+//   pnpm --filter @memaxlabs/ui build        # next build → out/
+//   pnpm --filter @memaxlabs/ui preview:cf   # out/ under workerd on :8787
+//
+// public/_redirects and public/_headers (copied into out/) hold the
+// redirect from / and the cache headers.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "memax-ui",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "out",
+    // /dev/kitchen serves dev/kitchen.html.
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+  },
+  "preview_urls": false,
+  // A zone route, as the web app's and the docs site's: deploy-cloudflare.yml
+  // switches the hostname's record to proxied once the deploy succeeds.
+  "routes": [{ "pattern": "ui.memaxlabs.com/*", "zone_name": "memaxlabs.com" }],
+  "workers_dev": false,
+}

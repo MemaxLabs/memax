@@ -207,13 +207,14 @@ func (p *principal) meta(scope ledger.Scope, key string, f commandFields) ledger
 }
 
 // space resolves a space key (id or slug) within the caller's scope. A
-// space outside it is not found, never forbidden.
+// space outside it is not found, never forbidden. A key shaped like a
+// uuid that isn't one of the caller's space ids may still be a slug: V1
+// named every personal space after its owner (slug = the owner's user id).
 func (h *Handler) space(r *http.Request, p *principal, key string) (ledger.SpaceGrant, *apiError) {
 	if id, err := uuid.Parse(key); err == nil {
 		if g, ok := p.scope.Grant(id); ok {
 			return g, nil
 		}
-		return ledger.SpaceGrant{}, notFound
 	}
 	// The scope carries each space's slug, read with it from the same
 	// hubs rows v2.spaces shows: no round trip. A scope without slugs

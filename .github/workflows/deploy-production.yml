@@ -271,11 +271,9 @@ jobs:
           echo "New version: $NEW"
 
   # Cloudflare Workers (production), through deploy-cloudflare.yml, at the
-  # SHA resolve-version settled on. Until DNS moves to Cloudflare, Vercel's
-  # Git integration keeps serving memax.app and docs.memax.app and these
-  # Workers serve only their workers.dev URLs; the compile service has its
-  # own hostname (compile.memax.app) from the start. Rollback: `wrangler
-  # rollback --env production` in the package, or reset prod and re-run.
+  # SHA resolve-version settled on: compile.memax.app, memax.app (with
+  # www.memax.app) and docs.memax.app. Rollback: `wrangler rollback --env
+  # production` in the package, or reset prod and re-run.
   deploy-compile:
     name: Deploy compile service to Cloudflare (production)
     needs: [resolve-version]

@@ -288,7 +288,9 @@ jobs:
 
   deploy-web:
     name: Deploy web app to Cloudflare (production)
-    needs: [resolve-version]
+    # The deploy moves memax.app to the new web (its routes in
+    # packages/web/wrangler.jsonc), which needs the new API: deploy it after.
+    needs: [resolve-version, deploy-server]
     uses: ./.github/workflows/deploy-cloudflare.yml
     with:
       worker: web
@@ -333,7 +335,13 @@ jobs:
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: doppler secrets download --no-file --format env-no-quotes | flyctl secrets import --stage -a memax-api-production
+        # The API never signs: it serves the public half from
+        # RECEIPT_VERIFY_KEYS, so the signing key stays on the worker.
+        run: |
+          set -euo pipefail
+          doppler secrets download --no-file --format env-no-quotes \
+            | grep -v '^RECEIPT_SIGNING_KEY=' \
+            | flyctl secrets import --stage -a memax-api-production
 
       - name: Deploy to Fly.io
         working-directory: packages/server

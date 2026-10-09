@@ -16,7 +16,9 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "memax-web",
-  "main": ".open-next/worker.js",
+  // OpenNext's handler (.open-next/worker.js) behind one redirect of our
+  // own: worker.js.
+  "main": "worker.js",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": [
     // Next's Node runtime: node:crypto (the proxy's signing), Buffer,
@@ -42,19 +44,25 @@
     "staging": {
       "name": "memax-web-staging",
       "secrets": { "required": ["WEB_SURFACE_SECRET"] },
-      // Cutover (AGENTS.md, "Moving to Cloudflare"): serve the staging
-      // hostname (check it's the one Vercel serves now) instead of the
-      // workers.dev URL once memax.app is on Cloudflare.
-      // "routes": [{ "pattern": "staging.memax.app", "custom_domain": true }],
-      // "workers_dev": false,
+      // The Worker owns the hostname: a deploy from CI replaces the DNS
+      // record that pointed at Vercel (wrangler overrides an existing
+      // record when it isn't run in a terminal).
+      "routes": [
+        { "pattern": "staging-app.memaxlabs.com", "custom_domain": true },
+      ],
+      "workers_dev": false,
     },
     "production": {
       "name": "memax-web-production",
       "secrets": { "required": ["WEB_SURFACE_SECRET"] },
-      // Cutover: uncomment once memax.app is on Cloudflare and staging has
-      // been checked; Vercel keeps serving until then.
-      // "routes": [{ "pattern": "memax.app", "custom_domain": true }],
-      // "workers_dev": false,
+      // deploy-production.yml deploys this after the API, so memax.app
+      // moves from Vercel to the Worker only once the API serves it.
+      // www.memax.app redirects to memax.app (worker.js).
+      "routes": [
+        { "pattern": "memax.app", "custom_domain": true },
+        { "pattern": "www.memax.app", "custom_domain": true },
+      ],
+      "workers_dev": false,
     },
   },
 }

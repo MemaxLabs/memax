@@ -23,13 +23,16 @@
   "env": {
     "staging": {
       "name": "memax-docs-staging",
+      // A deploy from CI replaces the DNS record that pointed at Vercel.
+      "routes": [
+        { "pattern": "staging-docs.memaxlabs.com", "custom_domain": true },
+      ],
+      "workers_dev": false,
     },
     "production": {
       "name": "memax-docs-production",
-      // Cutover (AGENTS.md, "Moving to Cloudflare"): uncomment once
-      // memax.app is on Cloudflare; Vercel keeps serving until then.
-      // "routes": [{ "pattern": "docs.memax.app", "custom_domain": true }],
-      // "workers_dev": false,
+      "routes": [{ "pattern": "docs.memax.app", "custom_domain": true }],
+      "workers_dev": false,
     },
   },
 }

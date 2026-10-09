@@ -44,11 +44,14 @@
     "staging": {
       "name": "memax-web-staging",
       "secrets": { "required": ["WEB_SURFACE_SECRET"] },
-      // The Worker owns the hostname: a deploy from CI replaces the DNS
-      // record that pointed at Vercel (wrangler overrides an existing
-      // record when it isn't run in a terminal).
+      // A zone route: the Worker serves the hostname once its DNS record
+      // is proxied, which deploy-cloudflare.yml switches on after the
+      // deploy (rollback: switch it back to DNS only).
       "routes": [
-        { "pattern": "staging-app.memaxlabs.com", "custom_domain": true },
+        {
+          "pattern": "staging-app.memaxlabs.com/*",
+          "zone_name": "memaxlabs.com",
+        },
       ],
       "workers_dev": false,
     },
@@ -56,11 +59,11 @@
       "name": "memax-web-production",
       "secrets": { "required": ["WEB_SURFACE_SECRET"] },
       // deploy-production.yml deploys this after the API, so memax.app
-      // moves from Vercel to the Worker only once the API serves it.
-      // www.memax.app redirects to memax.app (worker.js).
+      // moves only once the API serves it; www.memax.app redirects to
+      // memax.app (worker.js).
       "routes": [
-        { "pattern": "memax.app", "custom_domain": true },
-        { "pattern": "www.memax.app", "custom_domain": true },
+        { "pattern": "memax.app/*", "zone_name": "memax.app" },
+        { "pattern": "www.memax.app/*", "zone_name": "memax.app" },
       ],
       "workers_dev": false,
     },

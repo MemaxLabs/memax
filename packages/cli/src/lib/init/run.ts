@@ -389,10 +389,12 @@ async function flow(
           true,
         ))));
   if (daemon) await d.startDaemon();
-  let out = await d.compile(project.space.slug, 30);
+  // Creating the targets, keeping and replacing a file each asked for a
+  // compile already: wait for those, rather than compile everything again.
+  let out = await d.compile(project.space.slug, 30, { pending: true });
   for (const t of (await d.memax.v2.targets.list(project.space.id)).items) {
     if (await offerOverwrite(d, t))
-      out = await d.compile(project.space.slug, 30);
+      out = await d.compile(project.space.slug, 30, { pending: true });
   }
   end();
   if (out) report.targets = out.targets;

@@ -220,11 +220,14 @@ describe("memax compile", () => {
     } finally {
       stop();
     }
+    // Asked for at once, so they may arrive in either order.
     const compiles = h.fake.calls("POST", /:compile$/);
-    expect(compiles.map((c) => c.path)).toEqual([
-      `/v2/targets/${agents.id}:compile`,
-      `/v2/targets/${gpt.id}:compile`,
-    ]);
+    expect(compiles.map((c) => c.path).sort()).toEqual(
+      [
+        `/v2/targets/${agents.id}:compile`,
+        `/v2/targets/${gpt.id}:compile`,
+      ].sort(),
+    );
     expect(compiles[0].headers["x-memax-via"]).toBe("cli");
     expect(readFileSync(join(h.repo, "AGENTS.md"), "utf8")).toBe(
       "# Brief, compiled now\n",
@@ -270,6 +273,32 @@ describe("memax compile", () => {
       sync_state: "in_sync",
       files: ["AGENTS.md"],
     });
+  });
+
+  it("with pending, waits for the compiles already coming and asks for none (memax init)", async () => {
+    const space = h.fake.addSpace("memax-v2");
+    const agents = h.fake.addTarget(space, "agents_md");
+    const claude = h.fake.addTarget(space, "claude_md");
+    h.fake.compile(claude.id, { "CLAUDE.md": "@AGENTS.md\n" });
+    h.link(space);
+    const stop = worker({ [agents.id]: { "AGENTS.md": "# Brief\n" } });
+    const out: string[] = [];
+    try {
+      expect(await compile({ format: "json", pending: true }, deps(out))).toBe(
+        0,
+      );
+    } finally {
+      stop();
+    }
+    expect(h.fake.calls("POST", /:compile$/)).toEqual([]);
+    const json = JSON.parse(out.join("\n"));
+    expect(json.requested.sort()).toEqual([agents.id, claude.id].sort());
+    // The one coming compiled, and both are written here.
+    expect(readFileSync(join(h.repo, "AGENTS.md"), "utf8")).toBe("# Brief\n");
+    expect(readFileSync(join(h.repo, "CLAUDE.md"), "utf8")).toBe(
+      "@AGENTS.md\n",
+    );
+    expect(h.fake.entry(claude.id).runs).toHaveLength(1);
   });
 
   it("says --via pr isn't available yet, and nothing is requested", async () => {

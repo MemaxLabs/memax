@@ -27,6 +27,13 @@ export interface CompileOptions {
   via?: string;
   format?: string;
   timeout?: string;
+  /**
+   * Wait for the compiles already coming, and deliver what is compiled,
+   * instead of asking for new ones. memax init: creating its targets and
+   * keeping its statements have asked already, so asking again would
+   * compile everything twice.
+   */
+  pending?: boolean;
 }
 
 export interface CompileDeps {
@@ -36,6 +43,7 @@ export interface CompileDeps {
   out: (line: string) => void;
   /** Opens in-process delivery when no daemon runs (tests swap it). */
   oneShot?: () => Promise<OneShotDelivery | null>;
+  /** A fixed wait between checks (tests); else 250 ms, doubling to 1 s. */
   pollMs?: number;
 }
 
@@ -108,18 +116,29 @@ export async function compile(
     return 1;
   }
   const want = new Map<string, number>();
-  for (const t of targets) {
-    if (t.sync_state === "off") continue;
-    try {
-      const r = await d.memax.v2.targets.compile(
-        t.id,
-        {},
-        { idempotencyKey: randomUUID(), via: "cli" },
-      );
-      want.set(t.id, r.target.dirty_gen);
-    } catch (err) {
-      if ((err as { status?: number }).status !== 409) throw err; // stopped meanwhile
-    }
+  const live = targets.filter((t) => t.sync_state !== "off");
+  if (o.pending) {
+    for (const t of live) want.set(t.id, t.dirty_gen);
+  } else {
+    // Each target compiles on its own, so ask for them all at once.
+    const gens = await Promise.all(
+      live.map(async (t) => {
+        try {
+          const r = await d.memax.v2.targets.compile(
+            t.id,
+            {},
+            { idempotencyKey: randomUUID(), via: "cli" },
+          );
+          return r.target.dirty_gen;
+        } catch (err) {
+          if ((err as { status?: number }).status !== 409) throw err; // stopped meanwhile
+          return null;
+        }
+      }),
+    );
+    live.forEach((t, i) => {
+      if (gens[i] !== null) want.set(t.id, gens[i]);
+    });
   }
 
   // Who writes the files here: the daemon, this command, or nobody.
@@ -139,6 +158,7 @@ export async function compile(
 
   const deadline = Date.now() + timeoutMs;
   let timedOut = false;
+  let delay = d.pollMs ?? 250;
   try {
     for (;;) {
       if (local) await local.sync(space.id);
@@ -154,7 +174,8 @@ export async function compile(
         timedOut = true;
         break;
       }
-      await sleep(d.pollMs ?? 1_000);
+      await sleep(delay);
+      if (d.pollMs === undefined) delay = Math.min(1_000, delay * 2);
     }
   } finally {
     await local?.close();

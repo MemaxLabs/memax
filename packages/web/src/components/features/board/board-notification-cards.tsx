@@ -78,7 +78,8 @@ const USER_DECISION_KINDS: ReadonlySet<string> = new Set([
   "hub_ownership_transfer",
 ]);
 
-/** Kinds PinnedDispatch renders (onboarding checklist + founder note). */
+/** Kinds with an onboarding pin_context. Only `digest` reaches the board;
+ *  checklist + founder note live in the drawer / memories hero. */
 const PINNED_KINDS: ReadonlySet<string> = new Set([
   "checklist",
   "digest",
@@ -266,9 +267,16 @@ export function useBoardNotificationCards(
 
     for (const notification of rows) {
       if (isOnboardingPinned(notification)) {
-        // Onboarding rows are addressed to the person, not the hub —
-        // the personal board is their home.
-        if (isPersonalHub || isUserSurface) pinned.push(notification);
+        // Onboarding rows (welcome note, first-week checklist) are not
+        // board content: they live in the memories hero and the
+        // notification drawer (founder call 2026-09-21). Digests and
+        // other pinned kinds still get the board's pinned slot.
+        if (
+          notification.kind === "digest" &&
+          (isPersonalHub || isUserSurface)
+        ) {
+          pinned.push(notification);
+        }
         continue;
       }
       if (HUB_REVIEW_KINDS.has(notification.kind)) {

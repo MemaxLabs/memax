@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "compile_id": "C-0920",
+  "compiled_at": "2026-10-06T11:00:00Z",
+  "brief_id": "B-0045",
+  "space": "memax-v2",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "target": "agents_md",
+      "bytes": 471,
+      "lines": 11,
+      "sha256": "45b6fbae71c8d0350b86d1ceae810439fca41b9d66e1df82171c9455329e2a86",
+      "refs": ["M-0071"],
+      "cites": ["M-0071"],
+      "dropped_for_budget": [],
+      "drift_sha256": "45b6fbae71c8d0350b86d1ceae810439fca41b9d66e1df82171c9455329e2a86",
+      "user_owned": false
+    },
+    {
+      "path": "CLAUDE.md",
+      "target": "claude_md",
+      "bytes": 363,
+      "lines": 12,
+      "sha256": "ea4732b919c878ef56ea77b51d7106fc6e4fb6a256a109bcbfa5eec6cb7b3633",
+      "refs": ["M-0460"],
+      "cites": ["M-0460"],
+      "dropped_for_budget": [],
+      "drift_sha256": "bed524f1d593314347b0c964b780c1164d812a45ce39cf8a3fdb61f4e44c4e93",
+      "user_owned": true
+    },
+    {
+      "path": "packages/web/CLAUDE.md",
+      "target": "claude_md",
+      "bytes": 339,
+      "lines": 11,
+      "sha256": "ddf63cabbb7d84041e725181ffd628dd29b78af397aa3277105eadc947c6af53",
+      "refs": ["M-0460"],
+      "cites": ["M-0460"],
+      "dropped_for_budget": [],
+      "drift_sha256": "01d541d84b369c7ded227a858211408f3bf2c3ef185c1c2becaa239368fe284b",
+      "user_owned": true
+    }
+  ],
+  "copies": [],
+  "targets": [
+    {
+      "kind": "agents_md",
+      "path": "AGENTS.md",
+      "delivery": "file",
+      "reads": null,
+      "files": ["AGENTS.md"],
+      "refs": ["M-0071"],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "claude_md",
+      "path": "CLAUDE.md",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": ["CLAUDE.md"],
+      "refs": ["M-0460"],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "claude_md",
+      "path": "packages/web/CLAUDE.md",
+      "delivery": "file",
+      "reads": "AGENTS.md",
+      "files": ["packages/web/CLAUDE.md"],
+      "refs": ["M-0460"],
+      "dropped_for_budget": []
+    }
+  ],
+  "warnings": []
+}

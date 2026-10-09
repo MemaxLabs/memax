@@ -20,6 +20,7 @@ import { Suspense } from "react";
 import { MemaxLoader } from "@memaxlabs/ui";
 import { SettingsPanel } from "@/components/features/settings-panel";
 import { SettingsDialog } from "@/components/features/settings/settings-dialog";
+import { QuickStartHost } from "@/components/features/onboarding/quick-start-dialog";
 import { MemaxDebugger } from "@/components/features/memax-debugger";
 import { ImpersonationBar } from "@/components/features/impersonation-bar";
 import { MemaxEventBridge } from "@/components/features/memax-event-bridge";
@@ -344,6 +345,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                     />
                   )}
                   <SettingsDialog />
+                  <QuickStartHost />
                   <MemaxDebugger />
                   <MemaxEventBridge />
 

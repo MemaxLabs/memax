@@ -1,8 +1,16 @@
 import { Command } from "commander";
 import { createServer } from "node:http";
+import { hostname } from "node:os";
 import { getActiveHubID, loadConfig, setActiveHubID } from "../lib/config.js";
 import { getClient, getPublicClient, resetClient } from "../lib/client.js";
 import { saveCredentials } from "../lib/credentials.js";
+import {
+  canOpenBrowser,
+  deviceLoginFailure,
+  noDeviceGrant,
+  signInWithDeviceCode,
+} from "../lib/device-login.js";
+import { cliVersion } from "../lib/version.js";
 import type { AuthProviderName } from "memax-sdk";
 
 interface TokenPair {
@@ -13,15 +21,124 @@ interface TokenPair {
 
 interface LoginOptions {
   provider?: string;
+  /** Sign in with a code confirmed in any browser (RFC 8628). */
+  device?: boolean;
+  /** The space the CLI will use, shown on the confirmation page. */
+  space?: string;
 }
 
 export async function loginCommand(options: LoginOptions = {}): Promise<void> {
+  if (!(await signIn(options))) process.exit(1);
+}
+
+/**
+ * Signs in with a code confirmed on the web app (memax.app/device, opened
+ * here when a browser can), so the CLI is whoever the browser is signed
+ * in as, however they sign in. `--provider` asks for that provider's page
+ * instead, and a server with no device grant gets it too. `memax login`
+ * and `memax init` both use it.
+ */
+export async function signIn(options: LoginOptions = {}): Promise<boolean> {
+  if (options.provider && !options.device) return signInWithBrowser(options);
+  return signInWithDevice(options);
+}
+
+/** Signs in with a device code and saves the credentials. */
+export async function signInWithDevice(
+  options: LoginOptions = {},
+): Promise<boolean> {
+  const browser = canOpenBrowser({
+    platform: process.platform,
+    env: process.env,
+  });
+  try {
+    const result = await signInWithDeviceCode({
+      auth: getPublicClient().auth,
+      out: (l) => console.log(l),
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      now: () => performance.now(),
+      open: browser ? openBrowser : undefined,
+      device: {
+        clientVersion: cliVersion(),
+        deviceName: hostname(),
+        deviceOs: process.platform,
+        space: options.space,
+      },
+    });
+    if (!result.ok) {
+      console.error(`\n  ${deviceLoginFailure(result.reason)}\n`);
+      return false;
+    }
+    await finishSignIn(result.tokens);
+    return true;
+  } catch (err) {
+    if (noDeviceGrant(err)) {
+      // An API from before the device grant: the provider's own page.
+      if (browser) return signInWithBrowser(options);
+      console.error(
+        "  This Memax server can't sign in with a code. Run memax login on a machine with a browser, or set MEMAX_API_KEY.\n",
+      );
+      return false;
+    }
+    console.error(`  Login failed: ${(err as Error).message}\n`);
+    return false;
+  }
+}
+
+/** Saves a new session and picks the personal hub for V1 commands. */
+async function finishSignIn(tokens: TokenPair): Promise<void> {
+  saveCredentials({
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expires_at: Date.now() + tokens.expires_in * 1000,
+  });
+  resetClient();
+
+  // Auto-set personal hub so commands work without `memax hub switch`
+  try {
+    const hubs = await getClient().hubs.list();
+    const personal = hubs.find((h) => h.hub.hub_type === "personal");
+    if (personal) {
+      setActiveHubID(personal.hub.id);
+    }
+  } catch {
+    // Non-fatal — user can manually run `memax hub switch personal`
+  }
+
+  console.log(
+    "  Logged in successfully. Credentials saved to ~/.memax/credentials.json\n",
+  );
+}
+
+/** Opens a URL in the default browser; a failure leaves the printed link. */
+function openBrowser(url: string): void {
+  void import("node:child_process")
+    .then(({ execFile }) => {
+      const [cmd, args] =
+        process.platform === "darwin"
+          ? ["open", [url]]
+          : process.platform === "win32"
+            ? ["cmd", ["/c", "start", "", url]]
+            : ["xdg-open", [url]];
+      execFile(cmd, args, () => {});
+    })
+    .catch(() => {});
+}
+
+/**
+ * Signs in on a provider's own page (OAuth with a local callback) and
+ * saves the credentials; false, with the reason printed, when it didn't
+ * work. Only for `--provider`, and for a server with no device grant.
+ */
+export async function signInWithBrowser(
+  options: LoginOptions = {},
+): Promise<boolean> {
   let provider: AuthProviderName;
   try {
     provider = normalizeProvider(options.provider);
   } catch (err) {
     console.error(`  Login failed: ${(err as Error).message}\n`);
-    process.exit(1);
+    return false;
   }
 
   // Start a temporary local server to receive the OAuth callback
@@ -120,37 +237,45 @@ export async function loginCommand(options: LoginOptions = {}): Promise<void> {
 
   try {
     const tokens = await tokenPromise;
-    saveCredentials({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      expires_at: Date.now() + tokens.expires_in * 1000,
-    });
-    resetClient();
-
-    // Auto-set personal hub so commands work without `memax hub switch`
-    try {
-      const hubs = await getClient().hubs.list();
-      const personal = hubs.find((h) => h.hub.hub_type === "personal");
-      if (personal) {
-        setActiveHubID(personal.hub.id);
-      }
-    } catch {
-      // Non-fatal — user can manually run `memax hub switch personal`
-    }
-
-    console.log(
-      "  Logged in successfully. Credentials saved to ~/.memax/credentials.json\n",
-    );
+    await finishSignIn(tokens);
+    return true;
   } catch (err) {
     console.error(`  Login failed: ${(err as Error).message}\n`);
-    process.exit(1);
+    return false;
   }
 }
 
+/**
+ * Signs this CLI's session out on the server (its refresh token stops
+ * working at once) and clears the saved credentials. Offline, the
+ * credentials are cleared anyway and the session ends when it expires, or
+ * when you sign it out from Settings on memax.app.
+ */
 export async function logoutCommand(): Promise<void> {
-  const { clearCredentials } = await import("../lib/credentials.js");
+  const { clearCredentials, loadCredentials } =
+    await import("../lib/credentials.js");
+  const creds = loadCredentials();
+  let signedOut = false;
+  const token = creds?.refresh_token || creds?.access_token;
+  if (token) {
+    try {
+      await getPublicClient().auth.revoke(token);
+      signedOut = true;
+    } catch {
+      // Unreachable or refused: clear locally all the same.
+    }
+  }
   clearCredentials();
-  console.log("  Logged out. Credentials cleared.\n");
+  resetClient();
+  if (token && !signedOut) {
+    console.log(
+      "  Logged out here. Memax couldn't be reached to end the session, so it lasts until it expires; sign it out in Settings on memax.app.\n",
+    );
+    return;
+  }
+  console.log(
+    "  Logged out. The session is signed out and credentials cleared.\n",
+  );
 }
 
 export async function whoamiCommand(): Promise<void> {
@@ -209,12 +334,16 @@ export function registerLoginCommands(program: Command): void {
     .description("Log in to Memax")
     .option(
       "--provider <name>",
-      "OAuth provider to use: github or google (default: github)",
+      "Sign in on GitHub's or Google's own page instead (github or google)",
+    )
+    .option(
+      "--device",
+      "Sign in with a code you confirm in a browser signed in to Memax (the default)",
     )
     .action(loginCommand);
   program
     .command("logout")
-    .description("Clear saved credentials")
+    .description("Sign this session out and clear saved credentials")
     .action(logoutCommand);
   program
     .command("whoami")

@@ -12,3 +12,6 @@ export * from "./client";
 export * from "./types";
 export * from "./ops";
 export * from "./ops-types";
+export * from "./v2-metrics";
+export * from "./v2-metrics-types";
+export * from "./v2-ui";

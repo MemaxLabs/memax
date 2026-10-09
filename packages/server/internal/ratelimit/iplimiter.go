@@ -37,7 +37,7 @@ var (
 	IPTokenLimit      = EndpointLimit{Name: "token", RPM: 30}       // refresh / exchange
 	IPImpersonate     = EndpointLimit{Name: "impersonate", RPM: 20} // admin-only, but still IP-bounded for safety
 	IPOAuthDCRLimit   = EndpointLimit{Name: "oauth_dcr", RPM: 5}    // MCP dynamic client registration — very restrictive
-	IPOAuthAuthorize  = EndpointLimit{Name: "oauth_auth", RPM: 30}  // /oauth/authorize + /oauth/authorize/consent
+	IPOAuthAuthorize  = EndpointLimit{Name: "oauth_auth", RPM: 30}  // /oauth/authorize (and the legacy consent post)
 	IPOAuthTokenLimit = EndpointLimit{Name: "oauth_token", RPM: 30} // /oauth/token
 	IPInviteLimit     = EndpointLimit{Name: "invite", RPM: 10}      // invite token validation — brute-force enumeration
 	IPWaitlistLimit   = EndpointLimit{Name: "waitlist", RPM: 5}     // /v1/waitlist* — may enqueue email; tight by design
@@ -46,6 +46,11 @@ var (
 	// still allowing a mail client's one-click POST + redirect GET +
 	// possible pre-fetch, which can briefly triple-hit from one IP.
 	IPUnsubscribe = EndpointLimit{Name: "unsubscribe", RPM: 30}
+	// IPPasskeySignIn — the two public halves of a passkey sign-in
+	// (/v2/passkey-sign-ins). Each needs a passkey to get anywhere; the
+	// cap bounds the challenges a flood could store. The web app's server
+	// calls them, so like the token endpoints they see its address.
+	IPPasskeySignIn = EndpointLimit{Name: "passkey_sign_in", RPM: 60}
 	// IPWebhookResend — provider delivery webhooks. Resend fan-out on a
 	// broadcast campaign can burst well over 100 req/s from a small
 	// pool of egress IPs, so the cap is sized to accommodate legitimate
@@ -63,6 +68,11 @@ var (
 	// surface for a known code. Per-code attempt count is the primary
 	// defense; this IP cap is the floor.
 	IPEmailOTPVerify = EndpointLimit{Name: "email_otp_verify", RPM: 20}
+	// IPDeviceAuthorization — /oauth/device_authorization issues a code a
+	// person may confirm on the web (RFC 8628). A CLI asks once per sign-in;
+	// the handler also caps codes per address per hour across machines.
+	// Polling for the token rides IPOAuthTokenLimit (every 5 s is 12/min).
+	IPDeviceAuthorization = EndpointLimit{Name: "device_auth", RPM: 5}
 )
 
 // trustedProxyMode controls how extractClientIP derives the client IP.
@@ -158,6 +168,10 @@ func (l *Limiter) WrapIP(limit EndpointLimit, h http.HandlerFunc) http.HandlerFu
 		h(w, r)
 	}
 }
+
+// ClientIP is the request's client address as the rate limiter sees it
+// (TRUSTED_PROXY decides which header, if any, is believed), or "".
+func ClientIP(r *http.Request) string { return extractClientIP(r) }
 
 // extractClientIP returns the canonical client IP for rate-limit
 // keying. The trust source is chosen by the TRUSTED_PROXY env var at

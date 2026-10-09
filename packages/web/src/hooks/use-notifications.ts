@@ -559,11 +559,11 @@ export function useViewChecklistItem() {
  * contract is checklist-only) and for items whose locked_by
  * dependencies are unfinished.
  *
- * When the server reports auto_resolved=true the parent row has been
- * flipped to status=resolved + resolution=applied_auto in the same
- * round-trip — the celebration overlay can fire off the HTTP response
- * without waiting for the SSE notification.resolved that arrives
- * shortly after.
+ * When the server reports all_done=true the checklist is finished:
+ * the parent row stays pending with payload.all_done_at stamped and
+ * its expiry capped at one day, so the finished state can render off
+ * the HTTP response without waiting for the SSE
+ * notification.updated(change=all_done) that arrives shortly after.
  *
  * Snapshot + rollback on error keeps the cache honest if the server
  * refuses the completion (locked dep, terminal row, auth expiry).

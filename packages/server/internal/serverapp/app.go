@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/MemaxLabs/memax/packages/server/internal/dbpool"
 	"github.com/google/uuid"
 	"log/slog"
 	"net/http"
@@ -19,13 +20,18 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/analytics"
 	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
+	"github.com/MemaxLabs/memax/packages/server/internal/ask"
 	"github.com/MemaxLabs/memax/packages/server/internal/attachments"
 	"github.com/MemaxLabs/memax/packages/server/internal/billing"
 	"github.com/MemaxLabs/memax/packages/server/internal/cache"
 	"github.com/MemaxLabs/memax/packages/server/internal/chatstream"
+	"github.com/MemaxLabs/memax/packages/server/internal/compile"
+	"github.com/MemaxLabs/memax/packages/server/internal/deviceauth"
 	"github.com/MemaxLabs/memax/packages/server/internal/email"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
+	"github.com/MemaxLabs/memax/packages/server/internal/forget"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
+	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/categorize"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/embed"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/extract"
@@ -34,19 +40,31 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/link"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/summarize"
 	ingesttitle "github.com/MemaxLabs/memax/packages/server/internal/ingest/title"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/meter"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore"
 	"github.com/MemaxLabs/memax/packages/server/internal/observability"
 	"github.com/MemaxLabs/memax/packages/server/internal/onboarding"
+	"github.com/MemaxLabs/memax/packages/server/internal/passkeys"
 	"github.com/MemaxLabs/memax/packages/server/internal/planresolver"
 	"github.com/MemaxLabs/memax/packages/server/internal/plans"
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
 	"github.com/MemaxLabs/memax/packages/server/internal/quota"
 	"github.com/MemaxLabs/memax/packages/server/internal/ratelimit"
+	"github.com/MemaxLabs/memax/packages/server/internal/reads"
+	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/distill"
 	"github.com/MemaxLabs/memax/packages/server/internal/retrieval/rerank"
+	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
+	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/trust"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2ui"
+	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
 // App owns the long-lived dependencies for the API process.
@@ -631,6 +649,68 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		}
 	}
 
+	// Reads (R-) are recorded off the request path by one recorder per
+	// process, shared by /v2 and MCP; it flushes what is buffered at
+	// shutdown, after the HTTP server has drained and before the pool
+	// closes (cleanups run last-registered first).
+	//
+	// Forget's cache purge (plan 25 §5.13): the propagation job, in the
+	// worker, signals every API process over Redis, and each drops its own
+	// copies (MCP's compiled digest, the embeddings cache).
+	forgetBus := forget.NewBusFromEnv(slog.Default())
+	listenCtx, stopListening := context.WithCancel(context.Background())
+	forgetBus.Listen(listenCtx)
+	app.addCleanup(func(context.Context) error { stopListening(); return forgetBus.Close() })
+	// The web app's signing secret, read once: it verifies the web proxy's
+	// signed /v2 requests (human_web) and where it says a browser signing
+	// in or refreshing is.
+	web := webSurfaceFromEnv()
+	var sessionStore *sessions.Store
+	if authH != nil {
+		authH.SetWebSurface(web)
+		sessionStore = authH.Sessions()
+		app.addClose(sessionStore.Wait)
+	}
+	// Passkeys (WebAuthn): sign-in, Settings › Account and the re-check,
+	// with the relying party from WEBAUTHN_RP_ID and APP_BASE_URL.
+	pk := passkeysFromEnv(pool)
+	var accounts v2api.Accounts
+	if authH != nil {
+		accounts = authH
+		if pk != nil {
+			authH.SetPasskeys(pk)
+			hubsH.SetPasskeys(pk)
+			memories.SetPasskeys(pk)
+		}
+	}
+	v2h, v2Search, readRecorder := v2Handler(pool, queueClient, blobStore, llm, forgetBus, web, sessionStore, pk, accounts)
+	app.addClose(readRecorder.Close)
+	// V1's deletes of a hub and of a person's data forget the V2 record
+	// through the ledger first, when there is one.
+	if l := v2h.Ledger(); l != nil {
+		hubsH.SetV2Forgetter(l)
+		memories.SetV2Forgetter(l)
+		// Spaces on V2, seen from V1's API: a push into one warns that it
+		// becomes a note, and two-way config sync leaves its files alone.
+		modes := spacemode.New(pool)
+		memories.SetSpaceModes(modes)
+		configsH.SetSpaceModes(modes)
+	}
+	// The per-person V2 UI flag (plan 25 E1, internal/v2ui): /v1/auth/me
+	// and a web sign-in's tokens say it, and operators turn it on and off.
+	ui := v2UIFromEnv(pool)
+	if authH != nil {
+		authH.SetV2UI(ui)
+	}
+	// The admin panel's gate metrics read the V2 record across spaces, as
+	// the metrics role (ledger.GetProductMetrics).
+	var adminV2Metrics *handler.AdminV2MetricsHandler
+	if l := v2h.Ledger(); l != nil {
+		adminV2Metrics = handler.NewAdminV2MetricsHandler(l)
+	}
+	mcp := mcpDepsFromEnv(pool, readRecorder)
+	mcp.purge = forgetBus.Local
+
 	registerRoutes(mux, routeDeps{
 		memories:               memories,
 		uploads:                uploadsH,
@@ -665,6 +745,8 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		adminDreams:            adminDreamsH,
 		adminWaitlist:          adminWaitlistH,
 		adminOps:               adminOpsH,
+		adminV2Metrics:         adminV2Metrics,
+		adminV2UI:              handler.NewAdminV2UIHandler(ui),
 		resendWebhook:          resendWebhookH,
 		unsubscribe:            unsubscribeH,
 		bar:                    handler.NewBarHandler(s, memories),
@@ -675,10 +757,218 @@ func Configure(ctx context.Context, mux *http.ServeMux) (*App, error) {
 		planRegistry:           planRegistry,
 		store:                  s,
 		eventsBroker:           eventsBroker,
+		// /v2 on the V2 record. With no database the ledger is nil and
+		// every /v2 route answers 503 unavailable.
+		v2:       v2h,
+		v2Search: v2Search,
+		mcp:      mcp,
 	})
 
 	configured = true
 	return app, nil
+}
+
+// mcpDepsFromEnv reads what MCP v2 needs once, at startup: which spaces
+// are on the V2 record (from the database), the key that signs multi
+// round-trip confirmations (MCP_STATE_SECRET, else derived from
+// JWT_SECRET, so every machine verifies every other's), the web app for
+// Review links, this machine's ID for legacy session affinity, and the
+// process's read recorder (nil without a database).
+func mcpDepsFromEnv(pool *pgxpool.Pool, rec *reads.Recorder) mcpDeps {
+	d := mcpDeps{appBaseURL: os.Getenv("APP_BASE_URL"), instance: os.Getenv("FLY_MACHINE_ID")}
+	if pool == nil {
+		return d
+	}
+	d.spaces = spacemode.New(pool)
+	d.stateSecret = []byte(os.Getenv("MCP_STATE_SECRET"))
+	if len(d.stateSecret) == 0 {
+		d.stateSecret = []byte(os.Getenv("JWT_SECRET"))
+	}
+	if len(d.stateSecret) == 0 {
+		slog.Warn("MCP_STATE_SECRET and JWT_SECRET are unset: in-agent confirmations only verify on the machine that asked")
+	}
+	if rec != nil {
+		d.reads = rec
+	}
+	return d
+}
+
+// webSurfaceFromEnv reads WEB_SURFACE_SECRET once, at startup: the secret
+// the web app's proxy signs /v2 requests with, so a person's keeps there
+// carry assurance human_web (internal/websurface). Unset or unusable means
+// disabled, said loudly: web keeps are then client_attested.
+func webSurfaceFromEnv() *websurface.Verifier {
+	v, err := websurface.New(os.Getenv("WEB_SURFACE_SECRET"))
+	switch {
+	case err != nil:
+		slog.Error("web surface verification disabled: WEB_SURFACE_SECRET is unusable", "error", err)
+	case v == nil:
+		slog.Warn("web surface verification disabled: WEB_SURFACE_SECRET is not set. Keeps on the web count as " +
+			"client_attested, so quarantined proposals and team-space decisions can't be kept through /v2.")
+	default:
+		slog.Info("web surface verification enabled")
+	}
+	return v
+}
+
+// passkeysFromEnv builds the passkey service (internal/passkeys) from
+// WEBAUTHN_RP_ID, WEBAUTHN_RP_ORIGINS, WEBAUTHN_RP_NAME and APP_BASE_URL;
+// nil (passkeys off: every decision stays at human_web) without a database
+// or a relying party.
+func passkeysFromEnv(pool *pgxpool.Pool) *passkeys.Service {
+	if pool == nil {
+		return nil
+	}
+	cfg, ok, err := passkeys.ConfigFromEnv(os.Getenv)
+	switch {
+	case err != nil:
+		slog.Error("passkeys disabled: the relying party is misconfigured", "error", err)
+		return nil
+	case !ok:
+		slog.Warn("passkeys disabled: set APP_BASE_URL or WEBAUTHN_RP_ID")
+		return nil
+	}
+	svc, err := passkeys.New(pool, cfg)
+	if err != nil {
+		slog.Error("passkeys disabled", "error", err)
+		return nil
+	}
+	slog.Info("passkeys enabled", "rp_id", cfg.RPID, "origins", strings.Join(cfg.Origins, ","))
+	return svc
+}
+
+// v2UIFromEnv builds the V2 UI flag's resolver (internal/v2ui) with
+// V2_UI_SINCE; nil (V1 for everyone) without a database. A V2_UI_SINCE that
+// doesn't parse is logged and treated as unset, so a typo hides V2 rather
+// than showing it to every new account.
+func v2UIFromEnv(pool *pgxpool.Pool) *v2ui.Resolver {
+	if pool == nil {
+		return nil
+	}
+	since, err := v2ui.SinceFromEnv(os.Getenv)
+	if err != nil {
+		slog.Error("V2_UI_SINCE ignored: new accounts don't get the V2 UI by signup time", "error", err)
+	} else if !since.IsZero() {
+		slog.Info("V2 UI on for accounts created since", "since", since.UTC().Format(time.RFC3339))
+	}
+	return v2ui.New(pool, since)
+}
+
+// v2Handler builds /v2: the ledger, which enqueues compile jobs with
+// River's InsertTx when there is a queue (plan 25 §5.7), and the compile
+// coordinator for previews, hand edits and drift, which needs
+// COMPILE_SERVICE_URL (with COMPILE_SERVICE_TOKEN for the Worker) and
+// object storage (nil means disabled). It also
+// returns the searcher MCP v2's recall and search use (hybrid when V2
+// embeddings are configured, v2Retrieval; lexical otherwise), and the
+// process's read recorder, shared with MCP. Tombstones say what Forget
+// can't reach from the same configuration (forget.HonestyFromEnv), and the
+// embeddings cache is purged when a Forget's propagation signals bus.
+func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectstore.Store, llm *anthropic.Client,
+	bus *forget.Bus, web *websurface.Verifier, sessionStore *sessions.Store, pk *passkeys.Service, accounts v2api.Accounts) (*v2api.Handler, *v2recall.Searcher, *reads.Recorder) {
+	embedCfg := v2index.ConfigFromEnv(os.LookupEnv)
+	dreamCfg := v2dream.ConfigFromEnv(os.LookupEnv)
+	opts := []ledger.Option{ledger.WithForgetHonesty(forget.HonestyFromEnv(os.LookupEnv)),
+		ledger.WithDreamUndoWindow(dreamCfg.UndoWindow)}
+	if queueClient != nil {
+		opts = append(opts, ledger.WithJobs(queueClient))
+		if embedCfg.Enabled() {
+			// Every searchable version queues its embedding (index_memory).
+			opts = append(opts, ledger.WithIndexJobs())
+		}
+	}
+	l := ledger.New(pool, opts...)
+	svc := compile.New(l, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL"), compile.WithToken(os.Getenv("COMPILE_SERVICE_TOKEN"))), blobStore,
+		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
+	search, vectors := v2Retrieval(l, embedCfg)
+	if vectors != nil && bus != nil {
+		bus.Local.Register(func(uuid.UUID) { vectors.Purge() })
+	}
+	// Nil without a database: nothing records reads.
+	rec := reads.New(l, reads.Options{})
+	if l != nil {
+		slog.Info("/v2 enabled", "compile_jobs", queueClient != nil, "compile_service", svc != nil,
+			"vectors", vectors != nil, "reads", rec != nil)
+	}
+	hopts := []v2api.Option{v2api.WithWebSurface(web), v2api.WithCompile(svc), v2api.WithSessions(sessionStore),
+		v2api.WithReads(rec), v2api.WithReceiptKeys(receiptKeysFromEnv()), v2api.WithPasskeys(pk), v2api.WithAccounts(accounts)}
+	if vectors != nil {
+		hopts = append(hopts, v2api.WithDrafts(vectors))
+	}
+	hopts = append(hopts, v2api.WithAsk(askService(l, search, llm)))
+	// Dream runs in the worker; here, run-now queues a run under the plan's
+	// caps (the engine needs no model for that).
+	if queueClient != nil {
+		hopts = append(hopts, v2api.WithDream(v2dream.New(l, nil, dreamCfg), queueClient))
+	}
+	// Device sign-in for the CLI (RFC 8628): the codes, keyed by the JWT
+	// secret; off without a database.
+	hopts = append(hopts, v2api.WithDevices(deviceauth.New(pool, []byte(os.Getenv("JWT_SECRET")))))
+	// Settings: which notification emails go out (the worker sends the
+	// morning email with DREAM_EMAIL and an email provider), and what
+	// Settings › Security says, from the same configuration (trust.FromEnv).
+	emailProvider := os.Getenv("RESEND_API_KEY") != "" || os.Getenv("SMTP_HOST") != ""
+	hopts = append(hopts, v2api.WithNotifications(v2api.NotificationDelivery{MorningEmail: dreamCfg.Email && emailProvider}),
+		v2api.WithTrust(trust.FromEnv(os.LookupEnv)))
+	return v2api.New(l, slog.Default(), hopts...), search, rec
+}
+
+// askService builds ⌘K Ask (internal/ask) on the same hybrid search as
+// recall, with the answer tier read once here (ASK_MODEL, ASK_ZDR,
+// ASK_PROVIDERS, ASK_MIN_QUANTIZATION, ASK_TIMEOUT_MS, ASK_MONTHLY_LIMIT). Without an LLM key, or with
+// ASK_MODEL=off, Ask answers with the matching memories only.
+func askService(l *ledger.Ledger, search *v2recall.Searcher, llm *anthropic.Client) *ask.Service {
+	cfg := ask.ConfigFromEnv(os.LookupEnv)
+	svc := ask.New(l, search, ask.NewAnthropicModel(llm, cfg.ZeroDataRetention), cfg)
+	if svc != nil {
+		slog.Info("V2 Ask", "answers", svc.Synthesises(), "model", cfg.Model, "zdr", cfg.ZeroDataRetention,
+			"hosts", cfg.Routing.Providers, "quantizations", cfg.Routing.Quantizations, "monthly_limit", cfg.MonthlyLimit)
+	}
+	return svc
+}
+
+// receiptKeysFromEnv reads the public keys receipt checkpoints are signed
+// with, to serve beside them: RECEIPT_VERIFY_KEYS (and the signing key's
+// public half, if RECEIPT_SIGNING_KEY happens to be set here too; the API
+// never signs). A bad value is logged, and no keys are served.
+func receiptKeysFromEnv() receiptchain.Keyring {
+	_, keys, err := receiptchain.FromEnv(os.Getenv)
+	if err != nil {
+		slog.Error("receipt checkpoint keys: unusable; serving none", "error", err)
+		return receiptchain.Keyring{}
+	}
+	return keys
+}
+
+// v2Retrieval builds V2 recall and search (plan 25 §5.11) from the
+// embedding configuration, read once here: lexical lanes always; with
+// VOYAGE_API_KEY and V2_EMBED_MODEL, the query embedder (V2_EMBED_QUERY_MODEL)
+// and the vector lane over the index model's embeddings, with the floors
+// (V2_RECALL_VECTOR_FLOOR, V2_NEAR_DUPLICATE_FLOOR); and the Voyage
+// reranker (V2_RERANK_MODEL, default rerank-3-lite, "off" disables). Nil
+// pieces mean disabled: without a key everything stays lexical.
+func v2Retrieval(l *ledger.Ledger, embedCfg v2index.Config) (*v2recall.Searcher, *v2recall.Vectors) {
+	if l == nil {
+		return nil, nil
+	}
+	vectors := v2recall.NewVectors(l, embedCfg.QueryEmbedder(), embedCfg.IndexEmbedder(),
+		v2recall.VectorConfigFromEnv(os.LookupEnv, embedCfg.IndexModel))
+	search := v2recall.New(l).WithVectors(vectors)
+	rerankModel := strings.TrimSpace(os.Getenv("V2_RERANK_MODEL"))
+	var reranker *rerank.Voyage
+	if !strings.EqualFold(rerankModel, "off") && embedCfg.APIKey != "" {
+		reranker = rerank.NewVoyage(rerank.VoyageConfig{APIKey: embedCfg.APIKey, Model: rerankModel})
+	}
+	if reranker != nil {
+		search.WithReranker(reranker)
+	}
+	if vectors != nil {
+		slog.Info("V2 retrieval: hybrid", "index_model", embedCfg.IndexModel, "query_model", embedCfg.QueryModel,
+			"rerank", reranker != nil)
+	} else {
+		slog.Info("V2 retrieval: lexical only (set VOYAGE_API_KEY for vectors)")
+	}
+	return search, vectors
 }
 
 func configureStore(ctx context.Context, app *App) (store.Store, *pgxpool.Pool, error) {
@@ -689,7 +979,7 @@ func configureStore(ctx context.Context, app *App) (store.Store, *pgxpool.Pool, 
 	}
 
 	slog.Info("connecting to PostgreSQL")
-	pool, err := pgxpool.New(ctx, dbURL)
+	pool, err := dbpool.Open(ctx, dbURL, dbpool.APIMaxConns)
 	if err != nil {
 		return nil, nil, fmt.Errorf("connect to database: %w", err)
 	}
@@ -765,7 +1055,23 @@ func configureAuth(pool *pgxpool.Pool, s store.Store) (*handler.AuthHandler, fun
 		}
 		keyResolver = authH.ResolveAPIKey
 		grantResolver = authH.ResolveOAuthGrant
+		// A session's address and, behind Cloudflare, its city, read the
+		// way the rate limiter trusts proxy headers.
+		authH.SetClientAddress(func(r *http.Request) (string, string) {
+			city := ""
+			if ratelimit.TrustedProxyMode() == "cloudflare" {
+				city = r.Header.Get("CF-IPCity")
+			}
+			return ratelimit.ClientIP(r), city
+		})
 	}
 
-	return authH, handler.RequireAuth(jwtSecret, keyResolver, grantResolver), nil
+	requireAuth := handler.RequireAuth(jwtSecret, keyResolver, grantResolver)
+	if authH == nil {
+		return nil, requireAuth, nil
+	}
+	// Every authenticated request records, now and then, that its session
+	// was used (the sessions list's "last used").
+	touch := handler.TouchSessions(authH.Sessions())
+	return authH, func(next http.Handler) http.Handler { return requireAuth(touch(next)) }, nil
 }

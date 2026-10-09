@@ -273,36 +273,13 @@ describe("YouApiKeys AssignAgentControl", () => {
     );
   });
 
-  it("linked → clear assignment: PATCHes agent_name:'' + standalone:false", async () => {
-    apiKeysData = [
-      makeKey({ id: "k7", name: "hatch-key", agent_name: "claude-code" }),
-    ];
-    agentData = [{ agent_name: "claude-code", display_name: "Claude Code" }];
-
-    renderWithQuery(<YouApiKeys />);
-    fireEvent.click(
-      screen.getByRole("button", { name: /Claude Code.*Assign to agent/i }),
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("clear-assignment-k7")).toBeTruthy(),
-    );
-    fireEvent.click(screen.getByTestId("clear-assignment-k7"));
-
-    await waitFor(() =>
-      expect(updateKeyMock).toHaveBeenCalledWith("k7", {
-        agent_name: "",
-        standalone: false,
-      }),
-    );
-  });
-
   it("standalone → agent: PATCHes agent_name (server auto-clears standalone)", async () => {
     apiKeysData = [makeKey({ id: "k8", name: "ci-key", standalone: true })];
     agentData = [{ agent_name: "cursor", display_name: "Cursor" }];
 
     renderWithQuery(<YouApiKeys />);
     fireEvent.click(
-      screen.getByRole("button", { name: /Standalone.*Assign to agent/i }),
+      screen.getByRole("button", { name: /Personal.*Assign to agent/i }),
     );
     await waitFor(() => expect(screen.getByText("Cursor")).toBeTruthy());
     fireEvent.click(screen.getByText("Cursor"));
@@ -314,34 +291,13 @@ describe("YouApiKeys AssignAgentControl", () => {
     );
   });
 
-  it("standalone → unassigned via clear assignment", async () => {
-    apiKeysData = [makeKey({ id: "k9", name: "ci-key", standalone: true })];
-    agentData = [];
-
-    renderWithQuery(<YouApiKeys />);
-    fireEvent.click(
-      screen.getByRole("button", { name: /Standalone.*Assign to agent/i }),
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("clear-assignment-k9")).toBeTruthy(),
-    );
-    fireEvent.click(screen.getByTestId("clear-assignment-k9"));
-
-    await waitFor(() =>
-      expect(updateKeyMock).toHaveBeenCalledWith("k9", {
-        agent_name: "",
-        standalone: false,
-      }),
-    );
-  });
-
   it("standalone key hides Mark as standalone (already is)", async () => {
     apiKeysData = [makeKey({ id: "k10", name: "ci-key", standalone: true })];
     agentData = [{ agent_name: "cursor", display_name: "Cursor" }];
 
     renderWithQuery(<YouApiKeys />);
     fireEvent.click(
-      screen.getByRole("button", { name: /Standalone.*Assign to agent/i }),
+      screen.getByRole("button", { name: /Personal.*Assign to agent/i }),
     );
     await waitFor(() => expect(screen.getByText("Cursor")).toBeTruthy());
     expect(screen.queryByTestId("mark-standalone-k10")).toBeNull();
@@ -358,7 +314,7 @@ describe("YouApiKeys AssignAgentControl", () => {
       screen.getByRole("button", { name: /Cursor.*Assign to agent/i }),
     );
     await waitFor(() =>
-      expect(screen.getByTestId("clear-assignment-k11")).toBeTruthy(),
+      expect(screen.getByTestId("mark-standalone-k11")).toBeTruthy(),
     );
     expect(screen.queryByText(/Create agent:/)).toBeNull();
   });

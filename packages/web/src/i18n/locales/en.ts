@@ -1,4 +1,5 @@
 // English — source of truth. All keys must exist in every locale.
+import { ledgerEn } from "./ledger/en";
 export const en = {
   common: {
     retry: "Retry",
@@ -16,6 +17,154 @@ export const en = {
     sectionNews: "Activity",
     sectionReceipts: "Receipts",
     empty: "All quiet — nothing new",
+  },
+  quickStart: {
+    title: "Quick start",
+    skip: "Skip",
+    next: "Next",
+    back: "Back",
+    start: "Start",
+    finish: "Got it, let's go",
+    progress: "First week {done} / {total}",
+    stepLabel: {
+      welcome: "Welcome",
+      connect_agent: "Connect",
+      first_memory: "Remember",
+      first_ask: "Ask",
+      first_dream: "Dream",
+      first_hub_invite: "Team",
+      use_cases: "Everyday use",
+    },
+    kickerWelcome: "1 / 6 · Welcome",
+    kickerConnect: "2 / 6 · Connect",
+    connectTitle: "Plug your agents in",
+    connectBody:
+      "Three steps for agents in the terminal, or paste the one-liner; for Claude, add a connector and the phone has it too. From then on, every memory says who wrote it.",
+    connectPaneAgents: "Agents in the terminal",
+    connectSteps: [
+      "Put memax on this computer",
+      "Log in once in the browser",
+      "Finds the agents installed here and connects them all",
+    ],
+    copyOneLiner: "Copy the one-liner",
+    connectPaneClaude: "claude.ai · Settings › Connectors",
+    connectPhoneNote:
+      "Connectors are per account: set it up on the web and the phone app has it too.",
+    copyCommand: "Copy command",
+    connectMockTitle: "Add custom connector",
+    connectMockName: "Name",
+    connectMockUrl: "URL",
+    copyConnectorUrl: "Copy connector URL",
+    copied: "Copied",
+    connectWeb: "Connect from the web instead",
+    kickerRemember: "3 / 6 · Remember",
+    rememberTitle: "Toss something in",
+    rememberBody:
+      "Say it wherever it comes to mind. Pick a scene below to see how; five memories and it starts dreaming at night.",
+    rememberDumpLabel: "Save",
+    rememberReferLabel: "Ask",
+    rememberScenes: {
+      agent: {
+        label: "While coding",
+        dump: "Remember: run the migration before deploying this project",
+        dumpReply: "Saved ✓",
+        refer: "What did the client ask us to change last time?",
+        referReply: "Found 3",
+        hint: 'Claude Code, Cursor, Codex, OpenClaw, Muse — any of them. Say "remember this" and it saves; say "check memax" and it looks.',
+      },
+      claude: {
+        label: "In Claude, on the go",
+        dump: "Remember that the dentist wants a check-up in three months",
+        dumpReply: "Saved ✓",
+        refer: "What was that hot-pot place called?",
+        referReply: "Found 1",
+        hint: 'Phone, desktop, web — all the same. Say "memax" and it knows where to put it and where to look.',
+      },
+      web: {
+        label: "On memax.app",
+        dump: "",
+        dumpReply: "",
+        refer: "",
+        referReply: "",
+        hint: "⌘K and paste anything: meeting notes, a link, an idea that just came to you. Questions go in the same box.",
+      },
+    },
+    rememberProgress:
+      "{current} / {target} so far. Five memories unlock dreaming.",
+    rememberSaved: "Saved ✓",
+    rememberCta: "Remember one now",
+    kickerAsk: "4 / 6 · Ask",
+    askTitle: "Ask memax",
+    askBody:
+      "Answers come from what you saved, and every line points back to where it came from.",
+    askExampleQ: "What launch date did we agree with the client?",
+    askExampleA:
+      "October 1st, with Wang owning support — from the meeting you noted on September 20th.",
+    askExampleCite: "from 2 memories",
+    askCta: "Ask one",
+    kickerDream: "5 / 6 · Dream",
+    kickerDreaming: "5 / 6 · Dreaming",
+    dreamTitle: "Let memax dream",
+    dreamBody:
+      "At night memax tidies what you tossed in during the day: merges the duplicates, flags what disagrees, and writes it up for you. The first one takes a minute or two.",
+    dreamLocked: "Unlocks after five memories.",
+    dreamingTitle: "memax is threading your memories",
+    dreamingBody:
+      "A minute or two. When it lands, this card becomes your first dream note; it shows on the pulse page too.",
+    dreamingChip: "Dreaming",
+    dreamingLeave: "I'll look around, tell me when it's done",
+    dreamDoneTitle: "Your first dream is done",
+    dreamDoneBody:
+      "See what it threaded together on the pulse page. It dreams every night from now on.",
+    dreamSeePulse: "Open pulse",
+    dreamCta: "Run a dream",
+    dreamCard1: "Tidied 3 memories last night",
+    dreamCard2: "Two of them disagree — flagged",
+    dreamCard3: "You had this thought two weeks ago too",
+    kickerTeam: "6 / 6 · Team",
+    teamTitle: "One brain for the whole team",
+    teamBody:
+      "Open a team hub and your teammates and their agents can use it too. Every memory says who wrote it. Optional.",
+    teamCta: "Create a team hub",
+    teamMeInitial: "Me",
+    teamSkip: "Not now",
+    kickerUseCases: "Everyday use",
+    useCasesTitle: "How to talk to your agent",
+    useCasesTitleDone: "First week done. Here's how it goes from here",
+    useCases: [
+      {
+        say: "Remember: launch is October 1st, Wang owns support",
+        then: "One line after the meeting. Ask in any agent later and it can look it up.",
+      },
+      {
+        say: "Remember the dentist wants a check-up in three months",
+        then: "Said to your phone on the way home; it's there on your computer too.",
+      },
+      {
+        say: "Remember: run the migration before deploying this project",
+        then: "Next time you ask in Cursor or Claude Code, one lookup in memax and it's there.",
+      },
+      {
+        say: "Note an idea: send new users a 'what you saved this week' letter",
+        then: "Toss it in, no tidying. It's there when you ask; if a dream finds an older thought that matches, it shows them together.",
+      },
+      {
+        say: "Put this in the team hub",
+        then: "New teammates and their agents find it, with your name on it.",
+      },
+      {
+        say: "(nothing at all)",
+        then: "A tidy-up every night: duplicates merged, disagreements flagged for you to see.",
+      },
+    ],
+    launcherContinue: "Continue",
+    launcherNext: "Next: {step}",
+    launcherAllDone: "All done! memax dreams every night — see you tomorrow.",
+    drawerSection: "Getting started",
+    drawerWelcomeRow: "A note from the founders",
+    openFromMechanism: "Open quick start",
+    openFromMechanismHint:
+      "Six cards through your first week: connect, remember, ask, dream, team.",
   },
   billing: {
     upgrade: "Upgrade",
@@ -725,6 +874,13 @@ export const en = {
     forgetFailed: "Couldn't forget memories",
     forgetDenied: "You don't have permission to forget those memories",
     forgetNotReady: "This memory is still syncing. Try again in a moment.",
+    attribute: "Credit to",
+    attributePickerTitle: "Credit these to",
+    attributed: "Credited {n} memories to {agent}.",
+    attributedOne: "Credited 1 memory to {agent}.",
+    partialAttribute: "{success} · {skipped} could not be changed",
+    attributeFailed: "Could not change attribution",
+    attributeNoAgents: "No connected agents yet",
     moveFailed: "Couldn't move memories",
     moveNotReady: "This memory is still syncing. Try again in a moment.",
     moveSourceDenied:
@@ -850,73 +1006,7 @@ export const en = {
     },
     checklist: {
       title: "Your first week",
-      progressFormat: "{done} of {total} done",
-      celebrateTitle: "You're all set up",
-      celebrateSubtitle: "memax dreams nightly now. See you tomorrow.",
-      stripOpen: "Open",
-      collapseAria: "Collapse checklist",
       dismissAria: "Dismiss checklist",
-      lockedHint: "Unlocks after you dump 5 memories.",
-      items: {
-        welcome: {
-          title: "Read the welcome note",
-          description: "90 seconds. Worth it.",
-          completedTitle: "Read the welcome note",
-          ctaLabel: "Read it",
-        },
-        connect_agent: {
-          title: "Connect your first agent",
-          description:
-            "Claude Code, Cursor, Codex — one command, memory flows both ways.",
-          completedTitle: "Connected your first agent",
-          ctaLabel: "Set up",
-        },
-        first_memory: {
-          title: "Dump your first memory",
-          description:
-            "Type anything in the bar, hit ⌘↵. A wiki, a link, a half-thought.",
-          completedTitle: "Dumped your first memory",
-          ctaLabel: "Try the bar",
-        },
-        first_ask: {
-          title: "Ask memax a question",
-          description:
-            "Press ↵ instead of ⌘↵ — memax answers from everything you've dumped.",
-          completedTitle: "Asked your first question",
-          ctaLabel: "Try asking",
-        },
-        five_memories: {
-          title: "Dump 5 memories",
-          description:
-            "memax needs a critical mass to start seeing patterns. Unlocks dreams.",
-          completedTitle: "Dumped 5 memories",
-        },
-        first_hub_invite: {
-          title: "Join or start a team hub",
-          description:
-            "Shared brain with people you work with. Jump in or start your own.",
-          completedTitle: "Joined a team hub",
-          ctaLabel: "Start a hub",
-        },
-        first_dream: {
-          title: "Let memax dream",
-          description:
-            "Dreams stitch your memories together. Tap to run your first one.",
-          completedTitle: "Ran your first dream",
-          // Single-use: row hides the button on optimistic complete
-          // after a successful trigger, so a user can't spam. Also,
-          // dreams no longer auto-tick this item from other surfaces
-          // — only this CTA completes it (per user direction).
-          ctaLabel: "Run a dream",
-          // Shown beneath the row title after the user clicks the
-          // CTA. The trigger fires fast (HTTP returns in <1s) but the
-          // actual dream takes 30–90s; without this caption the user
-          // sees the row check off instantly with no signal the work
-          // is still happening. Persists for the session — no timer,
-          // no SSE handshake needed.
-          dreamingHint: "memax is dreaming — check back in a minute.",
-        },
-      },
     },
     // Visual tag for the four onboarding-seed memory cards (plan 23
     // tutorial curriculum). Without this chip the seeds read as
@@ -935,6 +1025,7 @@ export const en = {
     highlightAck: "Got it",
     actionDismiss: "Not interested",
     moreActions: "More actions",
+    customBoardUntitled: "Untitled board",
     kindFilterAll: "All",
     receiptAcked: "Noted",
     receiptDismissed: "Dismissed",
@@ -945,11 +1036,11 @@ export const en = {
     kindTrace: "Traces · last {n} hours",
     kindPulse: "Topic pulse · last {n} days",
     kindActivity: "Activity · last {n}h",
-    activityTopics: "Topics:",
     activityPurpose:
-      "The countable stuff — which agents wrote what, which topics moved, how this week compares. One line, because counts are worth knowing but not worth stopping on.",
+      "What landed in the last day, which topic it went to, who wrote it and through which agent — a receipt; tap a row to open that memory.",
+    activityUnassigned: "No topic yet",
+    activityYou: "You",
     stripActivity: "Activity",
-    stripActivityWeek: "{n} this week",
     kindCapsule: "One year ago today",
     kindWeek: "This week",
     traceCountOne: "1 memory",
@@ -962,7 +1053,6 @@ export const en = {
     purpose:
       "What changed in this hub while you were away — agent activity, topic movement, and echoes from your past memories. Cards refresh after each organizing pass; resolve one and it stays as a receipt until new content replaces it.",
     purposeAria: "What is this?",
-    collapse: "Collapse",
     loadFailed: "memax could not load your board. Refresh to try again.",
     continueInMemax: "Continue in memax",
     copyForAgent: "Copy for agent",
@@ -981,9 +1071,6 @@ export const en = {
     pulseRecentOne: "1 new memory",
     pulseRecent: "{n} new memories",
     pulseContributors: "{n} people",
-    weekLineOne: "1 memory this week",
-    weekLine: "{n} memories this week",
-    weekCompare: "Last week: {n}",
     kindDreamlog: "Last night's dream",
     kindEcho: "Echo",
     kindThread: "Hidden thread",
@@ -1853,17 +1940,21 @@ export const en = {
     placeholder: "Claude Code on laptop, CI deploy...",
     summary: "{total} keys · {auto} auto · {manual} manual",
     summaryWithStandalone:
-      "{total} keys · {linked} linked · {standalone} standalone · {unassigned} unassigned",
+      "{total} keys · {linked} agent · {standalone} personal",
     justNow: "just now",
     // Agent attribution affordances on unassigned keys.
     agentLabel: "Agent (optional)",
+    identityLabel: "Who uses this key",
+    identityMe: "Me (personal key)",
+    identityHint:
+      "For bots, pipelines and cron jobs pick the agent; what they write is credited to that agent.",
     agentPlaceholderNone: "No agent",
     unassigned: "Unassigned",
     assignAgent: "Assign to agent",
     createAgent: "Create agent: {slug}",
-    markStandalone: "Mark as standalone",
+    markStandalone: "Mark as personal",
     clearAssignment: "Clear assignment",
-    standalone: "Standalone",
+    standalone: "Personal",
     assigning: "Assigning...",
     updateFailed: "Couldn't update key — retry",
   },
@@ -2043,12 +2134,8 @@ export const en = {
     switchToRows: "Switch to row view",
     switchToCards: "Switch to card view",
     filterPastLabel: "Filter recent window",
-    filterBy: "Filter",
-    filterTimeLabel: "Time",
-    filterActorLabel: "Actor",
     filterActorAll: "All actors",
     filterActorYou: "You",
-    filterReset: "Clear all",
     copyContent: "Copy",
     copiedContent: "Copied",
     loadingMore: "Loading more...",
@@ -2695,6 +2782,7 @@ export const en = {
       adminSendEmail: "send that email",
       adminSetUserPlan: "set that user's plan",
       adminSetOverrides: "save those overrides",
+      adminSetV2Ui: "change their V2 UI",
       adminDeleteOverrides: "clear those overrides",
       adminUpdatePlan: "update that plan",
       adminSetHubPlan: "set the hub's plan",
@@ -3523,6 +3611,28 @@ export const en = {
         effectiveSourceHub: "hub: {name}",
         effectiveSourceUnknownHub: "hub: {id}",
       },
+      // The per-person V2 UI flag (plan 25 E1, internal/v2ui): what it is,
+      // why, and the operator's own choice.
+      v2Ui: {
+        title: "V2 UI",
+        on: "On",
+        off: "Off",
+        reasons: {
+          v2_space: "They're a member of a space on V2.",
+          operator_on: "An operator turned it on.",
+          operator_off: "An operator turned it off. This wins over every rule.",
+          signed_up_since: "They signed up on or after {since}.",
+          none: "They have no space on V2.",
+        },
+        setting: "Operator setting",
+        settings: {
+          default: "Follow the rules",
+          on: "Turn on",
+          off: "Turn off",
+        },
+        hint: "Their browser picks up a change at its next page load.",
+        loadError: "Couldn't read the V2 UI flag.",
+      },
       pagination: {
         previous: "Previous",
         next: "Next",
@@ -3674,6 +3784,7 @@ export const en = {
         pulse: "Pulse",
         ingestion: "Ingestion",
         jobs: "Jobs",
+        metrics: "Gate metrics",
       },
       ops: {
         title: "Operations",
@@ -3860,8 +3971,103 @@ export const en = {
           pending: "Pending",
         },
       },
+      metrics: {
+        title: "Gate metrics",
+        description:
+          "The V2 plan's phase gates, counted from receipts: people by the week they signed up. A person counts once they reach a V2 space; staff are left out.",
+        weeks: "Signup weeks",
+        weeksOption: "{n} weeks",
+        asOf: "As of {time} UTC",
+        loadError: "Couldn't load the gate metrics. Reload to try again.",
+        none: "–",
+        gates: {
+          title: "Phase gates",
+          description:
+            "Judged on new people. People who came from V1 are shown beside them, never inside.",
+          activation: "Phase 2 · 2+ agents and a compile in the first session",
+          first_file: "Phase 2 · first file, median from init's import",
+          week4_keeping: "Phase 3 · activated people keeping in week 4",
+          team_pull: "Phase 4 · a teammate within 60 days",
+          ratioHint: "{numerator} of {denominator} · bar {bar}",
+          fileHint: "{numerator} of {denominator} under 5 min · bar {bar}",
+          fromV1: "From V1: {value}",
+          status: {
+            pass: "At the bar",
+            fail: "Below the bar",
+            pending: "Waiting for windows to close",
+          },
+        },
+        northStar: {
+          title: "North star",
+          value: "{two} of {read}",
+          hint: "Spaces read by 2+ agents in the week ending {week}. Coverage {coverage}: {reading} of {seen} connections seen were also seen reading.",
+        },
+        cohorts: {
+          title: "Cohorts by signup week",
+          description:
+            "First-session counts are of people whose first {hours} hours have ended.",
+          empty: "No one reached a V2 space in these weeks.",
+          all: "All",
+          kind: {
+            new: "New",
+            from_v1: "From V1",
+          },
+          columns: {
+            week: "Week",
+            cohort: "Cohort",
+            people: "People",
+            closed: "Closed",
+            twoAgents: "2+ agents",
+            compiled: "Compiled",
+            activated: "Activated",
+            read: "Read",
+            firstFile: "First file p50 / p90",
+            under5m: "Under 5 min",
+            signupToFile: "Signup to file",
+            week4: "Week 4",
+            teammate: "Teammate",
+          },
+        },
+        review: {
+          title: "Review health",
+          description:
+            "Proposals by the week they were made, and what decided each one first.",
+          empty: "No proposals in these weeks.",
+          columns: {
+            week: "Week",
+            proposals: "Proposals",
+            kept: "Kept",
+            rejected: "Rejected",
+            folded: "Folded",
+            forgotten: "Forgotten",
+            open: "Open",
+            rejectRate: "Reject rate",
+            decision: "To decision p50",
+            decisionP90: "p90",
+          },
+        },
+        definitions: {
+          title: "How these are counted",
+          signup:
+            "Signup: when a new person's account was created. For someone who wrote memories in V1 first, when they first had a V2 space.",
+          session:
+            "First session: the {hours} hours after signup, long enough to run init and open a second agent.",
+          activated:
+            "Activated: by the end of the first session, 2+ agent connections and a compile their own CLI or daemon wrote to disk.",
+          firstFile:
+            "First file: from init's first import to the first compile written to disk.",
+          week4:
+            "Week 4: activated people who kept something themselves 21 to 28 days after signup.",
+          teammate:
+            "Teammate: another person joined a V2 space they own within 60 days. Plans aren't billed yet, so this is everyone, not only Pro.",
+          review:
+            "Reject rate: rejected out of kept and rejected. Folded proposals were repeats the judge merged.",
+        },
+      },
     },
   },
+  // V2 (Ledger) namespaces live in ./ledger/ so V1 can be deleted at cutover.
+  ledger: ledgerEn,
 } as const;
 
 // Recursively widen string literals to `string` so other locales can use different values

@@ -1,0 +1,183 @@
+import type { LedgerStrings } from "./en";
+
+// 中文：Ledger 组件自己的字眼（数据由 props 传入）。
+// 沿用 V1 的词：记住 remember、保留 keep、忘记 forget、撤销 undo、拒绝 reject、
+// 编辑 edit、审阅 review、交接 hand off、空间 space、主导航。
+// 规则同英文：不说 AI、不用“智能”、不用感叹号和 emoji，不说“删除”“保存”“批准”。
+// agent 名称是专有名词，不翻译；“agent”本身也保留英文（V1 文案的习惯），不用“智能体”。
+// 中文与数字、拉丁字母之间留一个空格（“34 条笔记”），标点前不留空格。
+export const zh: LedgerStrings = {
+  common: {
+    listSeparator: "，",
+  },
+  state: {
+    proposed: "提议",
+    kept: "已保留",
+    merged: "已合并",
+    stale: "过时",
+    faded: "已淡出",
+    conflict: "冲突",
+    forgotten: "已忘记",
+    working: "进行中",
+    off: "已关闭",
+  },
+  receiptVerb: {
+    proposed: "提议",
+    kept: "保留",
+    merged: "合并",
+    stale: "过时",
+    faded: "淡出",
+    conflict: "冲突",
+  },
+  surface: {
+    cli: "CLI",
+    ide: "IDE",
+    cloud: "云端",
+    chat: "聊天",
+    memax: "Memax",
+    person: "成员",
+    agent: "Agent",
+  },
+  agent: {
+    fallback: "Agent",
+    you: "你",
+  },
+  time: {
+    justNow: "刚刚",
+  },
+  diff: {
+    removed: "去掉：",
+    added: "新增：",
+  },
+  cite: {
+    source: "来源 {n}",
+    sourceTitled: "来源 {n}：{title}",
+  },
+  memoryRow: {
+    actions: "记忆操作",
+    actionsFor: "{id} 的操作",
+  },
+  memoryText: {
+    stateSuffix: "（{state}）",
+  },
+  redaction: {
+    bar: "已忘记的记忆",
+    atYourRequest: "{date} 应你的要求忘记",
+    by: "{date} 由 {name} 忘记",
+  },
+  seal: {
+    label: "已保留",
+  },
+  review: {
+    keptByYou: "由你保留",
+    keptBy: "由 {name} 保留",
+    conflict: "和一条已保留的记忆冲突",
+    external: "来自外部内容。",
+    updates: "更新 {id}",
+    replaced: "已替换 {id}",
+    aKeptMemory: "一条已保留的记忆",
+    keptNow: "目前保留",
+    into: "记入 {space}",
+    proposedBy: "由 {name} 提议",
+    keep: "保留",
+    keepReplace: "保留，替换旧的",
+    edit: "编辑",
+    reject: "拒绝",
+    undo: "撤销",
+  },
+  dream: {
+    masthead: "Dream",
+    issue: "第 {n} 期",
+    title: "{notes}变成了 {facts}。",
+    notes: { one: "1 条笔记", other: "{n} 条笔记" },
+    facts: { one: "1 条事实", other: "{n} 条事实" },
+    fold: "{notes}归入 {facts}",
+    kind: {
+      merged: "合并",
+      conflict: "冲突",
+      faded: "淡出",
+      kept: "保留",
+    },
+  },
+  handoff: {
+    done: "已完成",
+    next: "下一步",
+    questions: "未决问题",
+    to: "交给",
+    accepted: "已接手",
+    withAgent: "在 {name} 手上",
+    drafted: "草稿",
+  },
+  autonomy: {
+    label: "{name} 的权限",
+    read: "只读",
+    propose: "提议",
+    write: "写入",
+    readHint: "只读取上下文，从不写入。",
+    proposeHint: "写入先送审阅。",
+    writeHint: "写入直接保留，照样留收据。",
+  },
+  agentList: {
+    agent: "Agent",
+    autonomy: "权限",
+    reads: "7 天读取",
+    writes: "7 天写入",
+    lastSeen: "最近活动",
+    target: "编译到",
+    readsLabel: "7 天内读取：",
+    writesLabel: "7 天内写入：",
+    mcpOnly: "仅 MCP",
+    paused: "已暂停",
+    notSeen: "还没有活动",
+    notRecorded: "还没开始记录",
+  },
+  sync: {
+    synced: "已同步",
+    drifted: "已偏离",
+    pending: "编译中",
+    off: "已关闭",
+  },
+  gate: {
+    waiting: "{name} 在等你",
+    keptIn: "你的回答会以你的名义保留在 {space}。",
+    kept: "你的回答会以你的名义保留。",
+    answer: "回答",
+    choose: "先选 {options}",
+  },
+  command: {
+    label: "提问或记住",
+    placeholder: "问问你的上下文，或者记点什么…",
+    ask: "提问",
+    remember: "记住",
+    mode: "模式",
+    open: "打开",
+    keepAnswer: "把回答保留为记忆",
+    switchMode: "提问 / 记住",
+    close: "关闭",
+  },
+  nav: {
+    label: "主导航",
+    ask: "提问或记住",
+    settings: "设置",
+    places: {
+      today: "今天",
+      review: "审阅",
+      briefs: "简报",
+      memories: "记忆",
+      handoffs: "交接",
+      agents: "Agent",
+      decisions: "决策",
+    },
+  },
+  shell: {
+    skip: "跳到正文",
+  },
+  terminal: {
+    region: "终端：{title}",
+    ok: "完成：",
+    kept: "已保留：",
+    proposed: "提议：",
+    forgotten: "已忘记：",
+    warn: "需要你：",
+  },
+};

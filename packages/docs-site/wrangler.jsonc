@@ -1,0 +1,41 @@
+// docs.memax.app on Cloudflare: the static export in out/ (next.config.ts)
+// as Workers static assets. There is no Worker script, so every request is
+// a static asset request, which Workers doesn't bill.
+//
+//   pnpm --filter @memaxlabs/docs-site build        # next build → out/
+//   pnpm --filter @memaxlabs/docs-site preview:cf   # out/ under workerd on :8787
+//   pnpm --filter @memaxlabs/docs-site deploy:cf -- --env staging   # CI does this; never by hand
+//
+// public/_redirects and public/_headers (copied into out/) hold the
+// redirects and cache headers.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "memax-docs",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "out",
+    // /quickstart/benchmarks serves quickstart/benchmarks.html.
+    "html_handling": "auto-trailing-slash",
+    // Unknown paths get the export's 404 page, with a 404 status.
+    "not_found_handling": "404-page",
+  },
+  "preview_urls": false,
+  "env": {
+    "staging": {
+      "name": "memax-docs-staging",
+      // Zone routes, as the web app's (packages/web/wrangler.jsonc).
+      "routes": [
+        {
+          "pattern": "staging-docs.memaxlabs.com/*",
+          "zone_name": "memaxlabs.com",
+        },
+      ],
+      "workers_dev": false,
+    },
+    "production": {
+      "name": "memax-docs-production",
+      "routes": [{ "pattern": "docs.memax.app/*", "zone_name": "memax.app" }],
+      "workers_dev": false,
+    },
+  },
+}

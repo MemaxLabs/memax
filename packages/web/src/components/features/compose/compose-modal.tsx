@@ -389,6 +389,10 @@ export function ComposeModal({
       await createMemory.mutateAsync({
         content,
         title,
+        // The compose modal IS a person at the web UI — the one write
+        // path the server can vouch for as human_direct. Without this
+        // the SDK default ("sdk") would read as a machine entrypoint.
+        source: "web",
         content_type: "markdown",
         tags: tags.length > 0 ? tags : undefined,
         // Picker selection wins over active hub. Falls back to active

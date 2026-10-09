@@ -445,7 +445,7 @@ func (r *Runner) generateAnswer(ctx context.Context, entry *Entry, recallResults
 		history, entry.QuestionDate, entry.Question)
 
 	resp, err := r.llm.Complete(ctx, anthropic.CompleteRequest{
-		Model:     "claude-haiku-4-5-20251001",
+		Model:     anthropic.StrongModel,
 		MaxTokens: 512,
 		Prompt:    prompt,
 		Purpose:   "longmemeval.qa_synthesis",

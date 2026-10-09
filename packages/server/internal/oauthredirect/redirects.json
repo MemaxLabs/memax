@@ -1,0 +1,28 @@
+{
+  "_about": "Which redirect URIs an OAuth client may register and be sent to (RFC 6749 §3.1.2, RFC 8252 for native apps). The one description of it: the server embeds it (internal/oauthredirect) and the web app's consent page reads it (src/lib/oauth-redirects.ts), so the page follows exactly what the server accepts. https anywhere; http on a loopback host only, with any port at authorize and token time (RFC 8252 §7.3); a private-use scheme that is a reverse domain name (contains a dot, §7.1), or one of native_schemes; never a refused scheme, userinfo or a fragment. A private scheme can be claimed by another app on the device, so PKCE (S256) is required of every client.",
+  "loopback_hosts": ["127.0.0.1", "::1", "localhost"],
+  "native_schemes": {
+    "cursor": "Cursor registers cursor://anysphere.cursor-mcp/oauth/callback by DCR beside https://www.cursor.com/agents/mcp/oauth/callback and http://localhost:8787/callback, with no application_type (Cursor forum, 3.13.25 and 3.14.27).",
+    "vscode": "VS Code's URI handler. VS Code registers https://vscode.dev/redirect (which hands off to vscode://) and loopback redirects (microsoft/vscode#278512); vscode:// admits a client that redirects to the handler directly.",
+    "vscode-insiders": "VS Code Insiders' URI handler, behind https://insiders.vscode.dev/redirect, as vscode.",
+    "windsurf": "Windsurf's URI handler (a VS Code fork). Its MCP OAuth redirect isn't publicly documented (checked Oct 2026); this admits its app scheme, as vscode."
+  },
+  "refused_schemes": [
+    "javascript",
+    "vbscript",
+    "data",
+    "file",
+    "about",
+    "blob",
+    "filesystem",
+    "ws",
+    "wss",
+    "ftp",
+    "mailto",
+    "tel",
+    "sms",
+    "intent",
+    "chrome",
+    "view-source"
+  ]
+}

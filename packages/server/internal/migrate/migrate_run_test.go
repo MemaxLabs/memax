@@ -8,11 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/testdb/catalock"
 )
 
 // baseURL mirrors internal/testdb's resolution so this test file
@@ -57,7 +60,7 @@ func withFreshDB(t *testing.T) string {
 			"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
 			dbName,
 		)
-		_, _ = admin.Exec(termCtx, fmt.Sprintf("DROP DATABASE IF EXISTS %q", dbName))
+		_ = catalock.DropDatabase(termCtx, admin, dbName)
 	})
 
 	// Build the connection string for the new DB by replacing the
@@ -162,5 +165,66 @@ func TestRunWithOptionsClampsLockTimeout(t *testing.T) {
 	cs := withFreshDB(t)
 	if err := RunWithOptions(cs, migrationsDir(), Options{}); err != nil {
 		t.Fatalf("zero-value options should default cleanly, got %v", err)
+	}
+}
+
+// A release deployed back over a database a newer one migrated (a
+// rollback) finds the database ahead of its files: its release step must
+// succeed and change nothing, or the rollback can't deploy. Dirty and
+// ahead, it refuses: only the newer release can repair that.
+func TestRunAcceptsADatabaseAheadOfItsFiles(t *testing.T) {
+	cs := withFreshDB(t)
+	if err := Run(cs, migrationsDir()); err != nil {
+		t.Fatal(err)
+	}
+	// The older release: the same migrations but the newest three.
+	newest, err := newestMigration(migrationsDir())
+	if err != nil || newest < 4 {
+		t.Fatalf("newest migration %d: %v", newest, err)
+	}
+	older := t.TempDir()
+	entries, err := os.ReadDir(migrationsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		digits, _, ok := strings.Cut(e.Name(), "_")
+		v, perr := strconv.ParseUint(digits, 10, 64)
+		if !ok || perr != nil || uint(v) > newest-3 {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(migrationsDir(), e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(older, e.Name()), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var before int
+	if err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(cs, older); err != nil {
+		t.Fatalf("an older release's migrations over a newer database: %v", err)
+	}
+	var after int
+	if err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations`).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if after != before || uint(before) != newest {
+		t.Fatalf("version %d, then %d; want %d both times", before, after, newest)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE schema_migrations SET dirty = true`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(cs, older); err == nil || !strings.Contains(err.Error(), "dirty") {
+		t.Fatalf("dirty and ahead: %v, want a refusal", err)
 	}
 }

@@ -1,0 +1,15 @@
+<!-- Compiled by Memax from memax-v2 at 2026-10-06 09:00 UTC (C-0900). Edit it at https://memax.app/memax-v2/brief; edits here come back as proposals. -->
+# Memax V2 engineering brief
+
+Every line cites a memory. Ask the memax MCP server for anything else.
+
+## Decisions
+- Background jobs run on River, Postgres-backed. We do not use Temporal. [M-0219]
+- (Being verified) Ask memax answers with the Haiku tier. [M-0187]
+- (In conflict) Deploy the v2 API to Railway. [M-0174]
+- (Being verified) Pin Node 24 in CI until the October LTS lands. [M-0300]
+- Freeze V1 routes until cutover. [M-0301]
+
+## Live context
+Use the memax MCP server for anything not here:
+memax_recall, memax_search, memax_get. Propose with memax_push.

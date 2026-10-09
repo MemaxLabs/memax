@@ -1,0 +1,113 @@
+/* The statement editor, after ReviewEdit.dc.html: the card on
+ * line-strong, the serif field, the diff on sheet, the reason, and the
+ * receipt footer. */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.by {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 20px;
+  line-height: 30px;
+  resize: vertical;
+  text-wrap: pretty;
+}
+
+.textarea:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.textarea[aria-invalid="true"] {
+  border-color: var(--vermilion);
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--vermilion);
+}
+
+.diff {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--sheet);
+  border-radius: var(--radius-sm);
+}
+
+.diffText {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 25px;
+  color: var(--ink);
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.spacer {
+  flex: 1;
+}
+
+@media (max-width: 639px) {
+  .editor {
+    padding: 16px;
+  }
+
+  .textarea {
+    font-size: 18px;
+    line-height: 27px;
+  }
+}

@@ -149,7 +149,11 @@ jobs:
         # but we just published `memax-sdk@0.4.0-alpha.N` — semver says
         # prereleases are below stable, so the dep wouldn't resolve.
         # Mirroring the version in both package.json files keeps CLI
-        # alphas pinned to SDK alphas of the same run.
+        # alphas on SDK alphas of the same run, and `workspace:*` pins
+        # the exact one: `workspace:^` would publish `^0.7.0-alpha.N`,
+        # which the stable 0.7.0 also satisfies (it sorts above its own
+        # prereleases), so npm installed the old stable SDK and the CLI
+        # failed on its first V2 import.
         if: steps.version.outputs.publish == 'true' && inputs.package == 'cli' && inputs.channel == 'alpha'
         env:
           RUN_NUMBER: ${{ github.run_number }}
@@ -159,6 +163,7 @@ jobs:
           SDK_CORE="${SDK_BASE%%-*}"
           SDK_ALPHA="${SDK_CORE}-alpha.${RUN_NUMBER}"
           (cd packages/sdk && npm version "$SDK_ALPHA" --no-git-tag-version --allow-same-version)
+          (cd packages/cli && npm pkg set "dependencies.memax-sdk=workspace:*")
 
       - name: Rewrite version
         if: steps.version.outputs.publish == 'true'
@@ -170,6 +175,41 @@ jobs:
         run: |
           npm version "${{ steps.version.outputs.target_version }}" \
             --no-git-tag-version --allow-same-version
+
+      - name: Check the CLI installs from npm and starts
+        # As a user gets it: the packed CLI into an empty folder, its
+        # dependencies from the registry, then `memax --version`, which
+        # loads every command. Before publishing, so a CLI that can't
+        # start never reaches the dist-tag.
+        if: steps.version.outputs.publish == 'true' && inputs.package == 'cli'
+        env:
+          TARGET: ${{ steps.version.outputs.target_version }}
+        run: |
+          set -euo pipefail
+          (cd packages/cli && pnpm pack --pack-destination "$RUNNER_TEMP/cli-pack")
+          tgz=$(ls "$RUNNER_TEMP"/cli-pack/memax-cli-*.tgz)
+          dir="$RUNNER_TEMP/cli-install"
+          mkdir -p "$dir" && cd "$dir" && npm init -y >/dev/null
+          # The SDK it needs may have been published minutes ago, and npm
+          # processes a new version before serving it (4.5 min on Oct 8):
+          # wait up to 15 minutes for that exact version, then install.
+          want=$(tar -xOzf "$tgz" package/package.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).dependencies["memax-sdk"]))')
+          for i in $(seq 1 45); do
+            if npm view "memax-sdk@$want" version >/dev/null 2>&1; then break; fi
+            if [ "$i" = 45 ]; then
+              echo "::error::memax-sdk@$want isn't on npm after 15 minutes"
+              exit 1
+            fi
+            sleep 20
+          done
+          npm install --no-audit --no-fund "$tgz"
+          sdk=$(node -p "require('./node_modules/memax-sdk/package.json').version")
+          got=$(./node_modules/.bin/memax --version)
+          echo "memax $got with memax-sdk $sdk"
+          if [ "$got" != "$TARGET" ]; then
+            echo "::error::memax --version said '$got', want $TARGET"
+            exit 1
+          fi
 
       - name: Publish
         if: steps.version.outputs.publish == 'true'

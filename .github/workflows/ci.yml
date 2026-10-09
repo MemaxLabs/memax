@@ -59,7 +59,7 @@ jobs:
     # release_command, so CI and prod migrate the same way.
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: memax
           POSTGRES_PASSWORD: memax
@@ -81,8 +81,23 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           cache-dependency-path: packages/server/go.sum
+
+      # The compile pipeline's integration tests start the real Node
+      # compile service (packages/compile-service, built from source by
+      # internal/compile/compiletest). Install its workspace deps so those
+      # tests run instead of skipping.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install compile-service dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile --filter @memaxlabs/compile-service...
 
       - run: go vet ./...
       - run: go build ./cmd/server ./cmd/worker
@@ -99,7 +114,11 @@ jobs:
       # store / dreams / handler packages. The `-tags=integration`
       # flag additionally pulls in the full 5-phase dream cycle
       # test in internal/dreams/integration_test.go.
+      # MEMAX_REQUIRE_COMPILE_SERVICE turns a missing Node or compile
+      # service into a failure, so the compile pipeline can't silently skip.
       - run: go test -tags=integration ./...
+        env:
+          MEMAX_REQUIRE_COMPILE_SERVICE: "1"
 
   eval:
     name: Retrieval eval
@@ -109,7 +128,7 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.changes.outputs.server == 'true'
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: memax
           POSTGRES_PASSWORD: memax
@@ -129,7 +148,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           cache-dependency-path: packages/server/go.sum
 
       - name: Install Doppler CLI
@@ -174,9 +193,54 @@ jobs:
             cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # Cloudflare Workers (staging), through deploy-cloudflare.yml: the compile
+  # service, the web app and the docs site. Vercel keeps deploying the web
+  # app and the docs from its Git integration (packages/web/vercel.json)
+  # until DNS moves to Cloudflare; then the Vercel projects go (AGENTS.md,
+  # "Moving to Cloudflare").
+  deploy-compile:
+    name: Deploy compile service to Cloudflare (staging)
+    needs: [format, typescript, go]
+    # The API calls it (COMPILE_SERVICE_URL in fly/fly.server.staging.toml),
+    # so deploy-server waits for it.
+    if: |
+      !failure() && !cancelled() &&
+      github.ref == 'refs/heads/main' && github.event_name == 'push'
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      worker: compile
+      environment: staging
+    secrets: inherit
+
+  deploy-web:
+    name: Deploy web app to Cloudflare (staging)
+    needs: [format, typescript]
+    if: |
+      !failure() && !cancelled() &&
+      github.ref == 'refs/heads/main' && github.event_name == 'push'
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      worker: web
+      environment: staging
+    secrets: inherit
+
+  deploy-docs:
+    name: Deploy docs site to Cloudflare (staging)
+    needs: [format, typescript]
+    if: |
+      !failure() && !cancelled() &&
+      github.ref == 'refs/heads/main' && github.event_name == 'push'
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      worker: docs
+      environment: staging
+    secrets: inherit
+
   deploy-server:
     name: Deploy API to Fly.io (staging)
-    needs: [format, typescript, go, eval]
+    # deploy-compile first: a new API never calls a compile service that
+    # isn't there yet.
+    needs: [format, typescript, go, eval, deploy-compile]
     # Run on every push to main when no upstream job *failed* or was
     # cancelled. `eval` / `go` are conditionally skipped when no
     # server files changed, so the default GHA "all needs must be
@@ -242,61 +306,10 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-  deploy-worker:
-    name: Deploy Worker to Fly.io (staging)
-    # API deploy runs database + River migrations; worker deploy waits so new
-    # worker code never starts before required schema changes are live.
-    needs: [format, typescript, go, eval, deploy-server]
-    # Same rationale as deploy-server: allow skipped upstreams
-    # (go/eval when server unchanged) but block real failures.
-    # deploy-server must also have succeeded — don't deploy a new
-    # worker against stale schema.
-    if: |
-      !failure() && !cancelled() &&
-      needs.deploy-server.result == 'success' &&
-      github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    environment: staging
-    concurrency:
-      group: deploy-worker
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # See deploy-server step for why full history is needed
-          # (git describe walking back to the nearest v*.*.* tag).
-          fetch-depth: 0
-
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Install Doppler CLI
-        uses: dopplerhq/cli-action@v3
-
-      - name: Sync secrets to Fly.io (worker)
-        working-directory: packages/server
-        env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: doppler secrets download --no-file --format env-no-quotes | flyctl secrets import --stage -a memax-worker-staging
-
-      - name: Deploy to Fly.io
-        working-directory: packages/server
-        # BUILD_VERSION mirrors deploy-server's describe-based value
-        # so the staging worker reports the same semver as the API.
-        run: |
-          VERSION=$(git describe --tags --always --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || echo "dev")
-          for attempt in 1 2 3; do
-            if flyctl deploy --remote-only -c fly/fly.worker.staging.toml --build-arg COMMIT_SHA="${GITHUB_SHA}" --build-arg BUILD_VERSION="${VERSION}"; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-            echo "flyctl deploy failed on attempt $attempt/3; retrying in 15s..."
-            sleep 15
-          done
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  # Staging has no separate worker app: the API runs the River worker
+  # in-process (MEMAX_EMBEDDED_WORKER in fly/fly.server.staging.toml), so
+  # an idle staging machine stops and Neon's staging compute can sleep.
+  # deploy-server deploys both.
 
   format:
     name: Format check

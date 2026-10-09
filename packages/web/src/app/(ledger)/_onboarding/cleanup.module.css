@@ -1,0 +1,281 @@
+/* Cleanup (Cleanup.dc.html): the disagreements on the left, what was
+ * read, handled and will be written on the right. */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 48px;
+  align-items: start;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.title {
+  margin: var(--space-3) 0 14px;
+  font-family: var(--font-serif);
+  font-size: 48px;
+  line-height: 52px;
+  font-weight: 380;
+  letter-spacing: -0.022em;
+  color: var(--ink);
+}
+
+.lede {
+  margin: 0;
+  max-width: 36em;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 28px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.settled {
+  gap: var(--space-2);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.topic {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.right {
+  margin-left: auto;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.option {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--space-3);
+  width: 100%;
+  padding: 10px var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.option:hover {
+  background: var(--hover);
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.option[aria-checked="true"] {
+  border-color: var(--ink);
+  background: var(--select);
+  box-shadow: inset 0 0 0 0.5px var(--ink);
+}
+
+.option :global(.mx-kbd) {
+  margin-top: 3px;
+}
+
+.optionText {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.quiet {
+  color: var(--ink-2);
+}
+
+.optionSource {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.cardFoot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: 2px;
+}
+
+.settledLine {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.refusal {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--vermilion);
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: var(--space-2);
+}
+
+.fileRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 32px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 9px var(--space-4);
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.fileRow:last-child {
+  border-bottom: 0;
+}
+
+.writeRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.fileRow code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.totals {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px var(--space-4);
+  background: var(--sheet);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.totals span:first-child {
+  color: var(--ink-2);
+}
+
+.handled {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.handled:last-child {
+  border-bottom: 0;
+}
+
+.handled div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.handled strong {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 550;
+}
+
+.handled div span {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.handledMark {
+  display: flex;
+  padding-top: 3px;
+}
+
+.handledIcon {
+  display: flex;
+  padding-top: 2px;
+  color: var(--ink-3);
+}
+
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.wide {
+  width: 100%;
+}
+
+.none {
+  padding: var(--space-6);
+}
+
+.noneTitle {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-serif);
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 400;
+}
+
+@media (max-width: 1023px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .title {
+    font-size: 36px;
+    line-height: 42px;
+  }
+}

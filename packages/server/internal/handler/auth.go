@@ -13,8 +13,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
@@ -22,7 +24,10 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/auth"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
+	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2ui"
+	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
 type AuthHandler struct {
@@ -78,7 +83,27 @@ type AuthHandler struct {
 	// handler returns 503 rather than storing a row whose email will
 	// never arrive.
 	enqueueEmail func(template, to string, vars map[string]string) error
+
+	// sessions keeps sign-in sessions and their hashed, rotating refresh
+	// tokens (internal/sessions); made from pool on first use when unset.
+	sessions     *sessions.Store
+	sessionsOnce sync.Once
+	// web verifies where the web app's server says a browser is
+	// (websurface.ClientInfo); nil records what the API sees.
+	web *websurface.Verifier
+	// clientAddress is a request's client address and, when the edge says,
+	// its city (the rate limiter's view of which proxy header to trust).
+	clientAddress func(*http.Request) (ip, city string)
+	// passkeys says who has a passkey: V1's link and unlink refuse them
+	// (auth_account.go). Nil means passkeys are off.
+	passkeys PasskeyHolders
+	// v2ui decides whether a person sees the V2 UI (internal/v2ui): /me
+	// and a web sign-in's tokens say which. Nil answers V1 for everyone.
+	v2ui *v2ui.Resolver
 }
+
+// SetV2UI sets the V2 UI flag's resolver (internal/v2ui).
+func (h *AuthHandler) SetV2UI(r *v2ui.Resolver) { h.v2ui = r }
 
 // onboardingEmitter is the plan-18 producer surface. Minimal
 // interface so AuthHandler doesn't import the onboarding package and
@@ -306,6 +331,14 @@ func (h *AuthHandler) GitHubLogin(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) GitHubCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
+	// An MCP authorization request from before sign-in moved to the web
+	// app (state "mcp:<request>"): nobody is signed in here; the request
+	// goes on on the web, where the person signs in with any method.
+	// Remove after one release.
+	if strings.HasPrefix(state, "mcp:") && h.mcpOAuth != nil {
+		h.mcpOAuth.ResumeOnWeb(w, r, strings.TrimPrefix(state, "mcp:"))
+		return
+	}
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, model.ApiResponse{
 			Error: &model.Error{Code: "missing_code", Message: "No authorization code provided."},
@@ -380,36 +413,6 @@ func (h *AuthHandler) GitHubCallback(w http.ResponseWriter, r *http.Request) {
 		EmailVerified: ghUser.EmailVerified,
 		Name:          ghUser.Name,
 		AvatarURL:     ghUser.AvatarURL,
-	}
-
-	// --- MCP OAuth flow ---
-	// state starts with "mcp:" — resolve user, then delegate to MCP handler.
-	// MCP flow does not carry invite tokens; org membership is the
-	// only signal that lets a new user register here. If requiredOrg
-	// is set and the user isn't a member AND doesn't already have an
-	// account, loginOrCreateUser returns ErrRegistrationRequired —
-	// surfaced below as a clean 403.
-	if strings.HasPrefix(state, "mcp:") && h.mcpOAuth != nil {
-		user, loginErr := h.loginOrCreateUser(r.Context(), pu, loginOpts{
-			ProviderOrgMember: isRequiredOrgMember,
-		})
-		if loginErr != nil {
-			if errors.Is(loginErr, ErrRegistrationRequired) {
-				writeJSON(w, http.StatusForbidden, model.ApiResponse{
-					Error: &model.Error{Code: "not_authorized", Message: fmt.Sprintf("Access restricted to members of the %s GitHub organization or invited users.", h.requiredOrg)},
-				})
-				return
-			}
-			slog.Error("github mcp login failed", "error", loginErr)
-			writeJSON(w, http.StatusInternalServerError, model.ApiResponse{
-				Error: &model.Error{Code: "login_failed", Message: "Failed to log in via GitHub."},
-			})
-			return
-		}
-		h.persistDevAccess(user.ID, devAccess)
-		mcpSessionID := strings.TrimPrefix(state, "mcp:")
-		h.mcpOAuth.HandleMCPCallback(w, r, user.ID, mcpSessionID)
-		return
 	}
 
 	// --- New OAuth state flow (production with store) ---
@@ -519,18 +522,22 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var user model.User
+	// The V2 UI flag's facts come with the row (internal/v2ui), so the
+	// flag costs no round trip of its own.
+	var ui v2ui.Row
 	// github_id is NULL for Google-only accounts (see auth_providers.go's
 	// NULLIF($1, 0) insert), so COALESCE to 0 before scanning into
 	// int64 — otherwise /v1/auth/me returns not_found for a valid
 	// session. Mirrors the fix applied to GetUser / GetUsersByIDs.
 	err := h.pool.QueryRow(context.Background(),
-		`SELECT id, COALESCE(github_id, 0), email, name, COALESCE(display_name, ''), avatar_url,
-			COALESCE(plan, 'free'), personal_plan_id, can_create_hub, created_at, updated_at
-		FROM users WHERE id = $1`, userID).Scan(
+		`SELECT u.id, COALESCE(u.github_id, 0), u.email, u.name, COALESCE(u.display_name, ''), u.avatar_url,
+			COALESCE(u.plan, 'free'), u.personal_plan_id, u.can_create_hub, u.created_at, u.updated_at,
+			`+v2ui.FactsColumns+`
+		FROM users u WHERE u.id = $1`, userID).Scan(append([]any{
 		&user.ID, &user.GitHubID, &user.Email, &user.Name,
 		&user.DisplayName, &user.AvatarURL, &user.Plan,
 		&user.PersonalPlanID, &user.CanCreateHub, &user.CreatedAt, &user.UpdatedAt,
-	)
+	}, ui.Dest()...)...)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, model.ApiResponse{
 			Error: &model.Error{Code: "not_found", Message: "User not found."},
@@ -538,7 +545,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := model.MeResponse{User: user}
+	resp := model.MeResponse{User: user, UI: string(h.v2ui.Decide(ui.Facts()).UI)}
 
 	// Connected providers (from auth_identities)
 	if h.store != nil {
@@ -735,7 +742,11 @@ func (h *AuthHandler) Impersonate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Refresh exchanges a refresh token for a new access token.
+// Refresh trades a refresh token for a new pair: a new access token and
+// the session's next refresh token (rotation; internal/sessions). Every
+// memax CLI and the web app store the refresh token in the answer. A
+// retired token sent again within the grace window answers the session's
+// current one; after it, the session is revoked.
 // POST /v1/auth/refresh  { "refresh_token": "..." }
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -748,59 +759,36 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var session model.Session
-	var agentName string
-	var grantID string
-	err := h.pool.QueryRow(context.Background(),
-		`SELECT id, user_id, expires_at, COALESCE(agent_name, ''), COALESCE(grant_id::text, '')
-		FROM sessions WHERE refresh_token = $1`,
-		req.RefreshToken).Scan(&session.ID, &session.UserID, &session.ExpiresAt, &agentName, &grantID)
+	// An MCP grant's session refreshed here keeps working while its grant
+	// does, as before; its token names the grant's agent.
+	var grantAgent string
+	is, err := h.sessionStore().Refresh(r.Context(), req.RefreshToken, sessions.RefreshOptions{
+		Where: h.where(r),
+		Accept: func(ss sessions.Session) error {
+			if ss.GrantID == "" {
+				return nil
+			}
+			grant := h.ResolveOAuthGrant(ss.UserID.String(), ss.GrantID)
+			if grant.UserID == "" {
+				return sessions.ErrGrantRevoked
+			}
+			grantAgent = grant.AgentName
+			return nil
+		},
+	})
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
-			Error: &model.Error{Code: "invalid_token", Message: "Invalid refresh token."},
-		})
+		status, code, message := refreshFailure(err)
+		writeJSON(w, status, model.ApiResponse{Error: &model.Error{Code: code, Message: message}})
 		return
 	}
-
-	if time.Now().After(session.ExpiresAt) {
-		// Clean up expired session
-		h.pool.Exec(context.Background(), `DELETE FROM sessions WHERE id = $1`, session.ID)
-		writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
-			Error: &model.Error{Code: "expired_token", Message: "Refresh token expired. Please log in again."},
-		})
-		return
-	}
-
-	var accessToken string
-	if grantID != "" {
-		grant := h.ResolveOAuthGrant(session.UserID, grantID)
-		if grant.UserID == "" {
-			h.pool.Exec(context.Background(), `DELETE FROM sessions WHERE id = $1`, session.ID)
-			writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
-				Error: &model.Error{Code: "invalid_token", Message: "Authorization grant is no longer valid."},
-			})
-			return
-		}
-		accessToken, err = auth.SignGrantAccessToken(session.UserID, grant.AgentName, grantID, h.jwtSecret, time.Hour)
-	} else if agentName != "" {
-		accessToken, err = auth.SignAgentAccessToken(session.UserID, agentName, h.jwtSecret, time.Hour)
-	} else {
-		accessToken, err = auth.SignAccessToken(session.UserID, h.jwtSecret, time.Hour)
-	}
+	accessToken, err := h.accessTokenFor(is.Session, grantAgent, "", nil)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, model.ApiResponse{
 			Error: &model.Error{Code: "internal", Message: "Failed to issue access token."},
 		})
 		return
 	}
-
-	writeJSON(w, http.StatusOK, model.ApiResponse{
-		Data: model.TokenPair{
-			AccessToken:  accessToken,
-			RefreshToken: req.RefreshToken, // same refresh token
-			ExpiresIn:    3600,
-		},
-	})
+	writeJSON(w, http.StatusOK, model.ApiResponse{Data: tokenPair(accessToken, is, h.sessionStore().Now())})
 }
 
 // ExchangeCode exchanges a one-time auth code for tokens.
@@ -820,9 +808,10 @@ func (h *AuthHandler) ExchangeCode(w http.ResponseWriter, r *http.Request) {
 	var expiresAt time.Time
 	var used bool
 	var grantID string
+	var surface string
 	err := h.pool.QueryRow(context.Background(),
-		`SELECT user_id, expires_at, used, COALESCE(grant_id::text, '') FROM auth_codes WHERE code = $1`, req.Code,
-	).Scan(&userID, &expiresAt, &used, &grantID)
+		`SELECT user_id, expires_at, used, COALESCE(grant_id::text, ''), COALESCE(surface, '') FROM auth_codes WHERE code = $1`, req.Code,
+	).Scan(&userID, &expiresAt, &used, &grantID, &surface)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
 			Error: &model.Error{Code: "invalid_code", Message: "Invalid authorization code."},
@@ -845,10 +834,22 @@ func (h *AuthHandler) ExchangeCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mark as used
-	h.pool.Exec(context.Background(), `UPDATE auth_codes SET used = true WHERE code = $1`, req.Code)
+	// Mark as used, once: of two exchanges racing with the same code, one
+	// gets the session.
+	if tag, err := h.pool.Exec(r.Context(), `UPDATE auth_codes SET used = true WHERE code = $1 AND NOT used`, req.Code); err != nil || tag.RowsAffected() != 1 {
+		writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
+			Error: &model.Error{Code: "expired_code", Message: "Authorization code expired or already used."},
+		})
+		return
+	}
 
-	tokens, err := h.issueTokens(userID)
+	// The session is for the surface the code was delivered to (migration
+	// 030); a code from before that counts as the CLI.
+	kind := sessions.KindWeb
+	if surface != auth.SurfaceWeb {
+		surface, kind = auth.SurfaceCLI, sessions.KindCLI
+	}
+	tokens, err := h.startSession(r, userID, sessionStart{kind: kind, surface: surface})
 	if err != nil {
 		slog.Error("token issuance failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, model.ApiResponse{
@@ -857,7 +858,28 @@ func (h *AuthHandler) ExchangeCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, model.ApiResponse{Data: tokens})
+	// The web app's server sets its memax_ui routing cookie from the
+	// answer as the session starts, without asking /me first. A flag that
+	// can't be read is left out, and the web app treats that as V1 until
+	// its next /me.
+	answer := exchangeAnswer{TokenPair: tokens}
+	if kind == sessions.KindWeb {
+		if id, err := uuid.Parse(userID); err == nil {
+			if d, err := h.v2ui.For(r.Context(), id); err == nil {
+				answer.UI = string(d.UI)
+			} else {
+				slog.WarnContext(r.Context(), "auth: V2 UI flag on sign-in", "user_id", userID, "error", err)
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, model.ApiResponse{Data: answer})
+}
+
+// exchangeAnswer is a sign-in code's tokens and, for a session issued to
+// the web app, the web UI the person sees ("v1" or "v2", internal/v2ui).
+type exchangeAnswer struct {
+	*model.TokenPair
+	UI string `json:"ui,omitempty"`
 }
 
 // CreateAPIKey generates a new API key for CI/CD and non-interactive use.
@@ -879,6 +901,7 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		HubID         string   `json:"hub_id,omitempty"`
 		HubIDs        []string `json:"hub_ids,omitempty"`
 		AgentName     string   `json:"agent_name,omitempty"` // agent identity: "claude-code", "cursor", etc.
+		Standalone    bool     `json:"standalone,omitempty"` // "this key is me" — the owner's own writes
 		ExpiresInDays int      `json:"expires_in_days,omitempty"`
 		Scopes        []string `json:"scopes,omitempty"`
 		Permissions   []string `json:"permissions,omitempty"`
@@ -887,6 +910,28 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
 		writeJSON(w, http.StatusBadRequest, model.ApiResponse{
 			Error: &model.Error{Code: "invalid_request", Message: "Missing name."},
+		})
+		return
+	}
+	// Every key carries an author identity from birth: an agent, or the
+	// owner ("standalone"). A key with neither could write memories that
+	// nobody authored — that state is not allowed to exist.
+	req.AgentName = model.NormalizeAgentSlug(req.AgentName)
+	if req.AgentName == "" && !req.Standalone {
+		writeJSON(w, http.StatusBadRequest, model.ApiResponse{
+			Error: &model.Error{Code: "identity_required", Message: "Choose who uses this key: an agent (agent_name) or you (standalone: true)."},
+		})
+		return
+	}
+	if req.AgentName != "" && req.Standalone {
+		writeJSON(w, http.StatusBadRequest, model.ApiResponse{
+			Error: &model.Error{Code: "invalid_request", Message: "A key is either an agent's or yours, not both."},
+		})
+		return
+	}
+	if req.AgentName == "memax" {
+		writeJSON(w, http.StatusBadRequest, model.ApiResponse{
+			Error: &model.Error{Code: "invalid_request", Message: "That agent name is reserved."},
 		})
 		return
 	}
@@ -971,11 +1016,11 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	err := h.pool.QueryRow(context.Background(),
 		`INSERT INTO api_keys (
 			user_id, name, key_hash, prefix, scopes, expires_at, hub_id, agent_name,
-			hub_scope_mode, hub_ids, default_permissions, trust_level
+			hub_scope_mode, hub_ids, default_permissions, trust_level, standalone
 		)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::uuid, $8, $9, $10::text[]::uuid[], $11::text[], $12) RETURNING id`,
+		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::uuid, $8, $9, $10::text[]::uuid[], $11::text[], $12, $13) RETURNING id`,
 		userID, req.Name, keyHash, prefix, legacyScopes, expiresAt, hubID, req.AgentName,
-		hubScopeMode, hubIDs, permissions.Strings(), trustLevel,
+		hubScopeMode, hubIDs, permissions.Strings(), trustLevel, req.Standalone,
 	).Scan(&id)
 	if err != nil {
 		slog.Error("failed to create API key", "error", err)
@@ -1293,6 +1338,39 @@ func (h *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	// Build a partial UPDATE — only the fields the caller passed, plus
 	// the implicit fields needed to keep the two-field invariant.
+	// Post-state check: a key must keep an identity. Read the current
+	// row and refuse any patch that would leave neither an agent nor the
+	// personal flag — such a key could not write anything.
+	{
+		var curAgent string
+		var curStandalone bool
+		err := h.pool.QueryRow(context.Background(),
+			`SELECT COALESCE(agent_name, ''), COALESCE(standalone, false)
+			 FROM api_keys WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL`,
+			keyID, userID,
+		).Scan(&curAgent, &curStandalone)
+		if err == nil {
+			nextAgent := curAgent
+			if req.AgentName != nil {
+				nextAgent = normalizedAgent
+			} else if autoClearAgent {
+				nextAgent = ""
+			}
+			nextStandalone := curStandalone
+			if req.Standalone != nil {
+				nextStandalone = *req.Standalone
+			} else if autoClearStandalone {
+				nextStandalone = false
+			}
+			if nextAgent == "" && !nextStandalone {
+				writeJSON(w, http.StatusBadRequest, model.ApiResponse{
+					Error: &model.Error{Code: "identity_required", Message: "A key must belong to an agent or to you; assign an agent or mark it as yours instead of clearing."},
+				})
+				return
+			}
+		}
+	}
+
 	setClauses := make([]string, 0, 2)
 	args := make([]any, 0, 4)
 	if req.AgentName != nil {
@@ -1433,15 +1511,17 @@ func (h *AuthHandler) ResolveAPIKey(key string) APIKeyResult {
 	var defaultPermissions []string
 	var trustLevel string
 	var rateLimitTier *string
+	var standalone bool
 	err := h.pool.QueryRow(context.Background(),
 		`SELECT id, user_id, expires_at, hub_id, agent_name,
 			COALESCE(hub_scope_mode, 'all_accessible'),
 			ARRAY(SELECT hub_id::text FROM unnest(COALESCE(hub_ids, ARRAY[]::uuid[])) AS hub_id),
 			COALESCE(default_permissions, ARRAY[]::text[]),
 			COALESCE(trust_level, 'elevated'),
-			rate_limit_tier
+			rate_limit_tier,
+			COALESCE(standalone, false)
 		FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL`, keyHash,
-	).Scan(&id, &userID, &expiresAt, &hubID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier)
+	).Scan(&id, &userID, &expiresAt, &hubID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &standalone)
 	if err != nil {
 		return APIKeyResult{}
 	}
@@ -1460,6 +1540,7 @@ func (h *AuthHandler) ResolveAPIKey(key string) APIKeyResult {
 	result := APIKeyResult{
 		UserID:             userID,
 		GrantID:            id,
+		KeyStandalone:      standalone,
 		HubScopeMode:       hubScopeMode,
 		ScopedHubIDs:       hubIDs,
 		DefaultPermissions: perms,
@@ -1503,6 +1584,7 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 	var trustLevel string
 	var rateLimitTier *string
 	var expiresAt *time.Time
+	var scope string
 	err := h.pool.QueryRow(context.Background(),
 		`SELECT user_id, COALESCE(agent_name, ''),
 			COALESCE(hub_scope_mode, 'hub_allowlist'),
@@ -1510,11 +1592,12 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 			COALESCE(default_permissions, ARRAY[]::text[]),
 			COALESCE(trust_level, 'standard'),
 			rate_limit_tier,
-			expires_at
+			expires_at,
+			COALESCE(scope, '')
 		FROM oauth_grants
 		WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL`,
 		grantID, userID,
-	).Scan(&resolvedUserID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &expiresAt)
+	).Scan(&resolvedUserID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &expiresAt, &scope)
 	if err != nil {
 		return APIKeyResult{}
 	}
@@ -1538,6 +1621,7 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 		DefaultPermissions: perms,
 		TrustLevel:         trustLevel,
 		AgentName:          agentName,
+		OAuthScope:         scope,
 	}
 	if len(hubIDs) == 1 {
 		result.HubID = hubIDs[0]
@@ -1803,45 +1887,11 @@ func (h *AuthHandler) ensurePersonalHub(user *model.User) {
 	slog.Info("personal hub created", "user_id", user.ID, "hub_id", hub.ID)
 }
 
-func (h *AuthHandler) issueTokens(userID string) (*model.TokenPair, error) {
-	return h.issueAgentTokens(userID, "")
-}
-
-// issueAgentTokens issues a token pair with optional agent identity embedded in the JWT.
-func (h *AuthHandler) issueAgentTokens(userID, agentName string) (*model.TokenPair, error) {
-	return h.issueAgentGrantTokens(userID, agentName, "", 30*24*time.Hour)
-}
-
-func (h *AuthHandler) issueAgentGrantTokens(userID, agentName, grantID string, refreshTTL time.Duration) (*model.TokenPair, error) {
-	var accessToken string
-	var err error
-	if grantID != "" {
-		accessToken, err = auth.SignGrantAccessToken(userID, agentName, grantID, h.jwtSecret, time.Hour)
-	} else if agentName != "" {
-		accessToken, err = auth.SignAgentAccessToken(userID, agentName, h.jwtSecret, time.Hour)
-	} else {
-		accessToken, err = auth.SignAccessToken(userID, h.jwtSecret, time.Hour)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	refreshToken := generateToken()
-	expiresAt := time.Now().Add(refreshTTL)
-
-	_, err = h.pool.Exec(context.Background(),
-		`INSERT INTO sessions (user_id, refresh_token, expires_at, agent_name, grant_id)
-		VALUES ($1, $2, $3, $4, NULLIF($5, '')::uuid)`,
-		userID, refreshToken, expiresAt, agentName, grantID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &model.TokenPair{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    3600,
-	}, nil
+// issueTokens issues a person's CLI session, its token pair returned
+// directly in the response, which is the CLI's way (tokens for the web app
+// always go through a redirected one-time code; see redirectSurface).
+func (h *AuthHandler) issueTokens(r *http.Request, userID string) (*model.TokenPair, error) {
+	return h.startSession(r, userID, sessionStart{kind: sessions.KindCLI, surface: auth.SurfaceCLI})
 }
 
 func generateToken() string {

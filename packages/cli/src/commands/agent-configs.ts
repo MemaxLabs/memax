@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { join, relative, resolve, dirname } from "node:path";
 import { homedir } from "node:os";
-import { getClient } from "../lib/client.js";
+import { getClient, quietWarning } from "../lib/client.js";
 import {
   getProjectScope,
   resolveProjectScope,
@@ -35,6 +35,22 @@ import {
   type AgentConfigLocation,
   type ResolveAgentConfigWritePathOptions,
 } from "./agent-configs-discovery.js";
+
+/** The sync reason (and warning) for a file of a space on V2. */
+const SPACE_ON_V2 = "space_on_v2";
+
+/**
+ * The notice for files of spaces on V2 (plan 25 §10: two-way sync is
+ * turned off with a one-release notice). Shown through memax-cli 0.3.x;
+ * the release after drops it and keeps the "compiled by Memax" line.
+ */
+export function spaceOnV2Notice(n: number): string[] {
+  const files = n === 1 ? "1 agent file" : `${n} agent files`;
+  return [
+    `\n  Two-way sync is off for ${files} of spaces on V2: Memax compiles each space's record into your agents' files instead.`,
+    "  memax status in a repository shows its files. Sync comes back for a space switched back to V1.",
+  ];
+}
 
 // Re-exported so existing imports (tests, other commands) keep working
 // after the discovery/write-path registry moved to its own module.
@@ -880,6 +896,8 @@ async function syncAgentMemory(options: SyncAgentOptions = {}): Promise<void> {
   }));
 
   let actions: SyncPlanAction[];
+  // The files of spaces on V2 are explained below, in this command's words.
+  quietWarning(SPACE_ON_V2);
   try {
     const plan = await getClient().configs.sync({
       device_id: deviceID,
@@ -977,6 +995,7 @@ async function syncAgentMemory(options: SyncAgentOptions = {}): Promise<void> {
   let pulled = 0;
   let deletedLocal = 0;
   let unchangedCount = 0;
+  let compiledOnV2 = 0;
   let skipped = 0;
   let errors = 0;
   const ackConfigs: {
@@ -1002,6 +1021,17 @@ async function syncAgentMemory(options: SyncAgentOptions = {}): Promise<void> {
 
     for (const action of agentActions) {
       const key = `${action.agent}|${action.file_path}|${action.scope}`;
+
+      if (action.action === "unchanged" && action.reason === SPACE_ON_V2) {
+        // Memax compiles it in a space on V2: V1 neither pulls nor pushes
+        // it, and there is no version to acknowledge.
+        console.log(
+          chalk.gray(`    = ${action.file_path}`),
+          chalk.gray("compiled by Memax (space on V2)"),
+        );
+        compiledOnV2++;
+        continue;
+      }
 
       if (action.action === "unchanged") {
         const local = localByKey.get(key);
@@ -1373,6 +1403,7 @@ async function syncAgentMemory(options: SyncAgentOptions = {}): Promise<void> {
     pushed === 0 &&
     pulled === 0 &&
     unchangedCount === 0 &&
+    compiledOnV2 === 0 &&
     skipped === 0 &&
     errors === 0
   ) {
@@ -1389,10 +1420,15 @@ async function syncAgentMemory(options: SyncAgentOptions = {}): Promise<void> {
   if (pulled > 0) parts.push(`${pulled} restored`);
   if (deletedLocal > 0) parts.push(`${deletedLocal} deleted locally`);
   if (unchangedCount > 0) parts.push(`${unchangedCount} unchanged`);
+  if (compiledOnV2 > 0) parts.push(`${compiledOnV2} compiled by Memax`);
   if (skipped > 0) parts.push(`${skipped} skipped`);
   if (errors > 0) parts.push(`${errors} errors`);
 
   console.log(chalk.bold(`\n  Done: ${parts.join(", ")}`));
+  if (compiledOnV2 > 0) {
+    for (const line of spaceOnV2Notice(compiledOnV2))
+      console.log(chalk.yellow(line));
+  }
   if (pulled > 0) {
     console.log(
       chalk.gray("  Restart your agents for restored configs to take effect."),

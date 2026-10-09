@@ -56,7 +56,10 @@ type NotificationChange string
 const (
 	NotificationChangeSeen      NotificationChange = "seen"
 	NotificationChangeDismissed NotificationChange = "dismissed"
-	NotificationChangeExpired   NotificationChange = "expired"
+	// NotificationChangeAllDone — a checklist finished all required items;
+	// the row stays pending in its finished state (payload.all_done_at).
+	NotificationChangeAllDone NotificationChange = "all_done"
+	NotificationChangeExpired NotificationChange = "expired"
 	// NotificationChangeItemUpdated fires when a super-notif sub-item
 	// transitions (viewed_at or completed_at stamped). The event
 	// envelope carries the item snapshot inline (ItemID, ItemViewedAt,

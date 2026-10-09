@@ -45,6 +45,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 )
@@ -73,6 +74,9 @@ type Response struct {
 	// StreamChunks, when non-empty, is emitted as SSE deltas instead of
 	// a single Text block. Use for tests of CompleteStream's onDelta.
 	StreamChunks []string
+	// ChunkDelay waits before each streamed chunk (first-token and
+	// cancellation tests). The wait ends early when the client goes away.
+	ChunkDelay time.Duration
 	// StatusCode overrides 200. Useful for exercising error paths in
 	// callers (5xx → retry, 429 → backoff, etc.).
 	StatusCode int
@@ -257,7 +261,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if captured.Stream || len(resp.StreamChunks) > 0 {
-		writeStream(w, resp)
+		writeStream(w, r, resp)
 		return
 	}
 
@@ -289,7 +293,7 @@ func writeBlock(w http.ResponseWriter, resp Response) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-func writeStream(w http.ResponseWriter, resp Response) {
+func writeStream(w http.ResponseWriter, r *http.Request, resp Response) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -298,7 +302,26 @@ func writeStream(w http.ResponseWriter, resp Response) {
 	if len(chunks) == 0 && resp.Text != "" {
 		chunks = []string{resp.Text}
 	}
+	inTok := resp.InputTokens
+	if inTok == 0 {
+		inTok = 10
+	}
+	start, _ := json.Marshal(map[string]any{
+		"type":    "message_start",
+		"message": map[string]any{"usage": map[string]any{"input_tokens": inTok, "output_tokens": 1}},
+	})
+	fmt.Fprintf(w, "data: %s\n\n", start)
+	if flusher != nil {
+		flusher.Flush()
+	}
 	for _, chunk := range chunks {
+		if resp.ChunkDelay > 0 {
+			select {
+			case <-time.After(resp.ChunkDelay):
+			case <-r.Context().Done():
+				return
+			}
+		}
 		evt := map[string]any{
 			"type":  "content_block_delta",
 			"delta": map[string]any{"type": "text_delta", "text": chunk},

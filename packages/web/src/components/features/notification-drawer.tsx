@@ -50,6 +50,7 @@ import { useLocale, useInterpolate } from "@/i18n";
 import { formatAge } from "@/lib/format-age";
 import { useAuth } from "@/lib/auth";
 import { getHubDisplayName } from "@/lib/hub-display";
+import { QuickStartDrawerRow } from "@/components/features/onboarding/quick-start-launchers";
 import {
   useBulkNotificationSeen,
   useNotificationDismiss,
@@ -65,12 +66,23 @@ import {
   useInboxItemLocalization,
 } from "@/components/features/inbox/inbox-control";
 
+/** The two onboarding rows: the first-week checklist and the founder note. */
+function isOnboardingRow(n: Notification): boolean {
+  return (
+    (n.kind === "checklist" && n.source_kind === "onboarding") ||
+    (n.kind === "system_notice" && n.source_kind === "onboarding_welcome")
+  );
+}
+
 /** Broadcast = system notice that is NOT the onboarding welcome. */
 function isBroadcast(n: Notification): boolean {
   return n.kind === "system_notice" && n.source_kind !== "onboarding_welcome";
 }
 
 export interface DrawerBuckets {
+  /** Onboarding checklist + founder note — open the quick-start deck.
+   *  Never counted in `unseen`: they are not news, they are a door. */
+  onboarding: Notification[];
   broadcasts: Notification[];
   news: Notification[];
   receipts: Notification[];
@@ -86,16 +98,28 @@ export interface DrawerBuckets {
 export function classifyDrawerRows(
   rows: readonly Notification[],
 ): DrawerBuckets {
+  const onboarding: Notification[] = [];
   const broadcasts: Notification[] = [];
   const news: Notification[] = [];
   const receipts: Notification[] = [];
+  // The deck needs the checklist row; without one the founder note
+  // has nowhere to open, so it is dropped like before.
+  const hasChecklist = rows.some(
+    (n) =>
+      n.status === "pending" &&
+      n.kind === "checklist" &&
+      n.source_kind === "onboarding",
+  );
   for (const n of rows) {
     if (n.status !== "pending") continue;
+    if (isOnboardingRow(n)) {
+      if (hasChecklist) onboarding.push(n);
+      continue;
+    }
     if (isBroadcast(n)) {
       broadcasts.push(n);
       continue;
     }
-    if (n.kind === "system_notice") continue; // onboarding welcome → pinned board card
     if (HIGHLIGHT_KINDS.has(n.kind) || n.kind === "agent_connected") {
       // agent_connected is drawer-only news (the wow moment) — it is
       // deliberately NOT in the board's HIGHLIGHT_KINDS, which would
@@ -109,13 +133,17 @@ export function classifyDrawerRows(
   }
   const byNewest = (a: Notification, b: Notification) =>
     Date.parse(b.created_at) - Date.parse(a.created_at) || 0;
+  // Checklist first, then the founder note — the deck's own order.
+  onboarding.sort((a, b) =>
+    a.kind === b.kind ? byNewest(a, b) : a.kind === "checklist" ? -1 : 1,
+  );
   broadcasts.sort(byNewest);
   news.sort(byNewest);
   receipts.sort(byNewest);
   const unseen = [...broadcasts, ...news, ...receipts].filter(
     (n) => !n.seen_at,
   ).length;
-  return { broadcasts, news, receipts, unseen };
+  return { onboarding, broadcasts, news, receipts, unseen };
 }
 
 /**
@@ -222,7 +250,12 @@ function DrawerRow({
  * The drawer body — shared verbatim between the desktop anchored
  * panel and the mobile sheet, so the two hosts can never drift.
  */
-export function NotificationDrawerPanel() {
+export function NotificationDrawerPanel({
+  onNavigate,
+}: {
+  /** Called when a row opened another surface — the host closes. */
+  onNavigate?: () => void;
+} = {}) {
   const { t } = useLocale();
   const buckets = useDrawerData();
   const dismiss = useNotificationDismiss();
@@ -245,6 +278,7 @@ export function NotificationDrawerPanel() {
   }, [buckets, bulkSeenMutate]);
 
   const empty =
+    buckets.onboarding.length === 0 &&
     buckets.broadcasts.length === 0 &&
     buckets.news.length === 0 &&
     buckets.receipts.length === 0;
@@ -303,6 +337,16 @@ export function NotificationDrawerPanel() {
           </p>
         ) : (
           <>
+            {buckets.onboarding.length > 0 ? (
+              <div>
+                <p className="m-0 px-3 pb-1 pt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-fg-4">
+                  {t.quickStart.drawerSection}
+                </p>
+                {buckets.onboarding.map((n) => (
+                  <QuickStartDrawerRow key={n.id} n={n} onOpened={onNavigate} />
+                ))}
+              </div>
+            ) : null}
             {section(
               t.notificationDrawer.sectionPinned,
               buckets.broadcasts,
@@ -353,7 +397,7 @@ export function NotificationBell() {
         sideOffset={8}
         className="w-[340px] p-0"
       >
-        <NotificationDrawerPanel />
+        <NotificationDrawerPanel onNavigate={() => setOpen(false)} />
       </PopoverContent>
     </Popover>
   );
@@ -375,7 +419,7 @@ export function MobileNotificationSheet({
       ariaLabel={t.notificationDrawer.title}
       title={t.notificationDrawer.title}
     >
-      <NotificationDrawerPanel />
+      <NotificationDrawerPanel onNavigate={onClose} />
     </BottomSheet>
   );
 }

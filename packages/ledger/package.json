@@ -1,0 +1,44 @@
+{
+  "name": "@memaxlabs/ledger",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Memax Ledger: the V2 React component library (mx- classes on @memaxlabs/ledger-tokens)",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./ledger.css": "./src/ledger.css",
+    "./previews": "./src/previews/index.ts",
+    "./previews.css": "./src/previews/previews.css"
+  },
+  "scripts": {
+    "lint": "eslint . --max-warnings 0 && tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.3.0",
+    "@memaxlabs/ledger-tokens": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.1.0",
+    "@typescript-eslint/parser": "^8.20.0",
+    "eslint": "^9.18.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "jsdom": "^29.0.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  }
+}

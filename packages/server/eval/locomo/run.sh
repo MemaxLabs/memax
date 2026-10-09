@@ -14,7 +14,7 @@
 #   VOYAGE_API_KEY   - Voyage AI API key for embeddings
 #
 # Optional environment variables:
-#   ANTHROPIC_API_KEY - enables query distillation and --qa
+#   ANTHROPIC_API_KEY + ANTHROPIC_BASE_URL - LLM gateway credentials (OpenRouter) for distillation and --qa
 #
 set -euo pipefail
 
@@ -33,8 +33,8 @@ DISTILL="-distill=true"
 ENABLE_JUDGE=""
 JUDGE_EVIDENCE=""
 QA_CUTOFFS="10"
-QA_MODEL="claude-haiku-4-5-20251001"
-JUDGE_MODEL="claude-haiku-4-5-20251001"
+QA_MODEL="deepseek/deepseek-v4.1-flash"
+JUDGE_MODEL="deepseek/deepseek-v4.1-flash"
 QA_MAX_TOKENS=64
 SAMPLES=""
 
@@ -62,10 +62,10 @@ while [[ $# -gt 0 ]]; do
             echo "  --qa               Generate answers from retrieved memories"
             echo "  --no-distill       Disable query distillation while keeping QA/Judge LLM calls"
             echo "  --qa-cutoffs=10    QA cutoffs; use 10,20 for production+Mem0 OSS default comparison"
-            echo "  --qa-model=...     Anthropic model for QA generation"
+            echo "  --qa-model=...     Model for QA generation"
             echo "  --qa-max-tokens=64 Max generated answer tokens"
             echo "  --judge            Run LLM-as-judge for generated answers"
-            echo "  --judge-model=...  Anthropic model for judge scoring"
+            echo "  --judge-model=...  Model for judge scoring"
             echo "  --judge-evidence   Include gold evidence in judge prompts"
             echo "  --mode=dialog      Corpus mode: dialog, observation, summary"
             echo "  --categories=1,2   LoCoMo categories"

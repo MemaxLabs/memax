@@ -38,6 +38,9 @@ vi.mock("@/hooks/use-dreams", () => ({
 vi.mock("@/lib/scroll-lock", () => ({
   acquireBodyScrollLock: () => () => {},
 }));
+vi.mock("./onboarding/quick-start-launchers", () => ({
+  QuickStartLauncherRow: () => <div data-testid="quick-start-launcher" />,
+}));
 vi.mock("./connect-agents-section", () => ({
   ConnectAgentsBody: () => <div data-testid="connect-body" />,
 }));
@@ -94,5 +97,6 @@ describe("OnboardingMechanismModal mechanism tab", () => {
       <OnboardingMechanismModal onClose={() => {}} initialTab="quickstart" />,
     );
     expect(screen.getByTestId("connect-body")).toBeTruthy();
+    expect(screen.getByTestId("quick-start-launcher")).toBeTruthy();
   });
 });

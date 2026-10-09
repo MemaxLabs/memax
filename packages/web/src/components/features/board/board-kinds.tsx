@@ -11,7 +11,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BoardAgentRow, BoardKindLabel, BoardMemQuote } from "@memaxlabs/ui";
 import { resolveAgentIdentity } from "@memaxlabs/ui/tokens/agents";
-import { useActiveHub } from "@/lib/auth";
+import { useActiveHub, useAuth } from "@/lib/auth";
+import { formatAge } from "@/lib/format-age";
+import { TopicChip } from "@/components/features/topic/topic-chip";
 import { buildMemoryDetailPath } from "@/lib/route-helpers";
 import { interpolate, pluralize, useInterpolate, useLocale } from "@/i18n";
 import {
@@ -149,69 +151,208 @@ function stripFromPayload(
  * of counters pushed the cards that actually say something off the
  * screen. Now they're one line that opens into the breakdown.
  */
+interface ActivityItem {
+  memory_id?: string;
+  title?: string;
+  created_at?: string;
+  agent_slug?: string;
+  agent_display_name?: string;
+  author_id?: string;
+  author_name?: string;
+  topic_id?: string;
+  topic_name?: string;
+  topic_icon?: string;
+}
+
+/**
+ * ActivityBody — the 动静 receipt (founder redesign 2026-09-22): what
+ * landed in the window, grouped by the topic it was filed under, one
+ * row per memory with the same attribution vocabulary the memory row
+ * uses (author initial · agent identity · age). No weekly comparison,
+ * no counters. Boards written before `items` existed fall back to the
+ * per-agent sections.
+ */
 function ActivityBody({ slot }: BoardKindBodyProps) {
   const { t } = useLocale();
   const interpolate = useInterpolate();
-  const agents = asArray<TraceAgent>(slot.payload?.agents);
-  const topics = asArray<PulseTopic>(slot.payload?.topics);
-  const thisWeek = asNumber(slot.payload?.this_week);
-  const lastWeek = asNumber(slot.payload?.last_week);
+  const items = asArray<ActivityItem>(slot.payload?.items).filter(
+    (it) => asString(it.title) !== "",
+  );
   const windowHours = asNumber(slot.payload?.window_hours) || 24;
+  const label = (
+    <BoardKindLabel {...boardKindEyebrow("activity")}>
+      {interpolate(t.board.kindActivity, { n: String(windowHours) })}
+    </BoardKindLabel>
+  );
+
+  if (items.length === 0) {
+    const agents = asArray<TraceAgent>(slot.payload?.agents);
+    return (
+      <>
+        {label}
+        {agents.map((agent) => (
+          <TraceAgentSection
+            key={asString(agent.slug) || "manual"}
+            agent={agent}
+          />
+        ))}
+      </>
+    );
+  }
+
+  // Group by topic, keeping the newest-first order of first appearance.
+  const groups = new Map<
+    string,
+    { id: string; name: string; icon: string; items: ActivityItem[] }
+  >();
+  for (const it of items) {
+    const id = asString(it.topic_id);
+    const g = groups.get(id);
+    if (g) g.items.push(it);
+    else
+      groups.set(id, {
+        id,
+        name: asString(it.topic_name),
+        icon: asString(it.topic_icon),
+        items: [it],
+      });
+  }
 
   return (
     <>
-      <BoardKindLabel {...boardKindEyebrow("activity")}>
-        {interpolate(t.board.kindActivity, { n: String(windowHours) })}
-      </BoardKindLabel>
-      {agents.map((agent) => (
-        <TraceAgentSection
-          key={asString(agent.slug) || "manual"}
-          agent={agent}
-        />
-      ))}
-      {topics.length > 0 ? (
-        <p className="m-0 mt-2 text-[12.5px] text-fg-3">
-          {t.board.activityTopics}{" "}
-          {topics
-            .map(
-              (topic) =>
-                `${asString(topic.name)} (${asNumber(topic.recent_count)})`,
-            )
-            .join(" · ")}
-        </p>
-      ) : null}
-      <p className="m-0 mt-1 text-[12.5px] text-fg-4">
-        {pluralize(t.board.weekLineOne, t.board.weekLine, thisWeek)} ·{" "}
-        {interpolate(t.board.weekCompare, { n: String(lastWeek) })}
-      </p>
+      {label}
+      <div className="flex flex-col gap-3">
+        {[...groups.values()].map((g) => (
+          <ActivityTopicGroup key={g.id || "unassigned"} group={g} />
+        ))}
+      </div>
     </>
   );
 }
 
-// The activity strip is the board's quietest row: never the hero, it
-// collapses to one line and only opens when asked.
+function ActivityTopicGroup({
+  group,
+}: {
+  group: { id: string; name: string; icon: string; items: ActivityItem[] };
+}) {
+  const { t } = useLocale();
+  const interpolate = useInterpolate();
+  const router = useRouter();
+  const { activeHub } = useActiveHub();
+  const { user } = useAuth();
+  const slug = activeHub?.hub.slug ?? null;
+  return (
+    <div>
+      <div className="mb-1 flex items-center gap-2">
+        {group.id ? (
+          <TopicChip
+            kind="topic"
+            label={group.name}
+            icon={group.icon || undefined}
+            onClick={() => router.push(buildTopicPath(slug, group.id))}
+          />
+        ) : (
+          <TopicChip kind="unassigned" label={t.board.activityUnassigned} />
+        )}
+        <span className="text-[11px] text-fg-4">
+          {pluralize(
+            t.board.traceCountOne,
+            t.board.traceCount,
+            group.items.length,
+          )}
+        </span>
+      </div>
+      <ul className="m-0 flex list-none flex-col p-0">
+        {group.items.map((it) => {
+          const memoryId = asString(it.memory_id);
+          const agentSlug = asString(it.agent_slug);
+          const identity = agentSlug ? resolveAgentIdentity(agentSlug) : null;
+          const AgentIcon = identity?.icon;
+          const agentName =
+            asString(it.agent_display_name) || identity?.displayName || "";
+          const authorName = asString(it.author_name);
+          const isMe = !!user?.id && asString(it.author_id) === user.id;
+          const who = isMe ? t.board.activityYou : authorName;
+          const created = asString(it.created_at);
+          return (
+            <li key={memoryId || asString(it.title)}>
+              <button
+                type="button"
+                onClick={
+                  memoryId
+                    ? () => router.push(buildMemoryDetailPath(slug, memoryId))
+                    : undefined
+                }
+                className="flex w-full cursor-pointer items-center gap-3 rounded-chrome px-2 py-1.5 text-left transition-colors hover:bg-surface-1"
+              >
+                <span className="min-w-0 flex-1 truncate text-[13px] text-fg-1">
+                  {asString(it.title)}
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-fg-3">
+                  {who ? (
+                    <>
+                      {/* Same initial-avatar shape the memory row draws. */}
+                      <span
+                        aria-hidden
+                        className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[9px] font-medium text-foreground/55"
+                        style={{
+                          background:
+                            "oklch(from var(--foreground) l c h / 0.08)",
+                        }}
+                      >
+                        {(authorName || who)[0]?.toUpperCase()}
+                      </span>
+                      <span>{who}</span>
+                    </>
+                  ) : null}
+                  {agentName ? (
+                    <>
+                      {who ? <span className="text-fg-4">·</span> : null}
+                      {AgentIcon ? (
+                        <AgentIcon
+                          className="h-3.5 w-3.5"
+                          style={{ color: identity?.color }}
+                          strokeWidth={1.8}
+                        />
+                      ) : null}
+                      <span>{agentName}</span>
+                    </>
+                  ) : null}
+                  {created ? (
+                    <>
+                      <span className="text-fg-4">·</span>
+                      <span className="tabular-nums">
+                        {formatAge(created, t, interpolate)}
+                      </span>
+                    </>
+                  ) : null}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 registerBoardKind("activity", ActivityBody, {
   purpose: (t) => t.board.activityPurpose,
-  temporality: "stateful",
+  // Additive: the card is a receipt of what landed, not a state with a
+  // 历史 — the history disclosure was confusing here (founder, 09-22).
   strip: (slot, t) =>
     stripFromPayload(
       t.board.stripActivity,
       (() => {
-        const total = asArray<TraceAgent>(slot.payload?.agents).reduce(
-          (sum, a) => sum + asNumber(a.count),
-          0,
-        );
-        const week = asNumber(slot.payload?.this_week);
-        const parts: string[] = [];
-        if (total > 0) {
-          parts.push(
-            pluralize(t.board.traceCountOne, t.board.traceCount, total),
+        const total =
+          asArray<ActivityItem>(slot.payload?.items).length ||
+          asArray<TraceAgent>(slot.payload?.agents).reduce(
+            (sum, a) => sum + asNumber(a.count),
+            0,
           );
-        }
-        if (week > 0) {
-          parts.push(interpolate(t.board.stripActivityWeek, { n: week }));
-        }
-        return parts.length > 0 ? parts.join(" · ") : undefined;
+        return total > 0
+          ? pluralize(t.board.traceCountOne, t.board.traceCount, total)
+          : undefined;
       })(),
     ),
 });

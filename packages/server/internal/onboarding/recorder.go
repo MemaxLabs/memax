@@ -129,7 +129,7 @@ func (r *recorder) tickByID(ctx context.Context, userID, event, itemID string) {
 		return
 	}
 	if flipped && post != nil {
-		events.PublishNotificationResolved(ctx, r.publisher, post)
+		events.PublishNotificationUpdated(ctx, r.publisher, post, events.NotificationChangeAllDone)
 	}
 }
 
@@ -153,4 +153,72 @@ func recorderItemSnapshot(res *store.ItemMutationResult) events.NotificationItem
 		}
 	}
 	return snap
+}
+
+// TickFirstDream completes the first_dream item on the user's pending
+// onboarding checklist once a dream run has actually FINISHED (called
+// from the dream receipt path). Idempotent; a missing checklist or an
+// already-ticked item is a no-op.
+func TickFirstDream(ctx context.Context, s store.Store, publisher events.Publisher, userID string) {
+	if s == nil || userID == "" {
+		return
+	}
+	rows, _, err := s.ListNotificationsForUser(ctx, store.NotificationListOpts{
+		UserID: userID,
+		Status: model.NotificationStatusPending,
+		Kinds:  []string{model.NotificationKindChecklist},
+		Limit:  20,
+	})
+	if err != nil {
+		slog.Warn("onboarding.TickFirstDream: list", "user_id", userID, "err", err)
+		return
+	}
+	for i := range rows {
+		row := rows[i]
+		if row.SourceKind != model.NotificationSourceOnboarding {
+			continue
+		}
+		var payload model.ChecklistPayload
+		if uerr := json.Unmarshal(row.Payload, &payload); uerr != nil {
+			continue
+		}
+		idx := -1
+		for j, it := range payload.Items {
+			if it.ID == "first_dream" {
+				idx = j
+				break
+			}
+		}
+		if idx < 0 || payload.Items[idx].CompletedAt != nil {
+			continue
+		}
+		res, cerr := s.CompleteNotificationItem(ctx, row.ID, userID, nil, "first_dream")
+		if errors.Is(cerr, store.ErrChecklistItemLocked) {
+			// Fewer than five memories: the item unlocks later and the
+			// next finished dream will tick it. Not a fault.
+			continue
+		}
+		if cerr != nil {
+			slog.Warn("onboarding.TickFirstDream: complete", "user_id", userID, "notification_id", row.ID, "item_id", "first_dream", "err", cerr)
+			continue
+		}
+		if res == nil {
+			slog.Warn("onboarding.TickFirstDream: complete returned no result", "user_id", userID, "notification_id", row.ID, "item_id", "first_dream")
+			continue
+		}
+		updated, gerr := s.GetNotification(ctx, row.ID, userID, nil)
+		if gerr != nil || updated == nil {
+			slog.Warn("onboarding.TickFirstDream: reread", "user_id", userID, "notification_id", row.ID, "item_id", "first_dream", "err", gerr)
+		} else {
+			events.PublishNotificationItemUpdated(ctx, publisher, updated, recorderItemSnapshot(res))
+		}
+		if res.AllRequiredDone {
+			flipped, post, terr := s.TryAutoResolveChecklist(ctx, row.ID, userID, nil)
+			if terr != nil {
+				slog.Warn("onboarding.TickFirstDream: all-done", "user_id", userID, "notification_id", row.ID, "err", terr)
+			} else if flipped && post != nil {
+				events.PublishNotificationUpdated(ctx, publisher, post, events.NotificationChangeAllDone)
+			}
+		}
+	}
 }

@@ -1,0 +1,17 @@
+{
+  "description": "Memax warm start: what changed in this repository's compiled context since your last session, from the local cache (memax-cli). Prints nothing without the CLI.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v memax >/dev/null 2>&1 && memax hook session-start --agent claude-code || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+---
+description: Facts from memax-v2 for packages/server/**
+globs: packages/server/**
+alwaysApply: false
+---
+<!-- Compiled by Memax from memax-v2 at 2026-10-06 10:15 UTC (C-0910). Edit it at https://memax.app/memax-v2/brief; edits here come back as proposals. -->
+
+## Decisions
+- Handlers return the model.ApiResponse envelope, never raw JSON. [M-0450]

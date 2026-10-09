@@ -158,7 +158,8 @@ type OpClass string
 
 const (
 	OpClassHeavy    OpClass = "heavy"    // recall, push, ask — embedding, rerank, LLM
-	OpClassLight    OpClass = "light"    // get, list, topics, forget
+	OpClassLight    OpClass = "light"    // get, list, topics, forget; every /v2 write
+	OpClassV2Read   OpClass = "v2_read"  // every /v2 GET and HEAD (v2ReadMultiplier × light)
 	OpClassMetadata OpClass = "metadata" // hubs, hub_members
 	OpClassNone     OpClass = ""         // not rate-limited (auth, settings, etc.)
 )
@@ -174,8 +175,12 @@ func ClassifyRequest(method, path string) OpClass {
 		return OpClassHeavy
 	case method == "POST" && (path == "/v1/ask" || path == "/v1/ask/"):
 		return OpClassHeavy
+	case method == "POST" && isV2Ask(path):
+		return OpClassHeavy
 	case method == "GET" && (path == "/v1/hubs" || startsWithPrefix(path, "/v1/hubs/")):
 		return OpClassMetadata
+	case isV2Read(method, path):
+		return OpClassV2Read
 	case isLightDataPlane(method, path):
 		return OpClassLight
 	default:
@@ -202,6 +207,15 @@ func isUnmeteredControlPlane(path string) bool {
 	default:
 		return false
 	}
+}
+
+// isV2Read reports whether a request reads the V2 record: a GET or HEAD
+// under /v2/. A person's reads (the web app's pages, memax init and compile,
+// the daemon polling each linked space) have their own bucket, so a burst of
+// them never uses up the writes (Keep, Remember, an import) the same minute
+// allows. /v1 is frozen and keeps its classes.
+func isV2Read(method, path string) bool {
+	return (method == "GET" || method == "HEAD") && startsWithPrefix(path, "/v2/")
 }
 
 func isLightDataPlane(method, path string) bool {

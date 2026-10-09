@@ -243,9 +243,13 @@ type Store interface {
 	// actually removed for skipped-list accounting.
 	BatchDeleteHubMemories(ids []string, hubID string) ([]string, error)
 	BatchMoveMemories(ids []string, targetHubID string, targetTopicID string, ownerID string) (*model.BatchMoveResult, error)
+	// BatchAttributeMemories re-credits the caller's own memories to an
+	// agent slug (created_by_* + legacy source_agent), marking
+	// attribution_source="repaired". Rows not owned by ownerID are skipped.
+	BatchAttributeMemories(ids []string, ownerID string, agentSlug string, displayName string) (*model.BatchAttributeResult, error)
 	BatchMoveToTopic(ids []string, topicID string, hubID string, confidence float64) (int, error) // returns count moved, single transaction
 	BatchMoveToHub(ids []string, targetHubID string, ownerID string) (int, error)                 // returns count moved, single transaction
-	DeleteAllUserData(ownerID string) error                                                       // purge all user data (memories, topics, configs, dreams, reviews)
+	DeleteAllUserData(ownerID string) error                                                       // purge all user data (memories, topics, configs, dreams)
 	ListArchiveCandidates(ownerID string, minAgeDays int, limit int) ([]model.Memory, error)      // pre-filtered candidates for archival
 	// ListSeedMemoryTemplates returns active seed-memory templates from
 	// the system tutorial hub (memories with source_kind =
@@ -589,6 +593,10 @@ type Store interface {
 	// requesting user; membership is enforced at the board read
 	// endpoint. All exclude archived memories and onboarding seeds.
 	ListRecentAgentActivityByHub(hubID string, since time.Time) ([]model.BoardAgentActivity, error)
+	// ListRecentMemoryActivityByHub lists the window's memories newest
+	// first (capped at limit) with the owner, the effective agent and
+	// the memory's first topic — the receipt rows of the 动静 card.
+	ListRecentMemoryActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardActivityItem, error)
 	ListTopicActivityByHub(hubID string, since time.Time, limit int) ([]model.BoardTopicActivity, error)
 	// CountMemoriesInHubRange counts memories with from < created_at <= to.
 	CountMemoriesInHubRange(hubID string, from, to time.Time) (int, error)
@@ -1002,10 +1010,11 @@ type Store interface {
 	// authorized. The §4.4 visibility predicate is defense-in-depth so
 	// a stray id from the wrong user gets refused at the store boundary.
 	CompleteNotificationItem(ctx context.Context, id, userID string, hubIDs []string, itemID string) (*ItemMutationResult, error)
-	// TryAutoResolveChecklist atomically flips a pending checklist row
-	// to status=resolved + resolution=applied_auto after re-verifying
-	// (under FOR UPDATE) that every required_ids item is still complete.
-	// Returns `flipped=true` iff this call performed the UPDATE.
+	// TryAutoResolveChecklist atomically stamps payload.all_done_at on
+	// a pending checklist row (and caps its expiry at one day) after
+	// re-verifying (under FOR UPDATE) that every required_ids item is
+	// still complete. The row stays pending. Returns `flipped=true` iff
+	// this call performed the UPDATE.
 	//
 	// A concurrent /resolve {dismiss} that wins the race causes a
 	// subsequent TryAutoResolve call to return flipped=false with the

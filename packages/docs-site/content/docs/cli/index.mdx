@@ -13,9 +13,24 @@ It's designed to feel like `git` — composable commands, Unix-friendly
 npm install -g memax-cli
 ```
 
-The binary is `memax`.
+The binary is `memax`. To set Memax up in a repository, run
+[`npx memax-cli init`](/cli/init).
 
 ## Command overview
+
+### Spaces and compiled files
+
+| Command                         | Description                                                              |
+| ------------------------------- | ------------------------------------------------------------------------ |
+| [`init`](/cli/init)             | Set Memax up here: import your agents' files, settle them, and compile.  |
+| [`connect <agent>`](/cli/connect) | Connect one agent: MCP, its session-start hook, its space, a first compile. |
+| [`switch`](/cli/switch) | Switch a space from V1 to V2 (`--dry-run` first), or back with `--back`. |
+| [`status`](/cli/status)         | The space, its compiled files and agents, and what's waiting on you.     |
+| [`compile`](/cli/compile)       | Compile every target now, and wait for the files to reach this machine.  |
+| [`link` \| `unlink`](/cli/link) | Link this repository to a space, so its compiled files are written here. |
+| [`daemon …`](/cli/daemon)       | The background process that writes them, and reports hand edits.         |
+| [`export`](/cli/export)         | A space's whole record as Markdown, with its receipts and checkpoints.   |
+| [`verify-export`](/cli/verify-export) | Check an export: its files, its signed receipt chain, its memories. |
 
 ### Memory operations
 
@@ -58,7 +73,7 @@ The binary is `memax`.
 | [`agents list`](/cli/agents)             | Combined listing of synced configs and sessions.                   |
 | [`agents configs …`](/cli/agents)        | Config-only sync, list, recovery, doctor.                          |
 | [`agents sessions …`](/cli/agents)       | Session-only sync, list, recovery, doctor.                         |
-| [`hook install \| uninstall`](/cli/hook) | Install the Claude Code hook (deprecated; prefer `setup --hooks`). |
+| [`hook session-start`](/cli/hook) | What agents run at session start: what changed since their last session. |
 | [`mcp serve`](/cli/mcp)                  | Run the local stdio MCP server.                                    |
 
 ### Setup
@@ -73,7 +88,7 @@ The binary is `memax`.
 
 | Command                  | Description                        |
 | ------------------------ | ---------------------------------- |
-| `login`                  | Interactive OAuth sign-in.         |
+| `login [--provider <name>]` | Sign in with a code you confirm at memax.app/device, or on GitHub's or Google's own page with `--provider`. |
 | `logout`                 | Clear stored credentials.          |
 | `whoami`                 | Show the currently signed-in user. |
 | `auth create-key <name>` | Generate an API key.               |

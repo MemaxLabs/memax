@@ -1,0 +1,72 @@
+/* Place pages: the boards' page measures. */
+
+.column {
+  max-width: 1160px;
+  margin: 0 auto;
+}
+
+.wide {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* Headers the boards set with a 24px gap above the list (Memories,
+ * Handoffs, Activity, Decisions). */
+.tightHead {
+  margin-bottom: var(--space-6);
+}
+
+.command {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 480px;
+  height: 40px;
+  margin: 4px 0 0;
+  padding: 0 14px;
+  background: var(--ink);
+  color: var(--on-ink);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: left;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.prompt {
+  opacity: 0.6;
+}
+
+@media (max-width: 639px) {
+  /* MobileToday.png's page gutters. */
+  .column:global(.mx-page),
+  .wide:global(.mx-page) {
+    padding: 20px 16px 24px;
+  }
+
+  .column :global(.mx-page-head),
+  .wide :global(.mx-page-head) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
+  }
+
+  .column :global(.mx-page-title) {
+    font-size: 26px;
+    line-height: 31px;
+  }
+
+  .column :global(.mx-page-actions) {
+    flex-wrap: wrap;
+  }
+
+  /* A phone has no keyboard to press them with (MobileToday.png). */
+  .column :global(.mx-btn-kbd),
+  .wide :global(.mx-btn-kbd) {
+    display: none;
+  }
+}

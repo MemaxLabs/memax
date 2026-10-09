@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -29,6 +30,13 @@ type APIKeyResult struct {
 	TrustLevel         string
 	RateLimitTier      string
 	AgentName          string // agent identity from key creation (e.g., "claude-code", "cursor")
+	// KeyStandalone — the key was marked "personal": writes are the
+	// owner's own. A key with neither an agent nor this flag has no
+	// author identity and cannot write memories.
+	KeyStandalone bool
+	// OAuthScope is an OAuth grant's granted scope ("memax:read
+	// memax:propose"), empty for API keys and older grants.
+	OAuthScope string
 }
 
 // APIKeyResolver resolves an API key string to a user ID and optional hub scope.
@@ -68,6 +76,7 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 			var agentName string      // agent identity from API key (e.g., "claude-code")
 			var impersonatorID string // set when JWT carries impersonator_id claim
 			var grant GrantContext
+			var audienceMismatch bool // an audience-bound token sent to another resource
 			if strings.HasPrefix(token, "mxk_") && keyResolver != nil {
 				// API key auth — resolves user, hub scope, and agent identity
 				result := keyResolver(token)
@@ -80,6 +89,7 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 						GrantID:            result.GrantID,
 						PrincipalType:      "api_key",
 						AgentName:          result.AgentName,
+						KeyStandalone:      result.KeyStandalone,
 						HubScopeMode:       result.HubScopeMode,
 						ScopedHubIDs:       result.ScopedHubIDs,
 						DefaultPermissions: result.DefaultPermissions,
@@ -90,6 +100,13 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 			} else {
 				// JWT auth — also extract agent_name if present (MCP OAuth tokens)
 				claims := ClaimsFromRequest(r, jwtSecret)
+				// RFC 8707: a token bound to resources works only there. An MCP
+				// OAuth token names its MCP endpoint; anywhere else (another
+				// endpoint, the REST API) it is not a credential.
+				if claims != nil && len(claims.Aud) > 0 && !claims.Aud.Contains(mcpPublicBaseURL(r)+r.URL.Path) {
+					claims = nil
+					audienceMismatch = true
+				}
 				if claims != nil {
 					impersonatorID = claims.ImpersonatorID
 					if claims.GrantID != "" && grantResolver != nil {
@@ -107,6 +124,8 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 								DefaultPermissions: result.DefaultPermissions,
 								TrustLevel:         result.TrustLevel,
 								RateLimitTier:      result.RateLimitTier,
+								OAuthScope:         result.OAuthScope,
+								SessionID:          claims.Sid,
 							}
 						}
 					} else {
@@ -115,6 +134,12 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 						grant = defaultGrantContext(userID)
 						if agentName != "" {
 							grant.AgentName = agentName
+						}
+						if agentName == "" && claims.ImpersonatorID == "" {
+							grant.Surface = claims.Surface
+						}
+						if claims.ImpersonatorID == "" {
+							grant.SessionID = claims.Sid
 						}
 					}
 				}
@@ -128,23 +153,14 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 				// For MCP endpoints, include WWW-Authenticate header for OAuth discovery
 				if strings.HasPrefix(r.URL.Path, "/mcp") {
 					message = "Authentication required. Authorize this MCP client via OAuth (for Codex: codex mcp login memax), or configure an API key with: memax setup --mcp --api-key"
-					baseURL := os.Getenv("API_BASE_URL")
-					if baseURL == "" {
-						scheme := "https"
-						if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
-							scheme = "http"
-						}
-						baseURL = fmt.Sprintf("%s://%s", scheme, r.Host)
+					challenge := fmt.Sprintf(`Bearer resource_metadata="%s"`, MCPResourceMetadataURL(r))
+					if audienceMismatch {
+						message = "This token was issued for another Memax endpoint. Authorize this MCP client again for this one."
+						challenge += `, error="invalid_token", error_description="the token's audience is another resource"`
 					}
-					resourcePath := "/.well-known/oauth-protected-resource"
-					if r.URL.Path != "" && r.URL.Path != "/" {
-						resourcePath += r.URL.Path
-					}
-					w.Header().Set("WWW-Authenticate", fmt.Sprintf(
-						`Bearer resource_metadata="%s%s"`,
-						baseURL,
-						resourcePath,
-					))
+					w.Header().Set("WWW-Authenticate", challenge)
+				} else if audienceMismatch {
+					message = "This token is for a Memax MCP endpoint and can't be used here."
 				}
 				writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
 					Error: &model.Error{Code: "unauthorized", Message: message},
@@ -181,6 +197,37 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// MCPResourceMetadataURL is the protected-resource metadata URL (RFC 9728)
+// for the MCP endpoint a request was sent to, as WWW-Authenticate
+// challenges name it.
+func MCPResourceMetadataURL(r *http.Request) string {
+	resourcePath := "/.well-known/oauth-protected-resource"
+	if r.URL.Path != "" && r.URL.Path != "/" {
+		resourcePath += r.URL.Path
+	}
+	return mcpPublicBaseURL(r) + resourcePath
+}
+
+// mcpPublicBaseURL is the API's public origin: API_BASE_URL, or the
+// request's own host. A request to MCP_BASE_URL's host (the mcp.memax.app
+// alias of the same app) is answered as that host, so the client sees the
+// resource it connected to.
+func mcpPublicBaseURL(r *http.Request) string {
+	if alias := strings.TrimRight(os.Getenv("MCP_BASE_URL"), "/"); alias != "" {
+		if u, err := url.Parse(alias); err == nil && strings.EqualFold(u.Host, r.Host) {
+			return alias
+		}
+	}
+	if baseURL := strings.TrimRight(os.Getenv("API_BASE_URL"), "/"); baseURL != "" {
+		return baseURL
+	}
+	scheme := "https"
+	if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://%s", scheme, r.Host)
 }
 
 // GetUserID extracts the authenticated user ID from request context.
@@ -339,7 +386,45 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 			var writeHubID string
 			permsByHub := map[string]PermissionSet{}
 
-			allHubs, _ := s.ListUserHubs(userID)
+			allHubs, listErr := s.ListUserHubs(userID)
+			// The personal hub and the write hub's role come from allHubs,
+			// which ListUserHubs read from the same hubs and hub_members
+			// rows, so a request makes one round trip to Postgres here,
+			// not up to four (the API is about 24 ms from the database). A
+			// personal hub missing from the list (its owner has no
+			// membership row), or a failed list, is looked up as before.
+			var personal struct {
+				id         string
+				ok, looked bool
+			}
+			personalHub := func() (string, bool) {
+				if personal.looked {
+					return personal.id, personal.ok
+				}
+				personal.looked = true
+				for _, item := range allHubs {
+					if item.Hub.HubType == "personal" && item.Hub.OwnerID == userID {
+						personal.id, personal.ok = item.Hub.ID, true
+						return personal.id, true
+					}
+				}
+				if hub, err := s.GetPersonalHub(userID); err == nil {
+					personal.id, personal.ok = hub.ID, true
+				}
+				return personal.id, personal.ok
+			}
+			memberRole := func(hubID string) string {
+				if listErr != nil {
+					role, _ := s.GetHubMemberRole(hubID, userID)
+					return role
+				}
+				for _, item := range allHubs {
+					if item.Hub.ID == hubID {
+						return item.Role
+					}
+				}
+				return ""
+			}
 			allowedByScope := map[string]bool{}
 			if grant.HubScopeMode == HubScopeAllowlist {
 				for _, scopedHubID := range grant.ScopedHubIDs {
@@ -399,16 +484,16 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 				}
 				retrievalBoostHubID = hubID
 				if hubID == "" {
-					if hub, err := s.GetPersonalHub(userID); err == nil {
-						hubID = hub.ID
+					if id, ok := personalHub(); ok {
+						hubID = id
 					}
 				}
 
 				// Validate membership and grant read access.
 				if hubID != "" {
 					if !permsByHub[hubID].Has(PermMemoryRead) && !permsByHub[hubID].Has(PermHubRead) {
-						if hub, err := s.GetPersonalHub(userID); err == nil {
-							hubID = hub.ID
+						if id, ok := personalHub(); ok {
+							hubID = id
 						}
 						retrievalBoostHubID = ""
 					}
@@ -417,15 +502,14 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 				// Write context: explicit X-Hub-ID only. Any switched read hub is client-local state.
 				writeHubID = r.Header.Get("X-Hub-ID")
 				if writeHubID == "" {
-					if hub, err := s.GetPersonalHub(userID); err == nil {
-						writeHubID = hub.ID
+					if id, ok := personalHub(); ok {
+						writeHubID = id
 					}
 				}
 				if writeHubID != "" {
-					role, _ := s.GetHubMemberRole(writeHubID, userID)
-					if role == "" {
-						if hub, err := s.GetPersonalHub(userID); err == nil {
-							writeHubID = hub.ID
+					if memberRole(writeHubID) == "" {
+						if id, ok := personalHub(); ok {
+							writeHubID = id
 						}
 					}
 				}

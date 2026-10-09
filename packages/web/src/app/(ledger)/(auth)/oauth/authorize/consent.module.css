@@ -1,0 +1,279 @@
+/* OAuthConsent (OAuthConsent.dc.html): the wordmark, then one card with
+ * the agent's stamp, the question, the space to connect, what the agent
+ * will and won't be able to do, and the two actions. */
+
+.page {
+  box-sizing: border-box;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-8) var(--space-6) var(--space-12);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+.card {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 520px;
+  margin: var(--space-10) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 28px 28px var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.stamps {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--ink-3);
+}
+
+.host {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mark {
+  display: flex;
+  flex: none;
+  color: var(--ink);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.meta {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Sentences and file names in mx-meta: tabular figures would set their
+ * punctuation figure-wide ("AGENTS . md"), the board's rendering defect
+ * (design review §2). Counts keep them. */
+.meta,
+.footnote,
+.detail,
+.host {
+  font-variant-numeric: normal;
+}
+
+/* "Not you?": a link that posts. */
+.notYou {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink-2);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.notYou:hover {
+  color: var(--ink);
+}
+
+.notYou[aria-disabled="true"] {
+  cursor: default;
+}
+
+.spaces {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.legend {
+  padding: 0;
+}
+
+.space {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.space input {
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.space:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.space input:focus-visible {
+  outline: none;
+}
+
+.on {
+  border-color: var(--ink);
+  background: var(--select);
+}
+
+.unavailable {
+  cursor: default;
+  color: var(--ink-3);
+}
+
+.spaceText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.spaceName {
+  font-size: 14px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.lists {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.listLabel {
+  margin: 0;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.item > :first-child {
+  margin-top: 2px;
+}
+
+.wont {
+  color: var(--ink-2);
+}
+
+.foot {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.cancel {
+  flex: 1;
+}
+
+.allow {
+  flex: 2;
+  min-width: 0;
+}
+
+.allow :global(.mx-btn-label) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footnote {
+  margin: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.alert {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--vermilion);
+}
+
+/* An ending: the request expired, ended or didn't load. */
+.lede {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.endActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+@media (max-width: 639px) {
+  .page {
+    padding: var(--space-6) var(--space-4) var(--space-10);
+  }
+  .card {
+    margin-top: var(--space-6);
+    padding: var(--space-5) var(--space-4);
+  }
+  .title {
+    font-size: 24px;
+    line-height: 30px;
+  }
+  .lists {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

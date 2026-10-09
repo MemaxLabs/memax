@@ -1,10 +1,10 @@
 # Memax Worker — PRODUCTION
 # Deploy: fly deploy -c fly/fly.worker.production.toml (from packages/server/)
 #
-# Sister file: fly/fly.worker.staging.toml — staging equivalent.
-# Workers process the River queue (memory processing, embeddings,
-# dreams engine, email sends). Sized bigger than staging because
-# real traffic means real batch sizes.
+# Staging has no worker app: its API runs the worker in-process
+# (MEMAX_EMBEDDED_WORKER in fly/fly.server.staging.toml), so idle
+# staging costs nothing. Workers process the River queue (memory
+# processing, embeddings, dreams engine, email sends).
 app = "memax-worker-production"
 primary_region = "sjc"
 swap_size_mb = 512
@@ -15,6 +15,10 @@ swap_size_mb = 512
   dockerfile = "../Dockerfile.worker"
 
 [env]
+  # V2 compile service: a Cloudflare Worker (packages/compile-service/
+  # wrangler.jsonc, deployed before this app by CI). It needs
+  # COMPILE_SERVICE_TOKEN, a secret synced from Doppler with the rest.
+  COMPILE_SERVICE_URL = "https://compile.memax.app"
   HEALTH_PORT = "9090"
 
 [deploy]
@@ -50,9 +54,13 @@ swap_size_mb = 512
 
 [[vm]]
   # Workers do the heavy lifting — embedding batches, LLM processing,
-  # attachment processing (PDFs, images). 1gb + 2x CPU gives enough
-  # headroom for concurrent job processing without contention.
-  size = "shared-cpu-2x"
+  # attachment processing (PDFs, images). Almost all of it waits on
+  # Voyage, the LLM or Postgres rather than the CPU, so one shared CPU
+  # with 1gb is enough at today's volume (Oct 2026 running-cost review:
+  # $6.96/month in sjc, against $13.92 for shared-cpu-2x). Jobs are
+  # queued, so a slower PDF extraction delays nobody's request. Move
+  # back to shared-cpu-2x if River's job durations or queue lag grow.
+  size = "shared-cpu-1x"
   memory = "1gb"
 
 [swap]

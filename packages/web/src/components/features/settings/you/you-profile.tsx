@@ -371,42 +371,24 @@ function ImpersonateInput({
     setState("loading");
     setErrorMsg("");
 
-    const token = localStorage.getItem("memax_access_token");
-    if (!token) {
-      setState("error");
-      setErrorMsg(t.dev.impersonateNotAuth);
-      return;
-    }
-
     const isUUID =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         trimmed,
       );
-    const body = isUUID ? { user_id: trimmed } : { email: trimmed };
+    const target = isUUID ? { user_id: trimmed } : { email: trimmed };
 
     try {
-      const res = await fetch("/api/auth/impersonate", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
-
-      if (!res.ok) {
-        setState("error");
-        setErrorMsg(json?.error?.message ?? t.dev.impersonateFailed);
-        setTimeout(() => setState("idle"), 3000);
-        return;
-      }
-
+      // The web app's server swaps the session cookies and reloads into
+      // the impersonated session (lib/impersonation.ts).
       const { startImpersonating } = await import("@/lib/impersonation");
-      startImpersonating(userName, json.data.access_token);
-    } catch {
+      await startImpersonating(userName, target);
+    } catch (err) {
       setState("error");
-      setErrorMsg(t.dev.impersonateFailed);
+      setErrorMsg(
+        err instanceof Error && err.message
+          ? err.message
+          : t.dev.impersonateFailed,
+      );
       setTimeout(() => setState("idle"), 3000);
     }
   };

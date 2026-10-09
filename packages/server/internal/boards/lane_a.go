@@ -20,7 +20,8 @@ const (
 	traceWindowHours = 24
 	pulseWindowDays  = 7
 	pulseTopicLimit  = 5
-	weekWindow       = 7 * 24 * time.Hour
+	// activityItemLimit caps the receipt rows the 动静 card carries.
+	activityItemLimit = 30
 
 	// Slot keys carry an ordering prefix: ListBoardSlots sorts by
 	// slot_key, so these literals fix the board layout top-to-bottom.
@@ -90,40 +91,35 @@ func (p *Producer) refreshActivity(boardID, hubID string, now time.Time) error {
 	if err != nil {
 		return fmt.Errorf("boards: activity topics: %w", err)
 	}
-	thisWeek, err := p.store.CountMemoriesInHubRange(hubID, now.Add(-weekWindow), now)
+	items, err := p.store.ListRecentMemoryActivityByHub(hubID, now.Add(-traceWindowHours*time.Hour), activityItemLimit)
 	if err != nil {
-		return fmt.Errorf("boards: week count: %w", err)
-	}
-	lastWeek, err := p.store.CountMemoriesInHubRange(hubID, now.Add(-2*weekWindow), now.Add(-weekWindow))
-	if err != nil {
-		return fmt.Errorf("boards: last-week count: %w", err)
+		return fmt.Errorf("boards: activity items: %w", err)
 	}
 
 	recent := 0
 	for _, a := range agents {
 		recent += a.Count
 	}
-	if recent == 0 && len(topics) == 0 && thisWeek == 0 && lastWeek == 0 {
+	if recent == 0 && len(topics) == 0 {
 		return p.store.DeleteBoardSlot(boardID, slotKeyActivity)
 	}
 
+	// The weekly comparison (this week vs last) was retired 2026-09-22:
+	// the card is a receipt of what landed, not a counter to compare.
 	return p.writeSlotIfChanged(&model.BoardSlot{
 		BoardID: boardID,
 		SlotKey: slotKeyActivity,
 		Kind:    model.BoardKindActivity,
-		Title: fmt.Sprintf("%d memories in the last %dh · %d this week",
-			recent, traceWindowHours, thisWeek),
+		Title:   fmt.Sprintf("%d memories in the last %dh", recent, traceWindowHours),
 		Payload: mustJSON(model.BoardActivityPayload{
 			WindowHours: traceWindowHours,
 			WindowDays:  pulseWindowDays,
+			Items:       items,
 			Agents:      agents,
 			Topics:      topics,
-			ThisWeek:    thisWeek,
-			LastWeek:    lastWeek,
 		}),
 	})
 }
-
 
 // writeSlotIfChanged upserts only when kind, title, payload, or
 // citations differ from the stored slot. An unchanged refresh is a

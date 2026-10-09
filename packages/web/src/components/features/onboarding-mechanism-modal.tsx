@@ -28,6 +28,7 @@ import { useDreamReport } from "@/hooks/use-dreams";
 import { formatAge } from "@/lib/format-age";
 import { acquireBodyScrollLock } from "@/lib/scroll-lock";
 import { ConnectAgentsBody } from "./connect-agents-section";
+import { QuickStartLauncherRow } from "./onboarding/quick-start-launchers";
 
 export type MechanismTab = "quickstart" | "mechanism" | "shortcuts";
 
@@ -117,7 +118,10 @@ export function OnboardingMechanismModal({
               </button>
             </div>
             {tab === "quickstart" ? (
-              <ConnectAgentsBody />
+              <>
+                <QuickStartLauncherRow onOpen={onClose} />
+                <ConnectAgentsBody />
+              </>
             ) : tab === "mechanism" ? (
               <MechanismPanel />
             ) : (

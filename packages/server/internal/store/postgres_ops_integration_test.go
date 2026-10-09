@@ -136,6 +136,76 @@ func TestOpsPulse_RedFlag_StuckMemories(t *testing.T) {
 	}
 }
 
+// Worker machines come from the app-owned worker_heartbeats table
+// (River v0.40 dropped river_client, where the heartbeat used to go).
+// River's leader_id is `<client>_<timestamp>`, so the heartbeat row
+// whose id prefixes it is the leader.
+func TestOpsPulse_WorkersFromHeartbeats(t *testing.T) {
+	t.Parallel()
+	s, pool := testdb.Acquire(t)
+	ctx := context.Background()
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO worker_heartbeats (id, metadata, updated_at) VALUES
+			('machine-a', '{"service":"memax-worker"}', now()),
+			('machine-b', '{"service":"memax-worker"}', now() - interval '5 minutes')
+	`); err != nil {
+		t.Fatalf("seed worker_heartbeats: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO river_leader (name, leader_id, elected_at, expires_at)
+		VALUES ('default', 'machine-a_2026_10_06T00_00_00_000000', now(), now() + interval '30 seconds')
+	`); err != nil {
+		t.Fatalf("seed river_leader: %v", err)
+	}
+
+	pulse, err := s.(store.AdminOpsStore).GetOpsPulse(ctx, 60)
+	if err != nil {
+		t.Fatalf("GetOpsPulse: %v", err)
+	}
+	w := pulse.Workers
+	if w.Healthy != 1 || w.Stale != 1 || len(w.Clients) != 2 {
+		t.Fatalf("workers = %+v, want 1 healthy + 1 stale", w)
+	}
+	byID := map[string]model.OpsWorkerClient{}
+	for _, c := range w.Clients {
+		byID[c.ClientID] = c
+		if c.Queues == nil {
+			t.Errorf("client %s queues is nil; the wire contract needs []", c.ClientID)
+		}
+	}
+	if a := byID["machine-a"]; !a.Healthy || !a.IsLeader {
+		t.Errorf("machine-a = %+v, want healthy leader", a)
+	}
+	if b := byID["machine-b"]; b.Healthy || b.IsLeader {
+		t.Errorf("machine-b = %+v, want stale non-leader", b)
+	}
+}
+
+// With no heartbeat rows (e.g. the first seconds after a deploy), a
+// live leader lease is synthesized into one healthy client.
+func TestOpsPulse_WorkersSynthesizedFromLeader(t *testing.T) {
+	t.Parallel()
+	s, pool := testdb.Acquire(t)
+	ctx := context.Background()
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO river_leader (name, leader_id, elected_at, expires_at)
+		VALUES ('default', 'machine-a_2026_10_06T00_00_00_000000', now(), now() + interval '30 seconds')
+	`); err != nil {
+		t.Fatalf("seed river_leader: %v", err)
+	}
+
+	pulse, err := s.(store.AdminOpsStore).GetOpsPulse(ctx, 60)
+	if err != nil {
+		t.Fatalf("GetOpsPulse: %v", err)
+	}
+	w := pulse.Workers
+	if w.Healthy != 1 || len(w.Clients) != 1 || !w.Clients[0].IsLeader {
+		t.Errorf("workers = %+v, want one synthesized healthy leader", w)
+	}
+}
+
 func TestOpsListJobs_Pagination(t *testing.T) {
 	t.Parallel()
 	s, pool := testdb.Acquire(t)

@@ -62,11 +62,29 @@ var pathLimitOverrides = map[string]int{
 	// Ask is the most expensive heavy op — LLM call on top of retrieval.
 	// Even pro plans should see this capped a notch tighter than recall.
 	"POST /v1/ask": 30,
+	// V2's Ask is the same model call; every space shares one bucket (the
+	// key is the template, see routeKey).
+	"POST " + v2AskTemplate: 30,
 	// Batch delete and batch move can each touch hundreds of rows.
 	// Classify as heavy but let the per-endpoint cap limit the fanout
 	// rate specifically.
 	"POST /v1/memories/batch-delete": 15,
 	"POST /v1/memories/batch-move":   15,
+}
+
+// v2ReadMultiplier sets a person's /v2 reads per minute (OpClassV2Read)
+// against their plan's light rate, which their /v2 writes keep: free 60 →
+// 600 reads, early access 120 → 1,200. Derived from the plan rather than
+// stored, so no plans column holds it.
+const v2ReadMultiplier = 10
+
+// v2ReadLimit is a person's /v2 reads per minute for a plan's light rate.
+// A light rate of 0 or less (no limit) stays as it is.
+func v2ReadLimit(lightRPM int) int {
+	if lightRPM <= 0 {
+		return lightRPM
+	}
+	return lightRPM * v2ReadMultiplier
 }
 
 // applyPathOverride returns min(defaultLimit, pathLimitOverrides[key])
@@ -77,11 +95,31 @@ func applyPathOverride(method, path string, defaultLimit int) (int, bool) {
 	if defaultLimit <= 0 {
 		return defaultLimit, false
 	}
-	key := method + " " + strings.TrimRight(path, "/")
+	key := method + " " + routeKey(path)
 	if override, ok := pathLimitOverrides[key]; ok && override > 0 && override < defaultLimit {
 		return override, true
 	}
 	return defaultLimit, false
+}
+
+// v2AskTemplate is POST /v2/spaces/{space}/ask's path template.
+const v2AskTemplate = "/v2/spaces/{space}/ask"
+
+// isV2Ask reports whether path is a space's Ask.
+func isV2Ask(path string) bool {
+	rest, ok := strings.CutPrefix(strings.TrimRight(path, "/"), "/v2/spaces/")
+	space, tail, _ := strings.Cut(rest, "/")
+	return ok && space != "" && tail == "ask"
+}
+
+// routeKey is the path an override and its bucket are keyed by: the path,
+// or its template when it carries a resource (one bucket for every space).
+func routeKey(path string) string {
+	path = strings.TrimRight(path, "/")
+	if isV2Ask(path) {
+		return v2AskTemplate
+	}
+	return path
 }
 
 // Middleware returns an HTTP middleware that enforces per-user and global
@@ -134,7 +172,7 @@ func (l *Limiter) Middleware(registry planLimitsResolver, users userResolver, hu
 			// Per-user check
 			userKey := fmt.Sprintf("%s:%s", userID, opClass)
 			if useEndpointBucket {
-				userKey = fmt.Sprintf("%s:%s:%s:%s", userID, opClass, r.Method, strings.TrimRight(path, "/"))
+				userKey = fmt.Sprintf("%s:%s:%s:%s", userID, opClass, r.Method, routeKey(path))
 			}
 			result := l.Check(r.Context(), userKey, limit)
 
@@ -176,23 +214,18 @@ func resolveLimitWithHub(r *http.Request, userID, path string, opClass OpClass, 
 	} else if registry != nil && users != nil {
 		user, err := users.GetUser(userID)
 		if err != nil || user == nil {
-			return 60
+			// The defensive 60 rpm in every class (and /v2 reads' multiple of it).
+			limits = model.UserLimits{RateLimitRPM: 60, RateLimitHeavyRPM: 60, RateLimitLightRPM: 60}
+		} else {
+			// Prefer scoped personal_plan_id for limit resolution
+			planID := user.PersonalPlanID
+			if planID == "" {
+				planID = user.Plan
+			}
+			limits = registry.GetUserLimits(r.Context(), userID, planID)
 		}
-		// Prefer scoped personal_plan_id for limit resolution
-		planID := user.PersonalPlanID
-		if planID == "" {
-			planID = user.Plan
-		}
-		limits = registry.GetUserLimits(r.Context(), userID, planID)
 	} else {
-		switch opClass {
-		case OpClassHeavy:
-			return 10
-		case OpClassLight:
-			return 60
-		default:
-			return 120
-		}
+		limits = model.UserLimits{RateLimitRPM: 120, RateLimitHeavyRPM: 10, RateLimitLightRPM: 60}
 	}
 
 	switch opClass {
@@ -200,6 +233,8 @@ func resolveLimitWithHub(r *http.Request, userID, path string, opClass OpClass, 
 		return limits.RateLimitHeavyRPM
 	case OpClassLight:
 		return limits.RateLimitLightRPM
+	case OpClassV2Read:
+		return v2ReadLimit(limits.RateLimitLightRPM)
 	case OpClassMetadata:
 		return limits.RateLimitRPM
 	default:

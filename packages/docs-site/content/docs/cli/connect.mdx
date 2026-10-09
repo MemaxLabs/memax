@@ -1,0 +1,101 @@
+---
+title: memax connect
+description: Connect one agent here, with its MCP settings, its session-start hook, its connection to this repository's space and a first compile.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+`memax init` connects every agent it finds. `memax connect` connects one,
+for an agent you install later or one init skipped. It's safe to run
+again: what's already set up stays as it is.
+
+## Usage
+
+```bash
+memax connect <agent> [--space <slug>] [--no-hook] [--no-compile] [--gemini-md] [--format json]
+```
+
+`<agent>` is one of `claude-code`, `codex`, `cursor`, `gemini`, `copilot`,
+`opencode`, `windsurf` or `chatgpt`. Without the CLI installed, run it
+with npx: `npx memax-cli connect codex`.
+
+| Flag                  | Description                                                           |
+| --------------------- | --------------------------------------------------------------------- |
+| `--space <slug>`      | The space. Defaults to this repository's (`.memax.yml`, or its link). |
+| `--no-hook`           | Don't install the session-start hook.                                 |
+| `--no-compile`        | Don't compile, even in a linked repository.                           |
+| `--gemini-md`         | Gemini CLI only: give the space a `GEMINI.md` that imports `AGENTS.md`. |
+| `--timeout <seconds>` | How long to wait for the first compile. Default 30.                   |
+| `--format <fmt>`      | `text` (default) or `json`.                                           |
+
+```text
+› memax connect codex
+
+  Memax · connect Codex
+
+  ✓ MCP      settings written; it signs in to Memax on first use
+  ✓ Hook     session start, in ~/.codex/hooks.json
+  ○          Codex asks you to trust it once: run /hooks in Codex
+  ✓ Space    acme-web, at Propose
+  ✓ Compile  AGENTS.md, CLAUDE.md written here
+```
+
+Run it again and each line says `=`: already set up, nothing changed.
+
+## What it does
+
+1. **MCP settings.** It writes the agent's MCP settings for the remote
+   server with OAuth, the way `memax init` does. The agent signs in the
+   first time it uses Memax. Settings that already name Memax are left
+   alone. For Codex, it offers to run `codex mcp login memax`, which Codex
+   needs once.
+2. **The session-start hook.** Where the agent has one, it adds
+   [`memax hook session-start`](/cli/hook) to the agent's own hook
+   settings, so each session starts with what changed since the last. It
+   keeps every other hook in the file, and replaces an older Memax entry
+   rather than adding a second.
+3. **The connection.** An agent connects when it signs in, at **Propose**
+   (Cursor and Gemini CLI at **Read**): what it writes waits for you in
+   Review. If the agent is already connected elsewhere, `memax connect`
+   connects it to this space at that level, or lower if it's lower
+   elsewhere. It never raises an agent; you do that in the app.
+4. **GEMINI.md, when you ask.** Gemini CLI reads `GEMINI.md`, not
+   `AGENTS.md`. With `--gemini-md`, `memax connect gemini` gives the space
+   a `GEMINI.md` that imports `AGENTS.md`; a `GEMINI.md` you wrote stays
+   yours, with one Memax block in it. Without the flag nothing is added:
+   Antigravity CLI, which replaced Gemini CLI for most people, reads
+   `AGENTS.md` as it is.
+5. **A first compile.** In a [linked](/cli/link) repository whose files
+   aren't compiled and written yet, it compiles once, like
+   [`memax compile`](/cli/compile).
+
+<Callout type="info">
+  With the [Memax plugin](/integrations/claude-code-plugin) on in Claude
+  Code, the plugin brings the MCP server and the hook, so `memax connect
+  claude-code` leaves both to it.
+</Callout>
+
+## Agents and their hooks
+
+| Agent       | Hook written to             | Notes                                                       |
+| ----------- | --------------------------- | ----------------------------------------------------------- |
+| Claude Code | `~/.claude/settings.json`   | Or the plugin.                                              |
+| Codex       | `~/.codex/hooks.json`       | Codex asks you to trust a new hook once, with `/hooks`.     |
+| Gemini CLI  | `~/.gemini/settings.json`   | Reads `GEMINI.md`: add `--gemini-md` for one that imports `AGENTS.md`. |
+| Cursor      | `~/.cursor/hooks.json`      | The editor and the Cursor CLI.                              |
+| Copilot CLI | `~/.copilot/hooks/memax.json` |                                                           |
+| OpenCode    | none                        | No session-start hook; it reads `AGENTS.md` and MCP.        |
+| Windsurf    | none                        | No session-start hook that adds context.                    |
+| ChatGPT     | none                        | Connects through its connector, in your browser.            |
+
+[`memax hook`](/cli/hook) lists what each agent supports, with links to
+its hook documentation. On Windows the hook isn't installed yet: it reads
+the daemon's cache, and the daemon doesn't run on Windows.
+
+## Exit codes
+
+| Code | Meaning                                                                  |
+| ---- | ------------------------------------------------------------------------ |
+| 0    | Connected, or already connected.                                         |
+| 1    | A settings file couldn't be written (it says which), or the compile failed. |
+| 2    | An agent it doesn't know.                                                |

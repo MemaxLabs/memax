@@ -1,0 +1,18 @@
+{
+  "name": "memax",
+  "owner": {
+    "name": "MemaxLabs",
+    "email": "support@memax.app",
+    "url": "https://memax.app"
+  },
+  "description": "Memax for Claude Code, Claude and Cowork: your reviewed project context in every session.",
+  "plugins": [
+    {
+      "name": "memax",
+      "source": "./plugins/memax",
+      "description": "The Memax MCP server, a session-start hook that says what changed since your last session, and a skill for working with Review.",
+      "category": "productivity",
+      "tags": ["memory", "context", "agents-md", "mcp"]
+    }
+  ]
+}

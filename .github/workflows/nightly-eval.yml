@@ -16,7 +16,7 @@ jobs:
     environment: staging
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: memax
           POSTGRES_PASSWORD: memax
@@ -36,7 +36,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           cache-dependency-path: packages/server/go.sum
 
       - name: Install Doppler CLI

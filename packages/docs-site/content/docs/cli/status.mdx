@@ -1,0 +1,86 @@
+---
+title: memax status
+description: Where the space stands — its compiled files, its agents and what's waiting on you.
+---
+
+## Usage
+
+```bash
+memax status [--space <slug>] [--format json]
+```
+
+| Flag             | Description                                                           |
+| ---------------- | --------------------------------------------------------------------- |
+| `--space <slug>` | The space. Defaults to this repository's (`.memax.yml`, or its link). |
+| `--format <fmt>` | `text` (default) or `json`.                                           |
+
+```text
+› memax status
+
+  memax-v2 · Project · 214 kept · 5 waiting on you
+
+  ● AGENTS.md        in sync          14:31
+  ● CLAUDE.md        in sync          14:31
+  ○ .cursor/rules    drifted          1 local edit
+  ● ChatGPT project  in sync          copy it from the app
+
+  CC write · CX propose · CU read · GPT propose · CL propose · GM paused
+```
+
+## What it shows
+
+- **The space**, its kind, how many memories are kept, and how many are
+  waiting on you in Review.
+- **Each target** with the same marks as the app: `●` in sync, `○` a hand
+  edit waiting on you, `◌` compiling or not written yet, `-` stopped. The
+  last column says when it was delivered, or how many files have a hand
+  edit.
+- **The agents** connected to the space, with what each may do here:
+  read, propose or write, or paused.
+
+When this repository isn't linked, or the daemon isn't running, a last line
+says what to run so the files reach this machine.
+
+## JSON
+
+```json
+{
+  "space": {
+    "id": "…",
+    "slug": "memax-v2",
+    "name": "Memax V2",
+    "kind": "project",
+    "role": "owner"
+  },
+  "kept": 214,
+  "kept_more": false,
+  "waiting": 5,
+  "targets": [
+    {
+      "id": "…",
+      "kind": "agents_md",
+      "label": "AGENTS.md",
+      "path": "AGENTS.md",
+      "delivery": "local",
+      "sync_state": "in_sync",
+      "open_drift": 0,
+      "compile": "C-0882",
+      "delivered_at": "2026-10-06T14:31:02Z"
+    }
+  ],
+  "agents": [
+    {
+      "id": "…",
+      "agent": "claude-code",
+      "mark": "CC",
+      "name": "Claude Code",
+      "state": "active",
+      "autonomy": "write"
+    }
+  ],
+  "daemon": { "running": true, "linked_here": true }
+}
+```
+
+`kept` is counted up to 600 (`kept_more` is then `true`). `kept` and
+`waiting` are `null` when they couldn't be read.

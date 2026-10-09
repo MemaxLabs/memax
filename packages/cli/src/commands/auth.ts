@@ -9,6 +9,7 @@ export async function createKeyCommand(
     expires?: string;
     hub?: string[];
     agent?: string;
+    personal?: boolean;
     grant?: string[];
     readOnly?: boolean;
     trustLevel?: "public" | "standard" | "elevated" | "admin";
@@ -31,6 +32,16 @@ export async function createKeyCommand(
     if (opts.readOnly && opts.grant && opts.grant.length > 0) {
       throw new Error("Use either --read-only or --grant, not both.");
     }
+    // A key is either an agent's or yours — the server refuses one with
+    // neither, because its writes would have nobody to credit.
+    if (!opts.agent && !opts.personal) {
+      throw new Error(
+        "Say who uses this key: --agent <slug> for an agent, or --personal for yourself.",
+      );
+    }
+    if (opts.agent && opts.personal) {
+      throw new Error("Use either --agent or --personal, not both.");
+    }
     const scopes = opts.readOnly ? ["read"] : opts.grant;
     if (hubIds.length > 0 && scopes?.some(isAccountLevelGrant)) {
       throw new Error(
@@ -42,6 +53,7 @@ export async function createKeyCommand(
       hubId: hubIds[0],
       hubIds: hubIds.length > 1 ? hubIds : undefined,
       agentName: opts.agent || undefined,
+      standalone: opts.personal || undefined,
       expiresInDays: expiresInDays || undefined,
       scopes,
       trustLevel: opts.trustLevel,
@@ -108,8 +120,8 @@ export async function listKeysCommand(): Promise<void> {
       const agent = key.agent_name
         ? chalk.magenta(` [${key.agent_name}]`)
         : key.standalone
-          ? chalk.gray(" [standalone]")
-          : chalk.yellow(" [unassigned]");
+          ? chalk.gray(" [personal]")
+          : chalk.yellow(" [no identity — assign one before it can write]");
       console.log(`  ${key.prefix}...  ${key.name}  ${scope}${agent}`);
       console.log(
         `    ID: ${key.id}  Expires: ${expires}  Last used: ${lastUsed}`,
@@ -168,7 +180,11 @@ export function registerAuthCommand(program: Command): void {
     )
     .option(
       "--agent <slug>",
-      "Associate with an agent (e.g. claude-code, cursor)",
+      "This key belongs to an agent (e.g. claude-code, cursor, hatch-feed); its writes are credited to it",
+    )
+    .option(
+      "--personal",
+      "This key is you; its writes are credited to you (use an agent key for bots and pipelines)",
     )
     .option(
       "--grant <name>",

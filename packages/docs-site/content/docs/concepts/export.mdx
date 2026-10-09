@@ -1,0 +1,188 @@
+---
+title: Export format
+description: memax.export.v1, a space's whole record as Markdown with frontmatter, its receipts in canonical form and the signed checkpoints.
+---
+
+An export is a space's whole record in a form any tool can read and that
+proves itself. [`memax export`](/cli/export) writes it, the web app
+downloads it as a zip archive, and [`memax verify-export`](/cli/verify-export)
+checks it. The format is versioned: this page is `memax.export.v1`, and a
+change a v1 reader can't read gets a new version.
+
+## The folder
+
+One folder per space, named by its slug:
+
+```text
+memax-v2/
+  README.md            what this is, how to verify it, every memory by section
+  export.json          the manifest: format, space, as_of, counts, seal, every file's SHA-256
+  memories/
+    M-0219.md          one file per memory that isn't forgotten
+  tombstones/
+    M-0201.md          one per forgotten memory, without its words
+    space-<id>.md      one per Forget of the whole space
+  brief/
+    B-0007.md          every version of the Brief, as it reads
+  decisions.md         every decision by where it stands, and the decision gates
+  gates.json           every decision gate (G-), as the API serves it
+  targets.json         every compile target with its latest compile (C-)
+  agents.json          the agents that work in the space or wrote to it
+  reads.json           read counts, by reader, memory, compile and day
+  receipts.jsonl       every receipt in chain order, one per line
+  checkpoints.json     every signed checkpoint, the seal status and the public keys
+```
+
+The same record always gives the same bytes: everything is sorted, every
+time is UTC to the microsecond (`2026-10-07T14:02:11.123456Z`), and
+nothing depends on when it is read. A waiting gate keeps its stored
+status, with `expires_at`; reads are counts over all time. Each export is
+itself a receipt, so two exports differ by that receipt.
+
+## A memory
+
+```markdown
+---
+format: "memax.memory.v1"
+ref: "M-0219"
+id: "0199…"
+state: "kept"
+lifecycle: "kept"
+flags: []
+section: "decisions"
+kind: "decision"
+trust: "person"
+version: 2
+stale_after: null
+valid_from: null
+valid_to: null
+created_at: "2026-10-02T10:41:00.000000Z"
+updated_at: "2026-10-03T09:12:00.000000Z"
+created_receipt: "0199…"
+last_receipt: "0199…"
+decision:
+  status: "in_force"
+  why: "One database, one transaction for a job and its write."
+  options: [{"label": "River", "detail": "Postgres-backed"}, {"label": "Temporal", "detail": null}]
+  consequences: null
+  area: "infra"
+conditions: [{"kind": "file_exists", "path": "go.mod"}]
+scope: {}
+sources:
+  - {"id": "0199…", "kind": "pr", "ref": "PR #212", "uri": "https://github.com/…/pull/212", "locator": {}, "trust": "repository", "external": false, "quote": null, "content_hash": null, "created_at": "…"}
+  - {"id": "0199…", "kind": "file", "ref": "go.mod:14", "uri": null, "locator": {"line": 14, "path": "go.mod"}, "trust": "repository", "external": false, "quote": "github.com/riverqueue/river", "content_hash": null, "created_at": "…"}
+links:
+  - {"id": "0199…", "kind": "supersedes", "direction": "out", "ref": "M-0156", "memory_id": "0199…", "receipt": "0199…", "created_at": "…"}
+versions:
+  - {"version": 1, "receipt": "0199…", "created_at": "…", "statement": "Background jobs run on River."}
+  - {"version": 2, "receipt": "0199…", "created_at": "…", "statement": "Background jobs run on River, Postgres-backed."}
+receipts:
+  - {"seq": 412, "id": "0199…", "action": "proposed", "occurred_at": "…"}
+  - {"seq": 418, "id": "0199…", "action": "kept", "occurred_at": "…"}
+  - {"seq": 530, "id": "0199…", "action": "edited", "occurred_at": "…"}
+---
+
+Background jobs run on River, Postgres-backed.
+```
+
+The body is the statement in force (`version`), followed by a newline.
+`versions` holds every version, words included; `receipts` every receipt
+about the memory, oldest first.
+
+**The frontmatter is plain YAML in a fixed subset**, so every parser reads
+it the same way: each line is `key: <JSON value>`, or `key:` followed by
+a block list of JSON values (`  - {…}`) or a block object one level deep
+(`  name: <JSON value>`). YAML 1.2 is a superset of JSON, so any YAML
+parser (and Obsidian's properties) reads it; the SDK's
+`parseFrontmatter` reads exactly this subset.
+
+## A tombstone
+
+A forgotten memory has no file in `memories/`. Its tombstone keeps that it
+existed, when and how it was forgotten, and what went with it: IDs, times
+and counts, never words (not even the note a person left on the Forget).
+
+```markdown
+---
+format: "memax.tombstone.v1"
+ref: "M-0201"
+id: "0199…"
+kind: "memory"
+tombstone: "0199…"
+op: "0199…"
+forgotten_at: "2026-10-03T10:12:04.000000Z"
+by: {"kind": "person", "id": "0199…"}
+requested_by: null
+via: "web"
+receipt: "0199…"
+carried: null
+primary: null
+with: []
+kept_at: "2026-09-28T16:20:00.000000Z"
+reads_before: 23
+gone:
+  versions: 1
+  sources: 2
+  embeddings: 1
+  verdicts: 0
+  model_verdicts: 0
+  gates: 0
+  files: 4
+  memories: 0
+agents_told: 5
+status: "done"
+completed_at: "2026-10-03T10:12:04.211000Z"
+reapplied_at: null
+receipts:
+  - {"seq": 101, "id": "0199…", "action": "kept", "occurred_at": "…"}
+  - {"seq": 344, "id": "0199…", "action": "forgot", "occurred_at": "…"}
+---
+
+M-0201 was forgotten on 2026-10-03 10:12 UTC. Its words are gone from Memax: this file keeps only that it existed, and when and how it was forgotten.
+```
+
+## Receipts and checkpoints
+
+`receipts.jsonl` holds every receipt of the space in chain order, the
+order the sealer seals them in, one JSON object per line. Each line has
+the 21 fields of the receipt's canonical form (receipt chain format 1),
+`null` where a value is absent, plus the reason and its salt while they
+exist:
+
+```json
+{"id":"0199…","seq":418,"tenant_id":"…","space_id":"…","object_kind":"memory","object_id":"…","object_ref":"M-0219","action":"kept","actor_kind":"person","actor_id":"…","agent":null,"via":"web","assurance":"human_web","session_ref":null,"source":null,"reason":null,"reason_salt":null,"reason_sha256":null,"occurred_at":"…","recorded_at":"…","stream_id":"…","stream_version":2}
+```
+
+A receipt never holds a memory's words. It commits to its reason as
+`reason_sha256 = SHA-256(salt ‖ reason)`; Forget removes the reason and
+the salt and keeps the commitment, so the chain still verifies and the
+words stay gone.
+
+The chain: `leaf = SHA-256(0x00 ‖ canonical(receipt))`,
+`h₀ = SHA-256("memax.receipts.chain.v1" ‖ 0x00 ‖ space_id)`,
+`hᵢ = SHA-256(hᵢ₋₁ ‖ leafᵢ)`. A checkpoint covers positions `from`–`to` (the
+lines of `receipts.jsonl`), with the chain hash before and after, the
+RFC 6962 Merkle root of its leaves and an Ed25519 signature over its
+statement. `checkpoints.json` holds every checkpoint, the seal status and
+the public keys, by key id. The SDK's `verifyReceiptChain` implements the
+encoding byte for byte.
+
+## What verifying proves
+
+- **Sealed receipts:** receipts 1 to N are exactly the ones Memax sealed
+  and signed, in order. Change, add, remove or reorder one and the chain,
+  the Merkle root or the signature fails, at the checkpoint that covers it.
+- **Unsealed receipts:** the ones written in the seconds before the
+  export (its own receipt among them) chain on after the last checkpoint,
+  unproven.
+- **Files:** every file matches `export.json`.
+- **Records:** every memory and tombstone file matches its receipts, and
+  every forgotten memory has its tombstone.
+- **Words** are proven only as far as `export.json` is: they are never in
+  a receipt, by design.
+
+## What isn't exported
+
+The judge's working notes, import batches, idempotency records, agent
+notices and the words of anything forgotten. What happened to each is in
+the receipts.

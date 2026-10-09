@@ -1,0 +1,8 @@
+{
+  "overrides": [
+    {
+      "files": "test/fixtures/**",
+      "options": { "requirePragma": true }
+    }
+  ]
+}

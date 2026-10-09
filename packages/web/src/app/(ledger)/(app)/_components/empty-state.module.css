@@ -1,0 +1,52 @@
+/* Empty, after the States board's "Review with nothing waiting". */
+
+.empty {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 380px;
+  padding: 40px;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 400;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.detail {
+  margin: 0;
+  max-width: 28em;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.action {
+  margin-top: 8px;
+}
+
+.meta {
+  margin: 16px 0 0;
+  /* A sentence: tabular figures set its commas tabular-wide too. */
+  font-variant-numeric: normal;
+}
+
+@media (max-width: 639px) {
+  .empty {
+    min-height: 0;
+    padding: 32px 20px;
+  }
+}

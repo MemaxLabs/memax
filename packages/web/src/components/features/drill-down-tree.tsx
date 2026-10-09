@@ -7,10 +7,11 @@ import { useAuth, useActiveHub } from "@/lib/auth";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { getMemaxClient } from "@/lib/memax-client";
 import { queryClient } from "@/lib/query-client";
-import { getHubDisplayName } from "@/lib/hub-display";
+import { getHubDisplayInitial, getHubDisplayName } from "@/lib/hub-display";
+import { HubBadge } from "@/components/features/hub/hub-badge";
 import { TopicIcon } from "@/components/features/topic/topic-icon";
 import { cn } from "@memaxlabs/ui";
-import { ArrowRight, Users, ChevronLeft, Check, Search } from "lucide-react";
+import { ArrowRight, ChevronLeft, Check, Search } from "lucide-react";
 
 /* ── Types ── */
 
@@ -580,7 +581,12 @@ export function DrillDownTree({
                       }
                       className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 px-3 cursor-pointer text-left"
                     >
-                      <Users className="h-4 w-4 text-fg-3" />
+                      <HubBadge
+                        kind={h.hub.hub_type === "team" ? "team" : "personal"}
+                        label={getHubDisplayInitial(h.hub, t, viewer)}
+                        accent={h.hub.accent}
+                        size="md"
+                      />
                       <span className="flex-1 truncate font-medium">
                         {hubLabel}
                       </span>
@@ -622,7 +628,12 @@ export function DrillDownTree({
                     "min-h-11 px-3 cursor-pointer gap-2.5",
                   )}
                 >
-                  <Users className="h-4 w-4 text-fg-3" />
+                  <HubBadge
+                    kind={h.hub.hub_type === "team" ? "team" : "personal"}
+                    label={getHubDisplayInitial(h.hub, t, viewer)}
+                    accent={h.hub.accent}
+                    size="md"
+                  />
                   <span className="flex-1 text-left font-medium truncate">
                     {hubLabel}
                   </span>

@@ -18,19 +18,20 @@ import type { RequestFn } from "../transport.js";
  * (plan 18 §4.5) so clients can patch their cached payload from either
  * the HTTP response OR the realtime event without a follow-up GET.
  *
- * When `auto_resolved=true` the same call also flipped the parent row
- * to status=resolved (resolution=applied_auto). Clients render the
- * "✨ you're all set" celebration once for the `auto_resolved` HTTP
- * response OR the SSE `notification.resolved` event, whichever lands
- * first — they're equivalent signals.
+ * When `all_done=true` the same call finished the checklist: the
+ * parent row STAYS pending with `payload.all_done_at` stamped and its
+ * expiry capped at one day, so the finished state is visible before
+ * the row retires. Clients render the finished state once for the
+ * `all_done` HTTP response OR the SSE `notification.updated` event
+ * with change=all_done, whichever lands first — equivalent signals.
  */
 export interface NotificationItemUpdateResult {
   item_id: string;
   viewed_at?: string;
   completed_at?: string;
   progress?: ItemProgress;
-  auto_resolved?: boolean;
-  auto_resolved_as?: NotificationResolution;
+  /** This completion finished the checklist (row stays pending, finished state). */
+  all_done?: boolean;
 }
 
 /**
@@ -182,10 +183,10 @@ export class NotificationsResource {
    * snapshot.
    *
    * When this call satisfies the last required_ids item the server
-   * also flips the parent row to status=resolved with
-   * resolution=applied_auto. The `auto_resolved` flag in the response
+   * stamps `payload.all_done_at` and caps the row's expiry at one day;
+   * the row stays pending. The `all_done` flag in the response
    * advertises this; the caller does not need to issue a follow-up
-   * /resolve.
+   * /resolve — the expiry sweep retires the row.
    */
   async completeItem(
     notificationId: string,

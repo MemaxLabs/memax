@@ -1,0 +1,284 @@
+# Deploys one Cloudflare Worker: the web app (packages/web, built by
+# OpenNext), the docs site (packages/docs-site, static assets) or the
+# compile service (packages/compile-service). ci.yml calls it for staging
+# on every push to main, and deploy-production.yml for production, so the
+# steps live in one place.
+#
+# # Secrets
+#
+# The `staging` and `production` GitHub Environments hold
+# CLOUDFLARE_API_TOKEN (an API token with "Workers Scripts: Edit",
+# "Workers Routes: Edit" and "Zone: Read" for memax.app),
+# CLOUDFLARE_ACCOUNT_ID, and the DOPPLER_TOKEN the Fly deploys already use.
+# Doppler is the source of truth: each run reads what the Worker needs
+# from the environment's Doppler config and uploads the secrets with the
+# new version (`wrangler deploy --secrets-file`), so a Worker never runs
+# without them, and they are never written to the repository or the log.
+#
+#   web      build time: NEXT_PUBLIC_API_URL and NEXT_PUBLIC_APP_URL
+#                        (required for staging; production falls back to
+#                        api.memax.app and memax.app), NEXT_PUBLIC_DOCS_URL,
+#                        NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_POSTHOG_HOST,
+#                        NEXT_PUBLIC_CLI_TAG (alpha on staging)
+#            secret:     WEB_SURFACE_SECRET (the same value as the API's)
+#   docs     build time: NEXT_PUBLIC_DOCS_URL, NEXT_PUBLIC_APP_URL,
+#                        NEXT_PUBLIC_API_URL (all optional)
+#   compile  secret:     COMPILE_SERVICE_TOKEN (the same value as the API's
+#                        and the worker's)
+#
+# # Rollback
+#
+# `wrangler rollback --env <environment>` (from the package's directory,
+# with the same token) returns a Worker to its previous version at once;
+# `wrangler deployments list --env <environment>` shows them. Or re-run
+# this workflow from an older commit.
+
+name: Deploy to Cloudflare Workers
+
+on:
+  workflow_call:
+    inputs:
+      worker:
+        description: "web, docs or compile"
+        required: true
+        type: string
+      environment:
+        description: "staging or production"
+        required: true
+        type: string
+      ref:
+        description: "Git ref to deploy. Defaults to the commit that triggered the caller."
+        required: false
+        type: string
+        default: ""
+    # The secrets are the GitHub Environment's (callers pass
+    # `secrets: inherit`), like the Fly jobs', so they aren't declared here.
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.worker }} (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency:
+      # One deploy per Worker at a time; never cancel one midway.
+      group: deploy-cloudflare-${{ inputs.worker }}-${{ inputs.environment }}
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WORKER: ${{ inputs.worker }}
+      TARGET_ENV: ${{ inputs.environment }}
+      WRANGLER_SEND_METRICS: "false"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Check the inputs
+        run: |
+          case "$WORKER" in web|docs|compile) ;; *) echo "::error::worker must be web, docs or compile, not '$WORKER'"; exit 1 ;; esac
+          case "$TARGET_ENV" in staging|production) ;; *) echo "::error::environment must be staging or production, not '$TARGET_ENV'"; exit 1 ;; esac
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID on the '$TARGET_ENV' GitHub Environment."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: |
+          case "$WORKER" in
+            web) pnpm install --frozen-lockfile --filter "@memaxlabs/web..." ;;
+            docs) pnpm install --frozen-lockfile --filter "@memaxlabs/docs-site..." ;;
+            compile) pnpm install --frozen-lockfile --filter "@memaxlabs/compile-service..." ;;
+          esac
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Read settings and secrets from Doppler
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DOPPLER_TOKEN" ]; then
+            echo "::error::DOPPLER_TOKEN isn't set on the '$TARGET_ENV' GitHub Environment."
+            exit 1
+          fi
+          SECRETS_FILE="$RUNNER_TEMP/worker-secrets.json"
+          get() { doppler secrets get "$1" --plain 2>/dev/null || true; }
+          # Public build settings: next build inlines NEXT_PUBLIC_* into
+          # the bundle, so they are build environment, not Worker settings.
+          public() {
+            for name in "$@"; do
+              value=$(get "$name")
+              if [ -n "$value" ]; then echo "$name=$value" >> "$GITHUB_ENV"; fi
+            done
+          }
+          # Secrets: written to a file only this job reads, uploaded with
+          # the Worker's new version, removed when the job ends.
+          secret() {
+            value=$(get "$1")
+            if [ -z "$value" ]; then
+              echo "::error::$1 is missing from the '$TARGET_ENV' Doppler config."
+              exit 1
+            fi
+            echo "::add-mask::$value"
+            (umask 077 && jq -n --arg name "$1" --arg value "$value" '{($name): $value}' > "$SECRETS_FILE")
+          }
+          case "$WORKER" in
+            web)
+              public NEXT_PUBLIC_API_URL NEXT_PUBLIC_APP_URL NEXT_PUBLIC_DOCS_URL NEXT_PUBLIC_POSTHOG_KEY NEXT_PUBLIC_POSTHOG_HOST NEXT_PUBLIC_CLI_TAG
+              if [ "$TARGET_ENV" = staging ]; then
+                # Without them a staging build would talk to production.
+                for name in NEXT_PUBLIC_API_URL NEXT_PUBLIC_APP_URL; do
+                  if [ -z "$(get "$name")" ]; then
+                    echo "::error::$name is missing from the staging Doppler config; a staging build would default to production."
+                    exit 1
+                  fi
+                done
+              fi
+              secret WEB_SURFACE_SECRET
+              ;;
+            docs)
+              public NEXT_PUBLIC_DOCS_URL NEXT_PUBLIC_APP_URL NEXT_PUBLIC_API_URL
+              ;;
+            compile)
+              secret COMPILE_SERVICE_TOKEN
+              ;;
+          esac
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          # The /dev fixture pages must never ship (lib/dev-routes.ts).
+          if [ -n "${NEXT_PUBLIC_DEV_FIXTURES:-}" ]; then
+            echo "::error::NEXT_PUBLIC_DEV_FIXTURES is set; never deploy a build with the /dev fixtures."
+            exit 1
+          fi
+          case "$WORKER" in
+            web)
+              pnpm --filter memax-sdk build
+              pnpm --filter @memaxlabs/web run build:cf
+              ;;
+            docs)
+              pnpm --filter @memaxlabs/docs-site run build
+              ;;
+            compile)
+              pnpm --filter @memaxlabs/compiler build
+              ;;
+          esac
+
+      - name: Deploy
+        run: |
+          set -euo pipefail
+          SECRETS_FILE="$RUNNER_TEMP/worker-secrets.json"
+          # One word: opennextjs-cloudflare passes it to wrangler through a
+          # shell unquoted, where "(" was a syntax error and a space would
+          # split it into arguments.
+          message="$(git rev-parse --short=12 HEAD)-run-${GITHUB_RUN_ID}"
+          case "$WORKER" in
+            web)
+              pnpm --filter @memaxlabs/web run deploy:cf --env "$TARGET_ENV" --secrets-file "$SECRETS_FILE" --message "$message"
+              ;;
+            docs)
+              pnpm --filter @memaxlabs/docs-site run deploy:cf --env "$TARGET_ENV" --message "$message"
+              ;;
+            compile)
+              pnpm --filter @memaxlabs/compile-service run deploy:cf --env "$TARGET_ENV" --secrets-file "$SECRETS_FILE" --message "$message"
+              ;;
+          esac
+
+      - name: Serve the hostnames from the Worker
+        # The routes in wrangler.jsonc send a hostname's requests to the
+        # Worker once Cloudflare proxies its DNS record. A record that
+        # pointed at Vercel is switched to proxied here, never removed, so no
+        # resolver caches a missing name; one still holding the old answer
+        # reaches Vercel's last build until it expires. Rollback: switch the
+        # record back to DNS only (and Vercel serves it again).
+        if: inputs.worker == 'web' || inputs.worker == 'docs'
+        run: |
+          set -euo pipefail
+          case "$WORKER/$TARGET_ENV" in
+            web/staging) hosts="staging-app.memaxlabs.com:memaxlabs.com" ;;
+            web/production) hosts="memax.app:memax.app www.memax.app:memax.app" ;;
+            docs/staging) hosts="staging-docs.memaxlabs.com:memaxlabs.com" ;;
+            docs/production) hosts="docs.memax.app:memax.app" ;;
+          esac
+          api=https://api.cloudflare.com/client/v4
+          auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json")
+          command -v dig > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils; }
+          for pair in $hosts; do
+            host="${pair%%:*}"
+            zone="${pair#*:}"
+            zone_id=$(curl -fsS "${auth[@]}" "$api/zones?name=$zone" | python3 -c 'import json, sys; print(json.load(sys.stdin)["result"][0]["id"])')
+            records=$(curl -fsS "${auth[@]}" "$api/zones/$zone_id/dns_records?name=$host" | python3 -c '
+          import json, sys
+          rs = [r for r in json.load(sys.stdin)["result"] if r["type"] in ("A", "AAAA", "CNAME")]
+          print(" ".join("%s:%s" % (r["id"], str(r["proxied"]).lower()) for r in rs))')
+            if [ -z "$records" ]; then
+              echo "::error::$host has no A, AAAA or CNAME record in $zone. Add one, proxied, so its route serves it."
+              exit 1
+            fi
+            for record in $records; do
+              if [ "${record#*:}" = true ]; then
+                echo "$host is proxied already"
+              else
+                curl -fsS -X PATCH "${auth[@]}" "$api/zones/$zone_id/dns_records/${record%%:*}" -d '{"proxied":true}' > /dev/null
+                echo "$host is proxied now, so its route serves it from the Worker"
+              fi
+            done
+            # Ask the zone's own nameserver, which answers with Cloudflare's
+            # addresses at once, then check the answer is the Worker's.
+            ns=$(dig +short NS "$zone" | head -n 1)
+            served=""
+            for _ in $(seq 1 12); do
+              ip=$(dig +short A "$host" "@$ns" | grep -E '^[0-9.]+$' | head -n 1 || true)
+              if [ -n "$ip" ]; then
+                headers=$(curl -sS -o /dev/null -D - --max-time 15 --resolve "$host:443:$ip" "https://$host/" || true)
+                if echo "$headers" | grep -qi '^cf-ray:' && ! echo "$headers" | grep -qi '^x-vercel-id:'; then
+                  served=1
+                  break
+                fi
+              fi
+              sleep 10
+            done
+            if [ -z "$served" ]; then
+              echo "::error::https://$host/ isn't answered by the Worker. Check the routes in wrangler.jsonc, or switch its record back to DNS only."
+              exit 1
+            fi
+            echo "https://$host/ is served by the Worker"
+          done
+
+      - name: Check health
+        if: inputs.worker == 'compile'
+        # The compile service answers GET /health without the token. Its
+        # hostname is the env's route in packages/compile-service/wrangler.jsonc.
+        run: |
+          case "$TARGET_ENV" in
+            staging) url=https://compile-staging.memax.app/health ;;
+            production) url=https://compile.memax.app/health ;;
+          esac
+          # A first deploy waits for its custom domain's certificate.
+          for _ in $(seq 1 12); do
+            if curl -fsS --max-time 10 "$url" > /dev/null; then
+              echo "$url is up"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$url didn't answer after the deploy."
+          exit 1
+
+      - name: Remove the secrets file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/worker-secrets.json"

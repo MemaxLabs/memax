@@ -1,60 +1,23 @@
-import { Memax, MemaxError } from "memax-sdk";
-import { NextResponse } from "next/server";
-import { API_URL } from "@/lib/urls";
+import { csrfRefusal } from "@/lib/bff/csrf";
+import { errorResponse } from "@/lib/bff/session";
+import { sessionFromCode } from "@/lib/bff/sign-in";
 
-const client = new Memax({ apiUrl: API_URL });
-
+/**
+ * Signing in: the one-time code the API redirected to the web app (after
+ * GitHub, Google or the email code) is traded here, by the web app's
+ * server, for the session (lib/bff/sign-in.ts). Its tokens go into
+ * HttpOnly cookies and never reach the page.
+ */
 export async function POST(req: Request) {
-  let body: { code?: string };
+  const refused = csrfRefusal(req);
+  if (refused) return refused;
+
+  let code: string | undefined;
   try {
-    body = (await req.json()) as { code?: string };
+    code = ((await req.json()) as { code?: string }).code;
   } catch {
-    return NextResponse.json(
-      {
-        error: {
-          code: "invalid_request",
-          message: "Missing code.",
-        },
-      },
-      { status: 400 },
-    );
+    // Answered below.
   }
-
-  if (!body.code) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "invalid_request",
-          message: "Missing code.",
-        },
-      },
-      { status: 400 },
-    );
-  }
-
-  try {
-    const tokens = await client.auth.exchangeCode(body.code);
-    return NextResponse.json({ data: tokens });
-  } catch (error) {
-    if (error instanceof MemaxError) {
-      return NextResponse.json(
-        {
-          error: {
-            code: error.code,
-            message: error.message,
-          },
-        },
-        { status: error.status },
-      );
-    }
-    return NextResponse.json(
-      {
-        error: {
-          code: "network_error",
-          message: "Could not reach memax API.",
-        },
-      },
-      { status: 502 },
-    );
-  }
+  if (!code) return errorResponse(400, "invalid_request", "Missing code.");
+  return sessionFromCode(req, code);
 }

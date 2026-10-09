@@ -18,6 +18,7 @@ import {
   Wind,
   Bot,
   Feather,
+  Lightbulb,
 } from "lucide-react";
 
 export interface AgentIdentity {
@@ -95,6 +96,12 @@ export const AGENT_IDENTITIES: Record<string, AgentIdentity> = {
     displayName: "OpenCode",
     icon: Code2,
     color: "oklch(0.65 0.12 120)", // lime
+  },
+  muse: {
+    slug: "muse",
+    displayName: "Muse",
+    icon: Lightbulb,
+    color: "oklch(0.68 0.14 350)", // rose
   },
   generic: {
     slug: "generic",

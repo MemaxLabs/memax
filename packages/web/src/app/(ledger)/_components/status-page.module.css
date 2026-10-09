@@ -1,0 +1,63 @@
+/* The not-found and error pages of the (ledger) tree, after the
+ * "Not found" state on the States2 board: a receipt line, one serif
+ * sentence (24/30), one line of explanation and the actions. */
+
+.page {
+  box-sizing: border-box;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  background: var(--paper);
+}
+
+/* Inside the app frame: the sheet's page gutters, top aligned. */
+.sheet {
+  box-sizing: border-box;
+  padding: var(--space-16) var(--space-10) var(--space-12);
+}
+
+.panel {
+  max-width: 440px;
+}
+
+.sheet .panel {
+  max-width: 520px;
+}
+
+.receipt {
+  margin: 0 0 var(--space-3);
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+.title {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-serif);
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 400;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.description {
+  margin: 0;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 639px) {
+  .sheet {
+    padding: var(--space-10) var(--space-4) var(--space-12);
+  }
+}

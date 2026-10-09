@@ -19,7 +19,6 @@ import {
   BoardCard,
   BoardDeckControls,
   BoardDeckShell,
-  BoardSlotStrip,
   BoardVoiceStar,
   InfoPopover,
 } from "@memaxlabs/ui";
@@ -80,11 +79,6 @@ import "./board-kinds";
 
 type BoardResolveAction = "ack" | "dismiss";
 
-// useLayoutEffect warns during SSR; the shelf only exists client-side,
-// but the module is imported into a server-rendered tree.
-const useIsomorphicLayoutEffect =
-  typeof window !== "undefined" ? useLayoutEffect : useEffect;
-
 /**
  * BOARD_SHELF_RULES — the codified shelf + dismiss ruleset for the
  * embedded board (founder spec, 2026-09 revision). The shelf/card
@@ -117,6 +111,9 @@ const useIsomorphicLayoutEffect =
  * in-place expansion the tiles no longer trigger has no business
  * keeping a toggle alive — one content, one home.
  */
+/** kindFilter value prefix for a custom board's own chip. */
+const BOARD_FILTER_PREFIX = "board:";
+
 export const BOARD_SHELF_RULES = [
   "embedded-is-always-the-shelf-page-cards-expanded",
   "tile-tap-navigates-to-pulse-focused",
@@ -233,11 +230,6 @@ export function BoardView({
   // re-expands: the collapse applied to the old version, not the slot
   // forever. slot_key alone is a REUSED slot identity (ON CONFLICT ...
   // DO UPDATE resets it in place), which is exactly why the earlier
-  // expanded-by-default attempt was reverted — keyed on slot_key it
-  // suppressed brand-new content. Session-scoped like the shelf state.
-  const [collapsedCards, setCollapsedCards] = useState<ReadonlySet<string>>(
-    new Set(),
-  );
   // C5 — kind filter (page only). null = the full stream. Chips are
   // derived from the LIVE cards actually present, each carrying its
   // kind's freshest content_updated_at so the reader can see at a
@@ -250,16 +242,6 @@ export function BoardView({
   //
   // (kindFilterResetRef avoids an effect-on-derived-value loop: the
   // reset runs post-render only when the stale state is observed.)
-  useIsomorphicLayoutEffect(() => {
-    try {
-      const raw = globalThis.sessionStorage?.getItem(
-        `memax_board_cards:${hubId}`,
-      );
-      setCollapsedCards(raw ? new Set(JSON.parse(raw) as string[]) : new Set());
-    } catch {
-      setCollapsedCards(new Set());
-    }
-  }, [hubId]);
   // Example chip → ghost-composer prefill (empty-state teaching
   // moment). The ghost re-keys its composer on this so a chip tap
   // always lands its copy.
@@ -333,12 +315,40 @@ export function BoardView({
         byKind.set(s2.kind, { latest: ts ?? "", sample: s2 });
       }
     };
+    // System slots only: a custom board's cards are reached through
+    // the board's OWN chip below, not smeared across the kind chips.
     slots.forEach(absorb);
-    customLiveDecks.forEach(({ group }) => group.forEach(absorb));
     return [...byKind.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
   })();
+  // Custom boards each get a chip (the board's title) — the user made
+  // that board on purpose, so it is a lens of its own: its live cards
+  // AND its cooking state show under it, and only under it or 全部.
+  // Founder call 2026-09-22: a cooking card that appeared at the foot
+  // of every kind was the symptom.
+  const boardChips = [
+    ...customBoards.map(({ board, slots: bs }) => ({
+      id: board.id,
+      title: board.title ?? "",
+      latest: bs.reduce<string>((acc, s2) => {
+        const ts = s2.content_updated_at ?? s2.updated_at ?? "";
+        return ts > acc ? ts : acc;
+      }, ""),
+    })),
+    ...cookingBoards.map((board) => ({
+      id: board.id,
+      title: board.title ?? "",
+      latest: board.updated_at ?? board.created_at ?? "",
+    })),
+  ];
+  const boardFilterId =
+    kindFilter !== null && kindFilter.startsWith(BOARD_FILTER_PREFIX)
+      ? kindFilter.slice(BOARD_FILTER_PREFIX.length)
+      : null;
   const kindFilterIsStale =
-    kindFilter !== null && !kindChips.some(([kind]) => kind === kindFilter);
+    kindFilter !== null &&
+    (boardFilterId !== null
+      ? !boardChips.some((b) => b.id === boardFilterId)
+      : !kindChips.some(([kind]) => kind === kindFilter));
   useEffect(() => {
     if (kindFilterIsStale) setKindFilter(null);
   }, [kindFilterIsStale]);
@@ -357,39 +367,6 @@ export function BoardView({
       kinds: data.slots.map((s) => s.kind),
     });
   }, [data, hubId, slotCount]);
-
-  const toggleCard = useCallback(
-    (contentKey: string, willOpen: boolean) => {
-      setCollapsedCards((prev) => {
-        let next = new Set(prev);
-        if (willOpen) next.delete(contentKey);
-        else next.add(contentKey);
-        // Cap the set — replaced content leaves stale keys behind, and
-        // a long-lived tab across many dream runs would otherwise grow
-        // the stored array without bound (codex review). Insertion
-        // order makes the oldest collapses the ones dropped.
-        if (next.size > 100) {
-          next = new Set([...next].slice(-100));
-        }
-        try {
-          globalThis.sessionStorage?.setItem(
-            `memax_board_cards:${hubId}`,
-            JSON.stringify([...next]),
-          );
-        } catch {
-          // Private mode / quota — choice holds in-memory.
-        }
-        return next;
-      });
-      if (willOpen) {
-        trackEvent("board_card_expand", {
-          hub_id: hubId,
-          slot_key: contentKey,
-        });
-      }
-    },
-    [hubId],
-  );
 
   // ── R3 receiving side — `?focus=<slot_key>` (embedded tile tap).
   // Read from window.location in an effect rather than
@@ -435,8 +412,7 @@ export function BoardView({
       window.clearTimeout(focusGiveUpTimerRef.current);
       focusGiveUpTimerRef.current = undefined;
     }
-    toggleCard(`${focusKey}:${target.content_updated_at ?? ""}`, true);
-    // Two frames: one for the un-collapse to commit, one for layout.
+    // Two frames so layout has settled before the scroll.
     focusFrameRef.current = window.requestAnimationFrame(() => {
       focusFrameRef.current = window.requestAnimationFrame(() => {
         document
@@ -450,7 +426,7 @@ export function BoardView({
       2200,
     );
     setFocusKey(null);
-  }, [isPage, focusKey, slots, customBoards, toggleCard]);
+  }, [isPage, focusKey, slots, customBoards]);
   useEffect(
     // Unmount-only: cancel whatever focus handle is still in flight.
     () => () => {
@@ -520,14 +496,6 @@ export function BoardView({
     if (!embeddedHasContent) return null;
   }
 
-  // Content identity for card expansion — see collapsedCards above.
-  // Deck expansion follows the GROUP's anchor slot so cycling the deck
-  // never collapses the card.
-  const slotBySlotKey = new Map(slots.map((s) => [s.slot_key, s]));
-  const cardContentKey = (slotKey: string): string => {
-    const anchor = slotBySlotKey.get(slotKey);
-    return `${slotKey}:${anchor?.content_updated_at ?? ""}`;
-  };
   // Embedded surface → ALWAYS the compact tile shelf (R1, 2026-09).
   const collapsedShelf = !isPage;
   // Only claim the board is empty once the slots query has settled —
@@ -552,8 +520,8 @@ export function BoardView({
     slotGroups.flatMap((g) => g.slice(1).map((s) => s.slot_key)),
   );
 
-  // `anchorKey` — a deck's expand/collapse state follows the GROUP
-  // (its first member's key), so cycling never collapses the card.
+  // `anchorKey` — the GROUP's first member's key, used for ?focus=
+  // scroll targeting so cycling a deck keeps the same anchor.
   const renderSlotEntry = (
     slot: BoardSlot,
     entranceIndex: number,
@@ -571,10 +539,8 @@ export function BoardView({
     >
       <BoardSlotEntry
         slot={slot}
-        expanded={!collapsedCards.has(cardContentKey(anchorKey))}
         entranceIndex={entranceIndex}
         deckControls={deckControls}
-        onToggle={(willOpen) => toggleCard(cardContentKey(anchorKey), willOpen)}
         onResolve={(action) => {
           trackEvent("board_card_action", {
             hub_id: hubId,
@@ -702,7 +668,8 @@ export function BoardView({
           than one lens live. Selecting a chip focuses the stream on
           that kind (notifications step back too — a filter is a focus
           mode); each chip carries its kind's freshest update age. ── */}
-      {isPage && (kindChips.length > 1 || kindFilter !== null) ? (
+      {isPage &&
+      (kindChips.length + boardChips.length > 1 || kindFilter !== null) ? (
         <div className="flex flex-wrap items-center gap-1.5 px-1">
           <button
             type="button"
@@ -738,6 +705,31 @@ export function BoardView({
               ) : null}
             </button>
           ))}
+          {boardChips.map((chip) => {
+            const value = `${BOARD_FILTER_PREFIX}${chip.id}`;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() =>
+                  setKindFilter((prev) => (prev === value ? null : value))
+                }
+                aria-pressed={kindFilter === value}
+                className={`cursor-pointer rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                  kindFilter === value
+                    ? "bg-surface-3 text-foreground"
+                    : "text-fg-3 hover:bg-surface-1 hover:text-fg-2"
+                }`}
+              >
+                {chip.title || t.board.customBoardUntitled}
+                {chip.latest ? (
+                  <span className="ml-1.5 text-[11px] font-normal text-fg-4">
+                    {formatAge(chip.latest, t, interpolate)}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       ) : null}
 
@@ -785,6 +777,7 @@ export function BoardView({
           // undo, not a grey strip forever holding its place in line).
           if (!isLive) return null;
           if (kindFilter !== null && slot.kind !== kindFilter) return null;
+          if (boardFilterId !== null) return null;
           if (groupedMemberKeys.has(slot.slot_key)) return null;
           const group = groupByAnchor.get(slot.slot_key);
           const entranceIndex = entranceCursor++;
@@ -819,7 +812,7 @@ export function BoardView({
       {!collapsedShelf &&
         customLiveDecks
           .filter(
-            ({ group }) => kindFilter === null || group[0].kind === kindFilter,
+            ({ board }) => kindFilter === null || board.id === boardFilterId,
           )
           .map(({ board, group }) => {
             const entranceIndex = entranceCursor++;
@@ -877,15 +870,17 @@ export function BoardView({
             );
           })}
       {!collapsedShelf &&
-        cookingBoards.map((board) => (
-          <CookingBoardCard
-            key={board.id}
-            board={board}
-            entranceIndex={entranceCursor++}
-            deletePending={deleteBoard.isPending}
-            onDelete={(boardId) => deleteBoard.mutate(boardId)}
-          />
-        ))}
+        cookingBoards
+          .filter((board) => kindFilter === null || board.id === boardFilterId)
+          .map((board) => (
+            <CookingBoardCard
+              key={board.id}
+              board={board}
+              entranceIndex={entranceCursor++}
+              deletePending={deleteBoard.isPending}
+              onDelete={(boardId) => deleteBoard.mutate(boardId)}
+            />
+          ))}
 
       {/* ── 已归档 — resolved/dismissed cards, out of the live flow but
           one tap from coming back (工单 8: dismiss is archive + undo,
@@ -1029,10 +1024,8 @@ export function BoardSlotDeck({
 
 function BoardSlotEntry({
   slot,
-  expanded,
   entranceIndex,
   deckControls,
-  onToggle,
   onResolve,
   onContinue,
   onCopy,
@@ -1041,11 +1034,9 @@ function BoardSlotEntry({
   history,
 }: {
   slot: BoardSlot;
-  expanded: boolean;
   entranceIndex: number;
   /** Same-kind stack pill + ↻ cycle when this entry fronts a deck. */
   deckControls?: ReactNode;
-  onToggle: (willOpen: boolean) => void;
   onResolve: (action: BoardResolveAction) => void;
   onContinue: () => void;
   onCopy: () => void;
@@ -1056,27 +1047,6 @@ function BoardSlotEntry({
 }) {
   const { t } = useLocale();
   const interpolate = useInterpolate();
-
-  if (!expanded) {
-    // Collapsed band: one line — kind name + per-kind summary. Resolved
-    // receipts also live here so they stop costing vertical space.
-    const terminal = slot.state === "resolved" || slot.state === "dismissed";
-    return (
-      <BoardSlotStrip
-        label={boardKindStripSummary(slot, t).label}
-        detail={
-          terminal
-            ? slot.resolution?.action === "dismiss"
-              ? t.board.receiptDismissed
-              : t.board.receiptAcked
-            : boardKindStripSummary(slot, t).detail
-        }
-        open={false}
-        onToggle={() => onToggle(true)}
-        className={terminal ? "opacity-70" : undefined}
-      />
-    );
-  }
 
   const options = boardKindOptions(slot.kind);
   const purpose = boardKindPurpose(slot.kind, t);
@@ -1138,13 +1108,6 @@ function BoardSlotEntry({
               ]}
             />
           ) : null}
-          <BoardAction
-            emphasis="quiet"
-            className="ml-auto"
-            onClick={() => onToggle(false)}
-          >
-            {t.board.collapse}
-          </BoardAction>
         </BoardActionRow>
       }
       receipt={receipt}

@@ -55,13 +55,32 @@ memax --version
 
 ## Authenticate
 
-Interactive OAuth (GitHub or Google):
-
 ```bash
 memax login
 ```
 
-OAuth credentials (access token, refresh token) are stored in
+The CLI shows a short code and opens `memax.app/device` in your browser
+(over SSH, in a container or on a machine with no display, open that page
+yourself, in any browser). Sign in there the way you always do (GitHub,
+Google, an email code or a passkey), check that the code matches your
+terminal, and confirm it. The CLI is then signed in as the same account as
+the browser. Codes last 10 minutes, and Memax never asks you to read one to
+anyone.
+
+```text
+› memax login
+
+  Open memax.app/device and confirm this code:
+
+      WQRT-4821
+
+  Waiting for you in the browser… The code lasts 10 minutes.
+```
+
+To sign in on GitHub's or Google's own page instead, run
+`memax login --provider github` (or `google`).
+
+The session's credentials (access token, refresh token) are stored in
 `~/.memax/credentials.json`. Other CLI settings (`api_url`,
 `default_hub`, etc.) live in `~/.memax/config.json`. Confirm sign-in
 with `memax whoami`.

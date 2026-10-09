@@ -54,8 +54,18 @@ Thumbs.db
 # Turbo
 .turbo/
 
+# Cloudflare Workers: Wrangler's local state, OpenNext's build output and
+# local Worker secrets (.dev.vars holds real values; the example doesn't)
+.wrangler/
+.open-next/
+.dev.vars*
+!.dev.vars.example
+
 # Test
 coverage/
+playwright-report/
+test-results/
+blob-report/
 *.snap
 
 # Debug

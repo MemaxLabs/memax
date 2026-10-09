@@ -221,6 +221,10 @@ const (
 	MemoryAttributionSourceLegacyHuman   = "legacy_human"
 	MemoryAttributionSourceLegacyAgent   = "legacy_source_agent"
 	MemoryAttributionSourceServerDefault = "server_default"
+	// MemoryAttributionSourceRepaired — the owner re-attributed the row
+	// after the fact (batch-attribute); the original label is gone, the
+	// source value says so.
+	MemoryAttributionSourceRepaired = "repaired"
 )
 
 func NormalizeMemoryCreatedByType(value string) string {
@@ -353,6 +357,14 @@ const (
 type SkippedMemory struct {
 	ID     string `json:"id"`
 	Reason string `json:"reason"`
+}
+
+// BatchAttributeResult is the structured response from a batch-attribute
+// (re-attribution) request: rows now credited to the agent, plus per-id
+// skip reasons (not_found / not_owned).
+type BatchAttributeResult struct {
+	Attributed int             `json:"attributed"`
+	Skipped    []SkippedMemory `json:"skipped"`
 }
 
 // BatchMoveResult is the structured response from a batch-move request.
@@ -897,7 +909,7 @@ func DefaultSettings() map[string]any {
 		// configured AgentRuntime, so a deployment without an API key
 		// degrades to Lane A instead of failing.
 		"dreams_board_synthesis_enabled": true,
-		"hub_header_aurora_mode":   "signature",
+		"hub_header_aurora_mode":         "signature",
 		"dev_flags": map[string]any{
 			"mockDreams":      false,
 			"mockDreaming":    false,

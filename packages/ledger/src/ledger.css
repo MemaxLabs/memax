@@ -1,0 +1,19 @@
+/* Memax Ledger · component styles (every class is prefixed mx-).
+ *
+ * Load @memaxlabs/ledger-tokens first: it defines every custom property used here,
+ * plus the type styles and the @font-face rules. This file never defines a colour.
+ *
+ *   @import "@memaxlabs/ledger-tokens";
+ *   @import "@memaxlabs/ledger/ledger.css";
+ *
+ * The files below, in this order, are the V2 handoff's components/bundle.css copied
+ * verbatim, then the production hardening that the design review asks for. */
+@import "./styles/base.css";
+@import "./styles/brand.css";
+@import "./styles/primitives.css";
+@import "./styles/provenance.css";
+@import "./styles/memory.css";
+@import "./styles/agents.css";
+@import "./styles/frame.css";
+@import "./styles/motion.css";
+@import "./styles/hardening.css";

@@ -49,6 +49,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -62,8 +63,9 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 
-	"github.com/MemaxLabs/memax/packages/server/internal/migrate"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
+	"github.com/MemaxLabs/memax/packages/server/internal/testdb/catalock"
+	"github.com/MemaxLabs/memax/packages/server/internal/testdb/netsim"
 )
 
 // defaultBaseURL matches the docker-compose service name. Override
@@ -121,10 +123,64 @@ func Acquire(t *testing.T) (store.Store, *pgxpool.Pool) {
 // cleanup already handles it.
 func AcquireWithContext(t *testing.T, ctx context.Context) (store.Store, *pgxpool.Pool) {
 	t.Helper()
+	db := OpenWithContext(t, ctx, Options{})
+	return db.Store, db.Pool
+}
+
+// RTTEnv names the environment variable that puts every test database of
+// a run behind a simulated network: "24ms" is production's round trip from
+// Fly sjc to Neon us-west-2. Options.RTT overrides it.
+const RTTEnv = "TEST_DB_RTT"
+
+// Options configure Open.
+type Options struct {
+	// RTT is the simulated round-trip time between the pool and Postgres:
+	// a netsim proxy holds every byte for RTT/2 in each direction. Zero
+	// connects directly, unless TEST_DB_RTT is set.
+	RTT time.Duration
+	// Proxy routes through the proxy even at RTT 0 (for Watch).
+	Proxy bool
+	// Watch receives every statement the proxy forwards, in each
+	// connection's order (the RLS-ordering audit, netsim.Audit).
+	Watch func(netsim.Statement)
+	// Config adjusts the pool's config before the pool is built.
+	Config func(*pgxpool.Config)
+}
+
+// DB is one migrated database of a test's own.
+type DB struct {
+	Store store.Store
+	Pool  *pgxpool.Pool
+	// Proxy is the simulated network; nil when the pool connects directly.
+	Proxy *netsim.Proxy
+	// Trips counts the pool's round trips: per operation through
+	// netsim.Track, and in total.
+	Trips *netsim.Tracer
+}
+
+// Open is Acquire with options: a simulated network between the pool and
+// Postgres, a statement watcher, pool settings. The pool always carries a
+// netsim.Tracer, so any test can count an operation's round trips.
+func Open(t *testing.T, o Options) *DB {
+	t.Helper()
+	return OpenWithContext(t, context.Background(), o)
+}
+
+// OpenWithContext is Open with an explicit context for connection
+// timeouts.
+func OpenWithContext(t *testing.T, ctx context.Context, o Options) *DB {
+	t.Helper()
 
 	template, err := ensureTemplate(ctx)
 	if err != nil {
 		t.Skipf("testdb: Postgres unavailable (%v) — skipping integration test", err)
+	}
+	if o.RTT == 0 {
+		if v := strings.TrimSpace(os.Getenv(RTTEnv)); v != "" {
+			if o.RTT, err = time.ParseDuration(v); err != nil {
+				t.Fatalf("testdb: %s=%q: %v", RTTEnv, v, err)
+			}
+		}
 	}
 
 	dbName := fmt.Sprintf("memax_test_%d_%d", time.Now().UnixNano(), rand.Int64N(1_000_000))
@@ -143,18 +199,7 @@ func AcquireWithContext(t *testing.T, ctx context.Context) (store.Store, *pgxpoo
 	if _, err := admin.Exec(ctx, createSQL); err != nil {
 		t.Fatalf("testdb: CREATE DATABASE failed: %v", err)
 	}
-
-	// Open a pool against the new DB and hand it to the caller.
-	pool, err := pgxpool.New(ctx, connStringFor(dbName))
-	if err != nil {
-		_, _ = admin.Exec(context.Background(), fmt.Sprintf("DROP DATABASE %q", dbName))
-		t.Fatalf("testdb: pgxpool.New for clone: %v", err)
-	}
-
-	// Register teardown BEFORE returning so a panic/fail later
-	// still releases the database.
-	t.Cleanup(func() {
-		pool.Close()
+	drop := func() {
 		// Postgres refuses DROP DATABASE if any session is
 		// connected to the target. Our pool is already closed
 		// here so the normal case succeeds, but terminate any
@@ -165,17 +210,124 @@ func AcquireWithContext(t *testing.T, ctx context.Context) (store.Store, *pgxpoo
 			"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
 			dbName,
 		)
-		if _, err := admin.Exec(termCtx, fmt.Sprintf("DROP DATABASE IF EXISTS %q", dbName)); err != nil {
+		if err := catalock.DropDatabase(termCtx, admin, dbName); err != nil {
+			t.Logf("testdb: DROP DATABASE %q failed (non-fatal): %v", dbName, err)
+		}
+	}
+
+	db := &DB{}
+	connString := connStringFor(dbName)
+	if o.RTT > 0 || o.Proxy || o.Watch != nil {
+		if connString, db.Proxy, err = proxied(connString, o); err != nil {
+			drop()
+			t.Fatalf("testdb: proxy: %v", err)
+		}
+	}
+	cfg, err := pgxpool.ParseConfig(connString)
+	if err != nil {
+		drop()
+		t.Fatalf("testdb: pool config: %v", err)
+	}
+	db.Trips = netsim.Install(cfg)
+	if o.Config != nil {
+		o.Config(cfg)
+	}
+
+	// Open a pool against the new DB and hand it to the caller.
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		if db.Proxy != nil {
+			_ = db.Proxy.Close()
+		}
+		drop()
+		t.Fatalf("testdb: pgxpool.New for clone: %v", err)
+	}
+	db.Pool, db.Store = pool, store.NewPostgresStore(pool)
+
+	// Register teardown BEFORE returning so a panic/fail later
+	// still releases the database.
+	t.Cleanup(func() {
+		pool.Close()
+		if db.Proxy != nil {
+			_ = db.Proxy.Close()
+		}
+		drop()
+	})
+
+	return db
+}
+
+// proxied starts a netsim proxy in front of the database connString names
+// and returns the connection string through it.
+func proxied(connString string, o Options) (string, *netsim.Proxy, error) {
+	u, err := url.Parse(connString)
+	if err != nil {
+		return "", nil, err
+	}
+	target := u.Host
+	if u.Port() == "" {
+		target = net.JoinHostPort(u.Hostname(), "5432")
+	}
+	p, err := netsim.Listen(target, o.RTT/2)
+	if err != nil {
+		return "", nil, err
+	}
+	if o.Watch != nil {
+		p.Watch(o.Watch)
+	}
+	u.Host = p.Addr()
+	return u.String(), p, nil
+}
+
+// Copy copies a test's database as it is now into a new one, the stand-in
+// for a backup or a point-in-time restore, and returns a pool on the copy
+// (dropped at cleanup, like Acquire's). CREATE DATABASE … TEMPLATE needs
+// the source idle, so pool's connections are closed first (it reconnects
+// on its next use); the caller must not hold one across the call.
+func Copy(t *testing.T, pool *pgxpool.Pool) *pgxpool.Pool {
+	t.Helper()
+	ctx := context.Background()
+	src := pool.Config().ConnConfig.Database
+	admin, err := getAdminPool(ctx)
+	if err != nil {
+		t.Fatalf("testdb: copy: %v", err)
+	}
+	dbName := fmt.Sprintf("memax_copy_%d_%d", time.Now().UnixNano(), rand.Int64N(1_000_000))
+	pool.Reset()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		_, err = admin.Exec(ctx, fmt.Sprintf("CREATE DATABASE %q TEMPLATE %q", dbName, src))
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) || !strings.Contains(err.Error(), "being accessed by other users") {
+			t.Fatalf("testdb: copy %s: %v", src, err)
+		}
+		pool.Reset()
+		time.Sleep(50 * time.Millisecond)
+	}
+	cp, err := pgxpool.New(ctx, connStringFor(dbName))
+	if err != nil {
+		_ = catalock.DropDatabase(context.Background(), admin, dbName)
+		t.Fatalf("testdb: copy: %v", err)
+	}
+	t.Cleanup(func() {
+		cp.Close()
+		termCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, _ = admin.Exec(termCtx,
+			"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()", dbName)
+		if err := catalock.DropDatabase(termCtx, admin, dbName); err != nil {
 			t.Logf("testdb: DROP DATABASE %q failed (non-fatal): %v", dbName, err)
 		}
 	})
-
-	return store.NewPostgresStore(pool), pool
+	return cp
 }
 
-// ensureTemplate creates and migrates the shared template DB
-// exactly once per process. Returns the template DB name (or an
-// error if Postgres isn't reachable).
+// ensureTemplate finds or builds the migrated template this process
+// clones from (template.go: one per migration set, shared across
+// processes), then sweeps databases earlier runs leaked. Returns the
+// template's name, or an error if Postgres isn't reachable.
 func ensureTemplate(ctx context.Context) (string, error) {
 	templateOnce.Do(func() {
 		admin, err := getAdminPool(ctx)
@@ -183,44 +335,9 @@ func ensureTemplate(ctx context.Context) (string, error) {
 			templateErr = err
 			return
 		}
-		// Per-process unique name so parallel `go test` invocations
-		// (rare but possible with `-run ...` over multiple packages
-		// in parallel) don't clobber each other's templates.
-		templateName = fmt.Sprintf("memax_tpl_%d_%d", time.Now().UnixNano(), rand.Int64N(1_000_000))
-
-		if _, err := admin.Exec(ctx, fmt.Sprintf("CREATE DATABASE %q", templateName)); err != nil {
-			templateErr = fmt.Errorf("create template DB: %w", err)
-			return
-		}
-
-		// Run migrations against the template. Subsequent clones
-		// inherit the fully-migrated schema.
-		if err := migrate.Run(connStringFor(templateName), findMigrationsDir()); err != nil {
-			// Best-effort cleanup if migrations fail.
-			_, _ = admin.Exec(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %q", templateName))
-			templateErr = fmt.Errorf("migrate template: %w", err)
-			return
-		}
-
-		// Also run River's own migrations so river_job /
-		// river_client / river_leader / etc. exist in the template.
-		// Tests that query these tables (admin ops, queue readiness
-		// probes) would otherwise see "relation does not exist"
-		// errors. River migrations are idempotent + advisory-
-		// locked.
-		if err := runRiverMigrations(ctx, connStringFor(templateName)); err != nil {
-			_, _ = admin.Exec(context.Background(), fmt.Sprintf("DROP DATABASE IF EXISTS %q", templateName))
-			templateErr = fmt.Errorf("migrate river template: %w", err)
-			return
-		}
-
-		// Mark as template so accidental connections during test
-		// runs (which should only happen via CREATE DATABASE ...
-		// TEMPLATE) get rejected cleanly. Not strictly required
-		// but makes misuse loud.
-		if _, err := admin.Exec(ctx, fmt.Sprintf("ALTER DATABASE %q IS_TEMPLATE true", templateName)); err != nil {
-			templateErr = fmt.Errorf("mark template: %w", err)
-			return
+		templateName, templateErr = buildTemplate(ctx, admin)
+		if templateErr == nil {
+			sweepLeaked(ctx, admin, templateName)
 		}
 	})
 	return templateName, templateErr

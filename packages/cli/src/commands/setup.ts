@@ -35,7 +35,7 @@ export type { AgentDef, MemaxBin };
 
 // --- Agent definitions ---
 
-function getAgents(): AgentDef[] {
+export function getAgents(): AgentDef[] {
   const home = homedir();
   const cwd = process.cwd();
 
@@ -216,6 +216,8 @@ function getAgents(): AgentDef[] {
 // --- Setup command ---
 
 interface SetupOptions {
+  /** With --print --api-key: the agent the printed key belongs to. */
+  agent?: string;
   mcp?: boolean;
   hooks?: boolean;
   instructions?: boolean;
@@ -294,6 +296,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
       allowDelete: options.allowDelete,
       allowOrganize: options.allowOrganize,
       agentSync: options.agentSync,
+      agent: options.agent,
     });
     return;
   }
@@ -311,7 +314,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     if (!memaxBin && !useRemote) {
       console.error(
         chalk.red(
-          "\n  Could not find memax binary.\n  Install globally: npm install -g memax-cli@alpha\n",
+          "\n  Could not find memax binary.\n  Install globally: npm install -g memax-cli\n",
         ),
       );
       process.exit(1);
@@ -713,6 +716,10 @@ export function registerSetupCommands(program: Command): void {
     .option(
       "--api-key",
       "Use per-agent API keys instead of OAuth (for CI/CD or agents without OAuth support)",
+    )
+    .option(
+      "--agent <slug>",
+      "With --print --api-key: the agent the printed key belongs to (its writes are credited to it)",
     )
     .option("--print", "Print MCP config JSON to copy/paste (no changes made)")
     .option("--only <agents>", "Only configure these agents (comma-separated)")

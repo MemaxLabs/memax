@@ -1,0 +1,201 @@
+---
+title: memax init
+description: Set Memax up in a repository. Find your agents and their files, import what they already know as proposals, settle what disagrees, and compile.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+`memax init` is the first thing to run. In a few minutes it takes what your
+agents already know (CLAUDE.md, AGENTS.md, Cursor rules, their memory notes)
+into a space as proposals, shows you where those files disagree, keeps what
+you agree with, and writes the space back to the files your agents read.
+
+```bash
+npx memax-cli init
+```
+
+The binary is `memax`, so once the CLI is installed it's `memax init`.
+
+## Usage
+
+```bash
+memax init [--space <slug>] [--yes] [--no-personal] [--no-connect]
+           [--no-daemon] [--dry-run] [--wait <seconds>] [--timing]
+           [--format text|json] [--device]
+```
+
+| Flag               | Description                                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `--space <slug>`   | The project space. Without it: `.memax.yml`, then this repository's link, then the git remote; else a new one. |
+| `-y, --yes`        | Take the recommended answer to every question. For CI and scripts.                                         |
+| `--no-personal`    | Leave machine-local memory (`~/.claude`, `~/.codex`, `~/.gemini`) where it is.                             |
+| `--no-connect`     | Don't write the agents' MCP settings or hooks.                                                             |
+| `--no-daemon`      | Write the files once instead of starting [the daemon](/cli/daemon).                                        |
+| `--dry-run`        | Show what would be uploaded, and upload nothing.                                                           |
+| `--wait <seconds>` | How long to wait for the judge (default 20).                                                               |
+| `--timing`         | Show how long each step took, against its budget.                                                          |
+| `--format json`    | Print one JSON report instead of text. Implies no questions.                                               |
+| `--device`         | Sign in with a code you confirm at memax.app/device. The default; kept for scripts that pass it.            |
+
+## What it does
+
+```text
+› npx memax-cli init
+
+  Signed in as Ziyang Zeng · space web (new project space)
+
+  Agents on this machine
+  ✓ CC  Claude Code  ~/.claude             propose  connects on its next start
+  ✓ CU  Cursor       .cursor/ in this repo read     connects on its next start
+  ○ GPT ChatGPT      connector · finish in your browser
+
+  Reading what they already know
+    AGENTS.md               3 statements   →   3
+    CLAUDE.md               5 statements   →   4
+    .cursor/rules/*.mdc     1 statement    →   1
+    ~/.claude/CLAUDE.md     1 statement    →   1
+    1 secret skipped
+
+  ○ 4 files, 1 conflict, 1 Brief.
+
+  ◐ 1 of 1  Test command   2 statements disagree
+    1  Run `npm run test` before committing.   AGENTS.md:2
+    2  Run tests with `pnpm test`.   CLAUDE.md:4
+    1–2 keep that one · a  all hold · o  leave it open · Enter  decide in Review
+```
+
+1. **Detect.** It finds the agents on this machine by their folders and
+   commands (it never runs them) and every agent file in the repository and
+   your home folder. Claude Code's auto memory is read only for this
+   repository. Files over 256 KB are listed, not read.
+2. **Sign in.** If the CLI isn't signed in yet, it shows a code and opens
+   `memax.app/device`, where you confirm it signed in as you always are
+   (over SSH or with no display, open that page in any browser). The CLI
+   is then the same account as the browser. A new repository gets a new
+   project space, named after its remote.
+3. **Connect.** It asks once, naming the agents whose MCP settings don't
+   point at Memax yet, then writes them (as `memax setup --mcp` does). Each
+   agent it connects also gets its session-start hook, as
+   [`memax connect`](/cli/connect) installs it (Claude Code, Codex, Gemini
+   CLI, Cursor and Copilot CLI; not while the Memax plugin for Claude Code
+   runs it, and not on Windows yet); running init again leaves a hook that's
+   there alone. Each agent connects on its first start, at **Propose**: it
+   can suggest memories, and you keep them. Cursor and Gemini CLI start at
+   **Read**. From the CLI a level can only stay or go down; raising one is
+   done on the web.
+4. **Scan, on this machine.** Each file is split into statements (a bullet,
+   a numbered step, a paragraph) with its `file:line`. Before anything is
+   sent, every file is scanned for secrets and hidden characters (below).
+5. **Upload.** The repository's statements go to the project space, and
+   machine-local memory to your Personal space (it asks first). Every
+   statement arrives as a **proposal**, never kept, with its file and line
+   as its source.
+6. **The judge.** Statements the space already has are skipped, and the
+   same statement in two files becomes one proposal with both sources. The
+   judge compares each proposal with what the space keeps, and checks the
+   import for statements that disagree with each other: a different test
+   command in CLAUDE.md and in AGENTS.md, say.
+7. **Settle.** Each disagreement is shown once, with its statements and
+   where each came from. Pick the one that holds, keep them all, or leave it
+   for Review. Then it offers to keep, in one go, the statements from your
+   own files that agree with everything (below).
+8. **Compile.** The space gets its targets (AGENTS.md, CLAUDE.md, scoped
+   Cursor rules, the ChatGPT copy-out), the repository is
+   [linked](/cli/link), and the daemon (or init itself, with `--no-daemon`)
+   writes them. It ends with `git status` for those files and three next
+   steps. A `GEMINI.md` isn't among them: Antigravity CLI reads AGENTS.md,
+   and for Gemini CLI, [`memax connect gemini --gemini-md`](/cli/connect)
+   adds one.
+
+## Whose words a file holds
+
+A memory is trusted as much as the least trusted of its sources, and the
+file a statement comes from sets its trust:
+
+| Files                                                                                                             | Trust       |
+| ----------------------------------------------------------------------------------------------------------------- | ----------- |
+| In the repository: `AGENTS.md`, `CLAUDE.md`, `.claude/rules`, Cursor, Copilot, Gemini, Windsurf and Devin rules   | repository  |
+| Yours: `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `CLAUDE.local.md`                                            | person      |
+| Written by an agent: Claude Code's auto memory, Codex's memories, `~/.gemini/GEMINI.md` and Gemini's memory     | agent       |
+| Lines that are only on a branch other than the default one                                                        | external    |
+
+Anyone who can push can change a repository file, so its lines are no one
+person's word. A line that exists only on your branch could come from a
+pull request you haven't reviewed, so it arrives as external, and external
+statements are kept only on the web. Gemini CLI saves its memories into
+`~/.gemini/GEMINI.md`, the same file you write, so Memax can't tell your
+lines from its own and takes the lower trust.
+
+## What never leaves your machine
+
+- **Secrets.** Every file is scanned with
+  [secretlint](https://github.com/secretlint/secretlint)'s recommended rules
+  (tokens for about 30 vendors, private keys, passwords in URLs) and with
+  the server's own refusal patterns. A statement with a secret in it isn't
+  sent. The import records the file, the line and the rule, never the
+  secret.
+- **Hidden characters.** Bidi controls, zero-width characters, Unicode tag
+  characters and variation selectors can make a line say something other
+  than what you see. They are removed before upload, init says how many,
+  and those lines wait for you in Review instead of being kept in bulk.
+- **Other projects.** Claude Code's memory for other repositories is
+  counted, never read.
+
+`memax init --dry-run` shows all of this and uploads nothing.
+
+## What you can keep from the terminal
+
+After the disagreements, init lists the statements that:
+
+- come from the repository or from your own files (not an agent's notes,
+  not an outside source, not another branch);
+- the judge and the conflict check found nothing against;
+- had no hidden characters.
+
+and asks once to keep them. Everything else waits in Review, at
+`memax.app/<space>/review`. In a team space, decisions are kept on the web
+only. A keep from the CLI is recorded as yours, attested by the CLI; a keep
+on the web is attested by the web app.
+
+## Files that are already there
+
+Memax never writes over a file a person wrote.
+
+- **CLAUDE.md** of your own: init offers to manage one marked block in it
+  and leave every other line alone, as [`memax link`](/cli/link) does.
+- **AGENTS.md** you wrote: its statements are imported, and the file is
+  left as it is and shown as a hand edit. Replace it with the compiled Brief
+  when you're ready (init asks; it's also in the app).
+
+## Running it again
+
+Run it again whenever you like. It skips what the record already has, asks
+nothing it asked before, offers any disagreement still open, and ends with
+what's already done:
+
+```text
+  Already done
+    ✓ The repository's space is web.
+    ✓ Every statement is already in the record (13).
+    ✓ This repository is linked to web.
+```
+
+## In CI and scripts
+
+```bash
+memax init --yes --space web --format json
+```
+
+`--yes` creates the space if there's none, connects the agents, keeps what
+agrees, and starts the daemon. It never settles a disagreement and never
+replaces a file you wrote: both need you. Without a terminal and without
+`--yes`, init stops before creating a space. `--format json` prints one
+report: the space, agents, files, imports (proposed, folded, existing,
+refused, conflicts), what was kept and what waits, the Brief, the targets,
+step timings, and what was already done.
+
+<Callout type="info">
+  `--timing` shows each step against its budget: detect 2 s, scan 5 s, the
+  judge 20 s, compile 10 s. The whole run aims at the first compiled file
+  within five minutes.
+</Callout>

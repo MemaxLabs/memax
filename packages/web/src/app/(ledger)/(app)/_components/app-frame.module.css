@@ -1,0 +1,225 @@
+/* The app frame around Ledger's Shell. At 1024px and up the Shell is
+ * as drawn (232px rail, inset sheet). Below 1024px the rail collapses
+ * to 56px of icons, every label kept for assistive technology (HANDOFF
+ * §7, plan §6.6; that breakpoint isn't drawn, design review D3). Below
+ * 640px the rail gives way to MobileToday.png's top and bottom bars. */
+
+.frame {
+  min-height: 100dvh;
+  background: var(--paper);
+}
+
+/* The sheet fills the viewport the browser actually shows. */
+.frame :global(.mx-shell) {
+  height: 100dvh;
+}
+
+.topbar,
+.tabbar {
+  display: none;
+}
+
+/* ---------- 640–1023: the rail at 56px ---------- */
+@media (max-width: 1023px) {
+  .frame {
+    --rail: 56px;
+  }
+
+  .frame :global(.mx-rail) {
+    align-items: center;
+    padding: 14px 8px 12px;
+  }
+
+  .frame :global(.mx-rail-top) {
+    flex-direction: column;
+    gap: 6px;
+    padding: 0;
+  }
+
+  .frame :global(.mx-rail-space) {
+    flex: none;
+    justify-content: center;
+    width: 32px;
+    height: 24px;
+    margin: 0;
+    padding: 0;
+  }
+
+  .frame :global(.mx-rail-ask) {
+    justify-content: center;
+    width: 40px;
+    padding: 0;
+  }
+
+  .frame :global(.mx-rail-ask .mx-kbd) {
+    display: none;
+  }
+
+  .frame :global(.mx-rail-list),
+  .frame :global(.mx-rail-foot) {
+    align-self: stretch;
+  }
+
+  .frame :global(.mx-rail-item) {
+    position: relative;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .frame :global(.mx-rail-item .mx-count) {
+    position: absolute;
+    top: 0;
+    right: 0;
+    min-width: 16px;
+    height: 14px;
+    padding: 0 4px;
+    font-size: 10px;
+  }
+
+  .frame :global(.mx-rail-me) {
+    align-items: center;
+    padding: 10px 0 2px;
+  }
+
+  /* Words the icons stand for: hidden, still read. */
+  .frame :global(.mx-rail-space-name),
+  .frame :global(.mx-rail-space-kind),
+  .frame :global(.mx-rail-ask > span),
+  .frame :global(.mx-rail-label),
+  .frame :global(.mx-rail-me .mx-stamp-name),
+  .frame :global(.mx-rail-sync .mx-state-label) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* ---------- below 640: top bar, sheet, bottom bar ---------- */
+@media (max-width: 639px) {
+  .frame {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+    background: var(--sheet);
+  }
+
+  .frame :global(.mx-shell) {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    background: var(--sheet);
+  }
+
+  .frame :global(.mx-rail) {
+    display: none;
+  }
+
+  .frame :global(.mx-sheet) {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: none;
+    box-sizing: border-box;
+    min-height: 56px;
+    padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) 0
+      max(16px, env(safe-area-inset-left));
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+    color: var(--ink);
+  }
+
+  .tabbar {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    flex: none;
+    padding: 6px max(8px, env(safe-area-inset-right))
+      max(22px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    background: var(--paper);
+    border-top: 1px solid var(--line);
+  }
+}
+
+.topbarSpace {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 44px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.topbarSpace :global(.mx-icon) {
+  color: var(--ink-3);
+}
+
+.topbarMe {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin-left: auto;
+  margin-right: -8px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 52px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tab[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.tabCount {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 6px);
+}
+
+.topbarSpace:focus-visible,
+.topbarMe:focus-visible,
+.tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

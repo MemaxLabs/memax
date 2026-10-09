@@ -20,7 +20,6 @@ function formatSize(bytes: number): string {
 interface PushOptions {
   file?: string;
   tags?: string;
-  ttl?: string;
   stdin?: boolean;
   title?: string;
   hint?: string;
@@ -148,8 +147,8 @@ export async function pushCommand(
       hint: options.hint ?? "",
       tags,
       source: "cli",
-      sourceAgent: options.agent ?? "",
-      assistedByAgent: options.assistedBy ?? "",
+      sourceAgent: options.agent,
+      assistedByAgent: options.assistedBy,
       initiationType: options.assistedBy ? "human_requested_agent" : undefined,
       sourcePath,
       contentType,
@@ -181,7 +180,6 @@ export function registerPushCommand(program: Command): void {
       "-H, --hint <hint>",
       "Context hint for AI processing (e.g. 'my resume', 'meeting notes')",
     )
-    .option("--ttl <duration>", "Auto-archive after duration (e.g., 7d, 30d)")
     .option("--stdin", "Read content from stdin")
     .option("--hub <slug>", "Push to a specific hub explicitly")
     .option(

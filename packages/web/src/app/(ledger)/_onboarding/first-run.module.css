@@ -1,0 +1,51 @@
+/* FirstRun (FirstRun.dc.html): the steps on the left, init's terminal on
+ * the right. */
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 64px;
+  align-items: center;
+}
+
+.title {
+  margin: var(--space-3) 0 var(--space-4);
+  font-family: var(--font-serif);
+  font-size: 48px;
+  line-height: 52px;
+  font-weight: 380;
+  letter-spacing: -0.022em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.lede {
+  margin: 0 0 var(--space-8);
+  max-width: 30em;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 28px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.actions {
+  margin-top: var(--space-8);
+}
+
+.link {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+@media (max-width: 1023px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-8);
+  }
+  .title {
+    font-size: 36px;
+    line-height: 42px;
+  }
+}

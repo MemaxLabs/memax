@@ -24,6 +24,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	"github.com/MemaxLabs/memax/packages/server/internal/ingest/embed"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
+	"github.com/MemaxLabs/memax/packages/server/internal/onboarding"
 	"github.com/MemaxLabs/memax/packages/server/internal/quota"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -1501,6 +1502,13 @@ func (e *Engine) writeDreamReceipt(hub *model.Hub, run *model.DreamRun, counts m
 		return fmt.Errorf("create dream receipt: %w", err)
 	}
 	events.PublishNotificationCreated(context.Background(), e.events, notif)
+	// First-week checklist: 「让 memax 做个梦」 is done when a dream has
+	// actually finished, not when it was triggered. Personal hubs only:
+	// a DreamRun does not record who triggered it, and crediting a team
+	// hub's owner for someone else's run would be wrong.
+	if hub.HubType == "personal" {
+		onboarding.TickFirstDream(context.Background(), e.store, e.events, hub.OwnerID)
+	}
 	return nil
 }
 

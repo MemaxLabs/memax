@@ -1,0 +1,100 @@
+---
+title: memax switch
+description: Switch a space from V1 to V2, see what moves first, and switch back if you need to.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+A space you used before V2 is still on V1 until you switch it. Switching
+moves it onto the V2 record, where agents propose and people keep, and
+every change carries a receipt. Nothing in V1 changes, so you can switch
+back and find V1 exactly as you left it.
+
+You can also switch from the app: a space still on V1 opens on **Switch
+to V2**, which shows the same preview.
+
+## Usage
+
+```bash
+memax switch [--space <slug>] [--dry-run] [--back] [--as project|team] [--repository <owner/name>] [--yes] [--format json]
+```
+
+| Flag                        | Description                                                                 |
+| --------------------------- | --------------------------------------------------------------------------- |
+| `--space <slug>`            | The space. Defaults to this repository's (`.memax.yml`, or its link).       |
+| `--dry-run`                 | Show what moves and change nothing.                                         |
+| `--back`                    | Switch the space back to V1.                                                |
+| `--as <kind>`               | A V1 team hub can switch as a `project` space (or stay a `team` space).     |
+| `--repository <owner/name>` | The repository the space compiles for.                                      |
+| `-y, --yes`                 | Switch without asking. Needed when there's no terminal to ask in.           |
+| `--wait <seconds>`          | How long to wait for a switch running in the background. Default 120.       |
+| `--format <fmt>`            | `text` (default) or `json`.                                                 |
+
+Only the space's owner can switch it, signed in as themselves (not with
+an API key).
+
+```text
+› memax switch --space acme-web --dry-run
+
+  Memax · switch acme-web to V2  (dry run)
+
+  · Space      switches as a team space (or --as project)
+  · Notes      112 V1 memories become notes (N-): searchable, never compiled, nothing lost
+  · Review     84 are yours, one statement each: keep them in one go
+  · Dream      25 for Dream to fold into proposals (what agents wrote, and longer notes)
+  · Notes only 3 stay notes, never proposed (2 archived, 1 holds a credential)
+  · People     1 owner, 1 member who can forget, 1 viewer
+  · Agents     Claude Code at Propose; each is told on its next MCP response
+  · Compiles   AGENTS.md, CLAUDE.md; two-way sync of 1 agent file stops
+  · History    4 V1 Dream runs, kept read-only
+
+  Nothing changed. memax switch --space acme-web switches it; --back undoes it.
+```
+
+## What moves
+
+- **Memories become notes.** Every V1 memory becomes a note (`N-`). Notes
+  are raw material: you can search them (`memax_search` with
+  `include_notes`, or the app), but they are never compiled into your
+  agents' files. Nothing is lost, and nothing is copied: the words stay
+  where V1 kept them.
+- **What you wrote, to keep in one go.** Your own V1 memories that are one
+  statement each wait in Review as one import, **From V1**: "You wrote
+  these 84 in V1. Keep them in one go?" Memax checks them against each
+  other first, as it does an import.
+- **What agents wrote, for Dream.** Memories agents wrote, and documents
+  longer than one statement, go to [Dream](/concepts/dreams). Its next
+  edition folds them into what you've kept or proposes new facts from
+  them, so Review stays short. Each of those actions can be undone.
+- **Notes only.** Archived memories and ones that hold a credential stay
+  notes and are never proposed.
+- **People.** Owners stay owners. V1 admins become members who can
+  forget, contributors become members, and viewers stay viewers (who can
+  now propose).
+- **Agent files.** The space's synced agent files (`CLAUDE.md`, Cursor
+  rules) become its compile targets. V1's two-way sync stops for them:
+  [`memax agents sync`](/cli/agents) leaves them alone and says so.
+- **Agents.** Your agents' API keys and connections connect to the space
+  at **Propose**, so what they write waits for you. Each is told on its
+  next MCP response.
+- **History.** V1 Dream runs stay as read-only history. Your plan carries
+  over.
+
+A large space switches in the background: `memax switch` waits for it
+(up to `--wait`), and running it again says where it stands. If a step
+fails, run it again and it resumes where it stopped.
+
+<Callout type="info">
+  Forgetting a note forgets its words everywhere, the V1 copy included,
+  along with anything proposed from it. You do that from the app, after
+  seeing what goes with it.
+</Callout>
+
+## Switching back
+
+```bash
+memax switch --space acme-web --back
+```
+
+Every surface serves the space as V1 again, exactly as before the switch.
+Its V2 record stays, with its receipts, for when you switch again.

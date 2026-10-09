@@ -1,0 +1,80 @@
+/* Toasts, after the States2 board: one card at the bottom left of the
+ * sheet, a state mark, one line, and Undo or one action. */
+
+.viewport {
+  position: fixed;
+  z-index: 90;
+  left: calc(var(--rail) + var(--space-6));
+  bottom: var(--space-6);
+  width: min(420px, calc(100vw - var(--rail) - var(--space-12)));
+  outline: none;
+}
+
+.toast {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 10px 10px 14px;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  transition:
+    opacity var(--duration-base) var(--ease-settle),
+    transform var(--duration-base) var(--ease-settle);
+}
+
+.toast:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.toast[data-starting-style] {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.toast[data-ending-style] {
+  opacity: 0;
+  transition-timing-function: var(--ease-exit);
+}
+
+.toast[data-ending-style][data-swipe-direction="left"] {
+  transform: translateX(-16px);
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font: inherit;
+  text-wrap: pretty;
+}
+
+/* The collapsed rail is 56px wide; on a phone the bottom bar sits under it. */
+@media (max-width: 1023px) {
+  .viewport {
+    left: calc(56px + var(--space-4));
+    width: min(420px, calc(100vw - 56px - var(--space-8)));
+  }
+}
+
+@media (max-width: 639px) {
+  .viewport {
+    left: var(--space-4);
+    right: var(--space-4);
+    width: auto;
+    bottom: calc(76px + env(safe-area-inset-bottom) + var(--space-3));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    transition: none;
+  }
+}

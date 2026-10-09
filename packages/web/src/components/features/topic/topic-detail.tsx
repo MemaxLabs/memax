@@ -52,6 +52,7 @@ import { BatchToolbar } from "@/components/features/batch-toolbar";
 import { useBarToast } from "@/hooks/use-bar-toast";
 import { useMemoryForget } from "@/hooks/use-memory-forget";
 import { useMemoryMove } from "@/hooks/use-memory-move";
+import { useMemoryAttribute } from "@/hooks/use-memory-attribute";
 import type { Memory } from "@/hooks/use-memories";
 import { useAuth } from "@/lib/auth";
 import { queryClient } from "@/lib/query-client";
@@ -591,6 +592,7 @@ export function TopicDetail({
   const selection = useSelection();
   const forget = useMemoryForget();
   const mover = useMemoryMove();
+  const attributor = useMemoryAttribute();
   const toast = useBarToast();
   const reduced = useReducedMotion();
   const hasMountedRef = useRef(false);
@@ -1107,6 +1109,11 @@ export function TopicDetail({
             selection.exit();
           }
           return success;
+        }}
+        onBatchAttribute={(ids, agent) => {
+          void attributor.attributeWithToast(ids, agent).then((ok) => {
+            if (ok) selection.exit();
+          });
         }}
         onBatchMove={(ids, target) => {
           const snapshots = memories

@@ -3,6 +3,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 
@@ -153,11 +154,54 @@ type GrantContext struct {
 	GrantID            string
 	PrincipalType      string
 	AgentName          string
+	KeyStandalone      bool
 	HubScopeMode       string
 	ScopedHubIDs       []string
 	DefaultPermissions PermissionSet
 	TrustLevel         string
 	RateLimitTier      string
+	// Surface is a person's session token's sign-in surface (auth.SurfaceWeb
+	// or auth.SurfaceCLI; migration 030), set by the server at login. Empty
+	// for API keys, OAuth grants, impersonation and older tokens.
+	Surface string
+	// OAuthScope is an OAuth grant's granted scope (migration 032), empty
+	// for API keys and grants from before it was recorded.
+	OAuthScope string
+	// SessionID is the sign-in session the access token belongs to (its
+	// sid claim; internal/sessions). Empty for API keys, impersonation and
+	// tokens from before migration 049.
+	SessionID string
+}
+
+// The MCP OAuth scopes (plan 25 §5.15): autonomy maps onto them.
+const (
+	ScopeRead    = "memax:read"
+	ScopePropose = "memax:propose"
+	ScopeWrite   = "memax:write"
+)
+
+// AutonomyCeiling is the most an OAuth grant's scope lets its agent do in
+// any space: "write", "propose" or "read". It is "" when the scope doesn't
+// say (API keys, sessions, grants from before the scope was recorded),
+// and then the permissions decide (v2api principalFor). memax:propose
+// never keeps; memax:read never writes.
+func (g GrantContext) AutonomyCeiling() string {
+	if g.PrincipalType != "oauth_grant" || strings.TrimSpace(g.OAuthScope) == "" {
+		return ""
+	}
+	return scopeCeiling(g.OAuthScope)
+}
+
+// scopeCeiling is the autonomy a scope string allows.
+func scopeCeiling(scope string) string {
+	fields := strings.Fields(scope)
+	switch {
+	case slices.Contains(fields, ScopeWrite):
+		return "write"
+	case slices.Contains(fields, ScopePropose):
+		return "propose"
+	}
+	return "read"
 }
 
 type AuthContext struct {
@@ -286,6 +330,14 @@ func grantFromRequest(r *http.Request) GrantContext {
 		return v
 	}
 	return defaultGrantContext(GetUserID(r))
+}
+
+// GetGrant returns the credential RequireAuth resolved for the request:
+// who it acts for, its principal type (user, api_key, oauth_grant), its
+// agent identity, its own permissions (before any hub role is applied)
+// and its hub scope. The /v2 handlers map it onto a ledger actor.
+func GetGrant(r *http.Request) GrantContext {
+	return grantFromRequest(r)
 }
 
 func GetAuthContext(r *http.Request) *AuthContext {

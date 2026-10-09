@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useLocale } from "@/i18n";
 import { useAuth, useActiveHub } from "@/lib/auth";
+import { useBottomChromeOccupied } from "@/lib/bottom-chrome-store";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import { useBar } from "@/contexts/bar-context";
 import { useNotificationSummary } from "@/hooks/use-notifications";
@@ -37,13 +38,21 @@ export function MobileDock() {
   const keyboardOpen = useKeyboardOpen();
   const { interaction } = useBar();
   const { data: notificationSummary } = useNotificationSummary();
-  // Hidden while the keyboard is up AND while the ✦ bar is in any
-  // non-docked compose state: in "mirror" the bar drops to 12px above
-  // the viewport bottom (over the dock band) and MobileBarSurface sits
-  // BELOW z-bar, so a visible dock would paint over the input row and
-  // stay tappable mid-compose. Keyboard alone is not a safe signal —
-  // hardware keyboards never trip useKeyboardOpen.
-  const hidden = keyboardOpen || interaction.mobileComposeState !== "docked";
+  // Hidden while the keyboard is up, while the ✦ bar is in any
+  // non-docked compose state (in "mirror" the bar drops to 12px above
+  // the viewport bottom, over the dock band), and while ANY bottom
+  // composer is mounted (chat composer on /brain — draft or session).
+  // Keyboard alone is not a safe signal — hardware keyboards never
+  // trip useKeyboardOpen. The session-route early return below stays
+  // as a first-paint guard for full-thread routes; the occupancy
+  // store covers what a route cannot tell apart (a draft composer on
+  // plain /brain): whoever owns the bottom edge says so, and the dock
+  // steps aside.
+  const bottomOccupied = useBottomChromeOccupied();
+  const hidden =
+    keyboardOpen ||
+    interaction.mobileComposeState !== "docked" ||
+    bottomOccupied;
 
   const hubSlug = useMemo(
     () =>

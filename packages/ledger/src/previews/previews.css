@@ -1,0 +1,43 @@
+/* Memax Ledger · preview layout helpers.
+ * The handoff's previews each inject a little page CSS (pv-*). In a gallery they share one
+ * page, so every helper here is scoped to its preview (.pv-<name>). Load after ledger.css. */
+
+/* The handoff preview pages' body, under the preview's own theme. */
+.pv-frame { background: var(--paper); color: var(--ink); font-family: var(--font-sans); font-size: 14px; line-height: 20px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; font-optical-sizing: auto; text-rendering: optimizeLegibility; }
+
+.pv-agent-stamp .pv-gap { gap: 28px; }
+.pv-cite .pv-measure, .pv-highlight .pv-measure, .pv-lineage .pv-measure { max-width: var(--measure); }
+.pv-command-bar .pv-center { display: flex; justify-content: center; background: var(--paper); }
+.pv-decision-gate .pv-measure { max-width: 720px; }
+.pv-diff .pv-big { font-size: 20px; line-height: 30px; }
+.pv-dream-card .pv-measure, .pv-terminal .pv-measure { max-width: 760px; }
+.pv-field .pv-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.pv-handoff-slip .pv-measure { max-width: 860px; }
+.pv-icon .pv-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.pv-icon .pv-ic { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px; color: var(--ink); }
+.pv-icon .pv-ic span { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+.pv-kbd .pv-keys { gap: 20px; font-size: 13px; color: var(--ink-2); }
+.pv-kbd .pv-keys span { display: inline-flex; gap: 4px; align-items: center; }
+.pv-nav-rail .pv-rail { height: 640px; background: var(--paper); }
+.pv-review-card .pv-col { display: flex; flex-direction: column; gap: 20px; max-width: 720px; }
+.pv-seal .pv-row { display: flex; align-items: center; gap: 56px; }
+.pv-seal .pv-inrow { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.pv-seal .pv-txt { font-family: var(--font-serif); font-size: 16px; color: var(--ink); }
+.pv-segmented .pv-gap { gap: 32px; }
+.pv-shell .mx-shell { height: 420px; min-height: 0; }
+.pv-state-mark .pv-gap { gap: 24px; }
+
+/* Logo: the lockup at three sizes, inverted, and its construction. */
+.pv-logo .pv-col { display: flex; flex-direction: column; align-items: flex-start; gap: 36px; }
+.pv-logo .pv-row { display: flex; align-items: center; gap: 48px; }
+.pv-logo .pv-inv { display: inline-flex; background: var(--ink); padding: 14px 18px; border-radius: var(--radius-md); }
+.pv-logo .pv-inv .mx-logo { color: var(--on-ink); }
+.pv-logo .pv-con { display: flex; align-items: center; gap: 48px; padding-top: 28px; border-top: 1px solid var(--line); align-self: stretch; }
+.pv-logo .pv-con-art { position: relative; padding: 0; }
+.pv-logo .pv-g { position: absolute; left: -20px; right: -20px; height: 0; border-top: 1px solid var(--line-strong); }
+.pv-logo .pv-gap { position: absolute; top: -12px; bottom: -12px; background: var(--well); border-left: 1px solid var(--line-strong); border-right: 1px solid var(--line-strong); }
+.pv-logo .pv-con-art .mx-logo { position: relative; }
+.pv-logo .pv-con-notes { margin: 0; display: grid; gap: 6px; font-size: 12px; line-height: 16px; }
+.pv-logo .pv-con-notes div { display: grid; grid-template-columns: 44px auto; gap: 8px; }
+.pv-logo .pv-con-notes dt { color: var(--ink-3); }
+.pv-logo .pv-con-notes dd { margin: 0; color: var(--ink-2); }

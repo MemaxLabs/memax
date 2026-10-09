@@ -116,7 +116,8 @@ export function AssignAgentControl({
 
   const menuLabel = t.apiKeys?.assignAgent ?? "Assign to agent";
   const showMarkStandalone = state !== "standalone";
-  const showClear = state === "linked" || state === "standalone";
+  // Clearing to "no identity" is not a state a key may be in anymore.
+  const showClear = false;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

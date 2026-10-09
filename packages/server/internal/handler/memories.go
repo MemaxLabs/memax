@@ -37,9 +37,10 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/language"
 	"github.com/MemaxLabs/memax/packages/server/internal/meterctx"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
-	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore"
 	"github.com/MemaxLabs/memax/packages/server/internal/sanitize"
+	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
+	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
 
@@ -57,6 +58,9 @@ var maxBodySize = func() int64 {
 type MemoriesHandler struct {
 	store         store.Store
 	events        events.Publisher
+	v2            V2Forgetter             // nil = V2 off
+	passkeys      PasskeyHolders          // nil = passkeys off
+	modes         *spacemode.Resolver     // nil = V2 off: no space is on V2
 	embedder      embed.Embedder          // nil = no embeddings, keyword search only
 	summarizer    *summarize.Summarizer   // nil = no summaries
 	extractor     *extract.Extractor      // nil = no fact extraction
@@ -345,6 +349,13 @@ func (h *MemoriesHandler) Create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// A push into a space on V2 through V1's API (an old CLI) still saves,
+	// as a note: Dream folds it into proposals for Review. Say so.
+	if h.modes != nil {
+		if on, err := h.modes.IsV2(r.Context(), hubID); err == nil && on {
+			setMemaxWarningHeader(w, memaxWarningSpaceOnV2)
+		}
+	}
 	// Related-context enrichment requires read access to the destination hub.
 	// Write access alone is not sufficient — enrichment is an implicit read.
 	// If an explicit credential (API key/OAuth) is present, check its grant.
@@ -387,6 +398,12 @@ func (h *MemoriesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// downstream renderers (web, CLI, third-party API consumers) don't
 	// need to re-derive sanitization.
 	sanitizePushRequest(&req)
+	// The local CLI MCP server relays tool calls to this endpoint with
+	// the model's own initiation_type; apply the same "a tool call is
+	// never human_direct" rule the Go MCP endpoint applies (parity).
+	if req.Source == "mcp" || req.Source == "mcp/capture" {
+		req.InitiationType = mcpInitiationType(req.InitiationType)
+	}
 	provenance, sourceAgent, claimRejected, provErr := resolveMemoryProvenance(h.store, ownerID, req, r)
 	if provErr != nil {
 		if valErr, ok := asAttributionValidationError(provErr); ok {
@@ -2175,10 +2192,15 @@ func (h *MemoriesHandler) BatchMove(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// DeleteAllData purges all user data: memories, topics, configs, dreams, reviews.
+// DeleteAllData purges all user data: memories, topics, configs, dreams.
 // DELETE /v1/account/data
 func (h *MemoriesHandler) DeleteAllData(w http.ResponseWriter, r *http.Request) {
 	ownerID := GetUserID(r)
+	// The V2 record of the spaces the person owns is forgotten through the
+	// ledger first (a receipted Forget of each space; plan 25 §5.13).
+	if !forgetV2Account(w, r, h.v2, h.passkeys, ownerID) {
+		return
+	}
 	// Count memories + sum storage bytes before deletion for meter adjustment.
 	// We use the authoritative Postgres SUM here (not the Redis cache)
 	// because an account wipe should zero the counters regardless of
@@ -3139,6 +3161,13 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	WriteError(w, status, code, message)
 }
 
+// WriteJSON is writeJSON for handler packages outside this one (the /v2
+// handlers in internal/handler/v2api). It keeps the compile-time
+// guarantee: only a model.ApiResponse can be written.
+func WriteJSON(w http.ResponseWriter, status int, v model.ApiResponse) {
+	writeJSON(w, status, v)
+}
+
 // WriteError writes a standard error response using the ApiResponse envelope.
 // Exported for use by middleware packages (e.g., meter) that need to write
 // error responses consistent with the handler conventions.
@@ -3360,4 +3389,70 @@ func parseDuration(s string) (time.Duration, error) {
 		return time.Duration(days) * 24 * time.Hour, nil
 	}
 	return time.ParseDuration(s)
+}
+
+// BatchAttribute re-credits memories the caller owns to one of the
+// caller's connected agents — the repair path for rows written before a
+// key had an identity. Append-only in spirit: attribution_source becomes
+// "repaired" so the row says it was corrected.
+//
+// POST /v1/memories/batch-attribute { "ids": [...], "agent_name": "hatch" }
+func (h *MemoriesHandler) BatchAttribute(w http.ResponseWriter, r *http.Request) {
+	ownerID := GetUserID(r)
+	var req struct {
+		IDs       []string `json:"ids"`
+		AgentName string   `json:"agent_name"`
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "Could not read request body")
+		return
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", "Could not parse JSON")
+		return
+	}
+	if len(req.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "missing_ids", "No memory IDs provided")
+		return
+	}
+	if len(req.IDs) > 100 {
+		writeError(w, http.StatusBadRequest, "too_many", "Maximum 100 memories per batch")
+		return
+	}
+	slug := model.NormalizeAgentSlug(req.AgentName)
+	if slug == "" || slug == "memax" {
+		writeError(w, http.StatusBadRequest, "invalid_agent", "agent_name must name one of your connected agents")
+		return
+	}
+	agent, err := h.store.GetConnectedAgent(ownerID, slug)
+	if err != nil || agent == nil {
+		if !isKnownAgentSlug(slug) {
+			writeError(w, http.StatusNotFound, "unknown_agent", "agent_name must name one of your connected agents")
+			return
+		}
+	}
+	// A known-but-never-connected slug gets its agent card so the rows
+	// have something to filter and render by (same as the auth path).
+	EnsureConnectedAgent(h.store, ownerID, slug)
+	displayName := displayNameForAgentSlug(h.store, ownerID, slug)
+	result, err := h.store.BatchAttributeMemories(req.IDs, ownerID, slug, displayName)
+	if err != nil {
+		slog.Error("batch attribute failed", "error", err, "owner_id", ownerID)
+		writeError(w, http.StatusInternalServerError, "batch_attribute_failed", "Could not re-attribute memories")
+		return
+	}
+	skipped := make(map[string]bool, len(result.Skipped))
+	for _, sk := range result.Skipped {
+		skipped[sk.ID] = true
+	}
+	for _, id := range req.IDs {
+		if skipped[id] {
+			continue
+		}
+		if mem, err := h.store.GetMemory(id, ownerID); err == nil && mem != nil {
+			h.publishMemoryChanged(r.Context(), mem, ownerID)
+		}
+	}
+	writeJSON(w, http.StatusOK, model.ApiResponse{Data: result})
 }

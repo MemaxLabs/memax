@@ -3,6 +3,7 @@
 // memax 是一个有温度的记忆伙伴，不是冰冷的数据库
 // 语气：温暖、简洁、稍微俏皮
 import type { Translations } from "./en";
+import { ledgerZh } from "./ledger/zh";
 
 export const zh: Translations = {
   common: {
@@ -20,6 +21,153 @@ export const zh: Translations = {
     sectionNews: "动态",
     sectionReceipts: "回执",
     empty: "现在很安静，没有新通知",
+  },
+  // 快速开始（2026-09-21）——第一周清单的卡片版。一张卡一件事，主按钮就是去做。
+  quickStart: {
+    title: "快速开始",
+    skip: "跳过",
+    next: "下一步",
+    back: "上一步",
+    start: "开始",
+    finish: "好，开始用",
+    progress: "第一周 {done} / {total}",
+    stepLabel: {
+      welcome: "欢迎",
+      connect_agent: "连接",
+      first_memory: "记",
+      first_ask: "问",
+      first_dream: "梦",
+      first_hub_invite: "团队",
+      use_cases: "常见用法",
+    },
+    kickerWelcome: "1 / 6 · 欢迎",
+    kickerConnect: "2 / 6 · 连接",
+    connectTitle: "把你的 agent 接上来",
+    connectBody:
+      "终端里的 agent 三步，或者复制那一行一次跑完；用 Claude 的话加个连接器，手机上也就有了。以后谁记的，都写着名字。",
+    connectPaneAgents: "终端里的 agent",
+    connectSteps: [
+      "把 memax 装到电脑上",
+      "浏览器里登录一次",
+      "自动找到电脑上装的 agent，全部接上",
+    ],
+    copyOneLiner: "复制一行全搞定",
+    connectPaneClaude: "claude.ai · 设置 › 连接器",
+    connectPhoneNote: "连接器是账号级的：网页连好，手机 app 里就有。",
+    copyCommand: "复制命令",
+    // claude.ai 连接器表单的原样复刻——那边的 UI 是英文，这里照抄
+    connectMockTitle: "Add custom connector",
+    connectMockName: "Name",
+    connectMockUrl: "URL",
+    copyConnectorUrl: "复制连接器地址",
+    copied: "已复制",
+    connectWeb: "我在网页上连",
+    kickerRemember: "3 / 6 · 记",
+    rememberTitle: "扔一条进来",
+    rememberBody:
+      "在哪想起来，就在哪说一句。下面按场景看看怎么说；记满 5 条，晚上就会开始做梦。",
+    rememberDumpLabel: "记",
+    rememberReferLabel: "查",
+    rememberScenes: {
+      agent: {
+        label: "写代码的时候",
+        dump: "记一下：这个项目上线前要先跑 migration",
+        dumpReply: "记好了 ✓",
+        refer: "客户上次提过什么要改的？",
+        referReply: "找到 3 条",
+        hint: "Claude Code、Cursor、Codex、OpenClaw、Muse 都行。说「记一下」它就存，说「查一下 memax」它就找。",
+      },
+      claude: {
+        label: "在 Claude 里、在路上",
+        dump: "帮我记一下，牙医说三个月后复查",
+        dumpReply: "记好了 ✓",
+        refer: "上次那家火锅店叫什么来着？",
+        referReply: "找到 1 条",
+        hint: "手机、电脑、网页都一样。带上「memax」两个字，Claude 就知道往哪存、去哪找。",
+      },
+      web: {
+        label: "在 memax 网页",
+        dump: "",
+        dumpReply: "",
+        refer: "",
+        referReply: "",
+        hint: "⌘K，粘什么都行：一段会议纪要、一个链接、一个突然冒出来的想法。问问题也是同一个框。",
+      },
+    },
+    rememberProgress: "已经 {current} / {target} 条。扔够 5 条，做梦就解锁了。",
+    rememberSaved: "存好了 ✓",
+    rememberCta: "现在记一条",
+    kickerAsk: "4 / 6 · 问",
+    askTitle: "问问 memax",
+    askBody: "答案来自你自己记过的东西，每一句都能点回去看。",
+    askExampleQ: "上次和客户定的上线日期是哪天？",
+    askExampleA: "10 月 1 号，客服那边老王负责——9 月 20 号开会时记的。",
+    askExampleCite: "来自 2 条记忆",
+    askCta: "问一个",
+    kickerDream: "5 / 6 · 梦",
+    kickerDreaming: "5 / 6 · 做梦中",
+    dreamTitle: "让 memax 做个梦",
+    dreamBody:
+      "晚上 memax 会把你白天扔进来的零碎整理一遍：重复的合起来，对不上的挑出来，串成一篇给你。第一次一两分钟。",
+    dreamLocked: "扔够 5 条记忆后解锁。",
+    dreamingTitle: "memax 正在把记忆串起来",
+    dreamingBody:
+      "一两分钟就好。做完这张卡会变成你的第一篇梦记，脉搏页上也能看到。",
+    dreamingChip: "做梦中",
+    dreamingLeave: "先去逛逛，好了叫我",
+    dreamDoneTitle: "第一个梦做完了",
+    dreamDoneBody: "去脉搏页看看它串出了什么。以后每晚都会做。",
+    dreamSeePulse: "去脉搏页",
+    dreamCta: "跑一个 dream",
+    dreamCard1: "昨晚整理了 3 条",
+    dreamCard2: "有两条说法对不上，标出来了",
+    dreamCard3: "两周前你也想过这个",
+    kickerTeam: "6 / 6 · 团队",
+    teamTitle: "和团队共用一个脑子",
+    teamBody:
+      "开一个团队 hub，同事和他们的 agent 也能用。谁记的都写着名字。可选。",
+    teamCta: "建一个团队 hub",
+    teamMeInitial: "我",
+    teamSkip: "先不用",
+    kickerUseCases: "常见用法",
+    useCasesTitle: "怎么跟 agent 说话",
+    useCasesTitleDone: "第一周搞定。以后这么用",
+    useCases: [
+      {
+        say: "帮我记一下，今天定了 10 月 1 号上线，客服老王负责",
+        then: "开完会说一句。以后在哪个 agent 里问，都能查到。",
+      },
+      {
+        say: "帮我记一下，牙医说三个月后复查",
+        then: "路上跟手机说的，回到电脑也在。",
+      },
+      {
+        say: "记一下：这个项目改完要先跑 migration 再部署",
+        then: "下次在 Cursor 或 Claude Code 里问一句，它去 memax 一查就有。",
+      },
+      {
+        say: "记个想法：给新用户第一周发一封「你这周记了什么」的信",
+        then: "先扔进去，不用整理。以后一问就在；做梦时要是和你之前的想法对上了，会放到一起给你看。",
+      },
+      {
+        say: "这条放到团队 hub",
+        then: "新同事和 TA 的 agent 也能查到，写着是谁记的。",
+      },
+      {
+        say: "（什么都不用做）",
+        then: "每晚整理一遍：重复的合起来，对不上的标出来给你看。",
+      },
+    ],
+    // 记忆页置顶的瘦版清单卡
+    launcherContinue: "继续",
+    launcherNext: "下一步：{step}",
+    launcherAllDone: "全部搞定！memax 每晚都会做梦，明天见。",
+    // 通知抽屉
+    drawerSection: "入门",
+    drawerWelcomeRow: "创始人的话",
+    // 入门与机制
+    openFromMechanism: "打开快速开始",
+    openFromMechanismHint: "六张卡走一遍第一周：连接、记、问、做梦、团队。",
   },
   billing: {
     upgrade: "升级",
@@ -42,7 +190,7 @@ export const zh: Translations = {
       memories: "记忆",
       // founder 2026-09-15：就叫 agents——品牌词不翻、不加状语
       // （"已连接"是实现细节，不是名字）。
-      agents: "agents",
+      agents: "智能体",
       pulse: "脉搏",
     },
   },
@@ -531,7 +679,7 @@ export const zh: Translations = {
   },
 
   agentConfigs: {
-    title: "agents",
+    title: "智能体",
     subtitle: "配好一次，agent 走到哪都连着你的记忆。",
     empty: "还没有连接 AI 助手",
     emptyHint: "连上你的第一个助手，让它拥有跨会话的持久记忆。",
@@ -659,6 +807,14 @@ export const zh: Translations = {
     partialMove: "{success} · 有 {skipped} 条未能移动",
     partialForget: "{success} · 有 {skipped} 条未能忘记",
     forgot: "已忘记 {n} 条记忆",
+    // 改归属：把选中的记忆记到某个 agent 名下（修历史上署错名的行）。
+    attribute: "改归属",
+    attributePickerTitle: "记到谁名下",
+    attributed: "已把 {n} 条记忆记到「{agent}」名下。",
+    attributedOne: "已把 1 条记忆记到「{agent}」名下。",
+    partialAttribute: "{success} · 有 {skipped} 条未能改",
+    attributeFailed: "无法改归属",
+    attributeNoAgents: "还没有已连接的 agent",
     forgetFailed: "忘记失败",
     forgetDenied: "没权限忘记这些记忆",
     forgetNotReady: "这条记忆还在同步中，请稍后再试。",
@@ -741,7 +897,7 @@ export const zh: Translations = {
     memories: "记忆",
     pulse: "脉搏",
     brain: "问问",
-    agents: "agents",
+    agents: "智能体",
   },
 
   settingsOnboarding: {
@@ -777,65 +933,7 @@ export const zh: Translations = {
     },
     checklist: {
       title: "你的第一周",
-      progressFormat: "{done} / {total} 已完成",
-      celebrateTitle: "全部搞定！",
-      celebrateSubtitle: "memax 每晚都会做梦，明天见。",
-      stripOpen: "展开",
-      collapseAria: "收起清单",
       dismissAria: "关闭清单",
-      lockedHint: "扔够 5 条记忆后解锁。",
-      items: {
-        welcome: {
-          title: "看看欢迎语",
-          description: "90 秒，值得读。",
-          completedTitle: "欢迎语已读",
-          ctaLabel: "去读",
-        },
-        connect_agent: {
-          title: "连接第一个 AI 代理",
-          description:
-            "Claude Code、Cursor、Codex——一行命令，memory 双向流动。",
-          completedTitle: "已连接第一个 AI 代理",
-          ctaLabel: "去设置",
-        },
-        first_memory: {
-          title: "扔进第一条记忆",
-          description:
-            "在 bar 里随便输点东西，按 ⌘↵。一条 wiki、一个链接、半个想法都行。",
-          completedTitle: "已扔进第一条记忆",
-          ctaLabel: "试试 bar",
-        },
-        first_ask: {
-          title: "向 memax 提个问题",
-          description: "按 ↵（不是 ⌘↵）——memax 会从你扔过的内容里给答案。",
-          completedTitle: "已问过第一个问题",
-          ctaLabel: "试着问问",
-        },
-        five_memories: {
-          title: "扔够 5 条记忆",
-          description: "memax 需要一定量才能开始连点成线，解锁 dreams。",
-          completedTitle: "已扔够 5 条记忆",
-        },
-        first_hub_invite: {
-          title: "加入或新建团队 hub",
-          description: "和共事的人共享大脑。加入现成的 hub，或者建一个自己的。",
-          completedTitle: "已加入团队 hub",
-          ctaLabel: "新建一个 hub",
-        },
-        first_dream: {
-          title: "让 memax 做个梦",
-          description: "dream 会把你的记忆串起来。点这里跑你的第一次。",
-          completedTitle: "已跑过第一个 dream",
-          // 单次使用：触发成功后乐观完成，按钮消失，避免被反复点击。
-          // 也不再被其他途径自动打钩 —— 仅此 CTA 可完成（用户要求）。
-          ctaLabel: "跑一个 dream",
-          // 用户点击 CTA 后显示在描述行的位置：触发本身很快返回（HTTP
-          // <1s），但实际 dream 在 worker 里跑要 30-90s。没有这个文案
-          // 的话，用户会看到一秒钟就打钩了，没法知道实际还在跑。这条
-          // 在 session 内持续显示，不靠定时器或 SSE。
-          dreamingHint: "memax 正在做梦——过一两分钟回来看。",
-        },
-      },
     },
     // 四张 plan-23 onboarding-seed 卡片的视觉标签。没有这个 chip 的话，
     // 这些卡片看起来像"我是不是从哪里同步过来的？"——它们其实是 memax
@@ -850,6 +948,7 @@ export const zh: Translations = {
     actionAck: "收下",
     actionDismiss: "不关心",
     moreActions: "更多操作",
+    customBoardUntitled: "未命名的板",
     kindFilterAll: "全部",
     receiptAcked: "已收下",
     receiptDismissed: "已略过",
@@ -860,11 +959,11 @@ export const zh: Translations = {
     kindTrace: "行迹 · 过去 {n} 小时",
     kindPulse: "项目脉搏 · 近 {n} 天",
     kindActivity: "动静 · 过去 {n} 小时",
-    activityTopics: "主题：",
     activityPurpose:
-      "能数出来的那些——哪个 agent 写了什么、哪些主题在动、本周比上周如何。就一行，因为数字值得知道，但不值得停下来看。",
+      "过去一天多了什么、归到了哪个主题、谁记的、经由哪个 agent——一张收据，点一行就打开那条记忆。",
+    activityUnassigned: "还没归主题",
+    activityYou: "你",
     stripActivity: "动静",
-    stripActivityWeek: "本周 {n} 条",
     kindCapsule: "一年前的今天",
     kindWeek: "本周",
     traceCountOne: "1 条记忆",
@@ -877,7 +976,6 @@ export const zh: Translations = {
     purpose:
       "你不在的时候，这个 hub 发生了什么——agent 的动作、主题的流向、旧记忆的回声。卡片在 memax 整理记忆后刷新；处理过的会留作回执，直到有新内容顶替。",
     purposeAria: "这是什么？",
-    collapse: "收起",
     loadFailed: "板子没加载出来，刷新一下再试。",
     continueInMemax: "在 memax 继续",
     copyForAgent: "复制给 agent",
@@ -894,9 +992,6 @@ export const zh: Translations = {
     pulseRecentOne: "1 条新动态",
     pulseRecent: "{n} 条新动态",
     pulseContributors: "{n} 人参与",
-    weekLineOne: "本周 1 条记忆",
-    weekLine: "本周 {n} 条记忆",
-    weekCompare: "上周 {n} 条",
     kindDreamlog: "昨夜梦记",
     kindEcho: "回声",
     kindThread: "暗线",
@@ -1658,7 +1753,7 @@ export const zh: Translations = {
     dangerZone: "危险操作",
     account: "账户",
     teams: "团队",
-    agents: "AI 助手",
+    agents: "智能体",
     intelligence: "智能",
   },
 
@@ -1690,16 +1785,22 @@ export const zh: Translations = {
     placeholder: "笔记本上的 Claude Code、CI 部署...",
     summary: "{total} 个密钥 · {auto} 自动 · {manual} 手动",
     summaryWithStandalone:
-      "{total} 个密钥 · {linked} 已关联 · {standalone} 独立 · {unassigned} 待关联",
+      "{total} 个密钥 · {linked} 属于 agent · {standalone} 个人",
     justNow: "刚刚",
     agentLabel: "Agent（可选）",
     agentPlaceholderNone: "暂不关联",
+    // 密钥的身份是它出生时就定下的：要么是你本人，要么是某个 agent。
+    // 没有身份的密钥写不了记忆——写进来的东西得有人署名。
+    identityLabel: "这把密钥是谁用",
+    identityMe: "我自己（个人密钥）",
+    identityHint:
+      "给 bot、pipeline、cron 用的，选对应的 agent；它们写的记忆会署那个 agent 的名。",
     unassigned: "待关联",
     assignAgent: "关联 Agent",
     createAgent: "创建 Agent：{slug}",
-    markStandalone: "标记为独立密钥",
+    markStandalone: "标记为个人密钥",
     clearAssignment: "清除关联",
-    standalone: "独立",
+    standalone: "个人",
     assigning: "正在关联...",
     updateFailed: "更新失败 — 重试",
   },
@@ -1859,12 +1960,8 @@ export const zh: Translations = {
     switchToRows: "切换为列表视图",
     switchToCards: "切换为卡片视图",
     filterPastLabel: "筛选最近时间范围",
-    filterBy: "筛选",
-    filterTimeLabel: "时间",
-    filterActorLabel: "来源",
     filterActorAll: "全部来源",
     filterActorYou: "你",
-    filterReset: "清除筛选",
     copyContent: "复制",
     copiedContent: "已复制",
     loadingMore: "正在加载更多…",
@@ -2439,6 +2536,7 @@ export const zh: Translations = {
       adminSendEmail: "发送该邮件",
       adminSetUserPlan: "设置用户计划",
       adminSetOverrides: "保存覆盖项",
+      adminSetV2Ui: "更改 V2 界面设置",
       adminDeleteOverrides: "清空覆盖项",
       adminUpdatePlan: "更新计划",
       adminSetHubPlan: "设置 hub 计划",
@@ -3235,6 +3333,26 @@ export const zh: Translations = {
         effectiveSourceHub: "Hub：{name}",
         effectiveSourceUnknownHub: "Hub：{id}",
       },
+      v2Ui: {
+        title: "V2 界面",
+        on: "开启",
+        off: "关闭",
+        reasons: {
+          v2_space: "TA 是某个 V2 空间的成员。",
+          operator_on: "运营人员为 TA 开启了。",
+          operator_off: "运营人员为 TA 关闭了，优先于所有规则。",
+          signed_up_since: "TA 在 {since} 或之后注册。",
+          none: "TA 没有 V2 空间。",
+        },
+        setting: "运营设置",
+        settings: {
+          default: "按规则",
+          on: "开启",
+          off: "关闭",
+        },
+        hint: "TA 的浏览器会在下次加载页面时生效。",
+        loadError: "无法读取 V2 界面开关。",
+      },
       pagination: {
         previous: "上一页",
         next: "下一页",
@@ -3384,6 +3502,7 @@ export const zh: Translations = {
         pulse: "脉搏",
         ingestion: "入库",
         jobs: "任务",
+        metrics: "阶段指标",
       },
       ops: {
         title: "运行监控",
@@ -3565,6 +3684,95 @@ export const zh: Translations = {
           pending: "挂起",
         },
       },
+      metrics: {
+        title: "阶段指标",
+        description:
+          "V2 计划的阶段门槛，按收据统计：按注册所在周分组的人数。一个人在进入 V2 空间后才被计入；内部员工不计入。",
+        weeks: "注册周数",
+        weeksOption: "{n} 周",
+        asOf: "截至 {time} UTC",
+        loadError: "无法加载阶段指标。请刷新重试。",
+        none: "–",
+        gates: {
+          title: "阶段门槛",
+          description: "以新用户为准。从 V1 迁来的人并列显示，不计入其中。",
+          activation: "阶段 2 · 首次使用中连接 2+ 个智能体并完成一次编译",
+          first_file: "阶段 2 · 首个文件，从 init 导入起的中位数",
+          week4_keeping: "阶段 3 · 已激活用户在第 4 周仍在保留",
+          team_pull: "阶段 4 · 60 天内加入一位队友",
+          ratioHint: "{denominator} 人中 {numerator} 人 · 门槛 {bar}",
+          fileHint: "{denominator} 人中 {numerator} 人在 5 分钟内 · 门槛 {bar}",
+          fromV1: "来自 V1：{value}",
+          status: {
+            pass: "达到门槛",
+            fail: "低于门槛",
+            pending: "等待统计窗口结束",
+          },
+        },
+        northStar: {
+          title: "北极星指标",
+          value: "{read} 个中的 {two} 个",
+          hint: "截至 {week} 的一周内被 2+ 个智能体读取的空间。覆盖率 {coverage}：在 {seen} 个活跃连接中，有 {reading} 个被看到读取。",
+        },
+        cohorts: {
+          title: "按注册周分组",
+          description: "首次使用的统计只计入前 {hours} 小时已结束的人。",
+          empty: "这些周里没有人进入 V2 空间。",
+          all: "全部",
+          kind: {
+            new: "新用户",
+            from_v1: "来自 V1",
+          },
+          columns: {
+            week: "周",
+            cohort: "分组",
+            people: "人数",
+            closed: "已结束",
+            twoAgents: "2+ 智能体",
+            compiled: "已编译",
+            activated: "已激活",
+            read: "已读取",
+            firstFile: "首个文件 p50 / p90",
+            under5m: "5 分钟内",
+            signupToFile: "注册到文件",
+            week4: "第 4 周",
+            teammate: "队友",
+          },
+        },
+        review: {
+          title: "审阅健康度",
+          description: "按提出所在周统计的提议，以及每条提议最先如何被处理。",
+          empty: "这些周里没有提议。",
+          columns: {
+            week: "周",
+            proposals: "提议",
+            kept: "保留",
+            rejected: "拒绝",
+            folded: "合并",
+            forgotten: "遗忘",
+            open: "待处理",
+            rejectRate: "拒绝率",
+            decision: "处理用时 p50",
+            decisionP90: "p90",
+          },
+        },
+        definitions: {
+          title: "统计口径",
+          signup:
+            "注册：新用户创建账号的时间。对先在 V1 写过记忆的人，是其首次拥有 V2 空间的时间。",
+          session:
+            "首次使用：注册后的 {hours} 小时，足够运行 init 并打开第二个智能体。",
+          activated:
+            "已激活：首次使用结束前，有 2+ 个智能体连接，且本人的 CLI 或守护进程把一次编译写入了磁盘。",
+          firstFile: "首个文件：从 init 的首次导入到首次写入磁盘的编译。",
+          week4: "第 4 周：已激活用户在注册后第 21 到 28 天亲自保留过内容。",
+          teammate:
+            "队友：60 天内有另一人加入其拥有的 V2 空间。目前尚未计费，因此统计所有人，而不只是 Pro。",
+          review:
+            "拒绝率：拒绝数占保留与拒绝之和的比例。合并的提议是被评审合并的重复内容。",
+        },
+      },
     },
   },
+  ledger: ledgerZh,
 };

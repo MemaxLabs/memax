@@ -58,15 +58,17 @@ export async function captureSessionCommand(
     content = head + "\n\n[...transcript truncated...]\n\n" + tail;
   }
 
-  const agent = options.agent ?? "unknown";
+  // Without --agent the capture is honestly unattributed: sending a
+  // literal "unknown" slug would register a fake agent named "unknown".
+  const agentLabel = options.agent ?? "unknown";
   setClientAgent(options.agent);
 
   try {
     const memory = await getClient().push(content, {
-      title: `Session capture (${agent}) — ${new Date().toLocaleDateString()}`,
+      title: `Session capture (${agentLabel}) — ${new Date().toLocaleDateString()}`,
       contentType: "transcript",
       source: "hook",
-      sourceAgent: agent,
+      sourceAgent: options.agent,
     });
 
     console.log(

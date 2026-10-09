@@ -17,6 +17,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/handler"
 	"github.com/MemaxLabs/memax/packages/server/internal/observability"
 	"github.com/MemaxLabs/memax/packages/server/internal/serverapp"
+	"github.com/MemaxLabs/memax/packages/server/internal/workerapp"
 )
 
 func main() {
@@ -143,16 +144,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Mark server as ready — health endpoint now returns 200
-	ready.Store(true)
-	slog.Info("memax API server ready", "addr", addr)
-
 	// Block until SIGTERM/SIGINT (Fly's stop signal), then drain:
 	// stop accepting, let in-flight requests finish (30s budget, same
 	// as the worker), then release app resources. Mirrors
 	// cmd/worker/main.go's NotifyContext pattern.
 	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Staging runs the worker in this process (see worker.go). It starts
+	// after migrations, which serverapp.Configure ran, and stops after
+	// the HTTP drain below.
+	var worker *workerapp.App
+	if embeddedWorkerEnabled() {
+		worker, err = startEmbeddedWorker(sigCtx)
+		if err != nil {
+			slog.Error("failed to start embedded worker", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	// Mark server as ready — health endpoint now returns 200
+	ready.Store(true)
+	slog.Info("memax API server ready", "addr", addr)
+
 	<-sigCtx.Done()
 	slog.Info("shutdown signal received, draining")
 	ready.Store(false)
@@ -161,18 +175,31 @@ func main() {
 	if err := srv.Shutdown(drainCtx); err != nil {
 		slog.Warn("http drain incomplete", "error", err)
 	}
+	if worker != nil {
+		workerCtx, cancelWorker := context.WithTimeout(context.Background(), 30*time.Second)
+		worker.Shutdown(workerCtx)
+		cancelWorker()
+	}
 	appCtx, cancelApp := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelApp()
 	app.Shutdown(appCtx)
 	slog.Info("memax API server stopped cleanly")
 }
 
+// The /v2 headers come from openapi/v2.yaml: request header parameters
+// must be allowed and documented response headers exposed, or browsers
+// drop them (TestCORSCoversTheV2Contract).
+const (
+	corsAllowHeaders  = "Content-Type, Authorization, X-Hub-ID, X-Timezone, Mcp-Session-Id, Idempotency-Key, If-Match, X-Memax-Via, X-Memax-Passkey"
+	corsExposeHeaders = "Mcp-Session-Id, WWW-Authenticate, ETag, Location, Idempotent-Replayed, Retry-After, Content-Disposition, X-Memax-Export-Receipt"
+)
+
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Hub-ID, X-Timezone, Mcp-Session-Id")
-		w.Header().Set("Access-Control-Expose-Headers", "Mcp-Session-Id, WWW-Authenticate")
+		w.Header().Set("Access-Control-Allow-Headers", corsAllowHeaders)
+		w.Header().Set("Access-Control-Expose-Headers", corsExposeHeaders)
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)

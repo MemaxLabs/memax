@@ -1,0 +1,44 @@
+/* Memax Ledger · Primitives: button, kbd, field, segmented.
+ * Verbatim from the V2 handoff (design-system/components/bundle.css, lines 30–69).
+ * Do not edit here: change the handoff, then re-copy. Production additions live in hardening.css. */
+
+/* ---------- button ---------- */
+.mx-btn { --_h: var(--control-md); display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: var(--_h); padding: 0 12px; border: 1px solid transparent; border-radius: var(--radius-sm); font: inherit; font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 550; letter-spacing: -0.003em; white-space: nowrap; cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+.mx-btn--sm { --_h: var(--control-sm); padding: 0 10px; font-size: 13px; gap: 5px; }
+.mx-btn--lg { --_h: var(--control-lg); padding: 0 16px; font-size: 15px; gap: 8px; }
+.mx-btn--icon { width: var(--_h); padding: 0; }
+.mx-btn:disabled { cursor: default; opacity: .4; }
+.mx-btn--primary { background: var(--ink); color: var(--on-ink); }
+.mx-btn--primary:not(:disabled):hover { background: var(--ink-2); }
+.mx-btn--keep { background: var(--seal-fill); color: var(--on-seal); }
+.mx-btn--keep:not(:disabled):hover { filter: brightness(1.12); }
+.mx-btn--secondary { background: var(--card); color: var(--ink); border-color: var(--line-strong); }
+.mx-btn--secondary:not(:disabled):hover { background: var(--hover); }
+.mx-btn--quiet { background: transparent; color: var(--ink-2); }
+.mx-btn--quiet:not(:disabled):hover { background: var(--hover); color: var(--ink); }
+.mx-btn--danger { background: transparent; color: var(--vermilion); border-color: var(--line-strong); }
+.mx-btn--danger:not(:disabled):hover { background: var(--vermilion-wash); border-color: var(--vermilion); }
+.mx-btn-kbd { margin-left: 2px; margin-right: -4px; }
+.mx-btn--primary .mx-kbd, .mx-btn--keep .mx-kbd { background: transparent; color: inherit; border-color: currentColor; opacity: .7; }
+
+/* ---------- kbd ---------- */
+.mx-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box; border: 1px solid var(--line-strong); border-radius: var(--radius-xs); background: var(--card); color: var(--ink-2); font-family: var(--font-mono); font-size: 11px; line-height: 1; font-weight: 500; }
+
+/* ---------- field ---------- */
+.mx-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mx-field-label { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .01em; color: var(--ink-2); }
+.mx-field-box { display: flex; align-items: center; gap: 8px; height: var(--control-md); padding: 0 10px; box-sizing: border-box; background: var(--card); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink-3); transition: border-color var(--duration-fast) var(--ease-standard); }
+.mx-field-box:focus-within { border-color: var(--ink); outline: 2px solid var(--focus); outline-offset: 2px; }
+.mx-field-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-family: var(--font-sans); font-size: 14px; line-height: 20px; padding: 0; }
+.mx-field-input.is-mono { font-family: var(--font-mono); font-size: 13px; }
+.mx-field-input::placeholder { color: var(--ink-3); }
+.mx-field-msg { margin: 0; font-size: 13px; line-height: 18px; color: var(--ink-3); }
+.mx-field.is-error .mx-field-box { border-color: var(--vermilion); }
+.mx-field-msg.is-error { color: var(--vermilion); }
+
+/* ---------- segmented ---------- */
+.mx-seg { display: inline-flex; align-self: flex-start; padding: 2px; gap: 2px; background: var(--well); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-sizing: border-box; }
+.mx-seg-opt { height: 26px; padding: 0 10px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--ink-3); font: inherit; font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+.mx-seg--sm .mx-seg-opt { height: 22px; padding: 0 8px; font-size: 12px; }
+.mx-seg-opt:hover { color: var(--ink); }
+.mx-seg-opt.is-on { background: var(--card); color: var(--ink); border-color: var(--ink-3); font-weight: 600; }

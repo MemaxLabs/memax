@@ -12,6 +12,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
+	"github.com/MemaxLabs/memax/packages/server/internal/spacemode"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
 
@@ -27,7 +28,18 @@ type ConfigsHandler struct {
 	llm     *anthropic.Client
 	events  events.Publisher
 	enqueue func(configID, ownerID string) // optional: enqueue extraction job after upsert
+	// modes turns two-way sync off for the files of spaces on V2; nil
+	// syncs everything, as V1 always did.
+	modes *spacemode.Resolver
 }
+
+// SetSpaceModes turns V1's two-way config sync off for the agent files
+// that belong to a person's spaces on V2 (plan 25 §10, D10): Memax compiles
+// them there. Sync answers such a file "unchanged" (reason space_on_v2,
+// with no version, so a client acknowledges nothing), never pull, push,
+// conflict or delete, and warns X-Memax-Warning: space_on_v2. Switching
+// the space back turns it on again.
+func (h *ConfigsHandler) SetSpaceModes(m *spacemode.Resolver) { h.modes = m }
 
 const agentConfigTombstoneRetention = 30 * 24 * time.Hour
 
@@ -675,6 +687,26 @@ func (h *ConfigsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 
 	if actions == nil {
 		actions = []syncAction{}
+	}
+
+	// Files of spaces on V2: Memax compiles them, so V1 neither pulls,
+	// pushes nor deletes them.
+	if h.modes != nil {
+		off, err := h.modes.ConfigSyncOff(r.Context(), ownerID)
+		if err != nil {
+			slog.Warn("configs sync: read spaces on V2", "error", err)
+		}
+		held := 0
+		for i, a := range actions {
+			if a.Action != "unchanged" && off(a.Scope) {
+				actions[i] = syncAction{Action: "unchanged", Agent: a.Agent, FilePath: a.FilePath, Scope: a.Scope,
+					Reason: configSyncOffReason}
+				held++
+			}
+		}
+		if held > 0 {
+			setMemaxWarningHeader(w, memaxWarningSpaceOnV2)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, model.ApiResponse{Data: map[string]any{

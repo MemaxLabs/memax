@@ -19,14 +19,84 @@ type Claims struct {
 	AgentName      string `json:"agent_name,omitempty"`      // agent identity (e.g., "claude-ai" for OAuth MCP)
 	GrantID        string `json:"grant_id,omitempty"`        // server-side OAuth grant reference
 	ImpersonatorID string `json:"impersonator_id,omitempty"` // dev who initiated impersonation
+	// Surface is the surface the sign-in was for, SurfaceWeb or SurfaceCLI
+	// (migration 030), set by the server when the login completes. Empty
+	// on tokens from before it existed, which count as the CLI.
+	Surface string `json:"surface,omitempty"`
+	// Iss is the issuer (the authorization server's base URL) and Aud the
+	// resources the token is for (RFC 8707): an MCP OAuth token works only
+	// at the MCP endpoint it was issued for. Older tokens carry neither.
+	Iss string   `json:"iss,omitempty"`
+	Aud Audience `json:"aud,omitempty"`
+	// Sid is the session (internal/sessions) whose refresh token minted the
+	// token, so the API can tell which session a request is (the sessions
+	// list marks it current, and "revoke all others" spares it). Tokens
+	// from before migration 049, API keys and impersonation tokens have
+	// none.
+	Sid string `json:"sid,omitempty"`
 }
 
+// Audience is a JWT aud claim: one string, or an array of them.
+type Audience []string
+
+// MarshalJSON writes one audience as a string, several as an array.
+func (a Audience) MarshalJSON() ([]byte, error) {
+	if len(a) == 1 {
+		return json.Marshal(a[0])
+	}
+	return json.Marshal([]string(a))
+}
+
+// UnmarshalJSON reads a string or an array.
+func (a *Audience) UnmarshalJSON(b []byte) error {
+	var one string
+	if err := json.Unmarshal(b, &one); err == nil {
+		*a = Audience{one}
+		return nil
+	}
+	var many []string
+	if err := json.Unmarshal(b, &many); err != nil {
+		return fmt.Errorf("aud: %w", err)
+	}
+	*a = many
+	return nil
+}
+
+// Contains reports whether resource is one of the audiences, ignoring a
+// trailing slash.
+func (a Audience) Contains(resource string) bool {
+	resource = strings.TrimRight(resource, "/")
+	for _, v := range a {
+		if strings.TrimRight(v, "/") == resource {
+			return true
+		}
+	}
+	return false
+}
+
+// The sign-in surfaces.
+const (
+	// SurfaceWeb: the login's one-time code was delivered to the web app's
+	// origin, so the session lives in a browser on the web app.
+	SurfaceWeb = "web"
+	// SurfaceCLI: anything else (a loopback redirect, or tokens returned in
+	// the response).
+	SurfaceCLI = "cli"
+)
+
 func SignAccessToken(userID string, secret []byte, ttl time.Duration) (string, error) {
+	return SignSessionToken(userID, "", secret, ttl)
+}
+
+// SignSessionToken issues a person's access token for a sign-in surface
+// (SurfaceWeb, SurfaceCLI, or "" for none).
+func SignSessionToken(userID, surface string, secret []byte, ttl time.Duration) (string, error) {
 	now := time.Now()
 	claims := Claims{
-		Sub: userID,
-		Iat: now.Unix(),
-		Exp: now.Add(ttl).Unix(),
+		Sub:     userID,
+		Iat:     now.Unix(),
+		Exp:     now.Add(ttl).Unix(),
+		Surface: surface,
 	}
 	return signJWT(claims, secret)
 }
@@ -41,6 +111,12 @@ func SignAgentAccessToken(userID, agentName string, secret []byte, ttl time.Dura
 // The token stays small and revocation remains immediate because permissions
 // are resolved from the database on every authenticated request.
 func SignGrantAccessToken(userID, agentName, grantID string, secret []byte, ttl time.Duration) (string, error) {
+	return SignBoundGrantAccessToken(userID, agentName, grantID, "", nil, secret, ttl)
+}
+
+// SignBoundGrantAccessToken is SignGrantAccessToken with an issuer and the
+// resources the token is for (RFC 8707 audience binding, RFC 9068 iss).
+func SignBoundGrantAccessToken(userID, agentName, grantID, issuer string, audience []string, secret []byte, ttl time.Duration) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		Sub:       userID,
@@ -48,6 +124,8 @@ func SignGrantAccessToken(userID, agentName, grantID string, secret []byte, ttl 
 		Exp:       now.Add(ttl).Unix(),
 		AgentName: agentName,
 		GrantID:   grantID,
+		Iss:       issuer,
+		Aud:       audience,
 	}
 	return signJWT(claims, secret)
 }
@@ -63,6 +141,15 @@ func SignImpersonationToken(targetUserID, impersonatorID string, secret []byte, 
 		ImpersonatorID: impersonatorID,
 	}
 	return signJWT(claims, secret)
+}
+
+// Sign issues a token with the given claims, issued now and expiring
+// after ttl (Iat and Exp are set here).
+func Sign(c Claims, secret []byte, ttl time.Duration) (string, error) {
+	now := time.Now()
+	c.Iat = now.Unix()
+	c.Exp = now.Add(ttl).Unix()
+	return signJWT(c, secret)
 }
 
 func VerifyAccessToken(token string, secret []byte) (*Claims, error) {

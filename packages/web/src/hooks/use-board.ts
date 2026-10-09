@@ -92,7 +92,12 @@ export function useCustomBoardsWithSlots(
   hubId: string | undefined,
   boards: readonly Board[],
 ): CustomBoardWithSlots[] {
-  const customBoards = boards.filter((b) => b.kind !== "system");
+  // Active boards only: a cooking board has no slots to fetch yet and
+  // renders through the cooking path — listing it here too would fire
+  // a pointless getBoard and give it two chips.
+  const customBoards = boards.filter(
+    (b) => b.kind !== "system" && b.status !== "cooking",
+  );
   return useQueries({
     queries: customBoards.map((board) => ({
       queryKey: [...boardsQueryKey(hubId ?? ""), board.id] as const,

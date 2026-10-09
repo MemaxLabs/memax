@@ -1,72 +1,132 @@
 ---
 title: memax hook
-description: Install or uninstall an agent hook that injects Memax context before each prompt.
+description: The session-start hook. Each agent session starts with what changed in this repository's context since the last one, from a local cache, in milliseconds.
 ---
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-<Callout type="warn">
-  **Deprecated.** Prefer `memax setup --hooks` for new installs — it handles
-  more agents and is the recommended path. `memax hook` is kept as a minimal
-  fallback for Claude Code only.
-</Callout>
+Your agents already load the compiled `AGENTS.md` (and `CLAUDE.md`) at
+the start of every session. The session-start hook adds what that file
+can't say: **what changed since this agent's last session here**.
+
+```text
+<memax-context space="acme-web">
+Memax: what changed in this repository's compiled context since your last session here. The files themselves are already loaded.
+Forgotten by a person (don't use or repeat what these said, and drop any copy you keep):
+- M-0131 (2026-10-07)
+Waiting for a person to decide (don't decide these yourself; the answer arrives as a kept decision):
+- G-0007 "Postgres 17 or 18 for the next migration window?" (asked by codex, open until 2026-10-10)
+AGENTS.md is now C-0902 (your last session saw C-0901).
+New:
+- Never commit generated SDK types by hand; run pnpm gen:v2. [M-0240]
+Changed:
+- Background jobs run on River, Postgres-backed. We do not use Temporal. [M-0219]
+</memax-context>
+```
+
+When nothing changed, it prints nothing.
+
+## Install it
+
+[`memax connect <agent>`](/cli/connect) installs it in the agent's own
+hook settings. In Claude Code, the [Memax plugin](/integrations/claude-code-plugin)
+brings it too. Both run the same command, and only when the CLI is
+installed:
+
+```bash
+command -v memax >/dev/null 2>&1 && memax hook session-start --agent claude-code || true
+```
 
 ## Usage
 
 ```bash
-memax hook install <agent>
-memax hook uninstall <agent>
+memax hook session-start [--agent <id>] [--debug]
 ```
 
-Both `<action>` and `<agent>` are positional. Valid actions:
-`install`, `uninstall`. There is no `memax hook status` or
-`memax hook remove`.
+The agent passes its session as JSON on stdin (its id, its directory and
+whether it's a new session, a resume or a compaction). `--agent` is
+`claude-code` (the default), `codex`, `gemini`, `cursor` or `copilot`,
+and sets the output each agent reads, and which compiled files it counts:
+`AGENTS.md`, plus the agent's own `CLAUDE.md` or `GEMINI.md` when the
+space compiles one. `--debug` says on stderr why
+nothing was printed and how long it took.
 
-## Supported agents
+## What it says
 
-| Agent         | Hook type                      | Status    |
-| ------------- | ------------------------------ | --------- |
-| `claude-code` | Claude Code `UserPromptSubmit` | Supported |
+- **Changed lines.** The cited lines that are new or changed since the
+  last session, and the memories whose lines are gone. Never the whole
+  file: the agent already has it, and a second copy only costs context.
+  A line whose cite isn't in the compile Memax made (a hand edit) isn't
+  repeated, and neither is a forgotten memory's line.
+- **Forgotten memories.** Each memory a person forgot since the last
+  session, once, so the agent drops any copy it keeps. An agent's first
+  session here hears about the last week's.
+- **Decisions waiting.** Each decision an agent asked a person for (a gate,
+  `G-`) that still waits, once.
+- **Compiles not here yet.** When the space compiled something this
+  machine doesn't have yet (the daemon isn't running, or a hand edit waits
+  in Review).
 
-Other agents (Cursor, Codex) receive context via MCP rather than
-hooks — see [`memax setup`](/integrations/index) and the
-[integrations pages](/integrations/claude-code).
+The block stays under 3,000 tokens (2,400 for Codex, whose default limit
+is about 2,500) and under Claude Code's 10,000-character limit. When it
+runs long, the changed lines go first: they're in the file anyway.
 
-## Install on Claude Code
+## How it stays fast
 
-```bash
-memax hook install claude-code
-```
+The hook runs every time a session starts, so it reads only local files
+and never touches the network:
 
-This registers a Claude Code `UserPromptSubmit` hook. On each user
-prompt the hook prints a short, static reinforcement block
-(`<memax>…</memax>`) that tells the agent:
+- `~/.memax/daemon/warm.json`: what the [daemon](/cli/daemon) knows about
+  each linked space (each file's latest compile, recent forgets and
+  waiting gates), kept current as the space changes. It holds IDs, never
+  memory text.
+- The compiled files in the repository.
+- What this agent's last session here was told, as hashes.
 
-- Memax is the primary memory system.
-- Call `memax_recall` before responding.
-- Call `memax_push` when you reach a durable decision.
+It exits within 100 ms of starting, Node's own start-up included (on a
+4-core machine, a median of about 50 ms against 30 ms for an empty Node
+process).
 
-The actual recall and push then happen via the Memax **MCP tools**,
-which the agent invokes itself. The hook does **not** call
-`memax recall` and does **not** inject fetched memories into the
-prompt — it only reinforces the instruction to use MCP. MCP must
-be installed separately (via `memax setup --mcp`) for the hook to
-be useful.
+Reading a compiled file at session start counts as reading every memory
+in it, which keeps the memories your agents use from fading. The hook
+queues that report on disk after it prints; the daemon sends it, or
+`memax hook flush` does in the background when no daemon runs.
 
-## Uninstall
+## Agents with a session-start hook
 
-```bash
-memax hook uninstall claude-code
-```
+| Agent                                     | Hook settings (from `memax connect`) | Output                                         |
+| ----------------------------------------- | ------------------------------------ | ---------------------------------------------- |
+| [Claude Code][claude-hooks]               | `~/.claude/settings.json`            | Plain text, added to the context.              |
+| [Codex][codex-hooks]                      | `~/.codex/hooks.json`                | Plain text, added as developer context.        |
+| [Gemini CLI][gemini-hooks]                | `~/.gemini/settings.json`            | `hookSpecificOutput.additionalContext` (JSON). |
+| [Cursor][cursor-hooks] (editor and CLI)   | `~/.cursor/hooks.json`               | `additional_context` (JSON).                   |
+| [Copilot CLI][copilot-hooks]              | `~/.copilot/hooks/memax.json`        | `additionalContext` (JSON).                    |
 
-## Hooks vs MCP
+These have no session-start hook that can add context, so they read the
+compiled files and Memax over MCP only:
 
-| Feature   | Hooks                                                    | MCP                              |
-| --------- | -------------------------------------------------------- | -------------------------------- |
-| Trigger   | Every prompt (automatic)                                 | Agent decides to call a tool     |
-| What runs | A static reinforcement prompt tells the agent to use MCP | Real recall / push / list / etc. |
-| Blocking? | Yes — runs in the prompt path                            | No — tool calls are explicit     |
+- **Antigravity CLI** has hooks, but none at session start
+  ([docs][antigravity-hooks]).
+- **OpenCode** has plugins, not command hooks ([docs][opencode-plugins]).
+- **Windsurf** has no session-start event ([docs][windsurf-hooks]).
+- **ChatGPT** and **Claude** (chat) read Memax through their connectors.
 
-Hooks and MCP are complementary: the hook ensures the agent
-_remembers_ to use Memax, while MCP is what actually does the
-recall and push.
+<Callout type="info">
+  Codex asks you to trust a new hook once: run `/hooks` in Codex after
+  `memax connect codex`. Cursor and Copilot CLI also run Claude Code's
+  hooks; the Claude Code hook stays quiet there, so their own hook speaks.
+</Callout>
+
+## Deprecated: `memax hook install|uninstall`
+
+`memax hook install claude-code` installed V1's prompt-reinforcement
+hook. Use `memax connect claude-code` instead.
+
+[claude-hooks]: https://code.claude.com/docs/en/hooks
+[codex-hooks]: https://learn.chatgpt.com/docs/hooks
+[gemini-hooks]: https://geminicli.com/docs/hooks/reference/
+[cursor-hooks]: https://cursor.com/docs/agent/hooks
+[copilot-hooks]: https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference
+[antigravity-hooks]: https://antigravity.google/docs/hooks
+[opencode-plugins]: https://opencode.ai/docs/plugins/
+[windsurf-hooks]: https://docs.devin.ai/desktop/cascade/hooks

@@ -1,0 +1,145 @@
+{
+  "format": "memax.export.v1",
+  "space": {
+    "id": "0199a1b2-c3d4-7e5f-8a9b-000000000001",
+    "tenant_id": "0199a1b2-c3d4-7e5f-8a9b-000000000002",
+    "slug": "memax-v2",
+    "name": "memax-v2",
+    "kind": "project",
+    "repository": "github.com/MemaxLabs/memax",
+    "v2_enabled_at": "2026-10-06T08:30:00.123456Z"
+  },
+  "as_of": "2026-10-06T09:40:00.140456Z",
+  "receipt": "0199a1b2-c3d4-7e5f-8a9b-00000000040e",
+  "counts": {
+    "memories": 4,
+    "tombstones": 1,
+    "brief_versions": 2,
+    "gates": 2,
+    "targets": 1,
+    "agents": 1,
+    "receipts": 18,
+    "checkpoints": 2
+  },
+  "seal": {
+    "sealed_receipts": 13,
+    "sealed_through_seq": 13,
+    "sealed_through_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-00000000040d",
+    "unsealed": 5
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "74330da9cb70e2ba8ccc0a744f0151f9eb0fc075de36574f5da1302b685efe3e",
+      "bytes": 2069
+    },
+    {
+      "path": "agents.json",
+      "sha256": "6faae48ea29696eaf6344b907942a0b076f7baa4cd2f10b8dcb608f213f4c7ce",
+      "bytes": 492
+    },
+    {
+      "path": "brief/B-0001.md",
+      "sha256": "09ab17e3b013b84d19258416338cd2e3d385ce75382a36581fd303bf6bd40511",
+      "bytes": 556
+    },
+    {
+      "path": "brief/B-0002.md",
+      "sha256": "18b07c411610ff1db66b3415e49f5a81e1527708290da728cd99b7454d39be4b",
+      "bytes": 1078
+    },
+    {
+      "path": "checkpoints.json",
+      "sha256": "8be0958383b60285ce1a5d79587ca664720ddc44b8b5fffe885c61b6d898a75b",
+      "bytes": 2484
+    },
+    {
+      "path": "decisions.md",
+      "sha256": "b678065d59a9c2d5000d42e0d3ea4ed6360c95d496b77778165c896260ee0ba7",
+      "bytes": 640
+    },
+    {
+      "path": "gates.json",
+      "sha256": "8601dcc43588fe1a44cc5f3a1ba0434ae70a4ef1aab66cfad954b788ec3605ec",
+      "bytes": 2244
+    },
+    {
+      "path": "memories/M-0001.md",
+      "sha256": "fb7a71fc3ad672dd878c9504a74aa32693253efb4253df98ff0ff8125e1846af",
+      "bytes": 2486
+    },
+    {
+      "path": "memories/M-0002.md",
+      "sha256": "dd2f08150112d289ef3563c86be746fb8d7c70d79fcfa1401ffb5af2b6034dc2",
+      "bytes": 1311
+    },
+    {
+      "path": "memories/M-0003.md",
+      "sha256": "72cc895b587cc4468e031a05bcae2c19ce5ab0ed1e174fbf4df6f829327b0583",
+      "bytes": 1189
+    },
+    {
+      "path": "memories/M-0005.md",
+      "sha256": "bc39b8df8e147bc05656a5115bf3fd86a9278870def916c9ac9721ef8f0a5076",
+      "bytes": 1140
+    },
+    {
+      "path": "reads.json",
+      "sha256": "f51dfc452201a5ccc92bc35a3abc58d6d4306ef31b8fb62362d3f9c554c0ffe0",
+      "bytes": 879
+    },
+    {
+      "path": "receipts.jsonl",
+      "sha256": "79c6b0e80f897521c3f2e7486efb6804406d4ca6b71393dea8f78da47d8b53a5",
+      "bytes": 11572
+    },
+    {
+      "path": "targets.json",
+      "sha256": "9890d0851c96bcfc676ca40df2c9f798c6722d38f27204dd0844793af8d7abef",
+      "bytes": 2458
+    },
+    {
+      "path": "tombstones/M-0004.md",
+      "sha256": "b8adf76730d36a001ad341da19edc4c827a1cb701ff1773d9485f5c530960a1c",
+      "bytes": 1111
+    }
+  ],
+  "formats": [
+    {
+      "path": "memories/*.md",
+      "format": "memax.memory.v1"
+    },
+    {
+      "path": "tombstones/*.md",
+      "format": "memax.tombstone.v1"
+    },
+    {
+      "path": "brief/*.md",
+      "format": "memax.brief.v1"
+    },
+    {
+      "path": "gates.json",
+      "format": "memax.gates.v1"
+    },
+    {
+      "path": "targets.json",
+      "format": "memax.targets.v1"
+    },
+    {
+      "path": "agents.json",
+      "format": "memax.agents.v1"
+    },
+    {
+      "path": "reads.json",
+      "format": "memax.reads.v1"
+    },
+    {
+      "path": "receipts.jsonl",
+      "format": "memax.receipt.v1 (receiptchain format 1, as JSON lines)"
+    },
+    {
+      "path": "checkpoints.json",
+      "format": "memax.checkpoints.v1"
+    }
+  ]
+}

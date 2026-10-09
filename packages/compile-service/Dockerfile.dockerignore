@@ -1,0 +1,13 @@
+# The context is the repository root; only these files are needed.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.json
+!packages/compiler/package.json
+!packages/compiler/tsconfig.json
+!packages/compiler/src
+!packages/compiler/NOTICE
+!packages/compile-service/package.json
+!packages/compile-service/tsconfig.json
+!packages/compile-service/src

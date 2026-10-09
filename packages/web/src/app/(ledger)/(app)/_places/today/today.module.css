@@ -1,0 +1,507 @@
+/* Today (Main.dc.html, MobileToday.dc.html, EmptySpace.dc.html). */
+
+.page {
+  max-width: 1160px;
+  margin: 0 auto;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+.phoneOnly {
+  display: none;
+}
+
+/* Waiting on you: "2 more in Review" under the rows. */
+.more {
+  padding: 6px 12px;
+}
+
+.panelNote {
+  margin: 0;
+  padding: 12px 16px 14px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+/* In flight. */
+.flight {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-3);
+}
+
+.flightNote {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.flightTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 26px;
+  color: var(--ink);
+}
+
+.flightState {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Agents today. */
+.agent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 48px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.agent:last-child {
+  border-bottom: 0;
+}
+
+.agentDay:global(.mx-meta) {
+  color: var(--ink-2);
+  font-variant-numeric: normal;
+}
+
+.agentSeen {
+  text-align: right;
+}
+
+/* The placeholder edition, on Dream's night surface. */
+/* Last night's edition opens its page: a link stretched over the card. */
+.dreamEdition {
+  position: relative;
+}
+
+.dreamOpen {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+}
+
+.dreamOpen:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.dreamQuiet:global(.mx-dream) {
+  gap: 12px;
+}
+
+.dreamQuietTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  color: var(--night-ink);
+}
+
+.dreamQuietDetail {
+  margin: 0;
+  max-width: 56ch;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--night-ink-2);
+}
+
+.foot:global(.mx-meta) {
+  margin: 32px 0 0;
+  font-variant-numeric: normal;
+}
+
+/* The empty space (EmptySpace.png): three steps, and where else to start. */
+.emptyGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: start;
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 14px;
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.step:last-child {
+  border-bottom: 0;
+}
+
+.stepN {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.stepN.current {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.stepBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.step h3 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.step.now h3 {
+  color: var(--ink);
+}
+
+.step p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.command {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 480px;
+  height: 40px;
+  padding: 0 6px 0 14px;
+  box-sizing: border-box;
+  background: var(--ink);
+  color: var(--on-ink);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.command code {
+  flex: 1;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.prompt {
+  opacity: 0.6;
+}
+
+.copyCommand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.copyCommand:hover {
+  opacity: 1;
+}
+
+.copyCommand:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.startFrom {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.startFrom :global(.mx-btn) {
+  width: 100%;
+}
+
+.drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.drop[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+.dropIcon {
+  display: flex;
+  color: var(--ink-3);
+}
+
+.drop :global(.mx-meta) {
+  font-variant-numeric: normal;
+}
+
+.dropTitle {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink);
+}
+
+.emptySide {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.emptyNote:global(.mx-meta) {
+  margin: 0;
+  font-variant-numeric: normal;
+}
+
+/* "Or connect one here", and following init along on its own page. */
+.emptyActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Switch to V2 (switch-to-v2.tsx): what moves, one row each. */
+.switchNote {
+  margin: 0 0 20px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
+.moves {
+  margin: 0;
+}
+
+.move {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.move:last-child {
+  border-bottom: 0;
+}
+
+.move dt {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.move dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+.switchAs {
+  padding: 16px 20px;
+}
+
+@media (max-width: 1023px) {
+  .grid,
+  .emptyGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* MobileToday.png: the date, one headline, the edition, what's waiting
+ * and Start review; the rest of the board waits for a wider screen. */
+@media (max-width: 639px) {
+  .switchHead:global(.mx-page-head) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    margin-bottom: 0;
+  }
+
+  .move {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .page:global(.mx-page) {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px 16px 24px;
+  }
+
+  .head:global(.mx-page-head) {
+    margin-bottom: 0;
+  }
+
+  .head :global(.mx-page-head-text) {
+    gap: 6px;
+  }
+
+  .head :global(.mx-page-eyebrow) {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .head :global(.mx-page-title) {
+    font-size: 26px;
+    line-height: 31px;
+    letter-spacing: -0.015em;
+  }
+
+  .head :global(.mx-page-lede),
+  .head :global(.mx-page-actions),
+  .desktopOnly,
+  .side,
+  .foot:global(.mx-meta) {
+    display: none;
+  }
+
+  .phoneOnly {
+    display: block;
+  }
+
+  .grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .column {
+    gap: 16px;
+  }
+
+  /* The edition, compact: no fold figure, one headline line. */
+  .column :global(.mx-dream) {
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .column :global(.mx-dream-name) {
+    font-size: 18px;
+    line-height: 24px;
+  }
+
+  .column :global(.mx-dream-fold) {
+    display: none;
+  }
+
+  .column :global(.mx-dream-title) {
+    max-width: none;
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .column :global(.mx-dream-item) {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .column :global(.mx-dream-meta) {
+    display: none;
+  }
+
+  .column :global(.mx-dream-text) {
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  /* Rows stack their receipt under the statement (MemoryRow stacked). */
+  .waiting :global(.mx-row) {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+
+  .waiting :global(.mx-row)::after {
+    display: none;
+  }
+
+  .waiting :global(.mx-row-rail) {
+    grid-column: 2;
+    grid-row: 2;
+    padding: 6px 0 0;
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .waiting :global(.mx-row-rail-lines) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    column-gap: 10px;
+  }
+
+  .waiting :global(.mx-row-note),
+  .waiting :global(.mx-panel-head .mx-meta),
+  .more {
+    display: none;
+  }
+
+  .startPhone:global(.mx-btn) {
+    width: 100%;
+    height: 48px;
+  }
+
+  .step {
+    padding: 16px;
+  }
+}

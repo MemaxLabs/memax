@@ -15,6 +15,10 @@ swap_size_mb = 512
   dockerfile = "../Dockerfile.server"
 
 [env]
+  # V2 compile service: a Cloudflare Worker (packages/compile-service/
+  # wrangler.jsonc, deployed before this app by CI). It needs
+  # COMPILE_SERVICE_TOKEN, a secret synced from Doppler with the rest.
+  COMPILE_SERVICE_URL = "https://compile.memax.app"
   PORT = "8080"
   # Trust header source for per-IP rate limiting. Valid: none|cloudflare|fly|xff.
   #
@@ -35,12 +39,15 @@ swap_size_mb = 512
   # tail latency.
   auto_stop_machines = "suspend"
   auto_start_machines = true
-  # 2 = HA floor. Single-machine prod means every Fly host incident
-  # or rolling deploy is 100% downtime. Two machines across the same
-  # region give us graceful rolling deploys and survive single-host
-  # failures without paging. Scale up (via `fly scale count`) once
-  # traffic justifies it.
-  min_machines_running = 2
+  # Run two machines (`fly scale count 2`) but keep only one running.
+  # The second stays suspended and resumes in under a second when the
+  # proxy needs it: the running one is past soft_limit, or its host
+  # fails, or a rolling deploy replaces it. That keeps the failover the
+  # old floor of 2 bought, at half the price (Oct 2026 running-cost
+  # review: a shared-cpu-2x 1gb machine is $13.92/month in sjc; a
+  # suspended one bills only its stored state). Raise this back to 2
+  # once traffic keeps a second machine busy.
+  min_machines_running = 1
 
   # Concurrency limits are 2x staging because VM is 2x bigger
   # (shared-cpu-2x + 1gb vs 1x + 256mb). These are starting points —

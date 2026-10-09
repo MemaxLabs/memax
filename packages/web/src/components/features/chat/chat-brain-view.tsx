@@ -45,6 +45,7 @@ import type {
 } from "memax-sdk";
 import { cn } from "@memaxlabs/ui";
 import { useBar } from "@/contexts/bar-context";
+import { useOccupyBottomChrome } from "@/lib/bottom-chrome-store";
 import {
   messagesListKey,
   useCancelChatMessage,
@@ -394,6 +395,12 @@ export function ChatBrainView({ routeSessionId }: ChatBrainViewProps = {}) {
   useEffect(() => {
     if (activeSessionId) setMobileDraftMode(false);
   }, [activeSessionId]);
+
+  // The fixed chat view below pins its composer to the bottom edge on
+  // phones; tell the dock so it steps aside. Session routes also hide
+  // the dock by route; draft mode lives on plain /brain, which only
+  // this registration covers.
+  useOccupyBottomChrome(isMobile && (!!activeSessionId || mobileDraftMode));
 
   // ── Mobile: full-page sessions list (when no active session and
   //    not currently drafting a new chat) ─

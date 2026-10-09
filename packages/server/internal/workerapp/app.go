@@ -18,7 +18,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/riverqueue/river"
-	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivertype"
 
 	sdkmodel "github.com/MemaxLabs/memax-go-agent-sdk/model"
@@ -586,7 +585,11 @@ func New(ctx context.Context) (*App, error) {
 	if indexer != nil {
 		periodicJobs = append(periodicJobs, v2index.PeriodicJobs(embedCfg)...)
 	}
-	riverClient, err := river.NewClient(riverpgxv5.New(pool), workerRiverConfig(workers, periodicJobs))
+	listen := listenPool(ctx, dbURL)
+	if listen != nil {
+		app.addClose(listen.Close)
+	}
+	riverClient, err := river.NewClient(queue.Driver(pool, listen), workerRiverConfig(workers, periodicJobs))
 	if err != nil {
 		app.Shutdown(context.Background())
 		return nil, fmt.Errorf("create river client: %w", err)
@@ -2046,6 +2049,33 @@ func (a *App) Shutdown(ctx context.Context) {
 			slog.Warn("worker cleanup failed", "error", err)
 		}
 	}
+}
+
+// listenPool is the pool River's notifier listens on: a direct connection
+// when DATABASE_URL goes through a pooler that drops LISTEN
+// (dbpool.ListenURL), else nil, and River listens on the main pool. One
+// that can't be reached is left out, and jobs wait for River's poll (up
+// to a second each) as they did before.
+func listenPool(ctx context.Context, dbURL string) *pgxpool.Pool {
+	url := dbpool.ListenURL(dbURL)
+	if url == "" {
+		return nil
+	}
+	pool, err := dbpool.OpenListen(ctx, url)
+	if err == nil {
+		pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		err = pool.Ping(pctx)
+		cancel()
+		if err != nil {
+			pool.Close()
+		}
+	}
+	if err != nil {
+		slog.Warn("river: no direct connection to listen on; jobs wait for River's poll", "error", err)
+		return nil
+	}
+	slog.Info("river listens on a direct connection", "host", pool.Config().ConnConfig.Host)
+	return pool
 }
 
 func (a *App) addCleanup(fn func(context.Context) error) {

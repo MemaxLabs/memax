@@ -245,12 +245,15 @@ describe("a hand edit", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Stop compiling/ }));
     await waitFor(() => expect(resolveDrift).toHaveBeenCalledOnce());
     expect(resolveDrift.mock.calls[0]![0]).toMatchObject({ mode: "stop" });
-    // The page says so, and so does the toast.
-    expect(
-      await screen.findAllByText(
-        "Stopped compiling .cursor/rules/memax-packages-web.mdc",
-      ),
-    ).toHaveLength(2);
+    // The page says so, and so does the toast. findAllByText would settle
+    // on the first of them; wait for both.
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(
+          "Stopped compiling .cursor/rules/memax-packages-web.mdc",
+        ),
+      ).toHaveLength(2),
+    );
   });
 
   it("keeps the edit waiting when the pull fails, and says why", async () => {

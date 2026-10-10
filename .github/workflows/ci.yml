@@ -194,10 +194,10 @@ jobs:
           fi
 
   # Cloudflare Workers (staging), through deploy-cloudflare.yml: the compile
-  # service, the web app and the docs site. Vercel keeps deploying the web
-  # app and the docs from its Git integration (packages/web/vercel.json)
-  # until DNS moves to Cloudflare; then the Vercel projects go (AGENTS.md,
-  # "Moving to Cloudflare").
+  # service, the web app, the docs site and the design kitchen
+  # (ui.memaxlabs.com, which has only this deployment). Vercel's projects
+  # build nothing and stay only as a rollback until they're retired
+  # (AGENTS.md, "Moving to Cloudflare").
   deploy-compile:
     name: Deploy compile service to Cloudflare (staging)
     needs: [format, typescript, go]
@@ -233,6 +233,18 @@ jobs:
     uses: ./.github/workflows/deploy-cloudflare.yml
     with:
       worker: docs
+      environment: staging
+    secrets: inherit
+
+  deploy-ui:
+    name: Deploy design kitchen to Cloudflare
+    needs: [format, typescript]
+    if: |
+      !failure() && !cancelled() &&
+      github.ref == 'refs/heads/main' && github.event_name == 'push'
+    uses: ./.github/workflows/deploy-cloudflare.yml
+    with:
+      worker: ui
       environment: staging
     secrets: inherit
 

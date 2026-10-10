@@ -1,8 +1,9 @@
 # Deploys one Cloudflare Worker: the web app (packages/web, built by
-# OpenNext), the docs site (packages/docs-site, static assets) or the
-# compile service (packages/compile-service). ci.yml calls it for staging
-# on every push to main, and deploy-production.yml for production, so the
-# steps live in one place.
+# OpenNext), the docs site (packages/docs-site, static assets), the compile
+# service (packages/compile-service) or the design kitchen (packages/ui,
+# static assets). ci.yml calls it for staging on every push to main, and
+# deploy-production.yml for production, so the steps live in one place.
+# The kitchen has one deployment, ui.memaxlabs.com, from main (staging).
 #
 # # Secrets
 #
@@ -25,6 +26,7 @@
 #                        NEXT_PUBLIC_API_URL (all optional)
 #   compile  secret:     COMPILE_SERVICE_TOKEN (the same value as the API's
 #                        and the worker's)
+#   ui       nothing
 #
 # # Rollback
 #
@@ -39,7 +41,7 @@ on:
   workflow_call:
     inputs:
       worker:
-        description: "web, docs or compile"
+        description: "web, docs, compile or ui"
         required: true
         type: string
       environment:
@@ -76,8 +78,12 @@ jobs:
     steps:
       - name: Check the inputs
         run: |
-          case "$WORKER" in web|docs|compile) ;; *) echo "::error::worker must be web, docs or compile, not '$WORKER'"; exit 1 ;; esac
+          case "$WORKER" in web|docs|compile|ui) ;; *) echo "::error::worker must be web, docs, compile or ui, not '$WORKER'"; exit 1 ;; esac
           case "$TARGET_ENV" in staging|production) ;; *) echo "::error::environment must be staging or production, not '$TARGET_ENV'"; exit 1 ;; esac
+          if [ "$WORKER" = ui ] && [ "$TARGET_ENV" != staging ]; then
+            echo "::error::The kitchen deploys only from main, with environment staging."
+            exit 1
+          fi
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "::error::Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID on the '$TARGET_ENV' GitHub Environment."
             exit 1
@@ -100,6 +106,7 @@ jobs:
             web) pnpm install --frozen-lockfile --filter "@memaxlabs/web..." ;;
             docs) pnpm install --frozen-lockfile --filter "@memaxlabs/docs-site..." ;;
             compile) pnpm install --frozen-lockfile --filter "@memaxlabs/compile-service..." ;;
+            ui) pnpm install --frozen-lockfile --filter "@memaxlabs/ui..." ;;
           esac
 
       - name: Install Doppler CLI
@@ -176,6 +183,9 @@ jobs:
             compile)
               pnpm --filter @memaxlabs/compiler build
               ;;
+            ui)
+              pnpm --filter @memaxlabs/ui run build
+              ;;
           esac
 
       - name: Deploy
@@ -196,6 +206,10 @@ jobs:
             compile)
               pnpm --filter @memaxlabs/compile-service run deploy:cf --env "$TARGET_ENV" --secrets-file "$SECRETS_FILE" --message "$message"
               ;;
+            ui)
+              # One deployment, so no --env (packages/ui/wrangler.jsonc).
+              pnpm --filter @memaxlabs/ui run deploy:cf --message "$message"
+              ;;
           esac
 
       - name: Serve the hostnames from the Worker
@@ -205,7 +219,7 @@ jobs:
         # resolver caches a missing name; one still holding the old answer
         # reaches Vercel's last build until it expires. Rollback: switch the
         # record back to DNS only (and Vercel serves it again).
-        if: inputs.worker == 'web' || inputs.worker == 'docs'
+        if: inputs.worker == 'web' || inputs.worker == 'docs' || inputs.worker == 'ui'
         run: |
           set -euo pipefail
           case "$WORKER/$TARGET_ENV" in
@@ -213,6 +227,7 @@ jobs:
             web/production) hosts="memax.app:memax.app www.memax.app:memax.app" ;;
             docs/staging) hosts="staging-docs.memaxlabs.com:memaxlabs.com" ;;
             docs/production) hosts="docs.memax.app:memax.app" ;;
+            ui/staging) hosts="ui.memaxlabs.com:memaxlabs.com" ;;
           esac
           api=https://api.cloudflare.com/client/v4
           auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json")

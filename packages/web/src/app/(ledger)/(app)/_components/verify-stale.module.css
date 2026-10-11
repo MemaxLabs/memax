@@ -189,15 +189,29 @@
   border-color: var(--line-strong);
 }
 
+.option:focus {
+  outline: none;
+}
+
+/* Keyboard focus on a choice: the frame's ring, outside its border. */
 .option:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
+/* The chosen answer: one dark border, as drawn. */
 .option[aria-checked="true"] {
   border-color: var(--ink);
   background: var(--select);
   box-shadow: inset 0 0 0 0.5px var(--ink);
+}
+
+/* Chosen and focused: the ring becomes the border, so it reads as one
+ * 2px line in the focus colour rather than a border inside a ring. */
+.option[aria-checked="true"]:focus-visible {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: inset 0 0 0 1px var(--focus);
 }
 
 .optionKey {

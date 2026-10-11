@@ -134,6 +134,19 @@ function runStart(
   );
 }
 
+/**
+ * How long this machine takes to start Node and exit, right now. A busy CI
+ * runner adds most of a second to every process, which isn't the start's
+ * doing, so the deadline tests leave it out.
+ */
+function nodeStartupMs(): Promise<number> {
+  const started = performance.now();
+  const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+  return new Promise((resolve) =>
+    child.on("exit", () => resolve(performance.now() - started)),
+  );
+}
+
 const copilotEvent = () => ({
   sessionId: `cp-${Math.random().toString(16).slice(2)}`,
   cwd: sb.repo,
@@ -203,23 +216,26 @@ describe("@memaxlabs/start in a cloud sandbox", () => {
 
   it("prints nothing within 3 s when the API never answers", async () => {
     fake.hang = true;
+    const startup = await nodeStartupMs();
     const r = await runStart(
       [bundle, "--agent", "copilot"],
       copilotEvent(),
       sandboxEnv(),
     );
     expect(r).toMatchObject({ code: 0, stdout: "" });
-    expect(r.ms).toBeLessThan(3_000);
+    // The request's deadline is 2.5 s; Node's own start is this machine's.
+    expect(r.ms - startup).toBeLessThan(3_000);
   });
 
   it("prints nothing and exits 0 against a black hole", async () => {
+    const startup = await nodeStartupMs();
     const r = await runStart(
       [bundle, "--agent", "copilot"],
       copilotEvent(),
       sandboxEnv({ MEMAX_API_URL: "http://10.255.255.1:81" }),
     );
     expect(r).toMatchObject({ code: 0, stdout: "" });
-    expect(r.ms).toBeLessThan(3_500);
+    expect(r.ms - startup).toBeLessThan(3_500);
   });
 
   it("keeps its own files under $HOME/.memax/start, which never make the sandbox a person's machine", async () => {

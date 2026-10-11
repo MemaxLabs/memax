@@ -301,7 +301,8 @@ func (h *Handler) rejectMemories(w http.ResponseWriter, r *http.Request) {
 // bulkReview applies one Keep (or Reject) per item, each its own command
 // with its own receipt and an idempotency key derived from the request's
 // and the item, so a retry applies nothing twice. One item's failure is
-// that item's outcome.
+// that item's outcome. The ledger applies them together (ApplyBulk), in
+// round trips that don't grow with their number.
 func (h *Handler) bulkReview(w http.ResponseWriter, r *http.Request, verb string, build func(ledger.Meta, string, int) ledger.Command) {
 	p, key, e := h.commandStart(r)
 	if e != nil {
@@ -323,23 +324,28 @@ func (h *Handler) bulkReview(w http.ResponseWriter, r *http.Request, verb string
 		return
 	}
 	scope := p.scope.Narrow(sp.SpaceID)
-	out := bulkResult{Items: make([]bulkItem, 0, len(req.Items))}
+	out := bulkResult{Items: make([]bulkItem, len(req.Items))}
+	var cmds []ledger.Command
+	var at []int // each command's item
 	seen := map[string]bool{}
-	for _, it := range req.Items {
+	for i, it := range req.Items {
 		ref := strings.TrimSpace(it.Memory)
-		item := bulkItem{Memory: it.Memory}
+		out.Items[i] = bulkItem{Memory: it.Memory}
 		if ref == "" || seen[strings.ToUpper(ref)] || it.Version < 0 {
-			item.Outcome, item.Error = bulkFailed, &bulkError{Code: codeInvalidRequest,
+			out.Items[i].Outcome, out.Items[i].Error = bulkFailed, &bulkError{Code: codeInvalidRequest,
 				Message: "Name each memory once, by display ID or id."}
-			out.Items, out.Failed = append(out.Items, item), out.Failed+1
+			out.Failed++
 			continue
 		}
 		seen[strings.ToUpper(ref)] = true
 		meta := p.meta(scope, bulkKey(key, verb, ref), req.commandFields)
-		res, err := h.ledger.Apply(r.Context(), build(meta, ref, it.Version))
+		cmds, at = append(cmds, build(meta, ref, it.Version)), append(at, i)
+	}
+	for k, br := range h.ledger.ApplyBulk(r.Context(), cmds) {
+		item, res := &out.Items[at[k]], br.Result
 		switch {
-		case err != nil:
-			ae := h.fromLedger(r, err)
+		case br.Err != nil:
+			ae := h.fromLedger(r, br.Err)
 			item.Outcome, item.Error = bulkFailed, &bulkError{Code: ae.code, Message: ae.message, Details: ae.details}
 			out.Failed++
 		case res.Outcome == ledger.OutcomeRefused:
@@ -353,7 +359,6 @@ func (h *Handler) bulkReview(w http.ResponseWriter, r *http.Request, verb string
 		if res.Memory != nil {
 			item.Ref, item.State, item.Version = res.Memory.Ref, res.Memory.State, res.Memory.Version
 		}
-		out.Items = append(out.Items, item)
 	}
 	writeData(w, http.StatusOK, out)
 }

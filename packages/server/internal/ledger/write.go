@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -769,32 +768,17 @@ func (w *writer) earlierClaim(ctx context.Context, spaceID uuid.UUID, inserted b
 	if inserted {
 		return nil, nil
 	}
-	actorID := w.actorID()
-	var command string
-	var hash []byte
-	var outcome *string
-	c := &claimed{}
+	stored := &storedClaim{}
 	err := w.tx.QueryRow(ctx, `
 		SELECT command, request_hash, outcome, policy, object_id, receipt_ids
 		  FROM v2.command_keys
 		 WHERE space_id = $1 AND actor_kind = $2 AND actor_id IS NOT DISTINCT FROM $3 AND idempotency_key = $4`,
-		spaceID, string(w.meta.Actor.Kind), actorID, w.meta.IdempotencyKey,
-	).Scan(&command, &hash, &outcome, &c.policy, &c.objectID, &c.receiptIDs)
+		spaceID, string(w.meta.Actor.Kind), w.actorID(), w.meta.IdempotencyKey,
+	).Scan(&stored.command, &stored.hash, &stored.outcome, &stored.policy, &stored.objectID, &stored.receiptIDs)
 	if err != nil {
 		return nil, fmt.Errorf("ledger: read idempotency key: %w", err)
 	}
-	// Forget purges the stored hash of a command that carried the words it
-	// forgot (it could confirm a guess of them); such a key replays its
-	// original result for the same command.
-	if command != string(w.command) || (hash != nil && !bytes.Equal(hash, w.hash)) {
-		return nil, fmt.Errorf("%w: key %q was used for another %s; send a new key for a new command",
-			ErrIdempotencyKeyReused, w.meta.IdempotencyKey, command)
-	}
-	if outcome == nil {
-		return nil, errors.New("ledger: idempotency record without an outcome")
-	}
-	c.outcome = Outcome(*outcome)
-	return c, nil
+	return matchClaim(w.meta.IdempotencyKey, w.command, w.hash, stored)
 }
 
 // record stores the result against the idempotency key.

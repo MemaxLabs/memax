@@ -42,6 +42,15 @@ export interface DaemonApi {
     key: string,
     signal?: AbortSignal,
   ): Promise<V2.CompileLoadResult>;
+  /** The space's conditions, for its machines to check (checks.ts). */
+  conditions(space: string, signal?: AbortSignal): Promise<V2.SpaceConditions>;
+  /** Reports a check run: results only, never a file's contents. */
+  reportChecks(
+    space: string,
+    input: V2.CheckRunInput,
+    key: string,
+    signal?: AbortSignal,
+  ): Promise<V2.CheckRunResult>;
 }
 
 /** No single request may hold the loop up for longer than this. */
@@ -146,6 +155,16 @@ export function sdkDaemonApi(memax: Memax): DaemonApi {
     recordCompileLoad: (space, input, key, outer) =>
       timed(outer, (signal) =>
         memax.v2.reads.recordCompileLoad(space, input, {
+          idempotencyKey: key,
+          via: "cli",
+          signal,
+        }),
+      ),
+    conditions: (space, outer) =>
+      timed(outer, (signal) => memax.v2.checks.conditions(space, { signal })),
+    reportChecks: (space, input, key, outer) =>
+      timed(outer, (signal) =>
+        memax.v2.checks.report(space, input, {
           idempotencyKey: key,
           via: "cli",
           signal,

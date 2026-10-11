@@ -6,6 +6,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { failureOf, type DaemonApi } from "./api.js";
+import { CheckReporter, RepoChecker, type CheckTiming } from "./checks.js";
 import { LoadReporter } from "./loads.js";
 import {
   ControlServer,
@@ -44,6 +45,8 @@ export interface DaemonOptions {
   hooks?: FsHooks;
   /** How often the warm cache may fetch a space's forgets and gates (tests). */
   warmRefreshMs?: number;
+  /** The checks' cadence (checks.ts; tests). */
+  checks?: Partial<CheckTiming>;
   /** Called after a stop request, once everything is closed. */
   onStopped?(): void;
 }
@@ -52,6 +55,8 @@ interface Repo {
   link: LinkedRepo;
   delivery: RepoDelivery;
   watcher: RepoWatcher;
+  /** Its conditions against the committed tree, apart from its delivery. */
+  checker: RepoChecker;
 }
 
 interface Space {
@@ -109,6 +114,7 @@ export class Daemon {
   /** The session-start hook's cache: compiles, forgets and gates per space. */
   readonly warm: WarmCache;
   private readonly loads: LoadReporter;
+  private readonly reports: CheckReporter;
   private repos = new Map<string, Repo>();
   private spaces = new Map<string, Space>();
   private home: Home | null = null;
@@ -130,6 +136,11 @@ export class Daemon {
       minRefreshMs: o.warmRefreshMs,
     });
     this.loads = new LoadReporter({ paths: o.paths, api: o.api, log: o.log });
+    this.reports = new CheckReporter({
+      paths: o.paths,
+      api: o.api,
+      log: o.log,
+    });
   }
 
   /** Takes the lock and starts polling, watching and serving. */
@@ -142,10 +153,14 @@ export class Daemon {
     this.reload();
     // What an earlier pass (syncOnce) added before the daemon started.
     for (const s of this.spaces.values()) s.feed.start();
-    for (const r of this.repos.values()) r.watcher.start();
+    for (const r of this.repos.values()) {
+      r.watcher.start();
+      r.checker.start();
+    }
     this.home?.feed.start();
     this.home?.watcher.start();
     this.loads.start();
+    this.reports.start();
     try {
       this.dirWatch = watch(
         this.o.paths.dir,
@@ -226,7 +241,16 @@ export class Daemon {
       this.o.log,
       this.o.watch,
     );
-    this.repos.set(link.root, { link, delivery, watcher });
+    const checker = new RepoChecker({
+      link,
+      api: this.o.api,
+      paths: this.o.paths,
+      log: this.o.log,
+      deviceId: this.o.deviceId,
+      reporter: this.reports,
+      timing: this.o.checks,
+    });
+    this.repos.set(link.root, { link, delivery, watcher, checker });
     let space = this.spaces.get(link.space_id);
     if (!space) {
       space = {
@@ -238,7 +262,10 @@ export class Daemon {
       if (this.running) space.feed.start();
     }
     space.roots.add(link.root);
-    if (this.running) watcher.start();
+    if (this.running) {
+      watcher.start();
+      checker.start();
+    }
     space.feed.wake();
     this.o.log.info("watching a repository", {
       root: link.root,
@@ -431,6 +458,7 @@ export class Daemon {
     if (!repo) return;
     repo.watcher.stop();
     repo.delivery.stop();
+    void repo.checker.stop();
     this.repos.delete(root);
     if (forget) this.state.forgetRepo(root);
     const space = this.spaces.get(repo.link.space_id);
@@ -452,7 +480,13 @@ export class Daemon {
           const space = this.spaces.get(spaceId);
           if (!space) return { busy: false };
           this.warm.setTargets(spaceId, space.slug, targets);
-          if (info.changed) this.warm.requestRefresh(spaceId, space.slug);
+          if (info.changed) {
+            this.warm.requestRefresh(spaceId, space.slug);
+            // Its conditions may have changed: every change to them
+            // writes a receipt, which moves the space's change token.
+            for (const root of space.roots)
+              this.repos.get(root)?.checker.conditionsChanged();
+          }
           if (space.lastError) {
             this.o.log.info("reached the space again", { space: space.slug });
             space.lastError = undefined;
@@ -560,6 +594,11 @@ export class Daemon {
     return this.snapshot();
   }
 
+  /** Runs a repository's checks now (tests, and `memax status`'s view of them). */
+  checker(root: string): RepoChecker | undefined {
+    return this.repos.get(root)?.checker;
+  }
+
   /** Checks one file now, as a watcher event would (tests). */
   async checkFile(root: string, path: string): Promise<void> {
     const home = this.home?.link.home === root ? this.home : undefined;
@@ -591,6 +630,8 @@ export class Daemon {
     await Promise.all([...this.spaces.values()].map((s) => s.feed.stop()));
     await this.home?.feed.stop();
     await this.loads.stop();
+    await Promise.all([...this.repos.values()].map((r) => r.checker.stop()));
+    await this.reports.stop();
     await this.warm.stop();
     for (const r of [
       ...this.repos.values(),

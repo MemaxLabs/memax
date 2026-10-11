@@ -380,10 +380,11 @@ func TestAPIRoundTrips(t *testing.T) {
 	// stale-detection design's 4), however many results it carries; one
 	// that flags adds the receipts, flags and targets to the run's round
 	// trip, then River's insert and its notification, however many it
-	// flags.
+	// flags. A memory's page was 11 until its reads and forget requests
+	// went out together in one ReadBatch, beside nothing else.
 	budgets := map[string]int{
 		"/v2 memory list":                   5,
-		"/v2 memory get":                    11,
+		"/v2 memory get":                    6,
 		"/v2 review queue":                  6,
 		"/v2 Brief":                         5,
 		"/v2 Keep (+ jobs)":                 13,

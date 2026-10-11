@@ -783,17 +783,26 @@ func (l *Ledger) ForgetRequests(ctx context.Context, scope Scope, memoryID uuid.
 		return nil, ErrDisabled
 	}
 	var out []ForgetRequest
-	err := l.Read(ctx, scope, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, forgetRequestSelect+`
-			 WHERE f.memory_id = $1 AND f.space_id = ANY ($2) AND f.status = 'waiting' ORDER BY f.created_at`, memoryID, scope.SpaceIDs())
-		if err != nil {
-			return fmt.Errorf("ledger: forget requests: %w", err)
-		}
-		out, err = pgx.CollectRows(rows, scanForgetRequest)
-		return err
-	})
+	b := &pgx.Batch{}
+	queueForgetRequests(b, &out, memoryID, scope.SpaceIDs())
+	err := l.ReadBatch(ctx, scope, b)
 	if out == nil {
 		out = []ForgetRequest{}
 	}
 	return out, err
+}
+
+// queueForgetRequests queues the forget requests waiting on a memory in
+// spaces; out is filled in when b's results are read.
+func queueForgetRequests(b *pgx.Batch, out *[]ForgetRequest, memoryID uuid.UUID, spaces []uuid.UUID) {
+	b.Queue(forgetRequestSelect+`
+		 WHERE f.memory_id = $1 AND f.space_id = ANY ($2) AND f.status = 'waiting' ORDER BY f.created_at`, memoryID, spaces).
+		Query(func(rows pgx.Rows) error {
+			got, err := pgx.CollectRows(rows, scanForgetRequest)
+			if err != nil {
+				return fmt.Errorf("ledger: forget requests: %w", err)
+			}
+			*out = got
+			return nil
+		})
 }

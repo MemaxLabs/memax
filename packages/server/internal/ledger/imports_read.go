@@ -141,12 +141,25 @@ func scanImport(row pgx.Row) (*Import, error) {
 
 // countImport fills an import's counts by outcome and its conflicts.
 func countImport(ctx context.Context, tx pgx.Tx, imp *Import) error {
-	rows, err := tx.Query(ctx, `
-		SELECT outcome, count(*) FROM v2.import_items WHERE import_id = $1 AND space_id = $2 GROUP BY outcome`,
-		imp.ID, imp.SpaceID)
+	rows, err := tx.Query(ctx, importCountsSQL, imp.ID, imp.SpaceID)
 	if err != nil {
 		return fmt.Errorf("ledger: count import: %w", err)
 	}
+	if err := scanImportCounts(rows, &imp.Counts); err != nil {
+		return err
+	}
+	return tx.QueryRow(ctx, importConflictsSQL, imp.ID, imp.SpaceID).Scan(&imp.Counts.Conflicts)
+}
+
+// importCountsSQL counts an import's items by outcome, and
+// importConflictsSQL its conflicts.
+const (
+	importCountsSQL    = `SELECT outcome, count(*) FROM v2.import_items WHERE import_id = $1 AND space_id = $2 GROUP BY outcome`
+	importConflictsSQL = `SELECT count(*) FROM v2.import_conflicts WHERE import_id = $1 AND space_id = $2`
+)
+
+// scanImportCounts reads importCountsSQL's answer into counts.
+func scanImportCounts(rows pgx.Rows, counts *ImportCounts) error {
 	defer rows.Close()
 	for rows.Next() {
 		var o ImportOutcome
@@ -156,20 +169,19 @@ func countImport(ctx context.Context, tx pgx.Tx, imp *Import) error {
 		}
 		switch o {
 		case ImportProposed:
-			imp.Counts.Proposed = n
+			counts.Proposed = n
 		case ImportFolded:
-			imp.Counts.Folded = n
+			counts.Folded = n
 		case ImportExisting:
-			imp.Counts.Existing = n
+			counts.Existing = n
 		case ImportRefused:
-			imp.Counts.Refused = n
+			counts.Refused = n
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("ledger: count import: %w", err)
 	}
-	return tx.QueryRow(ctx, `SELECT count(*) FROM v2.import_conflicts WHERE import_id = $1 AND space_id = $2`,
-		imp.ID, imp.SpaceID).Scan(&imp.Counts.Conflicts)
+	return nil
 }
 
 // importSummary reads one import's summary and counts.

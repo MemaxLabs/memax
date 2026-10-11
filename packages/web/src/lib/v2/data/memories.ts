@@ -27,8 +27,16 @@ export type MemoryNote =
       /** The agent waiting on the answer, a registry key. */
       askedBy: string | null;
     }
-  /** "Its source changed on Sep 11 · PR #198" */
-  | { kind: "stale"; changedAt: string; source: string | null }
+  /**
+   * "Its source changed on Sep 11 · PR #198" (`source`), or "Its date to
+   * check again has passed" (`date`).
+   */
+  | {
+      kind: "stale";
+      cause: StaleCauseKind;
+      changedAt: string;
+      source: string | null;
+    }
   /** "Merged into M-0219 by Dream" */
   | { kind: "merged"; into: string; by: Actor | null }
   /** "No agent has read it in 60 days. Restore it, or let it rest." */
@@ -171,6 +179,68 @@ export interface MemoryRecord {
    * leaves it out. Absent or empty is everywhere.
    */
   repos?: string[];
+}
+
+/** Why a memory is stale, as its marks say it: a date that passed, or a source that changed. */
+export type StaleCauseKind = "date" | "source";
+
+/** One line of a diff of a cited file, as VerifyStale shows it. */
+export interface HunkLine {
+  op: "del" | "add" | "eq";
+  text: string;
+}
+
+/**
+ * Why a memory is stale, said as data (VerifyStale's "What changed"):
+ * its date to check again passed, or a pull request changed the file it
+ * cites (with the lines around it, when they can be shown).
+ */
+export type StaleCause =
+  | { kind: "date"; staleAfter: string }
+  | {
+      kind: "source";
+      /** "PR #198". */
+      ref: string;
+      title: string | null;
+      by: Actor | null;
+      at: string;
+      hunk: { path: string; lines: HunkLine[] } | null;
+    };
+
+/**
+ * GET /v2/memories/{ref}/stale as VerifyStale reads it: the words being
+ * verified and their version (the If-Match), who flagged it and when,
+ * the keep before it and the reads since, and why.
+ */
+export interface StaleWhy {
+  ref: string;
+  version: number;
+  statement: string;
+  kind: "fact" | "decision";
+  /** False once someone answered it. */
+  stale: boolean;
+  /** When it was flagged ("Stale since Sep 11"); null when the source can't say. */
+  since: string | null;
+  flaggedBy: Actor | null;
+  /** Its latest keep, or verification, for the receipt under the words. */
+  kept: { by: Actor | null; at: string; action: "kept" | "verified" } | null;
+  /** Agents' reads since that keep; null when they couldn't be counted. */
+  readsSince: number | null;
+  causes: StaleCause[];
+  /** Words a source suggests for "Update it", and who suggested them from what. */
+  suggestion: { statement: string; by: Actor; from: string } | null;
+}
+
+/** A person's answer to a stale flag (spec VerifyAnswer). */
+export type VerifyAnswer = "still_true" | "update" | "forget";
+
+export interface VerifyResult {
+  ref: string;
+  answer: VerifyAnswer;
+  /** The memory's version after it (its next If-Match). */
+  version: number;
+  /** The receipt Undo addresses; null for forget, which nothing undoes. */
+  receipt: string | null;
 }
 
 /** Why a memory goes with another one's Forget (spec CarryReason). */
@@ -386,6 +456,29 @@ export interface MemoriesSource {
     ref: string;
     idempotencyKey: string;
   }): Promise<void>;
+  /** Why a memory is stale (VerifyStale); null when there's no such memory. */
+  stale(input: {
+    space: SpaceSummary;
+    ref: string;
+    signal?: AbortSignal;
+  }): Promise<StaleWhy | null>;
+  /**
+   * Answer a stale flag from `version` (If-Match): still true, new words
+   * (`statement`), or forget it (with `carries` and `note`, as Forget).
+   * A failure throws (see command-error.ts).
+   */
+  verify(input: {
+    space: SpaceSummary;
+    ref: string;
+    version: number;
+    answer: VerifyAnswer;
+    statement?: string;
+    carries?: string[];
+    note?: string;
+    idempotencyKey: string;
+  }): Promise<VerifyResult>;
+  /** The demo's report, on hand for the first render. */
+  peekStale?(slug: string, ref: string): StaleWhy | null | undefined;
   /** A forgotten memory's tombstone; null when it isn't forgotten. */
   tombstone(input: {
     space: SpaceSummary;

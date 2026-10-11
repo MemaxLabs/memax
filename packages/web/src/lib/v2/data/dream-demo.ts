@@ -211,6 +211,7 @@ function edition214(): DreamEditionView {
       ),
       note: {
         kind: "stale",
+        cause: "source",
         changedAt: on("2026-09-11", "09:20"),
         source: "PR #198",
       },

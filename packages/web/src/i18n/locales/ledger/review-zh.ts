@@ -111,7 +111,6 @@ export const ledgerReviewZh: Translations["ledger"]["review"] = {
     staleDetail: "{name} 在{when}把它标成了过时。对照来源核对一下。",
     conflictDetail: "它和另一条保留的记忆矛盾。对比两边，定下来。",
     verify: "核对",
-    verifyLater: "核对过时的事实暂时还不能用",
     open: "打开这条记忆",
   },
   touches: {

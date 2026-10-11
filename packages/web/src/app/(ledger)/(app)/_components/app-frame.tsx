@@ -27,6 +27,7 @@ import { ShortcutsSheet } from "./shortcuts-sheet";
 import { SpaceMenu } from "./space-menu";
 import { SpaceNotFound } from "./status";
 import { ToastProvider, ToastViewport } from "./toasts";
+import { VerifyStale } from "./verify-stale";
 import styles from "./app-frame.module.css";
 
 /**
@@ -167,7 +168,11 @@ function FrameReady({
           {missing ? (
             <SpaceNotFound slug={missingSlug} fallback={space} />
           ) : (
-            <SpaceViewContext value={view}>{children}</SpaceViewContext>
+            <SpaceViewContext value={view}>
+              {children}
+              {/* Verify reads the place's view (its space, clock and zone). */}
+              <VerifyStale />
+            </SpaceViewContext>
           )}
         </Shell>
       </SpaceMenu>

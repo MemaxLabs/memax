@@ -112,6 +112,7 @@ export function briefMemoryOf(
     source: item.source,
     scope: scopeOf(memory),
     changed: null,
+    staleCause: item.note?.kind === "stale" ? item.note.cause : null,
   };
 }
 

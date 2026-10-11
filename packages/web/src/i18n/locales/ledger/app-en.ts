@@ -429,6 +429,8 @@ export const ledgerAppEn = {
       "memory.forget": "Forget",
       "today.review": "Start review, on Today",
       "dream.resolve": "Resolve the conflict, on a Dream edition",
+      "verify.choose": "Choose what's true now, verifying a stale fact",
+      "verify.answer": "Answer, verifying a stale fact",
       "memories.remember": "Remember, on Memories",
       "command.keep": "Keep the answer in Ask, or your Brief edits",
       "review.stopWaiting": "Stop waiting for the check, in Review",

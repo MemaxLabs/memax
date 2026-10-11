@@ -52,11 +52,12 @@ test("the Brief: facts in order, receipts in the margin, where it compiles", asy
     "Read this week",
     "Sources",
   ]);
-  // The stale fact's Verify says why it isn't available yet.
-  await expect(page.getByRole("button", { name: "Verify" })).toHaveAttribute(
-    "title",
-    /isn't available yet/,
-  );
+  // The stale fact's Verify opens VerifyStale over the Brief.
+  await page.getByRole("button", { name: "Verify" }).click();
+  const verify = page.getByRole("dialog", { name: "Verify M-0187" });
+  await expect(verify).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(verify).toBeHidden();
   // D2/D3: AGENTS.md is canonical; ChatGPT is live, never "in sync".
   const compiled = page.getByRole("region", { name: "Compiled to" });
   await expect(compiled.getByRole("link")).toHaveText([

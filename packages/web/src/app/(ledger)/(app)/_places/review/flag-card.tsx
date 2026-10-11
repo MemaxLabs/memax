@@ -3,15 +3,17 @@
 import { AgentStamp, Button, MemoryText, StateMark } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import type { ReviewItem } from "@/lib/v2/data/review";
+import { useKeycap } from "@/lib/v2/keymap/react";
 import { StatementText } from "../../_components/statement-text";
+import { useOverlays } from "../../_lib/overlays";
 import type { RecordsView } from "../records-view";
 import styles from "./review.module.css";
 
 /**
- * A kept memory in the queue because it was flagged: stale (Dream saw
- * its source change) or in conflict. It isn't a proposal, so there's
- * nothing to keep: stale facts are verified (V, from the memory's page,
- * once Verify lands) and conflicts are compared (C).
+ * A kept memory in the queue because it was flagged: stale (its date to
+ * check again passed, or its source changed) or in conflict. It isn't a
+ * proposal, so there's nothing to keep: stale facts are verified (V,
+ * VerifyStale) and conflicts are compared (C).
  */
 export function FlagCard({
   view,
@@ -28,6 +30,8 @@ export function FlagCard({
   const stale = item.state === "stale";
   const when = view.time(item.at);
   const memoryHref = `/${encodeURIComponent(space.slug)}/memories/${encodeURIComponent(item.ref)}`;
+  const { openVerify } = useOverlays();
+  const verifyKey = useKeycap("memory.verify");
   return (
     <article className="mx-review is-focused" tabIndex={-1}>
       <header className="mx-review-head">
@@ -59,9 +63,8 @@ export function FlagCard({
             <Button
               variant="secondary"
               size="sm"
-              kbd="V"
-              disabled
-              disabledReason={f.verifyLater}
+              kbd={verifyKey}
+              onClick={() => openVerify(item.ref)}
             >
               {f.verify}
             </Button>

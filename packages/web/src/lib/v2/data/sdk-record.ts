@@ -110,6 +110,10 @@ export function flagOf(r: V2.Receipt): LineageFlag | null {
   if (r.source?.kind === "memory") {
     return { kind: "conflict", with: r.source.ref || null };
   }
+  // The checker's and the date sweep's flags cite what they checked.
+  if (["check", "commit", "pr", "date"].includes(r.source?.kind ?? "")) {
+    return { kind: "stale" };
+  }
   const reason = r.reason?.trim() ?? "";
   const contradicts = /^Contradicts (M-\d+)/.exec(reason);
   if (contradicts) return { kind: "conflict", with: contradicts[1] ?? null };

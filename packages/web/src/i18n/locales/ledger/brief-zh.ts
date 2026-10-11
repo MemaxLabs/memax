@@ -15,11 +15,10 @@ export const ledgerBriefZh: Translations["ledger"]["brief"] = {
     edit: "编辑",
     editViewer: "查看者可以提议，成员才能编辑简报。",
     verify: "核对",
-    verifyLater:
-      "暂时还不能对照来源核对过时的事实。在那之前，可以直接编辑它，或者先留着标记。",
     wrote: "写下",
     inReview: "在审阅中",
     sourceChanged: "来源有变",
+    datePassed: "到了核对的日子",
     scope: "适用于 {paths}",
     factLabel: "{ref}，{state}",
     states: {

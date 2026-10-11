@@ -127,12 +127,13 @@ export function createDemoBrief({
       let next = edit
         ? { ...m, text: edit.statement, version: edit.version, changed: null }
         : m;
-      if (done?.outcome === "kept") {
+      if (done?.outcome === "kept" || done?.outcome === "verified") {
         next = {
           ...next,
           state: "kept",
           lifecycle: "kept",
-          receipt: { by: YOU, action: "kept", at: stamp },
+          receipt: { by: YOU, action: done.outcome, at: stamp },
+          staleCause: null,
         };
       }
       return [next];

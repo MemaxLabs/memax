@@ -86,6 +86,7 @@ const NOTES: Record<string, MemoryNote> = {
   "M-0431": { kind: "conflict", with: "M-0174", keptBy: JY, askedBy: null },
   "M-0187": {
     kind: "stale",
+    cause: "source",
     changedAt: at("10:20", "2026-09-11"),
     source: "PR #198",
   },

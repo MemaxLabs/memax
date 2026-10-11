@@ -30,6 +30,7 @@ const MARKS: Partial<Record<LineageEntry["action"], MarkState>> = {
   faded: "faded",
   forgot: "forgotten",
   restored: "kept",
+  verified: "kept",
   returned: "conflict",
 };
 
@@ -76,7 +77,7 @@ function title(view: RecordsView, entry: LineageEntry): string {
           return interpolate(t.flaggedBare, { name });
       }
     case "verified":
-      return t.verified;
+      return you ? t.verifiedYou : interpolate(t.verified, { name });
     case "faded":
       return t.faded;
     case "compiled":

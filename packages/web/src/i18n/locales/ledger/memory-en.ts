@@ -36,6 +36,7 @@ export const ledgerMemoryEn = {
   page: {
     eyebrow: "Memories · {space} · {section}",
     edit: "Edit",
+    verify: "Verify",
     move: "Move to space",
     moveLater: "Moving a memory to another space isn't available yet",
     cite: "Copy citation",
@@ -112,7 +113,8 @@ export const ledgerMemoryEn = {
       flaggedConflictBare: "Flagged by {name} as a conflict",
       flaggedBare: "Flagged by {name}",
       resolved: "Settled by {name}",
-      verified: "Checked against the code",
+      verified: "Verified by {name}",
+      verifiedYou: "Verified by you",
       faded: "Faded",
       restored: "Restored by {name}",
       forgot: "Forgotten by {name}",

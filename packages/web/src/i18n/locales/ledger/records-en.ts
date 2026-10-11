@@ -76,6 +76,7 @@ export const ledgerRecordsEn = {
     conflictAsked: "{agent} asked you to decide.",
     stale: "Its source changed on {date}",
     staleSource: "Its source changed on {date} · {source}",
+    staleDate: "Its date to check again has passed",
     merged: "Merged into {ref} by {name}",
     faded: "No agent has read it in {n} days. Restore it, or let it rest.",
   },
@@ -122,6 +123,7 @@ export const ledgerRecordsEn = {
     declineForget: "{ref} wasn't kept.",
     // Where a memory applies (scope.repos) didn't change.
     scope: "{ref} still applies where it did.",
+    verify: "{ref} wasn't verified.",
     // 409 forget_carries: what goes with it changed after the person confirmed.
     carriesChanged:
       "What goes with it changed since you confirmed, so nothing was forgotten. Check it again, then forget it.",
@@ -182,6 +184,8 @@ export const ledgerRecordsEn = {
         "Only the agent that asked, the person it works for, or someone who can answer it can withdraw it.",
       space_on_v1:
         "{space} is still on V1, so nothing here changes until it switches to V2. Its owner switches it from its Today.",
+      verify_by_person:
+        "Only a person verifies it. Sign in as yourself, not with an agent's key.",
       other: "Memax refused it: {message}",
       otherBare: "Memax refused it.",
     },
@@ -225,6 +229,9 @@ export const ledgerRecordsEn = {
       resolve: "Undid the settlement. {ref} is back in Review as a conflict.",
       fold: "Unfolded {ref}. It's back in Review.",
       remember: "Undid remembering {ref}. It's withdrawn.",
+      verify: "Undid the verification. {ref} is stale again.",
+      verifyUpdate:
+        "Undid the update. {ref} reads as it did, and is stale again.",
     },
     // Why an undo didn't go through, by spec UndoRefusal and policy code.
     refused: {

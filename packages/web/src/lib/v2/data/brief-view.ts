@@ -8,6 +8,7 @@ import {
   type BriefStructure,
   type BriefView,
 } from "./brief";
+import type { StaleCauseKind } from "./memories";
 import type { Section } from "./types";
 
 /**
@@ -34,6 +35,8 @@ export interface BriefInputMemory {
   scope: string[];
   /** The words the latest version changed, when the source knows. */
   changed?: string | null;
+  /** Why a stale one is stale, for its margin; null when it isn't, or unknown. */
+  staleCause?: StaleCauseKind | null;
 }
 
 /** The compiler's headings for well-known sections the Brief doesn't have yet. */
@@ -71,6 +74,7 @@ function memoryRow(
     source: m.source,
     scope: m.scope,
     changed: m.changed ?? null,
+    staleCause: m.state === "stale" ? (m.staleCause ?? null) : null,
   };
 }
 

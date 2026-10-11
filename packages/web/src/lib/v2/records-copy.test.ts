@@ -88,10 +88,20 @@ describe("row notes (Memories.png)", () => {
     [
       {
         kind: "stale" as const,
+        cause: "source" as const,
         changedAt: at("16:00", "2026-09-11"),
         source: "PR #198",
       },
       "Its source changed on Sep 11 · PR #198",
+    ],
+    [
+      {
+        kind: "stale" as const,
+        cause: "date" as const,
+        changedAt: at("03:12", "2026-10-05"),
+        source: null,
+      },
+      "Its date to check again has passed",
     ],
     [
       {

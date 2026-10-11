@@ -112,7 +112,9 @@ export function marginLine(
     row.kind === "waiting"
       ? b.page.inReview
       : row.state === "stale"
-        ? b.page.sourceChanged
+        ? row.staleCause === "date"
+          ? b.page.datePassed
+          : b.page.sourceChanged
         : row.source;
   return { ids: row.ref ?? "", rest, conflict: false };
 }

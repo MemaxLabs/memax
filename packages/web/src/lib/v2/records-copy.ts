@@ -195,6 +195,7 @@ export function noteText(
       return joinSentences([first, asked], locale);
     }
     case "stale": {
+      if (note.cause === "date") return n.staleDate;
       const date = formatShortDate(new Date(note.changedAt), timeZone, locale);
       return note.source
         ? interpolate(n.staleSource, { date, source: note.source })
@@ -220,7 +221,8 @@ export type FailedCommand =
   | "withdraw"
   | "forget"
   | "declineForget"
-  | "scope";
+  | "scope"
+  | "verify";
 
 function refusalReason(
   refused: Record<string, string>,
@@ -365,7 +367,15 @@ export function undoneText(
 ): string {
   const d = copy.undo.done;
   const template =
-    command === "edit" ? (kept ? d.editKeep : d.edit) : d[command];
+    command === "edit"
+      ? kept
+        ? d.editKeep
+        : d.edit
+      : command === "verify"
+        ? kept
+          ? d.verifyUpdate
+          : d.verify
+        : d[command];
   return interpolate(template, { ref });
 }
 

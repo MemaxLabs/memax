@@ -18,11 +18,10 @@ export const ledgerBriefEn = {
     edit: "Edit",
     editViewer: "Viewers can propose. A member edits the Brief.",
     verify: "Verify",
-    verifyLater:
-      "Checking a stale fact against its source isn't available yet. Until then, edit the fact or leave it marked.",
     wrote: "wrote",
     inReview: "in Review",
     sourceChanged: "source changed",
+    datePassed: "date passed",
     scope: "In {paths}",
     factLabel: "{ref}, {state}",
     states: {

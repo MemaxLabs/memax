@@ -11,7 +11,7 @@ import (
 var everyAction = []Action{
 	ActionRemember, ActionPropose, ActionKeep, ActionEdit, ActionReject, ActionForget,
 	ActionForgetSpace, ActionRequestForget, ActionDeclineForget, ActionReapplyForget,
-	ActionReviseBrief, ActionConfigureTarget, ActionRequestCompile, ActionRecordCompile, ActionReport, ActionPullDrift,
+	ActionReviseBrief, ActionConfigureTarget, ActionStopTarget, ActionRequestCompile, ActionRecordCompile, ActionReport, ActionPullDrift,
 	ActionJudge, ActionResolveConflict, ActionUndo,
 	ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate,
 	ActionRead, ActionAsk,
@@ -31,6 +31,7 @@ var passOnV1 = map[Action]string{
 	ActionRecordCompile: "Memax finishes compiles queued on V2 or by the switch",
 	ActionJudge:         "Memax finishes verdicts queued on V2 or by the switch's import",
 	ActionReport:        "a device reports what it did with files already compiled",
+	ActionStopTarget:    "stopping a file takes Memax off it and writes nothing, like unlinking a machine",
 }
 
 // TestSpaceOnV1 holds the rule for a space still on V1: every action is

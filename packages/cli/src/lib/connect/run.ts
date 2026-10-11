@@ -15,11 +15,23 @@
 //    AGENTS.md, so the shim is opt-in (the compiler's OPT_IN_TARGET_KINDS).
 // 5. Compile: in a linked repository whose files aren't in sync yet,
 //    compile once and write the files here.
+// 6. Home (personal-layer design §6.1, §7.2): on a machine whose home is
+//    linked (memax link --home), connect the agent to the Personal space
+//    too, and add its home file (Claude Code's rules file, Codex's block),
+//    or move it to the file the agent reads now; then deliver it. Outside
+//    a repository, the Personal space is the space.
 import type { Memax, V2 } from "memax-sdk";
 import type { DaemonPaths } from "../daemon/paths.js";
 import { findLinkedRepo } from "../daemon/registry.js";
 import { AGENTS, type AgentEntry } from "../init/agents.js";
 import { connectToSpaces } from "../init/connect.js";
+import { readHomeLink } from "../daemon/home-link.js";
+import {
+  connectHomeFile,
+  HOME_KIND,
+  linkedPersonal,
+  type HomeFileReport,
+} from "./home.js";
 import { handWritten } from "../init/finish.js";
 import type { CompileOutcome, McpOutcome } from "../init/types.js";
 import { gitRoot } from "../project-context.js";
@@ -60,6 +72,8 @@ export interface ConnectDeps {
     space: string,
     timeoutSeconds: number,
   ) => Promise<CompileOutcome | null>;
+  /** The person's shell, where CLAUDE_CONFIG_DIR and CODEX_HOME are set. */
+  env?: Record<string, string | undefined>;
 }
 
 export interface ConnectReport {
@@ -82,6 +96,16 @@ export interface ConnectReport {
     space?: string;
     autonomy?: V2.Autonomy;
     note?: string;
+  };
+  /** On a machine whose home is linked: the agent in the Personal space. */
+  personal?: {
+    state: "connected" | "already" | "on_sign_in";
+    space: string;
+    autonomy?: V2.Autonomy;
+  };
+  /** The agent's home file on this machine (Claude Code, Codex). */
+  home?: HomeFileReport & {
+    compile?: "compiled" | "timed_out" | "failed";
   };
   /** Gemini CLI only: the space's GEMINI.md shim. */
   shim?: {
@@ -171,6 +195,7 @@ export async function runConnect(
 
   // 3. The connection, in this repository's space.
   if (!d.hasCredentials()) return r;
+  const homeLink = readHomeLink(d.paths);
   let space: V2.Space;
   try {
     space = (
@@ -178,6 +203,14 @@ export async function runConnect(
         space: o.space,
         cwd: d.cwd,
         paths: d.paths,
+      }).catch((err) => {
+        // Outside a repository, the Personal space this home is linked to.
+        if (!(err instanceof SpaceChoiceError) || o.space || !homeLink)
+          throw err;
+        return resolveSpace(d.memax, {
+          space: homeLink.space_id,
+          paths: d.paths,
+        });
       })
     ).space;
   } catch (err) {
@@ -185,11 +218,30 @@ export async function runConnect(
     r.connection = { state: "no_space", note: err.message };
     return r;
   }
+  const personal =
+    homeLink && homeLink.space_id !== space.id
+      ? await linkedPersonal(d.memax, d.paths).catch(() => null)
+      : null;
   r.connection = { state: "on_sign_in", space: space.slug, autonomy: a.start };
   if (!a.connector) {
     const conn = (await d.memax.v2.agents.list()).items.find(
       (c) => c.agent === a.kind && c.state === "active",
     );
+    if (personal)
+      r.personal = {
+        state: "on_sign_in",
+        space: personal.slug,
+        autonomy: a.start,
+      };
+    if (conn && personal) {
+      const res = await connectToSpaces(d.memax, conn, a.start, [personal]);
+      if (res.autonomy)
+        r.personal = {
+          state: res.added > 0 ? "connected" : "already",
+          space: personal.slug,
+          autonomy: res.autonomy,
+        };
+    }
     if (conn) {
       const res = await connectToSpaces(d.memax, conn, a.start, [space]);
       r.connection = res.autonomy
@@ -236,6 +288,32 @@ export async function runConnect(
       targets = (await d.memax.v2.targets.list(space.id)).items;
       r.shim = { state: "created", path: "GEMINI.md" };
     }
+  }
+
+  // 6. The agent's home file, on a machine whose home is linked.
+  const homeKind = HOME_KIND[a.kind];
+  if (homeKind && homeLink) {
+    r.home = await connectHomeFile(homeKind, {
+      memax: d.memax,
+      paths: d.paths,
+      env: d.env ?? {},
+    });
+    if (
+      o.compile !== false &&
+      (r.home.state === "added" || r.home.state === "moved")
+    ) {
+      const out = await d.compile(
+        homeLink.space_slug,
+        Math.max(1, Number(o.timeout ?? 30)),
+      );
+      r.home.compile = !out
+        ? "failed"
+        : out.timedOut
+          ? "timed_out"
+          : "compiled";
+    }
+  } else if (homeKind) {
+    r.home = { state: "not_linked" };
   }
 
   // 5. A first compile, in a linked repository.

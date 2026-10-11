@@ -70,7 +70,27 @@ interface Home {
   lastError?: string;
   /** The layer is off because this machine was signed out. */
   signedOut: boolean;
+  /** The layer is off because the Personal space answered 404. */
+  gone: boolean;
 }
+
+/**
+ * A 404 from the API itself (`not_found`): the Personal space or this
+ * machine isn't there for this session (forgotten, deleted, another
+ * person's). Never a proxy's 404 or any other failure.
+ */
+function definitelyGone(err: unknown): boolean {
+  const f = failureOf(err);
+  return f.status === 404 && f.code === "not_found";
+}
+
+const OFF_LOG: Record<HomeOffReason, string> = {
+  unlinked: "took the Personal layer off this machine: it was unlinked",
+  signed_out: "took the Personal layer off this machine: it was signed out",
+  other_person:
+    "took the Personal layer off this machine: someone else signed in",
+  gone: "took the Personal layer off this machine: the Personal space isn't there any more",
+};
 
 /** A home file as home.json has it, for taking it off without a poll. */
 function offTarget(f: HomeFile): OffTarget {
@@ -120,6 +140,11 @@ export class Daemon {
     writeFileSync(this.o.paths.pid, `${process.pid}\n`, { mode: 0o600 });
     this.running = true;
     this.reload();
+    // What an earlier pass (syncOnce) added before the daemon started.
+    for (const s of this.spaces.values()) s.feed.start();
+    for (const r of this.repos.values()) r.watcher.start();
+    this.home?.feed.start();
+    this.home?.watcher.start();
     this.loads.start();
     try {
       this.dirWatch = watch(
@@ -262,6 +287,7 @@ export class Daemon {
       delivery,
       watcher,
       signedOut: false,
+      gone: false,
       feed: new PollingFeed(
         {
           fetch: (signal) =>
@@ -270,13 +296,14 @@ export class Daemon {
           onTargets: async (targets) => {
             this.reload();
             if (this.home !== home) return { busy: false };
-            if (home.lastError || home.signedOut) {
+            if (home.lastError || home.signedOut || home.gone) {
               this.o.log.info("reached the Personal space again", {
                 space: link.space_slug,
               });
             }
             home.lastError = undefined;
             home.signedOut = false;
+            home.gone = false;
             delivery.setError(undefined);
             const r = await delivery.sync(targets);
             watcher!.setPaths(delivery.trackedPaths());
@@ -284,6 +311,7 @@ export class Daemon {
           },
           onError: (err, retryInMs) => {
             if (this.home !== home) return;
+            if (definitelyGone(err)) this.homeGone();
             const f = failureOf(err);
             const message = errorMessage(f.status, f.code, link.space_slug);
             delivery.setError(message);
@@ -329,26 +357,22 @@ export class Daemon {
    * Takes the Personal layer off this machine now (personal-layer design
    * §6.6), from what this device wrote and nothing else: no request, so it
    * works signed out. Files and blocks with hand edits stay. `unlinked`
-   * also removes home.json; `signed_out` keeps it, so the next successful
-   * poll, after memax login, writes everything again.
+   * and `other_person` also remove home.json; `signed_out` and `gone` keep
+   * it, so the next poll that succeeds writes everything again.
    */
   async homeOff(reason: HomeOffReason): Promise<HomeSnapshot | null> {
     this.reloadHome();
     const home = this.home;
     if (!home) return null;
     if (reason === "signed_out") home.signedOut = true;
+    if (reason === "gone") home.gone = true;
     const results = await home.delivery.takeOff(home.link.files.map(offTarget));
-    this.o.log.info(
-      reason === "unlinked"
-        ? "took the Personal layer off this machine: it was unlinked"
-        : "took the Personal layer off this machine: it was signed out",
-      {
-        removed: results.filter((r) => r.state.endsWith("_removed")).length,
-        kept: results.filter((r) => r.state.endsWith("_kept")).length,
-      },
-    );
+    this.o.log.info(OFF_LOG[reason], {
+      removed: results.filter((r) => r.state.endsWith("_removed")).length,
+      kept: results.filter((r) => r.state.endsWith("_kept")).length,
+    });
     const snap = this.homeSnapshot(home);
-    if (reason === "unlinked") {
+    if (reason === "unlinked" || reason === "other_person") {
       removeHomeLink(this.o.paths);
       this.homeStamp = homeLinkStamp(this.o.paths);
       this.dropHome();
@@ -372,11 +396,27 @@ export class Daemon {
     );
   }
 
+  /**
+   * The Personal space answered a definitive 404: nothing is left to
+   * deliver, and its words mustn't stay on this machine. Once, until a poll
+   * succeeds again.
+   */
+  private homeGone(): void {
+    if (!this.home || this.home.gone) return;
+    this.home.gone = true;
+    void this.homeOff("gone").catch((err: Error) =>
+      this.o.log.error("couldn't take the Personal layer off", {
+        error: err.message,
+      }),
+    );
+  }
+
   private homeSnapshot(home: Home): HomeSnapshot {
     return {
       ...home.delivery.snapshot(),
       machine_id: home.link.machine_id,
       ...(home.signedOut ? { signed_out: true } : {}),
+      ...(home.gone ? { gone: true } : {}),
     };
   }
 
@@ -494,9 +534,14 @@ export class Daemon {
           home.link.machine_id,
         );
         home.signedOut = false;
+        home.gone = false;
         home.delivery.setError(undefined);
         await home.delivery.sync(targets);
       } catch (err) {
+        if (definitelyGone(err) && !home.gone) {
+          home.gone = true;
+          await this.homeOff("gone");
+        }
         const f = failureOf(err);
         home.delivery.setError(
           errorMessage(f.status, f.code, home.link.space_slug),

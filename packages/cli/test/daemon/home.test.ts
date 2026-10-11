@@ -331,6 +331,52 @@ describe("taking the layer off (§6.6)", () => {
     expect(read(m, CODEX)).toBe("- mine, below\n");
   });
 
+  it("a definitive 404 on the Personal space takes it off, home.json kept; a proxy's 404 or a 503 doesn't", async () => {
+    const m = await delivered();
+    const before = [RULES, CODEX, CANON].map((p) => read(m, p));
+    // A 404 that isn't the API's own answer, and a transient failure.
+    h.fake.fail(/\/targets$/, 404, "invalid_response");
+    await m.daemon.syncOnce();
+    h.fake.fail(/\/targets$/, 503, "unavailable");
+    await m.daemon.syncOnce();
+    expect([RULES, CODEX, CANON].map((p) => read(m, p))).toEqual(before);
+
+    // The space forgotten or deleted, or not this session's person's.
+    h.fake.fail(/\/targets$/, 404, "not_found", 1_000);
+    await m.daemon.syncOnce();
+    expect(existsSync(join(h.home, RULES))).toBe(false);
+    expect(existsSync(join(h.home, CANON))).toBe(false);
+    expect(read(m, CODEX)).toBe(MINE);
+    expect(readHomeLink(m.paths)).not.toBeNull();
+    expect(snap(m).gone).toBe(true);
+
+    // It answers again: the files come back.
+    h.fake.clearFaults();
+    await m.daemon.syncOnce();
+    expect(read(m, RULES)).toBe(rulesFile(PERSONAL_1));
+    expect(snap(m).gone).toBeUndefined();
+  });
+
+  // Polls back off on errors; 15 s leaves room for a few on a busy runner.
+  it(
+    "the running daemon's poll takes it off on that 404 too",
+    { timeout: 15_000 },
+    async () => {
+      const m = await delivered();
+      await m.daemon.start();
+      h.fake.fail(/./, 404, "not_found", 10_000);
+      await until(
+        () =>
+          !existsSync(join(h.home, CANON)) &&
+          !existsSync(join(h.home, RULES)) &&
+          read(m, CODEX) === MINE,
+        10_000,
+        "the layer off after a 404",
+      );
+      expect(readHomeLink(m.paths)).not.toBeNull();
+    },
+  );
+
   it("memax unlink --home: off over the control request, home.json gone", async () => {
     const m = await delivered();
     h.fake.unlinkMachine(m.machine.id);

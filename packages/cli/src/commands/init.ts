@@ -2,13 +2,14 @@
 // sign in, connect the agents, import what they already know as
 // proposals, settle what disagrees, and compile (plan 25 §7.3). The flow
 // is lib/init/run.ts; this file wires it to the machine.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import chalk from "chalk";
 import type { Command } from "commander";
 import { getClient, usesAPIKey } from "../lib/client.js";
-import { loadCredentials } from "../lib/credentials.js";
+import { getOrCreateDeviceID } from "../lib/config.js";
+import { currentPerson, loadCredentials } from "../lib/credentials.js";
 import { daemonPaths } from "../lib/daemon/paths.js";
 import { runGit } from "../lib/init/git.js";
 import { runInit } from "../lib/init/run.js";
@@ -21,9 +22,10 @@ import type {
 } from "../lib/init/types.js";
 import { ask, confirm, confirmDefault } from "../lib/prompt.js";
 import { cliVersion } from "../lib/version.js";
-import { compile, type CompileReport } from "./compile.js";
+import { compile, openOneShot, type CompileReport } from "./compile.js";
 import { startDaemon } from "./daemon-control.js";
 import { canOpenBrowser } from "../lib/device-login.js";
+import { linkHome } from "./link-home.js";
 import { signIn } from "./login.js";
 import { appBaseURL } from "./mcp-v2.js";
 import { getAgents } from "./setup.js";
@@ -141,6 +143,24 @@ export function initDeps(o: InitOptions): InitDeps {
         out: (l) => (o.format === "json" ? undefined : console.log(l)),
       })) === 0,
     compile: compileHere,
+    homeLink: (opts, io) => {
+      const memax = getClient();
+      const paths = daemonPaths();
+      return linkHome(opts, {
+        memax,
+        paths,
+        cwd: process.cwd(),
+        out: io.out,
+        interactive: io.interactive,
+        home: realpathSync(homedir()),
+        env: process.env,
+        platform: process.platform,
+        deviceId: getOrCreateDeviceID(),
+        personId: currentPerson(),
+        confirm: io.confirm,
+        oneShot: () => openOneShot({ memax, paths }),
+      });
+    },
     appUrl: appBaseURL(),
     version: cliVersion(),
     now: () => performance.now(),
@@ -171,6 +191,11 @@ export function registerInitCommand(program: Command): void {
       "--no-daemon",
       "Write the files once instead of starting the daemon",
     )
+    .option(
+      "--home",
+      "Write your Personal space into this machine's agents' own files too, without asking under --yes",
+    )
+    .option("--no-home", "Don't offer to link this machine's home")
     .option("--dry-run", "Show what would be uploaded, and upload nothing")
     .option("--wait <seconds>", "How long to wait for the judge", "20")
     .option("--timing", "Show how long each step took, against its budget")

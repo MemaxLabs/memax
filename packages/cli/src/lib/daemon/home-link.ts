@@ -25,6 +25,11 @@ export interface HomeLink {
   space_id: string;
   space_slug: string;
   machine_id: string;
+  /**
+   * The person it was linked for (their session's `sub`): memax login as
+   * someone else takes this person's layer off first.
+   */
+  person_id?: string;
   /** The home folder, a real path; every `abs` is inside it. */
   home: string;
   files: HomeFile[];
@@ -69,6 +74,9 @@ export function readHomeLink(paths: DaemonPaths): HomeLink | null {
     space_id: raw.space_id,
     space_slug: raw.space_slug,
     machine_id: raw.machine_id,
+    ...(typeof raw.person_id === "string" && raw.person_id !== ""
+      ? { person_id: raw.person_id }
+      : {}),
     home,
     files: raw.files.filter((f) => isHomeFile(home, f)),
     created_at: typeof raw.created_at === "string" ? raw.created_at : "",

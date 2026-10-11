@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import chalk from "chalk";
 import type { Memax, V2 } from "memax-sdk";
-import { controlRequest } from "../lib/daemon/control.js";
+import { controlRequest, type HomeOffReason } from "../lib/daemon/control.js";
 import {
   readHomeLink,
   removeHomeLink,
@@ -21,6 +21,13 @@ import {
   consentLines,
   planHomeFiles,
 } from "../lib/home/files.js";
+import {
+  applyTidy,
+  findTwice,
+  findV1,
+  tidyQuestion,
+  type Tidy,
+} from "../lib/home/tidy.js";
 import { compile } from "./compile.js";
 import { apiFailureMessage, MARK } from "./v2-output.js";
 
@@ -43,9 +50,11 @@ export interface HomeDeps {
   env: Record<string, string | undefined>;
   platform: NodeJS.Platform;
   deviceId: string;
+  /** Who is signed in (the session's `sub`), recorded in home.json. */
+  personId: string | null;
   hostname?: string;
-  /** Asks the consent's question (tests answer it). */
-  confirm(question: string): Promise<boolean>;
+  /** Asks a yes/no question; Enter takes `def` (tests answer it). */
+  confirm(question: string, def: boolean): Promise<boolean>;
   /** In-process delivery when no daemon runs (tests swap it). */
   oneShot?: () => Promise<OneShotDelivery | null>;
   /** A fixed wait between checks (tests). */
@@ -138,7 +147,7 @@ export async function linkHome(
     return 0;
   }
   if (o.yes) d.out("  proposals, and memax unlink --home takes them off.");
-  else if (!(await d.confirm(CONSENT_QUESTION))) {
+  else if (!(await d.confirm(CONSENT_QUESTION, true))) {
     d.out("");
     d.out(chalk.gray("  Nothing was linked or written."));
     d.out("");
@@ -159,6 +168,7 @@ export async function linkHome(
     space_id: space.id,
     space_slug: space.slug,
     machine_id: res.machine.id,
+    ...(d.personId ? { person_id: d.personId } : {}),
     home: d.home,
     files: approved.flatMap((f) => {
       const t = res.targets.find((x) => x.kind === f.kind && x.path === f.path);
@@ -175,7 +185,7 @@ export async function linkHome(
   // Start or wake the daemon, and wait for the first delivery, as memax
   // compile does.
   await controlRequest(d.paths, { cmd: "reload" }, 1_500);
-  return compile(
+  const code = await compile(
     { space: space.id, pending: true, timeout: o.timeout },
     {
       memax: d.memax,
@@ -186,6 +196,51 @@ export async function linkHome(
       pollMs: d.pollMs,
       onlyHome: link.machine_id,
     },
+  );
+  await tidyUp(link, space.slug, o, d);
+  return code;
+}
+
+/**
+ * The two tidy-ups (design §6.3), once the first files are on disk: lines
+ * that now load twice, and V1's instruction block. Each needs a yes, so
+ * never under --yes or without a terminal; then it only says what's there.
+ */
+async function tidyUp(
+  link: HomeLink,
+  space: string,
+  o: LinkHomeOptions,
+  d: HomeDeps,
+): Promise<void> {
+  const found = [...findTwice(link), ...findV1(d.home, d.env)];
+  if (found.length === 0) return;
+  d.out("");
+  if (o.yes || !d.interactive) {
+    for (const t of found) {
+      d.out(
+        chalk.gray(
+          t.kind === "v1"
+            ? `  ${t.label} still has Memax V1's instructions. Run memax link --home in a terminal to take them out.`
+            : `  ${t.lines} ${t.lines === 1 ? "line" : "lines"} in ${t.label} ${t.lines === 1 ? "loads twice now. Run memax link --home in a terminal to take it out." : "load twice now. Run memax link --home in a terminal to take them out."}`,
+        ),
+      );
+    }
+    return;
+  }
+  // Each kind read again after the one before it was applied: both may
+  // change ~/.claude/CLAUDE.md.
+  for (const find of [() => findTwice(link), () => findV1(d.home, d.env)])
+    for (const t of find()) await tidyOne(t, space, d);
+  d.out("");
+}
+
+async function tidyOne(t: Tidy, space: string, d: HomeDeps): Promise<void> {
+  if (!(await d.confirm(tidyQuestion(t, space), false))) return;
+  const r = await applyTidy(t, d.home);
+  d.out(
+    r === "done"
+      ? `  ${chalk.green(MARK.done)} ${t.kind === "v1" ? `Took V1's instructions out of ${t.label}` : `Took ${t.lines} ${t.lines === 1 ? "line" : "lines"} out of ${t.label}`}; the copy is in ~/.memax/backup/.`
+      : chalk.yellow(`  ${t.label} changed meanwhile, so it stays as it is.`),
   );
 }
 
@@ -214,7 +269,7 @@ export function offLines(
 /** Asks the running daemon, else this process, to take the layer off. */
 async function homeOffHere(
   d: Pick<UnlinkHomeDeps, "paths" | "oneShot">,
-  reason: "unlinked" | "signed_out",
+  reason: HomeOffReason,
 ): Promise<HomeSnapshot | null> {
   const ask = () =>
     controlRequest(
@@ -249,6 +304,27 @@ export async function homeSignedOut(
   );
   for (const line of offLines(link.home, snap, link)) d.out(line);
   d.out("");
+}
+
+/**
+ * memax login as someone other than the person this machine's home was
+ * linked for: their layer comes off before anything else (the same
+ * take-off as logout), and their link goes, since it isn't the new
+ * person's. The same person signing in again changes nothing. True when
+ * it took the layer off.
+ */
+export async function homeSwitchedPerson(
+  next: string | null,
+  d: Pick<UnlinkHomeDeps, "paths" | "oneShot" | "out">,
+): Promise<boolean> {
+  const link = readHomeLink(d.paths);
+  if (!link?.person_id || !next || next === link.person_id) return false;
+  await homeOffHere(d, "other_person");
+  if (readHomeLink(d.paths)) removeHomeLink(d.paths);
+  d.out(
+    "  Took the previous account's Personal space off this machine's home.",
+  );
+  return true;
 }
 
 export interface UnlinkHomeDeps {

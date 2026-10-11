@@ -1,0 +1,126 @@
+---
+title: Your Personal space on every machine
+description: memax link --home writes your Personal space into each agent's own files on this machine, so every session in every project starts with it.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+A repository's space compiles into the repository. Your Personal space
+holds what's true about you wherever you work: how you like answers, the
+tools you use, decisions you made for yourself. With a home link, Memax
+writes it into the files your agents read in every session, on every
+machine you link.
+
+```bash
+memax link --home [--name <machine>] [--dry-run] [--yes]
+memax unlink --home
+```
+
+`memax init` offers it too, in a repository or not, and
+[`memax connect`](/cli/connect) adds an agent's file on a machine that's
+linked.
+
+## What it writes
+
+| Agent        | File                                      | Whose it is                                       |
+| ------------ | ----------------------------------------- | ------------------------------------------------- |
+| Claude Code  | `~/.claude/rules/memax-personal.md`       | Memax's. User rules load in every session.        |
+| Codex        | one block in `~/.codex/AGENTS.md`         | Yours. Memax keeps one marked block in it.        |
+| (all)        | `~/.memax/personal/AGENTS.md`             | Memax's: a local copy of what's compiled.         |
+
+Paths follow `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, read in your shell when
+you link (the daemon runs without them). Codex reads
+`AGENTS.override.md` instead of `AGENTS.md` when it exists and isn't
+empty, and so does Memax. If you add an override later, `memax status`
+says so and `memax connect codex` moves the block; Memax never moves it
+by itself. Memax doesn't write into your own `~/.claude/CLAUDE.md`; the
+tidy-ups below take lines out of it only when you say yes.
+
+Each file holds only what you keep, at most about 6 KB (some 1,500 tokens),
+ranked by how often agents read it; the rest stays live over MCP. What you
+keep for one repository stays out of these files: it applies there only.
+Every file starts by saying that a project's own files win where they
+disagree.
+
+## Before anything is written
+
+`memax link --home` shows every file and what happens to it, and asks:
+
+```text
+  Write your Personal space into your agents' own files on this machine?
+
+    ~/.claude/rules/memax-personal.md   a new file, Memax's
+    ~/.codex/AGENTS.md                  one Memax block; your 6 lines stay as they are
+    ~/.memax/personal/AGENTS.md         a new file, Memax's
+
+  Every agent on this machine reads these in every project. Anyone who uses
+  this account on this computer can read them too. Hand edits come back as
+  proposals, and memax unlink --home takes them off. [Y/n]
+```
+
+It refuses, and says why:
+
+- on Windows (no daemon yet), under `CI`, and without a terminal unless
+  you pass `--yes`;
+- a file outside your home folder, or reached through a symlink;
+- a file inside a git work tree, such as a dotfiles repository: "~/.claude
+  is in ~/dotfiles, a git repository. Your Personal space would be
+  committed with it." The daemon checks again before every write.
+
+New files are readable by you only (0600), and so is
+`~/.memax/personal/`. Memax never creates an agent's own folder: if
+`~/.codex` goes away, nothing is written there.
+
+## Two tidy-ups
+
+Once the first files are on disk, `memax link --home` offers two
+clean-ups. Each needs a yes, neither runs under `--yes`, and each copies
+the file to `~/.memax/backup/` first.
+
+- **Lines that load twice.** `memax init` brought lines from your
+  `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` into Personal. Once kept,
+  the agent reads each twice. Memax offers to take out exactly those lines:
+  a line goes only if it is one whole statement and exactly what Memax
+  compiled into that agent's file here.
+- **V1's instructions.** The V1 CLI's `memax setup --instructions` left a
+  block of guidance in `~/.claude/CLAUDE.md` and `~/.gemini/GEMINI.md`.
+  The Memax plugin's skill carries it now. Memax offers to take the block
+  out only if it is exactly V1's text. In Codex's file, the new block
+  replaces V1's in place.
+
+## Hand edits
+
+Memax never writes over a hand edit. An edit in Claude Code's rules file,
+or inside Memax's block in Codex's file, comes back as proposals, and only
+that machine's file waits for you; your other machines keep updating. For
+Codex's file, only the block is ever sent: your own lines never leave the
+machine.
+
+## Several machines
+
+Run `memax link --home` once on each. Each machine has its own files, and
+`memax status` shows this one's. A machine that's offline
+keeps the last files it had and catches up when it's back, Forgets
+included.
+
+## Taking it off
+
+Memax takes the layer off a machine, removing its own files while they
+hold exactly what it wrote and taking its block out of yours byte for byte,
+when:
+
+- you run `memax unlink --home`, or unlink the machine on the web;
+- the machine is signed out: `memax logout`, signing out from Settings ›
+  Account or everywhere, forgetting your account, or a sign-in past its
+  30 days. `memax login` puts it back;
+- someone else signs in on the machine. Their session never sees yours;
+- your Personal space is gone (forgotten or deleted).
+
+A network error or a server that's busy never takes anything off. A file
+you edited by hand stays, and `memax unlink --home` says which.
+
+<Callout type="info">
+  Gemini CLI and Antigravity, Copilot CLI, Windsurf, OpenCode and Cursor get
+  their personal files in later releases. Until then they read your Personal
+  space over MCP.
+</Callout>

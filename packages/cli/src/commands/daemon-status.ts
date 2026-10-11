@@ -195,6 +195,12 @@ export function renderDaemonStatus(
           "    Signed out, so your Personal space is off this machine. memax login puts it back.",
         ),
       );
+    else if (r === s.home && s.home.gone)
+      lines.push(
+        chalk.yellow(
+          "    Your Personal space isn't there for this account, so its files are off this machine. Forget the link: memax unlink --home",
+        ),
+      );
     if (r.error) lines.push(chalk.yellow(`    ${r.error}`));
     if (r.targets.length === 0 && !s.running) {
       lines.push(chalk.gray("    Nothing written here yet."));

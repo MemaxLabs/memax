@@ -11,6 +11,7 @@ import type { Command } from "commander";
 import type { Memax, V2 } from "memax-sdk";
 import { getClient } from "../lib/client.js";
 import { getOrCreateDeviceID } from "../lib/config.js";
+import { currentPerson } from "../lib/credentials.js";
 import { controlRequest } from "../lib/daemon/control.js";
 import { daemonPaths, type DaemonPaths } from "../lib/daemon/paths.js";
 import { linkRepo, unlinkRepo } from "../lib/daemon/registry.js";
@@ -20,7 +21,7 @@ import {
   removeMemaxYmlSpace,
   writeMemaxYmlSpace,
 } from "../lib/project-context.js";
-import { confirmDefault } from "../lib/prompt.js";
+import { confirm, confirmDefault } from "../lib/prompt.js";
 import { resolveSpace, SpaceChoiceError } from "../lib/v2-space.js";
 import { openOneShot } from "./compile.js";
 import { linkHome, unlinkHome } from "./link-home.js";
@@ -271,7 +272,8 @@ export function registerLinkCommands(program: Command): void {
             env: process.env,
             platform: process.platform,
             deviceId: getOrCreateDeviceID(),
-            confirm: confirmDefault,
+            personId: currentPerson(),
+            confirm: (q, def) => (def ? confirmDefault(q) : confirm(q)),
             oneShot: () => openOneShot({ memax, paths }),
           });
           return;

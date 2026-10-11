@@ -1,12 +1,14 @@
 // npx memax-cli init: first file in under five minutes (plan 25 §7.3).
 // 1 detect · 2 sign in · 3 connect · 4 scan locally · 5 upload · 6 judge
-// · 7 settle · 8 compile. Each step is timed against its budget
+// · 7 settle · the home link (in a repository or not) · 8 compile. Each
+// step is timed against its budget
 // (--timing). Running it again in a set-up repository is safe and quick:
 // what the record already has is skipped, and it says what is done.
 import { randomUUID } from "node:crypto";
 import chalk from "chalk";
 import { MemaxError, type V2 } from "memax-sdk";
 import { apiFailureMessage } from "../../commands/v2-output.js";
+import { readHomeLink } from "../daemon/home-link.js";
 import { gitRoot } from "../project-context.js";
 import { connectAgents } from "./connect.js";
 import { findFiles } from "./files.js";
@@ -370,14 +372,32 @@ async function flow(
     );
     if (report.review) d.out(chalk.gray(`    Review them: ${report.review}`));
   }
-  if (!project || !root) return 0;
+  // The home link (personal-layer design §6.1): the Personal space in this
+  // machine's agents' own files, read in every project. Outside a
+  // repository, it is the first file init gives.
+  const personal =
+    machine?.space ??
+    spaces.find(
+      (s) => s.kind === "personal" && s.role === "owner" && s.v2_enabled_at,
+    ) ??
+    null;
+  const home = async () => {
+    if (!personal) return;
+    begin("home", null);
+    await offerHome(d, o, personal, report);
+    end();
+  };
+  if (!project || !root) {
+    await home();
+    return 0;
+  }
   const brief = await firstBrief(
     d,
     project.space,
     project.space.repository ?? null,
   );
   if (brief) report.brief = brief.ref;
-  end();
+  await home();
 
   // 8. Compile: targets, the link, the daemon or one delivery, git status.
   begin("compile", 10_000);
@@ -439,6 +459,47 @@ async function flow(
   }
   d.out("");
   return out?.timedOut ? 1 : 0;
+}
+
+/**
+ * Offers the home link: asked at a terminal, with the consent memax link
+ * --home shows; with --yes only when --home says so (no silent link), and
+ * never with --no-home. A machine already linked says so.
+ */
+async function offerHome(
+  d: InitDeps,
+  o: InitOptions,
+  personal: V2.Space,
+  report: InitReport,
+): Promise<void> {
+  if (!d.homeLink || o.home === false) return;
+  if (readHomeLink(d.paths)?.space_id === personal.id) {
+    report.home = { linked: true };
+    report.done.push(`This machine's home is linked to ${personal.slug}.`);
+    return;
+  }
+  report.home = { linked: false };
+  if (!o.home && (o.yes || !d.interactive)) {
+    d.out("");
+    d.out(
+      chalk.gray(
+        `  Write ${personal.slug} into your agents' own files on this machine too: memax link --home`,
+      ),
+    );
+    return;
+  }
+  d.out("");
+  const code = await d.homeLink(
+    { yes: !!(o.yes && o.home) },
+    {
+      out: d.out,
+      interactive: d.interactive,
+      confirm: (q, def) => d.prompt.confirm(q, def),
+    },
+  );
+  report.home = {
+    linked: code === 0 && readHomeLink(d.paths)?.space_id === personal.id,
+  };
 }
 
 /** The spaces, signing in first when the CLI has no working credentials. */

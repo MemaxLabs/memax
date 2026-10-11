@@ -125,6 +125,67 @@ function connectionLine(r: ConnectReport): Line {
   }
 }
 
+function personalLine(r: ConnectReport): Line | null {
+  const p = r.personal;
+  if (!p) return null;
+  const level = p.autonomy
+    ? p.autonomy[0].toUpperCase() + p.autonomy.slice(1)
+    : "";
+  switch (p.state) {
+    case "connected":
+      return [done, "Personal", `${p.space}, at ${level}`];
+    case "already":
+      return [same, "Personal", `${p.space}, at ${level}`];
+    default:
+      return [
+        wait,
+        "Personal",
+        `${p.space}: once it has signed in, run this again to connect it there`,
+      ];
+  }
+}
+
+function homeLine(r: ConnectReport): Line | null {
+  const h = r.home;
+  if (!h) return null;
+  const compiled =
+    h.compile === "compiled"
+      ? "; written"
+      : h.compile === "timed_out"
+        ? "; still compiling, memax status shows when it's written"
+        : h.compile === "failed"
+          ? "; couldn't compile, try memax compile"
+          : "";
+  switch (h.state) {
+    case "added":
+      return [done, "Home", `${h.path}: ${h.note ?? "added"}${compiled}`];
+    case "moved":
+      return [
+        done,
+        "Home",
+        `moved to ${h.path} (${r.name} reads it now), ${h.note ?? ""}${compiled}`,
+      ];
+    case "present":
+      return [same, "Home", `${h.path}, your Personal space`];
+    case "unlinked":
+      return [
+        wait,
+        "Home",
+        "this machine was unlinked; memax link --home links it again",
+      ];
+    case "refused":
+      return [wait, "Home", `${h.path}: ${h.note ?? "Memax won't write it"}`];
+    case "absent":
+      return [skip, "Home", `${r.name} isn't set up in this home folder`];
+    default:
+      return [
+        skip,
+        "Home",
+        "memax link --home writes your Personal space into its own file here",
+      ];
+  }
+}
+
 function shimLine(r: ConnectReport): Line | null {
   switch (r.shim?.state) {
     case "created":
@@ -176,6 +237,7 @@ function compileLine(r: ConnectReport): Line | null {
 
 export function renderConnect(r: ConnectReport, app: string): string[] {
   const lines: Line[] = [mcpLine(r, app), ...hookLines(r), connectionLine(r)];
+  for (const l of [personalLine(r), homeLine(r)]) if (l) lines.push(l);
   const shim = shimLine(r);
   if (shim) lines.push(shim);
   const c = compileLine(r);
@@ -196,7 +258,8 @@ export function connectFailed(r: ConnectReport): boolean {
   return (
     typeof r.mcp === "object" ||
     typeof r.hook.outcome === "object" ||
-    r.compile.state === "failed"
+    r.compile.state === "failed" ||
+    r.home?.compile === "failed"
   );
 }
 
@@ -258,6 +321,7 @@ export function registerConnectCommand(program: Command): void {
               await finalizeCodexOAuthLogin();
           },
           compile: compileHere,
+          env: process.env,
         });
         if (json) console.log(JSON.stringify(r, null, 2));
         else for (const l of renderConnect(r, appBaseURL())) console.log(l);

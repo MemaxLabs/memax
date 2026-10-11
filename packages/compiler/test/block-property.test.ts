@@ -160,45 +160,51 @@ describe.each(BLOCK_KINDS)("the person's own lines: $name", (spec) => {
     return compile(i).files[0];
   };
 
-  it(`stay byte for byte over ${FILES} random files, and the machine's splice matches`, () => {
-    const server = compileWith("");
-    expect(server.user_owned).toBe(true);
-    const seen = { none: 0, present: 0, broken: 0 };
+  // 2,000 compiles take half a second here but passed vitest's 5 s default
+  // on a busy CI runner: the property is the point, so it gets the time.
+  it(
+    `stay byte for byte over ${FILES} random files, and the machine's splice matches`,
+    { timeout: 60_000 },
+    () => {
+      const server = compileWith("");
+      expect(server.user_owned).toBe(true);
+      const seen = { none: 0, present: 0, broken: 0 };
 
-    for (const mine of personFiles(spec.name.length * 7919)) {
-      let hadBlock: boolean;
-      try {
-        hadBlock = findManagedBlock(mine) !== null;
-      } catch {
-        seen.broken += 1;
-        expect(() => compileWith(mine)).toThrow(CompileInputError);
-        continue;
-      }
-      const there = compileWith(mine);
+      for (const mine of personFiles(spec.name.length * 7919)) {
+        let hadBlock: boolean;
+        try {
+          hadBlock = findManagedBlock(mine) !== null;
+        } catch {
+          seen.broken += 1;
+          expect(() => compileWith(mine)).toThrow(CompileInputError);
+          continue;
+        }
+        const there = compileWith(mine);
 
-      if (hadBlock) {
-        seen.present += 1;
-        expect(around(there.content)).toEqual(around(mine));
-      } else {
-        seen.none += 1;
-        expect(there.content.startsWith(mine)).toBe(true);
-        const parts = around(there.content);
-        expect(parts?.after).toBe("");
-        expect(parts?.before.slice(mine.length)).toMatch(
-          /^(?:\r\n|\r|\n){0,2}$/,
+        if (hadBlock) {
+          seen.present += 1;
+          expect(around(there.content)).toEqual(around(mine));
+        } else {
+          seen.none += 1;
+          expect(there.content.startsWith(mine)).toBe(true);
+          const parts = around(there.content);
+          expect(parts?.after).toBe("");
+          expect(parts?.before.slice(mine.length)).toMatch(
+            /^(?:\r\n|\r|\n){0,2}$/,
+          );
+        }
+
+        // The server's block, spliced in on the machine, is the same file.
+        expect(upsertManagedBlock(mine, inner(server.content))).toBe(
+          there.content,
         );
+        expect(there.drift_sha256).toBe(server.drift_sha256);
+        expect(isDrifted(server.drift_sha256, there.content)).toBe(false);
+        // Idempotent: compiling over its own output changes nothing.
+        expect(compileWith(there.content).content).toBe(there.content);
       }
-
-      // The server's block, spliced in on the machine, is the same file.
-      expect(upsertManagedBlock(mine, inner(server.content))).toBe(
-        there.content,
-      );
-      expect(there.drift_sha256).toBe(server.drift_sha256);
-      expect(isDrifted(server.drift_sha256, there.content)).toBe(false);
-      // Idempotent: compiling over its own output changes nothing.
-      expect(compileWith(there.content).content).toBe(there.content);
-    }
-    for (const [what, n] of Object.entries(seen))
-      expect(n, what).toBeGreaterThan(100);
-  });
+      for (const [what, n] of Object.entries(seen))
+        expect(n, what).toBeGreaterThan(100);
+    },
+  );
 });

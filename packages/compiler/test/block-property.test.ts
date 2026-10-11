@@ -65,6 +65,11 @@ const BLOCK_KINDS: {
     target: (current) => ({ kind: "codex_user", current }),
   },
   {
+    name: "gemini_user in ~/.gemini/AGENTS.md",
+    space: "personal",
+    target: (current) => ({ kind: "gemini_user", current }),
+  },
+  {
     name: "codex_user in ~/.codex/AGENTS.override.md",
     space: "personal",
     target: (current) => ({

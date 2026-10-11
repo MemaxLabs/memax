@@ -8,12 +8,13 @@ import type { Memax, V2 } from "memax-sdk";
 import { readHomeLink, writeHomeLink } from "../daemon/home-link.js";
 import { tilde } from "../daemon/home-place.js";
 import type { DaemonPaths } from "../daemon/paths.js";
-import { describe, planHomeFiles } from "../home/files.js";
+import { describe, homeFile, planHomeFiles } from "../home/files.js";
 
-/** The home file each agent has in this slice. */
+/** The home file each agent has. Gemini CLI shares Antigravity's ~/.gemini/AGENTS.md. */
 export const HOME_KIND: Partial<Record<V2.AgentKind, V2.TargetKind>> = {
   "claude-code": "claude_user",
   codex: "codex_user",
+  "gemini-cli": "gemini_user",
 };
 
 export interface HomeFileReport {
@@ -50,7 +51,7 @@ export async function connectHomeFile(
 ): Promise<HomeFileReport> {
   const link = readHomeLink(d.paths);
   if (!link) return { state: "not_linked" };
-  const plan = planHomeFiles({ home: link.home, env: d.env }).find(
+  const plan = planHomeFiles({ home: link.home, env: d.env }, [kind]).find(
     (f) => f.kind === kind,
   );
   if (!plan) return { state: "absent" };
@@ -58,7 +59,38 @@ export async function connectHomeFile(
   if (plan.refusal)
     return { state: "refused", path: label, note: plan.refusal };
   const had = link.files.find((f) => f.kind === kind);
-  if (had?.path === plan.path) return { state: "present", path: label };
+  if (had?.path === plan.path) {
+    // Who reads it changed (Gemini CLI listed AGENTS.md): the server's
+    // read_by and home.json follow, so the hook and fading know.
+    const was = had.read_by ?? [];
+    if (
+      plan.readBy.length === 0 ||
+      (was.length === plan.readBy.length &&
+        plan.readBy.every((r) => was.includes(r)))
+    )
+      return { state: "present", path: label };
+    const target = (
+      await d.memax.v2.targets.list(link.space_id, {
+        machine: link.machine_id,
+      })
+    ).items.find((t) => t.id === had.target_id);
+    if (!target) return { state: "present", path: label };
+    await d.memax.v2.targets.update(
+      target.id,
+      {
+        settings: { read_by: plan.readBy },
+        reason: `${plan.agent} read it on this machine`,
+      },
+      { idempotencyKey: randomUUID(), via: "cli", ifMatch: target.version },
+    );
+    writeHomeLink(d.paths, {
+      ...link,
+      files: link.files.map((f) =>
+        f.target_id === had.target_id ? homeFile(f.target_id, plan) : f,
+      ),
+    });
+    return { state: "present", path: label, note: `read by ${plan.agent}` };
+  }
 
   const machine = (await d.memax.v2.machines.list(link.space_id)).items.find(
     (m) => m.id === link.machine_id,
@@ -70,7 +102,13 @@ export async function connectHomeFile(
       device_id: machine.device_id,
       name: machine.name,
       platform: machine.platform,
-      files: [{ kind, path: plan.path }],
+      files: [
+        {
+          kind,
+          path: plan.path,
+          ...(plan.readBy.length > 0 ? { read_by: plan.readBy } : {}),
+        },
+      ],
     },
     { idempotencyKey: randomUUID(), via: "cli" },
   );
@@ -78,10 +116,7 @@ export async function connectHomeFile(
   if (!t) return { state: "refused", path: label, note: "Memax didn't add it" };
   writeHomeLink(d.paths, {
     ...link,
-    files: [
-      ...link.files.filter((f) => f.kind !== kind),
-      { target_id: t.id, kind, path: plan.path, abs: plan.abs },
-    ],
+    files: [...link.files.filter((f) => f.kind !== kind), homeFile(t.id, plan)],
   });
   return {
     state: had ? "moved" : "added",

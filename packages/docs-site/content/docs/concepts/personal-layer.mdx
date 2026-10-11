@@ -22,14 +22,23 @@ linked.
 
 ## What it writes
 
-| Agent        | File                                      | Whose it is                                       |
-| ------------ | ----------------------------------------- | ------------------------------------------------- |
-| Claude Code  | `~/.claude/rules/memax-personal.md`       | Memax's. User rules load in every session.        |
-| Codex        | one block in `~/.codex/AGENTS.md`         | Yours. Memax keeps one marked block in it.        |
-| (all)        | `~/.memax/personal/AGENTS.md`             | Memax's: a local copy of what's compiled.         |
+| Agent       | File                                | Whose it is                                |
+| ----------- | ----------------------------------- | ------------------------------------------ |
+| Claude Code | `~/.claude/rules/memax-personal.md` | Memax's. User rules load in every session. |
+| Codex       | one block in `~/.codex/AGENTS.md`   | Yours. Memax keeps one marked block in it. |
+| Antigravity | one block in `~/.gemini/AGENTS.md`  | Yours. Memax keeps one marked block in it. |
+| (all)       | `~/.memax/personal/AGENTS.md`       | Memax's: a local copy of what's compiled.  |
 
-Paths follow `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, read in your shell when
-you link (the daemon runs without them). Codex reads
+Antigravity reads `~/.gemini/AGENTS.md` beside `~/.gemini/GEMINI.md` in
+every session. Memax writes its block there when you run
+[`memax connect gemini`](/cli/connect) on a linked machine where
+Antigravity is set up, and never touches `GEMINI.md`, where Gemini's own
+memory goes. Gemini CLI reads it too once `memax connect gemini
+--agents-md` lists `AGENTS.md` in its settings. `memax link --home`
+doesn't offer it on its own yet.
+
+Paths follow `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `GEMINI_CLI_HOME`, read
+in your shell when you link (the daemon runs without them). Codex reads
 `AGENTS.override.md` instead of `AGENTS.md` when it exists and isn't
 empty, and so does Memax. If you add an override later, `memax status`
 says so and `memax connect codex` moves the block; Memax never moves it
@@ -137,7 +146,6 @@ A network error or a server that's busy never takes anything off. A file
 you edited by hand stays, and `memax unlink --home` says which.
 
 <Callout type="info">
-  Gemini CLI and Antigravity, Copilot CLI, Windsurf, OpenCode and Cursor get
-  their personal files in later releases. Until then they read your Personal
-  space over MCP.
+  Copilot CLI, Windsurf, OpenCode and Cursor get their personal files in later
+  releases. Until then they read your Personal space over MCP.
 </Callout>

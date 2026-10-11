@@ -409,6 +409,9 @@ function homePart(
   const files: Array<{ file: CompiledFile; target?: WarmTarget }> = [];
   for (const f of home.files) {
     if (!i.agent.home.includes(f.kind)) continue;
+    // A file another agent reads (Antigravity's ~/.gemini/AGENTS.md, before
+    // Gemini CLI's settings list it) isn't one this agent loads.
+    if (f.read_by && !f.read_by.includes(i.agent.kind)) continue;
     const file = readCompiled(f.abs, `~/${f.path}`);
     if (!file) continue;
     const target = warm?.targets.find(

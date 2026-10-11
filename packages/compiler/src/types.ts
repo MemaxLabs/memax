@@ -149,7 +149,8 @@ export type AdapterKind =
   | "windsurf"
   | "claude_rules"
   | "claude_user"
-  | "codex_user";
+  | "codex_user"
+  | "gemini_user";
 
 export type IncludeMode = "kept_only" | "kept_and_open";
 export type StaleMode = "mark" | "omit";
@@ -160,9 +161,10 @@ export interface TargetSettings {
   /**
    * Where the target writes, relative to its root: the repository, or the
    * person's home folder for the home adapters (`claude_user`,
-   * `codex_user`) and a personal space's `.memax/personal/AGENTS.md`. A
-   * file for `agents_md`, the shims and the home adapters, a directory for
-   * the scoped adapters; ignored by `chatgpt`. Each adapter has a default.
+   * `codex_user`, `gemini_user`) and a personal space's
+   * `.memax/personal/AGENTS.md`. A file for `agents_md`, the shims and the
+   * home adapters, a directory for the scoped adapters; ignored by
+   * `chatgpt`. Each adapter has a default.
    */
   path?: string;
   /** Whether open questions compile. Default `kept_and_open`. */

@@ -335,6 +335,54 @@ describe("the Personal section", () => {
       expect(m.run(agent, outside())).toMatchObject({ output: "", loads: [] });
   });
 
+  it("speaks for Gemini CLI only once ~/.gemini/AGENTS.md's read_by names it", () => {
+    const GEMINI = ".gemini/AGENTS.md";
+    const link = (readBy: string[]) =>
+      writeFileSync(
+        m.paths.home,
+        JSON.stringify({
+          version: 1,
+          space_id: PERSONAL,
+          space_slug: "personal",
+          machine_id: "m-1",
+          home: m.home,
+          files: [
+            {
+              target_id: "t-gemini",
+              kind: "gemini_user",
+              path: GEMINI,
+              abs: join(m.home, GEMINI),
+              read_by: readBy,
+            },
+          ],
+          created_at: "2026-10-11T00:00:00Z",
+        }),
+      );
+    mkdirSync(join(m.home, ".gemini"), { recursive: true });
+    writeFileSync(
+      join(m.home, GEMINI),
+      `<!-- memax:start -->\n${[header("C-1201", "personal"), "# Personal", "", "## Preferences", "- Answer in British English. [M-0101]"].join("\n")}\n<!-- memax:end -->\n`,
+    );
+    warm(null, {
+      targets: [
+        {
+          ...homeTarget("codex_user", "C-1201", ["M-0101"]),
+          kind: "gemini_user",
+          path: GEMINI,
+          label: `~/${GEMINI}`,
+        },
+      ],
+    });
+    // Antigravity's alone: Gemini CLI reads GEMINI.md, not this file.
+    link(["antigravity"]);
+    expect(m.run("gemini", outside())).toMatchObject({ output: "", loads: [] });
+    // Its context.fileName lists AGENTS.md: the file is Gemini CLI's too.
+    link(["antigravity", "gemini-cli"]);
+    expect(
+      m.run("gemini", outside()).loads.map((l) => [l.space, l.compile]),
+    ).toEqual([[PERSONAL, "C-1201"]]);
+  });
+
   it("remembers what it told per agent, wherever the session ran", () => {
     linkHome();
     homeFile("claude_user", "C-1201", [

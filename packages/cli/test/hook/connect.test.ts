@@ -438,7 +438,7 @@ describe("memax connect", () => {
         .map((l) => l.replace(/\u001b\[[0-9;]*m/g, ""))
         .find((l) => l.includes("GEMINI.md")),
     ).toBe(
-      "  - GEMINI.md not compiled: Antigravity CLI reads AGENTS.md. For Gemini CLI, add --gemini-md",
+      "  - GEMINI.md not compiled: Antigravity reads AGENTS.md. For Gemini CLI, add --agents-md",
     );
 
     const asked = await runConnect(
@@ -469,6 +469,107 @@ describe("memax connect", () => {
       deps().d,
     );
     expect(codex.shim).toBeUndefined();
+  });
+
+  it("never lets Gemini CLI read AGENTS.md two ways: --agents-md and the GEMINI.md shim", async () => {
+    execFileSync("git", ["init", "-q", h.repo]);
+    const space = h.fake.addSpace("acme-web");
+    h.link(space);
+    h.fake.agents.push(connection("gemini-cli"));
+    h.fake.addTarget(space, "agents_md");
+    const gemini = agentFor("gemini")!;
+    const settings = ".gemini/settings.json";
+    mkdirSync(join(h.home, ".gemini"), { recursive: true });
+    const mine = '{\n  // mine\n  "theme": "GitHub"\n}\n';
+    writeFileSync(join(h.home, settings), mine);
+    const created = () => h.fake.calls("POST", /\/v2\/spaces\/[^/]+\/targets$/);
+    const text = (
+      r: ReturnType<typeof runConnect> extends Promise<infer R> ? R : never,
+    ) =>
+      renderConnect(r, "https://memax.app").map((l) =>
+        l.replace(/\u001b\[[0-9;]*m/g, ""),
+      );
+
+    // A settings file that isn't JSON is left as it is, and said.
+    writeFileSync(join(h.home, settings), "{ not json");
+    const broken = await runConnect(
+      gemini,
+      { space: "acme-web", agentsMd: true, hook: false },
+      deps().d,
+    );
+    expect(broken.contextFile?.state).toBe("refused");
+    expect(broken.contextFile?.note).toMatch(/isn't valid JSON/);
+    expect(read(settings)).toBe("{ not json");
+    writeFileSync(join(h.home, settings), mine);
+
+    // --agents-md: GEMINI.md stays first (Gemini's own memory writes
+    // there), AGENTS.md after it, the person's comment kept.
+    const agents = await runConnect(
+      gemini,
+      { space: "acme-web", agentsMd: true },
+      deps().d,
+    );
+    expect(agents.contextFile).toEqual({
+      state: "written",
+      file: "~/.gemini/settings.json",
+    });
+    expect(read(settings)).toContain("  // mine");
+    expect(read(settings)).toContain(
+      '"fileName": [\n      "GEMINI.md",\n      "AGENTS.md"\n    ]',
+    );
+    expect(
+      (
+        await runConnect(
+          gemini,
+          { space: "acme-web", agentsMd: true },
+          deps().d,
+        )
+      ).contextFile?.state,
+    ).toBe("present");
+
+    // Then --gemini-md is refused, and says which to keep.
+    const shim = await runConnect(
+      gemini,
+      { space: "acme-web", geminiMd: true },
+      deps().d,
+    );
+    expect(shim.shim?.state).toBe("refused");
+    expect(shim.shim?.note).toMatch(
+      /would load it twice\. Keep context\.fileName/,
+    );
+    expect(created()).toHaveLength(0);
+    expect(connectFailed(shim)).toBe(true);
+
+    // The other way round: a space with the shim refuses --agents-md.
+    writeFileSync(join(h.home, settings), mine);
+    await runConnect(gemini, { space: "acme-web", geminiMd: true }, deps().d);
+    expect(created()).toHaveLength(1);
+    const target = [...h.fake.targets.values()].find(
+      (e) => e.target.kind === "gemini_md",
+    )!.target;
+    const refused = await runConnect(
+      gemini,
+      { space: "acme-web", agentsMd: true },
+      deps({ appUrl: "https://app.example" }).d,
+    );
+    expect(refused.contextFile?.state).toBe("refused");
+    expect(refused.contextFile?.note).toContain(
+      `stop GEMINI.md at https://app.example/acme-web/brief/targets/${target.id}, then run this again`,
+    );
+    // The hook went in (it lives in settings.json too); context didn't.
+    expect(read(settings)).toContain("  // mine");
+    expect(read(settings)).not.toContain('"context"');
+    expect(connectFailed(refused)).toBe(true);
+
+    // Set by hand anyway: connect says it loads twice, and what to keep.
+    writeFileSync(
+      join(h.home, settings),
+      '{ "context": { "fileName": "AGENTS.md" } }\n',
+    );
+    const both = await runConnect(gemini, { space: "acme-web" }, deps().d);
+    expect(text(both).find((l) => l.includes("GEMINI.md"))).toMatch(
+      /Gemini CLI loads AGENTS\.md twice in acme-web\. Keep context\.fileName/,
+    );
   });
 
   it("keeps a GEMINI.md someone wrote theirs, with one Memax block", async () => {

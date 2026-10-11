@@ -35,18 +35,25 @@ export function validHomePath(kind: V2.TargetKind, path: string): boolean {
         folder !== ".memax" &&
         (path.endsWith("/AGENTS.md") || path.endsWith("/AGENTS.override.md"))
       );
+    case "gemini_user":
+      return (
+        folder !== ".memax" &&
+        (path === ".gemini/AGENTS.md" || path.endsWith("/.gemini/AGENTS.md"))
+      );
   }
   return false;
 }
 
 /**
  * Whether a home file is the person's, with one Memax block in it (the
- * server's homeOwned): Codex's file, and the ~/.claude/CLAUDE.md fallback.
- * Claude Code's rules file and the canonical copy are Memax's own.
+ * server's homeOwned): Codex's and Gemini's AGENTS.md, and the
+ * ~/.claude/CLAUDE.md fallback. Claude Code's rules file and the canonical
+ * copy are Memax's own.
  */
 export function homeBlockFile(kind: V2.TargetKind, path: string): boolean {
   return (
     kind === "codex_user" ||
+    kind === "gemini_user" ||
     (kind === "claude_user" && path.endsWith("/CLAUDE.md"))
   );
 }
@@ -54,11 +61,12 @@ export function homeBlockFile(kind: V2.TargetKind, path: string): boolean {
 const AGENT: Partial<Record<V2.TargetKind, string>> = {
   claude_user: "Claude Code",
   codex_user: "Codex",
+  gemini_user: "Gemini",
 };
 
 /**
  * The folder a home file lives in that Memax never creates (the agent's
- * own: CLAUDE_CONFIG_DIR, CODEX_HOME), relative to home; null for the
+ * own: CLAUDE_CONFIG_DIR, CODEX_HOME, ~/.gemini), relative to home; null for the
  * canonical copy, whose folders are Memax's.
  */
 export function agentFolder(kind: V2.TargetKind, path: string): string | null {

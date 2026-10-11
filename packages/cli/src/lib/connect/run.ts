@@ -10,9 +10,13 @@
 //    Propose (Cursor and Gemini CLI at Read). If it already has a
 //    connection, connect it to this repository's space at that level, or
 //    lower where it is lower elsewhere: never raised from the CLI.
-// 4. GEMINI.md, for Gemini CLI only and only when asked (--gemini-md):
-//    Antigravity CLI, which replaced Gemini CLI for most people, reads
-//    AGENTS.md, so the shim is opt-in (the compiler's OPT_IN_TARGET_KINDS).
+// 4. Gemini CLI reads AGENTS.md one of two ways, only when asked, never
+//    both (lib/connect/gemini.ts geminiClash): --agents-md lists AGENTS.md
+//    in its context.fileName, on this machine, which also brings the
+//    Personal space's ~/.gemini/AGENTS.md; --gemini-md gives the space the
+//    GEMINI.md shim, for everyone in the repository. Antigravity, which
+//    replaced Gemini CLI for most people, reads AGENTS.md itself, so both
+//    are opt-in (the compiler's OPT_IN_TARGET_KINDS).
 // 5. Compile: in a linked repository whose files aren't in sync yet,
 //    compile once and write the files here.
 // 6. Home (personal-layer design §6.1, §7.2): on a machine whose home is
@@ -22,7 +26,15 @@
 //    a repository, the Personal space is the space.
 import type { Memax, V2 } from "memax-sdk";
 import type { DaemonPaths } from "../daemon/paths.js";
-import { findLinkedRepo } from "../daemon/registry.js";
+import { findLinkedRepo, readRegistry } from "../daemon/registry.js";
+import { tilde } from "../daemon/home-place.js";
+import {
+  geminiClash,
+  geminiSettings,
+  readsAgentsMd,
+  writeAgentsMd,
+  type ShimSpace,
+} from "./gemini.js";
 import { AGENTS, type AgentEntry } from "../init/agents.js";
 import { connectToSpaces } from "../init/connect.js";
 import { readHomeLink } from "../daemon/home-link.js";
@@ -55,6 +67,8 @@ export interface ConnectOptions {
   timeout?: string;
   /** --gemini-md: give the space the GEMINI.md shim (Gemini CLI only). */
   geminiMd?: boolean;
+  /** --agents-md: list AGENTS.md in Gemini CLI's context.fileName here. */
+  agentsMd?: boolean;
 }
 
 export interface ConnectDeps {
@@ -74,6 +88,8 @@ export interface ConnectDeps {
   ) => Promise<CompileOutcome | null>;
   /** The person's shell, where CLAUDE_CONFIG_DIR and CODEX_HOME are set. */
   env?: Record<string, string | undefined>;
+  /** The web app, for the pages a message points at. */
+  appUrl?: string;
 }
 
 export interface ConnectReport {
@@ -109,8 +125,15 @@ export interface ConnectReport {
   };
   /** Gemini CLI only: the space's GEMINI.md shim. */
   shim?: {
-    state: "created" | "present" | "not_asked";
+    state: "created" | "present" | "not_asked" | "refused";
     path?: string;
+    note?: string;
+  };
+  /** Gemini CLI only: AGENTS.md in its context.fileName on this machine. */
+  contextFile?: {
+    state: "written" | "present" | "not_asked" | "refused";
+    file: string;
+    note?: string;
   };
   compile: {
     state:
@@ -259,14 +282,47 @@ export async function runConnect(
     }
   }
 
-  // 4. GEMINI.md, when asked for.
+  // 4. Gemini CLI: context.fileName or the GEMINI.md shim, when asked.
   const root = gitRoot(d.cwd);
   let targets: V2.Target[] | undefined;
   if (a.kind === "gemini-cli") {
     targets = (await d.memax.v2.targets.list(space.id)).items;
-    const shim = targets.find((t) => t.kind === "gemini_md");
-    if (shim) r.shim = { state: "present", path: shim.path ?? "GEMINI.md" };
-    else if (!o.geminiMd) r.shim = { state: "not_asked" };
+    const g = { home: d.home, env: d.env ?? {}, platform: d.platform };
+    const file = tilde(d.home, geminiSettings(g));
+    const shims = await shimSpaces(d, space, targets);
+    const reads = readsAgentsMd(g);
+    if (o.agentsMd) {
+      const clash = geminiClash("agents_md", { readsAgentsMd: reads, shims });
+      try {
+        r.contextFile = clash
+          ? { state: "refused", file, note: clash }
+          : { state: writeAgentsMd(g), file };
+      } catch (err) {
+        r.contextFile = {
+          state: "refused",
+          file,
+          note: (err as Error).message,
+        };
+      }
+    } else {
+      r.contextFile = { state: reads ? "present" : "not_asked", file };
+    }
+    const shim = targets.find(
+      (t) => t.kind === "gemini_md" && t.sync_state !== "off",
+    );
+    const geminiMdRefused = o.geminiMd
+      ? geminiClash("gemini_md", { readsAgentsMd: reads, shims })
+      : null;
+    if (shim) {
+      const both = geminiClash("both", { readsAgentsMd: reads, shims });
+      r.shim = {
+        state: "present",
+        path: shim.path ?? "GEMINI.md",
+        ...(both ? { note: both } : {}),
+      };
+    } else if (!o.geminiMd) r.shim = { state: "not_asked" };
+    else if (geminiMdRefused)
+      r.shim = { state: "refused", note: geminiMdRefused };
     else {
       // A GEMINI.md someone wrote stays theirs, with one Memax block in
       // it, as init does for CLAUDE.md.
@@ -345,4 +401,35 @@ export async function runConnect(
       files: out.targets.flatMap((t) => t.files),
     };
   return r;
+}
+
+/**
+ * The spaces linked on this machine, and this one, whose GEMINI.md shim is
+ * on: with AGENTS.md in context.fileName, Gemini CLI would load AGENTS.md
+ * twice in their repositories.
+ */
+async function shimSpaces(
+  d: ConnectDeps,
+  space: V2.Space,
+  targets: V2.Target[],
+): Promise<ShimSpace[]> {
+  const app = (d.appUrl ?? "https://memax.app").replace(/\/+$/, "");
+  const ids = new Map<string, string>([[space.id, space.slug]]);
+  for (const l of readRegistry(d.paths)) ids.set(l.space_id, l.space_slug);
+  const out: ShimSpace[] = [];
+  for (const [id, slug] of ids) {
+    const list =
+      id === space.id
+        ? targets
+        : await d.memax.v2.targets
+            .list(id)
+            .then((x) => x.items)
+            .catch(() => []);
+    const shim = list.find(
+      (t) => t.kind === "gemini_md" && t.sync_state !== "off",
+    );
+    if (shim)
+      out.push({ slug, url: `${app}/${slug}/brief/targets/${shim.id}` });
+  }
+  return out;
 }

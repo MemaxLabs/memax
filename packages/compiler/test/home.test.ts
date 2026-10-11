@@ -1,8 +1,8 @@
 /**
  * Home files: a personal space in each agent's own user-level file
  * (personal-layer design §3.2, §4). Claude Code gets a file Memax owns in
- * its user rules folder; Codex gets one block in the person's AGENTS.md;
- * `~/.memax/personal/AGENTS.md` is the canonical copy.
+ * its user rules folder; Codex and Antigravity get one block in the
+ * person's AGENTS.md; `~/.memax/personal/AGENTS.md` is the canonical copy.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -42,7 +42,8 @@ const CANONICAL: TargetSettings = {
 };
 const CLAUDE: TargetSettings = { kind: "claude_user" };
 const CODEX: TargetSettings = { kind: "codex_user", current: "" };
-const HOME: TargetSettings[] = [CANONICAL, CLAUDE, CODEX];
+const GEMINI: TargetSettings = { kind: "gemini_user", current: "" };
+const HOME: TargetSettings[] = [CANONICAL, CLAUDE, CODEX, GEMINI];
 
 const file = (result: CompileResult, path: string) => {
   const found = result.files.find((f) => f.path === path);
@@ -72,8 +73,12 @@ function inner(content: string): string[] {
 }
 
 describe("the home kinds", () => {
-  it("are Claude Code's and Codex's user files, in this slice", () => {
-    expect(HOME_TARGET_KINDS).toEqual(["claude_user", "codex_user"]);
+  it("are Claude Code's, Codex's and Antigravity's user files", () => {
+    expect(HOME_TARGET_KINDS).toEqual([
+      "claude_user",
+      "codex_user",
+      "gemini_user",
+    ]);
     expect(HOME_BUDGET).toBe(6 * 1024);
   });
 
@@ -118,6 +123,48 @@ describe("the home kinds", () => {
     }
   });
 
+  it("write one block in ~/.gemini/AGENTS.md, which Antigravity reads beside GEMINI.md", () => {
+    for (const path of [".gemini/AGENTS.md", ".config/g/.gemini/AGENTS.md"]) {
+      const gemini = compile(
+        personal(
+          [memory("M-0001", "Answer in British English.")],
+          [{ kind: "gemini_user", path, current: "" }],
+        ),
+      ).files[0];
+      expect(gemini.path).toBe(path);
+      expect(gemini.user_owned).toBe(true);
+      expect(gemini.content.startsWith(`${MANAGED_START}\n<!-- Compiled`)).toBe(
+        true,
+      );
+      expect(gemini.content).toContain("- Answer in British English. [M-0001]");
+      expect(gemini.content).not.toContain("@");
+    }
+    const mine = "# Mine\n\nPrefer tabs.\n";
+    const beside = compile(
+      personal(
+        [memory("M-0001", "Answer in British English.")],
+        [{ kind: "gemini_user", current: mine }],
+      ),
+    ).files[0];
+    expect(beside.content.startsWith(`${mine}${MANAGED_START}\n`)).toBe(true);
+  });
+
+  it("cap Antigravity's block at its 24,000 bytes per file", () => {
+    const facts = Array.from({ length: 400 }, (_, n) =>
+      memory(
+        `M-${String(n + 1).padStart(4, "0")}`,
+        `Fact number ${n} ${"x".repeat(60)}.`,
+      ),
+    );
+    const r = compile(
+      personal(facts, [
+        { kind: "gemini_user", current: "", size_budget: 30_000 },
+      ]),
+    );
+    expect(r.files[0].bytes).toBeLessThanOrEqual(24_000);
+    expect(r.warnings.map((w) => w.code)).toContain("budget_capped");
+  });
+
   it("fall back to a block in ~/.claude/CLAUDE.md for a Claude Code without user rules", () => {
     const mine = "# Me\n\nvim keys.\n";
     const claude = compile(
@@ -159,6 +206,7 @@ describe("what a home file carries", () => {
       "M-0003",
     ]);
     expect(refs(".codex/AGENTS.md")).toEqual(["M-0001", "M-0002"]);
+    expect(refs(".gemini/AGENTS.md")).toEqual(["M-0001", "M-0004"]);
   });
 
   it("leaves a path-scoped fact out of every home file: they load in every project", () => {
@@ -257,7 +305,7 @@ describe("refusals", () => {
   it.each(["project", "team"] as const)(
     "refuses a home kind in a %s space: a project's facts never land in a home folder",
     (kind) => {
-      for (const t of [CLAUDE, CODEX]) {
+      for (const t of [CLAUDE, CODEX, GEMINI]) {
         const i = personal([memory("M-0001", "A fact.")], [t]);
         i.space.kind = kind;
         expect(issues(() => compile(i))).toEqual([
@@ -275,11 +323,14 @@ describe("refusals", () => {
     ["codex_user", ".codex/AGENTS.local.md"],
     ["codex_user", "../.codex/AGENTS.md"],
     ["codex_user", "/home/ana/.codex/AGENTS.md"],
+    ["gemini_user", ".gemini/GEMINI.md"],
+    ["gemini_user", ".gemini/config/AGENTS.md"],
+    ["gemini_user", ".codex/AGENTS.md"],
   ] as const)("refuses %s at %s", (kind, path) => {
     const found = bad({
       kind,
       path,
-      ...(kind === "codex_user" ? { current: "" } : {}),
+      ...(kind === "claude_user" ? {} : { current: "" }),
     });
     expect(found).toHaveLength(1);
     expect(found[0]).toMatch(
@@ -293,6 +344,9 @@ describe("refusals", () => {
     ]);
     expect(bad({ kind: "codex_user", user_owned: false })).toEqual([
       "targets[0].user_owned: .codex/AGENTS.md is the person's file, so Memax manages one block in it: user_owned must be true",
+    ]);
+    expect(bad({ kind: "gemini_user", user_owned: false })).toEqual([
+      "targets[0].user_owned: .gemini/AGENTS.md is the person's file, so Memax manages one block in it: user_owned must be true",
     ]);
     expect(bad({ kind: "claude_user", current: "" })).toEqual([
       "targets[0].current: only applies when user_owned is true",

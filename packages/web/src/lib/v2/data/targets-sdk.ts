@@ -1,5 +1,5 @@
 import type { V2 } from "memax-sdk";
-import type { V2Client } from "./sdk-records";
+import { agentKey, type V2Client } from "./sdk-records";
 import {
   isScoped,
   isShim,
@@ -57,7 +57,10 @@ export function targetOf(
           name: target.machine.name,
         }
       : null,
-    readBy: target.root === "home" ? (target.settings.read_by ?? []) : [],
+    readBy:
+      target.root === "home"
+        ? (target.settings.read_by ?? []).map((a) => agentKey(a) ?? a)
+        : [],
     reads:
       isShim(target.kind) || isScoped(target.kind)
         ? (canonical?.path ?? "AGENTS.md")

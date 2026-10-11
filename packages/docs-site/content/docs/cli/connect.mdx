@@ -12,7 +12,7 @@ again: what's already set up stays as it is.
 ## Usage
 
 ```bash
-memax connect <agent> [--space <slug>] [--no-hook] [--no-compile] [--gemini-md] [--format json]
+memax connect <agent> [--space <slug>] [--no-hook] [--no-compile] [--agents-md | --gemini-md] [--format json]
 memax connect --cloud <agent> [--space <slug>] [--no-hook] [--yes] [--format json]
 ```
 
@@ -25,16 +25,17 @@ key, printed once, and the committed hook file that uses it. See
 `opencode`, `windsurf` or `chatgpt`. Without the CLI installed, run it
 with npx: `npx memax-cli connect codex`.
 
-| Flag                  | Description                                                           |
-| --------------------- | --------------------------------------------------------------------- |
-| `--space <slug>`      | The space. Defaults to this repository's (`.memax.yml`, or its link). |
-| `--no-hook`           | Don't install the session-start hook.                                 |
-| `--no-compile`        | Don't compile, even in a linked repository.                           |
-| `--gemini-md`         | Gemini CLI only: give the space a `GEMINI.md` that imports `AGENTS.md`. |
-| `--timeout <seconds>` | How long to wait for the first compile. Default 30.                   |
-| `--cloud`             | A cloud agent (`claude-code`, `copilot`, `codex`): its start key and committed hook. |
-| `--yes`               | With `--cloud`: a connected cloud agent gets a new key without asking. |
-| `--format <fmt>`      | `text` (default) or `json`.                                           |
+| Flag                  | Description                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| `--space <slug>`      | The space. Defaults to this repository's (`.memax.yml`, or its link).                             |
+| `--no-hook`           | Don't install the session-start hook.                                                             |
+| `--no-compile`        | Don't compile, even in a linked repository.                                                       |
+| `--agents-md`         | Gemini CLI only: have it read `AGENTS.md` on this machine, your Personal space's included.        |
+| `--gemini-md`         | Gemini CLI only: give the space a `GEMINI.md` that imports `AGENTS.md`. Never with `--agents-md`. |
+| `--timeout <seconds>` | How long to wait for the first compile. Default 30.                                               |
+| `--cloud`             | A cloud agent (`claude-code`, `copilot`, `codex`): its start key and committed hook.              |
+| `--yes`               | With `--cloud`: a connected cloud agent gets a new key without asking.                            |
+| `--format <fmt>`      | `text` (default) or `json`.                                                                       |
 
 ```text
 › memax connect codex
@@ -67,12 +68,25 @@ Run it again and each line says `=`: already set up, nothing changed.
    Review. If the agent is already connected elsewhere, `memax connect`
    connects it to this space at that level, or lower if it's lower
    elsewhere. It never raises an agent; you do that in the app.
-4. **GEMINI.md, when you ask.** Gemini CLI reads `GEMINI.md`, not
-   `AGENTS.md`. With `--gemini-md`, `memax connect gemini` gives the space
-   a `GEMINI.md` that imports `AGENTS.md`; a `GEMINI.md` you wrote stays
-   yours, with one Memax block in it. Without the flag nothing is added:
-   Antigravity CLI, which replaced Gemini CLI for most people, reads
-   `AGENTS.md` as it is.
+4. **Gemini CLI and AGENTS.md, when you ask.** Gemini CLI reads
+   `GEMINI.md`, not `AGENTS.md`, unless its settings say otherwise. Two
+   flags, one at a time:
+   - `--agents-md` adds `AGENTS.md` to `context.fileName` in
+     `~/.gemini/settings.json` (after `GEMINI.md`, which Gemini's own memory
+     keeps writing; your comments and settings stay as they are). Gemini CLI
+     then reads every repository's `AGENTS.md` itself, and on a
+     [linked machine](/concepts/personal-layer) your Personal space in
+     `~/.gemini/AGENTS.md`. This is the one to use.
+   - `--gemini-md` gives the space a `GEMINI.md` that imports `AGENTS.md`,
+     for teammates who haven't set Gemini CLI up; a `GEMINI.md` you wrote
+     stays yours, with one Memax block in it.
+
+   Gemini CLI resolves each file's imports separately, so with both it
+   would load `AGENTS.md` twice. `memax connect` refuses the second one and
+   says to keep `--agents-md`: stop the space's `GEMINI.md` first. Without
+   either flag nothing is added: Antigravity, which replaced Gemini CLI for
+   most people, reads `AGENTS.md` as it is.
+
 5. **A first compile.** In a [linked](/cli/link) repository whose files
    aren't compiled and written yet, it compiles once, like
    [`memax compile`](/cli/compile).
@@ -84,23 +98,23 @@ Run it again and each line says `=`: already set up, nothing changed.
    stays unlinked. Outside a repository, the Personal space is the space.
 
 <Callout type="info">
-  With the [Memax plugin](/integrations/claude-code-plugin) on in Claude
-  Code, the plugin brings the MCP server and the hook, so `memax connect
-  claude-code` leaves both to it.
+  With the [Memax plugin](/integrations/claude-code-plugin) on in Claude Code,
+  the plugin brings the MCP server and the hook, so `memax connect claude-code`
+  leaves both to it.
 </Callout>
 
 ## Agents and their hooks
 
-| Agent       | Hook written to             | Notes                                                       |
-| ----------- | --------------------------- | ----------------------------------------------------------- |
-| Claude Code | `~/.claude/settings.json`   | Or the plugin.                                              |
-| Codex       | `~/.codex/hooks.json`       | Codex asks you to trust a new hook once, with `/hooks`.     |
-| Gemini CLI  | `~/.gemini/settings.json`   | Reads `GEMINI.md`: add `--gemini-md` for one that imports `AGENTS.md`. |
-| Cursor      | `~/.cursor/hooks.json`      | The editor and the Cursor CLI.                              |
+| Agent       | Hook written to               | Notes                                                     |
+| ----------- | ----------------------------- | --------------------------------------------------------- |
+| Claude Code | `~/.claude/settings.json`     | Or the plugin.                                            |
+| Codex       | `~/.codex/hooks.json`         | Codex asks you to trust a new hook once, with `/hooks`.   |
+| Gemini CLI  | `~/.gemini/settings.json`     | Reads `GEMINI.md`: add `--agents-md` to read `AGENTS.md`. |
+| Cursor      | `~/.cursor/hooks.json`        | The editor and the Cursor CLI.                            |
 | Copilot CLI | `~/.copilot/hooks/memax.json` |                                                           |
-| OpenCode    | none                        | No session-start hook; it reads `AGENTS.md` and MCP.        |
-| Windsurf    | none                        | No session-start hook that adds context.                    |
-| ChatGPT     | none                        | Connects through its connector, in your browser.            |
+| OpenCode    | none                          | No session-start hook; it reads `AGENTS.md` and MCP.      |
+| Windsurf    | none                          | No session-start hook that adds context.                  |
+| ChatGPT     | none                          | Connects through its connector, in your browser.          |
 
 [`memax hook`](/cli/hook) lists what each agent supports, with links to
 its hook documentation. On Windows the hook isn't installed yet: it reads
@@ -108,8 +122,8 @@ the daemon's cache, and the daemon doesn't run on Windows.
 
 ## Exit codes
 
-| Code | Meaning                                                                  |
-| ---- | ------------------------------------------------------------------------ |
-| 0    | Connected, or already connected.                                         |
+| Code | Meaning                                                                     |
+| ---- | --------------------------------------------------------------------------- |
+| 0    | Connected, or already connected.                                            |
 | 1    | A settings file couldn't be written (it says which), or the compile failed. |
-| 2    | An agent it doesn't know.                                                |
+| 2    | An agent it doesn't know.                                                   |

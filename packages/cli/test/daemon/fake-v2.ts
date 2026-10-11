@@ -54,6 +54,7 @@ const HOME_PATH: Partial<Record<V2.TargetKind, string>> = {
   agents_md: ".memax/personal/AGENTS.md",
   claude_user: ".claude/rules/memax-personal.md",
   codex_user: ".codex/AGENTS.md",
+  gemini_user: ".gemini/AGENTS.md",
 };
 
 /** The server's ManifestSHA256. */
@@ -203,6 +204,7 @@ export class FakeV2 {
   ): V2.Target {
     const owned =
       kind === "codex_user" ||
+      kind === "gemini_user" ||
       (kind === "claude_user" && !!path?.endsWith("/CLAUDE.md"));
     const t = this.addTarget(space, kind, { path, user_owned: owned });
     t.root = "home";
@@ -717,7 +719,8 @@ export class FakeV2 {
         continue;
       }
       if (have) this.setState(have.id, "off");
-      this.addHomeTarget(sp, machine, f.kind, path);
+      const t = this.addHomeTarget(sp, machine, f.kind, path);
+      if (f.read_by) t.settings.read_by = f.read_by;
     }
     this.receipts++;
     return {

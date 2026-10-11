@@ -186,7 +186,13 @@ function homeLine(r: ConnectReport): Line | null {
     case "refused":
       return [wait, "Home", `${h.path}: ${h.note ?? "Memax won't write it"}`];
     case "absent":
-      return [skip, "Home", `${r.name} isn't set up in this home folder`];
+      return r.agent === "gemini-cli"
+        ? [
+            skip,
+            "Home",
+            "Gemini CLI reads your Personal space from ~/.gemini/AGENTS.md once it reads AGENTS.md: add --agents-md",
+          ]
+        : [skip, "Home", `${r.name} isn't set up in this home folder`];
     default:
       return [
         skip,
@@ -201,13 +207,38 @@ function shimLine(r: ConnectReport): Line | null {
     case "created":
       return [done, "GEMINI.md", "added: it imports AGENTS.md"];
     case "present":
-      return [same, "GEMINI.md", `compiled in this space (${r.shim.path})`];
+      return r.shim.note
+        ? [wait, "GEMINI.md", r.shim.note]
+        : [same, "GEMINI.md", `compiled in this space (${r.shim.path})`];
+    case "refused":
+      return [fail, "GEMINI.md", r.shim.note ?? "not added"];
     case "not_asked":
+      return r.contextFile?.state === "written" ||
+        r.contextFile?.state === "present"
+        ? null
+        : [
+            skip,
+            "GEMINI.md",
+            "not compiled: Antigravity reads AGENTS.md. For Gemini CLI, add --agents-md",
+          ];
+    default:
+      return null;
+  }
+}
+
+function contextFileLine(r: ConnectReport): Line | null {
+  const c = r.contextFile;
+  switch (c?.state) {
+    case "written":
       return [
-        skip,
-        "GEMINI.md",
-        "not compiled: Antigravity CLI reads AGENTS.md. For Gemini CLI, add --gemini-md",
+        done,
+        "AGENTS.md",
+        `Gemini CLI reads AGENTS.md now (context.fileName in ${c.file})`,
       ];
+    case "present":
+      return [same, "AGENTS.md", `Gemini CLI reads AGENTS.md (${c.file})`];
+    case "refused":
+      return [fail, "AGENTS.md", c.note ?? "not changed"];
     default:
       return null;
   }
@@ -248,8 +279,7 @@ function compileLine(r: ConnectReport): Line | null {
 export function renderConnect(r: ConnectReport, app: string): string[] {
   const lines: Line[] = [mcpLine(r, app), ...hookLines(r), connectionLine(r)];
   for (const l of [personalLine(r), homeLine(r)]) if (l) lines.push(l);
-  const shim = shimLine(r);
-  if (shim) lines.push(shim);
+  for (const l of [contextFileLine(r), shimLine(r)]) if (l) lines.push(l);
   const c = compileLine(r);
   if (c) lines.push(c);
   return [
@@ -269,7 +299,9 @@ export function connectFailed(r: ConnectReport): boolean {
     typeof r.mcp === "object" ||
     typeof r.hook.outcome === "object" ||
     r.compile.state === "failed" ||
-    r.home?.compile === "failed"
+    r.home?.compile === "failed" ||
+    r.shim?.state === "refused" ||
+    r.contextFile?.state === "refused"
   );
 }
 
@@ -401,8 +433,12 @@ export function registerConnectCommand(program: Command): void {
     .option("--no-hook", "Don't install the session-start hook")
     .option("--no-compile", "Don't compile, even in a linked repository")
     .option(
+      "--agents-md",
+      "Gemini CLI only: have Gemini CLI read AGENTS.md on this machine (context.fileName), your Personal space's ~/.gemini/AGENTS.md included",
+    )
+    .option(
       "--gemini-md",
-      "Gemini CLI only: add a GEMINI.md that imports AGENTS.md (Antigravity CLI reads AGENTS.md as it is)",
+      "Gemini CLI only: add a GEMINI.md that imports AGENTS.md to the repository, for teammates (never with --agents-md)",
     )
     .option(
       "--timeout <seconds>",
@@ -426,10 +462,20 @@ export function registerConnectCommand(program: Command): void {
           process.exitCode = 2;
           return;
         }
-        if (opts.geminiMd && agent.kind !== "gemini-cli") {
+        if ((opts.geminiMd || opts.agentsMd) && agent.kind !== "gemini-cli") {
+          const flag = opts.agentsMd ? "--agents-md" : "--gemini-md";
           console.error(
             chalk.red(
-              "  --gemini-md is for Gemini CLI: memax connect gemini --gemini-md.",
+              `  ${flag} is for Gemini CLI: memax connect gemini ${flag}.`,
+            ),
+          );
+          process.exitCode = 2;
+          return;
+        }
+        if (opts.geminiMd && opts.agentsMd) {
+          console.error(
+            chalk.red(
+              "  Use one: with --agents-md Gemini CLI reads AGENTS.md itself, so a GEMINI.md that imports it would load it twice. --agents-md is the one to keep.",
             ),
           );
           process.exitCode = 2;
@@ -455,6 +501,7 @@ export function registerConnectCommand(program: Command): void {
             },
             compile: compileHere,
             env: process.env,
+            appUrl: appBaseURL(),
           });
           if (json) console.log(JSON.stringify(r, null, 2));
           else for (const l of renderConnect(r, appBaseURL())) console.log(l);

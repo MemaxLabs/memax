@@ -56,11 +56,12 @@ const BLOCK_KINDS: ReadonlySet<V2.TargetKind> = new Set([
   "gemini_md",
   "claude_user",
   "codex_user",
+  "gemini_user",
 ]);
 
 /**
  * Whether the person owns the file and Memax manages one block in it: a
- * CLAUDE.md or GEMINI.md they keep, Codex's AGENTS.md at home, or the
+ * CLAUDE.md or GEMINI.md they keep, Codex's or Gemini's AGENTS.md at home, or the
  * ~/.claude/CLAUDE.md fallback (the server sets user_owned for those).
  */
 export function userOwned(t: {

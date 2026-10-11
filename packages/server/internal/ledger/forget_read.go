@@ -118,7 +118,11 @@ func (l *Ledger) PreviewForget(ctx context.Context, scope Scope, actor Actor, vi
 			if err != nil {
 				return err
 			}
-			p.Files = append(p.Files, TombstoneTarget{ID: t.ID, Kind: t.Kind, Label: t.Label, Delivery: t.Delivery})
+			f := TombstoneTarget{ID: t.ID, Kind: t.Kind, Label: t.Label, Delivery: t.Delivery}
+			if t.Machine != nil {
+				f.Machine = &TombstoneMachine{ID: t.Machine.ID, Label: t.Machine.Label, Name: t.Machine.Name}
+			}
+			p.Files = append(p.Files, f)
 		}
 		if err := tx.QueryRow(ctx, `
 			WITH readers AS (
@@ -357,16 +361,20 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 	}
 	t.Steps = append(t.Steps, asked, TombstoneStep{Kind: StepRemoved, Status: StepDone, At: &at})
 
-	// The op's destinations.
+	// The op's destinations, and a home file's machine (personal-layer
+	// design §5.4): offline when its daemon hasn't read its files lately.
 	rows, err := tx.Query(ctx, `
 		SELECT p.destination_kind, p.destination_id, COALESCE(p.label, ''), p.status, p.detail, p.done_at,
-		       t.kind, t.delivery, t.sync_state, t.delivered_at, dc.seq, COALESCE(t.path, '')
+		       t.kind, t.delivery, t.sync_state, t.delivered_at, dc.seq, COALESCE(t.path, ''),
+		       mc.id, mc.seq, mc.name, mc.unlinked_at IS NULL, mc.last_seen_at,
+		       COALESCE(mc.last_seen_at < now() - $2::interval, true)
 		  FROM v2.propagations p
 		  LEFT JOIN v2.targets t ON t.id = p.destination_id
 		  LEFT JOIN v2.compile_runs dc ON dc.id = t.delivered_compile_id
+		  LEFT JOIN v2.machines mc ON mc.id = t.machine_id AND mc.space_id = t.space_id
 		 WHERE p.op_id = $1
 		 ORDER BY CASE p.destination_kind WHEN 'target' THEN 0 WHEN 'artifacts' THEN 1 WHEN 'attachments' THEN 1 WHEN 'caches' THEN 2 ELSE 3 END,
-		          p.created_at, p.id`, t.OpID)
+		          p.created_at, p.id`, t.OpID, MachineOfflineAfter.String())
 	if err != nil {
 		return fmt.Errorf("ledger: tombstone steps: %w", err)
 	}
@@ -381,12 +389,19 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 		deliveredAt         *time.Time
 		deliveredSeq        *int64
 		path                string
+		machineID           *uuid.UUID
+		machineSeq          *int
+		machineName         *string
+		linked              *bool
+		lastSeenAt          *time.Time
+		offline             bool
 	}
 	var dests []dest
 	for rows.Next() {
 		var d dest
 		if err := rows.Scan(&d.kind, &d.id, &d.label, &d.status, &d.detail, &d.doneAt, &d.tKind, &d.delivery, &d.state,
-			&d.deliveredAt, &d.deliveredSeq, &d.path); err != nil {
+			&d.deliveredAt, &d.deliveredSeq, &d.path, &d.machineID, &d.machineSeq, &d.machineName, &d.linked,
+			&d.lastSeenAt, &d.offline); err != nil {
 			rows.Close()
 			return fmt.Errorf("ledger: tombstone steps: %w", err)
 		}
@@ -396,7 +411,7 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("ledger: tombstone steps: %w", err)
 	}
-	var committed, handEdits, copies []string
+	var committed, handEdits, heldOn, copies []string
 	for _, d := range dests {
 		var detail struct {
 			Generation int64      `json:"generation"`
@@ -439,6 +454,15 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 		if d.id != nil {
 			s.Target.ID = *d.id
 		}
+		home := d.machineID != nil
+		if home {
+			// A home file reads as its target does: "~/.codex/AGENTS.md" on work-mbp.
+			if d.path != "" {
+				s.Target.Label = targetLabelAt(RootHome, kind, d.path)
+			}
+			s.Target.Machine = &TombstoneMachine{ID: *d.machineID, Label: machineLabel(*d.machineSeq),
+				Name: *d.machineName, Linked: d.linked, LastSeenAt: d.lastSeenAt}
+		}
 		// A compiled file is rewritten when the daemon (or a pull request)
 		// delivers a run at least as new as the one Forget's compile made.
 		if s.Status == StepDone && delivery.writesFiles() {
@@ -452,12 +476,22 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 				// Nothing new to deliver: the file never held a newer copy.
 			default:
 				s.Status, s.Reason, s.At = StepWaiting, StepReasonDelivery, nil
+				if home && d.offline {
+					// Its file holds it until the machine connects.
+					s.Reason = StepReasonOffline
+				}
 			}
 		}
 		if s.Status == StepHeld {
-			handEdits = append(handEdits, d.label)
+			if !slices.Contains(handEdits, s.Target.Label) {
+				handEdits = append(handEdits, s.Target.Label)
+			}
+			if home && !slices.Contains(heldOn, *d.machineName) {
+				heldOn = append(heldOn, *d.machineName)
+			}
 		}
-		if delivery.writesFiles() {
+		// A home file is never committed (a home link refuses git work trees).
+		if delivery.writesFiles() && !home {
 			committed = append(committed, d.label)
 		}
 		if delivery == DeliveryCopy {
@@ -546,7 +580,24 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 		t.Unreachable = append(t.Unreachable, u)
 	}
 	if len(handEdits) > 0 {
-		t.Unreachable = append(t.Unreachable, UnreachableCopy{Kind: UnreachableHandEdits, Files: handEdits})
+		t.Unreachable = append(t.Unreachable, UnreachableCopy{Kind: UnreachableHandEdits, Files: handEdits, Machines: heldOn})
+	}
+	// The person's own files Memax imported a Personal memory from, on their
+	// machines: Memax never edits them, so they hold it still. Counted only;
+	// their paths were forgotten with it.
+	if t.Kind == ObjectMemory {
+		var n int
+		if err := tx.QueryRow(ctx, `
+			SELECT count(*) FROM v2.memory_sources ms
+			  JOIN v2.sources s ON s.id = ms.source_id AND s.space_id = ms.space_id
+			 WHERE ms.memory_id = $1 AND ms.space_id = $2 AND s.kind = 'file'
+			   AND EXISTS (SELECT 1 FROM v2.spaces sp WHERE sp.id = $2 AND sp.kind = 'personal')`,
+			t.ObjectID, t.SpaceID).Scan(&n); err != nil {
+			return fmt.Errorf("ledger: tombstone sources: %w", err)
+		}
+		if n > 0 {
+			t.Unreachable = append(t.Unreachable, UnreachableCopy{Kind: UnreachableSourceFiles, Count: n})
+		}
 	}
 	if len(copies) > 0 {
 		t.Unreachable = append(t.Unreachable, UnreachableCopy{Kind: UnreachableCopies, Targets: copies})

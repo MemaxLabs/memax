@@ -213,7 +213,10 @@ func (c Config) judgeConfig() judge.Config {
 //	DREAM_MIN_QUANTIZATION the lowest precision any tier's hosts may run (default fp8 when DREAM_ZDR is on; "off")
 //	DREAM_TEMPERATURE      the primary's temperature (default 0: every call is structured; "default" sends none)
 //	DREAM_FALLBACK_TEMPERATURE  the fallback's (default 0)
-//	DREAM_STRONG_TEMPERATURE    the strong tier's (default none: Claude Sonnet 5.5 takes no other)
+//	DREAM_STRONG_TEMPERATURE    the strong tier's (default none); a tier on a model that takes no temperature
+//	                       (anthropic.ModelParams: Claude Sonnet 5.5 and Haiku 5.5) sends none
+//	DREAM_THINKING, DREAM_FALLBACK_THINKING, DREAM_STRONG_THINKING  each tier's thinking: off, adaptive, an
+//	                       effort level (low … max) or default (default: anthropic.ModelParams for the slug)
 //	DREAM_TIMEOUT_MS       one model call (default 30000)
 //	DREAM_DRY_RUN          plan and log editions without publishing (default false)
 //	DREAM_PLAN             the plan every owner dreams on until V2 billing: pro (default, the alpha) or free
@@ -300,7 +303,11 @@ func ConfigFromEnv(lookup func(string) (string, bool)) Config {
 			t.tier.Model, c.ZeroDataRetention); err != nil {
 			slog.Warn("dream: config", "error", err)
 		}
-		if t.tier.Temperature, err = anthropic.TemperatureFromEnv(lookup, t.prefix+"TEMPERATURE", t.temperature); err != nil {
+		if t.tier.Temperature, err = anthropic.ModelTemperatureFromEnv(lookup, t.prefix+"TEMPERATURE", t.tier.Model,
+			t.temperature); err != nil {
+			slog.Warn("dream: config", "error", err)
+		}
+		if t.tier.Thinking, err = anthropic.ThinkingFromEnv(lookup, t.prefix+"THINKING", t.tier.Model); err != nil {
 			slog.Warn("dream: config", "error", err)
 		}
 	}

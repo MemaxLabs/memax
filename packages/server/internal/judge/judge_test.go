@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	"github.com/MemaxLabs/memax/packages/server/internal/judge"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
@@ -454,6 +456,37 @@ func TestStage1FailureNeverBlocksReview(t *testing.T) {
 		t.Errorf("keep = %s", res.Memory.Lifecycle)
 	}
 	_ = railway
+}
+
+// A primary that declines (stop_reason refusal) hands the verdict to the
+// fallback at once, and the judge counts the refusal (metric
+// judge_refusal); the verdict is the fallback's, and nothing failed.
+func TestARefusalFallsThroughToTheFallback(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	zz := f.user("zz")
+	sp := f.space(zz, "memax-v2")
+	railway := f.kept(zz, sp, decision("Deploy the v2 API to Railway.", "deploy target"))
+	answer := oracle(map[string]verdict{railway.Ref: {ledger.RelationContradicts, 0.95, false, ""}})
+	m := &fakeModel{answer: func(c judge.Call, n int) (string, error) {
+		if c.Tier.Name == ledger.TierPrimary {
+			return "", &anthropic.RefusalError{Model: "deepseek/deepseek-v4.1-flash", Category: "general_harms"}
+		}
+		return answer(c, n)
+	}}
+	j := withModel(f, m, tiers(true, false))
+	p := f.propose(zz, sp, decision("Deploy the v2 API to Fly.io.", "deploy target"))
+	r := f.run(j, p)
+	got := f.get(zz, p.ID)
+	if r.Outcome != ledger.OutcomeFlagged || got.Judge.Tier != ledger.TierFallback || !got.Flags.Has(lifecycle.Conflict) {
+		t.Errorf("run %+v, judge %+v, flags %v", r, got.Judge, got.Flags)
+	}
+	if j.Metrics.Refused.Load() != 1 || j.Metrics.LLMFailed.Load() != 0 {
+		t.Errorf("refused %d, failed %d", j.Metrics.Refused.Load(), j.Metrics.LLMFailed.Load())
+	}
+	if !slices.Equal(m.tiers(), []string{"primary", "fallback"}) {
+		t.Errorf("calls = %v; want the primary once, then the fallback", m.tiers())
+	}
 }
 
 func TestEscalationGuardsConflicts(t *testing.T) {

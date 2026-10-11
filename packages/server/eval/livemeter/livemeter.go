@@ -37,6 +37,7 @@ type Call struct {
 	ZDR      bool   // the request asked for provider.zdr
 	Strict   bool   // the request carried output_config.format
 	Thinking string // the request's thinking.type ("" when omitted)
+	Effort   string // the request's output_config.effort ("" when omitted)
 	// Only and Quantizations are the request's provider.only (the hosts
 	// it pinned) and provider.quantizations.
 	Only          []string
@@ -51,6 +52,9 @@ type Call struct {
 	OutputTokens   int
 	ThinkingTokens int
 	Cost           float64 // US dollars, as the gateway billed it
+	// StopReason is the response's stop_reason ("refusal" when the model
+	// declined).
+	StopReason string
 	// Latency is from the request reaching the meter to the response's
 	// last byte; FirstToken, on a stream, to the first text delta.
 	Latency    time.Duration
@@ -139,6 +143,7 @@ func requestCall(body []byte) Call {
 		} `json:"provider"`
 		OutputConfig *struct {
 			Format json.RawMessage `json:"format"`
+			Effort string          `json:"effort"`
 		} `json:"output_config"`
 		Thinking *struct {
 			Type string `json:"type"`
@@ -152,7 +157,23 @@ func requestCall(body []byte) Call {
 	if req.Thinking != nil {
 		c.Thinking = req.Thinking.Type
 	}
+	if req.OutputConfig != nil {
+		c.Effort = req.OutputConfig.Effort
+	}
 	return c
+}
+
+// ThinkingLabel is a call's thinking as it was asked for: "omitted",
+// "disabled", "adaptive", or "adaptive/<effort>".
+func (c Call) ThinkingLabel() string {
+	label := c.Thinking
+	if label == "" && c.Effort == "" {
+		return "omitted"
+	}
+	if c.Effort != "" {
+		label += "/" + c.Effort
+	}
+	return label
 }
 
 // recorder watches the response as it is written to the client.
@@ -170,6 +191,7 @@ type streamState struct {
 	in, out, thinking int
 	cost              float64
 	first             time.Duration
+	stop              string
 }
 
 func (r *recorder) WriteHeader(code int) {
@@ -242,7 +264,8 @@ func (r *recorder) scanLines() {
 				Usage    usage  `json:"usage"`
 			} `json:"message"`
 			Delta struct {
-				Text string `json:"text"`
+				Text       string `json:"text"`
+				StopReason string `json:"stop_reason"`
 			} `json:"delta"`
 			Usage    usage  `json:"usage"`
 			Provider string `json:"provider"`
@@ -262,6 +285,9 @@ func (r *recorder) scanLines() {
 			r.ev.add(ev.Usage)
 			if r.ev.provider == "" {
 				r.ev.provider = ev.Provider
+			}
+			if ev.Delta.StopReason != "" {
+				r.ev.stop = ev.Delta.StopReason
 			}
 		}
 	}
@@ -283,18 +309,20 @@ func (r *recorder) finish(c *Call) {
 		return
 	}
 	if r.stream {
-		c.Provider, c.InputTokens, c.OutputTokens, c.ThinkingTokens, c.Cost, c.FirstToken =
-			r.ev.provider, r.ev.in, r.ev.out, r.ev.thinking, r.ev.cost, r.ev.first
+		c.Provider, c.InputTokens, c.OutputTokens, c.ThinkingTokens, c.Cost, c.FirstToken, c.StopReason =
+			r.ev.provider, r.ev.in, r.ev.out, r.ev.thinking, r.ev.cost, r.ev.first, r.ev.stop
 		return
 	}
 	var resp struct {
-		Provider string `json:"provider"`
-		Usage    usage  `json:"usage"`
+		Provider   string `json:"provider"`
+		StopReason string `json:"stop_reason"`
+		Usage      usage  `json:"usage"`
 	}
 	if json.Unmarshal(r.buf.Bytes(), &resp) == nil {
 		var s streamState
 		s.add(resp.Usage)
 		c.Provider, c.InputTokens, c.OutputTokens, c.ThinkingTokens, c.Cost = resp.Provider, s.in, s.out, s.thinking, s.cost
+		c.StopReason = resp.StopReason
 	}
 }
 
@@ -400,10 +428,14 @@ type Summary struct {
 	Latency, FirstToken    Quantiles
 	In, Out, Thinking      int
 	Cost                   float64
-	ThinkingTypes          map[string]int
+	ThinkingTypes          map[string]int // by Call.ThinkingLabel
+	StopReasons            map[string]int // answered calls by stop_reason
 	ErrorSamples           []string
 	MaxThinkingTokensACall int
 }
+
+// Refusals is how many answered calls the model declined.
+func (s Summary) Refusals() int { return s.StopReasons["refusal"] }
 
 // Quantiles are a duration distribution's p50, p95 and max.
 type Quantiles struct{ P50, P95, Max time.Duration }
@@ -436,7 +468,8 @@ func Summarize(calls []Call, zdr ZDRList) []Summary {
 	for _, c := range calls {
 		s := by[c.Model]
 		if s == nil {
-			s = &Summary{Model: c.Model, Providers: map[string]int{}, ThinkingTypes: map[string]int{}, Temperatures: map[string]int{}}
+			s = &Summary{Model: c.Model, Providers: map[string]int{}, ThinkingTypes: map[string]int{}, Temperatures: map[string]int{},
+				StopReasons: map[string]int{}}
 			by[c.Model] = s
 		}
 		s.Calls++
@@ -454,7 +487,7 @@ func Summarize(calls []Call, zdr ZDRList) []Summary {
 		if c.Strict {
 			s.Strict++
 		}
-		s.ThinkingTypes[c.Thinking]++
+		s.ThinkingTypes[c.ThinkingLabel()]++
 		if c.Status != http.StatusOK {
 			s.Errors++
 			if len(s.ErrorSamples) < 3 {
@@ -462,6 +495,7 @@ func Summarize(calls []Call, zdr ZDRList) []Summary {
 			}
 			continue
 		}
+		s.StopReasons[c.StopReason]++
 		s.Providers[c.Provider]++
 		if zdr != nil {
 			eps := zdr.providerEndpoints(c.Model, c.Provider)
@@ -505,14 +539,10 @@ func Format(sums []Summary) string {
 			provs = append(provs, fmt.Sprintf("%s %d", p, n))
 		}
 		sort.Strings(provs)
-		temps := make([]string, 0, len(s.Temperatures))
-		for t, n := range s.Temperatures {
-			temps = append(temps, fmt.Sprintf("%s %d", t, n))
-		}
-		sort.Strings(temps)
 		fmt.Fprintf(&b, "%s: %d calls (%d errors), zdr asked on %d, hosts pinned on %d, strict on %d; tokens in %d, out %d (thinking %d, max %d a call); $%.4f\n",
 			s.Model, s.Calls, s.Errors, s.ZDRAsked, s.Pinned, s.Strict, s.In, s.Out, s.Thinking, s.MaxThinkingTokensACall, s.Cost)
-		fmt.Fprintf(&b, "    served by: %s; temperature: %s\n", strings.Join(provs, ", "), strings.Join(temps, ", "))
+		fmt.Fprintf(&b, "    served by: %s; temperature: %s; thinking: %s; stop: %s\n", strings.Join(provs, ", "),
+			counts(s.Temperatures), counts(s.ThinkingTypes), counts(s.StopReasons))
 		if len(s.NotZDR) > 0 {
 			fmt.Fprintf(&b, "    NOT zero-retention for this model: %v\n", s.NotZDR)
 		}
@@ -533,4 +563,17 @@ func Format(sums []Summary) string {
 	}
 	fmt.Fprintf(&b, "total $%.4f\n", total)
 	return b.String()
+}
+
+// counts renders a tally as "a 3, b 1", sorted.
+func counts(m map[string]int) string {
+	out := make([]string, 0, len(m))
+	for k, n := range m {
+		if k == "" {
+			k = "none"
+		}
+		out = append(out, fmt.Sprintf("%s %d", k, n))
+	}
+	sort.Strings(out)
+	return strings.Join(out, ", ")
 }

@@ -4,10 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
+	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
 	"github.com/MemaxLabs/memax/packages/server/internal/judge"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 )
@@ -179,6 +184,90 @@ func TestClassifyRetriesThenFallsBack(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A tier that declines (stop_reason refusal) isn't asked again: the
+// verdict goes straight to the next tier, and the refusal is counted. The
+// strong tier has no next tier, so a decline there leaves the verdicts on
+// decisions unconfirmed, as any failure of it does.
+func TestClassifyFallsThroughARefusal(t *testing.T) {
+	t.Parallel()
+	declined := &anthropic.RefusalError{Model: "anthropic/claude-haiku-5.5", Category: "general_harms"}
+	good := oracle(map[string]verdict{"M-0071": {ledger.RelationDuplicate, 0.95, false, ""},
+		"M-0174": {ledger.RelationContradicts, 0.95, false, ""}})
+	declines := func(tiers ...string) func(judge.Call, int) (string, error) {
+		return func(c judge.Call, n int) (string, error) {
+			if slices.Contains(tiers, c.Tier.Name) {
+				return "", fmt.Errorf("model call: %w", declined)
+			}
+			return good(c, n)
+		}
+	}
+	cases := []struct {
+		name        string
+		answer      func(judge.Call, int) (string, error)
+		cands       []judge.Candidate
+		wantCalls   []string
+		wantRefused map[string]int
+		wantTier    string
+		wantErr     bool
+	}{
+		{"the primary declines, the fallback answers", declines(ledger.TierPrimary), []judge.Candidate{pnpm},
+			[]string{"primary", "fallback"}, map[string]int{"primary": 1}, ledger.TierFallback, false},
+		{"both decline", declines(ledger.TierPrimary, ledger.TierFallback), []judge.Candidate{pnpm},
+			[]string{"primary", "fallback"}, map[string]int{"primary": 1, "fallback": 1}, "", true},
+		{"the strong tier declines", declines(ledger.TierStrong), []judge.Candidate{railway},
+			[]string{"primary", "strong"}, map[string]int{"strong": 1}, ledger.TierPrimary, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			m := &fakeModel{answer: c.answer}
+			cls, err := judge.NewClassifier(m, tiers(true, true)).Classify(context.Background(), proposal, c.cands)
+			if (err != nil) != c.wantErr || (c.wantErr && !errors.Is(err, judge.ErrNoAnswer)) {
+				t.Fatalf("err = %v, want error %v", err, c.wantErr)
+			}
+			if !slices.Equal(m.tiers(), c.wantCalls) {
+				t.Errorf("calls = %v, want %v", m.tiers(), c.wantCalls)
+			}
+			if !maps.Equal(cls.Refused, c.wantRefused) {
+				t.Errorf("refused = %v, want %v", cls.Refused, c.wantRefused)
+			}
+			if !c.wantErr && cls.Tier != c.wantTier {
+				t.Errorf("tier = %s, want %s", cls.Tier, c.wantTier)
+			}
+		})
+	}
+	// The strong tier's decline leaves the decision's verdict unconfirmed.
+	m := &fakeModel{answer: declines(ledger.TierStrong)}
+	cls, _ := judge.NewClassifier(m, tiers(true, true)).Classify(context.Background(), proposal, []judge.Candidate{railway})
+	if cls.Error != "escalation_failed" || !cls.Pairs[0].Unconfirmed {
+		t.Errorf("after the strong tier declined: %+v", cls)
+	}
+}
+
+// The import check does the same: a declining tier gives way to the next
+// at once.
+func TestImportCheckFallsThroughARefusal(t *testing.T) {
+	t.Parallel()
+	pending := []ledger.ImportCandidate{
+		{ID: uuid.New(), Ref: "M-0001", Statement: "Run tests with `pnpm test`.", Section: ledger.SectionConventions},
+		{ID: uuid.New(), Ref: "M-0002", Statement: "Run `npm run test` before committing.", Section: ledger.SectionConventions},
+	}
+	oracle := conflictOracle("Test command", 0.9, "pnpm test", "npm run test")
+	m := &fakeModel{answer: func(c judge.Call, n int) (string, error) {
+		if c.Tier.Name == ledger.TierPrimary {
+			return "", &anthropic.RefusalError{Model: "p"}
+		}
+		return oracle(c, n)
+	}}
+	check, err := judge.NewClassifier(m, tiers(true, false)).FindImportDisagreements(context.Background(), pending, 0)
+	if err != nil || check.Calls != 2 || check.Tier.Name != ledger.TierFallback || len(check.Groups) != 1 {
+		t.Fatalf("check = %+v, %v", check, err)
+	}
+	if !slices.Equal(m.tiers(), []string{"primary", "fallback"}) || !maps.Equal(check.Refused, map[string]int{"primary": 1}) {
+		t.Errorf("calls %v, refused %v", m.tiers(), check.Refused)
 	}
 }
 

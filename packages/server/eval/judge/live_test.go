@@ -180,9 +180,9 @@ func TestLiveModel(t *testing.T) {
 	if p, err := strconv.Atoi(os.Getenv("JUDGE_EVAL_PARALLEL")); err == nil && p > 0 {
 		parallel = p
 	}
-	t.Logf("tiers: primary %s (strict %v), fallback %s, strong %s; zdr %v; %d pairs of %s, %d in flight",
-		cfg.Primary.Model, cfg.Primary.Strict, cfg.Fallback.Model, cfg.Strong.Model, cfg.ZeroDataRetention,
-		len(pairs), set, parallel)
+	t.Logf("tiers: primary %s (strict %v, thinking %s), fallback %s (thinking %s), strong %s (thinking %s); zdr %v; %d pairs of %s, %d in flight",
+		cfg.Primary.Model, cfg.Primary.Strict, cfg.Primary.Thinking, cfg.Fallback.Model, cfg.Fallback.Thinking, cfg.Strong.Model,
+		cfg.Strong.Thinking, cfg.ZeroDataRetention, len(pairs), set, parallel)
 
 	for _, run := range liveRuns(t, cfg, pairs) {
 		c := judge.NewClassifier(model, run.cfg)
@@ -235,6 +235,10 @@ func TestLiveModel(t *testing.T) {
 			}
 			if (tier.Temperature == nil) != (cl.Temperature == nil) || (cl.Temperature != nil && *cl.Temperature != *tier.Temperature) {
 				t.Errorf("%s: a %s call's temperature isn't its tier's", run.name, cl.Model)
+				break
+			}
+			if tier.Thinking != (anthropic.Thinking{}) && (cl.Thinking != tier.Thinking.Mode || cl.Effort != tier.Thinking.Effort) {
+				t.Errorf("%s: a %s call's thinking is %s, its tier's %s", run.name, cl.Model, cl.ThinkingLabel(), tier.Thinking)
 				break
 			}
 		}
@@ -431,7 +435,7 @@ func writeVerdicts(path string, run liveRun, outs []outcome) error {
 	for _, tier := range []judge.Tier{run.cfg.Primary, run.cfg.Fallback, run.cfg.Strong} {
 		if tier.Enabled() {
 			hosts[tier.Model] = map[string]any{"only": tier.Routing.Providers, "quantizations": tier.Routing.Quantizations,
-				"temperature": tier.Temperature}
+				"temperature": tier.Temperature, "thinking": tier.Thinking.String()}
 		}
 	}
 	doc := map[string]any{

@@ -1,6 +1,7 @@
 package v2dream
 
 import (
+	"context"
 	"slices"
 	"testing"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/anthropic"
+	"github.com/MemaxLabs/memax/packages/server/internal/judge"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 )
 
@@ -133,11 +135,61 @@ func TestConfigFromEnv(t *testing.T) {
 			"DREAM_STRONG_TEMPERATURE": "0.2"}[k]
 		return v, ok
 	})
+	// Sonnet 5.5 takes no temperature but its own, so the named one isn't
+	// sent (anthropic.ModelParams).
 	if !slices.Equal(pinned.Primary.Routing.Providers, []string{"baseten", "together"}) ||
-		slices.Contains(pinned.Primary.Routing.Quantizations, "fp8") || pinned.Strong.Temperature == nil {
+		slices.Contains(pinned.Primary.Routing.Quantizations, "fp8") || pinned.Strong.Temperature != nil {
 		t.Errorf("pinned %+v %v", pinned.Primary.Routing, pinned.Strong.Temperature)
 	}
 	if len(c.Primary.Routing.Providers)+len(c.Fallback.Routing.Providers)+len(c.Fallback.Routing.Quantizations) != 0 {
 		t.Errorf("DREAM_ZDR=false still pinned %+v", c.Fallback.Routing)
+	}
+	// A tier on Claude Haiku 5.5 follows its rules, as the judge's do: no
+	// temperature, Vertex, effort medium unless DREAM_*_THINKING names one.
+	haiku := ConfigFromEnv(func(k string) (string, bool) {
+		v, ok := map[string]string{"DREAM_FALLBACK_MODEL": "anthropic/claude-haiku-5.5", "DREAM_FALLBACK_TEMPERATURE": "0",
+			"DREAM_THINKING": "off"}[k]
+		return v, ok
+	})
+	if fb := haiku.Fallback; fb.Temperature != nil || !slices.Equal(fb.Routing.Providers, []string{"google-vertex"}) ||
+		fb.Thinking != (anthropic.Thinking{Mode: anthropic.ThinkingAdaptive, Effort: "medium"}) ||
+		haiku.Primary.Thinking != (anthropic.Thinking{Mode: anthropic.ThinkingDisabled}) {
+		t.Errorf("Haiku 5.5 fallback %+v, primary thinking %+v", fb, haiku.Primary.Thinking)
+	}
+}
+
+type modelFunc func(context.Context, judge.Call) (string, error)
+
+func (f modelFunc) Complete(ctx context.Context, c judge.Call) (string, error) { return f(ctx, c) }
+
+// A tier that declines (stop_reason refusal) goes straight to the next:
+// Dream's own calls don't ask it again, and the edition's usage counts the
+// refusal beside the failure.
+func TestStructuredFallsThroughARefusal(t *testing.T) {
+	t.Parallel()
+	e := &Engine{cfg: Config{Primary: judge.Tier{Model: "p"}, Fallback: judge.Tier{Model: "f", Strict: true}}.withDefaults()}
+	var tiers []string
+	inner := modelFunc(func(_ context.Context, c judge.Call) (string, error) {
+		tiers = append(tiers, c.Tier.Name)
+		if c.Tier.Name == "primary" {
+			return "", &anthropic.RefusalError{Model: "p", Category: "general_harms"}
+		}
+		return `{"ok":true}`, nil
+	})
+	schema := mustSchema("refusal-test.json", `{"type":"object","required":["ok"],"properties":{"ok":{"type":"boolean"}}}`)
+	u := &usage{}
+	var out struct {
+		OK bool `json:"ok"`
+	}
+	tier, err := e.structured(withUsage(context.Background(), u), &countingModel{inner: inner, budget: 10}, "fold", "s", "p",
+		schema, &out)
+	if err != nil || tier != "fallback" || !out.OK {
+		t.Fatalf("tier %q, out %+v, err %v", tier, out, err)
+	}
+	if !slices.Equal(tiers, []string{"primary", "fallback"}) {
+		t.Errorf("calls = %v; want the primary once, then the fallback", tiers)
+	}
+	if got := u.snapshot(); got.Calls != 2 || got.Failures != 1 || got.Refusals != 1 {
+		t.Errorf("usage = %+v", got)
 	}
 }

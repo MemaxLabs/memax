@@ -157,8 +157,13 @@ func (w *writer) setAutonomy(ctx context.Context, c *SetAutonomy) (Result, error
 	if !connected {
 		act = policy.ConnectionConnect
 	}
+	if !connected && conn.Surface == SurfaceCloud {
+		// Its start key is held to its one space.
+		return Result{}, invalid("space", "a cloud agent starts in one space; connect another cloud agent for this one")
+	}
 	dec := policy.DecideConnection(w.policyActor(g), act, policy.Connection{
 		Name: conn.DisplayName, Mine: w.mine(conn), Credential: conn.Credential.Kind.Policy(), From: from, To: c.Autonomy,
+		Cloud: conn.Surface == SurfaceCloud,
 	}, sp.policy())
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
@@ -346,9 +351,9 @@ func (s Scope) personalSpace() (SpaceGrant, bool) {
 func lockConnection(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*Connection, error) {
 	var c Connection
 	err := tx.QueryRow(ctx, `
-		SELECT id, person_id, agent, display_name, credential_kind, credential_id, state, stream_version
+		SELECT id, person_id, agent, display_name, surface, credential_kind, credential_id, state, stream_version
 		  FROM v2.agent_connections WHERE id = $1 FOR UPDATE`, id).
-		Scan(&c.ID, &c.PersonID, &c.Agent, &c.DisplayName, &c.Credential.Kind, &c.Credential.ID, &c.State, &c.streamVersion)
+		Scan(&c.ID, &c.PersonID, &c.Agent, &c.DisplayName, &c.Surface, &c.Credential.Kind, &c.Credential.ID, &c.State, &c.streamVersion)
 	if errNoRows(err) {
 		return nil, ErrNotFound
 	}

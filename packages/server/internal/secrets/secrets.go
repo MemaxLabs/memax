@@ -43,6 +43,9 @@ var credentialPatterns = []credentialPattern{
 	{"vendor API key", regexp.MustCompile(`(?i)\b(?:sk|pk|xoxb|xoxa|xoxp|xoxs|xapp|ghp|gho|ghu|ghs|ghr|github_pat)[_-][A-Za-z0-9_-]{16,}\b`)},
 	// Stripe live-mode keys.
 	{"Stripe live key", regexp.MustCompile(`(?i)\b(?:sk|pk|rk)_live_[A-Za-z0-9]{16,}\b`)},
+	// Memax's own API keys and start keys (mxk_ and 64 hex characters):
+	// a key pasted into AGENTS.md, a memory or an import is refused.
+	{"Memax key", regexp.MustCompile(`(?i)\bmxk_[0-9a-f]{64}\b`)},
 	// AWS access key IDs.
 	{"AWS access key", regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`)},
 	// Google Cloud API keys.

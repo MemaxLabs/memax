@@ -644,6 +644,9 @@ const (
 	CodeAutonomyNotAllowed = "autonomy_not_allowed"
 	CodeKeyMaxPropose      = "key_max_propose"
 	CodeAutonomyNeedsWeb   = "autonomy_needs_web"
+	// CodeCloudNeedsWeb: a cloud agent above Read needs a person on the
+	// web, even when it connects (cloud warm-start design §4.2).
+	CodeCloudNeedsWeb = "cloud_propose_needs_web"
 
 	CodeViewer           = "viewer"             // refused (keep, reject) or downgraded (write)
 	CodeOwnersKeep       = "owners_keep"        // refused (keep, reject) or downgraded (write)

@@ -328,6 +328,46 @@ func TestMiddlewareV2ReadsDontUseUpWrites(t *testing.T) {
 	}
 }
 
+// A cloud session start counts against its own credential's bucket at
+// /v2 reads' rate: one repository's busy cloud jobs never use up the
+// person's other requests, nor another start key's starts.
+func TestMiddlewareSessionStartsHaveABucketPerCredential(t *testing.T) {
+	t.Parallel()
+
+	_, l := setupMiddleware(t)
+	limits := &mockPlanLimits{limits: model.UserLimits{RateLimitRPM: 2, RateLimitHeavyRPM: 1, RateLimitLightRPM: 2}}
+	users := &mockUsers{user: &model.User{ID: "u1"}}
+	h := l.Middleware(limits, users)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	start := func(key string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v2/spaces/acme-web/session-starts", nil)
+		req = handler.InjectUserIDForTest(req, "u1")
+		req = handler.InjectGrantForTest(req, handler.GrantContext{UserID: "u1", GrantID: key, PrincipalType: "api_key"})
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	for i := 0; i < 20; i++ {
+		if rec := start("key-a"); rec.Code != http.StatusOK {
+			t.Fatalf("start %d: got %d, want 200", i+1, rec.Code)
+		}
+	}
+	if rec := start("key-a"); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("start 21: got %d, want 429", rec.Code)
+	}
+	if rec := start("key-b"); rec.Code != http.StatusOK {
+		t.Fatalf("another key's start: got %d, want 200", rec.Code)
+	}
+	write := httptest.NewRequest(http.MethodPost, "/v2/spaces/acme-web/imports", nil)
+	write = handler.InjectUserIDForTest(write, "u1")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, write)
+	if rec.Code != http.StatusOK || rec.Header().Get("X-RateLimit-Remaining") != "1" {
+		t.Fatalf("the person's write after the starts: %d, remaining %q", rec.Code, rec.Header().Get("X-RateLimit-Remaining"))
+	}
+}
+
 func TestMiddlewareV2ReadsHaveTheirOwnLimit(t *testing.T) {
 	t.Parallel()
 

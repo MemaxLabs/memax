@@ -168,6 +168,8 @@ var routes = []Route{
 	{"POST", "/v2/agents/{agent}:pause", "pauseAgent", (*Handler).pauseAgent},
 	{"POST", "/v2/agents/{agent}:resume", "resumeAgent", (*Handler).resumeAgent},
 	{"POST", "/v2/agents/{agent}:disconnect", "disconnectAgent", (*Handler).disconnectAgent},
+	{"POST", "/v2/agents/{agent}:rekey", "rekeyAgent", (*Handler).rekeyAgent},
+	{"POST", "/v2/cloud-agents", "createCloudAgent", (*Handler).createCloudAgent},
 	{"GET", "/v2/spaces/{space}/brief", "getBrief", (*Handler).getBrief},
 	{"POST", "/v2/spaces/{space}/brief", "reviseBrief", (*Handler).reviseBrief},
 	{"GET", "/v2/spaces/{space}/brief/versions", "listBriefVersions", (*Handler).listBriefVersions},

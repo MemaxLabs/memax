@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
@@ -45,10 +46,57 @@ type APIKeyResolver func(key string) APIKeyResult
 // GrantResolver resolves a server-side delegated auth grant.
 type GrantResolver func(userID string, grantID string) APIKeyResult
 
+// StartKeyResolver resolves an API key on the cloud start's route with its
+// person's V2 scope, in one round trip (AuthHandler.ResolveStartKey).
+type StartKeyResolver func(ctx context.Context, key string) (APIKeyResult, ledger.Scope)
+
+// AuthOption configures RequireAuth.
+type AuthOption func(*authOptions)
+
+type authOptions struct {
+	startKeys StartKeyResolver
+}
+
+// WithStartKeys resolves API keys on the cloud start's route (POST
+// /v2/spaces/{space}/session-starts) with r, which reads the key and its
+// person's scope together; /v2 then reuses the scope (ResolvedScope).
+func WithStartKeys(r StartKeyResolver) AuthOption {
+	return func(o *authOptions) { o.startKeys = r }
+}
+
+// IsSessionStartRoute reports whether r is a cloud session start, the one
+// request a start key may make.
+func IsSessionStartRoute(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	rest, ok := strings.CutPrefix(r.URL.Path, "/v2/spaces/")
+	space, tail, _ := strings.Cut(rest, "/")
+	return ok && space != "" && tail == "session-starts"
+}
+
+const resolvedScopeKey contextKey = "resolved_scope"
+
+// ResolvedScope is the V2 scope RequireAuth read with the credential, when
+// it did (a key on the cloud start's route): /v2 uses it instead of
+// reading the person's spaces again.
+func ResolvedScope(r *http.Request) (ledger.Scope, bool) {
+	s, ok := r.Context().Value(resolvedScopeKey).(ledger.Scope)
+	return s, ok
+}
+
 // RequireAuth returns middleware that rejects requests without valid auth.
 // Supports both JWT tokens and API keys (mxk_ prefix).
 // Pass jwtSecret=nil to disable auth (local dev / memory mode).
-func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver GrantResolver) func(http.Handler) http.Handler {
+//
+// A start key (IsStartKey: compile:read, no memory:read) is refused on
+// every request but a cloud session start, here, before any handler: it
+// reaches nothing else of /v1, /v2 or /mcp, its own key list included.
+func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver GrantResolver, opts ...AuthOption) func(http.Handler) http.Handler {
+	var o authOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// No secret configured → auth disabled (memory mode)
@@ -77,9 +125,26 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 			var impersonatorID string // set when JWT carries impersonator_id claim
 			var grant GrantContext
 			var audienceMismatch bool // an audience-bound token sent to another resource
+			var scope *ledger.Scope   // the person's V2 scope, when read with the key
 			if strings.HasPrefix(token, "mxk_") && keyResolver != nil {
 				// API key auth — resolves user, hub scope, and agent identity
-				result := keyResolver(token)
+				var result APIKeyResult
+				if o.startKeys != nil && IsSessionStartRoute(r) {
+					var s ledger.Scope
+					result, s = o.startKeys(r.Context(), token)
+					if result.UserID != "" {
+						scope = &s
+					}
+				} else {
+					result = keyResolver(token)
+				}
+				if result.UserID != "" && IsStartKey(result.DefaultPermissions) && !IsSessionStartRoute(r) {
+					writeJSON(w, http.StatusForbidden, model.ApiResponse{
+						Error: &model.Error{Code: "permission_denied", Message: "This is a start key: it only starts cloud agents' sessions " +
+							"(POST /v2/spaces/{space}/session-starts). Use a key with read access, or your own sign-in, for anything else."},
+					})
+					return
+				}
 				userID = result.UserID
 				tokenHubID = result.HubID
 				agentName = result.AgentName
@@ -183,6 +248,9 @@ func RequireAuth(jwtSecret []byte, keyResolver APIKeyResolver, grantResolver Gra
 
 			ctx := context.WithValue(r.Context(), userIDKey, userID)
 			ctx = context.WithValue(ctx, grantContextKey, grant)
+			if scope != nil {
+				ctx = context.WithValue(ctx, resolvedScopeKey, *scope)
+			}
 			if tokenHubID != "" {
 				ctx = context.WithValue(ctx, tokenHubIDKey, tokenHubID)
 			}
@@ -262,6 +330,12 @@ func InjectUserIDForTest(r *http.Request, userID string) *http.Request {
 		})
 	}
 	return r
+}
+
+// InjectGrantForTest is the test-only sibling of InjectUserIDForTest for
+// the credential RequireAuth resolved (GetGrant).
+func InjectGrantForTest(r *http.Request, g GrantContext) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), grantContextKey, g))
 }
 
 // InjectHubIDForTest is the test-only sibling of InjectUserIDForTest
@@ -380,6 +454,20 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 			}
 
 			grant := grantFromRequest(r)
+
+			// A start key reaches only the cloud start (RequireAuth), which
+			// reads its spaces on /v2's own terms: no hub here grants it
+			// anything, so nothing is read for it.
+			if grant.PrincipalType == "api_key" && IsStartKey(grant.DefaultPermissions) {
+				ctx := context.WithValue(r.Context(), authContextKey, &AuthContext{
+					UserID: userID, PrincipalType: grant.PrincipalType, GrantID: grant.GrantID,
+					AgentName: grant.AgentName, SourceAgent: grant.AgentName, TrustLevel: grant.TrustLevel,
+					HubScopeMode: grant.HubScopeMode, ScopedHubIDs: grant.ScopedHubIDs,
+					PermissionsByHub: map[string]PermissionSet{},
+				})
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
 
 			var hubID string
 			var retrievalBoostHubID string

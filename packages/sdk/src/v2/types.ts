@@ -252,6 +252,9 @@ export type AgentDetail = Schemas["AgentDetail"];
 export type AgentWeek = Schemas["AgentWeek"];
 export type AgentSession = Schemas["AgentSession"];
 export type AgentCommandResult = Schemas["AgentCommandResult"];
+/** A cloud agent's connection, and its start key's secret (shown once). */
+export type CloudAgentResult = Schemas["CloudAgentResult"];
+export type StartKey = Schemas["StartKey"];
 
 // Request bodies
 export type RememberInput = Schemas["RememberRequest"];
@@ -263,6 +266,8 @@ export type ScopeInput = Schemas["ScopeRequest"];
 export type SourceInput = Schemas["SourceInput"];
 export type AutonomyInput = Schemas["AutonomyRequest"];
 export type AgentCommandInput = Schemas["AgentCommandRequest"];
+/** Connect a cloud agent to a space, with a start key. */
+export type CreateCloudAgentInput = Schemas["CreateCloudAgentRequest"];
 export type ReviseBriefInput = Schemas["ReviseBriefRequest"];
 export type BriefSectionInput = Schemas["BriefSectionInput"];
 export type BriefItemInput = Schemas["BriefItemInput"];

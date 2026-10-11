@@ -302,7 +302,8 @@ const (
 
 func isAgentCommand(n CommandName) bool {
 	switch n {
-	case CommandConnectAgent, CommandSetAutonomy, CommandPauseAgent, CommandResumeAgent, CommandDisconnectAgent:
+	case CommandConnectAgent, CommandSetAutonomy, CommandPauseAgent, CommandResumeAgent, CommandDisconnectAgent,
+		CommandConnectCloudAgent, CommandRekeyAgent:
 		return true
 	}
 	return false
@@ -454,10 +455,14 @@ type ConnectionStateError struct {
 	Agent   string
 	State   ConnectionState
 	Command CommandName
+	// Detail, when set, says why instead (a rekey of a key that is gone).
+	Detail string
 }
 
 func (e *ConnectionStateError) Error() string {
 	switch {
+	case e.Detail != "":
+		return fmt.Sprintf("%s can't be given a new key: %s.", e.Agent, e.Detail)
 	case e.State == ConnectionDisconnected:
 		return fmt.Sprintf("%s was disconnected. Connect it again to use it.", e.Agent)
 	case e.Command == CommandPauseAgent:

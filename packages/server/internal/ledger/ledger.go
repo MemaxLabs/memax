@@ -182,6 +182,10 @@ func (l *Ledger) applyOnce(ctx context.Context, cmd Command, m *Meta, hash []byt
 		res, err = w.edit(ctx, c)
 	case *ConnectAgent:
 		res, err = w.connect(ctx, c)
+	case *ConnectCloudAgent:
+		res, err = w.connectCloud(ctx, c)
+	case *RekeyAgent:
+		res, err = w.rekey(ctx, c)
 	case *SetAutonomy:
 		res, err = w.setAutonomy(ctx, c)
 	case *PauseAgent:
@@ -376,6 +380,10 @@ func validateCommand(cmd Command, now time.Time) error {
 		return checkText("statement", c.Statement, MaxStatementRunes, true)
 	case *ConnectAgent:
 		return c.validate()
+	case *ConnectCloudAgent:
+		return c.validate(now)
+	case *RekeyAgent:
+		return c.validate(now)
 	case *SetAutonomy:
 		if err := validateConnectionTarget(c.Connection); err != nil {
 			return err

@@ -15,6 +15,9 @@ const (
 	ConnectionPause       ConnectionAction = "pause"
 	ConnectionResume      ConnectionAction = "resume"
 	ConnectionDisconnect  ConnectionAction = "disconnect"
+	// ConnectionRekey replaces a cloud agent's start key with a new one
+	// under the same connection.
+	ConnectionRekey ConnectionAction = "rekey"
 )
 
 // Connection is the connection a change applies to, as DecideConnection
@@ -31,6 +34,11 @@ type Connection struct {
 	// connected there), and To the level asked for (Connect and
 	// SetAutonomy).
 	From, To Autonomy
+	// Cloud is a cloud agent's connection (surface cloud): it runs
+	// unattended on other people's words (issues, comments, web pages), so
+	// it starts at Read and only a person on the web raises it, never at
+	// Connect's quiet level.
+	Cloud bool
 }
 
 // AgentCeiling is the most a person with role r may let their agent do in
@@ -103,6 +111,15 @@ func DecideConnection(a Actor, act ConnectionAction, c Connection, s Space) Deci
 	}
 
 	switch act {
+	case ConnectionRekey:
+		if !c.Mine {
+			return refuse(CodeNotYourAgent, fmt.Sprintf("Only the person %s works for can give it a new key.", name))
+		}
+		if !c.Cloud {
+			return refuse(CodeAutonomyNotAllowed, fmt.Sprintf(
+				"Only a cloud agent's start key is replaced here. Create a new key for %s in Settings.", name))
+		}
+		return apply()
 	case ConnectionPause, ConnectionDisconnect, ConnectionResume:
 		if !c.Mine {
 			return refuse(CodeNotYourAgent, fmt.Sprintf("Only the person %s works for can %s it.", name, act))
@@ -149,6 +166,16 @@ func DecideConnection(a Actor, act ConnectionAction, c Connection, s Space) Deci
 	if c.To.Above(AgentCeiling(a.Role, s.Rules)) {
 		return refuse(CodeAutonomyNotAllowed, fmt.Sprintf(
 			"Only people who keep in %s can let an agent write there, so %s can propose at most.", spaceName(s), name))
+	}
+	if c.Cloud && c.To.Above(AutonomyRead) {
+		// No quiet level: a cloud agent above Read is a person's choice
+		// on the web, every time.
+		if d := needsPerson(a, CodeCloudNeedsWeb, fmt.Sprintf(
+			"%s runs in the cloud on other people's words, so letting it propose needs you on the web. Change it in Agents at memax.app.", name),
+			"letting "+name+" propose"); d != nil {
+			return *d
+		}
+		return applyChecked(a)
 	}
 	quiet := act == ConnectionConnect && !c.To.Above(quietLevel(a.Role, s))
 	if quiet {

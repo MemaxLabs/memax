@@ -193,6 +193,8 @@ export const ledgerActivityEn = {
     paused: "{actor} paused {agent}.",
     resumed: "{actor} resumed {agent}.",
     disconnected: "{actor} disconnected {agent}. Its credential is revoked.",
+    rekeyed:
+      "{actor} gave {agent} a new start key. The old one no longer works.",
     revised: "{actor} revised the Brief ({ref}).",
     configured: "{actor} changed how {ref} is written.",
     requested: "{actor} asked for {ref} to be compiled.",

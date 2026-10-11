@@ -1670,6 +1670,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/agents/{agent}:rekey": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent connection's id. */
+                agent: components["parameters"]["AgentPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Give a cloud agent a new start key
+         * @description Replaces a cloud agent's start key with a new one under the same
+         *     connection, in one transaction: the old key stops working at once,
+         *     the new one lasts 180 days, and the connection, its history and its
+         *     reads stay as they were (a `rekeyed` receipt). The new key's secret
+         *     is in the answer, once; a retry with the same `Idempotency-Key`
+         *     answers without it. Only the person the agent works for rekeys it,
+         *     and only a cloud agent's start key (`surface: cloud`) is replaced
+         *     here.
+         */
+        post: operations["rekeyAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/cloud-agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect a cloud agent with a start key
+         * @description Connects a cloud agent (Claude Code's cloud sessions, Copilot's
+         *     cloud agent, Codex Cloud) to one project or team space and makes
+         *     its start key, in one transaction: a connection on the `cloud`
+         *     surface (`connected` receipt) bound to a new API key whose one
+         *     permission is `compile:read`. A start key starts the agent's
+         *     sessions in that space (`POST /v2/spaces/{space}/session-starts`)
+         *     and nothing else: every other request with it is 403
+         *     `permission_denied`, so a key that leaks shows what the next commit
+         *     of the compiled files would. It lasts 180 days; rekey it under the
+         *     same connection (`/v2/agents/{agent}:rekey`) or disconnect it.
+         *
+         *     The secret is in the answer once, and never stored: keep it as the
+         *     agent's secret (`MEMAX_START_KEY`, or a network secret for the API's
+         *     host), never in the repository. A retry with the same
+         *     `Idempotency-Key` answers the connection without it. The connection
+         *     is Read by default; `propose` needs a person on the web (policy
+         *     `cloud_propose_needs_web`), and a cloud key never keeps. Only a
+         *     person creates one, for themselves: the reads it counts are theirs.
+         */
+        post: operations["createCloudAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/spaces/{space}/brief": {
         parameters: {
             query?: never;
@@ -3254,9 +3321,11 @@ export interface components {
          *     version is conditions_changed (Memax, via system, typing what was
          *     written before they were typed). Memax's derived conditions ride on
          *     the command that wrote the version, with no receipt of their own.
+         *     A cloud agent's new start key, under the same connection, is
+         *     rekeyed (`object_kind: agent`).
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded" | "exported" | "noted" | "switched" | "switched_back" | "unlinked" | "scoped" | "conditions_changed";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded" | "exported" | "noted" | "switched" | "switched_back" | "unlinked" | "scoped" | "conditions_changed" | "rekeyed";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space" | "machine";
         /**
@@ -3301,7 +3370,9 @@ export interface components {
          *     Refused changes to
          *     agents: person_must_manage (only a person changes what an agent may
          *     do), not_your_agent, autonomy_not_allowed, key_max_propose,
-         *     autonomy_needs_web (raising an agent needs a person on the web).
+         *     autonomy_needs_web (raising an agent needs a person on the web),
+         *     cloud_propose_needs_web (a cloud agent above Read needs a person on
+         *     the web, even when it connects).
          *     Refused or sent to Review:
          *     viewer, owners_keep, decision_needs_web. Sent to Review: api_key,
          *     external_source, contradicts_decision, touches_decision (a
@@ -3336,7 +3407,7 @@ export interface components {
          *     needs a sign-in in the last few minutes, or your passkey).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "space_on_v1" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "verify_by_person" | "checks_by_person" | "flag_by_memax" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "machines_by_person" | "machines_personal" | "machines_by_owner" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "cloud_propose_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "space_on_v1" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "verify_by_person" | "checks_by_person" | "flag_by_memax" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "machines_by_person" | "machines_personal" | "machines_by_owner" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_kind" | "needs_passkey" | "passkey_invalid";
         /**
@@ -4860,6 +4931,38 @@ export interface components {
             reason?: components["schemas"]["Reason"];
             /** @description When it happened on the client; offline queues keep the original time. */
             occurred_at?: components["schemas"]["Timestamp"];
+        };
+        CreateCloudAgentRequest: {
+            /**
+             * @description The cloud agent.
+             * @enum {string}
+             */
+            agent: "claude-code" | "copilot" | "codex";
+            /** @description The project or team space it starts in, by id or slug. */
+            space: components["schemas"]["SpaceKey"];
+            /**
+             * @description What it may do there; read by default, and propose only from the web.
+             * @enum {string}
+             */
+            autonomy?: "read" | "propose";
+            reason?: components["schemas"]["Reason"];
+        };
+        CloudAgentResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            /** @description The cloud agent's connection. */
+            agent: components["schemas"]["AgentConnection"];
+            /** @description The start key; absent on a retry, and on a refusal. */
+            key?: components["schemas"]["StartKey"];
+            receipts: components["schemas"]["Receipt"][];
+        };
+        /** @description A cloud agent's start key. Its secret is shown here once, and never stored. */
+        StartKey: {
+            /** @description The key, for the agent's secret (MEMAX_START_KEY). Never commit it. */
+            secret: string;
+            /** @description The key's first characters, as the key lists show it. */
+            prefix: string;
+            expires_at: components["schemas"]["Timestamp"];
         };
         /** @description The body of pause, resume and disconnect. Every field is optional. */
         AgentCommandRequest: {
@@ -6765,6 +6868,9 @@ export interface components {
         AgentCommandResultEnvelope: {
             data: components["schemas"]["AgentCommandResult"];
         };
+        CloudAgentResultEnvelope: {
+            data: components["schemas"]["CloudAgentResult"];
+        };
         BriefEnvelope: {
             data: components["schemas"]["Brief"];
         };
@@ -7196,6 +7302,26 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["AgentCommandResultEnvelope"];
+            };
+        };
+        /** @description The cloud agent's connection, and its start key's secret (shown once). */
+        CloudAgentCreated: {
+            headers: {
+                "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["CloudAgentResultEnvelope"];
+            };
+        };
+        /** @description The connection, and its new start key's secret (shown once). */
+        AgentRekeyed: {
+            headers: {
+                "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["CloudAgentResultEnvelope"];
             };
         };
         /**
@@ -9736,6 +9862,86 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    rekeyAgent: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The agent connection's id. */
+                agent: components["parameters"]["AgentPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AgentCommandRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["AgentRekeyed"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    createCloudAgent: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCloudAgentRequest"];
+            };
+        };
+        responses: {
+            201: components["responses"]["CloudAgentCreated"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];

@@ -7,8 +7,9 @@
 // sandbox does (a bare environment, a fresh HOME, no ~/.memax, no daemon,
 // the agent's event on stdin) and hears exactly that.
 //
-// The credential is devseed's Codex grant (an agent connected to the
-// space), until start keys (PR 3) give the sandbox its own.
+// The credential is a start key: the person connects Copilot's cloud agent
+// to the space (POST /v2/cloud-agents), and the sandbox holds only the
+// key's secret.
 //
 // It needs Go, Postgres (a role that can CREATE DATABASE), psql, git and
 // the workspace's node_modules, so it runs only with MEMAX_E2E_SERVER=1:
@@ -51,7 +52,8 @@ describe.skipIf(!enabled)(
     let origin: string;
     let clone: string;
     let bundle: string;
-    let cxToken: string;
+    let startKey: string;
+    let cloudAgent: V2.AgentConnection;
     let pnpm: V2.Memory;
     let edited: string;
     let forgotten: string;
@@ -133,26 +135,25 @@ describe.skipIf(!enabled)(
       );
       stack = await startStack();
       memax = new Memax({ apiUrl: stack.apiUrl, apiKey: stack.token });
-      const grants = execFileSync("psql", [
+      // Claude Code (devseed's grant) asks the gate, as an agent.
+      const grant = execFileSync("psql", [
         stack.dbUrl,
         "-Atc",
-        "SELECT agent_name || ' ' || id FROM oauth_grants WHERE agent_name IN ('codex', 'claude-code')",
+        "SELECT id FROM oauth_grants WHERE agent_name = 'claude-code'",
       ])
         .toString()
-        .trim()
-        .split("\n")
-        .map((l) => l.split(" "));
-      const grant = (name: string) => grants.find(([a]) => a === name)![1];
-      cxToken = grantToken(stack.zz, "codex", grant("codex"), stack.secret);
+        .trim();
       agent = new Memax({
         apiUrl: stack.apiUrl,
-        apiKey: grantToken(
-          stack.zz,
-          "claude-code",
-          grant("claude-code"),
-          stack.secret,
-        ),
+        apiKey: grantToken(stack.zz, "claude-code", grant, stack.secret),
       });
+      // The person connects Copilot's cloud agent and gets its start key.
+      const made = await memax.v2.agents.connectCloud(
+        { agent: "copilot", space: SPACE },
+        { idempotencyKey: randomUUID(), via: "cli" },
+      );
+      startKey = made.key!.secret;
+      cloudAgent = made.agent;
 
       // 1. The first compile, committed.
       const first = await until(
@@ -253,7 +254,7 @@ describe.skipIf(!enabled)(
       git(base, "clone", "-q", origin, clone);
       const r = await startInSandbox({
         MEMAX_API_URL: stack.apiUrl,
-        MEMAX_START_KEY: cxToken,
+        MEMAX_START_KEY: startKey,
       });
       expect(r.code).toBe(0);
       const block = (JSON.parse(r.stdout) as { additionalContext: string })
@@ -292,17 +293,23 @@ describe.skipIf(!enabled)(
             (x) =>
               x.kind === "compile_load" &&
               x.compile === c1 &&
-              x.agent === "codex",
+              x.connection_id === cloudAgent.id,
           );
           const digest = page.items.find(
-            (x) => x.kind === "digest" && x.agent === "codex",
+            (x) => x.kind === "digest" && x.connection_id === cloudAgent.id,
           );
           return load && digest ? { load, digest } : undefined;
         },
         10_000,
         "the start's reads",
       );
-      expect(reads.load.connection_id).toBeTruthy();
+      expect(reads.load.agent).toBe("copilot");
+      expect(cloudAgent.surface).toBe("cloud");
+      // The start key reaches nothing else.
+      const other = await fetch(`${stack.apiUrl}/v2/spaces/${SPACE}/memories`, {
+        headers: { Authorization: `Bearer ${startKey}` },
+      });
+      expect(other.status).toBe(403);
       expect(reads.load.via).toBe("cli");
       expect(reads.digest.memory_refs).toContain(pnpm.ref);
     }, 180_000);
@@ -316,7 +323,7 @@ describe.skipIf(!enabled)(
       const latest = await agentsMd();
       writeFileSync(join(clone, "AGENTS.md"), latest.content);
       git(clone, "commit", "-q", "-am", `AGENTS.md at ${latest.ref}`);
-      const env = { MEMAX_API_URL: stack.apiUrl, MEMAX_START_KEY: cxToken };
+      const env = { MEMAX_API_URL: stack.apiUrl, MEMAX_START_KEY: startKey };
       expect(await startInSandbox(env)).toMatchObject({ code: 0, stdout: "" });
 
       git(clone, "checkout", "-q", "HEAD~1");
@@ -327,15 +334,27 @@ describe.skipIf(!enabled)(
       expect(hole).toMatchObject({ code: 0, stdout: "" });
       expect(hole.ms).toBeLessThan(3_500);
 
-      const codex = (await memax.v2.agents.list()).items.find(
-        (a) => a.agent === "codex",
-      )!;
-      await memax.v2.agents.disconnect(
-        codex.id,
+      // A new key (the clone holds C-1 again): the old key stops at once,
+      // the new one starts under the same connection.
+      const rekeyed = await memax.v2.agents.rekey(
+        cloudAgent.id,
         {},
         { idempotencyKey: randomUUID() },
       );
+      expect(rekeyed.agent.id).toBe(cloudAgent.id);
+      const fresh = { ...env, MEMAX_START_KEY: rekeyed.key!.secret };
       expect(await startInSandbox(env)).toMatchObject({ code: 0, stdout: "" });
+      expect((await startInSandbox(fresh)).stdout).toContain("[");
+
+      await memax.v2.agents.disconnect(
+        cloudAgent.id,
+        {},
+        { idempotencyKey: randomUUID() },
+      );
+      expect(await startInSandbox(fresh)).toMatchObject({
+        code: 0,
+        stdout: "",
+      });
     }, 120_000);
   },
 );

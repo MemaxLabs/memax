@@ -90,6 +90,8 @@ var sampleRequests = map[string]struct {
 	"pauseAgent":       {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:pause"},
 	"resumeAgent":      {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:resume", body: `{"reason":"done testing"}`},
 	"disconnectAgent":  {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:disconnect"},
+	"rekeyAgent":       {path: "/v2/agents/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:rekey"},
+	"createCloudAgent": {path: "/v2/cloud-agents", body: `{"agent":"copilot","space":"memax-v2"}`},
 
 	"getBrief":          {path: "/v2/spaces/memax-v2/brief"},
 	"reviseBrief":       {path: "/v2/spaces/memax-v2/brief", body: `{"title":"Brief","sections":[{"key":"decisions","heading":"Decisions","items":[{"ref":"M-0219"}]}]}`, header: map[string]string{"If-Match": `"1"`}},

@@ -288,6 +288,9 @@ export function activitySentences(
       return [one(s.resumed, { agent: agentObject })];
     case "disconnected":
       return [one(s.disconnected, { agent: agentObject })];
+    // A cloud agent's new start key, under the same connection.
+    case "rekeyed":
+      return [one(s.rekeyed, { agent: agentObject })];
     case "revised":
       return [one(s.revised, { ref: text(entry.object.ref) })];
     case "configured":

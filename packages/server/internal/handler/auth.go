@@ -23,6 +23,7 @@ import (
 
 	"github.com/MemaxLabs/memax/packages/server/internal/auth"
 	"github.com/MemaxLabs/memax/packages/server/internal/events"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
@@ -1517,11 +1518,77 @@ func (h *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// apiKeySQL reads an API key by its SHA-256 ($1); scanAPIKey reads it.
+const apiKeySQL = `SELECT id, user_id, expires_at, hub_id, agent_name,
+			COALESCE(hub_scope_mode, 'all_accessible'),
+			ARRAY(SELECT hub_id::text FROM unnest(COALESCE(hub_ids, ARRAY[]::uuid[])) AS hub_id),
+			COALESCE(default_permissions, ARRAY[]::text[]),
+			COALESCE(trust_level, 'elevated'),
+			rate_limit_tier,
+			COALESCE(standalone, false)
+		FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL`
+
 // ResolveAPIKey looks up an API key by its plaintext value, returning the user ID and optional hub scope.
 func (h *AuthHandler) ResolveAPIKey(key string) APIKeyResult {
 	hash := sha256.Sum256([]byte(key))
 	keyHash := hex.EncodeToString(hash[:])
 
+	result := scanAPIKey(h.pool.QueryRow(context.Background(), apiKeySQL, keyHash))
+	if result.UserID == "" {
+		return APIKeyResult{}
+	}
+
+	// Update last_used asynchronously
+	go func() {
+		h.pool.Exec(context.Background(),
+			`UPDATE api_keys SET last_used = $1 WHERE key_hash = $2`, time.Now(), keyHash)
+	}()
+
+	return result
+}
+
+// ResolveStartKey resolves an API key on the cloud start's route, and the
+// scope of the person it belongs to, in one round trip to Postgres: the
+// key, its person's spaces (ledger.KeyScopeSQL) and its last_used, which
+// nothing reads, go out in one pipeline (cloud warm-start design §3.6: a
+// whole start in about six round trips). The scope is the zero Scope when
+// the key doesn't resolve.
+func (h *AuthHandler) ResolveStartKey(ctx context.Context, key string) (APIKeyResult, ledger.Scope) {
+	hash := sha256.Sum256([]byte(key))
+	keyHash := hex.EncodeToString(hash[:])
+	var result APIKeyResult
+	b := &pgx.Batch{}
+	b.Queue(apiKeySQL, keyHash).QueryRow(func(row pgx.Row) error {
+		result = scanAPIKey(row)
+		return nil
+	})
+	var scope ledger.Scope
+	var scopeErr error
+	b.Queue(ledger.KeyScopeSQL, keyHash).Query(func(rows pgx.Rows) error {
+		// The key's row came first in the pipeline, so its person is known.
+		if id, err := uuid.Parse(result.UserID); err == nil {
+			scope, scopeErr = ledger.ScanUserScope(rows, id)
+		}
+		return nil
+	})
+	b.Queue(`UPDATE api_keys SET last_used = now()
+	          WHERE key_hash = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())`, keyHash)
+	if err := h.pool.SendBatch(ctx, b).Close(); err != nil {
+		slog.Warn("start key: could not resolve", "error", err)
+		return APIKeyResult{}, ledger.Scope{}
+	}
+	if result.UserID == "" || scopeErr != nil {
+		if scopeErr != nil {
+			slog.Warn("start key: could not read the scope", "error", scopeErr)
+		}
+		return APIKeyResult{}, ledger.Scope{}
+	}
+	return result, scope
+}
+
+// scanAPIKey reads apiKeySQL's row: the zero result for a key that is
+// missing, revoked, expired or has no permission Memax knows.
+func scanAPIKey(row pgx.Row) APIKeyResult {
 	var userID string
 	var expiresAt *time.Time
 	var hubID *string
@@ -1533,16 +1600,7 @@ func (h *AuthHandler) ResolveAPIKey(key string) APIKeyResult {
 	var trustLevel string
 	var rateLimitTier *string
 	var standalone bool
-	err := h.pool.QueryRow(context.Background(),
-		`SELECT id, user_id, expires_at, hub_id, agent_name,
-			COALESCE(hub_scope_mode, 'all_accessible'),
-			ARRAY(SELECT hub_id::text FROM unnest(COALESCE(hub_ids, ARRAY[]::uuid[])) AS hub_id),
-			COALESCE(default_permissions, ARRAY[]::text[]),
-			COALESCE(trust_level, 'elevated'),
-			rate_limit_tier,
-			COALESCE(standalone, false)
-		FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL`, keyHash,
-	).Scan(&id, &userID, &expiresAt, &hubID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &standalone)
+	err := row.Scan(&id, &userID, &expiresAt, &hubID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &standalone)
 	if err != nil {
 		return APIKeyResult{}
 	}
@@ -1582,13 +1640,6 @@ func (h *AuthHandler) ResolveAPIKey(key string) APIKeyResult {
 	if rateLimitTier != nil {
 		result.RateLimitTier = *rateLimitTier
 	}
-
-	// Update last_used asynchronously
-	go func() {
-		h.pool.Exec(context.Background(),
-			`UPDATE api_keys SET last_used = $1 WHERE key_hash = $2`, time.Now(), keyHash)
-	}()
-
 	return result
 }
 

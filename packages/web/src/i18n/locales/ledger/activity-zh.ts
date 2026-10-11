@@ -179,6 +179,7 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     paused: "{actor}暂停了 {agent}。",
     resumed: "{actor}恢复了 {agent}。",
     disconnected: "{actor}断开了 {agent}，它的凭据已吊销。",
+    rekeyed: "{actor}给 {agent} 换了新的启动密钥，旧密钥已失效。",
     revised: "{actor}修订了简报（{ref}）。",
     configured: "{actor}更改了 {ref} 的编译方式。",
     requested: "{actor}请求编译 {ref}。",

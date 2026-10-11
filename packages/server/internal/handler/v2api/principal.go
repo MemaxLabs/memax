@@ -62,7 +62,10 @@ func (h *Handler) principalFor(r *http.Request) (*principal, *apiError) {
 			message: "Sign in again: this session has no Memax account."}
 	}
 	grant := handler.GetGrant(r)
-	if !grant.DefaultPermissions.Has(handler.PermMemoryRead) {
+	// A start key reads only its cloud starts (RequireAuth refuses it
+	// everywhere else first); anything else needs memory:read.
+	startKey := handler.IsStartKey(grant.DefaultPermissions)
+	if !grant.DefaultPermissions.Has(handler.PermMemoryRead) && !(startKey && handler.IsSessionStartRoute(r)) {
 		return nil, &apiError{status: http.StatusForbidden, code: codePermissionDenied,
 			message: "This credential can't read memories. Create a key with read access in Settings."}
 	}
@@ -73,9 +76,14 @@ func (h *Handler) principalFor(r *http.Request) (*principal, *apiError) {
 	isAgent := grant.PrincipalType == "api_key" || grant.PrincipalType == "oauth_grant" || grant.AgentName != ""
 	// Whether a person has a passkey (the re-check), beside their scope.
 	hasPasskey := h.startHasPasskey(r, userID, isAgent)
-	scope, err := h.ledger.UserScope(r.Context(), userID)
-	if err != nil {
-		return nil, h.fromLedger(r, err)
+	// The scope, unless the credential's lookup read it already (a key
+	// on the cloud start's route, in the same round trip as the key).
+	scope, resolved := handler.ResolvedScope(r)
+	if !resolved || scope.PersonID != userID {
+		var err error
+		if scope, err = h.ledger.UserScope(r.Context(), userID); err != nil {
+			return nil, h.fromLedger(r, err)
+		}
 	}
 	// A credential that names hubs is limited to them. That includes an
 	// old key bound to one hub (api_keys.hub_id) whose scope mode was never

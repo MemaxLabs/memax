@@ -174,6 +174,13 @@ func (l *Limiter) Middleware(registry planLimitsResolver, users userResolver, hu
 			if useEndpointBucket {
 				userKey = fmt.Sprintf("%s:%s:%s:%s", userID, opClass, r.Method, routeKey(path))
 			}
+			// A cloud start counts against its own credential (a start key's
+			// connection), not against the person's other requests.
+			if opClass == OpClassV2Start {
+				if g := handler.GetGrant(r).GrantID; g != "" {
+					userKey = fmt.Sprintf("%s:%s:%s", userID, opClass, g)
+				}
+			}
 			result := l.Check(r.Context(), userKey, limit)
 
 			// Always set rate limit headers (even on success)
@@ -233,7 +240,7 @@ func resolveLimitWithHub(r *http.Request, userID, path string, opClass OpClass, 
 		return limits.RateLimitHeavyRPM
 	case OpClassLight:
 		return limits.RateLimitLightRPM
-	case OpClassV2Read:
+	case OpClassV2Read, OpClassV2Start:
 		return v2ReadLimit(limits.RateLimitLightRPM)
 	case OpClassMetadata:
 		return limits.RateLimitRPM

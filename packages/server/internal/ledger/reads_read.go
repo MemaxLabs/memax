@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -233,13 +234,27 @@ func (l *Ledger) GetMemoryReads(ctx context.Context, scope Scope, memoryID uuid.
 	return out, nil
 }
 
+// hookedAgents are the agents whose session-start hook reports the compile
+// loads of the files they read (packages/cli lib/connect/hooks.ts). A home
+// file read by any other (Windsurf, OpenCode, Antigravity until its hook is
+// wired) has loads Memax can't see.
+var hookedAgents = []string{"claude-code", "codex", "gemini-cli", "cursor", "copilot"}
+
 // unobservedRefs selects (as `ref`) the memories in a space ($1) that are
 // in a compiled file whose loads Memax can't observe: a target that is on,
 // not delivered over MCP (which Memax serves itself, so every load is a
 // read), and with no session-start compile load reported since $2. The
 // file's memories are those of its latest good compile and of the compile
 // on disk, when they differ.
-const unobservedRefs = `
+//
+// A home file says who reads it (settings.read_by, personal-layer design
+// §7.3). One nobody reads (the canonical copy, until OpenCode points at
+// it) isn't unobserved: nothing loads it, so its facts mustn't be kept from
+// fading for it, or no personal fact would ever fade. One that an agent
+// without a session-start hook reads is unobserved even with loads
+// reported, since that agent's reads are never among them. A repository's
+// file has no read_by and is judged by its loads alone, as before.
+var unobservedRefs = `
 	SELECT ref
 	  FROM v2.targets t
 	  CROSS JOIN LATERAL (
@@ -249,10 +264,18 @@ const unobservedRefs = `
 	  ) latest
 	  CROSS JOIN LATERAL unnest(latest.refs || COALESCE(
 	      (SELECT d.refs FROM v2.compile_runs d WHERE d.id = t.delivered_compile_id), '{}')) AS ref
+	  CROSS JOIN LATERAL (
+	      SELECT CASE WHEN jsonb_typeof(t.settings->'read_by') = 'array'
+	                  THEN t.settings->'read_by' ELSE '[]'::jsonb END AS agents
+	  ) rb
 	 WHERE t.space_id = $1 AND t.sync_state <> 'off' AND t.delivery <> 'mcp'
-	   AND NOT EXISTS (
-	       SELECT 1 FROM v2.reads l JOIN v2.compile_runs lc ON lc.id = l.compile_id
-	        WHERE l.space_id = $1 AND l.kind = 'compile_load' AND l.read_at >= $2 AND lc.target_id = t.id)`
+	   AND NOT (t.root = 'home' AND jsonb_array_length(rb.agents) = 0)
+	   AND (EXISTS (
+	           SELECT 1 FROM jsonb_array_elements_text(rb.agents) AS r(agent)
+	            WHERE r.agent <> ALL (ARRAY['` + strings.Join(hookedAgents, "','") + `']))
+	        OR NOT EXISTS (
+	           SELECT 1 FROM v2.reads l JOIN v2.compile_runs lc ON lc.id = l.compile_id
+	            WHERE l.space_id = $1 AND l.kind = 'compile_load' AND l.read_at >= $2 AND lc.target_id = t.id))`
 
 // MemoryReadStatus is fading's view of one kept memory.
 type MemoryReadStatus struct {

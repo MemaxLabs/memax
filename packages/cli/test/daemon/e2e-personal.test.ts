@@ -305,6 +305,26 @@ describe.skipIf(!enabled)("the personal layer on several machines", () => {
     }
     console.log(`Forget → out of both homes: ${Date.now() - t0} ms`);
     for (const h of [a, b]) expect(everything(h.dir)).not.toContain(FACT);
+    // And none of Postgres holds them: every table's rows, as pg_dump has them.
+    const dump = execFileSync("pg_dump", ["--data-only", stack.dbUrl], {
+      maxBuffer: 256 << 20,
+    }).toString();
+    expect(dump.length).toBeGreaterThan(0);
+    expect(dump).not.toContain(FACT);
+    // The tombstone names each machine's files, every one rewritten.
+    await until(
+      async () => {
+        const ts = await memax.v2.memories.tombstone(ref, { space: personal });
+        const homes = ts.steps.filter((s) => s.kind === "target");
+        return (
+          homes.length === 6 &&
+          homes.every((s) => s.status === "done") &&
+          new Set(homes.map((s) => s.target?.machine?.name)).size === 2
+        );
+      },
+      30_000,
+      "every machine's files rewritten in the tombstone",
+    );
     expect(
       read(b, CODEX)!.startsWith(`${MINE_B}\n<!-- memax:start -->\n`),
     ).toBe(true);

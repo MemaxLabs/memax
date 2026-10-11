@@ -325,6 +325,23 @@ describe("memax verify-export", () => {
     expect(c.text()).toContain("checked with the keys the export carries");
   });
 
+  it("verifies a Personal space's export, its home files' machines included", async () => {
+    const personal = fileURLToPath(
+      new URL(
+        "../../../sdk/src/v2/testdata/export-v1/personal",
+        import.meta.url,
+      ),
+    );
+    const c = capture();
+    expect(
+      await verifyExportFolder(personal, { offline: true }, { out: c.out }),
+    ).toBe(0);
+    expect(c.text()).toContain("Verified personal");
+    expect(c.text()).toContain(
+      "2 memories, 0 tombstones and 1 Brief version match their receipts",
+    );
+  });
+
   it("fails a changed memory file, receipt or checkpoint, saying where", async () => {
     const dir = await written();
     const run = async (opts = {}) => {

@@ -25,14 +25,14 @@ type collector struct {
 	seal       ledger.ExportSeal
 }
 
-func (c *collector) Space(s ledger.ExportSpaceInfo) error   { c.space = s; return nil }
-func (c *collector) Briefs([]ledger.Brief) error            { return nil }
-func (c *collector) Gates([]ledger.Gate) error              { return nil }
-func (c *collector) Targets([]ledger.Target) error          { return nil }
-func (c *collector) Agents([]ledger.ExportAgent) error      { return nil }
-func (c *collector) Tombstones(ts []ledger.Tombstone) error { c.tombstones = ts; return nil }
-func (c *collector) Reads(ledger.ReadSummary) error         { return nil }
-func (c *collector) Seal(s ledger.ExportSeal) error         { c.seal = s; return nil }
+func (c *collector) Space(s ledger.ExportSpaceInfo) error            { c.space = s; return nil }
+func (c *collector) Briefs([]ledger.Brief) error                     { return nil }
+func (c *collector) Gates([]ledger.Gate) error                       { return nil }
+func (c *collector) Targets([]ledger.Target, []ledger.Machine) error { return nil }
+func (c *collector) Agents([]ledger.ExportAgent) error               { return nil }
+func (c *collector) Tombstones(ts []ledger.Tombstone) error          { c.tombstones = ts; return nil }
+func (c *collector) Reads(ledger.ReadSummary) error                  { return nil }
+func (c *collector) Seal(s ledger.ExportSeal) error                  { c.seal = s; return nil }
 func (c *collector) Memories(ms []ledger.ExportMemory) error {
 	c.memories = append(c.memories, ms...)
 	c.batches++

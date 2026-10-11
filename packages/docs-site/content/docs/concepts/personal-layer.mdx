@@ -107,6 +107,19 @@ Run `memax link --home` once on each. Each machine has its own files, and
 keeps the last files it had and catches up when it's back, Forgets
 included.
 
+## Forgetting a personal fact
+
+Forget compiles every machine's files again without it, and each daemon
+writes them within the minute. The memory's tombstone names each file
+with its machine, and says what still holds it:
+
+- a machine that's offline, with when it was last online: its files are
+  rewritten when it connects;
+- a file with a hand edit on a machine, which Memax never writes over;
+- the files of yours Memax imported it from (your `~/.claude/CLAUDE.md`,
+  say), counted but not named: their paths were forgotten with it, and
+  Memax never edits them.
+
 ## Taking it off
 
 Memax takes the layer off a machine, removing its own files while they

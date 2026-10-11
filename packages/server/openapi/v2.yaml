@@ -9538,8 +9538,11 @@ components:
         request) to write it. compiling: not compiled yet. paused: the agent
         is paused, and is told before it reads anything else. disconnected:
         the agent can't read any more. next_read: told on its next read.
+        offline: a home file whose machine's daemon hasn't been seen in the
+        last 15 minutes (`target.machine.last_seen_at`); its file still
+        holds it until the machine connects, and is rewritten then.
       type: string
-      enum: [hand_edit, stopped, copy, delivery, compiling, paused, disconnected, next_read]
+      enum: [hand_edit, stopped, copy, delivery, compiling, paused, disconnected, next_read, offline]
     UnreachableKind:
       description: |
         A copy Memax can't reach. git_history: earlier commits of the
@@ -9548,9 +9551,11 @@ components:
         (the forget ledger is re-applied after any restore). llm: model
         providers that processed the words. hand_edits: files with a hand
         edit Memax won't write over. copies: copy-outs a person pasted
-        elsewhere.
+        elsewhere. source_files: the person's own files on their machines
+        that Memax imported it from (`count` of them; their paths were
+        forgotten with it), which Memax never edits.
       type: string
-      enum: [git_history, agent_memory, backups, llm, hand_edits, copies]
+      enum: [git_history, agent_memory, backups, llm, hand_edits, copies, source_files]
 
     TombstoneActor:
       type: object
@@ -9591,6 +9596,28 @@ components:
           type: string
         delivery:
           $ref: '#/components/schemas/Delivery'
+        machine:
+          description: A home file's machine.
+          $ref: '#/components/schemas/TombstoneMachine'
+
+    TombstoneMachine:
+      description: The machine a home file is on, as a tombstone names it.
+      type: object
+      additionalProperties: false
+      required: [id, label, name]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        label:
+          $ref: '#/components/schemas/MachineLabel'
+        name:
+          type: string
+        linked:
+          description: Whether it is still linked (in a tombstone).
+          type: boolean
+        last_seen_at:
+          description: When its daemon last read its files (in a tombstone).
+          $ref: '#/components/schemas/Timestamp'
 
     TombstoneGone:
       description: What Forget took out of Memax.
@@ -9687,6 +9714,15 @@ components:
           type: array
           items:
             type: string
+        machines:
+          description: With hand_edits, the machines whose home files have the hand edits.
+          type: array
+          items:
+            type: string
+        count:
+          description: With source_files, how many of the person's files.
+          type: integer
+          minimum: 1
 
     Tombstone:
       description: What Forget did to one memory (or a whole space). Never words.

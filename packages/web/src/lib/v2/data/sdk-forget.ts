@@ -68,6 +68,14 @@ function stepOf(s: V2.TombstoneStep, i: number): TombstoneStepLine {
           label: s.target.label,
           kind: s.target.kind,
           delivery: s.target.delivery,
+          ...(s.target.machine
+            ? {
+                machine: {
+                  name: s.target.machine.name,
+                  lastSeenAt: s.target.machine.last_seen_at ?? null,
+                },
+              }
+            : {}),
         }
       : null,
     compile: s.compile ?? null,
@@ -89,6 +97,8 @@ function unreachableOf(u: V2.UnreachableCopy): UnreachableLine {
       zeroRetention: p.zero_retention,
     })),
     targets: u.targets ?? [],
+    ...(u.machines?.length ? { machines: u.machines } : {}),
+    ...(u.count ? { count: u.count } : {}),
   };
 }
 

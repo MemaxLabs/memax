@@ -5042,9 +5042,12 @@ export interface components {
          *     request) to write it. compiling: not compiled yet. paused: the agent
          *     is paused, and is told before it reads anything else. disconnected:
          *     the agent can't read any more. next_read: told on its next read.
+         *     offline: a home file whose machine's daemon hasn't been seen in the
+         *     last 15 minutes (`target.machine.last_seen_at`); its file still
+         *     holds it until the machine connects, and is rewritten then.
          * @enum {string}
          */
-        StepReason: "hand_edit" | "stopped" | "copy" | "delivery" | "compiling" | "paused" | "disconnected" | "next_read";
+        StepReason: "hand_edit" | "stopped" | "copy" | "delivery" | "compiling" | "paused" | "disconnected" | "next_read" | "offline";
         /**
          * @description A copy Memax can't reach. git_history: earlier commits of the
          *     compiled files. agent_memory: what agents saved in their own memory.
@@ -5052,10 +5055,12 @@ export interface components {
          *     (the forget ledger is re-applied after any restore). llm: model
          *     providers that processed the words. hand_edits: files with a hand
          *     edit Memax won't write over. copies: copy-outs a person pasted
-         *     elsewhere.
+         *     elsewhere. source_files: the person's own files on their machines
+         *     that Memax imported it from (`count` of them; their paths were
+         *     forgotten with it), which Memax never edits.
          * @enum {string}
          */
-        UnreachableKind: "git_history" | "agent_memory" | "backups" | "llm" | "hand_edits" | "copies";
+        UnreachableKind: "git_history" | "agent_memory" | "backups" | "llm" | "hand_edits" | "copies" | "source_files";
         TombstoneActor: {
             /**
              * @description `person`, or `memax` when the forget ledger re-applied it after a restore.
@@ -5075,6 +5080,18 @@ export interface components {
             kind: components["schemas"]["TargetKind"];
             label: string;
             delivery: components["schemas"]["Delivery"];
+            /** @description A home file's machine. */
+            machine?: components["schemas"]["TombstoneMachine"];
+        };
+        /** @description The machine a home file is on, as a tombstone names it. */
+        TombstoneMachine: {
+            id: components["schemas"]["Id"];
+            label: components["schemas"]["MachineLabel"];
+            name: string;
+            /** @description Whether it is still linked (in a tombstone). */
+            linked?: boolean;
+            /** @description When its daemon last read its files (in a tombstone). */
+            last_seen_at?: components["schemas"]["Timestamp"];
         };
         /** @description What Forget took out of Memax. */
         TombstoneGone: {
@@ -5118,6 +5135,10 @@ export interface components {
             days?: number;
             processors?: components["schemas"]["Processor"][];
             targets?: string[];
+            /** @description With hand_edits, the machines whose home files have the hand edits. */
+            machines?: string[];
+            /** @description With source_files, how many of the person's files. */
+            count?: number;
         };
         /** @description What Forget did to one memory (or a whole space). Never words. */
         Tombstone: {

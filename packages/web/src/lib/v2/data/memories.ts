@@ -292,7 +292,13 @@ export interface TombstoneStepLine {
   /** Spec StepReason: hand_edit, stopped, copy, delivery, compiling, paused, disconnected, next_read. */
   reason: string | null;
   at: string | null;
-  target: { label: string; kind: string; delivery: string } | null;
+  target: {
+    label: string;
+    kind: string;
+    delivery: string;
+    /** A home file's machine (the personal layer): its name, and when its daemon was last seen. */
+    machine?: { name: string; lastSeenAt: string | null } | null;
+  } | null;
   /** The compile (C-) that rewrote it. */
   compile: string | null;
   /** An agent told: its registry key (or name). */
@@ -308,7 +314,8 @@ export interface UnreachableLine {
     | "backups"
     | "llm"
     | "hand_edits"
-    | "copies";
+    | "copies"
+    | "source_files";
   files: string[];
   repositories: string[];
   agents: string[];
@@ -319,6 +326,10 @@ export interface UnreachableLine {
     zeroRetention: boolean;
   }[];
   targets: string[];
+  /** With hand_edits: the machines whose home files have them. */
+  machines?: string[];
+  /** With source_files: how many of the person's own files. */
+  count?: number | null;
 }
 
 /**

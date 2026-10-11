@@ -15,6 +15,7 @@ import { isComposing } from "@/lib/v2/keymap/keymap";
 import { KeyScopeBoundary } from "@/lib/v2/keymap/react";
 import { isRaise, type AgentConnectionView } from "@/lib/v2/data/agents";
 import { cliCommand } from "@/lib/v2/cli";
+import { MCP_URL } from "@/lib/urls";
 import { useSource, useSpaces } from "../../_lib/data";
 import { useSpaceView } from "../../_lib/space-context";
 import { useToast } from "../../_components/toasts";
@@ -29,9 +30,6 @@ import {
   type Connectable,
 } from "./connect-steps";
 import styles from "./connect.module.css";
-
-/** The remote MCP server agents add by hand (HANDOFF §6, MCP). */
-export const MCP_URL = "https://mcp.memax.app/mcp";
 
 /**
  * The first agent to offer: one that isn't connected yet and runs in a

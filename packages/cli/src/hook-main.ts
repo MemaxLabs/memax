@@ -30,8 +30,9 @@ const USAGE = `Usage: memax hook session-start [--agent <id>] [--debug]
 session-start prints a short <memax-context> block for an agent's session
 start hook: what changed in this repository's compiled files since the
 agent's last session here, what a person forgot, and decisions waiting
-for a person. It reads local files only, and prints nothing when nothing
-changed. --agent is claude-code (default), codex, gemini, cursor or
+for a person; and, on a machine whose home is linked (memax link --home),
+the same for your Personal space's file, outside repositories too. It
+reads local files only, and prints nothing when nothing changed. --agent is claude-code (default), codex, gemini, cursor or
 copilot, and sets the output format.
 
 flush reports the compile loads session-start queued (the daemon does

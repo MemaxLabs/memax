@@ -5,7 +5,13 @@
 // hook prints from local files without touching the network, and that
 // the compile load is reported after it, by someone else.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { V2 } from "memax-sdk";
@@ -292,4 +298,94 @@ describe("memax hook session-start, as a process", () => {
     const r = await hook({ ...startup(), cwd: join(h.home, "elsewhere") });
     expect(r).toMatchObject({ code: 0, stdout: "" });
   });
+
+  it("with a home link too, prints both sections from local files, opens no socket, and queues both loads", async () => {
+    fakeDaemonPid();
+    const personal = linkHomeHere();
+    const r = await hook(startup());
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('G-0012 "Fly.io or Railway?"');
+    expect(r.stdout).toContain("Your Personal space (personal)");
+    expect(r.stdout).toContain("- M-0101 (");
+    expect(eventsOf(r.pid).filter((e) => e !== "print")).toEqual([]);
+    const queued = readdirSync(h.paths.loads)
+      .filter((n) => n.endsWith(".json"))
+      .map((n) => JSON.parse(readFileSync(join(h.paths.loads, n), "utf8")));
+    expect(queued.map((l) => [l.space, l.compile]).sort()).toEqual(
+      [
+        [space.id, "C-0881"],
+        [personal, "C-1201"],
+      ].sort(),
+    );
+
+    // Outside any repository: the Personal section alone, still no socket.
+    mkdirSync(join(h.home, "elsewhere"), { recursive: true });
+    const away = await hook(
+      { ...startup(), cwd: join(h.home, "elsewhere") },
+      { agent: "codex" },
+    );
+    expect(away.stdout).toContain('<memax-context space="personal">');
+    expect(eventsOf(away.pid).filter((e) => e !== "print")).toEqual([]);
+  });
 });
+
+/**
+ * This machine's home, linked to a Personal space with one forget in its
+ * cache: home.json, Claude Code's rules file and Codex's block as the
+ * daemon writes them, and the warm cache's home entry. The Personal
+ * space's id.
+ */
+function linkHomeHere(): string {
+  const personal = "22222222-2222-4222-8222-222222222222";
+  const files = [
+    ["claude_user", ".claude/rules/memax-personal.md"],
+    ["codex_user", ".codex/AGENTS.md"],
+  ] as const;
+  const body = `${header("C-1201", "personal")}\n## Preferences\n- Keep replies short. [M-0102]\n`;
+  mkdirSync(join(h.home, ".claude", "rules"), { recursive: true });
+  mkdirSync(join(h.home, ".codex"), { recursive: true });
+  writeFileSync(join(h.home, files[0][1]), body);
+  writeFileSync(
+    join(h.home, files[1][1]),
+    `# Mine\n<!-- memax:start -->\n${body}<!-- memax:end -->\n`,
+  );
+  writeFileSync(
+    h.paths.home,
+    JSON.stringify({
+      version: 1,
+      space_id: personal,
+      space_slug: "personal",
+      machine_id: "m-1",
+      home: h.home,
+      files: files.map(([kind, path], i) => ({
+        target_id: `t-${i}`,
+        kind,
+        path,
+        abs: join(h.home, path),
+      })),
+      created_at: new Date().toISOString(),
+    }),
+  );
+  const warm = JSON.parse(readFileSync(h.paths.warm, "utf8"));
+  warm.home = {
+    space_id: personal,
+    machine_id: "m-1",
+    slug: "personal",
+    updated_at: new Date().toISOString(),
+    targets: files.map(([kind, path]) => ({
+      kind,
+      path,
+      label: `~/${path}`,
+      sync_state: "in_sync",
+      compile: "C-1201",
+      refs: ["M-0102"],
+      open_drift: 0,
+    })),
+    forgotten: [
+      { id: "t-1", ref: "M-0101", with: [], at: new Date().toISOString() },
+    ],
+    gates: [],
+  };
+  writeFileSync(h.paths.warm, JSON.stringify(warm));
+  return personal;
+}

@@ -504,12 +504,12 @@ func TestCreateAndSwitchSpaces(t *testing.T) {
 
 	// Switching: an empty space switches within the call; one with V1
 	// memories to import does too here (no River), with the import.
-	personal := f.space(zz, policy.SpacePersonal, "Personal")
+	personal := f.v1Space(zz, policy.SpacePersonal, "Personal")
 	got, err := f.l.StartSwitch(ctx, person(zz), policy.ViaCLI, f.scope(zz), personal, ledger.SwitchOptions{Key: "s1"})
 	if err != nil || got.Space.V2EnabledAt == nil || got.Background || !got.Preview.Empty {
 		t.Fatalf("switch empty: %+v %v", got, err)
 	}
-	busy := f.space(zz, policy.SpaceProject, "old")
+	busy := f.v1Space(zz, policy.SpaceProject, "old")
 	f.exec(`INSERT INTO memories (hub_id, owner_id, title, content) VALUES ($1, $2, 'note', 'a V1 memory')`, busy, zz)
 	got, err = f.l.StartSwitch(ctx, person(zz), policy.ViaCLI, f.scope(zz), busy, ledger.SwitchOptions{Key: "s2"})
 	if err != nil || got.Space.V2EnabledAt == nil || got.Progress.Proposed != 1 {

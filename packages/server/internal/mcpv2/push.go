@@ -205,7 +205,7 @@ func (s *Server) guardWrite(sp space, p *v2api.Principal, texts ...string) *mcp.
 		}
 	}
 	d := policy.Decide(policyActor(p, sp), policy.ActionPropose, policy.Object{Secrets: found},
-		policy.Space{Name: sp.Hub.Name, Kind: sp.Grant.Kind})
+		policy.Space{Name: sp.Hub.Name, Kind: sp.Grant.Kind, OnV2: sp.Grant.OnV2})
 	if d.Effect == policy.EffectRefuse {
 		return errorResult(d.Message)
 	}

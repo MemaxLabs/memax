@@ -72,7 +72,7 @@ func TestSwitchToV2OverTheAPI(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	zz, co, vi := e.user("zz"), e.user("co"), e.user("vi")
-	team := e.space(zz, policy.SpaceTeam, "acme-web")
+	team := e.v1Space(zz, policy.SpaceTeam, "acme-web")
 	e.join(team, co, "contributor")
 	e.join(team, vi, "viewer")
 	e.exec(`UPDATE hubs SET plan = 'pro' WHERE id = $1`, team.id)
@@ -221,7 +221,7 @@ func TestSwitchToV2OverTheAPI(t *testing.T) {
 	}
 	// A V1 team hub with a V2 record can't become a project space any
 	// more (this one already is one); a personal space can't either.
-	personal := e.space(zz, policy.SpacePersonal, "zz-personal")
+	personal := e.v1Space(zz, policy.SpacePersonal, "zz-personal")
 	e.do(call{method: "POST", path: "/v2/spaces/" + personal.slug + ":switch", token: tok,
 		body: map[string]any{"kind": "project"}}).fails(http.StatusConflict, "space_kind")
 }
@@ -235,9 +235,9 @@ func TestAPersonalSpaceNamedForItsOwner(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	zz, ot := e.user("zz"), e.user("ot")
-	mine := e.space(zz, policy.SpacePersonal, "memory-hub")
+	mine := e.v1Space(zz, policy.SpacePersonal, "memory-hub")
 	e.exec(`UPDATE hubs SET slug = $1 WHERE id = $2`, zz.String(), mine.id)
-	theirs := e.space(ot, policy.SpacePersonal, "memory-hub")
+	theirs := e.v1Space(ot, policy.SpacePersonal, "memory-hub")
 	e.exec(`UPDATE hubs SET slug = $1 WHERE id = $2`, ot.String(), theirs.id)
 	e.v1Note(mine, zz, "We use pnpm workspaces for every package.")
 	tok := e.session(zz)

@@ -123,7 +123,7 @@ func (f *fixture) user(name string) uuid.UUID {
 func (f *fixture) space(owner uuid.UUID, slug string) uuid.UUID {
 	f.t.Helper()
 	id := uuid.New()
-	f.exec(`INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind) VALUES ($1, $2, $3, 'team', $4, 'project')`,
+	f.exec(`INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind, v2_enabled_at) VALUES ($1, $2, $3, 'team', $4, 'project', now())`,
 		id, "Memax V2", slug+"-"+id.String()[:6], owner)
 	f.exec(`INSERT INTO hub_members (hub_id, user_id, role) VALUES ($1, $2, 'owner')`, id, owner)
 	return id

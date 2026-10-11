@@ -236,7 +236,9 @@ func (s *Service) Prepare(ctx context.Context, r Request) (*Prepared, error) {
 	scope := r.Scope.Narrow(r.Space.SpaceID)
 	p := &Prepared{req: r}
 	actor := s.policyActor(r)
-	space := policy.Space{Name: r.SpaceName, Kind: r.Space.Kind}
+	// Ask reads only the V2 record: a space still on V1 is refused, saying
+	// why there is no answer, before anything is counted or searched.
+	space := policy.Space{Name: r.SpaceName, Kind: r.Space.Kind, OnV2: r.Space.OnV2}
 	if d := policy.Decide(actor, policy.ActionAsk, policy.Object{}, space); d.Effect == policy.EffectRefuse {
 		return nil, &Refusal{Decision: d}
 	}

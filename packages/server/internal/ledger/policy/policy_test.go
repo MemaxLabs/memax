@@ -8,12 +8,15 @@ import (
 )
 
 var (
-	project    = Space{Name: "memax-v2", Kind: SpaceProject}
-	personal   = Space{Name: "Personal", Kind: SpacePersonal}
-	team       = Space{Name: "memax-team", Kind: SpaceTeam}
-	ownersKeep = Space{Name: "memax-v2", Kind: SpaceProject, Rules: Rules{Keep: WhoOwners}}
-	membersFgt = Space{Name: "memax-v2", Kind: SpaceProject, Rules: Rules{Forget: WhoMembers}}
-	teamNoWeb  = Space{Name: "memax-team", Kind: SpaceTeam, Rules: Rules{DecisionsNeedWeb: ptr(false)}}
+	project    = Space{Name: "memax-v2", Kind: SpaceProject, OnV2: true}
+	personal   = Space{Name: "Personal", Kind: SpacePersonal, OnV2: true}
+	team       = Space{Name: "memax-team", Kind: SpaceTeam, OnV2: true}
+	ownersKeep = Space{Name: "memax-v2", Kind: SpaceProject, Rules: Rules{Keep: WhoOwners}, OnV2: true}
+	membersFgt = Space{Name: "memax-v2", Kind: SpaceProject, Rules: Rules{Forget: WhoMembers}, OnV2: true}
+	teamNoWeb  = Space{Name: "memax-team", Kind: SpaceTeam, Rules: Rules{DecisionsNeedWeb: ptr(false)}, OnV2: true}
+	// onV1 spaces: the same space before its owner switches it to V2.
+	v1Project = Space{Name: "acme-web", Kind: SpaceProject}
+	v1Team    = Space{Name: "acme-team", Kind: SpaceTeam}
 )
 
 func ptr[T any](v T) *T { return &v }
@@ -330,7 +333,7 @@ func TestDecideMatrix(t *testing.T) {
 	creds := []Credential{CredentialSession, CredentialOAuth, CredentialAPIKey}
 	actions := []Action{ActionRemember, ActionPropose, ActionKeep, ActionEdit, ActionReject, ActionForget}
 	objects := []Object{newFact, newDecision, newExternal, contradicts, proposal, kept, personKept, keptExt, propExt, propDec}
-	spaces := []Space{project, personal, team, ownersKeep, membersFgt}
+	spaces := []Space{project, personal, team, ownersKeep, membersFgt, v1Project, v1Team}
 	banned := []string{"!", " AI", "magic", "smart", "delete", "Delete"}
 
 	n := 0
@@ -415,7 +418,7 @@ func TestGateMatrix(t *testing.T) {
 	statuses := []AgentStatus{AgentConnected, AgentPaused, AgentNotConnected}
 	creds := []Credential{CredentialSession, CredentialOAuth, CredentialAPIKey}
 	objects := []Object{newGate, gate, mineGate, {WaitingGates: MaxWaitingGates}, {Secrets: []string{"JWT"}}}
-	spaces := []Space{project, personal, team, ownersKeep, teamNoWeb}
+	spaces := []Space{project, personal, team, ownersKeep, teamNoWeb, v1Project}
 	banned := []string{"!", " AI", "magic", "smart", "delete", "Delete"}
 	n := 0
 	for _, kind := range ActorKinds {

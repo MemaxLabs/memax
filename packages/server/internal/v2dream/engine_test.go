@@ -268,6 +268,23 @@ func TestRunPublishesAnEdition(t *testing.T) {
 	}
 }
 
+// A space switched back to V1 after its run was queued: no model call, no
+// edition, no error for River to retry (policy.CodeSpaceOnV1).
+func TestRunOnASpaceBackOnV1(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.seed()
+	w.exec(`UPDATE hubs SET v2_enabled_at = NULL WHERE id = $1`, w.space)
+	o := oracle()
+	out := run(t, engine(w, o, v2dream.Config{}), w, time.Now().Add(-time.Minute).Truncate(time.Second))
+	if out.Ran || out.Reason != v2dream.ReasonOnV1 || len(o.Calls()) != 0 {
+		t.Fatalf("a run on V1: %+v, %d model calls", out, len(o.Calls()))
+	}
+	if n := w.count(`SELECT count(*) FROM v2.dream_editions WHERE space_id = $1`, w.space); n != 0 {
+		t.Errorf("%d editions on a space on V1", n)
+	}
+}
+
 // Fading: 60 days unread; never a decision in force, a memory the Brief
 // places, a flagged one, or one in a file whose loads Memax can't observe.
 func TestRunFades(t *testing.T) {

@@ -117,6 +117,9 @@ const (
 	ReasonCap     = "cap"
 	ReasonDryRun  = "dry_run"
 	ReasonGone    = "gone"
+	// ReasonOnV1: the space went back to V1 after the run was queued, and
+	// its record takes no edition (policy.CodeSpaceOnV1).
+	ReasonOnV1 = "space_on_v1"
 )
 
 // Run runs Dream on one space for one slot and publishes its edition.
@@ -140,6 +143,18 @@ func (e *Engine) run(ctx context.Context, args ledger.DreamSpaceArgs, dry bool) 
 	}
 	if err != nil {
 		return Outcome{}, err
+	}
+	// Policy would refuse the edition of a space back on V1: stop before any
+	// model call, rather than fail the job after them (the scope read the
+	// space's switch with it).
+	if g, ok := scope.Grant(args.SpaceID); ok {
+		d := policy.Decide(policy.Actor{Kind: actor.Kind, Name: actor.Name, Via: policy.ViaSystem}, policy.ActionPublishEdition,
+			policy.Object{}, policy.Space{Name: g.Name, Kind: g.Kind, OnV2: g.OnV2})
+		if d.Effect == policy.EffectRefuse {
+			e.log.InfoContext(ctx, "dream: the space is on V1, so no run", "space_id", args.SpaceID.String(), "slot", args.Slot,
+				"policy", d.Code, "metric", "dream_skipped_on_v1")
+			return Outcome{Reason: ReasonOnV1}, nil
+		}
 	}
 	if args.Trigger == ledger.DreamManual {
 		if ok, err := e.manualAllowed(ctx, scope, args.SpaceID); err != nil || !ok {

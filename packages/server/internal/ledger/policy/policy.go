@@ -52,6 +52,12 @@
 //     does every Forget by a passkey holder. Without a passkey the
 //     decision applies at human_web and suggests one (Decision.Suggest).
 //     DecideAccount covers the account itself.
+//   - A space still on V1 (Space.OnV2 unset): V1 serves it, so its V2
+//     record takes only reads, Forget, export and Memax's follow-ups
+//     (onV1); everything else, Ask included, is refused with
+//     CodeSpaceOnV1 until its owner switches it to V2. The switch's own
+//     steps (Space.Switching) are the exception. Agent connections
+//     (DecideConnection) apply on either.
 //
 // Messages follow the product voice (sentence case, actionable, no
 // exclamation marks). Clients localise by Code; Message is the English
@@ -489,6 +495,45 @@ type Space struct {
 	Name  string
 	Kind  SpaceKind
 	Rules Rules
+	// OnV2 says the V2 record serves the space (hubs.v2_enabled_at, read
+	// with the space's other facts). The zero value is a space still on
+	// V1, whose V2 record takes only what onV1 lists.
+	OnV2 bool
+	// Switching says the change is one of the space's own switch steps
+	// (ledger/switch.go), which move V1's content into the record before
+	// the switch sets OnV2. Only the ledger sets it.
+	Switching bool
+}
+
+// onV1 is what the V2 record of a space still on V1 takes. V1 serves such
+// a space (its MCP tools, its agent files, its Ask), and its V2 record is
+// empty, or, after a switch back, holds what it held for the next switch
+// (ledger/switch.go). New words or decisions there would be a mixed state
+// that no surface serves and no switch expects, so everything not listed
+// here is refused with CodeSpaceOnV1, an action added later included:
+var onV1 = map[Action]bool{
+	// Reads change nothing. A compile load is a read of a compile made
+	// while the space was on V2.
+	ActionRead: true,
+	// Forget takes words out wherever they are (rule 7): a space that
+	// switched back still holds its V2 record's words and its notes. V1's
+	// own deletes forget the space's record first (ForgetSpace, through
+	// handler.V2Forgetter), and Memax re-applies the forget ledger after a
+	// restore whichever record serves the space.
+	ActionForget:        true,
+	ActionForgetSpace:   true,
+	ActionReapplyForget: true,
+	// Export is a person's copy of the record as it stands (rule 14): one
+	// exported receipt, and no words change.
+	ActionExport: true,
+	// Memax finishes the work queued while the space was on V2, or by its
+	// switch, which adds the space's targets and imports its V1 memories
+	// before it lands: compile runs and the judge's verdicts. A device then
+	// reports what it did with those compiled files; reports change no
+	// words.
+	ActionRecordCompile: true,
+	ActionJudge:         true,
+	ActionReport:        true,
 }
 
 // Effect is what happens to the write.
@@ -538,6 +583,9 @@ const (
 	CodeCompileByMemax      = "compile_by_memax"
 	CodeJudgeByMemax        = "judge_by_memax"
 	CodeUndoByDecider       = "undo_by_decider"
+	// CodeSpaceOnV1: the space is still on V1, so its V2 record takes no
+	// new words or decisions (onV1) until its owner switches it to V2.
+	CodeSpaceOnV1 = "space_on_v1"
 
 	// Decision gates; all refusals.
 	CodeGateByAgent      = "gate_by_agent"      // agents ask; people decide directly
@@ -594,6 +642,9 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 	}
 	if (a.Kind == ActorPerson || a.Kind == ActorAgent) && !slices.Contains([]Role{RoleOwner, RoleMember, RoleViewer}, a.Role) {
 		return refuse(CodeNotMember, fmt.Sprintf("Only members of %s can change its record.", spaceName(s)))
+	}
+	if !s.OnV2 && !s.Switching && !onV1[act] {
+		return refuseOnV1(a, act, s)
 	}
 	if len(o.Secrets) > 0 && slices.Contains([]Action{ActionRemember, ActionPropose, ActionEdit, ActionReviseBrief,
 		ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate, ActionForget, ActionRequestForget}, act) {
@@ -1289,6 +1340,24 @@ func refuseReadOnly(a Actor, s Space) Decision {
 			"This API key can only read %s. Create a key that can propose in Settings.", spaceName(s)))
 	}
 	return refuse(CodeReadOnly, fmt.Sprintf("%s is read-only in %s. Change it in Agents.", actorName(a), spaceName(s)))
+}
+
+// refuseOnV1 says why a space still on V1 refused, and what to do: its
+// owner switches it to V2 (DecideSwitchSpace), and anyone else asks them.
+func refuseOnV1(a Actor, act Action, s Space) Decision {
+	name := s.Name
+	if name == "" {
+		name = "This space"
+	}
+	what := fmt.Sprintf("%s is still on V1, so its V2 record can't change yet.", name)
+	if act == ActionAsk {
+		what = fmt.Sprintf("Ask answers from the V2 record, and %s is still on V1.", spaceName(s))
+	}
+	how := "Ask its owner to switch it to V2."
+	if a.Role == RoleOwner {
+		how = "Switch it to V2 first, from its Today on memax.app or with memax switch."
+	}
+	return refuse(CodeSpaceOnV1, what+" "+how)
 }
 
 func downgrade(code string, a Actor, o Object, s Space, quarantine bool) Decision {

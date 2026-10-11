@@ -80,6 +80,13 @@ func quietLevel(r Role, s Space) Autonomy {
 //
 // Decide's rules for writes apply on top: an agent at Write still
 // proposes what cites an external source.
+//
+// These rules hold in a space still on V1 too (Decide's onV1 doesn't
+// apply): a connection is the agent's identity across the person's spaces,
+// not the space's record. V1's tools don't read it until the switch, which
+// connects the members' V1 credentials and keeps the connections it finds;
+// OAuth consent connects a new grant to the space chosen, on V1 or V2; and
+// pausing or disconnecting an agent must work wherever it is connected.
 func DecideConnection(a Actor, act ConnectionAction, c Connection, s Space) Decision {
 	if !a.Kind.Valid() {
 		return refuse(CodeUnknownActor, "Memax doesn't recognise who is making this change. Sign in again.")

@@ -218,7 +218,7 @@ func TestRecorderUnderLoad(t *testing.T) {
 			if _, err := pool.Exec(ctx, `INSERT INTO users (id, email, name) VALUES ($1, $2, 'load')`, user, user.String()+"@load.test"); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := pool.Exec(ctx, `INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind) VALUES ($1, 'load', $2, 'team', $3, 'project')`,
+			if _, err := pool.Exec(ctx, `INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind, v2_enabled_at) VALUES ($1, 'load', $2, 'team', $3, 'project', now())`,
 				space, space.String(), user); err != nil {
 				t.Fatal(err)
 			}

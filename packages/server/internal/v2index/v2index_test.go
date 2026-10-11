@@ -62,7 +62,7 @@ func (f *fixture) exec(sql string, args ...any) {
 
 func (f *fixture) newSpace(name string) uuid.UUID {
 	id := uuid.New()
-	f.exec(`INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind) VALUES ($1, $2, $3, 'team', $4, 'project')`,
+	f.exec(`INSERT INTO hubs (id, name, slug, hub_type, owner_id, space_kind, v2_enabled_at) VALUES ($1, $2, $3, 'team', $4, 'project', now())`,
 		id, name, id.String(), f.owner)
 	f.exec(`INSERT INTO hub_members (hub_id, user_id, role) VALUES ($1, $2, 'owner')`, id, f.owner)
 	return id

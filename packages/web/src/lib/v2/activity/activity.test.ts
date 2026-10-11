@@ -64,6 +64,38 @@ function entry(over: Partial<ActivityEntry>): ActivityEntry {
 }
 
 describe("Activity sentences", () => {
+  it("say a machine's receipts by its label, in both languages", () => {
+    const machine = { kind: "machine" as const, ref: "machine-2", id: "mc2" };
+    const said = (action: ActivityEntry["action"], locale: "en" | "zh") =>
+      sentenceText(
+        activitySentences(
+          (locale === "en" ? en : zh).ledger.activity,
+          entry({ action, object: machine }),
+          names(locale),
+        ),
+        locale,
+      );
+    expect(said("linked", "en")).toBe(
+      "You linked machine-2: this space is written into its agents' own files.",
+    );
+    expect(said("configured", "en")).toBe("You renamed machine-2.");
+    expect(said("unlinked", "en")).toBe("You took this space off machine-2.");
+    for (const action of ["linked", "configured", "unlinked"] as const) {
+      expect(said(action, "zh")).toContain("machine-2");
+    }
+    // A memory's linked receipt still reads as the judge's link.
+    expect(
+      sentenceText(
+        activitySentences(
+          en.ledger.activity,
+          entry({ action: "linked" }),
+          names("en"),
+        ),
+        "en",
+      ),
+    ).toBe("You linked M-0001 to the memory it updates.");
+  });
+
   it("reproduce the board's rows word for word", async () => {
     const rows = (await boardLog()).map((e) => [
       sentenceText(activitySentences(en.ledger.activity, e, names("en")), "en"),

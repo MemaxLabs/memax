@@ -340,6 +340,7 @@ const target = (over: Partial<V2.Target>): V2.Target => ({
   space_id: "s1",
   tenant_id: "n1",
   kind: "agents_md",
+  root: "repo",
   path: "AGENTS.md",
   label: "AGENTS.md",
   settings: { include: "kept_and_open", stale: "mark", size_budget: 25600 },

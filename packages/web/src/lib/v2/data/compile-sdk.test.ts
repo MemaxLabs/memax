@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MemaxError, type V2 } from "memax-sdk";
 import { createSdkBrief, marginsToRead } from "./brief-sdk";
 import type { V2Client } from "./sdk-records";
-import { createSdkTargets, targetOf } from "./targets-sdk";
+import { createSdkTargets, repoTargets, targetOf } from "./targets-sdk";
 import type { TargetView } from "./targets";
 import type { SpaceSummary } from "./types";
 
@@ -260,6 +260,23 @@ describe("the Brief through memax.v2.briefs", () => {
 });
 
 describe("targets through memax.v2.targets", () => {
+  it("leaves a personal space's home files to the machines view", async () => {
+    const repo = {
+      id: "t1",
+      kind: "agents_md",
+      root: "repo",
+      path: "AGENTS.md",
+    } as V2.Target;
+    const home = {
+      id: "t2",
+      kind: "codex_user",
+      root: "home",
+      path: ".codex/AGENTS.md",
+      machine: { id: "m1", label: "machine-1", name: "work-mbp" },
+    } as V2.Target;
+    expect(repoTargets([repo, home, { ...home, id: "t3" }])).toEqual([repo]);
+  });
+
   const target = {
     id: "t1",
     slug: "agents-md",
@@ -280,6 +297,7 @@ describe("targets through memax.v2.targets", () => {
     space_id: "s1",
     tenant_id: "n1",
     kind: "agents_md",
+    root: "repo",
     path: "AGENTS.md",
     label: "AGENTS.md",
     settings: { include: "kept_and_open", stale: "omit", size_budget: 20480 },

@@ -42,6 +42,7 @@ export type ObjectKind =
   | "dream"
   | "agent"
   | "space"
+  | "machine"
   | "read";
 
 /** Who made the change. */

@@ -44,6 +44,23 @@ export type FileKind =
 
 export type Location = "repository" | "home";
 
+/**
+ * The machine-local files whose statements belong to the repository init
+ * runs in: its Claude Code auto memory and CLAUDE.local.md. They go to
+ * Personal tied to this repository (scope.repos), so a home file never
+ * loads them in another project; they stay live over MCP. The server's
+ * list is ledger.ProjectBoundFileKinds.
+ */
+export const PROJECT_BOUND_KINDS: readonly FileKind[] = [
+  "claude_local",
+  "claude_memory",
+];
+
+/** Whether a file's statements belong to this repository alone. */
+export function projectBound(f: Pick<FoundFile, "kind">): boolean {
+  return PROJECT_BOUND_KINDS.includes(f.kind);
+}
+
 export interface FoundFile {
   kind: FileKind;
   agent: V2.AgentKind;

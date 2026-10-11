@@ -9,7 +9,9 @@ import { dirname, join } from "node:path";
 import type { V2 } from "memax-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readRegistry } from "../../src/lib/daemon/registry.js";
+import { gitRoot } from "../../src/lib/project-context.js";
 import type { AgentEntry } from "../../src/lib/init/agents.js";
+import { claudeProjectFolder } from "../../src/lib/init/files.js";
 import { runGit } from "../../src/lib/init/git.js";
 import { runInit } from "../../src/lib/init/run.js";
 import type {
@@ -486,5 +488,76 @@ describe("memax init's hooks", () => {
     expect(report.agents.find((a) => a.kind === "claude-code")?.hook).toBe(
       "plugin",
     );
+  });
+});
+
+// Personal facts tied to one repository (personal-layer design §3.3): this
+// repository's Claude Code auto memory and CLAUDE.local.md go to Personal
+// with scope.repos, so a home file never loads them in another project.
+describe("memax init: this repository's own notes", () => {
+  const autoMemory = () =>
+    join(
+      h.home,
+      ".claude",
+      "projects",
+      claudeProjectFolder(gitRoot(h.repo)!),
+      "memory",
+    );
+  beforeEach(() => {
+    put(h.repo, "CLAUDE.local.md", "- Use the staging database for acme.\n");
+    put(
+      autoMemory(),
+      "notes.md",
+      "- The web app's e2e tests need the stack up.\n",
+    );
+  });
+
+  it("ties them to this repository, and nothing else", async () => {
+    const r = await init({ yes: true, format: "json" }, [], false);
+    expect(r.code).toBe(0);
+    const [project, home] = bodies();
+    const scopeOf = (b: V2.ImportInput, ref: RegExp) =>
+      b.items.filter((i) => ref.test(i.ref ?? "")).map((i) => i.scope ?? null);
+    expect(scopeOf(home, /^CLAUDE\.local\.md:/)).toEqual([
+      { repos: ["acme/web"] },
+    ]);
+    expect(scopeOf(home, /^~\/\.claude\/projects\//)).toEqual([
+      { repos: ["acme/web"] },
+    ]);
+    // Files that apply everywhere stay everywhere.
+    expect(scopeOf(home, /^~\/\.claude\/CLAUDE\.md:/)).toEqual([null]);
+    expect(scopeOf(home, /^~\/\.codex\//).every((s) => s === null)).toBe(true);
+    // The project's own files are unchanged: a scoped rule keeps its paths.
+    expect(project.items.some((i) => i.scope?.repos)).toBe(false);
+    expect(scopeOf(project, /^\.cursor\/rules\//)).toEqual([
+      { paths: ["**/*.test.ts"] },
+    ]);
+  });
+
+  it("leaves them on this machine when the repository has no remote", async () => {
+    execFileSync("git", ["remote", "remove", "origin"], { cwd: h.repo });
+    const dry = await init({ dryRun: true }, [], false);
+    expect(dry.out).toMatch(
+      /CLAUDE\.local\.md\s+left here: this repository has no remote/,
+    );
+    const r = await init({ yes: true, format: "json" }, [], false);
+    expect(r.code).toBe(0);
+    const home = bodies().find((b) =>
+      b.items.some((i) => i.ref?.startsWith("~/.claude/CLAUDE.md")),
+    )!;
+    expect(
+      home.items.filter(
+        (i) =>
+          i.ref?.startsWith("CLAUDE.local.md") ||
+          i.ref?.startsWith("~/.claude/projects/"),
+      ),
+    ).toEqual([]);
+    expect(home.files?.map((f) => f.kind)).not.toContain("claude_local");
+    const report = JSON.parse(r.out) as {
+      files: Array<{ path: string; noRepository?: boolean }>;
+    };
+    expect(
+      report.files.find((f) => f.path === "CLAUDE.local.md")?.noRepository,
+    ).toBe(true);
   });
 });

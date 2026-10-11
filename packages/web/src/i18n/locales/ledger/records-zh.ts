@@ -110,6 +110,7 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     withdraw: "{ref} 没撤回成。",
     forget: "{ref} 没忘记成。",
     declineForget: "{ref} 没保留上。",
+    scope: "{ref} 的适用范围没有改。",
     carriesChanged:
       "你确认之后，跟它一起被忘记的内容变了，所以什么都没忘记。再看一遍，然后再忘记它。",
     ended: {

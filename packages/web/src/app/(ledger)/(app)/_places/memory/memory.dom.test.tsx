@@ -469,6 +469,57 @@ describe("Forget on a memory's page", () => {
     );
   });
 
+  it("shows the repositories a personal fact applies in, and widens it to everywhere", async () => {
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    const base = demo.memories.peekRecord!("memax-v2", "M-0098")!;
+    let record = { ...base, repos: ["acme/web"] };
+    const scope = vi.fn(async (input: { repos: string[] }) => {
+      record = { ...record, repos: input.repos };
+      return { ref: "M-0098", version: record.version, repos: input.repos };
+    });
+    const source: LedgerDataSource = {
+      ...demo,
+      memories: {
+        ...demo.memories,
+        peekRecord: () => record,
+        get: vi.fn(async () => record),
+        scope,
+      },
+    };
+    renderMemory("M-0098", source);
+    const panel = await screen.findByRole("region", { name: "Applies in" });
+    expect(panel.textContent).toContain("acme/web");
+    expect(panel.textContent).toContain(
+      "It stays out of the files your agents load in every project",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Apply everywhere" }));
+    await waitFor(() => expect(scope).toHaveBeenCalledOnce());
+    expect(scope.mock.calls[0][0]).toMatchObject({
+      ref: "M-0098",
+      version: base.version,
+      repos: [],
+      idempotencyKey: expect.any(String),
+    });
+    expect(
+      await screen.findByText("M-0098 applies everywhere now"),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Applies in" })).toBeNull(),
+    );
+  });
+
+  it("shows no repositories for a memory that applies everywhere", async () => {
+    renderMemory(
+      "M-0098",
+      createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 }),
+    );
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByRole("region", { name: "Applies in" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Apply everywhere" }),
+    ).toBeNull();
+  });
+
   it("reads a forgotten memory's page as its tombstone (Tombstone.png)", async () => {
     renderMemory(
       "M-0201",

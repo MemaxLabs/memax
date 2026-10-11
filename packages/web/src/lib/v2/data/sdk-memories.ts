@@ -173,6 +173,19 @@ export function createSdkMemories(
       };
     },
 
+    async scope({ space, ref, version, repos, idempotencyKey }) {
+      const result = await client.v2.memories.scope(
+        ref,
+        { repos },
+        { space: space.slug, ifMatch: version, idempotencyKey },
+      );
+      return {
+        ref: result.memory.ref,
+        version: result.memory.version,
+        repos: result.memory.scope.repos ?? [],
+      };
+    },
+
     async previewForget({ space, ref, signal }) {
       return previewOf(
         await client.v2.memories.previewForget(ref, {

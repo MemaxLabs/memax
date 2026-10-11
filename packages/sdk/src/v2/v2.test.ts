@@ -222,6 +222,33 @@ describe("memax.v2.memories", () => {
     });
   });
 
+  it("sets which repositories a memory applies in", async () => {
+    const { memax, call } = client(
+      jsonResponse({
+        data: { ...result, memory: { ...memory, scope: { repos: [] } } },
+      }),
+    );
+
+    const got = await memax.v2.memories.scope(
+      "M-0219",
+      { repos: [], reason: "It holds everywhere." },
+      { idempotencyKey: "s", ifMatch: 3, space: "personal" },
+    );
+
+    const c = call();
+    expect(c.url).toBe(
+      "https://api.memax.app/v2/memories/M-0219:scope?space=personal",
+    );
+    expect(c.method).toBe("POST");
+    expect(c.headers).toMatchObject({
+      "Idempotency-Key": "s",
+      "If-Match": '"3"',
+    });
+    expect(c.body).toEqual({ repos: [], reason: "It holds everywhere." });
+    const scope: V2.MemoryScope = got.memory.scope;
+    expect(scope.repos).toEqual([]);
+  });
+
   it("reuses the Idempotency-Key when the transport retries", async () => {
     const fetchMock = vi
       .fn()

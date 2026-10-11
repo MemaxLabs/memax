@@ -183,6 +183,11 @@ a.sourceLabel:hover {
   margin-top: 4px;
 }
 
+/* Apply everywhere, under the repositories a memory applies in. */
+.scopeAction {
+  padding: 0 16px 16px;
+}
+
 .tombstone {
   max-width: 760px;
 }

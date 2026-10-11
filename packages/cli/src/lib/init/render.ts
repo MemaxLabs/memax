@@ -89,6 +89,12 @@ export function renderFiles(
       );
       continue;
     }
+    if (fs.every((f) => f.noRepository)) {
+      lines.push(
+        `    ${pad(label, width)}${chalk.gray("left here: this repository has no remote to tie its notes to")}`,
+      );
+      continue;
+    }
     const statements = fs.reduce((n, f) => n + f.statements, 0);
     const sent = fs.reduce(
       (n, f) => n + (proposals.get(f.file.label) ?? f.sent),

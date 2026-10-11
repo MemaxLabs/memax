@@ -225,6 +225,8 @@ export const ledgerActivityEn = {
       "{actor} linked {ref}: this space is written into its agents' own files.",
     machineRenamed: "{actor} renamed {ref}.",
     machineUnlinked: "{actor} took this space off {ref}.",
+    // Which repositories a memory applies in (scope.repos).
+    scoped: "{actor} changed where {ref} applies.",
     other: "{actor} changed {ref}.",
   },
 } as const;

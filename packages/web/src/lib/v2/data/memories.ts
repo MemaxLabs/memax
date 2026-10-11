@@ -165,6 +165,12 @@ export interface MemoryRecord {
   forgotten: Forgotten | null;
   /** Agents' requests that a person forget it, waiting (Forget, or Keep it). */
   forgetRequests?: ForgetRequestLine[];
+  /**
+   * The repositories it applies in (spec MemoryScope.repos, "owner/name"):
+   * a personal fact init tied to one repository's files. A home file
+   * leaves it out. Absent or empty is everywhere.
+   */
+  repos?: string[];
 }
 
 /** Why a memory goes with another one's Forget (spec CarryReason). */
@@ -343,6 +349,18 @@ export interface MemoriesSource {
     keep?: boolean;
     idempotencyKey: string;
   }): Promise<DecisionResult>;
+  /**
+   * Which repositories it applies in, from `version` (If-Match); `repos:
+   * []` is everywhere (POST /v2/memories/{ref}:scope). The words don't
+   * change. A failure throws (see command-error.ts).
+   */
+  scope(input: {
+    space: SpaceSummary;
+    ref: string;
+    version: number;
+    repos: string[];
+    idempotencyKey: string;
+  }): Promise<{ ref: string; version: number; repos: string[] }>;
   /** What a Forget would do. Changes nothing. */
   previewForget(input: {
     space: SpaceSummary;

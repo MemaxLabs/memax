@@ -562,6 +562,53 @@ func TestExportMatrix(t *testing.T) {
 	}
 }
 
+// TestScope: where a memory applies is a person's call (a member or owner
+// who may keep there, not a viewer or an API key); Memax only narrows it;
+// agents, Dream and the repository never change it; and a team decision
+// needs a person on the web, as editing it does.
+func TestScope(t *testing.T) {
+	t.Parallel()
+	widen := Object{Ref: "M-0219", Widens: true}
+	narrow := Object{Ref: "M-0219"}
+	teamDecision := Object{Ref: "M-0219", Decision: true, Widens: true}
+	key := with(person(RoleOwner, ViaAPI), func(a *Actor) { a.Credential, a.Autonomy = CredentialAPIKey, AutonomyWrite })
+	cases := []struct {
+		name string
+		a    Actor
+		o    Object
+		s    Space
+		want Effect
+		code string
+	}{
+		{"owner widens on the web", person(RoleOwner, ViaWeb), widen, personal, EffectApply, ""},
+		{"owner widens from the CLI", person(RoleOwner, ViaCLI), widen, personal, EffectApply, ""},
+		{"member narrows", person(RoleMember, ViaWeb), narrow, project, EffectApply, ""},
+		{"viewer", person(RoleViewer, ViaWeb), widen, project, EffectRefuse, CodeViewer},
+		{"member where only owners keep", person(RoleMember, ViaWeb), widen,
+			Space{Name: "memax-v2", Kind: SpaceProject, OnV2: true, Rules: Rules{Keep: WhoOwners}}, EffectRefuse, CodeOwnersKeep},
+		{"api key", key, widen, personal, EffectRefuse, CodeKeyCannotReview},
+		{"agent at write", agent(RoleOwner, AutonomyWrite), narrow, personal, EffectRefuse, CodePersonMustReview},
+		{"dream", Actor{Kind: ActorDream, Via: ViaSystem}, narrow, personal, EffectRefuse, CodePersonMustReview},
+		{"repository", Actor{Kind: ActorRepository, Via: ViaGitHub}, narrow, project, EffectRefuse, CodePersonMustReview},
+		{"memax narrows", Actor{Kind: ActorMemax, Via: ViaSystem}, narrow, personal, EffectApply, ""},
+		{"memax never widens", Actor{Kind: ActorMemax, Via: ViaSystem}, widen, personal, EffectRefuse, CodePersonMustReview},
+		{"team decision from the CLI", person(RoleOwner, ViaCLI), teamDecision, team, EffectRefuse, CodeDecisionNeedsWeb},
+		{"team decision on the web", person(RoleOwner, ViaWeb), teamDecision, team, EffectApply, ""},
+		{"team decision, passkey not used", with(person(RoleOwner, ViaWeb), func(a *Actor) { a.Passkey = true }),
+			teamDecision, team, EffectRefuse, CodeNeedsPasskey},
+		{"space on V1", person(RoleOwner, ViaWeb), widen, Space{Name: "acme", Kind: SpacePersonal}, EffectRefuse, CodeSpaceOnV1},
+	}
+	for _, c := range cases {
+		d := Decide(c.a, ActionScope, c.o, c.s)
+		if d.Effect != c.want || d.Code != c.code {
+			t.Errorf("%s: %+v, want %s %q", c.name, d, c.want, c.code)
+		}
+		if strings.Contains(d.Message, "!") || strings.Contains(d.Message, "delete") {
+			t.Errorf("%s: message breaks the voice rules: %s", c.name, d.Message)
+		}
+	}
+}
+
 func TestRules(t *testing.T) {
 	t.Parallel()
 	var zero Rules

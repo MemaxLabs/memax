@@ -1702,6 +1702,65 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/memories/{ref}:scope:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: scopeMemory
+      tags: [memories]
+      summary: Change which repositories a memory applies in
+      description: |
+        Sets the memory's `scope.repos`: the repositories it applies in, as
+        `owner/name` keys (any spelling of a repository's URL reads as its
+        key; stored lowercase, sorted, once each). An empty list is
+        everywhere, which is how a person widens a personal fact that
+        `memax init` tied to one repository (its Claude Code auto memory
+        and `CLAUDE.local.md`): a home file leaves out every memory with
+        `scope.repos`, since it loads in every project. The words, the
+        paths and the agents don't change. It follows Keep's rules for who
+        may: a member or owner who keeps in the space (a decision in a team
+        space needs a person on the web); agents and API keys are refused.
+        One `scoped` receipt; a kept memory's files recompile. Only a
+        proposal, a kept memory or a faded one can change (409
+        `invalid_transition` otherwise). Asking for the repositories it
+        already names is 400 `invalid_request`, as an edit to the same
+        words is; a retry with the same `Idempotency-Key` replays.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchOptional'
+        - $ref: '#/components/parameters/Via'
+        - $ref: '#/components/parameters/PasskeyAssertion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScopeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/CommandResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
   /v2/memories/{ref}:reject:
     parameters:
       - $ref: '#/components/parameters/RefPath'
@@ -5516,7 +5575,10 @@ components:
         record; switching back writes switched_back. A note's Forget writes
         forgot on the note (`object_kind: note`). A machine's (`machine`,
         named by its label, machine-2) are linked, configured (renamed) and
-        unlinked.
+        unlinked. A change to which repositories a memory applies in
+        (`:scope`) writes scoped: a person widening it, or Memax (via
+        system) tying a personal fact an earlier `memax init` imported to
+        its repository.
       type: string
       enum:
         - proposed
@@ -5565,6 +5627,7 @@ components:
         - switched
         - switched_back
         - unlinked
+        - scoped
     ObjectKind:
       type: string
       enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space, machine]
@@ -5831,6 +5894,40 @@ components:
       minLength: 1
       maxLength: 300
       pattern: '^[A-Za-z0-9._/-]+$'
+    RepoKey:
+      description: |
+        A repository as `owner/name`, such as `acme/web`. Memax stores it
+        lowercase; a request may send any case.
+      type: string
+      minLength: 3
+      maxLength: 200
+      pattern: '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'
+    MemoryScope:
+      description: |
+        Where a memory applies. `paths`: globs relative to the repository
+        root (a scoped rule's), which compile into scoped files. `agents`:
+        the agents it is for. `repos`: the repositories it applies in, which
+        `memax init` sets on a personal fact from one repository's files
+        (its Claude Code auto memory and `CLAUDE.local.md`); a home file
+        leaves out a memory with `repos` or `paths`, and it stays live over
+        MCP. Absent fields apply everywhere: `{}` applies everywhere.
+      type: object
+      additionalProperties: false
+      properties:
+        paths:
+          type: array
+          items:
+            type: string
+        agents:
+          type: array
+          items:
+            type: string
+        repos:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/RepoKey'
     Sha256:
       description: A lowercase hex sha256.
       type: string
@@ -6078,9 +6175,7 @@ components:
         decision:
           $ref: '#/components/schemas/Decision'
         scope:
-          description: 'Where it applies, e.g. {"paths": ["packages/web/**"]}.'
-          type: object
-          additionalProperties: true
+          $ref: '#/components/schemas/MemoryScope'
         valid_from:
           $ref: '#/components/schemas/Timestamp'
         valid_to:
@@ -8436,9 +8531,7 @@ components:
           type: array
           items: true
         scope:
-          description: 'Where it applies, e.g. {"paths": ["packages/web/**"]}.'
-          type: object
-          additionalProperties: true
+          $ref: '#/components/schemas/MemoryScope'
         valid_from:
           $ref: '#/components/schemas/Timestamp'
         valid_to:
@@ -8565,6 +8658,25 @@ components:
         occurred_at:
           description: When it happened on the client; offline queues keep the original time.
           $ref: '#/components/schemas/Timestamp'
+
+    ScopeRequest:
+      type: object
+      additionalProperties: false
+      required: [repos]
+      properties:
+        repos:
+          description: The repositories it applies in; empty is everywhere.
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/RepoKey'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
 
     EditRequest:
       type: object
@@ -9701,9 +9813,13 @@ components:
           items:
             $ref: '#/components/schemas/SourceInput'
         scope:
-          description: 'Where it applies, e.g. {"paths": ["**/*.test.ts"]} from a scoped rule.'
-          type: object
-          additionalProperties: true
+          description: |
+            Where it applies: `paths` from a scoped rule's globs, and `repos`
+            for a statement from a file that belongs to one repository
+            (`memax init` sends it for that repository's Claude Code auto
+            memory and `CLAUDE.local.md`). Repeats folded into one proposal
+            apply wherever any of them does.
+          $ref: '#/components/schemas/MemoryScope'
 
     ImportRequest:
       type: object

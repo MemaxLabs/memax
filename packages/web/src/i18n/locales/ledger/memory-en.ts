@@ -138,6 +138,13 @@ export const ledgerMemoryEn = {
     reaches: "Reaches",
     reachesMeta: "{files} · {agents}",
     reachesLater: "Compiled files show here once Memax compiles this space.",
+    // A personal fact tied to repositories (scope.repos), as init ties a
+    // repository's own notes (CLAUDE.local.md, Claude Code's memory).
+    appliesIn: "Applies in",
+    appliesInNote:
+      "Only in these repositories. It stays out of the files your agents load in every project, and they read it over MCP.",
+    everywhere: "Apply everywhere",
+    everywhereDone: "{ref} applies everywhere now",
     staysTrue: "Stays true while",
     checked:
       "Checked {when} by {name}. Dream flags it stale if either changes.",

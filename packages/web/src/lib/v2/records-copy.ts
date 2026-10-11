@@ -219,7 +219,8 @@ export type FailedCommand =
   | "answer"
   | "withdraw"
   | "forget"
-  | "declineForget";
+  | "declineForget"
+  | "scope";
 
 function refusalReason(
   refused: Record<string, string>,

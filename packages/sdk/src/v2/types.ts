@@ -225,6 +225,8 @@ export type RememberInput = Schemas["RememberRequest"];
 export type NearDuplicatesInput = Schemas["NearDuplicatesRequest"];
 export type EditInput = Schemas["EditRequest"];
 export type ReviewInput = Schemas["ReviewRequest"];
+/** Which repositories a memory applies in; `repos: []` is everywhere. */
+export type ScopeInput = Schemas["ScopeRequest"];
 export type SourceInput = Schemas["SourceInput"];
 export type AutonomyInput = Schemas["AutonomyRequest"];
 export type AgentCommandInput = Schemas["AgentCommandRequest"];
@@ -290,6 +292,14 @@ export type SettleImportConflictInput = Schemas["SettleImportConflictRequest"];
 export type BulkReviewInput = Schemas["BulkReviewRequest"];
 
 // Vocabulary
+/**
+ * Where a memory applies: `paths` (a scoped rule's globs), `agents`, and
+ * `repos`, the repositories it applies in ("owner/name"). A home file
+ * leaves out a memory with `repos` or `paths`.
+ */
+export type MemoryScope = Schemas["MemoryScope"];
+/** A repository as "owner/name", such as "acme/web". */
+export type RepoKey = Schemas["RepoKey"];
 export type Section = Schemas["Section"];
 export type MemoryKind = Schemas["MemoryKind"];
 export type State = Schemas["State"];

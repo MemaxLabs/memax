@@ -4,7 +4,7 @@
 // the project space, one for Personal) and what stays behind.
 import { readFileSync } from "node:fs";
 import type { V2 } from "memax-sdk";
-import type { FoundFile } from "./files.js";
+import { projectBound, type FoundFile } from "./files.js";
 import { baseLines, onBase, type BranchContext, type Git } from "./git.js";
 import {
   addHidden,
@@ -29,6 +29,13 @@ export interface ScannedFile {
   /** Secrets in lines that aren't statements (code blocks): never read, but worth a look. */
   otherSecrets: number;
   unreadable?: boolean;
+  /**
+   * It belongs to this repository (files.ts PROJECT_BOUND_KINDS), which
+   * has no owner/name to tie it to (no remote, and a space without a
+   * repository): left on this machine rather than sent to Personal, where
+   * it would apply in every project.
+   */
+  noRepository?: boolean;
 }
 
 export interface Upload {
@@ -48,6 +55,11 @@ export interface ScanOptions {
   root: string | null;
   git: Git;
   branch: BranchContext | null;
+  /**
+   * The repository's key ("acme/web", spaces.ts repositoryOf): the
+   * scope.repos of statements from its project-bound personal files.
+   */
+  repo: string | null;
 }
 
 const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>()[\]"'`]+/g;
@@ -80,6 +92,11 @@ export async function scanFiles(
       otherSecrets: 0,
     };
     out.files.push(scanned);
+    const bound = projectBound(file);
+    if (bound && !o.repo) {
+      scanned.noRepository = true;
+      continue;
+    }
     let content: string;
     try {
       content = readFileSync(file.path, "utf8");
@@ -163,7 +180,11 @@ export async function scanFiles(
       };
       const hidden = totalHidden(st.hidden);
       if (hidden > 0) item.hidden_characters = hidden;
-      if (split.paths.length > 0) item.scope = { paths: split.paths };
+      const scope: V2.MemoryScope = {};
+      if (split.paths.length > 0) scope.paths = split.paths;
+      // This repository's own notes apply here, not in every project.
+      if (bound && o.repo) scope.repos = [o.repo];
+      if (Object.keys(scope).length > 0) item.scope = scope;
       if (st.kind === "decision" && st.heading.length > 0)
         item.decision = {
           area: st.heading[st.heading.length - 1].slice(0, 500),

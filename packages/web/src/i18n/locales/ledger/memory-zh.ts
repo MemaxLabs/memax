@@ -129,6 +129,11 @@ export const ledgerMemoryZh: Translations["ledger"]["memory"] = {
     reaches: "覆盖",
     reachesMeta: "{files} · {agents}",
     reachesLater: "等 Memax 开始编译这个空间，编译文件会显示在这里。",
+    appliesIn: "适用于",
+    appliesInNote:
+      "只在这些仓库里适用。它不会写进你的 Agent 在每个项目都加载的文件，Agent 通过 MCP 读取它。",
+    everywhere: "在所有地方适用",
+    everywhereDone: "{ref} 现在在所有地方适用",
     staysTrue: "在这些前提下成立",
     checked: "{name} 在{when}核对过。任何一条变了，Dream 都会把它标成过时。",
     checkedOne: "{name} 在{when}核对过。它一变，Dream 就会把它标成过时。",

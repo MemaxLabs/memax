@@ -5,15 +5,27 @@
  */
 import type { Document, Limit } from "../document.js";
 import type { Model, Target } from "../model.js";
-import type { AdapterKind, ParsedFile } from "../types.js";
+import type { AdapterKind, ParsedFile, SpaceKind } from "../types.js";
 
 /**
  * - `canonical`: the full record (AGENTS.md).
  * - `shim`: imports the canonical file, plus lines only this tool reads.
  * - `scoped`: path-scoped facts only, one file per group of globs.
  * - `copy`: text for a person to copy out; never a file on disk.
+ * - `home`: a personal space's record in one agent's user-level file,
+ *   inline and self-contained (personal-layer design §3.2).
  */
-export type Role = "canonical" | "shim" | "scoped" | "copy";
+export type Role = "canonical" | "shim" | "scoped" | "copy" | "home";
+
+/**
+ * What a target's path is relative to: the repository, or the person's
+ * home folder. The compiler never needs the root itself, only which kind
+ * of path to expect.
+ */
+export type Root = "repo" | "home";
+
+/** Who owns a file: Memax (the whole file) or the person (one block in it). */
+export type Owner = "memax" | "block";
 
 export interface Cap {
   value: number;
@@ -53,6 +65,17 @@ export interface Adapter {
   /** Says which paths are allowed, for error messages. */
   pathHint: string;
   acceptsPath(path: string): boolean;
+  /** The roots its paths may be relative to. */
+  roots: readonly Root[];
+  /**
+   * Home adapters: who owns the file at an accepted path. The person's own
+   * file gets one managed block; a file Memax owns is written whole.
+   */
+  owner?(path: string): Owner;
+  /** Spaces it may compile for, when not every kind (home files: personal). */
+  spaceKinds?: readonly SpaceKind[];
+  /** The budget when a target doesn't set one; null (or none) is 32 KiB. */
+  defaultBudget?(model: Model): number | null;
   limits: Limits;
   /** The canonical file this tool also reads, for the UI ("Cursor · reads AGENTS.md"). */
   reads(target: Target): string | null;

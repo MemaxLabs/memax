@@ -18,6 +18,7 @@ export const chatgpt: Adapter = {
   defaultPath: null,
   pathHint: "(chatgpt is copied out, so it takes no path)",
   acceptsPath: () => false,
+  roots: ["repo"],
   limits: {},
   reads: () => null,
 

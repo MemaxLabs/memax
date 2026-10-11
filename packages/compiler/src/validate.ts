@@ -16,7 +16,11 @@ import {
 import { findManagedBlock, ManagedBlockError } from "./managed-block.js";
 import { cleanLine } from "./sanitize.js";
 import { formatStamp, isRepoPath, parseTime } from "./text.js";
-import { CONTRACT_VERSION, type CompileWarning } from "./types.js";
+import {
+  CONTRACT_VERSION,
+  type CompileWarning,
+  type SpaceKind,
+} from "./types.js";
 
 export interface Issue {
   /** Where in the input, for example `memories[3].state`. */
@@ -208,7 +212,7 @@ export function validate(input: unknown): Model {
 
   const targets = c
     .array(root.targets, "targets")
-    .map((t, i) => checkTarget(c, t, `targets[${i}]`));
+    .map((t, i) => checkTarget(c, t, `targets[${i}]`, space.kind));
   if (targets.length === 0) c.fail("targets", "must list at least one target");
   const paths = new Map<string, number>();
   targets.forEach((t, i) => {
@@ -437,7 +441,12 @@ function checkItem(c: Checker, value: unknown, path: string): ModelItem {
   };
 }
 
-function checkTarget(c: Checker, value: unknown, path: string): Target {
+function checkTarget(
+  c: Checker,
+  value: unknown,
+  path: string,
+  spaceKind: SpaceKind,
+): Target {
   const t = c.object(value, path);
   if (!isAdapterKind(t.kind)) {
     c.fail(`${path}.kind`, "must be a known adapter kind");
@@ -449,6 +458,15 @@ function checkTarget(c: Checker, value: unknown, path: string): Target {
     if (t[field] !== undefined && !ok)
       c.fail(`${path}.${field}`, `only applies to ${who}`);
   };
+  const home = adapter.role === "home";
+
+  // A project's facts must never land in a person's home files.
+  if (adapter.spaceKinds && !adapter.spaceKinds.includes(spaceKind)) {
+    c.fail(
+      `${path}.kind`,
+      `${t.kind} compiles only for a ${adapter.spaceKinds.join(" or ")} space, not a ${spaceKind} one`,
+    );
+  }
 
   if (t.path !== undefined) {
     if (
@@ -460,7 +478,7 @@ function checkTarget(c: Checker, value: unknown, path: string): Target {
     else
       c.fail(
         `${path}.path`,
-        `must be a repository-relative path ${adapter.pathHint}`,
+        `must be a ${home ? "home" : "repository"}-relative path ${adapter.pathHint}`,
       );
   }
   target.include = c.oneOf(
@@ -497,10 +515,15 @@ function checkTarget(c: Checker, value: unknown, path: string): Target {
 
   const shim = adapter.role === "shim";
   const canonical = adapter.role === "canonical" || adapter.role === "copy";
+  const owners = "shims (claude_md, gemini_md) and home files";
   only("scoped", canonical, "agents_md and chatgpt");
-  only("user_owned", shim, "shims (claude_md, gemini_md)");
-  only("current", shim, "shims (claude_md, gemini_md)");
-  only("canonical_path", !canonical, "shims and scoped adapters");
+  only("user_owned", shim || home, owners);
+  only("current", shim || home, owners);
+  only(
+    "canonical_path",
+    shim || adapter.role === "scoped",
+    "shims and scoped adapters",
+  );
   if (t.scoped !== undefined)
     target.scoped = c.oneOf(t.scoped, `${path}.scoped`, ["inline", "omit"]);
   if (t.canonical_path !== undefined) {
@@ -519,6 +542,20 @@ function checkTarget(c: Checker, value: unknown, path: string): Target {
   if (t.user_owned !== undefined) {
     if (typeof t.user_owned === "boolean") target.userOwned = t.user_owned;
     else c.fail(`${path}.user_owned`, "must be true or false");
+  }
+  // A home file's owner follows from its path, so the setting may be left
+  // out, and one that disagrees is refused rather than obeyed.
+  if (home && adapter.owner) {
+    const block = adapter.owner(target.path) === "block";
+    if (typeof t.user_owned === "boolean" && t.user_owned !== block) {
+      c.fail(
+        `${path}.user_owned`,
+        block
+          ? `${target.path} is the person's file, so Memax manages one block in it: user_owned must be true`
+          : `${target.path} is Memax's own file: user_owned must be false`,
+      );
+    }
+    target.userOwned = block;
   }
   if (t.current !== undefined) {
     if (typeof t.current === "string") target.current = t.current;

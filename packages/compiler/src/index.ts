@@ -20,8 +20,18 @@ export {
   defaultTargets,
   DEFAULT_TARGET_KINDS,
   OPT_IN_TARGET_KINDS,
+  HOME_TARGET_KINDS,
+  HOME_BUDGET,
+  PERSONAL_INTRO_LINE,
 } from "./adapters/index.js";
-export type { Adapter, Cap, Limits, Role } from "./adapters/index.js";
+export type {
+  Adapter,
+  Cap,
+  Limits,
+  Owner,
+  Role,
+  Root,
+} from "./adapters/index.js";
 export { CompileInputError, type Issue } from "./validate.js";
 export { cleanLine } from "./sanitize.js";
 export { sha256Hex } from "./hash.js";

@@ -15,6 +15,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/objectstore"
+	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
 )
 
 // The generation-counter recipe (plan 25 §5.7):
@@ -68,6 +69,8 @@ type Service struct {
 	compiler Compiler
 	store    objectstore.Store
 	cfg      Config
+	// adapters is what the service said it compiles (adapters.go).
+	adapters adapterCache
 }
 
 // New returns the coordinator, or nil when any dependency is missing (no
@@ -214,6 +217,10 @@ func (s *Service) Run(ctx context.Context, args ledger.CompileTargetArgs, opts R
 		cmd.CompiledAt = cmd.StartedAt
 	}
 	var ie *InputError
+	leak := ""
+	if err == nil && t.Root == ledger.RootHome {
+		leak = credentialIn(res)
+	}
 	switch {
 	case errors.As(err, &ie):
 		// The compiler refused the input: a permanent failure, recorded so
@@ -222,6 +229,14 @@ func (s *Service) Run(ctx context.Context, args ledger.CompileTargetArgs, opts R
 		s.cfg.Log.ErrorContext(ctx, "compile: input refused", "target_id", t.ID.String(), "compile", ref, "error", ie.Error())
 	case err != nil:
 		return Done, err
+	case leak != "":
+		// Rule 8, again, for what lands in a home folder: kept memories
+		// passed the same check on the way in, so a hit means something is
+		// wrong. The run fails, nothing is stored, and the message names
+		// the pattern and the file, never the text.
+		cmd.Error = truncate(leak, ledger.MaxCompileError)
+		s.cfg.Log.ErrorContext(ctx, "compile: credential in a home file", "target_id", t.ID.String(), "compile", ref,
+			"metric", "home_compile_secret")
 	default:
 		outs := outputs(res)
 		cmd.Files = outs
@@ -256,6 +271,19 @@ func (s *Service) Run(ctx context.Context, args ledger.CompileTargetArgs, opts R
 			"bytes", rec.Compile.Bytes, "since_dirty_ms", s.cfg.Now().Sub(t.DirtyAt).Milliseconds())
 	}
 	return Done, nil
+}
+
+// credentialIn runs the server's secret patterns over every output of a
+// compile, and says which pattern turned up in which file ("" for none).
+func credentialIn(res *Result) string {
+	for _, f := range res.Files {
+		if found := secrets.DetectCredentials(f.Content); len(found) > 0 {
+			return fmt.Sprintf("A credential pattern (%s) turned up in %s, so nothing was written. "+
+				"Kept memories are checked for credentials on the way in; this is a bug, so tell support@memax.app.",
+				strings.Join(found, ", "), f.Path)
+		}
+	}
+	return ""
 }
 
 // drop deletes an artifact no run records.

@@ -135,6 +135,7 @@ const (
 	sqlstateForgetRequest    = "MXL04" // migration 044
 	sqlstateForgottenWords   = "MXF01" // migration 044: a forgotten memory kept words
 	sqlstateForgottenCompile = "MXF02" // migration 044: a compile run held a forgotten memory
+	sqlstateHomeSpace        = "MXH01" // migration 056: a machine or home target outside a personal space
 	sqlstateUniqueViolation  = "23505"
 	sqlstateLockNotAvailable = "55P03"
 	// jsonb refuses \u0000, and text refuses bytes outside the encoding.
@@ -157,6 +158,8 @@ func mapDBError(err error) error {
 		return fmt.Errorf("%w: %s", ErrInvalidTransition, pg.Message)
 	case sqlstateForgottenCompile:
 		return fmt.Errorf("%w: %s", ErrBehind, pg.Message)
+	case sqlstateHomeSpace:
+		return invalid("space", "only your Personal space is written into a machine's home folder")
 	case sqlstateLockNotAvailable:
 		return fmt.Errorf("%w: try again in a moment", ErrBusy)
 	case sqlstateUntranslatable, sqlstateNotInRepertory:

@@ -123,6 +123,8 @@ func TestMigrationsRunAsNeonsOwner(t *testing.T) {
 			`SELECT count(*)::text FROM v2.receipt_spaces()`},
 		{"memax_v2 calls a definer function that sets app.sweep", "memax_v2",
 			`SELECT coalesce(v2.passkey_owner('\x00'::bytea)::text, 'none') || coalesce(current_setting('app.sweep', true), '')`},
+		{"memax_v2 reads machines and checks a home path", "memax_v2",
+			`SELECT (SELECT count(*) FROM v2.machines)::text || v2.home_path_valid('codex_user', '.codex/AGENTS.md')::text`},
 	} {
 		tx, err := pool.Begin(ctx)
 		if err != nil {

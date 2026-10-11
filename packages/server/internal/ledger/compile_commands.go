@@ -62,6 +62,7 @@ type TargetSettingsInput struct {
 	SizeBudget *int         `json:"size_budget,omitempty"`
 	Scoped     *ScopedMode  `json:"scoped,omitempty"`
 	UserOwned  *bool        `json:"user_owned,omitempty"`
+	ReadBy     *[]string    `json:"read_by,omitempty"`
 }
 
 // ConfigureTarget adds a target to a space (Target unset) or changes one.
@@ -73,6 +74,10 @@ type ConfigureTarget struct {
 	// SpaceID and Kind say where and what to add.
 	SpaceID uuid.UUID
 	Kind    TargetKind
+	// Root is what Path is relative to (default repo). A home target names
+	// its Machine, which must be linked.
+	Root    TargetRoot
+	Machine uuid.UUID
 	// ExpectedVersion, when set, must be the target's version (If-Match).
 	ExpectedVersion int
 	// Path defaults to the kind's own (AGENTS.md, CLAUDE.md, .cursor/rules).
@@ -324,6 +329,9 @@ func (c *ConfigureTarget) validate() error {
 	if c.Delivery != nil && !c.Delivery.Valid() {
 		return invalid("delivery", "use local, pr, mcp or copy")
 	}
+	if c.Root != "" && c.Root != RootRepo && c.Root != RootHome {
+		return invalid("root", "use repo or home")
+	}
 	if c.Target != uuid.Nil {
 		if c.Kind != "" || c.SpaceID != uuid.Nil {
 			return invalid("kind", "a target's kind and space are fixed; add a new target instead")
@@ -337,7 +345,13 @@ func (c *ConfigureTarget) validate() error {
 		return invalid("space_id", "say which space the target belongs to")
 	}
 	if !c.Kind.Valid() {
-		return invalid("kind", "use agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf or claude_rules")
+		return invalid("kind", "use agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf, claude_rules, claude_user or codex_user")
+	}
+	switch {
+	case c.Root == RootHome && c.Machine == uuid.Nil:
+		return invalid("machine", "a home file is on a machine: say which")
+	case c.Root != RootHome && c.Machine != uuid.Nil:
+		return invalid("machine", "only a home file is on a machine; set root to home")
 	}
 	if c.Enabled != nil && !*c.Enabled {
 		return invalid("enabled", "a new target compiles; stop it once it exists")
@@ -361,7 +375,7 @@ func (s *TargetSettingsInput) validate() error {
 	return nil
 }
 
-// defaultSettings are a new target's settings before any input.
+// defaultSettings are a new repository target's settings before any input.
 func defaultSettings(k TargetKind) TargetSettings {
 	s := TargetSettings{Include: IncludeKeptAndOpen, Stale: StaleMark, SizeBudget: DefaultSizeBudget}
 	if k == TargetAgentsMD || k == TargetChatGPT {
@@ -370,11 +384,23 @@ func defaultSettings(k TargetKind) TargetSettings {
 	return s
 }
 
-// apply merges the input into s and checks it fits the kind.
-func (s TargetSettings) apply(in *TargetSettingsInput, k TargetKind) (TargetSettings, error) {
+// defaultSettingsAt are a new target's settings at a root: at home, the
+// 6 KiB budget, the file's owner from its path, and who reads it.
+func defaultSettingsAt(k TargetKind, root TargetRoot, path string) TargetSettings {
+	if root != RootHome {
+		return defaultSettings(k)
+	}
+	return TargetSettings{Include: IncludeKeptAndOpen, Stale: StaleMark, SizeBudget: DefaultHomeSizeBudget,
+		UserOwned: homeOwned(k, path), ReadBy: defaultReadBy(k)}
+}
+
+// apply merges the input into s and checks it fits the kind, at its root
+// and path.
+func (s TargetSettings) apply(in *TargetSettingsInput, k TargetKind, root TargetRoot, path string) (TargetSettings, error) {
 	if in == nil {
 		return s, nil
 	}
+	home := root == RootHome
 	if in.Include != nil {
 		s.Include = *in.Include
 	}
@@ -382,19 +408,36 @@ func (s TargetSettings) apply(in *TargetSettingsInput, k TargetKind) (TargetSett
 		s.Stale = *in.Stale
 	}
 	if in.SizeBudget != nil {
+		if home && *in.SizeBudget > MaxHomeSizeBudget {
+			return s, invalid("settings.size_budget",
+				"a home file loads in every session of every agent: use %d to %d bytes", MinSizeBudget, MaxHomeSizeBudget)
+		}
 		s.SizeBudget = *in.SizeBudget
 	}
 	if in.Scoped != nil {
-		if k.role() != "canonical" && k.role() != "copy" {
-			return s, invalid("settings.scoped", "only agents_md and chatgpt inline scoped facts")
+		if home || (k.role() != "canonical" && k.role() != "copy") {
+			return s, invalid("settings.scoped", "only a repository's agents_md and chatgpt inline scoped facts")
 		}
 		s.Scoped = *in.Scoped
 	}
 	if in.UserOwned != nil {
-		if k.role() != "shim" && *in.UserOwned {
+		switch {
+		case home && *in.UserOwned != homeOwned(k, path):
+			return s, userOwnedClash(path, homeOwned(k, path))
+		case !home && k.role() != "shim" && *in.UserOwned:
 			return s, invalid("settings.user_owned", "only the shims (claude_md, gemini_md) can live in a file you own")
 		}
 		s.UserOwned = *in.UserOwned
+	}
+	if in.ReadBy != nil {
+		if !home {
+			return s, invalid("settings.read_by", "only a home file says which agents read it")
+		}
+		readBy, err := normalizeReadBy(*in.ReadBy)
+		if err != nil {
+			return s, err
+		}
+		s.ReadBy = readBy
 	}
 	return s, nil
 }
@@ -444,6 +487,123 @@ func checkTargetPath(k TargetKind, path string) error {
 		return invalid("path", "%s: %s", k, hint)
 	}
 	return nil
+}
+
+// checkTargetPathAt checks a path for its root: a repository's files, or
+// a home folder's (checkHomePath). The home kinds write only at home.
+func checkTargetPathAt(root TargetRoot, k TargetKind, path string) error {
+	if root == RootHome {
+		return checkHomePath(k, path)
+	}
+	if k.homeOnly() {
+		return invalid("kind", "%s writes into a home folder, not a repository: link the machine with memax link --home", k)
+	}
+	return checkTargetPath(k, path)
+}
+
+// checkHomePath mirrors v2.home_path_valid: a file in a dot folder of the
+// home folder (never a project folder there), named for the agent's own
+// file, and the personal canonical copy at HomeCanonicalPath.
+func checkHomePath(k TargetKind, path string) error {
+	if !ValidPath(path) {
+		return invalid("path", "use a path relative to the home folder, with no .. and no leading /")
+	}
+	folder, _, _ := strings.Cut(path, "/")
+	if !strings.HasPrefix(folder, ".") || folder == path {
+		return invalid("path", "a home file lives in a dot folder of the home folder, such as ~/.claude or ~/.codex")
+	}
+	ok, hint := false, ""
+	switch k {
+	case TargetAgentsMD:
+		ok, hint = path == HomeCanonicalPath, "the personal canonical copy is "+HomeCanonicalPath
+	case TargetClaudeUser:
+		ok = folder != ".memax" && (strings.HasSuffix(path, "/rules/memax-personal.md") || strings.HasSuffix(path, "/CLAUDE.md"))
+		hint = "end it in rules/memax-personal.md, or CLAUDE.md for a block in your own file"
+	case TargetCodexUser:
+		ok = folder != ".memax" && (strings.HasSuffix(path, "/AGENTS.md") || strings.HasSuffix(path, "/AGENTS.override.md"))
+		hint = "end it in AGENTS.md or AGENTS.override.md"
+	default:
+		hint = "this kind isn't written into a home folder"
+	}
+	if !ok {
+		return invalid("path", "%s: %s", k, hint)
+	}
+	return nil
+}
+
+// ValidHomePath mirrors v2.home_path_valid (checkHomePath, without the
+// message).
+func ValidHomePath(k TargetKind, path string) bool { return checkHomePath(k, path) == nil }
+
+// homeOwned is whether a home file is the person's (Memax manages one
+// block in it) rather than Memax's own: Codex's AGENTS.md and a
+// ~/.claude/CLAUDE.md are theirs; the rules file and the canonical copy
+// are Memax's. The compiler decides the same from the path.
+func homeOwned(k TargetKind, path string) bool {
+	switch k {
+	case TargetCodexUser:
+		return true
+	case TargetClaudeUser:
+		return strings.HasSuffix(path, "/CLAUDE.md")
+	}
+	return false
+}
+
+func userOwnedClash(path string, owned bool) error {
+	if owned {
+		return invalid("user_owned", "%s is your own file, so Memax manages one block in it: user_owned is true", path)
+	}
+	return invalid("user_owned", "%s is Memax's own file: user_owned is false", path)
+}
+
+// defaultReadBy is who loads a home file when a link doesn't say: the
+// kind's own agent, and nobody for the canonical copy (OpenCode reads it
+// only once its settings point there).
+func defaultReadBy(k TargetKind) []string {
+	switch k {
+	case TargetClaudeUser:
+		return []string{"claude-code"}
+	case TargetCodexUser:
+		return []string{"codex"}
+	}
+	return nil
+}
+
+var agentSlug = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
+
+// normalizeReadBy checks agent slugs and sorts them, without repeats.
+func normalizeReadBy(in []string) ([]string, error) {
+	if len(in) > MaxReadBy {
+		return nil, invalid("read_by", "name at most %d agents", MaxReadBy)
+	}
+	var out []string
+	for _, a := range in {
+		if !agentSlug.MatchString(a) {
+			return nil, invalid("read_by", "use agent ids like claude-code or codex")
+		}
+		if !slices.Contains(out, a) {
+			out = append(out, a)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
+// defaultPathAt is where a kind writes by default at a root.
+func (k TargetKind) defaultPathAt(root TargetRoot) string {
+	if root == RootHome && k == TargetAgentsMD {
+		return HomeCanonicalPath
+	}
+	return k.DefaultPath()
+}
+
+// checkDeliveryAt is checkDelivery, plus: a home file is written by its
+// machine's daemon (local) and nothing else.
+func checkDeliveryAt(root TargetRoot, k TargetKind, d Delivery) error {
+	if root == RootHome && d != DeliveryLocal {
+		return invalid("delivery", "a home file is written by the daemon on its machine: use local")
+	}
+	return checkDelivery(k, d)
 }
 
 // ValidPath mirrors v2.repo_path_valid and the compiler's isRepoPath.

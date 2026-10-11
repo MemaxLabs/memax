@@ -711,6 +711,16 @@ func (w *writer) replay(ctx context.Context, c *claimed) (*Result, error) {
 		}
 		return &res, nil
 	}
+	if c.objectID != nil && isMachineCommand(w.command) {
+		// The machine and its targets as they are now.
+		if res.Machine, err = loadMachine(ctx, w.tx, w.meta.Scope, *c.objectID, false); err != nil {
+			return nil, err
+		}
+		if res.Targets, err = w.machineTargets(ctx, res.Machine.SpaceID, res.Machine.ID); err != nil {
+			return nil, err
+		}
+		return &res, nil
+	}
 	if c.objectID != nil {
 		if res.Memory, err = loadFull(ctx, w.tx, w.meta.Scope, *c.objectID); err != nil {
 			return nil, err

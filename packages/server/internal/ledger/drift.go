@@ -68,7 +68,7 @@ func (w *writer) recordObservation(ctx context.Context, c *RecordObservation) (R
 		}
 		return res, err
 	}
-	dec := policy.Decide(w.policyActor(grant), policy.ActionReport, policy.Object{}, sp.policy())
+	dec := w.decideReport(grant, sp, t)
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
 	}
@@ -188,6 +188,10 @@ func (w *writer) resolveDrift(ctx context.Context, c *ResolveDrift) (Result, err
 		action = policy.ActionPullDrift
 	}
 	dec := policy.Decide(w.policyActor(grant), action, policy.Object{}, sp.policy())
+	if dec.Effect != policy.EffectRefuse && t.Root == RootHome {
+		// A machine's hand edits are its person's to settle.
+		dec = policy.DecideMachine(w.policyActor(grant), policy.MachineConfigure, sp.policy())
+	}
 	if dec.Effect == policy.EffectRefuse {
 		return refused(dec), nil
 	}

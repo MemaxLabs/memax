@@ -281,28 +281,30 @@ func loadReceipts(ctx context.Context, tx pgx.Tx, scope Scope, ids []uuid.UUID) 
 }
 
 func insertReceipt(ctx context.Context, tx pgx.Tx, rc *Receipt) error {
-	var source any
-	if rc.Source != nil {
-		b, err := json.Marshal(rc.Source)
-		if err != nil {
-			return err
-		}
-		source = b
-	}
-	err := tx.QueryRow(ctx, `
-		INSERT INTO v2.receipts (id, tenant_id, space_id, object_kind, object_id, object_ref, action,
-		                         actor_kind, actor_id, agent, via, assurance, session_ref, source, reason,
-		                         occurred_at, stream_id, stream_version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-		RETURNING seq, recorded_at`,
-		rc.ID, rc.TenantID, rc.SpaceID, rc.ObjectKind, rc.ObjectID, rc.ObjectRef, string(rc.Action),
-		string(rc.ActorKind), rc.ActorID, nullText(rc.Agent), string(rc.Via), nullText(string(rc.Assurance)),
-		nullText(rc.SessionRef), source, nullText(rc.Reason), rc.OccurredAt, rc.StreamID, rc.StreamVersion,
-	).Scan(&rc.Seq, &rc.RecordedAt)
-	if err != nil {
+	if err := tx.QueryRow(ctx, receiptInsertSQL, receiptArgs(rc)...).Scan(&rc.Seq, &rc.RecordedAt); err != nil {
 		return fmt.Errorf("ledger: write receipt: %w", err)
 	}
 	return nil
+}
+
+// receiptInsertSQL writes a receipt and reads back what the database
+// stamps (receiptArgs are its arguments).
+const receiptInsertSQL = `
+	INSERT INTO v2.receipts (id, tenant_id, space_id, object_kind, object_id, object_ref, action,
+	                         actor_kind, actor_id, agent, via, assurance, session_ref, source, reason,
+	                         occurred_at, stream_id, stream_version)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+	RETURNING seq, recorded_at`
+
+func receiptArgs(rc *Receipt) []any {
+	var source any
+	if rc.Source != nil {
+		// A ReceiptSource is two strings: it always marshals.
+		source, _ = json.Marshal(rc.Source)
+	}
+	return []any{rc.ID, rc.TenantID, rc.SpaceID, rc.ObjectKind, rc.ObjectID, rc.ObjectRef, string(rc.Action),
+		string(rc.ActorKind), rc.ActorID, nullText(rc.Agent), string(rc.Via), nullText(string(rc.Assurance)),
+		nullText(rc.SessionRef), source, nullText(rc.Reason), rc.OccurredAt, rc.StreamID, rc.StreamVersion}
 }
 
 func nullText(s string) any {

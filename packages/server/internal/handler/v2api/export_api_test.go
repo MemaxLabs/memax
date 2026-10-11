@@ -219,9 +219,12 @@ func TestExportRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(targets) != 1 || targets[0].LastCompile == nil {
+	if len(targets) != 1 || targets[0].LastCompile == nil || targets[0].Root != ledger.RootRepo {
 		t.Fatalf("targets = %+v", targets)
 	}
+	// An export writes a repository target as it always did, without its
+	// root (rule 14: existing exports don't change).
+	targets[0].Root = ""
 	sameJSON(t, "targets", rec.Targets, targets)
 
 	// Every receipt, as Activity lists them, in chain order and verified.

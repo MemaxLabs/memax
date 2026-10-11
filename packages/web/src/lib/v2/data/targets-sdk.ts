@@ -134,11 +134,23 @@ export async function targetsOrNull(
   signal?: AbortSignal,
 ): Promise<TargetView[] | null> {
   try {
-    const { items } = await client.v2.targets.list(slug, { signal });
+    const items = repoTargets(
+      (await client.v2.targets.list(slug, { signal })).items,
+    );
     return items.map((t) => targetOf(t, items));
   } catch {
     return null;
   }
+}
+
+/**
+ * The targets these screens show: a repository's. A personal space's home
+ * files (`root: home`, one set per linked machine) wait for the machines
+ * view, which groups them by file across machines; listed flat they would
+ * repeat once per machine.
+ */
+export function repoTargets(items: readonly V2.Target[]): V2.Target[] {
+  return items.filter((t) => t.root !== "home");
 }
 
 /** A target as a command or read returned it, keeping what only the list knows (its URL segment, what it reads). */
@@ -153,7 +165,9 @@ function refreshed(target: V2.Target, before: TargetView): TargetView {
 export function createSdkTargets(client: V2Client): TargetsSource {
   return {
     async list({ space, signal }) {
-      const { items } = await client.v2.targets.list(space.slug, { signal });
+      const items = repoTargets(
+        (await client.v2.targets.list(space.slug, { signal })).items,
+      );
       return items.map((t) => targetOf(t, items));
     },
 

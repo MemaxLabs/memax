@@ -31,7 +31,11 @@ import (
 //     history, and the decision that replaced them compiles instead;
 //   - read scores are 0 until R- reads land (epic 1.7);
 //   - scope globs and agents the compiler would refuse are dropped, with a
-//     warning, rather than failing the whole file.
+//     warning, rather than failing the whole file;
+//   - a home target (a personal space's file on a linked machine) leaves
+//     out every memory tied to a repository (scope.repos, or scope.paths):
+//     home files load in every project, and such memories stay live over
+//     MCP (personal-layer design §3.3).
 
 var (
 	slugInvalid = regexp.MustCompile(`[^a-z0-9]+`)
@@ -90,8 +94,12 @@ func buildInput(s *ledger.CompileSnapshot, appBase string, at time.Time) (*built
 	}
 
 	b.input.Memories = []InputMemory{}
+	home := t.Root == ledger.RootHome
 	for _, m := range s.Kept {
 		if m.Lifecycle != lifecycle.Kept || m.Trust.External() {
+			continue
+		}
+		if home && repoBound(m) {
 			continue
 		}
 		// A superseded decision keeps its history in the record but is no
@@ -160,6 +168,23 @@ func (b *built) scope(m ledger.Memory) *InputScope {
 	return sc
 }
 
+// repoBound reports whether a memory is tied to one repository: it names
+// repositories (scope.repos) or paths in one (scope.paths). A scope that
+// doesn't parse counts as tied, so nothing unclear reaches a home file.
+func repoBound(m ledger.Memory) bool {
+	if len(m.Applies) == 0 {
+		return false
+	}
+	var raw struct {
+		Repos []string `json:"repos"`
+		Paths []string `json:"paths"`
+	}
+	if err := json.Unmarshal(m.Applies, &raw); err != nil {
+		return true
+	}
+	return len(raw.Repos) > 0 || len(raw.Paths) > 0
+}
+
 // validGlob is the compiler's check on scope.paths.
 func validGlob(g string) bool {
 	if !globPattern.MatchString(g) || strings.HasPrefix(g, "!") {
@@ -184,15 +209,22 @@ func targetSettings(t *ledger.Target, canonical string) TargetSettings {
 		Kind: string(t.Kind), Path: t.Path,
 		Include: string(t.Settings.Include), Stale: string(t.Settings.Stale), SizeBudget: t.Settings.SizeBudget,
 	}
-	switch t.Kind {
-	case ledger.TargetAgentsMD, ledger.TargetChatGPT:
+	switch {
+	case t.Root == ledger.RootHome:
+		// Home files stand alone: no canonical to import, and no scoped
+		// facts to inline.
+	case t.Kind == ledger.TargetAgentsMD || t.Kind == ledger.TargetChatGPT:
 		ts.Scoped = string(t.Settings.Scoped)
 	default:
 		if canonical != "" && canonical != "AGENTS.md" {
 			ts.CanonicalPath = canonical
 		}
 	}
-	if (t.Kind == ledger.TargetClaudeMD || t.Kind == ledger.TargetGeminiMD) && t.Settings.UserOwned {
+	// A file the person owns compiles against "" (the block alone), and
+	// fillCurrent gives it the baseline, which is the block alone too: the
+	// daemon uploads only the block, so the person's own lines in their
+	// files never reach the server.
+	if t.Settings.UserOwned && (t.Kind == ledger.TargetClaudeMD || t.Kind == ledger.TargetGeminiMD || t.Root == ledger.RootHome) {
 		ts.UserOwned = true
 		empty := ""
 		ts.Current = &empty

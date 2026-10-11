@@ -502,6 +502,19 @@ func requestHash(cmd Command) ([]byte, error) {
 		cp := *c
 		cp.Meta = strip
 		v = cp
+	case *LinkMachine:
+		// The session that sends it doesn't change what it asks for.
+		cp := *c
+		cp.Meta, cp.SessionID = strip, uuid.Nil
+		v = cp
+	case *UnlinkMachine:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *RenameMachine:
+		cp := *c
+		cp.Meta = strip
+		v = cp
 	default:
 		return nil, invalid("command", "unknown command")
 	}

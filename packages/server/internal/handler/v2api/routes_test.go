@@ -90,8 +90,14 @@ var sampleRequests = map[string]struct {
 	"listBriefVersions": {path: "/v2/spaces/memax-v2/brief/versions?limit=5"},
 	"restoreBriefVersion": {path: "/v2/spaces/memax-v2/brief/versions/1:restore", body: `{"reason":"back to the first"}`,
 		header: map[string]string{"If-Match": `"2"`}},
-	"listTargets":       {path: "/v2/spaces/memax-v2/targets"},
-	"createTarget":      {path: "/v2/spaces/memax-v2/targets", body: `{"kind":"agents_md"}`},
+	"listTargets":  {path: "/v2/spaces/memax-v2/targets"},
+	"createTarget": {path: "/v2/spaces/memax-v2/targets", body: `{"kind":"agents_md"}`},
+	"listMachines": {path: "/v2/spaces/memax-v2/machines"},
+	"linkMachine": {path: "/v2/spaces/memax-v2/machines",
+		body: `{"device_id":"` + sampleID + `","name":"work-mbp","platform":"darwin","files":[{"kind":"codex_user"}]}`},
+	"renameMachine": {path: "/v2/machines/" + sampleID, body: `{"name":"Work laptop"}`,
+		header: map[string]string{"Idempotency-Key": "k-rename"}},
+	"unlinkMachine":     {path: "/v2/machines/" + sampleID + ":unlink"},
 	"configureTarget":   {path: "/v2/targets/" + sampleID, body: `{"enabled":false}`, header: map[string]string{"Idempotency-Key": "k-configure"}},
 	"compileTarget":     {path: "/v2/targets/" + sampleID + ":compile"},
 	"getTargetPreview":  {path: "/v2/targets/" + sampleID + "/preview"},
@@ -310,7 +316,8 @@ func TestEnumsMatchTheLedger(t *testing.T) {
 		stringConsts(t, "../../ledger/policy/spaces.go", "Code")...),
 		stringConsts(t, "../../ledger/policy/devices.go", "Code")...),
 		stringConsts(t, "../../ledger/policy/sessions.go", "Code")...),
-		stringConsts(t, "../../ledger/policy/assurance.go", "Code")...))
+		append(stringConsts(t, "../../ledger/policy/assurance.go", "Code"),
+			stringConsts(t, "../../ledger/policy/machines.go", "Code")...)...))
 	sameSet(t, "PasskeyFailure", specEnum(t, "PasskeyFailure"), []string{
 		string(passkeys.ReasonMalformed), string(passkeys.ReasonUnknown), string(passkeys.ReasonExpired), string(passkeys.ReasonUsed),
 		string(passkeys.ReasonOtherSession), string(passkeys.ReasonOtherRequest), string(passkeys.ReasonNoCredential),

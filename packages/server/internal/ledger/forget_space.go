@@ -167,6 +167,13 @@ func (w *writer) forgetWholeSpace(ctx context.Context, sp spaceRow, retire bool,
 	if err := w.afterPurge(ctx, sp, op, files); err != nil {
 		return Result{}, err
 	}
+	// A personal space forgotten whole comes off every machine it is on:
+	// each daemon takes what Memax wrote there off its disk (design §5.4).
+	unlinked, err := w.unlinkAll(ctx, sp)
+	if err != nil {
+		return Result{}, err
+	}
+	op.receipts = append(op.receipts, unlinked...)
 	if retire {
 		if _, err := w.tx.Exec(ctx, `SELECT v2.retire_space($1)`, sp.ID); err != nil {
 			return Result{}, fmt.Errorf("ledger: retire space: %w", err)

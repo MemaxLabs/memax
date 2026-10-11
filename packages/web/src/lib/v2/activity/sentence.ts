@@ -291,6 +291,11 @@ export function activitySentences(
     case "revised":
       return [one(s.revised, { ref: text(entry.object.ref) })];
     case "configured":
+      // A machine's configured receipt is its rename; it names the machine
+      // by its label, never its name.
+      if (entry.object.kind === "machine") {
+        return [one(s.machineRenamed, { ref: text(entry.object.ref) })];
+      }
       return [one(s.configured, { ref: text(entry.object.ref) })];
     case "requested":
       return [one(s.requested, { ref: text(entry.object.ref) })];
@@ -307,7 +312,12 @@ export function activitySentences(
     case "judged":
       return [one(s.judged, { ref: text(entry.object.ref) })];
     case "linked":
+      if (entry.object.kind === "machine") {
+        return [one(s.machineLinked, { ref: text(entry.object.ref) })];
+      }
       return [one(s.linked, { ref: text(entry.object.ref) })];
+    case "unlinked":
+      return [one(s.machineUnlinked, { ref: text(entry.object.ref) })];
     case "superseded":
       return [one(s.superseded, { ref: text(entry.object.ref) })];
     // The judge put a Write agent's write back in Review; the receipt's

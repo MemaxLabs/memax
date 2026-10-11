@@ -8,7 +8,7 @@ import type { Command } from "commander";
 import type { Memax, V2 } from "memax-sdk";
 import { getClient } from "../lib/client.js";
 import { getOrCreateDeviceID, loadConfig } from "../lib/config.js";
-import { sdkDaemonApi } from "../lib/daemon/api.js";
+import { repoTargets, sdkDaemonApi } from "../lib/daemon/api.js";
 import { controlRequest } from "../lib/daemon/control.js";
 import { fileLogger } from "../lib/daemon/log.js";
 import { OneShotDelivery } from "../lib/daemon/oneshot.js";
@@ -106,7 +106,7 @@ export async function compile(
     cwd: d.cwd,
     paths: d.paths,
   });
-  let targets = (await d.memax.v2.targets.list(space.id)).items;
+  let targets = repoTargets((await d.memax.v2.targets.list(space.id)).items);
   if (targets.length === 0) {
     d.out(
       chalk.yellow(
@@ -162,7 +162,7 @@ export async function compile(
   try {
     for (;;) {
       if (local) await local.sync(space.id);
-      targets = (await d.memax.v2.targets.list(space.id)).items;
+      targets = repoTargets((await d.memax.v2.targets.list(space.id)).items);
       const delivering = writer !== null && linkedHere;
       if (
         targets.every(

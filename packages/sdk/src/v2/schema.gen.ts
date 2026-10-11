@@ -1538,7 +1538,12 @@ export interface paths {
          * List where the space compiles to
          * @description The space's targets (AGENTS.md, the CLAUDE.md shim, scoped Cursor
          *     rules, the ChatGPT copy-out, …), each with its sync state, its latest
-         *     compile run and what is on disk. Not paginated.
+         *     compile run and what is on disk. A personal space's home files are
+         *     here too, every machine's. Not paginated.
+         *
+         *     With `machine`, only that machine's home files: what its daemon
+         *     polls. That also notes the machine as seen (`last_seen_at`, to five
+         *     minutes). A machine that isn't the space's is 404.
          */
         get: operations["listTargets"];
         put?: never;
@@ -1547,8 +1552,110 @@ export interface paths {
          * @description Adds a compile target to the space, with the kind's defaults for
          *     whatever you leave out (path, settings, delivery), and compiles it.
          *     The space needs a Brief first. People who may keep add targets.
+         *
+         *     In a personal space, `root: home` adds one home file to a linked
+         *     `machine` (`memax connect codex` on a linked machine), by the
+         *     machine's person only. A machine that isn't linked any more is 409.
+         *     The compile service must have the kind's adapter; until it does, the
+         *     kind is 400.
          */
         post: operations["createTarget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/machines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the machines your Personal space is written to
+         * @description Every machine linked to the personal space, linked now or not, by
+         *     number, with when its daemon was last seen. Only the space's owner
+         *     reads them (`machines_by_person`, `machines_personal`); a machine's
+         *     name is personal data.
+         */
+        get: operations["listMachines"];
+        put?: never;
+        /**
+         * Link a machine
+         * @description Links this machine (by the CLI's device id) to the personal space,
+         *     with the files you approved on it, in one command: the machine with
+         *     its `linked` receipt, the space's first Brief when it has none, and
+         *     one home target per file, each with its `configured` receipt and
+         *     its compile. Linking the same device again links it again (a new
+         *     name, platform or session), turns approved files that were stopped
+         *     back on, adds new ones, and stops another file of the same agent at
+         *     a different path, so each agent reads one copy; when nothing
+         *     changes it writes nothing and answers 200.
+         *
+         *     Only you, on a session, in your personal space: agents and API keys
+         *     are refused `machines_by_person`, other spaces `machines_personal`.
+         *     The compile service must have each file's adapter; until it does,
+         *     the kind is 400.
+         */
+        post: operations["linkMachine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/machines/{machine}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The machine's id. */
+                machine: components["parameters"]["MachinePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename a machine
+         * @description Changes what the machine is called. Send `If-Match` with its
+         *     version. Its receipt names it by its label, never the name. A name
+         *     that is the same writes nothing.
+         */
+        patch: operations["renameMachine"];
+        trace?: never;
+    };
+    "/v2/machines/{machine}:unlink": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The machine's id. */
+                machine: components["parameters"]["MachinePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take your Personal space off a machine
+         * @description Unlinks the machine: an `unlinked` receipt, and every file of it
+         *     stopped, each with its `stopped` receipt. The machine's daemon then
+         *     takes the layer off: it removes the files Memax owns there that hold
+         *     exactly what it wrote, and the blocks nobody edited, and leaves
+         *     anything edited by hand. A machine unlinked already writes nothing.
+         *     `memax link --home` on it links it again.
+         */
+        post: operations["unlinkMachine"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2892,12 +2999,14 @@ export interface components {
          *     memory writes restored. Switching to V2 writes noted on the space (its
          *     V1 content numbered as notes) and switched once it is on the V2
          *     record; switching back writes switched_back. A note's Forget writes
-         *     forgot on the note (`object_kind: note`).
+         *     forgot on the note (`object_kind: note`). A machine's (`machine`,
+         *     named by its label, machine-2) are linked, configured (renamed) and
+         *     unlinked.
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded" | "exported" | "noted" | "switched" | "switched_back";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded" | "exported" | "noted" | "switched" | "switched_back" | "unlinked";
         /** @enum {string} */
-        ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space";
+        ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space" | "machine";
         /**
          * @description What a command did. `applied`: it took effect as asked. `proposed`:
          *     it went to Review. `needs_confirmation`: it went to Review, and the
@@ -2957,6 +3066,10 @@ export interface components {
          *     on the web app). Refused sessions: session_by_person (only a person
          *     lists or signs out their sessions), session_needs_web (signing out a
          *     session other than this one needs a person on the web app).
+         *     Refused machines: machines_by_person (only you, on a session, link a
+         *     machine, change its files or report what it wrote; never an agent or
+         *     an API key), machines_personal (only a personal space is written to
+         *     machines), machines_by_owner (only the personal space's owner).
          *     The passkey re-check: needs_passkey (you have a passkey, so this
          *     decision asks for it; on the web the error is 403 `needs_passkey`
          *     with a challenge, elsewhere a refusal that says to do it on the web).
@@ -2966,7 +3079,7 @@ export interface components {
          *     needs a sign-in in the last few minutes, or your passkey).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "space_on_v1" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "space_on_v1" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "machines_by_person" | "machines_personal" | "machines_by_owner" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_kind" | "needs_passkey" | "passkey_invalid";
         /**
@@ -3052,13 +3165,28 @@ export interface components {
         /** @description A lowercase hex sha256. */
         Sha256: string;
         /**
-         * @description The compiler's adapter. agents_md is the canonical AGENTS.md;
-         *     claude_md and gemini_md are shims that import it; cursor_mdc,
-         *     copilot, windsurf and claude_rules hold path-scoped facts only;
-         *     chatgpt is copied out.
+         * @description The compiler's adapter. agents_md is the canonical AGENTS.md (in a
+         *     personal space, also the canonical copy at home,
+         *     `.memax/personal/AGENTS.md`); claude_md and gemini_md are shims that
+         *     import it; cursor_mdc, copilot, windsurf and claude_rules hold
+         *     path-scoped facts only; chatgpt is copied out. claude_user and
+         *     codex_user are home files: a personal space in Claude Code's user
+         *     rules (`.claude/rules/memax-personal.md`, or a block in
+         *     `.claude/CLAUDE.md`) and in a block of Codex's `.codex/AGENTS.md`.
          * @enum {string}
          */
-        TargetKind: "agents_md" | "claude_md" | "cursor_mdc" | "chatgpt" | "gemini_md" | "copilot" | "windsurf" | "claude_rules";
+        TargetKind: "agents_md" | "claude_md" | "cursor_mdc" | "chatgpt" | "gemini_md" | "copilot" | "windsurf" | "claude_rules" | "claude_user" | "codex_user";
+        /**
+         * @description What a target's path is relative to: `repo`, a repository linked on
+         *     some machine, or `home`, one linked machine's home folder (a
+         *     personal space only).
+         * @enum {string}
+         */
+        TargetRoot: "repo" | "home";
+        /** @description A path relative to the home folder, in a dot folder of it (`.claude/rules/memax-personal.md`), with no `..` and no leading `/`. */
+        HomePath: string;
+        /** @description An agent's id, such as `claude-code` or `codex`. */
+        AgentSlug: string;
         /**
          * @description How the output reaches its readers: `local` (the daemon writes it),
          *     `pr` (a pull request), `mcp` (agents read it over MCP) or `copy` (a
@@ -3783,12 +3911,18 @@ export interface components {
         TargetSettings: {
             include: components["schemas"]["IncludeMode"];
             stale: components["schemas"]["StaleMode"];
-            /** @description Bytes per file; the tool's own limit caps it. */
+            /** @description Bytes per file; the tool's own limit caps it. A home file's is 6,144 by default and at most 16,384. */
             size_budget: number;
-            /** @description agents_md and chatgpt only. */
+            /** @description A repository's agents_md and chatgpt only. */
             scoped?: components["schemas"]["ScopedMode"];
-            /** @description Shims only. The person owns the file; Memax manages one marked block in it. */
+            /**
+             * @description Shims and home files. The person owns the file; Memax manages one
+             *     marked block in it. A home file's path decides it: Codex's
+             *     AGENTS.md and a `.claude/CLAUDE.md` are the person's.
+             */
             user_owned?: boolean;
+            /** @description Home files only. The agents that load this file on its machine. */
+            read_by?: components["schemas"]["AgentSlug"][];
         };
         DeliveredFile: {
             path: components["schemas"]["RepoPath"];
@@ -3884,9 +4018,12 @@ export interface components {
             space_id: components["schemas"]["Id"];
             tenant_id: components["schemas"]["Id"];
             kind: components["schemas"]["TargetKind"];
-            /** @description A file, or a rules directory for scoped kinds. Absent for ChatGPT. */
+            root: components["schemas"]["TargetRoot"];
+            /** @description A home file's machine. */
+            machine?: components["schemas"]["TargetMachine"];
+            /** @description A file, or a rules directory for scoped kinds, relative to `root`. Absent for ChatGPT. */
             path?: components["schemas"]["RepoPath"];
-            /** @description What people see, e.g. `AGENTS.md` or `ChatGPT project`. */
+            /** @description What people see, e.g. `AGENTS.md`, `~/.codex/AGENTS.md` or `ChatGPT project`. */
             label: string;
             settings: components["schemas"]["TargetSettings"];
             delivery: components["schemas"]["Delivery"];
@@ -3915,6 +4052,79 @@ export interface components {
             last_receipt_id: components["schemas"]["Id"];
             created_at: components["schemas"]["Timestamp"];
             updated_at: components["schemas"]["Timestamp"];
+        };
+        /** @description The machine a home file is on. */
+        TargetMachine: {
+            id: components["schemas"]["Id"];
+            label: components["schemas"]["MachineLabel"];
+            name: string;
+        };
+        /** @description What receipts call a machine, `machine-<n>`, numbered per space; never its name. */
+        MachineLabel: string;
+        /** @description A computer your Personal space is written to. */
+        Machine: {
+            id: components["schemas"]["Id"];
+            space_id: components["schemas"]["Id"];
+            label: components["schemas"]["MachineLabel"];
+            /** @description What you call it; the short host name by default. */
+            name: string;
+            /** @description darwin, linux, … */
+            platform: string;
+            /** @description The memax CLI's device id on that machine. */
+            device_id: components["schemas"]["Id"];
+            /** @description The CLI session that linked it last. */
+            session_id?: components["schemas"]["Id"];
+            /** @description Whether it is linked now; an unlinked machine's files are stopped. */
+            linked: boolean;
+            linked_at: components["schemas"]["Timestamp"];
+            unlinked_at?: components["schemas"]["Timestamp"];
+            /** @description When its daemon last read its targets (to five minutes). */
+            last_seen_at?: components["schemas"]["Timestamp"];
+            /** @description The machine's version; also the `ETag`. */
+            version: number;
+            created_receipt_id: components["schemas"]["Id"];
+            last_receipt_id: components["schemas"]["Id"];
+            created_at: components["schemas"]["Timestamp"];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        MachineList: {
+            items: components["schemas"]["Machine"][];
+        };
+        MachineResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            machine: components["schemas"]["Machine"];
+            /** @description The machine's home files, in the compiler's order. */
+            targets: components["schemas"]["Target"][];
+            /** @description The receipts the command wrote; none when it changed nothing. */
+            receipts: components["schemas"]["Receipt"][];
+        };
+        /** @description A file you approve on the machine. */
+        MachineFileInput: {
+            /** @description claude_user, codex_user, or agents_md (the canonical copy). */
+            kind: components["schemas"]["TargetKind"];
+            /** @description Relative to the home folder; defaults to the kind's own. */
+            path?: components["schemas"]["HomePath"];
+            /** @description When sent, it must agree with the path. */
+            user_owned?: boolean;
+            /** @description The agents that load it on this machine; defaults to the kind's own agent. */
+            read_by?: components["schemas"]["AgentSlug"][];
+        };
+        LinkMachineRequest: {
+            /** @description The memax CLI's device id on this machine. */
+            device_id: components["schemas"]["Id"];
+            name: string;
+            platform: string;
+            files: components["schemas"]["MachineFileInput"][];
+            reason?: components["schemas"]["Reason"];
+            occurred_at?: components["schemas"]["Timestamp"];
+            session_ref?: components["schemas"]["SessionRef"];
+        };
+        RenameMachineRequest: {
+            name: string;
+            reason?: components["schemas"]["Reason"];
+            occurred_at?: components["schemas"]["Timestamp"];
+            session_ref?: components["schemas"]["SessionRef"];
         };
         TargetList: {
             items: components["schemas"]["Target"][];
@@ -4322,13 +4532,25 @@ export interface components {
         TargetSettingsInput: {
             include?: components["schemas"]["IncludeMode"];
             stale?: components["schemas"]["StaleMode"];
+            /** @description At most 16,384 for a home file. */
             size_budget?: number;
             scoped?: components["schemas"]["ScopedMode"];
+            /** @description For a home file it must agree with the path. */
             user_owned?: boolean;
+            /** @description Home files only. */
+            read_by?: components["schemas"]["AgentSlug"][];
         };
         CreateTargetRequest: {
             kind: components["schemas"]["TargetKind"];
-            /** @description Defaults to the kind's own (AGENTS.md, CLAUDE.md, .cursor/rules, …). ChatGPT takes none. */
+            /** @description Default `repo`. `home` adds a home file to `machine` (a personal space only). */
+            root?: components["schemas"]["TargetRoot"];
+            /** @description With `root` home, the linked machine the file is on. */
+            machine?: components["schemas"]["Id"];
+            /**
+             * @description Defaults to the kind's own (AGENTS.md, CLAUDE.md, .cursor/rules, …;
+             *     at home `.claude/rules/memax-personal.md`, `.codex/AGENTS.md`,
+             *     `.memax/personal/AGENTS.md`). ChatGPT takes none.
+             */
             path?: components["schemas"]["RepoPath"];
             settings?: components["schemas"]["TargetSettingsInput"];
             /** @description Defaults to local for files and copy for ChatGPT. */
@@ -5827,6 +6049,12 @@ export interface components {
         TargetListEnvelope: {
             data: components["schemas"]["TargetList"];
         };
+        MachineListEnvelope: {
+            data: components["schemas"]["MachineList"];
+        };
+        MachineResultEnvelope: {
+            data: components["schemas"]["MachineResult"];
+        };
         TargetResultEnvelope: {
             data: components["schemas"]["TargetResult"];
         };
@@ -6373,6 +6601,17 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
+        /** @description The machine and its targets after the command (nothing written when it changed nothing). */
+        MachineResult: {
+            headers: {
+                ETag: components["headers"]["VersionETag"];
+                "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["MachineResultEnvelope"];
+            };
+        };
         /** @description The target after the command. */
         TargetResult: {
             headers: {
@@ -6494,6 +6733,10 @@ export interface components {
         IfMatchGate: components["schemas"]["VersionTag"];
         /** @description The target's id. */
         TargetPath: components["schemas"]["Id"];
+        /** @description The machine's id. */
+        MachinePath: components["schemas"]["Id"];
+        /** @description The machine's `ETag` (its version) you started from, e.g. `"2"`. */
+        IfMatchMachine: components["schemas"]["VersionTag"];
         /**
          * @description The `ETag` (the Brief's or the target's version) you started from,
          *     e.g. `"3"`. Revising a Brief requires it once the space has one.
@@ -8653,7 +8896,10 @@ export interface operations {
     };
     listTargets: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description A machine of the space, by id. */
+                machine?: components["schemas"]["Id"];
+            };
             header?: never;
             path: {
                 /** @description The space's id or slug. */
@@ -8727,6 +8973,183 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listMachines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The machines. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MachineListEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    linkMachine: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkMachineRequest"];
+            };
+        };
+        responses: {
+            /** @description Linked already, with every approved file compiling; nothing was written. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["VersionETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MachineResultEnvelope"];
+                };
+            };
+            /** @description The machine, linked, with its targets compiling. */
+            201: {
+                headers: {
+                    ETag: components["headers"]["VersionETag"];
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MachineResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    renameMachine: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description The machine's `ETag` (its version) you started from, e.g. `"2"`. */
+                "If-Match"?: components["parameters"]["IfMatchMachine"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The machine's id. */
+                machine: components["parameters"]["MachinePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameMachineRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["MachineResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["EditClash"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    unlinkMachine: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The machine's id. */
+                machine: components["parameters"]["MachinePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["MachineResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
@@ -8773,6 +9196,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
             412: components["responses"]["EditClash"];
             422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];

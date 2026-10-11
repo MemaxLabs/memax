@@ -194,6 +194,12 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.forgetNote(ctx, c)
 	case *RestoreBrief:
 		res, err = w.restoreBrief(ctx, c)
+	case *LinkMachine:
+		res, err = w.linkMachine(ctx, c)
+	case *UnlinkMachine:
+		res, err = w.unlinkMachine(ctx, c)
+	case *RenameMachine:
+		res, err = w.renameMachine(ctx, c)
 	}
 	if err != nil {
 		return Result{}, mapDBError(err)
@@ -302,6 +308,12 @@ func validateCommand(cmd Command) error {
 	case *ForgetNote:
 		return c.validate()
 	case *RestoreBrief:
+		return c.validate()
+	case *LinkMachine:
+		return c.validate()
+	case *UnlinkMachine:
+		return c.validate()
+	case *RenameMachine:
 		return c.validate()
 	case *Remember:
 		return c.NewMemory.validate()

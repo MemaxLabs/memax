@@ -203,6 +203,10 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     switched:
       "{actor}把这个空间切换到 V2。Agent 现在读取的是人在这里保留的内容。",
     switchedBack: "{actor}把这个空间切换回 V1。",
+    machineLinked:
+      "{actor}连接了 {ref}：这个空间会写进它上面各个 agent 自己的文件。",
+    machineRenamed: "{actor}重命名了 {ref}。",
+    machineUnlinked: "{actor}把这个空间从 {ref} 上移除了。",
     other: "{actor}改动了 {ref}。",
   },
 };

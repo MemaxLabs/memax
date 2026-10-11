@@ -1,5 +1,5 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`, `.imports`,
-// `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets`, `.gates`,
+// `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets`, `.machines`, `.gates`,
 // `.notices`, `.devices`, `.sessions`, `.dream`, `.notes`, `.settings` and `.account`. Thin, typed
 // wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
@@ -118,6 +118,10 @@ import type {
   TargetResult,
   UndoInput,
   WithdrawGateInput,
+  LinkMachineInput,
+  MachineList,
+  MachineResult,
+  RenameMachineInput,
 } from "./types.js";
 
 /** Options every command takes. */
@@ -1034,12 +1038,17 @@ export class V2BriefsResource {
 export class V2TargetsResource {
   constructor(private readonly req: RequestFn) {}
 
-  /** Where the space compiles to, each target with its sync state. */
+  /**
+   * Where the space compiles to, each target with its sync state. With
+   * `machine`, only that machine's home files (what its daemon polls);
+   * that also notes the machine as seen.
+   */
   async list(
     space: string,
-    opts?: { signal?: AbortSignal },
+    opts?: { machine?: string; signal?: AbortSignal },
   ): Promise<TargetList> {
     return this.req("GET", `/v2/spaces/${seg(space)}/targets`, {
+      query: opts?.machine ? { machine: opts.machine } : undefined,
       signal: opts?.signal,
     });
   }
@@ -1171,6 +1180,74 @@ export class V2TargetsResource {
     opts: CommandOptions,
   ): Promise<DriftResolutionResult> {
     return this.req("POST", `/v2/targets/${seg(target)}/drift:${mode}`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+}
+
+/**
+ * `memax.v2.machines`: the computers your Personal space is written to,
+ * each with its own home files (`~/.claude/rules/memax-personal.md`, a
+ * block in `~/.codex/AGENTS.md`, `~/.memax/personal/AGENTS.md`). Only you,
+ * signed in, link, rename and unlink them; an agent's key is refused
+ * `machines_by_person`.
+ */
+export class V2MachinesResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /** The space's machines, linked or not, by number. */
+  async list(
+    space: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<MachineList> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/machines`, {
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Link this machine (by the CLI's device id) with the files you approved
+   * on it: the machine, the space's first Brief when it has none, and one
+   * home file per approved file, compiling. Linking again converges; when
+   * nothing changes, nothing is written and `receipts` is empty.
+   */
+  async link(
+    space: string,
+    input: LinkMachineInput,
+    opts: CommandOptions,
+  ): Promise<MachineResult> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/machines`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /** Rename a machine; `ifMatch` is its version. */
+  async rename(
+    machine: string,
+    input: RenameMachineInput,
+    opts: VersionedCommandOptions,
+  ): Promise<MachineResult> {
+    return this.req("PATCH", `/v2/machines/${seg(machine)}`, {
+      body: input,
+      extraHeaders: commandHeaders(opts, opts.ifMatch),
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Take your Personal space off a machine: every file of it stops, and its
+   * daemon removes what Memax wrote there, leaving what was edited by hand.
+   */
+  async unlink(
+    machine: string,
+    input: ReviewInput,
+    opts: CommandOptions,
+  ): Promise<MachineResult> {
+    return this.req("POST", `/v2/machines/${seg(machine)}:unlink`, {
       body: input,
       extraHeaders: commandHeaders(opts),
       signal: opts.signal,
@@ -1790,6 +1867,7 @@ export class V2Resource {
   readonly agents: V2AgentsResource;
   readonly briefs: V2BriefsResource;
   readonly targets: V2TargetsResource;
+  readonly machines: V2MachinesResource;
   readonly gates: V2GatesResource;
   readonly notices: V2NoticesResource;
   readonly imports: V2ImportsResource;
@@ -1810,6 +1888,7 @@ export class V2Resource {
     this.agents = new V2AgentsResource(req);
     this.briefs = new V2BriefsResource(req);
     this.targets = new V2TargetsResource(req);
+    this.machines = new V2MachinesResource(req);
     this.gates = new V2GatesResource(req);
     this.notices = new V2NoticesResource(req);
     this.imports = new V2ImportsResource(req);

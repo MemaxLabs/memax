@@ -277,10 +277,20 @@ func (w *Writer) Gates(gs []ledger.Gate) error {
 // Targets implements ledger.ExportSink.
 func (w *Writer) Targets(ts []ledger.Target) error {
 	w.counts.Targets = len(ts)
+	out := make([]ledger.Target, len(ts))
+	for i, t := range ts {
+		// A repository target is written as it always was; root and its
+		// machine appear only for a home target (rule 14: an export of an
+		// existing space doesn't change).
+		if t.Root == ledger.RootRepo {
+			t.Root = ""
+		}
+		out[i] = t
+	}
 	return w.writeJSON(TargetsFile, struct {
 		Format  string          `json:"format"`
 		Targets []ledger.Target `json:"targets"`
-	}{TargetsFormat, nonNil(ts)})
+	}{TargetsFormat, out})
 }
 
 // Agents implements ledger.ExportSink.

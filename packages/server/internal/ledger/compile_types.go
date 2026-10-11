@@ -72,11 +72,44 @@ const (
 	TargetCopilot     TargetKind = "copilot"
 	TargetWindsurf    TargetKind = "windsurf"
 	TargetClaudeRules TargetKind = "claude_rules"
+	// The home kinds (personal-layer design §3.2): a personal space in one
+	// agent's user-level file on a linked machine.
+	TargetClaudeUser TargetKind = "claude_user"
+	TargetCodexUser  TargetKind = "codex_user"
 )
 
 // TargetKinds lists every kind.
 var TargetKinds = []TargetKind{TargetAgentsMD, TargetClaudeMD, TargetCursorMDC, TargetChatGPT,
-	TargetGeminiMD, TargetCopilot, TargetWindsurf, TargetClaudeRules}
+	TargetGeminiMD, TargetCopilot, TargetWindsurf, TargetClaudeRules, TargetClaudeUser, TargetCodexUser}
+
+// HomeTargetKinds are the kinds that write only into a home folder: the
+// compiler's HOME_TARGET_KINDS. A machine's home targets are these and the
+// personal canonical copy (agents_md at HomeCanonicalPath).
+var HomeTargetKinds = []TargetKind{TargetClaudeUser, TargetCodexUser}
+
+// HomeCanonicalPath is the personal canonical copy on a linked machine,
+// relative to its home folder: what OpenCode, the Cursor hook and people
+// read.
+const HomeCanonicalPath = ".memax/personal/AGENTS.md"
+
+// TargetRoot is what a target's path is relative to.
+type TargetRoot string
+
+// The roots.
+const (
+	// RootRepo: a repository linked on some machine (every target before
+	// the personal layer).
+	RootRepo TargetRoot = "repo"
+	// RootHome: one linked machine's home folder (a personal space only).
+	RootHome TargetRoot = "home"
+)
+
+// homeOnly reports whether k writes only at home.
+func (k TargetKind) homeOnly() bool { return slices.Contains(HomeTargetKinds, k) }
+
+// AtHome reports whether k may be a home target: a home kind or the
+// personal canonical copy.
+func (k TargetKind) AtHome() bool { return k.homeOnly() || k == TargetAgentsMD }
 
 // DefaultTargetKinds are the Phase 1 targets: the compiler's
 // DEFAULT_TARGET_KINDS (the canonical AGENTS.md, the CLAUDE.md shim,
@@ -102,6 +135,8 @@ func (k TargetKind) role() string {
 		return "shim"
 	case TargetChatGPT:
 		return "copy"
+	case TargetClaudeUser, TargetCodexUser:
+		return "home"
 	}
 	return "scoped"
 }
@@ -125,6 +160,10 @@ func (k TargetKind) DefaultPath() string {
 		return ".devin/rules"
 	case TargetClaudeRules:
 		return ".claude/rules"
+	case TargetClaudeUser:
+		return ".claude/rules/memax-personal.md"
+	case TargetCodexUser:
+		return ".codex/AGENTS.md"
 	}
 	return ""
 }
@@ -210,6 +249,17 @@ const (
 	MinSizeBudget     = 1024
 	MaxSizeBudget     = 32768
 	DefaultSizeBudget = 25600
+	// A home file loads in every session of every agent on every machine,
+	// so it is short: 6 KiB, about 1,500 tokens, by default (decision 4).
+	DefaultHomeSizeBudget = 6144
+	// MaxHomeSizeBudget bounds a home file whose tool sets no cap of its own
+	// (Codex's global AGENTS.md has none): 16 KiB, about 4,000 tokens in
+	// every session, roughly Claude Code's 200-line guidance for a memory
+	// file, and under Antigravity's 24,000-byte cap, the largest per-file
+	// cap of the home tools Memax will write.
+	MaxHomeSizeBudget = 16384
+	// MaxReadBy bounds a home target's read_by.
+	MaxReadBy = 10
 )
 
 // TargetSettings is how a target is written.
@@ -219,9 +269,19 @@ type TargetSettings struct {
 	SizeBudget int         `json:"size_budget"`
 	// Scoped applies to agents_md and chatgpt only.
 	Scoped ScopedMode `json:"scoped,omitempty"`
-	// UserOwned applies to the shims only: the person owns the file, and
-	// Memax manages one marked block in it.
+	// UserOwned applies to the shims and the home files: the person owns
+	// the file, and Memax manages one marked block in it. A home file's
+	// path decides it (~/.codex/AGENTS.md is the person's).
 	UserOwned bool `json:"user_owned,omitempty"`
+	// ReadBy applies to home targets: the agents that load this file on
+	// its machine (design §7.3), so fading knows which loads it can see.
+	ReadBy []string `json:"read_by,omitempty"`
+}
+
+// equal reports whether two settings are the same.
+func (s TargetSettings) equal(o TargetSettings) bool {
+	return s.Include == o.Include && s.Stale == o.Stale && s.SizeBudget == o.SizeBudget &&
+		s.Scoped == o.Scoped && s.UserOwned == o.UserOwned && slices.Equal(s.ReadBy, o.ReadBy)
 }
 
 // DeliveredFile is one file of a target's baseline: what Memax believes
@@ -256,15 +316,30 @@ type Delivered struct {
 	At        *time.Time      `json:"at,omitempty"`
 }
 
+// TargetMachine names a home target's machine: its label (machine-2) and
+// the name its person gave it.
+type TargetMachine struct {
+	ID    uuid.UUID `json:"id"`
+	Label string    `json:"label"`
+	Name  string    `json:"name"`
+}
+
 // Target is a compiled file (or copy-out) of a space.
 type Target struct {
 	ID       uuid.UUID  `json:"id"`
 	SpaceID  uuid.UUID  `json:"space_id"`
 	TenantID uuid.UUID  `json:"tenant_id"`
 	Kind     TargetKind `json:"kind"`
-	// Path is repository-relative; empty for the ChatGPT copy-out.
+	// Root is what Path is relative to: a repository, or a linked
+	// machine's home folder. Always set by the ledger; an export leaves it
+	// out for repository targets, so their exports stay as they were.
+	Root TargetRoot `json:"root,omitempty"`
+	// Machine is a home target's machine.
+	Machine *TargetMachine `json:"machine,omitempty"`
+	// Path is relative to Root; empty for the ChatGPT copy-out.
 	Path string `json:"path,omitempty"`
-	// Label is what people see: the path, or "ChatGPT project".
+	// Label is what people see: the path (~/ before a home path), or
+	// "ChatGPT project".
 	Label     string         `json:"label"`
 	Settings  TargetSettings `json:"settings"`
 	Delivery  Delivery       `json:"delivery"`

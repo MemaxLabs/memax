@@ -381,6 +381,10 @@ type Result struct {
 	DreamAction *DreamAction `json:"dream_action,omitempty"`
 	// Dropped is what RestoreBrief left out of the version it restored.
 	Dropped []BriefDrop `json:"dropped,omitempty"`
+	// Machine and Targets are a machine and its targets, after a machine
+	// command.
+	Machine *Machine `json:"machine,omitempty"`
+	Targets []Target `json:"targets,omitempty"`
 	// Unchanged is set when the command found nothing to do (an
 	// observation that matches what was delivered, a delivery already
 	// acknowledged): nothing was written and no receipt exists.

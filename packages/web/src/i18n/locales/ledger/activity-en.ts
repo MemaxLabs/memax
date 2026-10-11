@@ -220,6 +220,11 @@ export const ledgerActivityEn = {
     switched:
       "{actor} switched this space to V2. Agents now read what people keep here.",
     switchedBack: "{actor} switched this space back to V1.",
+    // A machine is named by its label (machine-2), never its name.
+    machineLinked:
+      "{actor} linked {ref}: this space is written into its agents' own files.",
+    machineRenamed: "{actor} renamed {ref}.",
+    machineUnlinked: "{actor} took this space off {ref}.",
     other: "{actor} changed {ref}.",
   },
 } as const;

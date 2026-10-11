@@ -96,3 +96,42 @@ func TestCompileRoundTrips(t *testing.T) {
 		t.Errorf("compile run: %d round trips, budget %d\n%s", got, budget, c)
 	}
 }
+
+// TestHomeCompileRoundTrips holds a home file's compile (a block in
+// Codex's AGENTS.md, on one of two linked machines) to a repository
+// file's budget: home targets need no new mechanism (design §5.2).
+func TestHomeCompileRoundTrips(t *testing.T) {
+	audit := netsim.NewAudit(ledger.DBRole)
+	db := testdb.Open(t, testdb.Options{Watch: audit.Observe})
+	f := newFixture(t, fixtureOpts{db: db})
+	zz := f.user("zz")
+	personal := f.personalSpace(zz)
+	for i := range 60 {
+		f.remember(zz, personal, fmt.Sprintf("Preference %d: short paragraphs.", i), ledger.SectionPreferences)
+	}
+	f.linkHome(zz, personal)
+	codex := f.linkHome(zz, personal)[ledger.TargetCodexUser]
+	audit.Arm()
+	defer audit.Require(t)
+	n := 0
+	measure := func() *netsim.Counter {
+		n++
+		f.remember(zz, personal, fmt.Sprintf("Commits are tagged on day %d.", n), ledger.SectionConventions)
+		ctx, c := netsim.Track(context.Background())
+		if out, err := f.svc.Run(ctx, ledger.CompileTargetArgs{TargetID: codex.ID, SpaceID: personal}, compile.RunOptions{NoWait: true}); err != nil || out != compile.Done {
+			t.Fatalf("compile: %v %v", out, err)
+		}
+		if !netsim.Settle(db.Pool, 2*time.Second) {
+			t.Fatal("connections still checked out after 2 s")
+		}
+		return c
+	}
+	for range 2 {
+		measure()
+	}
+	c := measure()
+	t.Logf("home compile run: %d round trips\n%s", c.RoundTrips(), c)
+	if got, budget := c.RoundTrips(), 24; got > budget {
+		t.Errorf("home compile run: %d round trips, budget %d\n%s", got, budget, c)
+	}
+}

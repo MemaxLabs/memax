@@ -62,6 +62,15 @@ export type RestoreBriefResult = Schemas["RestoreBriefResult"];
 export type BriefDrop = Schemas["BriefDrop"];
 export type BriefVersionPage = Schemas["BriefVersionPage"];
 export type Target = Schemas["Target"];
+/** `repo`, or `home`: one linked machine's home folder (a personal space). */
+export type TargetRoot = Schemas["TargetRoot"];
+/** The machine a home file is on. */
+export type TargetMachine = Schemas["TargetMachine"];
+/** A computer your Personal space is written to. */
+export type Machine = Schemas["Machine"];
+export type MachineList = Schemas["MachineList"];
+/** A machine and its home files after a machine command. */
+export type MachineResult = Schemas["MachineResult"];
 export type TargetSettings = Schemas["TargetSettings"];
 export type TargetList = Schemas["TargetList"];
 export type TargetResult = Schemas["TargetResult"];
@@ -225,6 +234,9 @@ export type BriefItemInput = Schemas["BriefItemInput"];
 export type CreateTargetInput = Schemas["CreateTargetRequest"];
 export type ConfigureTargetInput = Schemas["ConfigureTargetRequest"];
 export type TargetSettingsInput = Schemas["TargetSettingsInput"];
+export type LinkMachineInput = Schemas["LinkMachineRequest"];
+export type MachineFileInput = Schemas["MachineFileInput"];
+export type RenameMachineInput = Schemas["RenameMachineRequest"];
 export type ObservationInput = Schemas["ObservationRequest"];
 export type DeliveryInput = Schemas["DeliveryRequest"];
 export type ResolveDriftInput = Schemas["ResolveDriftRequest"];

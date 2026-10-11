@@ -118,6 +118,18 @@ info:
     or stops compiling the file. A pulled file is held, as it is, until
     each of its proposals is kept or rejected.
 
+    ## Machines and home files
+
+    Your Personal space also compiles into your agents' own user-level files
+    (`~/.claude/rules/memax-personal.md`, a block in `~/.codex/AGENTS.md`,
+    the canonical `~/.memax/personal/AGENTS.md`) on every machine you link.
+    Each linked machine has its own targets (`root: home`, with `machine`),
+    so a hand edit on one laptop holds only that laptop's file. Linking,
+    changing and unlinking a machine is yours alone, as a person on a
+    session (`machines_by_person`); its daemon reads its targets with
+    `?machine=`. A machine's name is never in a receipt: receipts call it by
+    its label (`machine-2`).
+
     ## The judge
 
     Every proposal is judged within seconds of being written: a repeat of a
@@ -293,6 +305,8 @@ tags:
     description: The Brief every agent reads, in versions.
   - name: targets
     description: Where a space compiles to, its compile runs, deliveries and hand edits.
+  - name: machines
+    description: The computers your Personal space is written to, each with its own home files.
   - name: gates
     description: Decisions agents ask people to make, and the answers, kept as decisions.
   - name: reads
@@ -2633,7 +2647,18 @@ paths:
       description: |
         The space's targets (AGENTS.md, the CLAUDE.md shim, scoped Cursor
         rules, the ChatGPT copy-out, …), each with its sync state, its latest
-        compile run and what is on disk. Not paginated.
+        compile run and what is on disk. A personal space's home files are
+        here too, every machine's. Not paginated.
+
+        With `machine`, only that machine's home files: what its daemon
+        polls. That also notes the machine as seen (`last_seen_at`, to five
+        minutes). A machine that isn't the space's is 404.
+      parameters:
+        - name: machine
+          in: query
+          description: A machine of the space, by id.
+          schema:
+            $ref: '#/components/schemas/Id'
       responses:
         '200':
           description: The targets.
@@ -2663,6 +2688,12 @@ paths:
         Adds a compile target to the space, with the kind's defaults for
         whatever you leave out (path, settings, delivery), and compiles it.
         The space needs a Brief first. People who may keep add targets.
+
+        In a personal space, `root: home` adds one home file to a linked
+        `machine` (`memax connect codex` on a linked machine), by the
+        machine's person only. A machine that isn't linked any more is 409.
+        The compile service must have the kind's adapter; until it does, the
+        kind is 400.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/Via'
@@ -2686,6 +2717,192 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TargetResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/machines:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listMachines
+      tags: [machines]
+      summary: List the machines your Personal space is written to
+      description: |
+        Every machine linked to the personal space, linked now or not, by
+        number, with when its daemon was last seen. Only the space's owner
+        reads them (`machines_by_person`, `machines_personal`); a machine's
+        name is personal data.
+      responses:
+        '200':
+          description: The machines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MachineListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    post:
+      operationId: linkMachine
+      tags: [machines]
+      summary: Link a machine
+      description: |
+        Links this machine (by the CLI's device id) to the personal space,
+        with the files you approved on it, in one command: the machine with
+        its `linked` receipt, the space's first Brief when it has none, and
+        one home target per file, each with its `configured` receipt and
+        its compile. Linking the same device again links it again (a new
+        name, platform or session), turns approved files that were stopped
+        back on, adds new ones, and stops another file of the same agent at
+        a different path, so each agent reads one copy; when nothing
+        changes it writes nothing and answers 200.
+
+        Only you, on a session, in your personal space: agents and API keys
+        are refused `machines_by_person`, other spaces `machines_personal`.
+        The compile service must have each file's adapter; until it does,
+        the kind is 400.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkMachineRequest'
+      responses:
+        '201':
+          description: The machine, linked, with its targets compiling.
+          headers:
+            ETag:
+              $ref: '#/components/headers/VersionETag'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MachineResultEnvelope'
+        '200':
+          description: Linked already, with every approved file compiling; nothing was written.
+          headers:
+            ETag:
+              $ref: '#/components/headers/VersionETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MachineResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/machines/{machine}:
+    parameters:
+      - $ref: '#/components/parameters/MachinePath'
+    patch:
+      operationId: renameMachine
+      tags: [machines]
+      summary: Rename a machine
+      description: |
+        Changes what the machine is called. Send `If-Match` with its
+        version. Its receipt names it by its label, never the name. A name
+        that is the same writes nothing.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatchMachine'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameMachineRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/MachineResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/machines/{machine}:unlink:
+    parameters:
+      - $ref: '#/components/parameters/MachinePath'
+    post:
+      operationId: unlinkMachine
+      tags: [machines]
+      summary: Take your Personal space off a machine
+      description: |
+        Unlinks the machine: an `unlinked` receipt, and every file of it
+        stopped, each with its `stopped` receipt. The machine's daemon then
+        takes the layer off: it removes the files Memax owns there that hold
+        exactly what it wrote, and the blocks nobody edited, and leaves
+        anything edited by hand. A machine unlinked already writes nothing.
+        `memax link --home` on it links it again.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/MachineResult'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2736,6 +2953,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidTransition'
         '412':
           $ref: '#/components/responses/EditClash'
         '422':
@@ -4860,6 +5079,19 @@ components:
       description: The target's id.
       schema:
         $ref: '#/components/schemas/Id'
+    MachinePath:
+      name: machine
+      in: path
+      required: true
+      description: The machine's id.
+      schema:
+        $ref: '#/components/schemas/Id'
+    IfMatchMachine:
+      name: If-Match
+      in: header
+      description: The machine's `ETag` (its version) you started from, e.g. `"2"`.
+      schema:
+        $ref: '#/components/schemas/VersionTag'
     IfMatchVersion:
       name: If-Match
       in: header
@@ -5064,6 +5296,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
+
+    MachineResult:
+      description: The machine and its targets after the command (nothing written when it changed nothing).
+      headers:
+        ETag:
+          $ref: '#/components/headers/VersionETag'
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MachineResultEnvelope'
 
     TargetResult:
       description: The target after the command.
@@ -5270,7 +5514,9 @@ components:
         memory writes restored. Switching to V2 writes noted on the space (its
         V1 content numbered as notes) and switched once it is on the V2
         record; switching back writes switched_back. A note's Forget writes
-        forgot on the note (`object_kind: note`).
+        forgot on the note (`object_kind: note`). A machine's (`machine`,
+        named by its label, machine-2) are linked, configured (renamed) and
+        unlinked.
       type: string
       enum:
         - proposed
@@ -5318,9 +5564,10 @@ components:
         - noted
         - switched
         - switched_back
+        - unlinked
     ObjectKind:
       type: string
-      enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space]
+      enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space, machine]
     Outcome:
       description: |
         What a command did. `applied`: it took effect as asked. `proposed`:
@@ -5382,6 +5629,10 @@ components:
         on the web app). Refused sessions: session_by_person (only a person
         lists or signs out their sessions), session_needs_web (signing out a
         session other than this one needs a person on the web app).
+        Refused machines: machines_by_person (only you, on a session, link a
+        machine, change its files or report what it wrote; never an agent or
+        an API key), machines_personal (only a personal space is written to
+        machines), machines_by_owner (only the personal space's owner).
         The passkey re-check: needs_passkey (you have a passkey, so this
         decision asks for it; on the web the error is 403 `needs_passkey`
         with a challenge, elsewhere a refusal that says to do it on the web).
@@ -5451,6 +5702,9 @@ components:
         - device_needs_web
         - session_by_person
         - session_needs_web
+        - machines_by_person
+        - machines_personal
+        - machines_by_owner
         - needs_passkey
         - account_by_person
         - account_needs_web
@@ -5583,12 +5837,33 @@ components:
       pattern: '^[0-9a-f]{64}$'
     TargetKind:
       description: |
-        The compiler's adapter. agents_md is the canonical AGENTS.md;
-        claude_md and gemini_md are shims that import it; cursor_mdc,
-        copilot, windsurf and claude_rules hold path-scoped facts only;
-        chatgpt is copied out.
+        The compiler's adapter. agents_md is the canonical AGENTS.md (in a
+        personal space, also the canonical copy at home,
+        `.memax/personal/AGENTS.md`); claude_md and gemini_md are shims that
+        import it; cursor_mdc, copilot, windsurf and claude_rules hold
+        path-scoped facts only; chatgpt is copied out. claude_user and
+        codex_user are home files: a personal space in Claude Code's user
+        rules (`.claude/rules/memax-personal.md`, or a block in
+        `.claude/CLAUDE.md`) and in a block of Codex's `.codex/AGENTS.md`.
       type: string
-      enum: [agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf, claude_rules]
+      enum: [agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf, claude_rules, claude_user, codex_user]
+    TargetRoot:
+      description: |
+        What a target's path is relative to: `repo`, a repository linked on
+        some machine, or `home`, one linked machine's home folder (a
+        personal space only).
+      type: string
+      enum: [repo, home]
+    HomePath:
+      description: A path relative to the home folder, in a dot folder of it (`.claude/rules/memax-personal.md`), with no `..` and no leading `/`.
+      type: string
+      minLength: 1
+      maxLength: 300
+      pattern: '^\.[A-Za-z0-9._-]*/[A-Za-z0-9._/-]+$'
+    AgentSlug:
+      description: An agent's id, such as `claude-code` or `codex`.
+      type: string
+      pattern: '^[a-z][a-z0-9-]{0,39}$'
     Delivery:
       description: |
         How the output reaches its readers: `local` (the daemon writes it),
@@ -7010,16 +7285,25 @@ components:
         stale:
           $ref: '#/components/schemas/StaleMode'
         size_budget:
-          description: Bytes per file; the tool's own limit caps it.
+          description: Bytes per file; the tool's own limit caps it. A home file's is 6,144 by default and at most 16,384.
           type: integer
           minimum: 1024
           maximum: 32768
         scoped:
-          description: agents_md and chatgpt only.
+          description: A repository's agents_md and chatgpt only.
           $ref: '#/components/schemas/ScopedMode'
         user_owned:
-          description: Shims only. The person owns the file; Memax manages one marked block in it.
+          description: |
+            Shims and home files. The person owns the file; Memax manages one
+            marked block in it. A home file's path decides it: Codex's
+            AGENTS.md and a `.claude/CLAUDE.md` are the person's.
           type: boolean
+        read_by:
+          description: Home files only. The agents that load this file on its machine.
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AgentSlug'
 
     DeliveredFile:
       type: object
@@ -7233,6 +7517,7 @@ components:
         - space_id
         - tenant_id
         - kind
+        - root
         - label
         - settings
         - delivery
@@ -7255,11 +7540,16 @@ components:
           $ref: '#/components/schemas/Id'
         kind:
           $ref: '#/components/schemas/TargetKind'
+        root:
+          $ref: '#/components/schemas/TargetRoot'
+        machine:
+          description: A home file's machine.
+          $ref: '#/components/schemas/TargetMachine'
         path:
-          description: A file, or a rules directory for scoped kinds. Absent for ChatGPT.
+          description: A file, or a rules directory for scoped kinds, relative to `root`. Absent for ChatGPT.
           $ref: '#/components/schemas/RepoPath'
         label:
-          description: What people see, e.g. `AGENTS.md` or `ChatGPT project`.
+          description: What people see, e.g. `AGENTS.md`, `~/.codex/AGENTS.md` or `ChatGPT project`.
           type: string
         settings:
           $ref: '#/components/schemas/TargetSettings'
@@ -7305,6 +7595,184 @@ components:
           $ref: '#/components/schemas/Timestamp'
         updated_at:
           $ref: '#/components/schemas/Timestamp'
+
+    TargetMachine:
+      description: The machine a home file is on.
+      type: object
+      additionalProperties: false
+      required: [id, label, name]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        label:
+          $ref: '#/components/schemas/MachineLabel'
+        name:
+          type: string
+
+    MachineLabel:
+      description: What receipts call a machine, `machine-<n>`, numbered per space; never its name.
+      type: string
+      pattern: '^machine-[0-9]{1,9}$'
+
+    Machine:
+      description: A computer your Personal space is written to.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - space_id
+        - label
+        - name
+        - platform
+        - device_id
+        - linked
+        - linked_at
+        - version
+        - created_receipt_id
+        - last_receipt_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        label:
+          $ref: '#/components/schemas/MachineLabel'
+        name:
+          description: What you call it; the short host name by default.
+          type: string
+          minLength: 1
+          maxLength: 80
+        platform:
+          description: darwin, linux, …
+          type: string
+        device_id:
+          description: The memax CLI's device id on that machine.
+          $ref: '#/components/schemas/Id'
+        session_id:
+          description: The CLI session that linked it last.
+          $ref: '#/components/schemas/Id'
+        linked:
+          description: Whether it is linked now; an unlinked machine's files are stopped.
+          type: boolean
+        linked_at:
+          $ref: '#/components/schemas/Timestamp'
+        unlinked_at:
+          $ref: '#/components/schemas/Timestamp'
+        last_seen_at:
+          description: When its daemon last read its targets (to five minutes).
+          $ref: '#/components/schemas/Timestamp'
+        version:
+          description: The machine's version; also the `ETag`.
+          type: integer
+          minimum: 1
+        created_receipt_id:
+          $ref: '#/components/schemas/Id'
+        last_receipt_id:
+          $ref: '#/components/schemas/Id'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    MachineList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Machine'
+
+    MachineResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, machine, targets, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        machine:
+          $ref: '#/components/schemas/Machine'
+        targets:
+          description: The machine's home files, in the compiler's order.
+          type: array
+          items:
+            $ref: '#/components/schemas/Target'
+        receipts:
+          description: The receipts the command wrote; none when it changed nothing.
+          type: array
+          items:
+            $ref: '#/components/schemas/Receipt'
+
+    MachineFileInput:
+      description: A file you approve on the machine.
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          description: claude_user, codex_user, or agents_md (the canonical copy).
+          $ref: '#/components/schemas/TargetKind'
+        path:
+          description: Relative to the home folder; defaults to the kind's own.
+          $ref: '#/components/schemas/HomePath'
+        user_owned:
+          description: When sent, it must agree with the path.
+          type: boolean
+        read_by:
+          description: The agents that load it on this machine; defaults to the kind's own agent.
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AgentSlug'
+
+    LinkMachineRequest:
+      type: object
+      additionalProperties: false
+      required: [device_id, name, platform, files]
+      properties:
+        device_id:
+          description: The memax CLI's device id on this machine.
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        platform:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9_-]{0,31}$'
+        files:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/MachineFileInput'
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    RenameMachineRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        reason:
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
 
     TargetList:
       type: object
@@ -8193,13 +8661,21 @@ components:
         stale:
           $ref: '#/components/schemas/StaleMode'
         size_budget:
+          description: At most 16,384 for a home file.
           type: integer
           minimum: 1024
           maximum: 32768
         scoped:
           $ref: '#/components/schemas/ScopedMode'
         user_owned:
+          description: For a home file it must agree with the path.
           type: boolean
+        read_by:
+          description: Home files only.
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AgentSlug'
 
     CreateTargetRequest:
       type: object
@@ -8208,8 +8684,17 @@ components:
       properties:
         kind:
           $ref: '#/components/schemas/TargetKind'
+        root:
+          description: Default `repo`. `home` adds a home file to `machine` (a personal space only).
+          $ref: '#/components/schemas/TargetRoot'
+        machine:
+          description: With `root` home, the linked machine the file is on.
+          $ref: '#/components/schemas/Id'
         path:
-          description: Defaults to the kind's own (AGENTS.md, CLAUDE.md, .cursor/rules, …). ChatGPT takes none.
+          description: |
+            Defaults to the kind's own (AGENTS.md, CLAUDE.md, .cursor/rules, …;
+            at home `.claude/rules/memax-personal.md`, `.codex/AGENTS.md`,
+            `.memax/personal/AGENTS.md`). ChatGPT takes none.
           $ref: '#/components/schemas/RepoPath'
         settings:
           $ref: '#/components/schemas/TargetSettingsInput'
@@ -11122,6 +11607,22 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/TargetList'
+
+    MachineListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/MachineList'
+
+    MachineResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/MachineResult'
 
     TargetResultEnvelope:
       type: object

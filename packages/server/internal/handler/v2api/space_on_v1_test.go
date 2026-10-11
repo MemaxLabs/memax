@@ -43,6 +43,7 @@ var passesOnV1 = map[string]string{
 	"pauseAgent":         "pausing an agent works wherever it is connected",
 	"resumeAgent":        "a connection change (policy.DecideConnection)",
 	"disconnectAgent":    "disconnecting an agent works wherever it is connected",
+	"unlinkMachine":      "taking a Personal space off a machine works wherever it is linked, like disconnecting an agent",
 }
 
 // notInASpace are the commands that change no space's record.
@@ -87,7 +88,15 @@ type v1Fixture struct {
 	importA                  string
 	edition                  dreamEdition
 	note                     string
+	// personal is the owner's Personal space, with a machine linked while
+	// it was on V2, then switched back to V1 too.
+	personal space
+	machine  uuid.UUID
 }
+
+// inPersonal are the refused commands addressed to f.personal, whose
+// refusal names it.
+var inPersonal = map[string]bool{"linkMachine": true, "renameMachine": true}
 
 // refusedOnV1 is a request per command that a space on V2 would take, and
 // a space on V1 refuses.
@@ -184,6 +193,14 @@ var refusedOnV1 = map[string]func(f *v1Fixture) call{
 	},
 	"restoreMemory": func(f *v1Fixture) call {
 		return call{method: "POST", path: memoryPath(f.kept, ":restore"), token: f.tok}
+	},
+	"linkMachine": func(f *v1Fixture) call {
+		return call{method: "POST", path: "/v2/spaces/" + f.personal.slug + "/machines", token: f.tok,
+			header: map[string]string{"X-Memax-Via": "cli"}, body: linkBody(uuid.New(), "home-mini", "claude_user")}
+	},
+	"renameMachine": func(f *v1Fixture) call {
+		return call{method: "PATCH", path: "/v2/machines/" + f.machine.String(), token: f.tok,
+			header: map[string]string{"If-Match": `"1"`}, body: map[string]any{"name": "Work laptop"}}
 	},
 }
 
@@ -335,8 +352,18 @@ func newV1Fixture(t *testing.T) *v1Fixture {
 		t.Fatalf("edition without actions: %+v", f.edition)
 	}
 	f.switchTo("v1")
-	if n := e.count(`SELECT count(*) FROM hubs WHERE id = $1 AND v2_enabled_at IS NULL`, f.sp.id); n != 1 {
-		t.Fatal("the space didn't switch back to V1")
+
+	// The owner's Personal space, made on V2, with a machine linked to it,
+	// then switched back to V1 as well.
+	f.personal = e.space(f.owner, policy.SpacePersonal, "Personal")
+	var linked wireMachineResult
+	e.do(call{method: "POST", path: "/v2/spaces/" + f.personal.slug + "/machines", token: f.tok,
+		header: map[string]string{"X-Memax-Via": "cli"}, body: linkBody(uuid.New(), "work-mbp", "claude_user", "codex_user")}).
+		ok(http.StatusCreated, &linked)
+	f.machine = linked.Machine.ID
+	f.switchSpace(f.personal, "v1")
+	if n := e.count(`SELECT count(*) FROM hubs WHERE id IN ($1, $2) AND v2_enabled_at IS NULL`, f.sp.id, f.personal.id); n != 2 {
+		t.Fatal("the spaces didn't switch back to V1")
 	}
 	return f
 }
@@ -345,11 +372,16 @@ func newV1Fixture(t *testing.T) *v1Fixture {
 // as the worker would.
 func (f *v1Fixture) switchTo(to string) {
 	f.t.Helper()
+	f.switchSpace(f.sp, to)
+}
+
+func (f *v1Fixture) switchSpace(sp space, to string) {
+	f.t.Helper()
 	var st switchOut
-	r := f.do(call{method: "POST", path: "/v2/spaces/" + f.sp.slug + ":switch", token: f.tok, body: map[string]any{"to": to}})
+	r := f.do(call{method: "POST", path: "/v2/spaces/" + sp.slug + ":switch", token: f.tok, body: map[string]any{"to": to}})
 	if r.status == http.StatusAccepted {
 		r.ok(http.StatusAccepted, &st)
-		if _, err := f.ledger.RunSwitch(context.Background(), f.sp.id); err != nil {
+		if _, err := f.ledger.RunSwitch(context.Background(), sp.id); err != nil {
 			f.t.Fatal(err)
 		}
 		return
@@ -361,15 +393,20 @@ func (f *v1Fixture) switchTo(to string) {
 	}
 }
 
-// recordWrites counts what a command would have written to the space's
-// record: receipts, memories, gates, targets, briefs, imports and jobs.
+// recordWrites counts what a command would have written to either space's
+// record: receipts, memories, gates, targets, briefs, imports, machines
+// and jobs.
 func (f *v1Fixture) recordWrites() int {
 	f.t.Helper()
-	return f.count(`SELECT (SELECT count(*) FROM v2.receipts WHERE space_id = $1) + (SELECT count(*) FROM v2.memories WHERE space_id = $1)
-	                     + (SELECT count(*) FROM v2.memory_versions WHERE space_id = $1)
-	                     + (SELECT count(*) FROM v2.decision_gates WHERE space_id = $1) + (SELECT count(*) FROM v2.targets WHERE space_id = $1)
-	                     + (SELECT count(*) FROM v2.brief_versions WHERE space_id = $1) + (SELECT count(*) FROM v2.imports WHERE space_id = $1)
-	                     + (SELECT count(*) FROM v2.ask_usage) + (SELECT count(*) FROM river_job)`, f.sp.id)
+	return f.count(`SELECT (SELECT count(*) FROM v2.receipts WHERE space_id IN ($1, $2))
+	                     + (SELECT count(*) FROM v2.memories WHERE space_id IN ($1, $2))
+	                     + (SELECT count(*) FROM v2.memory_versions WHERE space_id IN ($1, $2))
+	                     + (SELECT count(*) FROM v2.decision_gates WHERE space_id IN ($1, $2))
+	                     + (SELECT count(*) FROM v2.targets WHERE space_id IN ($1, $2))
+	                     + (SELECT count(*) FROM v2.brief_versions WHERE space_id IN ($1, $2))
+	                     + (SELECT count(*) FROM v2.imports WHERE space_id IN ($1, $2))
+	                     + (SELECT count(*) FROM v2.machines WHERE space_id IN ($1, $2))
+	                     + (SELECT count(*) FROM v2.ask_usage) + (SELECT count(*) FROM river_job)`, f.sp.id, f.personal.id)
 }
 
 // TestSpaceOnV1RefusesEveryCommand: on a space its owner switched back to
@@ -428,7 +465,11 @@ func TestSpaceOnV1RefusesEveryCommand(t *testing.T) {
 				env.Error.Details.Policy.Code, policy.CodeSpaceOnV1, r.body)
 			continue
 		}
-		if !strings.Contains(env.Error.Message, "acme-web") || !strings.Contains(env.Error.Message, "still on V1") {
+		name := "acme-web"
+		if inPersonal[id] {
+			name = "Personal"
+		}
+		if !strings.Contains(env.Error.Message, name) || !strings.Contains(env.Error.Message, "still on V1") {
 			t.Errorf("%s: %q doesn't say the space is still on V1", id, env.Error.Message)
 		}
 	}
@@ -452,6 +493,19 @@ func TestSpaceOnV1RefusesEveryCommand(t *testing.T) {
 	f.do(call{method: "PATCH", path: agentPath(f.conn, "/spaces/"+f.sp.slug), token: f.tok, body: map[string]any{"autonomy": "read"}}).
 		ok(http.StatusOK, nil)
 	f.do(call{method: "POST", path: agentPath(f.conn, ":pause"), token: f.tok}).ok(http.StatusOK, nil)
+	var polled struct {
+		Items []wireTarget `json:"items"`
+	}
+	f.do(call{method: "GET", path: "/v2/spaces/" + f.personal.slug + "/targets?machine=" + f.machine.String(), token: f.tok}).
+		ok(http.StatusOK, &polled)
+	if len(polled.Items) != 2 {
+		t.Errorf("the machine's targets on V1: %d", len(polled.Items))
+	}
+	var unlinked wireMachineResult
+	f.do(call{method: "POST", path: "/v2/machines/" + f.machine.String() + ":unlink", token: f.tok}).ok(http.StatusOK, &unlinked)
+	if unlinked.Machine.Linked || len(unlinked.Receipts) != 3 {
+		t.Errorf("unlinking on V1: %+v", unlinked)
+	}
 
 	// Switching to V2 lifts the refusal; switching back restores it.
 	remember := refusedOnV1["rememberMemory"]

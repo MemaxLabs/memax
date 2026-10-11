@@ -24,7 +24,8 @@ export type TargetKind =
   | "claude_rules"
   | "claude_user"
   | "codex_user"
-  | "gemini_user";
+  | "gemini_user"
+  | "copilot_user";
 
 /**
  * in_sync, compiling, pending_delivery (not on disk yet), drifted (a hand
@@ -192,6 +193,7 @@ export const TARGET_READERS: Record<TargetKind, readonly string[]> = {
   claude_user: ["claude-code"],
   codex_user: ["codex"],
   gemini_user: ["gemini"],
+  copilot_user: ["copilot"],
 };
 
 /** The agent a drifted file belongs to, for "Cursor file drifted"; none for AGENTS.md. */

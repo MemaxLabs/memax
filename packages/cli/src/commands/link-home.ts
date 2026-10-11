@@ -117,7 +117,7 @@ export async function linkHome(
   if (files.length === 0) {
     d.out(
       chalk.yellow(
-        "  Neither Claude Code (~/.claude) nor Codex (~/.codex) is set up on this machine, so there's nothing to write yet.",
+        "  None of Claude Code (~/.claude), Codex (~/.codex) or Copilot (~/.copilot) is set up on this machine, so there's nothing to write yet.",
       ),
     );
     return 1;

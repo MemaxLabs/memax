@@ -96,6 +96,8 @@ export const ledgerMachinesEn = {
         "What Claude Code reads at the start of every session, in every project, on {machine}. Memax writes it from your Personal space after every Keep and Forget.",
       codex_user:
         "Memax's block in {file} on {machine}, which Codex reads in every project. Your own lines in that file stay on your machine; Memax doesn't read them.",
+      copilot_user:
+        "Memax's block in {file} on {machine}, which Copilot CLI and VS Code's Copilot agent read in every project. Your own lines in that file stay on your machine; Memax doesn't read them.",
       gemini_user:
         "Memax's block in {file} on {machine}, which Antigravity reads in every project, and Gemini CLI once it reads AGENTS.md. Your own lines in that file stay on your machine; Memax doesn't read them.",
       agents_md:

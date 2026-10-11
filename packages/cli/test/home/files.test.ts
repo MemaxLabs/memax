@@ -19,6 +19,7 @@ import {
 import {
   CONSENT_QUESTION,
   consentLines,
+  COPILOT_BESIDE_CLAUDE,
   planHomeFiles,
 } from "../../src/lib/home/files.js";
 
@@ -99,6 +100,45 @@ describe("the files a home link offers", () => {
     });
   });
 
+  it("offers Copilot's copilot-instructions.md, under COPILOT_HOME too", () => {
+    dir(".copilot");
+    expect(plan()).toEqual([
+      {
+        kind: "copilot_user",
+        path: ".copilot/copilot-instructions.md",
+        refusal: null,
+      },
+      { kind: "agents_md", path: ".memax/personal/AGENTS.md", refusal: null },
+    ]);
+    dir(".config", "copilot");
+    const moved = planHomeFiles({
+      home,
+      env: { COPILOT_HOME: join(home, ".config", "copilot") },
+    }).find((f) => f.kind === "copilot_user");
+    expect(moved).toMatchObject({
+      path: ".config/copilot/copilot-instructions.md",
+      block: true,
+      readBy: ["copilot"],
+      refusal: null,
+    });
+  });
+
+  it("writes Copilot's file beside Claude Code's, and says VS Code's Local agent loads it twice", () => {
+    dir(".copilot");
+    const alone = planHomeFiles({ home, env: {} });
+    expect(alone.every((f) => f.note === undefined)).toBe(true);
+    dir(".claude");
+    const both = planHomeFiles({ home, env: {} });
+    expect(both.map((f) => [f.kind, f.note])).toEqual([
+      ["claude_user", COPILOT_BESIDE_CLAUDE],
+      ["copilot_user", COPILOT_BESIDE_CLAUDE],
+      ["agents_md", undefined],
+    ]);
+    const consent = consentLines(home, both).join("\n");
+    expect(consent.split("VS Code's Local agent")).toHaveLength(2);
+    expect(consent).toContain("~/.copilot/copilot-instructions.md");
+  });
+
   it("offers nothing on a machine with neither agent", () => {
     dir(".cursor");
     expect(plan()).toEqual([]);
@@ -177,6 +217,10 @@ describe("the files a home link offers", () => {
       ["gemini_user", ".gemini/GEMINI.md", false],
       ["gemini_user", ".gemini/config/AGENTS.md", false],
       ["gemini_user", ".memax/.gemini/AGENTS.md", false],
+      ["copilot_user", ".copilot/copilot-instructions.md", true],
+      ["copilot_user", ".config/copilot/copilot-instructions.md", true],
+      ["copilot_user", ".github/copilot-instructions.md", false],
+      ["copilot_user", ".copilot/instructions/memax.instructions.md", false],
       ["cursor_mdc", ".cursor/rules/memax-x.mdc", false],
     ] as const)
       expect(validHomePath(kind, path), `${kind} ${path}`).toBe(ok);

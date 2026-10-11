@@ -168,6 +168,10 @@
     {
       "kind": "gemini_user",
       "current": "# Gemini's own\n\n## Gemini Added Memories\n- The person likes tabs.\n"
+    },
+    {
+      "kind": "copilot_user",
+      "current": ""
     }
   ]
 }

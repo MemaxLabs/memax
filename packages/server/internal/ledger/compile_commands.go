@@ -345,7 +345,7 @@ func (c *ConfigureTarget) validate() error {
 		return invalid("space_id", "say which space the target belongs to")
 	}
 	if !c.Kind.Valid() {
-		return invalid("kind", "use agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf, claude_rules, claude_user, codex_user or gemini_user")
+		return invalid("kind", "use agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf, claude_rules, claude_user, codex_user, gemini_user or copilot_user")
 	}
 	switch {
 	case c.Root == RootHome && c.Machine == uuid.Nil:
@@ -527,6 +527,10 @@ func checkHomePath(k TargetKind, path string) error {
 		// in the home folder is Gemini's too.
 		ok = folder != ".memax" && (path == ".gemini/AGENTS.md" || strings.HasSuffix(path, "/.gemini/AGENTS.md"))
 		hint = "use .gemini/AGENTS.md, the AGENTS.md in Gemini's folder"
+	case TargetCopilotUser:
+		// ~/.github would be a repository's file name, never Copilot's own.
+		ok = folder != ".memax" && folder != ".github" && strings.HasSuffix(path, "/copilot-instructions.md")
+		hint = "end it in copilot-instructions.md, in Copilot's folder such as .copilot"
 	default:
 		hint = "this kind isn't written into a home folder"
 	}
@@ -541,12 +545,12 @@ func checkHomePath(k TargetKind, path string) error {
 func ValidHomePath(k TargetKind, path string) bool { return checkHomePath(k, path) == nil }
 
 // homeOwned is whether a home file is the person's (Memax manages one
-// block in it) rather than Memax's own: Codex's and Gemini's AGENTS.md
-// and a ~/.claude/CLAUDE.md are theirs; the rules file and the canonical
-// copy are Memax's. The compiler decides the same from the path.
+// block in it) rather than Memax's own: Codex's and Gemini's AGENTS.md,
+// Copilot's instructions and a ~/.claude/CLAUDE.md are theirs; the rules
+// file and the canonical copy are Memax's. The compiler decides the same from the path.
 func homeOwned(k TargetKind, path string) bool {
 	switch k {
-	case TargetCodexUser, TargetGeminiUser:
+	case TargetCodexUser, TargetGeminiUser, TargetCopilotUser:
 		return true
 	case TargetClaudeUser:
 		return strings.HasSuffix(path, "/CLAUDE.md")
@@ -574,6 +578,9 @@ func defaultReadBy(k TargetKind) []string {
 		// Gemini CLI too, once its context.fileName lists AGENTS.md: the
 		// CLI says so when it sets that up.
 		return []string{"antigravity"}
+	case TargetCopilotUser:
+		// Copilot CLI, and VS Code's Copilot (agent kind copilot).
+		return []string{"copilot"}
 	}
 	return nil
 }

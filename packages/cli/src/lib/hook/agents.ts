@@ -16,8 +16,9 @@
 // On a machine whose home is linked, its own home file too (personal-layer
 // design §7.1): Claude Code's rules file, Codex's block, and Gemini's block
 // in ~/.gemini/AGENTS.md for Gemini CLI once that file's read_by lists it
-// (its context.fileName names AGENTS.md). The others get theirs in later
-// releases (Copilot CLI, Cursor's full print of the canonical copy).
+// (its context.fileName names AGENTS.md), and Copilot CLI's block in
+// ~/.copilot/copilot-instructions.md. Cursor gets its full print of the
+// canonical copy in a later release.
 
 export type HookFormat = "plain" | "gemini" | "cursor" | "copilot";
 
@@ -66,7 +67,7 @@ const AGENTS: Record<string, HookAgent> = {
     kind: "copilot",
     format: "copilot",
     loads: ["agents_md"],
-    home: [],
+    home: ["copilot_user"],
     maxTokens: 3000,
   },
 };

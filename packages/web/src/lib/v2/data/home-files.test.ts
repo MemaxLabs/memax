@@ -114,6 +114,16 @@ describe("Gemini's home file", () => {
     expect(homeAgent("gemini_user")).toBe("gemini");
     expect(HOME_FILE_OF_AGENT.gemini).toBe("~/.gemini/AGENTS.md");
   });
+
+  it("and Copilot's is a block in ~/.copilot/copilot-instructions.md", () => {
+    expect(
+      isBlock({
+        kind: "copilot_user",
+        path: ".copilot/copilot-instructions.md",
+      }),
+    ).toBe(true);
+    expect(homeAgent("copilot_user")).toBe("copilot");
+  });
 });
 
 describe("grouping home files", () => {

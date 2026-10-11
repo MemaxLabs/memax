@@ -29,6 +29,7 @@ const HOME_KINDS = new Set([
   "claude_user",
   "codex_user",
   "gemini_user",
+  "copilot_user",
   "agents_md",
 ]);
 /** The key refresh() and requestRefresh() take for the home link's space. */

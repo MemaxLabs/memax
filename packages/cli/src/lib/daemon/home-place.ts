@@ -40,13 +40,20 @@ export function validHomePath(kind: V2.TargetKind, path: string): boolean {
         folder !== ".memax" &&
         (path === ".gemini/AGENTS.md" || path.endsWith("/.gemini/AGENTS.md"))
       );
+    case "copilot_user":
+      return (
+        folder !== ".memax" &&
+        folder !== ".github" &&
+        path.endsWith("/copilot-instructions.md")
+      );
   }
   return false;
 }
 
 /**
  * Whether a home file is the person's, with one Memax block in it (the
- * server's homeOwned): Codex's and Gemini's AGENTS.md, and the
+ * server's homeOwned): Codex's and Gemini's AGENTS.md, Copilot's
+ * copilot-instructions.md, and the
  * ~/.claude/CLAUDE.md fallback. Claude Code's rules file and the canonical
  * copy are Memax's own.
  */
@@ -54,6 +61,7 @@ export function homeBlockFile(kind: V2.TargetKind, path: string): boolean {
   return (
     kind === "codex_user" ||
     kind === "gemini_user" ||
+    kind === "copilot_user" ||
     (kind === "claude_user" && path.endsWith("/CLAUDE.md"))
   );
 }
@@ -62,6 +70,7 @@ const AGENT: Partial<Record<V2.TargetKind, string>> = {
   claude_user: "Claude Code",
   codex_user: "Codex",
   gemini_user: "Gemini",
+  copilot_user: "Copilot",
 };
 
 /**
@@ -71,6 +80,7 @@ const AGENT: Partial<Record<V2.TargetKind, string>> = {
  */
 export function agentFolder(kind: V2.TargetKind, path: string): string | null {
   for (const suffix of [
+    "/copilot-instructions.md",
     "/rules/memax-personal.md",
     "/CLAUDE.md",
     "/AGENTS.override.md",

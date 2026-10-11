@@ -304,6 +304,11 @@ func TestHomeTargetsThroughConfigureTarget(t *testing.T) {
 	if err != nil || !slices.Equal(both.Target.Settings.ReadBy, []string{"antigravity", "gemini-cli"}) {
 		t.Errorf("Gemini CLI reads it too: %v %+v", err, both.Target)
 	}
+	copilot, err := add(&ledger.ConfigureTarget{Kind: ledger.TargetCopilotUser, Root: ledger.RootHome, Machine: res.Machine.ID})
+	if err != nil || copilot.Target == nil || copilot.Target.Path != ".copilot/copilot-instructions.md" ||
+		!copilot.Target.Settings.UserOwned || !slices.Equal(copilot.Target.Settings.ReadBy, []string{"copilot"}) {
+		t.Fatalf("add Copilot's file: %v %+v", err, copilot.Target)
+	}
 	for name, c := range map[string]*ledger.ConfigureTarget{
 		"a home kind in a repository":   {Kind: ledger.TargetCodexUser},
 		"Gemini's file in a repository": {Kind: ledger.TargetGeminiUser},
@@ -527,7 +532,12 @@ func TestHomePathRulesMatchTheDatabase(t *testing.T) {
 		{ledger.TargetGeminiUser, ".codex/AGENTS.md"},
 		{ledger.TargetGeminiUser, "gemini/AGENTS.md"},
 		{ledger.TargetCodexUser, ".gemini/AGENTS.md"},
-		{"copilot_user", ".copilot/copilot-instructions.md"},
+		{ledger.TargetCopilotUser, ".copilot/copilot-instructions.md"},
+		{ledger.TargetCopilotUser, ".config/copilot/copilot-instructions.md"},
+		{ledger.TargetCopilotUser, ".github/copilot-instructions.md"},
+		{ledger.TargetCopilotUser, ".copilot/instructions/memax.instructions.md"},
+		{ledger.TargetCopilotUser, ".memax/copilot-instructions.md"},
+		{ledger.TargetCopilotUser, "copilot-instructions.md"},
 	}
 	for _, c := range cases {
 		var db bool

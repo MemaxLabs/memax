@@ -172,7 +172,7 @@ func (c *LinkMachine) validate() error {
 	for i := range c.Files {
 		f := &c.Files[i]
 		if !f.Kind.AtHome() {
-			return invalid("files.kind", "%s isn't written into a home folder; use claude_user, codex_user, gemini_user or agents_md", f.Kind)
+			return invalid("files.kind", "%s isn't written into a home folder; use claude_user, codex_user, gemini_user, copilot_user or agents_md", f.Kind)
 		}
 		if kinds[f.Kind] {
 			return invalid("files.kind", "%s is listed twice; a machine has one file per agent", f.Kind)

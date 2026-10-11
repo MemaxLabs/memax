@@ -57,6 +57,7 @@ const BLOCK_KINDS: ReadonlySet<V2.TargetKind> = new Set([
   "claude_user",
   "codex_user",
   "gemini_user",
+  "copilot_user",
 ]);
 
 /**

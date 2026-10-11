@@ -13,8 +13,10 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -48,6 +50,8 @@ describe.skipIf(!enabled)("stale detection, end to end", () => {
   let home: string;
   let repo: string;
   let daemon: ChildProcess;
+  /** The memory the second case turns stale, which the third forgets. */
+  let containsRef = "";
   const env = () => ({
     ...process.env,
     HOME: home,
@@ -259,6 +263,7 @@ describe.skipIf(!enabled)("stale detection, end to end", () => {
       { idempotencyKey: randomUUID() },
     );
     const ref = kept.memory.ref;
+    containsRef = ref;
     const mine = (await memax.v2.checks.conditions("memax-v2")).items.find(
       (i) => i.memory === ref,
     );
@@ -316,4 +321,42 @@ describe.skipIf(!enabled)("stale detection, end to end", () => {
     // Only results left the machine: the file's new words never did.
     expect(JSON.stringify(why)).not.toContain("TierSonnet");
   }, 300_000);
+
+  it("a Forget reaches the daemon's check files within seconds, not at its next run", async () => {
+    expect(containsRef).not.toBe("");
+    const checks = join(home, ".memax", "daemon", "checks");
+    const files = () =>
+      [checks, join(checks, "queue")]
+        .flatMap((dir) =>
+          existsSync(dir)
+            ? readdirSync(dir)
+                .filter((n) => n.endsWith(".json"))
+                .map((n) => readFileSync(join(dir, n), "utf8"))
+            : [],
+        )
+        .join("\n");
+    // Its failing result names the file its words named.
+    expect(files()).toContain(containsRef);
+    expect(files()).toContain(MOVED);
+    const m = await memax.v2.memories.get(containsRef, { space: "memax-v2" });
+    await memax.v2.memories.forget(
+      containsRef,
+      {},
+      {
+        space: "memax-v2",
+        ifMatch: m.memory.version,
+        idempotencyKey: randomUUID(),
+      },
+    );
+    const dropped = await until(
+      async () => (!files().includes(containsRef) ? true : undefined),
+      // The feed polls every few seconds; the next run is a minute away.
+      30_000,
+      `the daemon's checks to drop ${containsRef}`,
+    );
+    console.log(
+      `the daemon's checks dropped it ${dropped.ms} ms after the Forget`,
+    );
+    expect(files()).not.toContain(MOVED);
+  }, 60_000);
 });

@@ -256,6 +256,8 @@ export class RepoChecker {
   private condsDirty = true;
   private notChecked: NotChecked | null = null;
   private stopped = false;
+  /** Memories forgotten while the daemon ran: never checked or reported again. */
+  private readonly gone = new Set<string>();
   lastRun: CheckRunSummary | null = null;
 
   constructor(private readonly o: RepoCheckerOptions) {
@@ -276,6 +278,39 @@ export class RepoChecker {
     if (this.statTimer) clearInterval(this.statTimer);
     if (this.runTimer) clearTimeout(this.runTimer);
     return this.running?.then(() => {}).catch(() => {}) ?? Promise.resolve();
+  }
+
+  /**
+   * Memories forgotten (rule 7): their conditions go from memory and their
+   * results from the state file now, and no run in flight reports them.
+   */
+  forget(refs: string[]): void {
+    const refsGone = refs.map((r) => r.toUpperCase());
+    for (const r of refsGone) this.gone.add(r);
+    if (this.conds?.checks.some((c) => this.gone.has(c.ref))) {
+      this.conds = null;
+      this.condsDirty = true;
+    }
+    const state = (this.state ??= this.readState());
+    const keys = Object.keys(state.results).filter((k) =>
+      this.gone.has(k.slice(0, k.indexOf("/"))),
+    );
+    if (keys.length === 0) return;
+    const results = { ...state.results };
+    for (const k of keys) delete results[k];
+    this.writeState({ ...state, results });
+    this.o.log.info("dropped a forgotten memory's checks", {
+      root: this.o.link.root,
+      memories: [...new Set(keys.map((k) => k.slice(0, k.indexOf("/"))))].join(
+        " ",
+      ),
+    });
+  }
+
+  /** The repository is unlinked: its state file goes, with all it held. */
+  discard(): void {
+    this.state = null;
+    remove(this.file);
   }
 
   /** The space moved: its conditions may have changed. */
@@ -421,7 +456,9 @@ export class RepoChecker {
       this.condsAt = Date.now();
       this.condsDirty = false;
     }
-    const { conds, hash: condsHash, checks, everyKind } = this.conds;
+    const { conds, hash: condsHash, everyKind } = this.conds;
+    // A memory forgotten since the conditions were read isn't checked.
+    const checks = this.conds.checks.filter((c) => !this.gone.has(c.ref));
     if (!conds.repository) return skip("no_repository");
     const url = originUrl(d);
     if (!url || repoKeyOf(url) !== repoKeyOf(conds.repository))
@@ -631,9 +668,13 @@ export class RepoChecker {
         now[c.key] = { ...r, change: "renamed", renamed_to: to };
     }
 
+    // A memory forgotten while this run read the tree: nothing of it is
+    // reported or kept.
+    for (const c of checks) if (this.gone.has(c.ref)) delete now[c.key];
     // Only what changed since the last report, or everything once a day.
     const send = checks.filter(
-      (c) => full || !sameResult(state.results[c.key], now[c.key]),
+      (c) =>
+        now[c.key] && (full || !sameResult(state.results[c.key], now[c.key])),
     );
     let flagged: string[] | undefined;
     if (send.length > 0) {
@@ -646,7 +687,7 @@ export class RepoChecker {
         trigger,
         device: this.o.deviceId,
         complete:
-          everyKind && checks.every((c) => now[c.key].outcome !== "unknown"),
+          everyKind && checks.every((c) => now[c.key]?.outcome !== "unknown"),
         results: send.map((c) => resultOf(c, now[c.key])),
       };
       flagged = await this.o.reporter.report(this.o.link.space_id, input);
@@ -910,6 +951,36 @@ export class CheckReporter {
   async stop(): Promise<void> {
     if (this.retry) clearInterval(this.retry);
     await this.flushing?.catch(() => {});
+  }
+
+  /**
+   * Memories forgotten in a space (rule 7): the reports waiting to go
+   * lose their results, now. A report left with others is rewritten under
+   * its new key (it says less, so it is a new report); one only about
+   * them is dropped.
+   */
+  forget(space: string, refs: string[]): void {
+    const gone = new Set(refs.map((r) => r.toUpperCase()));
+    let names: string[] = [];
+    try {
+      names = readdirSync(this.dir).filter((n) => n.endsWith(".json"));
+    } catch {
+      return;
+    }
+    for (const n of names) {
+      const file = join(this.dir, n);
+      const q = readJson<QueuedReport | null>(file, null);
+      if (!q?.input || q.space !== space) continue;
+      const results = q.input.results.filter(
+        (r) => !gone.has(r.memory.toUpperCase()),
+      );
+      if (results.length === q.input.results.length) continue;
+      remove(file);
+      if (results.length === 0) continue;
+      const input = { ...q.input, results };
+      const key = reportKey(space, input);
+      writeJsonAtomic(join(this.dir, `${key}.json`), { space, key, input });
+    }
   }
 
   /**

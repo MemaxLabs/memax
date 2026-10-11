@@ -127,6 +127,17 @@ export interface WarmCacheOptions {
   saveDelayMs?: number;
   /** At most one fetch of a space's forgets and gates this often (MIN_REFRESH_MS). */
   minRefreshMs?: number;
+  /**
+   * A linked space's memories newly forgotten (each tombstone's ref and
+   * the refs forgotten with it), as soon as a fetch sees them: the
+   * daemon's checks drop what they hold of them (checks.ts).
+   */
+  onForgotten?(spaceId: string, refs: string[]): void;
+}
+
+/** Every ref the cache's forgets name: each one's, and those forgotten with it. */
+export function forgottenRefs(forgotten: WarmForget[]): string[] {
+  return [...new Set(forgotten.flatMap((f) => [f.ref, ...f.with]))];
 }
 
 export class WarmCache {
@@ -259,6 +270,11 @@ export class WarmCache {
       const forgotten = warmForgets(tombstones, this.now());
       const waiting = warmGates(gates, this.now());
       this.warned.delete(key);
+      if (key !== HOME) {
+        const before = new Set(forgottenRefs(s.forgotten));
+        const fresh = forgottenRefs(forgotten).filter((r) => !before.has(r));
+        if (fresh.length) this.o.onForgotten?.(spaceId, fresh);
+      }
       if (
         JSON.stringify(forgotten) === JSON.stringify(s.forgotten) &&
         JSON.stringify(waiting) === JSON.stringify(s.gates)

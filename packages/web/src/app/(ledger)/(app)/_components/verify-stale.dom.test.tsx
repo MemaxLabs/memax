@@ -238,4 +238,54 @@ describe("VerifyStale", () => {
       statement: "Ask memax answers with the Sonnet tier.",
     });
   });
+
+  it("says what a check found: the path, where it went, the commit", async () => {
+    const checked: StaleWhy = {
+      ref: "M-0187",
+      version: 1,
+      statement:
+        "Ask's tiers are set in packages/server/internal/ask/config.go.",
+      kind: "fact",
+      stale: true,
+      since: "2026-10-05T09:01:00Z",
+      flaggedBy: { kind: "memax" },
+      kept: {
+        by: { kind: "person", self: true },
+        at: "2026-07-14T11:20:00Z",
+        action: "kept",
+      },
+      readsSince: 3,
+      causes: [
+        {
+          kind: "check",
+          condition: {
+            key: "c1",
+            kind: "path_exists",
+            path: "packages/server/internal/ask/config.go",
+            glob: null,
+          },
+          change: "renamed",
+          path: "packages/server/internal/ask/config.go",
+          renamedTo: "packages/server/internal/ask/tiers.go",
+          constraint: null,
+          branch: "main",
+          commit: "a1b2c3d".padEnd(40, "0"),
+          checkedAt: "2026-10-05T09:00:00Z",
+        },
+      ],
+      suggestion: null,
+    };
+    await open("M-0187", {
+      stale: vi.fn().mockResolvedValue(checked),
+      peekStale: () => checked,
+    });
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toContain(
+      "packages/server/internal/ask/config.go was renamed to packages/server/internal/ask/tiers.go on main.",
+    );
+    expect(dialog.textContent).toContain("in a1b2c3d · checked Oct 5");
+    expect(
+      screen.getByText("It's checked again when the source next changes."),
+    ).toBeTruthy();
+  });
 });

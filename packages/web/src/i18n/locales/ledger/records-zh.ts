@@ -69,6 +69,7 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     stale: "它的来源在 {date} 变了",
     staleSource: "它的来源在 {date} 变了 · {source}",
     staleDate: "到了该再核对一次的日子",
+    staleCheck: "它的一个前提在 {date} 不再成立",
     merged: "已由 {name} 合并进 {ref}",
     faded: "已经 {n} 天没有 Agent 读过它了。可以恢复，也可以就这样放着。",
   },

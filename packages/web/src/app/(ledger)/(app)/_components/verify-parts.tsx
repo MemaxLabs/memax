@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { AgentStamp, Diff, Icon, Kbd } from "@memaxlabs/ledger";
+import { AgentStamp, Diff, Icon, Kbd, formatNodes } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { count, formatShortDate } from "@/lib/v2/copy";
 import type {
@@ -64,6 +64,28 @@ function Cause({
   cause: StaleCause;
 }) {
   const v = view.l.verify;
+  if (cause.kind === "check") {
+    const stamp = view.stamp(why.flaggedBy);
+    return (
+      <div className={styles.change}>
+        <span className={styles.changeIcon}>
+          <Icon name="commit" />
+        </span>
+        <span>{checkWords(view, cause)}</span>
+        <span className={`mx-meta ${styles.changeBy}`}>
+          {cause.checkedAt
+            ? interpolate(v.checkWhere, {
+                commit: cause.commit.slice(0, 7),
+                date: date(view, cause.checkedAt),
+              })
+            : interpolate(v.checkWhereBare, {
+                commit: cause.commit.slice(0, 7),
+              })}
+          {stamp ? <AgentStamp {...stamp} size="sm" /> : null}
+        </span>
+      </div>
+    );
+  }
   if (cause.kind === "date") {
     const stamp = view.stamp(why.flaggedBy);
     return (
@@ -129,6 +151,59 @@ function Cause({
   );
 }
 
+/** What a check found, in words: paths, text and names in mono. */
+function checkWords(
+  view: RecordsView,
+  cause: Extract<StaleCause, { kind: "check" }>,
+): ReactNode {
+  const v = view.l.verify;
+  const code = (s: string) => <code className="mx-code">{s}</code>;
+  const c = cause.condition;
+  const own =
+    c.kind === "path_exists"
+      ? (c.path ?? c.glob ?? "")
+      : c.kind === "dep_present"
+        ? c.manifest
+        : c.kind === "file_contains" || c.kind === "file_unchanged"
+          ? c.path
+          : "";
+  const path = code(cause.path ?? own);
+  const branch = cause.branch;
+  switch (cause.change) {
+    case "renamed":
+      return formatNodes(v.checkRenamed, {
+        path,
+        to: code(cause.renamedTo ?? ""),
+        branch,
+      });
+    case "no_match":
+      return formatNodes(v.checkNoMatch, { glob: code(own), branch });
+    case "text_missing":
+      return formatNodes(v.checkTextMissing, {
+        path,
+        text: code(c.kind === "file_contains" ? c.text : ""),
+        branch,
+      });
+    case "dependency_removed":
+      return formatNodes(v.checkDependencyRemoved, {
+        manifest: cause.path ?? own,
+        name: code(c.kind === "dep_present" ? c.name : ""),
+        branch,
+      });
+    case "constraint_changed":
+      return formatNodes(v.checkConstraintChanged, {
+        manifest: cause.path ?? own,
+        name: code(c.kind === "dep_present" ? c.name : ""),
+        constraint: cause.constraint ?? "",
+        branch,
+      });
+    case "blob_changed":
+      return formatNodes(v.checkBlobChanged, { path, branch });
+    default:
+      return formatNodes(v.checkRemoved, { path, branch });
+  }
+}
+
 /**
  * "Removed from 3 files and every agent. A tombstone stays." The compiled
  * files; a copy-out (ChatGPT) is one of the agents that's told.
@@ -183,7 +258,9 @@ export function Answers({
   onSubmit: () => void;
 }) {
   const v = view.l.verify;
-  const fromSource = why.causes.some((c) => c.kind === "source");
+  const fromSource = why.causes.some(
+    (c) => c.kind === "source" || c.kind === "check",
+  );
   const forgetRefusal = forgetRefusalText(view, why, preview);
   const option = (
     answer: VerifyAnswer,

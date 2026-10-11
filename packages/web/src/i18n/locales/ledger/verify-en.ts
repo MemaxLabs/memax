@@ -19,6 +19,18 @@ export const ledgerVerifyEn = {
   mergedBare: "merged {date}",
   // Its date to check again passed (Dream's flag, or the date sweep's).
   datePassed: "Its date to check again, {date}, has passed.",
+  // A condition stopped holding on the default branch; {path}, {to},
+  // {glob}, {text} and {name} are set in mono.
+  checkRemoved: "{path} is gone from {branch}.",
+  checkRenamed: "{path} was renamed to {to} on {branch}.",
+  checkNoMatch: "Nothing on {branch} matches {glob} any more.",
+  checkTextMissing: "{path} no longer contains {text} on {branch}.",
+  checkDependencyRemoved: "{manifest} no longer lists {name} on {branch}.",
+  checkConstraintChanged:
+    "{manifest} now asks for {name} {constraint} on {branch}.",
+  checkBlobChanged: "{path} changed on {branch}.",
+  checkWhere: "in {commit} · checked {date}",
+  checkWhereBare: "in {commit}",
   flaggedBy: "flagged {date} by",
   flaggedBare: "flagged {date}",
   noCause:

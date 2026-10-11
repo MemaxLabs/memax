@@ -224,6 +224,14 @@ export function staleNoteOf(
   const passed =
     memory.stale_after !== undefined &&
     Date.parse(memory.stale_after) <= Date.now();
+  if (flag?.source?.kind === "check") {
+    return {
+      kind: "stale",
+      cause: "check",
+      changedAt: flag.occurred_at,
+      source: null,
+    };
+  }
   if (flag && !DATE_SOURCES.has(flag.source?.kind ?? "")) {
     return {
       kind: "stale",

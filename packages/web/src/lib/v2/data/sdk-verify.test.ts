@@ -70,6 +70,69 @@ describe("VerifyStale through memax.v2", () => {
     });
   });
 
+  it("reads a check's cause: the condition, what changed and where", () => {
+    const why = staleWhyOf(
+      {
+        ...report,
+        stale_after: undefined,
+        flagged: receipt({
+          id: "r3",
+          action: "flagged",
+          actor_kind: "memax",
+          actor_id: undefined,
+          via: "system",
+          source: {
+            kind: "check",
+            ref: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a90",
+          },
+          occurred_at: "2026-10-11T09:01:00Z",
+        }),
+        causes: [
+          {
+            kind: "check",
+            condition: {
+              id: "c2",
+              kind: "path_exists",
+              path: "packages/server/internal/ask/config.go",
+              origin: "derived",
+              from: "statement",
+            },
+            evidence: {
+              change: "renamed",
+              path: "packages/server/internal/ask/config.go",
+              renamed_to: "packages/server/internal/ask/tiers.go",
+            },
+            branch: "main",
+            commit: "a1b2c3d".padEnd(40, "0"),
+            commit_at: "2026-10-11T08:58:00Z",
+            checked_at: "2026-10-11T09:00:00Z",
+            observer: "device",
+          },
+        ],
+      },
+      ME,
+    );
+    expect(why.flaggedBy).toEqual({ kind: "memax" });
+    expect(why.causes).toEqual([
+      {
+        kind: "check",
+        condition: {
+          key: "c2",
+          kind: "path_exists",
+          path: "packages/server/internal/ask/config.go",
+          glob: null,
+        },
+        change: "renamed",
+        path: "packages/server/internal/ask/config.go",
+        renamedTo: "packages/server/internal/ask/tiers.go",
+        constraint: null,
+        branch: "main",
+        commit: "a1b2c3d".padEnd(40, "0"),
+        checkedAt: "2026-10-11T09:00:00Z",
+      },
+    ]);
+  });
+
   it("leaves out what it isn't stale for any more", () => {
     const why = staleWhyOf(
       { ...report, stale: false, causes: [], flagged: undefined },

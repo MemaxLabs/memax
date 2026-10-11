@@ -50,7 +50,7 @@ export const DEMO_SECURITY: SecurityView = {
         ...(["judge", "ask", "dream"] as const).map((use) => ({
           use,
           model: "deepseek/deepseek-v4.1-flash",
-          hosts: ["together", "baseten", "coreweave", "deepinfra"],
+          hosts: ["together", "baseten/fp8", "coreweave", "deepinfra"],
           minPrecision: "fp8",
           zeroRetention: true,
         })),

@@ -76,6 +76,8 @@ Chosen on Oct 7 from OpenRouter's endpoints API (`/api/v1/models/<slug>/endpoint
 | Decart, Sail Research                   | **fp4**   | $0.08–0.09 in   | 2.8–13.5 s p50        | 16–64            | 96–99%     | **No: fp4** (D14). The floor refuses them even if named         |
 | DeepSeek, Alibaba, Baidu, AtlasCloud, StreamLake, GMICloud | fp8 or undeclared | | | |        | **No: not zero-retention** (DeepSeek's own API also processes in China) |
 
+On Oct 11, 2026 Baseten listed a third endpoint, `baseten/fast` (fp32, $0.60 / $2.40). The pin narrowed from the base slug `baseten`, which admits every Baseten endpoint, to `baseten/fp8` (the two measured above).
+
 - **Undeclared precision.** Together doesn't say what precision it runs, so OpenRouter lists it as `unknown`. The floor admits `unknown` (every Claude endpoint is `unknown` too), so such a host gets in only by being named. A probe with Decart pinned behind the floor was refused: "No endpoints found for the request with quantization: int8,fp8,mxfp8,fp16,bf16,fp32,unknown".
 - **Order, not price weighting.** With `order` set, OpenRouter tries the hosts in turn and stops load-balancing, so all traffic goes to Together until it fails. `only` keeps every fallback inside the list.
 

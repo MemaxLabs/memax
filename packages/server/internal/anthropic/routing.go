@@ -29,14 +29,16 @@ import (
 //   - DeepSeek V4.1 Flash (the judge's primary, Ask): Together (first token
 //     p50 0.3 s, p90 0.7 s, the largest volume), Baseten (fp8, p50 0.3–0.5 s),
 //     CoreWeave (fp8, p50 1.0 s, cheaper), DeepInfra (fp8, cheapest of the
-//     four and the steadiest, but p50 1.4 s), in that order.
+//     four and the steadiest, but p50 1.4 s), in that order. Baseten is
+//     pinned to its fp8 endpoint: the base slug also admits its fp32 "fast"
+//     endpoint, listed on Oct 11, 2026 at twice the price.
 //   - Claude Haiku 4.5 (the judge's fallback): Amazon Bedrock, then Google
 //     Vertex. Both enforce output_config.format.
 //   - Claude Sonnet 5.5 (the judge's strong tier): Google Vertex only.
 //     Bedrock is zero-retention for it too, but doesn't list structured
 //     outputs, and this tier is strict.
 var DefaultProviders = map[string][]string{
-	"deepseek/deepseek-v4.1-flash": {"together", "baseten", "coreweave", "deepinfra"},
+	"deepseek/deepseek-v4.1-flash": {"together", "baseten/fp8", "coreweave", "deepinfra"},
 	"anthropic/claude-haiku-4.5":   {"amazon-bedrock", "google-vertex"},
 	"anthropic/claude-sonnet-5.5":  {"google-vertex"},
 }

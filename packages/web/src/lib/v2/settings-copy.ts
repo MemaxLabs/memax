@@ -180,7 +180,8 @@ export function processorRows(
         parts.push(
           interpolate(p.hosts, {
             hosts: joinList(
-              u.hosts.map((h) => named(NAMES.hosts, h)),
+              // A pinned endpoint ("baseten/fp8") is its company's.
+              u.hosts.map((h) => named(NAMES.hosts, h.split("/", 1)[0]!)),
               locale,
             ),
           }),

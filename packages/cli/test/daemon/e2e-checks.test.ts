@@ -246,4 +246,74 @@ describe.skipIf(!enabled)("stale detection, end to end", () => {
       after?.conditions.map((c) => (c.condition as { path?: string }).path),
     ).toContain(MOVED);
   }, 300_000); // the compile reaching AGENTS.md (half a minute) and Verify. // Arming (up to a minute), the next cycle after the push (up to two),
+
+  it("an identifier gone from its file marks the memory stale: file_contains, read on the machine", async () => {
+    // An identifier beside the one file the words name: Memax derives
+    // file_contains (as a whole word) beside path_exists.
+    const kept = await memax.v2.memories.remember(
+      "memax-v2",
+      {
+        statement: `Ask's default tier is \`TierHaiku\` in \`${MOVED}\`.`,
+        section: "conventions",
+      },
+      { idempotencyKey: randomUUID() },
+    );
+    const ref = kept.memory.ref;
+    const mine = (await memax.v2.checks.conditions("memax-v2")).items.find(
+      (i) => i.memory === ref,
+    );
+    const contains = mine?.conditions.find(
+      (c) => c.condition.kind === "file_contains",
+    );
+    expect(contains?.condition).toMatchObject({
+      kind: "file_contains",
+      path: MOVED,
+      text: "TierHaiku",
+      word: true,
+      origin: "derived",
+    });
+    const id = (contains!.condition as { id: string }).id;
+
+    // The daemon hears the space move, reads the file at HEAD, and it holds.
+    const armed = await until(
+      async () =>
+        (await memax.v2.checks.conditions("memax-v2")).items
+          .find((i) => i.memory === ref)
+          ?.conditions.find((c) => (c.condition as { id: string }).id === id)
+          ?.armed,
+      // The run waits out the minute since the last one.
+      120_000,
+      "file_contains to arm",
+    );
+    console.log(`file_contains armed ${armed.ms} ms after Remember`);
+
+    // The identifier changes on main; the file stays.
+    writeFileSync(
+      join(repo, MOVED),
+      "package ask\n\nconst Tier = TierSonnet\n",
+    );
+    git("commit", "-q", "-am", "Ask's default tier is Sonnet");
+    git("push", "-q", "origin", "main");
+    const changed = git("rev-parse", "HEAD");
+    const stale = await until(
+      async () => {
+        const m = await memax.v2.memories.get(ref, { space: "memax-v2" });
+        return m.memory.state === "stale" ? m : undefined;
+      },
+      120_000,
+      `${ref} to turn stale`,
+    );
+    console.log(`stale ${stale.ms} ms after the push`);
+    const why = await memax.v2.memories.stale(ref, { space: "memax-v2" });
+    expect(why.causes.find((c) => c.kind === "check")).toMatchObject({
+      kind: "check",
+      commit: changed,
+      observer: "device",
+      condition: { kind: "file_contains", path: MOVED, text: "TierHaiku" },
+      evidence: { change: "text_missing", path: MOVED },
+    });
+    expect(why.flagged?.reason).toContain("no longer contains TierHaiku");
+    // Only results left the machine: the file's new words never did.
+    expect(JSON.stringify(why)).not.toContain("TierSonnet");
+  }, 300_000);
 });

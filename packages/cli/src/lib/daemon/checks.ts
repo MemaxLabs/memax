@@ -1,7 +1,10 @@
-// The daemon's checks (epic 3.1, step 4; the stale-detection design §2.1):
-// each linked repository's committed tree at HEAD against its space's
-// conditions, path_exists for now, reported to Memax as results only (an
-// outcome per condition, the commit, and the paths that changed), never a
+// The daemon's checks (epic 3.1, steps 4 and 5; the stale-detection design
+// §2.1): each linked repository's committed tree at HEAD against its
+// space's conditions (path_exists, file_contains, dep_present and
+// file_unchanged; pr_state is GitHub's, and Memax doesn't list it),
+// evaluated by the compiler's evaluator (compiler/conditions/, a verbatim
+// copy) and reported to Memax as results only: an outcome per condition,
+// the commit, and the paths and declared constraints that changed, never a
 // file's contents.
 //
 // # When it may report
@@ -18,10 +21,14 @@
 // (HEAD or the default branch), when the space's conditions changed (its
 // feed saw the space move), and every six hours regardless; at most once a
 // minute per repository. A run is three git processes however many
-// conditions (the branch tips, one `cat-file --batch-check` for the paths,
-// one `ls-tree` for every glob's prefix) and a fourth only when a path is
-// gone (renames since it last held). It never runs on the delivery path:
-// a timer of its own, children at low priority, every read asynchronous.
+// conditions: the branch tips; one `diff-tree` listing every glob's folder
+// and every manifest a bare name means; one `cat-file --batch-command` for
+// every path's object, then the contents of the files whose blobs changed
+// since the last run (each at most 1 MiB, 4 MiB a run: a result read off
+// the same blobs stands, so a run after a push reads only what the push
+// changed). A fourth only when a path is gone (renames since it last
+// held). It never runs on the delivery path: a timer of its own, children
+// at low priority, every read asynchronous.
 //
 // # What it sends
 //
@@ -29,7 +36,9 @@
 // most once a day, queued in ~/.memax/daemon/checks/queue/ first (one file
 // per report) and sent with the original checked_at, so a report made
 // offline arrives within a week; the key comes from the report's fields,
-// so a resend is recorded once.
+// so a resend is recorded once. Its files hold refs, condition ids, hashes,
+// outcomes, paths, declared constraints and blob ids, never a file's
+// contents or a condition's text.
 import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -37,19 +46,28 @@ import type { V2 } from "memax-sdk";
 import { normalizeRepoUrl } from "../project-context.js";
 import { failureOf, type DaemonApi } from "./api.js";
 import {
+  checkNeeds,
+  evaluate,
+  validPath,
+  type CheckCondition,
+  type CheckEvaluation,
+  type CheckNeeds,
+  type TreeView,
+} from "./compiler/conditions/evaluate.js";
+import {
   branchTips,
   defaultBranch,
   gitDirs,
   headBranch,
-  listPaths,
+  listTree,
   originUrl,
-  pathsExist,
+  readObjects,
   refStamp,
   renamesBetween,
+  type Entries,
   type GitCost,
   type RefTip,
 } from "./git-tree.js";
-import { globMatcher, globPrefix } from "./glob.js";
 import { readJson, writeJsonAtomic } from "./json-file.js";
 import type { Logger } from "./log.js";
 import type { DaemonPaths } from "./paths.js";
@@ -68,6 +86,10 @@ export interface CheckTiming {
   firstMs: number;
   /** A glob over more paths than this is unknown. */
   globCap: number;
+  /** A file larger than this isn't read (unknown). */
+  fileCap: number;
+  /** Nor any past this much in one run, smallest first. */
+  readCap: number;
 }
 
 /**
@@ -84,7 +106,12 @@ export const CHECK_TIMING: CheckTiming = {
   fullMs: 24 * 3_600_000,
   firstMs: 5_000,
   globCap: 20_000,
+  fileCap: 1024 * 1024,
+  readCap: 4 * 1024 * 1024,
 };
+
+/** The kinds whose file can be renamed out from under them (CheckChange). */
+const FOLLOWS = new Set(["path_exists", "file_contains", "file_unchanged"]);
 
 /** Why a repository isn't checked now. */
 export type NotChecked =
@@ -124,8 +151,14 @@ interface Reported {
   change?: string;
   path?: string;
   renamed_to?: string;
+  /** A dependency's declared constraint now (constraint_changed). */
+  constraint?: string;
   /** The last commit it held at, here: where a rename is looked for. */
   held?: string;
+  /** A bare manifest name's: the manifest it held in. */
+  resolved?: string;
+  /** The blobs it read (their paths' and ids' hash): the same blobs, the same result. */
+  seen?: string;
 }
 
 interface CheckFile {
@@ -166,16 +199,16 @@ export interface RepoCheckerOptions {
 }
 
 /** A condition to check, flat. */
-interface PathCondition {
+interface Check {
   key: string;
   ref: string;
   id: string;
   hash: string;
+  /** Its kind and fields, as the evaluator reads them. */
+  cond: CheckCondition;
+  needs: CheckNeeds;
+  /** The file whose rename it follows (FOLLOWS), when it names one. */
   path?: string;
-  glob?: string;
-  /** A glob's literal folder, and its matcher. */
-  prefix?: string;
-  match?: (path: string) => boolean;
   /** It held once on the default branch, so its failure can mark the memory. */
   armed: boolean;
   /** Its latest hold Memax heard of, from any machine (held_commit). */
@@ -186,9 +219,9 @@ interface PathCondition {
 interface Prepared {
   conds: V2.SpaceConditions;
   hash: string;
-  checks: PathCondition[];
-  /** Every condition is one the daemon checks (path_exists, for now). */
-  onlyPaths: boolean;
+  checks: Check[];
+  /** Every condition listed is of a kind the daemon checks. */
+  everyKind: boolean;
 }
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -388,7 +421,7 @@ export class RepoChecker {
       this.condsAt = Date.now();
       this.condsDirty = false;
     }
-    const { conds, hash: condsHash, checks, onlyPaths } = this.conds;
+    const { conds, hash: condsHash, checks, everyKind } = this.conds;
     if (!conds.repository) return skip("no_repository");
     const url = originUrl(d);
     if (!url || repoKeyOf(url) !== repoKeyOf(conds.repository))
@@ -416,27 +449,160 @@ export class RepoChecker {
       return skip("no_conditions", { commit });
     }
 
-    // The tree at the commit: the paths in one process, the globs' prefixes in another.
-    const exact = [
-      ...new Set(checks.filter((c) => c.path).map((c) => c.path!)),
-    ];
-    const globs = checks.filter((c) => c.glob);
-    const exists = await pathsExist(root, commit, exact, cost);
-    const tree = globs.length
-      ? await listPaths(
+    // What the conditions need of the tree at the commit: one listing of
+    // the globs' folders and the manifests a bare name means, then one
+    // cat-file for every path's object and the contents of the files whose
+    // blobs changed since the last run.
+    const prefixes = new Set<string>();
+    const names = new Set<string>();
+    for (const c of checks) {
+      for (const x of c.needs.prefixes) prefixes.add(x);
+      for (const x of c.needs.names) names.add(x);
+    }
+    const listing =
+      prefixes.size || names.size
+        ? await listTree(
+            root,
+            commit,
+            [...prefixes],
+            [...names],
+            this.t.globCap,
+            cost,
+          )
+        : { paths: [], over: false };
+    // git lists in byte order: a glob reads only the paths under its folder.
+    const listed = listing.paths ? [...listing.paths].sort() : null;
+    const named = new Map<string, string[]>();
+    if (listed)
+      for (const n of names) {
+        const tail = `/${n}`;
+        named.set(
+          n,
+          listed.filter((x) => x === n || x.endsWith(tail)),
+        );
+      }
+    /** The files whose contents each condition reads, worked out once. */
+    const files = new Map<Check, readonly string[]>();
+    for (const c of checks)
+      files.set(
+        c,
+        c.needs.names.length === 0
+          ? c.needs.texts
+          : [
+              ...c.needs.texts,
+              ...c.needs.names.flatMap((n) => named.get(n) ?? []),
+            ],
+      );
+    const filesOf = (c: Check) => files.get(c)!;
+    const asked = new Set<string>();
+    for (const c of checks) {
+      for (const x of c.needs.entries) asked.add(x);
+      for (const x of filesOf(c)) asked.add(x);
+    }
+    // A result read off the same blobs as last time stands, unread. The
+    // rest are answered as each blob arrives: a file_contains on its bytes
+    // then and there, a manifest kept as text; the blob itself isn't kept.
+    const stands = new Map<string, Reported>();
+    const needles = new Map<string, Array<{ text: string; word: boolean }>>();
+    const manifests = new Set<string>();
+    const found = new Map<string, boolean>();
+    const texts = new Map<string, string>();
+    const needle = (id: string, text: string, word: boolean) =>
+      `${id}\0${word ? 1 : 0}\0${text}`;
+    const entries: Entries = asked.size
+      ? await readObjects(
           root,
           commit,
-          [...new Set(globs.map((c) => c.prefix!))],
-          this.t.globCap,
+          [...asked],
+          (es) => {
+            const ids: string[] = [];
+            for (const c of checks) {
+              const files = filesOf(c);
+              if (files.length === 0) continue;
+              const prev = state.results[c.key];
+              const seen = blobsSeen(files, es);
+              if (
+                seen &&
+                prev?.hash === c.hash &&
+                prev.seen === seen &&
+                prev.outcome !== "unknown"
+              ) {
+                stands.set(c.key, prev);
+                continue;
+              }
+              for (const f of files) {
+                const e = es.get(f);
+                if (e?.type !== "blob") continue;
+                ids.push(e.id);
+                if (c.cond.kind === "file_contains") {
+                  const list = needles.get(e.id) ?? [];
+                  list.push({ text: c.cond.text!, word: c.cond.word === true });
+                  needles.set(e.id, list);
+                } else manifests.add(e.id);
+              }
+            }
+            return ids;
+          },
+          (id, blob) => {
+            for (const n of needles.get(id) ?? [])
+              found.set(
+                needle(id, n.text, n.word),
+                bytesContain(blob, n.text, n.word),
+              );
+            if (manifests.has(id)) texts.set(id, blob.toString("utf8"));
+          },
+          { fileBytes: this.t.fileCap, totalBytes: this.t.readCap },
           cost,
         )
-      : [];
-    // git lists in byte order: a glob reads only the paths under its folder.
-    if (tree) tree.sort();
+      : new Map();
+    const blobAt = (x: string) => {
+      const e = entries.get(x);
+      return e?.type === "blob" ? e.id : undefined;
+    };
+    const view: TreeView = {
+      entry: (x) => entries.get(x),
+      text: (x) => {
+        const id = blobAt(x);
+        return id ? texts.get(id) : undefined;
+      },
+      under: () => (listed && !listing.over ? listed : undefined),
+      named: (n) => named.get(n),
+      contains: (x, text, word) => {
+        const id = blobAt(x);
+        return id ? found.get(needle(id, text, word)) : undefined;
+      },
+    };
 
-    // Renames, only for paths that are gone, from where each last held:
+    const now: Record<string, Reported> = {};
+    for (const c of checks) {
+      const prev = state.results[c.key];
+      const same = prev?.hash === c.hash ? prev : undefined;
+      const stood = stands.get(c.key);
+      const r: Reported = stood
+        ? withoutHeld(stood)
+        : reportedOf(
+            c.hash,
+            evaluate(
+              c.cond,
+              view,
+              same?.resolved ? { resolved: same.resolved } : undefined,
+            ),
+          );
+      if (r.outcome !== "unknown" && !stood) {
+        const seen = blobsSeen(filesOf(c), entries);
+        if (seen) r.seen = seen;
+      }
+      if (r.outcome === "holds") r.held = commit;
+      else if (same?.held) r.held = same.held;
+      now[c.key] = r;
+    }
+
+    // Renames, only for files that are gone, from where each last held:
     // here, or as Memax heard of it from another machine (held_commit).
-    const gone = checks.filter((c) => c.path && exists.get(c.path) === false);
+    const gone = checks.filter(
+      (c) =>
+        c.path && now[c.key].change === "removed" && now[c.key].path === c.path,
+    );
     const baseOf = new Map<string, string>();
     for (const c of gone) {
       const prev = state.results[c.key];
@@ -446,54 +612,23 @@ export class RepoChecker {
     const renames = new Map<string, Map<string, string> | null>();
     for (const b of [...new Set(baseOf.values())].slice(0, RENAME_BASES))
       renames.set(b, await renamesBetween(root, b, commit, cost));
-
-    const now: Record<string, Reported> = {};
-    for (const c of checks) {
-      const prev = state.results[c.key];
-      let r: Reported;
-      if (c.path) {
-        const e = exists.get(c.path);
-        const b = baseOf.get(c.key);
-        const moves = b ? renames.get(b) : undefined;
-        if (e === true) r = { hash: c.hash, outcome: "holds", held: commit };
-        else if (e === false && b && !moves && c.armed) {
-          // Gone since it held, and git couldn't say where (the commit it
-          // held at isn't here, or past the runs' rename lookups): a move
-          // read as a removal would mark a source's rename stale.
-          r = { hash: c.hash, outcome: "unknown" };
-        } else if (e === false) {
-          const to = moves?.get(c.path);
-          r = to
-            ? {
-                hash: c.hash,
-                outcome: "fails",
-                change: "renamed",
-                path: c.path,
-                renamed_to: to,
-              }
-            : {
-                hash: c.hash,
-                outcome: "fails",
-                change: "removed",
-                path: c.path,
-              };
-        } else r = { hash: c.hash, outcome: "unknown" };
-      } else if (tree === null) {
-        r = { hash: c.hash, outcome: "unknown" };
-      } else {
-        const prefix = c.prefix!;
-        r = anyUnder(tree, prefix, c.match!)
-          ? { hash: c.hash, outcome: "holds", held: commit }
-          : {
-              hash: c.hash,
-              outcome: "fails",
-              change: "no_match",
-              ...(prefix ? { path: prefix } : {}),
-            };
-      }
-      if (r.outcome !== "holds" && prev?.held && prev.hash === c.hash)
-        r.held = prev.held;
-      now[c.key] = r;
+    for (const c of gone) {
+      const b = baseOf.get(c.key);
+      const moves = b ? renames.get(b) : undefined;
+      const to = moves?.get(c.path!);
+      const r = now[c.key];
+      // Gone since it held, and git couldn't say where (the commit it held
+      // at isn't here, or past the run's rename lookups), or it went where
+      // Memax's evidence can't name: a move read as a removal would mark a
+      // source's rename stale.
+      if (c.armed && b && (!moves || (to && !validPath(to))))
+        now[c.key] = {
+          hash: c.hash,
+          outcome: "unknown",
+          ...(r.held ? { held: r.held } : {}),
+        };
+      else if (to && validPath(to))
+        now[c.key] = { ...r, change: "renamed", renamed_to: to };
     }
 
     // Only what changed since the last report, or everything once a day.
@@ -511,7 +646,7 @@ export class RepoChecker {
         trigger,
         device: this.o.deviceId,
         complete:
-          onlyPaths && checks.every((c) => now[c.key].outcome !== "unknown"),
+          everyKind && checks.every((c) => now[c.key].outcome !== "unknown"),
         results: send.map((c) => resultOf(c, now[c.key])),
       };
       flagged = await this.o.reporter.report(this.o.link.space_id, input);
@@ -582,57 +717,107 @@ export class RepoChecker {
 }
 
 /**
- * A space's conditions as runs use them: the path_exists ones flat, with
- * each glob's folder and matcher, and a hash of the whole (a run with the
- * same commit and conditions has nothing new to say).
+ * A space's conditions as runs use them: each flat, with what it needs of
+ * the tree, and a hash of the whole (a run with the same commit and
+ * conditions has nothing new to say).
  */
 function prepare(conds: V2.SpaceConditions): Prepared {
-  const checks: PathCondition[] = [];
-  let onlyPaths = true;
+  const checks: Check[] = [];
+  let everyKind = true;
   for (const it of conds.items) {
     for (const c of it.conditions) {
-      if (c.condition.kind !== "path_exists") {
-        onlyPaths = false;
+      // The evaluator reads a condition's kind and fields, and passes over
+      // its id, origin and from.
+      const cond = c.condition as CheckCondition & { id?: string };
+      const id = cond.id;
+      const needs = id ? checkNeeds(cond) : null;
+      if (!id || !needs) {
+        everyKind = false;
         continue;
       }
-      const cond = c.condition as { id?: string; path?: string; glob?: string };
-      if (!cond.id || (!cond.path && !cond.glob)) continue;
-      const pc: PathCondition = {
-        key: `${it.memory}/${cond.id}`,
+      const path = cond.path;
+      checks.push({
+        key: `${it.memory}/${id}`,
         ref: it.memory,
-        id: cond.id,
+        id,
         hash: c.hash,
+        cond,
+        needs,
+        ...(FOLLOWS.has(cond.kind) && path ? { path } : {}),
         armed: c.armed,
         ...(c.held_commit ? { held: c.held_commit } : {}),
-      };
-      if (cond.path) pc.path = cond.path;
-      else {
-        pc.glob = cond.glob;
-        pc.prefix = globPrefix(cond.glob!);
-        pc.match = globMatcher(cond.glob!);
-      }
-      checks.push(pc);
+      });
     }
   }
-  return { conds, hash: sha(JSON.stringify(conds)), checks, onlyPaths };
+  return { conds, hash: sha(JSON.stringify(conds)), checks, everyKind };
 }
 
-/** Whether a sorted list has a path under prefix that matches. */
-function anyUnder(
-  sorted: string[],
-  prefix: string,
-  match: (p: string) => boolean,
-): boolean {
-  const from = prefix ? `${prefix}/` : "";
-  let lo = 0;
-  let hi = sorted.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (sorted[mid] < from) lo = mid + 1;
-    else hi = mid;
+/** An evaluation as the state keeps it. */
+function reportedOf(hash: string, e: CheckEvaluation): Reported {
+  const r: Reported = { hash, outcome: e.outcome };
+  if (e.evidence) {
+    r.change = e.evidence.change;
+    if (e.evidence.path) r.path = e.evidence.path;
+    if (e.evidence.renamed_to) r.renamed_to = e.evidence.renamed_to;
+    if (e.evidence.constraint) r.constraint = e.evidence.constraint;
   }
-  for (let i = lo; i < sorted.length && sorted[i].startsWith(from); i++)
-    if (match(sorted[i])) return true;
+  if (e.resolved) r.resolved = e.resolved;
+  return r;
+}
+
+function withoutHeld(r: Reported): Reported {
+  const { held: _held, ...rest } = r;
+  void _held;
+  return rest;
+}
+
+/**
+ * The blobs a condition read, as one hash of their paths and ids: the same
+ * blobs give the same result. Undefined when one isn't a blob git could
+ * read (gone, a folder, couldn't say): that is evaluated again.
+ */
+function blobsSeen(
+  files: readonly string[],
+  entries: Entries,
+): string | undefined {
+  if (files.length === 0) return undefined;
+  if (files.length === 1) {
+    const e = entries.get(files[0]);
+    return e?.type === "blob" ? e.id : undefined;
+  }
+  const parts: string[] = [];
+  for (const f of files) {
+    const e = entries.get(f);
+    if (e?.type !== "blob") return undefined;
+    parts.push(`${f}\0${e.id}`);
+  }
+  return sha(parts.join("\n")).slice(0, 40);
+}
+
+const isWordByte = (b: number) =>
+  (b >= 48 && b <= 57) ||
+  (b >= 65 && b <= 90) ||
+  (b >= 97 && b <= 122) ||
+  b === 95;
+
+/**
+ * containsText on a blob's bytes (the evaluator's whole-word rule, an ASCII
+ * letter, digit or _ on neither side), without decoding the blob: for
+ * UTF-8, the same answer.
+ */
+export function bytesContain(
+  blob: Buffer,
+  text: string,
+  word: boolean,
+): boolean {
+  const needle = Buffer.from(text, "utf8");
+  for (let i = blob.indexOf(needle); i >= 0; i = blob.indexOf(needle, i + 1)) {
+    if (!word) return true;
+    const before = i > 0 ? blob[i - 1] : -1;
+    const after =
+      i + needle.length < blob.length ? blob[i + needle.length] : -1;
+    if (!isWordByte(before) && !isWordByte(after)) return true;
+  }
   return false;
 }
 
@@ -643,11 +828,12 @@ function sameResult(a: Reported | undefined, b: Reported): boolean {
     a.outcome === b.outcome &&
     a.change === b.change &&
     a.path === b.path &&
-    a.renamed_to === b.renamed_to
+    a.renamed_to === b.renamed_to &&
+    a.constraint === b.constraint
   );
 }
 
-function resultOf(c: PathCondition, r: Reported): V2.CheckResultInput {
+function resultOf(c: Check, r: Reported): V2.CheckResultInput {
   return {
     memory: c.ref,
     condition: c.id,
@@ -659,6 +845,7 @@ function resultOf(c: PathCondition, r: Reported): V2.CheckResultInput {
             change: r.change as V2.CheckEvidence["change"],
             ...(r.path ? { path: r.path } : {}),
             ...(r.renamed_to ? { renamed_to: r.renamed_to } : {}),
+            ...(r.constraint ? { constraint: r.constraint } : {}),
           },
         }
       : {}),

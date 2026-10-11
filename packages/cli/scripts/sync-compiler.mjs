@@ -3,13 +3,14 @@
 //
 // memax-cli is published to npm and @memaxlabs/compiler isn't yet (it is
 // published with the open-source launch, plan 25 §12, 3.7). So the CLI
-// carries a copy of the one compiler file the daemon runs, the managed
-// block, instead of a dependency. This script keeps that copy identical
-// to the source: `--check` (part of `pnpm lint`) fails when they differ.
+// carries a copy of the compiler files it runs (the managed block, the
+// line cleaner and the condition evaluator) instead of a dependency. This
+// script keeps those copies identical to the source: `--check` (part of
+// `pnpm lint`) fails when they differ.
 //
 //   node scripts/sync-compiler.mjs          # rewrite the copies
 //   node scripts/sync-compiler.mjs --check  # fail if a copy is stale
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,6 +30,13 @@ const FILES = [
     to: join(cli, "src", "lib", "daemon", "compiler", "sanitize.ts"),
     name: "packages/compiler/src/sanitize.ts",
   },
+  // The daemon's checks evaluate a memory's conditions with the same
+  // evaluator the server will (the stale-detection design §2.3).
+  ...["evaluate", "glob", "manifests", "toml", "versions"].map((f) => ({
+    from: join(compiler, "src", "conditions", `${f}.ts`),
+    to: join(cli, "src", "lib", "daemon", "compiler", "conditions", `${f}.ts`),
+    name: `packages/compiler/src/conditions/${f}.ts`,
+  })),
 ];
 
 const header = (name) =>
@@ -52,6 +60,7 @@ for (const f of FILES) {
     );
     stale++;
   } else {
+    mkdirSync(dirname(f.to), { recursive: true });
     writeFileSync(f.to, want);
     console.log(`Copied ${f.name}`);
   }

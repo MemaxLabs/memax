@@ -34,5 +34,44 @@ export type {
 } from "./adapters/index.js";
 export { CompileInputError, type Issue } from "./validate.js";
 export { cleanLine } from "./sanitize.js";
+export {
+  CHECKED_KINDS,
+  checkNeeds,
+  containsText,
+  evaluate,
+  validPath,
+} from "./conditions/evaluate.js";
+export type {
+  CheckChange,
+  CheckCondition,
+  CheckEvaluation,
+  CheckEvidence,
+  CheckNeeds,
+  CheckOutcome,
+  TreeEntry,
+  TreeView,
+} from "./conditions/evaluate.js";
+export { globMatcher, globPrefix } from "./conditions/glob.js";
+export {
+  MANIFESTS,
+  ecosystemOf,
+  findDeclared,
+  manifestKind,
+  readManifest,
+} from "./conditions/manifests.js";
+export type {
+  Declared,
+  Manifest,
+  ManifestKind,
+} from "./conditions/manifests.js";
+export { parseToml } from "./conditions/toml.js";
+export type { TomlTable, TomlValue } from "./conditions/toml.js";
+export {
+  compareVersions,
+  lowestAllowed,
+  parseVersion,
+  satisfies,
+} from "./conditions/versions.js";
+export type { Ecosystem, Version } from "./conditions/versions.js";
 export { sha256Hex } from "./hash.js";
 export * from "./types.js";

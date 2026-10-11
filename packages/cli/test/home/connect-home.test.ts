@@ -145,6 +145,32 @@ describe("memax connect on a linked machine", () => {
     expect(again.contextFile?.state).toBe("present");
   });
 
+  it("adds Copilot's block beside Claude Code's file, and says VS Code's Local agent loads both", async () => {
+    mkdirSync(join(h.home, ".copilot"), { recursive: true });
+    writeFileSync(
+      join(h.home, ".copilot", "copilot-instructions.md"),
+      "Use tabs.\n",
+    );
+    h.fake.agents.push(connection("copilot", [personal]));
+    const r = await runConnect(agentFor("copilot")!, {}, deps().d);
+    expect(r.home).toMatchObject({
+      state: "added",
+      path: "~/.copilot/copilot-instructions.md",
+    });
+    expect(r.home?.note).toBe(
+      "one Memax block; your 1 line stays as it is. VS Code's Local agent reads ~/.claude and ~/.copilot both, so it loads your Personal space twice; its Copilot agent, which VS Code recommends, and Copilot CLI read it once.",
+    );
+    expect(links().at(-1)?.body).toMatchObject({
+      files: [
+        {
+          kind: "copilot_user",
+          path: ".copilot/copilot-instructions.md",
+          read_by: ["copilot"],
+        },
+      ],
+    });
+  });
+
   it("says Gemini CLI alone needs --agents-md to read the Personal space", async () => {
     mkdirSync(join(h.home, ".gemini"), { recursive: true });
     const r = await runConnect(agentFor("gemini")!, {}, deps().d);

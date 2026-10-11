@@ -55,6 +55,7 @@ const HOME_PATH: Partial<Record<V2.TargetKind, string>> = {
   claude_user: ".claude/rules/memax-personal.md",
   codex_user: ".codex/AGENTS.md",
   gemini_user: ".gemini/AGENTS.md",
+  copilot_user: ".copilot/copilot-instructions.md",
 };
 
 /** The server's ManifestSHA256. */
@@ -205,6 +206,7 @@ export class FakeV2 {
     const owned =
       kind === "codex_user" ||
       kind === "gemini_user" ||
+      kind === "copilot_user" ||
       (kind === "claude_user" && !!path?.endsWith("/CLAUDE.md"));
     const t = this.addTarget(space, kind, { path, user_owned: owned });
     t.root = "home";

@@ -263,17 +263,25 @@ describe("two machines (rule 6)", () => {
   });
 });
 
-describe("Gemini's ~/.gemini/AGENTS.md", () => {
-  it("gets one block beside the person's lines, GEMINI.md untouched, and comes out byte for byte", async () => {
-    const GEMINI = ".gemini/AGENTS.md";
+describe.each([
+  ["gemini_user", ".gemini/AGENTS.md", "antigravity", ".gemini/FILE.md"],
+  [
+    "copilot_user",
+    ".copilot/copilot-instructions.md",
+    "copilot",
+    ".copilot/instructions/mine.instructions.md",
+  ],
+] as const)("%s at %s", (kind, FILE, reader, beside) => {
+  it("gets one block beside the person's lines, their other file untouched, and comes out byte for byte", async () => {
     const space = h.fake.addPersonalSpace();
-    mkdirSync(join(h.home, ".gemini"), { recursive: true });
-    const theirs = "# Antigravity notes\n- Tabs, please.\n";
-    const memory = "## Gemini Added Memories\n- The person likes tabs.\n";
-    writeFileSync(join(h.home, GEMINI), theirs);
-    writeFileSync(join(h.home, ".gemini", "GEMINI.md"), memory);
+    mkdirSync(join(h.home, FILE, ".."), { recursive: true });
+    mkdirSync(join(h.home, beside, ".."), { recursive: true });
+    const theirs = "# My notes\n- Tabs, please.\n";
+    const memory = "## Mine\n- The person likes tabs.\n";
+    writeFileSync(join(h.home, FILE), theirs);
+    writeFileSync(join(h.home, beside), memory);
     const m = h.fake.addMachine(space, "device-1");
-    const t = h.fake.addHomeTarget(space, m, "gemini_user");
+    const t = h.fake.addHomeTarget(space, m, kind);
     expect(t.settings.user_owned).toBe(true);
     writeHomeLink(h.paths, {
       space_id: space.id,
@@ -283,27 +291,25 @@ describe("Gemini's ~/.gemini/AGENTS.md", () => {
       files: [
         {
           target_id: t.id,
-          kind: "gemini_user",
-          path: GEMINI,
-          abs: join(h.home, GEMINI),
-          read_by: ["antigravity"],
+          kind,
+          path: FILE,
+          abs: join(h.home, FILE),
+          read_by: [reader],
         },
       ],
     });
     const daemon = h.daemon({ paths: h.paths, deviceId: "device-1" });
-    h.fake.compile(t.id, { [GEMINI]: PERSONAL_1 });
+    h.fake.compile(t.id, { [FILE]: PERSONAL_1 });
     await daemon.syncOnce();
-    expect(readFileSync(join(h.home, GEMINI), "utf8")).toBe(
+    expect(readFileSync(join(h.home, FILE), "utf8")).toBe(
       upsertManagedBlock(theirs, PERSONAL_1),
     );
     expect(h.fake.entry(t.id).target.sync_state).toBe("in_sync");
 
     h.fake.unlinkMachine(m.id);
     await daemon.syncOnce();
-    expect(readFileSync(join(h.home, GEMINI), "utf8")).toBe(theirs);
-    expect(readFileSync(join(h.home, ".gemini", "GEMINI.md"), "utf8")).toBe(
-      memory,
-    );
+    expect(readFileSync(join(h.home, FILE), "utf8")).toBe(theirs);
+    expect(readFileSync(join(h.home, beside), "utf8")).toBe(memory);
   });
 });
 

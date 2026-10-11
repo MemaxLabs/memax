@@ -383,6 +383,57 @@ describe("the Personal section", () => {
     ).toEqual([[PERSONAL, "C-1201"]]);
   });
 
+  it("gives Copilot CLI its own block in ~/.copilot/copilot-instructions.md", () => {
+    const COPILOT = ".copilot/copilot-instructions.md";
+    writeFileSync(
+      m.paths.home,
+      JSON.stringify({
+        version: 1,
+        space_id: PERSONAL,
+        space_slug: "personal",
+        machine_id: "m-1",
+        home: m.home,
+        files: [
+          {
+            target_id: "t-copilot",
+            kind: "copilot_user",
+            path: COPILOT,
+            abs: join(m.home, COPILOT),
+            read_by: ["copilot"],
+          },
+        ],
+        created_at: "2026-10-11T00:00:00Z",
+      }),
+    );
+    mkdirSync(join(m.home, ".copilot"), { recursive: true });
+    const block = (ref: string, lines: string[]) =>
+      writeFileSync(
+        join(m.home, COPILOT),
+        `Use tabs.\n<!-- memax:start -->\n${[header(ref, "personal"), "# Personal", "", "## Preferences", ...lines].join("\n")}\n<!-- memax:end -->\n`,
+      );
+    const target = (ref: string, refs: string[]) => ({
+      ...homeTarget("codex_user", ref, refs),
+      kind: "copilot_user",
+      path: COPILOT,
+      label: `~/${COPILOT}`,
+    });
+    block("C-1201", ["- Answer in British English. [M-0101]"]);
+    warm(null, { targets: [target("C-1201", ["M-0101"])] });
+    expect(m.run("copilot", outside()).loads.map((l) => l.compile)).toEqual([
+      "C-1201",
+    ]);
+    block("C-1207", [
+      "- Answer in British English. [M-0101]",
+      "- Prefer small pull requests. [M-0102]",
+    ]);
+    warm(null, { targets: [target("C-1207", ["M-0101", "M-0102"])] });
+    const next = JSON.parse(m.run("copilot", outside()).output);
+    expect(next.additionalContext).toContain(
+      "- Prefer small pull requests. [M-0102]",
+    );
+    expect(next.additionalContext).not.toContain("Use tabs.");
+  });
+
   it("remembers what it told per agent, wherever the session ran", () => {
     linkHome();
     homeFile("claude_user", "C-1201", [

@@ -363,6 +363,15 @@ export function contract(
           default: false,
           opt_in: false,
         },
+        {
+          kind: "copilot_user",
+          version: 1,
+          role: "home",
+          roots: ["home"],
+          default_path: ".copilot/copilot-instructions.md",
+          default: false,
+          opt_in: false,
+        },
       ]);
       const head = await fetch(base + "/health", { method: "HEAD" });
       expect(head.status).toBe(200);

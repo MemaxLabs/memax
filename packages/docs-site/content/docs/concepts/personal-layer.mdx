@@ -22,12 +22,13 @@ linked.
 
 ## What it writes
 
-| Agent       | File                                | Whose it is                                |
-| ----------- | ----------------------------------- | ------------------------------------------ |
-| Claude Code | `~/.claude/rules/memax-personal.md` | Memax's. User rules load in every session. |
-| Codex       | one block in `~/.codex/AGENTS.md`   | Yours. Memax keeps one marked block in it. |
-| Antigravity | one block in `~/.gemini/AGENTS.md`  | Yours. Memax keeps one marked block in it. |
-| (all)       | `~/.memax/personal/AGENTS.md`       | Memax's: a local copy of what's compiled.  |
+| Agent       | File                                              | Whose it is                                |
+| ----------- | ------------------------------------------------- | ------------------------------------------ |
+| Claude Code | `~/.claude/rules/memax-personal.md`               | Memax's. User rules load in every session. |
+| Codex       | one block in `~/.codex/AGENTS.md`                 | Yours. Memax keeps one marked block in it. |
+| Antigravity | one block in `~/.gemini/AGENTS.md`                | Yours. Memax keeps one marked block in it. |
+| Copilot     | one block in `~/.copilot/copilot-instructions.md` | Yours. Memax keeps one marked block in it. |
+| (all)       | `~/.memax/personal/AGENTS.md`                     | Memax's: a local copy of what's compiled.  |
 
 Antigravity reads `~/.gemini/AGENTS.md` beside `~/.gemini/GEMINI.md` in
 every session. Memax writes its block there when you run
@@ -37,8 +38,15 @@ memory goes. Gemini CLI reads it too once `memax connect gemini
 --agents-md` lists `AGENTS.md` in its settings. `memax link --home`
 doesn't offer it on its own yet.
 
-Paths follow `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `GEMINI_CLI_HOME`, read
-in your shell when you link (the daemon runs without them). Codex reads
+Copilot CLI loads `~/.copilot/copilot-instructions.md` (or the one in
+`COPILOT_HOME`) in every session, and so does VS Code's Copilot agent.
+VS Code's older Local agent reads `~/.claude` and `~/.copilot` both, so on
+a machine with Claude Code's file too it loads your Personal space twice;
+Memax writes both files anyway, and says so when it links them, since
+leaving Copilot's out would leave Copilot CLI with none.
+
+Paths follow `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME` and
+`COPILOT_HOME`, read in your shell when you link (the daemon runs without them). Codex reads
 `AGENTS.override.md` instead of `AGENTS.md` when it exists and isn't
 empty, and so does Memax. If you add an override later, `memax status`
 says so and `memax connect codex` moves the block; Memax never moves it
@@ -146,6 +154,6 @@ A network error or a server that's busy never takes anything off. A file
 you edited by hand stays, and `memax unlink --home` says which.
 
 <Callout type="info">
-  Copilot CLI, Windsurf, OpenCode and Cursor get their personal files in later
-  releases. Until then they read your Personal space over MCP.
+  Windsurf, OpenCode and Cursor get their personal files in later releases.
+  Until then they read your Personal space over MCP.
 </Callout>

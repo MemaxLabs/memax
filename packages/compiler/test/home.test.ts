@@ -43,7 +43,8 @@ const CANONICAL: TargetSettings = {
 const CLAUDE: TargetSettings = { kind: "claude_user" };
 const CODEX: TargetSettings = { kind: "codex_user", current: "" };
 const GEMINI: TargetSettings = { kind: "gemini_user", current: "" };
-const HOME: TargetSettings[] = [CANONICAL, CLAUDE, CODEX, GEMINI];
+const COPILOT: TargetSettings = { kind: "copilot_user", current: "" };
+const HOME: TargetSettings[] = [CANONICAL, CLAUDE, CODEX, GEMINI, COPILOT];
 
 const file = (result: CompileResult, path: string) => {
   const found = result.files.find((f) => f.path === path);
@@ -73,11 +74,12 @@ function inner(content: string): string[] {
 }
 
 describe("the home kinds", () => {
-  it("are Claude Code's, Codex's and Antigravity's user files", () => {
+  it("are Claude Code's, Codex's, Antigravity's and Copilot's user files", () => {
     expect(HOME_TARGET_KINDS).toEqual([
       "claude_user",
       "codex_user",
       "gemini_user",
+      "copilot_user",
     ]);
     expect(HOME_BUDGET).toBe(6 * 1024);
   });
@@ -149,6 +151,28 @@ describe("the home kinds", () => {
     expect(beside.content.startsWith(`${mine}${MANAGED_START}\n`)).toBe(true);
   });
 
+  it("write one block in ~/.copilot/copilot-instructions.md, which Copilot CLI loads every session", () => {
+    for (const path of [
+      ".copilot/copilot-instructions.md",
+      ".config/copilot/copilot-instructions.md",
+    ]) {
+      const copilot = compile(
+        personal(
+          [memory("M-0001", "Answer in British English.")],
+          [{ kind: "copilot_user", path, current: "# Mine\n" }],
+        ),
+      ).files[0];
+      expect(copilot.path).toBe(path);
+      expect(copilot.user_owned).toBe(true);
+      expect(copilot.content.startsWith(`# Mine\n${MANAGED_START}\n`)).toBe(
+        true,
+      );
+      expect(copilot.content).toContain(
+        "- Answer in British English. [M-0001]",
+      );
+    }
+  });
+
   it("cap Antigravity's block at its 24,000 bytes per file", () => {
     const facts = Array.from({ length: 400 }, (_, n) =>
       memory(
@@ -189,6 +213,7 @@ describe("what a home file carries", () => {
       scope: { agents: ["claude-code"] },
     }),
     memory("M-0004", "Only Gemini.", { scope: { agents: ["gemini"] } }),
+    memory("M-0007", "Only Copilot.", { scope: { agents: ["copilot"] } }),
     memory("M-0005", "Only in packages/web.", {
       scope: { paths: ["packages/web/**"] },
     }),
@@ -207,6 +232,10 @@ describe("what a home file carries", () => {
     ]);
     expect(refs(".codex/AGENTS.md")).toEqual(["M-0001", "M-0002"]);
     expect(refs(".gemini/AGENTS.md")).toEqual(["M-0001", "M-0004"]);
+    expect(refs(".copilot/copilot-instructions.md")).toEqual([
+      "M-0001",
+      "M-0007",
+    ]);
   });
 
   it("leaves a path-scoped fact out of every home file: they load in every project", () => {
@@ -305,7 +334,7 @@ describe("refusals", () => {
   it.each(["project", "team"] as const)(
     "refuses a home kind in a %s space: a project's facts never land in a home folder",
     (kind) => {
-      for (const t of [CLAUDE, CODEX, GEMINI]) {
+      for (const t of [CLAUDE, CODEX, GEMINI, COPILOT]) {
         const i = personal([memory("M-0001", "A fact.")], [t]);
         i.space.kind = kind;
         expect(issues(() => compile(i))).toEqual([
@@ -326,6 +355,9 @@ describe("refusals", () => {
     ["gemini_user", ".gemini/GEMINI.md"],
     ["gemini_user", ".gemini/config/AGENTS.md"],
     ["gemini_user", ".codex/AGENTS.md"],
+    ["copilot_user", ".github/copilot-instructions.md"],
+    ["copilot_user", ".copilot/instructions/memax.instructions.md"],
+    ["copilot_user", "copilot-instructions.md"],
   ] as const)("refuses %s at %s", (kind, path) => {
     const found = bad({
       kind,

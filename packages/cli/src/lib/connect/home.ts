@@ -15,6 +15,7 @@ export const HOME_KIND: Partial<Record<V2.AgentKind, V2.TargetKind>> = {
   "claude-code": "claude_user",
   codex: "codex_user",
   "gemini-cli": "gemini_user",
+  copilot: "copilot_user",
 };
 
 export interface HomeFileReport {
@@ -121,7 +122,12 @@ export async function connectHomeFile(
   return {
     state: had ? "moved" : "added",
     path: label,
-    note: had ? `from ${tilde(link.home, had.abs)}` : describe(plan),
+    note: [
+      had ? `from ${tilde(link.home, had.abs)}` : describe(plan),
+      plan.note,
+    ]
+      .filter(Boolean)
+      .join(". "),
   };
 }
 

@@ -10,6 +10,9 @@
 //   which Antigravity reads, and Gemini CLI once its context.fileName lists
 //   AGENTS.md; offered only when one of them reads it here, and only when
 //   asked for (UNCONFIRMED_HOME_KINDS).
+// - Copilot: one block in `$COPILOT_HOME/copilot-instructions.md` (else
+//   ~/.copilot), which Copilot CLI loads every session; beside Claude
+//   Code's file, see copilotBesideClaude.
 // - The canonical copy `~/.memax/personal/AGENTS.md`, Memax's.
 //
 // An agent offers a file only when its folder is here. Each file is
@@ -55,6 +58,8 @@ export interface HomeFilePlan {
   lines: number;
   /** A file the person owns already has a <!-- memax:start --> block (V1's). */
   hasBlock: boolean;
+  /** What to know about writing it on this machine (copilotBesideClaude). */
+  note?: string;
 }
 
 /** The folder an environment variable names, else `~/<fallback>`. */
@@ -161,6 +166,33 @@ export function movedFiles(
   return out;
 }
 
+/** What the consent and memax connect say beside Claude Code's and Copilot's files. */
+export const COPILOT_BESIDE_CLAUDE =
+  "VS Code's Local agent reads ~/.claude and ~/.copilot both, so it loads your Personal space twice; its Copilot agent, which VS Code recommends, and Copilot CLI read it once.";
+
+/**
+ * The one rule for Copilot's file beside Claude Code's (adapter load
+ * matrix, user level): VS Code's Local harness reads ~/.claude/rules and
+ * ~/.claude/CLAUDE.md, and ~/.copilot/copilot-instructions.md, so where
+ * both agents' files are written it loads the Personal space twice. Memax
+ * writes Copilot's anyway and says so. Copilot CLI and VS Code's Copilot
+ * harness, which VS Code's docs say to start with, read only ~/.copilot;
+ * leaving the file out would give them no personal layer on every machine
+ * with Claude Code, to spare the Local harness a second copy of at most
+ * 6 KiB. Marks both files with the note when both are planned here.
+ */
+export function copilotBesideClaude(files: HomeFilePlan[]): HomeFilePlan[] {
+  const both =
+    files.some((f) => f.kind === "claude_user" && !f.refusal) &&
+    files.some((f) => f.kind === "copilot_user" && !f.refusal);
+  if (!both) return files;
+  return files.map((f) =>
+    f.kind === "claude_user" || f.kind === "copilot_user"
+      ? { ...f, note: COPILOT_BESIDE_CLAUDE }
+      : f,
+  );
+}
+
 /**
  * Home kinds no real tool has confirmed loading yet, so a home link offers
  * them only when someone asks for that agent (memax connect gemini), never
@@ -222,10 +254,22 @@ export function planHomeFiles(
       ),
     );
   }
+  const copilot = realParent(folder(e, "COPILOT_HOME", ".copilot"));
+  if (isDir(copilot)) {
+    out.push(
+      plan(
+        e,
+        "copilot_user",
+        "Copilot",
+        join(copilot, "copilot-instructions.md"),
+        ["copilot"],
+      ),
+    );
+  }
   if (out.length > 0) {
     out.push(plan(e, "agents_md", "Memax", join(e.home, HOME_CANONICAL), []));
   }
-  return out;
+  return copilotBesideClaude(out);
 }
 
 /** A linked file as home.json records it, with who reads it. */
@@ -263,11 +307,13 @@ export function describe(f: HomeFilePlan): string {
 export function consentLines(home: string, files: HomeFilePlan[]): string[] {
   const ok = files.filter((f) => !f.refusal);
   const width = Math.max(...ok.map((f) => tilde(home, f.abs).length)) + 3;
+  const notes = [...new Set(ok.flatMap((f) => (f.note ? [f.note] : [])))];
   return [
     "",
     "  Write your Personal space into your agents' own files on this machine?",
     "",
     ...ok.map((f) => `    ${tilde(home, f.abs).padEnd(width)}${describe(f)}`),
+    ...notes.flatMap((n) => ["", ...wrap(n, 74).map((l) => `  ${l}`)]),
     "",
     "  Every agent on this machine reads these in every project. Anyone who uses",
     "  this account on this computer can read them too. Hand edits come back as",
@@ -277,3 +323,17 @@ export function consentLines(home: string, files: HomeFilePlan[]): string[] {
 /** The consent's last line, which the answer follows. */
 export const CONSENT_QUESTION =
   "  proposals, and memax unlink --home takes them off. [Y/n] ";
+
+/** `text` in lines of at most `width` characters, broken at spaces. */
+function wrap(text: string, width: number): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = word;
+    } else line = line ? `${line} ${word}` : word;
+  }
+  if (line) lines.push(line);
+  return lines;
+}

@@ -483,6 +483,12 @@ func (w *writer) purgeMemory(ctx context.Context, sp spaceRow, op *forgetOp, m *
 		 WHERE ms.source_id = s.id AND ms.memory_id = $1 AND s.space_id = $3`, m.ID, rc.ID, sp.ID); err != nil {
 		return Receipt{}, fmt.Errorf("ledger: forget %s: sources: %w", m.Ref, err)
 	}
+	// Its check results: their evidence names the paths its words named
+	// (migration 060). Nothing reads the answer.
+	if err := execDeferred(ctx, w.tx, `DELETE FROM v2.condition_checks WHERE memory_id = $1 AND space_id = $2`,
+		m.ID, sp.ID); err != nil {
+		return Receipt{}, fmt.Errorf("ledger: forget %s: check results: %w", m.Ref, err)
+	}
 	if _, err := w.tx.Exec(ctx, `SELECT v2.redact_receipt_reasons($1)`, m.ID); err != nil {
 		return Receipt{}, fmt.Errorf("ledger: forget %s: receipts: %w", m.Ref, err)
 	}

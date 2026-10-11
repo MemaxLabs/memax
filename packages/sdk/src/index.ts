@@ -49,6 +49,7 @@ export {
   V2ReceiptsResource,
   V2ReadsResource,
   V2SessionStartsResource,
+  V2ChecksResource,
   V2AgentsResource,
   V2BriefsResource,
   V2TargetsResource,

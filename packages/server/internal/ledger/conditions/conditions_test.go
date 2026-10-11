@@ -1,6 +1,8 @@
 package conditions
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -181,4 +183,34 @@ func TestRenewKeepsIDsAndWhatOthersAttached(t *testing.T) {
 	if len(got) != 3 || got[2].ID != "c3" || got[2].Origin != OriginPerson {
 		t.Errorf("attached %+v", got)
 	}
+}
+
+func TestHashIsWhatItChecks(t *testing.T) {
+	a := Condition{ID: "c1", Kind: PathExists, Path: "internal/ask/config.go", Origin: OriginDerived, From: FromStatement}
+	b := Condition{ID: "c4", Kind: PathExists, Path: "internal/ask/config.go", Origin: OriginPerson}
+	if Hash(a) != Hash(b) {
+		t.Error("the id, origin and where it was read aren't what a condition checks")
+	}
+	if len(Hash(a)) != 64 {
+		t.Errorf("hash = %q", Hash(a))
+	}
+	for _, c := range []Condition{
+		{Kind: PathExists, Path: "internal/ask/tiers.go"},
+		{Kind: PathExists, Glob: "internal/ask/config.go"},
+		{Kind: FileContains, Path: "internal/ask/config.go", Text: "ASK_MODEL"},
+		{Kind: FileContains, Path: "internal/ask/config.go", Text: "ASK_MODEL", Word: true},
+	} {
+		if Hash(c) == Hash(a) {
+			t.Errorf("%+v hashes as %+v", c, a)
+		}
+	}
+	// Pinned: daemons cache it, so the encoding never changes silently.
+	if got := Hash(Condition{Kind: PathExists, Path: "go.mod"}); got != hashOf(`{"kind":"path_exists","path":"go.mod"}`) {
+		t.Errorf("hash of go.mod = %s", got)
+	}
+}
+
+func hashOf(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }

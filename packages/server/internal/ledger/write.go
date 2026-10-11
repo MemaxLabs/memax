@@ -718,6 +718,17 @@ func (w *writer) claim(ctx context.Context, spaceID uuid.UUID) (*Result, error) 
 // the same order as before. A replay's original result is read after, as
 // claim reads it.
 func (w *writer) spaceAndClaim(ctx context.Context, spaceID uuid.UUID) (spaceRow, *Result, error) {
+	sp, c, err := w.spaceAndClaimed(ctx, spaceID)
+	if err != nil {
+		return sp, nil, err
+	}
+	replay, err := w.replay(ctx, c)
+	return sp, replay, err
+}
+
+// spaceAndClaimed is spaceAndClaim without the replay: the key's earlier
+// record, for a caller that replays its own object (a check run).
+func (w *writer) spaceAndClaimed(ctx context.Context, spaceID uuid.UUID) (spaceRow, *claimed, error) {
 	w.space = spaceID
 	var sp spaceRow
 	var spaceErr error
@@ -749,11 +760,7 @@ func (w *writer) spaceAndClaim(ctx context.Context, spaceID uuid.UUID) (spaceRow
 		return sp, nil, fmt.Errorf("ledger: claim idempotency key: %w", err)
 	}
 	c, err := w.earlierClaim(ctx, spaceID, inserted)
-	if err != nil {
-		return sp, nil, err
-	}
-	replay, err := w.replay(ctx, c)
-	return sp, replay, err
+	return sp, c, err
 }
 
 // replay is the original result of a key applied before; nil when the key

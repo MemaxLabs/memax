@@ -372,6 +372,13 @@ const (
 	// either way it is a keep, so it follows Keep's rules. "Forget it" is
 	// Forget, decided as ActionForget.
 	ActionVerify Action = "verify"
+
+	// Stale checks (epic 3.1; the stale-detection design §1.3, §1.4): a
+	// person's daemon reports what the repository's committed tree says
+	// about a space's conditions (results, never contents), and Memax flags
+	// what stopped holding. Check results aren't the record; the flags are.
+	ActionReportChecks Action = "report_checks"
+	ActionFlagStale    Action = "flag_stale"
 )
 
 // FreeAskLimit is how many asks a month Free answers (D9: "Ask 50/mo").
@@ -627,6 +634,9 @@ const (
 	// Verify: refused (verify), or sent to Review (an agent's edit of a
 	// stale memory).
 	CodeVerifyByPerson = "verify_by_person" // agents propose an update; a person verifies
+	// Stale checks; both refusals.
+	CodeChecksByPerson = "checks_by_person" // a person's daemon reports checks; agents and API keys don't
+	CodeFlagByMemax    = "flag_by_memax"    // only Memax flags a memory stale from a check
 
 	// Changes to agent connections (DecideConnection); all refusals.
 	CodePersonMustManage   = "person_must_manage"
@@ -755,6 +765,13 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideScope(a, o, s)
 	case ActionVerify:
 		return decideVerify(a, o, s)
+	case ActionReportChecks:
+		return decideReportChecks(a, s)
+	case ActionFlagStale:
+		if a.Kind == ActorMemax {
+			return apply()
+		}
+		return refuse(CodeFlagByMemax, "Only Memax marks a memory stale from a check. A person verifies it.")
 	}
 	return refuse(CodeUnknownAction, fmt.Sprintf("Memax doesn't know how to %q.", act))
 }
@@ -837,6 +854,22 @@ func decideVerify(a Actor, o Object, s Space) Decision {
 	}
 	if gated {
 		return applyChecked(a)
+	}
+	return apply()
+}
+
+// decideReportChecks: a member's or owner's own session reports what their
+// machine's checks found (the CLI's daemon). Agents, API keys and OAuth
+// grants don't: a result can mark a person's memory stale, and only
+// someone who may keep in the space should be able to cause that. Viewers
+// don't either, for the same reason.
+func decideReportChecks(a Actor, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson || a.Credential != CredentialSession:
+		return refuse(CodeChecksByPerson, fmt.Sprintf(
+			"Only a person's own machine reports checks for %s: run memax daemon, signed in with memax login.", spaceName(s)))
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf("Viewers can't report checks in %s. A member's machine reports them.", spaceName(s)))
 	}
 	return apply()
 }

@@ -575,6 +575,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/conditions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The conditions a space's machines check
+         * @description Every kept memory's "stays true while" conditions, for a member's
+         *     machine to check against the repository's committed tree on its
+         *     default branch: each typed, with its hash (send it back with a
+         *     result, so a result about an older definition is ignored) and
+         *     whether it is armed (it held once on the default branch; only an
+         *     armed condition can mark its memory stale). No statements. A
+         *     condition that hasn't held in 30 days is left out, since Memax stops
+         *     asking, and so is `pr_state`, which only the GitHub App checks.
+         */
+        get: operations["listConditions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/spaces/{space}/check-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a check run
+         * @description A member's machine (the CLI's daemon) reports what it found when it
+         *     checked the space's conditions against the committed tree of the
+         *     repository's default branch at `commit`: results, never a file's
+         *     contents. Report only from the default branch as pushed, from a
+         *     clone whose origin is the space's repository (`repository` must
+         *     match, so a fork's clone never reports). Only the results that
+         *     changed need be sent. Results are check state beside the record,
+         *     with no receipt. A condition that held once (armed) and now fails,
+         *     at a commit later than its last hold, marks its memory stale in the
+         *     same transaction, as Memax: a `flagged` receipt whose source is the
+         *     run (`{kind: check, ref: <run id>}`) and whose reason, which Forget
+         *     redacts, says what changed. Unknown never marks anything, nor does a
+         *     failure a person kept, edited or verified the memory after Memax
+         *     first saw. A run that would mark more than 10 memories, or more than
+         *     20% of the armed ones (and at least 5), marks none (`capped`).
+         *     Only a member's or owner's own session reports: agents, API keys and
+         *     OAuth grants are refused `checks_by_person`, viewers `viewer`. The
+         *     same `Idempotency-Key` records a run once; a queued report keeps its
+         *     `checked_at`, within a week.
+         */
+        post: operations["reportChecks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/spaces/{space}/reads": {
         parameters: {
             query?: never;
@@ -3224,7 +3295,10 @@ export interface components {
          *     when they start again). A refused export: export_by_person (only a
          *     signed-in person exports a space). Verify: verify_by_person (agents
          *     and API keys don't verify: refused on `:verify`, and an agent's edit
-         *     of a stale memory is sent to Review with it). Refused changes to
+         *     of a stale memory is sent to Review with it). Refused checks:
+         *     checks_by_person (only a member's own machine reports check runs),
+         *     flag_by_memax (only Memax marks a memory stale from a check).
+         *     Refused changes to
          *     agents: person_must_manage (only a person changes what an agent may
          *     do), not_your_agent, autonomy_not_allowed, key_max_propose,
          *     autonomy_needs_web (raising an agent needs a person on the web).
@@ -3262,7 +3336,7 @@ export interface components {
          *     needs a sign-in in the last few minutes, or your passkey).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "space_on_v1" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "verify_by_person" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "machines_by_person" | "machines_personal" | "machines_by_owner" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "space_on_v1" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "verify_by_person" | "checks_by_person" | "flag_by_memax" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "machines_by_person" | "machines_personal" | "machines_by_owner" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_kind" | "needs_passkey" | "passkey_invalid";
         /**
@@ -5210,11 +5284,153 @@ export interface components {
             /** @description For forget, the memories forgotten with it. */
             memories?: components["schemas"]["Memory"][];
         };
+        /** @description A condition's hash (what it checks, not its id or origin), as GET …/conditions gives it. */
+        ConditionHash: string;
+        /** @description A condition as a machine checks it. */
+        CheckedCondition: {
+            condition: components["schemas"]["Condition"];
+            hash: components["schemas"]["ConditionHash"];
+            /** @description It held once on the default branch, so a failure can mark its memory stale. */
+            armed: boolean;
+        };
+        /** @description One kept memory's conditions to check, without its words. */
+        MemoryConditions: {
+            memory: components["schemas"]["DisplayRef"];
+            conditions: components["schemas"]["CheckedCondition"][];
+        };
+        /** @description What a space's machines check. */
+        SpaceConditions: {
+            space_id: components["schemas"]["Id"];
+            /** @description The repository the space compiles for (owner/name); a clone's origin must name it to report. */
+            repository: string;
+            items: components["schemas"]["MemoryConditions"][];
+        };
+        SpaceConditionsEnvelope: {
+            data: components["schemas"]["SpaceConditions"];
+        };
+        /**
+         * @description A condition's result at the run's commit. unknown (it couldn't be checked) never marks anything.
+         * @enum {string}
+         */
+        CheckOutcome: "holds" | "fails" | "unknown";
+        /**
+         * @description What changed when a condition stopped holding. path_exists: removed,
+         *     renamed, no_match (a glob). file_contains: text_missing, removed,
+         *     renamed. dep_present: dependency_removed, constraint_changed,
+         *     removed. file_unchanged: blob_changed, removed, renamed.
+         * @enum {string}
+         */
+        CheckChange: "removed" | "renamed" | "no_match" | "text_missing" | "dependency_removed" | "constraint_changed" | "blob_changed";
+        /** @description Why a condition fails, typed so a screen can say it in any language. Paths and a declared constraint, never a file's contents. */
+        CheckEvidence: {
+            change: components["schemas"]["CheckChange"];
+            /** @description The path that changed (for a bare manifest name, the manifest that changed). */
+            path?: components["schemas"]["ConditionPath"];
+            /** @description Where a renamed file went (renamed only). */
+            renamed_to?: components["schemas"]["ConditionPath"];
+            /** @description The dependency's declared constraint now (constraint_changed only). */
+            constraint?: string;
+        };
+        /**
+         * @description What started a run on a machine: the default branch moved, an
+         *     agent's session start asked, the six-hourly schedule, new conditions
+         *     arrived, or `memax verify`.
+         * @enum {string}
+         */
+        CheckTrigger: "head_moved" | "session_start" | "schedule" | "conditions" | "verify";
+        CheckResultInput: {
+            memory: components["schemas"]["DisplayRef"];
+            condition: components["schemas"]["ConditionId"];
+            hash: components["schemas"]["ConditionHash"];
+            outcome: components["schemas"]["CheckOutcome"];
+            /** @description What changed; required when it fails, and only then. */
+            evidence?: components["schemas"]["CheckEvidence"];
+        };
+        CheckRunRequest: {
+            /** @description The owner/name the clone's origin names; it must be the space's. */
+            repository: string;
+            /** @description The default branch's name. Feature branches never report. */
+            branch: string;
+            /** @description The full commit id the run checked (the default branch's, as pushed). */
+            commit: string;
+            /** @description The commit's time. */
+            commit_at: components["schemas"]["Timestamp"];
+            /** @description When the run ran, by the machine's clock; defaults to now, at most a week ago. */
+            checked_at?: components["schemas"]["Timestamp"];
+            trigger: components["schemas"]["CheckTrigger"];
+            /** @description The agent whose session start asked for the run, if one did. */
+            agent?: components["schemas"]["AgentKind"];
+            /** @description The CLI's device id. Never a host name. */
+            device: string;
+            /** @description Every condition at that commit was evaluated. */
+            complete: boolean;
+            results: components["schemas"]["CheckResultInput"][];
+        };
+        /** @description A run's results by outcome, and those Memax ignored (about a memory that isn't kept here, a condition it no longer has or an older definition of one, or older than what Memax has). */
+        CheckCounts: {
+            holds: number;
+            fails: number;
+            unknown: number;
+            ignored: number;
+        };
+        /** @description One check run, as recorded. No words. */
+        CheckRun: {
+            id: components["schemas"]["Id"];
+            space_id: components["schemas"]["Id"];
+            /**
+             * @description Who checked. device is a member's machine.
+             * @enum {string}
+             */
+            observer: "device" | "github" | "memax";
+            person_id?: components["schemas"]["Id"];
+            device?: string;
+            repository: string;
+            branch: string;
+            commit: string;
+            commit_at: components["schemas"]["Timestamp"];
+            trigger: components["schemas"]["CheckTrigger"];
+            agent?: components["schemas"]["AgentKind"];
+            checked_at: components["schemas"]["Timestamp"];
+            recorded_at: components["schemas"]["Timestamp"];
+            complete: boolean;
+            counts: components["schemas"]["CheckCounts"];
+            /** @description It would have marked more memories than one run may, so it marked none. */
+            capped: boolean;
+        };
+        CheckRunResult: {
+            run: components["schemas"]["CheckRun"];
+            /** @description The memories this run marked stale. */
+            flagged: components["schemas"]["DisplayRef"][];
+        };
+        CheckRunResultEnvelope: {
+            data: components["schemas"]["CheckRunResult"];
+        };
         /**
          * @description Why a memory is stale, typed so a screen can say it in any language.
          *     It never holds file contents. date: its date to check again passed.
+         *     check: one of its conditions stopped holding on the default branch.
          */
-        StaleCause: components["schemas"]["StaleDateCause"];
+        StaleCause: components["schemas"]["StaleDateCause"] | components["schemas"]["StaleCheckCause"];
+        /**
+         * @description One of its conditions stopped holding on the default branch: the
+         *     condition, what changed, and where and when (the commit the failure
+         *     began at, and the run that first saw it).
+         */
+        StaleCheckCause: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "check";
+            condition: components["schemas"]["Condition"];
+            evidence?: components["schemas"]["CheckEvidence"];
+            branch: string;
+            commit: string;
+            commit_at: components["schemas"]["Timestamp"];
+            checked_at?: components["schemas"]["Timestamp"];
+            /** @enum {string} */
+            observer: "device" | "github" | "memax";
+        };
         /** @description Its date to check again passed. */
         StaleDateCause: {
             /**
@@ -7141,6 +7357,16 @@ export interface components {
                 "application/json": components["schemas"]["TargetResultEnvelope"];
             };
         };
+        /** @description The run, recorded (or already recorded under this key), and the memories it marked stale. */
+        CheckRunRecorded: {
+            headers: {
+                "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["CheckRunResultEnvelope"];
+            };
+        };
         /** @description The load, recorded as a read (or already recorded under this key). */
         CompileLoadRecorded: {
             headers: {
@@ -8069,6 +8295,77 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listConditions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The space's conditions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpaceConditionsEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    reportChecks: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckRunRequest"];
+            };
+        };
+        responses: {
+            201: components["responses"]["CheckRunRecorded"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

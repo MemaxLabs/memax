@@ -18,6 +18,8 @@ package conditions
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -169,6 +171,33 @@ func Encode(cs []Condition) json.RawMessage {
 		panic(err)
 	}
 	return b
+}
+
+// Hash identifies what a condition checks: its kind and fields, not its
+// id, origin or where Memax read it (SHA-256 of its JSON without those, in
+// hex). A condition redefined in place (a person changes its path, a new
+// version names another file) has a new hash, so its checks start over;
+// one read again from new words that checks the same thing keeps them.
+func Hash(c Condition) string {
+	b, err := json.Marshal(struct {
+		Kind     Kind   `json:"kind"`
+		Path     string `json:"path,omitempty"`
+		Glob     string `json:"glob,omitempty"`
+		Text     string `json:"text,omitempty"`
+		Word     bool   `json:"word,omitempty"`
+		Manifest string `json:"manifest,omitempty"`
+		Name     string `json:"name,omitempty"`
+		Range    string `json:"range,omitempty"`
+		Blob     string `json:"blob,omitempty"`
+		Repo     string `json:"repo,omitempty"`
+		Number   int    `json:"number,omitempty"`
+		State    string `json:"state,omitempty"`
+	}{c.Kind, c.Path, c.Glob, c.Text, c.Word, c.Manifest, c.Name, c.Range, c.Blob, c.Repo, c.Number, c.State})
+	if err != nil {
+		panic(err) // strings, numbers and booleans only
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
 var (

@@ -160,6 +160,32 @@ describe("the session-start hook, per agent", () => {
     expect(json(".claude/settings.json").hooks).toBeUndefined();
   });
 
+  it("keeps the person's comments and settings in a settings file with comments", () => {
+    mkdirSync(join(h.home, ".gemini"), { recursive: true });
+    const mine = [
+      "{",
+      "  // the person's own note",
+      '  "theme": "GitHub", /* inline */',
+      '  "hooks": {',
+      '    "BeforeTool": [], // theirs',
+      "  },",
+      "}",
+      "",
+    ].join("\n");
+    writeFileSync(join(h.home, ".gemini/settings.json"), mine);
+    expect(installHook("gemini-cli", h.home)).toBe("written");
+    const after = read(".gemini/settings.json");
+    for (const kept of [
+      "  // the person's own note",
+      '  "theme": "GitHub", /* inline */',
+      '    "BeforeTool": [], // theirs',
+    ])
+      expect(after).toContain(kept);
+    expect(after).toContain("memax hook session-start --agent gemini-cli");
+    expect(installHook("gemini-cli", h.home)).toBe("present");
+    expect(read(".gemini/settings.json")).toBe(after);
+  });
+
   it("refuses to rewrite a settings file it can't read", () => {
     mkdirSync(join(h.home, ".cursor"), { recursive: true });
     writeFileSync(join(h.home, ".cursor/hooks.json"), "{ not json");

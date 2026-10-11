@@ -29,6 +29,7 @@ import { linkHome } from "./link-home.js";
 import { signIn } from "./login.js";
 import { appBaseURL } from "./mcp-v2.js";
 import { getAgents } from "./setup.js";
+import { parseJsoncObject } from "../lib/jsonc.js";
 import { getNestedKey, setupMcpOAuth } from "./setup-mcp.js";
 
 /** Whether an agent's MCP settings already name memax (memax setup, or an earlier init). */
@@ -45,9 +46,12 @@ function mcpPresent(
     const text = readFileSync(file, "utf8");
     if (format === "toml") return /^\[mcp_servers\.memax\]/m.test(text);
     if (format === "yaml-mcp-servers") return /^\s+memax:/m.test(text);
-    const config = JSON.parse(text) as Record<string, unknown>;
-    return !!getNestedKey(config, id === "claude-code" ? "mcpServers" : mcpKey)
-      ?.memax;
+    const config = parseJsoncObject(text);
+    return (
+      !!config &&
+      !!getNestedKey(config, id === "claude-code" ? "mcpServers" : mcpKey)
+        ?.memax
+    );
   } catch {
     return false;
   }

@@ -227,4 +227,15 @@ test("a V1 person whose flag turns on lands on their space's switch, not the fir
       .getByRole("region", { name: "Or start a project space" })
       .getByRole("link", { name: "Set up a repository" }),
   ).toHaveAttribute("href", "/setup/import");
+  // Its other places say it's still on V1, with the rail's status line,
+  // and lead back to the switch.
+  await page.goto(`/${slug}/review`);
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Personal is still on V1." }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Main" }).getByRole("status"),
+  ).toHaveText("Still on V1");
+  await page.getByRole("link", { name: "Switch to V2" }).click();
+  await settledOn(page, new RegExp(`^/${slug}/today$`));
 });

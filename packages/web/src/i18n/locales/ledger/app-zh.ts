@@ -236,6 +236,25 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
     loading: "正在载入{place}",
     loadingMeta: "载入中",
   },
+  onV1: {
+    title: "{space} 还在 V1 上。",
+    places: {
+      review: "切换到 V2 后，Agent 的提议会在这里等人来保留或拒绝。",
+      brief:
+        "切换到 V2 后，这里的简报就是每个 Agent 都会读的内容，并编译进各自的文件。",
+      memories:
+        "切换到 V2 后，保留下来的内容都列在这里，每条都带着收据；V1 的记忆会作为笔记一起过来。",
+      handoffs: "切换到 V2 后，一个 Agent 交给下一个的工作会出现在这里。",
+      agents: "切换到 V2 后，Agent 在这里接入，各自是只读、提议或写入。",
+      decisions: "切换到 V2 后，团队保留的决策会记在这里，连同理由和依据。",
+      dream: "切换到 V2 后，Dream 会在夜里读它的笔记，并在这里发布一期。",
+      activity: "切换到 V2 后，每次改动都会在这里留下一条收据。",
+    },
+    switch: "切换到 V2",
+    openInV1: "在 V1 里打开",
+    ownerMeta: "切换不会改动 V1 里的任何内容，之后也可以切回去。",
+    memberMeta: "只有空间的所有者能把它切换到 V2。",
+  },
   notFound: {
     searchMemories: "搜索记忆",
     openActivity: "打开动态",

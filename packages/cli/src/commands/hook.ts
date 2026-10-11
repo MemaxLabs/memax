@@ -47,13 +47,16 @@ export function registerHookCommand(program: Command): void {
   program
     .command("hook <action> [agent]")
     .description(
-      "Agent hooks: `session-start` prints what changed since the agent's last session here (agents run it at session start; memax connect installs it). `install|uninstall <agent>` are deprecated",
+      "Agent hooks: `session-start` prints what changed since the agent's last session here (agents run it at session start; memax connect installs it); `cloud-start` does the same in a cloud agent's sandbox, asking Memax with MEMAX_START_KEY. `install|uninstall <agent>` are deprecated",
     )
     .option(
       "--agent <id>",
-      "With session-start: claude-code, codex, gemini, cursor or copilot",
+      "With session-start or cloud-start: claude-code, codex, gemini, cursor or copilot",
     )
-    .option("--debug", "With session-start: say why it printed nothing")
+    .option(
+      "--debug",
+      "With session-start or cloud-start: say why it printed nothing",
+    )
     .allowUnknownOption()
     .action(
       async (
@@ -63,13 +66,18 @@ export function registerHookCommand(program: Command): void {
       ) => {
         // `memax hook session-start|flush` normally never gets here: bin.ts
         // runs them without loading the CLI (hook-main.ts).
+        const argv = [
+          ...(opts.agent ? ["--agent", opts.agent] : []),
+          ...(opts.debug ? ["--debug"] : []),
+        ];
         if (action === "session-start" || action === "flush") {
           const { runHook } = await import("../hook-main.js");
-          const argv = [
-            ...(opts.agent ? ["--agent", opts.agent] : []),
-            ...(opts.debug ? ["--debug"] : []),
-          ];
           process.exit(await runHook(action, argv));
+        }
+        if (action === "cloud-start") {
+          const { runCloudStart } = await import("../cloud-start-main.js");
+          const { cliVersion } = await import("../lib/version.js");
+          process.exit(await runCloudStart(argv, cliVersion()));
         }
         if (!agent) {
           console.error(chalk.red(`Usage: memax hook ${action} <agent>`));

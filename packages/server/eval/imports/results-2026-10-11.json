@@ -1,0 +1,7026 @@
+{
+ "description": "Import cleanup eval runs of Oct 11, 2026 (RESULTS.md, \"Oct 11: Claude Haiku 5.5 as the fallback\"): the fallback tier alone (IMPORT_EVAL_TIERS=fallback) on Claude Haiku 5.5 at three thinking settings and on Claude Haiku 4.5 as it ships. Each run: every group the model named, scored at bar 0 (members as file:line refs, confidence, class, credit), which planted conflicts it found and which traps it sprung, timings, and the bar sweep. No statement or model words.",
+ "runs": [
+  {
+   "run": "fallback",
+   "date": "2026-10-11T11:56:46Z",
+   "set": "batches.json",
+   "batch_size": 500,
+   "bar": 0.8,
+   "routing": {
+    "anthropic/claude-haiku-5.5": {
+     "only": [
+      "google-vertex"
+     ],
+     "quantizations": [
+      "int8",
+      "fp8",
+      "mxfp8",
+      "fp16",
+      "bf16",
+      "fp32",
+      "unknown"
+     ],
+     "strict": true,
+     "temperature": null
+    }
+   },
+   "imports": [
+    {
+     "id": "acme-payments",
+     "proposals": 32,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 7226,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:5",
+        "CLAUDE.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-test"
+      },
+      {
+       "members": [
+        "AGENTS.md:8",
+        "CLAUDE.md:8"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-node"
+      },
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:18"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-deploy"
+      },
+      {
+       "members": [
+        "AGENTS.md:11",
+        "CLAUDE.md:21"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-webhooks"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:15"
+       ],
+       "confidence": 0.6,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-amounts"
+      }
+     ],
+     "found": {
+      "acme-amounts": true,
+      "acme-deploy": true,
+      "acme-node": true,
+      "acme-test": true,
+      "acme-webhooks": true
+     },
+     "sprung": {
+      "acme-any": false,
+      "acme-error-codes": false,
+      "acme-migrations": false,
+      "acme-page-size": false
+     }
+    },
+    {
+     "id": "ledgerline",
+     "proposals": 38,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 7972,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-go"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-lint"
+      },
+      {
+       "members": [
+        "AGENTS.md:19",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-errors"
+      },
+      {
+       "members": [
+        "AGENTS.md:15",
+        "CLAUDE.md:12",
+        ".windsurf/rules/go.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-logging"
+      },
+      {
+       "members": [
+        "CLAUDE.md:11",
+        ".windsurf/rules/go.md:3"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-wrapping"
+      }
+     ],
+     "found": {
+      "ledger-errors": true,
+      "ledger-go": true,
+      "ledger-lint": true,
+      "ledger-logging": true,
+      "ledger-wrapping": true
+     },
+     "sprung": {
+      "ledger-init": false,
+      "ledger-limits": false,
+      "ledger-postgres": false,
+      "ledger-sqlc": false,
+      "ledger-tools": false
+     }
+    },
+    {
+     "id": "orbit",
+     "proposals": 142,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 19611,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:17",
+        ".github/copilot-instructions.md:3",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-package-manager"
+      },
+      {
+       "members": [
+        "AGENTS.md:16",
+        "GEMINI.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-node"
+      },
+      {
+       "members": [
+        "AGENTS.md:29",
+        ".cursor/rules/tests.mdc:7"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-test-framework"
+      },
+      {
+       "members": [
+        "AGENTS.md:27",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-lint"
+      },
+      {
+       "members": [
+        "AGENTS.md:69",
+        ".github/instructions/mobile.instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-mobile-build"
+      },
+      {
+       "members": [
+        "AGENTS.md:49",
+        ".claude/rules/api.md:9"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-pagination"
+      },
+      {
+       "members": [
+        ".claude/rules/api.md:8",
+        "GEMINI.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-errors"
+      },
+      {
+       "members": [
+        ".cursor/rules/web.mdc:6",
+        ".github/copilot-instructions.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-component-files"
+      },
+      {
+       "members": [
+        "AGENTS.md:82",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-deploy"
+      },
+      {
+       "members": [
+        "CLAUDE.md:26",
+        "GEMINI.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-v1-removal"
+      },
+      {
+       "members": [
+        "AGENTS.md:31",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-coverage"
+      }
+     ],
+     "found": {
+      "orbit-component-files": true,
+      "orbit-coverage": true,
+      "orbit-deploy": true,
+      "orbit-errors": true,
+      "orbit-lint": true,
+      "orbit-mobile-build": true,
+      "orbit-node": true,
+      "orbit-package-manager": true,
+      "orbit-pagination": true,
+      "orbit-test-framework": true,
+      "orbit-v1-removal": true
+     },
+     "sprung": {
+      "orbit-any": false,
+      "orbit-changesets": false,
+      "orbit-dates": false,
+      "orbit-default-exports": false,
+      "orbit-dev-mobile": false,
+      "orbit-editing": false,
+      "orbit-generated": false,
+      "orbit-mobile-jest": false,
+      "orbit-openapi": false,
+      "orbit-release-day": false,
+      "orbit-secrets": false,
+      "orbit-server-components": false,
+      "orbit-sizes": false,
+      "orbit-typescript": false,
+      "orbit-ui": false
+     }
+    },
+    {
+     "id": "atlas",
+     "proposals": 215,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 23754,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:62",
+        ".claude/rules/ml.md:7",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-ml-python"
+      },
+      {
+       "members": [
+        "AGENTS.md:27",
+        "AGENTS.md:28",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-proto"
+      },
+      {
+       "members": [
+        "AGENTS.md:50",
+        ".cursor/rules/frontend.mdc:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-web-lint"
+      },
+      {
+       "members": [
+        ".cursor/rules/frontend.mdc:7",
+        "GEMINI.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-component-tests"
+      },
+      {
+       "members": [
+        "CLAUDE.md:32",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-web-release"
+      },
+      {
+       "members": [
+        "AGENTS.md:86",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-branches"
+      },
+      {
+       "members": [
+        "AGENTS.md:35",
+        "CLAUDE.md:19"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-latency"
+      },
+      {
+       "members": [
+        "AGENTS.md:44",
+        "GEMINI.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-errors"
+      },
+      {
+       "members": [
+        "AGENTS.md:78",
+        ".github/instructions/terraform.instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-tf-state"
+      },
+      {
+       "members": [
+        "AGENTS.md:18",
+        ".claude/rules/go.md:7"
+       ],
+       "confidence": 0.45,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-go-version"
+      }
+     ],
+     "found": {
+      "atlas-branches": true,
+      "atlas-component-tests": true,
+      "atlas-errors": true,
+      "atlas-go-version": true,
+      "atlas-latency": true,
+      "atlas-ml-python": true,
+      "atlas-proto": true,
+      "atlas-tf-state": true,
+      "atlas-web-lint": true,
+      "atlas-web-release": true
+     },
+     "sprung": {
+      "atlas-ctx": false,
+      "atlas-gateway-rest": false,
+      "atlas-go-tests": false,
+      "atlas-monolith": false,
+      "atlas-owners": false,
+      "atlas-pii": false,
+      "atlas-pnpm": false,
+      "atlas-postgres": false,
+      "atlas-python-tools": false,
+      "atlas-timeouts": false
+     }
+    },
+    {
+     "id": "pyflow",
+     "proposals": 35,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 6327,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:8",
+        "CLAUDE.md:5",
+        ".cursorrules:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-packages"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-tests"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        "CLAUDE.md:9"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-image"
+      },
+      {
+       "members": [
+        "AGENTS.md:7",
+        ".cursorrules:3"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-version"
+      },
+      {
+       "members": [
+        "AGENTS.md:14",
+        ".windsurf/rules/style.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-line-length"
+      },
+      {
+       "members": [
+        "CLAUDE.md:7",
+        ".windsurf/rules/style.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-formatter"
+      },
+      {
+       "members": [
+        "CLAUDE.md:13",
+        ".cursorrules:5"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-docstrings"
+      }
+     ],
+     "found": {
+      "py-docstrings": true,
+      "py-formatter": true,
+      "py-image": true,
+      "py-line-length": true,
+      "py-packages": true,
+      "py-tests": true,
+      "py-version": true
+     },
+     "sprung": {
+      "py-39": false,
+      "py-defaults": false,
+      "py-mypy": false,
+      "py-polars": false,
+      "py-retries": false
+     }
+    },
+    {
+     "id": "trailhead",
+     "proposals": 30,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 6374,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-ruby"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-tests"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".devin/rules/jobs.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-jobs"
+      },
+      {
+       "members": [
+        "AGENTS.md:22",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-freeze"
+      },
+      {
+       "members": [
+        "CLAUDE.md:6",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-deploy"
+      }
+     ],
+     "found": {
+      "trail-deploy": true,
+      "trail-freeze": true,
+      "trail-jobs": true,
+      "trail-ruby": true,
+      "trail-tests": true
+     },
+     "sprung": {
+      "trail-admin": false,
+      "trail-controllers": false,
+      "trail-pages": false,
+      "trail-postgres": false,
+      "trail-rubocop": false
+     }
+    },
+    {
+     "id": "ferrous",
+     "proposals": 22,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 7184,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-msrv"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-clippy"
+      },
+      {
+       "members": [
+        "CLAUDE.md:5",
+        ".cursor/rules/rust.mdc:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-args"
+      }
+     ],
+     "found": {
+      "ferrous-args": true,
+      "ferrous-clippy": true,
+      "ferrous-msrv": true,
+      "ferrous-unwrap": false
+     },
+     "sprung": {
+      "ferrous-edition": false,
+      "ferrous-errors": false,
+      "ferrous-fmt": false
+     }
+    },
+    {
+     "id": "zz-personal",
+     "proposals": 35,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 12974,
+     "groups": [
+      {
+       "members": [
+        "CLAUDE.local.md:3",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-e2e"
+      },
+      {
+       "members": [
+        "~/.claude/projects/\u2026/memory/MEMORY.md:5",
+        "~/.codex/memories/notes.md:1"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-leave"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:5",
+        "~/.codex/AGENTS.md:4",
+        "~/.gemini/GEMINI.md:2"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-quotes"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:6",
+        "~/.codex/AGENTS.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-wrap"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:4",
+        "~/.codex/AGENTS.md:3"
+       ],
+       "confidence": 0.7,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-js-tool"
+      }
+     ],
+     "found": {
+      "zz-code-first": false,
+      "zz-e2e": true,
+      "zz-js-tool": true,
+      "zz-leave": true,
+      "zz-quotes": true,
+      "zz-spelling": false,
+      "zz-wrap": true
+     },
+     "sprung": {
+      "zz-comments": false,
+      "zz-diffs": false,
+      "zz-kotlin": false,
+      "zz-macos": false,
+      "zz-suite-time": false,
+      "zz-tenure": false
+     }
+    }
+   ],
+   "sweep": [
+    {
+     "bar": 0,
+     "bystanders": 425,
+     "classes": {
+      "exact": 51
+     },
+     "found": 51,
+     "groups": 51,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.9444444444444444,
+     "sprung": 0,
+     "traps": 53
+    },
+    {
+     "bar": 0.5,
+     "bystanders": 425,
+     "classes": {
+      "exact": 50
+     },
+     "found": 50,
+     "groups": 50,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.9259259259259259,
+     "sprung": 0,
+     "traps": 53
+    },
+    {
+     "bar": 0.6,
+     "bystanders": 425,
+     "classes": {
+      "exact": 50
+     },
+     "found": 50,
+     "groups": 50,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.9259259259259259,
+     "sprung": 0,
+     "traps": 53
+    },
+    {
+     "bar": 0.7,
+     "bystanders": 425,
+     "classes": {
+      "exact": 49
+     },
+     "found": 49,
+     "groups": 49,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.9074074074074074,
+     "sprung": 0,
+     "traps": 53
+    },
+    {
+     "bar": 0.75,
+     "bystanders": 425,
+     "classes": {
+      "exact": 48
+     },
+     "found": 48,
+     "groups": 48,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.8888888888888888,
+     "sprung": 0,
+     "traps": 53
+    },
+    {
+     "bar": 0.8,
+     "bystanders": 425,
+     "classes": {
+      "exact": 48
+     },
+     "found": 48,
+     "groups": 48,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.8888888888888888,
+     "sprung": 0,
+     "traps": 53
+    },
+    {
+     "bar": 0.85,
+     "bystanders": 425,
+     "classes": {
+      "exact": 41
+     },
+     "found": 41,
+     "groups": 41,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.7592592592592593,
+     "sprung": 0,
+     "traps": 53
+    },
+    {
+     "bar": 0.9,
+     "bystanders": 425,
+     "classes": {
+      "exact": 30
+     },
+     "found": 30,
+     "groups": 30,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.5555555555555556,
+     "sprung": 0,
+     "traps": 53
+    },
+    {
+     "bar": 0.95,
+     "bystanders": 425,
+     "classes": {
+      "exact": 4
+     },
+     "found": 4,
+     "groups": 4,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.07407407407407407,
+     "sprung": 0,
+     "traps": 53
+    }
+   ],
+   "name": "medium-1",
+   "thinking": "medium",
+   "model": "anthropic/claude-haiku-5.5"
+  },
+  {
+   "run": "fallback",
+   "date": "2026-10-11T11:57:35Z",
+   "set": "batches.json",
+   "batch_size": 500,
+   "bar": 0.8,
+   "routing": {
+    "anthropic/claude-haiku-5.5": {
+     "only": [
+      "google-vertex"
+     ],
+     "quantizations": [
+      "int8",
+      "fp8",
+      "mxfp8",
+      "fp16",
+      "bf16",
+      "fp32",
+      "unknown"
+     ],
+     "strict": true,
+     "temperature": null
+    }
+   },
+   "imports": [
+    {
+     "id": "acme-payments",
+     "proposals": 32,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 3695,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:5",
+        "CLAUDE.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-test"
+      },
+      {
+       "members": [
+        "AGENTS.md:8",
+        "CLAUDE.md:8"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-node"
+      },
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:18"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-deploy"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:15"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-amounts"
+      },
+      {
+       "members": [
+        "AGENTS.md:11",
+        "CLAUDE.md:21"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-webhooks"
+      },
+      {
+       "members": [
+        "AGENTS.md:14",
+        "CLAUDE.md:22"
+       ],
+       "confidence": 0.45,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:6",
+        "CLAUDE.md:13"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:17",
+        ".cursor/rules/testing.mdc:9"
+       ],
+       "confidence": 0.85,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        ".cursor/rules/testing.mdc:10",
+        ".cursor/rules/testing.mdc:11"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:26",
+        "CLAUDE.md:16"
+       ],
+       "confidence": 0.1,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "acme-amounts": true,
+      "acme-deploy": true,
+      "acme-node": true,
+      "acme-test": true,
+      "acme-webhooks": true
+     },
+     "sprung": {
+      "acme-any": true,
+      "acme-error-codes": true,
+      "acme-migrations": false,
+      "acme-page-size": true
+     }
+    },
+    {
+     "id": "ledgerline",
+     "proposals": 38,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 6940,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-go"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-lint"
+      },
+      {
+       "members": [
+        "AGENTS.md:15",
+        "CLAUDE.md:12",
+        ".windsurf/rules/go.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-logging"
+      },
+      {
+       "members": [
+        "AGENTS.md:19",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-errors"
+      },
+      {
+       "members": [
+        "CLAUDE.md:11",
+        ".windsurf/rules/go.md:3"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-wrapping"
+      }
+     ],
+     "found": {
+      "ledger-errors": true,
+      "ledger-go": true,
+      "ledger-lint": true,
+      "ledger-logging": true,
+      "ledger-wrapping": true
+     },
+     "sprung": {
+      "ledger-init": false,
+      "ledger-limits": false,
+      "ledger-postgres": false,
+      "ledger-sqlc": false,
+      "ledger-tools": false
+     }
+    },
+    {
+     "id": "orbit",
+     "proposals": 142,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 9710,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:17",
+        ".github/copilot-instructions.md:3",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-package-manager"
+      },
+      {
+       "members": [
+        "AGENTS.md:16",
+        "GEMINI.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-node"
+      },
+      {
+       "members": [
+        "AGENTS.md:29",
+        ".cursor/rules/tests.mdc:7",
+        "AGENTS.md:70"
+       ],
+       "confidence": 0.85,
+       "class": "extra",
+       "credit": 0.6666666666666666,
+       "conflict": "orbit-test-framework"
+      },
+      {
+       "members": [
+        "AGENTS.md:27",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-lint"
+      },
+      {
+       "members": [
+        "AGENTS.md:21",
+        "CLAUDE.md:5"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:49",
+        ".claude/rules/api.md:9"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-pagination"
+      },
+      {
+       "members": [
+        ".claude/rules/api.md:8",
+        "GEMINI.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-errors"
+      },
+      {
+       "members": [
+        "AGENTS.md:38",
+        ".cursor/rules/web.mdc:8"
+       ],
+       "confidence": 0.85,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        ".cursor/rules/web.mdc:6",
+        ".github/copilot-instructions.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-component-files"
+      },
+      {
+       "members": [
+        "AGENTS.md:82",
+        ".github/copilot-instructions.md:4",
+        ".github/copilot-instructions.md:9",
+        "GEMINI.md:7"
+       ],
+       "confidence": 0.85,
+       "class": "extra",
+       "credit": 0.5,
+       "conflict": "orbit-deploy"
+      },
+      {
+       "members": [
+        "AGENTS.md:69",
+        ".github/instructions/mobile.instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-mobile-build"
+      },
+      {
+       "members": [
+        "AGENTS.md:39",
+        ".cursor/rules/tests.mdc:12"
+       ],
+       "confidence": 0.7,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:31",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-coverage"
+      },
+      {
+       "members": [
+        ".github/copilot-instructions.md:15",
+        ".cursor/rules/web.mdc:10"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:27",
+        ".github/instructions/mobile.instructions.md:8"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "GEMINI.md:13",
+        "AGENTS.md:78"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:19",
+        ".github/copilot-instructions.md:12"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:26",
+        "GEMINI.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-v1-removal"
+      }
+     ],
+     "found": {
+      "orbit-component-files": true,
+      "orbit-coverage": true,
+      "orbit-deploy": true,
+      "orbit-errors": true,
+      "orbit-lint": true,
+      "orbit-mobile-build": true,
+      "orbit-node": true,
+      "orbit-package-manager": true,
+      "orbit-pagination": true,
+      "orbit-test-framework": true,
+      "orbit-v1-removal": true
+     },
+     "sprung": {
+      "orbit-any": true,
+      "orbit-changesets": false,
+      "orbit-dates": true,
+      "orbit-default-exports": true,
+      "orbit-dev-mobile": false,
+      "orbit-editing": false,
+      "orbit-generated": false,
+      "orbit-mobile-jest": true,
+      "orbit-openapi": false,
+      "orbit-release-day": true,
+      "orbit-secrets": false,
+      "orbit-server-components": false,
+      "orbit-sizes": false,
+      "orbit-typescript": false,
+      "orbit-ui": false
+     }
+    },
+    {
+     "id": "atlas",
+     "proposals": 215,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 10107,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:18",
+        ".claude/rules/go.md:7"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-go-version"
+      },
+      {
+       "members": [
+        "AGENTS.md:62",
+        ".claude/rules/ml.md:7",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-ml-python"
+      },
+      {
+       "members": [
+        "AGENTS.md:63",
+        "AGENTS.md:72"
+       ],
+       "confidence": 0.4,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:50",
+        ".cursor/rules/frontend.mdc:6"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-web-lint"
+      },
+      {
+       "members": [
+        ".cursor/rules/frontend.mdc:7",
+        "GEMINI.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-component-tests"
+      },
+      {
+       "members": [
+        "CLAUDE.md:32",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-web-release"
+      },
+      {
+       "members": [
+        "AGENTS.md:27",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-proto"
+      },
+      {
+       "members": [
+        "GEMINI.md:7",
+        "AGENTS.md:8"
+       ],
+       "confidence": 0.5,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:44",
+        "GEMINI.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-errors"
+      },
+      {
+       "members": [
+        "AGENTS.md:35",
+        "CLAUDE.md:19"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-latency"
+      },
+      {
+       "members": [
+        "CLAUDE.md:21",
+        ".claude/rules/go.md:12"
+       ],
+       "confidence": 0.25,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:78",
+        ".github/instructions/terraform.instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-tf-state"
+      },
+      {
+       "members": [
+        "AGENTS.md:81",
+        ".github/instructions/terraform.instructions.md:6"
+       ],
+       "confidence": 0.4,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:86",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-branches"
+      },
+      {
+       "members": [
+        "AGENTS.md:87",
+        "CLAUDE.md:33"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:102",
+        "CLAUDE.md:36",
+        ".github/copilot-instructions.md:6"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:132",
+        "AGENTS.md:124"
+       ],
+       "confidence": 0.05,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:118",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:30",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.25,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:56",
+        "AGENTS.md:114"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:146",
+        "AGENTS.md:147"
+       ],
+       "confidence": 0.1,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        ".github/instructions/terraform.instructions.md:7",
+        "AGENTS.md:129"
+       ],
+       "confidence": 0.1,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "GEMINI.md:10",
+        "AGENTS.md:80"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:38",
+        "CLAUDE.md:63"
+       ],
+       "confidence": 0.1,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:33",
+        "CLAUDE.md:9"
+       ],
+       "confidence": 0.1,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:14",
+        ".claude/rules/go.md:10"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "atlas-branches": true,
+      "atlas-component-tests": true,
+      "atlas-errors": true,
+      "atlas-go-version": true,
+      "atlas-latency": true,
+      "atlas-ml-python": true,
+      "atlas-proto": true,
+      "atlas-tf-state": true,
+      "atlas-web-lint": true,
+      "atlas-web-release": true
+     },
+     "sprung": {
+      "atlas-ctx": false,
+      "atlas-gateway-rest": false,
+      "atlas-go-tests": true,
+      "atlas-monolith": false,
+      "atlas-owners": true,
+      "atlas-pii": false,
+      "atlas-pnpm": false,
+      "atlas-postgres": true,
+      "atlas-python-tools": true,
+      "atlas-timeouts": false
+     }
+    },
+    {
+     "id": "pyflow",
+     "proposals": 35,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 6826,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        ".cursorrules:3"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-version"
+      },
+      {
+       "members": [
+        "AGENTS.md:8",
+        "CLAUDE.md:5",
+        ".cursorrules:4"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-packages"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-tests"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        "CLAUDE.md:9"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-image"
+      },
+      {
+       "members": [
+        "CLAUDE.md:7",
+        ".windsurf/rules/style.md:3"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-formatter"
+      },
+      {
+       "members": [
+        "AGENTS.md:14",
+        ".windsurf/rules/style.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-line-length"
+      },
+      {
+       "members": [
+        "CLAUDE.md:13",
+        ".cursorrules:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-docstrings"
+      }
+     ],
+     "found": {
+      "py-docstrings": true,
+      "py-formatter": true,
+      "py-image": true,
+      "py-line-length": true,
+      "py-packages": true,
+      "py-tests": true,
+      "py-version": true
+     },
+     "sprung": {
+      "py-39": false,
+      "py-defaults": false,
+      "py-mypy": false,
+      "py-polars": false,
+      "py-retries": false
+     }
+    },
+    {
+     "id": "trailhead",
+     "proposals": 30,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 5746,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-ruby"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.7,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-tests"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".devin/rules/jobs.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-jobs"
+      },
+      {
+       "members": [
+        "AGENTS.md:22",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-freeze"
+      },
+      {
+       "members": [
+        "CLAUDE.md:6",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-deploy"
+      }
+     ],
+     "found": {
+      "trail-deploy": true,
+      "trail-freeze": true,
+      "trail-jobs": true,
+      "trail-ruby": true,
+      "trail-tests": true
+     },
+     "sprung": {
+      "trail-admin": false,
+      "trail-controllers": false,
+      "trail-pages": false,
+      "trail-postgres": false,
+      "trail-rubocop": false
+     }
+    },
+    {
+     "id": "ferrous",
+     "proposals": 22,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 2438,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-msrv"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.93,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-clippy"
+      },
+      {
+       "members": [
+        "AGENTS.md:11",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:5",
+        ".cursor/rules/rust.mdc:6"
+       ],
+       "confidence": 0.93,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-args"
+      },
+      {
+       "members": [
+        "AGENTS.md:15",
+        ".cursor/rules/rust.mdc:5"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-unwrap"
+      },
+      {
+       "members": [
+        "AGENTS.md:8",
+        ".cursor/rules/rust.mdc:8"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "ferrous-args": true,
+      "ferrous-clippy": true,
+      "ferrous-msrv": true,
+      "ferrous-unwrap": true
+     },
+     "sprung": {
+      "ferrous-edition": true,
+      "ferrous-errors": false,
+      "ferrous-fmt": false
+     }
+    },
+    {
+     "id": "zz-personal",
+     "proposals": 35,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 6783,
+     "groups": [
+      {
+       "members": [
+        "CLAUDE.local.md:3",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:4"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-e2e"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:4",
+        "~/.codex/AGENTS.md:3"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-js-tool"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:5",
+        "~/.codex/AGENTS.md:4",
+        "~/.gemini/GEMINI.md:2"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-quotes"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:6",
+        "~/.codex/AGENTS.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-wrap"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:3",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-spelling"
+      },
+      {
+       "members": [
+        "~/.claude/projects/\u2026/memory/MEMORY.md:5",
+        "~/.codex/memories/notes.md:1"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-leave"
+      }
+     ],
+     "found": {
+      "zz-code-first": false,
+      "zz-e2e": true,
+      "zz-js-tool": true,
+      "zz-leave": true,
+      "zz-quotes": true,
+      "zz-spelling": true,
+      "zz-wrap": true
+     },
+     "sprung": {
+      "zz-comments": false,
+      "zz-diffs": false,
+      "zz-kotlin": false,
+      "zz-macos": false,
+      "zz-suite-time": false,
+      "zz-tenure": false
+     }
+    }
+   ],
+   "sweep": [
+    {
+     "bar": 0,
+     "bystanders": 425,
+     "classes": {
+      "exact": 51,
+      "extra": 2,
+      "false": 30
+     },
+     "found": 53,
+     "groups": 83,
+     "held": 64,
+     "planted": 54,
+     "precision": 0.6285140562248995,
+     "recall": 0.9814814814814815,
+     "sprung": 13,
+     "traps": 53
+    },
+    {
+     "bar": 0.5,
+     "bystanders": 425,
+     "classes": {
+      "exact": 51,
+      "extra": 2,
+      "false": 4
+     },
+     "found": 53,
+     "groups": 57,
+     "held": 11,
+     "planted": 54,
+     "precision": 0.915204678362573,
+     "recall": 0.9814814814814815,
+     "sprung": 5,
+     "traps": 53
+    },
+    {
+     "bar": 0.6,
+     "bystanders": 425,
+     "classes": {
+      "exact": 51,
+      "extra": 2,
+      "false": 3
+     },
+     "found": 53,
+     "groups": 56,
+     "held": 9,
+     "planted": 54,
+     "precision": 0.931547619047619,
+     "recall": 0.9814814814814815,
+     "sprung": 5,
+     "traps": 53
+    },
+    {
+     "bar": 0.7,
+     "bystanders": 425,
+     "classes": {
+      "exact": 51,
+      "extra": 2,
+      "false": 3
+     },
+     "found": 53,
+     "groups": 56,
+     "held": 9,
+     "planted": 54,
+     "precision": 0.931547619047619,
+     "recall": 0.9814814814814815,
+     "sprung": 5,
+     "traps": 53
+    },
+    {
+     "bar": 0.75,
+     "bystanders": 425,
+     "classes": {
+      "exact": 50,
+      "extra": 2,
+      "false": 2
+     },
+     "found": 52,
+     "groups": 54,
+     "held": 7,
+     "planted": 54,
+     "precision": 0.9475308641975309,
+     "recall": 0.9629629629629629,
+     "sprung": 4,
+     "traps": 53
+    },
+    {
+     "bar": 0.8,
+     "bystanders": 425,
+     "classes": {
+      "exact": 50,
+      "extra": 2,
+      "false": 2
+     },
+     "found": 52,
+     "groups": 54,
+     "held": 7,
+     "planted": 54,
+     "precision": 0.9475308641975309,
+     "recall": 0.9629629629629629,
+     "sprung": 4,
+     "traps": 53
+    },
+    {
+     "bar": 0.85,
+     "bystanders": 425,
+     "classes": {
+      "exact": 45,
+      "extra": 2,
+      "false": 2
+     },
+     "found": 47,
+     "groups": 49,
+     "held": 7,
+     "planted": 54,
+     "precision": 0.9421768707482993,
+     "recall": 0.8703703703703703,
+     "sprung": 4,
+     "traps": 53
+    },
+    {
+     "bar": 0.9,
+     "bystanders": 425,
+     "classes": {
+      "exact": 35
+     },
+     "found": 35,
+     "groups": 35,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.6481481481481481,
+     "sprung": 0,
+     "traps": 53
+    },
+    {
+     "bar": 0.95,
+     "bystanders": 425,
+     "classes": {
+      "exact": 2
+     },
+     "found": 2,
+     "groups": 2,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.037037037037037035,
+     "sprung": 0,
+     "traps": 53
+    }
+   ],
+   "name": "low-1",
+   "thinking": "low",
+   "model": "anthropic/claude-haiku-5.5"
+  },
+  {
+   "run": "fallback",
+   "date": "2026-10-11T12:03:24Z",
+   "set": "batches.json",
+   "batch_size": 500,
+   "bar": 0.8,
+   "routing": {
+    "anthropic/claude-haiku-5.5": {
+     "only": [
+      "google-vertex"
+     ],
+     "quantizations": [
+      "int8",
+      "fp8",
+      "mxfp8",
+      "fp16",
+      "bf16",
+      "fp32",
+      "unknown"
+     ],
+     "strict": true,
+     "temperature": null
+    }
+   },
+   "imports": [
+    {
+     "id": "acme-payments",
+     "proposals": 32,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 3392,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:5",
+        "CLAUDE.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-test"
+      },
+      {
+       "members": [
+        "AGENTS.md:8",
+        "CLAUDE.md:8"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-node"
+      },
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:18"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-deploy"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:15"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-amounts"
+      },
+      {
+       "members": [
+        "AGENTS.md:11",
+        "CLAUDE.md:21"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-webhooks"
+      },
+      {
+       "members": [
+        "AGENTS.md:14",
+        "CLAUDE.md:22"
+       ],
+       "confidence": 0.45,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:26",
+        "CLAUDE.md:27"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:17",
+        ".cursor/rules/testing.mdc:9"
+       ],
+       "confidence": 0.6,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:6",
+        "CLAUDE.md:13"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        "CLAUDE.md:14"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "acme-amounts": true,
+      "acme-deploy": true,
+      "acme-node": true,
+      "acme-test": true,
+      "acme-webhooks": true
+     },
+     "sprung": {
+      "acme-any": true,
+      "acme-error-codes": true,
+      "acme-migrations": true,
+      "acme-page-size": true
+     }
+    },
+    {
+     "id": "ledgerline",
+     "proposals": 38,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 5990,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-go"
+      },
+      {
+       "members": [
+        "AGENTS.md:15",
+        "CLAUDE.md:12",
+        ".windsurf/rules/go.md:4"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-logging"
+      },
+      {
+       "members": [
+        "AGENTS.md:19",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-errors"
+      },
+      {
+       "members": [
+        "CLAUDE.md:11",
+        ".windsurf/rules/go.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-wrapping"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-lint"
+      }
+     ],
+     "found": {
+      "ledger-errors": true,
+      "ledger-go": true,
+      "ledger-lint": true,
+      "ledger-logging": true,
+      "ledger-wrapping": true
+     },
+     "sprung": {
+      "ledger-init": false,
+      "ledger-limits": false,
+      "ledger-postgres": false,
+      "ledger-sqlc": false,
+      "ledger-tools": false
+     }
+    },
+    {
+     "id": "orbit",
+     "proposals": 142,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 11939,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:17",
+        ".github/copilot-instructions.md:3",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-package-manager"
+      },
+      {
+       "members": [
+        "AGENTS.md:16",
+        "GEMINI.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-node"
+      },
+      {
+       "members": [
+        "AGENTS.md:29",
+        "AGENTS.md:70",
+        ".cursor/rules/tests.mdc:7"
+       ],
+       "confidence": 0.6,
+       "class": "extra",
+       "credit": 0.6666666666666666,
+       "conflict": "orbit-test-framework"
+      },
+      {
+       "members": [
+        "AGENTS.md:27",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-lint"
+      },
+      {
+       "members": [
+        "AGENTS.md:49",
+        ".claude/rules/api.md:9"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-pagination"
+      },
+      {
+       "members": [
+        ".claude/rules/api.md:8",
+        "GEMINI.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-errors"
+      },
+      {
+       "members": [
+        "AGENTS.md:8",
+        "AGENTS.md:82",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.6,
+       "class": "extra",
+       "credit": 0.6666666666666666,
+       "conflict": "orbit-deploy"
+      },
+      {
+       "members": [
+        ".github/copilot-instructions.md:9",
+        "GEMINI.md:7"
+       ],
+       "confidence": 0.5,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:31",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-coverage"
+      },
+      {
+       "members": [
+        ".cursor/rules/web.mdc:6",
+        ".github/copilot-instructions.md:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-component-files"
+      },
+      {
+       "members": [
+        "AGENTS.md:38",
+        ".cursor/rules/web.mdc:8"
+       ],
+       "confidence": 0.85,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:69",
+        ".github/instructions/mobile.instructions.md:5",
+        ".github/instructions/mobile.instructions.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "extra",
+       "credit": 0.6666666666666666,
+       "conflict": "orbit-mobile-build"
+      },
+      {
+       "members": [
+        "AGENTS.md:21",
+        "CLAUDE.md:5"
+       ],
+       "confidence": 0.5,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:27",
+        ".github/instructions/mobile.instructions.md:8"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        ".cursor/rules/web.mdc:9",
+        ".cursor/rules/web.mdc:11"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:26",
+        "GEMINI.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-v1-removal"
+      },
+      {
+       "members": [
+        ".cursor/rules/tests.mdc:10",
+        ".cursor/rules/tests.mdc:12"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:78",
+        "GEMINI.md:13"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:19",
+        ".github/copilot-instructions.md:12"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:9",
+        ".github/copilot-instructions.md:7"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:59",
+        "CLAUDE.md:15"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "orbit-component-files": true,
+      "orbit-coverage": true,
+      "orbit-deploy": true,
+      "orbit-errors": true,
+      "orbit-lint": true,
+      "orbit-mobile-build": true,
+      "orbit-node": true,
+      "orbit-package-manager": true,
+      "orbit-pagination": true,
+      "orbit-test-framework": true,
+      "orbit-v1-removal": true
+     },
+     "sprung": {
+      "orbit-any": false,
+      "orbit-changesets": true,
+      "orbit-dates": true,
+      "orbit-default-exports": true,
+      "orbit-dev-mobile": false,
+      "orbit-editing": false,
+      "orbit-generated": false,
+      "orbit-mobile-jest": true,
+      "orbit-openapi": false,
+      "orbit-release-day": true,
+      "orbit-secrets": false,
+      "orbit-server-components": false,
+      "orbit-sizes": false,
+      "orbit-typescript": false,
+      "orbit-ui": false
+     }
+    },
+    {
+     "id": "atlas",
+     "proposals": 215,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 10979,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:18",
+        ".claude/rules/go.md:7"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-go-version"
+      },
+      {
+       "members": [
+        "AGENTS.md:62",
+        ".claude/rules/ml.md:7",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-ml-python"
+      },
+      {
+       "members": [
+        "AGENTS.md:63",
+        "AGENTS.md:72"
+       ],
+       "confidence": 0.8,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:50",
+        ".cursor/rules/frontend.mdc:6"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-web-lint"
+      },
+      {
+       "members": [
+        ".cursor/rules/frontend.mdc:7",
+        "GEMINI.md:5"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-component-tests"
+      },
+      {
+       "members": [
+        "AGENTS.md:8",
+        "GEMINI.md:7"
+       ],
+       "confidence": 0.4,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:27",
+        "AGENTS.md:28",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-proto"
+      },
+      {
+       "members": [
+        "AGENTS.md:35",
+        "CLAUDE.md:19"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-latency"
+      },
+      {
+       "members": [
+        "CLAUDE.md:21",
+        ".claude/rules/go.md:12"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:78",
+        ".github/instructions/terraform.instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-tf-state"
+      },
+      {
+       "members": [
+        "CLAUDE.md:32",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-web-release"
+      },
+      {
+       "members": [
+        "AGENTS.md:86",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-branches"
+      },
+      {
+       "members": [
+        "AGENTS.md:102",
+        ".github/copilot-instructions.md:6"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:80",
+        "GEMINI.md:10"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:53",
+        "AGENTS.md:54"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:14",
+        "CLAUDE.md:35"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:88",
+        "CLAUDE.md:37"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:30",
+        "CLAUDE.md:7",
+        "CLAUDE.md:42"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:118",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:19",
+        "CLAUDE.md:5"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:44",
+        "GEMINI.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-errors"
+      },
+      {
+       "members": [
+        ".cursor/rules/frontend.mdc:11",
+        ".github/copilot-instructions.md:17"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "atlas-branches": true,
+      "atlas-component-tests": true,
+      "atlas-errors": true,
+      "atlas-go-version": true,
+      "atlas-latency": true,
+      "atlas-ml-python": true,
+      "atlas-proto": true,
+      "atlas-tf-state": true,
+      "atlas-web-lint": true,
+      "atlas-web-release": true
+     },
+     "sprung": {
+      "atlas-ctx": false,
+      "atlas-gateway-rest": false,
+      "atlas-go-tests": true,
+      "atlas-monolith": false,
+      "atlas-owners": false,
+      "atlas-pii": false,
+      "atlas-pnpm": false,
+      "atlas-postgres": false,
+      "atlas-python-tools": true,
+      "atlas-timeouts": false
+     }
+    },
+    {
+     "id": "pyflow",
+     "proposals": 35,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 6934,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        ".cursorrules:3"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-version"
+      },
+      {
+       "members": [
+        "AGENTS.md:8",
+        "CLAUDE.md:5",
+        ".cursorrules:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-packages"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-tests"
+      },
+      {
+       "members": [
+        "CLAUDE.md:7",
+        ".windsurf/rules/style.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-formatter"
+      },
+      {
+       "members": [
+        "AGENTS.md:14",
+        ".windsurf/rules/style.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-line-length"
+      },
+      {
+       "members": [
+        "CLAUDE.md:13",
+        ".cursorrules:5"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-docstrings"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        "CLAUDE.md:9"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-image"
+      }
+     ],
+     "found": {
+      "py-docstrings": true,
+      "py-formatter": true,
+      "py-image": true,
+      "py-line-length": true,
+      "py-packages": true,
+      "py-tests": true,
+      "py-version": true
+     },
+     "sprung": {
+      "py-39": false,
+      "py-defaults": false,
+      "py-mypy": false,
+      "py-polars": false,
+      "py-retries": false
+     }
+    },
+    {
+     "id": "trailhead",
+     "proposals": 30,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 3035,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:3"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-ruby"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.7,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-tests"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".devin/rules/jobs.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-jobs"
+      },
+      {
+       "members": [
+        "CLAUDE.md:6",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-deploy"
+      },
+      {
+       "members": [
+        "AGENTS.md:22",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-freeze"
+      },
+      {
+       "members": [
+        "AGENTS.md:16",
+        "AGENTS.md:27"
+       ],
+       "confidence": 0.6,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:11",
+        "CLAUDE.md:9"
+       ],
+       "confidence": 0.4,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:5",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "trail-deploy": true,
+      "trail-freeze": true,
+      "trail-jobs": true,
+      "trail-ruby": true,
+      "trail-tests": true
+     },
+     "sprung": {
+      "trail-admin": true,
+      "trail-controllers": false,
+      "trail-pages": true,
+      "trail-postgres": false,
+      "trail-rubocop": true
+     }
+    },
+    {
+     "id": "ferrous",
+     "proposals": 22,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 2261,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-msrv"
+      },
+      {
+       "members": [
+        "CLAUDE.md:5",
+        ".cursor/rules/rust.mdc:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-args"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.93,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-clippy"
+      },
+      {
+       "members": [
+        "AGENTS.md:15",
+        ".cursor/rules/rust.mdc:5"
+       ],
+       "confidence": 0.6,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-unwrap"
+      }
+     ],
+     "found": {
+      "ferrous-args": true,
+      "ferrous-clippy": true,
+      "ferrous-msrv": true,
+      "ferrous-unwrap": true
+     },
+     "sprung": {
+      "ferrous-edition": false,
+      "ferrous-errors": false,
+      "ferrous-fmt": false
+     }
+    },
+    {
+     "id": "zz-personal",
+     "proposals": 35,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 7808,
+     "groups": [
+      {
+       "members": [
+        "CLAUDE.local.md:3",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-e2e"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:4",
+        "~/.codex/AGENTS.md:3"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-js-tool"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:5",
+        "~/.codex/AGENTS.md:4",
+        "~/.gemini/GEMINI.md:2"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-quotes"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:6",
+        "~/.codex/AGENTS.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-wrap"
+      },
+      {
+       "members": [
+        "CLAUDE.local.md:7",
+        "~/.claude/CLAUDE.md:13"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-code-first"
+      },
+      {
+       "members": [
+        "~/.claude/projects/\u2026/memory/MEMORY.md:5",
+        "~/.codex/memories/notes.md:1"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-leave"
+      }
+     ],
+     "found": {
+      "zz-code-first": true,
+      "zz-e2e": true,
+      "zz-js-tool": true,
+      "zz-leave": true,
+      "zz-quotes": true,
+      "zz-spelling": false,
+      "zz-wrap": true
+     },
+     "sprung": {
+      "zz-comments": false,
+      "zz-diffs": false,
+      "zz-kotlin": false,
+      "zz-macos": false,
+      "zz-suite-time": false,
+      "zz-tenure": false
+     }
+    }
+   ],
+   "sweep": [
+    {
+     "bar": 0,
+     "bystanders": 425,
+     "classes": {
+      "exact": 50,
+      "extra": 3,
+      "false": 30
+     },
+     "found": 53,
+     "groups": 83,
+     "held": 64,
+     "planted": 54,
+     "precision": 0.6265060240963856,
+     "recall": 0.9814814814814815,
+     "sprung": 14,
+     "traps": 53
+    },
+    {
+     "bar": 0.5,
+     "bystanders": 425,
+     "classes": {
+      "exact": 50,
+      "extra": 3,
+      "false": 7
+     },
+     "found": 53,
+     "groups": 60,
+     "held": 17,
+     "planted": 54,
+     "precision": 0.8666666666666667,
+     "recall": 0.9814814814814815,
+     "sprung": 7,
+     "traps": 53
+    },
+    {
+     "bar": 0.6,
+     "bystanders": 425,
+     "classes": {
+      "exact": 50,
+      "extra": 3,
+      "false": 5
+     },
+     "found": 53,
+     "groups": 58,
+     "held": 13,
+     "planted": 54,
+     "precision": 0.896551724137931,
+     "recall": 0.9814814814814815,
+     "sprung": 6,
+     "traps": 53
+    },
+    {
+     "bar": 0.7,
+     "bystanders": 425,
+     "classes": {
+      "exact": 49,
+      "extra": 1,
+      "false": 3
+     },
+     "found": 50,
+     "groups": 53,
+     "held": 7,
+     "planted": 54,
+     "precision": 0.9371069182389938,
+     "recall": 0.9259259259259259,
+     "sprung": 3,
+     "traps": 53
+    },
+    {
+     "bar": 0.75,
+     "bystanders": 425,
+     "classes": {
+      "exact": 48,
+      "extra": 1,
+      "false": 3
+     },
+     "found": 49,
+     "groups": 52,
+     "held": 7,
+     "planted": 54,
+     "precision": 0.935897435897436,
+     "recall": 0.9074074074074074,
+     "sprung": 3,
+     "traps": 53
+    },
+    {
+     "bar": 0.8,
+     "bystanders": 425,
+     "classes": {
+      "exact": 48,
+      "extra": 1,
+      "false": 3
+     },
+     "found": 49,
+     "groups": 52,
+     "held": 7,
+     "planted": 54,
+     "precision": 0.935897435897436,
+     "recall": 0.9074074074074074,
+     "sprung": 3,
+     "traps": 53
+    },
+    {
+     "bar": 0.85,
+     "bystanders": 425,
+     "classes": {
+      "exact": 42,
+      "extra": 1,
+      "false": 2
+     },
+     "found": 43,
+     "groups": 45,
+     "held": 5,
+     "planted": 54,
+     "precision": 0.9481481481481483,
+     "recall": 0.7962962962962963,
+     "sprung": 2,
+     "traps": 53
+    },
+    {
+     "bar": 0.9,
+     "bystanders": 425,
+     "classes": {
+      "exact": 29,
+      "extra": 1
+     },
+     "found": 30,
+     "groups": 30,
+     "held": 1,
+     "planted": 54,
+     "precision": 0.9888888888888888,
+     "recall": 0.5555555555555556,
+     "sprung": 0,
+     "traps": 53
+    },
+    {
+     "bar": 0.95,
+     "bystanders": 425,
+     "classes": {
+      "exact": 5
+     },
+     "found": 5,
+     "groups": 5,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.09259259259259259,
+     "sprung": 0,
+     "traps": 53
+    }
+   ],
+   "name": "low-2",
+   "thinking": "low",
+   "model": "anthropic/claude-haiku-5.5"
+  },
+  {
+   "run": "fallback",
+   "date": "2026-10-11T11:58:06Z",
+   "set": "batches.json",
+   "batch_size": 500,
+   "bar": 0.8,
+   "routing": {
+    "anthropic/claude-haiku-5.5": {
+     "only": [
+      "google-vertex"
+     ],
+     "quantizations": [
+      "int8",
+      "fp8",
+      "mxfp8",
+      "fp16",
+      "bf16",
+      "fp32",
+      "unknown"
+     ],
+     "strict": true,
+     "temperature": null
+    }
+   },
+   "imports": [
+    {
+     "id": "acme-payments",
+     "proposals": 32,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 3952,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:5",
+        "CLAUDE.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-test"
+      },
+      {
+       "members": [
+        "AGENTS.md:8",
+        "CLAUDE.md:8"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-node"
+      },
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:18"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-deploy"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:15"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-amounts"
+      },
+      {
+       "members": [
+        "AGENTS.md:11",
+        "CLAUDE.md:21"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-webhooks"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        "CLAUDE.md:14"
+       ],
+       "confidence": 0.35,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:14",
+        "CLAUDE.md:22"
+       ],
+       "confidence": 0.6,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:17",
+        ".cursor/rules/testing.mdc:9"
+       ],
+       "confidence": 0.85,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        ".cursor/rules/testing.mdc:10",
+        ".cursor/rules/testing.mdc:11"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:16",
+        "CLAUDE.md:26"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "acme-amounts": true,
+      "acme-deploy": true,
+      "acme-node": true,
+      "acme-test": true,
+      "acme-webhooks": true
+     },
+     "sprung": {
+      "acme-any": true,
+      "acme-error-codes": false,
+      "acme-migrations": true,
+      "acme-page-size": true
+     }
+    },
+    {
+     "id": "ledgerline",
+     "proposals": 38,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 3689,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-go"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-lint"
+      },
+      {
+       "members": [
+        "AGENTS.md:15",
+        "CLAUDE.md:12",
+        ".windsurf/rules/go.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-logging"
+      },
+      {
+       "members": [
+        "CLAUDE.md:11",
+        ".windsurf/rules/go.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-wrapping"
+      },
+      {
+       "members": [
+        "AGENTS.md:19",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-errors"
+      },
+      {
+       "members": [
+        "CLAUDE.md:13",
+        ".github/copilot-instructions.md:6"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "AGENTS.md:25"
+       ],
+       "confidence": 0.6,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:11",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "ledger-errors": true,
+      "ledger-go": true,
+      "ledger-lint": true,
+      "ledger-logging": true,
+      "ledger-wrapping": true
+     },
+     "sprung": {
+      "ledger-init": true,
+      "ledger-limits": false,
+      "ledger-postgres": true,
+      "ledger-sqlc": false,
+      "ledger-tools": true
+     }
+    },
+    {
+     "id": "orbit",
+     "proposals": 142,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 10888,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:17",
+        ".github/copilot-instructions.md:3",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-package-manager"
+      },
+      {
+       "members": [
+        "AGENTS.md:16",
+        "GEMINI.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-node"
+      },
+      {
+       "members": [
+        "AGENTS.md:29",
+        ".cursor/rules/tests.mdc:7"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-test-framework"
+      },
+      {
+       "members": [
+        "AGENTS.md:27",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-lint"
+      },
+      {
+       "members": [
+        "CLAUDE.md:5",
+        "AGENTS.md:21"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        ".claude/rules/api.md:8",
+        "GEMINI.md:5"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-errors"
+      },
+      {
+       "members": [
+        "AGENTS.md:49",
+        ".claude/rules/api.md:9"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-pagination"
+      },
+      {
+       "members": [
+        ".cursor/rules/web.mdc:6",
+        ".github/copilot-instructions.md:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-component-files"
+      },
+      {
+       "members": [
+        "AGENTS.md:38",
+        ".cursor/rules/web.mdc:8"
+       ],
+       "confidence": 0.8,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:39",
+        ".cursor/rules/tests.mdc:12"
+       ],
+       "confidence": 0.85,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        ".cursor/rules/web.mdc:14",
+        "AGENTS.md:63"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:19",
+        ".github/copilot-instructions.md:12"
+       ],
+       "confidence": 0.05,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:69",
+        ".github/instructions/mobile.instructions.md:5"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-mobile-build"
+      },
+      {
+       "members": [
+        ".github/instructions/mobile.instructions.md:8",
+        "CLAUDE.md:27"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:82",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-deploy"
+      },
+      {
+       "members": [
+        ".github/copilot-instructions.md:9",
+        "GEMINI.md:7",
+        ".github/copilot-instructions.md:7"
+       ],
+       "confidence": 0.4,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:31",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-coverage"
+      },
+      {
+       "members": [
+        "AGENTS.md:78",
+        "GEMINI.md:13"
+       ],
+       "confidence": 0.4,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:26",
+        "GEMINI.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-v1-removal"
+      },
+      {
+       "members": [
+        "AGENTS.md:19",
+        "GEMINI.md:8"
+       ],
+       "confidence": 0.1,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:37",
+        "CLAUDE.md:16"
+       ],
+       "confidence": 0.3,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "orbit-component-files": true,
+      "orbit-coverage": true,
+      "orbit-deploy": true,
+      "orbit-errors": true,
+      "orbit-lint": true,
+      "orbit-mobile-build": true,
+      "orbit-node": true,
+      "orbit-package-manager": true,
+      "orbit-pagination": true,
+      "orbit-test-framework": true,
+      "orbit-v1-removal": true
+     },
+     "sprung": {
+      "orbit-any": true,
+      "orbit-changesets": false,
+      "orbit-dates": true,
+      "orbit-default-exports": true,
+      "orbit-dev-mobile": false,
+      "orbit-editing": false,
+      "orbit-generated": false,
+      "orbit-mobile-jest": false,
+      "orbit-openapi": false,
+      "orbit-release-day": true,
+      "orbit-secrets": false,
+      "orbit-server-components": false,
+      "orbit-sizes": false,
+      "orbit-typescript": true,
+      "orbit-ui": false
+     }
+    },
+    {
+     "id": "atlas",
+     "proposals": 215,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 19503,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:18",
+        ".claude/rules/go.md:7"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-go-version"
+      },
+      {
+       "members": [
+        "AGENTS.md:62",
+        ".claude/rules/ml.md:7",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-ml-python"
+      },
+      {
+       "members": [
+        "AGENTS.md:63",
+        "AGENTS.md:72"
+       ],
+       "confidence": 0.7,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:50",
+        ".cursor/rules/frontend.mdc:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-web-lint"
+      },
+      {
+       "members": [
+        ".cursor/rules/frontend.mdc:7",
+        "GEMINI.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-component-tests"
+      },
+      {
+       "members": [
+        "AGENTS.md:49",
+        ".github/copilot-instructions.md:9"
+       ],
+       "confidence": 0.25,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:78",
+        ".github/instructions/terraform.instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-tf-state"
+      },
+      {
+       "members": [
+        "CLAUDE.md:32",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-web-release"
+      },
+      {
+       "members": [
+        "AGENTS.md:86",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-branches"
+      },
+      {
+       "members": [
+        "AGENTS.md:27",
+        "AGENTS.md:28",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-proto"
+      },
+      {
+       "members": [
+        "GEMINI.md:7",
+        "AGENTS.md:8",
+        "AGENTS.md:26"
+       ],
+       "confidence": 0.6,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:44",
+        "GEMINI.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-errors"
+      },
+      {
+       "members": [
+        "CLAUDE.md:16",
+        ".claude/rules/go.md:10"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:35",
+        "CLAUDE.md:19"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-latency"
+      },
+      {
+       "members": [
+        "AGENTS.md:118",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.25,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:30",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:136",
+        "GEMINI.md:6"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:33",
+        "CLAUDE.md:9"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        ".github/instructions/terraform.instructions.md:7",
+        ".github/instructions/terraform.instructions.md:9"
+       ],
+       "confidence": 0.1,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:80",
+        "GEMINI.md:10"
+       ],
+       "confidence": 0.15,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:52",
+        "CLAUDE.md:26",
+        ".github/copilot-instructions.md:16"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:56",
+        "AGENTS.md:114"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:41",
+        "AGENTS.md:107"
+       ],
+       "confidence": 0.1,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:81",
+        "AGENTS.md:109"
+       ],
+       "confidence": 0.05,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:52",
+        "AGENTS.md:159"
+       ],
+       "confidence": 0.05,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:87",
+        "CLAUDE.md:33"
+       ],
+       "confidence": 0.05,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        ".claude/rules/ml.md:10",
+        "AGENTS.md:65"
+       ],
+       "confidence": 0.05,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:17",
+        ".github/copilot-instructions.md:8"
+       ],
+       "confidence": 0.05,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        ".github/copilot-instructions.md:6",
+        "AGENTS.md:102"
+       ],
+       "confidence": 0.05,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "atlas-branches": true,
+      "atlas-component-tests": true,
+      "atlas-errors": true,
+      "atlas-go-version": true,
+      "atlas-latency": true,
+      "atlas-ml-python": true,
+      "atlas-proto": true,
+      "atlas-tf-state": true,
+      "atlas-web-lint": true,
+      "atlas-web-release": true
+     },
+     "sprung": {
+      "atlas-ctx": false,
+      "atlas-gateway-rest": true,
+      "atlas-go-tests": true,
+      "atlas-monolith": false,
+      "atlas-owners": false,
+      "atlas-pii": false,
+      "atlas-pnpm": true,
+      "atlas-postgres": false,
+      "atlas-python-tools": true,
+      "atlas-timeouts": false
+     }
+    },
+    {
+     "id": "pyflow",
+     "proposals": 35,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 3278,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:14",
+        ".cursorrules:3"
+       ],
+       "confidence": 0.8,
+       "class": "extra",
+       "credit": 0.6666666666666666,
+       "conflict": "py-version"
+      },
+      {
+       "members": [
+        "AGENTS.md:8",
+        "CLAUDE.md:5",
+        ".cursorrules:4"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-packages"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-tests"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        "CLAUDE.md:9"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-image"
+      },
+      {
+       "members": [
+        "CLAUDE.md:7",
+        ".windsurf/rules/style.md:3"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-formatter"
+      },
+      {
+       "members": [
+        "AGENTS.md:14",
+        ".windsurf/rules/style.md:4"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-line-length"
+      },
+      {
+       "members": [
+        "CLAUDE.md:13",
+        ".cursorrules:5"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-docstrings"
+      },
+      {
+       "members": [
+        "AGENTS.md:17",
+        "AGENTS.md:25"
+       ],
+       "confidence": 0.7,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:16",
+        ".windsurf/rules/style.md:5"
+       ],
+       "confidence": 0.4,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "py-docstrings": true,
+      "py-formatter": true,
+      "py-image": true,
+      "py-line-length": true,
+      "py-packages": true,
+      "py-tests": true,
+      "py-version": true
+     },
+     "sprung": {
+      "py-39": true,
+      "py-defaults": true,
+      "py-mypy": false,
+      "py-polars": true,
+      "py-retries": false
+     }
+    },
+    {
+     "id": "trailhead",
+     "proposals": 30,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 4460,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-ruby"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".devin/rules/jobs.md:3"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-jobs"
+      },
+      {
+       "members": [
+        "AGENTS.md:22",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-freeze"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-tests"
+      },
+      {
+       "members": [
+        "CLAUDE.md:6",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-deploy"
+      },
+      {
+       "members": [
+        "AGENTS.md:16",
+        "AGENTS.md:27"
+       ],
+       "confidence": 0.6,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:8",
+        ".devin/rules/jobs.md:4"
+       ],
+       "confidence": 0.4,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:11",
+        "CLAUDE.md:9"
+       ],
+       "confidence": 0.7,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "trail-deploy": true,
+      "trail-freeze": true,
+      "trail-jobs": true,
+      "trail-ruby": true,
+      "trail-tests": true
+     },
+     "sprung": {
+      "trail-admin": true,
+      "trail-controllers": false,
+      "trail-pages": true,
+      "trail-postgres": true,
+      "trail-rubocop": false
+     }
+    },
+    {
+     "id": "ferrous",
+     "proposals": 22,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 2529,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-msrv"
+      },
+      {
+       "members": [
+        "CLAUDE.md:5",
+        ".cursor/rules/rust.mdc:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-args"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-clippy"
+      },
+      {
+       "members": [
+        "AGENTS.md:15",
+        ".cursor/rules/rust.mdc:5"
+       ],
+       "confidence": 0.7,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-unwrap"
+      },
+      {
+       "members": [
+        "AGENTS.md:11",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.35,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "ferrous-args": true,
+      "ferrous-clippy": true,
+      "ferrous-msrv": true,
+      "ferrous-unwrap": true
+     },
+     "sprung": {
+      "ferrous-edition": false,
+      "ferrous-errors": false,
+      "ferrous-fmt": false
+     }
+    },
+    {
+     "id": "zz-personal",
+     "proposals": 35,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 4636,
+     "groups": [
+      {
+       "members": [
+        "CLAUDE.local.md:3",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-e2e"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:4",
+        "~/.codex/AGENTS.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-js-tool"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:5",
+        "~/.codex/AGENTS.md:4",
+        "~/.gemini/GEMINI.md:2"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-quotes"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:3",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-spelling"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:6",
+        "~/.codex/AGENTS.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-wrap"
+      },
+      {
+       "members": [
+        "CLAUDE.local.md:5",
+        "~/.claude/CLAUDE.md:7"
+       ],
+       "confidence": 0.6,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.local.md:7",
+        "~/.claude/CLAUDE.md:13"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-code-first"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:8",
+        "~/.codex/AGENTS.md:6"
+       ],
+       "confidence": 0.45,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "~/.claude/projects/\u2026/memory/MEMORY.md:5",
+        "~/.codex/memories/notes.md:1"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-leave"
+      },
+      {
+       "members": [
+        "~/.claude/projects/\u2026/memory/MEMORY.md:9",
+        "~/.codex/memories/notes.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "zz-code-first": true,
+      "zz-e2e": true,
+      "zz-js-tool": true,
+      "zz-leave": true,
+      "zz-quotes": true,
+      "zz-spelling": true,
+      "zz-wrap": true
+     },
+     "sprung": {
+      "zz-comments": true,
+      "zz-diffs": false,
+      "zz-kotlin": true,
+      "zz-macos": true,
+      "zz-suite-time": false,
+      "zz-tenure": false
+     }
+    }
+   ],
+   "sweep": [
+    {
+     "bar": 0,
+     "bystanders": 425,
+     "classes": {
+      "exact": 53,
+      "extra": 1,
+      "false": 46
+     },
+     "found": 54,
+     "groups": 100,
+     "held": 94,
+     "planted": 54,
+     "precision": 0.5366666666666667,
+     "recall": 1,
+     "sprung": 24,
+     "traps": 53
+    },
+    {
+     "bar": 0.5,
+     "bystanders": 425,
+     "classes": {
+      "exact": 53,
+      "extra": 1,
+      "false": 12
+     },
+     "found": 54,
+     "groups": 66,
+     "held": 24,
+     "planted": 54,
+     "precision": 0.8131313131313131,
+     "recall": 1,
+     "sprung": 13,
+     "traps": 53
+    },
+    {
+     "bar": 0.6,
+     "bystanders": 425,
+     "classes": {
+      "exact": 53,
+      "extra": 1,
+      "false": 12
+     },
+     "found": 54,
+     "groups": 66,
+     "held": 24,
+     "planted": 54,
+     "precision": 0.8131313131313131,
+     "recall": 1,
+     "sprung": 13,
+     "traps": 53
+    },
+    {
+     "bar": 0.7,
+     "bystanders": 425,
+     "classes": {
+      "exact": 53,
+      "extra": 1,
+      "false": 7
+     },
+     "found": 54,
+     "groups": 61,
+     "held": 13,
+     "planted": 54,
+     "precision": 0.8797814207650274,
+     "recall": 1,
+     "sprung": 8,
+     "traps": 53
+    },
+    {
+     "bar": 0.75,
+     "bystanders": 425,
+     "classes": {
+      "exact": 52,
+      "extra": 1,
+      "false": 4
+     },
+     "found": 53,
+     "groups": 57,
+     "held": 7,
+     "planted": 54,
+     "precision": 0.9239766081871346,
+     "recall": 0.9814814814814815,
+     "sprung": 5,
+     "traps": 53
+    },
+    {
+     "bar": 0.8,
+     "bystanders": 425,
+     "classes": {
+      "exact": 52,
+      "extra": 1,
+      "false": 4
+     },
+     "found": 53,
+     "groups": 57,
+     "held": 7,
+     "planted": 54,
+     "precision": 0.9239766081871346,
+     "recall": 0.9814814814814815,
+     "sprung": 5,
+     "traps": 53
+    },
+    {
+     "bar": 0.85,
+     "bystanders": 425,
+     "classes": {
+      "exact": 52,
+      "false": 3
+     },
+     "found": 52,
+     "groups": 55,
+     "held": 4,
+     "planted": 54,
+     "precision": 0.9454545454545454,
+     "recall": 0.9629629629629629,
+     "sprung": 3,
+     "traps": 53
+    },
+    {
+     "bar": 0.9,
+     "bystanders": 425,
+     "classes": {
+      "exact": 43
+     },
+     "found": 43,
+     "groups": 43,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.7962962962962963,
+     "sprung": 0,
+     "traps": 53
+    },
+    {
+     "bar": 0.95,
+     "bystanders": 425,
+     "classes": {
+      "exact": 9
+     },
+     "found": 9,
+     "groups": 9,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.16666666666666666,
+     "sprung": 0,
+     "traps": 53
+    }
+   ],
+   "name": "off-1",
+   "thinking": "off",
+   "model": "anthropic/claude-haiku-5.5"
+  },
+  {
+   "run": "fallback",
+   "date": "2026-10-11T11:58:47Z",
+   "set": "batches.json",
+   "batch_size": 500,
+   "bar": 0.8,
+   "routing": {
+    "anthropic/claude-haiku-4.5": {
+     "only": [
+      "amazon-bedrock",
+      "google-vertex"
+     ],
+     "quantizations": [
+      "int8",
+      "fp8",
+      "mxfp8",
+      "fp16",
+      "bf16",
+      "fp32",
+      "unknown"
+     ],
+     "strict": true,
+     "temperature": 0
+    }
+   },
+   "imports": [
+    {
+     "id": "acme-payments",
+     "proposals": 32,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 6581,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:5",
+        "CLAUDE.md:5"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-test"
+      },
+      {
+       "members": [
+        "AGENTS.md:8",
+        "CLAUDE.md:8"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-node"
+      },
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:18"
+       ],
+       "confidence": 0.93,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-deploy"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:15"
+       ],
+       "confidence": 0.88,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-amounts"
+      },
+      {
+       "members": [
+        "AGENTS.md:11",
+        "CLAUDE.md:21"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "acme-webhooks"
+      },
+      {
+       "members": [
+        "CLAUDE.md:17",
+        ".cursor/rules/testing.mdc:9"
+       ],
+       "confidence": 0.85,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "acme-amounts": true,
+      "acme-deploy": true,
+      "acme-node": true,
+      "acme-test": true,
+      "acme-webhooks": true
+     },
+     "sprung": {
+      "acme-any": true,
+      "acme-error-codes": false,
+      "acme-migrations": false,
+      "acme-page-size": false
+     }
+    },
+    {
+     "id": "ledgerline",
+     "proposals": 38,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 4649,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:15",
+        "CLAUDE.md:12",
+        ".windsurf/rules/go.md:4"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-logging"
+      },
+      {
+       "members": [
+        "CLAUDE.md:11",
+        ".windsurf/rules/go.md:3"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-wrapping"
+      },
+      {
+       "members": [
+        "AGENTS.md:19",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-errors"
+      },
+      {
+       "members": [
+        "AGENTS.md:7",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.88,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-go"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ledger-lint"
+      },
+      {
+       "members": [
+        "CLAUDE.md:13",
+        ".github/copilot-instructions.md:6"
+       ],
+       "confidence": 0.15,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "ledger-errors": true,
+      "ledger-go": true,
+      "ledger-lint": true,
+      "ledger-logging": true,
+      "ledger-wrapping": true
+     },
+     "sprung": {
+      "ledger-init": true,
+      "ledger-limits": false,
+      "ledger-postgres": false,
+      "ledger-sqlc": false,
+      "ledger-tools": false
+     }
+    },
+    {
+     "id": "orbit",
+     "proposals": 142,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 6679,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:17",
+        ".github/copilot-instructions.md:3",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-package-manager"
+      },
+      {
+       "members": [
+        "AGENTS.md:16",
+        "GEMINI.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-node"
+      },
+      {
+       "members": [
+        "AGENTS.md:27",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-lint"
+      },
+      {
+       "members": [
+        "AGENTS.md:49",
+        ".claude/rules/api.md:9"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-pagination"
+      },
+      {
+       "members": [
+        ".claude/rules/api.md:8",
+        "GEMINI.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-errors"
+      },
+      {
+       "members": [
+        "AGENTS.md:69",
+        ".github/instructions/mobile.instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-mobile-build"
+      },
+      {
+       "members": [
+        "AGENTS.md:70",
+        ".cursor/rules/tests.mdc:7"
+       ],
+       "confidence": 0.85,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        ".cursor/rules/web.mdc:6",
+        ".github/copilot-instructions.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-component-files"
+      },
+      {
+       "members": [
+        "CLAUDE.md:26",
+        "GEMINI.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-v1-removal"
+      },
+      {
+       "members": [
+        "AGENTS.md:31",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "orbit-coverage"
+      },
+      {
+       "members": [
+        ".github/copilot-instructions.md:9",
+        "GEMINI.md:7"
+       ],
+       "confidence": 0.85,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "orbit-component-files": true,
+      "orbit-coverage": true,
+      "orbit-deploy": false,
+      "orbit-errors": true,
+      "orbit-lint": true,
+      "orbit-mobile-build": true,
+      "orbit-node": true,
+      "orbit-package-manager": true,
+      "orbit-pagination": true,
+      "orbit-test-framework": false,
+      "orbit-v1-removal": true
+     },
+     "sprung": {
+      "orbit-any": false,
+      "orbit-changesets": false,
+      "orbit-dates": false,
+      "orbit-default-exports": false,
+      "orbit-dev-mobile": false,
+      "orbit-editing": false,
+      "orbit-generated": false,
+      "orbit-mobile-jest": false,
+      "orbit-openapi": false,
+      "orbit-release-day": true,
+      "orbit-secrets": false,
+      "orbit-server-components": false,
+      "orbit-sizes": false,
+      "orbit-typescript": false,
+      "orbit-ui": false
+     }
+    },
+    {
+     "id": "atlas",
+     "proposals": 215,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 6515,
+     "groups": [
+      {
+       "members": [
+        ".claude/rules/go.md:7",
+        "AGENTS.md:18"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-go-version"
+      },
+      {
+       "members": [
+        "AGENTS.md:62",
+        ".claude/rules/ml.md:7",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-ml-python"
+      },
+      {
+       "members": [
+        "AGENTS.md:27",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-proto"
+      },
+      {
+       "members": [
+        "AGENTS.md:50",
+        ".cursor/rules/frontend.mdc:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-web-lint"
+      },
+      {
+       "members": [
+        ".cursor/rules/frontend.mdc:7",
+        "GEMINI.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-component-tests"
+      },
+      {
+       "members": [
+        "CLAUDE.md:32",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-web-release"
+      },
+      {
+       "members": [
+        "AGENTS.md:86",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-branches"
+      },
+      {
+       "members": [
+        "AGENTS.md:44",
+        "GEMINI.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-errors"
+      },
+      {
+       "members": [
+        "AGENTS.md:78",
+        ".github/instructions/terraform.instructions.md:5"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-tf-state"
+      },
+      {
+       "members": [
+        "AGENTS.md:35",
+        "CLAUDE.md:19"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "atlas-latency"
+      }
+     ],
+     "found": {
+      "atlas-branches": true,
+      "atlas-component-tests": true,
+      "atlas-errors": true,
+      "atlas-go-version": true,
+      "atlas-latency": true,
+      "atlas-ml-python": true,
+      "atlas-proto": true,
+      "atlas-tf-state": true,
+      "atlas-web-lint": true,
+      "atlas-web-release": true
+     },
+     "sprung": {
+      "atlas-ctx": false,
+      "atlas-gateway-rest": false,
+      "atlas-go-tests": false,
+      "atlas-monolith": false,
+      "atlas-owners": false,
+      "atlas-pii": false,
+      "atlas-pnpm": false,
+      "atlas-postgres": false,
+      "atlas-python-tools": false,
+      "atlas-timeouts": false
+     }
+    },
+    {
+     "id": "pyflow",
+     "proposals": 35,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 5154,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:8",
+        "CLAUDE.md:5",
+        ".cursorrules:4"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-packages"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-tests"
+      },
+      {
+       "members": [
+        "CLAUDE.md:7",
+        ".windsurf/rules/style.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-formatter"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        "CLAUDE.md:9"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-image"
+      },
+      {
+       "members": [
+        "AGENTS.md:14",
+        ".windsurf/rules/style.md:4"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-line-length"
+      },
+      {
+       "members": [
+        "AGENTS.md:7",
+        ".cursorrules:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-version"
+      },
+      {
+       "members": [
+        "CLAUDE.md:13",
+        ".cursorrules:5"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "py-docstrings"
+      },
+      {
+       "members": [
+        "AGENTS.md:17",
+        "AGENTS.md:25"
+       ],
+       "confidence": 0.65,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "py-docstrings": true,
+      "py-formatter": true,
+      "py-image": true,
+      "py-line-length": true,
+      "py-packages": true,
+      "py-tests": true,
+      "py-version": true
+     },
+     "sprung": {
+      "py-39": false,
+      "py-defaults": false,
+      "py-mypy": false,
+      "py-polars": true,
+      "py-retries": false
+     }
+    },
+    {
+     "id": "trailhead",
+     "proposals": 30,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 7394,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-ruby"
+      },
+      {
+       "members": [
+        "AGENTS.md:22",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-freeze"
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-tests"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".devin/rules/jobs.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-jobs"
+      },
+      {
+       "members": [
+        "CLAUDE.md:6",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "trail-deploy"
+      },
+      {
+       "members": [
+        "AGENTS.md:11",
+        "CLAUDE.md:9"
+       ],
+       "confidence": 0.85,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:16",
+        "AGENTS.md:27"
+       ],
+       "confidence": 0.75,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "trail-deploy": true,
+      "trail-freeze": true,
+      "trail-jobs": true,
+      "trail-ruby": true,
+      "trail-tests": true
+     },
+     "sprung": {
+      "trail-admin": true,
+      "trail-controllers": false,
+      "trail-pages": true,
+      "trail-postgres": false,
+      "trail-rubocop": false
+     }
+    },
+    {
+     "id": "ferrous",
+     "proposals": 22,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 4158,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:7",
+        "CLAUDE.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-msrv"
+      },
+      {
+       "members": [
+        "AGENTS.md:16",
+        "CLAUDE.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-clippy"
+      },
+      {
+       "members": [
+        "CLAUDE.md:5",
+        ".cursor/rules/rust.mdc:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-args"
+      },
+      {
+       "members": [
+        "AGENTS.md:15",
+        ".cursor/rules/rust.mdc:5"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "ferrous-unwrap"
+      }
+     ],
+     "found": {
+      "ferrous-args": true,
+      "ferrous-clippy": true,
+      "ferrous-msrv": true,
+      "ferrous-unwrap": true
+     },
+     "sprung": {
+      "ferrous-edition": false,
+      "ferrous-errors": true,
+      "ferrous-fmt": false
+     }
+    },
+    {
+     "id": "zz-personal",
+     "proposals": 35,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 7915,
+     "groups": [
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:4",
+        "~/.codex/AGENTS.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-js-tool"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:5",
+        "~/.codex/AGENTS.md:4",
+        "~/.gemini/GEMINI.md:2"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-quotes"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:6",
+        "~/.codex/AGENTS.md:5"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-wrap"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:8",
+        "~/.codex/AGENTS.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.local.md:7",
+        "~/.claude/CLAUDE.md:13"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-code-first"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:3",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-spelling"
+      },
+      {
+       "members": [
+        "CLAUDE.local.md:3",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:4"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-e2e"
+      },
+      {
+       "members": [
+        "~/.claude/projects/\u2026/memory/MEMORY.md:9",
+        "~/.codex/memories/notes.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "~/.claude/projects/\u2026/memory/MEMORY.md:5",
+        "~/.codex/memories/notes.md:1"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "zz-leave"
+      }
+     ],
+     "found": {
+      "zz-code-first": true,
+      "zz-e2e": true,
+      "zz-js-tool": true,
+      "zz-leave": true,
+      "zz-quotes": true,
+      "zz-spelling": true,
+      "zz-wrap": true
+     },
+     "sprung": {
+      "zz-comments": true,
+      "zz-diffs": false,
+      "zz-kotlin": false,
+      "zz-macos": true,
+      "zz-suite-time": false,
+      "zz-tenure": false
+     }
+    }
+   ],
+   "sweep": [
+    {
+     "bar": 0,
+     "bystanders": 425,
+     "classes": {
+      "exact": 52,
+      "false": 10
+     },
+     "found": 52,
+     "groups": 62,
+     "held": 17,
+     "planted": 54,
+     "precision": 0.8387096774193549,
+     "recall": 0.9629629629629629,
+     "sprung": 9,
+     "traps": 53
+    },
+    {
+     "bar": 0.5,
+     "bystanders": 425,
+     "classes": {
+      "exact": 52,
+      "false": 9
+     },
+     "found": 52,
+     "groups": 61,
+     "held": 15,
+     "planted": 54,
+     "precision": 0.8524590163934426,
+     "recall": 0.9629629629629629,
+     "sprung": 8,
+     "traps": 53
+    },
+    {
+     "bar": 0.6,
+     "bystanders": 425,
+     "classes": {
+      "exact": 52,
+      "false": 9
+     },
+     "found": 52,
+     "groups": 61,
+     "held": 15,
+     "planted": 54,
+     "precision": 0.8524590163934426,
+     "recall": 0.9629629629629629,
+     "sprung": 8,
+     "traps": 53
+    },
+    {
+     "bar": 0.7,
+     "bystanders": 425,
+     "classes": {
+      "exact": 52,
+      "false": 8
+     },
+     "found": 52,
+     "groups": 60,
+     "held": 13,
+     "planted": 54,
+     "precision": 0.8666666666666667,
+     "recall": 0.9629629629629629,
+     "sprung": 7,
+     "traps": 53
+    },
+    {
+     "bar": 0.75,
+     "bystanders": 425,
+     "classes": {
+      "exact": 52,
+      "false": 8
+     },
+     "found": 52,
+     "groups": 60,
+     "held": 13,
+     "planted": 54,
+     "precision": 0.8666666666666667,
+     "recall": 0.9629629629629629,
+     "sprung": 7,
+     "traps": 53
+    },
+    {
+     "bar": 0.8,
+     "bystanders": 425,
+     "classes": {
+      "exact": 52,
+      "false": 7
+     },
+     "found": 52,
+     "groups": 59,
+     "held": 11,
+     "planted": 54,
+     "precision": 0.8813559322033898,
+     "recall": 0.9629629629629629,
+     "sprung": 6,
+     "traps": 53
+    },
+    {
+     "bar": 0.85,
+     "bystanders": 425,
+     "classes": {
+      "exact": 52,
+      "false": 7
+     },
+     "found": 52,
+     "groups": 59,
+     "held": 11,
+     "planted": 54,
+     "precision": 0.8813559322033898,
+     "recall": 0.9629629629629629,
+     "sprung": 6,
+     "traps": 53
+    },
+    {
+     "bar": 0.9,
+     "bystanders": 425,
+     "classes": {
+      "exact": 45,
+      "false": 3
+     },
+     "found": 45,
+     "groups": 48,
+     "held": 4,
+     "planted": 54,
+     "precision": 0.9375,
+     "recall": 0.8333333333333334,
+     "sprung": 3,
+     "traps": 53
+    },
+    {
+     "bar": 0.95,
+     "bystanders": 425,
+     "classes": {
+      "exact": 24
+     },
+     "found": 24,
+     "groups": 24,
+     "held": 0,
+     "planted": 54,
+     "precision": 1,
+     "recall": 0.4444444444444444,
+     "sprung": 0,
+     "traps": 53
+    }
+   ],
+   "name": "haiku-4.5-1",
+   "thinking": "default (none)",
+   "model": "anthropic/claude-haiku-4.5"
+  },
+  {
+   "run": "fallback",
+   "date": "2026-10-11T12:03:32Z",
+   "set": "holdout.json",
+   "batch_size": 500,
+   "bar": 0.8,
+   "routing": {
+    "anthropic/claude-haiku-5.5": {
+     "only": [
+      "google-vertex"
+     ],
+     "quantizations": [
+      "int8",
+      "fp8",
+      "mxfp8",
+      "fp16",
+      "bf16",
+      "fp32",
+      "unknown"
+     ],
+     "strict": true,
+     "temperature": null
+    }
+   },
+   "imports": [
+    {
+     "id": "tern-android",
+     "proposals": 48,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 4231,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-jdk"
+      },
+      {
+       "members": [
+        "AGENTS.md:11",
+        "CLAUDE.md:17"
+       ],
+       "confidence": 0.8,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:23",
+        "CLAUDE.md:12",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-di"
+      },
+      {
+       "members": [
+        "CLAUDE.md:11",
+        ".cursor/rules/compose.mdc:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-composable-names"
+      },
+      {
+       "members": [
+        "AGENTS.md:15",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-tests-locally"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-min-sdk"
+      },
+      {
+       "members": [
+        "AGENTS.md:31",
+        ".github/copilot-instructions.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-gradle-dsl"
+      },
+      {
+       "members": [
+        "CLAUDE.md:15",
+        ".github/copilot-instructions.md:7"
+       ],
+       "confidence": 0.4,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:22",
+        "CLAUDE.md:23"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:26",
+        "CLAUDE.md:13"
+       ],
+       "confidence": 0,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "tern-composable-names": true,
+      "tern-di": true,
+      "tern-gradle-dsl": true,
+      "tern-jdk": true,
+      "tern-min-sdk": true,
+      "tern-tests-locally": true
+     },
+     "sprung": {
+      "tern-benchmark-device": false,
+      "tern-io": true,
+      "tern-json": true,
+      "tern-kotlin": true,
+      "tern-lint": false,
+      "tern-release-days": true,
+      "tern-size-limits": false
+     }
+    },
+    {
+     "id": "harbor-infra",
+     "proposals": 45,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 3387,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:13",
+        "CLAUDE.md:11"
+       ],
+       "confidence": 0.93,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-lint"
+      },
+      {
+       "members": [
+        "AGENTS.md:22",
+        ".github/instructions/frontend.instructions.md:5"
+       ],
+       "confidence": 0.93,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-web-packages"
+      },
+      {
+       "members": [
+        "AGENTS.md:23",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.45,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:7",
+        ".claude/rules/terraform.md:8"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-terraform"
+      },
+      {
+       "members": [
+        "AGENTS.md:28",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-prod-branch"
+      },
+      {
+       "members": [
+        "CLAUDE.md:18",
+        "GEMINI.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-freeze"
+      },
+      {
+       "members": [
+        ".claude/rules/terraform.md:13",
+        "GEMINI.md:5"
+       ],
+       "confidence": 0.8,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "CLAUDE.md:21",
+        "GEMINI.md:6"
+       ],
+       "confidence": 0.35,
+       "class": "false",
+       "credit": 0
+      },
+      {
+       "members": [
+        "AGENTS.md:18",
+        ".github/instructions/frontend.instructions.md:6"
+       ],
+       "confidence": 0.2,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "harbor-errors": false,
+      "harbor-freeze": true,
+      "harbor-lint": true,
+      "harbor-prod-branch": true,
+      "harbor-terraform": true,
+      "harbor-web-packages": true
+     },
+     "sprung": {
+      "harbor-go": false,
+      "harbor-indent": true,
+      "harbor-make-dev": false,
+      "harbor-make-test": true,
+      "harbor-module-docs": false,
+      "harbor-state": false,
+      "harbor-timeouts": true,
+      "harbor-vpc": true
+     }
+    },
+    {
+     "id": "kai-personal",
+     "proposals": 26,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 6425,
+     "groups": [
+      {
+       "members": [
+        "CLAUDE.local.md:3",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:4"
+       ],
+       "confidence": 0.7,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-dev-port"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:5",
+        "~/.codex/AGENTS.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-commit-prefixes"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:4",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-summary"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:9",
+        "~/.codex/memories/preferences.md:2",
+        "~/.gemini/GEMINI.md:2"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-language"
+      }
+     ],
+     "found": {
+      "kai-commit-prefixes": true,
+      "kai-dev-port": true,
+      "kai-indent": false,
+      "kai-language": true,
+      "kai-summary": true
+     },
+     "sprung": {
+      "kai-berlin": false,
+      "kai-pnpm": false,
+      "kai-push": false,
+      "kai-scripts": false,
+      "kai-sizes": false
+     }
+    }
+   ],
+   "sweep": [
+    {
+     "bar": 0,
+     "bystanders": 78,
+     "classes": {
+      "exact": 15,
+      "false": 8
+     },
+     "found": 15,
+     "groups": 23,
+     "held": 16,
+     "planted": 17,
+     "precision": 0.6521739130434783,
+     "recall": 0.8823529411764706,
+     "sprung": 8,
+     "traps": 20
+    },
+    {
+     "bar": 0.5,
+     "bystanders": 78,
+     "classes": {
+      "exact": 15,
+      "false": 2
+     },
+     "found": 15,
+     "groups": 17,
+     "held": 4,
+     "planted": 17,
+     "precision": 0.8823529411764706,
+     "recall": 0.8823529411764706,
+     "sprung": 2,
+     "traps": 20
+    },
+    {
+     "bar": 0.6,
+     "bystanders": 78,
+     "classes": {
+      "exact": 15,
+      "false": 2
+     },
+     "found": 15,
+     "groups": 17,
+     "held": 4,
+     "planted": 17,
+     "precision": 0.8823529411764706,
+     "recall": 0.8823529411764706,
+     "sprung": 2,
+     "traps": 20
+    },
+    {
+     "bar": 0.7,
+     "bystanders": 78,
+     "classes": {
+      "exact": 15,
+      "false": 2
+     },
+     "found": 15,
+     "groups": 17,
+     "held": 4,
+     "planted": 17,
+     "precision": 0.8823529411764706,
+     "recall": 0.8823529411764706,
+     "sprung": 2,
+     "traps": 20
+    },
+    {
+     "bar": 0.75,
+     "bystanders": 78,
+     "classes": {
+      "exact": 14,
+      "false": 2
+     },
+     "found": 14,
+     "groups": 16,
+     "held": 4,
+     "planted": 17,
+     "precision": 0.875,
+     "recall": 0.8235294117647058,
+     "sprung": 2,
+     "traps": 20
+    },
+    {
+     "bar": 0.8,
+     "bystanders": 78,
+     "classes": {
+      "exact": 14,
+      "false": 2
+     },
+     "found": 14,
+     "groups": 16,
+     "held": 4,
+     "planted": 17,
+     "precision": 0.875,
+     "recall": 0.8235294117647058,
+     "sprung": 2,
+     "traps": 20
+    },
+    {
+     "bar": 0.85,
+     "bystanders": 78,
+     "classes": {
+      "exact": 14
+     },
+     "found": 14,
+     "groups": 14,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 0.8235294117647058,
+     "sprung": 0,
+     "traps": 20
+    },
+    {
+     "bar": 0.9,
+     "bystanders": 78,
+     "classes": {
+      "exact": 12
+     },
+     "found": 12,
+     "groups": 12,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 0.7058823529411765,
+     "sprung": 0,
+     "traps": 20
+    },
+    {
+     "bar": 0.95,
+     "bystanders": 78,
+     "classes": {},
+     "found": 0,
+     "groups": 0,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 0,
+     "sprung": 0,
+     "traps": 20
+    }
+   ],
+   "name": "low-1",
+   "thinking": "low",
+   "model": "anthropic/claude-haiku-5.5"
+  },
+  {
+   "run": "fallback",
+   "date": "2026-10-11T12:03:49Z",
+   "set": "holdout.json",
+   "batch_size": 500,
+   "bar": 0.8,
+   "routing": {
+    "anthropic/claude-haiku-5.5": {
+     "only": [
+      "google-vertex"
+     ],
+     "quantizations": [
+      "int8",
+      "fp8",
+      "mxfp8",
+      "fp16",
+      "bf16",
+      "fp32",
+      "unknown"
+     ],
+     "strict": true,
+     "temperature": null
+    }
+   },
+   "imports": [
+    {
+     "id": "tern-android",
+     "proposals": 48,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 8316,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-jdk"
+      },
+      {
+       "members": [
+        "AGENTS.md:15",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-tests-locally"
+      },
+      {
+       "members": [
+        "AGENTS.md:23",
+        "CLAUDE.md:12",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-di"
+      },
+      {
+       "members": [
+        "CLAUDE.md:11",
+        ".cursor/rules/compose.mdc:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-composable-names"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-min-sdk"
+      },
+      {
+       "members": [
+        "AGENTS.md:31",
+        ".github/copilot-instructions.md:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-gradle-dsl"
+      }
+     ],
+     "found": {
+      "tern-composable-names": true,
+      "tern-di": true,
+      "tern-gradle-dsl": true,
+      "tern-jdk": true,
+      "tern-min-sdk": true,
+      "tern-tests-locally": true
+     },
+     "sprung": {
+      "tern-benchmark-device": false,
+      "tern-io": false,
+      "tern-json": false,
+      "tern-kotlin": false,
+      "tern-lint": false,
+      "tern-release-days": false,
+      "tern-size-limits": false
+     }
+    },
+    {
+     "id": "harbor-infra",
+     "proposals": 45,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 8027,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:13",
+        "CLAUDE.md:11"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-lint"
+      },
+      {
+       "members": [
+        "AGENTS.md:22",
+        ".github/instructions/frontend.instructions.md:5"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-web-packages"
+      },
+      {
+       "members": [
+        "AGENTS.md:7",
+        ".claude/rules/terraform.md:8"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-terraform"
+      },
+      {
+       "members": [
+        "AGENTS.md:28",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-prod-branch"
+      },
+      {
+       "members": [
+        "AGENTS.md:15",
+        "CLAUDE.md:10"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-errors"
+      },
+      {
+       "members": [
+        "CLAUDE.md:18",
+        "GEMINI.md:4"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-freeze"
+      }
+     ],
+     "found": {
+      "harbor-errors": true,
+      "harbor-freeze": true,
+      "harbor-lint": true,
+      "harbor-prod-branch": true,
+      "harbor-terraform": true,
+      "harbor-web-packages": true
+     },
+     "sprung": {
+      "harbor-go": false,
+      "harbor-indent": false,
+      "harbor-make-dev": false,
+      "harbor-make-test": false,
+      "harbor-module-docs": false,
+      "harbor-state": false,
+      "harbor-timeouts": false,
+      "harbor-vpc": false
+     }
+    },
+    {
+     "id": "kai-personal",
+     "proposals": 26,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 7509,
+     "groups": [
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:5",
+        "~/.codex/AGENTS.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-commit-prefixes"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:9",
+        "~/.codex/memories/preferences.md:2",
+        "~/.gemini/GEMINI.md:2"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-language"
+      },
+      {
+       "members": [
+        "CLAUDE.local.md:3",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:4"
+       ],
+       "confidence": 0.8,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-dev-port"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:4",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:3"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-summary"
+      },
+      {
+       "members": [
+        "CLAUDE.local.md:4",
+        "~/.claude/CLAUDE.md:6"
+       ],
+       "confidence": 0.6,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-indent"
+      }
+     ],
+     "found": {
+      "kai-commit-prefixes": true,
+      "kai-dev-port": true,
+      "kai-indent": true,
+      "kai-language": true,
+      "kai-summary": true
+     },
+     "sprung": {
+      "kai-berlin": false,
+      "kai-pnpm": false,
+      "kai-push": false,
+      "kai-scripts": false,
+      "kai-sizes": false
+     }
+    }
+   ],
+   "sweep": [
+    {
+     "bar": 0,
+     "bystanders": 78,
+     "classes": {
+      "exact": 17
+     },
+     "found": 17,
+     "groups": 17,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 1,
+     "sprung": 0,
+     "traps": 20
+    },
+    {
+     "bar": 0.5,
+     "bystanders": 78,
+     "classes": {
+      "exact": 17
+     },
+     "found": 17,
+     "groups": 17,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 1,
+     "sprung": 0,
+     "traps": 20
+    },
+    {
+     "bar": 0.6,
+     "bystanders": 78,
+     "classes": {
+      "exact": 17
+     },
+     "found": 17,
+     "groups": 17,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 1,
+     "sprung": 0,
+     "traps": 20
+    },
+    {
+     "bar": 0.7,
+     "bystanders": 78,
+     "classes": {
+      "exact": 16
+     },
+     "found": 16,
+     "groups": 16,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 0.9411764705882353,
+     "sprung": 0,
+     "traps": 20
+    },
+    {
+     "bar": 0.75,
+     "bystanders": 78,
+     "classes": {
+      "exact": 16
+     },
+     "found": 16,
+     "groups": 16,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 0.9411764705882353,
+     "sprung": 0,
+     "traps": 20
+    },
+    {
+     "bar": 0.8,
+     "bystanders": 78,
+     "classes": {
+      "exact": 16
+     },
+     "found": 16,
+     "groups": 16,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 0.9411764705882353,
+     "sprung": 0,
+     "traps": 20
+    },
+    {
+     "bar": 0.85,
+     "bystanders": 78,
+     "classes": {
+      "exact": 13
+     },
+     "found": 13,
+     "groups": 13,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 0.7647058823529411,
+     "sprung": 0,
+     "traps": 20
+    },
+    {
+     "bar": 0.9,
+     "bystanders": 78,
+     "classes": {
+      "exact": 12
+     },
+     "found": 12,
+     "groups": 12,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 0.7058823529411765,
+     "sprung": 0,
+     "traps": 20
+    },
+    {
+     "bar": 0.95,
+     "bystanders": 78,
+     "classes": {
+      "exact": 3
+     },
+     "found": 3,
+     "groups": 3,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 0.17647058823529413,
+     "sprung": 0,
+     "traps": 20
+    }
+   ],
+   "name": "medium-1",
+   "thinking": "medium",
+   "model": "anthropic/claude-haiku-5.5"
+  },
+  {
+   "run": "fallback",
+   "date": "2026-10-11T12:03:58Z",
+   "set": "holdout.json",
+   "batch_size": 500,
+   "bar": 0.8,
+   "routing": {
+    "anthropic/claude-haiku-4.5": {
+     "only": [
+      "amazon-bedrock",
+      "google-vertex"
+     ],
+     "quantizations": [
+      "int8",
+      "fp8",
+      "mxfp8",
+      "fp16",
+      "bf16",
+      "fp32",
+      "unknown"
+     ],
+     "strict": true,
+     "temperature": 0
+    }
+   },
+   "imports": [
+    {
+     "id": "tern-android",
+     "proposals": 48,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 5214,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:9",
+        "CLAUDE.md:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-jdk"
+      },
+      {
+       "members": [
+        "AGENTS.md:23",
+        "CLAUDE.md:12",
+        ".github/copilot-instructions.md:5"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-di"
+      },
+      {
+       "members": [
+        "CLAUDE.md:11",
+        ".cursor/rules/compose.mdc:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-composable-names"
+      },
+      {
+       "members": [
+        "AGENTS.md:10",
+        ".github/copilot-instructions.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-min-sdk"
+      },
+      {
+       "members": [
+        "AGENTS.md:31",
+        ".github/copilot-instructions.md:6"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-gradle-dsl"
+      },
+      {
+       "members": [
+        "AGENTS.md:15",
+        ".github/copilot-instructions.md:4"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "tern-tests-locally"
+      },
+      {
+       "members": [
+        "AGENTS.md:32",
+        "CLAUDE.md:7"
+       ],
+       "confidence": 0.85,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "tern-composable-names": true,
+      "tern-di": true,
+      "tern-gradle-dsl": true,
+      "tern-jdk": true,
+      "tern-min-sdk": true,
+      "tern-tests-locally": true
+     },
+     "sprung": {
+      "tern-benchmark-device": false,
+      "tern-io": false,
+      "tern-json": false,
+      "tern-kotlin": false,
+      "tern-lint": true,
+      "tern-release-days": false,
+      "tern-size-limits": false
+     }
+    },
+    {
+     "id": "harbor-infra",
+     "proposals": 45,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 4372,
+     "groups": [
+      {
+       "members": [
+        "AGENTS.md:15",
+        "CLAUDE.md:10"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-errors"
+      },
+      {
+       "members": [
+        "AGENTS.md:13",
+        "CLAUDE.md:11"
+       ],
+       "confidence": 0.92,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-lint"
+      },
+      {
+       "members": [
+        "AGENTS.md:22",
+        ".github/instructions/frontend.instructions.md:5"
+       ],
+       "confidence": 0.93,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-web-packages"
+      },
+      {
+       "members": [
+        "AGENTS.md:7",
+        ".claude/rules/terraform.md:8"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-terraform"
+      },
+      {
+       "members": [
+        "AGENTS.md:28",
+        "GEMINI.md:3"
+       ],
+       "confidence": 0.94,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "harbor-prod-branch"
+      },
+      {
+       "members": [
+        "CLAUDE.md:21",
+        "GEMINI.md:6"
+       ],
+       "confidence": 0.88,
+       "class": "false",
+       "credit": 0
+      }
+     ],
+     "found": {
+      "harbor-errors": true,
+      "harbor-freeze": false,
+      "harbor-lint": true,
+      "harbor-prod-branch": true,
+      "harbor-terraform": true,
+      "harbor-web-packages": true
+     },
+     "sprung": {
+      "harbor-go": false,
+      "harbor-indent": false,
+      "harbor-make-dev": false,
+      "harbor-make-test": false,
+      "harbor-module-docs": false,
+      "harbor-state": false,
+      "harbor-timeouts": true,
+      "harbor-vpc": false
+     }
+    },
+    {
+     "id": "kai-personal",
+     "proposals": 26,
+     "batches": 1,
+     "calls": 1,
+     "tier": "primary",
+     "ms": 3729,
+     "groups": [
+      {
+       "members": [
+        "CLAUDE.local.md:4",
+        "~/.claude/CLAUDE.md:6"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-indent"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:5",
+        "~/.codex/AGENTS.md:3"
+       ],
+       "confidence": 0.95,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-commit-prefixes"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:4",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:3"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-summary"
+      },
+      {
+       "members": [
+        "CLAUDE.local.md:3",
+        "~/.claude/projects/\u2026/memory/MEMORY.md:4"
+       ],
+       "confidence": 0.85,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-dev-port"
+      },
+      {
+       "members": [
+        "~/.claude/CLAUDE.md:9",
+        "~/.codex/memories/preferences.md:2",
+        "~/.gemini/GEMINI.md:2"
+       ],
+       "confidence": 0.9,
+       "class": "exact",
+       "credit": 1,
+       "conflict": "kai-language"
+      }
+     ],
+     "found": {
+      "kai-commit-prefixes": true,
+      "kai-dev-port": true,
+      "kai-indent": true,
+      "kai-language": true,
+      "kai-summary": true
+     },
+     "sprung": {
+      "kai-berlin": false,
+      "kai-pnpm": false,
+      "kai-push": false,
+      "kai-scripts": false,
+      "kai-sizes": false
+     }
+    }
+   ],
+   "sweep": [
+    {
+     "bar": 0,
+     "bystanders": 78,
+     "classes": {
+      "exact": 16,
+      "false": 2
+     },
+     "found": 16,
+     "groups": 18,
+     "held": 4,
+     "planted": 17,
+     "precision": 0.8888888888888888,
+     "recall": 0.9411764705882353,
+     "sprung": 2,
+     "traps": 20
+    },
+    {
+     "bar": 0.5,
+     "bystanders": 78,
+     "classes": {
+      "exact": 16,
+      "false": 2
+     },
+     "found": 16,
+     "groups": 18,
+     "held": 4,
+     "planted": 17,
+     "precision": 0.8888888888888888,
+     "recall": 0.9411764705882353,
+     "sprung": 2,
+     "traps": 20
+    },
+    {
+     "bar": 0.6,
+     "bystanders": 78,
+     "classes": {
+      "exact": 16,
+      "false": 2
+     },
+     "found": 16,
+     "groups": 18,
+     "held": 4,
+     "planted": 17,
+     "precision": 0.8888888888888888,
+     "recall": 0.9411764705882353,
+     "sprung": 2,
+     "traps": 20
+    },
+    {
+     "bar": 0.7,
+     "bystanders": 78,
+     "classes": {
+      "exact": 16,
+      "false": 2
+     },
+     "found": 16,
+     "groups": 18,
+     "held": 4,
+     "planted": 17,
+     "precision": 0.8888888888888888,
+     "recall": 0.9411764705882353,
+     "sprung": 2,
+     "traps": 20
+    },
+    {
+     "bar": 0.75,
+     "bystanders": 78,
+     "classes": {
+      "exact": 16,
+      "false": 2
+     },
+     "found": 16,
+     "groups": 18,
+     "held": 4,
+     "planted": 17,
+     "precision": 0.8888888888888888,
+     "recall": 0.9411764705882353,
+     "sprung": 2,
+     "traps": 20
+    },
+    {
+     "bar": 0.8,
+     "bystanders": 78,
+     "classes": {
+      "exact": 16,
+      "false": 2
+     },
+     "found": 16,
+     "groups": 18,
+     "held": 4,
+     "planted": 17,
+     "precision": 0.8888888888888888,
+     "recall": 0.9411764705882353,
+     "sprung": 2,
+     "traps": 20
+    },
+    {
+     "bar": 0.85,
+     "bystanders": 78,
+     "classes": {
+      "exact": 16,
+      "false": 2
+     },
+     "found": 16,
+     "groups": 18,
+     "held": 4,
+     "planted": 17,
+     "precision": 0.8888888888888888,
+     "recall": 0.9411764705882353,
+     "sprung": 2,
+     "traps": 20
+    },
+    {
+     "bar": 0.9,
+     "bystanders": 78,
+     "classes": {
+      "exact": 15
+     },
+     "found": 15,
+     "groups": 15,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 0.8823529411764706,
+     "sprung": 0,
+     "traps": 20
+    },
+    {
+     "bar": 0.95,
+     "bystanders": 78,
+     "classes": {
+      "exact": 6
+     },
+     "found": 6,
+     "groups": 6,
+     "held": 0,
+     "planted": 17,
+     "precision": 1,
+     "recall": 0.35294117647058826,
+     "sprung": 0,
+     "traps": 20
+    }
+   ],
+   "name": "haiku-4.5-1",
+   "thinking": "default (none)",
+   "model": "anthropic/claude-haiku-4.5"
+  }
+ ]
+}

@@ -157,6 +157,7 @@ export class FakeV2 {
       space_id: space.id,
       tenant_id: space.tenant_id,
       kind,
+      root: "repo",
       path,
       label: kind === "chatgpt" ? "ChatGPT project" : (path ?? kind),
       settings: {

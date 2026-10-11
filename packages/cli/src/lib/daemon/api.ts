@@ -67,12 +67,23 @@ async function timed<T>(
   }
 }
 
+/**
+ * A repository's targets: what a linked repository's delivery writes. A
+ * personal space's home files (`root: home`) are a machine's, written into
+ * its home folder by that machine's home link, never into a repository.
+ */
+export function repoTargets<T extends Pick<V2.Target, "root">>(ts: T[]): T[] {
+  return ts.filter((t) => t.root !== "home");
+}
+
 /** The daemon's calls through memax-sdk, as the CLI (`X-Memax-Via: cli`). */
 export function sdkDaemonApi(memax: Memax): DaemonApi {
   const t = memax.v2.targets;
   return {
     listTargets: (space, outer) =>
-      timed(outer, async (signal) => (await t.list(space, { signal })).items),
+      timed(outer, async (signal) =>
+        repoTargets((await t.list(space, { signal })).items),
+      ),
     changeToken: (space, outer) =>
       timed(
         outer,

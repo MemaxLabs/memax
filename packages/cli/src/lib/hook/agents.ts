@@ -13,6 +13,10 @@
 // Which compiled files each loads at session start: AGENTS.md, plus its
 // own shim when the space compiles one (CLAUDE.md, GEMINI.md). Scoped
 // rules load only when a matching path is touched, so they aren't counted.
+// On a machine whose home is linked, its own home file too (personal-layer
+// design §7.1): Claude Code's rules file, Codex's block. The others get
+// theirs in later releases (Gemini CLI by read_by, Copilot CLI, Cursor's
+// full print of the canonical copy).
 
 export type HookFormat = "plain" | "gemini" | "cursor" | "copilot";
 
@@ -22,6 +26,8 @@ export interface HookAgent {
   format: HookFormat;
   /** The target kinds it loads at session start, shim first. */
   loads: string[];
+  /** The home kinds it loads in every session, wherever it runs. */
+  home: string[];
   /** Most tokens the block may take. */
   maxTokens: number;
 }
@@ -31,30 +37,35 @@ const AGENTS: Record<string, HookAgent> = {
     kind: "claude-code",
     format: "plain",
     loads: ["claude_md", "agents_md"],
+    home: ["claude_user"],
     maxTokens: 3000,
   },
   codex: {
     kind: "codex",
     format: "plain",
     loads: ["agents_md"],
+    home: ["codex_user"],
     maxTokens: 2400,
   },
   "gemini-cli": {
     kind: "gemini-cli",
     format: "gemini",
     loads: ["gemini_md", "agents_md"],
+    home: [],
     maxTokens: 3000,
   },
   cursor: {
     kind: "cursor",
     format: "cursor",
     loads: ["agents_md"],
+    home: [],
     maxTokens: 3000,
   },
   copilot: {
     kind: "copilot",
     format: "copilot",
     loads: ["agents_md"],
+    home: [],
     maxTokens: 3000,
   },
 };
@@ -77,6 +88,7 @@ export function hookAgent(id: string | undefined): HookAgent {
     kind: "other",
     format: "plain",
     loads: ["agents_md"],
+    home: [],
     maxTokens: 3000,
   };
 }

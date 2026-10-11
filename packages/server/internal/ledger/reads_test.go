@@ -3,6 +3,7 @@ package ledger_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -371,6 +372,76 @@ func TestReadStatusForFading(t *testing.T) {
 	s = status()
 	if !s[m1.Ref].UnobservedTarget {
 		t.Error("with the load gone, AGENTS.md is unobserved again")
+	}
+}
+
+// Home files say who reads them (read_by, personal-layer design §7.3): the
+// canonical copy, which nothing loads, never keeps a fact from fading; a
+// file a hooked agent reads is observed once its loads are reported, as a
+// repository's is; and one an agent without a hook reads stays unobserved
+// whatever loads arrive, since that agent's reads are never among them.
+func TestReadStatusForHomeFiles(t *testing.T) {
+	t.Parallel()
+	f := newCompileFixture(t)
+	ctx := context.Background()
+	zz := f.user("zz")
+	space := f.space(zz, policy.SpacePersonal, "Personal")
+	inClaude := f.remember(zz, space, "Answer in British English.")
+	inCodex := f.remember(zz, space, "Prefer rg to grep.")
+	onlyCanon := f.remember(zz, space, "Keep replies short.")
+	linked := f.link(zz, space, uuid.New(), "work-mbp")
+	byKind := map[ledger.TargetKind]*ledger.Target{}
+	for i := range linked.Targets {
+		byKind[linked.Targets[i].Kind] = &linked.Targets[i]
+	}
+	claude, codex, canon := byKind[ledger.TargetClaudeUser], byKind[ledger.TargetCodexUser], byKind[ledger.TargetAgentsMD]
+	if !slices.Equal(claude.Settings.ReadBy, []string{"claude-code"}) || len(canon.Settings.ReadBy) != 0 {
+		t.Fatalf("read_by: claude %v, canonical %v", claude.Settings.ReadBy, canon.Settings.ReadBy)
+	}
+	run := f.compiled(claude, "- Answer in British English.\n", inClaude.Ref)
+	f.compiled(codex, "- Prefer rg to grep.\n", inCodex.Ref)
+	f.compiled(canon, "- Keep replies short.\n", onlyCanon.Ref)
+
+	status := func() map[string]bool {
+		t.Helper()
+		got, err := f.l.ReadStatus(ctx, f.scope(zz), space)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]bool{}
+		for _, s := range got {
+			out[s.Ref] = s.UnobservedTarget
+		}
+		return out
+	}
+	// No loads yet: Claude Code's and Codex's files are unobserved, as a
+	// repository's would be; the canonical copy, which nothing reads, isn't.
+	if s := status(); !s[inClaude.Ref] || !s[inCodex.Ref] || s[onlyCanon.Ref] {
+		t.Errorf("before any load: %v", s)
+	}
+
+	// Claude Code's session start reports the home compile it loaded.
+	res, err := f.l.RecordCompileLoad(ctx, ledger.CompileLoad{Actor: person(zz), Scope: f.scope(zz), Via: policy.ViaCLI,
+		SpaceID: space, Compile: run.Ref, Agent: "claude-code", SessionRef: "cc-1", IdempotencyKey: "home-load-1"})
+	if err != nil || res.Read == nil {
+		t.Fatalf("load: %v %+v", err, res.Policy)
+	}
+	if s := status(); s[inClaude.Ref] || !s[inCodex.Ref] {
+		t.Errorf("after Claude Code's load: %v", s)
+	}
+
+	// OpenCode reads Codex's file too, and has no hook: unobserved, even
+	// once Codex's own loads arrive.
+	readBy := []string{"codex", "opencode"}
+	f.apply(&ledger.ConfigureTarget{Meta: meta(person(zz), f.scope(zz), policy.ViaCLI), Target: codex.ID,
+		Settings: &ledger.TargetSettingsInput{ReadBy: &readBy}})
+	codexRun := f.compiled(f.get(zz, codex.ID), "- Prefer rg to grep.\n", inCodex.Ref)
+	if _, err := f.l.RecordCompileLoad(ctx, ledger.CompileLoad{Actor: person(zz), Scope: f.scope(zz), Via: policy.ViaCLI,
+		SpaceID: space, Compile: codexRun.Ref, Agent: "codex", SessionRef: "cx-1", IdempotencyKey: "home-load-2"}); err != nil {
+		t.Fatal(err)
+	}
+	if s := status(); !s[inCodex.Ref] || s[inClaude.Ref] || s[onlyCanon.Ref] {
+		t.Errorf("with OpenCode reading Codex's file: %v", s)
 	}
 }
 

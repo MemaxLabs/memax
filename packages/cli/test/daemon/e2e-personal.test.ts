@@ -93,6 +93,25 @@ describe.skipIf(!enabled)("the personal layer on several machines", () => {
       child.stderr.on("data", (c) => (out += String(c)));
       child.once("exit", (code) => resolve({ code, out }));
     });
+  /** Codex's session-start hook, as Codex runs it, outside any repository. */
+  const hook = (h: Home) =>
+    new Promise<string>((resolve) => {
+      const child = spawn(
+        process.execPath,
+        [BIN, "hook", "session-start", "--agent", "codex"],
+        { cwd: h.dir, env: env(h) },
+      );
+      let out = "";
+      child.stdout.on("data", (c) => (out += String(c)));
+      child.once("exit", () => resolve(out));
+      child.stdin.end(
+        JSON.stringify({
+          session_id: randomUUID(),
+          cwd: h.dir,
+          source: "startup",
+        }),
+      );
+    });
   const read = (h: Home, path: string) => {
     try {
       return readFileSync(join(h.dir, path), "utf8");
@@ -207,6 +226,15 @@ describe.skipIf(!enabled)("the personal layer on several machines", () => {
         { env: env(h), stdio: "ignore" },
       );
     }
+    // Each machine's first Codex session: the baseline the next one is told against.
+    for (const h of [a, b]) {
+      await until(
+        () => existsSync(join(h.dir, ".memax", "daemon", "daemon.pid")),
+        10_000,
+        `${h.name}'s daemon`,
+      );
+      await hook(h);
+    }
   }, 180_000);
 
   let ref = "";
@@ -236,6 +264,22 @@ describe.skipIf(!enabled)("the personal layer on several machines", () => {
     ).toBe(true);
     // A had no Codex file: it holds only Memax's block.
     expect(read(a, CODEX)!.startsWith("<!-- memax:start -->\n")).toBe(true);
+
+    // The next Codex session on each machine is told the new line, once.
+    for (const h of [a, b]) {
+      const told = await hook(h);
+      expect(told).toContain('<memax-context space="zz-personal">');
+      expect(told).toContain(line);
+      expect(await hook(h)).toBe("");
+    }
+    // Their loads, reported by each daemon, count as reads of the fact.
+    await until(
+      async () =>
+        ((await memax.v2.memories.get(ref, { space: personal })).reads?.reads ??
+          0) >= 2,
+      15_000,
+      `the home loads counted as reads of ${ref}`,
+    );
   }, 120_000);
 
   it("Forget takes it out of both homes within 60 s, and a grep finds nothing", async () => {

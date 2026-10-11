@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { hookAgent } from "../../src/lib/hook/agents.js";
 import {
   hookPaths,
@@ -132,7 +132,8 @@ export function machine(opts: { linked?: boolean } = {}): Machine {
         paths,
         now,
       });
-      if (res.seen) writeSeen(res.seen.path, paths.seen, res.seen.value);
+      for (const seen of [res.seen, res.homeSeen])
+        if (seen) writeSeen(seen.path, dirname(seen.path), seen.value);
       return res;
     },
     cleanup() {

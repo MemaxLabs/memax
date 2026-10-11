@@ -30,7 +30,7 @@ import { RepoDelivery } from "./repo.js";
 import type { DaemonSnapshot, HomeSnapshot } from "./snapshot.js";
 import { DeviceState } from "./state.js";
 import { RepoWatcher, type WatchOptions } from "./watch.js";
-import { WarmCache } from "./warm.js";
+import { HOME, WarmCache } from "./warm.js";
 
 export interface DaemonOptions {
   paths: DaemonPaths;
@@ -255,6 +255,7 @@ export class Daemon {
     if (this.home && JSON.stringify(this.home.link) !== JSON.stringify(link))
       this.dropHome();
     if (link && !this.home) this.addHome(link);
+    if (!link) this.warm.clearHome();
   }
 
   private addHome(link: HomeLink): void {
@@ -293,7 +294,7 @@ export class Daemon {
           fetch: (signal) =>
             this.o.api.machineTargets(link.space_id, link.machine_id, signal),
           probe: (signal) => this.o.api.changeToken(link.space_id, signal),
-          onTargets: async (targets) => {
+          onTargets: async (targets, info) => {
             this.reload();
             if (this.home !== home) return { busy: false };
             if (home.lastError || home.signedOut || home.gone) {
@@ -305,6 +306,10 @@ export class Daemon {
             home.signedOut = false;
             home.gone = false;
             delivery.setError(undefined);
+            // The hook's Personal section reads these, and the space's
+            // forgets and gates (fetched when something changed).
+            this.warm.setHome(link, targets);
+            if (info.changed) this.warm.requestRefresh(HOME, link.space_slug);
             const r = await delivery.sync(targets);
             watcher!.setPaths(delivery.trackedPaths());
             return r;
@@ -374,6 +379,7 @@ export class Daemon {
     const snap = this.homeSnapshot(home);
     if (reason === "unlinked" || reason === "other_person") {
       removeHomeLink(this.o.paths);
+      this.warm.clearHome();
       this.homeStamp = homeLinkStamp(this.o.paths);
       this.dropHome();
     }
@@ -536,6 +542,8 @@ export class Daemon {
         home.signedOut = false;
         home.gone = false;
         home.delivery.setError(undefined);
+        this.warm.setHome(home.link, targets);
+        await this.warm.refresh(HOME, home.link.space_slug);
         await home.delivery.sync(targets);
       } catch (err) {
         if (definitelyGone(err) && !home.gone) {

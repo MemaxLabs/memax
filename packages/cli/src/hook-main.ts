@@ -17,7 +17,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hookAgent } from "./lib/hook/agents.js";
 import { enqueueLoads } from "./lib/hook/loads.js";
@@ -30,8 +30,9 @@ const USAGE = `Usage: memax hook session-start [--agent <id>] [--debug]
 session-start prints a short <memax-context> block for an agent's session
 start hook: what changed in this repository's compiled files since the
 agent's last session here, what a person forgot, and decisions waiting
-for a person. It reads local files only, and prints nothing when nothing
-changed. --agent is claude-code (default), codex, gemini, cursor or
+for a person; and, on a machine whose home is linked (memax link --home),
+the same for your Personal space's file, outside repositories too. It
+reads local files only, and prints nothing when nothing changed. --agent is claude-code (default), codex, gemini, cursor or
 copilot, and sets the output format.
 
 flush reports the compile loads session-start queued (the daemon does
@@ -219,7 +220,8 @@ export async function hookSessionStart(argv: string[]): Promise<number> {
     });
     print(res.output);
     // Off the critical path: the agent has its block.
-    if (res.seen) writeSeen(res.seen.path, paths.seen, res.seen.value);
+    for (const seen of [res.seen, res.homeSeen])
+      if (seen) writeSeen(seen.path, dirname(seen.path), seen.value);
     if (res.loads.length > 0) {
       enqueueLoads(paths.loads, res.loads);
       if (!daemonAlive(paths.pid)) await spawnFlush(paths.loads);

@@ -4,6 +4,13 @@
 // session here was told, and works out the block; hook-main.ts prints it,
 // then saves what was told and queues the compile loads. Nothing here
 // opens a socket.
+//
+// On a machine whose home is linked (personal-layer design §7.1), it does
+// the same for the agent's own home file (home.json names it, the warm
+// cache's `home` entry has its compiles, forgets and gates), against
+// what the agent's last session anywhere was told (seen/home/<agent>.json),
+// as a Personal section after the repository's; outside a repository, as
+// the whole block. Its loads count reads of personal facts.
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, sep } from "node:path";
@@ -11,6 +18,7 @@ import { cleanLine } from "../daemon/compiler/sanitize.js";
 import type { HookAgent } from "./agents.js";
 import { DEFAULT_PATHS, OPT_IN_KINDS, wrapFor } from "./agents.js";
 import { readCompiled, type CitedLine, type CompiledFile } from "./compiled.js";
+import { readHookHome } from "./home.js";
 import type { QueuedLoad } from "./loads.js";
 import {
   renderBlock,
@@ -18,6 +26,7 @@ import {
   type BlockFile,
   type BlockForget,
   type BlockGate,
+  type BlockSection,
 } from "./render.js";
 import { emptySeen, readSeen, seenPath, type Seen } from "./seen.js";
 import { readWarm, type WarmSpace, type WarmTarget } from "./warm.js";
@@ -27,6 +36,8 @@ export interface HookPaths {
   dir: string;
   /** repos.json: the linked repositories. */
   repos: string;
+  /** home.json: this machine's home link. */
+  home: string;
   pid: string;
   warm: string;
   loads: string;
@@ -44,6 +55,7 @@ export function hookPaths(
   return {
     dir,
     repos: join(dir, "repos.json"),
+    home: join(dir, "home.json"),
     pid: join(dir, "daemon.pid"),
     warm: join(dir, "warm.json"),
     loads: join(dir, "loads"),
@@ -66,6 +78,8 @@ export interface SessionStartResult {
   output: string;
   /** Saved after printing, so the next session hears only what's new. */
   seen?: { path: string; value: Seen };
+  /** The same for the Personal section (seen/home/<agent>.json). */
+  homeSeen?: { path: string; value: Seen };
   /** Queued after printing, for the daemon to report. */
   loads: QueuedLoad[];
   /** Why it printed nothing, for --debug. */
@@ -239,35 +253,30 @@ function diffFile(
   return out;
 }
 
-export function sessionStart(i: SessionStartInput): SessionStartResult {
-  const nothing = (skipped: string): SessionStartResult => ({
-    output: "",
-    loads: [],
-    skipped,
-  });
-  const host = foreignHost(i.agent, i.event, i.env);
-  if (host) return nothing(`running under ${host}, whose own hook speaks`);
+/** One section's news, what to save, and the compiles its agent loaded. */
+interface Part {
+  block: BlockSection;
+  seen: { path: string; value: Seen };
+  loaded: Array<{ space: string; compile: string }>;
+  first: boolean;
+}
 
-  const dir = sessionDir(i.event, i.env, i.cwd);
-  const repo = findRepo(dir, readRegistry(i.paths.repos));
-  if (!repo) return nothing("not in a repository");
-  const warmFile = readWarm(i.paths.warm);
-  const warm = repo.link ? warmFile.spaces[repo.link.space_id] : undefined;
-
-  const files: Array<{ file: CompiledFile; target?: WarmTarget }> = [];
-  for (const f of loadedFiles(i.agent, warm)) {
-    const file = readCompiled(join(repo.root, f.path), f.path);
-    if (file) files.push({ file, target: f.target });
-  }
-  if (files.length === 0 && !warm) return nothing("no compiled files here");
-
-  const space =
-    repo.link?.space_slug ?? warm?.slug ?? files[0]?.file.space ?? "";
-  const seenFile = seenPath(i.paths.seen, repo.root, i.agent.kind);
+/**
+ * Works out one section (the repository's, or the Personal space's on this
+ * machine) against what the agent's last session was told.
+ */
+function part(
+  now: Date,
+  files: Array<{ file: CompiledFile; target?: WarmTarget }>,
+  warm: WarmSpace | undefined,
+  space: string,
+  spaceId: string | undefined,
+  seenFile: string,
+): Part {
   const before = readSeen(seenFile);
   const first = before === null;
   const prev = before ?? emptySeen();
-  const nowMs = i.now.getTime();
+  const nowMs = now.getTime();
 
   // Forgets: every one since the last session; a first session, the last week's.
   const forgets = warm?.forgotten ?? [];
@@ -322,18 +331,10 @@ export function sessionStart(i: SessionStartInput): SessionStartResult {
   const blockFiles = files.map(({ file, target }) =>
     diffFile(file, prev.files[file.path], baseline, target, forgottenRefs),
   );
-  const block = renderBlock({
-    space,
-    files: blockFiles,
-    forgotten: newForgets,
-    gates: newGates,
-    behind,
-    maxTokens: i.agent.maxTokens,
-  });
 
   const seen: Seen = {
     version: 1,
-    at: i.now.toISOString(),
+    at: now.toISOString(),
     files: Object.fromEntries(
       files.map(({ file }) => [
         file.path,
@@ -353,6 +354,105 @@ export function sessionStart(i: SessionStartInput): SessionStartResult {
     ],
     behind: [...behind.map((b) => b.latest), ...prev.behind],
   };
+  return {
+    block: {
+      space,
+      files: blockFiles,
+      forgotten: newForgets,
+      gates: newGates,
+      behind,
+    },
+    seen: { path: seenFile, value: seen },
+    loaded: files.map(({ file }) => ({
+      space: spaceId ?? file.space,
+      compile: file.compile,
+    })),
+    first,
+  };
+}
+
+/** The repository's section, or null with why. */
+function repoPart(
+  i: SessionStartInput,
+  repo: { root: string; link?: LinkedRepo },
+  warmFile: ReturnType<typeof readWarm>,
+): Part | string {
+  const warm = repo.link ? warmFile.spaces[repo.link.space_id] : undefined;
+  const files: Array<{ file: CompiledFile; target?: WarmTarget }> = [];
+  for (const f of loadedFiles(i.agent, warm)) {
+    const file = readCompiled(join(repo.root, f.path), f.path);
+    if (file) files.push({ file, target: f.target });
+  }
+  if (files.length === 0 && !warm) return "no compiled files here";
+  const space =
+    repo.link?.space_slug ?? warm?.slug ?? files[0]?.file.space ?? "";
+  return part(
+    i.now,
+    files,
+    warm,
+    space,
+    repo.link?.space_id,
+    seenPath(i.paths.seen, repo.root, i.agent.kind),
+  );
+}
+
+/** The Personal section: the agent's own home file on this machine. */
+function homePart(
+  i: SessionStartInput,
+  warmFile: ReturnType<typeof readWarm>,
+): Part | null {
+  if (i.agent.home.length === 0) return null;
+  const home = readHookHome(i.paths.home);
+  if (!home) return null;
+  const warm =
+    warmFile.home?.space_id === home.space_id ? warmFile.home : undefined;
+  const files: Array<{ file: CompiledFile; target?: WarmTarget }> = [];
+  for (const f of home.files) {
+    if (!i.agent.home.includes(f.kind)) continue;
+    const file = readCompiled(f.abs, `~/${f.path}`);
+    if (!file) continue;
+    const target = warm?.targets.find(
+      (t) => t.kind === f.kind && t.path === f.path,
+    );
+    files.push({ file, target });
+  }
+  if (files.length === 0) return null;
+  return part(
+    i.now,
+    files,
+    warm,
+    home.space_slug,
+    home.space_id,
+    join(
+      i.paths.seen,
+      "home",
+      `${i.agent.kind.replace(/[^a-z0-9-]/gi, "_")}.json`,
+    ),
+  );
+}
+
+export function sessionStart(i: SessionStartInput): SessionStartResult {
+  const nothing = (skipped: string): SessionStartResult => ({
+    output: "",
+    loads: [],
+    skipped,
+  });
+  const host = foreignHost(i.agent, i.event, i.env);
+  if (host) return nothing(`running under ${host}, whose own hook speaks`);
+
+  const dir = sessionDir(i.event, i.env, i.cwd);
+  const repo = findRepo(dir, readRegistry(i.paths.repos));
+  const warmFile = readWarm(i.paths.warm);
+  const inRepo = repo ? repoPart(i, repo, warmFile) : "not in a repository";
+  const atHome = homePart(i, warmFile);
+  if (typeof inRepo === "string" && !atHome) return nothing(inRepo);
+  const parts = [typeof inRepo === "string" ? null : inRepo, atHome];
+
+  const block = renderBlock({
+    repo: typeof inRepo === "string" ? undefined : inRepo.block,
+    personal: atHome?.block,
+    maxTokens: i.agent.maxTokens,
+  });
 
   const source = str(i.event.source) ?? "startup";
   const session = str(i.event.session_id) ?? str(i.event.sessionId);
@@ -360,17 +460,21 @@ export function sessionStart(i: SessionStartInput): SessionStartResult {
   const loads: QueuedLoad[] =
     source === "compact"
       ? []
-      : files.map(({ file }) => ({
-          space: repo.link?.space_id ?? file.space,
-          compile: file.compile,
-          agent: i.agent.kind,
-          ...(session ? { session_ref: session.slice(0, 255) } : {}),
-          loaded_at: loadedAt,
-        }));
+      : parts.flatMap((p) =>
+          (p?.loaded ?? []).map((l) => ({
+            space: l.space,
+            compile: l.compile,
+            agent: i.agent.kind,
+            ...(session ? { session_ref: session.slice(0, 255) } : {}),
+            loaded_at: loadedAt,
+          })),
+        );
+  const first = parts.every((p) => !p || p.first);
 
   return {
     output: wrapFor(i.agent.format, block),
-    seen: { path: seenFile, value: seen },
+    ...(typeof inRepo === "string" ? {} : { seen: inRepo.seen }),
+    ...(atHome ? { homeSeen: atHome.seen } : {}),
     loads,
     ...(block === "" ? { skipped: first ? "first session" : "no news" } : {}),
   };

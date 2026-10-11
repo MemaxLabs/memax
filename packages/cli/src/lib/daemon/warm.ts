@@ -1,15 +1,18 @@
 // Keeps the warm-start cache (~/.memax/daemon/warm.json, lib/hook/warm.ts)
 // current for the session-start hook: each linked space's compiled files
 // (from every poll of its targets), and its recent forgets and waiting
-// gates (fetched when the space changed, at most every few seconds). The
-// hook reads it without the network, so it is only as fresh as the last
-// poll: within seconds while the daemon runs.
+// gates (fetched when the space changed, at most every few seconds); and,
+// on a machine whose home is linked, the Personal space's files here, its
+// forgets and its gates (the `home` entry, personal-layer design §7.1).
+// The hook reads it without the network, so it is only as fresh as the
+// last poll: within seconds while the daemon runs.
 import type { V2 } from "memax-sdk";
 import {
   readWarm,
   type WarmFile,
   type WarmForget,
   type WarmGate,
+  type WarmHome,
   type WarmSpace,
   type WarmTarget,
 } from "../hook/warm.js";
@@ -21,6 +24,10 @@ import { ensureDaemonDir, type DaemonPaths } from "./paths.js";
 
 /** The compiled files agents load at session start (lib/hook/agents.ts). */
 const LOADED_KINDS = new Set(["agents_md", "claude_md", "gemini_md"]);
+/** The home files a home link writes: what agents load in every session. */
+const HOME_KINDS = new Set(["claude_user", "codex_user", "agents_md"]);
+/** The key refresh() and requestRefresh() take for the home link's space. */
+export const HOME = "home";
 const FORGET_WINDOW_MS = 30 * 24 * 60 * 60_000;
 const MAX_FORGETS = 50;
 const MAX_GATES = 20;
@@ -32,10 +39,16 @@ export const MIN_REFRESH_MS = 5_000;
 export function warmTargets(
   targets: V2.Target[],
   prev: WarmTarget[] = [],
+  home = false,
 ): WarmTarget[] {
   return targets
     .filter(
-      (t) => LOADED_KINDS.has(t.kind) && t.delivery === "local" && !!t.path,
+      (t) =>
+        (home
+          ? t.root === "home" && HOME_KINDS.has(t.kind)
+          : t.root !== "home" && LOADED_KINDS.has(t.kind)) &&
+        t.delivery === "local" &&
+        !!t.path,
     )
     .map((t) => {
       const last = t.last_compile;
@@ -147,6 +160,42 @@ export class WarmCache {
     this.changed(s);
   }
 
+  /** What a poll of this machine's home files says (its home link). */
+  setHome(
+    link: { space_id: string; space_slug: string; machine_id: string },
+    targets: V2.Target[],
+  ): void {
+    const prev = this.data.home;
+    const same =
+      prev?.space_id === link.space_id && prev.machine_id === link.machine_id;
+    const h: WarmHome = same
+      ? prev
+      : {
+          space_id: link.space_id,
+          machine_id: link.machine_id,
+          slug: link.space_slug,
+          updated_at: new Date(this.now()).toISOString(),
+          targets: [],
+          forgotten: [],
+          gates: [],
+        };
+    h.slug = link.space_slug;
+    const next = warmTargets(targets, h.targets, true);
+    if (same && JSON.stringify(next) === JSON.stringify(h.targets)) return;
+    h.targets = next;
+    this.data.home = h;
+    this.changed(h);
+  }
+
+  /** The home link is gone: so is its entry. */
+  clearHome(): void {
+    if (!this.data.home) return;
+    delete this.data.home;
+    clearTimeout(this.pending.get(HOME));
+    this.pending.delete(HOME);
+    this.schedule();
+  }
+
   /** Fetches the space's forgets and waiting gates now. */
   refresh(spaceId: string, slug: string): Promise<void> {
     const running = this.inflight.get(spaceId);
@@ -184,18 +233,26 @@ export class WarmCache {
     this.pending.set(spaceId, t);
   }
 
-  private async fetch(spaceId: string, slug: string): Promise<void> {
-    this.lastRefresh.set(spaceId, this.now());
+  /** A space's entry, or the home link's (HOME). */
+  private entry(key: string): WarmSpace | undefined {
+    return key === HOME ? this.data.home : this.data.spaces[key];
+  }
+
+  private async fetch(key: string, slug: string): Promise<void> {
+    this.lastRefresh.set(key, this.now());
+    const spaceId = key === HOME ? this.data.home?.space_id : key;
+    if (!spaceId) return;
     try {
       const [gates, tombstones] = await Promise.all([
         this.o.api.waitingGates(spaceId),
         this.o.api.tombstones(spaceId),
       ]);
-      if (this.stopped || !(spaceId in this.data.spaces)) return;
-      const s = this.space(spaceId, slug);
+      const s = this.entry(key);
+      if (this.stopped || !s) return;
+      if (key !== HOME) this.space(spaceId, slug);
       const forgotten = warmForgets(tombstones, this.now());
       const waiting = warmGates(gates, this.now());
-      this.warned.delete(spaceId);
+      this.warned.delete(key);
       if (
         JSON.stringify(forgotten) === JSON.stringify(s.forgotten) &&
         JSON.stringify(waiting) === JSON.stringify(s.gates)
@@ -206,8 +263,8 @@ export class WarmCache {
       this.changed(s);
     } catch (err) {
       const f = failureOf(err);
-      if (!this.warned.has(spaceId)) {
-        this.warned.add(spaceId);
+      if (!this.warned.has(key)) {
+        this.warned.add(key);
         this.o.log.warn("couldn't refresh the warm-start cache", {
           space: slug,
           code: f.code,

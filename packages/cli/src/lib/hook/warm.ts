@@ -55,9 +55,22 @@ export interface WarmSpace {
   gates: WarmGate[];
 }
 
+/**
+ * This machine's home link (memax link --home): the Personal space's
+ * files on this machine, with paths relative to the home folder, and that
+ * space's forgets and waiting gates. Apart from `spaces`, which holds
+ * what linked repositories compile.
+ */
+export interface WarmHome extends WarmSpace {
+  space_id: string;
+  machine_id: string;
+}
+
 export interface WarmFile {
   version: typeof WARM_VERSION;
   spaces: Record<string, WarmSpace>;
+  /** Absent when this machine's home isn't linked. */
+  home?: WarmHome;
 }
 
 export function emptyWarm(): WarmFile {

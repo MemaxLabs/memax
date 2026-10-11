@@ -356,7 +356,7 @@ func (l *Ledger) importItems(ctx context.Context, meta Meta, req ImportRequest, 
 	b := &pgx.Batch{}
 	b.Queue(spaceSQL, req.SpaceID).QueryRow(func(row pgx.Row) error {
 		read = true
-		sp, spaceErr = scanSpace(row, req.SpaceID)
+		sp, spaceErr = scanSpace(ctx, row, req.SpaceID)
 		return nil
 	})
 	b.Queue(`

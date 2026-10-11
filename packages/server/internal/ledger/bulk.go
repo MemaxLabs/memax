@@ -297,7 +297,7 @@ func (l *Ledger) bulkReview(ctx context.Context, verb CommandName, meta Meta, it
 	b := &pgx.Batch{}
 	b.Queue(spaceSQL, spaceID).QueryRow(func(row pgx.Row) error {
 		read = true
-		sp, spaceErr = scanSpace(row, spaceID)
+		sp, spaceErr = scanSpace(ctx, row, spaceID)
 		return nil
 	})
 	b.Queue(bulkLockSQL, ids, seqs, scopeIDs).Query(func(rows pgx.Rows) error {

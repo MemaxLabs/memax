@@ -17,6 +17,7 @@
 // the file changes.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { parseJsoncObject, setJsonc } from "../jsonc.js";
 
 export type HookOutcome =
   | "written"
@@ -74,19 +75,18 @@ export function hookSupport(kind: string): HookSupport {
 
 type Json = Record<string, unknown>;
 
-function readJson(path: string): Json | null {
-  if (!existsSync(path)) return {};
-  try {
-    const v: unknown = JSON.parse(readFileSync(path, "utf8"));
-    return v && typeof v === "object" && !Array.isArray(v) ? (v as Json) : null;
-  } catch {
-    return null; // not ours to rewrite: say so instead
-  }
+/** The file's text, or "" when it isn't there. */
+function readText(path: string): string {
+  return existsSync(path) ? readFileSync(path, "utf8") : "";
 }
 
-function writeJson(path: string, value: Json): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+/** The settings, comments allowed; null when they aren't JSON (not ours to rewrite: say so instead). */
+function readJson(path: string): Json | null {
+  try {
+    return parseJsoncObject(readText(path));
+  } catch {
+    return null;
+  }
 }
 
 const mentions = (v: unknown) => JSON.stringify(v ?? null).includes(MARK);
@@ -170,7 +170,8 @@ export function installHook(kind: string, home: string): HookOutcome {
   if (!s.file) return "unsupported";
   if (kind === "claude-code" && hasClaudePlugin(home)) return "plugin";
   const path = join(home, s.file);
-  const json = readJson(path);
+  const text = readText(path);
+  const json = parseJsoncObject(text);
   if (!json)
     return {
       error: `${path} isn't valid JSON; fix it, or add the hook by hand (docs.memax.app/cli/hook)`,
@@ -182,11 +183,14 @@ export function installHook(kind: string, home: string): HookOutcome {
       : {};
   const next = upsert(hooks[event], entry);
   if (!next) return "present";
-  const out: Json = { ...json };
-  if (kind === "cursor" || kind === "copilot") out.version ??= 1;
-  out.hooks = { ...hooks, [event]: next };
+  // Only the event's list (and Cursor's and Copilot's version) change:
+  // the person's comments and other settings stay as they are.
+  let out = setJsonc(text, ["hooks", event], next);
+  if ((kind === "cursor" || kind === "copilot") && json.version === undefined)
+    out = setJsonc(out, ["version"], 1);
   try {
-    writeJson(path, out);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, out);
   } catch (err) {
     return { error: (err as Error).message };
   }

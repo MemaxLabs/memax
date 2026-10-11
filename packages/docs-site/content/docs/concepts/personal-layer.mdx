@@ -42,6 +42,10 @@ keep for one repository stays out of these files: it applies there only.
 Every file starts by saying that a project's own files win where they
 disagree.
 
+Each session, Claude Code's and Codex's [session-start hook](/cli/hook)
+says what changed in that file since the agent's last session on this
+machine, in a repository or not, and what a person forgot in Personal.
+
 ## Before anything is written
 
 `memax link --home` shows every file and what happens to it, and asks:

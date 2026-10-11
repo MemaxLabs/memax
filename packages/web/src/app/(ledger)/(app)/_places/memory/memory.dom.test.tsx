@@ -469,6 +469,114 @@ describe("Forget on a memory's page", () => {
     );
   });
 
+  it("words Memory.png's conditions and their last check", async () => {
+    renderMemory(
+      "M-0219",
+      createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 }),
+    );
+    const panel = await screen.findByRole("region", {
+      name: "Stays true while",
+    });
+    const lines = [...panel.querySelectorAll("div > span")].map(
+      (s) => s.textContent,
+    );
+    expect(lines).toEqual([
+      "github.com/riverqueue/river is in go.mod",
+      "docs/adr/004-queues.md is unchanged",
+      "Checked today at 14:31 by Claude Code. Memax marks it stale if one stops holding.",
+    ]);
+    // Names and paths are set in mono, the manifest isn't.
+    expect(
+      [...panel.querySelectorAll("code")].map((c) => c.textContent),
+    ).toEqual(["github.com/riverqueue/river", "docs/adr/004-queues.md"]);
+  });
+
+  it("says derived conditions aren't checked yet, and lists the date", async () => {
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    const base = demo.memories.peekRecord!("memax-v2", "M-0098")!;
+    const record = {
+      ...base,
+      conditions: [
+        {
+          key: "c1",
+          kind: "path_exists" as const,
+          path: "internal/ask/config.go",
+          glob: null,
+        },
+        {
+          key: "c2",
+          kind: "file_contains" as const,
+          path: "internal/ask/config.go",
+          text: "ASK_MODEL",
+          word: true,
+        },
+        {
+          key: "c3",
+          kind: "path_exists" as const,
+          path: null,
+          glob: "packages/web/**",
+        },
+        {
+          key: "c4",
+          kind: "pr_state" as const,
+          repo: "MemaxLabs/memax",
+          number: 212,
+          state: "merged" as const,
+        },
+        { key: "date", kind: "date" as const, at: "2026-10-01T12:00:00Z" },
+      ],
+      checked: null,
+    };
+    const source: LedgerDataSource = {
+      ...demo,
+      memories: {
+        ...demo.memories,
+        peekRecord: () => record,
+        get: vi.fn(async () => record),
+      },
+    };
+    renderMemory("M-0098", source);
+    const panel = await screen.findByRole("region", {
+      name: "Stays true while",
+    });
+    expect(
+      [...panel.querySelectorAll("div > span")].map((s) => s.textContent),
+    ).toEqual([
+      "internal/ask/config.go is in the repository",
+      "internal/ask/config.go contains the word ASK_MODEL",
+      "A path matching packages/web/** is in the repository",
+      "PR #212 in MemaxLabs/memax is merged",
+      "Until Oct 1, 2026",
+      "Not checked yet.",
+    ]);
+  });
+
+  it("lists a date alone without waiting for a check", async () => {
+    const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
+    const base = demo.memories.peekRecord!("memax-v2", "M-0098")!;
+    const record = {
+      ...base,
+      conditions: [
+        { key: "date", kind: "date" as const, at: "2026-10-01T12:00:00Z" },
+      ],
+      checked: null,
+    };
+    const source: LedgerDataSource = {
+      ...demo,
+      memories: {
+        ...demo.memories,
+        peekRecord: () => record,
+        get: vi.fn(async () => record),
+      },
+    };
+    renderMemory("M-0098", source);
+    const panel = await screen.findByRole("region", {
+      name: "Stays true while",
+    });
+    expect(panel.textContent).toContain("Until Oct 1, 2026");
+    expect(panel.textContent).not.toContain("Not checked yet.");
+  });
+
   it("shows the repositories a personal fact applies in, and widens it to everywhere", async () => {
     const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
     const base = demo.memories.peekRecord!("memax-v2", "M-0098")!;

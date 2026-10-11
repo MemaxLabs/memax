@@ -184,20 +184,83 @@ describe("mapping /v2 records", () => {
     });
   });
 
-  it("reads conditions in the shapes a writer is likely to send", () => {
+  it("reads typed conditions, then the date to check again", () => {
     expect(
-      conditionsOf([
-        "ADR 004 is unchanged",
-        { subject: "github.com/riverqueue/river", rest: "is in go.mod" },
-        { code: "pnpm-workspace.yaml", text: "has a catalog" },
-        42,
-        {},
-      ]),
+      conditionsOf(
+        [
+          {
+            id: "c1",
+            kind: "dep_present",
+            manifest: "go.mod",
+            name: "github.com/riverqueue/river",
+            origin: "person",
+          },
+          {
+            id: "c2",
+            kind: "path_exists",
+            path: "internal/ask/config.go",
+            origin: "derived",
+            from: "statement",
+          },
+          { id: "c3", kind: "path_exists", glob: "packages/web/**" },
+          {
+            id: "c4",
+            kind: "file_contains",
+            path: "internal/ask/config.go",
+            text: "ASK_MODEL",
+            word: true,
+          },
+          {
+            id: "c5",
+            kind: "pr_state",
+            repo: "MemaxLabs/memax",
+            number: 212,
+            state: "merged",
+          },
+          {
+            id: "c6",
+            kind: "file_unchanged",
+            path: "docs/adr/004-queues.md",
+            blob: "a".repeat(40),
+          },
+          // A kind a later server sends: left out, not guessed at.
+          { kind: "later_kind" } as unknown as V2.Condition,
+        ],
+        "2026-10-01T00:00:00Z",
+      ),
     ).toEqual([
-      { key: "0", code: null, text: "ADR 004 is unchanged" },
-      { key: "1", code: "github.com/riverqueue/river", text: "is in go.mod" },
-      { key: "2", code: "pnpm-workspace.yaml", text: "has a catalog" },
+      {
+        key: "c1",
+        kind: "dep_present",
+        manifest: "go.mod",
+        name: "github.com/riverqueue/river",
+        range: null,
+      },
+      {
+        key: "c2",
+        kind: "path_exists",
+        path: "internal/ask/config.go",
+        glob: null,
+      },
+      { key: "c3", kind: "path_exists", path: null, glob: "packages/web/**" },
+      {
+        key: "c4",
+        kind: "file_contains",
+        path: "internal/ask/config.go",
+        text: "ASK_MODEL",
+        word: true,
+      },
+      {
+        key: "c5",
+        kind: "pr_state",
+        repo: "MemaxLabs/memax",
+        number: 212,
+        state: "merged",
+      },
+      { key: "c6", kind: "file_unchanged", path: "docs/adr/004-queues.md" },
+      { key: "date", kind: "date", at: "2026-10-01T00:00:00Z" },
     ]);
+    expect(conditionsOf([], null)).toEqual([]);
   });
 
   it("builds a memory's page: the Keep for the seal, lineage oldest first", () => {

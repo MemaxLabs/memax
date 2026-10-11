@@ -438,8 +438,9 @@ describe("the demo's Memories", () => {
       "docs/adr/004-queues.md",
     ]);
     expect(record?.conditions[0]).toMatchObject({
-      code: "github.com/riverqueue/river",
-      text: "is in go.mod",
+      kind: "dep_present",
+      name: "github.com/riverqueue/river",
+      manifest: "go.mod",
     });
     expect(record?.reaches).toHaveLength(4);
     expect(await demo.memories.get({ space: v2, ref: "M-9999" })).toBeNull();

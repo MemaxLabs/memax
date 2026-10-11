@@ -313,6 +313,20 @@ export function formatShortDate(
   }).format(date);
 }
 
+/** A date with its year: "Oct 1, 2026" / "2026年10月1日". */
+export function formatDate(
+  date: Date,
+  timeZone: string,
+  locale: Locale,
+): string {
+  return new Intl.DateTimeFormat(DATE_TAGS[locale], {
+    timeZone,
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
 /** "today at 09:41", or "Oct 3 at 09:41" on another day. */
 export function formatWhen(
   copy: AppCopy,

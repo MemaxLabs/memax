@@ -30,38 +30,67 @@ export function sourceLineOf(source: V2.Source): SourceLine {
 }
 
 /**
- * "Stays true while" conditions. The spec leaves their shape open, so
- * this reads the forms a writer is likely to send: a sentence, or an
- * object with a `text` and optionally a `code` (a dependency, a path)
- * set in mono before it.
+ * "Stays true while": the memory's typed conditions in the record's
+ * order, then its date to check again (`stale_after`), as the design
+ * lists it with the others. A kind this build doesn't know is left out.
  */
-export function conditionsOf(raw: unknown[]): ConditionLine[] {
-  return raw.flatMap((item, i): ConditionLine[] => {
-    if (typeof item === "string" && item.trim()) {
-      return [{ key: String(i), code: null, text: item.trim() }];
+export function conditionsOf(
+  raw: readonly V2.Condition[],
+  staleAfter?: string | null,
+): ConditionLine[] {
+  const lines = raw.flatMap((c, i): ConditionLine[] => {
+    const key = c.id ?? `c${i + 1}`;
+    switch (c.kind) {
+      case "path_exists":
+        return c.path || c.glob
+          ? [
+              {
+                key,
+                kind: c.kind,
+                path: c.path ?? null,
+                glob: c.glob ?? null,
+              },
+            ]
+          : [];
+      case "file_contains":
+        return [
+          {
+            key,
+            kind: c.kind,
+            path: c.path,
+            text: c.text,
+            word: c.word ?? false,
+          },
+        ];
+      case "dep_present":
+        return [
+          {
+            key,
+            kind: c.kind,
+            manifest: c.manifest,
+            name: c.name,
+            range: c.range ?? null,
+          },
+        ];
+      case "file_unchanged":
+        return [{ key, kind: c.kind, path: c.path }];
+      case "pr_state":
+        return [
+          {
+            key,
+            kind: c.kind,
+            repo: c.repo,
+            number: c.number,
+            state: c.state,
+          },
+        ];
+      default:
+        return [];
     }
-    if (item && typeof item === "object") {
-      const o = item as Record<string, unknown>;
-      const code =
-        typeof o.code === "string"
-          ? o.code
-          : typeof o.subject === "string"
-            ? o.subject
-            : null;
-      const text =
-        typeof o.text === "string"
-          ? o.text
-          : typeof o.rest === "string"
-            ? o.rest
-            : typeof o.description === "string"
-              ? o.description
-              : null;
-      if (text || code) {
-        return [{ key: String(i), code, text: text ?? "" }];
-      }
-    }
-    return [];
   });
+  return staleAfter
+    ? [...lines, { key: "date", kind: "date", at: staleAfter }]
+    : lines;
 }
 
 /** One of the judge's folds: Memax merged a proposal into a kept memory. */
@@ -164,7 +193,6 @@ export function recordOf(
   const receipts = detail.receipts.items;
   const newest = [...receipts].sort((a, b) => b.seq - a.seq);
   const keptReceipt = newest.find((r) => r.action === "kept");
-  const verified = newest.find((r) => r.action === "verified");
   const state = displayState(memory);
   const lifecycle =
     memory.lifecycle === "rejected" ? "proposed" : memory.lifecycle;
@@ -193,10 +221,10 @@ export function recordOf(
       now,
     }),
     sources: (memory.sources ?? []).map(sourceLineOf),
-    conditions: conditionsOf(memory.conditions ?? []),
-    checked: verified
-      ? { at: verified.occurred_at, by: actorOf(verified, viewerId) }
-      : null,
+    conditions: conditionsOf(memory.conditions ?? [], memory.stale_after),
+    // The checks of its conditions arrive with the checker (stale design
+    // §4): a person's Verify is a lineage line, not a check of these.
+    checked: null,
     forgotten:
       state === "forgotten"
         ? {

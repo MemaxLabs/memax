@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, Icon, type IconName } from "@memaxlabs/ledger";
+import type { ReactNode } from "react";
+import { Button, Icon, formatNodes, type IconName } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
-import { formatWhen } from "@/lib/v2/copy";
-import type { MemoryRecord } from "@/lib/v2/data/memories";
+import { formatDate, formatWhen } from "@/lib/v2/copy";
+import type { ConditionLine, MemoryRecord } from "@/lib/v2/data/memories";
 import { reachMeta } from "@/lib/v2/reads-copy";
 import { TargetRow } from "../../_components/target-row";
 import type { RecordsView } from "../records-view";
@@ -94,20 +95,15 @@ export function MemorySide({
       </section>
 
       {record.conditions.length > 0 ? (
-        <section className="mx-panel">
+        <section className="mx-panel" aria-labelledby="memory-stays-true">
           <header className="mx-panel-head">
-            <h2 className="mx-panel-title">{p.staysTrue}</h2>
+            <h2 id="memory-stays-true" className="mx-panel-title">
+              {p.staysTrue}
+            </h2>
           </header>
           <div className={styles.conditions}>
             {record.conditions.map((condition) => (
-              <span key={condition.key}>
-                {condition.code ? (
-                  <>
-                    <code className="mx-code">{condition.code}</code>{" "}
-                  </>
-                ) : null}
-                {condition.text}
-              </span>
+              <span key={condition.key}>{conditionWords(view, condition)}</span>
             ))}
             {record.checked ? (
               <span className={`mx-meta ${styles.checked} ${styles.prose}`}>
@@ -125,12 +121,53 @@ export function MemorySide({
                   },
                 )}
               </span>
+            ) : record.conditions.some((c) => c.kind !== "date") ? (
+              // Memax checks dates itself; the rest wait for a check.
+              <span className={`mx-meta ${styles.checked} ${styles.prose}`}>
+                {p.notChecked}
+              </span>
             ) : null}
           </div>
         </section>
       ) : null}
     </aside>
   );
+}
+
+/** One condition in words, its paths, text and dependency in mono. */
+function conditionWords(view: RecordsView, c: ConditionLine): ReactNode {
+  const w = view.l.memory.page.conditions;
+  const code = (s: string) => <code className="mx-code">{s}</code>;
+  switch (c.kind) {
+    case "path_exists":
+      return c.glob
+        ? formatNodes(w.glob, { glob: code(c.glob) })
+        : formatNodes(w.path, { path: code(c.path ?? "") });
+    case "file_contains":
+      return formatNodes(c.word ? w.containsWord : w.contains, {
+        path: code(c.path),
+        text: code(c.text),
+      });
+    case "dep_present":
+      return c.range
+        ? formatNodes(w.depRange, {
+            name: code(c.name),
+            range: c.range,
+            manifest: c.manifest,
+          })
+        : formatNodes(w.dep, { name: code(c.name), manifest: c.manifest });
+    case "file_unchanged":
+      return formatNodes(w.unchanged, { path: code(c.path) });
+    case "pr_state":
+      return interpolate(w.pr[c.state], {
+        number: String(c.number),
+        repo: c.repo,
+      });
+    case "date":
+      return interpolate(w.until, {
+        date: formatDate(new Date(c.at), view.timeZone, view.locale),
+      });
+  }
 }
 
 /** The repositories a memory applies in, and Apply everywhere. */

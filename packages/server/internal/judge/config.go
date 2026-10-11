@@ -28,9 +28,13 @@ type Tier struct {
 	Routing anthropic.Routing
 	// Temperature, when set, is sent with every call. The judge's answers
 	// are classifications, so its tiers run at 0 where the model takes a
-	// temperature; nil leaves the model's default (Claude Sonnet 5.5
-	// refuses any other).
+	// temperature; nil leaves the model's default (Claude Sonnet 5.5 and
+	// Haiku 5.5 refuse any other: anthropic.ModelParams).
 	Temperature *float64
+	// Thinking is the tier's thinking control (thinking.type and
+	// output_config.effort; anthropic.ThinkingFromEnv). The zero value is
+	// the client's default for the model.
+	Thinking anthropic.Thinking
 }
 
 // Enabled reports whether the tier has a model.
@@ -155,7 +159,13 @@ func (c Config) withDefaults() Config {
 //	JUDGE_MIN_QUANTIZATION      the lowest precision any tier's hosts may run (default fp8 when JUDGE_ZDR is on; "off")
 //	JUDGE_TEMPERATURE           the primary's temperature (default 0; "default" sends none)
 //	JUDGE_FALLBACK_TEMPERATURE  the fallback's (default 0)
-//	JUDGE_STRONG_TEMPERATURE    the strong tier's (default none: Claude Sonnet 5.5 takes no other)
+//	JUDGE_STRONG_TEMPERATURE    the strong tier's (default none)
+//	                            A tier on a model that takes no temperature (anthropic.ModelParams: Claude
+//	                            Sonnet 5.5 and Haiku 5.5) sends none, and a temperature named for it is logged
+//	JUDGE_THINKING              the primary's thinking: off, adaptive, an effort level (low … max) or default
+//	                            (default: anthropic.ModelParams for the slug, else the client's default)
+//	JUDGE_FALLBACK_THINKING     the fallback's (Claude Haiku 5.5: medium)
+//	JUDGE_STRONG_THINKING       the strong tier's
 //	JUDGE_CONDITIONS            propose "stays true while" conditions (default false)
 //	JUDGE_TIMEOUT_MS            one model call (default 12000)
 //	JUDGE_VECTOR_FLOOR          cosine similarity a vector candidate needs (default 0.65)
@@ -206,7 +216,11 @@ func ConfigFromEnv(lookup func(string) (string, bool)) Config {
 			t.tier.Model, c.ZeroDataRetention); err != nil {
 			slog.Warn("judge: config", "error", err)
 		}
-		if t.tier.Temperature, err = anthropic.TemperatureFromEnv(lookup, t.prefix+"TEMPERATURE", t.temperature); err != nil {
+		if t.tier.Temperature, err = anthropic.ModelTemperatureFromEnv(lookup, t.prefix+"TEMPERATURE", t.tier.Model,
+			t.temperature); err != nil {
+			slog.Warn("judge: config", "error", err)
+		}
+		if t.tier.Thinking, err = anthropic.ThinkingFromEnv(lookup, t.prefix+"THINKING", t.tier.Model); err != nil {
 			slog.Warn("judge: config", "error", err)
 		}
 	}

@@ -15,6 +15,38 @@ IMPORT_EVAL_LIVE=1 IMPORT_EVAL_BATCH=120 IMPORT_EVAL_ONLY=atlas go test ./eval/i
 
 The live run reads the worker's configuration (`judge.ConfigFromEnv`): the import check uses the judge's primary tier, then its fallback. `IMPORT_EVAL_DEBUG=1` prints every answer the check couldn't use, and why.
 
+## Oct 11: Claude Haiku 5.5 as the fallback
+
+**Haiku 5.5 doesn't replace Haiku 4.5 as the fallback.** The import check is where it falls short: at every thinking setting its largest import takes longer, and at low and medium it finds fewer planted conflicts. The judge's half of the evaluation, the client changes and the decision are in `eval/judge/RESULTS.md` ("Oct 11"). Raw groups (refs, confidences, classes; no words) are in `results-2026-10-11.json`.
+
+```bash
+cd packages/server
+IMPORT_EVAL_LIVE=1 IMPORT_EVAL_TIERS=fallback JUDGE_FALLBACK_MODEL=anthropic/claude-haiku-5.5 \
+  JUDGE_FALLBACK_THINKING=off|low|medium go test ./eval/imports/ -run Live -v    # then IMPORT_EVAL_SET=holdout.json
+IMPORT_EVAL_LIVE=1 IMPORT_EVAL_TIERS=fallback go test ./eval/imports/ -run Live -v   # Haiku 4.5 as it ships, the same hour
+```
+
+The fallback tier alone, at the bar of 0.8. Latency is the whole check, per import. With eight imports, p95 is the slowest import: `atlas` (215 proposals) in most of Haiku 5.5's runs, and a 35-proposal personal import (7.9 s) in Haiku 4.5's, which checked `atlas` in 6.5 s.
+
+| Model, thinking   | Set      | Recall           | Precision | Held     | Check p50 / p95     | Groups named (wrong) | Output tokens (thinking) | Cost a call |
+| ----------------- | -------- | ---------------- | --------- | -------- | ------------------- | -------------------- | ------------------------ | ----------- |
+| Haiku 4.5         | main     | 0.96 (52/54)     | 0.88      | 11/425   | 6.5 / **7.9 s**     | 62 (10)              | 4,821                    | $0.0079     |
+| Haiku 5.5, off    | main     | **0.98 (53/54)** | 0.92      | 7/425    | 4.0 / 19.5 s        | 100 (46)             | 13,750                   | $0.0015     |
+| Haiku 5.5, low    | main     | 0.96, **0.91**   | 0.95, 0.94 | 7/425   | 6.0–6.8 / 10.1–11.9 s | 83 (30)           | 12,245–13,171 (2,655–3,075) | $0.0014  |
+| Haiku 5.5, medium | main     | **0.89 (48/54)** | **1.00**  | 0/425    | 7.2 / 23.8 s        | 51 (0)               | 18,516 (13,308)          | $0.0018     |
+| Haiku 4.5         | held out | 0.94 (16/17)     | 0.89      | 4/78     | 4.4 / **5.2 s**     | 18 (2)               | 1,527                    | $0.0058     |
+| Haiku 5.5, low    | held out | **0.82 (14/17)** | 0.88      | 4/78     | 4.2 / 6.4 s         | 23 (8)               | 3,182 (763)              | $0.0010     |
+| Haiku 5.5, medium | held out | 0.94 (16/17)     | 1.00      | 0/78     | 8.0 / 8.3 s         | 17 (0)               | 5,308 (3,588)            | $0.0013     |
+
+- **Slower at every setting.** Haiku 4.5 checks `atlas` in 6.5 s. Haiku 5.5 takes 10.1–11.0 s at low, 19.5 s with thinking off and 23.8 s at medium. It writes 2.5–3.8 times Haiku 4.5's output:
+  - With little or no thinking, it names many groups under the bar (83–100, against 62), despite "Leave out any group you aren't sure of"; 30–46 of them hold no conflict.
+  - At medium it leaves those out, but thinks up to 3,968 tokens on one import. That is two thirds of the 6,000 answer tokens an import call gets (`importMaxTokens`), so an import of 500 statements could run out.
+- **Recall.** Only thinking off found as many conflicts as Haiku 4.5 (53 of 54, one run), and it is the slowest but one. Low found 52 and then 49, and 14 of 17 held out. Medium found 48: it named three conflicts nowhere and put three more under the bar (atlas's Go version at 0.45, acme's amounts at 0.6, the personal JS tool at 0.7).
+  - The other three it missed were the personal spelling and code-first conflicts and ferrous's `unwrap`.
+- **Precision is better on the main set at every setting** (0.92–1.00 against 0.88). At medium no wrong group held anything out of bulk keep, on either set. Held out, low's 0.88 is level with Haiku 4.5's 0.89.
+- **Tokens and cost:** Haiku 5.5 read 32% more input tokens for the same imports. A check still costs under a quarter of Haiku 4.5's.
+- **No refusals:** every one of the 38 import calls ended `end_turn`.
+
 ## Summary
 
 - **The §11 bar is met: every planted conflict found.** In four runs of `batches.json` the check found 54 of 54, and in four runs of `holdout.json` 17 of 17, at `ImportConflictBar` 0.8.

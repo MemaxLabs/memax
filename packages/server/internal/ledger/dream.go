@@ -202,6 +202,7 @@ type Surfaced struct {
 type DreamModelUsage struct {
 	Calls        int            `json:"calls"`
 	Failures     int            `json:"failures,omitempty"`
+	Refusals     int            `json:"refusals,omitempty"` // failures the model declined (stop_reason refusal)
 	InputTokens  int            `json:"input_tokens,omitempty"`
 	OutputTokens int            `json:"output_tokens,omitempty"`
 	Tiers        map[string]int `json:"tiers,omitempty"`

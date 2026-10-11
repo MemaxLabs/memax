@@ -38,7 +38,7 @@ func fakeGateway(t *testing.T) *httptest.Server {
 				time.Sleep(5 * time.Millisecond)
 			}
 		default:
-			_, _ = io.WriteString(w, `{"id":"gen-2","provider":"Amazon Bedrock","content":[{"type":"text","text":"{}"}],`+
+			_, _ = io.WriteString(w, `{"id":"gen-2","provider":"Amazon Bedrock","content":[{"type":"text","text":"{}"}],"stop_reason":"refusal",`+
 				`"usage":{"input_tokens":300,"output_tokens":40,"output_tokens_details":{"thinking_tokens":12},"cost":0.0005}}`)
 		}
 	}))
@@ -62,7 +62,8 @@ func TestMeterRecordsMetadata(t *testing.T) {
 		return resp
 	}
 
-	resp := post(`{"model":"anthropic/claude-haiku-4.5","provider":{"zdr":true},"output_config":{"format":{"type":"json_schema","schema":{}}}}`)
+	resp := post(`{"model":"anthropic/claude-haiku-4.5","provider":{"zdr":true},"thinking":{"type":"adaptive"},` +
+		`"output_config":{"format":{"type":"json_schema","schema":{}},"effort":"low"}}`)
 	got, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if !strings.Contains(string(got), `"provider":"Amazon Bedrock"`) {
@@ -108,6 +109,13 @@ func TestMeterRecordsMetadata(t *testing.T) {
 	if e.Status != http.StatusNotFound || !strings.Contains(e.Error, "data policy") {
 		t.Errorf("refused call = %+v", e)
 	}
+	// The thinking asked for, and how each answer stopped.
+	if j.Effort != "low" || j.ThinkingLabel() != "adaptive/low" || s.ThinkingLabel() != "disabled" || e.ThinkingLabel() != "omitted" {
+		t.Errorf("thinking: json %q, stream %q, refused %q", j.ThinkingLabel(), s.ThinkingLabel(), e.ThinkingLabel())
+	}
+	if j.StopReason != "refusal" || s.StopReason != "end_turn" {
+		t.Errorf("stop reasons: json %q, stream %q", j.StopReason, s.StopReason)
+	}
 
 	zdr := ZDRList{
 		"deepseek/deepseek-v4.1-flash": {{Provider: "Fireworks", Tag: "fireworks", Quantization: "unknown"}},
@@ -128,8 +136,12 @@ func TestMeterRecordsMetadata(t *testing.T) {
 	if strings.Join(ds.Unpinned, ",") != "Fireworks" || len(ds.BelowFloor) != 0 {
 		t.Errorf("deepseek pinning: unpinned %v, below the floor %v", ds.Unpinned, ds.BelowFloor)
 	}
-	if f := Format(sums); !strings.Contains(f, "total $0.0005") || !strings.Contains(f, "NOT among the pinned hosts: [Fireworks]") {
+	if f := Format(sums); !strings.Contains(f, "total $0.0005") || !strings.Contains(f, "NOT among the pinned hosts: [Fireworks]") ||
+		!strings.Contains(f, "thinking: adaptive/low 1; stop: refusal 1") {
 		t.Errorf("format:\n%s", f)
+	}
+	if haiku.Refusals() != 1 || ds.Refusals() != 0 {
+		t.Errorf("refusals: haiku %d, deepseek %d", haiku.Refusals(), ds.Refusals())
 	}
 
 	// The same call from a host that is pinned, but only at fp4.

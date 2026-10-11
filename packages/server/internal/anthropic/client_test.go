@@ -3,11 +3,17 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 // These tests exercise the Client directly from its own package so
@@ -603,5 +609,105 @@ func TestCompleteThinkingControl(t *testing.T) {
 				t.Fatalf("thinking = %#v, want omitted for Claude models", body["thinking"])
 			}
 		})
+	}
+}
+
+// refusalServer answers every request as a model that declined it, in
+// category: a JSON body with some text before the refusal, or a stream
+// that ends in stop_reason refusal.
+func refusalServer(t *testing.T, category string) *httptest.Server {
+	t.Helper()
+	return fakeAnthropic(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["stream"] == true {
+			w.Header().Set("Content-Type", "text/event-stream")
+			for _, evt := range []string{
+				`{"type":"message_start","message":{"usage":{"input_tokens":40}}}`,
+				`{"type":"content_block_delta","delta":{"type":"text_delta","text":"I can"}}`,
+				`{"type":"message_delta","delta":{"stop_reason":"refusal","stop_details":{"type":"refusal","category":"` + category + `"}},"usage":{"output_tokens":3}}`,
+			} {
+				_, _ = w.Write([]byte("data: " + evt + "\n\n"))
+			}
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"content":      []map[string]any{{"type": "text", "text": `{"pairs":`}},
+			"stop_reason":  "refusal",
+			"stop_details": map[string]any{"type": "refusal", "category": category, "explanation": "not for the logs"},
+			"usage":        map[string]any{"input_tokens": 40, "output_tokens": 3},
+		})
+	})
+}
+
+// A refusal (HTTP 200, stop_reason refusal) is an error, never an answer:
+// Complete, CompleteMessages and the stream each return a *RefusalError
+// that wraps ErrRefusal, with the model and the category but none of the
+// model's words.
+func TestRefusalIsAnError(t *testing.T) {
+	t.Parallel()
+	c := New("k", refusalServer(t, "cyber").URL)
+	req := CompleteRequest{Model: "anthropic/claude-haiku-5.5", MaxTokens: 50, Prompt: "p", Purpose: "judge.classify.fallback"}
+	check := func(name string, err error) {
+		t.Helper()
+		var re *RefusalError
+		if !errors.Is(err, ErrRefusal) || !errors.As(err, &re) || re.Model != req.Model || re.Category != "cyber" {
+			t.Errorf("%s: err = %v, want a refusal by %s in cyber", name, err, req.Model)
+		}
+		if err != nil && strings.Contains(err.Error(), "not for the logs") {
+			t.Errorf("%s: the error carries the model's explanation", name)
+		}
+	}
+	resp, err := c.Complete(context.Background(), req)
+	if resp != nil {
+		t.Errorf("Complete returned an answer for a refusal: %+v", resp)
+	}
+	check("Complete", err)
+	_, err = c.CompleteMessages(context.Background(), req.Model, 50, []map[string]any{{"role": "user", "content": "p"}}, "x")
+	check("CompleteMessages", err)
+	var streamed strings.Builder
+	usage, err := c.CompleteStreamUsage(context.Background(), req, func(s string) { streamed.WriteString(s) })
+	check("CompleteStreamUsage", err)
+	if usage.StopReason != "refusal" || streamed.String() != "I can" {
+		t.Errorf("stream: usage %+v, streamed %q", usage, streamed.String())
+	}
+}
+
+// Every refusal is counted on memax.llm.refusals by model, purpose and
+// category. It sets the process's meter provider, so it doesn't run in
+// parallel (and runs before the parallel tests that refuse).
+func TestRefusalsAreCounted(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
+	c := New("k", refusalServer(t, "bio").URL)
+	for range 2 {
+		_, err := c.Complete(context.Background(), CompleteRequest{Model: "anthropic/claude-haiku-5.5", MaxTokens: 50,
+			Prompt: "p", Purpose: "judge.classify.fallback"})
+		if !errors.Is(err, ErrRefusal) {
+			t.Fatalf("err = %v", err)
+		}
+	}
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatal(err)
+	}
+	want := attribute.NewSet(attribute.String("model", "anthropic/claude-haiku-5.5"),
+		attribute.String("purpose", "judge.classify.fallback"), attribute.String("category", "bio"))
+	var got int64
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "memax.llm.refusals" {
+				continue
+			}
+			for _, dp := range m.Data.(metricdata.Sum[int64]).DataPoints {
+				if dp.Attributes.Equals(&want) {
+					got += dp.Value
+				}
+			}
+		}
+	}
+	if got != 2 {
+		t.Errorf("memax.llm.refusals{bio} = %d, want 2", got)
 	}
 }

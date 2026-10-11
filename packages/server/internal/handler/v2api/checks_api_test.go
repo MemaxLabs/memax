@@ -23,8 +23,9 @@ type spaceConditions struct {
 				Kind string `json:"kind"`
 				Path string `json:"path"`
 			} `json:"condition"`
-			Hash  string `json:"hash"`
-			Armed bool   `json:"armed"`
+			Hash       string `json:"hash"`
+			Armed      bool   `json:"armed"`
+			HeldCommit string `json:"held_commit"`
 		} `json:"conditions"`
 	} `json:"items"`
 }
@@ -68,7 +69,7 @@ func newChecksEnv(t *testing.T) *checksEnv {
 	var list spaceConditions
 	e.do(call{method: "GET", path: "/v2/spaces/" + c.sp.slug + "/conditions", token: c.tok}).ok(http.StatusOK, &list)
 	if len(list.Items) != 1 || list.Items[0].Memory != c.mem.Ref || list.Items[0].Conditions[0].Condition.Path != "packages/server/internal/ask/config.go" ||
-		list.Items[0].Conditions[0].Armed || list.Repository != "MemaxLabs/memax" {
+		list.Items[0].Conditions[0].Armed || list.Items[0].Conditions[0].HeldCommit != "" || list.Repository != "MemaxLabs/memax" {
 		t.Fatalf("conditions: %+v", list)
 	}
 	c.hash = list.Items[0].Conditions[0].Hash
@@ -103,7 +104,9 @@ func TestChecksOverTheAPI(t *testing.T) {
 	}
 	var list spaceConditions
 	c.do(call{method: "GET", path: "/v2/spaces/" + c.sp.slug + "/conditions", token: c.tok}).ok(http.StatusOK, &list)
-	if !list.Items[0].Conditions[0].Armed {
+	// Armed, with the commit it held at: where a machine that didn't see
+	// it hold looks for a rename.
+	if !list.Items[0].Conditions[0].Armed || list.Items[0].Conditions[0].HeldCommit != fmt.Sprintf("%040x", 1) {
 		t.Fatalf("not armed: %+v", list)
 	}
 
@@ -112,6 +115,11 @@ func TestChecksOverTheAPI(t *testing.T) {
 	c.report(c.tok, key, fail).ok(http.StatusCreated, &out)
 	if fmt.Sprint(out.Flagged) != "["+c.mem.Ref+"]" {
 		t.Fatalf("the failure: %+v", out)
+	}
+	// A failure keeps the commit it last held at.
+	c.do(call{method: "GET", path: "/v2/spaces/" + c.sp.slug + "/conditions", token: c.tok}).ok(http.StatusOK, &list)
+	if got := list.Items[0].Conditions[0]; !got.Armed || got.HeldCommit != fmt.Sprintf("%040x", 1) {
+		t.Fatalf("after the failure: %+v", got)
 	}
 	var again checkRunOut
 	r := c.report(c.tok, key, fail).ok(http.StatusCreated, &again)

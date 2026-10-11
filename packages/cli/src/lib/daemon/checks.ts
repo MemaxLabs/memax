@@ -70,6 +70,13 @@ export interface CheckTiming {
   globCap: number;
 }
 
+/**
+ * At most this many rename lookups a run (one `git diff` each, from each
+ * distinct commit a gone path last held at): an armed path past them is
+ * unknown, never a removal it might not be.
+ */
+const RENAME_BASES = 3;
+
 export const CHECK_TIMING: CheckTiming = {
   statMs: 15_000,
   minGapMs: 60_000,
@@ -169,6 +176,10 @@ interface PathCondition {
   /** A glob's literal folder, and its matcher. */
   prefix?: string;
   match?: (path: string) => boolean;
+  /** It held once on the default branch, so its failure can mark the memory. */
+  armed: boolean;
+  /** Its latest hold Memax heard of, from any machine (held_commit). */
+  held?: string;
 }
 
 /** A space's conditions as a run uses them, worked out once per fetch. */
@@ -423,14 +434,18 @@ export class RepoChecker {
     // git lists in byte order: a glob reads only the paths under its folder.
     if (tree) tree.sort();
 
-    // Renames, only for paths that are gone, from where they last held.
+    // Renames, only for paths that are gone, from where each last held:
+    // here, or as Memax heard of it from another machine (held_commit).
     const gone = checks.filter((c) => c.path && exists.get(c.path) === false);
-    const base = gone
-      .map((c) => state.results[c.key]?.held)
-      .find((h): h is string => !!h && h !== commit);
-    const renamed = base
-      ? await renamesBetween(root, base, commit, cost)
-      : new Map<string, string>();
+    const baseOf = new Map<string, string>();
+    for (const c of gone) {
+      const prev = state.results[c.key];
+      const b = (prev?.hash === c.hash ? prev.held : undefined) ?? c.held;
+      if (b && b !== commit) baseOf.set(c.key, b);
+    }
+    const renames = new Map<string, Map<string, string> | null>();
+    for (const b of [...new Set(baseOf.values())].slice(0, RENAME_BASES))
+      renames.set(b, await renamesBetween(root, b, commit, cost));
 
     const now: Record<string, Reported> = {};
     for (const c of checks) {
@@ -438,9 +453,16 @@ export class RepoChecker {
       let r: Reported;
       if (c.path) {
         const e = exists.get(c.path);
+        const b = baseOf.get(c.key);
+        const moves = b ? renames.get(b) : undefined;
         if (e === true) r = { hash: c.hash, outcome: "holds", held: commit };
-        else if (e === false) {
-          const to = prev?.held === base ? renamed.get(c.path) : undefined;
+        else if (e === false && b && !moves && c.armed) {
+          // Gone since it held, and git couldn't say where (the commit it
+          // held at isn't here, or past the runs' rename lookups): a move
+          // read as a removal would mark a source's rename stale.
+          r = { hash: c.hash, outcome: "unknown" };
+        } else if (e === false) {
+          const to = moves?.get(c.path);
           r = to
             ? {
                 hash: c.hash,
@@ -580,6 +602,8 @@ function prepare(conds: V2.SpaceConditions): Prepared {
         ref: it.memory,
         id: cond.id,
         hash: c.hash,
+        armed: c.armed,
+        ...(c.held_commit ? { held: c.held_commit } : {}),
       };
       if (cond.path) pc.path = cond.path;
       else {

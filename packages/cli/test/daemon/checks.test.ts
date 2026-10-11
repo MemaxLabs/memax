@@ -291,6 +291,63 @@ describe("a repository's checks", () => {
     expect(fake.reports[1].key).not.toBe(fake.reports[0].key);
   });
 
+  it("looks for a rename from Memax's latest hold when it saw none itself", async () => {
+    const { root } = repository({
+      "packages/server/internal/ask/config.go": "package ask\n// TierHaiku\n",
+      "docs/old.md": "# Old\n",
+    });
+    // Another machine saw them hold here.
+    const held = git(root, "rev-parse", "HEAD");
+    git(
+      root,
+      "mv",
+      "packages/server/internal/ask/config.go",
+      "packages/server/internal/ask/tiers.go",
+    );
+    git(root, "rm", "-q", "docs/old.md");
+    git(root, "commit", "-q", "-m", "move one, remove one");
+    git(root, "push", "-q", "origin", "main");
+    const conds = conditions(
+      ["M-0001", { path: "packages/server/internal/ask/config.go" }],
+      ["M-0002", { path: "docs/old.md" }],
+      ["M-0003", { path: "never/there.go" }],
+      ["M-0004", { path: "gone/elsewhere.go" }],
+    );
+    conds.items[0].conditions[0].held_commit = held;
+    conds.items[1].conditions[0].held_commit = held;
+    // Never held anywhere: gone is removed, whatever happened to it.
+    conds.items[2].conditions[0].armed = false;
+    // Held at a commit this clone doesn't have: where it went can't be said.
+    conds.items[3].conditions[0].held_commit = "f".repeat(40);
+    const fake = fakeApi(conds);
+    // This machine's first run: no hold of its own to start from.
+    const { c } = checker(root, fake);
+    const run = await c.run("conditions");
+    // The tips, the paths, and one rename lookup for each commit held at.
+    expect(run.cost?.processes).toBe(4);
+    expect(
+      fake.reports[0].input.results.map((r) => [
+        r.memory,
+        r.outcome,
+        r.evidence,
+      ]),
+    ).toEqual([
+      [
+        "M-0001",
+        "fails",
+        {
+          change: "renamed",
+          path: "packages/server/internal/ask/config.go",
+          renamed_to: "packages/server/internal/ask/tiers.go",
+        },
+      ],
+      ["M-0002", "fails", { change: "removed", path: "docs/old.md" }],
+      ["M-0003", "fails", { change: "removed", path: "never/there.go" }],
+      ["M-0004", "unknown", undefined],
+    ]);
+    expect(fake.reports[0].input.complete).toBe(false);
+  });
+
   it("never reports from another branch, an unpushed commit, a fork's clone or without origin's default", async () => {
     const { root } = repository({ "go.mod": "module x\n" });
     const fake = fakeApi(conditions(["M-0001", { path: "go.mod" }]));

@@ -117,7 +117,8 @@ func TestCheckRunArmsThenFlags(t *testing.T) {
 		t.Fatalf("a hold flagged %v (%+v)", first.Flagged, first.Run.Counts)
 	}
 	list, _ := r.f.l.ListConditions(ctx, r.scope, r.sp)
-	if len(list.Items) != 1 || !list.Items[0].Conditions[0].Armed || list.Repository != "MemaxLabs/memax" {
+	if len(list.Items) != 1 || !list.Items[0].Conditions[0].Armed || list.Repository != "MemaxLabs/memax" ||
+		list.Items[0].Conditions[0].HeldCommit != a {
 		t.Fatalf("after a hold: %+v", list)
 	}
 

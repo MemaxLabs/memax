@@ -298,15 +298,15 @@ export async function listPaths(
 
 /**
  * The files renamed between two commits (90% similar or more), old → new,
- * in one `git diff`; empty when git couldn't say (a rename then reads as a
- * removal).
+ * in one `git diff`; null when git couldn't say (the older commit isn't in
+ * this clone: a shallow one, or another machine's newer hold).
  */
 export async function renamesBetween(
   root: string,
   from: string,
   to: string,
   cost?: GitCost,
-): Promise<Map<string, string>> {
+): Promise<Map<string, string> | null> {
   const out = new Map<string, string>();
   const r = await runGit(
     root,
@@ -316,7 +316,7 @@ export async function renamesBetween(
       maxBytes: 4 * 1024 * 1024,
     },
   );
-  if (!r || r.code !== 0) return out;
+  if (!r || r.code !== 0) return null;
   const parts = r.stdout.toString().split("\0");
   for (let i = 0; i + 2 < parts.length; i += 3) {
     if (parts[i].startsWith("R")) out.set(parts[i + 1], parts[i + 2]);

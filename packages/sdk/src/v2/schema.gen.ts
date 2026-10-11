@@ -592,7 +592,8 @@ export interface paths {
          *     default branch: each typed, with its hash (send it back with a
          *     result, so a result about an older definition is ignored) and
          *     whether it is armed (it held once on the default branch; only an
-         *     armed condition can mark its memory stale). No statements. A
+         *     armed condition can mark its memory stale), with the commit of its
+         *     latest hold, where a machine looks for a rename. No statements. A
          *     condition that hasn't held in 30 days is left out, since Memax stops
          *     asking, and so is `pr_state`, which only the GitHub App checks.
          */
@@ -5425,6 +5426,15 @@ export interface components {
             hash: components["schemas"]["ConditionHash"];
             /** @description It held once on the default branch, so a failure can mark its memory stale. */
             armed: boolean;
+            /**
+             * @description When it is armed, the commit of its latest hold on the default
+             *     branch that Memax heard of (from any machine). A machine that
+             *     finds its path gone and has no hold of its own to start from
+             *     looks for the file's rename from this commit to the one it
+             *     checks, so a file that moved reads as `renamed`, with where it
+             *     went, rather than `removed`.
+             */
+            held_commit?: string;
         };
         /** @description One kept memory's conditions to check, without its words. */
         MemoryConditions: {

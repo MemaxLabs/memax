@@ -162,12 +162,14 @@ describe.skipIf(!enabled)("stale detection, end to end", () => {
       { env: env(), stdio: "ignore" },
     );
 
-    // The first check arms it: the file is there on main, as pushed.
+    // The first check arms it: the file is there on main, as pushed. Memax
+    // says where it held, for a machine that didn't see it hold.
+    const first = git("rev-parse", "HEAD");
     const armed = await until(
       async () =>
         (await memax.v2.checks.conditions("memax-v2")).items.find(
           (i) => i.memory === ref,
-        )?.conditions[0].armed,
+        )?.conditions[0].held_commit === first,
       // The daemon's first run comes as soon as its first poll sees the
       // space: seconds, more on a loaded machine.
       60_000,

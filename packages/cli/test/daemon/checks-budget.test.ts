@@ -7,7 +7,15 @@
 // time is printed beside them, not asserted, for the same reason. One
 // run on another checker first compiles the code (a process's once, not a
 // run's); then the measured checker's first run reports a full set, and
-// the twenty after it read the tree again and send nothing.
+// the runs after it read the tree again and send nothing.
+//
+// The git processes and bytes don't depend on the machine, so every run
+// asserts them, on a tree a tenth the size. The whole budget (100,000
+// files, CPU and RSS asserted) is opt-in, since a loaded machine (a CI
+// runner beside other jobs) moves CPU and RSS, and building the tree
+// takes a minute there:
+//
+//   MEMAX_CHECKS_BUDGET=1 pnpm --filter memax-cli exec vitest run test/daemon/checks-budget.test.ts
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,11 +29,12 @@ import { CheckReporter, RepoChecker } from "../../src/lib/daemon/checks.js";
 import { memoryLogger } from "../../src/lib/daemon/log.js";
 import { daemonPaths } from "../../src/lib/daemon/paths.js";
 
-const FILES = 100_000;
-const DIRS = 1_000;
-const EXACT = 1_950;
-const GLOBS = 50;
-const RUNS = 20;
+const full = process.env.MEMAX_CHECKS_BUDGET === "1";
+const FILES = full ? 100_000 : 10_000;
+const DIRS = FILES / 100;
+const EXACT = full ? 1_950 : 195;
+const GLOBS = full ? 50 : 5;
+const RUNS = full ? 20 : 3;
 
 const GIT_ENV = {
   ...process.env,
@@ -121,7 +130,7 @@ describe("the checks' budget", () => {
 
   afterAll(() => rmSync(base, { recursive: true, force: true }));
 
-  it("runs within 3 git processes, 150 ms of Node CPU, 8 MiB read and 5 MB more RSS", async () => {
+  it(`runs within 3 git processes and 8 MiB read${full ? ", 150 ms of Node CPU and 5 MB more RSS" : ""}`, async () => {
     let sent = 0;
     const api = {
       conditions: async () => conditions,
@@ -216,15 +225,20 @@ describe("the checks' budget", () => {
           `  RSS MB more: first ${first.rssMb.toFixed(1)}, over the ${RUNS} after it ${grew.toFixed(1)} (one run's most ${Math.max(...steady.map((m) => m.rssMb)).toFixed(1)})`,
         ].join("\n"),
       );
-      expect(p95(node)).toBeLessThanOrEqual(150);
-      expect(first.rssMb).toBeLessThanOrEqual(5);
-      expect(Math.max(...steady.map((m) => m.rssMb))).toBeLessThanOrEqual(5);
-      expect(grew).toBeLessThanOrEqual(5);
+      if (full) {
+        expect(p95(node)).toBeLessThanOrEqual(150);
+        expect(first.rssMb).toBeLessThanOrEqual(5);
+        expect(Math.max(...steady.map((m) => m.rssMb))).toBeLessThanOrEqual(5);
+        expect(grew).toBeLessThanOrEqual(5);
+      }
     } finally {
       await c.stop();
       rmSync(home, { recursive: true, force: true });
     }
-  }, 120_000); // machine, much longer on a loaded one; the budget is CPU, not this. // Twenty-one runs over a 100,000-file tree: a few seconds on an idle
+    // Twenty-one runs over a 100,000-file tree take a few seconds on an
+    // idle machine and much longer on a loaded one; the budget is CPU,
+    // not this.
+  }, 120_000);
 });
 
 function item(

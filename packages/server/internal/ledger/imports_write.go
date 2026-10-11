@@ -325,6 +325,24 @@ func (l *Ledger) importItems(ctx context.Context, meta Meta, req ImportRequest, 
 		keys, hashes, bands = append(keys, st.key), append(hashes, st.hash), append(bands, st.bands...)
 	}
 
+	// The import is one transaction's statements and nothing else, so a
+	// deadlock runs it again (retry.go).
+	var out *ImportResult
+	err = l.retry(ctx, string(CommandImportStatement), func() error {
+		var err error
+		out, err = l.importOnce(ctx, meta, req, origin, now, hash, files, skipped, groups, keys, hashes, bands, srcIDs, srcSeqs)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// importOnce is importItems' transaction: one attempt.
+func (l *Ledger) importOnce(ctx context.Context, meta Meta, req ImportRequest, origin importOrigin, now time.Time, hash []byte,
+	files, skipped []byte, groups []*importGroup, keys, hashes []string, bands []int64, srcIDs []uuid.UUID, srcSeqs []int64,
+) (*ImportResult, error) {
 	tx, loginRole, err := l.begin(ctx, meta.Scope, pgx.ReadWrite)
 	if err != nil {
 		return nil, err

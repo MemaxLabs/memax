@@ -176,6 +176,13 @@ func (w *writer) closeObservations(ctx context.Context, targetID, spaceID uuid.U
 
 // resolveDrift pulls, overwrites or stops a target's open hand edits.
 func (w *writer) resolveDrift(ctx context.Context, c *ResolveDrift) (Result, error) {
+	if c.Mode == DriftPull {
+		// A pull writes proposals: their M- counter before the target
+		// (locks.go), in the target's lock's round trip.
+		if err := execDeferred(ctx, w.tx, lockCounterSQL, c.Target, string(PrefixMemory)); err != nil {
+			return Result{}, fmt.Errorf("ledger: lock the M- counter: %w", err)
+		}
+	}
 	t, grant, sp, replay, err := w.openTarget(ctx, c.Target)
 	if err != nil {
 		return Result{}, err

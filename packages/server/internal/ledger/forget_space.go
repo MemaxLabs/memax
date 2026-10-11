@@ -100,9 +100,21 @@ func (w *writer) forgetWholeSpace(ctx context.Context, sp spaceRow, retire bool,
 	if err != nil {
 		return Result{}, fmt.Errorf("ledger: forget space: %w", err)
 	}
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, ids, "FOR UPDATE")
+	// A retirement deletes what it locks (v2.retire_space): FOR UPDATE.
+	if retire {
+		w.memoryLocks().mode = lockDelete
+	}
+	locked, err := w.lockMemories(ctx, ids)
 	if err != nil {
 		return Result{}, err
+	}
+	// A personal space's machines, which unlinkAll unlinks last, before its
+	// Brief, as LinkMachine takes them (locks.go).
+	if sp.Kind == policy.SpacePersonal {
+		if err := execDeferred(ctx, w.tx, `
+			SELECT 1 FROM v2.machines WHERE space_id = $1 AND unlinked_at IS NULL ORDER BY seq FOR UPDATE`, sp.ID); err != nil {
+			return Result{}, fmt.Errorf("ledger: forget space: machines: %w", err)
+		}
 	}
 
 	// The space's own forgot receipt, which lets the space's reasons be
@@ -601,14 +613,28 @@ func (w *writer) reapplyForget(ctx context.Context, c *ReapplyForget) (Result, e
 	}
 	var todo []back
 	notePurged := false
+	// The note first (its op's primary), then every memory the op names in
+	// one round, with their conflicts' other sides (locks.go).
+	var mids []uuid.UUID
+	for _, e := range c.Op.Entries {
+		if e.ObjectKind != ObjectNote {
+			mids = append(mids, e.ObjectID)
+			continue
+		}
+		op.kind, op.primary = ObjectNote, e.Ref
+		done, err := w.reapplyNote(ctx, sp, op, e)
+		if err != nil {
+			return Result{}, err
+		}
+		notePurged = notePurged || done
+	}
+	if len(mids) > 0 {
+		if _, _, err := w.lockSet(ctx, "", mids, lockAlso{conflicts: true}); err != nil {
+			return Result{}, err
+		}
+	}
 	for _, e := range c.Op.Entries {
 		if e.ObjectKind == ObjectNote {
-			op.kind, op.primary = ObjectNote, e.Ref
-			done, err := w.reapplyNote(ctx, sp, op, e)
-			if err != nil {
-				return Result{}, err
-			}
-			notePurged = notePurged || done
 			continue
 		}
 		m, err := loadMemory(ctx, w.tx, w.meta.Scope, e.ObjectID, true)

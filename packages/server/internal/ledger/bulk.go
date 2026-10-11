@@ -208,7 +208,7 @@ const (
 	bulkWant = `m.space_id = ANY ($3) AND (m.id = ANY ($1) OR m.seq = ANY ($2))`
 	// bulkLockSQL locks what it can of the memories, in id order, waiting
 	// for none.
-	bulkLockSQL = memorySelect + ` WHERE ` + bulkWant + ` ORDER BY m.id FOR UPDATE OF m SKIP LOCKED`
+	bulkLockSQL = memorySelect + ` WHERE ` + bulkWant + ` ORDER BY m.id ` + lockWrite + ` OF m SKIP LOCKED`
 	// bulkResolveSQL resolves the refs, locked or not.
 	bulkResolveSQL = `SELECT m.id, m.seq FROM v2.memories m WHERE ` + bulkWant
 	// bulkLinksSQL reads the memories' active links out (linksSQL's order).
@@ -242,7 +242,7 @@ const (
 		   AND space_id = ANY ($5)
 		 ORDER BY seq`
 	// bulkLockTargetsSQL locks the decisions Keeps would supersede.
-	bulkLockTargetsSQL = memorySelect + ` WHERE m.id = ANY ($1) AND m.space_id = ANY ($2) ORDER BY m.id FOR UPDATE OF m SKIP LOCKED`
+	bulkLockTargetsSQL = memorySelect + ` WHERE m.id = ANY ($1) AND m.space_id = ANY ($2) ORDER BY m.id ` + lockWrite + ` OF m SKIP LOCKED`
 )
 
 // bulkLink is an active link out of a memory.

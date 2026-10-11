@@ -127,16 +127,15 @@ func memorySeq(ref string) (int64, error) {
 // sqlstateCardinality is a scalar subquery that returned more than one row.
 const sqlstateCardinality = "21000"
 
-// lockRef is resolveRef then loadMemory with the row lock, in one
-// statement and one round trip. The display ID is resolved by a scalar
-// subquery, which locks nothing and raises cardinality_violation when the
-// ID matches memories in more than one space of the scope
-// (ErrAmbiguousRef); then the one memory is read and locked, its space
-// checked again once the lock is held, as before.
-func lockRef(ctx context.Context, tx pgx.Tx, scope Scope, ref string) (*Memory, error) {
+// findRef is resolveRef then loadMemory, in one statement and one round
+// trip, without a lock: a Forget reads the memory it names this way before
+// it locks what it writes (locks.go). The display ID is resolved by a
+// scalar subquery, which raises cardinality_violation when the ID matches
+// memories in more than one space of the scope (ErrAmbiguousRef).
+func findRef(ctx context.Context, tx pgx.Tx, scope Scope, ref string) (*Memory, error) {
 	ref = strings.TrimSpace(ref)
 	if id, err := uuid.Parse(ref); err == nil {
-		return loadMemory(ctx, tx, scope, id, true)
+		return loadMemory(ctx, tx, scope, id, false)
 	}
 	n, err := memorySeq(ref)
 	if err != nil {
@@ -144,8 +143,7 @@ func lockRef(ctx context.Context, tx pgx.Tx, scope Scope, ref string) (*Memory, 
 	}
 	m, err := scanMemory(tx.QueryRow(ctx, memorySelect+`
 		 WHERE m.id = (SELECT id FROM v2.memories WHERE seq = $1 AND space_id = ANY($2))
-		   AND m.space_id = ANY($2)
-		   FOR UPDATE OF m`, n, scope.SpaceIDs()))
+		   AND m.space_id = ANY($2)`, n, scope.SpaceIDs()))
 	var pg *pgconn.PgError
 	switch {
 	case errNoRows(err):
@@ -195,11 +193,12 @@ func scanMemory(row pgx.Row) (*Memory, error) {
 }
 
 // loadMemory reads one memory in scope; lock takes the row lock that
-// serialises commands on it.
+// serialises commands on it (a command takes its memories' locks through
+// writer.lockMemories or lockSet: locks.go).
 func loadMemory(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID, lock bool) (*Memory, error) {
 	q := memorySelect + ` WHERE m.id = $1 AND m.space_id = ANY($2)`
 	if lock {
-		q += ` FOR UPDATE OF m`
+		q += ` ` + lockWrite + ` OF m`
 	}
 	m, err := scanMemory(tx.QueryRow(ctx, q, id, scope.SpaceIDs()))
 	if errNoRows(err) {

@@ -55,6 +55,10 @@ type writer struct {
 	forgetHonesty ForgetHonesty
 	// dreamUndoWindow is how long one of Dream's actions can be undone.
 	dreamUndoWindow time.Duration
+
+	// locks are the memories the command holds: it locks them in one round
+	// (locks.go).
+	locks *memoryLocks
 }
 
 // write is Remember and Propose.
@@ -167,7 +171,8 @@ func (w *writer) writeMemory(ctx context.Context, sp spaceRow, grant SpaceGrant,
 
 // review is Keep and Reject.
 func (w *writer) review(ctx context.Context, ref string, expected int, cmd CommandName) (Result, error) {
-	mem, grant, sp, replay, err := w.open(ctx, ref)
+	// A Keep supersedes what the memory supersedes: those are locked with it.
+	mem, grant, sp, replay, err := w.openWith(ctx, ref, lockAlso{supersedes: cmd == CommandKeep})
 	if err != nil || replay != nil {
 		return deref(replay), err
 	}
@@ -244,7 +249,9 @@ func (w *writer) supersedeOnKeep(ctx context.Context, sp spaceRow, kept *Memory,
 	if len(ids) == 0 {
 		return receipts, nil
 	}
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, ids, "FOR UPDATE")
+	// Held since the command's first statement (openWith's supersedes),
+	// unless a link landed since: then the command starts again.
+	locked, err := w.lockMemories(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +272,8 @@ func (w *writer) supersedeOnKeep(ctx context.Context, sp spaceRow, kept *Memory,
 // edit writes a new version, or, when policy downgrades it, a new
 // proposal that supersedes the memory.
 func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
-	mem, grant, sp, replay, err := w.open(ctx, c.Memory)
+	// Edit, then keep, supersedes what the proposal supersedes.
+	mem, grant, sp, replay, err := w.openWith(ctx, c.Memory, lockAlso{supersedes: c.Keep})
 	if err != nil || replay != nil {
 		return deref(replay), err
 	}
@@ -442,9 +450,18 @@ func (w *writer) supersede(ctx context.Context, sp spaceRow, grant SpaceGrant, o
 // open loads and locks the target memory, then claims the idempotency
 // key in its space (returning the original result on a replay). That is
 // two round trips: the ref resolves inside the locking statement
-// (lockRef), and the space's read goes out with the claim (spaceAndClaim).
+// (lockSet), and the space's read goes out with the claim (spaceAndClaim).
 func (w *writer) open(ctx context.Context, ref string) (*Memory, SpaceGrant, spaceRow, *Result, error) {
-	mem, err := lockRef(ctx, w.tx, w.meta.Scope, ref)
+	return w.openWith(ctx, ref, lockAlso{})
+}
+
+// openWith is open, locking also's memories in the same statement as the
+// one named: the command's one round of memory locks (locks.go).
+func (w *writer) openWith(ctx context.Context, ref string, also lockAlso) (*Memory, SpaceGrant, spaceRow, *Result, error) {
+	mem, _, err := w.lockSet(ctx, ref, nil, also)
+	if err == nil && mem == nil {
+		err = ErrNotFound
+	}
 	if err != nil {
 		return nil, SpaceGrant{}, spaceRow{}, nil, err
 	}

@@ -24,6 +24,8 @@ type fixture struct {
 	pool *pgxpool.Pool
 	l    *ledger.Ledger
 	logs *syncBuffer
+	// inserter is the River client l enqueues with, if any.
+	inserter ledger.Jobs
 }
 
 type syncBuffer struct {

@@ -148,6 +148,22 @@ func (w *writer) recordImportCheck(ctx context.Context, c *RecordImportCheck) (R
 		return Result{}, fmt.Errorf("ledger: import check: %w", err)
 	}
 
+	// Every member of every group, in one round (locks.go).
+	var all []uuid.UUID
+	for _, k := range c.Conflicts {
+		for _, id := range k.Members {
+			if slices.Contains(mine, id) {
+				all = append(all, id)
+			}
+		}
+	}
+	var locked map[uuid.UUID]*Memory
+	if len(all) > 0 {
+		if locked, err = w.lockMemories(ctx, all); err != nil {
+			return Result{}, err
+		}
+	}
+
 	var receipts []Receipt
 	used := map[uuid.UUID]bool{}
 	n := 0
@@ -160,10 +176,6 @@ func (w *writer) recordImportCheck(ctx context.Context, c *RecordImportCheck) (R
 		}
 		if len(ids) < 2 {
 			continue
-		}
-		locked, err := lockMemories(ctx, w.tx, w.meta.Scope, ids, "FOR UPDATE")
-		if err != nil {
-			return Result{}, err
 		}
 		members := ids[:0:0]
 		for _, id := range ids {
@@ -344,7 +356,7 @@ func (w *writer) settleImportConflict(ctx context.Context, c *SettleImportConfli
 	if err != nil {
 		return Result{}, fmt.Errorf("ledger: import conflict: %w", err)
 	}
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, members, "FOR UPDATE")
+	locked, err := w.lockMemories(ctx, members)
 	if err != nil {
 		return Result{}, err
 	}

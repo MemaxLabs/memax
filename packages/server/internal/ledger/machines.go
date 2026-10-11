@@ -578,7 +578,7 @@ func (w *writer) linkReads(ctx context.Context, sp spaceRow, deviceKey uuid.UUID
 		  FROM v2.briefs b
 		  JOIN v2.brief_versions v ON v.brief_id = b.id AND v.version = b.current_version
 		 WHERE b.space_id = $1
-		   FOR UPDATE OF b`, spaceID).QueryRow(func(row pgx.Row) error {
+		   FOR NO KEY UPDATE OF b`, spaceID).QueryRow(func(row pgx.Row) error {
 		var br briefRow
 		err := row.Scan(&br.id, &br.version, &br.streamVersion, &br.seq)
 		if errNoRows(err) {
@@ -605,7 +605,7 @@ func (w *writer) linkReads(ctx context.Context, sp spaceRow, deviceKey uuid.UUID
 		QueryRow(func(row pgx.Row) error { return row.Scan(&r.nextSeq) })
 	b.Queue(targetSelect+`
 		 WHERE t.space_id = $1 AND t.machine_id = (SELECT id FROM v2.machines WHERE space_id = $1 AND device_key = $2)
-		   FOR UPDATE OF t`, spaceID, deviceKey).Query(func(rows pgx.Rows) error {
+		 ORDER BY t.id FOR NO KEY UPDATE OF t`, spaceID, deviceKey).Query(func(rows pgx.Rows) error {
 		var err error
 		r.targets, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (*Target, error) { return scanTarget(row) })
 		return err
@@ -691,7 +691,7 @@ func (w *writer) unlink(ctx context.Context, sp spaceRow, m *Machine, reason str
 	rows, err := w.tx.Query(ctx, `
 		SELECT id, kind, path, stream_version FROM v2.targets
 		 WHERE space_id = $1 AND machine_id = $2 AND sync_state <> 'off'
-		 ORDER BY id FOR UPDATE`, sp.ID, m.ID)
+		 ORDER BY id FOR NO KEY UPDATE`, sp.ID, m.ID)
 	if err != nil {
 		return nil, fmt.Errorf("ledger: unlink machine: %w", err)
 	}

@@ -412,7 +412,13 @@ func validErrorCode(s string) bool {
 
 // recordVerdict applies RecordVerdict.
 func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, error) {
-	mem, grant, sp, replay, err := w.open(ctx, c.Memory.String())
+	// The memories the outcome points at are locked with the memory, in
+	// one statement: the outcome reads them, and links to them.
+	var also []uuid.UUID
+	if c.Outcome != OutcomeNone && c.Outcome != OutcomeFailed {
+		also = append([]uuid.UUID{c.Target}, c.AlsoConflicts...)
+	}
+	mem, grant, sp, replay, err := w.openWith(ctx, c.Memory.String(), lockAlso{ids: also})
 	if err != nil || replay != nil {
 		return deref(replay), err
 	}
@@ -441,8 +447,8 @@ func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, e
 	var target *Memory
 	var conflicts []*Memory
 	if outcome != OutcomeNone && outcome != OutcomeFailed {
-		ids := append([]uuid.UUID{c.Target}, c.AlsoConflicts...)
-		locked, err := lockMemories(ctx, w.tx, w.meta.Scope, ids, "FOR SHARE")
+		ids := also
+		locked, err := w.lockMemories(ctx, ids)
 		if err != nil {
 			return Result{}, err
 		}
@@ -877,29 +883,6 @@ func (m *Memory) area() string {
 		return ""
 	}
 	return textsig.NormalizeKey(m.Decision.Area)
-}
-
-// lockMemories loads memories by id with a row lock (lock is "FOR
-// UPDATE" or "FOR SHARE"), in id order so two commands that lock the
-// same memories can't deadlock on each other.
-func lockMemories(ctx context.Context, tx pgx.Tx, scope Scope, ids []uuid.UUID, lock string) (map[uuid.UUID]*Memory, error) {
-	sorted := slices.Clone(ids)
-	slices.SortFunc(sorted, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
-	sorted = slices.Compact(sorted)
-	rows, err := tx.Query(ctx, memorySelect+` WHERE m.id = ANY ($1) AND m.space_id = ANY ($2) ORDER BY m.id `+lock+` OF m`,
-		sorted, scope.SpaceIDs())
-	if err != nil {
-		return nil, fmt.Errorf("ledger: lock memories: %w", err)
-	}
-	ms, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (*Memory, error) { return scanMemory(r) })
-	if err != nil {
-		return nil, fmt.Errorf("ledger: lock memories: %w", err)
-	}
-	out := make(map[uuid.UUID]*Memory, len(ms))
-	for _, m := range ms {
-		out[m.ID] = m
-	}
-	return out, nil
 }
 
 // ---------------------------------------------------------------------

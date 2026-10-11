@@ -3,7 +3,6 @@ package ledger
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -335,8 +334,11 @@ func (w *writer) dreamNotes(ctx context.Context, ed *editionWrite) error {
 	return nil
 }
 
-// dreamForgotten finds which memories the plan names, or whose words the
-// model read, are forgotten now.
+// dreamForgotten locks every memory the plan names, or whose words the
+// model read, in one round (locks.go: the actions then lock only these),
+// and finds which are forgotten now. Held, they stay as they are until the
+// edition lands: a Forget during the run either committed first (and the
+// action skips) or waits for the edition (and takes what it wrote).
 func (w *writer) dreamForgotten(ctx context.Context, ed *editionWrite) error {
 	var ids []uuid.UUID
 	for _, a := range ed.c.Actions {
@@ -351,17 +353,14 @@ func (w *writer) dreamForgotten(ctx context.Context, ed *editionWrite) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	rows, err := w.tx.Query(ctx, `SELECT id FROM v2.memories WHERE space_id = $1 AND id = ANY ($2) AND lifecycle = 'forgotten'`,
-		ed.sp.ID, ids)
+	locked, err := w.lockMemories(ctx, ids)
 	if err != nil {
-		return fmt.Errorf("ledger: read forgotten: %w", err)
+		return err
 	}
-	gone, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
-	if err != nil {
-		return fmt.Errorf("ledger: read forgotten: %w", err)
-	}
-	for _, id := range gone {
-		ed.forgotten[id] = true
+	for id, m := range locked {
+		if m.SpaceID == ed.sp.ID && m.Lifecycle == lifecycle.Forgotten {
+			ed.forgotten[id] = true
+		}
 	}
 	return nil
 }
@@ -418,12 +417,13 @@ func (w *writer) applyDreamAction(ctx context.Context, ed *editionWrite, a *Plan
 // dreamMemory locks one memory of the space for an action, or reports it
 // moved on (nil).
 func (w *writer) dreamMemory(ctx context.Context, ed *editionWrite, id uuid.UUID) (*Memory, error) {
-	m, err := loadMemory(ctx, w.tx, w.meta.Scope, id, true)
-	if errors.Is(err, ErrNotFound) {
-		return nil, nil
-	}
+	locked, err := w.lockMemories(ctx, []uuid.UUID{id})
 	if err != nil {
 		return nil, err
+	}
+	m := locked[id]
+	if m == nil {
+		return nil, nil
 	}
 	if m.SpaceID != ed.sp.ID || m.Lifecycle == lifecycle.Forgotten {
 		return nil, nil
@@ -646,7 +646,7 @@ func (w *writer) externalNotes(ctx context.Context, spaceID uuid.UUID, notes []u
 // dreamDedupe folds a proposal that repeats another one waiting in Review
 // into it, before anyone reviews either.
 func (w *writer) dreamDedupe(ctx context.Context, ed *editionWrite, a *PlannedAction) (string, *actionWrite, error) {
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, []uuid.UUID{a.Memory, a.Related}, "FOR UPDATE")
+	locked, err := w.lockMemories(ctx, []uuid.UUID{a.Memory, a.Related})
 	if err != nil {
 		return "", nil, err
 	}
@@ -687,7 +687,7 @@ func (w *writer) dreamDedupe(ctx context.Context, ed *editionWrite, a *PlannedAc
 // dreamConflict flags a memory that contradicts another kept one, with a
 // conflicts_with link, for a person to settle.
 func (w *writer) dreamConflict(ctx context.Context, ed *editionWrite, a *PlannedAction) (string, *actionWrite, error) {
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, []uuid.UUID{a.Memory, a.Related}, "FOR UPDATE")
+	locked, err := w.lockMemories(ctx, []uuid.UUID{a.Memory, a.Related})
 	if err != nil {
 		return "", nil, err
 	}

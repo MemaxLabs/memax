@@ -81,7 +81,9 @@ type briefRow struct {
 	seq           int64
 }
 
-// lockBrief locks the space's Brief, or returns nil when it has none.
+// lockBrief locks the space's Brief, or returns nil when it has none. FOR
+// NO KEY UPDATE, so a compile run naming the Brief (its foreign key's FOR
+// KEY SHARE) never waits on a command that holds it (locks.go).
 func lockBrief(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (*briefRow, error) {
 	var b briefRow
 	err := tx.QueryRow(ctx, `
@@ -89,7 +91,7 @@ func lockBrief(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID) (*briefRow, er
 		  FROM v2.briefs b
 		  JOIN v2.brief_versions v ON v.brief_id = b.id AND v.version = b.current_version
 		 WHERE b.space_id = $1
-		   FOR UPDATE OF b`, spaceID).Scan(&b.id, &b.version, &b.streamVersion, &b.seq)
+		   FOR NO KEY UPDATE OF b`, spaceID).Scan(&b.id, &b.version, &b.streamVersion, &b.seq)
 	if errNoRows(err) {
 		return nil, nil
 	}
@@ -184,7 +186,7 @@ func scanTarget(row pgx.Row) (*Target, error) {
 func loadTarget(ctx context.Context, tx pgx.Tx, scope Scope, id uuid.UUID, lock bool) (*Target, error) {
 	q := targetSelect + ` WHERE t.id = $1 AND t.space_id = ANY($2)`
 	if lock {
-		q += ` FOR UPDATE OF t`
+		q += ` ` + lockWrite + ` OF t`
 	}
 	t, err := scanTarget(tx.QueryRow(ctx, q, id, scope.SpaceIDs()))
 	if errNoRows(err) {

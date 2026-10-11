@@ -371,7 +371,7 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 			"This %s is too old to undo. Change %s instead: edit it, reject it or forget it.", what, first.Ref)}
 	}
 
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, e.memoryIDs, "FOR UPDATE")
+	locked, err := w.lockMemories(ctx, e.memoryIDs)
 	if err != nil {
 		return Result{}, err
 	}

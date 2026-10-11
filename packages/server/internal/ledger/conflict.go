@@ -272,7 +272,9 @@ func (w *writer) awaitWords(ctx context.Context, p conflictPair, m *Memory) erro
 
 // resolveConflict applies ResolveConflict.
 func (w *writer) resolveConflict(ctx context.Context, c *ResolveConflict) (Result, error) {
-	this, grant, sp, replay, err := w.open(ctx, c.Memory)
+	// Both sides of every conflict it is in, in one statement: two people
+	// settling one conflict from either side lock in the same order.
+	this, grant, sp, replay, err := w.openWith(ctx, c.Memory, lockAlso{conflicts: true})
 	if err != nil {
 		return Result{}, err
 	}
@@ -297,7 +299,7 @@ func (w *writer) resolveConflict(ctx context.Context, c *ResolveConflict) (Resul
 	if err := w.refuseImportPair(ctx, sp.ID, this, p.link.MemoryID); err != nil {
 		return Result{}, err
 	}
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, []uuid.UUID{p.link.MemoryID}, "FOR UPDATE")
+	locked, err := w.lockMemories(ctx, []uuid.UUID{p.link.MemoryID})
 	if err != nil {
 		return Result{}, err
 	}

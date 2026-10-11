@@ -2,7 +2,13 @@
 // what it refuses before anything happens, the consent, the link, the
 // first delivery, and taking the layer off; plus memax compile and memax
 // status with a home link, outside any repository.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { V2 } from "memax-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -19,6 +25,7 @@ import {
   type HomeDeps,
 } from "../../src/commands/link-home.js";
 import { tokenSubject } from "../../src/lib/credentials.js";
+import { MEMAX_INSTRUCTION_BLOCK } from "../../src/commands/setup-instructions.js";
 import { buildStatus, renderStatus } from "../../src/commands/status.js";
 import { readHomeLink } from "../../src/lib/daemon/home-link.js";
 import { OneShotDelivery } from "../../src/lib/daemon/oneshot.js";
@@ -194,6 +201,56 @@ describe("memax link --home", () => {
       "Linked this machine (machine-1, work-mbp) to personal.",
     );
     expect(text).toContain("Written into this machine's home by memax compile");
+  });
+
+  describe("the two tidy-ups, once the first files are on disk", () => {
+    const own = () => join(h.home, ".claude", "CLAUDE.md");
+    beforeEach(() => {
+      h.fake.addPersonalSpace();
+      // A line init brought into Personal, and V1's instructions.
+      writeFileSync(
+        own(),
+        `# Me\n- British English.\n- Mine.\n\n${MEMAX_INSTRUCTION_BLOCK}\n`,
+      );
+    });
+
+    it("each asks, and takes out only what you say yes to, a copy first", async () => {
+      const asked: string[] = [];
+      const code = await linkHome(
+        {},
+        deps({
+          confirm: async (q, def) => {
+            asked.push(plain([q]));
+            return /takes them off/.test(q) ? true : /twice/.test(q);
+          },
+        }),
+      );
+      expect(code).toBe(0);
+      expect(asked.slice(1)).toEqual([
+        "  1 line in ~/.claude/CLAUDE.md is kept in personal now and loads twice. Take it out? A copy goes to ~/.memax/backup/. [y/N] ",
+        "  ~/.claude/CLAUDE.md still has Memax V1's instructions; the Memax plugin's skill carries them now. Take them out? A copy goes to ~/.memax/backup/. [y/N] ",
+      ]);
+      expect(readFileSync(own(), "utf8")).toBe(
+        `# Me\n- Mine.\n\n${MEMAX_INSTRUCTION_BLOCK}\n`,
+      );
+      expect(readdirSync(join(h.home, ".memax", "backup"))).toHaveLength(1);
+      expect(plain(out)).toContain(
+        "Took 1 line out of ~/.claude/CLAUDE.md; the copy is in ~/.memax/backup/.",
+      );
+    });
+
+    it("under --yes, only says what's there", async () => {
+      const before = readFileSync(own(), "utf8");
+      await linkHome({ yes: true }, deps());
+      expect(readFileSync(own(), "utf8")).toBe(before);
+      const text = plain(out);
+      expect(text).toContain(
+        "1 line in ~/.claude/CLAUDE.md loads twice now. Run memax link --home in a terminal to take it out.",
+      );
+      expect(text).toContain(
+        "~/.claude/CLAUDE.md still has Memax V1's instructions. Run memax link --home in a terminal to take them out.",
+      );
+    });
   });
 
   it("names the machine from the short host name", () => {

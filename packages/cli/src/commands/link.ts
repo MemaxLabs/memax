@@ -21,7 +21,7 @@ import {
   removeMemaxYmlSpace,
   writeMemaxYmlSpace,
 } from "../lib/project-context.js";
-import { confirmDefault } from "../lib/prompt.js";
+import { confirm, confirmDefault } from "../lib/prompt.js";
 import { resolveSpace, SpaceChoiceError } from "../lib/v2-space.js";
 import { openOneShot } from "./compile.js";
 import { linkHome, unlinkHome } from "./link-home.js";
@@ -273,7 +273,7 @@ export function registerLinkCommands(program: Command): void {
             platform: process.platform,
             deviceId: getOrCreateDeviceID(),
             personId: currentPerson(),
-            confirm: confirmDefault,
+            confirm: (q, def) => (def ? confirmDefault(q) : confirm(q)),
             oneShot: () => openOneShot({ memax, paths }),
           });
           return;

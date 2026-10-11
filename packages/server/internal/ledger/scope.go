@@ -112,16 +112,40 @@ type Querier interface {
 // before any ledger transaction starts: identity resolution is the trust
 // root that scope is built from, so it can't itself run under that scope.
 func ResolveUserScope(ctx context.Context, db Querier, userID uuid.UUID) (Scope, error) {
-	rows, err := db.Query(ctx, `
+	rows, err := db.Query(ctx, userScopeSQL, userID)
+	if err != nil {
+		return Scope{}, fmt.Errorf("ledger: resolve scope: %w", err)
+	}
+	return ScanUserScope(rows, userID)
+}
+
+// userScopeSQL is ResolveUserScope's statement: the spaces of user $1.
+const userScopeSQL = `
 		SELECT h.id, h.tenant_id, h.space_kind,
 		       CASE WHEN h.owner_id = $1 THEN 'owner' ELSE m.role END, h.slug, h.name, h.v2_enabled_at IS NOT NULL
 		  FROM public.hubs h
 		  LEFT JOIN public.hub_members m ON m.hub_id = h.id AND m.user_id = $1
 		 WHERE h.owner_id = $1 OR m.user_id = $1
-		 ORDER BY h.id`, userID)
-	if err != nil {
-		return Scope{}, fmt.Errorf("ledger: resolve scope: %w", err)
-	}
+		 ORDER BY h.id`
+
+// KeyScopeSQL is ResolveUserScope's statement for the user an API key
+// belongs to, by the key's SHA-256 ($1), so a credential's lookup and
+// its scope go to Postgres in one round trip (a start key's, the cloud
+// start's hot path). Read its rows with ScanUserScope once the key's row
+// names the person; a key that doesn't resolve reads no rows.
+const KeyScopeSQL = `
+		WITH k AS (SELECT user_id FROM public.api_keys WHERE key_hash = $1 AND revoked_at IS NULL)
+		SELECT h.id, h.tenant_id, h.space_kind,
+		       CASE WHEN h.owner_id = (SELECT user_id FROM k) THEN 'owner' ELSE m.role END, h.slug, h.name,
+		       h.v2_enabled_at IS NOT NULL
+		  FROM public.hubs h
+		  LEFT JOIN public.hub_members m ON m.hub_id = h.id AND m.user_id = (SELECT user_id FROM k)
+		 WHERE h.owner_id = (SELECT user_id FROM k) OR m.user_id = (SELECT user_id FROM k)
+		 ORDER BY h.id`
+
+// ScanUserScope reads ResolveUserScope's rows (or KeyScopeSQL's) into the
+// scope of userID, and closes them.
+func ScanUserScope(rows pgx.Rows, userID uuid.UUID) (Scope, error) {
 	defer rows.Close()
 	s := Scope{PersonID: userID}
 	for rows.Next() {

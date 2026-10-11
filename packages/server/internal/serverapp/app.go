@@ -1080,7 +1080,12 @@ func configureAuth(pool *pgxpool.Pool, s store.Store) (*handler.AuthHandler, fun
 		})
 	}
 
-	requireAuth := handler.RequireAuth(jwtSecret, keyResolver, grantResolver)
+	var authOpts []handler.AuthOption
+	if authH != nil {
+		// A cloud start's key and its person's spaces in one round trip.
+		authOpts = append(authOpts, handler.WithStartKeys(authH.ResolveStartKey))
+	}
+	requireAuth := handler.RequireAuth(jwtSecret, keyResolver, grantResolver, authOpts...)
 	if authH == nil {
 		return nil, requireAuth, nil
 	}

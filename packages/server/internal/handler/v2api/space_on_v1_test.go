@@ -44,6 +44,8 @@ var passesOnV1 = map[string]string{
 	"pauseAgent":         "pausing an agent works wherever it is connected",
 	"resumeAgent":        "a connection change (policy.DecideConnection)",
 	"disconnectAgent":    "disconnecting an agent works wherever it is connected",
+	"rekeyAgent":         "a cloud agent's new key is its identity, not the space's record (policy.DecideConnection)",
+	"createCloudAgent":   "connecting a cloud agent, like any connection, is the agent's identity (policy.DecideConnection)",
 	"unlinkMachine":      "taking a Personal space off a machine works wherever it is linked, like disconnecting an agent",
 }
 

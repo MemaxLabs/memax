@@ -129,6 +129,7 @@ export function toAgentCommandError(err: unknown): AgentCommandError {
   if (policy) {
     const byCode: Partial<Record<string, AgentRefusal>> = {
       autonomy_needs_web: "needs_web",
+      cloud_propose_needs_web: "needs_web",
       key_max_propose: "key_max_propose",
       not_your_agent: "not_your_agent",
       autonomy_not_allowed: "not_allowed",

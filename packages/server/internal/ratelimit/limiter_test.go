@@ -34,6 +34,9 @@ func TestClassifyRequest(t *testing.T) {
 		{"POST", "/v2/spaces/memax-v2/imports", OpClassLight},
 		{"PATCH", "/v2/memories/M-0219", OpClassLight},
 		{"DELETE", "/v2/me/passkeys/abc", OpClassLight},
+		// A cloud session start has its own, per credential
+		{"POST", "/v2/spaces/acme-web/session-starts", OpClassV2Start},
+		{"POST", "/v2/spaces//session-starts", OpClassLight},
 		// V2 reads have their own class
 		{"GET", "/v2/spaces", OpClassV2Read},
 		{"GET", "/v2/spaces/memax-v2/targets", OpClassV2Read},

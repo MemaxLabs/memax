@@ -15,6 +15,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb/netsim"
+	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
 // Cloud session starts (cloud warm-start design §3.4): a sandbox names
@@ -108,11 +109,16 @@ func newStartFixture(t *testing.T) *startFixture {
 func newStartFixtureOn(t *testing.T, db *testdb.DB, withReads bool) *startFixture {
 	t.Helper()
 	rec := &syncReads{t: t}
+	web, err := websurface.New(surfaceSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
 	e := newEnvOn(t, db, func(*env) []v2api.Option {
-		if !withReads {
-			return nil
+		opts := []v2api.Option{v2api.WithWebSurface(web)}
+		if withReads {
+			opts = append(opts, v2api.WithReads(rec))
 		}
-		return []v2api.Option{v2api.WithReads(rec)}
+		return opts
 	})
 	rec.l = e.ledger
 	f := &startFixture{env: e, rec: rec, owner: e.user("zz")}
@@ -412,6 +418,7 @@ func TestSessionStartLatency(t *testing.T) {
 	}
 	db := testdb.Open(t, testdb.Options{Proxy: true})
 	f := newStartFixtureOn(t, db, false)
+	cloud := f.cloudAgent(f.cliSession(f.owner), map[string]any{"agent": "copilot", "space": f.sp.slug}, nil).Key.Secret
 	var rows []string
 	for _, rtt := range []time.Duration{0, netsim.ProductionRTT} {
 		db.Proxy.SetOneWay(rtt / 2)
@@ -420,7 +427,7 @@ func TestSessionStartLatency(t *testing.T) {
 			ctx, c := netsim.Track(context.Background())
 			db.Trips.SetFallback(c)
 			began := time.Now()
-			f.do(call{method: "POST", path: startsPath(f.sp), token: f.key, ctx: ctx, body: startBody(agentsFile(f.c1, f.drift1)),
+			f.do(call{method: "POST", path: startsPath(f.sp), token: cloud, ctx: ctx, body: startBody(agentsFile(f.c1, f.drift1)),
 				header: map[string]string{"X-Memax-Via": "cli"}}).ok(http.StatusOK, nil)
 			took := time.Since(began)
 			db.Trips.SetFallback(nil)
@@ -446,6 +453,7 @@ func TestSessionStartRoundTrips(t *testing.T) {
 	db := testdb.Open(t, testdb.Options{Watch: audit.Observe})
 	f := newStartFixtureOn(t, db, false)
 	bare, _ := f.apiKey(f.owner, keyOpts{agent: "copilot", unconnected: true})
+	cloud := f.cloudAgent(f.cliSession(f.owner), map[string]any{"agent": "copilot", "space": f.sp.slug}, nil).Key.Secret
 	audit.Arm()
 	defer audit.Require(t)
 
@@ -471,20 +479,23 @@ func TestSessionStartRoundTrips(t *testing.T) {
 	// The start itself is two round trips when it counts: one pipeline
 	// that reads everything, takes the notices and claims the loads with
 	// their R- numbers, then the loads with COMMIT. A start that writes
-	// nothing is one read-only round trip. The rest is the credential: an
-	// API key costs 6 before the handler runs (V1's middleware reads the
-	// key, its hubs, writes last_used and reads the hubs again; then the
-	// scope and the connection) and 1 after (the connection read's
-	// COMMIT, which nobody waits for); a session costs 3.
+	// nothing is one read-only round trip. The rest is the credential. A
+	// key on the start's route is read with its person's scope and its
+	// last_used in one pipeline (AuthHandler.ResolveStartKey); a start key
+	// skips V1's hub reads, so it adds only its connection's read and that
+	// read's COMMIT, which nobody waits for: 5 in all. Any other API key
+	// still reads V1's hubs (and, with no Personal space, looks for one),
+	// and a session costs 3.
 	budgets := []struct {
 		name   string
 		budget int
 		run    func(ctx context.Context)
 	}{
-		{"a start key's start (counted)", 9, func(ctx context.Context) { start(f.key, uuid.NewString())(ctx) }},
-		{"the same start again (a replay)", 9, start(f.key, "replayed")},
+		{"a start key's start (counted)", 5, func(ctx context.Context) { start(cloud, uuid.NewString())(ctx) }},
+		{"the same start again (a replay)", 5, start(cloud, "replayed")},
+		{"another API key's start (counted)", 7, func(ctx context.Context) { start(f.key, uuid.NewString())(ctx) }},
 		{"a person's CLI start (counted)", 5, func(ctx context.Context) { start(f.tok, uuid.NewString())(ctx) }},
-		{"a key with no connection", 8, start(bare, "bare")},
+		{"a key with no connection", 6, start(bare, "bare")},
 	}
 	for _, b := range budgets {
 		for range 2 {

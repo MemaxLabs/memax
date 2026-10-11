@@ -30,7 +30,18 @@ const (
 	PermChatRead       Permission = "chat:read"
 	PermChatWrite      Permission = "chat:write"
 	PermAccountDelete  Permission = "account:delete"
+	// PermCompileRead is a start key's one permission (cloud warm-start
+	// design §4.1): it may start a cloud session in its space (POST
+	// /v2/spaces/{space}/session-starts) and nothing else. RequireAuth
+	// refuses it everywhere else, and no role grants it.
+	PermCompileRead Permission = "compile:read"
 )
+
+// IsStartKey reports whether a credential's permissions are a start
+// key's: it may start cloud sessions, and can't read memories.
+func IsStartKey(perms PermissionSet) bool {
+	return perms.Has(PermCompileRead) && !perms.Has(PermMemoryRead)
+}
 
 const (
 	HubScopeAllAccessible = "all_accessible"
@@ -121,6 +132,8 @@ func ExpandPermissionBundles(scopes []string) (PermissionSet, []string) {
 			out = out.Union(NewPermissionSet(PermMemoryDelete))
 		case "agent-sync":
 			out = out.Union(NewPermissionSet(PermConfigRead, PermConfigWrite))
+		case "start":
+			out = out.Union(NewPermissionSet(PermCompileRead))
 		default:
 			perm := Permission(scope)
 			if !knownPermission(perm) {
@@ -142,7 +155,8 @@ func knownPermission(perm Permission) bool {
 		PermSettingsRead, PermSettingsWrite,
 		PermConfigRead, PermConfigWrite,
 		PermChatRead, PermChatWrite,
-		PermAccountDelete:
+		PermAccountDelete,
+		PermCompileRead:
 		return true
 	default:
 		return false

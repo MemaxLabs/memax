@@ -390,6 +390,18 @@ func requestHash(cmd Command) ([]byte, error) {
 		cp := *c
 		cp.Meta = strip
 		v = cp
+	case *ConnectCloudAgent:
+		// Not the key: each attempt makes its own, and a retry under the
+		// same idempotency key is the same request.
+		cp := *c
+		cp.Meta = strip
+		cp.Key = StartKey{}
+		v = cp
+	case *RekeyAgent:
+		cp := *c
+		cp.Meta = strip
+		cp.Key = StartKey{}
+		v = cp
 	case *SetAutonomy:
 		cp := *c
 		cp.Meta = strip

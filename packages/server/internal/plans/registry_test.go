@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 )
@@ -26,7 +28,9 @@ type fakeStore struct {
 	override    atomic.Pointer[model.PlanOverride]
 	overrideErr atomic.Pointer[error]
 
-	listCalls atomic.Int64
+	listCalls     atomic.Int64
+	overrideCalls atomic.Int64
+	noOverride    atomic.Bool // answer pgx.ErrNoRows, as Postgres does
 }
 
 func newFakeStore(plans []model.Plan) *fakeStore {
@@ -48,6 +52,10 @@ func (f *fakeStore) ListPlans(_ context.Context) ([]model.Plan, error) {
 }
 
 func (f *fakeStore) GetPlanOverride(_ context.Context, _ string) (*model.PlanOverride, error) {
+	f.overrideCalls.Add(1)
+	if f.noOverride.Load() {
+		return nil, pgx.ErrNoRows
+	}
 	if errPtr := f.overrideErr.Load(); errPtr != nil && *errPtr != nil {
 		return nil, *errPtr
 	}
@@ -372,6 +380,64 @@ func TestGetUserLimitsIgnoresOverrideFetchError(t *testing.T) {
 	if limits.PlanID != "personal_free" {
 		t.Errorf("got %q, want personal_free — override fetch error shouldn't block resolution", limits.PlanID)
 	}
+}
+
+// Overrides are read once per OverridesTTL, not on every request: a second
+// lookup comes from memory, an operator's change is read again at once
+// after ForgetOverrides, "no override" is kept too, and a failed read is
+// never kept.
+func TestUserOverridesAreCached(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fs := newFakeStore(testPlans())
+	r := NewRegistry(fs)
+	_ = r.Load(ctx)
+	fs.override.Store(&model.PlanOverride{UserID: "u1", Overrides: map[string]any{"ask_limit": 9999.0}})
+
+	for range 3 {
+		if got := r.GetUserLimits(ctx, "u1", "personal_free").AskLimit; got != 9999 {
+			t.Fatalf("AskLimit = %d, want 9999", got)
+		}
+	}
+	if n := fs.overrideCalls.Load(); n != 1 {
+		t.Errorf("%d override reads for three lookups, want 1", n)
+	}
+
+	fs.override.Store(&model.PlanOverride{UserID: "u1", Overrides: map[string]any{"ask_limit": 42.0}})
+	r.ForgetOverrides("u1")
+	if got := r.GetUserLimits(ctx, "u1", "personal_free").AskLimit; got != 42 {
+		t.Errorf("after ForgetOverrides, AskLimit = %d, want the new 42", got)
+	}
+
+	// No override at all is kept as none.
+	fs.noOverride.Store(true)
+	before := fs.overrideCalls.Load()
+	for range 2 {
+		if got := r.GetUserLimits(ctx, "u2", "personal_free").AskLimit; got != 10 {
+			t.Errorf("u2 AskLimit = %d, want the plan's 10", got)
+		}
+	}
+	if n := fs.overrideCalls.Load() - before; n != 1 {
+		t.Errorf("%d reads for a person with no override, want 1", n)
+	}
+
+	// A failed read isn't kept.
+	fs.noOverride.Store(false)
+	sentinel := errors.New("override store down")
+	fs.overrideErr.Store(&sentinel)
+	before = fs.overrideCalls.Load()
+	r.GetUserLimits(ctx, "u3", "personal_free")
+	r.GetUserLimits(ctx, "u3", "personal_free")
+	if n := fs.overrideCalls.Load() - before; n != 2 {
+		t.Errorf("%d reads after failures, want 2: a failure must not be cached", n)
+	}
+
+	var nilRegistry *Registry
+	if nilRegistry.UserOverrides(ctx, "u1") != nil {
+		t.Error("a nil registry has no overrides")
+	}
+	nilRegistry.ForgetOverrides("u1")
 }
 
 func TestApplyOverridesSkipsEmpty(t *testing.T) {

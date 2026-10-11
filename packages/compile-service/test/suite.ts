@@ -18,6 +18,13 @@ export const demoInput = JSON.parse(
   readFileSync(join(fixture, "input.json"), "utf8"),
 );
 const demoAgents = readFileSync(join(fixture, "expected/AGENTS.md"), "utf8");
+const personalFixture = join(
+  here,
+  "../../compiler/test/fixtures/personal-home",
+);
+const personalInput = JSON.parse(
+  readFileSync(join(personalFixture, "input.json"), "utf8"),
+);
 
 /** The token every suite's service requires. */
 export const TOKEN = "compile-service-test-token-0123456789abcdef";
@@ -143,6 +150,45 @@ export function contract(
       const res = await post(base, "/compile", bad);
       expect(res.status).toBe(422);
       expect(res.json.error.issues[0].message).toMatch(/quarantined/);
+    });
+
+    it("compiles a personal space's home files exactly as the compiler does", async () => {
+      const { base } = await start({});
+      const res = await post(base, "/compile", personalInput);
+      expect(res.status).toBe(200);
+      expect(res.json).toEqual(
+        JSON.parse(JSON.stringify(compile(personalInput))),
+      );
+      for (const path of [
+        ".claude/rules/memax-personal.md",
+        ".codex/AGENTS.md",
+        ".memax/personal/AGENTS.md",
+      ]) {
+        const file = res.json.files.find(
+          (f: { path: string }) => f.path === path,
+        );
+        expect(file.content).toBe(
+          readFileSync(
+            join(personalFixture, "expected", path.replaceAll("/", "__")),
+            "utf8",
+          ),
+        );
+      }
+    });
+
+    it("refuses a home file in a project space", async () => {
+      const { base } = await start({});
+      const bad = structuredClone(demoInput);
+      bad.targets = [{ kind: "codex_user", current: "" }];
+      const res = await post(base, "/compile", bad);
+      expect(res.status).toBe(422);
+      expect(res.json.error.issues).toEqual([
+        {
+          instancePath: "/targets/0/kind",
+          message:
+            "codex_user compiles only for a personal space, not a project one",
+        },
+      ]);
     });
 
     it("never logs what it compiles, or the token", async () => {
@@ -273,6 +319,40 @@ export function contract(
         body.adapters.find((a: { kind: string }) => a.kind === "chatgpt")
           .default_path,
       ).toBeNull();
+      // The home adapters, never defaults, each with its own version.
+      const roots = Object.fromEntries(
+        body.adapters.map((a: { kind: string; roots: string[] }) => [
+          a.kind,
+          a.roots,
+        ]),
+      );
+      expect(roots.agents_md).toEqual(["repo", "home"]);
+      expect(roots.claude_md).toEqual(["repo"]);
+      expect(
+        body.adapters.filter((a: { roots: string[] }) =>
+          a.roots.includes("home"),
+        ),
+      ).toEqual([
+        expect.objectContaining({ kind: "agents_md", role: "canonical" }),
+        {
+          kind: "claude_user",
+          version: 1,
+          role: "home",
+          roots: ["home"],
+          default_path: ".claude/rules/memax-personal.md",
+          default: false,
+          opt_in: false,
+        },
+        {
+          kind: "codex_user",
+          version: 1,
+          role: "home",
+          roots: ["home"],
+          default_path: ".codex/AGENTS.md",
+          default: false,
+          opt_in: false,
+        },
+      ]);
       const head = await fetch(base + "/health", { method: "HEAD" });
       expect(head.status).toBe(200);
       expect(await head.text()).toBe("");

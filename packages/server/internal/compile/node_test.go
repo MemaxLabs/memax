@@ -35,6 +35,17 @@ func TestRealServiceMatchesTheLedgersTargets(t *testing.T) {
 	}
 	var kinds, defaults, optIn []string
 	for _, a := range h.Adapters {
+		if len(a.Roots) == 0 {
+			t.Errorf("%s lists no roots", a.Kind)
+		}
+		// The home adapters (a personal space's files on a linked machine)
+		// join the ledger with machines; until then it has none of them.
+		if !slices.Contains(a.Roots, "repo") {
+			if a.Default || a.OptIn {
+				t.Errorf("%s writes only at home, so it can't be a repository default or opt-in", a.Kind)
+			}
+			continue
+		}
 		kinds = append(kinds, a.Kind)
 		if a.Default {
 			defaults = append(defaults, a.Kind)

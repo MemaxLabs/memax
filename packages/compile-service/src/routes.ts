@@ -123,6 +123,11 @@ export interface HealthResponse {
     kind: string;
     version: number;
     role: string;
+    /**
+     * What its paths are relative to: `repo`, `home` (a linked machine's
+     * home folder), or both (AGENTS.md, a personal space's canonical copy).
+     */
+    roots: string[];
     default_path: string | null;
     default: boolean;
     opt_in: boolean;
@@ -130,7 +135,11 @@ export interface HealthResponse {
   uptime_seconds: number;
 }
 
-/** What the service compiles with. */
+/**
+ * What the service compiles with. The contract stays at version 1 when an
+ * adapter is added, so the API reads this list (once, at startup) and
+ * creates targets only of kinds the service has.
+ */
 export function healthRoute(
   draining: boolean,
   startedAt: number,
@@ -143,6 +152,7 @@ export function healthRoute(
       kind: a.kind,
       version: a.version,
       role: a.role,
+      roots: [...a.roots],
       default_path: a.defaultPath,
       default: DEFAULT_TARGET_KINDS.includes(a.kind),
       opt_in: OPT_IN_TARGET_KINDS.includes(a.kind),

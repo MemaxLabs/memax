@@ -45,6 +45,9 @@
 //   - Dream: only Dream publishes an edition, and its new facts are
 //     proposals. Any person who may keep undoes one of its actions or
 //     restores a faded memory; a space's owner asks it to run now.
+//   - Verify: a person who may keep answers a stale flag, by Keep's rules
+//     (D15 and quarantine included); agents and API keys never verify, and
+//     an agent's edit of a stale memory goes to Review.
 //   - Passkeys (assurance.go, plan 25 §5.15): what needs a person on the
 //     web (human_web) needs their passkey too when they have one
 //     (Actor.Passkey): refused with CodeNeedsPasskey unless this request
@@ -363,6 +366,12 @@ const (
 	// (cmd/v2-backfill-repo-scope) ties what an earlier init imported to its
 	// repository. The words never change.
 	ActionScope Action = "scope"
+
+	// Verify (plan 25 §5.9, epic 3.1): a person answers a stale flag. "Still
+	// true" keeps the memory in force as it is, and "update" keeps new words;
+	// either way it is a keep, so it follows Keep's rules. "Forget it" is
+	// Forget, decided as ActionForget.
+	ActionVerify Action = "verify"
 )
 
 // FreeAskLimit is how many asks a month Free answers (D9: "Ask 50/mo").
@@ -482,6 +491,10 @@ type Object struct {
 	UndoSystem bool
 	// PersonKept is set when a person kept or edited the memory.
 	PersonKept bool
+	// Stale is set for a kept memory flagged stale: only a person answers
+	// the flag (Verify, or their own edit), so an agent's edit of it goes
+	// to Review.
+	Stale bool
 	// Secrets names any credential patterns found in the new words.
 	Secrets []string
 	// GateMine is set when the gate was asked by this agent, or by an agent
@@ -611,6 +624,9 @@ const (
 	CodeDreamRunByOwner = "dream_run_by_owner" // only the space's owner asks Dream to run now
 	// Export; a refusal.
 	CodeExportByPerson = "export_by_person" // agents read the record over MCP; export is for people
+	// Verify: refused (verify), or sent to Review (an agent's edit of a
+	// stale memory).
+	CodeVerifyByPerson = "verify_by_person" // agents propose an update; a person verifies
 
 	// Changes to agent connections (DecideConnection); all refusals.
 	CodePersonMustManage   = "person_must_manage"
@@ -656,7 +672,7 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return refuseOnV1(a, act, s)
 	}
 	if len(o.Secrets) > 0 && slices.Contains([]Action{ActionRemember, ActionPropose, ActionEdit, ActionReviseBrief,
-		ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate, ActionForget, ActionRequestForget}, act) {
+		ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate, ActionForget, ActionRequestForget, ActionVerify}, act) {
 		return refuse(CodeSecret, fmt.Sprintf(
 			"This looks like a credential (%s). Memax never stores secrets. Remove it and try again.",
 			strings.Join(o.Secrets, ", ")))
@@ -737,6 +753,8 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideExport(a, s)
 	case ActionScope:
 		return decideScope(a, o, s)
+	case ActionVerify:
+		return decideVerify(a, o, s)
 	}
 	return refuse(CodeUnknownAction, fmt.Sprintf("Memax doesn't know how to %q.", act))
 }
@@ -779,6 +797,46 @@ func decideExport(a Actor, s Space) Decision {
 		return refuse(CodeExportByPerson, fmt.Sprintf(
 			"Only a signed-in person exports %s. Agents read the record over MCP with memax_recall and memax_search.",
 			spaceName(s)))
+	}
+	return apply()
+}
+
+// decideVerify: a person who may keep in the space answers a stale flag,
+// since "still true" keeps the memory in force and "update" keeps new words
+// (plan 25 §5.9). It follows Keep's rules: members and owners per the
+// space's rules, a person on the web (and their passkey) for a decision
+// where the space's decisions need one (D15), and for a quarantined memory.
+// Agents and API keys never verify: an agent's update to a stale fact is an
+// edit, which policy sends to Review.
+func decideVerify(a Actor, o Object, s Space) Decision {
+	switch {
+	case a.Kind != ActorPerson || a.Credential == CredentialAPIKey:
+		return refuse(CodeVerifyByPerson, fmt.Sprintf(
+			"Agents propose and people verify. A person verifies %s on the web or with memax verify.", refOr(o, "it")))
+	case a.Role == RoleViewer:
+		return refuse(CodeViewer, fmt.Sprintf("Viewers can't verify in %s. Ask a member to verify it.", spaceName(s)))
+	case !canKeep(a.Role, s.Rules):
+		return refuse(CodeOwnersKeep, fmt.Sprintf("Only owners verify in %s. Ask an owner to verify it.", spaceName(s)))
+	}
+	gated := false
+	if o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) {
+		if d := needsPerson(a, CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web, and so does verifying one. Verify %s at memax.app.",
+			spaceName(s), refOr(o, "it")), "verifying "+refOr(o, "a decision")); d != nil {
+			return *d
+		}
+		gated = true
+	}
+	if o.External {
+		if d := needsPerson(a, CodeExternalNeedsReview, fmt.Sprintf(
+			"%s comes from an outside source. Verify it on the web.", refOr(o, "This memory")),
+			"verifying "+refOr(o, "a quarantined memory")); d != nil {
+			return *d
+		}
+		gated = true
+	}
+	if gated {
+		return applyChecked(a)
 	}
 	return apply()
 }
@@ -888,6 +946,8 @@ func decideEdit(a Actor, o Object, s Space) Decision {
 		switch {
 		case o.External:
 			d = propose(CodeExternalSource)
+		case o.Stale:
+			d = propose(CodeVerifyByPerson)
 		case o.PersonKept:
 			d = propose(CodeEditsPersonKept)
 		case o.ContradictsDecision:
@@ -1437,6 +1497,8 @@ func downgrade(code string, a Actor, o Object, s Space, quarantine bool) Decisio
 		msg = "Sent to Review: it touches a decision in force, so a person checks it first."
 	case CodeEditsPersonKept:
 		msg = fmt.Sprintf("Sent to Review: a person kept %s, so changes to it need a person.", refOr(o, "this memory"))
+	case CodeVerifyByPerson:
+		msg = fmt.Sprintf("Sent to Review: %s is being verified, so a person checks changes to it.", refOr(o, "this memory"))
 	case CodeAutonomyPropose:
 		msg = fmt.Sprintf("Sent to Review: %s proposes in %s.", actorName(a), spaceName(s))
 	case CodePersonProposed:

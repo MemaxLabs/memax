@@ -158,6 +158,8 @@ func TestDecide(t *testing.T) {
 		{"team decision edit from the CLI → proposal", person(RoleMember, ViaCLI), ActionEdit, keptDec, team, EffectPropose, CodeDecisionNeedsWeb, false, ""},
 		{"agent at write edits agent-kept work", agent(RoleOwner, AutonomyWrite), ActionEdit, kept, project, EffectApply, "", false, ""},
 		{"agent at write edits person-kept → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, personKept, project, EffectPropose, CodeEditsPersonKept, false, "a person kept M-0219"},
+		{"agent at write edits a stale memory → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, Object{Ref: "M-0219", Lifecycle: lifecycle.Kept, Stale: true}, project, EffectPropose, CodeVerifyByPerson, false, "M-0219 is being verified"},
+		{"person edits a stale memory", person(RoleMember, ViaCLI), ActionEdit, Object{Ref: "M-0219", Lifecycle: lifecycle.Kept, Stale: true}, project, EffectApply, "", false, ""},
 		{"agent at write edits external → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, keptExt, project, EffectPropose, CodeExternalSource, true, ""},
 		{"agent at write edit contradicts → proposal", agent(RoleOwner, AutonomyWrite), ActionEdit, Object{Ref: "M-1", Lifecycle: lifecycle.Kept, ContradictsDecision: true}, project, EffectPropose, CodeContradicts, false, ""},
 		// --- the Write-level pre-check (a write that touches a decision in force) ---
@@ -606,6 +608,66 @@ func TestScope(t *testing.T) {
 		if strings.Contains(d.Message, "!") || strings.Contains(d.Message, "delete") {
 			t.Errorf("%s: message breaks the voice rules: %s", c.name, d.Message)
 		}
+	}
+}
+
+// TestVerifyMatrix: a person who may keep verifies a stale fact, from any
+// surface for a project fact; agents, API keys and OAuth grants never do,
+// and neither do viewers or members where owners keep. A secret in the new
+// words is refused before anything is written.
+func TestVerifyMatrix(t *testing.T) {
+	t.Parallel()
+	roles := []Role{RoleNone, RoleOwner, RoleMember, RoleViewer}
+	creds := []Credential{CredentialSession, CredentialOAuth, CredentialAPIKey}
+	banned := []string{"!", " AI", "magic", "smart", "delete", "Delete"}
+	for _, kind := range ActorKinds {
+		for _, role := range roles {
+			for _, cred := range creds {
+				for _, via := range []Via{ViaWeb, ViaCLI, ViaMCP, ViaAPI} {
+					a := Actor{Kind: kind, Role: role, Credential: cred, Via: via, Autonomy: AutonomyWrite}
+					d := Decide(a, ActionVerify, kept, project)
+					for _, b := range banned {
+						if strings.Contains(d.Message, b) {
+							t.Fatalf("message breaks the voice rules (%s): %s", b, d.Message)
+						}
+					}
+					want := kind == ActorPerson && cred != CredentialAPIKey && (role == RoleOwner || role == RoleMember)
+					if (d.Effect == EffectApply) != want {
+						t.Fatalf("%+v → %+v, want apply=%v", a, d, want)
+					}
+					if d.Effect != EffectApply && d.Effect != EffectRefuse {
+						t.Fatalf("%+v: verify is applied or refused, got %+v", a, d)
+					}
+				}
+			}
+		}
+	}
+	for _, c := range []struct {
+		name  string
+		actor Actor
+		obj   Object
+		space Space
+		code  string
+	}{
+		{"an agent at write", agent(RoleOwner, AutonomyWrite), kept, project, CodeVerifyByPerson},
+		{"an API key", with(person(RoleOwner, ViaAPI), func(a *Actor) { a.Credential, a.Autonomy = CredentialAPIKey, AutonomyPropose }), kept, project, CodeVerifyByPerson},
+		{"Dream", Actor{Kind: ActorDream, Via: ViaSystem}, kept, project, CodeVerifyByPerson},
+		{"Memax", Actor{Kind: ActorMemax, Via: ViaSystem}, kept, project, CodeVerifyByPerson},
+		{"a viewer", person(RoleViewer, ViaWeb), kept, project, CodeViewer},
+		{"a member where owners keep", person(RoleMember, ViaWeb), kept, ownersKeep, CodeOwnersKeep},
+		{"a team decision from the CLI", person(RoleOwner, ViaCLI), keptDec, team, CodeDecisionNeedsWeb},
+		{"new words with a secret", person(RoleOwner, ViaWeb), Object{Ref: "M-0219", Lifecycle: lifecycle.Kept, Secrets: []string{"AWS access key"}}, project, CodeSecret},
+		{"a space still on V1", person(RoleOwner, ViaWeb), kept, v1Project, CodeSpaceOnV1},
+	} {
+		if d := Decide(c.actor, ActionVerify, c.obj, c.space); d.Effect != EffectRefuse || d.Code != c.code {
+			t.Errorf("%s: %+v, want refused %s", c.name, d, c.code)
+		}
+	}
+	if d := Decide(person(RoleOwner, ViaCLI), ActionVerify, keptDec, project); d.Effect != EffectApply {
+		t.Errorf("a project decision from the CLI: %+v", d)
+	}
+	if d := Decide(person(RoleOwner, ViaWeb), ActionVerify, keptDec, teamNoWeb); d.Effect != EffectApply || d.Suggest != "" {
+		t.Errorf("a team decision where decisions don't need the web: %+v", d)
 	}
 }
 

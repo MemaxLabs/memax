@@ -101,7 +101,7 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 	if err := validateMeta(m, now); err != nil {
 		return Result{}, err
 	}
-	if err := validateCommand(cmd); err != nil {
+	if err := validateCommand(cmd, now); err != nil {
 		return Result{}, err
 	}
 	hash, err := requestHash(cmd)
@@ -202,6 +202,8 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.renameMachine(ctx, c)
 	case *ScopeMemory:
 		res, err = w.scopeMemory(ctx, c)
+	case *Verify:
+		res, err = w.verify(ctx, c)
 	}
 	if err != nil {
 		return Result{}, mapDBError(err)
@@ -243,8 +245,11 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 	return res, nil
 }
 
-func validateCommand(cmd Command) error {
+func validateCommand(cmd Command, now time.Time) error {
 	switch c := cmd.(type) {
+	case *Verify:
+		c.Statement = strings.TrimSpace(c.Statement)
+		return c.validate(now)
 	case *ReviseBrief:
 		return c.validate()
 	case *ConfigureTarget:

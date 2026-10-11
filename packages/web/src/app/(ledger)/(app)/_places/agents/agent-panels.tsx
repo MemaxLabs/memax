@@ -86,6 +86,10 @@ export function MayPanel({
             );
           })}
         </dl>
+        {/* D8: in Personal, a Write agent's keeps reach every linked machine. */}
+        {space.kind === "personal" && shown === "write" ? (
+          <p className={styles.note}>{t.ledger.machines.reach.write}</p>
+        ) : null}
         <p className={styles.quarantine}>
           <span className={styles.quarantineIcon}>
             <Icon name="shield" />

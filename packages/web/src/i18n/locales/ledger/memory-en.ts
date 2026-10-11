@@ -92,6 +92,10 @@ export const ledgerMemoryEn = {
     reachOnly: "reaches {what}",
     files: "{n} files",
     filesOne: "1 file",
+    // A Personal space's home files: "3 files on 2 machines".
+    filesOn: "{files} on {machines}",
+    machines: "{n} machines",
+    machinesOne: "1 machine",
     agents: "{n} agents",
     agentsOne: "1 agent",
     lineage: "Lineage",

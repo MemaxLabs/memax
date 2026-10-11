@@ -742,4 +742,21 @@ describe("CompileDone", () => {
     ).toBe("/memax-v2/agents?overlay=connect");
     expect(screen.getByText("Team spaces arrive with Team.")).toBeTruthy();
   });
+
+  it("says where Personal was written, by the machine init linked", () => {
+    at("/setup/done", "space=memax-v2");
+    renderWith(<CompileDoneScreen />);
+    const written = screen.getByRole("region", {
+      name: "Written on this machine",
+    });
+    expect(
+      within(written).getByText(
+        "Personal: written for Claude Code and Codex on ziyang-mbp.",
+      ),
+    ).toBeTruthy();
+    // Home files aren't in the repository: git never shows them.
+    expect(
+      screen.getByRole("region", { name: /git status/ }).textContent,
+    ).not.toContain("memax-personal");
+  });
 });

@@ -83,6 +83,15 @@
   color: var(--ink-2);
 }
 
+/* Under the files: where Personal was written on this machine (personal-line.tsx). */
+.personal {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+
 .next {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

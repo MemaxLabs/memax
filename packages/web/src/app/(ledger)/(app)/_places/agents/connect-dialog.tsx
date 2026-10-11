@@ -14,6 +14,7 @@ import { interpolate, useLocale } from "@/i18n";
 import { isComposing } from "@/lib/v2/keymap/keymap";
 import { KeyScopeBoundary } from "@/lib/v2/keymap/react";
 import { isRaise, type AgentConnectionView } from "@/lib/v2/data/agents";
+import { HOME_FILE_OF_AGENT } from "@/lib/v2/data/home-files";
 import { cliCommand } from "@/lib/v2/cli";
 import { MCP_URL } from "@/lib/urls";
 import { useSource, useSpaces } from "../../_lib/data";
@@ -119,6 +120,11 @@ function ConnectBody({
 
   const name = agents[agent]?.name ?? agent;
   const chat = isChatAgent(agents, agent);
+  // Personal, when chosen, is written into the agent's own file on each
+  // machine the person links (personal-layer design §8).
+  const personal = spaces.some(
+    (s) => s.kind === "personal" && chosen.includes(s.slug),
+  );
   const level = strings.autonomy[autonomy];
   // From the CLI an agent connects at most at the space's default; a
   // lower level is a flag, a higher one is raised here afterwards.
@@ -221,6 +227,9 @@ function ConnectBody({
                       level: strings.autonomy[start],
                     })}`
                   : null}
+                {autonomy === "write" && personal
+                  ? ` ${t.ledger.machines.reach.write}`
+                  : null}
               </p>
             </div>
 
@@ -239,6 +248,7 @@ function ConnectBody({
                   )
                 }
                 target={source.targetFor(space, agent)}
+                homeFile={personal ? (HOME_FILE_OF_AGENT[agent] ?? null) : null}
               />
             </div>
 

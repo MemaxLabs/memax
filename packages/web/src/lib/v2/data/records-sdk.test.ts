@@ -1373,7 +1373,8 @@ describe("the SDK's Memories", () => {
     const memories = createSdkMemories(withTargets as never, () => ME);
     const record = await memories.get({ space: v2, ref: "M-0219" });
     expect(record?.reaches?.map((t) => t.path)).toEqual(["AGENTS.md"]);
-    expect(record?.reach).toEqual({ files: 1, agents: 5 });
+    // A repository's files are on no machine of their own.
+    expect(record?.reach).toEqual({ files: 1, machines: 0, agents: 5 });
     expect(record?.reads).toBe(214);
   });
 

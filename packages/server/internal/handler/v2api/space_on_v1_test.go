@@ -47,6 +47,7 @@ var passesOnV1 = map[string]string{
 	"rekeyAgent":         "a cloud agent's new key is its identity, not the space's record (policy.DecideConnection)",
 	"createCloudAgent":   "connecting a cloud agent, like any connection, is the agent's identity (policy.DecideConnection)",
 	"unlinkMachine":      "taking a Personal space off a machine works wherever it is linked, like disconnecting an agent",
+	"stopDrift":          "stopping a file takes Memax off it and writes nothing to it; V1's sync writes a switched-back space's files again",
 }
 
 // notInASpace are the commands that change no space's record.
@@ -180,9 +181,6 @@ var refusedOnV1 = map[string]func(f *v1Fixture) call{
 	},
 	"overwriteDrift": func(f *v1Fixture) call {
 		return call{method: "POST", path: targetPath(f.agents, "/drift:overwrite"), token: f.tok, body: map[string]any{"reason": "the record wins"}}
-	},
-	"stopDrift": func(f *v1Fixture) call {
-		return call{method: "POST", path: targetPath(f.agents, "/drift:stop"), token: f.tok}
 	},
 	"requestDecision": func(f *v1Fixture) call {
 		return call{method: "POST", path: gatesPath(f.sp), token: f.key, body: deployGate()}
@@ -508,6 +506,16 @@ func TestSpaceOnV1RefusesEveryCommand(t *testing.T) {
 		body: map[string]any{"compile": f.compileRef, "sha256": f.sha}}).ok(http.StatusOK, nil)
 	f.do(call{method: "POST", path: targetPath(f.agents, "/observations"), token: f.tok,
 		body: map[string]any{"path": "AGENTS.md", "content": f.content + "- Prefer spaces.\n", "device_id": "zz-laptop"}}).ok(http.StatusCreated, nil)
+	// That hand edit (V1's sync writing the file again, say) is settled by
+	// stopping the file: Memax leaves it as it is.
+	var stopped struct {
+		Outcome string     `json:"outcome"`
+		Target  wireTarget `json:"target"`
+	}
+	f.do(call{method: "POST", path: targetPath(f.agents, "/drift:stop"), token: f.tok}).ok(http.StatusOK, &stopped)
+	if stopped.Outcome != "applied" || stopped.Target.State != "off" {
+		t.Errorf("stopping a file on V1: %s, sync %s", stopped.Outcome, stopped.Target.State)
+	}
 	f.exportSpace(f.tok, f.sp, "export-on-v1").ok(http.StatusOK, nil)
 	f.do(call{method: "POST", path: memoryPath(f.kept3, ":forget"), token: f.tok, header: map[string]string{"If-Match": `"1"`}}).
 		ok(http.StatusOK, nil)

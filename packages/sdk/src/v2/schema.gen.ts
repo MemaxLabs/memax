@@ -2241,7 +2241,9 @@ export interface paths {
          * @description Stops compiling the target (`off`) and closes its open hand edits;
          *     the file stays as it is, and agents keep reading the space over MCP.
          *     Turn it back on with `enabled: true`. People who may keep stop
-         *     targets.
+         *     targets. A space switched back to V1 takes it too (pulling and
+         *     overwriting it are refused there): V1's sync writes such a space's
+         *     agent files again, and stopping is how Memax lets go of one.
          */
         post: operations["stopDrift"];
         delete?: never;

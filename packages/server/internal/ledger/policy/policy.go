@@ -325,7 +325,8 @@ const (
 
 	// The Brief and compile actions (plan 25 §5.7).
 	ActionReviseBrief     Action = "revise_brief"     // write a new Brief version
-	ActionConfigureTarget Action = "configure_target" // add a target, change it, overwrite a hand edit, stop compiling
+	ActionConfigureTarget Action = "configure_target" // add a target, change it, overwrite a hand edit
+	ActionStopTarget      Action = "stop_target"      // stop compiling a file (drift:stop): Memax leaves it as it is
 	ActionRequestCompile  Action = "request_compile"  // ask for a fresh compile
 	ActionRecordCompile   Action = "record_compile"   // record a compile run
 	ActionReport          Action = "report"           // report a delivery or a hand edit from a device or GitHub
@@ -563,6 +564,12 @@ var onV1 = map[Action]bool{
 	ActionRecordCompile: true,
 	ActionJudge:         true,
 	ActionReport:        true,
+	// Stopping a file takes Memax off it and writes nothing to it, like
+	// disconnecting an agent or unlinking a machine. A space switched back
+	// to V1 has V1's two-way sync writing its agent files again, so a hand
+	// edit the daemon reports there must be settleable this way; pulling
+	// it into proposals or overwriting it stays refused.
+	ActionStopTarget: true,
 }
 
 // Effect is what happens to the write.
@@ -715,7 +722,7 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideReapplyForget(a)
 	case ActionReviseBrief:
 		return decideReviseBrief(a, s)
-	case ActionConfigureTarget:
+	case ActionConfigureTarget, ActionStopTarget:
 		return decideConfigureTarget(a, s)
 	case ActionRequestCompile:
 		return decideRequestCompile(a, s)

@@ -161,6 +161,18 @@ export function toAgentCommandError(err: unknown): AgentCommandError {
   return new AgentCommandError(byError[err.code] ?? "failed", err.message);
 }
 
+/**
+ * A cloud agent's start key (its one permission compile:read, no
+ * memory:read; the server's handler.IsStartKey). It belongs to the agent's
+ * connection: its page gives it a new key or disconnects it, so Settings ›
+ * Agents and keys lists the agent and not the key, which would read as a
+ * key that "may read" and, revoked there, would silently stop the agent.
+ */
+export function isStartKey(key: ApiKeyListItem): boolean {
+  const perms = key.default_permissions ?? [];
+  return perms.includes("compile:read") && !perms.includes("memory:read");
+}
+
 export function toApiKey(key: ApiKeyListItem): ApiKeyView {
   const canPropose =
     key.scopes?.includes("write") ||
@@ -359,7 +371,7 @@ export function createSdkAgents({
     targetFor: () => undefined,
     async apiKeys() {
       const keys = await client.auth.listKeys();
-      return keys.map(toApiKey);
+      return keys.filter((key) => !isStartKey(key)).map(toApiKey);
     },
     async createApiKey({ name, may, space }) {
       const created = await client.auth.createKey({

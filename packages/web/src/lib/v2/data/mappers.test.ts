@@ -13,6 +13,7 @@ import {
   registryKey,
   toAgentCommandError,
   toAgentWrite,
+  isStartKey,
   toApiKey,
   toConnection,
 } from "./agents-sdk";
@@ -667,6 +668,58 @@ describe("toApiKey", () => {
         default_permissions: ["memory:read", "memory:write"],
       }),
     ).toMatchObject({ may: "propose", spaceIds: null });
+  });
+});
+
+describe("isStartKey", () => {
+  it("is a key whose one permission is compile:read", () => {
+    const key = {
+      id: "k2",
+      name: "copilot-cloud",
+      prefix: "mxk_3a9b",
+      scopes: [] as string[],
+      scope: "1 hub",
+      hub_id: "s1",
+      expires_at: null,
+      last_used: null,
+      created_at: "2026-10-11T09:00:00Z",
+    };
+    expect(isStartKey({ ...key, default_permissions: ["compile:read"] })).toBe(
+      true,
+    );
+    expect(
+      isStartKey({
+        ...key,
+        default_permissions: ["compile:read", "memory:read"],
+      }),
+    ).toBe(false);
+    expect(isStartKey({ ...key, scopes: ["read"] })).toBe(false);
+  });
+
+  it("is left out of the keys list: its agent is listed instead", async () => {
+    const key = {
+      prefix: "mxk_3a9b",
+      scopes: [] as string[],
+      scope: "1 hub",
+      hub_id: "s1",
+      expires_at: null,
+      last_used: null,
+      created_at: "2026-10-11T09:00:00Z",
+    };
+    const listKeys = vi.fn().mockResolvedValue([
+      { ...key, id: "ci", name: "CI", scopes: ["read"] },
+      {
+        ...key,
+        id: "start",
+        name: "copilot-cloud",
+        default_permissions: ["compile:read"],
+      },
+    ]);
+    const agents = createSdkAgents({
+      client: { auth: { listKeys } } as never,
+      viewer: null,
+    });
+    expect((await agents.apiKeys()).map((k) => k.id)).toEqual(["ci"]);
   });
 });
 

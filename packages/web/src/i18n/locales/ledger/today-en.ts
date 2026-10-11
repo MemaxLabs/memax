@@ -171,6 +171,13 @@ export const ledgerTodayEn = {
     loadFailed: "What moves didn't load.",
     retry: "Try again",
     back: "Switched back: {space} is on V1 again. Its V2 record stays for when you switch again.",
+    // FirstRun, from the switch: a new project space instead, or as well.
+    start: {
+      title: "Or start a project space",
+      detail:
+        "Run memax init in a repository. It makes a project space on V2 from the files your agents already keep.",
+      action: "Set up a repository",
+    },
     targets: {
       agents_md: "AGENTS.md",
       claude_md: "CLAUDE.md",

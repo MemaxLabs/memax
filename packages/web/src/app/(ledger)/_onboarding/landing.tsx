@@ -15,8 +15,10 @@ import {
 /**
  * Where a person goes once signed in (lib/v2/onboarding/routes.ts), given
  * the web UI the API says they see: with the V2 UI flag, `next` when the
- * sign-in came from a page, else their landing (FirstRun for someone new,
- * ReviewImport for an import still in progress, else a space's Today);
+ * sign-in came from a page, else their landing (the switch of a space
+ * still on V1 for someone with V1 work and nothing on V2 yet, FirstRun
+ * for someone new, ReviewImport for an import still in progress, else a
+ * space's Today);
  * without it, `next` only when it opens without the flag, else V1's home.
  * Reads the person's own record over the SDK; a read that fails lands on
  * FirstRun, which finds their spaces itself.

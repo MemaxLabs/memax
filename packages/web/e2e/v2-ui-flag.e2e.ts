@@ -35,8 +35,11 @@ test.afterAll(async () => {
   await stack?.stop();
 });
 
-/** A V1 person, as V1 makes them: an account and a personal hub. */
-function v1Person(name: string): string {
+/**
+ * A V1 person, as V1 makes them: an account and a personal hub, with
+ * `memories` they wrote in it.
+ */
+function v1Person(name: string, memories: string[] = []): string {
   const id = randomUUID();
   const hub = randomUUID();
   stack.query(
@@ -48,6 +51,11 @@ function v1Person(name: string): string {
   stack.query(
     `INSERT INTO hub_members (hub_id, user_id, role) VALUES ('${hub}', '${id}', 'owner')`,
   );
+  for (const content of memories) {
+    stack.query(
+      `INSERT INTO memories (id, owner_id, hub_id, title, content, created_by_type) VALUES ('${randomUUID()}', '${id}', '${hub}', 'note', '${content}', 'human')`,
+    );
+  }
   return id;
 }
 
@@ -190,4 +198,33 @@ test("an operator turns V2 on, and the person's next load is V2; off sends them 
   await page.goto("/setup/import");
   await settledOn(page, V1_HOME);
   await ops.context().close();
+});
+
+test("a V1 person whose flag turns on lands on their space's switch, not the first run", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  // Cy wrote in V1: their personal space holds work to switch.
+  const cy = v1Person("cy", ["Deploys go out on Tuesdays.", "Use pnpm."]);
+  await page.goto(`/signin/callback?code=${stack.webCode(cy)}`);
+  await settledOn(page, V1_HOME);
+  const slug = stack.query(
+    `SELECT slug FROM hubs WHERE owner_id = '${cy}' AND hub_type = 'personal'`,
+  );
+
+  stack.query(`UPDATE users SET v2_ui = true WHERE id = '${cy}'`);
+  await page.goto("/home");
+  await settledOn(page, new RegExp(`^/${slug}/today$`));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Personal is still on V1",
+  );
+  await expect(page.getByRole("region", { name: "What moves" })).toContainText(
+    "2 V1 memories become notes (N-)",
+  );
+  // FirstRun stays one step away.
+  await expect(
+    page
+      .getByRole("region", { name: "Or start a project space" })
+      .getByRole("link", { name: "Set up a repository" }),
+  ).toHaveAttribute("href", "/setup/import");
 });

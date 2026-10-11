@@ -158,6 +158,12 @@ export const ledgerTodayZh: Translations["ledger"]["today"] = {
     loadFailed: "迁移内容没有加载出来。",
     retry: "重试",
     back: "已切换回去：{space} 又回到了 V1。它的 V2 记录会保留，下次切换时接着用。",
+    start: {
+      title: "或者新建一个项目空间",
+      detail:
+        "在你的仓库里运行 memax init，它会根据 Agent 已有的文件，在 V2 上建一个项目空间。",
+      action: "从一个仓库开始",
+    },
     targets: {
       agents_md: "AGENTS.md",
       claude_md: "CLAUDE.md",

@@ -364,6 +364,27 @@
   padding: 16px 20px;
 }
 
+/* "Or start a project space": one line, then FirstRun's button, inset
+ * like "Switch as" above it. */
+.switchStart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.switchStart :global(.mx-btn) {
+  width: 100%;
+}
+
+.startDetail {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
 @media (max-width: 1023px) {
   .grid,
   .emptyGrid {

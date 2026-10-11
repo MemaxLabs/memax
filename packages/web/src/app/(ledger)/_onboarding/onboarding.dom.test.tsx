@@ -646,7 +646,9 @@ describe("FirstRun", () => {
     // In the box to copy and on the terminal beside it.
     expect(screen.getAllByText("npx memax-cli init")).toHaveLength(2);
     const skip = await screen.findByRole("link", { name: "Skip for now" });
-    expect(skip.getAttribute("href")).toBe("/personal/today");
+    // A project or team space of theirs before Personal, as the landing
+    // after sign-in picks one (routes.ts spacesToSwitch).
+    expect(skip.getAttribute("href")).toBe("/memax-v2/today");
   });
 });
 

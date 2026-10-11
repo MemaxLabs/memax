@@ -152,6 +152,27 @@ describe("Switch to V2", () => {
     expect(screen.queryByRole("button", { name: "Switch to V2" })).toBeNull();
     expect(screen.queryByRole("radiogroup", { name: "Switch as" })).toBeNull();
   });
+
+  it("offers FirstRun, for a new project space, to owner and member alike", async () => {
+    // Someone with V1 work lands here after signing in, not on FirstRun.
+    for (const role of ["owner", "member"] as const) {
+      renderIn({ ...DEMO_V1_SPACE, role }, <TodayPlace />);
+      const start = await screen.findByRole("region", {
+        name: "Or start a project space",
+      });
+      expect(
+        within(start).getByText(
+          "Run memax init in a repository. It makes a project space on V2 from the files your agents already keep.",
+        ),
+      ).toBeTruthy();
+      expect(
+        within(start)
+          .getByRole("link", { name: "Set up a repository" })
+          .getAttribute("href"),
+      ).toBe("/setup/import");
+      cleanup();
+    }
+  });
 });
 
 describe("ReviewImport, from V1", () => {

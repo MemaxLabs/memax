@@ -312,6 +312,11 @@ describe.skipIf(!enabled)(
       expect(other.status).toBe(403);
       expect(reads.load.via).toBe("cli");
       expect(reads.digest.memory_refs).toContain(pnpm.ref);
+      // 6. The agent's page says so: its last start, the compile its files
+      // held, and what it was told.
+      const page = await memax.v2.agents.get(cloudAgent.id);
+      expect(page.last_start?.compiles).toEqual([c1]);
+      expect(page.last_start?.told).toEqual(reads.digest.memory_refs);
     }, 180_000);
 
     it("says nothing once the clone holds the latest compile, against a black hole, or once disconnected", async () => {

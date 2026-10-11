@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, use, useMemo, type ReactNode } from "react";
+import { createContext, use, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth, type User } from "@/lib/auth";
 import { getMemaxClient } from "@/lib/memax-client";
-import { demoSource } from "@/lib/v2/data/demo-source";
+import { createDemoSource, demoSource } from "@/lib/v2/data/demo-source";
 import { createSdkSource } from "@/lib/v2/data/sdk-source";
 import type { LedgerDataSource } from "@/lib/v2/data/source";
 import {
@@ -51,10 +51,23 @@ export function LedgerDataProvider({
   children: ReactNode;
 }) {
   const { user, session } = useAuth();
+  // The demo holds a visit's state in memory: its decisions, and its
+  // judge's clock, which starts when a queue is first read. In the browser
+  // that is the page's module, as long as the page lives. On the server a
+  // module lives as long as the process, so every request would render
+  // the state earlier requests left (M-0445 judged, a minute after the
+  // first visit) while the browser hydrating it starts afresh: React then
+  // throws the server's HTML away (#418), and <html>'s data-theme with it.
+  // So each server render reads a demo of its own, as a fresh page does.
+  const [serverDemo] = useState(() =>
+    mode === "demo" && typeof window === "undefined"
+      ? createDemoSource()
+      : null,
+  );
   const source = useMemo(
     () =>
       mode === "demo"
-        ? demoSource
+        ? (serverDemo ?? demoSource)
         : createSdkSource({
             client: getMemaxClient(),
             viewer: user ? viewerFromUser(user) : null,
@@ -62,7 +75,7 @@ export function LedgerDataProvider({
             // web app's server read it from the session's token.
             webSession: () => webSessionOf(session),
           }),
-    [mode, user, session],
+    [mode, user, session, serverDemo],
   );
   return <SourceContext value={source}>{children}</SourceContext>;
 }

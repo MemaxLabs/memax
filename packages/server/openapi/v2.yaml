@@ -5341,7 +5341,13 @@ components:
         agent has no connection, or none to this space, so it only reads),
         agent_paused, brief_by_person (agents propose; people edit the
         Brief), targets_by_person, compile_by_memax, judge_by_memax,
-        undo_by_decider (only the person who decided can undo it). Refused
+        undo_by_decider (only the person who decided can undo it),
+        space_on_v1 (the space is still on V1, so its V2 record takes no new
+        words or decisions: its owner switches it to V2 first, with
+        `POST /v2/spaces/{space}:switch`; on V1 the record still takes reads,
+        Forget, export, compile loads, deliveries and hand edits, and agent
+        connections change as anywhere; Ask is refused too, since it answers
+        only from the V2 record). Refused
         decision gates: gate_by_agent (agents ask; people decide directly),
         person_must_answer (agents ask; people answer), gate_limit (the agent
         already has 3 decisions waiting in the space), not_your_gate (only the
@@ -5410,6 +5416,7 @@ components:
         - compile_by_memax
         - judge_by_memax
         - undo_by_decider
+        - space_on_v1
         - gate_by_agent
         - person_must_answer
         - gate_limit

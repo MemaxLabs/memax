@@ -26,24 +26,46 @@ type spaceRow struct {
 	Kind     policy.SpaceKind
 	Name     string
 	Rules    policy.Rules
+	// OnV2 is whether the V2 record serves the space (hubs.v2_enabled_at),
+	// read in the same statement as the rest, and Switching whether this
+	// command is one of the space's own switch steps (withSwitch).
+	OnV2      bool
+	Switching bool
 }
 
 func (s spaceRow) policy() policy.Space {
-	return policy.Space{Name: s.Name, Kind: s.Kind, Rules: s.Rules}
+	return policy.Space{Name: s.Name, Kind: s.Kind, Rules: s.Rules, OnV2: s.OnV2, Switching: s.Switching}
 }
 
 // spaceSQL reads the space $1.
-const spaceSQL = `SELECT id, tenant_id, kind, name, rules FROM v2.spaces WHERE id = $1`
+const spaceSQL = `SELECT id, tenant_id, kind, name, rules, v2_enabled_at IS NOT NULL FROM v2.spaces WHERE id = $1`
 
 func loadSpace(ctx context.Context, tx pgx.Tx, id uuid.UUID) (spaceRow, error) {
-	return scanSpace(tx.QueryRow(ctx, spaceSQL, id), id)
+	return scanSpace(ctx, tx.QueryRow(ctx, spaceSQL, id), id)
+}
+
+// switchKey marks a context as a space's switch running its steps.
+type switchKey struct{}
+
+// withSwitch marks ctx as the switch of spaceID running its steps
+// (RunSwitch): the commands they apply may write to the space's record
+// while it is still on V1 (policy.Space.Switching). Only this package can
+// set it, and only for that one space.
+func withSwitch(ctx context.Context, spaceID uuid.UUID) context.Context {
+	return context.WithValue(ctx, switchKey{}, spaceID)
+}
+
+// switching reports whether ctx is spaceID's switch running its steps.
+func switching(ctx context.Context, spaceID uuid.UUID) bool {
+	id, ok := ctx.Value(switchKey{}).(uuid.UUID)
+	return ok && id == spaceID
 }
 
 // scanSpace reads spaceSQL's row.
-func scanSpace(row pgx.Row, id uuid.UUID) (spaceRow, error) {
+func scanSpace(ctx context.Context, row pgx.Row, id uuid.UUID) (spaceRow, error) {
 	var s spaceRow
 	var rules []byte
-	err := row.Scan(&s.ID, &s.TenantID, &s.Kind, &s.Name, &rules)
+	err := row.Scan(&s.ID, &s.TenantID, &s.Kind, &s.Name, &rules, &s.OnV2)
 	if errNoRows(err) {
 		return spaceRow{}, ErrNotFound
 	}
@@ -55,6 +77,7 @@ func scanSpace(row pgx.Row, id uuid.UUID) (spaceRow, error) {
 	if err := json.Unmarshal(rules, &s.Rules); err != nil {
 		return spaceRow{}, fmt.Errorf("ledger: space %s has unreadable rules: %w", id, err)
 	}
+	s.Switching = switching(ctx, s.ID)
 	return s, nil
 }
 

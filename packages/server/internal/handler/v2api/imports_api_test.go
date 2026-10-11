@@ -65,7 +65,7 @@ func TestCreateAndSwitchSpaces(t *testing.T) {
 	}
 
 	// An empty personal space switches within the request.
-	personal := e.space(zz, policy.SpacePersonal, "personal")
+	personal := e.v1Space(zz, policy.SpacePersonal, "personal")
 	var switched struct {
 		Space      spaceOut `json:"space"`
 		State      string   `json:"state"`

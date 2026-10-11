@@ -665,7 +665,7 @@ func (w *writer) spaceAndClaim(ctx context.Context, spaceID uuid.UUID) (spaceRow
 	b := &pgx.Batch{}
 	b.Queue(spaceSQL, spaceID).QueryRow(func(row pgx.Row) error {
 		read = true
-		sp, spaceErr = scanSpace(row, spaceID)
+		sp, spaceErr = scanSpace(ctx, row, spaceID)
 		// The claim's answer is read either way; the space's error wins.
 		return nil
 	})

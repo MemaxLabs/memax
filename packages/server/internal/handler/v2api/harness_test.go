@@ -230,8 +230,18 @@ type space struct {
 }
 
 // space creates a hub of the given V2 kind with its owner's membership,
-// as V1 does.
+// as V1 does, on the V2 record (hubs.v2_enabled_at), as POST /v2/spaces
+// makes one.
 func (e *env) space(owner uuid.UUID, kind policy.SpaceKind, name string) space {
+	e.t.Helper()
+	sp := e.v1Space(owner, kind, name)
+	e.exec(`UPDATE hubs SET v2_enabled_at = now() WHERE id = $1`, sp.id)
+	return sp
+}
+
+// v1Space is space still on V1: V1 serves it, and its V2 record takes
+// nothing new until its owner switches it (policy.CodeSpaceOnV1).
+func (e *env) v1Space(owner uuid.UUID, kind policy.SpaceKind, name string) space {
 	e.t.Helper()
 	id := uuid.New()
 	hubType := "team"

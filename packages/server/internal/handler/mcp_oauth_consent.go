@@ -564,7 +564,7 @@ func (h *MCPOAuthHandler) describeSpaces(ctx context.Context, session oauthPendi
 			if item.Hub.OwnerID == session.userID {
 				role = policy.RoleOwner
 			}
-			space := policy.Space{Name: item.Hub.Name, Kind: row.kind, Rules: row.rules}
+			space := policy.Space{Name: item.Hub.Name, Kind: row.kind, Rules: row.rules, OnV2: row.onV2}
 			level := consentLevel(agent, role, space, scope)
 			sp.Autonomy = string(level)
 			sp.Ceiling = string(consentCeiling(role, space, scope))

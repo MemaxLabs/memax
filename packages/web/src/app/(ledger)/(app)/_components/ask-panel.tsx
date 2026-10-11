@@ -21,6 +21,7 @@ import type {
 import type { AskState } from "../_lib/use-ask";
 import { useSource } from "../_lib/data";
 import { memoryHref } from "../_places/memories/memory-rows";
+import { OnV1Notice } from "./on-v1-notice";
 import styles from "./command-center.module.css";
 
 /** The tooltip a citation shows: the memory's ID and its words. */
@@ -77,6 +78,11 @@ export function AskPanel({
     viewer?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   if (state.status === "idle") return null;
+
+  // The space went back to V1 while the page was open.
+  if (state.status === "onV1") {
+    return <OnV1Notice space={space} onOpen={onOpen} />;
+  }
 
   if (state.status === "none" || state.status === "unavailable") {
     const text = state.status === "none" ? copy.none : copy.unavailable;

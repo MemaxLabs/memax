@@ -147,6 +147,35 @@ describe("why a command didn't go through", () => {
     ).toBe("M-0430 没保留上。查看者可以提议和评论，保留要由成员来。");
   });
 
+  it("says a space still on V1 changes once it switches, for every command", () => {
+    const onV1 = {
+      kind: "refused",
+      code: "space_on_v1",
+      message: null,
+    } as const;
+    expect(
+      failureText(EN, onV1, { ...ctx, space: "acme-web", locale: "en" }),
+    ).toBe(
+      "M-0430 wasn't kept. acme-web is still on V1, so nothing here changes until it switches to V2. Its owner switches it from its Today.",
+    );
+    expect(
+      failureText(ZH, onV1, { ...ctx, space: "acme-web", locale: "zh" }),
+    ).toBe(
+      "M-0430 没保留上。acme-web 还在 V1 上，切换到 V2 之前这里什么都不会改动。所有者可以在它的今天页切换。",
+    );
+    // Answering a gate and declining a forget request use Keep's words for it.
+    for (const command of ["answer", "declineForget", "reject"] as const) {
+      expect(
+        failureText(EN, onV1, {
+          command,
+          ref: "G-0012",
+          space: "acme-web",
+          locale: "en",
+        }),
+      ).toContain("acme-web is still on V1");
+    }
+  });
+
   it("falls back to the server's message for a code it doesn't know", () => {
     expect(
       failureText(

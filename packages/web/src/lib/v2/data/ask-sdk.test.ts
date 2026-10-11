@@ -229,6 +229,18 @@ describe("Ask over memax.v2.ask", () => {
     ).rejects.toThrow("didn't finish");
   });
 
+  it("says a space still on V1 has no record to answer from", async () => {
+    const onV1 = new MemaxError("acme-web is still on V1.", "refused", 403, {
+      policy: { effect: "refuse", code: "space_on_v1" },
+    });
+    const { client } = clientWith([], onV1);
+    expect(
+      await collect(
+        createSdkAsk(client, () => viewer)({ space, question: "?" }),
+      ),
+    ).toEqual([{ type: "onV1" }]);
+  });
+
   it("is quiet when the person stopped it", async () => {
     const controller = new AbortController();
     controller.abort();

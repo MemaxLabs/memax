@@ -49,6 +49,10 @@ type SpaceGrant struct {
 	// space, without another round trip. Empty in a scope built otherwise.
 	Slug string
 	Name string
+	// OnV2 is whether the V2 record serves the space (hubs.v2_enabled_at),
+	// read with the grant: Ask decides on it before any transaction. A
+	// command decides on the value its own transaction reads (spaceRow).
+	OnV2 bool
 }
 
 // Grant returns the grant for a space, if the scope includes it.
@@ -110,7 +114,7 @@ type Querier interface {
 func ResolveUserScope(ctx context.Context, db Querier, userID uuid.UUID) (Scope, error) {
 	rows, err := db.Query(ctx, `
 		SELECT h.id, h.tenant_id, h.space_kind,
-		       CASE WHEN h.owner_id = $1 THEN 'owner' ELSE m.role END, h.slug, h.name
+		       CASE WHEN h.owner_id = $1 THEN 'owner' ELSE m.role END, h.slug, h.name, h.v2_enabled_at IS NOT NULL
 		  FROM public.hubs h
 		  LEFT JOIN public.hub_members m ON m.hub_id = h.id AND m.user_id = $1
 		 WHERE h.owner_id = $1 OR m.user_id = $1
@@ -123,7 +127,7 @@ func ResolveUserScope(ctx context.Context, db Querier, userID uuid.UUID) (Scope,
 	for rows.Next() {
 		var g SpaceGrant
 		var kind, v1Role string
-		if err := rows.Scan(&g.SpaceID, &g.TenantID, &kind, &v1Role, &g.Slug, &g.Name); err != nil {
+		if err := rows.Scan(&g.SpaceID, &g.TenantID, &kind, &v1Role, &g.Slug, &g.Name, &g.OnV2); err != nil {
 			return Scope{}, fmt.Errorf("ledger: resolve scope: %w", err)
 		}
 		g.Kind = policy.SpaceKind(kind)

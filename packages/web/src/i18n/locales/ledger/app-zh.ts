@@ -313,6 +313,13 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
     rememberInstead: "改成记住",
     failed: "这次没能回答，什么都没保留。再试一次。",
     tryAgain: "再试一次",
+    onV1: {
+      title: "{space} 还在 V1 上",
+      owner:
+        "把它切换到 V2 后，这里就能提问和记住。V1 里的内容一处不变，随时可以切换回去。",
+      member: "所有者把它切换到 V2 后，这里就能提问和记住。",
+      open: "打开今天",
+    },
   },
   remember: {
     label: "这是你自己写的，按下保留就记住了",
@@ -345,6 +352,7 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
     proposed: "{ref} 已送去审阅",
     undo: "撤销",
     failed: "没成功，什么都没保留。",
+    onV1: "{space} 还在 V1 上，什么都没保留。它的今天页会说明怎么切换到 V2。",
     copied: "已连同引用一起复制",
     copiedCommand: "命令已复制",
     close: "关闭",

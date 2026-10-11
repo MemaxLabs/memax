@@ -20,6 +20,8 @@ export type AskState =
   /** The plan's asks this month are used up. */
   | { status: "limit"; question: string; limit: number; resetAt: string }
   | { status: "unavailable"; question: string }
+  /** The space is still on V1: Ask answers only from the V2 record. */
+  | { status: "onV1"; question: string }
   | { status: "failed"; question: string };
 
 /** Joins neighbouring text runs, so the answer renders as few nodes as it can. */
@@ -84,6 +86,7 @@ export function useAsk(space: SpaceSummary) {
                 return { ...prev, status: "done" };
               case "none":
               case "unavailable":
+              case "onV1":
                 return { status: event.type, question: q };
               case "off":
                 return { status: "off", question: q, sources: event.sources };

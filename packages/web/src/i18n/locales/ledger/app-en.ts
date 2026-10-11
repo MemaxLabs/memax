@@ -347,6 +347,14 @@ export const ledgerAppEn = {
     rememberInstead: "Remember it instead",
     failed: "Ask didn't answer. Nothing was kept. Try again.",
     tryAgain: "Try again",
+    // A space still on V1 (policy space_on_v1): no Ask or Remember yet.
+    onV1: {
+      title: "{space} is still on V1",
+      owner:
+        "Ask and Remember work here once you switch it to V2. Nothing in V1 changes, and you can switch back.",
+      member: "Ask and Remember work here once its owner switches it to V2.",
+      open: "Open Today",
+    },
   },
   remember: {
     label:
@@ -381,6 +389,8 @@ export const ledgerAppEn = {
     proposed: "Sent {ref} to Review",
     undo: "Undo",
     failed: "That didn't go through. Nothing was kept.",
+    // A Remember refused because the space is still on V1 (space_on_v1).
+    onV1: "{space} is still on V1, so nothing was kept. Its Today says how it switches to V2.",
     copied: "Copied with citations",
     copiedCommand: "Copied the command",
     close: "Close",

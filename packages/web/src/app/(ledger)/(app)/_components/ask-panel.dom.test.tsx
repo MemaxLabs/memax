@@ -144,4 +144,16 @@ describe("Ask's panel", () => {
     expect(screen.getByText(/asked 50 questions this month/)).toBeTruthy();
     expect(screen.getByText(/start again on Nov 1/)).toBeTruthy();
   });
+
+  it("says a space that went back to V1 has nothing to answer from, and opens its Today", () => {
+    const { onOpen } = renderPanel({ status: "onV1", question: "Why?" });
+    expect(screen.getByRole("status").textContent).toContain(
+      "memax-v2 is still on V1",
+    );
+    expect(screen.queryByRole("button", { name: /Keep as memory/ })).toBeNull();
+    const today = screen.getByRole("link", { name: "Open Today" });
+    expect(today.getAttribute("href")).toBe("/memax-v2/today");
+    fireEvent.click(today);
+    expect(onOpen).toHaveBeenCalled();
+  });
 });

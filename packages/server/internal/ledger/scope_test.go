@@ -30,12 +30,13 @@ func TestResolveUserScope(t *testing.T) {
 
 	scope := f.scope(zz)
 	want := map[uuid.UUID]ledger.SpaceGrant{
-		personal: {SpaceID: personal, TenantID: zz, Kind: policy.SpacePersonal, Role: policy.RoleOwner, CanForget: true, Name: "Personal"},
-		project:  {SpaceID: project, TenantID: zz, Kind: policy.SpaceProject, Role: policy.RoleOwner, CanForget: true, Name: "memax-v2"},
-		team:     {SpaceID: team, TenantID: team, Kind: policy.SpaceTeam, Role: policy.RoleMember, CanForget: true, Name: "MemaxLabs"},
-		viewing:  {SpaceID: viewing, TenantID: viewing, Kind: policy.SpaceTeam, Role: policy.RoleViewer, Name: "Docs"},
-		contrib:  {SpaceID: contrib, TenantID: contrib, Kind: policy.SpaceTeam, Role: policy.RoleMember, Name: "Ops"},
-		orphan:   {SpaceID: orphan, TenantID: orphan, Kind: policy.SpaceTeam, Role: policy.RoleOwner, CanForget: true, Name: "Orphan"},
+		personal: {SpaceID: personal, TenantID: zz, Kind: policy.SpacePersonal, Role: policy.RoleOwner, CanForget: true, Name: "Personal", OnV2: true},
+		project:  {SpaceID: project, TenantID: zz, Kind: policy.SpaceProject, Role: policy.RoleOwner, CanForget: true, Name: "memax-v2", OnV2: true},
+		team:     {SpaceID: team, TenantID: team, Kind: policy.SpaceTeam, Role: policy.RoleMember, CanForget: true, Name: "MemaxLabs", OnV2: true},
+		viewing:  {SpaceID: viewing, TenantID: viewing, Kind: policy.SpaceTeam, Role: policy.RoleViewer, Name: "Docs", OnV2: true},
+		contrib:  {SpaceID: contrib, TenantID: contrib, Kind: policy.SpaceTeam, Role: policy.RoleMember, Name: "Ops", OnV2: true},
+		// Still on V1: the grant says so, for Ask (policy.CodeSpaceOnV1).
+		orphan: {SpaceID: orphan, TenantID: orphan, Kind: policy.SpaceTeam, Role: policy.RoleOwner, CanForget: true, Name: "Orphan"},
 	}
 	// The slug and the name come with the grant (the fixture's slug is the
 	// space's id).

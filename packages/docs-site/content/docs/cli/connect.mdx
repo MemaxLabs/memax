@@ -68,6 +68,12 @@ Run it again and each line says `=`: already set up, nothing changed.
 5. **A first compile.** In a [linked](/cli/link) repository whose files
    aren't compiled and written yet, it compiles once, like
    [`memax compile`](/cli/compile).
+6. **Your Personal space, on a linked machine.** Where this machine's home
+   is [linked](/concepts/personal-layer), it connects the agent to your
+   Personal space too, and adds the agent's own file (Claude Code's rules
+   file, a block in Codex's `AGENTS.md`), or moves Codex's block to
+   `AGENTS.override.md` once Codex reads that. A machine you unlinked
+   stays unlinked. Outside a repository, the Personal space is the space.
 
 <Callout type="info">
   With the [Memax plugin](/integrations/claude-code-plugin) on in Claude

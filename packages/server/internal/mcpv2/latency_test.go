@@ -315,14 +315,15 @@ func TestMCPRoundTrips(t *testing.T) {
 	// instead of reading it and spacemode again, a get resolved its ref in
 	// the statement that reads the memory, notices were taken only when
 	// the connection's read said some wait, and last_used was written once
-	// a minute.
+	// a minute; and one fewer each when HubContext sent the person's V2
+	// scope in the hub list's round trip.
 	budgets := map[string]int{
-		opRecall:      12,
-		opRecallSpace: 12,
-		opDigest:      15,
-		opSearch:      9,
-		opSearchSpace: 9,
-		opGet:         8,
+		opRecall:      11,
+		opRecallSpace: 11,
+		opDigest:      14,
+		opSearch:      8,
+		opSearchSpace: 8,
+		opGet:         7,
 	}
 	for _, op := range r.ops() {
 		for range 3 {

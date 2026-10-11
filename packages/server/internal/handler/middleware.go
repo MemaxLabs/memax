@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
@@ -421,6 +424,18 @@ func GetHubID(r *http.Request) string {
 }
 
 // GetAccessibleHubIDs returns all hub IDs the user has access to.
+// hubsWithBatch is a store that sends the hub list with more statements in
+// its round trip (store.PostgresStore.ListUserHubsWith).
+type hubsWithBatch interface {
+	ListUserHubsWith(ctx context.Context, userID string, extra func(*pgx.Batch)) ([]model.HubWithRole, error)
+}
+
+// readsV2Scope reports whether a request builds a V2 principal, which
+// needs the person's V2 scope: every /v2 route and the MCP endpoints.
+func readsV2Scope(r *http.Request) bool {
+	return strings.HasPrefix(r.URL.Path, "/v2/") || strings.HasPrefix(r.URL.Path, "/mcp")
+}
+
 // userHubs is the person's hub list HubContext read (ListUserHubs).
 type userHubs struct {
 	userID string
@@ -509,7 +524,23 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 			var writeHubID string
 			permsByHub := map[string]PermissionSet{}
 
-			allHubs, listErr := s.ListUserHubs(userID)
+			// A request that builds a V2 principal (/v2, /mcp) reads the
+			// person's V2 scope in the hub list's round trip, and leaves it on
+			// the request for principalFor (ResolvedScope): one round trip
+			// to Postgres here, not two one after the other.
+			var allHubs []model.HubWithRole
+			var listErr error
+			var scope ledger.Scope
+			var scopeErr error
+			person, personErr := uuid.Parse(userID)
+			if ls, ok := s.(hubsWithBatch); ok && personErr == nil && readsV2Scope(r) {
+				allHubs, listErr = ls.ListUserHubsWith(r.Context(), userID, func(b *pgx.Batch) {
+					ledger.QueueUserScope(b, person, &scope, &scopeErr)
+				})
+			} else {
+				allHubs, listErr = s.ListUserHubs(userID)
+			}
+			scopeRead := personErr == nil && scopeErr == nil && scope.PersonID == person
 			// The personal hub and the write hub's role come from allHubs,
 			// which ListUserHubs read from the same hubs and hub_members
 			// rows, so a request makes one round trip to Postgres here,
@@ -653,6 +684,9 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 			}
 
 			ctx := context.WithValue(r.Context(), hubIDKey, hubID)
+			if _, already := ResolvedScope(r); scopeRead && !already {
+				ctx = context.WithValue(ctx, resolvedScopeKey, scope)
+			}
 			if listErr == nil {
 				ctx = context.WithValue(ctx, userHubsKey, userHubs{userID: userID, hubs: allHubs})
 			}

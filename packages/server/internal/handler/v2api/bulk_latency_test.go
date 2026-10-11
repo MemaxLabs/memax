@@ -208,15 +208,16 @@ func TestBulkRoundTrips(t *testing.T) {
 	defer audit.Require(t)
 	// One statement at a time (until Oct 11, 2026), an import cost 26, 668
 	// and 6,579 round trips at these sizes, and a bulk Keep 12, 506 and
-	// 2,017. Now each is one transaction: the auth middleware's two reads,
-	// one round trip of reads, one of writes, River's insert (and its
-	// notification, at most once per queue per fetch cooldown) and COMMIT.
+	// 2,017. Now each is one transaction: the auth middleware's one round
+	// trip (the hub list with the person's V2 scope), one round trip of
+	// reads, one of writes, River's insert (and its notification, at most
+	// once per queue per fetch cooldown) and COMMIT.
 	budgets := map[string]int{}
 	for _, n := range importSizes {
-		budgets[fmt.Sprintf("/v2 import of %d", n)] = 7
+		budgets[fmt.Sprintf("/v2 import of %d", n)] = 6
 	}
 	for _, n := range keepSizes {
-		budgets[fmt.Sprintf("/v2 bulk keep of %d (+ jobs)", n)] = 7
+		budgets[fmt.Sprintf("/v2 bulk keep of %d (+ jobs)", n)] = 6
 	}
 	for _, op := range r.ops(importSizes, keepSizes) {
 		for range 2 {

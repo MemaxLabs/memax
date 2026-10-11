@@ -485,7 +485,9 @@ func TestSessionStartRoundTrips(t *testing.T) {
 	// skips V1's hub reads, so it adds only its connection's read and that
 	// read's COMMIT, which nobody waits for: 5 in all. Any other API key
 	// still reads V1's hubs (and, with no Personal space, looks for one),
-	// and a session costs 3.
+	// and so does a session: the hub list with the person's V2 scope in one
+	// round trip, then the look for a Personal space this fixture's person
+	// doesn't have.
 	budgets := []struct {
 		name   string
 		budget int
@@ -494,7 +496,7 @@ func TestSessionStartRoundTrips(t *testing.T) {
 		{"a start key's start (counted)", 5, func(ctx context.Context) { start(cloud, uuid.NewString())(ctx) }},
 		{"the same start again (a replay)", 5, start(cloud, "replayed")},
 		{"another API key's start (counted)", 7, func(ctx context.Context) { start(f.key, uuid.NewString())(ctx) }},
-		{"a person's CLI start (counted)", 5, func(ctx context.Context) { start(f.tok, uuid.NewString())(ctx) }},
+		{"a person's CLI start (counted)", 4, func(ctx context.Context) { start(f.tok, uuid.NewString())(ctx) }},
 		{"a key with no connection", 6, start(bare, "bare")},
 	}
 	for _, b := range budgets {

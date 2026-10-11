@@ -119,6 +119,18 @@ func ResolveUserScope(ctx context.Context, db Querier, userID uuid.UUID) (Scope,
 	return ScanUserScope(rows, userID)
 }
 
+// QueueUserScope queues ResolveUserScope's statement in b, to go to
+// Postgres in the same round trip as what else b holds (the request
+// middleware's hub list, handler.HubContext). Its answer lands in out,
+// and its error in errOut, never in the batch: whatever else b reads
+// stands when the scope can't be read, and the caller reads it again.
+func QueueUserScope(b *pgx.Batch, userID uuid.UUID, out *Scope, errOut *error) {
+	b.Queue(userScopeSQL, userID).Query(func(rows pgx.Rows) error {
+		*out, *errOut = ScanUserScope(rows, userID)
+		return nil
+	})
+}
+
 // userScopeSQL is ResolveUserScope's statement: the spaces of user $1.
 const userScopeSQL = `
 		SELECT h.id, h.tenant_id, h.space_kind,

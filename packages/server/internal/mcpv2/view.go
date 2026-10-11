@@ -65,7 +65,7 @@ func (s *Server) resolve(ctx context.Context, c *handler.MCPToolCall) (*view, bo
 			ids = append(ids, h.Hub.ID)
 		}
 	}
-	on, err := s.spaces.V2Spaces(ctx, ids)
+	on, err := s.v2Of(ctx, c, ids)
 	if err != nil {
 		// The switch can't be read: keep V1's behaviour, which is today's.
 		s.log.WarnContext(ctx, "mcp: can't read which spaces are on V2; serving V1", "error", err)
@@ -77,6 +77,35 @@ func (s *Server) resolve(ctx context.Context, c *handler.MCPToolCall) (*view, bo
 	v.v2 = on
 	v.v1 = slices.ContainsFunc(ids, func(id string) bool { return !on[id] })
 	return v, true
+}
+
+// v2Of says which of the hubs are on the V2 record: from the hub list
+// HubContext read for this request when it names every one of them (no
+// round trip: the accessible hubs come from that list), else from
+// spacemode.
+func (s *Server) v2Of(ctx context.Context, c *handler.MCPToolCall, ids []string) (map[string]bool, error) {
+	if hubs, ok := handler.RequestHubs(c.HTTP, c.OwnerID); ok {
+		known := make(map[string]bool, len(hubs))
+		for _, h := range hubs {
+			known[h.Hub.ID] = h.OnV2
+		}
+		on := map[string]bool{}
+		all := true
+		for _, id := range ids {
+			v2, listed := known[id]
+			if !listed {
+				all = false
+				break
+			}
+			if v2 {
+				on[id] = true
+			}
+		}
+		if all {
+			return on, nil
+		}
+	}
+	return s.spaces.V2Spaces(ctx, ids)
 }
 
 func (v *view) allHubs() ([]model.HubWithRole, error) {

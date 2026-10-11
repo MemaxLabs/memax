@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/model"
@@ -38,6 +40,19 @@ type APIKeyResult struct {
 	// OAuthScope is an OAuth grant's granted scope ("memax:read
 	// memax:propose"), empty for API keys and older grants.
 	OAuthScope string
+
+	// lastUsed is when the credential was last used, as its lookup read
+	// it: the lookup writes it again only once it is lastUsedEvery old.
+	lastUsed *time.Time
+}
+
+// lastUsedEvery is how fresh a credential's last_used is kept: an agent
+// making many calls a minute writes it once a minute, not once a call.
+const lastUsedEvery = time.Minute
+
+// usedRecently reports whether last_used is fresh enough to leave alone.
+func usedRecently(at *time.Time) bool {
+	return at != nil && time.Since(*at) < lastUsedEvery
 }
 
 // APIKeyResolver resolves an API key string to a user ID and optional hub scope.
@@ -390,6 +405,7 @@ func GetImpersonatorID(r *http.Request) string {
 }
 
 // Hub context keys
+const userHubsKey contextKey = "user_hubs"
 const hubIDKey contextKey = "hub_id"
 const hubIDsKey contextKey = "hub_ids"
 const retrievalBoostHubIDKey contextKey = "retrieval_boost_hub_id"
@@ -405,6 +421,25 @@ func GetHubID(r *http.Request) string {
 }
 
 // GetAccessibleHubIDs returns all hub IDs the user has access to.
+// userHubs is the person's hub list HubContext read (ListUserHubs).
+type userHubs struct {
+	userID string
+	hubs   []model.HubWithRole
+}
+
+// RequestHubs returns every hub the person is a member of, with their
+// role and whether it is on the V2 record, as HubContext read them for
+// this request; ok is false when it didn't (no HubContext, or the list
+// failed). It is the person's list, not the credential's: filter it by
+// GetAccessibleHubIDs.
+func RequestHubs(r *http.Request, userID string) ([]model.HubWithRole, bool) {
+	v, ok := r.Context().Value(userHubsKey).(userHubs)
+	if !ok || v.userID != userID {
+		return nil, false
+	}
+	return slices.Clone(v.hubs), true
+}
+
 func GetAccessibleHubIDs(r *http.Request) []string {
 	if v, ok := r.Context().Value(hubIDsKey).([]string); ok {
 		return v
@@ -618,6 +653,9 @@ func HubContext(s store.Store) func(http.Handler) http.Handler {
 			}
 
 			ctx := context.WithValue(r.Context(), hubIDKey, hubID)
+			if listErr == nil {
+				ctx = context.WithValue(ctx, userHubsKey, userHubs{userID: userID, hubs: allHubs})
+			}
 			ctx = context.WithValue(ctx, hubIDsKey, readHubIDs)
 			ctx = context.WithValue(ctx, retrievalBoostHubIDKey, retrievalBoostHubID)
 			ctx = context.WithValue(ctx, writeHubIDKey, writeHubID)

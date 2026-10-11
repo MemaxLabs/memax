@@ -236,6 +236,10 @@ type HubWithRole struct {
 	Hub         Hub    `json:"hub"`
 	Role        string `json:"role"`
 	MemoryCount int    `json:"memory_count"`
+	// OnV2 says the hub is on the V2 record (hubs.v2_enabled_at), as
+	// ListUserHubs read it, so a request that has the list needn't ask
+	// again (internal/spacemode asks on its own). Never in V1's JSON.
+	OnV2 bool `json:"-"`
 }
 
 type HubSummaryStats struct {

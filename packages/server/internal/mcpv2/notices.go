@@ -45,6 +45,12 @@ func (s *Server) deliverNotices(ctx context.Context, v *view, tool string, res *
 	if errRes != nil || p == nil || p.Actor.Kind != policy.ActorAgent || p.Connection == nil {
 		return res
 	}
+	// The connection's read said whether any wait: most responses have
+	// none, and skip the write. One queued since then goes out with the
+	// next response.
+	if !p.Connection.NoticesWaiting {
+		return res
+	}
 	notices, err := s.ledger.TakeNotices(ctx, p.Scope, p.Connection.ID, tool, maxNotices)
 	if err != nil {
 		s.log.WarnContext(ctx, "mcp: forget notices", "error", err)

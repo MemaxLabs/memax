@@ -232,6 +232,11 @@ type Connection struct {
 	LastReceiptID    uuid.UUID        `json:"last_receipt_id"`
 	CreatedAt        time.Time        `json:"created_at"`
 	UpdatedAt        time.Time        `json:"updated_at"`
+	// NoticesWaiting says notices wait for it (v2.agent_notices not yet
+	// delivered), as ConnectionForCredential read them with the
+	// connection, so a response with none to tell skips TakeNotices' write.
+	// Only that read sets it.
+	NoticesWaiting bool `json:"-"`
 
 	streamVersion int
 }

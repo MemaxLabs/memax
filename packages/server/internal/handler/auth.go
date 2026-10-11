@@ -1525,7 +1525,8 @@ const apiKeySQL = `SELECT id, user_id, expires_at, hub_id, agent_name,
 			COALESCE(default_permissions, ARRAY[]::text[]),
 			COALESCE(trust_level, 'elevated'),
 			rate_limit_tier,
-			COALESCE(standalone, false)
+			COALESCE(standalone, false),
+			last_used
 		FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL`
 
 // ResolveAPIKey looks up an API key by its plaintext value, returning the user ID and optional hub scope.
@@ -1538,11 +1539,13 @@ func (h *AuthHandler) ResolveAPIKey(key string) APIKeyResult {
 		return APIKeyResult{}
 	}
 
-	// Update last_used asynchronously
-	go func() {
-		h.pool.Exec(context.Background(),
-			`UPDATE api_keys SET last_used = $1 WHERE key_hash = $2`, time.Now(), keyHash)
-	}()
+	// Update last_used asynchronously, at most once a minute.
+	if !usedRecently(result.lastUsed) {
+		go func() {
+			h.pool.Exec(context.Background(),
+				`UPDATE api_keys SET last_used = $1 WHERE key_hash = $2`, time.Now(), keyHash)
+		}()
+	}
 
 	return result
 }
@@ -1600,7 +1603,8 @@ func scanAPIKey(row pgx.Row) APIKeyResult {
 	var trustLevel string
 	var rateLimitTier *string
 	var standalone bool
-	err := row.Scan(&id, &userID, &expiresAt, &hubID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &standalone)
+	var lastUsed *time.Time
+	err := row.Scan(&id, &userID, &expiresAt, &hubID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &standalone, &lastUsed)
 	if err != nil {
 		return APIKeyResult{}
 	}
@@ -1640,6 +1644,7 @@ func scanAPIKey(row pgx.Row) APIKeyResult {
 	if rateLimitTier != nil {
 		result.RateLimitTier = *rateLimitTier
 	}
+	result.lastUsed = lastUsed
 	return result
 }
 
@@ -1657,6 +1662,7 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 	var rateLimitTier *string
 	var expiresAt *time.Time
 	var scope string
+	var lastUsed *time.Time
 	err := h.pool.QueryRow(context.Background(),
 		`SELECT user_id, COALESCE(agent_name, ''),
 			COALESCE(hub_scope_mode, 'hub_allowlist'),
@@ -1665,11 +1671,12 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 			COALESCE(trust_level, 'standard'),
 			rate_limit_tier,
 			expires_at,
-			COALESCE(scope, '')
+			COALESCE(scope, ''),
+			last_used
 		FROM oauth_grants
 		WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL`,
 		grantID, userID,
-	).Scan(&resolvedUserID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &expiresAt, &scope)
+	).Scan(&resolvedUserID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &expiresAt, &scope, &lastUsed)
 	if err != nil {
 		return APIKeyResult{}
 	}
@@ -1702,10 +1709,13 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 		result.RateLimitTier = *rateLimitTier
 	}
 
-	go func() {
-		_, _ = h.pool.Exec(context.Background(),
-			`UPDATE oauth_grants SET last_used = $1 WHERE id = $2::uuid`, time.Now(), grantID)
-	}()
+	// At most once a minute: an agent's calls come many a minute.
+	if !usedRecently(lastUsed) {
+		go func() {
+			_, _ = h.pool.Exec(context.Background(),
+				`UPDATE oauth_grants SET last_used = $1 WHERE id = $2::uuid`, time.Now(), grantID)
+		}()
+	}
 
 	return result
 }

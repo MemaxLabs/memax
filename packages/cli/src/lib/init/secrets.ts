@@ -25,6 +25,7 @@ export const SERVER_PATTERNS: Array<{ name: string; rx: RegExp }> = [
     rx: /\b(?:sk|pk|xoxb|xoxa|xoxp|xoxs|xapp|ghp|gho|ghu|ghs|ghr|github_pat)[_-][A-Za-z0-9_-]{16,}\b/i,
   },
   { name: "Stripe live key", rx: /\b(?:sk|pk|rk)_live_[A-Za-z0-9]{16,}\b/i },
+  { name: "Memax key", rx: /\bmxk_[0-9a-f]{64}\b/i },
   { name: "AWS access key", rx: /\bAKIA[0-9A-Z]{16}\b/ },
   { name: "Google API key", rx: /\bAIza[0-9A-Za-z_-]{35}\b/ },
   { name: "private key block", rx: /-----BEGIN[^-]*?PRIVATE KEY-----/s },

@@ -188,6 +188,7 @@ export function createSdkMemories(
         ref: result.memory.ref,
         version: result.memory.version,
         repos: result.memory.scope.repos ?? [],
+        receipt: result.receipts[0]?.id ?? null,
       };
     },
 

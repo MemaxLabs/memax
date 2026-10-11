@@ -203,6 +203,7 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
       verify: "已撤销核对。{ref} 又标成过时了。",
       verifyUpdate: "已撤销更新。{ref} 恢复了原来的说法，又标成过时了。",
       remember: "已撤销记住 {ref}。它已撤回。",
+      scope: "已撤销这次更改。{ref} 恢复了原来的适用范围。",
     },
     refused: {
       window_passed:

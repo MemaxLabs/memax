@@ -577,16 +577,26 @@ describe("Forget on a memory's page", () => {
     expect(panel.textContent).not.toContain("Not checked yet.");
   });
 
-  it("shows the repositories a personal fact applies in, and widens it to everywhere", async () => {
+  it("shows the repositories a personal fact applies in, widens it to everywhere, and undoes that", async () => {
     const demo = createDemoSource({ streamDelayMs: 0, commandDelayMs: 0 });
     const base = demo.memories.peekRecord!("memax-v2", "M-0098")!;
     let record = { ...base, repos: ["acme/web"] };
     const scope = vi.fn(async (input: { repos: string[] }) => {
       record = { ...record, repos: input.repos };
-      return { ref: "M-0098", version: record.version, repos: input.repos };
+      return {
+        ref: "M-0098",
+        version: record.version,
+        repos: input.repos,
+        receipt: "receipt-scoped",
+      };
+    });
+    const undo = vi.fn(async () => {
+      record = { ...record, repos: ["acme/web"] };
+      return { refs: ["M-0098"] };
     });
     const source: LedgerDataSource = {
       ...demo,
+      undo,
       memories: {
         ...demo.memories,
         peekRecord: () => record,
@@ -614,6 +624,20 @@ describe("Forget on a memory's page", () => {
     await waitFor(() =>
       expect(screen.queryByRole("region", { name: "Applies in" })).toBeNull(),
     );
+    // The person's own change, undone by its receipt: it applies in
+    // acme/web again.
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(
+      await screen.findByText(
+        "Undid the change. M-0098 applies where it did before.",
+      ),
+    ).toBeTruthy();
+    expect(undo).toHaveBeenCalledWith(
+      expect.objectContaining({ receipt: "receipt-scoped" }),
+    );
+    expect(
+      (await screen.findByRole("region", { name: "Applies in" })).textContent,
+    ).toContain("acme/web");
   });
 
   it("shows no repositories for a memory that applies everywhere", async () => {

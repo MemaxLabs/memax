@@ -472,7 +472,8 @@ export interface MemoriesSource {
   /**
    * Which repositories it applies in, from `version` (If-Match); `repos:
    * []` is everywhere (POST /v2/memories/{ref}:scope). The words don't
-   * change. A failure throws (see command-error.ts).
+   * change. `receipt` undoes it (the person's own, for 10 minutes). A
+   * failure throws (see command-error.ts).
    */
   scope(input: {
     space: SpaceSummary;
@@ -480,7 +481,12 @@ export interface MemoriesSource {
     version: number;
     repos: string[];
     idempotencyKey: string;
-  }): Promise<{ ref: string; version: number; repos: string[] }>;
+  }): Promise<{
+    ref: string;
+    version: number;
+    repos: string[];
+    receipt: string | null;
+  }>;
   /** What a Forget would do. Changes nothing. */
   previewForget(input: {
     space: SpaceSummary;

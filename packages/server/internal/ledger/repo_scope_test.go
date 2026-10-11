@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -199,5 +200,112 @@ func TestScopeMemory(t *testing.T) {
 	f.apply(&ledger.Forget{Meta: meta(person(zz), scope, policy.ViaWeb), Memory: m.Ref, ExpectedVersion: 1})
 	if _, err := f.l.Apply(context.Background(), &ledger.ScopeMemory{Meta: meta(person(zz), scope, policy.ViaWeb), Memory: m.Ref}); !errors.Is(err, ledger.ErrInvalidTransition) {
 		t.Errorf("forgotten: %v, want ErrInvalidTransition", err)
+	}
+}
+
+// Undo of a person's scope change: the scope comes back exactly (paths and
+// repositories), with one undid receipt, and a kept memory's targets
+// recompile; once only. Memax's narrowing is nobody's decision to take
+// back; a later change is in the way until it is undone itself; and a
+// faded memory stays faded.
+func TestUndoScope(t *testing.T) {
+	t.Parallel()
+	f := newCompileFixture(t)
+	zz := f.user("zz")
+	personal := f.space(zz, policy.SpacePersonal, "Personal")
+	scope := f.scope(zz)
+	refusal := func(err error) string {
+		var ue *ledger.UndoError
+		if errors.As(err, &ue) {
+			return ue.Reason
+		}
+		return ""
+	}
+	nm := fact(personal, "Use the staging database when working on acme.")
+	nm.Applies = json.RawMessage(`{"paths": ["services/**"], "repos": ["acme/web"]}`)
+	m := f.apply(&ledger.Remember{Meta: meta(person(zz), scope, policy.ViaWeb), NewMemory: nm}).Memory
+	f.brief(zz, personal, 0, demoSections(m.Ref))
+	f.target(zz, personal, ledger.TargetAgentsMD)
+	sameScope := func(t *testing.T, got, want json.RawMessage) {
+		t.Helper()
+		var g, w map[string]any
+		if err := json.Unmarshal(got, &g); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(want, &w); err != nil {
+			t.Fatal(err)
+		}
+		gb, _ := json.Marshal(g)
+		wb, _ := json.Marshal(w)
+		if string(gb) != string(wb) {
+			t.Errorf("scope %s, want %s", gb, wb)
+		}
+	}
+	before := f.mem(zz, m.ID).Applies
+	widen := func() ledger.Result {
+		return f.apply(&ledger.ScopeMemory{Meta: meta(person(zz), scope, policy.ViaWeb), Memory: m.Ref})
+	}
+	gen := func() int { return f.count(`SELECT dirty_gen FROM v2.targets WHERE space_id = $1`, personal) }
+
+	wide := widen()
+	g := gen()
+	res, err := undo(f, person(zz), scope, wide.Receipts[0].ID)
+	if err != nil || res.Outcome != ledger.OutcomeApplied || len(res.Receipts) != 1 || res.Receipts[0].Action != ledger.ActionUndid {
+		t.Fatalf("undo: %v %+v", err, res)
+	}
+	after := f.mem(zz, m.ID)
+	sameScope(t, after.Applies, before)
+	if after.Lifecycle != "kept" || after.Version != 1 || after.Statement != m.Statement {
+		t.Errorf("after undo: %s v%d %q", after.Lifecycle, after.Version, after.Statement)
+	}
+	if n := gen(); n != g+1 {
+		t.Errorf("dirty_gen %d, want %d: the kept set's scope changed again", n, g+1)
+	}
+	if _, err := undo(f, person(zz), scope, wide.Receipts[0].ID); refusal(err) != ledger.UndoAlreadyUndone {
+		t.Errorf("twice: %v", err)
+	}
+
+	// Memax's narrowing (the backfill) keeps no undo entry.
+	widen()
+	memax := ledger.Actor{Kind: policy.ActorMemax, Name: "Memax", Credential: policy.CredentialSession}
+	narrowed := f.apply(&ledger.ScopeMemory{Meta: meta(memax, scope.Narrow(personal), policy.ViaSystem), Memory: m.Ref, Repos: []string{"acme/web"}})
+	if _, err := undo(f, person(zz), scope, narrowed.Receipts[0].ID); refusal(err) != ledger.UndoNotUndoable {
+		t.Errorf("undo Memax's narrowing: %v, want not_undoable", err)
+	}
+
+	// A later change is in the way; undone itself, it isn't.
+	first := widen()
+	second := f.apply(&ledger.ScopeMemory{Meta: meta(person(zz), scope, policy.ViaWeb), Memory: m.Ref, Repos: []string{"acme/api"}})
+	if _, err := undo(f, person(zz), scope, first.Receipts[0].ID); refusal(err) != ledger.UndoLaterChanges {
+		t.Errorf("undo under a later change: %v, want later_changes", err)
+	}
+	if _, err := undo(f, person(zz), scope, second.Receipts[0].ID); err != nil {
+		t.Fatalf("undo the later change: %v", err)
+	}
+	if got := repos(t, f.mem(zz, m.ID)); got != nil {
+		t.Errorf("after undoing the second: repos %v, want everywhere", got)
+	}
+	if _, err := undo(f, person(zz), scope, first.Receipts[0].ID); err != nil {
+		t.Fatalf("then the first: %v", err)
+	}
+	sameScope(t, f.mem(zz, m.ID).Applies, before)
+	if n := f.count(`SELECT count(*) FROM v2.undo_entries WHERE space_id = $1 AND command = 'scope'`, personal); n != 4 {
+		t.Errorf("%d scope undo entries, want the person's 4", n)
+	}
+
+	// A faded memory changes where it applies, and undoing that leaves it faded.
+	w := newDreamWorld(t)
+	now := time.Now()
+	w.publish(now.Truncate(time.Hour), ledger.PlannedAction{Kind: ledger.DreamFade, Memory: w.fd.ID, Version: 1, Unread: &now})
+	ws := w.f.scope(w.owner)
+	scoped := w.f.apply(&ledger.ScopeMemory{Meta: meta(person(w.owner), ws, policy.ViaWeb), Memory: w.fd.Ref, Repos: []string{"acme/web"}})
+	if scoped.Outcome != ledger.OutcomeApplied {
+		t.Fatalf("scope a faded memory: %s %s", scoped.Outcome, scoped.Policy.Message)
+	}
+	if _, err := undo(w.f, person(w.owner), ws, scoped.Receipts[0].ID); err != nil {
+		t.Fatalf("undo on a faded memory: %v", err)
+	}
+	if fd := w.f.mem(w.owner, w.fd.ID); fd.Lifecycle != "faded" || repos(t, fd) != nil {
+		t.Errorf("faded after undo: %s, repos %v", fd.Lifecycle, repos(t, fd))
 	}
 }

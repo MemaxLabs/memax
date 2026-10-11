@@ -1043,7 +1043,9 @@ export interface paths {
          *     paths and the agents don't change. It follows Keep's rules for who
          *     may: a member or owner who keeps in the space (a decision in a team
          *     space needs a person on the web); agents and API keys are refused.
-         *     One `scoped` receipt; a kept memory's files recompile. Only a
+         *     One `scoped` receipt; a kept memory's files recompile. A person's
+         *     change is undoable by them for 10 minutes (`POST
+         *     /v2/receipts/{receipt}:undo` with the `scoped` receipt). Only a
          *     proposal, a kept memory or a faded one can change (409
          *     `invalid_transition` otherwise). Asking for the repositories it
          *     already names is 400 `invalid_request`, as an edit to the same
@@ -1464,8 +1466,9 @@ export interface paths {
         /**
          * Undo a decision
          * @description Undoes the command that wrote this receipt (any of its receipts):
-         *     Review's ⌘Z. A person undoes their own keep, reject, edit or
-         *     conflict resolution within 10 minutes, and their own Remember
+         *     Review's ⌘Z. A person undoes their own keep, reject, edit,
+         *     conflict resolution, Verify or change to where a memory applies
+         *     (`:scope`) within 10 minutes, and their own Remember
          *     (undoing it withdraws the memory: it ends rejected, and leaves the
          *     compiled files); any person who may keep undoes one of the judge's
          *     folds within 14 days. Each memory gets an

@@ -23,6 +23,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 )
@@ -32,6 +34,10 @@ const CommandScopeMemory CommandName = "scope_memory"
 
 // ActionScoped is the receipt of a scope change.
 const ActionScoped Action = "scoped"
+
+// UndoScope undoes a person's ScopeMemory: the memory applies where it
+// did before.
+const UndoScope UndoKind = "scope"
 
 // MaxScopeRepos bounds scope.repos.
 const MaxScopeRepos = 20
@@ -234,6 +240,13 @@ func (w *writer) scopeMemory(ctx context.Context, c *ScopeMemory) (Result, error
 	if err != nil {
 		return Result{}, err
 	}
+	// A person's change is undoable by them, as their Keep and Edit are.
+	// Memax's backfill isn't: it only narrows, and nobody's decision is
+	// in it to take back.
+	if w.meta.Actor.Kind == policy.ActorPerson {
+		w.startUndo(UndoScope, w.undoWindow)
+		w.undo.touchWithScope(mem)
+	}
 	rc := w.receipt(sp, mem.ID, mem.Ref, ActionScoped, mem.streamVersion+1, w.meta.Reason)
 	if err := insertReceipt(ctx, w.tx, &rc); err != nil {
 		return Result{}, err
@@ -249,6 +262,13 @@ func (w *writer) scopeMemory(ctx context.Context, c *ScopeMemory) (Result, error
 	}
 	if mem.Lifecycle == lifecycle.Kept {
 		if err := w.markDirty(ctx, sp.ID); err != nil {
+			return Result{}, err
+		}
+	}
+	// The journal knows the version after (this receipt's): it goes out
+	// with the next statement, no read needed.
+	if w.undo != nil {
+		if err := w.storeUndo(ctx, sp, []Receipt{rc}, []uuid.UUID{mem.ID}, map[uuid.UUID]int{mem.ID: rc.StreamVersion}); err != nil {
 			return Result{}, err
 		}
 	}

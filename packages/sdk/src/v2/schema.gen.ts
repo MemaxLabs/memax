@@ -14,7 +14,9 @@ export interface paths {
         };
         /**
          * List your spaces
-         * @description Every space you belong to, with your role in it. Not paginated.
+         * @description Every space you belong to, with your role in it and, for a space on
+         *     the V2 record, its counts: what is kept, what waits on a person and
+         *     the agents connected. Not paginated.
          */
         get: operations["listSpaces"];
         put?: never;
@@ -25,12 +27,58 @@ export interface paths {
          *     the name's slug is used, with a number added when it is taken; a
          *     slug you name must be free (409 `slug_taken`). Only a signed-in
          *     person creates spaces, and here only project spaces: your personal
-         *     space exists already, and team spaces come with Team. A space isn't
+         *     space exists already (403 `refused`, policy `personal_exists`),
+         *     and team spaces come with Team (`space_kind`). A space isn't
          *     part of its own record, so creating one writes no receipt; its
          *     Activity starts with its first change. The same `Idempotency-Key`
          *     finds the space the first call created.
          */
         post: operations["createSpace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search your spaces
+         * @description The memories that match `q`, best first, across every space you
+         *     belong to that is on the V2 record (or the ones `space` names;
+         *     one you can't read is 404). It is the search agents' `memax_search`
+         *     and recall run: full-text and trigram matching on the words, the
+         *     meaning of the words when this server embeds them (within 120 ms of
+         *     the request, else by the words alone, and `lexical_only` says so),
+         *     fused and reranked. A space still on V1 has nothing here: its
+         *     memories are V1's until it switches.
+         *
+         *     A person finds what was kept and the proposals waiting in Review;
+         *     an agent finds what was kept, in the spaces its connection is
+         *     connected to. Superseded decisions, and rejected, merged, faded and
+         *     forgotten memories, never come back (a forgotten memory has no
+         *     words left to match). Each item is the memory without its sources
+         *     or links (read one memory for those), with the receipts that say
+         *     who wrote it and who changed it last.
+         *
+         *     With `include_notes`, the first page also carries your notes (N-)
+         *     that match, by their words: yours, and every note in a space you
+         *     own. Notes are raw material and never kept context.
+         *
+         *     A person's search changes nothing and records no read; an agent's
+         *     is recorded as a read of what it found, like `memax_search`. A
+         *     search ranks its 50 best matches; `limit` and `cursor` page through
+         *     them, and each page runs the search again, so a page can differ
+         *     slightly from the one before it if the record changed in between.
+         */
+        get: operations["search"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3393,9 +3441,11 @@ export interface components {
          *     they are saved, and the same resolution waits for the judge).
          *     Confirmation: confirm_in_agent.
          *     Refused changes to spaces: space_by_person (only a signed-in person
-         *     creates or switches a space), space_kind (only project spaces are
-         *     created here), space_limit (the most project spaces one person owns
-         *     during the alpha), switch_by_owner (only the owner switches a space).
+         *     creates or switches a space), personal_exists (each person has one
+         *     personal space, made with their account), space_kind (only project
+         *     spaces are created here; team spaces come with Team), space_limit
+         *     (the most project spaces one person owns during the alpha),
+         *     switch_by_owner (only the owner switches a space).
          *     Refused device codes: device_by_person (only a person signs a device
          *     in), device_needs_web (confirming or declining a code needs a person
          *     on the web app). Refused sessions: session_by_person (only a person
@@ -3414,7 +3464,7 @@ export interface components {
          *     needs a sign-in in the last few minutes, or your passkey).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "cloud_propose_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "space_on_v1" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "verify_by_person" | "checks_by_person" | "flag_by_memax" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "machines_by_person" | "machines_personal" | "machines_by_owner" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "cloud_propose_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "space_on_v1" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "verify_by_person" | "checks_by_person" | "flag_by_memax" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "personal_exists" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "machines_by_person" | "machines_personal" | "machines_by_owner" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_kind" | "needs_passkey" | "passkey_invalid";
         /**
@@ -3601,6 +3651,19 @@ export interface components {
              * @description When the space switched to the V2 record. Absent while it is on V1: there, agents' writes go to the V1 memory API, and V1 behaviour applies to every surface.
              */
             v2_enabled_at?: string;
+            /** @description When the space was made, in the list of your spaces and when you create one. */
+            created_at?: components["schemas"]["Timestamp"];
+            /** @description In the list of your spaces, for a space on the V2 record: what the space switcher says about it. Absent for a space on V1, whose memories are V1's. */
+            counts?: components["schemas"]["SpaceCounts"];
+        };
+        /** @description A space's numbers, as the space switcher shows them. */
+        SpaceCounts: {
+            /** @description Its kept memories. */
+            kept: number;
+            /** @description What waits on a person: Review's queue (every proposal, and every kept memory flagged as a conflict or stale) and the decision gates waiting for an answer. */
+            waiting: number;
+            /** @description The agents connected to it and not paused. */
+            agents: number;
         };
         DecisionOption: {
             label: string;
@@ -4148,6 +4211,27 @@ export interface components {
             items: components["schemas"]["Memory"][];
             has_more: boolean;
             next_cursor?: components["schemas"]["Cursor"];
+        };
+        /** @description One memory a search found. */
+        SearchHit: {
+            /** @description The memory, without its sources, links, the memory it updates or the judge's verdict. */
+            memory: components["schemas"]["Memory"];
+            /**
+             * @description The receipts the memory names: the one that wrote it
+             *     (`created_receipt_id`) and the latest (`last_receipt_id`),
+             *     oldest first; one when they are the same.
+             */
+            receipts: components["schemas"]["Receipt"][];
+        };
+        SearchPage: {
+            /** @description The matches, best first. */
+            items: components["schemas"]["SearchHit"][];
+            has_more: boolean;
+            next_cursor?: components["schemas"]["Cursor"];
+            /** @description With `include_notes`, on the first page, your notes that match, best first. */
+            notes?: components["schemas"]["Note"][];
+            /** @description Nothing matched by meaning, only by the words (no embeddings here, or the query's missed its deadline). */
+            lexical_only: boolean;
         };
         ReviewPage: {
             items: components["schemas"]["Memory"][];
@@ -5881,10 +5965,13 @@ export interface components {
             /** @description Lowercase letters, digits and hyphens, 4 to 50 characters. Without one, Memax picks one from the name. */
             slug?: string;
             /**
-             * @description Only project spaces are created here; the default.
+             * @description The kind of space; project, the default, is the one created
+             *     here. Each person has one personal space, made with their
+             *     account (403 `refused`, policy `personal_exists`), and team
+             *     spaces come with Team (policy `space_kind`).
              * @enum {string}
              */
-            kind?: "project";
+            kind?: "personal" | "project" | "team";
             /** @description The repository the space compiles for, "owner/name". */
             repository?: string;
         };
@@ -6859,6 +6946,9 @@ export interface components {
         NotePageEnvelope: {
             data: components["schemas"]["NotePage"];
         };
+        SearchPageEnvelope: {
+            data: components["schemas"]["SearchPage"];
+        };
         NoteEnvelope: {
             data: components["schemas"]["Note"];
         };
@@ -7771,6 +7861,46 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["SpaceConflict"];
             422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    search: {
+        parameters: {
+            query: {
+                /** @description The words to search for. */
+                q: string;
+                /** @description Only these spaces, by id or slug. Repeat for more than one; none searches them all. */
+                space?: components["schemas"]["SpaceKey"][];
+                /** @description Only facts or only decisions. */
+                kind?: components["schemas"]["MemoryKind"];
+                /** @description Also search your notes (the first page carries them). */
+                include_notes?: boolean;
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Page size. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of matches. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchPageEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

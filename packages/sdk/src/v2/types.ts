@@ -26,6 +26,12 @@ export type PolicyDecision = Schemas["PolicyDecision"];
 
 // Responses (the `data` of each envelope)
 export type SpaceList = Schemas["SpaceList"];
+/** What the space switcher says about a space on V2: kept, waiting, agents. */
+export type SpaceCounts = Schemas["SpaceCounts"];
+/** One page of a search across your spaces (`memax.v2.search`). */
+export type SearchPage = Schemas["SearchPage"];
+/** One memory a search found, with the receipts that wrote and last changed it. */
+export type SearchHit = Schemas["SearchHit"];
 export type MemoryPage = Schemas["MemoryPage"];
 export type ReviewPage = Schemas["ReviewPage"];
 export type ReceiptPage = Schemas["ReceiptPage"];

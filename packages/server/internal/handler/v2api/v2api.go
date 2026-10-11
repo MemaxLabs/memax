@@ -29,6 +29,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/receiptchain"
 	"github.com/MemaxLabs/memax/packages/server/internal/sessions"
 	"github.com/MemaxLabs/memax/packages/server/internal/trust"
+	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
 	"github.com/MemaxLabs/memax/packages/server/internal/websurface"
 )
 
@@ -55,6 +56,9 @@ type Handler struct {
 	near   nearLimiter
 	// asker answers ⌘K Ask (ask.go); nil answers 503.
 	asker *ask.Service
+	// search is the hybrid search GET /v2/search runs (search.go); nil
+	// answers 503.
+	search *v2recall.Searcher
 	// dream queues run-now (dream.go); nil answers 503 there.
 	dream *dreamDeps
 	// exports rate-limits exports (export.go).
@@ -119,6 +123,7 @@ type Route struct {
 var routes = []Route{
 	{"GET", "/v2/spaces", "listSpaces", (*Handler).listSpaces},
 	{"POST", "/v2/spaces", "createSpace", (*Handler).createSpace},
+	{"GET", "/v2/search", "search", (*Handler).searchSpaces},
 	{"GET", "/v2/spaces/{space}/switch", "getSpaceSwitch", (*Handler).getSpaceSwitch},
 	{"POST", "/v2/spaces/{space}:switch", "switchSpace", (*Handler).switchSpace},
 	{"GET", "/v2/spaces/{space}/v1-dream-runs", "listV1DreamRuns", (*Handler).listV1DreamRuns},

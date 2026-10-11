@@ -909,7 +909,8 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 	if vectors != nil {
 		hopts = append(hopts, v2api.WithDrafts(vectors))
 	}
-	hopts = append(hopts, v2api.WithAsk(askService(l, search, llm)))
+	// Search across spaces runs the same hybrid search as recall and Ask.
+	hopts = append(hopts, v2api.WithSearch(search), v2api.WithAsk(askService(l, search, llm)))
 	// Dream runs in the worker; here, run-now queues a run under the plan's
 	// caps (the engine needs no model for that).
 	if queueClient != nil {

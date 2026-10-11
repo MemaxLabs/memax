@@ -213,6 +213,25 @@ type Space struct {
 	// V2EnabledAt is when the space switched to the V2 record (migration
 	// 033); nil while it is on V1 (internal/spacemode).
 	V2EnabledAt *time.Time `json:"v2_enabled_at,omitempty"`
+	// CreatedAt is when the space was made: in the list of a person's
+	// spaces and when it is created; nil elsewhere.
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	// Counts is what the space switcher says about a space on the V2
+	// record (ListSpacesCounted); nil elsewhere, and for a space on V1,
+	// whose record is V1's.
+	Counts *SpaceCounts `json:"counts,omitempty"`
+}
+
+// SpaceCounts are a space's numbers as the space switcher shows them.
+type SpaceCounts struct {
+	// Kept counts its kept memories.
+	Kept int `json:"kept"`
+	// Waiting counts what waits on a person: Review's queue (every
+	// proposal, and every kept memory flagged as a conflict or stale) and
+	// the decision gates waiting for an answer.
+	Waiting int `json:"waiting"`
+	// Agents counts the agent connections connected to it and not paused.
+	Agents int `json:"agents"`
 }
 
 // Action is the past-tense verb a receipt records.

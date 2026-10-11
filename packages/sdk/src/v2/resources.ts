@@ -107,6 +107,8 @@ import type {
   ReviewPage,
   ReviseBriefInput,
   ScopeInput,
+  SearchPage,
+  MemoryKind,
   RestoreBriefResult,
   Section,
   Session,
@@ -2042,8 +2044,10 @@ export class V2Resource {
   readonly settings: V2SettingsResource;
   readonly account: V2AccountResource;
   private readonly openStream?: OpenFn;
+  private readonly req: RequestFn;
 
   constructor(req: RequestFn, open?: OpenFn) {
+    this.req = req;
     this.spaces = new V2SpacesResource(req, open);
     this.memories = new V2MemoriesResource(req);
     this.review = new V2ReviewResource(req);
@@ -2065,6 +2069,33 @@ export class V2Resource {
     this.settings = new V2SettingsResource(req);
     this.account = new V2AccountResource(req);
     this.openStream = open;
+  }
+
+  /**
+   * Search your spaces: the memories that match `q`, best first, across
+   * every space you belong to that is on the V2 record (or the ones
+   * `spaces` names), by the same hybrid search as recall and the agents'
+   * `memax_search`. A person finds what was kept and what waits in Review;
+   * an agent finds what was kept. Each hit is the memory (without sources
+   * or links) and the receipts that wrote it and last changed it. A
+   * search ranks its 50 best matches: page with `limit` and `cursor`.
+   *
+   * ```ts
+   * const page = await memax.v2.search("deploy", { spaces: ["memax-v2"] });
+   * ```
+   */
+  async search(q: string, opts?: SearchOptions): Promise<SearchPage> {
+    return this.req("GET", "/v2/search", {
+      query: {
+        q,
+        space: opts?.spaces,
+        kind: opts?.kind,
+        include_notes: opts?.includeNotes || undefined,
+        cursor: opts?.cursor,
+        limit: opts?.limit,
+      },
+      signal: opts?.signal,
+    });
   }
 
   /**
@@ -2112,6 +2143,21 @@ export class V2Resource {
     }
     if (opts?.signal?.aborted) throw abortError(opts.signal);
   }
+}
+
+/** Options for {@link V2Resource.search}. */
+export interface SearchOptions {
+  /** Only these spaces, by id or slug (at most 20); none searches them all. */
+  spaces?: string[];
+  /** Only facts or only decisions. */
+  kind?: MemoryKind;
+  /** Also your notes that match; the first page carries them. */
+  includeNotes?: boolean;
+  /** The `next_cursor` of the page before. */
+  cursor?: string;
+  /** 1 to 50; defaults to 20. */
+  limit?: number;
+  signal?: AbortSignal;
 }
 
 /** Options for {@link V2Resource.ask}. */

@@ -1,11 +1,14 @@
 /**
  * The adapter registry.
  *
- * The default set is the Phase 1 gate (plan §5.7, D2 and D3): the canonical
- * AGENTS.md, the CLAUDE.md shim, scoped Cursor rules and the ChatGPT copy.
- * The P3 adapters render and parse the same way, and stay out of the default
- * set until their phase. The GEMINI.md shim is opt-in for good: compiled
- * only for a space that asks for it.
+ * The default set is what a new space compiles: the canonical AGENTS.md,
+ * which carries path-scoped facts in subsections, the CLAUDE.md shim and
+ * the ChatGPT copy. Every scoped rules format is opt-in. Nearly every agent
+ * reads AGENTS.md, so a scoped file it also reads (Cursor's `.mdc`, Claude
+ * Code's `.claude/rules`, read by VS Code and Copilot CLI too, Copilot's
+ * `.github/instructions`, Devin's rules, which Devin CLI reads beside
+ * Cursor's and Claude's) would load each scoped fact twice
+ * (adapter-load-matrix-2026-10.md). The GEMINI.md shim is opt-in too.
  *
  * The home adapters (`claude_user`, `codex_user`) write a personal space
  * into one agent's user-level file on a linked machine. They're never
@@ -47,17 +50,23 @@ export const HOME_TARGET_KINDS: readonly AdapterKind[] = adapters
 export const DEFAULT_TARGET_KINDS: readonly AdapterKind[] = [
   "agents_md",
   "claude_md",
-  "cursor_mdc",
   "chatgpt",
 ];
 
 /**
- * Targets compiled only when someone asks for one, never by default. The
- * GEMINI.md shim is for people still on Gemini CLI: Antigravity CLI, which
- * replaced it for most people, reads AGENTS.md, and a shim beside it could
- * make it load the record twice.
+ * Targets compiled only when someone asks for one, never by default, in the
+ * adapters' order. The GEMINI.md shim is for people still on Gemini CLI:
+ * Antigravity CLI, which replaced it for most people, reads AGENTS.md. The
+ * scoped formats load a scoped fact a second time in every agent that also
+ * reads AGENTS.md, unless that space's AGENTS.md is set to `scoped: omit`.
  */
-export const OPT_IN_TARGET_KINDS: readonly AdapterKind[] = ["gemini_md"];
+export const OPT_IN_TARGET_KINDS: readonly AdapterKind[] = [
+  "cursor_mdc",
+  "gemini_md",
+  "copilot",
+  "windsurf",
+  "claude_rules",
+];
 
 export function defaultTargets(): TargetSettings[] {
   return DEFAULT_TARGET_KINDS.map((kind) => ({ kind }));

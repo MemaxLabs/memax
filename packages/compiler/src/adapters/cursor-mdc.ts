@@ -1,5 +1,7 @@
 /**
- * `cursor_mdc`: Cursor rules, for path-scoped facts only.
+ * `cursor_mdc`: Cursor rules, for path-scoped facts only. Opt-in
+ * (OPT_IN_TARGET_KINDS): Cursor and Devin CLI read AGENTS.md too, whose
+ * subsections hold the same facts unless it's set to `scoped: omit`.
  *
  * Cursor reads AGENTS.md (root and nested), so an always-on rule would load
  * the record twice. Instead each group of globs gets

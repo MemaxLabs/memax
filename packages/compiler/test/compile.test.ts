@@ -8,7 +8,8 @@ import {
   type CompileInput,
   type CompileResult,
 } from "../src/index.js";
-import { demo, input, memory, rng, shuffle } from "./helpers.js";
+import { adapters } from "../src/adapters/index.js";
+import { demo, input, loadInput, memory, rng, shuffle } from "./helpers.js";
 
 const file = (result: CompileResult, path: string) => {
   const found = result.files.find((f) => f.path === path);
@@ -196,6 +197,26 @@ describe("targets", () => {
       files: [],
     });
     expect(result.files.some((f) => f.target === "chatgpt")).toBe(false);
+  });
+
+  it("loads each scoped fact once by default: in AGENTS.md, with no scoped rules file", () => {
+    // Nearly every agent reads AGENTS.md, which holds path-scoped facts in
+    // subsections, so a scoped file it also read would load them twice.
+    const scopedKinds = adapters
+      .filter((a) => a.role === "scoped")
+      .map((a) => a.kind);
+    expect(scopedKinds.length).toBeGreaterThan(0);
+    for (const kind of scopedKinds) {
+      expect(DEFAULT_TARGET_KINDS).not.toContain(kind);
+      expect(OPT_IN_TARGET_KINDS).toContain(kind);
+    }
+    const scoped = loadInput("scoped");
+    scoped.targets = defaultTargets();
+    const result = compile(scoped);
+    expect(result.files.map((f) => f.path)).toEqual(["AGENTS.md", "CLAUDE.md"]);
+    const agents = file(result, "AGENTS.md").content;
+    for (const ref of ["M-0441", "M-0442", "M-0450", "M-0451"])
+      expect(agents.split(`[${ref}]`)).toHaveLength(2);
   });
 
   it("compiles GEMINI.md only when a space asks for it", () => {

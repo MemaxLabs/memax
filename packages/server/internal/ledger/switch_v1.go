@@ -353,10 +353,11 @@ func configNote(c v1Config) noteRow {
 }
 
 // ConfigTargets are the compile targets a V1 agent file stands for (D2:
-// AGENTS.md is canonical, CLAUDE.md a shim importing it, Cursor rules for
-// scoped facts). Copilot, Windsurf and Claude Code's path rules read
-// AGENTS.md for everything their scoped targets (off until Phase 3) would
-// hold, so they stand for AGENTS.md alone. GEMINI.md is opt-in
+// AGENTS.md is canonical, CLAUDE.md a shim importing it). Cursor, Copilot,
+// Windsurf and Claude Code's path rules stand for AGENTS.md alone: those
+// tools read AGENTS.md, whose subsections hold the scoped facts, so a
+// scoped target beside it (opt-in, OptInTargetKinds) would load them
+// twice. GEMINI.md is opt-in
 // (OptInTargetKinds): a GEMINI.md the person synced in V1 is that ask, since
 // Gemini CLI doesn't read AGENTS.md by default.
 func ConfigTargets(filePath string) []TargetKind {
@@ -369,9 +370,8 @@ func ConfigTargets(filePath string) []TargetKind {
 		return []TargetKind{TargetAgentsMD}
 	case base == "gemini.md":
 		return []TargetKind{TargetAgentsMD, TargetGeminiMD}
-	case base == ".cursorrules" || strings.Contains(p, ".cursor/rules"):
-		return []TargetKind{TargetAgentsMD, TargetCursorMDC}
-	case strings.HasSuffix(p, "copilot-instructions.md") || strings.Contains(p, ".github/instructions"),
+	case base == ".cursorrules" || strings.Contains(p, ".cursor/rules"),
+		strings.HasSuffix(p, "copilot-instructions.md") || strings.Contains(p, ".github/instructions"),
 		base == ".windsurfrules" || strings.Contains(p, ".windsurf/rules") || strings.Contains(p, ".devin/rules"),
 		strings.Contains(p, ".claude/rules"):
 		return []TargetKind{TargetAgentsMD}

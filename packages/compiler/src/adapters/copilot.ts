@@ -1,5 +1,7 @@
 /**
- * `copilot`: GitHub Copilot path instructions (P3, not in the default set).
+ * `copilot`: GitHub Copilot path instructions. Opt-in (OPT_IN_TARGET_KINDS),
+ * for repositories that use Copilot's cloud agent or code review: VS Code and
+ * Copilot CLI read AGENTS.md and `.claude/rules` too.
  *
  * Copilot reads AGENTS.md (and root CLAUDE.md and GEMINI.md) for the rest.
  * Path-scoped facts go to `.github/instructions/memax-<area>.instructions.md`

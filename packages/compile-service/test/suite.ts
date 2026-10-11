@@ -303,18 +303,20 @@ export function contract(
       const defaults = body.adapters
         .filter((a: { default: boolean }) => a.default)
         .map((a: { kind: string }) => a.kind);
-      expect(defaults).toEqual([
-        "agents_md",
-        "claude_md",
-        "cursor_mdc",
-        "chatgpt",
-      ]);
-      // GEMINI.md is compiled only for a space that asks for it.
+      expect(defaults).toEqual(["agents_md", "claude_md", "chatgpt"]);
+      // GEMINI.md and every scoped format compile only for a space that
+      // asks: AGENTS.md already holds the scoped facts once.
       expect(
         body.adapters
           .filter((a: { opt_in: boolean }) => a.opt_in)
           .map((a: { kind: string }) => a.kind),
-      ).toEqual(["gemini_md"]);
+      ).toEqual([
+        "cursor_mdc",
+        "gemini_md",
+        "copilot",
+        "windsurf",
+        "claude_rules",
+      ]);
       expect(
         body.adapters.find((a: { kind: string }) => a.kind === "chatgpt")
           .default_path,

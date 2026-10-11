@@ -285,7 +285,9 @@ func SeedMemaxV2(ctx context.Context, pool *pgxpool.Pool, l *ledger.Ledger, o Op
 	if err := l.AdvanceCounter(ctx, zzScope, d.Space, ledger.PrefixCompile, 881); err != nil {
 		return nil, err
 	}
-	for _, k := range ledger.DefaultTargetKinds {
+	// The demo space has the handoff's four targets, as a space made before
+	// Cursor's rules became opt-in keeps them (ledger.OptInTargetKinds).
+	for _, k := range []ledger.TargetKind{ledger.TargetAgentsMD, ledger.TargetClaudeMD, ledger.TargetCursorMDC, ledger.TargetChatGPT} {
 		res, err := apply(&ledger.ConfigureTarget{Meta: webMeta(d.ZZ, zzScope, "target:"+string(k), day("2026-10-05")),
 			SpaceID: d.Space, Kind: k})
 		if err != nil {

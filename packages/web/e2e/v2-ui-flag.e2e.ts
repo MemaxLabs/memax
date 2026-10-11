@@ -89,15 +89,21 @@ test("a person with a space on V2 signs in and lands in V2", async ({
   await page.goto("/memax-v2/today");
   await expect(page).toHaveURL(/\/memax-v2\/today$/);
 
-  // Signing in on V1's own page sets the hint as well, so a V2 link
-  // works next.
+  // Signing in on V1's own page sets the hint as well: V1's home, where
+  // that sign-in goes on to, starts them in V2, and a V2 link works next.
   const v1Side = await browser.newContext({ baseURL });
   const other = await v1Side.newPage();
   await other.goto(`/auth/callback?code=${stack.webCode()}`);
-  await settledOn(other, V1_HOME);
+  await settledOn(other, /^\/(memax-v2\/(today|review)|setup\/import)$/);
   expect(await cookieValue(other, "memax_ui")).toBe("v2");
   await other.goto("/memax-v2/brief");
   await expect(other).toHaveURL(/\/memax-v2\/brief$/);
+  // So does the app's root, signed in; V1's pages that V2 doesn't replace
+  // still open.
+  await other.goto("/");
+  await settledOn(other, /^\/(memax-v2\/(today|review)|setup\/import)$/);
+  await other.goto("/settings");
+  await expect(other).toHaveURL("/settings");
   await v1Side.close();
 
   // Signing out clears it: the next person on this browser starts from
@@ -156,11 +162,18 @@ test("an operator turns V2 on, and the person's next load is V2; off sends them 
     ),
   ).toBe("true 1");
 
-  // Their next load of a V2 page is V2: the sign-in page reads the flag
-  // (which sets the hint) and goes on, with nothing to sign in again.
-  await page.goto("/setup/import");
+  // The next time they open the app, it's V2: V1's home reads their
+  // profile (which sets the hint) and starts them at V2's landing, here
+  // FirstRun, since nothing of theirs is on V1 to switch. Nothing to
+  // sign in again.
+  await page.goto("/home");
   await settledOn(page, /^\/setup\/import$/);
   expect(await cookieValue(page, "memax_ui")).toBe("v2");
+  // With the hint, the root goes there in one hop.
+  await page.goto("/");
+  await settledOn(page, /^\/setup\/import$/);
+  // And a V2 page opens: had the hint been missing, the sign-in page
+  // would have read the flag and gone on.
   await page.goto("/settings/account");
   await expect(page).toHaveURL("/settings/account");
 

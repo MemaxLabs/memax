@@ -10,7 +10,10 @@ import {
   isSpaceSlug,
   isV2Path,
   needsV2Opt,
+  opensV1Home,
   RESERVED_SPACE_SLUGS,
+  V1_ENTRY_PATHS,
+  V2_LANDING_PATH,
   V2_SPACE_PLACES,
   v1HomePath,
   v2PageFor,
@@ -153,11 +156,107 @@ describe("isV2Path", () => {
 
 describe("decideUiGate", () => {
   it("continues on V1 paths whatever the cookie", () => {
-    for (const uiCookie of [undefined, "v2", "v1"]) {
+    // The V1 pages V2 doesn't replace stay open to a person who sees V2:
+    // a hub, V1's settings, the admin pages, an invite.
+    for (const pathname of [
+      "/h/personal/memories",
+      "/h/acme/pulse",
+      "/settings",
+      "/admin",
+      "/admin/users/u-1",
+      "/brain",
+      "/inbox",
+      "/invite/tok_1",
+      "/register",
+    ]) {
+      for (const uiCookie of [undefined, "v2", "v1"]) {
+        for (const hasSession of [false, true]) {
+          expect(
+            decideUiGate({ pathname, uiCookie, hasSession }),
+            `${pathname} ${uiCookie} ${hasSession}`,
+          ).toEqual({ action: "continue" });
+        }
+      }
+    }
+    for (const uiCookie of [undefined, "v1"]) {
       expect(
         decideUiGate({ pathname: "/home", uiCookie, hasSession: true }),
       ).toEqual({ action: "continue" });
     }
+  });
+
+  it("starts a person who sees V2 at their V2 landing instead of V1's home, once", () => {
+    // Their flag turned on while they were in V1 (an operator, a switch,
+    // `memax init`'s first space): the hint arrived with a profile read,
+    // and the next time they open the app it's V2. The sign-in page lands
+    // a signed-in person by their flag, reading it again on the way.
+    const landing = {
+      action: "redirect",
+      pathname: V2_LANDING_PATH,
+      recheck: true,
+    };
+    expect(V2_LANDING_PATH).toBe("/signin");
+    for (const hasSession of [false, true]) {
+      expect(
+        decideUiGate({ pathname: "/home", uiCookie: "v2", hasSession }),
+      ).toEqual(landing);
+    }
+    // The signed-in root and V1's sign-in page, which V1 sends to /home,
+    // go there in one hop.
+    for (const pathname of ["/", "/login"]) {
+      expect(
+        decideUiGate({ pathname, uiCookie: "v2", hasSession: true }),
+      ).toEqual(landing);
+      // Signed out, the root is the public site and /login V1's own page.
+      expect(
+        decideUiGate({ pathname, uiCookie: "v2", hasSession: false }),
+      ).toEqual({ action: "continue" });
+      // A query is flow state for that page (/login?returnTo=…).
+      expect(
+        decideUiGate({
+          pathname,
+          search: "?returnTo=%2Fagents",
+          uiCookie: "v2",
+          hasSession: true,
+        }),
+      ).toEqual({ action: "continue" });
+    }
+    // Re-checked a moment ago and still holding the hint: the flag didn't
+    // land them in V2 after all, so V1's home opens, never a loop.
+    for (const pathname of ["/", "/home", "/login"]) {
+      expect(
+        decideUiGate({
+          pathname,
+          uiCookie: "v2",
+          hasSession: true,
+          rechecked: true,
+        }),
+      ).toEqual({ action: "continue" });
+    }
+  });
+
+  it("says which requests open V1's home", () => {
+    expect(
+      opensV1Home({ pathname: "/home", search: "", hasSession: false }),
+    ).toBe(true);
+    expect(
+      opensV1Home({ pathname: "/home", search: "?x=1", hasSession: true }),
+    ).toBe(true);
+    expect(opensV1Home({ pathname: "/", search: "", hasSession: true })).toBe(
+      true,
+    );
+    expect(
+      opensV1Home({ pathname: "/login", search: "", hasSession: true }),
+    ).toBe(true);
+    for (const pathname of ["/register", "/h/personal/memories", "/homes"]) {
+      expect(opensV1Home({ pathname, search: "", hasSession: true })).toBe(
+        false,
+      );
+    }
+    expect(opensV1Home({ pathname: "/", search: "", hasSession: false })).toBe(
+      false,
+    );
+    expect([...V1_ENTRY_PATHS].sort()).toEqual(["/", "/login"]);
   });
 
   it("continues on V2 paths with memax_ui=v2", () => {
@@ -367,7 +466,7 @@ describe("decideUiGate", () => {
     ).toEqual({ action: "continue" });
     // Reserved words are V1 routes, never spaces.
     expect(
-      decideUiGate({ pathname: "/home", uiCookie: "v2", hasSession: true }),
+      decideUiGate({ pathname: "/brain", uiCookie: "v2", hasSession: true }),
     ).toEqual({ action: "continue" });
   });
 

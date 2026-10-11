@@ -161,8 +161,7 @@ func (l *Ledger) GetMemoryReads(ctx context.Context, scope Scope, memoryID uuid.
 	if l == nil {
 		return nil, ErrDisabled
 	}
-	now := l.now().UTC()
-	out := &MemoryReads{Readers: []MemoryReader{}}
+	var out *MemoryReads
 	err := l.Read(ctx, scope, func(tx pgx.Tx) error {
 		var spaceID uuid.UUID
 		var seq int64
@@ -173,65 +172,96 @@ func (l *Ledger) GetMemoryReads(ctx context.Context, scope Scope, memoryID uuid.
 		if err != nil {
 			return fmt.Errorf("ledger: memory reads: %w", err)
 		}
-		ref := FormatRef(PrefixMemory, seq)
-		rows, err := tx.Query(ctx, `
-			WITH subjects AS (
-			    SELECT $2::uuid AS id
-			    UNION
-			    SELECT c.id FROM v2.compile_runs c WHERE c.space_id = $1 AND c.refs @> ARRAY[$3::text]
-			)
-			SELECT r.reader_kind, r.reader_key, r.person_id, r.agent,
-			       sum(r.reads)::int,
-			       COALESCE(sum(r.reads) FILTER (WHERE r.day >= $4::date - 6), 0)::int,
-			       max(r.last_read_at),
-			       COALESCE(max(ac.display_name), '')
-			  FROM v2.read_rollups r
-			  JOIN subjects s ON s.id = r.subject_id
-			  LEFT JOIN v2.agent_connections ac ON r.reader_kind = 'agent' AND ac.id = r.reader_key
-			 WHERE r.space_id = $1
-			 GROUP BY r.reader_kind, r.reader_key, r.person_id, r.agent
-			 ORDER BY max(r.last_read_at) DESC, r.reader_key`, spaceID, memoryID, ref, now)
-		if err != nil {
-			return fmt.Errorf("ledger: memory reads: %w", err)
-		}
-		agents := map[string]bool{}
-		for rows.Next() {
-			var rd MemoryReader
-			var key uuid.UUID
-			if err := rows.Scan(&rd.ReaderKind, &key, &rd.PersonID, &rd.Agent, &rd.Reads, &rd.Reads7d, &rd.LastReadAt, &rd.DisplayName); err != nil {
-				rows.Close()
-				return fmt.Errorf("ledger: memory reads: %w", err)
-			}
-			if rd.ReaderKind == ReaderAgent {
-				id := key
-				rd.ConnectionID = &id
-			}
-			out.Reads += rd.Reads
-			out.Reads7d += rd.Reads7d
-			if out.LastReadAt == nil || rd.LastReadAt.After(*out.LastReadAt) {
-				t := rd.LastReadAt
-				out.LastReadAt = &t
-			}
-			agent := rd.Agent
-			if agent == "" {
-				agent = key.String()
-			}
-			agents[agent] = true
-			if len(out.Readers) < MaxReaders {
-				out.Readers = append(out.Readers, rd)
-			}
-		}
-		if err := rows.Err(); err != nil {
-			return fmt.Errorf("ledger: memory reads: %w", err)
-		}
-		out.Agents = len(agents)
-		return tx.QueryRow(ctx, `SELECT EXISTS (`+unobservedRefs+` AND ref = $3)`, spaceID, now.Add(-ObservedWindow), ref).
-			Scan(&out.UnobservedTarget)
+		b := &pgx.Batch{}
+		out = queueMemoryReads(b, spaceID, memoryID, FormatRef(PrefixMemory, seq), l.now().UTC())
+		return tx.SendBatch(ctx, b).Close()
 	})
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// GetMemoryExtras reads what a memory's page shows beside its history, for
+// a memory the caller has read already (GetMemoryHistory): its reads and,
+// with requests, the forget requests waiting on it. One round trip.
+func (l *Ledger) GetMemoryExtras(ctx context.Context, scope Scope, m *Memory, requests bool) (*MemoryReads, []ForgetRequest, error) {
+	if l == nil {
+		return nil, nil, ErrDisabled
+	}
+	b := &pgx.Batch{}
+	reads := queueMemoryReads(b, m.SpaceID, m.ID, m.Ref, l.now().UTC())
+	var waiting []ForgetRequest
+	if requests {
+		queueForgetRequests(b, &waiting, m.ID, scope.SpaceIDs())
+	}
+	if err := l.ReadBatch(ctx, scope, b); err != nil {
+		return nil, nil, err
+	}
+	if waiting == nil {
+		waiting = []ForgetRequest{}
+	}
+	return reads, waiting, nil
+}
+
+// queueMemoryReads queues a memory's reads (its own and those of every
+// compile that held it) and whether a file whose loads Memax can't see
+// holds it; the answer is filled in when b's results are read.
+func queueMemoryReads(b *pgx.Batch, spaceID, memoryID uuid.UUID, ref string, now time.Time) *MemoryReads {
+	out := &MemoryReads{Readers: []MemoryReader{}}
+	b.Queue(`
+		WITH subjects AS (
+		    SELECT $2::uuid AS id
+		    UNION
+		    SELECT c.id FROM v2.compile_runs c WHERE c.space_id = $1 AND c.refs @> ARRAY[$3::text]
+		)
+		SELECT r.reader_kind, r.reader_key, r.person_id, r.agent,
+		       sum(r.reads)::int,
+		       COALESCE(sum(r.reads) FILTER (WHERE r.day >= $4::date - 6), 0)::int,
+		       max(r.last_read_at),
+		       COALESCE(max(ac.display_name), '')
+		  FROM v2.read_rollups r
+		  JOIN subjects s ON s.id = r.subject_id
+		  LEFT JOIN v2.agent_connections ac ON r.reader_kind = 'agent' AND ac.id = r.reader_key
+		 WHERE r.space_id = $1
+		 GROUP BY r.reader_kind, r.reader_key, r.person_id, r.agent
+		 ORDER BY max(r.last_read_at) DESC, r.reader_key`, spaceID, memoryID, ref, now).
+		Query(func(rows pgx.Rows) error {
+			agents := map[string]bool{}
+			for rows.Next() {
+				var rd MemoryReader
+				var key uuid.UUID
+				if err := rows.Scan(&rd.ReaderKind, &key, &rd.PersonID, &rd.Agent, &rd.Reads, &rd.Reads7d, &rd.LastReadAt, &rd.DisplayName); err != nil {
+					return fmt.Errorf("ledger: memory reads: %w", err)
+				}
+				if rd.ReaderKind == ReaderAgent {
+					id := key
+					rd.ConnectionID = &id
+				}
+				out.Reads += rd.Reads
+				out.Reads7d += rd.Reads7d
+				if out.LastReadAt == nil || rd.LastReadAt.After(*out.LastReadAt) {
+					t := rd.LastReadAt
+					out.LastReadAt = &t
+				}
+				agent := rd.Agent
+				if agent == "" {
+					agent = key.String()
+				}
+				agents[agent] = true
+				if len(out.Readers) < MaxReaders {
+					out.Readers = append(out.Readers, rd)
+				}
+			}
+			if err := rows.Err(); err != nil {
+				return fmt.Errorf("ledger: memory reads: %w", err)
+			}
+			out.Agents = len(agents)
+			return nil
+		})
+	b.Queue(`SELECT EXISTS (`+unobservedRefs+` AND ref = $3)`, spaceID, now.Add(-ObservedWindow), ref).
+		QueryRow(func(row pgx.Row) error { return row.Scan(&out.UnobservedTarget) })
+	return out
 }
 
 // hookedAgents are the agents whose session-start hook reports the compile

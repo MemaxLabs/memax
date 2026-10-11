@@ -131,19 +131,16 @@ func (h *Handler) getMemory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := hist.Memory
-	// The counts are an extra the page can live without: a failure leaves
-	// them out rather than failing the read.
-	reads, err := h.ledger.GetMemoryReads(r.Context(), scope.Narrow(m.SpaceID), m.ID)
+	// The counts and the waiting forget requests are extras the page can
+	// live without, read together in one round trip: a failure leaves them
+	// out rather than failing the read.
+	reads, requests, err := h.ledger.GetMemoryExtras(r.Context(), scope.Narrow(m.SpaceID), m, m.Lifecycle != "forgotten")
 	if err != nil {
-		h.log.WarnContext(r.Context(), "v2: a memory's reads couldn't be read", "memory", m.Ref, "error", err)
-		reads = nil
+		h.log.WarnContext(r.Context(), "v2: a memory's reads and forget requests couldn't be read", "memory", m.Ref, "error", err)
+		reads, requests = nil, nil
 	}
-	var requests []ledger.ForgetRequest
-	if m.Lifecycle != "forgotten" {
-		if requests, err = h.ledger.ForgetRequests(r.Context(), scope.Narrow(m.SpaceID), m.ID); err != nil {
-			h.log.WarnContext(r.Context(), "v2: a memory's forget requests couldn't be read", "memory", m.Ref, "error", err)
-			requests = nil
-		}
+	if m.Lifecycle == "forgotten" {
+		requests = nil
 	}
 	setETag(w, m)
 	writeData(w, http.StatusOK, memoryDetail{

@@ -37,7 +37,8 @@ import { undoWindowMs, type UndoCommand, type UndoSource } from "./undo";
 
 export type Decided = {
   slug: string;
-  outcome: "kept" | "rejected";
+  /** `verified`: a stale fact a person answered still true (or updated). */
+  outcome: "kept" | "rejected" | "verified";
   item: ReviewItem;
 };
 
@@ -358,6 +359,7 @@ export function createDemoRecords({
     if (mine.length === 0 && !arrived.get(slug)?.length && !back) return base;
     const left = queueOf(slug);
     const kept = mine.filter((d) => d.outcome === "kept").length;
+    const rejected = mine.filter((d) => d.outcome === "rejected").length;
     const was = (test: (i: ReviewItem) => boolean) =>
       mine.filter((d) => test(d.item)).length;
     return {
@@ -389,9 +391,7 @@ export function createDemoRecords({
         stale: left.filter((i) => i.state === "stale").length,
       },
       lastReview:
-        mine.length > 0
-          ? { at: stamp(), kept, rejected: mine.length - kept }
-          : base.lastReview,
+        mine.length > 0 ? { at: stamp(), kept, rejected } : base.lastReview,
       memories: {
         ...base.memories,
         kept: base.memories.kept === null ? null : base.memories.kept + kept,

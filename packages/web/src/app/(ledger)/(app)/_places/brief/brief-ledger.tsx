@@ -14,6 +14,7 @@ import { marginLine } from "@/lib/v2/brief-copy";
 import { blocksOf, type BriefRow, type BriefView } from "@/lib/v2/data/brief";
 import { placeHref } from "@/lib/v2/places";
 import { StatementText } from "../../_components/statement-text";
+import { useOverlays } from "../../_lib/overlays";
 import type { RecordsView } from "../records-view";
 import styles from "./brief.module.css";
 
@@ -94,6 +95,7 @@ function Fact({
   const { l, space } = view;
   const b = l.brief;
   const first = rows[0]!;
+  const { openVerify } = useOverlays();
   const memoryHref = (ref: string) =>
     `${placeHref(space.slug, "memories")}/${encodeURIComponent(ref)}`;
   const cite = (ref: string) => {
@@ -148,8 +150,7 @@ function Fact({
             size="sm"
             variant="secondary"
             className={styles.verify}
-            disabled
-            disabledReason={b.page.verifyLater}
+            onClick={() => first.ref && openVerify(first.ref)}
           >
             {b.page.verify}
           </Button>

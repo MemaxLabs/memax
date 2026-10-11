@@ -35,6 +35,7 @@ export const ledgerMemoryZh: Translations["ledger"]["memory"] = {
   page: {
     eyebrow: "记忆 · {space} · {section}",
     edit: "编辑",
+    verify: "核对",
     move: "移到别的空间",
     moveLater: "把记忆移到别的空间暂时还不能用",
     cite: "复制引用",
@@ -104,7 +105,8 @@ export const ledgerMemoryZh: Translations["ledger"]["memory"] = {
       flaggedConflictBare: "{name} 标成了冲突",
       flaggedBare: "{name} 标记了它",
       resolved: "{name} 定了下来",
-      verified: "对照代码核对过",
+      verified: "{name} 核对过",
+      verifiedYou: "你核对过",
       faded: "淡出了",
       restored: "{name} 恢复了它",
       forgot: "{name} 忘记了它",

@@ -3,13 +3,15 @@
 import { useRouter } from "next/navigation";
 import { useHotkey } from "@/lib/v2/keymap/react";
 import type { SpaceSummary } from "@/lib/v2/data/types";
+import { useOverlays } from "../../_lib/overlays";
 import { compareHref } from "./hrefs";
 import type { ReviewController } from "./use-review";
 
 /**
  * Review's keys, from the registry (review.*): ↓↑ move, K keep, E edit
  * then keep (a conflict's E compares), X reject (with an optional
- * reason), C compare a conflict, O open the source, ⌘Z undo the last
+ * reason), C compare a conflict, V verify a stale fact, O open the
+ * source, ⌘Z undo the last
  * decision still inside its window, and Esc stop waiting for the judge.
  * The keymap already ignores single keys while typing in a field and
  * while an IME composes; a handler that returns false leaves the key
@@ -46,6 +48,13 @@ export function useReviewKeys(review: ReviewController, space: SpaceSummary) {
   useHotkey("review.reject", () => {
     if (!proposal || !item || !review.canDecide) return false;
     review.dispatch({ type: "reject", ref: item.ref });
+  });
+
+  // A stale fact's card: V opens VerifyStale.
+  const { openVerify } = useOverlays();
+  useHotkey("memory.verify", () => {
+    if (!browsing || item?.state !== "stale") return false;
+    openVerify(item.ref);
   });
 
   useHotkey("review.compare", () => {

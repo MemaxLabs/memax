@@ -340,9 +340,16 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 		}
 	}
 
+	// A person's new words for a kept memory past its date to check again
+	// are that check (as Dream counts it): the date goes, or the compiled
+	// files would keep marking the memory as being verified.
+	staleAfter := mem.StaleAfter
 	if w.meta.Actor.Kind == policy.ActorPerson {
 		w.startUndo(UndoEdit, w.undoWindow)
-		w.undo.touch(mem)
+		w.undo.touchWithDate(mem)
+		if mem.Lifecycle == lifecycle.Kept {
+			staleAfter = nextStaleAfter(mem.StaleAfter, nil, w.now)
+		}
 	}
 	rc := w.receipt(sp, mem.ID, mem.Ref, ActionEdited, mem.streamVersion+1, w.meta.Reason)
 	if err := insertReceipt(ctx, w.tx, &rc); err != nil {
@@ -364,10 +371,10 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 	if _, err := w.tx.Exec(ctx, fmt.Sprintf(`
 		UPDATE v2.memories
 		   SET section = $2, current_version = $3, trust = $4, search = %s, content_sha256 = $11, minhash_bands = $12,
-		       lifecycle = $6, flags = $7, stream_version = $8, last_receipt_id = $9, updated_at = now()
+		       lifecycle = $6, flags = $7, stale_after = $13, stream_version = $8, last_receipt_id = $9, updated_at = now()
 		 WHERE id = $1 AND space_id = $10`, fmt.Sprintf(searchExpr, "$5::text")),
 		mem.ID, string(section), version, string(trust), statement,
-		string(next.Lifecycle), next.Flags.Strings(), rc.StreamVersion, rc.ID, sp.ID, hash, bands); err != nil {
+		string(next.Lifecycle), next.Flags.Strings(), rc.StreamVersion, rc.ID, sp.ID, hash, bands, staleAfter); err != nil {
 		return Result{}, fmt.Errorf("ledger: update memory: %w", err)
 	}
 	receipts := []Receipt{rc}
@@ -625,6 +632,7 @@ func (w *writer) object(mem *Memory, contradicts bool) policy.Object {
 	return policy.Object{
 		Ref: mem.Ref, Lifecycle: mem.Lifecycle, Decision: mem.Kind == KindDecision,
 		External: mem.Trust.External(), ContradictsDecision: contradicts,
+		Stale: mem.Lifecycle == lifecycle.Kept && mem.Flags.Has(lifecycle.Stale),
 	}
 }
 

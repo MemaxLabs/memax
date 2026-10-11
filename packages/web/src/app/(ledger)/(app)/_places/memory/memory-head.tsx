@@ -15,7 +15,8 @@ import styles from "./memory.module.css";
 
 /**
  * Memory.png's head: the statement (its type carries its state), the
- * receipt with reads and reach, and the actions. Move to space is drawn
+ * receipt with reads and reach, and the actions; a stale one leads with
+ * Verify (V, VerifyStale). Move to space is drawn
  * with why it isn't available yet. Forget opens its inline confirmation
  * (the States board) and never has a key; an agent's waiting request to
  * forget it sits above, with Forget it and Keep it.
@@ -26,16 +27,20 @@ export function MemoryHead({
   forget,
   onEdit,
   onCite,
+  onVerify,
 }: {
   view: RecordsView;
   record: MemoryRecord;
   forget: MemoryForget;
   onEdit: () => void;
   onCite: () => void;
+  /** Opens VerifyStale; only a stale memory has one. */
+  onVerify: () => void;
 }) {
   const { l, rc, space, timeZone, locale } = view;
   const p = l.memory.page;
   const editKey = useKeycap("memory.edit");
+  const verifyKey = useKeycap("memory.verify");
   const citeKeys = useAriaKeys("memory.cite");
   const forgotten = record.forgotten;
   const request = record.forgetRequests?.[0] ?? null;
@@ -138,6 +143,16 @@ export function MemoryHead({
         <ForgetConfirm view={view} record={record} forget={forget} />
       ) : (
         <div className={`mx-inline ${styles.actions}`}>
+          {record.state === "stale" ? (
+            <Button
+              variant="secondary"
+              icon="check"
+              kbd={verifyKey}
+              onClick={onVerify}
+            >
+              {p.verify}
+            </Button>
+          ) : null}
           <Button
             variant="secondary"
             icon="pencil"

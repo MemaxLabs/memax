@@ -127,6 +127,8 @@ var sampleRequests = map[string]struct {
 	"declineForget":        {path: "/v2/memories/" + sampleID + ":decline-forget"},
 	"previewForget":        {path: "/v2/memories/M-0001/forget-preview?space=memax-v2"},
 	"getTombstone":         {path: "/v2/memories/M-0001/tombstone?space=memax-v2"},
+	"getStaleReport":       {path: "/v2/memories/M-0001/stale?space=memax-v2"},
+	"verifyMemory":         {path: "/v2/memories/M-0001:verify?space=memax-v2", body: `{"answer":"still_true"}`, header: map[string]string{"If-Match": `"1"`}},
 	"listTombstones":       {path: "/v2/spaces/memax-v2/tombstones?limit=5"},
 	"listNotices":          {path: "/v2/notices"},
 	"ackNotices":           {path: "/v2/notices:ack", body: `{"ids":["` + sampleID + `"]}`},

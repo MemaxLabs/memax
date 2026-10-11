@@ -68,6 +68,7 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     conflictAsked: "{agent} 在等你拿主意。",
     stale: "它的来源在 {date} 变了",
     staleSource: "它的来源在 {date} 变了 · {source}",
+    staleDate: "到了该再核对一次的日子",
     merged: "已由 {name} 合并进 {ref}",
     faded: "已经 {n} 天没有 Agent 读过它了。可以恢复，也可以就这样放着。",
   },
@@ -109,6 +110,7 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
     answer: "{ref} 没回答上。",
     withdraw: "{ref} 没撤回成。",
     forget: "{ref} 没忘记成。",
+    verify: "{ref} 没核对成。",
     declineForget: "{ref} 没保留上。",
     scope: "{ref} 的适用范围没有改。",
     carriesChanged:
@@ -160,6 +162,8 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
         "问题只能由真人回答。用你自己的账号登录，别用 Agent 的密钥。",
       not_your_gate:
         "只有提问的 Agent、它所属的人，或者能回答的人，才能撤回这个问题。",
+      verify_by_person:
+        "只有真人能核对它。用你自己的账号登录，别用 Agent 的密钥。",
       space_on_v1:
         "{space} 还在 V1 上，切换到 V2 之前这里什么都不会改动。所有者可以在它的今天页切换。",
       other: "Memax 没接受：{message}",
@@ -195,6 +199,8 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
       editKeep: "已撤销编辑和保留。{ref} 回到了审阅。",
       resolve: "已撤销这次裁定。{ref} 作为冲突回到了审阅。",
       fold: "已取消合并 {ref}。它回到了审阅。",
+      verify: "已撤销核对。{ref} 又标成过时了。",
+      verifyUpdate: "已撤销更新。{ref} 恢复了原来的说法，又标成过时了。",
       remember: "已撤销记住 {ref}。它已撤回。",
     },
     refused: {

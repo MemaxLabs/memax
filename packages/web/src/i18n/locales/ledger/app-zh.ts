@@ -391,6 +391,8 @@ export const ledgerAppZh: Translations["ledger"]["app"] = {
       "memory.forget": "忘记",
       "today.review": "开始审阅（今天页）",
       "dream.resolve": "处理冲突（Dream 晨报页）",
+      "verify.choose": "选现在哪个是对的（核对过时的事实）",
+      "verify.answer": "回答（核对过时的事实）",
       "memories.remember": "记住（记忆页）",
       "command.keep": "保留回答（提问时）或简报的修改",
       "review.stopWaiting": "不再等检查（审阅时）",

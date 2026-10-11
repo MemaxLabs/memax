@@ -27,6 +27,7 @@ import { editionHref, gateHref, placeHref } from "@/lib/v2/places";
 import { GateRow } from "../../_components/gate-row";
 import { StatementText } from "../../_components/statement-text";
 import { TargetRow } from "../../_components/target-row";
+import { useOverlays } from "../../_lib/overlays";
 import type { RecordsView } from "../records-view";
 import styles from "./today.module.css";
 
@@ -109,7 +110,8 @@ export function TodayDream({
 
 /**
  * "Waiting on you": the questions agents asked first (each opens in
- * Review), then a few of Review's items, then "N more in Review".
+ * Review), then a few of Review's items, then "N more in Review". A
+ * stale fact offers Verify over its rail (VerifyStale).
  */
 export function WaitingPanel({
   view,
@@ -123,6 +125,7 @@ export function WaitingPanel({
   const waiting = data.waiting;
   const picked = pickToday(waiting.gates, waiting.items);
   const shown = picked.items;
+  const { openVerify } = useOverlays();
   const more = Math.max(
     0,
     waiting.total - picked.gates.length - picked.items.length,
@@ -195,6 +198,17 @@ export function WaitingPanel({
                   note
                     ? noteText(rc, note, agentName, timeZone, locale)
                     : undefined
+                }
+                actions={
+                  item.state === "stale" ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => openVerify(item.ref)}
+                    >
+                      {l.review.flag.verify}
+                    </Button>
+                  ) : undefined
                 }
               >
                 <StatementText text={item.statement} />

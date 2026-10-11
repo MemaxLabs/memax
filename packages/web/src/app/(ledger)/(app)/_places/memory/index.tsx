@@ -116,6 +116,13 @@ function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {
     enabled: edit.mode.kind === "view" && !forgotten && !forget.confirming,
   });
   useHotkey("memory.cite", () => void cite(), { enabled: !forgotten });
+  const { openVerify } = useOverlays();
+  useHotkey("memory.verify", () => openVerify(record.ref), {
+    enabled:
+      record.state === "stale" &&
+      edit.mode.kind === "view" &&
+      !forget.confirming,
+  });
 
   const mode = edit.mode;
 
@@ -181,6 +188,7 @@ function Memory({ view, record }: { view: RecordsView; record: MemoryRecord }) {
         forget={forget}
         onEdit={() => edit.start()}
         onCite={() => void cite()}
+        onVerify={() => openVerify(record.ref)}
       />
     );
   }

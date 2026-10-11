@@ -64,6 +64,9 @@ import type {
   ForgetCarry,
   ForgetInput,
   ForgetPreview,
+  StaleReport,
+  VerifyInput,
+  VerifyResult,
   ForgetRequestResult,
   ForgetResult,
   NoticeList,
@@ -753,6 +756,42 @@ export class V2MemoriesResource {
       query: { space: opts.space },
       body: input,
       extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Why a memory is stale, for VerifyStale: its words and the version to
+   * send as `ifMatch`, the receipt that flagged it, its latest keep and the
+   * reads since, and the typed causes. `stale: false` once someone answered
+   * it. What a Forget would do is {@link previewForget}.
+   */
+  async stale(ref: string, opts?: GetMemoryOptions): Promise<StaleReport> {
+    return this.req("GET", `/v2/memories/${seg(ref)}/stale`, {
+      query: { space: opts?.space },
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Answer a stale flag. `still_true` clears it with a `verified` receipt;
+   * `update` writes `input.statement` (`edited`) and then `verified`. A date
+   * to check again that passed moves to `input.stale_after`, or goes. Both
+   * are undoable by you, within 10 minutes. `forget` is {@link forget}, with
+   * `input.carries` and `input.note`, and its result has the tombstone.
+   * `opts.ifMatch` is the version you checked. Only a person who may keep
+   * verifies; agents and API keys get a MemaxError `refused`
+   * (`verify_by_person`).
+   */
+  async verify(
+    ref: string,
+    input: VerifyInput,
+    opts: EditOptions,
+  ): Promise<VerifyResult> {
+    return this.req("POST", `/v2/memories/${seg(ref)}:verify`, {
+      query: { space: opts.space },
+      body: input,
+      extraHeaders: commandHeaders(opts, opts.ifMatch),
       signal: opts.signal,
     });
   }

@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Field, MemoryList, Segmented } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
+import { useHotkey } from "@/lib/v2/keymap/react";
 import type { MemoryFilter, MemoryListItem } from "@/lib/v2/data/memories";
 import type { Section } from "@/lib/v2/data/types";
 import { PlaceSkeleton } from "../../_components/skeleton";
 import { PlaceError } from "../../_components/status";
+import { useOverlays } from "../../_lib/overlays";
 import { useMemoriesList } from "../../_lib/records";
 import { NotYetButton } from "../place";
 import type { RecordsView } from "../records-view";
@@ -78,6 +80,19 @@ export function Record({
     const row = fresh ? rows.current.get(fresh.ref) : undefined;
     row?.querySelector<HTMLElement>(".mx-row-link")?.focus();
   }, [items, list.isFetchingNextPage]);
+
+  // V on a stale row (the row's link has focus) opens VerifyStale.
+  const { openVerify } = useOverlays();
+  useHotkey("memory.verify", () => {
+    const active = document.activeElement;
+    for (const [ref, el] of rows.current) {
+      if (!el.contains(active)) continue;
+      if (items.find((item) => item.ref === ref)?.state !== "stale") break;
+      openVerify(ref);
+      return;
+    }
+    return false;
+  });
 
   const loadMore = () => {
     before.current = new Set(items.map((item) => item.ref));

@@ -169,7 +169,7 @@ func (l *Ledger) bulkItems(cmds []Command, out []BulkResult) (CommandName, Meta,
 		} else if !sameEnvelope(shared, m) {
 			return "", Meta{}, nil, false
 		}
-		if err := validateCommand(cmd); err != nil {
+		if err := validateCommand(cmd, now); err != nil {
 			out[i].Err = err
 			continue
 		}

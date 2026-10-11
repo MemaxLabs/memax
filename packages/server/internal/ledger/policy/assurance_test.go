@@ -81,6 +81,12 @@ func TestPasskeyReCheck(t *testing.T) {
 			ok, ok, ok, ok, ok},
 		{"restore a faded quarantined memory", func(a Actor) Decision { return Decide(a, ActionRestore, keptExt, project) },
 			nudge, check, ok, want{EffectRefuse, CodeExternalNeedsReview, false}, want{EffectRefuse, CodeExternalNeedsReview, false}},
+		{"verify a team decision", func(a Actor) Decision { return Decide(a, ActionVerify, keptDec, team) },
+			nudge, check, ok, want{EffectRefuse, CodeDecisionNeedsWeb, false}, want{EffectRefuse, CodeDecisionNeedsWeb, false}},
+		{"verify a quarantined memory", func(a Actor) Decision { return Decide(a, ActionVerify, keptExt, project) },
+			nudge, check, ok, want{EffectRefuse, CodeExternalNeedsReview, false}, want{EffectRefuse, CodeExternalNeedsReview, false}},
+		{"verify a project fact", func(a Actor) Decision { return Decide(a, ActionVerify, kept, project) },
+			ok, ok, ok, ok, ok},
 		{"forget a team decision", func(a Actor) Decision { return Decide(a, ActionForget, keptDec, team) },
 			nudge, check, ok, want{EffectRefuse, CodeDecisionNeedsWeb, false}, want{EffectRefuse, CodeDecisionNeedsWeb, false}},
 		{"raise an agent", func(a Actor) Decision {

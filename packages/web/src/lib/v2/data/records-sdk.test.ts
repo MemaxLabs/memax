@@ -134,8 +134,33 @@ describe("mapping /v2 records", () => {
     });
     expect(listItemOf(stale, receipts, ME).note).toEqual({
       kind: "stale",
+      cause: "source",
       changedAt: "2026-10-05T10:12:00Z",
       source: "PR #198",
+    });
+    // Dream's date flag cites its edition: the note says the date passed,
+    // not that a source changed.
+    const byDate = new Map([
+      ["r1", receipt()],
+      ["r9", { ...flagged, source: { kind: "dream", ref: "D-0214" } }],
+    ]);
+    expect(listItemOf(stale, byDate, ME).note).toEqual({
+      kind: "stale",
+      cause: "date",
+      changedAt: "2026-10-05T10:12:00Z",
+      source: null,
+    });
+    // Behind another receipt (an undone verification), the date still says it.
+    const undone = memory({
+      state: "stale",
+      lifecycle: "kept",
+      flags: ["stale"],
+      stale_after: "2026-10-01T00:00:00Z",
+      last_receipt_id: "r1",
+    });
+    expect(listItemOf(undone, byDate, ME).note).toMatchObject({
+      kind: "stale",
+      cause: "date",
     });
   });
 

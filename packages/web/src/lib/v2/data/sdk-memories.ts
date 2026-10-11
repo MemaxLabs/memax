@@ -8,14 +8,16 @@ import type {
 import { previewOf, tombstoneOf } from "./sdk-forget";
 import { foldUndo, recordOf, undoneIn } from "./sdk-record";
 import { actorOf, listItemOf, receiptsFor, type V2Client } from "./sdk-records";
+import { staleWhyOf, verifyBody, verifyResultOf } from "./sdk-verify";
 import { reachesTarget } from "./targets";
 import { targetsOrNull } from "./targets-sdk";
 
 /**
  * Memories through memax.v2: the list (GET /v2/spaces/{space}/memories,
  * newest first, cursor-paged), one memory (GET /v2/memories/{ref}), edit
- * with If-Match, and Forget: its preview, the Forget itself, Keep it
- * instead of an agent's request, and the tombstone. A memory's page has its reads and reach: the
+ * with If-Match, Verify (why it's stale, and the answer), and Forget: its
+ * preview, the Forget itself, Keep it instead of an agent's request, and
+ * the tombstone. A memory's page has its reads and reach: the
  * agents from its reads, the files from the compile targets. Section
  * counts and totals aren't served yet (PLACEHOLDER: null), and search
  * is the page's own (it filters what's loaded) until /v2 has one.
@@ -204,6 +206,36 @@ export function createSdkMemories(
         idempotencyKey,
       });
       return { ref: result.memory.ref };
+    },
+
+    async stale({ space, ref, signal }) {
+      try {
+        return staleWhyOf(
+          await client.v2.memories.stale(ref, { space: space.slug, signal }),
+          viewerId(),
+        );
+      } catch (err) {
+        if (isNotFound(err)) return null;
+        throw err;
+      }
+    },
+
+    async verify({
+      space,
+      ref,
+      version,
+      answer,
+      statement,
+      carries,
+      note,
+      idempotencyKey,
+    }) {
+      const result = await client.v2.memories.verify(
+        ref,
+        verifyBody({ answer, statement, carries, note }),
+        { space: space.slug, ifMatch: version, idempotencyKey },
+      );
+      return verifyResultOf(answer, result);
     },
 
     async declineForget({ space, ref, idempotencyKey }) {

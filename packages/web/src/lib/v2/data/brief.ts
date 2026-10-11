@@ -11,6 +11,7 @@
  * proposals waiting in each section (italic, until a person keeps them).
  * No words live here.
  */
+import type { StaleCauseKind } from "./memories";
 import type { Actor, RecordAction } from "./records";
 import type { Section, SpaceSummary } from "./types";
 
@@ -63,6 +64,8 @@ export interface BriefRow {
   scope: string[];
   /** The words the latest version changed, highlighted; null when unknown. */
   changed: string | null;
+  /** Why a stale line is stale ("source changed", "date passed"); null when unknown. */
+  staleCause?: StaleCauseKind | null;
 }
 
 export interface BriefSectionView {

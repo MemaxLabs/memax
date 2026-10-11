@@ -22,7 +22,15 @@ export type ControlRequest =
   | { cmd: "status" }
   | { cmd: "stop" }
   | { cmd: "reload" }
-  | { cmd: "wake"; space?: string };
+  | { cmd: "wake"; space?: string }
+  /**
+   * Take the Personal layer off this machine now: `unlinked` (the server
+   * answered memax unlink --home; home.json goes too) or `signed_out`
+   * (memax logout; home.json stays, so memax login puts it back).
+   */
+  | { cmd: "home_off"; reason: HomeOffReason };
+
+export type HomeOffReason = "unlinked" | "signed_out";
 
 export type ControlHandler = (req: ControlRequest) => Promise<unknown>;
 

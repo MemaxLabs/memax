@@ -1,12 +1,16 @@
 // memax link / memax unlink: tie a working copy to a V2 space, so the
-// daemon writes the space's compiled files into it.
+// daemon writes the space's compiled files into it. With --home, this
+// machine's home instead: the Personal space in the agents' own files
+// (link-home.ts).
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import chalk from "chalk";
 import type { Command } from "commander";
 import type { Memax, V2 } from "memax-sdk";
 import { getClient } from "../lib/client.js";
+import { getOrCreateDeviceID } from "../lib/config.js";
 import { controlRequest } from "../lib/daemon/control.js";
 import { daemonPaths, type DaemonPaths } from "../lib/daemon/paths.js";
 import { linkRepo, unlinkRepo } from "../lib/daemon/registry.js";
@@ -18,11 +22,18 @@ import {
 } from "../lib/project-context.js";
 import { confirmDefault } from "../lib/prompt.js";
 import { resolveSpace, SpaceChoiceError } from "../lib/v2-space.js";
+import { openOneShot } from "./compile.js";
+import { linkHome, unlinkHome } from "./link-home.js";
 import { apiFailureMessage, tildify } from "./v2-output.js";
 
 export interface LinkOptions {
   space?: string;
   yes?: boolean;
+  /** This machine's home, not the repository (memax link --home). */
+  home?: boolean;
+  name?: string;
+  dryRun?: boolean;
+  timeout?: string;
 }
 
 export interface LinkDeps {
@@ -223,10 +234,48 @@ export function registerLinkCommands(program: Command): void {
     )
     .option(
       "-y, --yes",
-      "Let Memax manage one block in a CLAUDE.md you already have",
+      "Don't ask: let Memax manage one block in a CLAUDE.md you already have, or link this machine's home",
+    )
+    .option(
+      "--home",
+      "Link this machine's home instead: your Personal space in your agents' own files",
+    )
+    .option("--name <machine>", "With --home: what to call this machine")
+    .option("--dry-run", "With --home: say what it would write, and stop")
+    .option(
+      "--timeout <seconds>",
+      "With --home: how long to wait for the first files",
+      "30",
     )
     .action(async (opts: LinkOptions) => {
       try {
+        if (opts.home) {
+          if (opts.space) {
+            console.error(
+              chalk.red(
+                "  memax link --home links your Personal space; leave out --space.",
+              ),
+            );
+            process.exitCode = 2;
+            return;
+          }
+          const memax = getClient();
+          const paths = daemonPaths();
+          process.exitCode = await linkHome(opts, {
+            memax,
+            paths,
+            cwd: process.cwd(),
+            out: (l) => console.log(l),
+            interactive: !!process.stdin.isTTY && !!process.stdout.isTTY,
+            home: realpathSync(homedir()),
+            env: process.env,
+            platform: process.platform,
+            deviceId: getOrCreateDeviceID(),
+            confirm: confirmDefault,
+            oneShot: () => openOneShot({ memax, paths }),
+          });
+          return;
+        }
         process.exitCode = await link(opts, {
           memax: getClient(),
           paths: daemonPaths(),
@@ -249,7 +298,27 @@ export function registerLinkCommands(program: Command): void {
     .description(
       "Stop writing compiled files into this repository (the files stay)",
     )
-    .action(async () => {
+    .option(
+      "--home",
+      "Take your Personal space off this machine's home: Memax's files and blocks come out",
+    )
+    .action(async (opts: { home?: boolean }) => {
+      if (opts.home) {
+        const memax = getClient();
+        const paths = daemonPaths();
+        try {
+          process.exitCode = await unlinkHome({
+            memax,
+            paths,
+            out: (l) => console.log(l),
+            oneShot: () => openOneShot({ memax, paths }),
+          });
+        } catch (err) {
+          console.error(chalk.red(`  ${apiFailureMessage(err)}`));
+          process.exitCode = 1;
+        }
+        return;
+      }
       process.exitCode = await unlink({
         paths: daemonPaths(),
         cwd: process.cwd(),

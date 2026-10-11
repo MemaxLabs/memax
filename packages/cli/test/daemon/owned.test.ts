@@ -39,7 +39,7 @@ describe("a user-owned CLAUDE.md", () => {
     const d = h.daemon();
     await d.syncOnce();
 
-    // Insert: appended after a blank line, in the file's own line endings.
+    // Insert: appended right after its last line, in its own line endings.
     const inserted = read();
     expect(inserted.startsWith(BEFORE)).toBe(true);
     expect(blockOf(inserted)).toBe(
@@ -153,7 +153,7 @@ describe("a target that stops compiling", () => {
     await d.syncOnce();
     expect(read()).toBe(
       mine +
-        ["", "<!-- memax:start -->", ...SHIM_1, "<!-- memax:end -->", ""].join(
+        ["<!-- memax:start -->", ...SHIM_1, "<!-- memax:end -->", ""].join(
           "\n",
         ),
     );

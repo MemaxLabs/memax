@@ -31,6 +31,33 @@ let scopedAgentID = "";
 let fetchImpl: typeof globalThis.fetch | undefined;
 let rateLimitRetries: number | undefined;
 
+/** The server refused this machine's refresh token: its session is over. */
+export interface SignedOut {
+  /** The refusal's code: session_revoked, expired_token, invalid_token. */
+  code: string;
+}
+
+const signedOutListeners = new Set<(s: SignedOut) => void>();
+
+/**
+ * Calls `fn` whenever a refresh is refused for good: the session was
+ * signed out (Settings › Account, sign out everywhere, Forget your
+ * account) or its refresh token is past its 30 days. Every such answer
+ * is a 401 from /v1/auth/refresh. A network error, a 5xx or a 429 says
+ * nothing about the session and never calls it. The daemon takes the
+ * Personal layer off this machine on it (personal-layer design §6.6).
+ * Returns the unsubscribe.
+ */
+export function onSignedOut(fn: (s: SignedOut) => void): () => void {
+  signedOutListeners.add(fn);
+  return () => signedOutListeners.delete(fn);
+}
+
+function refreshRefused(err: unknown): SignedOut | null {
+  const e = err as { status?: number; code?: string };
+  return e?.status === 401 ? { code: e.code ?? "session_revoked" } : null;
+}
+
 /** Get the shared SDK client instance (lazily created) */
 export function getClient(): Memax {
   if (!instance) {
@@ -154,9 +181,11 @@ async function cliAuthProvider(): Promise<Record<string, string>> {
         });
         return { Authorization: `Bearer ${tokens.access_token}` };
       }
-    } catch {
+    } catch (err) {
       // Refresh failed (offline, or the session was signed out) — fall
       // through to the stale token; the API's 401 says to log in again.
+      const refused = refreshRefused(err);
+      if (refused) for (const fn of signedOutListeners) fn(refused);
     }
   }
 

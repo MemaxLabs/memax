@@ -1,18 +1,33 @@
 // The daemon: one feed per linked space, one RepoDelivery and watcher per
-// linked repository, the control socket, the pid file and the state file.
+// linked repository, and, when this machine's home is linked, one more of
+// each for its home files (a feed of this machine's targets alone); the
+// control socket, the pid file and the state file.
 import { watch, type FSWatcher } from "node:fs";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { failureOf, type DaemonApi } from "./api.js";
 import { LoadReporter } from "./loads.js";
-import { ControlServer, type ControlRequest } from "./control.js";
+import {
+  ControlServer,
+  type ControlRequest,
+  type HomeOffReason,
+} from "./control.js";
 import { PollingFeed, type Cadence, type TargetFeed } from "./feed.js";
 import type { FsHooks } from "./fs-atomic.js";
+import {
+  homeLinkStamp,
+  readHomeLink,
+  removeHomeLink,
+  type HomeFile,
+  type HomeLink,
+} from "./home-link.js";
+import { homeBlockFile, homePlace } from "./home-place.js";
 import type { Logger } from "./log.js";
+import type { OffTarget } from "./off.js";
 import { ensureDaemonDir, type DaemonPaths } from "./paths.js";
 import { readRegistry, registryStamp, type LinkedRepo } from "./registry.js";
 import { RepoDelivery } from "./repo.js";
-import type { DaemonSnapshot } from "./snapshot.js";
+import type { DaemonSnapshot, HomeSnapshot } from "./snapshot.js";
 import { DeviceState } from "./state.js";
 import { RepoWatcher, type WatchOptions } from "./watch.js";
 import { WarmCache } from "./warm.js";
@@ -46,6 +61,29 @@ interface Space {
   lastError?: string;
 }
 
+/** This machine's home link: its own delivery, watcher and feed. */
+interface Home {
+  link: HomeLink;
+  delivery: RepoDelivery;
+  watcher: RepoWatcher;
+  feed: TargetFeed;
+  lastError?: string;
+  /** The layer is off because this machine was signed out. */
+  signedOut: boolean;
+}
+
+/** A home file as home.json has it, for taking it off without a poll. */
+function offTarget(f: HomeFile): OffTarget {
+  return {
+    id: f.target_id,
+    kind: f.kind,
+    path: f.path,
+    root: "home",
+    label: `~/${f.path}`,
+    settings: { user_owned: homeBlockFile(f.kind, f.path) },
+  };
+}
+
 export class Daemon {
   readonly state: DeviceState;
   /** The session-start hook's cache: compiles, forgets and gates per space. */
@@ -53,7 +91,9 @@ export class Daemon {
   private readonly loads: LoadReporter;
   private repos = new Map<string, Repo>();
   private spaces = new Map<string, Space>();
+  private home: Home | null = null;
   private stamp = "";
+  private homeStamp = "";
   private dirWatch: FSWatcher | null = null;
   private control: ControlServer | null = null;
   private running = false;
@@ -86,7 +126,12 @@ export class Daemon {
         this.o.paths.dir,
         { persistent: false },
         (_e, name) => {
-          if (!name || String(name) === basename(this.o.paths.repos))
+          const file = name ? String(name) : "";
+          if (
+            !file ||
+            file === basename(this.o.paths.repos) ||
+            file === basename(this.o.paths.home)
+          )
             this.reload();
         },
       );
@@ -101,6 +146,7 @@ export class Daemon {
       pid: process.pid,
       version: this.o.version,
       repos: this.repos.size,
+      home: this.home !== null,
     });
   }
 
@@ -114,6 +160,8 @@ export class Daemon {
       case "wake":
         this.wake(req.space);
         return {};
+      case "home_off":
+        return this.homeOff(req.reason);
       case "stop":
         setImmediate(() => void this.stop().then(() => this.o.onStopped?.()));
         return { pid: process.pid };
@@ -122,6 +170,7 @@ export class Daemon {
 
   /** Re-reads the registry and adds or drops repositories and spaces. */
   reload(): void {
+    this.reloadHome();
     const stamp = registryStamp(this.o.paths);
     if (stamp === this.stamp) return;
     this.stamp = stamp;
@@ -170,6 +219,165 @@ export class Daemon {
       root: link.root,
       space: link.space_slug,
     });
+  }
+
+  /** Re-reads home.json: adds, replaces or drops the home link. */
+  private reloadHome(): void {
+    const stamp = homeLinkStamp(this.o.paths);
+    if (stamp === this.homeStamp) return;
+    this.homeStamp = stamp;
+    const link = readHomeLink(this.o.paths);
+    if (this.home && JSON.stringify(this.home.link) !== JSON.stringify(link))
+      this.dropHome();
+    if (link && !this.home) this.addHome(link);
+  }
+
+  private addHome(link: HomeLink): void {
+    let watcher: RepoWatcher | null = null;
+    const delivery = new RepoDelivery(
+      {
+        root: link.home,
+        space_id: link.space_id,
+        space_slug: link.space_slug,
+        created_at: link.created_at,
+      },
+      {
+        api: this.o.api,
+        state: this.state,
+        log: this.o.log,
+        deviceId: this.o.deviceId,
+        hooks: this.o.hooks,
+        recheck: (p) => watcher?.touch(p),
+        place: homePlace(link),
+      },
+    );
+    watcher = new RepoWatcher(
+      link.home,
+      (p) => void delivery.check(p),
+      this.o.log,
+      this.o.watch,
+    );
+    const home: Home = {
+      link,
+      delivery,
+      watcher,
+      signedOut: false,
+      feed: new PollingFeed(
+        {
+          fetch: (signal) =>
+            this.o.api.machineTargets(link.space_id, link.machine_id, signal),
+          probe: (signal) => this.o.api.changeToken(link.space_id, signal),
+          onTargets: async (targets) => {
+            this.reload();
+            if (this.home !== home) return { busy: false };
+            if (home.lastError || home.signedOut) {
+              this.o.log.info("reached the Personal space again", {
+                space: link.space_slug,
+              });
+            }
+            home.lastError = undefined;
+            home.signedOut = false;
+            delivery.setError(undefined);
+            const r = await delivery.sync(targets);
+            watcher!.setPaths(delivery.trackedPaths());
+            return r;
+          },
+          onError: (err, retryInMs) => {
+            if (this.home !== home) return;
+            const f = failureOf(err);
+            const message = errorMessage(f.status, f.code, link.space_slug);
+            delivery.setError(message);
+            if (home.lastError !== message) {
+              home.lastError = message;
+              this.o.log.warn("can't reach the Personal space", {
+                space: link.space_slug,
+                code: f.code,
+                status: f.status,
+                retry_s: Math.round(retryInMs / 1000),
+              });
+            }
+          },
+        },
+        this.o.cadence,
+      ),
+    };
+    this.home = home;
+    if (this.running) {
+      home.feed.start();
+      watcher.start();
+    }
+    home.feed.wake();
+    this.o.log.info("writing this machine's home files", {
+      space: link.space_slug,
+      files: link.files.length,
+    });
+  }
+
+  private dropHome(): void {
+    const home = this.home;
+    if (!home) return;
+    this.home = null;
+    home.watcher.stop();
+    home.delivery.stop();
+    void home.feed.stop();
+    this.o.log.info("stopped writing this machine's home files", {
+      space: home.link.space_slug,
+    });
+  }
+
+  /**
+   * Takes the Personal layer off this machine now (personal-layer design
+   * §6.6), from what this device wrote and nothing else: no request, so it
+   * works signed out. Files and blocks with hand edits stay. `unlinked`
+   * also removes home.json; `signed_out` keeps it, so the next successful
+   * poll, after memax login, writes everything again.
+   */
+  async homeOff(reason: HomeOffReason): Promise<HomeSnapshot | null> {
+    this.reloadHome();
+    const home = this.home;
+    if (!home) return null;
+    if (reason === "signed_out") home.signedOut = true;
+    const results = await home.delivery.takeOff(home.link.files.map(offTarget));
+    this.o.log.info(
+      reason === "unlinked"
+        ? "took the Personal layer off this machine: it was unlinked"
+        : "took the Personal layer off this machine: it was signed out",
+      {
+        removed: results.filter((r) => r.state.endsWith("_removed")).length,
+        kept: results.filter((r) => r.state.endsWith("_kept")).length,
+      },
+    );
+    const snap = this.homeSnapshot(home);
+    if (reason === "unlinked") {
+      removeHomeLink(this.o.paths);
+      this.homeStamp = homeLinkStamp(this.o.paths);
+      this.dropHome();
+    }
+    this.state.flush();
+    return snap;
+  }
+
+  /**
+   * The server refused this machine's refresh token (lib/client.ts
+   * onSignedOut): take the layer off, once, until a poll succeeds again.
+   * Transient failures never get here.
+   */
+  signedOut(): void {
+    if (!this.home || this.home.signedOut) return;
+    this.home.signedOut = true;
+    void this.homeOff("signed_out").catch((err: Error) =>
+      this.o.log.error("couldn't take the Personal layer off", {
+        error: err.message,
+      }),
+    );
+  }
+
+  private homeSnapshot(home: Home): HomeSnapshot {
+    return {
+      ...home.delivery.snapshot(),
+      machine_id: home.link.machine_id,
+      ...(home.signedOut ? { signed_out: true } : {}),
+    };
   }
 
   private dropRepo(root: string, forget: boolean): void {
@@ -242,6 +450,14 @@ export class Daemon {
       if (!spaceIdOrSlug || id === spaceIdOrSlug || s.slug === spaceIdOrSlug)
         s.feed.wake();
     }
+    const home = this.home?.link;
+    if (
+      home &&
+      (!spaceIdOrSlug ||
+        home.space_id === spaceIdOrSlug ||
+        home.space_slug === spaceIdOrSlug)
+    )
+      this.home?.feed.wake();
   }
 
   /**
@@ -270,13 +486,31 @@ export class Daemon {
             ?.delivery.setError(errorMessage(f.status, f.code, space.slug));
       }
     }
+    const home = this.home;
+    if (home && (!only || only === home.link.space_id)) {
+      try {
+        const targets = await this.o.api.machineTargets(
+          home.link.space_id,
+          home.link.machine_id,
+        );
+        home.signedOut = false;
+        home.delivery.setError(undefined);
+        await home.delivery.sync(targets);
+      } catch (err) {
+        const f = failureOf(err);
+        home.delivery.setError(
+          errorMessage(f.status, f.code, home.link.space_slug),
+        );
+      }
+    }
     this.warm.flush();
     return this.snapshot();
   }
 
   /** Checks one file now, as a watcher event would (tests). */
   async checkFile(root: string, path: string): Promise<void> {
-    await this.repos.get(root)?.delivery.check(path);
+    const home = this.home?.link.home === root ? this.home : undefined;
+    await (home ?? this.repos.get(root))?.delivery.check(path);
   }
 
   snapshot(): DaemonSnapshot {
@@ -289,6 +523,7 @@ export class Daemon {
       repos: [...this.repos.values()]
         .map((r) => r.delivery.snapshot())
         .sort((a, b) => a.root.localeCompare(b.root)),
+      ...(this.home ? { home: this.homeSnapshot(this.home) } : {}),
     };
   }
 
@@ -301,14 +536,19 @@ export class Daemon {
     this.running = false;
     this.dirWatch?.close();
     await Promise.all([...this.spaces.values()].map((s) => s.feed.stop()));
+    await this.home?.feed.stop();
     await this.loads.stop();
     await this.warm.stop();
-    for (const r of this.repos.values()) {
+    for (const r of [
+      ...this.repos.values(),
+      ...(this.home ? [this.home] : []),
+    ]) {
       r.watcher.stop();
       r.delivery.stop();
     }
     // Let a delivery that is writing finish its file before the state is saved.
     await Promise.all([...this.repos.values()].map((r) => r.delivery.idle()));
+    await this.home?.delivery.idle();
     this.state.flush();
     if (this.control) {
       // The pid file first, then the socket: once nothing answers, no pid

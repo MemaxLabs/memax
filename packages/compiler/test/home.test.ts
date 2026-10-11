@@ -127,7 +127,7 @@ describe("the home kinds", () => {
       ),
     ).files[0];
     expect(claude.user_owned).toBe(true);
-    expect(claude.content.startsWith(`${mine}\n${MANAGED_START}\n`)).toBe(true);
+    expect(claude.content.startsWith(`${mine}${MANAGED_START}\n`)).toBe(true);
     expect(isDrifted(claude.drift_sha256, `${claude.content}more\n`)).toBe(
       false,
     );
@@ -422,7 +422,7 @@ describe("the golden personal space", () => {
     expect(override).not.toContain("Persistent Memory");
     expect(
       file(r, ".claude/CLAUDE.md").content.startsWith(
-        "# Me\r\n\r\nI use vim keybindings.\r\n\r\n",
+        "# Me\r\n\r\nI use vim keybindings.\r\n<!-- memax:start -->\r\n",
       ),
     ).toBe(true);
   });

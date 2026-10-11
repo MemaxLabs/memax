@@ -8,9 +8,9 @@
     {
       "path": ".claude/CLAUDE.md",
       "target": "claude_user",
-      "bytes": 1182,
-      "lines": 30,
-      "sha256": "8b65082216456aaa5d2787129cc651c7d06134ee845ee3269123b31935e161db",
+      "bytes": 1180,
+      "lines": 29,
+      "sha256": "f758f6cd36dd5d6adc11d15470a98c9637b12decaa8aa7c90d89384916aa27a1",
       "refs": [
         "M-0101",
         "M-0102",

@@ -129,6 +129,16 @@ export type ForgetCarry = Schemas["ForgetCarry"];
 /** An agent's request that a person forget a memory. */
 export type ForgetRequestRecord = Schemas["ForgetRequestRecord"];
 export type ForgetRequestResult = Schemas["ForgetRequestResult"];
+
+// Verify (plan 25 §5.9): a person's answer to a stale flag
+/** still_true, update or forget. */
+export type VerifyAnswer = Schemas["VerifyAnswer"];
+/** What Verify did: the receipts, and the tombstone for forget. */
+export type VerifyResult = Schemas["VerifyResult"];
+/** Why a memory is stale: the flag's receipt, the causes, the keep before. */
+export type StaleReport = Schemas["StaleReport"];
+/** One typed reason a memory is stale (a date that passed, for now). */
+export type StaleCause = Schemas["StaleCause"];
 /** Something an agent is told once: a memory or a space it read was forgotten. */
 export type Notice = Schemas["Notice"];
 export type NoticeList = Schemas["NoticeList"];
@@ -256,6 +266,7 @@ export type WithdrawGateInput = Schemas["ReviewRequest"];
 /** A session start's report of the compile its agent loaded. */
 export type CompileLoadInput = Schemas["CompileLoadRequest"];
 export type ForgetInput = Schemas["ForgetRequest"];
+export type VerifyInput = Schemas["VerifyRequest"];
 export type AckNoticesInput = Schemas["AckNoticesRequest"];
 export type CreateSpaceInput = Schemas["CreateSpaceRequest"];
 

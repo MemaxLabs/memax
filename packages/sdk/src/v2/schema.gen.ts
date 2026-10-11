@@ -1248,6 +1248,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/memories/{ref}/stale": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Why a memory is stale
+         * @description What VerifyStale shows before a person answers: the words and the
+         *     version to send as `If-Match`, whether it is flagged now (`stale`),
+         *     the receipt that flagged it, its latest keep or verification and
+         *     how often agents read it since that day, and the causes, each typed
+         *     so it can be said in any language (a date that passed, for now). It
+         *     never holds file contents. What a Forget would do is
+         *     `/forget-preview`. A memory nobody flagged, or that someone verified
+         *     since, answers `stale: false` with no causes.
+         */
+        get: operations["getStaleReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/memories/{ref}:verify": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer a stale flag
+         * @description A person's answer to a stale flag (rule 10: stale is a state, and
+         *     Verify clears it). `still_true` writes `verified`, whose source names
+         *     what flagged it (`{kind: date | check | commit | pr}`), and the flag
+         *     clears. `update` writes `edited` with the new `statement` and then
+         *     `verified`. Either way a date to check again that has passed moves to
+         *     `stale_after`, or goes when none is sent: memories don't expire, and
+         *     a compiled file marks anything past its date as being verified. Every
+         *     target recompiles. Both are undoable as one command, by the same
+         *     person, within 10 minutes (`:undo` on either receipt). `forget` is
+         *     Forget itself, with every one of its rules (send `carries` and
+         *     `note` as for `:forget`); its result has the tombstone.
+         *
+         *     It follows Keep's rules: a person who may keep in the space; agents
+         *     and API keys are refused (`verify_by_person`), and so are viewers. A
+         *     decision in a space whose decisions need a person on the web, and a
+         *     quarantined memory, need the web (D15) and the passkey re-check.
+         *     `If-Match` is required: the version you checked. A memory that isn't
+         *     stale is 409 `invalid_transition` for `still_true` and `update`.
+         */
+        post: operations["verifyMemory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/receipts/{receipt}:undo": {
         parameters: {
             query?: never;
@@ -3039,7 +3121,9 @@ export interface components {
          *     merged (a duplicate proposal), flagged (a conflict or a stale fact),
          *     faded and revised (the Brief), each citing the edition (`source: {kind:
          *     dream, ref: D-0214}`); undoing one writes undid; restoring a faded
-         *     memory writes restored. Switching to V2 writes noted on the space (its
+         *     memory writes restored. A person's Verify of a stale memory writes
+         *     verified (after edited, for an update), its source naming what
+         *     flagged it (`{kind: date, ref: 2026-10-01}`). Switching to V2 writes noted on the space (its
          *     V1 content numbered as notes) and switched once it is on the V2
          *     record; switching back writes switched_back. A note's Forget writes
          *     forgot on the note (`object_kind: note`). A machine's (`machine`,
@@ -3087,7 +3171,9 @@ export interface components {
          *     MCP; Ask answers people), ask_limit (the plan's asks this month are
          *     used up; `details.limit` and `details.resets_at` say how many and
          *     when they start again). A refused export: export_by_person (only a
-         *     signed-in person exports a space). Refused changes to
+         *     signed-in person exports a space). Verify: verify_by_person (agents
+         *     and API keys don't verify: refused on `:verify`, and an agent's edit
+         *     of a stale memory is sent to Review with it). Refused changes to
          *     agents: person_must_manage (only a person changes what an agent may
          *     do), not_your_agent, autonomy_not_allowed, key_max_propose,
          *     autonomy_needs_web (raising an agent needs a person on the web).
@@ -3125,7 +3211,7 @@ export interface components {
          *     needs a sign-in in the last few minutes, or your passkey).
          * @enum {string}
          */
-        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "space_on_v1" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "machines_by_person" | "machines_personal" | "machines_by_owner" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
+        PolicyCode: "unknown_actor" | "unknown_action" | "secret_detected" | "not_member" | "read_only" | "key_read_only" | "key_cannot_review" | "key_cannot_forget" | "person_must_review" | "person_must_forget" | "forget_not_allowed" | "external_needs_review" | "proposal_in_review" | "agent_not_connected" | "agent_paused" | "person_must_manage" | "not_your_agent" | "autonomy_not_allowed" | "key_max_propose" | "autonomy_needs_web" | "brief_by_person" | "targets_by_person" | "compile_by_memax" | "judge_by_memax" | "undo_by_decider" | "space_on_v1" | "gate_by_agent" | "person_must_answer" | "gate_limit" | "not_your_gate" | "forget_by_person" | "ask_by_person" | "ask_limit" | "export_by_person" | "verify_by_person" | "viewer" | "owners_keep" | "decision_needs_web" | "api_key" | "external_source" | "contradicts_decision" | "touches_decision" | "edits_person_kept" | "autonomy_propose" | "integration" | "import" | "system_proposes" | "repository" | "person_proposed" | "judge_pending" | "confirm_in_agent" | "space_by_person" | "space_kind" | "space_limit" | "switch_by_owner" | "dream_by_dream" | "dream_run_by_owner" | "device_by_person" | "device_needs_web" | "session_by_person" | "session_needs_web" | "machines_by_person" | "machines_personal" | "machines_by_owner" | "needs_passkey" | "account_by_person" | "account_needs_web" | "needs_sign_in";
         /** @enum {string} */
         ErrorCode: "invalid_request" | "idempotency_key_required" | "space_required" | "ambiguous_ref" | "unauthorized" | "refused" | "permission_denied" | "impersonation_read_only" | "surface_unverified" | "not_found" | "method_not_allowed" | "invalid_transition" | "in_conflict" | "undo_refused" | "edit_clash" | "idempotency_key_reused" | "precondition_required" | "rate_limited" | "internal_error" | "busy" | "judge_pending" | "unavailable" | "forget_carries" | "slug_taken" | "space_kind" | "needs_passkey" | "passkey_invalid";
         /**
@@ -4832,6 +4918,84 @@ export interface components {
             /** @description The memories forgotten with it. */
             memories: components["schemas"]["Memory"][];
         };
+        /**
+         * @description A person's answer to a stale flag. still_true: it is still true, as
+         *     it is. update: it is true with new words. forget: it isn't true;
+         *     forget it (Forget's rules).
+         * @enum {string}
+         */
+        VerifyAnswer: "still_true" | "update" | "forget";
+        /** @description The body of `:verify`. */
+        VerifyRequest: {
+            answer: components["schemas"]["VerifyAnswer"];
+            /** @description The new words, for `update` (and only for it). */
+            statement?: string;
+            /**
+             * @description When to check it again, in the future, for `still_true` and
+             *     `update`. Without it a date that has passed goes.
+             */
+            stale_after?: components["schemas"]["Timestamp"];
+            /** @description For `forget`, the display IDs that go with it, exactly as `forget_carries` or the preview listed them. */
+            carries?: components["schemas"]["MemoryDisplayRef"][];
+            /** @description For `forget`, your note on the tombstone. It stays, so don't repeat the words. */
+            note?: string;
+            /** @description For `still_true` and `update`, why; it goes on the `verified` receipt. */
+            reason?: components["schemas"]["Reason"];
+            /** @description When it happened on the client; offline queues keep the original time. */
+            occurred_at?: components["schemas"]["Timestamp"];
+            session_ref?: components["schemas"]["SessionRef"];
+        };
+        VerifyResult: {
+            outcome: components["schemas"]["Outcome"];
+            policy: components["schemas"]["PolicyDecision"];
+            /** @description The memory after the answer (for forget, without words). */
+            memory: components["schemas"]["Memory"];
+            /** @description The receipts the answer wrote, oldest first (`edited` then `verified` for an update). */
+            receipts: components["schemas"]["Receipt"][];
+            /** @description For forget, what Forget did. */
+            tombstone?: components["schemas"]["Tombstone"];
+            /** @description For forget, the memories forgotten with it. */
+            memories?: components["schemas"]["Memory"][];
+        };
+        /**
+         * @description Why a memory is stale, typed so a screen can say it in any language.
+         *     It never holds file contents. date: its date to check again passed.
+         */
+        StaleCause: components["schemas"]["StaleDateCause"];
+        /** @description Its date to check again passed. */
+        StaleDateCause: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "date";
+            /** @description The date that passed. */
+            stale_after: components["schemas"]["Timestamp"];
+        };
+        /** @description Why a memory is stale, for VerifyStale. */
+        StaleReport: {
+            memory_id: components["schemas"]["Id"];
+            ref: components["schemas"]["DisplayRef"];
+            space_id: components["schemas"]["Id"];
+            /** @description The statement's version; send it as `If-Match`. */
+            version: number;
+            /** @description The words being verified. Empty once forgotten. */
+            statement: string;
+            kind: components["schemas"]["MemoryKind"];
+            state: components["schemas"]["State"];
+            /** @description Whether it is flagged now. False when someone answered it since. */
+            stale: boolean;
+            /** @description Its date to check again, if it has one. */
+            stale_after?: components["schemas"]["Timestamp"];
+            /** @description The receipt that set the flag (by Dream for a date, by Memax for a check). */
+            flagged?: components["schemas"]["Receipt"];
+            /** @description Its latest keep or verification. */
+            kept?: components["schemas"]["Receipt"];
+            /** @description Agents' reads of it since the day of `kept` (directly, or in a compile that held it). */
+            reads_since: number;
+            /** @description Why it is stale now; empty when it isn't. */
+            causes: components["schemas"]["StaleCause"][];
+        };
         /** @description What a Forget of a memory would do, before anyone confirms it. */
         ForgetPreview: {
             ref: components["schemas"]["DisplayRef"];
@@ -6014,6 +6178,12 @@ export interface components {
         };
         ForgetResultEnvelope: {
             data: components["schemas"]["ForgetResult"];
+        };
+        VerifyResultEnvelope: {
+            data: components["schemas"]["VerifyResult"];
+        };
+        StaleReportEnvelope: {
+            data: components["schemas"]["StaleReport"];
         };
         TombstoneEnvelope: {
             data: components["schemas"]["Tombstone"];
@@ -8522,6 +8692,114 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    getStaleReport: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Why it is stale. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaleReportEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    verifyMemory: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description The `ETag` (memory version) you started from, e.g. `"3"`. */
+                "If-Match": components["parameters"]["IfMatch"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
+            };
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Verified, updated or forgotten. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    "Idempotent-Replayed": components["headers"]["IdempotentReplayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyResultEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["ForgetConflict"];
+            412: components["responses"]["EditClash"];
+            422: components["responses"]["IdempotencyKeyReused"];
+            428: components["responses"]["PreconditionRequired"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

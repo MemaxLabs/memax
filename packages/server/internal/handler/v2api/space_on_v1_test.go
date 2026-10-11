@@ -205,6 +205,16 @@ var refusedOnV1 = map[string]func(f *v1Fixture) call{
 		return call{method: "PATCH", path: "/v2/machines/" + f.machine.String(), token: f.tok,
 			header: map[string]string{"If-Match": `"1"`}, body: map[string]any{"name": "Work laptop"}}
 	},
+	"verifyMemory": func(f *v1Fixture) call {
+		var stale memory
+		for _, a := range f.edition.Actions {
+			if a.Kind == "stale" && a.Memory != nil {
+				stale = *a.Memory
+			}
+		}
+		return call{method: "POST", path: memoryPath(stale, ":verify"), token: f.tok, header: map[string]string{"If-Match": `"1"`},
+			body: map[string]any{"answer": "still_true"}}
+	},
 }
 
 // bulkOnV1 are the refused commands that act on many things at once: they

@@ -154,6 +154,8 @@ var routes = []Route{
 	{"POST", "/v2/memories/{ref}:decline-forget", "declineForget", (*Handler).declineForget},
 	{"GET", "/v2/memories/{ref}/forget-preview", "previewForget", (*Handler).previewForget},
 	{"GET", "/v2/memories/{ref}/tombstone", "getTombstone", (*Handler).getTombstone},
+	{"GET", "/v2/memories/{ref}/stale", "getStaleReport", (*Handler).getStaleReport},
+	{"POST", "/v2/memories/{ref}:verify", "verifyMemory", (*Handler).verifyMemory},
 	{"GET", "/v2/spaces/{space}/tombstones", "listTombstones", (*Handler).listTombstones},
 	{"POST", "/v2/receipts/{receipt}:undo", "undoReceipt", (*Handler).undoReceipt},
 	{"GET", "/v2/agents", "listAgents", (*Handler).listAgents},

@@ -2178,6 +2178,121 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /v2/memories/{ref}/stale:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    get:
+      operationId: getStaleReport
+      tags: [memories]
+      summary: Why a memory is stale
+      description: |
+        What VerifyStale shows before a person answers: the words and the
+        version to send as `If-Match`, whether it is flagged now (`stale`),
+        the receipt that flagged it, its latest keep or verification and
+        how often agents read it since that day, and the causes, each typed
+        so it can be said in any language (a date that passed, for now). It
+        never holds file contents. What a Forget would do is
+        `/forget-preview`. A memory nobody flagged, or that someone verified
+        since, answers `stale: false` with no causes.
+      responses:
+        '200':
+          description: Why it is stale.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaleReportEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/memories/{ref}:verify:
+    parameters:
+      - $ref: '#/components/parameters/RefPath'
+      - $ref: '#/components/parameters/SpaceContext'
+    post:
+      operationId: verifyMemory
+      tags: [memories]
+      summary: Answer a stale flag
+      description: |
+        A person's answer to a stale flag (rule 10: stale is a state, and
+        Verify clears it). `still_true` writes `verified`, whose source names
+        what flagged it (`{kind: date | check | commit | pr}`), and the flag
+        clears. `update` writes `edited` with the new `statement` and then
+        `verified`. Either way a date to check again that has passed moves to
+        `stale_after`, or goes when none is sent: memories don't expire, and
+        a compiled file marks anything past its date as being verified. Every
+        target recompiles. Both are undoable as one command, by the same
+        person, within 10 minutes (`:undo` on either receipt). `forget` is
+        Forget itself, with every one of its rules (send `carries` and
+        `note` as for `:forget`); its result has the tombstone.
+
+        It follows Keep's rules: a person who may keep in the space; agents
+        and API keys are refused (`verify_by_person`), and so are viewers. A
+        decision in a space whose decisions need a person on the web, and a
+        quarantined memory, need the web (D15) and the passkey re-check.
+        `If-Match` is required: the version you checked. A memory that isn't
+        stale is 409 `invalid_transition` for `still_true` and `update`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/Via'
+        - $ref: '#/components/parameters/PasskeyAssertion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyRequest'
+      responses:
+        '200':
+          description: Verified, updated or forgotten.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResultEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ForgetConflict'
+        '412':
+          $ref: '#/components/responses/EditClash'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
   /v2/receipts/{receipt}:undo:
     parameters:
       - $ref: '#/components/parameters/ReceiptPath'
@@ -5570,7 +5685,9 @@ components:
         merged (a duplicate proposal), flagged (a conflict or a stale fact),
         faded and revised (the Brief), each citing the edition (`source: {kind:
         dream, ref: D-0214}`); undoing one writes undid; restoring a faded
-        memory writes restored. Switching to V2 writes noted on the space (its
+        memory writes restored. A person's Verify of a stale memory writes
+        verified (after edited, for an update), its source naming what
+        flagged it (`{kind: date, ref: 2026-10-01}`). Switching to V2 writes noted on the space (its
         V1 content numbered as notes) and switched once it is on the V2
         record; switching back writes switched_back. A note's Forget writes
         forgot on the note (`object_kind: note`). A machine's (`machine`,
@@ -5667,7 +5784,9 @@ components:
         MCP; Ask answers people), ask_limit (the plan's asks this month are
         used up; `details.limit` and `details.resets_at` say how many and
         when they start again). A refused export: export_by_person (only a
-        signed-in person exports a space). Refused changes to
+        signed-in person exports a space). Verify: verify_by_person (agents
+        and API keys don't verify: refused on `:verify`, and an agent's edit
+        of a stale memory is sent to Review with it). Refused changes to
         agents: person_must_manage (only a person changes what an agent may
         do), not_your_agent, autonomy_not_allowed, key_max_propose,
         autonomy_needs_web (raising an agent needs a person on the web).
@@ -5739,6 +5858,7 @@ components:
         - ask_by_person
         - ask_limit
         - export_by_person
+        - verify_by_person
         - viewer
         - owners_keep
         - decision_needs_web
@@ -9212,6 +9332,147 @@ components:
           items:
             $ref: '#/components/schemas/Memory'
 
+    VerifyAnswer:
+      description: |
+        A person's answer to a stale flag. still_true: it is still true, as
+        it is. update: it is true with new words. forget: it isn't true;
+        forget it (Forget's rules).
+      type: string
+      enum: [still_true, update, forget]
+
+    VerifyRequest:
+      description: The body of `:verify`.
+      type: object
+      additionalProperties: false
+      required: [answer]
+      properties:
+        answer:
+          $ref: '#/components/schemas/VerifyAnswer'
+        statement:
+          description: The new words, for `update` (and only for it).
+          type: string
+          minLength: 1
+          maxLength: 2000
+        stale_after:
+          description: |
+            When to check it again, in the future, for `still_true` and
+            `update`. Without it a date that has passed goes.
+          $ref: '#/components/schemas/Timestamp'
+        carries:
+          description: For `forget`, the display IDs that go with it, exactly as `forget_carries` or the preview listed them.
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/MemoryDisplayRef'
+        note:
+          description: For `forget`, your note on the tombstone. It stays, so don't repeat the words.
+          type: string
+          maxLength: 500
+        reason:
+          description: For `still_true` and `update`, why; it goes on the `verified` receipt.
+          $ref: '#/components/schemas/Reason'
+        occurred_at:
+          description: When it happened on the client; offline queues keep the original time.
+          $ref: '#/components/schemas/Timestamp'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+
+    VerifyResult:
+      type: object
+      additionalProperties: false
+      required: [outcome, policy, memory, receipts]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        policy:
+          $ref: '#/components/schemas/PolicyDecision'
+        memory:
+          description: The memory after the answer (for forget, without words).
+          $ref: '#/components/schemas/Memory'
+        receipts:
+          description: The receipts the answer wrote, oldest first (`edited` then `verified` for an update).
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Receipt'
+        tombstone:
+          description: For forget, what Forget did.
+          $ref: '#/components/schemas/Tombstone'
+        memories:
+          description: For forget, the memories forgotten with it.
+          type: array
+          items:
+            $ref: '#/components/schemas/Memory'
+
+    StaleCause:
+      description: |
+        Why a memory is stale, typed so a screen can say it in any language.
+        It never holds file contents. date: its date to check again passed.
+      oneOf:
+        - $ref: '#/components/schemas/StaleDateCause'
+      discriminator:
+        propertyName: kind
+        mapping:
+          date: '#/components/schemas/StaleDateCause'
+
+    StaleDateCause:
+      description: Its date to check again passed.
+      type: object
+      additionalProperties: false
+      required: [kind, stale_after]
+      properties:
+        kind:
+          const: date
+        stale_after:
+          description: The date that passed.
+          $ref: '#/components/schemas/Timestamp'
+
+    StaleReport:
+      description: Why a memory is stale, for VerifyStale.
+      type: object
+      additionalProperties: false
+      required: [memory_id, ref, space_id, version, statement, kind, state, stale, reads_since, causes]
+      properties:
+        memory_id:
+          $ref: '#/components/schemas/Id'
+        ref:
+          $ref: '#/components/schemas/DisplayRef'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        version:
+          description: The statement's version; send it as `If-Match`.
+          type: integer
+          minimum: 1
+        statement:
+          description: The words being verified. Empty once forgotten.
+          type: string
+          maxLength: 2000
+        kind:
+          $ref: '#/components/schemas/MemoryKind'
+        state:
+          $ref: '#/components/schemas/State'
+        stale:
+          description: Whether it is flagged now. False when someone answered it since.
+          type: boolean
+        stale_after:
+          description: Its date to check again, if it has one.
+          $ref: '#/components/schemas/Timestamp'
+        flagged:
+          description: The receipt that set the flag (by Dream for a date, by Memax for a check).
+          $ref: '#/components/schemas/Receipt'
+        kept:
+          description: Its latest keep or verification.
+          $ref: '#/components/schemas/Receipt'
+        reads_since:
+          description: Agents' reads of it since the day of `kept` (directly, or in a compile that held it).
+          type: integer
+          minimum: 0
+        causes:
+          description: Why it is stale now; empty when it isn't.
+          type: array
+          items:
+            $ref: '#/components/schemas/StaleCause'
+
     ForgetPreview:
       description: What a Forget of a memory would do, before anyone confirms it.
       type: object
@@ -11449,6 +11710,22 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/ForgetResult'
+
+    VerifyResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/VerifyResult'
+
+    StaleReportEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/StaleReport'
 
     TombstoneEnvelope:
       type: object

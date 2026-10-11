@@ -41,7 +41,10 @@ type apiRig struct {
 	tok       string
 	mu        sync.Mutex
 	proposals []string
-	seq       int
+	// stale are kept memories past their date to check again, flagged as
+	// Dream flags them, for Verify to answer.
+	stale []string
+	seq   int
 }
 
 func newAPIRig(t *testing.T, o testdb.Options) *apiRig {
@@ -92,6 +95,16 @@ func newAPIRig(t *testing.T, o testdb.Options) *apiRig {
 	if res, err := e.ledger.Apply(ctx, &ledger.ConfigureTarget{Meta: meta(), SpaceID: sp.id, Kind: ledger.TargetAgentsMD}); err != nil || res.Target == nil {
 		t.Fatalf("configure target: %v %+v", err, res.Policy)
 	}
+	past := time.Now().Add(-24 * time.Hour)
+	for i := range 60 {
+		res, err := e.ledger.Apply(ctx, &ledger.Remember{Meta: meta(), NewMemory: ledger.NewMemory{SpaceID: sp.id,
+			Statement: fmt.Sprintf("Staging tokens rotate every %d days.", i+1), Section: ledger.SectionConventions, StaleAfter: &past}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.flag(memory{ID: res.Memory.ID, Ref: res.Memory.Ref, SpaceID: sp.id}, "stale")
+		r.stale = append(r.stale, res.Memory.Ref)
+	}
 	key, _ := e.apiKey(zz, keyOpts{agent: "codex"})
 	for i := range 150 {
 		res := e.remember(key, sp, fmt.Sprintf("Proposed by Codex: rotate the staging token every %d days.", i+1))
@@ -138,6 +151,17 @@ func (r *apiRig) nextProposal(t *testing.T) string {
 	return ref
 }
 
+func (r *apiRig) nextStale(t *testing.T) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.stale) < 2 {
+		t.Fatal("out of stale memories to verify")
+	}
+	ref := r.stale[len(r.stale)-1]
+	r.stale = r.stale[:len(r.stale)-1]
+	return ref
+}
+
 func (r *apiRig) ops() []apiOp {
 	slug := r.sp.slug
 	return []apiOp{
@@ -157,6 +181,16 @@ func (r *apiRig) ops() []apiOp {
 			start := time.Now()
 			r.e.do(call{method: "POST", path: "/v2/spaces/" + slug + "/memories", token: r.tok, ctx: ctx,
 				body: remember(fmt.Sprintf("Releases are cut on day %d of the sprint.", r.seq), "conventions")}).ok(http.StatusCreated, nil)
+			return time.Since(start)
+		}},
+		// The stale report reads the first stale memory, which Verify never
+		// answers here.
+		{"/v2 stale report", r.get("/v2/memories/" + r.stale[0] + "/stale?space=" + slug)},
+		{"/v2 Verify (+ jobs)", func(t *testing.T, ctx context.Context) time.Duration {
+			ref := r.nextStale(t)
+			start := time.Now()
+			r.e.do(call{method: "POST", path: "/v2/memories/" + ref + ":verify?space=" + slug, token: r.tok, ctx: ctx,
+				header: map[string]string{"If-Match": `"1"`}, body: map[string]any{"answer": "still_true"}}).ok(http.StatusOK, nil)
 			return time.Since(start)
 		}},
 		{"/v2 Ask, to the sources event", func(t *testing.T, ctx context.Context) time.Duration {
@@ -223,6 +257,8 @@ func TestAPILatency(t *testing.T) {
 		"/v2 Brief":                     300 * time.Millisecond,
 		"/v2 Keep (+ jobs)":             500 * time.Millisecond,
 		"/v2 Remember (+ jobs)":         500 * time.Millisecond,
+		"/v2 stale report":              300 * time.Millisecond,
+		"/v2 Verify (+ jobs)":           500 * time.Millisecond,
 		"/v2 Ask, to the sources event": 300 * time.Millisecond,
 	}
 	aims := map[string]time.Duration{"/v2 Keep (+ jobs)": 200 * time.Millisecond}
@@ -268,6 +304,9 @@ func TestAPIRoundTrips(t *testing.T) {
 	// traffic nearly every one sends it. Keep was 16 and Remember 13 until
 	// the ref resolved in the locking statement, the space's read went with
 	// the idempotency claim, and Keep's target bump with its undo read.
+	// The stale report is the auth's two reads and one ReadBatch; Verify
+	// (still true) is Keep's path with the stale flag's read for the
+	// receipt's source, and River's notification like Keep's.
 	budgets := map[string]int{
 		"/v2 memory list":               5,
 		"/v2 memory get":                11,
@@ -275,6 +314,8 @@ func TestAPIRoundTrips(t *testing.T) {
 		"/v2 Brief":                     5,
 		"/v2 Keep (+ jobs)":             13,
 		"/v2 Remember (+ jobs)":         12,
+		"/v2 stale report":              3,
+		"/v2 Verify (+ jobs)":           11,
 		"/v2 Ask, to the sources event": 9,
 	}
 	for _, op := range r.ops() {

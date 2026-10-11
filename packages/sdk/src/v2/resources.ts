@@ -17,6 +17,8 @@ import type {
   PasskeySignIn,
   PublicKeyCredentialJSON,
   AgentCommandInput,
+  CloudAgentResult,
+  CreateCloudAgentInput,
   AskEvent,
   AskInput,
   AgentCommandResult,
@@ -1075,6 +1077,43 @@ export class V2AgentsResource {
     opts: CommandOptions,
   ): Promise<AgentCommandResult> {
     return this.command(agent, "disconnect", input, opts);
+  }
+
+  /**
+   * Connect a cloud agent (Claude Code's cloud sessions, Copilot's cloud
+   * agent, Codex Cloud) to one project or team space, with a start key:
+   * a key that only starts its sessions there (`sessionStarts.start`), at
+   * Read, for 180 days. `result.key.secret` is shown once and never
+   * stored: give it to the agent as a secret (`MEMAX_START_KEY`), never
+   * commit it. A retry with the same key answers without it. Only a person
+   * makes one; `autonomy: "propose"` needs them on the web.
+   */
+  async connectCloud(
+    input: CreateCloudAgentInput,
+    opts: CommandOptions,
+  ): Promise<CloudAgentResult> {
+    return this.req("POST", "/v2/cloud-agents", {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+
+  /**
+   * Give a cloud agent a new start key under the same connection: the old
+   * one stops working at once, and the new one's secret is in the result,
+   * once. Only the person the agent works for.
+   */
+  async rekey(
+    agent: string,
+    input: AgentCommandInput,
+    opts: CommandOptions,
+  ): Promise<CloudAgentResult> {
+    return this.req("POST", `/v2/agents/${seg(agent)}:rekey`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
   }
 
   private async command(

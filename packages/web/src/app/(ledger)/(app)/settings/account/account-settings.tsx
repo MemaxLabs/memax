@@ -10,6 +10,7 @@ import { PlaceSkeleton } from "../../_components/skeleton";
 import { useToast } from "../../_components/toasts";
 import { ThemeControl } from "../../../_components/theme-control";
 import { ForgetAccountPanel } from "./forget-account";
+import { MachinesSection } from "./machines-section";
 import { ProfilePanel } from "./profile-panel";
 import { SessionsPanel } from "./sessions-panel";
 import { SignInPanel } from "./sign-in-panel";
@@ -18,8 +19,9 @@ import { SignInPanel } from "./sign-in-panel";
  * Settings › Account (Account.png, plan §5.15, epic 2.6): Profile (the
  * name receipts show, the email sign-in codes go to, Dream's time zone,
  * this device's language), Sign in with (GitHub, Google, passkeys),
- * Signed in on (every session, with sign-out), and the danger zone,
- * forgetting the account. The theme is this device's, beside the title.
+ * Signed in on (every session, with sign-out), the machines Personal is
+ * written to, and the danger zone, forgetting the account. The theme is
+ * this device's, beside the title.
  *
  * Coming back from a provider's page, `?account_linked=` or
  * `?account_link_error=` says how linking went.
@@ -106,6 +108,7 @@ export function AccountSettings() {
         addRequested={params?.get("add") === "passkey"}
       />
       <SessionsPanel />
+      <MachinesSection />
       <ForgetAccountPanel account={account.data} />
     </>
   );

@@ -1,0 +1,153 @@
+/* A Personal space's machines (machines-panel.tsx, machine-row.tsx), in
+ * the rows of Account.dc.html's "Signed in on": icon, who, when, actions.
+ * In a side panel the actions go under the name; in Settings, at the end. */
+
+.row {
+  display: grid;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 8px;
+  min-height: 52px;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row > :global(.mx-icon) {
+  grid-area: icon;
+  align-self: start;
+  margin-top: 1px;
+  color: var(--ink-3);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.full {
+  grid-template-columns: 16px minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "icon who seen actions"
+    ". confirm confirm confirm";
+}
+
+.side {
+  grid-template-columns: 16px minmax(0, 1fr);
+  grid-template-areas:
+    "icon who"
+    ". actions"
+    ". confirm";
+}
+
+.who {
+  grid-area: who;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name {
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+/* .mx-meta's size without its tabular figures (account.module.css .quiet). */
+.seen {
+  grid-area: seen;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.actions {
+  grid-area: actions;
+  justify-self: end;
+}
+
+.side .actions {
+  justify-self: start;
+  margin-left: -8px;
+}
+
+/* Stop compiling here, asked in place: a vermilion wash, the sentence, the choice. */
+.stopping {
+  background: var(--vermilion-wash);
+}
+
+.stopping .actions {
+  display: none;
+}
+
+.confirm {
+  grid-area: confirm;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.confirm p {
+  margin: 0;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+/* An unlinked machine: quieter, with how to link it again. */
+.unlinked .name {
+  color: var(--ink-2);
+}
+
+.again {
+  grid-area: confirm;
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+.side .again {
+  grid-area: actions;
+}
+
+/* Rename, in place: the name's field, then Cancel and Rename. */
+.editing {
+  grid-template-columns: 16px minmax(0, 1fr);
+  grid-template-areas: "icon form";
+}
+
+.form {
+  grid-area: form;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}

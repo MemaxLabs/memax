@@ -4,8 +4,10 @@ import { Button, Icon } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
 import { lastUsedText, sessionIcon, sessionLabel } from "@/lib/v2/account-copy";
 import type { SessionView } from "@/lib/v2/data/account";
+import { machineName } from "@/lib/v2/data/machines";
 import { useAccountCommands, useSessions } from "../../_lib/account";
 import { useSource } from "../../_lib/data";
+import { useMachines, usePersonalSpace } from "../../_lib/machines";
 import { useToast } from "../../_components/toasts";
 import { usePlace } from "../../_places/place";
 import styles from "./account.module.css";
@@ -24,6 +26,12 @@ export function SessionsPanel() {
   const toast = useToast();
   const source = useSource();
   const { timeZone } = usePlace();
+  // The CLI sessions whose daemon writes Personal (design §8): signing
+  // one out takes the layer off that machine.
+  const personal = usePersonalSpace();
+  const machines = useMachines(personal).data ?? [];
+  const writer = (s: SessionView) =>
+    machines.find((m) => m.linked && m.sessionId === s.id);
   const list = sessions.data ?? [];
   const others = list.filter((s) => !s.current);
   // This session first, then the most recently used.
@@ -35,12 +43,17 @@ export function SessionsPanel() {
 
   const signOut = async (s: SessionView) => {
     const out = await commands.signOut(s.id);
+    const client = sessionLabel(t.ledger.account, s).label;
+    const machine = writer(s);
     toast({
-      text: out.ok
-        ? interpolate(copy.signedOut, {
-            client: sessionLabel(t.ledger.account, s).label,
-          })
-        : copy.failed,
+      text: !out.ok
+        ? copy.failed
+        : machine
+          ? interpolate(t.ledger.machines.session.signedOut, {
+              client,
+              machine: machineName(machine, machines),
+            })
+          : interpolate(copy.signedOut, { client }),
     });
   };
 
@@ -91,12 +104,19 @@ export function SessionsPanel() {
       ) : null}
       {ordered.map((s) => {
         const { label, meta } = sessionLabel(t.ledger.account, s);
+        const writes = writer(s);
         return (
           <div className={styles.row} key={s.id}>
             <Icon name={sessionIcon(s)} />
             <span className={styles.name}>
               {label}
               {meta ? <span className="mx-meta"> · {meta}</span> : null}
+              {writes ? (
+                <span className={styles.quiet}>
+                  {" "}
+                  · {t.ledger.machines.session.writes}
+                </span>
+              ) : null}
             </span>
             <span className={styles.quiet}>
               {s.current

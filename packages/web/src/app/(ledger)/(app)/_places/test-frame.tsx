@@ -16,8 +16,13 @@ import { SpaceViewContext } from "../_lib/space-context";
  * toasts and memax-v2's overview. Test-only; no app code imports it.
  */
 export const TEST_SPACE = DEMO_SPACES.find((s) => s.slug === "memax-v2")!;
+/** The demo's Personal space: written to two machines (demo-machines-data.ts). */
+export const PERSONAL_SPACE = DEMO_SPACES.find((s) => s.slug === "personal")!;
 
-export function renderPlace(children: ReactNode): void {
+export function renderPlace(
+  children: ReactNode,
+  { space = TEST_SPACE }: { space?: typeof TEST_SPACE } = {},
+): void {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -31,8 +36,8 @@ export function renderPlace(children: ReactNode): void {
                 <OverlayProvider>
                   <SpaceViewContext
                     value={{
-                      space: TEST_SPACE,
-                      overview: DEMO_OVERVIEWS["memax-v2"],
+                      space,
+                      overview: DEMO_OVERVIEWS[space.slug],
                       overviewFailed: false,
                       retryOverview: () => {},
                     }}

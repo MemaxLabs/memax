@@ -22,13 +22,9 @@ import {
   type Judgement,
   type Plan,
 } from "./plan.js";
+import type { Place } from "./place.js";
 import type { HandEditReporter } from "./report.js";
-import {
-  ensureParents,
-  outputRefusal,
-  resolveInRepo,
-  UnsafePathError,
-} from "./safe-path.js";
+import { UnsafePathError } from "./safe-path.js";
 import type { FileSnapshot, LocalState } from "./snapshot.js";
 import type { DeviceState } from "./state.js";
 
@@ -37,7 +33,10 @@ export interface DeliverDeps {
   state: DeviceState;
   log: Logger;
   deviceId: string;
+  /** The place's root: where files go, and the key of its state. */
   root: string;
+  /** Which files the target may write here, and how (place.ts). */
+  place: Place;
   known: KnownCompiles;
   reporter: HandEditReporter;
   hooks?: FsHooks;
@@ -51,17 +50,30 @@ export interface DeliverResult {
   retry?: boolean;
 }
 
-export function userOwned(t: V2.Target): boolean {
-  return (
-    (t.kind === "claude_md" || t.kind === "gemini_md") &&
-    t.settings.user_owned === true
-  );
+/** The kinds whose file can be the person's, with one Memax block in it. */
+const BLOCK_KINDS: ReadonlySet<V2.TargetKind> = new Set([
+  "claude_md",
+  "gemini_md",
+  "claude_user",
+  "codex_user",
+]);
+
+/**
+ * Whether the person owns the file and Memax manages one block in it: a
+ * CLAUDE.md or GEMINI.md they keep, Codex's AGENTS.md at home, or the
+ * ~/.claude/CLAUDE.md fallback (the server sets user_owned for those).
+ */
+export function userOwned(t: {
+  kind: V2.TargetKind;
+  settings: Pick<V2.TargetSettings, "user_owned">;
+}): boolean {
+  return BLOCK_KINDS.has(t.kind) && t.settings.user_owned === true;
 }
 
 /** The drift hashes Memax is known to have put at `path`, without asking. */
 export function knownHashes(
   d: DeliverDeps,
-  t: V2.Target,
+  t: Pick<V2.Target, "id" | "delivered" | "last_compile">,
   path: string,
 ): Set<string> {
   const set = new Set(d.state.written(d.root, t.id, path));
@@ -83,6 +95,9 @@ export function hasBaseline(
   t: V2.Target,
   path: string,
 ): boolean {
+  // Memax took its version back out (a stopped target, an unlinked or
+  // signed-out machine): the next delivery adds it afresh.
+  if (d.state.peek(d.root, t.id)?.files[path]?.taken_out_at) return false;
   return (
     d.state.written(d.root, t.id, path).length > 0 ||
     (t.delivered?.files ?? []).some((f) => f.path === path)
@@ -147,7 +162,7 @@ export async function deliverRun(
   }
   const files: Planned[] = [];
   for (const out of p.files) {
-    const refusal = out.path ? outputRefusal(t, out.path) : "has no path";
+    const refusal = out.path ? d.place.refusal(t, out.path) : "has no path";
     if (refusal) {
       d.log.error("refused a compiled file", {
         target: t.label,
@@ -157,9 +172,15 @@ export async function deliverRun(
       return blocked(`${out.path ?? "a file"} ${refusal}`);
     }
     const path = out.path!;
+    // At home: the agent's folder gone, a dotfiles repository, a link.
+    const now = await d.place.unwritable(t, path);
+    if (now) {
+      d.log.warn("left a file alone", { target: t.label, path, reason: now });
+      return blocked(now);
+    }
     let abs: string;
     try {
-      abs = await resolveInRepo(d.root, path);
+      abs = await d.place.resolve(path);
     } catch (err) {
       if (!(err instanceof UnsafePathError)) throw err;
       d.log.error("refused a path outside the repository", {
@@ -245,9 +266,11 @@ export async function deliverRun(
   let written = 0;
   for (const f of files) {
     if (f.plan.kind !== "write") continue;
-    await ensureParents(d.root, f.out.path);
+    await d.place.ensureParents(f.out.path);
     const r = await commitWrite(f.abs, f.plan.content, f.plan.expect, {
-      mode: f.plan.mode,
+      mode:
+        f.plan.mode ??
+        (f.disk.kind === "absent" ? d.place.newFileMode : undefined),
       hooks: d.hooks,
     });
     if (r === "changed") {
@@ -271,7 +294,14 @@ export async function deliverRun(
         retry: true,
       };
     }
-    d.state.wrote(d.root, t.id, f.out.path, f.out.drift_sha256);
+    d.state.wrote(
+      d.root,
+      t.id,
+      f.out.path,
+      f.out.drift_sha256,
+      new Date(),
+      f.disk.kind === "absent",
+    );
     written++;
   }
   await removeDropped(d, t, new Set(files.map((f) => f.out.path)));
@@ -331,10 +361,10 @@ async function removeDropped(
     ...(t.delivered?.files ?? []).map((f) => f.path),
   ]);
   for (const path of before) {
-    if (current.has(path) || outputRefusal(t, path)) continue;
+    if (current.has(path) || d.place.refusal(t, path)) continue;
     let abs: string;
     try {
-      abs = await resolveInRepo(d.root, path);
+      abs = await d.place.resolve(path);
     } catch {
       continue;
     }

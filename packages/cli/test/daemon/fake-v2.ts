@@ -49,6 +49,13 @@ const DEFAULT_PATH: Partial<Record<V2.TargetKind, string>> = {
   cursor_mdc: ".cursor/rules",
 };
 
+/** A home file's own path, as the ledger defaults it (DefaultPath). */
+const HOME_PATH: Partial<Record<V2.TargetKind, string>> = {
+  agents_md: ".memax/personal/AGENTS.md",
+  claude_user: ".claude/rules/memax-personal.md",
+  codex_user: ".codex/AGENTS.md",
+};
+
 /** The server's ManifestSHA256. */
 export function manifest(entries: Record<string, string>): string {
   const keys = Object.keys(entries).sort();
@@ -72,6 +79,7 @@ export class FakeV2 {
   readonly spaces: V2.Space[] = [];
   readonly targets = new Map<string, Entry>();
   readonly agents: V2.AgentConnection[] = [];
+  readonly machines: V2.Machine[] = [];
   /**
    * More routes, tried before the built-in ones (memax init's tests add
    * spaces, imports, bulk review and the Brief: test/init/fake-init.ts).
@@ -133,6 +141,11 @@ export class FakeV2 {
     this.faults.push({ match: path, status, code, times, headers });
   }
 
+  /** Every injected failure ends (a person signs in again, say). */
+  clearFaults(): void {
+    this.faults.length = 0;
+  }
+
   addSpace(slug: string, name = slug): V2.Space {
     const space: V2.Space = {
       id: randomUUID(),
@@ -144,6 +157,76 @@ export class FakeV2 {
     };
     this.spaces.push(space);
     return space;
+  }
+
+  /** The person's Personal space, on the V2 record. */
+  addPersonalSpace(slug = "personal", name = "Personal"): V2.Space {
+    const space = this.addSpace(slug, name);
+    space.kind = "personal";
+    space.v2_enabled_at = now();
+    return space;
+  }
+
+  /** A machine linked to a personal space, as LinkMachine writes it. */
+  addMachine(
+    space: V2.Space,
+    deviceId: string = randomUUID(),
+    name = "work-mbp",
+  ): V2.Machine {
+    const n = this.machines.filter((m) => m.space_id === space.id).length + 1;
+    const m: V2.Machine = {
+      id: randomUUID(),
+      space_id: space.id,
+      label: `machine-${n}`,
+      name,
+      platform: "darwin",
+      device_id: deviceId,
+      linked: true,
+      linked_at: now(),
+      version: 1,
+      created_receipt_id: randomUUID(),
+      last_receipt_id: randomUUID(),
+      created_at: now(),
+      updated_at: now(),
+    };
+    this.machines.push(m);
+    this.receipts++;
+    return m;
+  }
+
+  /** A machine's home file: `root: home`, user-owned by its path. */
+  addHomeTarget(
+    space: V2.Space,
+    machine: V2.Machine,
+    kind: V2.TargetKind,
+    path = HOME_PATH[kind],
+  ): V2.Target {
+    const owned =
+      kind === "codex_user" ||
+      (kind === "claude_user" && !!path?.endsWith("/CLAUDE.md"));
+    const t = this.addTarget(space, kind, { path, user_owned: owned });
+    t.root = "home";
+    t.machine = { id: machine.id, label: machine.label, name: machine.name };
+    t.label = `~/${path}`;
+    t.settings.size_budget = 6144;
+    return t;
+  }
+
+  /** Unlinks a machine, as UnlinkMachine does: every file of it stops. */
+  unlinkMachine(id: string): V2.Machine {
+    const m = this.machines.find((x) => x.id === id);
+    if (!m) throw new Error(`no machine ${id}`);
+    if (m.linked) {
+      m.linked = false;
+      m.unlinked_at = now();
+      m.version++;
+      this.receipts++;
+      for (const e of this.targets.values()) {
+        if (e.target.machine?.id === id && e.target.sync_state !== "off")
+          this.setState(e.target.id, "off");
+      }
+    }
+    return m;
   }
 
   addTarget(
@@ -439,6 +522,33 @@ export class FakeV2 {
     let m: RegExpMatchArray | null;
     if (method === "GET" && path === "/v2/spaces")
       return { status: 200, data: { items: this.spaces } };
+    if ((m = path.match(/^\/v2\/spaces\/([^/]+)\/machines$/))) {
+      const sp = this.space(m[1]);
+      if (!sp) return null;
+      if (method === "GET")
+        return {
+          status: 200,
+          data: { items: this.machines.filter((x) => x.space_id === sp.id) },
+        };
+      return this.link(sp, body as unknown as V2.LinkMachineInput);
+    }
+    if (
+      method === "POST" &&
+      (m = path.match(/^\/v2\/machines\/([^/:]+):unlink$/))
+    ) {
+      if (!this.machines.some((x) => x.id === m![1])) return null;
+      const machine = this.unlinkMachine(m[1]);
+      return {
+        status: 200,
+        data: {
+          outcome: "applied",
+          policy: policy(),
+          machine,
+          targets: this.machineTargets(machine.id),
+          receipts: [],
+        },
+      };
+    }
     if (
       (m = path.match(
         /^\/v2\/spaces\/([^/]+)\/(targets|review|memories|agents|receipts)$/,
@@ -447,8 +557,10 @@ export class FakeV2 {
       const sp = this.space(m[1]);
       if (!sp) return null;
       if (m[2] === "targets") {
+        const machine = url.searchParams.get("machine");
         const items = [...this.targets.values()]
           .filter((e) => e.target.space_id === sp.id)
+          .filter((e) => !machine || e.target.machine?.id === machine)
           .map((e) => e.target);
         return { status: 200, data: { items } };
       }
@@ -568,6 +680,56 @@ export class FakeV2 {
         return this.resolve(e, op.slice("drift:".length) as V2.DriftMode);
     }
     return null;
+  }
+
+  machineTargets(machine: string): V2.Target[] {
+    return [...this.targets.values()]
+      .map((e) => e.target)
+      .filter((t) => t.machine?.id === machine);
+  }
+
+  /** LinkMachine: the machine by its device, one home file per kind, converging. */
+  private link(sp: V2.Space, input: V2.LinkMachineInput): RouteResult {
+    if (sp.kind !== "personal")
+      return {
+        status: 403,
+        error: "refused",
+        message: `${sp.slug} isn't your Personal space.`,
+      };
+    let machine = this.machines.find(
+      (x) => x.space_id === sp.id && x.device_id === input.device_id,
+    );
+    const created = !machine;
+    machine ??= this.addMachine(sp, input.device_id, input.name);
+    machine.linked = true;
+    machine.name = input.name;
+    machine.platform = input.platform;
+    for (const f of input.files) {
+      const path = f.path ?? HOME_PATH[f.kind];
+      const have = this.machineTargets(machine.id).find(
+        (t) => t.kind === f.kind,
+      );
+      if (have && have.path === path) {
+        if (have.sync_state === "off") {
+          have.sync_state = "compiling";
+          this.dirty(have.id);
+        }
+        continue;
+      }
+      if (have) this.setState(have.id, "off");
+      this.addHomeTarget(sp, machine, f.kind, path);
+    }
+    this.receipts++;
+    return {
+      status: created ? 201 : 200,
+      data: {
+        outcome: "applied",
+        policy: policy(),
+        machine,
+        targets: this.machineTargets(machine.id),
+        receipts: [{}],
+      },
+    };
   }
 
   private deliver(e: Entry, input: V2.DeliveryInput) {

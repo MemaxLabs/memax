@@ -5,6 +5,12 @@ import type { Memax, V2 } from "memax-sdk";
 
 export interface DaemonApi {
   listTargets(space: string, signal?: AbortSignal): Promise<V2.Target[]>;
+  /** One machine's home files in a personal space (what a home link polls). */
+  machineTargets(
+    space: string,
+    machine: string,
+    signal?: AbortSignal,
+  ): Promise<V2.Target[]>;
   /** The id of the space's newest receipt: it moves whenever the space changes. */
   changeToken(space: string, signal?: AbortSignal): Promise<string>;
   preview(target: string, signal?: AbortSignal): Promise<V2.TargetPreview>;
@@ -76,6 +82,14 @@ export function repoTargets<T extends Pick<V2.Target, "root">>(ts: T[]): T[] {
   return ts.filter((t) => t.root !== "home");
 }
 
+/** One machine's home files: what its home link writes, and nothing else. */
+export function homeTargets<T extends Pick<V2.Target, "root" | "machine">>(
+  ts: T[],
+  machine: string,
+): T[] {
+  return ts.filter((t) => t.root === "home" && t.machine?.id === machine);
+}
+
 /** The daemon's calls through memax-sdk, as the CLI (`X-Memax-Via: cli`). */
 export function sdkDaemonApi(memax: Memax): DaemonApi {
   const t = memax.v2.targets;
@@ -83,6 +97,10 @@ export function sdkDaemonApi(memax: Memax): DaemonApi {
     listTargets: (space, outer) =>
       timed(outer, async (signal) =>
         repoTargets((await t.list(space, { signal })).items),
+      ),
+    machineTargets: (space, machine, outer) =>
+      timed(outer, async (signal) =>
+        homeTargets((await t.list(space, { machine, signal })).items, machine),
       ),
     changeToken: (space, outer) =>
       timed(

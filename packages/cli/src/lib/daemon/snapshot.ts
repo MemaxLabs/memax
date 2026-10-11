@@ -24,6 +24,10 @@ export type LocalState =
   | "off_block_removed"
   /** Stopped; the block had edits, so Memax left it. */
   | "off_block_kept"
+  /** Stopped at home; Memax took its own file out. */
+  | "off_file_removed"
+  /** Stopped at home; the file had edits, so Memax left it. */
+  | "off_file_kept"
   /** Not written on this device (MCP, copy-out, pull request). */
   | "remote"
   /** Nothing compiled yet. */
@@ -62,12 +66,21 @@ export interface RepoSnapshot {
   targets: TargetSnapshot[];
 }
 
+/** This machine's home link, as the daemon sees it. */
+export interface HomeSnapshot extends RepoSnapshot {
+  machine_id: string;
+  /** Set while the layer is off because this machine is signed out. */
+  signed_out?: boolean;
+}
+
 export interface DaemonSnapshot {
   pid: number;
   started_at: string;
   version: string;
   api_url: string;
   repos: RepoSnapshot[];
+  /** The home link, when this machine's home is linked (memax link --home). */
+  home?: HomeSnapshot;
   /** The process's memory in MiB, for `memax daemon status --format json`. */
   memory?: { rss: number; heap_used: number };
   /** Set while `memax compile` delivers in place of a daemon. */

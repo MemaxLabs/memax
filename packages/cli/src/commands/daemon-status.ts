@@ -1,12 +1,15 @@
 // `memax daemon status`: whether the daemon runs, the repositories linked
-// on this machine, where each target stands here, and the last delivery.
+// on this machine and its home link, where each target stands here, and
+// the last delivery.
 import chalk from "chalk";
 import type { V2 } from "memax-sdk";
 import { controlRequest } from "../lib/daemon/control.js";
+import { readHomeLink } from "../lib/daemon/home-link.js";
 import type { DaemonPaths } from "../lib/daemon/paths.js";
 import { readRegistry } from "../lib/daemon/registry.js";
 import type {
   DaemonSnapshot,
+  HomeSnapshot,
   LocalState,
   RepoSnapshot,
   TargetSnapshot,
@@ -29,6 +32,8 @@ export interface DaemonStatus {
   version?: string;
   memory?: DaemonSnapshot["memory"];
   repos: RepoSnapshot[];
+  /** This machine's home link (memax link --home). */
+  home?: HomeSnapshot;
 }
 
 /** From the running daemon, or else from the registry and the state file. */
@@ -48,12 +53,13 @@ export async function readDaemonStatus(
       version: snap.version,
       memory: snap.memory,
       repos: snap.repos,
+      ...(snap.home ? { home: snap.home } : {}),
     };
   }
   // Not running: what this machine last wrote, from the state file.
   const state = new DeviceState(paths);
-  const repos = readRegistry(paths).map((l): RepoSnapshot => {
-    const targets = Object.entries(state.targetsOf(l.root))
+  const lastWritten = (root: string): TargetSnapshot[] =>
+    Object.entries(state.targetsOf(root))
       .filter(([, t]) => t.compile)
       .map(
         ([id, t]): TargetSnapshot => ({
@@ -72,14 +78,27 @@ export async function readDaemonStatus(
         }),
       )
       .sort((a, b) => a.label.localeCompare(b.label));
-    return {
+  const repos = readRegistry(paths).map(
+    (l): RepoSnapshot => ({
       root: l.root,
       space_id: l.space_id,
       space_slug: l.space_slug,
-      targets,
-    };
-  });
-  return { running: false, repos };
+      targets: lastWritten(l.root),
+    }),
+  );
+  const link = readHomeLink(paths);
+  const home: HomeSnapshot | undefined = link
+    ? {
+        root: link.home,
+        space_id: link.space_id,
+        space_slug: link.space_slug,
+        machine_id: link.machine_id,
+        targets: lastWritten(link.home).filter((t) =>
+          link.files.some((f) => f.target_id === t.id),
+        ),
+      }
+    : undefined;
+  return { running: false, repos, ...(home ? { home } : {}) };
 }
 
 const WORD: Record<LocalState, string> = {
@@ -93,6 +112,8 @@ const WORD: Record<LocalState, string> = {
   off: "off",
   off_block_removed: "off",
   off_block_kept: "off",
+  off_file_removed: "off",
+  off_file_kept: "off",
   remote: "",
   waiting: "waiting",
   error: "error",
@@ -111,6 +132,8 @@ function mark(t: TargetSnapshot): string {
     case "off":
     case "off_block_kept":
     case "off_block_removed":
+    case "off_file_kept":
+    case "off_file_removed":
       return chalk.gray(MARK.off);
     case "remote":
       return syncMark(t.sync_state);
@@ -148,7 +171,7 @@ export function renderDaemonStatus(
       `  ${chalk.gray(MARK.off)} The Memax daemon isn't running. Start it: ${chalk.bold("memax daemon start")}`,
     );
   }
-  if (s.repos.length === 0) {
+  if (s.repos.length === 0 && !s.home) {
     lines.push(
       "",
       chalk.gray(
@@ -158,12 +181,20 @@ export function renderDaemonStatus(
     );
     return lines;
   }
-  for (const r of s.repos) {
+  for (const r of [...s.repos, ...(s.home ? [s.home] : [])]) {
     lines.push("");
     const polled = r.polled_at
       ? chalk.gray(` · checked ${clock(r.polled_at, now)}`)
       : "";
-    lines.push(`  ${chalk.bold(tildify(r.root))} → ${r.space_slug}${polled}`);
+    const where =
+      r === s.home ? "This machine's home" : chalk.bold(tildify(r.root));
+    lines.push(`  ${where} → ${r.space_slug}${polled}`);
+    if (r === s.home && s.home.signed_out)
+      lines.push(
+        chalk.yellow(
+          "    Signed out, so your Personal space is off this machine. memax login puts it back.",
+        ),
+      );
     if (r.error) lines.push(chalk.yellow(`    ${r.error}`));
     if (r.targets.length === 0 && !s.running) {
       lines.push(chalk.gray("    Nothing written here yet."));

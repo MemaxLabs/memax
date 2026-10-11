@@ -39,6 +39,31 @@ nothing depends on when it is read. A waiting gate keeps its stored
 status, with `expires_at`; reads are counts over all time. Each export is
 itself a receipt, so two exports differ by that receipt.
 
+## Home files
+
+A Personal space linked to your machines
+([memax link --home](/concepts/personal-layer)) has a target per file per
+machine. In `targets.json`, those targets alone carry two more fields:
+`root` is `home` (their `path` is relative to the home folder), and
+`machine` is the machine the file is on:
+
+```json
+"machine": {
+  "id": "0199a1b2-c3d4-7e5f-8a9b-000000001011",
+  "label": "machine-2",
+  "name": "home-linux",
+  "platform": "linux",
+  "linked_at": "2026-10-06T09:33:00.123456Z",
+  "unlinked_at": "2026-10-06T09:50:00.123456Z"
+}
+```
+
+`unlinked_at` is there once the machine was unlinked. Receipts name a
+machine by its label (`machine-2`), never its name, and `receipts.jsonl`
+has each machine's `linked` and `unlinked` receipts. A repository's
+targets are written as they always were, so the export of a space without
+home files doesn't change.
+
 ## A memory
 
 ```markdown

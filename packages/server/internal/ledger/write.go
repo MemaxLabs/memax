@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/riverqueue/river"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/conditions"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/secrets"
@@ -131,10 +132,14 @@ func (w *writer) writeMemory(ctx context.Context, sp spaceRow, grant SpaceGrant,
 	if len(srcs) > 0 {
 		primary = &ReceiptSource{Kind: string(srcs[0].Kind), Ref: srcs[0].Ref}
 	}
+	attached, err := w.personConditions(nm.Conditions)
+	if err != nil {
+		return Result{}, err
+	}
 	id, rc, err := w.insertMemory(ctx, sp, grant, memoryRow{
 		Statement: nm.Statement, Section: nm.Section, Kind: nm.Kind, Decision: nm.Decision, Trust: trust,
-		StaleAfter: nm.StaleAfter, Conditions: nm.Conditions, Applies: nm.Applies,
-		ValidFrom: nm.ValidFrom, ValidTo: nm.ValidTo,
+		StaleAfter: nm.StaleAfter, Conditions: attached, Applies: nm.Applies,
+		ValidFrom: nm.ValidFrom, ValidTo: nm.ValidTo, Files: fileRefs(nm.Sources),
 	}, state, primary)
 	if err != nil {
 		return Result{}, err
@@ -367,14 +372,18 @@ func (w *writer) edit(ctx context.Context, c *Edit) (Result, error) {
 		return Result{}, fmt.Errorf("ledger: write version: %w", err)
 	}
 	w.indexVersion(sp.ID, mem.ID, version)
+	conds, err := renewedConditions(sp, mem.Conditions, statement, mem.Applies)
+	if err != nil {
+		return Result{}, err
+	}
 	hash, bands := signature(statement)
 	if _, err := w.tx.Exec(ctx, fmt.Sprintf(`
 		UPDATE v2.memories
 		   SET section = $2, current_version = $3, trust = $4, search = %s, content_sha256 = $11, minhash_bands = $12,
-		       lifecycle = $6, flags = $7, stale_after = $13, stream_version = $8, last_receipt_id = $9, updated_at = now()
+		       lifecycle = $6, flags = $7, stale_after = $13, conditions = $14, stream_version = $8, last_receipt_id = $9, updated_at = now()
 		 WHERE id = $1 AND space_id = $10`, fmt.Sprintf(searchExpr, "$5::text")),
 		mem.ID, string(section), version, string(trust), statement,
-		string(next.Lifecycle), next.Flags.Strings(), rc.StreamVersion, rc.ID, sp.ID, hash, bands, staleAfter); err != nil {
+		string(next.Lifecycle), next.Flags.Strings(), rc.StreamVersion, rc.ID, sp.ID, hash, bands, staleAfter, []byte(conds)); err != nil {
 		return Result{}, fmt.Errorf("ledger: update memory: %w", err)
 	}
 	receipts := []Receipt{rc}
@@ -457,10 +466,32 @@ type memoryRow struct {
 	Decision   *DecisionFields
 	Trust      policy.Trust
 	StaleAfter *time.Time
+	// Conditions are typed conditions with their ids (stored or attached);
+	// insertMemory adds the derived ones.
 	Conditions json.RawMessage
 	Applies    json.RawMessage
 	ValidFrom  *time.Time
 	ValidTo    *time.Time
+	// Files are the repository files its sources cite (fileRefs); nil
+	// takes the ones the conditions it carries name.
+	Files []string
+}
+
+// personConditions are conditions sent with a new memory, typed and
+// attached as a person's. Only people attach them; Memax derives its own.
+func (w *writer) personConditions(raw json.RawMessage) (json.RawMessage, error) {
+	sent, err := sentConditions(raw)
+	if err != nil || len(sent) == 0 {
+		return json.RawMessage("[]"), err
+	}
+	if w.meta.Actor.Kind != policy.ActorPerson {
+		return nil, invalid("conditions", "only people attach conditions; Memax reads the paths a memory names on its own")
+	}
+	cs, err := attachConditions(nil, sent, conditions.OriginPerson)
+	if err != nil {
+		return nil, err
+	}
+	return conditions.Encode(cs), nil
 }
 
 // insertMemory allocates the display ID and writes the creating receipt,
@@ -492,6 +523,11 @@ func (w *writer) insertMemory(ctx context.Context, sp spaceRow, grant SpaceGrant
 		}
 		decision = b
 	}
+	had, err := storedConditions(row.Conditions)
+	if err != nil {
+		return uuid.Nil, Receipt{}, err
+	}
+	conds := conditions.Encode(conditionsFor(sp, had, row.Statement, row.Files, row.Applies))
 	hash, bands := signature(row.Statement)
 	if _, err := w.tx.Exec(ctx, fmt.Sprintf(`
 		INSERT INTO v2.memories (id, tenant_id, space_id, seq, section, kind, lifecycle, flags, trust,
@@ -500,7 +536,7 @@ func (w *writer) insertMemory(ctx context.Context, sp spaceRow, grant SpaceGrant
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, 1, $10, $11, $12, $13, $14, $15, %s, $18, $19, $17, $17)`,
 		fmt.Sprintf(searchExpr, "$16::text")),
 		id, sp.TenantID, sp.ID, seq, string(row.Section), string(row.Kind), string(state.Lifecycle),
-		state.Flags.Strings(), string(row.Trust), row.StaleAfter, []byte(row.Conditions), decision,
+		state.Flags.Strings(), string(row.Trust), row.StaleAfter, []byte(conds), decision,
 		[]byte(row.Applies), row.ValidFrom, row.ValidTo, row.Statement, rc.ID, hash, bands); err != nil {
 		return uuid.Nil, Receipt{}, fmt.Errorf("ledger: write memory: %w", err)
 	}

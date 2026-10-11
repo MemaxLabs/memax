@@ -101,7 +101,7 @@ func TestExportRoundTrip(t *testing.T) {
 		"statement": "Background jobs run on River.", "section": "decisions", "kind": "decision",
 		"decision": map[string]any{"why": "One database, one transaction.", "status": "in_force",
 			"options": []map[string]any{{"label": "River", "detail": "Postgres-backed"}, {"label": "Temporal"}}},
-		"conditions": []map[string]any{{"kind": "file_exists", "path": "go.mod"}},
+		"conditions": []map[string]any{{"kind": "dep_present", "manifest": "go.mod", "name": "github.com/riverqueue/river"}},
 		"sources": []map[string]any{
 			{"kind": "pr", "ref": "PR #212", "uri": "https://github.com/MemaxLabs/memax/pull/212"},
 			{"kind": "file", "ref": "go.mod:14", "locator": map[string]any{"path": "go.mod", "line": 14}, "quote": "github.com/riverqueue/river"},

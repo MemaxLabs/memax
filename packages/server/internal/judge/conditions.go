@@ -6,22 +6,24 @@ import (
 	"path"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/conditions"
 )
-
-// The manifests dep_present may name (plan 25 §5.9).
-var manifests = []string{"go.mod", "package.json", "pnpm-lock.yaml", "Cargo.toml", "pyproject.toml", "requirements.txt"}
 
 // maxConditions bounds what one proposal gets.
 const maxConditions = 5
 
 // validConditions keeps the model's conditions that its sources make
-// evident, in the typed form stale detection reads (§5.9), and drops the
-// rest: a condition must point at something the statement or a source
-// actually names. It returns a JSON array, "[]" when none survive.
-func validConditions(conds []Condition, statement string, sources []ledger.Source, now time.Time) json.RawMessage {
+// evident, in the record's typed form (internal/ledger/conditions), and
+// drops the rest: a condition must point at something the statement or a
+// source actually names. The model answers in its own schema (file_exists,
+// before, …): file_exists is path_exists here; file_unchanged and before
+// are left out until the judge can attach them properly (a file_unchanged
+// needs the file's git blob id, and before is the memory's stale_after,
+// not a condition). It returns a JSON array, "[]" when none survive; the
+// ledger gives them ids and the judge's origin.
+func validConditions(conds []Condition, statement string, sources []ledger.Source) json.RawMessage {
 	evidence := strings.ToLower(statement)
 	for _, s := range sources {
 		evidence += "\n" + strings.ToLower(s.Ref+" "+s.URI+" "+s.Quote)
@@ -36,35 +38,27 @@ func validConditions(conds []Condition, statement string, sources []ledger.Sourc
 		return nil
 	}
 
-	var out []map[string]any
-	seen := map[string]bool{}
+	var out []conditions.Condition
 	for _, c := range conds {
 		if len(out) == maxConditions {
 			break
 		}
-		var v map[string]any
+		var v conditions.Condition
 		switch c.Kind {
 		case "dep_present":
 			m := strings.TrimSpace(c.Manifest)
-			if !slices.Contains(manifests, path.Base(m)) || !mentions(path.Base(m)) || !mentions(strings.TrimSpace(c.Name)) {
+			if !slices.Contains(conditions.Manifests, path.Base(m)) || !mentions(path.Base(m)) || !mentions(strings.TrimSpace(c.Name)) {
 				continue
 			}
-			v = map[string]any{"kind": c.Kind, "manifest": m, "name": strings.TrimSpace(c.Name)}
-		case "file_exists", "file_unchanged":
+			v = conditions.Condition{Kind: conditions.DepPresent, Manifest: m, Name: strings.TrimSpace(c.Name)}
+		case "file_exists":
 			p := strings.TrimPrefix(strings.TrimSpace(c.Path), "./")
-			if !repoPath(p) || (sourceFor(p) == nil && !mentions(p)) {
+			if !repoPath(p) || conditions.Excluded(p) || (sourceFor(p) == nil && !mentions(p)) {
 				continue
 			}
-			v = map[string]any{"kind": c.Kind, "path": p}
-			if c.Kind == "file_unchanged" {
-				src := sourceFor(p)
-				if src == nil || src.ContentHash == "" {
-					continue // there is nothing to compare against
-				}
-				v["hash"] = src.ContentHash
-			}
+			v = conditions.Condition{Kind: conditions.PathExists, Path: p}
 		case "pr_state":
-			if c.Number <= 0 || !slices.Contains([]string{"open", "merged", "closed"}, c.State) || strings.TrimSpace(c.Repo) == "" {
+			if c.Number <= 0 || !slices.Contains(conditions.PRStates, c.State) || strings.TrimSpace(c.Repo) == "" {
 				continue
 			}
 			cited := slices.ContainsFunc(sources, func(s ledger.Source) bool {
@@ -73,21 +67,16 @@ func validConditions(conds []Condition, statement string, sources []ledger.Sourc
 			if !cited {
 				continue
 			}
-			v = map[string]any{"kind": c.Kind, "repo": strings.TrimSpace(c.Repo), "number": c.Number, "state": c.State}
-		case "before":
-			d, err := time.Parse("2006-01-02", strings.TrimSpace(c.Before))
-			if err != nil || !d.After(now) || d.After(now.AddDate(5, 0, 0)) || !mentions(fmt.Sprint(d.Year())) {
-				continue
-			}
-			v = map[string]any{"kind": c.Kind, "stale_after": d.UTC().Format(time.RFC3339)}
+			v = conditions.Condition{Kind: conditions.PRState, Repo: strings.TrimSpace(c.Repo), Number: c.Number, State: c.State}
 		default:
 			continue
 		}
-		key, _ := json.Marshal(v)
-		if seen[string(key)] {
+		v.ID, v.Origin = "c1", conditions.OriginJudge
+		if conditions.Validate([]conditions.Condition{v}) != nil ||
+			slices.ContainsFunc(out, func(o conditions.Condition) bool { return conditions.Same(o, v) }) {
 			continue
 		}
-		seen[string(key)] = true
+		v.ID, v.Origin = "", ""
 		out = append(out, v)
 	}
 	if len(out) == 0 {

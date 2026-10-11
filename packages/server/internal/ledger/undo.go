@@ -445,6 +445,10 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 			m.ID, before.Version).Scan(&statement); err != nil {
 			return Result{}, fmt.Errorf("ledger: undo %s: version %d: %w", m.Ref, before.Version, err)
 		}
+		conds, err := renewedConditions(sp, m.Conditions, statement, m.Applies)
+		if err != nil {
+			return Result{}, err
+		}
 		rc := w.receipt(sp, m.ID, m.Ref, ActionUndid, m.streamVersion+1, reason)
 		rc.Source = &ReceiptSource{Kind: "receipt", Ref: e.receiptID.String()}
 		if err := insertReceipt(ctx, w.tx, &rc); err != nil {
@@ -460,12 +464,12 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 			                       WHEN $8 = '' THEN COALESCE(decision, '{}'::jsonb) - 'status'
 			                       ELSE jsonb_set(COALESCE(decision, '{}'::jsonb), '{status}', to_jsonb($8::text)) END,
 			       search = %s, content_sha256 = $10, minhash_bands = $11,
-			       stale_after = CASE WHEN $15 THEN $16::timestamptz ELSE stale_after END,
+			       stale_after = CASE WHEN $15 THEN $16::timestamptz ELSE stale_after END, conditions = $17,
 			       stream_version = $12, last_receipt_id = $13, updated_at = now()
 			 WHERE id = $1 AND space_id = $14`, fmt.Sprintf(searchExpr, "$9::text")),
 			m.ID, string(to.Lifecycle), to.Flags.Strings(), before.Version, string(before.Section), string(before.Trust),
 			before.HasDecision, before.DecisionStatus, statement, hash, bands, rc.StreamVersion, rc.ID, sp.ID,
-			before.HasDate, before.StaleAfter); err != nil {
+			before.HasDate, before.StaleAfter, []byte(conds)); err != nil {
 			return Result{}, fmt.Errorf("ledger: undo %s: %w", m.Ref, err)
 		}
 		if to.Lifecycle == lifecycle.Proposed || to.Lifecycle == lifecycle.Kept {

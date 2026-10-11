@@ -3131,10 +3131,13 @@ export interface components {
          *     unlinked. A change to which repositories a memory applies in
          *     (`:scope`) writes scoped: a person widening it, or Memax (via
          *     system) tying a personal fact an earlier `memax init` imported to
-         *     its repository.
+         *     its repository. A change to a memory's conditions that writes no
+         *     version is conditions_changed (Memax, via system, typing what was
+         *     written before they were typed). Memax's derived conditions ride on
+         *     the command that wrote the version, with no receipt of their own.
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded" | "exported" | "noted" | "switched" | "switched_back" | "unlinked" | "scoped";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded" | "exported" | "noted" | "switched" | "switched_back" | "unlinked" | "scoped" | "conditions_changed";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space" | "machine";
         /**
@@ -3444,8 +3447,13 @@ export interface components {
             /** @description The statement's version; also the `ETag`. */
             version: number;
             stale_after?: components["schemas"]["Timestamp"];
-            /** @description "Stays true while" conditions. */
-            conditions: unknown[];
+            /**
+             * @description "Stays true while" conditions, at most 8: what Memax derived from
+             *     the paths the memory names (origin derived), and what a person,
+             *     the judge or Dream attached. The date to check again is
+             *     `stale_after`.
+             */
+            conditions: components["schemas"]["Condition"][];
             decision?: components["schemas"]["Decision"];
             scope: components["schemas"]["MemoryScope"];
             valid_from?: components["schemas"]["Timestamp"];
@@ -4576,8 +4584,14 @@ export interface components {
             sources?: components["schemas"]["SourceInput"][];
             /** @description When it should be verified again. */
             stale_after?: components["schemas"]["Timestamp"];
-            /** @description "Stays true while" conditions. */
-            conditions?: unknown[];
+            /**
+             * @description Conditions a person attaches, typed; `id` and `origin` are Memax's
+             *     to set and are ignored here. Memax derives path conditions from
+             *     the words on its own (in a project space with a repository), and
+             *     only people send these: an agent's are refused. A
+             *     file_contains' text that looks like a credential is refused.
+             */
+            conditions?: components["schemas"]["Condition"][];
             scope?: components["schemas"]["MemoryScope"];
             valid_from?: components["schemas"]["Timestamp"];
             valid_to?: components["schemas"]["Timestamp"];
@@ -4918,6 +4932,106 @@ export interface components {
             /** @description The memories forgotten with it. */
             memories: components["schemas"]["Memory"][];
         };
+        /**
+         * @description Who attached a condition. derived: Memax read it off the memory (see
+         *     `from`). judge, dream or person: they attached it.
+         * @enum {string}
+         */
+        ConditionOrigin: "derived" | "judge" | "dream" | "person";
+        /**
+         * @description Where Memax read a derived condition off: the statement's words, a
+         *     file a source cites, or the scope's paths.
+         * @enum {string}
+         */
+        ConditionFrom: "statement" | "source" | "scope";
+        /** @description Stable within the memory. */
+        ConditionId: string;
+        /**
+         * @description A typed "stays true while" predicate on the repository at a commit.
+         *     Each kind takes its own fields and nothing else. A condition flags a
+         *     memory stale only after it has held once on the default branch.
+         */
+        Condition: components["schemas"]["PathExistsCondition"] | components["schemas"]["FileContainsCondition"] | components["schemas"]["DepPresentCondition"] | components["schemas"]["FileUnchangedCondition"] | components["schemas"]["PrStateCondition"];
+        /**
+         * @description The path is in the tree (`path`), or at least one path matches the
+         *     glob (`glob`, the scope glob syntax). Exactly one of the two.
+         */
+        PathExistsCondition: {
+            id?: components["schemas"]["ConditionId"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "path_exists";
+            path?: components["schemas"]["ConditionPath"];
+            glob?: string;
+            origin?: components["schemas"]["ConditionOrigin"];
+            from?: components["schemas"]["ConditionFrom"];
+        };
+        /** @description The file contains the text, literally and case-sensitively; as a whole word when `word`. */
+        FileContainsCondition: {
+            id?: components["schemas"]["ConditionId"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "file_contains";
+            path: components["schemas"]["ConditionPath"];
+            text: string;
+            word?: boolean;
+            origin?: components["schemas"]["ConditionOrigin"];
+            from?: components["schemas"]["ConditionFrom"];
+        };
+        /**
+         * @description The manifest declares the dependency, and its declared constraint
+         *     satisfies `range` if one is given. `manifest` is a path, or a bare
+         *     name (go.mod, package.json, pyproject.toml, Cargo.toml,
+         *     requirements.txt) meaning that manifest anywhere in the repository.
+         */
+        DepPresentCondition: {
+            id?: components["schemas"]["ConditionId"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "dep_present";
+            manifest: components["schemas"]["ConditionPath"];
+            name: string;
+            range?: string;
+            origin?: components["schemas"]["ConditionOrigin"];
+            from?: components["schemas"]["ConditionFrom"];
+        };
+        /** @description The file's git blob id is the one it had when the condition was attached. */
+        FileUnchangedCondition: {
+            id?: components["schemas"]["ConditionId"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "file_unchanged";
+            path: components["schemas"]["ConditionPath"];
+            blob: string;
+            origin?: components["schemas"]["ConditionOrigin"];
+            from?: components["schemas"]["ConditionFrom"];
+        };
+        /** @description The pull request is in that state. */
+        PrStateCondition: {
+            id?: components["schemas"]["ConditionId"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "pr_state";
+            /** @description owner/name. */
+            repo: string;
+            number: number;
+            /** @enum {string} */
+            state: "open" | "merged" | "closed";
+            origin?: components["schemas"]["ConditionOrigin"];
+            from?: components["schemas"]["ConditionFrom"];
+        };
+        /** @description Relative to the repository root, with no `..`, no leading `/` or `~`, and no spaces. */
+        ConditionPath: string;
         /**
          * @description A person's answer to a stale flag. still_true: it is still true, as
          *     it is. update: it is true with new words. forget: it isn't true;

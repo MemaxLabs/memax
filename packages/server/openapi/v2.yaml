@@ -5695,7 +5695,10 @@ components:
         unlinked. A change to which repositories a memory applies in
         (`:scope`) writes scoped: a person widening it, or Memax (via
         system) tying a personal fact an earlier `memax init` imported to
-        its repository.
+        its repository. A change to a memory's conditions that writes no
+        version is conditions_changed (Memax, via system, typing what was
+        written before they were typed). Memax's derived conditions ride on
+        the command that wrote the version, with no receipt of their own.
       type: string
       enum:
         - proposed
@@ -5745,6 +5748,7 @@ components:
         - switched_back
         - unlinked
         - scoped
+        - conditions_changed
     ObjectKind:
       type: string
       enum: [memory, note, brief, target, compile, handoff, gate, dream, agent, space, machine]
@@ -6289,9 +6293,15 @@ components:
         stale_after:
           $ref: '#/components/schemas/Timestamp'
         conditions:
-          description: '"Stays true while" conditions.'
+          description: |
+            "Stays true while" conditions, at most 8: what Memax derived from
+            the paths the memory names (origin derived), and what a person,
+            the judge or Dream attached. The date to check again is
+            `stale_after`.
           type: array
-          items: true
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/Condition'
         decision:
           $ref: '#/components/schemas/Decision'
         scope:
@@ -8647,9 +8657,16 @@ components:
           description: When it should be verified again.
           $ref: '#/components/schemas/Timestamp'
         conditions:
-          description: '"Stays true while" conditions.'
+          description: |
+            Conditions a person attaches, typed; `id` and `origin` are Memax's
+            to set and are ignored here. Memax derives path conditions from
+            the words on its own (in a project space with a repository), and
+            only people send these: an agent's are refused. A
+            file_contains' text that looks like a credential is refused.
           type: array
-          items: true
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/Condition'
         scope:
           $ref: '#/components/schemas/MemoryScope'
         valid_from:
@@ -9331,6 +9348,172 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Memory'
+
+    ConditionOrigin:
+      description: |
+        Who attached a condition. derived: Memax read it off the memory (see
+        `from`). judge, dream or person: they attached it.
+      type: string
+      enum: [derived, judge, dream, person]
+
+    ConditionFrom:
+      description: |
+        Where Memax read a derived condition off: the statement's words, a
+        file a source cites, or the scope's paths.
+      type: string
+      enum: [statement, source, scope]
+
+    ConditionId:
+      description: Stable within the memory.
+      type: string
+      pattern: '^c[1-9][0-9]{0,3}$'
+
+    Condition:
+      description: |
+        A typed "stays true while" predicate on the repository at a commit.
+        Each kind takes its own fields and nothing else. A condition flags a
+        memory stale only after it has held once on the default branch.
+      oneOf:
+        - $ref: '#/components/schemas/PathExistsCondition'
+        - $ref: '#/components/schemas/FileContainsCondition'
+        - $ref: '#/components/schemas/DepPresentCondition'
+        - $ref: '#/components/schemas/FileUnchangedCondition'
+        - $ref: '#/components/schemas/PrStateCondition'
+      discriminator:
+        propertyName: kind
+        mapping:
+          path_exists: '#/components/schemas/PathExistsCondition'
+          file_contains: '#/components/schemas/FileContainsCondition'
+          dep_present: '#/components/schemas/DepPresentCondition'
+          file_unchanged: '#/components/schemas/FileUnchangedCondition'
+          pr_state: '#/components/schemas/PrStateCondition'
+
+    PathExistsCondition:
+      description: |
+        The path is in the tree (`path`), or at least one path matches the
+        glob (`glob`, the scope glob syntax). Exactly one of the two.
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        id:
+          $ref: '#/components/schemas/ConditionId'
+        kind:
+          const: path_exists
+        path:
+          $ref: '#/components/schemas/ConditionPath'
+        glob:
+          type: string
+          minLength: 1
+          maxLength: 300
+        origin:
+          $ref: '#/components/schemas/ConditionOrigin'
+        from:
+          $ref: '#/components/schemas/ConditionFrom'
+
+    FileContainsCondition:
+      description: The file contains the text, literally and case-sensitively; as a whole word when `word`.
+      type: object
+      additionalProperties: false
+      required: [kind, path, text]
+      properties:
+        id:
+          $ref: '#/components/schemas/ConditionId'
+        kind:
+          const: file_contains
+        path:
+          $ref: '#/components/schemas/ConditionPath'
+        text:
+          type: string
+          minLength: 1
+          maxLength: 200
+        word:
+          type: boolean
+        origin:
+          $ref: '#/components/schemas/ConditionOrigin'
+        from:
+          $ref: '#/components/schemas/ConditionFrom'
+
+    DepPresentCondition:
+      description: |
+        The manifest declares the dependency, and its declared constraint
+        satisfies `range` if one is given. `manifest` is a path, or a bare
+        name (go.mod, package.json, pyproject.toml, Cargo.toml,
+        requirements.txt) meaning that manifest anywhere in the repository.
+      type: object
+      additionalProperties: false
+      required: [kind, manifest, name]
+      properties:
+        id:
+          $ref: '#/components/schemas/ConditionId'
+        kind:
+          const: dep_present
+        manifest:
+          $ref: '#/components/schemas/ConditionPath'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 214
+        range:
+          type: string
+          minLength: 1
+          maxLength: 64
+        origin:
+          $ref: '#/components/schemas/ConditionOrigin'
+        from:
+          $ref: '#/components/schemas/ConditionFrom'
+
+    FileUnchangedCondition:
+      description: The file's git blob id is the one it had when the condition was attached.
+      type: object
+      additionalProperties: false
+      required: [kind, path, blob]
+      properties:
+        id:
+          $ref: '#/components/schemas/ConditionId'
+        kind:
+          const: file_unchanged
+        path:
+          $ref: '#/components/schemas/ConditionPath'
+        blob:
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+        origin:
+          $ref: '#/components/schemas/ConditionOrigin'
+        from:
+          $ref: '#/components/schemas/ConditionFrom'
+
+    PrStateCondition:
+      description: The pull request is in that state.
+      type: object
+      additionalProperties: false
+      required: [kind, repo, number, state]
+      properties:
+        id:
+          $ref: '#/components/schemas/ConditionId'
+        kind:
+          const: pr_state
+        repo:
+          description: owner/name.
+          type: string
+          minLength: 3
+          maxLength: 200
+        number:
+          type: integer
+          minimum: 1
+        state:
+          type: string
+          enum: [open, merged, closed]
+        origin:
+          $ref: '#/components/schemas/ConditionOrigin'
+        from:
+          $ref: '#/components/schemas/ConditionFrom'
+
+    ConditionPath:
+      description: Relative to the repository root, with no `..`, no leading `/` or `~`, and no spaces.
+      type: string
+      minLength: 1
+      maxLength: 300
 
     VerifyAnswer:
       description: |

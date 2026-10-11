@@ -290,8 +290,10 @@ type RecordVerdict struct {
 	// AlsoConflicts are further decisions in force the memory contradicts
 	// (flagged only): each gets its conflicts_with link too.
 	AlsoConflicts []uuid.UUID
-	// Conditions are the "stays true while" conditions the judge proposes.
-	// They are written only on a proposal that has none.
+	// Conditions are the "stays true while" conditions the judge proposes,
+	// typed (conditions.Condition) without ids. They are attached, as the
+	// judge's, only to a proposal the judge hasn't attached any to; what
+	// Memax derived or a person attached stays beside them.
 	Conditions json.RawMessage
 }
 
@@ -590,16 +592,17 @@ func (w *writer) recordVerdict(ctx context.Context, c *RecordVerdict) (Result, e
 			}
 		}
 	}
-	conditions := mem.Conditions
-	if c.Mode == JudgeProposal && outcome != OutcomeFolded && outcome != OutcomeSuppressed &&
-		len(c.Conditions) > 2 && strings.TrimSpace(string(mem.Conditions)) == "[]" {
-		conditions = c.Conditions
+	conds := mem.Conditions
+	if c.Mode == JudgeProposal && outcome != OutcomeFolded && outcome != OutcomeSuppressed {
+		if conds, err = judgeConditions(mem.Conditions, c.Conditions); err != nil {
+			return Result{}, err
+		}
 	}
 	if _, err := w.tx.Exec(ctx, `
 		UPDATE v2.memories
 		   SET lifecycle = $2, flags = $3, conditions = $4, stream_version = $5, last_receipt_id = $6, updated_at = now()
 		 WHERE id = $1 AND space_id = $7`,
-		mem.ID, string(next.Lifecycle), next.Flags.Strings(), []byte(conditions), rc.StreamVersion, rc.ID, sp.ID); err != nil {
+		mem.ID, string(next.Lifecycle), next.Flags.Strings(), []byte(conds), rc.StreamVersion, rc.ID, sp.ID); err != nil {
 		return Result{}, fmt.Errorf("ledger: update memory: %w", err)
 	}
 	// A kept memory in conflict compiles with an "In conflict" marker, and

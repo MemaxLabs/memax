@@ -139,6 +139,10 @@ export type VerifyResult = Schemas["VerifyResult"];
 export type StaleReport = Schemas["StaleReport"];
 /** One typed reason a memory is stale (a date that passed, for now). */
 export type StaleCause = Schemas["StaleCause"];
+/** A typed "stays true while" condition (path_exists, file_contains, …). */
+export type Condition = Schemas["Condition"];
+/** Who attached a condition: derived by Memax, the judge, Dream or a person. */
+export type ConditionOrigin = Schemas["ConditionOrigin"];
 /** Something an agent is told once: a memory or a space it read was forgotten. */
 export type Notice = Schemas["Notice"];
 export type NoticeList = Schemas["NoticeList"];

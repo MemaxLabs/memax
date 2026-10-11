@@ -167,7 +167,7 @@ func newFixture(t testing.TB) *fixture {
 				Statement: `Background jobs run on River, Postgres-backed. We don't use Temporal ("one queue" & <one> DB).`,
 				Section:   ledger.SectionDecisions, Kind: ledger.KindDecision, State: lifecycle.MarkKept,
 				Lifecycle: lifecycle.Kept, Flags: lifecycle.Flags{}, Trust: policy.TrustPerson, Version: 2,
-				Conditions: json.RawMessage(`[{"kind": "file_exists", "path": "go.mod"}]`), Applies: json.RawMessage(`{}`),
+				Conditions: json.RawMessage(`[{"id": "c1", "kind": "dep_present", "manifest": "go.mod", "name": "github.com/riverqueue/river", "origin": "person"}, {"id": "c2", "kind": "path_exists", "path": "go.mod", "origin": "derived", "from": "source"}]`), Applies: json.RawMessage(`{}`),
 				Decision: &ledger.DecisionFields{Why: "River keeps jobs in the same transaction as the write.", Status: ledger.DecisionInForce,
 					Area: "infra", Options: []ledger.DecisionOption{{Label: "River", Detail: "Postgres-backed"}, {Label: "Temporal"}}},
 				CreatedReceiptID: byAction(fxM1, "proposed").ID, LastReceiptID: m1Edited.ID,

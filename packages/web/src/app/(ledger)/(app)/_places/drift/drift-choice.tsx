@@ -34,12 +34,15 @@ function confirmsHere(target: EventTarget | null | undefined): boolean {
 export function DriftChoice({
   view,
   target,
+  machine = null,
   changes,
   pending,
   onRun,
 }: {
   view: RecordsView;
   target: TargetView;
+  /** A home file's machine: stopping leaves the edited file there. */
+  machine?: string | null;
   changes: DriftChangeView[];
   pending: DriftMode | null;
   onRun: (mode: DriftMode) => void;
@@ -110,7 +113,9 @@ export function DriftChoice({
     overwrite: interpolate(r.overwriteDetail, {
       lines: linesWord(r.overwriteLines, edited),
     }),
-    stop: interpolate(r.stopDetail, { tool }),
+    stop: machine
+      ? interpolate(l.machines.drift.stopDetail, { tool, machine })
+      : interpolate(r.stopDetail, { tool }),
   };
   const title: Record<DriftMode, string> = {
     pull: r.pull,

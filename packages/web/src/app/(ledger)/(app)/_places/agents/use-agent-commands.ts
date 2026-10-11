@@ -118,7 +118,14 @@ export function useAutonomy({
         patchAgent(queryClient, source.kind, next);
         refreshAfterAgentCommand(queryClient, source.kind);
         if (raising) {
-          toast({ text: changedText(copy, now, vars) });
+          // D8: what a Write agent keeps in Personal reaches every agent
+          // on every machine the person linked.
+          toast({
+            text:
+              now === "write" && space.kind === "personal"
+                ? interpolate(t.ledger.machines.reach.writeNow, vars)
+                : changedText(copy, now, vars),
+          });
         }
       })
       .catch((err: unknown) => {
@@ -142,7 +149,7 @@ export function useAutonomy({
             : undefined,
         });
       });
-  }, [copy, queryClient, signInAgain, source, space, strings, toast]);
+  }, [copy, queryClient, signInAgain, source, space, strings, t, toast]);
 
   // Send once the person stops choosing, and again after a command if
   // they chose something else meanwhile.

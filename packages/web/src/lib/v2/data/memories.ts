@@ -177,7 +177,12 @@ export interface MemoryRecord {
    * targets) and the agents that read it (from its reads). Either is
    * null when the source doesn't know it.
    */
-  reach: { files: number | null; agents: number | null } | null;
+  reach: {
+    files: number | null;
+    agents: number | null;
+    /** The machines a Personal space's home files that hold it are on. */
+    machines?: number | null;
+  } | null;
   lineage: LineageEntry[];
   /** What was merged into it: Dream's notes, the judge's folds. Null when the source can't say. */
   merged: { notes: MergedNote[]; total: number } | null;

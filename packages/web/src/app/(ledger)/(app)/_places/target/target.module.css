@@ -140,6 +140,38 @@
   padding: 0 16px 16px;
 }
 
+/* A home file's machines (home-target.tsx): Segmented's look, as links. */
+.switcher {
+  align-self: center;
+}
+
+.machine {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+
+.machine:global(.is-on) {
+  color: var(--ink);
+}
+
+.machine:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* Under a block's code: the person's own lines aren't shown, and why. */
+.blockNote {
+  margin: 0;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-2);
+}
+
 .side {
   display: flex;
   flex-direction: column;

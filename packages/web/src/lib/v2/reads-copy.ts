@@ -48,8 +48,12 @@ function reachParts(
 ): { files: string | null; agents: string | null } {
   const part = (one: string, other: string, n: number | null | undefined) =>
     n ? count(one, other, n, { n: formatCount(n, locale) }) : null;
+  const files = part(p.filesOne, p.files, reach?.files);
+  // A Personal space's home files say the machines they're on.
+  const machines = part(p.machinesOne, p.machines, reach?.machines);
   return {
-    files: part(p.filesOne, p.files, reach?.files),
+    files:
+      files && machines ? interpolate(p.filesOn, { files, machines }) : files,
     agents: part(p.agentsOne, p.agents, reach?.agents),
   };
 }

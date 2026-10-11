@@ -22,6 +22,7 @@ import { SpaceViewContext } from "../../_lib/space-context";
 import { ToastProvider, ToastViewport } from "../../_components/toasts";
 import { AgentRowControl } from "./agent-row-control";
 import { AgentDetailPlace } from "./agent-detail";
+import { MayPanel } from "./agent-panels";
 
 // The autonomy control and Disconnect, over a fake data source: an
 // optimistic lower, a refused raise that rolls back, Write greyed for an
@@ -293,6 +294,74 @@ function detail(over: Partial<AgentConnectionView> = {}): AgentDetailView {
     sessions: [],
   };
 }
+
+const PERSONAL: SpaceSummary = {
+  ...SPACE,
+  id: "s9",
+  slug: "personal",
+  name: "Personal",
+  kind: "personal",
+};
+
+/** An agent connected to Personal at `level`. */
+function inPersonal(level: "read" | "propose" | "write") {
+  const base = connection({});
+  return {
+    ...base,
+    spaces: [
+      {
+        ...base.spaces[0]!,
+        spaceId: "s9",
+        slug: "personal",
+        name: "Personal",
+        kind: "personal" as const,
+        autonomy: level,
+      },
+    ],
+  };
+}
+
+describe("Write in Personal (D8)", () => {
+  it("says, once the raise lands, that what it keeps reaches every linked machine", async () => {
+    source.setAutonomy.mockResolvedValue(inPersonal("write"));
+    render(
+      <Frame>
+        <AgentRowControl agent={inPersonal("propose")} space={PERSONAL} />
+      </Frame>,
+    );
+    fireEvent.click(radio("Write"));
+    expect(
+      await screen.findByText(
+        "Claude Code writes to Personal now, still with a receipt. What it keeps reaches every agent on every machine you've linked.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("shows the reach on the agent's page while Write is chosen, and only in Personal", () => {
+    const personal = {
+      ...detail(),
+      connection: inPersonal("write"),
+    };
+    render(
+      <Frame>
+        <MayPanel detail={personal} space={PERSONAL} />
+      </Frame>,
+    );
+    const reach =
+      "In Personal, what it keeps reaches every agent on every machine you've linked.";
+    expect(screen.getByText(reach)).toBeTruthy();
+    fireEvent.click(radio("Propose"));
+    expect(screen.queryByText(reach)).toBeNull();
+    cleanup();
+    render(
+      <Frame>
+        <MayPanel detail={detail()} space={SPACE} />
+      </Frame>,
+    );
+    fireEvent.click(radio("Write"));
+    expect(screen.queryByText(reach)).toBeNull();
+  });
+});
 
 describe("Disconnect", () => {
   it("is confirmed inline, naming what it revokes, and Escape backs out", async () => {

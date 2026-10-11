@@ -20,8 +20,10 @@ import { createDemoImports } from "./imports-demo";
 import { createDemoSettings } from "./settings-demo";
 import { DEMO_V1_SPACE } from "./demo-switch-data";
 import { createDemoSwitch } from "./switch-demo";
+import { groupTargets, spaceSyncLine, targetCounts } from "./home-files";
+import { createDemoMachines, type DemoMachines } from "./machines-demo";
 import type { LedgerDataSource } from "./source";
-import { syncLineOf, targetStatus } from "./targets";
+import { syncLineOf } from "./targets";
 import { createDemoTargets } from "./targets-demo";
 import { createDemoToday } from "./today-demo";
 import type { AskEvent, KeepResult, Section, SpaceOverview } from "./types";
@@ -91,6 +93,13 @@ export function createDemoSource({
   // Review and Memories (demo-records.ts); their decisions feed the overview.
   const records = createDemoRecords({ now, commandDelayMs, judging, clock });
   const agents = createDemoAgents();
+  // Personal's machines: an unlink stops every file of the machine, and a
+  // machine that's offline writes its files when it's back.
+  const machines: DemoMachines = createDemoMachines({
+    now,
+    commandDelayMs,
+    stopMachine: (slug, id) => targets.stopMachine(slug, id),
+  });
   const targets = createDemoTargets({
     now,
     commandDelayMs,
@@ -98,6 +107,8 @@ export function createDemoSource({
     nextRef: allocRef,
     propose: records.propose,
     decided: (slug, ref) => records.session.decided(slug, ref) !== undefined,
+    delivers: (slug, target) =>
+      !target.machine || machines.online(slug, target.machine.id),
   });
   const brief = createDemoBrief({
     now,
@@ -137,20 +148,24 @@ export function createDemoSource({
     if (list.length === 0) return merged;
     // The status line follows the targets once this session changes
     // them; the board's "5 agents in sync" stays while nothing drifted
-    // or is held.
-    const line = syncLineOf(list);
+    // or is held. Personal's says how its machines stand.
+    const space = spaces().find((s) => s.slug === slug);
+    const linked = machines.peekList?.(slug) ?? null;
+    const line = space
+      ? spaceSyncLine(space, list, linked, now())
+      : syncLineOf(list);
+    const attention =
+      line?.kind === "drifted" ||
+      line?.kind === "held" ||
+      line?.kind === "machine-drifted" ||
+      line?.kind === "machine-held";
     return {
       ...merged,
       status:
-        line?.kind === "drifted" ||
-        line?.kind === "held" ||
-        base.status.kind !== "in-sync"
+        attention || base.status.kind !== "in-sync"
           ? (line ?? base.status)
           : base.status,
-      targets: {
-        total: list.filter((t) => t.syncState !== "off").length,
-        inSync: list.filter((t) => targetStatus(t).kind === "in_sync").length,
-      },
+      targets: targetCounts(list, linked, now()),
     };
   };
   const overview = (slug: string): SpaceOverview | undefined => {
@@ -178,12 +193,16 @@ export function createDemoSource({
           : merged.memories,
     };
   };
-  /** A Keep recompiles every file the space compiles to (not ChatGPT's copy-out). */
+  /**
+   * A Keep recompiles every file the space compiles to (not ChatGPT's
+   * copy-out), a home file once whatever the number of machines it's on.
+   */
   const files = (slug: string) => {
     const list = targets.peekList?.(slug) ?? [];
     if (list.length === 0) return overview(slug)?.targets?.inSync ?? null;
-    return list.filter((t) => t.delivery !== "copy" && t.syncState !== "off")
-      .length;
+    return groupTargets(
+      list.filter((t) => t.delivery !== "copy" && t.syncState !== "off"),
+    ).length;
   };
   const remembered = new Map<string, KeepResult>();
   // A person's own Remember isn't undoable on the server (no undo journal
@@ -209,6 +228,7 @@ export function createDemoSource({
     memories: records.memories,
     brief,
     targets,
+    machines,
     today,
     gates,
     imports: createDemoImports({

@@ -74,6 +74,16 @@ export type SyncLine =
   | { kind: "compiling" }
   /** Compiled, but the CLI hasn't written these files to disk yet. */
   | { kind: "waiting-delivery"; files: number }
+  /** A personal space's home files match their compile on every machine they're on. */
+  | { kind: "machines-in-sync"; machines: number }
+  /** A home file has a hand edit on this machine (its name, as the person calls it). */
+  | { kind: "machine-drifted"; machine: string }
+  /** A pulled hand edit holds a home file on this machine until Review decides. */
+  | { kind: "machine-held"; machine: string }
+  /** The latest compile is on `reached` of the `of` machines; the rest haven't written it yet. */
+  | { kind: "machines-behind"; reached: number; of: number }
+  /** A personal space linked to no machine: nothing writes it into an agent's own files. */
+  | { kind: "no-machines" }
   | { kind: "no-agents" }
   /** PLACEHOLDER: the API serves no compile targets yet. */
   | { kind: "not-compiling" }
@@ -120,7 +130,10 @@ export interface SpaceOverview {
     rewrittenAt: string | null;
   } | null;
   agents: { connected: number; active: number } | null;
-  /** Compiled files. */
+  /**
+   * Compiled files. A personal space's home files count once per file,
+   * whatever the number of machines it's on (home-files.ts).
+   */
   targets: { total: number; inSync: number } | null;
   activity: { any: boolean };
   /** Decisions in force (team spaces). */

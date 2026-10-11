@@ -26,7 +26,8 @@ import { agentDay, dreamDate } from "@/lib/v2/today-copy";
 import { editionHref, gateHref, placeHref } from "@/lib/v2/places";
 import { GateRow } from "../../_components/gate-row";
 import { StatementText } from "../../_components/statement-text";
-import { TargetRow } from "../../_components/target-row";
+import { LinkHome } from "../../_components/link-home";
+import { TargetList } from "../../_components/target-list";
 import { useOverlays } from "../../_lib/overlays";
 import type { RecordsView } from "../records-view";
 import styles from "./today.module.css";
@@ -381,14 +382,10 @@ export function CompiledPanel({
         />
       </header>
       {targets?.length ? (
-        targets.map((target) => (
-          <TargetRow
-            key={target.id}
-            space={space.slug}
-            target={target}
-            variant="plain"
-          />
-        ))
+        <TargetList space={space} targets={targets} variant="plain" />
+      ) : space.kind === "personal" && targets ? (
+        // Personal compiles into each agent's own files, machine by machine.
+        <LinkHome lead={l.machines.panel.none} />
       ) : (
         <p className={styles.panelNote}>{c.none}</p>
       )}

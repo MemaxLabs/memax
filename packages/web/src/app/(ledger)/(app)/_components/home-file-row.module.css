@@ -1,0 +1,84 @@
+/* A home file across its machines (home-file-row.tsx): the path, then the
+ * agent and the status, then why it's behind when it is. */
+
+.row {
+  display: grid;
+  align-items: start;
+  column-gap: var(--space-3);
+  padding: 10px var(--space-4);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row:hover {
+  background: var(--hover);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* SyncTarget's compact row: the file icon on the path's line. */
+.compact {
+  grid-template-columns: 16px minmax(0, 1fr);
+}
+
+/* Main.png's "Compiled context": no icon. */
+.plain {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.icon {
+  margin-top: 1px;
+  color: var(--ink-3);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.path {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  min-width: 0;
+}
+
+.tool {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.tool::after {
+  content: "·";
+  margin-left: 8px;
+  color: var(--ink-3);
+}
+
+.detail {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-2);
+}

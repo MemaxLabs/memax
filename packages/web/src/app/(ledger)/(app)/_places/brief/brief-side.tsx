@@ -8,9 +8,16 @@ import { driftNotice } from "@/lib/v2/brief-copy";
 import { cliPrefix } from "@/lib/v2/cli";
 import { count } from "@/lib/v2/copy";
 import type { BriefView } from "@/lib/v2/data/brief";
+import { knownMachines } from "@/lib/v2/data/home-files";
+import { machineName } from "@/lib/v2/data/machines";
 import type { TargetView } from "@/lib/v2/data/targets";
-import { targetHref, TargetRow } from "../../_components/target-row";
+import { homeDriftNotice } from "@/lib/v2/machines-copy";
+import { LinkHome } from "../../_components/link-home";
+import { MachinesPanel } from "../../_components/machines-panel";
+import { TargetList } from "../../_components/target-list";
+import { targetHref } from "../../_components/target-row";
 import { useDrift } from "../../_lib/compile";
+import { useMachines } from "../../_lib/machines";
 import { useDriftActions } from "../drift/use-drift-actions";
 import type { RecordsView } from "../records-view";
 import styles from "./brief.module.css";
@@ -58,9 +65,9 @@ export function BriefSide({
           </Button>
         </header>
         {targets?.length ? (
-          targets.map((target) => (
-            <TargetRow key={target.id} space={space.slug} target={target} />
-          ))
+          <TargetList space={space} targets={targets} />
+        ) : space.kind === "personal" ? (
+          <LinkHome lead={l.machines.panel.none} />
         ) : (
           <p className={styles.panelNote}>
             {interpolate(s.noTargets, { cli: cliPrefix() })}
@@ -68,6 +75,10 @@ export function BriefSide({
         )}
         {drifted ? <DriftNotice view={view} target={drifted} /> : null}
       </section>
+
+      {space.kind === "personal" && targets?.length ? (
+        <MachinesPanel space={space} targets={targets} variant="side" />
+      ) : null}
 
       <section className="mx-panel" aria-labelledby="brief-reads">
         <header className="mx-panel-head">
@@ -136,12 +147,21 @@ function DriftNotice({
   const d = l.brief.drift;
   const drift = useDrift(space, target);
   const actions = useDriftActions(space, target);
+  const machines = useMachines(target.machine ? space : null);
   const [confirming, setConfirming] = useState(false);
-  const notice = driftNotice(l.brief, target, drift.data?.items[0], agentName, {
-    now,
-    timeZone,
-    locale,
-  });
+  const when = { now, timeZone, locale };
+  const item = drift.data?.items[0];
+  const notice = target.machine
+    ? homeDriftNotice(
+        l.machines,
+        l.brief,
+        target,
+        machineName(target.machine, knownMachines([target], machines.data)),
+        item,
+        agentName,
+        when,
+      )
+    : driftNotice(l.brief, target, item, agentName, when);
   const canOverwrite = space.role !== "viewer";
 
   return (

@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { Field, Segmented } from "@memaxlabs/ledger";
+import { interpolate } from "@/i18n";
 import { formatKb, parseKb } from "@/lib/v2/brief-copy";
 import {
+  HOME_SIZE_BUDGET_MAX,
   SIZE_BUDGET_MAX,
   SIZE_BUDGET_MIN,
   type Delivery,
@@ -15,27 +17,37 @@ import type { RecordsView } from "../records-view";
 import { useTargetSettings } from "./use-target-settings";
 import styles from "./target.module.css";
 
-/** TargetPreview.png's "How this file is written": include, stale facts, size budget, delivery. */
+/**
+ * TargetPreview.png's "How this file is written": include, stale facts,
+ * size budget, delivery. A home file (one machine's copy, `machine`) loads
+ * in every session of every agent, so its budget stops at 16 KB, and its
+ * machine's daemon is the only way it's written.
+ */
 export function TargetSettings({
   view,
   target,
+  machine = null,
 }: {
   view: RecordsView;
   target: TargetView;
+  /** A home file's machine, by name. */
+  machine?: string | null;
 }) {
   const { l, space, locale } = view;
   const s = l.brief.target.settings;
+  const h = l.machines.target;
   const { settings, pending, change } = useTargetSettings(space, target);
   const readOnly = space.role === "viewer";
   const disabled = readOnly || pending;
   const budgetText = formatKb(settings.sizeBudget, locale, "budget");
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const max = machine ? HOME_SIZE_BUDGET_MAX : SIZE_BUDGET_MAX;
 
   const commitBudget = async () => {
     if (draft === null) return;
     const bytes = parseKb(draft);
-    if (bytes === null || bytes < SIZE_BUDGET_MIN || bytes > SIZE_BUDGET_MAX) {
+    if (bytes === null || bytes < SIZE_BUDGET_MIN || bytes > max) {
       setError(true);
       return;
     }
@@ -89,8 +101,8 @@ export function TargetSettings({
           mono
           value={draft ?? budgetText}
           disabled={disabled}
-          hint={s.budgetHint}
-          error={error ? s.budgetError : undefined}
+          hint={machine ? h.budgetHint : s.budgetHint}
+          error={error ? (machine ? h.budgetError : s.budgetError) : undefined}
           onChange={(event) => {
             setDraft(event.currentTarget.value);
             setError(false);
@@ -110,7 +122,11 @@ export function TargetSettings({
       </div>
       <div className={styles.setting}>
         <span className={styles.settingLabel}>{s.delivery}</span>
-        {target.delivery === "copy" ? (
+        {machine ? (
+          <p className={styles.settingNote}>
+            {interpolate(h.delivery, { machine })}
+          </p>
+        ) : target.delivery === "copy" ? (
           <p className={styles.settingNote}>{s.copyNote}</p>
         ) : (
           <Segmented<Delivery>

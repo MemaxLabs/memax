@@ -120,7 +120,11 @@ export function marginLine(
 }
 
 /** When a hand edit happened, for a sentence: "on Oct 4" / "today at 16:40". */
-function editedWhen(b: BriefCopy, at: string, { now, timeZone, locale }: When) {
+export function editedWhen(
+  b: BriefCopy,
+  at: string,
+  { now, timeZone, locale }: When,
+) {
   return sameDay(new Date(at), now, timeZone)
     ? interpolate(b.drift.today, { time: formatClock(at, timeZone, locale) })
     : interpolate(b.drift.on, {

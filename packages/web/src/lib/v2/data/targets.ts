@@ -29,6 +29,18 @@ export type TargetKind =
  * in_sync, compiling, pending_delivery (not on disk yet), drifted (a hand
  * edit), held (a pulled hand edit whose proposals wait in Review) or off.
  */
+/** What a target's path is relative to: a repository, or one linked machine's home folder (a personal space). */
+export type TargetRoot = "repo" | "home";
+
+/** The machine a home file is on (spec TargetMachine). */
+export interface TargetMachineRef {
+  id: string;
+  /** What receipts call it ("machine-2"): never its name. */
+  label: string;
+  /** What the person calls it ("work-mbp"). */
+  name: string;
+}
+
 export type SyncState =
   | "in_sync"
   | "compiling"
@@ -51,6 +63,8 @@ export interface TargetSettingsView {
 
 export const SIZE_BUDGET_MIN = 1024;
 export const SIZE_BUDGET_MAX = 32768;
+/** A home file loads in every session of every agent: 16 KiB at most (spec TargetSettings). */
+export const HOME_SIZE_BUDGET_MAX = 16384;
 
 /** One compile run (C-), as the screens show it. */
 export interface CompileSummary {
@@ -77,8 +91,14 @@ export interface TargetView {
   kind: TargetKind;
   /** What people see: "AGENTS.md", ".cursor/rules", "ChatGPT project". */
   label: string;
-  /** A file, or a rules directory for scoped kinds; null for ChatGPT. */
+  /** A file, or a rules directory for scoped kinds; null for ChatGPT. Relative to `root`. */
   path: string | null;
+  /** `home`: a personal space's file in one linked machine's home folder. */
+  root: TargetRoot;
+  /** A home file's machine; null for a repository's file. */
+  machine: TargetMachineRef | null;
+  /** A home file's readers on its machine (registry keys, spec read_by); empty for a repository's. */
+  readBy: string[];
   /** The canonical file this tool also reads ("AGENTS.md" for the shim and Cursor). */
   reads: string | null;
   syncState: SyncState;
@@ -177,13 +197,40 @@ export function driftAgent(kind: TargetKind): string | undefined {
   return kind === "agents_md" ? undefined : TARGET_READERS[kind][0];
 }
 
-/** The URL segment for a target: its kind ("claude-md") when that's unique in the space, else its id. */
+/** What targetSlug reads of a target: the view, or the API's. */
+interface Sluggable {
+  id: string;
+  kind: TargetKind;
+  root?: TargetRoot;
+  machine?: { label: string } | null;
+}
+
+/** A home file: one linked machine's copy of a personal space. */
+export function isHome(target: Pick<TargetView, "root">): boolean {
+  return target.root === "home";
+}
+
+/**
+ * The URL segment for a target: its kind ("claude-md") when that's unique
+ * among the space's repository files, a home file's kind and machine
+ * ("codex-user-machine-2") when that's unique on the machine, else its id.
+ */
 export function targetSlug(
-  target: { id: string; kind: TargetKind },
-  all: readonly { kind: TargetKind }[],
+  target: Sluggable,
+  all: readonly Omit<Sluggable, "id">[],
 ): string {
-  const same = all.filter((t) => t.kind === target.kind).length;
-  return same <= 1 ? target.kind.replace(/_/g, "-") : target.id;
+  const home = target.root === "home";
+  const on = (t: Omit<Sluggable, "id">) =>
+    t.root === "home" ? (t.machine?.label ?? "") : "";
+  const same = all.filter(
+    (t) =>
+      t.kind === target.kind &&
+      (t.root === "home") === home &&
+      on(t) === on(target),
+  ).length;
+  if (same > 1) return target.id;
+  const kind = target.kind.replace(/_/g, "-");
+  return home && target.machine ? `${kind}-${target.machine.label}` : kind;
 }
 
 /** Finds a target by the URL segment: its slug or its id. */
@@ -199,10 +246,12 @@ export function findTarget(
  * first ("Cursor file drifted"), then a file a pull holds ("Holding for
  * 2 proposals in Review"), then anything compiling or waiting for the
  * CLI, then "N files in sync". ChatGPT and stopped targets don't
- * count: nothing is on disk to be in sync. Null with no targets.
+ * count: nothing is on disk to be in sync. Null with no targets. A
+ * repository's files only: spaceSyncLine (home-files.ts) adds a personal
+ * space's machines.
  */
 export function syncLineOf(targets: readonly TargetView[]): SyncLine | null {
-  const active = targets.filter((t) => t.syncState !== "off");
+  const active = targets.filter((t) => t.syncState !== "off" && !isHome(t));
   if (active.length === 0) return null;
   const drifted = active.find((t) => t.syncState === "drifted");
   if (drifted) {

@@ -14,8 +14,9 @@ import { createSdkMemories } from "./sdk-memories";
 import { createSdkReview } from "./sdk-review";
 import { createSdkSettings } from "./settings-sdk";
 import { createSdkSwitch } from "./switch-sdk";
+import { spaceSyncLine, targetCounts } from "./home-files";
+import { createSdkMachines, machinesOrNull } from "./machines-sdk";
 import type { LedgerDataSource } from "./source";
-import { syncLineOf, targetStatus } from "./targets";
 import { createSdkTargets, targetsOrNull } from "./targets-sdk";
 import { createSdkToday } from "./today-sdk";
 import type { KeepResult, SpaceOverview, Viewer } from "./types";
@@ -63,6 +64,7 @@ export function createSdkSource({
     memories: createSdkMemories(client, viewerId),
     brief: createSdkBrief(client, viewerId),
     targets: createSdkTargets(client),
+    machines: createSdkMachines(client),
     today: createSdkToday({ client, viewer, agents, gates, dream }),
     gates,
     imports: createSdkImports(client),
@@ -89,7 +91,7 @@ export function createSdkSource({
       }));
     },
     async overview(space, signal): Promise<SpaceOverview> {
-      const [review, memories, receipts, agents, targets, asked] =
+      const [review, memories, receipts, agents, targets, asked, machines] =
         await Promise.all([
           client.v2.review.list(space.slug, { limit: 1, signal }),
           client.v2.memories.list(space.slug, { limit: 1, signal }),
@@ -98,9 +100,16 @@ export function createSdkSource({
           targetsOrNull(client, space.slug, signal),
           // Not counted rather than failing the frame.
           gates.waiting({ space, signal }).catch(() => null),
+          // Only a personal space is written to machines.
+          space.kind === "personal"
+            ? machinesOrNull(client, space.slug, signal)
+            : Promise.resolve(null),
         ]);
       const anyMemory = memories.items.length > 0;
-      const line = targets ? syncLineOf(targets) : null;
+      const now = new Date();
+      const line = targets
+        ? spaceSyncLine(space, targets, machines, now)
+        : null;
       return {
         waiting: review.total,
         // Review lists them first, and the rail counts them (waitingOnYou).
@@ -113,18 +122,15 @@ export function createSdkSource({
           ? { title: null, facts: null, rewrittenAt: null }
           : null,
         // The space's agents, and the status line (plan §6.4): a drifted
-        // file first, then "No agents yet", then what the targets say.
+        // file first, then "No agents yet", then what the targets say
+        // (for Personal, how its machines stand).
         agents: agents?.counts ?? null,
-        status: (line?.kind === "drifted" ? line : null) ??
+        status: (line?.kind === "drifted" || line?.kind === "machine-drifted"
+          ? line
+          : null) ??
           agents?.status ??
           line ?? { kind: "not-compiling" },
-        targets: targets
-          ? {
-              total: targets.filter((t) => t.syncState !== "off").length,
-              inSync: targets.filter((t) => targetStatus(t).kind === "in_sync")
-                .length,
-            }
-          : null,
+        targets: targets ? targetCounts(targets, machines, now) : null,
         // PLACEHOLDER from here down: not served by /v2 yet.
         reviewFilters: null,
         lastReview: null,

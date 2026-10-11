@@ -11,6 +11,7 @@ import {
 } from "./demo-memories-data";
 import { DEMO_CARDS, DEMO_FOLD, ZZ } from "./demo-review-data";
 import { DEMO_TARGETS } from "./demo-targets-data";
+import { reachOf } from "./home-files";
 import { reachesTarget } from "./targets";
 import type { Decided, DemoJournal } from "./demo-records";
 import type {
@@ -199,6 +200,18 @@ export function createDemoMemories({
         : row.state === "conflict"
           ? "proposed"
           : row.state;
+    const reaches =
+      lifecycle === "kept"
+        ? (DEMO_TARGETS[slug] ?? []).filter(
+            (t) =>
+              // A stopped file holds nothing any more (the SDK's rule).
+              t.syncState !== "off" &&
+              reachesTarget(ref, t, DEMO_TARGETS[slug] ?? []),
+          )
+        : null;
+    // Personal's home files say the machines they're on (Memory's head
+    // and Reaches); a repository's reach is the board's, below.
+    const home = reaches?.some((t) => t.root === "home") ?? false;
     const base: MemoryRecord = {
       ref,
       version: edit?.version ?? extra.version ?? 1,
@@ -212,7 +225,7 @@ export function createDemoMemories({
           : null,
       latest: row.receipt,
       reads: null,
-      reach: null,
+      reach: home && reaches ? { ...reachOf(reaches), agents: null } : null,
       lineage: row.receipt
         ? [
             {
@@ -238,12 +251,7 @@ export function createDemoMemories({
       merged: null,
       sources: [],
       // The demo's compiled files that hold its words, or read one that does.
-      reaches:
-        lifecycle === "kept"
-          ? (DEMO_TARGETS[slug] ?? []).filter((t) =>
-              reachesTarget(ref, t, DEMO_TARGETS[slug] ?? []),
-            )
-          : null,
+      reaches,
       conditions: [],
       checked: null,
       forgotten: row.forgotten,

@@ -6,7 +6,7 @@ import { interpolate } from "@/i18n";
 import { formatDate, formatWhen } from "@/lib/v2/copy";
 import type { ConditionLine, MemoryRecord } from "@/lib/v2/data/memories";
 import { reachMeta } from "@/lib/v2/reads-copy";
-import { TargetRow } from "../../_components/target-row";
+import { TargetList } from "../../_components/target-list";
 import type { RecordsView } from "../records-view";
 import { useMemoryScope } from "./use-memory-scope";
 import styles from "./memory.module.css";
@@ -81,13 +81,7 @@ export function MemorySide({
           {reach ? <span className="mx-meta">{reach}</span> : null}
         </header>
         {record.reaches?.length ? (
-          record.reaches.map((target) => (
-            <TargetRow
-              key={target.id}
-              space={view.space.slug}
-              target={target}
-            />
-          ))
+          <TargetList space={view.space} targets={record.reaches} />
         ) : (
           // Nothing compiles it yet, or the targets didn't load.
           <p className={styles.note}>{p.reachesLater}</p>

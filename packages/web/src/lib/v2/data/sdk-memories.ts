@@ -9,6 +9,7 @@ import { previewOf, tombstoneOf } from "./sdk-forget";
 import { foldUndo, recordOf, undoneIn } from "./sdk-record";
 import { actorOf, listItemOf, receiptsFor, type V2Client } from "./sdk-records";
 import { staleWhyOf, verifyBody, verifyResultOf } from "./sdk-verify";
+import { reachOf } from "./home-files";
 import { reachesTarget } from "./targets";
 import { targetsOrNull } from "./targets-sdk";
 
@@ -153,10 +154,12 @@ export function createSdkMemories(
       const reaches = targets.filter(
         (t) => t.syncState !== "off" && reachesTarget(record.ref, t, targets),
       );
+      // A home file counts once across the machines it's on.
+      const { files, machines } = reachOf(reaches);
       return {
         ...record,
         reaches,
-        reach: { files: reaches.length, agents: record.reach?.agents ?? null },
+        reach: { files, machines, agents: record.reach?.agents ?? null },
       };
     },
 

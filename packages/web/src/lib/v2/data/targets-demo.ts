@@ -7,6 +7,11 @@ import {
   type DemoCompiled,
   type DemoVariant,
 } from "./demo-compiled";
+import {
+  DEMO_HOME_CANONICAL,
+  DEMO_HOME_CLAUDE,
+  DEMO_HOME_CODEX,
+} from "./demo-home-compiled";
 import { DEMO_DRIFT, DEMO_TARGETS, demoRun } from "./demo-targets-data";
 import type { ReviewItem } from "./review";
 import type {
@@ -47,14 +52,22 @@ function headerStamp(iso: string): string {
 /** The content as compiled for the target's settings, with the run's ID and time in the header. */
 function compiledFor(target: TargetView): DemoCompiled {
   const variant: DemoVariant = `${target.settings.include}:${target.settings.stale}`;
+  // Personal's Brief has no open question or stale fact, so its home
+  // files read the same whatever Include and Stale facts say.
   const base =
-    target.kind === "agents_md"
-      ? DEMO_AGENTS_MD[variant]
-      : target.kind === "chatgpt"
-        ? DEMO_CHATGPT[variant]
-        : target.kind === "claude_md"
-          ? DEMO_CLAUDE_MD
-          : DEMO_CURSOR_FILE;
+    target.root === "home"
+      ? target.kind === "claude_user"
+        ? DEMO_HOME_CLAUDE
+        : target.kind === "codex_user"
+          ? DEMO_HOME_CODEX
+          : DEMO_HOME_CANONICAL
+      : target.kind === "agents_md"
+        ? DEMO_AGENTS_MD[variant]
+        : target.kind === "chatgpt"
+          ? DEMO_CHATGPT[variant]
+          : target.kind === "claude_md"
+            ? DEMO_CLAUDE_MD
+            : DEMO_CURSOR_FILE;
   const run = target.lastCompile;
   if (!run) return base;
   return {
@@ -78,7 +91,10 @@ function fileView(
         : (target.path ?? target.label);
   return {
     path,
-    label: path ?? "ChatGPT project instructions",
+    label:
+      target.root === "home"
+        ? target.label
+        : (path ?? "ChatGPT project instructions"),
     content: compiled.content,
     bytes: compiled.bytes,
     lines: compiled.lines,
@@ -88,6 +104,12 @@ function fileView(
   };
 }
 
+/** The demo's targets, and what an unlink does to them (machines-demo.ts). */
+export interface DemoTargets extends TargetsSource {
+  /** Stops every file of a machine, as UnlinkMachine does in its transaction. */
+  stopMachine(slug: string, machineId: string): void;
+}
+
 export function createDemoTargets({
   now,
   commandDelayMs = 240,
@@ -95,6 +117,7 @@ export function createDemoTargets({
   nextRef,
   propose,
   decided = () => false,
+  delivers = () => true,
 }: {
   now: () => Date;
   commandDelayMs?: number;
@@ -106,7 +129,9 @@ export function createDemoTargets({
   propose: (slug: string, items: ReviewItem[]) => void;
   /** Whether a proposal was kept or rejected this session. */
   decided?: (slug: string, ref: string) => boolean;
-}): TargetsSource {
+  /** Whether a compiled file gets written now: a home file waits for its machine to be online. */
+  delivers?: (slug: string, target: TargetView) => boolean;
+}): DemoTargets {
   const lists = new Map<string, TargetView[]>(
     Object.entries(DEMO_TARGETS).map(([slug, list]) => [slug, [...list]]),
   );
@@ -169,15 +194,21 @@ export function createDemoTargets({
       // A newer command took over, or compiling was stopped meanwhile.
       if (!live || latest.get(target.id) !== token || live.syncState === "off")
         return;
-      // A hand edit, or a pull's hold, keeps the file as it is.
+      // A hand edit, or a pull's hold, keeps the file as it is; a machine
+      // that's offline writes it when it's back.
       const drifted = live.syncState === "drifted" || live.syncState === "held";
+      const waits = !drifted && !delivers(slug, live);
       const run = live.lastCompile;
       put(slug, {
         ...live,
-        syncState: drifted ? live.syncState : "in_sync",
+        syncState: drifted
+          ? live.syncState
+          : waits
+            ? "pending_delivery"
+            : "in_sync",
         lastCompile: run && {
           ...demoRun(ref, compiledFor(live), run.files, at),
-          status: drifted ? "compiled" : "delivered",
+          status: drifted || waits ? "compiled" : "delivered",
         },
       });
     }, settleMs);
@@ -217,6 +248,16 @@ export function createDemoTargets({
   }
 
   return {
+    stopMachine(slug, machineId) {
+      lists.set(
+        slug,
+        listOf(slug).map((t) =>
+          t.machine?.id === machineId && t.syncState !== "off"
+            ? { ...t, syncState: "off", version: t.version + 1 }
+            : t,
+        ),
+      );
+    },
     peekList: (slug) => fresh(slug),
     peekPreview: preview,
     peekDrift: (slug, id) => {

@@ -47,4 +47,22 @@ describe("a memory's reads", () => {
       "覆盖 5 个 Agent",
     );
   });
+
+  it("says the machines a Personal space's home files are on", () => {
+    const reach = { files: 3, machines: 2, agents: 4 };
+    expect(reachText(pe, reach, "en")).toBe(
+      "reaches 3 files on 2 machines and 4 agents",
+    );
+    expect(reachMeta(pe, reach, "en")).toBe("3 files on 2 machines · 4 agents");
+    expect(reachText(pe, { files: 2, machines: 1, agents: null }, "en")).toBe(
+      "reaches 2 files on 1 machine",
+    );
+    // No machine (a repository's files): as before.
+    expect(reachText(pe, { files: 4, machines: 0, agents: 5 }, "en")).toBe(
+      "reaches 4 files and 5 agents",
+    );
+    expect(reachText(pz, reach, "zh")).toBe(
+      "覆盖 2 台电脑上的 3 个文件和 4 个 Agent",
+    );
+  });
 });

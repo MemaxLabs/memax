@@ -19,6 +19,14 @@
   min-width: 0;
 }
 
+/* Under a block's two sides: the person's own lines stay on the machine. */
+.blockNote {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-2);
+}
+
 .fileTitle:global(.mx-panel-title) {
   font-size: 14px;
 }

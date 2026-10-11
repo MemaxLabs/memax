@@ -2,7 +2,7 @@
   "mcpServers": {
     "memax": {
       "type": "http",
-      "url": "https://mcp.memax.app/mcp"
+      "url": "https://api.memax.app/mcp"
     }
   }
 }

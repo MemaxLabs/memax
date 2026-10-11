@@ -98,7 +98,9 @@ describe("parseBack: no change", () => {
     // seconds here (the compile service has a CPU budget per request).
     // A shared runner's load moves wall clock tenfold, so the test
     // compares sizes: eight times the lines took about eight times as
-    // long here, and the scan per line fifty to eighty times.
+    // long here, and the scan per line fifty to eighty times. The bound
+    // sits between the two with room for a busy runner (it measured 27
+    // once on CI), and each size takes the fastest of five runs.
     const file = (n: number) => {
       const lines = (f: (i: number) => string) =>
         Array.from({ length: n }, (_, i) => f(i)).join("\n");
@@ -110,7 +112,7 @@ describe("parseBack: no change", () => {
     const fastest = (n: number) => {
       const { last, current } = file(n);
       let ms = Infinity;
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 5; i++) {
         const started = performance.now();
         parseBack(last, current);
         ms = Math.min(ms, performance.now() - started);
@@ -119,7 +121,7 @@ describe("parseBack: no change", () => {
     };
     fastest(1_000); // compiled before it's timed
     const n = 16_000;
-    expect(fastest(n) / fastest(n / 8)).toBeLessThan(24);
+    expect(fastest(n) / fastest(n / 8)).toBeLessThan(32);
 
     const { last, current } = file(n);
     const { changes } = parseBack(last, current);

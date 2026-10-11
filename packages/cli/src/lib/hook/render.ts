@@ -24,12 +24,19 @@ export interface BlockFile {
   handEdit: boolean;
   /** The last session didn't have this file: it loads in full. */
   fresh?: boolean;
+  /**
+   * Cloud: new and changed lines the server left out (it sends at most 60
+   * a file); they are counted with the lines cut for the budget.
+   */
+  more?: number;
 }
 
 export interface BlockForget {
   ref: string;
   with: string[];
   at: string;
+  /** Cloud: the files here that still say it. */
+  held?: string[];
 }
 
 export interface BlockGate {
@@ -61,6 +68,15 @@ export interface BlockInput {
   /** The Personal space's, on a machine whose home is linked. */
   personal?: BlockSection;
   maxTokens: number;
+  /**
+   * `cloud` is a cloud agent's start (`memax hook cloud-start`): what
+   * changed since the compile each committed file holds (`was`, the file;
+   * `compile`, the space's latest), as the server says. Only the opening
+   * sentence, each file's first line, a hand edit's line, a forget still
+   * in the files and the count of lines left out read differently;
+   * `local`, the default, is the session-start hook's block.
+   */
+  mode?: "local" | "cloud";
 }
 
 /** Claude Code saves plain output over 10,000 characters to a file instead. */
@@ -125,7 +141,11 @@ function frame(
     );
     for (const f of b.forgotten) {
       const w = f.with.length > 0 ? `, with ${f.with.join(", ")}` : "";
-      head.push(`- ${f.ref} (${day(f.at)}${w})`);
+      const held =
+        f.held && f.held.length > 0
+          ? `, still in ${f.held.join(" and ")} here`
+          : "";
+      head.push(`- ${f.ref} (${day(f.at)}${w})${held}`);
     }
   }
   if (b.gates.length > 0) {
@@ -163,13 +183,14 @@ export function renderBlock(b: BlockInput): string {
     tail: string[];
     pieces: Piece[];
   }> = [];
+  const cloud = b.mode === "cloud";
   const repo = b.repo && hasNews(b.repo) ? b.repo : undefined;
   const personal = b.personal && hasNews(b.personal) ? b.personal : undefined;
   if (!repo && !personal) return "";
   if (repo)
     sections.push({
-      ...frame(repo, REPO_INTRO),
-      pieces: repo.files.flatMap(filePieces),
+      ...frame(repo, cloud ? cloudIntro(repo) : REPO_INTRO),
+      pieces: repo.files.flatMap(cloud ? cloudPieces : filePieces),
     });
   if (personal) {
     const intro = repo
@@ -193,6 +214,10 @@ export function renderBlock(b: BlockInput): string {
       ),
     0,
   );
+  // Lines the server left out (cloud): they are news the files don't hold.
+  const leftOut = cloud
+    ? (repo?.files ?? []).reduce((n, f) => n + (f.more ?? 0), 0)
+    : 0;
   // The first `keep` changed lines, in order (the repository's first); a
   // list left empty goes.
   const lines = (keep: number): string[] => {
@@ -209,10 +234,12 @@ export function renderBlock(b: BlockInput): string {
         left -= shown.length;
         if (shown.length > 0) out.push(p.title, ...shown);
       }
-      if (i === sections.length - 1 && keep < total) {
-        const more = total - keep;
+      if (i === sections.length - 1 && (keep < total || leftOut > 0)) {
+        const more = total - keep + leftOut;
         out.push(
-          `…and ${more} more new or changed line${more === 1 ? "" : "s"}, already in the files above.`,
+          cloud
+            ? `…and ${more} more new or changed line${more === 1 ? "" : "s"} in the space's latest compile, not shown here.`
+            : `…and ${more} more new or changed line${more === 1 ? "" : "s"}, already in the files above.`,
         );
       }
       out.push(...sec.tail);
@@ -272,4 +299,43 @@ function filePieces(f: BlockFile): Piece[] {
 
 function bullet(text: string): string {
   return text.startsWith("- ") ? text : `- ${text}`;
+}
+
+/** A cloud start's opening sentence, with the compiles the files hold. */
+function cloudIntro(b: BlockSection): string {
+  const held = [...new Set(b.files.map((f) => f.was ?? f.compile))];
+  const at = held.length > 0 ? ` (${held.join(", ")})` : "";
+  return `Memax: what changed in this repository's compiled context since the compile it holds${at}. The files themselves are already loaded.`;
+}
+
+/**
+ * A file's lines in a cloud start: the compile the file holds (`was`)
+ * against the space's latest (`compile`). A hand edit is said, and the
+ * delta still follows: it is the record's, whatever the file says.
+ */
+function cloudPieces(f: BlockFile): Piece[] {
+  const here = f.was ?? f.compile;
+  if (f.added.length + f.changed.length + f.gone.length === 0 && !f.handEdit)
+    return [];
+  const out: Piece[] = [];
+  if (here !== f.compile)
+    out.push({
+      line: `${f.path} here is ${here}; the space has compiled ${f.compile} since.`,
+    });
+  if (f.handEdit)
+    out.push({
+      line: `${f.path} here differs from what ${here} wrote (edited by hand), so its Memax lines may not be the record's.`,
+    });
+  if (f.added.length > 0)
+    out.push({ title: "New:", bullets: f.added.map((l) => bullet(l.text)) });
+  if (f.changed.length > 0)
+    out.push({
+      title: "Changed:",
+      bullets: f.changed.map((l) => bullet(l.text)),
+    });
+  if (f.gone.length > 0)
+    out.push({
+      line: `No longer in ${f.path}: ${f.gone.join(", ")} (superseded or excluded; don't rely on ${f.gone.length === 1 ? "it" : "them"}).`,
+    });
+  return out;
 }

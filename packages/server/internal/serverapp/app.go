@@ -893,6 +893,11 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 	if vectors != nil && bus != nil {
 		bus.Local.Register(func(uuid.UUID) { vectors.Purge() })
 	}
+	// The artifacts session starts diff are cached by key, and Forget
+	// re-renders them in place.
+	if svc != nil && bus != nil {
+		bus.Local.Register(svc.PurgeSpace)
+	}
 	// Nil without a database: nothing records reads.
 	rec := reads.New(l, reads.Options{})
 	if l != nil {

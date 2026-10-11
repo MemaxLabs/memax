@@ -660,6 +660,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/spaces/{space}/session-starts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What changed since the compile a repository holds
+         * @description A cloud agent's session start (`memax hook cloud-start`, in a
+         *     sandbox with no daemon and no cache): the compiled files it found
+         *     in the repository, each by the compile (`C-`) its header names and
+         *     its drift hash, and nothing of their words. The answer is what
+         *     changed in the record since: for each file, the cited lines the
+         *     space's latest compile of that file added or changed (their words
+         *     from the latest compile only) and the memories that left it (refs
+         *     only); what a person forgot that the files still hold, or forgot
+         *     since (refs and dates, never words); decisions waiting for a
+         *     person; and the agent's own notices, each told once (here or over
+         *     MCP, whichever comes first).
+         *
+         *     A file whose compile isn't one of this space's repository files is
+         *     left out of the answer. A file whose drift hash differs from what
+         *     its compile wrote is `hand_edited`: its Memax lines may not be the
+         *     record's. The commit and branch select nothing; they are not
+         *     stored.
+         *
+         *     Each compile named counts as a compile load (a read of every fact
+         *     in it, `compile_load`), under the agent's connection or naming the
+         *     agent for a person, once per `Idempotency-Key` (a retry, or a
+         *     second hook in the same session, counts nothing more); the lines
+         *     it returns count as a `digest` read. A credential with no
+         *     connection here gets its answer, and nothing is counted. A
+         *     `compact` start counts nothing either: the files didn't load
+         *     again.
+         */
+        post: operations["startSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/spaces/{space}/imports": {
         parameters: {
             query?: never;
@@ -3845,6 +3893,97 @@ export interface components {
         CompileLoadResult: {
             read: components["schemas"]["Read"];
         };
+        SessionStartRequest: {
+            /** @description The agent whose session starts. Ignored for an agent's own credential, which is always its agent. */
+            agent?: components["schemas"]["AgentKind"];
+            session_ref?: components["schemas"]["SessionRef"];
+            /**
+             * @description How the session started, as the agent says; `compact` counts no load.
+             * @enum {string}
+             */
+            source?: "startup" | "resume" | "clear" | "compact";
+            /** @description The compiled files the session loaded, each with the compile its header names. */
+            files: components["schemas"]["SessionStartFileInput"][];
+            /** @description The commit the files are at. It selects nothing and isn't stored. */
+            commit?: string;
+            /** @description The branch checked out. It selects nothing and isn't stored. */
+            branch?: string;
+            /** @description When the session loaded the files; defaults to now, and must be within the last day. */
+            loaded_at?: components["schemas"]["Timestamp"];
+        };
+        SessionStartFileInput: {
+            path: components["schemas"]["RepoPath"];
+            /** @description The compile its header names. */
+            compile: string;
+            /** @description The file's drift hash (its managed block's, or the whole file's), to tell a hand edit. */
+            drift_sha256?: components["schemas"]["Sha256"];
+        };
+        SessionStart: {
+            space: components["schemas"]["SessionStartSpace"];
+            /** @description The files the request named that are this space's, in the order named. */
+            files: components["schemas"]["SessionStartFile"][];
+            /**
+             * @description Memories a person forgot that a named compile holds (`in_files`,
+             *     at most 50), then the latest others forgotten since the oldest
+             *     named compile, at most 20. One entry a Forget, with what it took
+             *     in `with`. Refs and dates only.
+             */
+            forgotten: components["schemas"]["SessionStartForget"][];
+            /** @description Decisions waiting for a person in the space, newest first, at most 10. */
+            gates: components["schemas"]["SessionStartGate"][];
+            /** @description The agent's notices in this space, each told once (here or over MCP). */
+            notices: components["schemas"]["Notice"][];
+            /** @description Handoffs addressed to this session's branch. Always empty until handoffs ship. */
+            handoffs: components["schemas"]["SessionStartHandoff"][];
+        };
+        SessionStartSpace: {
+            id: components["schemas"]["Id"];
+            slug: string;
+        };
+        SessionStartFile: {
+            /** @description The file's path in the repository, as the space compiles it. */
+            path: components["schemas"]["RepoPath"];
+            /** @description The compile the repository holds. */
+            here: components["schemas"]["CompileRef"];
+            /** @description The space's latest compile of the file; the same as `here` when nothing changed. */
+            latest: components["schemas"]["CompileRef"];
+            /** @description The file differs from what its compile wrote, so its Memax lines may not be the record's. */
+            hand_edited: boolean;
+            /** @description Cited lines `latest` has that `here` didn't, in the file's order. */
+            added: components["schemas"]["SessionStartLine"][];
+            /** @description Cited lines whose words changed since `here`, with their words in `latest`. */
+            changed: components["schemas"]["SessionStartLine"][];
+            /** @description Memories `here` cites that `latest` doesn't (superseded or excluded); not forgotten ones. */
+            gone: components["schemas"]["DisplayRef"][];
+            /** @description Added and changed lines left out (at most 60 are sent a file). */
+            more: number;
+        };
+        SessionStartLine: {
+            /** @description The memories the line cites. */
+            refs: components["schemas"]["DisplayRef"][];
+            /** @description The line as the latest compile wrote it, its cites included. */
+            text: string;
+        };
+        SessionStartForget: {
+            ref: components["schemas"]["DisplayRef"];
+            /** @description Memories forgotten with it. */
+            with: components["schemas"]["DisplayRef"][];
+            at: components["schemas"]["Timestamp"];
+            /** @description A named compile holds it, so the files the session loaded still say it. */
+            in_files: boolean;
+        };
+        SessionStartGate: {
+            ref: components["schemas"]["GateDisplayRef"];
+            /** @description The asking agent's question, cut to 200 characters. */
+            question: string;
+            /** @description The agent that asked. */
+            agent?: string;
+            expires_at: components["schemas"]["Timestamp"];
+        };
+        /** @description A handoff addressed to the session's branch (not yet served). */
+        SessionStartHandoff: {
+            ref: string;
+        };
         SpaceList: {
             items: components["schemas"]["Space"][];
         };
@@ -6467,6 +6606,9 @@ export interface components {
         CompileLoadResultEnvelope: {
             data: components["schemas"]["CompileLoadResult"];
         };
+        SessionStartEnvelope: {
+            data: components["schemas"]["SessionStart"];
+        };
         CheckpointPageEnvelope: {
             data: components["schemas"]["CheckpointPage"];
         };
@@ -7007,6 +7149,15 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["CompileLoadResultEnvelope"];
+            };
+        };
+        /** @description What changed since the compiles the repository holds. */
+        SessionStarted: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["SessionStartEnvelope"];
             };
         };
         /** @description The gate after the command (and, for an answer, the decision it became). */
@@ -8029,6 +8180,46 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["IdempotencyKeyReused"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    startSession: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+            };
+            path: {
+                /** @description The space's id or slug. */
+                space: components["parameters"]["SpacePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionStartRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["SessionStarted"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

@@ -71,6 +71,8 @@ type Service struct {
 	cfg      Config
 	// adapters is what the service said it compiles (adapters.go).
 	adapters adapterCache
+	// deltas caches the artifacts session starts diff (delta.go).
+	deltas deltaCache
 }
 
 // New returns the coordinator, or nil when any dependency is missing (no

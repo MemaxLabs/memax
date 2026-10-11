@@ -375,6 +375,20 @@ func TestForgetTakesCheckResults(t *testing.T) {
 	if n := r.f.count(`SELECT count(*) FROM v2.condition_checks WHERE memory_id = $1`, r.mem.ID); n != 1 {
 		t.Fatalf("%d check rows", n)
 	}
+	// memax_v2 never deletes in v2, and the function Forget uses takes
+	// only a memory this same transaction forgot.
+	for _, sql := range []string{
+		`DELETE FROM v2.condition_checks WHERE memory_id = $1`,
+		`SELECT v2.remove_condition_checks(ARRAY[$1::uuid])`,
+	} {
+		err := r.f.asV2([]uuid.UUID{r.sp}, []uuid.UUID{r.mem.TenantID}, func(tx pgx.Tx) error {
+			_, err := tx.Exec(context.Background(), sql, r.mem.ID)
+			return err
+		})
+		if err == nil {
+			t.Errorf("%s: allowed outside a Forget", sql)
+		}
+	}
 	res := r.f.apply(&ledger.Forget{Meta: meta(person(r.owner), r.scope, policy.ViaWeb), Memory: r.mem.Ref, ExpectedVersion: 1})
 	if res.Outcome != ledger.OutcomeApplied {
 		t.Fatalf("forget: %+v", res.Policy)

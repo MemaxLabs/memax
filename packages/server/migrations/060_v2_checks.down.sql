@@ -1,6 +1,7 @@
 -- 060: v2_checks, reverted: the check state goes, and retiring a space
 -- and Forget's check at commit are 056's and 044's again.
 
+DROP FUNCTION v2.remove_condition_checks(uuid[]);
 DROP TABLE v2.condition_checks;
 DROP FUNCTION v2.condition_checks_forgotten_guard();
 DROP TABLE v2.check_runs;

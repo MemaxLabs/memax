@@ -21,14 +21,18 @@
 -- # What needs no receipt
 --
 -- Neither table is the record: no last_receipt_id, no receipt check.
--- memax_v2 inserts and updates them; it deletes condition_checks rows
--- (Forget's purge, below) and never check_runs.
+-- memax_v2 inserts and updates them and never deletes in v2
+-- (TestEveryV2TableIsLockedDown): Forget takes a memory's results through
+-- v2.remove_condition_checks (SECURITY DEFINER, below), and retiring a
+-- space takes both tables.
 --
 -- # Forget (rule 7)
 --
 -- Evidence can hold a memory's paths, which its words named, so Forget
--- deletes the memory's condition_checks rows, and the forgotten-words
--- check at commit (044) refuses a forgotten memory that still has one. A
+-- deletes the memory's condition_checks rows (v2.remove_condition_checks,
+-- which takes only a memory forgotten in the same transaction), and the
+-- forgotten-words check at commit (044) refuses a forgotten memory that
+-- still has one. A
 -- report racing a Forget locks the memories it writes about first (the
 -- ledger's report takes them FOR UPDATE, in id order), and a row for a
 -- forgotten memory is refused outright.
@@ -167,6 +171,37 @@ BEGIN
     RETURN NULL;
 END $$;
 
+-- Forget's purge of a memory's check results: only memories in this
+-- transaction's scope, and only those a forgot receipt in this same
+-- transaction names, so it can't be used to clear anything else. RLS
+-- still applies to the owner (FORCE), so only app.space_ids' rows are
+-- visible to it.
+CREATE FUNCTION v2.remove_condition_checks(p_memories uuid[]) RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path = pg_catalog, pg_temp
+    AS $$
+DECLARE
+    n integer;
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM unnest(p_memories) AS m(id)
+         WHERE NOT EXISTS (
+             SELECT 1 FROM v2.receipts r
+              WHERE r.object_id = m.id AND r.action = 'forgot' AND r.txid = pg_current_xact_id()
+                AND r.space_id = ANY ((SELECT v2.current_space_ids())::uuid[]))
+    ) THEN
+        RAISE EXCEPTION 'check results go only with a Forget of their memory in the same transaction'
+            USING ERRCODE = 'MXR02';
+    END IF;
+    DELETE FROM v2.condition_checks c
+     WHERE c.memory_id = ANY (p_memories)
+       AND c.space_id = ANY ((SELECT v2.current_space_ids())::uuid[]);
+    GET DIAGNOSTICS n = ROW_COUNT;
+    RETURN n;
+END $$;
+REVOKE ALL ON FUNCTION v2.remove_condition_checks(uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION v2.remove_condition_checks(uuid[]) TO memax_v2;
+
 -- ---------------------------------------------------------------------
 -- Retiring a space takes its check state with it
 -- ---------------------------------------------------------------------
@@ -245,7 +280,7 @@ CREATE POLICY condition_checks_space ON v2.condition_checks
 -- ---------------------------------------------------------------------
 
 GRANT SELECT, INSERT ON v2.check_runs TO memax_v2;
-GRANT SELECT, INSERT, DELETE ON v2.condition_checks TO memax_v2;
+GRANT SELECT, INSERT ON v2.condition_checks TO memax_v2;
 GRANT UPDATE (condition_hash, outcome, armed_at, armed_commit, held_commit, held_commit_at, failed_commit,
               failed_commit_at, failed_at, first_failed_run_id, resolved, last_run_id, last_commit, last_commit_at,
               evidence, created_at, updated_at)

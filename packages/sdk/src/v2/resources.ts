@@ -1,5 +1,5 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`, `.imports`,
-// `.receipts`, `.reads`, `.agents`, `.briefs`, `.targets`, `.machines`, `.gates`,
+// `.receipts`, `.reads`, `.sessionStarts`, `.agents`, `.briefs`, `.targets`, `.machines`, `.gates`,
 // `.notices`, `.devices`, `.sessions`, `.dream`, `.notes`, `.settings` and `.account`. Thin, typed
 // wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
@@ -33,6 +33,8 @@ import type {
   CommandResult,
   CompileLoadInput,
   CompileLoadResult,
+  SessionStart,
+  SessionStartInput,
   CompileRunPage,
   ConfigureTargetInput,
   Conflict,
@@ -922,6 +924,31 @@ export class V2ReadsResource {
     opts: CommandOptions,
   ): Promise<CompileLoadResult> {
     return this.req("POST", `/v2/spaces/${seg(space)}/compile-loads`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+}
+
+export class V2SessionStartsResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /**
+   * A cloud agent's session start: name the compile (`C-`) each committed
+   * file's header holds, with its drift hash, and hear what changed in the
+   * record since: per file the cited lines added or changed (words from
+   * the latest compile only) and the memories gone, what a person forgot
+   * (refs and dates), decisions waiting for a person, and the agent's
+   * notices, each told once. A file whose compile isn't one of the
+   * space's is left out. It counts as a compile load under the key, once.
+   */
+  async start(
+    space: string,
+    input: SessionStartInput,
+    opts: CommandOptions,
+  ): Promise<SessionStart> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/session-starts`, {
       body: input,
       extraHeaders: commandHeaders(opts),
       signal: opts.signal,
@@ -1919,6 +1946,7 @@ export class V2Resource {
   readonly review: V2ReviewResource;
   readonly receipts: V2ReceiptsResource;
   readonly reads: V2ReadsResource;
+  readonly sessionStarts: V2SessionStartsResource;
   readonly agents: V2AgentsResource;
   readonly briefs: V2BriefsResource;
   readonly targets: V2TargetsResource;
@@ -1940,6 +1968,7 @@ export class V2Resource {
     this.review = new V2ReviewResource(req);
     this.receipts = new V2ReceiptsResource(req);
     this.reads = new V2ReadsResource(req);
+    this.sessionStarts = new V2SessionStartsResource(req);
     this.agents = new V2AgentsResource(req);
     this.briefs = new V2BriefsResource(req);
     this.targets = new V2TargetsResource(req);

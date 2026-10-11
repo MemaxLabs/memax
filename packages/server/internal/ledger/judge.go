@@ -255,12 +255,12 @@ type Verdict struct {
 	// answer and the answer it suggests ("" for none). They are kept only
 	// with a verdict that flags a conflict, and the question and labels
 	// are purged at Forget, like the rationale.
-	Question  string
-	Labels    ConflictLabels
-	Suggested string
-	Tier            string
-	Model           string
-	Candidates      []VerdictCandidate
+	Question   string
+	Labels     ConflictLabels
+	Suggested  string
+	Tier       string
+	Model      string
+	Candidates []VerdictCandidate
 	// Error is a code (llm_failed, escalation_failed, …), never words.
 	Error string
 	// Timings are in milliseconds.

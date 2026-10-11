@@ -565,7 +565,7 @@ func TestWithoutAPasskeyTodaysRuleStands(t *testing.T) {
 	}
 	// An answer with no passkey on the account checks nothing.
 	e.do(call{method: "POST", path: memoriesPath(project), token: token, sign: webSigned(zz, tamper{}),
-		body: remember("Fine without a passkey.", "conventions"),
+		body:   remember("Fine without a passkey.", "conventions"),
 		header: map[string]string{v2api.HeaderPasskey: "bm90LWEtcGFzc2tleS1hbnN3ZXI"}}).fails(http.StatusForbidden, "passkey_invalid")
 	own := e.remember(cli, project, "From the CLI.").Memory
 	e.do(call{method: "POST", path: memoryPath(own, ":forget"), token: cli, header: map[string]string{"If-Match": `"1"`}}).ok(http.StatusOK, nil)

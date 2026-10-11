@@ -131,12 +131,12 @@ func TestEvaluateRetrieval(t *testing.T) {
 	correct := map[string]bool{"answer_a": true, "answer_b": true}
 
 	tests := []struct {
-		name      string
-		rankings  []int
-		k         int
-		wantAny   float64
-		wantAll   float64
-		wantNDCG  float64
+		name     string
+		rankings []int
+		k        int
+		wantAny  float64
+		wantAll  float64
+		wantNDCG float64
 	}{
 		{
 			name:     "both correct in top 2",
@@ -151,7 +151,7 @@ func TestEvaluateRetrieval(t *testing.T) {
 			rankings: []int{1, 0, 3, 2, 4},
 			k:        2,
 			wantAny:  1.0,
-			wantAll:  0.0, // answer_b not in top 2
+			wantAll:  0.0,                                         // answer_b not in top 2
 			wantNDCG: (1 + 0/math.Log2(2)) / (1 + 1/math.Log2(2)), // actual=1, ideal=2
 		},
 		{

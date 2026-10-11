@@ -122,6 +122,8 @@ type reviseBriefRequest struct {
 
 type createTargetRequest struct {
 	Kind     ledger.TargetKind           `json:"kind"`
+	Root     ledger.TargetRoot           `json:"root"`
+	Machine  *uuid.UUID                  `json:"machine"`
 	Path     *string                     `json:"path"`
 	Settings *ledger.TargetSettingsInput `json:"settings"`
 	Delivery *ledger.Delivery            `json:"delivery"`
@@ -301,7 +303,22 @@ func (h *Handler) listTargets(w http.ResponseWriter, r *http.Request) {
 		writeError(w, e)
 		return
 	}
-	targets, err := h.ledger.ListTargets(r.Context(), p.scope, sp.SpaceID)
+	var targets []ledger.Target
+	var err error
+	if m := r.URL.Query().Get("machine"); m != "" {
+		// One machine's home files, as its daemon polls them.
+		id, perr := uuid.Parse(m)
+		if perr != nil {
+			writeError(w, invalidRequest("machine", "Name a machine by its id."))
+			return
+		}
+		if !h.machineReader(w, r, p, sp) {
+			return
+		}
+		targets, err = h.ledger.ListMachineTargets(r.Context(), p.scope, sp.SpaceID, id)
+	} else {
+		targets, err = h.ledger.ListTargets(r.Context(), p.scope, sp.SpaceID)
+	}
 	if err != nil {
 		writeError(w, h.fromLedger(r, err))
 		return
@@ -326,10 +343,18 @@ func (h *Handler) createTarget(w http.ResponseWriter, r *http.Request) {
 		writeError(w, e)
 		return
 	}
-	res, err := h.ledger.Apply(r.Context(), &ledger.ConfigureTarget{
+	if e := h.adaptersFor(r, req.Kind); e != nil {
+		writeError(w, e)
+		return
+	}
+	cmd := &ledger.ConfigureTarget{
 		Meta: p.meta(p.scope.Narrow(sp.SpaceID), key, req.commandFields), SpaceID: sp.SpaceID, Kind: req.Kind,
-		Path: req.Path, Settings: req.Settings, Delivery: req.Delivery,
-	})
+		Root: req.Root, Path: req.Path, Settings: req.Settings, Delivery: req.Delivery,
+	}
+	if req.Machine != nil {
+		cmd.Machine = *req.Machine
+	}
+	res, err := h.ledger.Apply(r.Context(), cmd)
 	if !h.commandOK(w, r, res, err) {
 		return
 	}

@@ -880,6 +880,15 @@ func v2Handler(pool *pgxpool.Pool, queueClient *queue.Client, blobStore objectst
 	l := ledger.New(pool, opts...)
 	svc := compile.New(l, compile.NewClient(os.Getenv("COMPILE_SERVICE_URL"), compile.WithToken(os.Getenv("COMPILE_SERVICE_TOKEN"))), blobStore,
 		compile.Config{AppBaseURL: os.Getenv("APP_BASE_URL")})
+	if svc != nil {
+		// Which adapters the compile service has, read once at startup: a
+		// target of a kind it lacks is refused rather than failing to compile.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_ = svc.LoadAdapters(ctx) // a failure is logged; the next target creation asks again
+		}()
+	}
 	search, vectors := v2Retrieval(l, embedCfg)
 	if vectors != nil && bus != nil {
 		bus.Local.Register(func(uuid.UUID) { vectors.Purge() })

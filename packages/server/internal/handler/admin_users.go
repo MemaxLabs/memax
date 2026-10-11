@@ -56,6 +56,15 @@ func NewAdminUsersHandler(s store.Store, pc adminPlanChanger, pr adminPlanResolv
 	return &AdminUsersHandler{store: s, planChanger: pc, planResolver: pr}
 }
 
+// forgetOverrides drops the person's cached overrides on this process
+// (plans.Registry caches them for plans.OverridesTTL; other processes
+// read the change within it).
+func (h *AdminUsersHandler) forgetOverrides(userID string) {
+	if f, ok := h.planResolver.(interface{ ForgetOverrides(string) }); ok {
+		f.ForgetOverrides(userID)
+	}
+}
+
 // SetUsageReader wires the meter's read-only counter accessors. Optional —
 // when unset the usage endpoint returns 0s across the board, matching the
 // degraded-mode contract of every other quota code path.
@@ -265,6 +274,7 @@ func (h *AdminUsersHandler) SetOverrides(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	h.forgetOverrides(userID)
 
 	writeJSON(w, http.StatusOK, model.ApiResponse{Data: map[string]string{"status": "updated"}})
 }
@@ -281,6 +291,7 @@ func (h *AdminUsersHandler) DeleteOverrides(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	h.forgetOverrides(userID)
 	writeJSON(w, http.StatusOK, model.ApiResponse{Data: map[string]string{"status": "deleted"}})
 }
 

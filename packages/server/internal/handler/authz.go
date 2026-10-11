@@ -340,6 +340,34 @@ func GetGrant(r *http.Request) GrantContext {
 	return grantFromRequest(r)
 }
 
+// isPersonSession reports whether the request is a person on a session of
+// their own: not an API key, an OAuth grant or an agent's token. Only such
+// a request manages how the account is reached (its API keys and sign-in
+// methods; otherwise a key scoped to one agent could mint a wider one, or
+// link an outsider's GitHub to the account) and forgets a V2 record
+// (policy.Decide refuses keys too; this answers before anything is
+// touched). "local" is memory mode (no JWT_SECRET, local dev without auth).
+func isPersonSession(r *http.Request) bool {
+	g := grantFromRequest(r)
+	return (g.PrincipalType == "user" || g.PrincipalType == "local") && g.AgentName == ""
+}
+
+// refuseUnlessPerson answers 403 and reports true unless the request is a
+// person on a session of their own (isPersonSession) and, with
+// noImpersonation, not an operator impersonating them: what such a request
+// creates (a key, a linked sign-in method) would outlast the impersonation.
+func refuseUnlessPerson(w http.ResponseWriter, r *http.Request, noImpersonation bool, what string) bool {
+	if !isPersonSession(r) {
+		writeError(w, http.StatusForbidden, "forbidden", "Only you, signed in, can "+what+". An API key or an agent can't.")
+		return true
+	}
+	if noImpersonation && GetImpersonatorID(r) != "" {
+		writeError(w, http.StatusForbidden, "forbidden", "Stop impersonating to "+what+": only the person can.")
+		return true
+	}
+	return false
+}
+
 func GetAuthContext(r *http.Request) *AuthContext {
 	if v, ok := r.Context().Value(authContextKey).(*AuthContext); ok {
 		return v

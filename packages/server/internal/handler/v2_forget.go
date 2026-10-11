@@ -70,15 +70,6 @@ func (h *MemoriesHandler) SetSpaceModes(m *spacemode.Resolver) { h.modes = m }
 // SetV2Forgetter wires the V2 record into DELETE /v1/account/data.
 func (h *MemoriesHandler) SetV2Forgetter(f V2Forgetter) { h.v2 = f }
 
-// isPersonSession reports whether the request carries a person's own
-// session, not an API key, an OAuth grant or an agent token: only a
-// person forgets a V2 record (policy.Decide refuses keys too; this answers
-// before anything is touched).
-func isPersonSession(r *http.Request) bool {
-	g := GetGrant(r)
-	return g.PrincipalType != "api_key" && g.PrincipalType != "oauth_grant" && g.AgentName == ""
-}
-
 // forgetV2Space forgets (and, deleting the hub, retires) a hub's V2
 // record. It answers false after writing the error response; true means
 // V1 may go on (the hub held no V2 record, or it is forgotten now).

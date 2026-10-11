@@ -601,13 +601,18 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 // UpdateMe updates the user's display name.
 // PATCH /v1/auth/me
 func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
-	userID := UserIDFromRequest(r, h.jwtSecret)
-	if userID == "" {
+	claims := ClaimsFromRequest(r, h.jwtSecret)
+	if claims == nil || claims.Sub == "" {
 		writeJSON(w, http.StatusUnauthorized, model.ApiResponse{
 			Error: &model.Error{Code: "unauthorized", Message: "Invalid or missing access token."},
 		})
 		return
 	}
+	if !isPersonClaims(claims) {
+		writeError(w, http.StatusForbidden, "forbidden", "Only you, signed in, can change your profile. An agent can't.")
+		return
+	}
+	userID := claims.Sub
 
 	var req struct {
 		DisplayName string `json:"display_name"`
@@ -648,6 +653,13 @@ func (h *AuthHandler) Impersonate(w http.ResponseWriter, r *http.Request) {
 	// Block chained impersonation: an impersonation token cannot mint another.
 	if claims.ImpersonatorID != "" {
 		writeError(w, http.StatusForbidden, "forbidden", "Cannot impersonate while already impersonating.")
+		return
+	}
+	// Only an operator signed in on the web app impersonates: never an
+	// agent's token (an MCP grant, which this route would otherwise take
+	// since it reads the JWT itself) or the CLI.
+	if !isPersonClaims(claims) || claims.Surface != auth.SurfaceWeb {
+		writeError(w, http.StatusForbidden, "forbidden", "Impersonate from the web app, signed in as yourself.")
 		return
 	}
 
@@ -895,6 +907,11 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// A key may be wider than the credential asking for it (all hubs,
+	// standalone, any permissions), so only the person mints one.
+	if refuseUnlessPerson(w, r, true, "create API keys") {
+		return
+	}
 
 	var req struct {
 		Name          string   `json:"name"`
@@ -1079,6 +1096,9 @@ func (h *AuthHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if refuseUnlessPerson(w, r, false, "list API keys") {
+		return
+	}
 
 	rows, err := h.pool.Query(context.Background(),
 		`SELECT id, name, prefix, scopes, expires_at, last_used, created_at,
@@ -1175,6 +1195,13 @@ func (h *AuthHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	keyID := r.PathValue("id")
+	// The person revokes any of their keys; a key may revoke itself (a
+	// script retiring its own credential), and nothing else.
+	grant := grantFromRequest(r)
+	revokesItself := grant.PrincipalType == "api_key" && grant.GrantID != "" && grant.GrantID == keyID
+	if !revokesItself && refuseUnlessPerson(w, r, false, "revoke API keys") {
+		return
+	}
 
 	// Capture the prior agent assignment before deleting so we can
 	// fire agent.changed for the ex-owner's connected-agents refresh.
@@ -1258,17 +1285,11 @@ func (h *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	grant := grantFromRequest(r)
-	// Only user-session JWTs may modify key metadata. API-key and
-	// OAuth-grant principals are explicitly rejected — the former
-	// would let a key alter its own attribution, the latter would let
-	// an agent change another key's settings. "local" is the
-	// memory-mode principal used when JWT_SECRET is unset (dev
-	// without auth); treat it like "user" for this endpoint so
-	// local-dev still works.
-	if grant.PrincipalType != "user" && grant.PrincipalType != "local" {
-		writeJSON(w, http.StatusForbidden, model.ApiResponse{
-			Error: &model.Error{Code: "forbidden", Message: "Only user sessions can modify API key metadata."},
-		})
+	// Only the person's own session may modify key metadata. API-key,
+	// OAuth-grant and agent-token principals are rejected: the first
+	// would let a key alter its own attribution, the others would let
+	// an agent change another key's settings.
+	if refuseUnlessPerson(w, r, false, "change API keys") {
 		return
 	}
 	if !grant.DefaultPermissions.Has(PermSettingsWrite) {
@@ -1669,6 +1690,15 @@ func UserIDFromRequest(r *http.Request, jwtSecret []byte) string {
 		return ""
 	}
 	return claims.Sub
+}
+
+// isPersonClaims reports whether an access token is a person's own session
+// token, not an agent's: no agent name, no OAuth grant and no audience (an
+// MCP OAuth token names the MCP endpoint it is for). The routes that read
+// the JWT themselves, outside RequireAuth, check it where isPersonSession
+// would be checked.
+func isPersonClaims(c *auth.Claims) bool {
+	return c.AgentName == "" && c.GrantID == "" && len(c.Aud) == 0
 }
 
 // ClaimsFromRequest extracts full JWT claims (including agent_name for MCP OAuth tokens).

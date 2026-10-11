@@ -234,6 +234,7 @@ export const ledgerRecordsEn = {
       verify: "Undid the verification. {ref} is stale again.",
       verifyUpdate:
         "Undid the update. {ref} reads as it did, and is stale again.",
+      scope: "Undid the change. {ref} applies where it did before.",
     },
     // Why an undo didn't go through, by spec UndoRefusal and policy code.
     refused: {

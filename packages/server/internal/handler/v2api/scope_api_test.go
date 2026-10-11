@@ -135,6 +135,21 @@ func TestRepoScopeOverV2(t *testing.T) {
 		t.Errorf("%d scoped receipts, want 1", n)
 	}
 
+	// The person undoes it by its receipt: it applies in acme/web again.
+	var undone struct {
+		Receipts []receipt `json:"receipts"`
+	}
+	e.do(call{method: "POST", path: "/v2/receipts/" + widened.Receipts[0].ID.String() + ":undo", token: tok}).ok(http.StatusOK, &undone)
+	if len(undone.Receipts) != 1 || undone.Receipts[0].Action != "undid" {
+		t.Errorf("undo: %+v", undone.Receipts)
+	}
+	e.do(call{method: "GET", path: "/v2/memories/" + ref + "?space=" + personal.slug, token: tok}).ok(http.StatusOK, &got)
+	if !slices.Equal(got.Memory.Scope.Repos, []string{"acme/web"}) {
+		t.Errorf("after undo, scope.repos = %v, want [acme/web]", got.Memory.Scope.Repos)
+	}
+	e.do(call{method: "POST", path: "/v2/receipts/" + widened.Receipts[0].ID.String() + ":undo", token: tok}).
+		fails(http.StatusConflict, "undo_refused")
+
 	// A forgotten memory can't change.
 	e.do(call{method: "POST", path: "/v2/memories/" + ref + ":forget?space=" + personal.slug, token: tok,
 		header: map[string]string{"If-Match": `"1"`}, body: map[string]any{"carries": []string{}}}).ok(http.StatusOK, nil)

@@ -649,8 +649,19 @@ export function createDemoMemories({
             currentVersion: found.version,
           });
         }
-        scopes.set(id(space.slug, ref), [...repos]);
-        return { ref, version, repos: [...repos] };
+        const key = id(space.slug, ref);
+        const had = scopes.get(key);
+        scopes.set(key, [...repos]);
+        const receipt = journal.record({
+          slug: space.slug,
+          command: "scope",
+          ref,
+          revert: () => {
+            if (had) scopes.set(key, had);
+            else scopes.delete(key);
+          },
+        });
+        return { ref, version, repos: [...repos], receipt };
       });
     },
   };

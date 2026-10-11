@@ -11,12 +11,14 @@ import { failureText } from "@/lib/v2/records-copy";
 import { useToast } from "../../_components/toasts";
 import { useSource } from "../../_lib/data";
 import { recordKeys } from "../../_lib/records";
+import { useUndo } from "../../_lib/undo";
 
 /**
  * Apply everywhere on a memory's page: a personal fact init tied to one
  * repository (scope.repos) is widened to every project, from the version
  * on screen (If-Match), one idempotency key per press across retries. The
- * words don't change; home files pick it up on their next compile.
+ * words don't change; home files pick it up on their next compile. The
+ * person can undo it for 10 minutes, by its receipt (⌘Z or the toast).
  */
 export function useMemoryScope(space: SpaceSummary, record: MemoryRecord) {
   const source = useSource();
@@ -25,6 +27,7 @@ export function useMemoryScope(space: SpaceSummary, record: MemoryRecord) {
   const rc = t.ledger.records;
   const p = t.ledger.memory.page;
   const toast = useToast();
+  const undo = useUndo();
   const [pending, setPending] = useState(false);
   const [keys] = useState(() => new IntentKeys());
 
@@ -41,9 +44,19 @@ export function useMemoryScope(space: SpaceSummary, record: MemoryRecord) {
         idempotencyKey: keys.keyFor(intent),
       });
       keys.settle(intent);
+      const entry = result.receipt
+        ? undo.record({
+            space,
+            command: "scope",
+            ref: result.ref,
+            receipt: result.receipt,
+            restore: null,
+          })
+        : null;
       toast({
         state: "kept",
         text: interpolate(p.everywhereDone, { ref: result.ref }),
+        ...(entry ? { undo: () => void undo.run(entry) } : {}),
       });
       void queryClient.invalidateQueries({
         queryKey: recordKeys.memory(source.kind, space.slug, record.ref),
@@ -90,6 +103,7 @@ export function useMemoryScope(space: SpaceSummary, record: MemoryRecord) {
     source,
     space,
     toast,
+    undo,
   ]);
 
   return { pending, everywhere };

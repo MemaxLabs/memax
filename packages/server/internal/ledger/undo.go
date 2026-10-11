@@ -38,7 +38,8 @@ import (
 // What is undoable: Keep, Reject and Edit (with or without Keep) by a
 // person, a person's own Remember (undoing it withdraws the memory: it
 // ends rejected, migration 052), a Verify (the flag, the words and the
-// date come back), a conflict resolution, and the judge's
+// date come back), a change to where a memory applies (its scope comes
+// back, migration 062), a conflict resolution, and the judge's
 // folds (duplicates and re-proposals). Forget never is, and neither is the judge putting a
 // Write agent's write back in Review (`returned`): undoing it would make
 // the write kept again on the agent's authority while it contradicts a
@@ -128,6 +129,12 @@ type memorySnapshot struct {
 	// the date before it. Entries without it leave the date as it is.
 	HasDate    bool       `json:"has_date,omitempty"`
 	StaleAfter *time.Time `json:"stale_after,omitempty"`
+	// HasScope says the command changed where the memory applies
+	// (ScopeMemory), and Scope is its scope before (paths, agents and
+	// repositories, never words). Entries without it leave the scope as
+	// it is.
+	HasScope bool            `json:"has_scope,omitempty"`
+	Scope    json.RawMessage `json:"scope,omitempty"`
 }
 
 type undoMemory struct {
@@ -185,6 +192,24 @@ func (j *undoJournal) touchWithDate(m *Memory) {
 	for i := range j.Memories {
 		if j.Memories[i].ID == m.ID {
 			j.Memories[i].Before.HasDate, j.Memories[i].Before.StaleAfter = true, m.StaleAfter
+		}
+	}
+}
+
+// touchWithScope is touch, with where the memory applies, for a command
+// that changes it.
+func (j *undoJournal) touchWithScope(m *Memory) {
+	if j == nil {
+		return
+	}
+	j.touch(m)
+	scope := m.Applies
+	if len(scope) == 0 {
+		scope = json.RawMessage(`{}`)
+	}
+	for i := range j.Memories {
+		if j.Memories[i].ID == m.ID {
+			j.Memories[i].Before.HasScope, j.Memories[i].Before.Scope = true, scope
 		}
 	}
 }
@@ -445,7 +470,12 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 			m.ID, before.Version).Scan(&statement); err != nil {
 			return Result{}, fmt.Errorf("ledger: undo %s: version %d: %w", m.Ref, before.Version, err)
 		}
-		conds, err := renewedConditions(sp, m.Conditions, statement, m.Applies)
+		// Conditions derive from the scope the memory will have.
+		applies := m.Applies
+		if before.HasScope {
+			applies = before.Scope
+		}
+		conds, err := renewedConditions(sp, m.Conditions, statement, applies)
 		if err != nil {
 			return Result{}, err
 		}
@@ -465,11 +495,12 @@ func (w *writer) undoCommand(ctx context.Context, c *Undo) (Result, error) {
 			                       ELSE jsonb_set(COALESCE(decision, '{}'::jsonb), '{status}', to_jsonb($8::text)) END,
 			       search = %s, content_sha256 = $10, minhash_bands = $11,
 			       stale_after = CASE WHEN $15 THEN $16::timestamptz ELSE stale_after END, conditions = $17,
+			       scope = CASE WHEN $18 THEN $19::jsonb ELSE scope END,
 			       stream_version = $12, last_receipt_id = $13, updated_at = now()
 			 WHERE id = $1 AND space_id = $14`, fmt.Sprintf(searchExpr, "$9::text")),
 			m.ID, string(to.Lifecycle), to.Flags.Strings(), before.Version, string(before.Section), string(before.Trust),
 			before.HasDecision, before.DecisionStatus, statement, hash, bands, rc.StreamVersion, rc.ID, sp.ID,
-			before.HasDate, before.StaleAfter, []byte(conds)); err != nil {
+			before.HasDate, before.StaleAfter, []byte(conds), before.HasScope, []byte(applies)); err != nil {
 			return Result{}, fmt.Errorf("ledger: undo %s: %w", m.Ref, err)
 		}
 		if to.Lifecycle == lifecycle.Proposed || to.Lifecycle == lifecycle.Kept {
@@ -572,6 +603,8 @@ func undoNoun(k UndoKind) string {
 		return "Remember"
 	case UndoVerify:
 		return "verification"
+	case UndoScope:
+		return "change to where it applies"
 	}
 	return "fold"
 }

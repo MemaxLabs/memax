@@ -375,8 +375,11 @@ func TestInFlightReceiptIsSealedInItsPlace(t *testing.T) {
 	if len(sealed) != 3 || sealed[0] != before.LastReceiptID || sealed[1] != inflight || sealed[2] != after.LastReceiptID {
 		t.Fatalf("sealed %v; want before, the late commit, after", sealed)
 	}
+	// The late commit and the receipt after it are sealed together or
+	// apart, as the sealer's runs fall (2 checkpoints or 3); either way the
+	// chain verifies and each receipt is in exactly one checkpoint.
 	v := f.verify(s)
-	if !v.OK() || v.Receipts != 3 || v.Checkpoints != 2 {
+	if !v.OK() || v.Receipts != 3 || v.Checkpoints < 2 || v.Checkpoints > 3 {
 		t.Errorf("verify = %+v", v)
 	}
 	if n := f.count(`SELECT sum(receipts) FROM v2.receipt_checkpoints WHERE space_id = $1`, f.space); n != 3 {

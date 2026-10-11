@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -11,24 +12,40 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/conditions"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 )
 
 // StaleCauseKind is why a memory is stale.
 type StaleCauseKind string
 
-// The causes. Conditions that stopped holding come with the checker.
+// The causes.
 const (
 	// StaleCauseDate: its date to check again passed.
 	StaleCauseDate StaleCauseKind = "date"
+	// StaleCauseCheck: one of its conditions stopped holding on the default
+	// branch (checks.go).
+	StaleCauseCheck StaleCauseKind = "check"
 )
 
 // StaleCause is one reason a memory is stale, typed so a screen can say it
-// in any language. It never holds words.
+// in any language. It never holds a file's contents; a check's names the
+// condition and the paths that changed, which the memory's words named.
 type StaleCause struct {
 	Kind StaleCauseKind `json:"kind"`
 	// StaleAfter is the date that passed (StaleCauseDate).
 	StaleAfter *time.Time `json:"stale_after,omitempty"`
+
+	// A check (StaleCauseCheck): the condition that stopped holding, what
+	// changed, where and when: the commit the failure began at, and the
+	// run that first saw it.
+	Condition *conditions.Condition `json:"condition,omitempty"`
+	Evidence  *CheckEvidence        `json:"evidence,omitempty"`
+	Branch    string                `json:"branch,omitempty"`
+	Commit    string                `json:"commit,omitempty"`
+	CommitAt  *time.Time            `json:"commit_at,omitempty"`
+	CheckedAt *time.Time            `json:"checked_at,omitempty"`
+	Observer  string                `json:"observer,omitempty"`
 }
 
 // StaleReport is why a memory is stale, for VerifyStale: its words and
@@ -56,7 +73,7 @@ type StaleReport struct {
 }
 
 // GetStaleReport says why a memory is stale, in one round trip: BEGIN, the
-// scope, four statements that each find the memory by its ref, and
+// scope, five statements that each find the memory by its ref, and
 // COMMIT (ReadBatch).
 func (l *Ledger) GetStaleReport(ctx context.Context, scope Scope, ref string) (*StaleReport, error) {
 	if l == nil {
@@ -69,20 +86,23 @@ func (l *Ledger) GetStaleReport(ctx context.Context, scope Scope, ref string) (*
 	var (
 		out     *StaleReport
 		flags   []string
+		conds   []byte
 		flagged []Receipt
 		kept    []Receipt
 		reads   int
+		failing []failingCheck
 	)
 	b := &pgx.Batch{}
 	b.Queue(`
-		SELECT m.id, m.seq, m.space_id, m.current_version, COALESCE(v.statement, ''), m.kind, m.lifecycle, m.flags, m.stale_after
+		SELECT m.id, m.seq, m.space_id, m.current_version, COALESCE(v.statement, ''), m.kind, m.lifecycle, m.flags, m.stale_after,
+		       m.conditions
 		  FROM v2.memories m
 		  LEFT JOIN v2.memory_versions v ON v.memory_id = m.id AND v.version = m.current_version
 		 WHERE m.id = `+idExpr+` AND m.space_id = ANY ($2)`, args...).QueryRow(func(row pgx.Row) error {
 		r := &StaleReport{}
 		var seq int64
 		var lc lifecycle.Lifecycle
-		err := row.Scan(&r.MemoryID, &seq, &r.SpaceID, &r.Version, &r.Statement, &r.Kind, &lc, &flags, &r.StaleAfter)
+		err := row.Scan(&r.MemoryID, &seq, &r.SpaceID, &r.Version, &r.Statement, &r.Kind, &lc, &flags, &r.StaleAfter, &conds)
 		if errNoRows(err) {
 			return nil
 		}
@@ -126,6 +146,33 @@ func (l *Ledger) GetStaleReport(ctx context.Context, scope Scope, ref string) (*
 		   AND (k.at IS NULL OR rr.day >= (k.at AT TIME ZONE 'UTC')::date)`, args...).QueryRow(func(row pgx.Row) error {
 		return row.Scan(&reads)
 	})
+	// Its armed conditions that fail now on the default branch, with the run
+	// that first saw each failure.
+	b.Queue(`
+		SELECT c.condition_id, c.evidence, c.failed_commit, c.failed_commit_at, r.branch, r.checked_at, r.observer
+		  FROM v2.condition_checks c
+		  LEFT JOIN v2.check_runs r ON r.id = c.first_failed_run_id AND r.space_id = c.space_id
+		 WHERE c.memory_id = `+idExpr+` AND c.space_id = ANY ($2) AND c.context = 'default'
+		   AND c.outcome = 'fails' AND c.armed_at IS NOT NULL
+		 ORDER BY c.condition_id`, args...).Query(func(rows pgx.Rows) error {
+		for rows.Next() {
+			var f failingCheck
+			var evidence []byte
+			var branch, observer *string
+			if err := rows.Scan(&f.condition, &evidence, &f.commit, &f.commitAt, &branch, &f.checkedAt, &observer); err != nil {
+				return err
+			}
+			if len(evidence) > 0 {
+				f.evidence = &CheckEvidence{}
+				if err := json.Unmarshal(evidence, f.evidence); err != nil {
+					return err
+				}
+			}
+			f.branch, f.observer = deref0(branch), deref0(observer)
+			failing = append(failing, f)
+		}
+		return rows.Err()
+	})
 	if err := l.ReadBatch(ctx, scope, b); err != nil {
 		var pg *pgconn.PgError
 		if errors.As(err, &pg) && pg.Code == sqlstateCardinality {
@@ -144,7 +191,41 @@ func (l *Ledger) GetStaleReport(ctx context.Context, scope Scope, ref string) (*
 	}
 	out.ReadsSince = reads
 	out.Causes = staleCauses(out, l.now())
+	if out.Stale && len(failing) > 0 {
+		cs, err := storedConditions(conds)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range failing {
+			for i := range cs {
+				if cs[i].ID != f.condition {
+					continue
+				}
+				out.Causes = append(out.Causes, StaleCause{Kind: StaleCauseCheck, Condition: &cs[i], Evidence: f.evidence,
+					Branch: f.branch, Commit: deref0(f.commit), CommitAt: f.commitAt, CheckedAt: f.checkedAt, Observer: f.observer})
+			}
+		}
+	}
 	return out, nil
+}
+
+// failingCheck is a failing condition's row, as the stale report reads it.
+type failingCheck struct {
+	condition string
+	evidence  *CheckEvidence
+	commit    *string
+	commitAt  *time.Time
+	branch    string
+	checkedAt *time.Time
+	observer  string
+}
+
+func deref0[T any](p *T) T {
+	var zero T
+	if p == nil {
+		return zero
+	}
+	return *p
 }
 
 // staleCauses are the reasons the memory is stale now.

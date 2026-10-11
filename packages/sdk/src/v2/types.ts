@@ -137,8 +137,18 @@ export type VerifyAnswer = Schemas["VerifyAnswer"];
 export type VerifyResult = Schemas["VerifyResult"];
 /** Why a memory is stale: the flag's receipt, the causes, the keep before. */
 export type StaleReport = Schemas["StaleReport"];
-/** One typed reason a memory is stale (a date that passed, for now). */
+/** One typed reason a memory is stale: a date that passed, or a check. */
 export type StaleCause = Schemas["StaleCause"];
+/** A space's conditions, as its machines check them (no words). */
+export type SpaceConditions = Schemas["SpaceConditions"];
+export type CheckedCondition = Schemas["CheckedCondition"];
+/** A machine's check run of a space's conditions, and one result. */
+export type CheckRunInput = Schemas["CheckRunRequest"];
+export type CheckResultInput = Schemas["CheckResultInput"];
+export type CheckEvidence = Schemas["CheckEvidence"];
+/** A recorded check run, and the memories it marked stale. */
+export type CheckRun = Schemas["CheckRun"];
+export type CheckRunResult = Schemas["CheckRunResult"];
 /** A typed "stays true while" condition (path_exists, file_contains, …). */
 export type Condition = Schemas["Condition"];
 /** Who attached a condition: derived by Memax, the judge, Dream or a person. */

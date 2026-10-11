@@ -204,7 +204,7 @@ export interface MemoryRecord {
 }
 
 /** Why a memory is stale, as its marks say it: a date that passed, or a source that changed. */
-export type StaleCauseKind = "date" | "source";
+export type StaleCauseKind = "date" | "source" | "check";
 
 /** One line of a diff of a cited file, as VerifyStale shows it. */
 export interface HunkLine {
@@ -219,6 +219,23 @@ export interface HunkLine {
  */
 export type StaleCause =
   | { kind: "date"; staleAfter: string }
+  /**
+   * One of its conditions stopped holding on the default branch, as a
+   * member's machine (or the GitHub App) checked it: the condition, what
+   * changed, and where.
+   */
+  | {
+      kind: "check";
+      condition: ConditionLine;
+      change: string;
+      /** The path that changed, when it isn't the condition's own. */
+      path: string | null;
+      renamedTo: string | null;
+      constraint: string | null;
+      branch: string;
+      commit: string;
+      checkedAt: string | null;
+    }
   | {
       kind: "source";
       /** "PR #198". */

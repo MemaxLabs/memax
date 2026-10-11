@@ -1,5 +1,5 @@
 // The /v2 resources: `memax.v2.spaces`, `.memories`, `.review`, `.imports`,
-// `.receipts`, `.reads`, `.sessionStarts`, `.agents`, `.briefs`, `.targets`, `.machines`, `.gates`,
+// `.receipts`, `.reads`, `.sessionStarts`, `.checks`, `.agents`, `.briefs`, `.targets`, `.machines`, `.gates`,
 // `.notices`, `.devices`, `.sessions`, `.dream`, `.notes`, `.settings` and `.account`. Thin, typed
 // wrappers over the shared
 // transport, so auth, the `{data}` envelope and MemaxError behave exactly
@@ -24,6 +24,8 @@ import type {
   AgentList,
   AutonomyInput,
   CheckpointPage,
+  CheckRunInput,
+  CheckRunResult,
   Brief,
   BriefResult,
   BriefVersionPage,
@@ -35,6 +37,7 @@ import type {
   CompileLoadResult,
   SessionStart,
   SessionStartInput,
+  SpaceConditions,
   CompileRunPage,
   ConfigureTargetInput,
   Conflict,
@@ -949,6 +952,44 @@ export class V2SessionStartsResource {
     opts: CommandOptions,
   ): Promise<SessionStart> {
     return this.req("POST", `/v2/spaces/${seg(space)}/session-starts`, {
+      body: input,
+      extraHeaders: commandHeaders(opts),
+      signal: opts.signal,
+    });
+  }
+}
+
+export class V2ChecksResource {
+  constructor(private readonly req: RequestFn) {}
+
+  /**
+   * Every kept memory's conditions, for a member's machine to check
+   * against the repository's committed tree on its default branch: each
+   * typed, with its hash (send it back with the result) and whether it is
+   * armed. No statements.
+   */
+  async conditions(
+    space: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<SpaceConditions> {
+    return this.req("GET", `/v2/spaces/${seg(space)}/conditions`, {
+      signal: opts?.signal,
+    });
+  }
+
+  /**
+   * Report a check run: the results at one commit of the default branch,
+   * as pushed, from a clone of the space's repository (results only,
+   * never a file's contents). An armed condition that now fails marks its
+   * memory stale, as Memax; `flagged` names them. A member's or owner's
+   * own session only; the same key records a run once.
+   */
+  async report(
+    space: string,
+    input: CheckRunInput,
+    opts: CommandOptions,
+  ): Promise<CheckRunResult> {
+    return this.req("POST", `/v2/spaces/${seg(space)}/check-runs`, {
       body: input,
       extraHeaders: commandHeaders(opts),
       signal: opts.signal,
@@ -1947,6 +1988,7 @@ export class V2Resource {
   readonly receipts: V2ReceiptsResource;
   readonly reads: V2ReadsResource;
   readonly sessionStarts: V2SessionStartsResource;
+  readonly checks: V2ChecksResource;
   readonly agents: V2AgentsResource;
   readonly briefs: V2BriefsResource;
   readonly targets: V2TargetsResource;
@@ -1969,6 +2011,7 @@ export class V2Resource {
     this.receipts = new V2ReceiptsResource(req);
     this.reads = new V2ReadsResource(req);
     this.sessionStarts = new V2SessionStartsResource(req);
+    this.checks = new V2ChecksResource(req);
     this.agents = new V2AgentsResource(req);
     this.briefs = new V2BriefsResource(req);
     this.targets = new V2TargetsResource(req);

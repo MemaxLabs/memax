@@ -254,6 +254,8 @@ func (l *Ledger) applyOnce(ctx context.Context, cmd Command, m *Meta, hash []byt
 		res, err = w.scopeMemory(ctx, c)
 	case *Verify:
 		res, err = w.verify(ctx, c)
+	case *FlagStale:
+		res, err = w.flagStale(ctx, c)
 	}
 	if err != nil {
 		return Result{}, nil, mapDBError(err)
@@ -279,6 +281,8 @@ func validateCommand(cmd Command, now time.Time) error {
 	case *Verify:
 		c.Statement = strings.TrimSpace(c.Statement)
 		return c.validate(now)
+	case *FlagStale:
+		return c.validate()
 	case *ReviseBrief:
 		return c.validate()
 	case *ConfigureTarget:

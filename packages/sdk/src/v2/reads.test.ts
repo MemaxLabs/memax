@@ -207,3 +207,93 @@ describe("memax.v2.sessionStarts.start", () => {
     expect(c.body).toEqual(input);
   });
 });
+
+describe("memax.v2.checks", () => {
+  it("reads the conditions a machine checks", async () => {
+    const answer: V2.SpaceConditions = {
+      space_id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c",
+      repository: "MemaxLabs/memax",
+      items: [
+        {
+          memory: "M-0187",
+          conditions: [
+            {
+              condition: {
+                id: "c1",
+                kind: "path_exists",
+                path: "packages/server/internal/ask/config.go",
+                origin: "derived",
+                from: "statement",
+              },
+              hash: "a".repeat(64),
+              armed: true,
+            },
+          ],
+        },
+      ],
+    };
+    const { memax, call } = client(jsonResponse({ data: answer }));
+    const got = await memax.v2.checks.conditions("memax-v2");
+    expect(got.items[0].conditions[0].armed).toBe(true);
+    const c = call();
+    expect(c.method).toBe("GET");
+    expect(c.url).toBe("https://api.memax.app/v2/spaces/memax-v2/conditions");
+  });
+
+  it("reports a run and hears what it marked stale", async () => {
+    const result: V2.CheckRunResult = {
+      run: {
+        id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5d",
+        space_id: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c",
+        observer: "device",
+        repository: "MemaxLabs/memax",
+        branch: "main",
+        commit: "b".repeat(40),
+        commit_at: "2026-10-11T09:00:00Z",
+        trigger: "head_moved",
+        checked_at: "2026-10-11T09:01:00Z",
+        recorded_at: "2026-10-11T09:01:01Z",
+        complete: true,
+        counts: { holds: 0, fails: 1, unknown: 0, ignored: 0 },
+        capped: false,
+      },
+      flagged: ["M-0187"],
+    };
+    const { memax, call } = client(
+      jsonResponse({ data: result }, { status: 201 }),
+    );
+    const input: V2.CheckRunInput = {
+      repository: "MemaxLabs/memax",
+      branch: "main",
+      commit: "b".repeat(40),
+      commit_at: "2026-10-11T09:00:00Z",
+      trigger: "head_moved",
+      device: "dev-1",
+      complete: true,
+      results: [
+        {
+          memory: "M-0187",
+          condition: "c1",
+          hash: "a".repeat(64),
+          outcome: "fails",
+          evidence: {
+            change: "renamed",
+            path: "packages/server/internal/ask/config.go",
+            renamed_to: "packages/server/internal/ask/tiers.go",
+          },
+        },
+      ],
+    };
+    const got = await memax.v2.checks.report("memax-v2", input, {
+      idempotencyKey: "run-b",
+      via: "cli",
+    });
+    expect(got.flagged).toEqual(["M-0187"]);
+    const c = call();
+    expect(c.method).toBe("POST");
+    expect(c.url).toBe("https://api.memax.app/v2/spaces/memax-v2/check-runs");
+    expect(c.headers["Idempotency-Key"]).toBe("run-b");
+    expect(c.headers["X-Memax-Via"]).toBe("cli");
+    expect(c.body).toEqual(input);
+  });
+});

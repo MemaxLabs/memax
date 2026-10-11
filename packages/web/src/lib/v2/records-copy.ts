@@ -197,6 +197,7 @@ export function noteText(
     case "stale": {
       if (note.cause === "date") return n.staleDate;
       const date = formatShortDate(new Date(note.changedAt), timeZone, locale);
+      if (note.cause === "check") return interpolate(n.staleCheck, { date });
       return note.source
         ? interpolate(n.staleSource, { date, source: note.source })
         : interpolate(n.stale, { date });

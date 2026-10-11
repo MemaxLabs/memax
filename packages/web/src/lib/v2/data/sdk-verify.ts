@@ -5,6 +5,7 @@ import type {
   VerifyAnswer,
   VerifyResult,
 } from "./memories";
+import { conditionsOf } from "./sdk-record";
 import { actorOf } from "./sdk-records";
 
 /**
@@ -18,6 +19,23 @@ function causeOf(cause: V2.StaleCause): StaleCause[] {
   switch (cause.kind) {
     case "date":
       return [{ kind: "date", staleAfter: cause.stale_after }];
+    case "check": {
+      const [condition] = conditionsOf([cause.condition]);
+      if (!condition || condition.kind === "date") return [];
+      return [
+        {
+          kind: "check",
+          condition,
+          change: cause.evidence?.change ?? "removed",
+          path: cause.evidence?.path ?? null,
+          renamedTo: cause.evidence?.renamed_to ?? null,
+          constraint: cause.evidence?.constraint ?? null,
+          branch: cause.branch,
+          commit: cause.commit,
+          checkedAt: cause.checked_at ?? null,
+        },
+      ];
+    }
     default:
       return [];
   }

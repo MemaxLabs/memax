@@ -143,6 +143,8 @@ var routes = []Route{
 	{"GET", "/v2/spaces/{space}/reads", "listReads", (*Handler).listReads},
 	{"POST", "/v2/spaces/{space}/compile-loads", "recordCompileLoad", (*Handler).recordCompileLoad},
 	{"POST", "/v2/spaces/{space}/session-starts", "startSession", (*Handler).startSession},
+	{"GET", "/v2/spaces/{space}/conditions", "listConditions", (*Handler).listConditions},
+	{"POST", "/v2/spaces/{space}/check-runs", "reportChecks", (*Handler).reportChecks},
 	{"GET", "/v2/memories/{ref}", "getMemory", (*Handler).getMemory},
 	{"POST", "/v2/memories/{ref}:keep", "keepMemory", (*Handler).keep},
 	{"POST", "/v2/memories/{ref}:edit", "editMemory", (*Handler).edit},

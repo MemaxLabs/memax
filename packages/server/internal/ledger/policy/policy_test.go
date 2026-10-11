@@ -671,6 +671,59 @@ func TestVerifyMatrix(t *testing.T) {
 	}
 }
 
+// TestReportChecksMatrix: a member's or owner's own session reports checks,
+// from any surface; agents, API keys, OAuth grants, viewers and system
+// actors don't. Only Memax flags from a check.
+func TestReportChecksMatrix(t *testing.T) {
+	t.Parallel()
+	roles := []Role{RoleNone, RoleOwner, RoleMember, RoleViewer}
+	creds := []Credential{CredentialSession, CredentialOAuth, CredentialAPIKey}
+	banned := []string{"!", " AI", "magic", "smart", "delete", "Delete"}
+	for _, kind := range ActorKinds {
+		for _, role := range roles {
+			for _, cred := range creds {
+				for _, via := range []Via{ViaWeb, ViaCLI, ViaMCP, ViaAPI} {
+					a := Actor{Kind: kind, Role: role, Credential: cred, Via: via, Autonomy: AutonomyWrite}
+					d := Decide(a, ActionReportChecks, Object{}, project)
+					for _, b := range banned {
+						if strings.Contains(d.Message, b) {
+							t.Fatalf("message breaks the voice rules (%s): %s", b, d.Message)
+						}
+					}
+					want := kind == ActorPerson && cred == CredentialSession && (role == RoleOwner || role == RoleMember)
+					if (d.Effect == EffectApply) != want {
+						t.Fatalf("%+v → %+v, want apply=%v", a, d, want)
+					}
+					f := Decide(a, ActionFlagStale, Object{}, project)
+					if (f.Effect == EffectApply) != (kind == ActorMemax) {
+						t.Fatalf("flag %+v → %+v", a, f)
+					}
+				}
+			}
+		}
+	}
+	for _, c := range []struct {
+		name  string
+		actor Actor
+		act   Action
+		space Space
+		code  string
+	}{
+		{"an agent", agent(RoleOwner, AutonomyWrite), ActionReportChecks, project, CodeChecksByPerson},
+		{"an API key", with(person(RoleOwner, ViaAPI), func(a *Actor) { a.Credential = CredentialAPIKey }), ActionReportChecks, project, CodeChecksByPerson},
+		{"Memax", Actor{Kind: ActorMemax, Via: ViaSystem}, ActionReportChecks, project, CodeChecksByPerson},
+		{"a viewer", person(RoleViewer, ViaCLI), ActionReportChecks, project, CodeViewer},
+		{"a space still on V1", person(RoleOwner, ViaCLI), ActionReportChecks, v1Project, CodeSpaceOnV1},
+		{"a person flags", person(RoleOwner, ViaWeb), ActionFlagStale, project, CodeFlagByMemax},
+		{"Dream flags from a check", Actor{Kind: ActorDream, Via: ViaSystem}, ActionFlagStale, project, CodeFlagByMemax},
+		{"Memax on a space still on V1", Actor{Kind: ActorMemax, Via: ViaSystem}, ActionFlagStale, v1Project, CodeSpaceOnV1},
+	} {
+		if d := Decide(c.actor, c.act, Object{}, c.space); d.Effect != EffectRefuse || d.Code != c.code {
+			t.Errorf("%s: %+v, want refused %s", c.name, d, c.code)
+		}
+	}
+}
+
 func TestRules(t *testing.T) {
 	t.Parallel()
 	var zero Rules

@@ -812,6 +812,9 @@ func (w *writer) purgeWordsOnly(ctx context.Context, sp spaceRow, op *forgetOp, 
 		    AND (s.quote IS NOT NULL OR s.uri IS NOT NULL OR s.content_hash IS NOT NULL)`,
 		`UPDATE v2.import_conflicts SET subject = NULL, rationale = NULL, suggestion = NULL, last_receipt_id = $2
 		  WHERE $1 = ANY (members) AND (subject IS NOT NULL OR rationale IS NOT NULL OR suggestion IS NOT NULL)`,
+		// Check results name its paths (migration 060): the forgot receipt
+		// above lets the function take them.
+		`SELECT v2.remove_condition_checks(ARRAY[$1::uuid]) WHERE $2::uuid IS NOT NULL`,
 	}
 	for _, q := range steps {
 		if _, err := w.tx.Exec(ctx, q, m.ID, rc.ID); err != nil {

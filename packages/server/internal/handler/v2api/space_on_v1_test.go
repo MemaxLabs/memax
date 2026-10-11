@@ -102,6 +102,12 @@ var inPersonal = map[string]bool{"linkMachine": true, "renameMachine": true}
 // refusedOnV1 is a request per command that a space on V2 would take, and
 // a space on V1 refuses.
 var refusedOnV1 = map[string]func(f *v1Fixture) call{
+	"reportChecks": func(f *v1Fixture) call {
+		return call{method: "POST", path: "/v2/spaces/" + f.sp.slug + "/check-runs", token: f.tok,
+			header: map[string]string{"X-Memax-Via": "cli"},
+			body: map[string]any{"repository": "acme/web", "branch": "main", "commit": strings.Repeat("7", 40),
+				"commit_at": "2026-10-01T09:00:00Z", "trigger": "schedule", "device": "dev-1", "complete": true, "results": []any{}}}
+	},
 	"rememberMemory": func(f *v1Fixture) call {
 		return call{method: "POST", path: memoriesPath(f.sp), token: f.tok, body: remember("Use pnpm catalogs.", "conventions")}
 	},

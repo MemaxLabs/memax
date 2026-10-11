@@ -150,6 +150,28 @@ describe("mapping /v2 records", () => {
       changedAt: "2026-10-05T10:12:00Z",
       source: null,
     });
+    // A check run's flag cites the run, which is no one's to read: the
+    // note says a condition stopped holding.
+    const byCheck = new Map([
+      ["r1", receipt()],
+      [
+        "r9",
+        {
+          ...flagged,
+          actor_kind: "memax" as const,
+          source: {
+            kind: "check",
+            ref: "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a90",
+          },
+        },
+      ],
+    ]);
+    expect(listItemOf(stale, byCheck, ME).note).toEqual({
+      kind: "stale",
+      cause: "check",
+      changedAt: "2026-10-05T10:12:00Z",
+      source: null,
+    });
     // Behind another receipt (an undone verification), the date still says it.
     const undone = memory({
       state: "stale",

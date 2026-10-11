@@ -77,6 +77,8 @@ export const ledgerRecordsEn = {
     stale: "Its source changed on {date}",
     staleSource: "Its source changed on {date} · {source}",
     staleDate: "Its date to check again has passed",
+    // A condition stopped holding on the default branch (a check run).
+    staleCheck: "One of its conditions stopped holding on {date}",
     merged: "Merged into {ref} by {name}",
     faded: "No agent has read it in {n} days. Restore it, or let it rest.",
   },

@@ -317,6 +317,8 @@ tags:
     description: Decisions agents ask people to make, and the answers, kept as decisions.
   - name: reads
     description: What agents read (R-). Reads are not receipts.
+  - name: checks
+    description: What a space's repository says about its memories' conditions, checked on members' machines, and the stale flags Memax sets from it.
   - name: devices
     description: Signing the memax CLI in on a machine with no browser, with a code you confirm on the web.
   - name: sessions
@@ -1226,6 +1228,100 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/conditions:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    get:
+      operationId: listConditions
+      tags: [checks]
+      summary: The conditions a space's machines check
+      description: |
+        Every kept memory's "stays true while" conditions, for a member's
+        machine to check against the repository's committed tree on its
+        default branch: each typed, with its hash (send it back with a
+        result, so a result about an older definition is ignored) and
+        whether it is armed (it held once on the default branch; only an
+        armed condition can mark its memory stale). No statements. A
+        condition that hasn't held in 30 days is left out, since Memax stops
+        asking, and so is `pr_state`, which only the GitHub App checks.
+      responses:
+        '200':
+          description: The space's conditions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpaceConditionsEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /v2/spaces/{space}/check-runs:
+    parameters:
+      - $ref: '#/components/parameters/SpacePath'
+    post:
+      operationId: reportChecks
+      tags: [checks]
+      summary: Report a check run
+      description: |
+        A member's machine (the CLI's daemon) reports what it found when it
+        checked the space's conditions against the committed tree of the
+        repository's default branch at `commit`: results, never a file's
+        contents. Report only from the default branch as pushed, from a
+        clone whose origin is the space's repository (`repository` must
+        match, so a fork's clone never reports). Only the results that
+        changed need be sent. Results are check state beside the record,
+        with no receipt. A condition that held once (armed) and now fails,
+        at a commit later than its last hold, marks its memory stale in the
+        same transaction, as Memax: a `flagged` receipt whose source is the
+        run (`{kind: check, ref: <run id>}`) and whose reason, which Forget
+        redacts, says what changed. Unknown never marks anything, nor does a
+        failure a person kept, edited or verified the memory after Memax
+        first saw. A run that would mark more than 10 memories, or more than
+        20% of the armed ones (and at least 5), marks none (`capped`).
+        Only a member's or owner's own session reports: agents, API keys and
+        OAuth grants are refused `checks_by_person`, viewers `viewer`. The
+        same `Idempotency-Key` records a run once; a queued report keeps its
+        `checked_at`, within a week.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Via'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckRunRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/CheckRunRecorded'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReused'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -5561,6 +5657,15 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/TargetResultEnvelope'
+    CheckRunRecorded:
+      description: The run, recorded (or already recorded under this key), and the memories it marked stale.
+      headers:
+        Idempotent-Replayed:
+          $ref: '#/components/headers/IdempotentReplayed'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CheckRunResultEnvelope'
     CompileLoadRecorded:
       description: The load, recorded as a read (or already recorded under this key).
       headers:
@@ -5863,7 +5968,10 @@ components:
         when they start again). A refused export: export_by_person (only a
         signed-in person exports a space). Verify: verify_by_person (agents
         and API keys don't verify: refused on `:verify`, and an agent's edit
-        of a stale memory is sent to Review with it). Refused changes to
+        of a stale memory is sent to Review with it). Refused checks:
+        checks_by_person (only a member's own machine reports check runs),
+        flag_by_memax (only Memax marks a memory stale from a check).
+        Refused changes to
         agents: person_must_manage (only a person changes what an agent may
         do), not_your_agent, autonomy_not_allowed, key_max_propose,
         autonomy_needs_web (raising an agent needs a person on the web).
@@ -5936,6 +6044,8 @@ components:
         - ask_limit
         - export_by_person
         - verify_by_person
+        - checks_by_person
+        - flag_by_memax
         - viewer
         - owners_keep
         - decision_needs_web
@@ -9854,16 +9964,284 @@ components:
           items:
             $ref: '#/components/schemas/Memory'
 
+    ConditionHash:
+      description: A condition's hash (what it checks, not its id or origin), as GET …/conditions gives it.
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+
+    CheckedCondition:
+      description: A condition as a machine checks it.
+      type: object
+      additionalProperties: false
+      required: [condition, hash, armed]
+      properties:
+        condition:
+          $ref: '#/components/schemas/Condition'
+        hash:
+          $ref: '#/components/schemas/ConditionHash'
+        armed:
+          description: It held once on the default branch, so a failure can mark its memory stale.
+          type: boolean
+
+    MemoryConditions:
+      description: One kept memory's conditions to check, without its words.
+      type: object
+      additionalProperties: false
+      required: [memory, conditions]
+      properties:
+        memory:
+          $ref: '#/components/schemas/DisplayRef'
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckedCondition'
+
+    SpaceConditions:
+      description: What a space's machines check.
+      type: object
+      additionalProperties: false
+      required: [space_id, repository, items]
+      properties:
+        space_id:
+          $ref: '#/components/schemas/Id'
+        repository:
+          description: The repository the space compiles for (owner/name); a clone's origin must name it to report.
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryConditions'
+
+    SpaceConditionsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SpaceConditions'
+
+    CheckOutcome:
+      description: A condition's result at the run's commit. unknown (it couldn't be checked) never marks anything.
+      type: string
+      enum: [holds, fails, unknown]
+
+    CheckChange:
+      description: |
+        What changed when a condition stopped holding. path_exists: removed,
+        renamed, no_match (a glob). file_contains: text_missing, removed,
+        renamed. dep_present: dependency_removed, constraint_changed,
+        removed. file_unchanged: blob_changed, removed, renamed.
+      type: string
+      enum: [removed, renamed, no_match, text_missing, dependency_removed, constraint_changed, blob_changed]
+
+    CheckEvidence:
+      description: Why a condition fails, typed so a screen can say it in any language. Paths and a declared constraint, never a file's contents.
+      type: object
+      additionalProperties: false
+      required: [change]
+      properties:
+        change:
+          $ref: '#/components/schemas/CheckChange'
+        path:
+          description: The path that changed (for a bare manifest name, the manifest that changed).
+          $ref: '#/components/schemas/ConditionPath'
+        renamed_to:
+          description: Where a renamed file went (renamed only).
+          $ref: '#/components/schemas/ConditionPath'
+        constraint:
+          description: The dependency's declared constraint now (constraint_changed only).
+          type: string
+          minLength: 1
+          maxLength: 64
+
+    CheckTrigger:
+      description: |
+        What started a run on a machine: the default branch moved, an
+        agent's session start asked, the six-hourly schedule, new conditions
+        arrived, or `memax verify`.
+      type: string
+      enum: [head_moved, session_start, schedule, conditions, verify]
+
+    CheckResultInput:
+      type: object
+      additionalProperties: false
+      required: [memory, condition, hash, outcome]
+      properties:
+        memory:
+          $ref: '#/components/schemas/DisplayRef'
+        condition:
+          $ref: '#/components/schemas/ConditionId'
+        hash:
+          $ref: '#/components/schemas/ConditionHash'
+        outcome:
+          $ref: '#/components/schemas/CheckOutcome'
+        evidence:
+          description: What changed; required when it fails, and only then.
+          $ref: '#/components/schemas/CheckEvidence'
+
+    CheckRunRequest:
+      type: object
+      additionalProperties: false
+      required: [repository, branch, commit, commit_at, trigger, device, complete, results]
+      properties:
+        repository:
+          description: The owner/name the clone's origin names; it must be the space's.
+          type: string
+          pattern: '^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$'
+        branch:
+          description: The default branch's name. Feature branches never report.
+          type: string
+          pattern: '^[A-Za-z0-9._/-]{1,100}$'
+        commit:
+          description: The full commit id the run checked (the default branch's, as pushed).
+          type: string
+          pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+        commit_at:
+          description: The commit's time.
+          $ref: '#/components/schemas/Timestamp'
+        checked_at:
+          description: When the run ran, by the machine's clock; defaults to now, at most a week ago.
+          $ref: '#/components/schemas/Timestamp'
+        trigger:
+          $ref: '#/components/schemas/CheckTrigger'
+        agent:
+          description: The agent whose session start asked for the run, if one did.
+          $ref: '#/components/schemas/AgentKind'
+        device:
+          description: The CLI's device id. Never a host name.
+          type: string
+          pattern: '^[A-Za-z0-9._:-]{1,64}$'
+        complete:
+          description: Every condition at that commit was evaluated.
+          type: boolean
+        results:
+          type: array
+          maxItems: 5000
+          items:
+            $ref: '#/components/schemas/CheckResultInput'
+
+    CheckCounts:
+      description: A run's results by outcome, and those Memax ignored (about a memory that isn't kept here, a condition it no longer has or an older definition of one, or older than what Memax has).
+      type: object
+      additionalProperties: false
+      required: [holds, fails, unknown, ignored]
+      properties:
+        holds:
+          type: integer
+          minimum: 0
+        fails:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+        ignored:
+          type: integer
+          minimum: 0
+
+    CheckRun:
+      description: One check run, as recorded. No words.
+      type: object
+      additionalProperties: false
+      required: [id, space_id, observer, repository, branch, commit, commit_at, trigger, checked_at, recorded_at, complete, counts, capped]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        observer:
+          description: Who checked. device is a member's machine.
+          type: string
+          enum: [device, github, memax]
+        person_id:
+          $ref: '#/components/schemas/Id'
+        device:
+          type: string
+        repository:
+          type: string
+        branch:
+          type: string
+        commit:
+          type: string
+        commit_at:
+          $ref: '#/components/schemas/Timestamp'
+        trigger:
+          $ref: '#/components/schemas/CheckTrigger'
+        agent:
+          $ref: '#/components/schemas/AgentKind'
+        checked_at:
+          $ref: '#/components/schemas/Timestamp'
+        recorded_at:
+          $ref: '#/components/schemas/Timestamp'
+        complete:
+          type: boolean
+        counts:
+          $ref: '#/components/schemas/CheckCounts'
+        capped:
+          description: It would have marked more memories than one run may, so it marked none.
+          type: boolean
+
+    CheckRunResult:
+      type: object
+      additionalProperties: false
+      required: [run, flagged]
+      properties:
+        run:
+          $ref: '#/components/schemas/CheckRun'
+        flagged:
+          description: The memories this run marked stale.
+          type: array
+          items:
+            $ref: '#/components/schemas/DisplayRef'
+
+    CheckRunResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/CheckRunResult'
+
     StaleCause:
       description: |
         Why a memory is stale, typed so a screen can say it in any language.
         It never holds file contents. date: its date to check again passed.
+        check: one of its conditions stopped holding on the default branch.
       oneOf:
         - $ref: '#/components/schemas/StaleDateCause'
+        - $ref: '#/components/schemas/StaleCheckCause'
       discriminator:
         propertyName: kind
         mapping:
           date: '#/components/schemas/StaleDateCause'
+          check: '#/components/schemas/StaleCheckCause'
+
+    StaleCheckCause:
+      description: |
+        One of its conditions stopped holding on the default branch: the
+        condition, what changed, and where and when (the commit the failure
+        began at, and the run that first saw it).
+      type: object
+      additionalProperties: false
+      required: [kind, condition, branch, commit, commit_at, observer]
+      properties:
+        kind:
+          const: check
+        condition:
+          $ref: '#/components/schemas/Condition'
+        evidence:
+          $ref: '#/components/schemas/CheckEvidence'
+        branch:
+          type: string
+        commit:
+          type: string
+        commit_at:
+          $ref: '#/components/schemas/Timestamp'
+        checked_at:
+          $ref: '#/components/schemas/Timestamp'
+        observer:
+          type: string
+          enum: [device, github, memax]
 
     StaleDateCause:
       description: Its date to check again passed.

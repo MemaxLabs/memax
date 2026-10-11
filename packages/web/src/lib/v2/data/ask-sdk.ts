@@ -79,6 +79,10 @@ export function createSdkAsk(
         yield { type: "limit", limit, resetAt };
         return;
       }
+      if (refused?.code === "space_on_v1") {
+        yield { type: "onV1" };
+        return;
+      }
       if (err instanceof MemaxError && err.code === "unavailable") {
         yield { type: "unavailable" };
         return;

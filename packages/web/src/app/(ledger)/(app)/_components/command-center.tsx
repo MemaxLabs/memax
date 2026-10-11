@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { CommandBar, CommandDialog, type CommandMode } from "@memaxlabs/ledger";
 import { interpolate, useLocale } from "@/i18n";
 import { count } from "@/lib/v2/copy";
+import { toFailure } from "@/lib/v2/data/command-error";
 import { IntentKeys } from "@/lib/v2/intent-keys";
 import type { KeepResult, SpaceSummary } from "@/lib/v2/data/types";
 import { KeyScopeBoundary, useHotkey, useKeycap } from "@/lib/v2/keymap/react";
@@ -13,6 +14,7 @@ import { useUndo } from "../_lib/undo";
 import { answerText, useAsk } from "../_lib/use-ask";
 import { useRemember } from "../_lib/use-remember";
 import { AskPanel } from "./ask-panel";
+import { isOnV1, OnV1Notice } from "./on-v1-notice";
 import { RememberPanel } from "./remember-panel";
 import { useToast, type ShowToast } from "./toasts";
 import styles from "./command-center.module.css";
@@ -26,6 +28,8 @@ const SEAL_MS = 700;
  * a memory; Remember keeps on Enter (or ⌘↵) after the near-duplicate
  * check. CommandDialog (Base UI) traps focus, returns it on close and
  * closes on Escape. Opens from the rail, ⌘K and the phone's Ask tab.
+ * In a space still on V1 it offers neither: its V2 record takes no new
+ * words yet (policy space_on_v1), so it says so and links to Today.
  */
 export function CommandCenter({
   space,
@@ -98,7 +102,17 @@ function useKeptToast() {
       }
       toast(toastOptions);
     },
-    failed() {
+    /** A command that didn't go through; one refused because `space` is still on V1 says so. */
+    failed(err?: unknown, space?: SpaceSummary) {
+      const failure = err === undefined ? null : toFailure(err);
+      if (
+        space &&
+        failure?.kind === "refused" &&
+        failure.code === "space_on_v1"
+      ) {
+        toast({ text: interpolate(copy.onV1, { space: space.name }) });
+        return;
+      }
       toast({ text: copy.failed });
     },
     copied() {
@@ -119,8 +133,10 @@ function CommandBody({
   initialQuery: string;
 }) {
   const { setCommandOpen } = useOverlays();
+  const { t } = useLocale();
   const viewer = useViewer();
   const source = useSource();
+  const onV1 = isOnV1(space);
   const [mode, setMode] = useState<CommandMode>(initialMode);
   const [query, setQuery] = useState(initialQuery);
   const [keepingAnswer, setKeepingAnswer] = useState(false);
@@ -130,7 +146,7 @@ function CommandBody({
   } | null>(null);
   const intents = useRef(new IntentKeys());
   const ask = useAsk(space);
-  const draft = useRemember(mode === "remember" ? query : "", space);
+  const draft = useRemember(mode === "remember" && !onV1 ? query : "", space);
   const keepKey = useKeycap("command.keep");
   const commandKey = useKeycap("command.open");
   const notify = useKeptToast();
@@ -143,8 +159,8 @@ function CommandBody({
       if (!result) return;
       close();
       notify.kept(result, draft.space, "remember");
-    } catch {
-      notify.failed();
+    } catch (err) {
+      notify.failed(err, draft.space);
     }
   };
 
@@ -154,8 +170,8 @@ function CommandBody({
       if (!result) return;
       close();
       notify.kept(result, draft.space, "keep");
-    } catch {
-      notify.failed();
+    } catch (err) {
+      notify.failed(err, draft.space);
     }
   };
 
@@ -190,8 +206,8 @@ function CommandBody({
       }
       close();
       notify.kept(result, space, "remember");
-    } catch {
-      notify.failed();
+    } catch (err) {
+      notify.failed(err, space);
     } finally {
       setKeepingAnswer(false);
     }
@@ -213,12 +229,18 @@ function CommandBody({
     }
   };
 
-  // ⌘K again closes; ⌘↵ keeps (the answer in Ask, the draft in Remember).
+  // ⌘K again closes; ⌘↵ keeps (the answer in Ask, the draft in Remember),
+  // never in a space still on V1. The command scope is modal, so the key
+  // reaches nothing else.
   useHotkey("command.open", () => close());
-  useHotkey("command.keep", () => {
-    if (mode === "ask") void keepAnswer();
-    else void keepDraft();
-  });
+  useHotkey(
+    "command.keep",
+    () => {
+      if (mode === "ask") void keepAnswer();
+      else void keepDraft();
+    },
+    { enabled: !onV1 },
+  );
 
   // A new question starts clean: no seal from the last answer's Keep.
   const askFresh = (text: string) => {
@@ -230,6 +252,28 @@ function CommandBody({
     setMode("remember");
     if (ask.state.status !== "idle") setQuery(ask.state.question);
   };
+
+  if (onV1) {
+    // Neither Ask nor Remember: the field is read-only, Enter and Tab do
+    // nothing, and the one way on is the space's Today.
+    return (
+      <CommandBar
+        className={styles.bar}
+        query={query}
+        onQueryChange={setQuery}
+        mode={mode}
+        onModeChange={setMode}
+        tabSwitchesMode={false}
+        footer={false}
+        placeholder={interpolate(t.ledger.app.command.onV1.title, {
+          space: space.name,
+        })}
+        inputProps={{ readOnly: true }}
+      >
+        <OnV1Notice space={space} onOpen={close} />
+      </CommandBar>
+    );
+  }
 
   const body =
     mode === "ask" ? (
@@ -252,7 +296,8 @@ function CommandBody({
       <RememberPanel
         draft={draft}
         homeSlug={space.slug}
-        spaces={spaces}
+        // A space still on V1 takes no Remember (policy space_on_v1).
+        spaces={spaces.filter((s) => !isOnV1(s))}
         viewer={viewer}
         keepKey={keepKey}
         commandKey={commandKey}

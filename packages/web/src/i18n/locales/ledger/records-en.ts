@@ -178,6 +178,8 @@ export const ledgerRecordsEn = {
         "Only a person answers a question. Sign in as yourself, not with an agent's key.",
       not_your_gate:
         "Only the agent that asked, the person it works for, or someone who can answer it can withdraw it.",
+      space_on_v1:
+        "{space} is still on V1, so nothing here changes until it switches to V2. Its owner switches it from its Today.",
       other: "Memax refused it: {message}",
       otherBare: "Memax refused it.",
     },

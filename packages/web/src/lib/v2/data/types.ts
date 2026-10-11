@@ -175,7 +175,9 @@ export type AskEvent =
   /** The plan's asks this month are used up (D9); they start again at resetAt. */
   | { type: "limit"; limit: number; resetAt: string }
   /** The source can't ask at all (no /v2 Ask on this server). */
-  | { type: "unavailable" };
+  | { type: "unavailable" }
+  /** The space is still on V1, and Ask answers only from the V2 record (policy space_on_v1). */
+  | { type: "onV1" };
 
 /** What Remember shows while the person types: the synchronous near-duplicate check (plan §5.8). */
 export interface RememberCheck {

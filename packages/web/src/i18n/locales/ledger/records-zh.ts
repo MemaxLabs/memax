@@ -159,6 +159,8 @@ export const ledgerRecordsZh: Translations["ledger"]["records"] = {
         "问题只能由真人回答。用你自己的账号登录，别用 Agent 的密钥。",
       not_your_gate:
         "只有提问的 Agent、它所属的人，或者能回答的人，才能撤回这个问题。",
+      space_on_v1:
+        "{space} 还在 V1 上，切换到 V2 之前这里什么都不会改动。所有者可以在它的今天页切换。",
       other: "Memax 没接受：{message}",
       otherBare: "Memax 没接受。",
     },

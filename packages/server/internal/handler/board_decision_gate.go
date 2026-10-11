@@ -140,9 +140,9 @@ func createDecisionGate(
 		// Hub-qualified: even if two hubs ever produced the same slot
 		// key, their notification rows stay distinct and a resolve can
 		// never reach across hubs.
-		SourceID: decisionGateSourceID(hub.ID, slotKey),
-		Payload:    notifPayload,
-		CreatedAt:  time.Now().UTC(),
+		SourceID:  decisionGateSourceID(hub.ID, slotKey),
+		Payload:   notifPayload,
+		CreatedAt: time.Now().UTC(),
 	}
 	if inserted, err := s.CreateNotificationIfAbsent(notif); err == nil && inserted {
 		events.PublishNotificationCreated(context.Background(), publisher, notif)

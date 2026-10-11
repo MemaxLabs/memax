@@ -296,6 +296,7 @@ pnpm format && pnpm lint   # MUST pass before git commit
 
 - `pnpm format` runs Prettier on all `*.{ts,tsx,js,jsx,json,md}` files
 - `pnpm lint` runs ESLint, `tsc --noEmit` (TypeScript), and `go vet` (Go)
+- Go code is `gofmt`-formatted by the Go version in `go.mod` (1.26), which CI runs: `GOTOOLCHAIN=go1.26.0 go fmt ./...` in `packages/server` (a newer local Go's gofmt formats some code differently, so plain `gofmt -w` from Go 1.27 can fail CI's check)
 - CI rejects unformatted code AND any lint warning — if you skip this, the push is wasted
 - This applies to ALL agents (Claude, Gemini, Copilot, Codex) — there are no git hooks, so **you** are the hook
 

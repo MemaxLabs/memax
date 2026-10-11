@@ -102,8 +102,8 @@ func TestAdminV2Metrics(t *testing.T) {
 	}
 	for err, status := range map[error]int{
 		fmt.Errorf("%w: range: backwards", ledger.ErrInvalid): http.StatusBadRequest,
-		ledger.ErrDisabled:                                    http.StatusServiceUnavailable,
-		errors.New("connection reset"):                        http.StatusInternalServerError,
+		ledger.ErrDisabled:             http.StatusServiceUnavailable,
+		errors.New("connection reset"): http.StatusInternalServerError,
 	} {
 		f.err = err
 		if w, body := getV2Metrics(t, h, ""); w.Code != status || strings.Contains(w.Body.String(), "connection reset") {

@@ -35,7 +35,12 @@ import {
   waiting,
   type Open,
 } from "./settle.js";
-import { InitError, personalSpace, projectSpace } from "./spaces.js";
+import {
+  InitError,
+  personalSpace,
+  projectSpace,
+  repositoryOf,
+} from "./spaces.js";
 import {
   emptyReport,
   type InitDeps,
@@ -120,7 +125,12 @@ async function flow(
 
   if (o.dryRun) {
     begin("scan", 5_000);
-    const scanned = await scanFiles(found.files, { root, git: d.git, branch });
+    const scanned = await scanFiles(found.files, {
+      root,
+      git: d.git,
+      branch,
+      repo: repositoryOf(remote),
+    });
     end();
     printScan(d, scanned, new Map());
     d.out("");
@@ -192,7 +202,12 @@ async function flow(
 
   // 4. Scan locally: split, secrets, hidden characters, trust.
   begin("scan", 5_000);
-  const scanned = await scanFiles(found.files, { root, git: d.git, branch });
+  const scanned = await scanFiles(found.files, {
+    root,
+    git: d.git,
+    branch,
+    repo: repositoryOf(remote, project?.space),
+  });
   fillFiles(report, scanned);
   end();
 
@@ -509,7 +524,7 @@ function printScan(
   proposals: Map<string, number>,
 ): void {
   const read = scanned.files.filter(
-    (f) => f.statements > 0 || f.compiled || f.unreadable,
+    (f) => f.statements > 0 || f.compiled || f.unreadable || f.noRepository,
   );
   if (read.length === 0) {
     d.out("");
@@ -533,6 +548,7 @@ function fillFiles(report: InitReport, scanned: ScanResult): void {
     skipped: f.skipped,
     hidden: totalHidden(f.hidden),
     compiled: f.compiled,
+    ...(f.noRepository ? { noRepository: true } : {}),
   }));
   report.secrets = [
     ...scanned.project.skipped,

@@ -124,6 +124,12 @@ export interface InitReport {
     skipped: number;
     hidden: number;
     compiled: boolean;
+    /**
+     * This repository's own notes (CLAUDE.local.md, Claude Code's auto
+     * memory) left on the machine: the repository has no owner/name to
+     * tie them to, and in Personal they would apply in every project.
+     */
+    noRepository?: boolean;
   }>;
   imports: Array<{
     space: string;

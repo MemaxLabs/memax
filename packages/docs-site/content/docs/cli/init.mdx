@@ -89,7 +89,11 @@ memax init [--space <slug>] [--yes] [--no-personal] [--no-connect]
 5. **Upload.** The repository's statements go to the project space, and
    machine-local memory to your Personal space (it asks first). Every
    statement arrives as a **proposal**, never kept, with its file and line
-   as its source.
+   as its source. This repository's own notes, `CLAUDE.local.md` and
+   Claude Code's auto memory for it, go to Personal tied to the repository
+   (`scope.repos`, its `owner/name`), so they apply there and not in every
+   project; a memory's page can widen one to everywhere. A repository with
+   no remote leaves those two where they are.
 6. **The judge.** Statements the space already has are skipped, and the
    same statement in two files becomes one proposal with both sources. The
    judge compares each proposal with what the space keeps, and checks the

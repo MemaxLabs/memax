@@ -415,7 +415,11 @@ describe("Disconnect", () => {
   it("names an API key's revocation, and is only for the agent's own person", async () => {
     agentParam = "c2";
     source.agent.mockResolvedValue(
-      detail({ credential: { kind: "api_key", active: true }, mine: false }),
+      detail({
+        surface: "cli",
+        credential: { kind: "api_key", active: true },
+        mine: false,
+      }),
     );
     render(
       <Frame>
@@ -441,7 +445,10 @@ describe("Disconnect", () => {
   it("shows a credential revoked outside Agents", async () => {
     agentParam = "c2";
     source.agent.mockResolvedValue(
-      detail({ credential: { kind: "api_key", active: false } }),
+      detail({
+        surface: "cli",
+        credential: { kind: "api_key", active: false },
+      }),
     );
     render(
       <Frame>

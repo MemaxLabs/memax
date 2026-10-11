@@ -473,6 +473,116 @@ describe("toConnection", () => {
   });
 });
 
+describe("cloud agents over the SDK", () => {
+  const refused = (code: string) =>
+    new MemaxError("no", "refused", 403, {
+      policy: { effect: "refuse", code, message: "English." },
+    });
+  const cloud = connection({
+    agent: "copilot",
+    display_name: "Copilot cloud agent · memax-v2",
+    surface: "cloud",
+    max_autonomy: "read",
+  });
+  const week = {
+    reads: 1,
+    writes: 0,
+    proposals: 0,
+    kept: 0,
+    rejected: 0,
+    waiting: 0,
+  };
+
+  it("reads a cloud agent's last start, and says when there is none", async () => {
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce({
+        agent: cloud,
+        this_week: week,
+        recent_writes: [],
+        sessions: [],
+        last_start: {
+          at: "2026-10-05T14:20:00-07:00",
+          space_id: "s1",
+          session_ref: "cp-1",
+          compiles: ["C-0881"],
+          told: ["M-0219"],
+        },
+      } satisfies V2.AgentDetail)
+      .mockResolvedValueOnce({
+        agent: cloud,
+        this_week: week,
+        recent_writes: [],
+        sessions: [],
+      } satisfies V2.AgentDetail)
+      .mockResolvedValueOnce({
+        agent: connection(),
+        this_week: week,
+        recent_writes: [],
+        sessions: [],
+      } satisfies V2.AgentDetail);
+    const agents = createSdkAgents({
+      client: { v2: { agents: { get } } } as never,
+      viewer,
+    });
+    expect((await agents.agent("c1"))?.lastStart).toEqual({
+      at: "2026-10-05T14:20:00-07:00",
+      spaceId: "s1",
+      sessionRef: "cp-1",
+      compiles: ["C-0881"],
+      told: ["M-0219"],
+    });
+    expect((await agents.agent("c1"))?.lastStart).toBeNull();
+    expect((await agents.agent("c1"))?.lastStart).toBeUndefined();
+  });
+
+  it("connects one and gives it a new key, the secret only when answered", async () => {
+    const key = {
+      secret: `mxk_${"ab".repeat(32)}`,
+      prefix: "mxk_abab",
+      expires_at: "2027-04-03T00:00:00Z",
+    };
+    const answer = (withKey: boolean) => ({
+      outcome: "applied" as const,
+      policy: { effect: "apply" as const },
+      agent: cloud,
+      ...(withKey ? { key } : {}),
+      receipts: [],
+    });
+    const connectCloud = vi.fn().mockResolvedValue(answer(true));
+    const rekey = vi
+      .fn()
+      .mockResolvedValueOnce(answer(false))
+      .mockRejectedValueOnce(refused("not_your_agent"));
+    const agents = createSdkAgents({
+      client: { v2: { agents: { connectCloud, rekey } } } as never,
+      viewer,
+    });
+    const made = await agents.connectCloudAgent({
+      agent: "copilot",
+      space: DEMO_SPACES[1]!,
+      idempotencyKey: "k",
+    });
+    expect(connectCloud).toHaveBeenCalledWith(
+      { agent: "copilot", space: "memax-v2" },
+      { idempotencyKey: "k" },
+    );
+    expect(made.key).toEqual({
+      secret: key.secret,
+      prefix: "mxk_abab",
+      expiresAt: "2027-04-03T00:00:00Z",
+    });
+    expect(made.connection.surface).toBe("cloud");
+    // A replay answers no secret: it was never stored.
+    expect(
+      (await agents.rekeyAgent({ agent: "c1", idempotencyKey: "k2" })).key,
+    ).toBeNull();
+    await expect(
+      agents.rekeyAgent({ agent: "c1", idempotencyKey: "k3" }),
+    ).rejects.toMatchObject({ refusal: "not_your_agent" });
+  });
+});
+
 describe("toAgentCommandError", () => {
   const refused = (code: string) =>
     new MemaxError("no", "refused", 403, {

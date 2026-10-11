@@ -86,6 +86,7 @@ export const ledgerAgentsEn = {
       "Paused {agent}. It still reads, and writes nothing until you resume it.",
     resumed: "Resumed {agent}.",
     disconnected: "Disconnected {agent}. Its credential is revoked.",
+    rekeyed: "Gave {agent} a new start key. The old one no longer works.",
   },
   detail: {
     eyebrow: "Agents · {space}",
@@ -94,6 +95,7 @@ export const ledgerAgentsEn = {
       ide: "Runs in your editor.",
       cloud: "Cloud tasks and the CLI.",
       chat: "A chat app, over remote MCP.",
+      startKey: "Starts in its cloud sandbox with a start key.",
     },
     lede: {
       read: "It reads and never writes, and its receipts show as {mono}.",
@@ -116,8 +118,34 @@ export const ledgerAgentsEn = {
       oauth:
         "Its OAuth grant is revoked now, so its next request is refused. Its receipts stay, and you can connect it again later.",
       key: "Its API key is revoked now, so its next request is refused. Its receipts stay, and you can connect it again later.",
+      startKey:
+        "Its start key is revoked now, so its next start says nothing. Its reads stay, and you can connect it again later.",
       cancel: "Cancel",
       confirm: "Disconnect {agent}",
+    },
+    // A cloud agent's start key: a new one under the same connection.
+    rekey: "New start key",
+    rekeyConfirm: {
+      title: "Give {agent} a new start key?",
+      body: "The old key stops working at once, so its next start says nothing until the new one is where the old one was. Its reads stay under the same connection.",
+      cancel: "Cancel",
+      confirm: "Give it a new key",
+    },
+    newKey: {
+      title: "{agent}'s new start key",
+      body: "Copy it now: Memax shows a start key once and keeps only its hash. Put it where the old one was.",
+      done: "Done",
+    },
+    lastStart: {
+      title: "Last start",
+      when: "When",
+      held: "Its files held",
+      told: "Told",
+      toldMany: "{n} memories changed since: {refs}",
+      toldOne: "1 memory changed since: {refs}",
+      nothing: "Nothing new: its files were current.",
+      session: "Session",
+      none: "No start yet. Once its sandbox has the key and the repository has the hook file, each session start shows here.",
     },
     revoked: {
       title: "Its credential was revoked.",
@@ -170,6 +198,7 @@ export const ledgerAgentsEn = {
       carriedOver: "{date}, carried over from V1",
       oauth: "Remote MCP · OAuth 2.1",
       key: "API key",
+      startKey: "Start key",
       only: "{space} only",
       none: "No space yet",
       never: "Never",
@@ -246,6 +275,75 @@ export const ledgerAgentsEn = {
     copiedUrl:
       "Copied the server address. Add it in {agent}, and it shows up here once you sign in.",
     copyFailed: "Couldn't copy. Select the text and copy it yourself.",
+    cloud: "Runs in a cloud sandbox instead?",
+    cloudLink: "Connect a cloud agent",
+  },
+  // Connect a cloud agent (cloud warm-start design §4.3, §5). No board
+  // draws it, so it follows Connect an agent's layout.
+  cloud: {
+    title: "Connect a cloud agent",
+    to: "to {where}",
+    close: "Close",
+    which: "1 · Which cloud agent",
+    whichLabel: "Which cloud agent",
+    connected: "Connected",
+    notConnected: "Cloud · not connected",
+    filesOnly: "Committed files only",
+    where: "2 · Where it starts",
+    whereLabel: "The space {agent} starts in",
+    whereHint:
+      "One project or team space. Your Personal space reaches your own machines' files instead.",
+    noSpaces:
+      "A cloud agent starts in a project or team space on the V2 record, and you have none yet.",
+    key: "3 · Its start key",
+    keyIntro:
+      "A start key only starts {agent}'s sessions in {space}: it reads what changed since the compile its repository holds, and nothing else. It can't read memories or write, and it works for 180 days.",
+    keyConnected:
+      "{agent} is connected to {space}. A new key stops the old one at once, so put the new one where the old one was.",
+    keyShown:
+      "Copy it now: Memax shows a start key once and keeps only its hash.",
+    keyExpires: "It works until {date}.",
+    keyReplayed:
+      "This key was already made, and Memax never shows a key twice. Give it a new key to see one.",
+    copyKey: "Copy the key",
+    copiedKey: "Copied the start key",
+    put: "4 · Put it where its sandbox reads it",
+    claudeNetwork:
+      "On Pro or Max: add a network secret for {host} to the cloud environment, with the key as its Bearer token. The key never enters the sandbox.",
+    claudeEnv:
+      "On Team or Enterprise: set MEMAX_START_KEY to the key in a personal environment's variables. Not a shared one: everyone whose sessions use a shared environment can read its variables.",
+    copilotSecret:
+      "Add the key as the Agents secret MEMAX_START_KEY: the repository's (or organisation's) Settings › Secrets and variables › Agents. Copilot masks it in session logs.",
+    copilotAllow:
+      "Let the agent reach {host}: add it to the repository's Copilot internet access settings (the agent firewall).",
+    apiUrl:
+      "This app's server is {url}: set MEMAX_API_URL to it beside the key.",
+    commit: "5 · Commit the hook file",
+    commitIntro:
+      "Add this to {path} and commit it. It names the key's variable and never holds the key.",
+    claudeGuard:
+      "It runs only in cloud sessions, where CLAUDE_CODE_REMOTE is true.",
+    copilotGuard:
+      "It runs only where MEMAX_START_KEY is set, so Copilot CLI on people's machines skips it.",
+    merge:
+      "If the file is there already, add the entry to it, or run this in the repository: it adds the entry, keeps the rest, and prints a key.",
+    agentsMd:
+      "Commit AGENTS.md after each compile too: a start says what changed since the compile it holds.",
+    codeowners:
+      "A CODEOWNERS entry for {path} and AGENTS.md makes a change to how the start runs need an owner's review.",
+    copyFile: "Copy the file",
+    copiedFile: "Copied {path}",
+    copyCommand: "Copy command",
+    copiedCommand: "Copied the command",
+    codex:
+      "Codex Cloud runs no session-start hook Memax can use yet, so it starts from the committed AGENTS.md alone. Commit it after each compile; there's no key to make.",
+    loads: "3 · What it loads",
+    create: "Create start key",
+    rekey: "Give it a new key",
+    done: "Done",
+    cancel: "Cancel",
+    failed: "The key wasn't made. Nothing changed. Try again.",
+    receiptsAs: "Its reads will show as {stamp}",
   },
   keys: {
     title: "Agents and keys",

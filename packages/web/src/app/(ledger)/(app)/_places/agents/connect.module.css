@@ -275,6 +275,147 @@
   margin-right: auto;
 }
 
+/* Connect a cloud agent (no board): the same card and parts, three tiles
+ * to a row, the start key shown once, the steps and the hook file. */
+.tiles3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.radio input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.radio input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.note {
+  margin: 0;
+  padding: 10px 16px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.secret {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.secretText {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  overflow-x: auto;
+  white-space: pre;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ink);
+}
+
+.howto {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0 0 0 20px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.file {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--well);
+}
+
+.fileText {
+  display: block;
+  margin: 0;
+  padding: 10px 44px 10px 14px;
+  overflow-x: auto;
+  white-space: pre;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ink);
+}
+
+.fileCopy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.fileCopy:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+
+.fileCopy:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+@media (max-width: 639px) {
+  .tiles3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 639px) {
   .layer {
     top: 16px;

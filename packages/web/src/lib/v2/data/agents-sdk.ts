@@ -11,8 +11,10 @@ import {
   type AgentDetailView,
   type AgentRefusal,
   type AgentsData,
+  type AgentStartView,
   type AgentWrite,
   type ApiKeyView,
+  type CloudAgentResultView,
 } from "./agents";
 import type { SyncLine, Viewer } from "./types";
 
@@ -75,6 +77,16 @@ export function toConnection(
             : null,
     // PLACEHOLDER: compile targets aren't served by /v2 yet.
     target: undefined,
+  };
+}
+
+export function toAgentStart(s: V2.AgentStart): AgentStartView {
+  return {
+    at: s.at,
+    spaceId: s.space_id,
+    sessionRef: s.session_ref ?? null,
+    compiles: s.compiles,
+    told: s.told,
   };
 }
 
@@ -217,6 +229,25 @@ export function createSdkAgents({
       throw toAgentCommandError(err);
     }
   };
+  const cloud = async (
+    run: () => Promise<V2.CloudAgentResult>,
+  ): Promise<CloudAgentResultView> => {
+    try {
+      const res = await run();
+      return {
+        connection: toConnection(res.agent, viewer),
+        key: res.key
+          ? {
+              secret: res.key.secret,
+              prefix: res.key.prefix,
+              expiresAt: res.key.expires_at,
+            }
+          : null,
+      };
+    } catch (err) {
+      throw toAgentCommandError(err);
+    }
+  };
 
   return {
     async spaceAgents(space, signal) {
@@ -276,6 +307,11 @@ export function createSdkAgents({
           lastAt: s.last_at,
         })),
       };
+      if (connection.surface === "cloud") {
+        view.lastStart = detail.last_start
+          ? toAgentStart(detail.last_start)
+          : null;
+      }
       return view;
     },
     setAutonomy({ agent, space, autonomy, idempotencyKey }) {
@@ -304,6 +340,18 @@ export function createSdkAgents({
       return command(() =>
         client.v2.agents.disconnect(agent, {}, { idempotencyKey }),
       );
+    },
+    // No X-Memax-Via, as for autonomy: the proxy's signature says it's the web.
+    connectCloudAgent({ agent, space, idempotencyKey }) {
+      return cloud(() =>
+        client.v2.agents.connectCloud(
+          { agent, space: space.slug },
+          { idempotencyKey },
+        ),
+      );
+    },
+    rekeyAgent({ agent, idempotencyKey }) {
+      return cloud(() => client.v2.agents.rekey(agent, {}, { idempotencyKey }));
     },
     // PLACEHOLDER: /v2 spaces don't carry their rules yet; Propose is the default.
     newAgentAutonomy: () => "propose",

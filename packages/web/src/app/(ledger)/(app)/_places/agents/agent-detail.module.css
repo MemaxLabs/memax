@@ -236,6 +236,41 @@
   color: var(--ink);
 }
 
+/* A cloud agent's new start key: confirmed inline on a quieter wash than
+ * Disconnect's (its history stays), then shown once. */
+.confirmQuiet {
+  background: var(--sheet);
+}
+
+.secret {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.secretText {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  overflow-x: auto;
+  white-space: pre;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ink);
+}
+
+/* Refs in the Last start panel: IDs are mono. */
+.refs {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
 @media (max-width: 1023px) {
   .grid {
     grid-template-columns: minmax(0, 1fr);

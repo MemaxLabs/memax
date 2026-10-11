@@ -207,6 +207,7 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
       "{actor}连接了 {ref}：这个空间会写进它上面各个 agent 自己的文件。",
     machineRenamed: "{actor}重命名了 {ref}。",
     machineUnlinked: "{actor}把这个空间从 {ref} 上移除了。",
+    scoped: "{actor}改动了 {ref} 的适用范围。",
     other: "{actor}改动了 {ref}。",
   },
 };

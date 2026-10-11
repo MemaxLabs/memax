@@ -357,6 +357,12 @@ const (
 	// (`memax export`, Memories' Export as Markdown). It changes nothing and
 	// writes one receipt, exported; decided here for who may.
 	ActionExport Action = "export"
+	// Scope (personal-layer design §3.3): where a memory applies, by
+	// repository (scope.repos). A person widens a personal fact tied to one
+	// repository to everywhere on its page; Memax's backfill
+	// (cmd/v2-backfill-repo-scope) ties what an earlier init imported to its
+	// repository. The words never change.
+	ActionScope Action = "scope"
 )
 
 // FreeAskLimit is how many asks a month Free answers (D9: "Ask 50/mo").
@@ -488,6 +494,9 @@ type Object struct {
 	// AskLimit is their plan's monthly limit (0: none).
 	AsksBefore int
 	AskLimit   int
+	// Widens is set when a scope change lets the memory reach places it
+	// didn't: fewer repositories named (none is everywhere), or another one.
+	Widens bool
 }
 
 // Space is the space the action happens in.
@@ -726,6 +735,8 @@ func Decide(a Actor, act Action, o Object, s Space) Decision {
 		return decideRunDream(a, s)
 	case ActionExport:
 		return decideExport(a, s)
+	case ActionScope:
+		return decideScope(a, o, s)
 	}
 	return refuse(CodeUnknownAction, fmt.Sprintf("Memax doesn't know how to %q.", act))
 }
@@ -934,6 +945,45 @@ func decideKeep(a Actor, o Object, s Space) Decision {
 		gated = true
 	}
 	if gated {
+		return applyChecked(a)
+	}
+	return apply()
+}
+
+// decideScope: where a memory applies is a person's call, as keeping it
+// is, since it decides which files every agent loads it from. Memax only
+// narrows: the backfill ties a personal fact an earlier init imported to
+// the repository it came from, and never lets one reach further. A
+// decision in a team space needs a person on the web, as editing it does.
+func decideScope(a Actor, o Object, s Space) Decision {
+	if a.Kind == ActorMemax {
+		if o.Widens {
+			return refuse(CodePersonMustReview, fmt.Sprintf(
+				"Only a person widens where %s applies.", refOr(o, "a memory")))
+		}
+		return apply()
+	}
+	if a.Kind != ActorPerson {
+		return refuse(CodePersonMustReview, fmt.Sprintf(
+			"A person decides where %s applies. Change it on its page.", refOr(o, "a memory")))
+	}
+	if a.Credential == CredentialAPIKey {
+		return refuse(CodeKeyCannotReview, "API keys can propose but never change where a memory applies. Change it on the web.")
+	}
+	if a.Role == RoleViewer {
+		return refuse(CodeViewer, fmt.Sprintf(
+			"Viewers can't change where a memory applies in %s. Ask a member to.", spaceName(s)))
+	}
+	if !canKeep(a.Role, s.Rules) {
+		return refuse(CodeOwnersKeep, fmt.Sprintf(
+			"Only owners change where a memory applies in %s. Ask an owner to.", spaceName(s)))
+	}
+	if o.Decision && s.Rules.DecisionsNeedPersonOnWeb(s.Kind) {
+		if d := needsPerson(a, CodeDecisionNeedsWeb, fmt.Sprintf(
+			"Decisions in %s need a person on the web. Change where it applies there.", spaceName(s)),
+			"changing where "+refOr(o, "a decision")+" applies"); d != nil {
+			return *d
+		}
 		return applyChecked(a)
 	}
 	return apply()

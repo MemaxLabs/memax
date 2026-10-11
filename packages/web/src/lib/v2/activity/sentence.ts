@@ -353,6 +353,10 @@ export function activitySentences(
       return [one(s.published, { n: text(editionNumber(entry.object.ref)) })];
     case "folded":
       return [one(s.foldedNotes, { ref: text(entry.object.ref) })];
+    // Which repositories a memory applies in: a person widening it, or
+    // Memax tying what an earlier init imported to its repository.
+    case "scoped":
+      return [one(s.scoped, { ref: text(entry.object.ref) })];
     default: {
       // Every verb the API can send has words above; this fails to compile
       // when the spec gains one. A newer server can still send a verb this

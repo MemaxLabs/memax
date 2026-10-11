@@ -133,6 +133,9 @@ var refusedOnV1 = map[string]func(f *v1Fixture) call{
 	"rejectMemory": func(f *v1Fixture) call {
 		return call{method: "POST", path: memoryPath(f.proposal2, ":reject"), token: f.tok}
 	},
+	"scopeMemory": func(f *v1Fixture) call {
+		return call{method: "POST", path: memoryPath(f.kept, ":scope"), token: f.tok, body: map[string]any{"repos": []string{"acme/web"}}}
+	},
 	"resolveConflict": func(f *v1Fixture) call {
 		return call{method: "POST", path: memoryPath(f.fly, ":resolve-conflict"), token: f.tok, body: map[string]any{"choice": "keep_this"}}
 	},

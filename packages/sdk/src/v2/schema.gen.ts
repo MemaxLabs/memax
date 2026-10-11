@@ -894,6 +894,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/memories/{ref}:scope": {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header?: never;
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change which repositories a memory applies in
+         * @description Sets the memory's `scope.repos`: the repositories it applies in, as
+         *     `owner/name` keys (any spelling of a repository's URL reads as its
+         *     key; stored lowercase, sorted, once each). An empty list is
+         *     everywhere, which is how a person widens a personal fact that
+         *     `memax init` tied to one repository (its Claude Code auto memory
+         *     and `CLAUDE.local.md`): a home file leaves out every memory with
+         *     `scope.repos`, since it loads in every project. The words, the
+         *     paths and the agents don't change. It follows Keep's rules for who
+         *     may: a member or owner who keeps in the space (a decision in a team
+         *     space needs a person on the web); agents and API keys are refused.
+         *     One `scoped` receipt; a kept memory's files recompile. Only a
+         *     proposal, a kept memory or a faded one can change (409
+         *     `invalid_transition` otherwise). Asking for the repositories it
+         *     already names is 400 `invalid_request`, as an edit to the same
+         *     words is; a retry with the same `Idempotency-Key` replays.
+         */
+        post: operations["scopeMemory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/memories/{ref}:reject": {
         parameters: {
             query?: {
@@ -3001,10 +3044,13 @@ export interface components {
          *     record; switching back writes switched_back. A note's Forget writes
          *     forgot on the note (`object_kind: note`). A machine's (`machine`,
          *     named by its label, machine-2) are linked, configured (renamed) and
-         *     unlinked.
+         *     unlinked. A change to which repositories a memory applies in
+         *     (`:scope`) writes scoped: a person widening it, or Memax (via
+         *     system) tying a personal fact an earlier `memax init` imported to
+         *     its repository.
          * @enum {string}
          */
-        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded" | "exported" | "noted" | "switched" | "switched_back" | "unlinked";
+        ReceiptAction: "proposed" | "kept" | "edited" | "rejected" | "merged" | "flagged" | "resolved" | "verified" | "faded" | "restored" | "forgot" | "moved" | "compiled" | "handed_off" | "answered" | "undid" | "connected" | "autonomy_changed" | "paused" | "resumed" | "disconnected" | "revised" | "configured" | "requested" | "delivered" | "observed" | "pulled" | "overwritten" | "stopped" | "judged" | "linked" | "superseded" | "asked" | "withdrawn" | "returned" | "drafted" | "purged" | "forget_requested" | "forget_declined" | "published" | "folded" | "exported" | "noted" | "switched" | "switched_back" | "unlinked" | "scoped";
         /** @enum {string} */
         ObjectKind: "memory" | "note" | "brief" | "target" | "compile" | "handoff" | "gate" | "dream" | "agent" | "space" | "machine";
         /**
@@ -3162,6 +3208,25 @@ export interface components {
         SectionKey: string;
         /** @description A path relative to the repository root, with no `..` and no leading `/`. */
         RepoPath: string;
+        /**
+         * @description A repository as `owner/name`, such as `acme/web`. Memax stores it
+         *     lowercase; a request may send any case.
+         */
+        RepoKey: string;
+        /**
+         * @description Where a memory applies. `paths`: globs relative to the repository
+         *     root (a scoped rule's), which compile into scoped files. `agents`:
+         *     the agents it is for. `repos`: the repositories it applies in, which
+         *     `memax init` sets on a personal fact from one repository's files
+         *     (its Claude Code auto memory and `CLAUDE.local.md`); a home file
+         *     leaves out a memory with `repos` or `paths`, and it stays live over
+         *     MCP. Absent fields apply everywhere: `{}` applies everywhere.
+         */
+        MemoryScope: {
+            paths?: string[];
+            agents?: string[];
+            repos?: components["schemas"]["RepoKey"][];
+        };
         /** @description A lowercase hex sha256. */
         Sha256: string;
         /**
@@ -3296,10 +3361,7 @@ export interface components {
             /** @description "Stays true while" conditions. */
             conditions: unknown[];
             decision?: components["schemas"]["Decision"];
-            /** @description Where it applies, e.g. {"paths": ["packages/web/**"]}. */
-            scope: {
-                [key: string]: unknown;
-            };
+            scope: components["schemas"]["MemoryScope"];
             valid_from?: components["schemas"]["Timestamp"];
             valid_to?: components["schemas"]["Timestamp"];
             created_receipt_id: components["schemas"]["Id"];
@@ -4430,10 +4492,7 @@ export interface components {
             stale_after?: components["schemas"]["Timestamp"];
             /** @description "Stays true while" conditions. */
             conditions?: unknown[];
-            /** @description Where it applies, e.g. {"paths": ["packages/web/**"]}. */
-            scope?: {
-                [key: string]: unknown;
-            };
+            scope?: components["schemas"]["MemoryScope"];
             valid_from?: components["schemas"]["Timestamp"];
             valid_to?: components["schemas"]["Timestamp"];
             reason?: components["schemas"]["Reason"];
@@ -4494,6 +4553,14 @@ export interface components {
             reason?: components["schemas"]["Reason"];
             /** @description When it happened on the client; offline queues keep the original time. */
             occurred_at?: components["schemas"]["Timestamp"];
+        };
+        ScopeRequest: {
+            /** @description The repositories it applies in; empty is everywhere. */
+            repos: components["schemas"]["RepoKey"][];
+            reason?: components["schemas"]["Reason"];
+            /** @description When it happened on the client; offline queues keep the original time. */
+            occurred_at?: components["schemas"]["Timestamp"];
+            session_ref?: components["schemas"]["SessionRef"];
         };
         EditRequest: {
             /** @description The new words. */
@@ -5095,10 +5162,14 @@ export interface components {
             kind?: components["schemas"]["MemoryKind"];
             decision?: components["schemas"]["Decision"];
             sources?: components["schemas"]["SourceInput"][];
-            /** @description Where it applies, e.g. {"paths": ["**\/*.test.ts"]} from a scoped rule. */
-            scope?: {
-                [key: string]: unknown;
-            };
+            /**
+             * @description Where it applies: `paths` from a scoped rule's globs, and `repos`
+             *     for a statement from a file that belongs to one repository
+             *     (`memax init` sends it for that repository's Claude Code auto
+             *     memory and `CLAUDE.local.md`). Repeats folded into one proposal
+             *     apply wherever any of them does.
+             */
+            scope?: components["schemas"]["MemoryScope"];
         };
         ImportRequest: {
             /** @description The uploader, e.g. "memax-cli 0.3.0". */
@@ -7993,6 +8064,66 @@ export interface operations {
             412: components["responses"]["EditClash"];
             422: components["responses"]["IdempotencyKeyReused"];
             428: components["responses"]["PreconditionRequired"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    scopeMemory: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The space a display ID belongs to, by id or slug. Required with a
+                 *     display ID; optional with a memory id, where it must match.
+                 */
+                space?: components["parameters"]["SpaceContext"];
+            };
+            header: {
+                /**
+                 * @description A key you choose for this command, such as a uuid. Send the same key
+                 *     when you retry; send a new key for a new command.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                /** @description The `ETag` (memory version) you reviewed, e.g. `"3"`. */
+                "If-Match"?: components["parameters"]["IfMatchOptional"];
+                /**
+                 * @description The surface the command came through, for its receipt. Defaults to
+                 *     `api`. Every value here records a client-attested change; Memax
+                 *     records a change as made by a person on the web (`via: web`) only
+                 *     when the web app's proxy signed the request for a session issued to
+                 *     the web app.
+                 */
+                "X-Memax-Via"?: components["parameters"]["Via"];
+                /**
+                 * @description A passkey's answer to the challenge a 403 `needs_passkey` carried
+                 *     (`navigator.credentials.get`, `PublicKeyCredential.toJSON()`,
+                 *     JSON then base64url). It counts only for the request it was issued
+                 *     for, from the same session, within five minutes, once, and only on
+                 *     the web app (the CLI never reaches `human_web_verified`). One that
+                 *     doesn't verify is 403 `passkey_invalid`.
+                 */
+                "X-Memax-Passkey"?: components["parameters"]["PasskeyAssertion"];
+            };
+            path: {
+                /** @description A display ID (M-0219, with `?space=`) or a memory id. */
+                ref: components["parameters"]["RefPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScopeRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["CommandResult"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            412: components["responses"]["EditClash"];
+            422: components["responses"]["IdempotencyKeyReused"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];

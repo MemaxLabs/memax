@@ -87,7 +87,12 @@ Background jobs run on River, Postgres-backed.
 
 The body is the statement in force (`version`), followed by a newline.
 `versions` holds every version, words included; `receipts` every receipt
-about the memory, oldest first.
+about the memory, oldest first. `scope` says where it applies: `paths`
+(globs in a repository, from a scoped rule), `agents`, and `repos` (the
+repositories it applies in, as `owner/name`, such as
+`{"repos": ["acme/web"]}` on a personal fact from that repository's
+`CLAUDE.local.md`); `{}` is everywhere. A change to it is a `scoped`
+receipt.
 
 **The frontmatter is plain YAML in a fixed subset**, so every parser reads
 it the same way: each line is `key: <JSON value>`, or `key:` followed by

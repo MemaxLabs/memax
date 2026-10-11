@@ -145,6 +145,7 @@ var routes = []Route{
 	{"GET", "/v2/memories/{ref}", "getMemory", (*Handler).getMemory},
 	{"POST", "/v2/memories/{ref}:keep", "keepMemory", (*Handler).keep},
 	{"POST", "/v2/memories/{ref}:edit", "editMemory", (*Handler).edit},
+	{"POST", "/v2/memories/{ref}:scope", "scopeMemory", (*Handler).scopeMemory},
 	{"POST", "/v2/memories/{ref}:reject", "rejectMemory", (*Handler).reject},
 	{"GET", "/v2/memories/{ref}/conflict", "getConflict", (*Handler).getConflict},
 	{"POST", "/v2/memories/{ref}:resolve-conflict", "resolveConflict", (*Handler).resolveConflict},

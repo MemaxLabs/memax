@@ -465,7 +465,8 @@ func foldImport(items []ImportItem) [][]int {
 
 // mergeGroup is one proposal for a group of repeats: the first item's
 // words, section and kind, citing every item's sources once. It applies
-// wherever any of them does: unscoped if any is, else every path named.
+// wherever any of them does, by paths and by repositories alike: in every
+// path (or repository) if any of them names none, else in every one named.
 func mergeGroup(items []ImportItem, g []int) NewMemory {
 	nm := items[g[0]].NewMemory
 	if len(g) == 1 {
@@ -473,8 +474,8 @@ func mergeGroup(items []ImportItem, g []int) NewMemory {
 	}
 	nm.Sources = nil
 	seen := map[string]bool{}
-	var paths []string
-	unscoped := false
+	var paths, repos []string
+	anyPath, anyRepo := false, false
 	for _, p := range g {
 		it := items[p]
 		for _, s := range it.Sources {
@@ -486,18 +487,29 @@ func mergeGroup(items []ImportItem, g []int) NewMemory {
 		}
 		ps := scopePaths(it.Applies)
 		if len(ps) == 0 {
-			unscoped = true
+			anyPath = true
 		}
 		paths = append(paths, ps...)
+		rs := ScopeRepos(it.Applies)
+		if len(rs) == 0 {
+			anyRepo = true
+		}
+		repos = append(repos, rs...)
 	}
-	switch {
-	case unscoped:
-		nm.Applies = json.RawMessage(`{}`)
-	default:
+	scope := map[string][]string{}
+	if !anyPath {
 		slices.Sort(paths)
-		b, _ := json.Marshal(map[string][]string{"paths": slices.Compact(paths)})
-		nm.Applies = b
+		scope["paths"] = slices.Compact(paths)
 	}
+	if !anyRepo {
+		slices.Sort(repos)
+		repos = slices.Compact(repos)
+		// Each item named at most MaxScopeRepos; together they may name
+		// more, and fewer is the narrower reading.
+		scope["repos"] = repos[:min(MaxScopeRepos, len(repos))]
+	}
+	b, _ := json.Marshal(scope)
+	nm.Applies = b
 	return nm
 }
 

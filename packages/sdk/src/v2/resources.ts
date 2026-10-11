@@ -96,6 +96,7 @@ import type {
   ReviewInput,
   ReviewPage,
   ReviseBriefInput,
+  ScopeInput,
   RestoreBriefResult,
   Section,
   Session,
@@ -636,6 +637,21 @@ export class V2MemoriesResource {
   }
 
   /**
+   * Set which repositories a memory applies in (`scope.repos`, as
+   * "owner/name"); `repos: []` is everywhere, which is how a person widens
+   * a personal fact `memax init` tied to one repository. The words don't
+   * change. It follows Keep's rules (agents and API keys are refused), and
+   * the scope it already has throws `invalid_request` (400).
+   */
+  async scope(
+    ref: string,
+    input: ScopeInput,
+    opts: ReviewOptions,
+  ): Promise<CommandResult> {
+    return this.command(ref, "scope", input, opts, opts.ifMatch);
+  }
+
+  /**
    * Both sides of one of this memory's conflicts, their latest receipts,
    * and the four answers with what each does and whether you may take it
    * (ReviewConflict).
@@ -763,8 +779,8 @@ export class V2MemoriesResource {
 
   private async command(
     ref: string,
-    verb: "keep" | "reject" | "edit" | "restore",
-    input: ReviewInput | EditInput,
+    verb: "keep" | "reject" | "edit" | "restore" | "scope",
+    input: ReviewInput | EditInput | ScopeInput,
     opts: CommandOptions & MemoryRefOptions,
     ifMatch: number | undefined,
   ): Promise<CommandResult> {

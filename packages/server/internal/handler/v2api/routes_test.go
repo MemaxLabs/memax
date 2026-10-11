@@ -73,6 +73,7 @@ var sampleRequests = map[string]struct {
 	"getMemory":          {path: "/v2/memories/M-0001?space=memax-v2"},
 	"keepMemory":         {path: "/v2/memories/M-0001:keep?space=memax-v2", header: map[string]string{"If-Match": `"1"`}},
 	"editMemory":         {path: "/v2/memories/M-0001:edit?space=memax-v2", body: `{"statement":"y"}`, header: map[string]string{"If-Match": `"1"`}},
+	"scopeMemory":        {path: "/v2/memories/M-0001:scope?space=memax-v2", body: `{"repos":[]}`},
 	"rejectMemory":       {path: "/v2/memories/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:reject", body: `{"reason":"duplicate"}`},
 	"getConflict":        {path: "/v2/memories/M-0431/conflict?space=memax-v2&with=M-0174"},
 	"resolveConflict":    {path: "/v2/memories/M-0431:resolve-conflict?space=memax-v2", body: `{"choice":"keep_this"}`},

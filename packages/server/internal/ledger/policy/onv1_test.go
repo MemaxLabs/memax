@@ -16,7 +16,7 @@ var everyAction = []Action{
 	ActionRequestDecision, ActionAnswerGate, ActionWithdrawGate,
 	ActionRead, ActionAsk,
 	ActionPublishEdition, ActionUndoDream, ActionRestore, ActionRunDream,
-	ActionExport,
+	ActionExport, ActionScope,
 }
 
 // passOnV1 is what a space still on V1 lets through, and why. It repeats

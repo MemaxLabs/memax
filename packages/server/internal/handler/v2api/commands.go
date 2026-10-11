@@ -115,6 +115,38 @@ func (h *Handler) edit(w http.ResponseWriter, r *http.Request) {
 	h.writeResult(w, r, http.StatusOK, res, err)
 }
 
+// POST /v2/memories/{ref}:scope
+func (h *Handler) scopeMemory(w http.ResponseWriter, r *http.Request) {
+	p, key, e := h.commandStart(r)
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	version, _, e := ifMatch(r)
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	var req scopeRequest
+	if e := decodeBody(w, r, &req, true); e != nil {
+		writeError(w, e)
+		return
+	}
+	if req.Repos == nil {
+		writeError(w, invalidRequest("repos", "Send repos: the repositories it applies in, or [] for everywhere."))
+		return
+	}
+	ref, scope, e := h.target(r, p)
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	res, err := h.ledger.Apply(r.Context(), &ledger.ScopeMemory{
+		Meta: p.meta(scope, key, req.commandFields), Memory: ref, ExpectedVersion: version, Repos: *req.Repos,
+	})
+	h.writeResult(w, r, http.StatusOK, res, err)
+}
+
 func (h *Handler) commandStart(r *http.Request) (*principal, string, *apiError) {
 	p, e := h.principalFor(r)
 	if e != nil {

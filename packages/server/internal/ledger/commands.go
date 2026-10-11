@@ -85,7 +85,8 @@ type NewMemory struct {
 	StaleAfter *time.Time
 	// Conditions are "stays true while" predicates (a JSON array).
 	Conditions json.RawMessage
-	// Applies is where it applies, e.g. {"paths": ["packages/web/**"]}.
+	// Applies is where it applies, e.g. {"paths": ["packages/web/**"]} or
+	// {"repos": ["acme/web"]} (repo_scope.go): paths, agents and repos.
 	Applies   json.RawMessage
 	ValidFrom *time.Time
 	ValidTo   *time.Time
@@ -242,6 +243,9 @@ func (n *NewMemory) validate() error {
 		return err
 	}
 	if n.Applies, err = jsonOr(n.Applies, "scope", "{}", '{'); err != nil {
+		return err
+	}
+	if n.Applies, err = normaliseScope(n.Applies); err != nil {
 		return err
 	}
 	if n.ValidFrom != nil && n.ValidTo != nil && n.ValidTo.Before(*n.ValidFrom) {
@@ -512,6 +516,10 @@ func requestHash(cmd Command) ([]byte, error) {
 		cp.Meta = strip
 		v = cp
 	case *RenameMachine:
+		cp := *c
+		cp.Meta = strip
+		v = cp
+	case *ScopeMemory:
 		cp := *c
 		cp.Meta = strip
 		v = cp

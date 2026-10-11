@@ -137,6 +137,12 @@ type reviewRequest struct {
 	commandFields
 }
 
+type scopeRequest struct {
+	// Repos is required: an empty list is everywhere.
+	Repos *[]string `json:"repos"`
+	commandFields
+}
+
 type resolveConflictRequest struct {
 	Choice         ledger.ConflictChoice `json:"choice"`
 	Other          string                `json:"other"`

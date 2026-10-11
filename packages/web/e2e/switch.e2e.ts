@@ -12,8 +12,9 @@ import {
 // Switch to V2 (epic 2.8) on the demo's space still on V1, acme-web:
 // Today says what moves; the owner switches it, the switch runs in the
 // background and lands in Review's "From V1", where the person's own V1
-// memories are kept in one go. Self-baselines of both screens in Paper
-// and Carbon (the handoff has no board for them).
+// memories are kept in one go. Its other places say it's still on V1 and
+// lead to the switch. Self-baselines of those screens in Paper and Carbon
+// (the handoff has no board for them).
 
 skipWithoutBrowser();
 
@@ -86,7 +87,58 @@ test("a space on V1 switches, and what you wrote is kept in one go", async ({
   ).toHaveCount(1);
 });
 
+test("its other places say it's still on V1, and lead to the switch", async ({
+  page,
+}) => {
+  const rail = page.getByRole("navigation", { name: "Main" });
+  for (const place of [
+    "review",
+    "brief",
+    "memories",
+    "handoffs",
+    "agents",
+    "decisions",
+    "dream",
+    "activity",
+  ]) {
+    await page.goto(`/acme-web/${place}`);
+    await expect(
+      page.getByRole("heading", {
+        level: 2,
+        name: "acme-web is still on V1.",
+      }),
+    ).toBeVisible();
+    // The status line says so too, and never waits on a read.
+    await expect(rail.getByRole("status")).toHaveText("Still on V1");
+  }
+  await expect(page.getByRole("link", { name: "Open in V1" })).toHaveAttribute(
+    "href",
+    "/h/acme-web/memories",
+  );
+  // By keyboard: the switch is the first control after the rail.
+  await page.getByRole("link", { name: "Switch to V2" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL("/acme-web/today");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "acme-web is still on V1",
+  );
+});
+
 for (const theme of ["light", "dark"] as const) {
+  test(`a place on V1, ${theme}, 1440`, async ({ page, baseURL }) => {
+    test.skip(usingDevServer, "screenshots need the production build");
+    await useTheme(page, baseURL, theme);
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await page.goto("/acme-web/review");
+    await expect(page.getByRole("heading", { level: 2 })).toHaveText(
+      "acme-web is still on V1.",
+    );
+    await settle(page);
+    await expect(page).toHaveScreenshot(`place-on-v1-${theme}-1440.png`, {
+      maxDiffPixelRatio: 0.002,
+    });
+  });
+
   test(`switch to V2, ${theme}, 1440`, async ({ page, baseURL }) => {
     test.skip(usingDevServer, "screenshots need the production build");
     await useTheme(page, baseURL, theme);
@@ -121,6 +173,20 @@ test("a phone reads what moves in one column", async ({ page, baseURL }) => {
   await openSwitch(page);
   await settle(page);
   await expect(page).toHaveScreenshot("switch-light-390.png", {
+    maxDiffPixelRatio: 0.002,
+  });
+});
+
+test("a phone reads a place on V1", async ({ page, baseURL }) => {
+  test.skip(usingDevServer, "screenshots need the production build");
+  await useTheme(page, baseURL, "light");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/acme-web/memories");
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText(
+    "acme-web is still on V1.",
+  );
+  await settle(page);
+  await expect(page).toHaveScreenshot("place-on-v1-light-390.png", {
     maxDiffPixelRatio: 0.002,
   });
 });

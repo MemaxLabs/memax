@@ -61,6 +61,10 @@ export const ledgerAppEn = {
       waitingDeliveryOne: "1 file waiting for the CLI",
       noAgents: "No agents yet",
       notCompiling: "Not compiling yet",
+      onV1: "Still on V1",
+      // While the space's status loads, and when it couldn't be read.
+      loading: "Loading",
+      failed: "Status didn't load",
     },
     reviewCount: "{n} waiting on you",
     reviewCountOne: "1 waiting on you",
@@ -255,6 +259,33 @@ export const ledgerAppEn = {
     remember: "Remember",
     loading: "Loading {place}",
     loadingMeta: "Loading",
+  },
+  // Every place of a space still on V1 but Today, which is its switch
+  // (_places/space-on-v1.tsx). Not drawn on the boards: in the States
+  // board's Empty language until the designer reviews it.
+  onV1: {
+    title: "{space} is still on V1.",
+    places: {
+      review:
+        "Once it's on V2, what agents propose waits here for a person to keep or reject.",
+      brief:
+        "Once it's on V2, its Brief is what every agent reads, compiled into each one's file.",
+      memories:
+        "Once it's on V2, what's kept in it is listed here with its receipts, and its V1 memories come along as notes.",
+      handoffs:
+        "Once it's on V2, work handed from one agent to the next arrives here.",
+      agents:
+        "Once it's on V2, its agents connect here, each at Read, Propose or Write.",
+      decisions:
+        "Once it's on V2, the decisions it keeps are recorded here, with why and what they rest on.",
+      dream:
+        "Once it's on V2, Dream reads its notes overnight and publishes an edition here.",
+      activity: "Once it's on V2, every change to it leaves a receipt here.",
+    },
+    switch: "Switch to V2",
+    openInV1: "Open in V1",
+    ownerMeta: "Switching changes nothing in V1, and you can switch back.",
+    memberMeta: "Only its owner can switch it to V2.",
   },
   notFound: {
     searchMemories: "Search memories",

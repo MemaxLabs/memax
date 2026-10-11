@@ -21,6 +21,13 @@
  * Why router.replace: `/home` must never land in browser history —
  * back from the destination should leave the app, not bounce through
  * the resolver.
+ *
+ * A person who sees V2 (the V2 UI flag, `ui` from /auth/me) starts in
+ * V2 instead, at its landing (lib/ui-gate.ts V2_LANDING_PATH). The proxy
+ * sends a browser carrying the `memax_ui` hint there before this page
+ * loads; this covers the load whose /auth/me just set the hint, say
+ * after an operator turned the flag on while the person was in V1. A
+ * full navigation, since V2 is the other root layout.
  */
 
 import { useLayoutEffect, useRef } from "react";
@@ -28,10 +35,11 @@ import { useRouter } from "next/navigation";
 import { useAuth, useActiveHub } from "@/lib/auth";
 import { hubRouteSlug } from "@/lib/hub-from-slug";
 import { buildMemoriesPath } from "@/lib/route-helpers";
+import { V2_LANDING_PATH } from "@/lib/ui-gate";
 
 export default function HomePage() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, loading, ui } = useAuth();
   const { activeHub } = useActiveHub();
   const resolvedRef = useRef(false);
 
@@ -43,11 +51,15 @@ export default function HomePage() {
     // own — this page only handles the signed-in path.
     if (loading || !user) return;
     resolvedRef.current = true;
+    if (ui === "v2") {
+      window.location.replace(V2_LANDING_PATH);
+      return;
+    }
     const slug = activeHub?.hub
       ? hubRouteSlug(activeHub.hub, user.id)
       : "personal";
     router.replace(buildMemoriesPath(slug));
-  }, [loading, user, activeHub, router]);
+  }, [loading, user, ui, activeHub, router]);
 
   // Neutral by design: the app shell around this page shows the rail
   // with no active tab and no bar. Painting a destination skeleton

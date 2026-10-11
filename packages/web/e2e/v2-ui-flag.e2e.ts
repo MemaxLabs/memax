@@ -35,8 +35,11 @@ test.afterAll(async () => {
   await stack?.stop();
 });
 
-/** A V1 person, as V1 makes them: an account and a personal hub. */
-function v1Person(name: string): string {
+/**
+ * A V1 person, as V1 makes them: an account and a personal hub, with
+ * `memories` they wrote in it.
+ */
+function v1Person(name: string, memories: string[] = []): string {
   const id = randomUUID();
   const hub = randomUUID();
   stack.query(
@@ -48,6 +51,11 @@ function v1Person(name: string): string {
   stack.query(
     `INSERT INTO hub_members (hub_id, user_id, role) VALUES ('${hub}', '${id}', 'owner')`,
   );
+  for (const content of memories) {
+    stack.query(
+      `INSERT INTO memories (id, owner_id, hub_id, title, content, created_by_type) VALUES ('${randomUUID()}', '${id}', '${hub}', 'note', '${content}', 'human')`,
+    );
+  }
   return id;
 }
 
@@ -89,15 +97,21 @@ test("a person with a space on V2 signs in and lands in V2", async ({
   await page.goto("/memax-v2/today");
   await expect(page).toHaveURL(/\/memax-v2\/today$/);
 
-  // Signing in on V1's own page sets the hint as well, so a V2 link
-  // works next.
+  // Signing in on V1's own page sets the hint as well: V1's home, where
+  // that sign-in goes on to, starts them in V2, and a V2 link works next.
   const v1Side = await browser.newContext({ baseURL });
   const other = await v1Side.newPage();
   await other.goto(`/auth/callback?code=${stack.webCode()}`);
-  await settledOn(other, V1_HOME);
+  await settledOn(other, /^\/(memax-v2\/(today|review)|setup\/import)$/);
   expect(await cookieValue(other, "memax_ui")).toBe("v2");
   await other.goto("/memax-v2/brief");
   await expect(other).toHaveURL(/\/memax-v2\/brief$/);
+  // So does the app's root, signed in; V1's pages that V2 doesn't replace
+  // still open.
+  await other.goto("/");
+  await settledOn(other, /^\/(memax-v2\/(today|review)|setup\/import)$/);
+  await other.goto("/settings");
+  await expect(other).toHaveURL("/settings");
   await v1Side.close();
 
   // Signing out clears it: the next person on this browser starts from
@@ -156,11 +170,18 @@ test("an operator turns V2 on, and the person's next load is V2; off sends them 
     ),
   ).toBe("true 1");
 
-  // Their next load of a V2 page is V2: the sign-in page reads the flag
-  // (which sets the hint) and goes on, with nothing to sign in again.
-  await page.goto("/setup/import");
+  // The next time they open the app, it's V2: V1's home reads their
+  // profile (which sets the hint) and starts them at V2's landing, here
+  // FirstRun, since nothing of theirs is on V1 to switch. Nothing to
+  // sign in again.
+  await page.goto("/home");
   await settledOn(page, /^\/setup\/import$/);
   expect(await cookieValue(page, "memax_ui")).toBe("v2");
+  // With the hint, the root goes there in one hop.
+  await page.goto("/");
+  await settledOn(page, /^\/setup\/import$/);
+  // And a V2 page opens: had the hint been missing, the sign-in page
+  // would have read the flag and gone on.
   await page.goto("/settings/account");
   await expect(page).toHaveURL("/settings/account");
 
@@ -177,4 +198,44 @@ test("an operator turns V2 on, and the person's next load is V2; off sends them 
   await page.goto("/setup/import");
   await settledOn(page, V1_HOME);
   await ops.context().close();
+});
+
+test("a V1 person whose flag turns on lands on their space's switch, not the first run", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  // Cy wrote in V1: their personal space holds work to switch.
+  const cy = v1Person("cy", ["Deploys go out on Tuesdays.", "Use pnpm."]);
+  await page.goto(`/signin/callback?code=${stack.webCode(cy)}`);
+  await settledOn(page, V1_HOME);
+  const slug = stack.query(
+    `SELECT slug FROM hubs WHERE owner_id = '${cy}' AND hub_type = 'personal'`,
+  );
+
+  stack.query(`UPDATE users SET v2_ui = true WHERE id = '${cy}'`);
+  await page.goto("/home");
+  await settledOn(page, new RegExp(`^/${slug}/today$`));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Personal is still on V1",
+  );
+  await expect(page.getByRole("region", { name: "What moves" })).toContainText(
+    "2 V1 memories become notes (N-)",
+  );
+  // FirstRun stays one step away.
+  await expect(
+    page
+      .getByRole("region", { name: "Or start a project space" })
+      .getByRole("link", { name: "Set up a repository" }),
+  ).toHaveAttribute("href", "/setup/import");
+  // Its other places say it's still on V1, with the rail's status line,
+  // and lead back to the switch.
+  await page.goto(`/${slug}/review`);
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Personal is still on V1." }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Main" }).getByRole("status"),
+  ).toHaveText("Still on V1");
+  await page.getByRole("link", { name: "Switch to V2" }).click();
+  await settledOn(page, new RegExp(`^/${slug}/today$`));
 });

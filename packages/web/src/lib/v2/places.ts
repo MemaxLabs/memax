@@ -84,6 +84,16 @@ export function placeHref(space: string, route: PlaceRoute): string {
 }
 
 /**
+ * Where a space still on V1 opens in V1: its memories, under V1's hub
+ * routes (/h/<slug>/memories), which name a person's own personal space
+ * "personal". A V1 page, so following it is a full load into V1.
+ */
+export function v1SpaceHref(space: { slug: string; kind: SpaceKind }): string {
+  const slug = space.kind === "personal" ? "personal" : space.slug;
+  return `/h/${encodeURIComponent(slug)}/memories`;
+}
+
+/**
  * Where a decision gate opens: Review, with its card selected. A gate
  * that ended still opens there, saying how it ended.
  */

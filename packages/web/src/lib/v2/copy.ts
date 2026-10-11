@@ -86,6 +86,8 @@ export function statusLabel(
       return s.noAgents;
     case "not-compiling":
       return s.notCompiling;
+    case "on-v1":
+      return s.onV1;
   }
 }
 

@@ -51,11 +51,13 @@ const V2_PATHS = [
 ];
 
 // V1 paths, including ones shaped like V2 paths, that must stay V1.
+// (V1's home is the one V1 path a browser with the hint leaves: below.)
 const V1_PATHS = [
   "/",
-  "/home",
   "/login",
   "/settings",
+  "/admin",
+  "/admin/users/u-1",
   "/agents",
   "/agents/connect",
   "/memories/today",
@@ -198,6 +200,75 @@ describe("proxy V2 gating", () => {
       makeRequest("/signin", { sessionPresence: true, ui: "v2" }),
     );
     expect(res.status).toBe(200);
+  });
+});
+
+describe("proxy V1 home for a person who sees V2", () => {
+  // Their V2 UI flag turned on while they were in V1, and a profile read
+  // set the hint: the next time they open the app, it's V2. The sign-in
+  // page lands a signed-in person by their flag.
+  it.each([
+    ["/home", false],
+    ["/home", true],
+    ["/", true],
+    ["/login", true],
+  ])("sends %s (signed in: %s) to the V2 landing, once", (path, signedIn) => {
+    const res = proxy(
+      makeRequest(path, { sessionPresence: signedIn, ui: "v2" }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("https://memax.app/signin");
+    const marker = res.headers
+      .getSetCookie()
+      .find((c) => c.startsWith("memax_ui_check="));
+    expect(marker).toContain("Max-Age=60");
+    expect(marker).toContain("HttpOnly");
+  });
+
+  it("opens V1's home when the flag was read a moment ago, never a loop", () => {
+    const res = proxy(
+      makeRequest("/home", {
+        sessionPresence: true,
+        ui: "v2",
+        extra: "memax_ui_check=1",
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    // The root still takes the session fast path to V1's home.
+    const root = proxy(
+      makeRequest("/", {
+        sessionPresence: true,
+        ui: "v2",
+        extra: "memax_ui_check=1",
+      }),
+    );
+    expect(root.headers.get("location")).toBe("https://memax.app/home");
+  });
+
+  it("leaves V1's home to V1 without the hint", () => {
+    for (const ui of [undefined, "v1"]) {
+      const res = proxy(makeRequest("/home", { sessionPresence: true, ui }));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("location")).toBeNull();
+    }
+  });
+
+  it("keeps the V1 pages V2 doesn't replace open", () => {
+    for (const path of ["/settings", "/admin", "/admin/users/u-1", "/agents"]) {
+      const res = proxy(makeRequest(path, { sessionPresence: true, ui: "v2" }));
+      expect(res.status, path).toBe(200);
+    }
+    // Hubs, V1's settings and the admin pages skip the proxy entirely.
+    for (const path of ["/h/acme/memories", "/settings", "/admin/users"]) {
+      expect(unstable_doesMiddlewareMatch({ config, url: path }), path).toBe(
+        false,
+      );
+    }
+  });
+
+  it("runs the proxy for /home", () => {
+    expect(unstable_doesMiddlewareMatch({ config, url: "/home" })).toBe(true);
   });
 });
 

@@ -76,6 +76,7 @@ function Rail() {
   const nav = useRailProps({
     space: TEST_SPACE,
     overview: overview.data,
+    overviewFailed: overview.isError,
     route: undefined,
     inSettings: false,
     viewer: null,

@@ -8,7 +8,7 @@ import { interpolate } from "@/i18n";
 import { switchRunning, type SwitchView } from "@/lib/v2/data/switch";
 import { joinSentences } from "@/lib/v2/copy";
 import { IntentKeys } from "@/lib/v2/intent-keys";
-import { reviewImportHref } from "@/lib/v2/onboarding/routes";
+import { reviewImportHref, setupHref } from "@/lib/v2/onboarding/routes";
 import { placeHref } from "@/lib/v2/places";
 import { switchRows } from "@/lib/v2/switch-copy";
 import { HeaderSkeleton } from "../../_components/skeleton";
@@ -32,7 +32,9 @@ export const switchKeys = {
  * background; the page follows it, then opens Review's "From V1" (the
  * person's own V1 memories, to keep in one go), or Today when there are
  * none. A failed switch resumes where it stopped. Nothing in V1
- * changes, and `memax switch --back` switches it back.
+ * changes, and `memax switch --back` switches it back. Someone with V1
+ * work and nothing on V2 lands here after signing in, so the page also
+ * offers FirstRun, for a new project space.
  */
 export function SwitchToV2({ view }: { view: RecordsView }) {
   const { space, l, locale } = view;
@@ -204,6 +206,20 @@ export function SwitchToV2({ view }: { view: RecordsView }) {
           {owner ? null : (
             <p className={`mx-meta ${styles.emptyNote}`}>{s.ownerOnly}</p>
           )}
+          {/* FirstRun, for a new project space instead (or as well). */}
+          <section className="mx-panel" aria-labelledby="switch-start">
+            <header className="mx-panel-head">
+              <h2 className="mx-panel-title" id="switch-start">
+                {s.start.title}
+              </h2>
+            </header>
+            <div className={styles.switchStart}>
+              <p className={styles.startDetail}>{s.start.detail}</p>
+              <Button variant="secondary" size="sm" href={setupHref("import")}>
+                {s.start.action}
+              </Button>
+            </div>
+          </section>
         </aside>
       </div>
     </div>

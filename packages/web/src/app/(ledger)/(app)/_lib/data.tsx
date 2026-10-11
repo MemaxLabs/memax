@@ -7,7 +7,12 @@ import { getMemaxClient } from "@/lib/memax-client";
 import { demoSource } from "@/lib/v2/data/demo-source";
 import { createSdkSource } from "@/lib/v2/data/sdk-source";
 import type { LedgerDataSource } from "@/lib/v2/data/source";
-import type { SpaceSummary, Viewer } from "@/lib/v2/data/types";
+import {
+  SPACE_ON_V1_OVERVIEW,
+  type SpaceOverview,
+  type SpaceSummary,
+  type Viewer,
+} from "@/lib/v2/data/types";
 import { webSessionOf } from "@/lib/v2/web-session";
 
 /**
@@ -88,13 +93,35 @@ export function useSpaces() {
   });
 }
 
-export function useOverview(space: SpaceSummary | undefined) {
+/** The overview the frame shows, as it reads it: the data, a failure and a retry. */
+export interface OverviewRead {
+  data: SpaceOverview | undefined;
+  isError: boolean;
+  refetch: () => unknown;
+}
+
+/**
+ * A space's overview: read from the source for a space on V2, and known
+ * without reading for one still on V1 (SPACE_ON_V1_OVERVIEW), which has
+ * no V2 record to read. Keyed by the space alone, so once a space
+ * switches, the query that never ran reads its first V2 overview.
+ */
+export function useOverview(space: SpaceSummary | undefined): OverviewRead {
   const source = useSource();
-  return useQuery({
+  const onV1 = space?.onV2 === false;
+  const query = useQuery({
     queryKey: keys.overview(source.kind, space?.slug ?? ""),
     queryFn: ({ signal }) => source.overview(space!, signal),
-    enabled: space !== undefined,
-    initialData: space ? source.peek?.overview(space.slug) : undefined,
+    enabled: space !== undefined && !onV1,
+    initialData: space && !onV1 ? source.peek?.overview(space.slug) : undefined,
     staleTime: 30_000,
   });
+  if (onV1) return ON_V1_READ;
+  return { data: query.data, isError: query.isError, refetch: query.refetch };
 }
+
+const ON_V1_READ: OverviewRead = {
+  data: SPACE_ON_V1_OVERVIEW,
+  isError: false,
+  refetch: () => undefined,
+};

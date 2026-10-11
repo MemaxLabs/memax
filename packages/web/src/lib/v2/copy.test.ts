@@ -16,7 +16,11 @@ import {
   todayLede,
 } from "./copy";
 import { DEMO_NOW, DEMO_OVERVIEWS, DEMO_SPACES } from "./data/demo-dataset";
-import type { SpaceOverview } from "./data/types";
+import {
+  SPACE_ON_V1_OVERVIEW,
+  waitingOnYou,
+  type SpaceOverview,
+} from "./data/types";
 
 const EN = en.ledger.app;
 const ZH = zh.ledger.app;
@@ -135,6 +139,16 @@ describe("the frame's lines", () => {
     expect(statusState({ kind: "drifted", agent: "cursor" })).toBe("proposed");
     expect(statusState({ kind: "in-sync", agents: 5 })).toBe("kept");
     expect(statusState({ kind: "no-agents" })).toBe("off");
+  });
+
+  it("says a space still on V1 is on V1, not that it's loading", () => {
+    // Nothing compiles from it until it switches; the line never waits on
+    // a read that a space on V1 has nothing for.
+    expect(SPACE_ON_V1_OVERVIEW.status).toEqual({ kind: "on-v1" });
+    expect(statusLabel(EN, { kind: "on-v1" }, agentName)).toBe("Still on V1");
+    expect(statusLabel(ZH, { kind: "on-v1" }, agentName)).toBe("还在 V1 上");
+    expect(statusState({ kind: "on-v1" })).toBe("off");
+    expect(waitingOnYou(SPACE_ON_V1_OVERVIEW)).toBe(0);
   });
 
   it("switcher meta (SpaceSwitcher.png)", () => {

@@ -42,6 +42,8 @@
   margin: 16px 0 0;
   /* A sentence: tabular figures set its commas tabular-wide too. */
   font-variant-numeric: normal;
+  /* Like the detail: no word left alone on a phone's last line. */
+  text-wrap: pretty;
 }
 
 @media (max-width: 639px) {

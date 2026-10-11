@@ -26,17 +26,23 @@ import { useOverlays } from "../_lib/overlays";
  * The NavRail's props for a space (HANDOFF §6): the places in order
  * with real links, Review's ochre count and Handoffs' plain one, the
  * switcher as a Base UI Menu trigger, ⌘K, settings, the person and the
- * status line.
+ * status line. The status line follows the space's overview: what it
+ * says once read (a space still on V1 says so), "Loading" while it's
+ * read, and that it didn't load when the read failed, rather than
+ * loading forever.
  */
 export function useRailProps({
   space,
   overview,
+  overviewFailed,
   route,
   inSettings,
   viewer,
 }: {
   space: SpaceSummary;
   overview: SpaceOverview | undefined;
+  /** The overview's read failed (and nothing was read before). */
+  overviewFailed: boolean;
   route: PlaceRoute | undefined;
   inSettings: boolean;
   viewer: Viewer | null;
@@ -93,6 +99,8 @@ export function useRailProps({
           state: statusState(overview.status),
           label: statusLabel(copy, overview.status, agentName),
         }
-      : { state: "working", label: copy.frame.loading },
+      : overviewFailed
+        ? { state: "off", label: copy.frame.status.failed }
+        : { state: "working", label: copy.frame.status.loading },
   };
 }

@@ -29,44 +29,74 @@ import (
 // from memories is never trusted more than they are. The caller's trust
 // for such a source is ignored. Other kinds pass through.
 func (w *writer) resolveMemorySources(ctx context.Context, spaceID uuid.UUID, srcs []resolvedSource, actorTrust policy.Trust) ([]resolvedSource, error) {
+	return settleMemorySources(srcs, actorTrust, func(id uuid.UUID, seq int64) (sourceMemory, error) {
+		q := `SELECT id, seq, lifecycle, trust FROM v2.memories WHERE space_id = $1 AND `
+		var arg any = id
+		if id == uuid.Nil {
+			q += `seq = $2`
+			arg = seq
+		} else {
+			q += `id = $2`
+		}
+		var m sourceMemory
+		err := w.tx.QueryRow(ctx, q, spaceID, arg).Scan(&m.id, &m.seq, &m.lifecycle, &m.trust)
+		if errNoRows(err) {
+			return sourceMemory{}, nil
+		}
+		if err != nil {
+			return sourceMemory{}, fmt.Errorf("ledger: resolve memory source: %w", err)
+		}
+		return m, nil
+	})
+}
+
+// sourceMemory is the memory a source of kind memory names; zero when the
+// space has none by that ref.
+type sourceMemory struct {
+	id        uuid.UUID
+	seq       int64
+	lifecycle lifecycle.Lifecycle
+	trust     policy.Trust
+}
+
+// memorySourceRef parses a memory source's ref: a memory id, or a display
+// ID's number.
+func memorySourceRef(ref string) (uuid.UUID, int64, error) {
+	if id, err := uuid.Parse(ref); err == nil {
+		return id, 0, nil
+	}
+	p, n, ok := ParseRef(ref)
+	if !ok || p != PrefixMemory {
+		return uuid.Nil, 0, invalid("sources.ref", "a memory source names a memory by its display ID, like M-0219")
+	}
+	return uuid.Nil, n, nil
+}
+
+// settleMemorySources is resolveMemorySources with the memories looked up
+// by find: one query each, or the answer of one query for a whole import.
+func settleMemorySources(srcs []resolvedSource, actorTrust policy.Trust, find func(id uuid.UUID, seq int64) (sourceMemory, error)) ([]resolvedSource, error) {
 	for i := range srcs {
 		s := &srcs[i]
 		if s.Kind != SourceMemory {
 			continue
 		}
-		var id uuid.UUID
-		if parsed, err := uuid.Parse(s.Ref); err == nil {
-			id = parsed
-		} else if p, _, ok := ParseRef(s.Ref); !ok || p != PrefixMemory {
-			return nil, invalid("sources.ref", "a memory source names a memory by its display ID, like M-0219")
+		id, seq, err := memorySourceRef(s.Ref)
+		if err != nil {
+			return nil, err
 		}
-		var (
-			seq   int64
-			lc    lifecycle.Lifecycle
-			trust policy.Trust
-		)
-		q := `SELECT id, seq, lifecycle, trust FROM v2.memories WHERE space_id = $1 AND `
-		var arg any = id
-		if id == uuid.Nil {
-			_, n, _ := ParseRef(s.Ref)
-			q += `seq = $2`
-			arg = n
-		} else {
-			q += `id = $2`
+		m, err := find(id, seq)
+		if err != nil {
+			return nil, err
 		}
-		err := w.tx.QueryRow(ctx, q, spaceID, arg).Scan(&id, &seq, &lc, &trust)
-		if errNoRows(err) {
+		if m.id == uuid.Nil {
 			return nil, invalid("sources.ref", "%s isn't a memory in this space", s.Ref)
 		}
-		if err != nil {
-			return nil, fmt.Errorf("ledger: resolve memory source: %w", err)
+		if m.lifecycle != lifecycle.Kept {
+			return nil, invalid("sources.ref", "%s isn't kept, so nothing can rest on it yet", FormatRef(PrefixMemory, m.seq))
 		}
-		if lc != lifecycle.Kept {
-			return nil, invalid("sources.ref", "%s isn't kept, so nothing can rest on it yet", FormatRef(PrefixMemory, seq))
-		}
-		locator, _ := json.Marshal(map[string]string{"memory": id.String()})
-		s.Ref, s.URI, s.Locator = FormatRef(PrefixMemory, seq), "", locator
-		s.trust = policy.MinTrust(trust, actorTrust)
+		locator, _ := json.Marshal(map[string]string{"memory": m.id.String()})
+		s.Ref, s.URI, s.Locator = FormatRef(PrefixMemory, m.seq), "", locator
+		s.trust = policy.MinTrust(m.trust, actorTrust)
 	}
 	return srcs, nil
 }

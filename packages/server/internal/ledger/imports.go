@@ -25,24 +25,26 @@ import (
 // `npx memax-cli init` reads what agents already know from their files,
 // splits it into statements on the person's machine (secrets and hidden
 // characters never leave it) and uploads the rest in one request. Import
-// writes the batch in four steps:
+// writes the batch in four steps, all in one transaction
+// (imports_write.go has how, in a fixed number of round trips):
 //
 //  1. It opens the import (v2.imports), keyed by the request's
-//     idempotency key, so a retry resumes the same import. Policy decides
+//     idempotency key, so a retry replays the same import. Policy decides
 //     first whether the actor may write in the space at all.
 //  2. It folds the statements of the batch that repeat each other, by the
 //     judge's stage 0 (internal/textsig: the same words, or a near-verbatim
 //     repeat), into one proposal that cites every file saying it.
 //  3. It writes each statement as its own command (ImportStatement): its
-//     own transaction, receipt and idempotency key, through policy like
-//     any write. Arriving through the import surface (via import), it is
-//     always a proposal (policy.CodeImport), whoever sends it. A statement
-//     the space already has (the same words, or a near-verbatim repeat, in
-//     any state but forgotten) is skipped, so running init again proposes
-//     only what is new.
+//     own receipt and idempotency key, through policy like any write, in
+//     the order they came. Arriving through the import surface (via
+//     import), it is always a proposal (policy.CodeImport), whoever sends
+//     it. A statement the space already has (the same words, or a
+//     near-verbatim repeat, in any state but forgotten, a proposal an
+//     earlier statement made included) is skipped, so running init again
+//     proposes only what is new.
 //  4. It closes the import and queues its conflict check (judge_import,
-//     internal/judge) in the same transaction. Each proposal is also judged
-//     on its own (judge_proposal), as every proposal is.
+//     internal/judge). Each proposal is also judged on its own
+//     (judge_proposal), as every proposal is.
 //
 // Nothing an import writes is kept: a person keeps it, one by one, in bulk
 // (memories:keep), or by settling a conflict.
@@ -395,85 +397,6 @@ const (
 	importOriginV1   importOrigin = "v1"
 )
 
-// importItems is Import once the request is valid: open the import, write
-// each statement (or group of repeats) as its own command, then close it
-// and queue its conflict check.
-func (l *Ledger) importItems(ctx context.Context, meta Meta, req ImportRequest, origin importOrigin) (*ImportResult, error) {
-	if _, ok := meta.Scope.Grant(req.SpaceID); !ok {
-		return nil, ErrNotFound
-	}
-	meta.Via = policy.ViaImport
-	if err := validateMeta(&meta, l.now()); err != nil {
-		return nil, err
-	}
-	for i := range req.Items {
-		req.Items[i].SpaceID = req.SpaceID
-		if err := req.Items[i].NewMemory.validate(); err != nil {
-			return nil, err
-		}
-	}
-	meta.Scope = meta.Scope.Narrow(req.SpaceID)
-	hash, err := req.hash()
-	if err != nil {
-		return nil, err
-	}
-	imp, replayed, refusal, err := l.openImport(ctx, meta, &req, hash, origin)
-	if err != nil {
-		return nil, err
-	}
-	if refusal != nil {
-		return &ImportResult{Refused: refusal}, nil
-	}
-
-	results := make([]ImportItemResult, len(req.Items))
-	var refused []importItemRow
-	prefix := itemKeyPrefix(meta.IdempotencyKey)
-	for _, g := range foldImport(req.Items) {
-		lead := req.Items[g[0]]
-		cmd := &ImportStatement{Meta: meta, Import: imp.ID, NewMemory: mergeGroup(req.Items, g)}
-		cmd.IdempotencyKey = prefix + lead.Key
-		for _, p := range g {
-			it := req.Items[p]
-			cmd.Items = append(cmd.Items, importItemRow{Position: p, Key: it.Key, Ref: it.Ref, Location: it.Location,
-				HiddenCharacters: it.HiddenCharacters})
-		}
-		res, err := l.Apply(ctx, cmd)
-		if err != nil {
-			return nil, err
-		}
-		for i, p := range g {
-			r := ImportItemResult{Key: req.Items[p].Key, Position: p, Ref: req.Items[p].Ref}
-			switch {
-			case res.Outcome == OutcomeRefused:
-				d := res.Policy
-				r.Outcome, r.Policy = ImportRefused, &d
-				row := cmd.Items[i]
-				row.Outcome, row.Code = ImportRefused, d.Code
-				refused = append(refused, row)
-			case len(res.Receipts) == 0:
-				r.Outcome = ImportExisting
-				r.Memory = &MemoryPointer{ID: res.Memory.ID, Ref: res.Memory.Ref}
-				r.Lifecycle = string(res.Memory.Lifecycle)
-			case i == 0:
-				r.Outcome = ImportProposed
-				r.Memory = &MemoryPointer{ID: res.Memory.ID, Ref: res.Memory.Ref}
-			default:
-				r.Outcome, r.FoldedInto = ImportFolded, lead.Key
-				r.Memory = &MemoryPointer{ID: res.Memory.ID, Ref: res.Memory.Ref}
-			}
-			results[p] = r
-		}
-	}
-	if err := l.closeImport(ctx, meta, imp, refused); err != nil {
-		return nil, err
-	}
-	summary, err := l.importSummary(ctx, meta.Scope, imp.SpaceID, imp.ID)
-	if err != nil {
-		return nil, err
-	}
-	return &ImportResult{Import: summary, Items: results, Replayed: replayed}, nil
-}
-
 // itemKeyPrefix derives the items' idempotency keys from the request's,
 // short enough for any request key.
 func itemKeyPrefix(key string) string {
@@ -589,94 +512,6 @@ func scopePaths(raw json.RawMessage) []string {
 	return s.Paths
 }
 
-// openImport opens the import for the request's key, or finds the one it
-// opened before (replayed). Policy first decides whether the actor may
-// write in the space at all.
-func (l *Ledger) openImport(ctx context.Context, meta Meta, req *ImportRequest, hash []byte, origin importOrigin) (*Import, bool, *policy.Decision, error) {
-	tx, _, err := l.begin(ctx, meta.Scope, pgx.ReadWrite)
-	if err != nil {
-		return nil, false, nil, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	sp, err := loadSpace(ctx, tx, req.SpaceID)
-	if err != nil {
-		return nil, false, nil, err
-	}
-	grant, _ := meta.Scope.Grant(sp.ID)
-	if d := policy.Decide(toPolicyActor(meta.Actor, meta.Via, grant), policy.ActionPropose, policy.Object{}, sp.policy()); d.Effect == policy.EffectRefuse {
-		return nil, false, &d, nil
-	}
-	files, err := json.Marshal(nonNilSlice(req.Files))
-	if err != nil {
-		return nil, false, nil, err
-	}
-	skipped, err := json.Marshal(nonNilSlice(req.Skipped))
-	if err != nil {
-		return nil, false, nil, err
-	}
-	var actorID *uuid.UUID
-	if meta.Actor.ID != uuid.Nil {
-		id := meta.Actor.ID
-		actorID = &id
-	}
-	imp := &Import{ID: newID(), SpaceID: sp.ID, TenantID: sp.TenantID}
-	tag, err := tx.Exec(ctx, `
-		INSERT INTO v2.imports (id, tenant_id, space_id, actor_kind, actor_id, agent, idempotency_key, request_sha256,
-		                        client, files, skipped, items_total, origin)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT ON CONSTRAINT imports_key DO NOTHING`,
-		imp.ID, sp.TenantID, sp.ID, string(meta.Actor.Kind), actorID, nullText(meta.Actor.Agent),
-		meta.IdempotencyKey, hash, nullText(req.Client), files, skipped, len(req.Items), string(origin))
-	if err != nil {
-		return nil, false, nil, fmt.Errorf("ledger: open import: %w", err)
-	}
-	replayed := tag.RowsAffected() == 0
-	if replayed {
-		var stored []byte
-		if err := tx.QueryRow(ctx, `
-			SELECT id, request_sha256 FROM v2.imports
-			 WHERE space_id = $1 AND actor_kind = $2 AND actor_id IS NOT DISTINCT FROM $3 AND idempotency_key = $4`,
-			sp.ID, string(meta.Actor.Kind), actorID, meta.IdempotencyKey).Scan(&imp.ID, &stored); err != nil {
-			return nil, false, nil, fmt.Errorf("ledger: open import: %w", err)
-		}
-		if !bytes.Equal(stored, hash) {
-			return nil, false, nil, fmt.Errorf("%w: key %q opened another import; send a new key for a new import",
-				ErrIdempotencyKeyReused, meta.IdempotencyKey)
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, false, nil, mapDBError(fmt.Errorf("ledger: open import: %w", err))
-	}
-	return imp, replayed, nil, nil
-}
-
-// closeImport records the refused items, marks the import uploaded and
-// queues its conflict check, in one transaction.
-func (l *Ledger) closeImport(ctx context.Context, meta Meta, imp *Import, refused []importItemRow) error {
-	tx, loginRole, err := l.begin(ctx, meta.Scope, pgx.ReadWrite)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if err := insertImportItems(ctx, tx, imp.ID, imp.SpaceID, refused); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE v2.imports SET uploaded_at = COALESCE(uploaded_at, now()) WHERE id = $1 AND space_id = $2`,
-		imp.ID, imp.SpaceID); err != nil {
-		return fmt.Errorf("ledger: close import: %w", err)
-	}
-	w := &writer{tx: tx, meta: &meta, inserter: l.inserter, loginRole: loginRole}
-	w.jobs = append(w.jobs, river.InsertManyParams{Args: JudgeImportArgs{ImportID: imp.ID, SpaceID: imp.SpaceID}})
-	if err := w.flush(ctx); err != nil {
-		return mapDBError(err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return mapDBError(fmt.Errorf("ledger: close import: %w", err))
-	}
-	return nil
-}
-
 // ---------------------------------------------------------------------
 // One statement
 // ---------------------------------------------------------------------
@@ -698,8 +533,12 @@ type importItemRow struct {
 }
 
 // ImportStatement writes one statement of an import (or one group of
-// repeats) as a proposal, or finds it already in the space. Import runs
-// it; it isn't a request on its own.
+// repeats) as a proposal, or finds it already in the space. It isn't a
+// request on its own: Import decides and writes every statement of an
+// upload in one transaction (imports_write.go), recording each under this
+// command's name and request hash. Applied alone, through Apply, it is
+// the same command one statement at a time, as Import ran it before (and
+// as an upload a previous server left half done recorded it).
 type ImportStatement struct {
 	Meta
 	NewMemory

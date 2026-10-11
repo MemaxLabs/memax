@@ -1062,11 +1062,14 @@ func (w *writer) flagStale(ctx context.Context, c *FlagStale) (Result, error) {
 // --- The conditions a machine checks ---
 
 // CheckedCondition is a condition as a machine checks it: its typed form,
-// its hash (sent back with a result) and whether it is armed.
+// its hash (sent back with a result), whether it is armed and, when it is,
+// the commit of its latest hold that Memax heard of: where a machine that
+// didn't see it hold looks for a rename when its path is gone.
 type CheckedCondition struct {
-	Condition conditions.Condition `json:"condition"`
-	Hash      string               `json:"hash"`
-	Armed     bool                 `json:"armed"`
+	Condition  conditions.Condition `json:"condition"`
+	Hash       string               `json:"hash"`
+	Armed      bool                 `json:"armed"`
+	HeldCommit string               `json:"held_commit,omitempty"`
 }
 
 // MemoryConditions are one kept memory's conditions to check.
@@ -1086,7 +1089,9 @@ type SpaceConditions struct {
 
 // ListConditions reads a space's conditions for its machines, in one
 // round trip (ReadBatch). pr_state isn't a machine's to check, so it is
-// left out.
+// left out. An armed condition says the commit of its latest hold that
+// Memax heard of (HeldCommit), so a machine with no hold of its own (one
+// that didn't arm it) looks for a rename from there.
 func (l *Ledger) ListConditions(ctx context.Context, scope Scope, spaceID uuid.UUID) (*SpaceConditions, error) {
 	if l == nil {
 		return nil, ErrDisabled
@@ -1134,11 +1139,11 @@ func (l *Ledger) ListConditions(ctx context.Context, scope Scope, spaceID uuid.U
 		return r.Err()
 	})
 	b.Queue(`
-		SELECT memory_id, condition_id, condition_hash, armed_at, created_at FROM v2.condition_checks
+		SELECT memory_id, condition_id, condition_hash, armed_at, held_commit, created_at FROM v2.condition_checks
 		 WHERE space_id = $1 AND context = 'default'`, spaceID).Query(func(r pgx.Rows) error {
 		for r.Next() {
 			c := &checkRow{}
-			if err := r.Scan(&c.memory, &c.condition, &c.hash, &c.armedAt, &c.createdAt); err != nil {
+			if err := r.Scan(&c.memory, &c.condition, &c.hash, &c.armedAt, &c.heldCommit, &c.createdAt); err != nil {
 				return err
 			}
 			if rows[c.memory] == nil {
@@ -1166,6 +1171,9 @@ func (l *Ledger) ListConditions(ctx context.Context, scope Scope, spaceID uuid.U
 				cc.Armed = r.armedAt != nil
 				if !cc.Armed && now.Sub(r.createdAt) > NeverHeldAfter {
 					continue // never held: Memax stops asking
+				}
+				if cc.Armed && r.heldCommit != nil {
+					cc.HeldCommit = *r.heldCommit
 				}
 			}
 			item.Conditions = append(item.Conditions, cc)

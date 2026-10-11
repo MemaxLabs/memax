@@ -234,6 +234,10 @@ export const ledgerMemoryZh: Translations["ledger"]["memory"] = {
       caches: "缓存里的副本已清掉",
       ledger: "已写进忘记记录",
       ledgerDetail: "只有编号，存在数据库之外，恢复备份也不会把它带回来。",
+      checksOne: "1 台机器上的检查结果",
+      checks: "{n} 台机器上的检查结果",
+      checksDetail:
+        "只是它的条件里写的路径，从不包括它的原话。每台机器的守护进程一听说这次忘记就会清掉它们，Memax 在它下次检查时得知。",
       told: "{agent} 在下次读取时得知",
       toldWaiting: "{agent} 会在下次读取时得知",
       paused: "{agent} 已暂停",

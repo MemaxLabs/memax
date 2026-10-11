@@ -31,7 +31,7 @@ import { RepoDelivery } from "./repo.js";
 import type { DaemonSnapshot, HomeSnapshot } from "./snapshot.js";
 import { DeviceState } from "./state.js";
 import { RepoWatcher, type WatchOptions } from "./watch.js";
-import { HOME, WarmCache } from "./warm.js";
+import { forgottenRefs, HOME, WarmCache } from "./warm.js";
 
 export interface DaemonOptions {
   paths: DaemonPaths;
@@ -134,6 +134,7 @@ export class Daemon {
       api: o.api,
       log: o.log,
       minRefreshMs: o.warmRefreshMs,
+      onForgotten: (spaceId, refs) => this.forgotten(spaceId, refs),
     });
     this.loads = new LoadReporter({ paths: o.paths, api: o.api, log: o.log });
     this.reports = new CheckReporter({
@@ -159,6 +160,10 @@ export class Daemon {
     }
     this.home?.feed.start();
     this.home?.watcher.start();
+    // Forgets the cache heard of before (a run that stopped halfway): the
+    // checks hold nothing of them.
+    for (const [id, s] of Object.entries(this.warm.snapshot().spaces))
+      if (s.forgotten.length) this.forgotten(id, forgottenRefs(s.forgotten));
     this.loads.start();
     this.reports.start();
     try {
@@ -458,7 +463,10 @@ export class Daemon {
     if (!repo) return;
     repo.watcher.stop();
     repo.delivery.stop();
-    void repo.checker.stop();
+    // Unlinked: its check state goes too, where no later Forget could reach it.
+    void repo.checker.stop().then(() => {
+      if (forget) repo.checker.discard();
+    });
     this.repos.delete(root);
     if (forget) this.state.forgetRepo(root);
     const space = this.spaces.get(repo.link.space_id);
@@ -592,6 +600,18 @@ export class Daemon {
     }
     this.warm.flush();
     return this.snapshot();
+  }
+
+  /**
+   * Memories forgotten in a space: its repositories' checks drop their
+   * conditions and results, and its waiting reports their results, now
+   * rather than at the next run (rule 7: they hold the memory's paths).
+   */
+  private forgotten(spaceId: string, refs: string[]): void {
+    const space = this.spaces.get(spaceId);
+    for (const root of space?.roots ?? [])
+      this.repos.get(root)?.checker.forget(refs);
+    this.reports.forget(spaceId, refs);
   }
 
   /** Runs a repository's checks now (tests, and `memax status`'s view of them). */

@@ -311,6 +311,26 @@ function internalLine(
   };
 }
 
+/**
+ * The check results members' machines kept: shown while a machine that
+ * checked the space hasn't checked it since (its daemon drops them when it
+ * hears of the Forget).
+ */
+function checksLine(
+  copy: TombstoneCopy,
+  x: TombstoneStepLine,
+): TombstoneLine | null {
+  if (x.status === "done") return null;
+  const s = copy.steps;
+  return {
+    key: x.key,
+    state: "working",
+    title: count(s.checksOne, s.checks, x.count ?? 0),
+    time: s.waiting,
+    detail: s.checksDetail,
+  };
+}
+
 function agentLine(
   copy: TombstoneCopy,
   t: TombstoneView,
@@ -384,6 +404,9 @@ export function tombstoneLines(
   for (const x of t.steps) {
     if (x.kind === "artifacts" || x.kind === "caches" || x.kind === "ledger") {
       const line = internalLine(copy, x);
+      if (line) lines.push(line);
+    } else if (x.kind === "checks") {
+      const line = checksLine(copy, x);
       if (line) lines.push(line);
     }
   }

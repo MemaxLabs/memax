@@ -135,6 +135,46 @@ describe("Tombstone.png in words", () => {
     expect(lines[3]!.state).toBe("proposed");
   });
 
+  it("says the check results machines kept while one hasn't checked since, and nothing once all have", () => {
+    const step = (
+      status: "waiting" | "done",
+      n: number,
+    ): TombstoneView["steps"][number] => ({
+      ...board.steps[8]!,
+      key: `checks-${status}-${n}`,
+      kind: "checks",
+      status,
+      reason: status === "waiting" ? "next_check" : null,
+      agent: null,
+      at: null,
+      count: n,
+    });
+    const view = (s: TombstoneView["steps"][number]): TombstoneView => ({
+      ...board,
+      steps: [board.steps[0]!, s],
+    });
+    const two = tombstoneLines(EN, view(step("waiting", 2)), ctx("en")).at(-1)!;
+    expect([two.title, two.time, two.state]).toEqual([
+      "Check results on 2 machines",
+      "waiting",
+      "working",
+    ]);
+    expect(two.detail).toBe(
+      "The paths its conditions named, never its words. Each machine's daemon drops them as soon as it hears of the Forget, and Memax hears back at its next check.",
+    );
+    expect(
+      tombstoneLines(EN, view(step("waiting", 1)), ctx("en")).at(-1)!.title,
+    ).toBe("Check results on 1 machine");
+    expect(
+      tombstoneLines(ZH, view(step("waiting", 2)), ctx("zh")).at(-1)!.title,
+    ).toBe("2 台机器上的检查结果");
+    const done = tombstoneLines(EN, view(step("done", 0)), ctx("en"));
+    expect(done.map((l) => l.title)).not.toContain(
+      "Check results on 0 machines",
+    );
+    expect(done.some((l) => l.key.startsWith("checks"))).toBe(false);
+  });
+
   it("names each machine of a Personal memory's home files, an offline one with its last day online", () => {
     const home = (
       name: string,

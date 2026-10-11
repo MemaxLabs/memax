@@ -592,7 +592,8 @@ export interface paths {
          *     default branch: each typed, with its hash (send it back with a
          *     result, so a result about an older definition is ignored) and
          *     whether it is armed (it held once on the default branch; only an
-         *     armed condition can mark its memory stale). No statements. A
+         *     armed condition can mark its memory stale), with the commit of its
+         *     latest hold, where a machine looks for a rename. No statements. A
          *     condition that hasn't held in 30 days is left out, since Memax stops
          *     asking, and so is `pr_state`, which only the GitHub App checks.
          */
@@ -5425,6 +5426,15 @@ export interface components {
             hash: components["schemas"]["ConditionHash"];
             /** @description It held once on the default branch, so a failure can mark its memory stale. */
             armed: boolean;
+            /**
+             * @description When it is armed, the commit of its latest hold on the default
+             *     branch that Memax heard of (from any machine). A machine that
+             *     finds its path gone and has no hold of its own to start from
+             *     looks for the file's rename from this commit to the one it
+             *     checks, so a file that moved reads as `renamed`, with where it
+             *     went, rather than `removed`.
+             */
+            held_commit?: string;
         };
         /** @description One kept memory's conditions to check, without its words. */
         MemoryConditions: {
@@ -5631,10 +5641,16 @@ export interface components {
          *     file (or copy-out) rewritten. artifacts: the stored copies of older
          *     compiles and hand edits re-rendered. caches: the caches purged.
          *     ledger: the forget ledger's copy (ids only) written. agent: an agent
-         *     told on its next read.
+         *     told on its next read. checks: the check results members' machines
+         *     kept of its conditions (its refs and the paths they named, never
+         *     its words), which each machine's daemon drops as soon as it hears
+         *     of the Forget; there only when it had check results. It is done once
+         *     every machine that checked the space in the 30 days before has
+         *     checked it since (a machine reports what changed, and a full set
+         *     daily), and `count` says how many haven't.
          * @enum {string}
          */
-        StepKind: "asked" | "removed" | "target" | "artifacts" | "caches" | "ledger" | "agent";
+        StepKind: "asked" | "removed" | "target" | "artifacts" | "caches" | "ledger" | "agent" | "checks";
         /** @enum {string} */
         StepStatus: "done" | "waiting" | "held" | "failed" | "unreachable";
         /**
@@ -5647,9 +5663,11 @@ export interface components {
          *     offline: a home file whose machine's daemon hasn't been seen in the
          *     last 15 minutes (`target.machine.last_seen_at`); its file still
          *     holds it until the machine connects, and is rewritten then.
+         *     next_check: a checks step's machines that haven't checked the space
+         *     since the Forget; each drops what it kept when its daemon hears.
          * @enum {string}
          */
-        StepReason: "hand_edit" | "stopped" | "copy" | "delivery" | "compiling" | "paused" | "disconnected" | "next_read" | "offline";
+        StepReason: "hand_edit" | "stopped" | "copy" | "delivery" | "compiling" | "paused" | "disconnected" | "next_read" | "offline" | "next_check";
         /**
          * @description A copy Memax can't reach. git_history: earlier commits of the
          *     compiled files. agent_memory: what agents saved in their own memory.
@@ -5718,7 +5736,7 @@ export interface components {
             compile?: components["schemas"]["CompileRef"];
             agent?: components["schemas"]["TombstoneAgent"];
             reason?: components["schemas"]["StepReason"];
-            /** @description How many stored copies were re-rendered. */
+            /** @description How many stored copies were re-rendered (artifacts), or how many machines haven't checked the space since (checks). */
             count?: number;
             /** @description The agent read it (else it is connected to the space). */
             read_it?: boolean;

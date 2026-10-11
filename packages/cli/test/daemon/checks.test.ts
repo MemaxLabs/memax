@@ -19,15 +19,26 @@ import type { V2 } from "memax-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DaemonApi } from "../../src/lib/daemon/api.js";
 import {
+  bytesContain,
   CheckReporter,
   RepoChecker,
   repoKeyOf,
   type CheckTiming,
 } from "../../src/lib/daemon/checks.js";
-import { globMatcher, globPrefix } from "../../src/lib/daemon/glob.js";
+import { containsText } from "../../src/lib/daemon/compiler/conditions/evaluate.js";
+import {
+  globMatcher,
+  globPrefix,
+} from "../../src/lib/daemon/compiler/conditions/glob.js";
 import { memoryLogger } from "../../src/lib/daemon/log.js";
 import { daemonPaths } from "../../src/lib/daemon/paths.js";
+import { installHookRoutes, tombstoneFixture } from "../hook/fake-hook.js";
 import { harness, type Harness } from "./harness.js";
+
+// The checks' git ignores pathspec settings it inherits: with this, a bare
+// manifest name's `:(glob)` pathspec would match nothing, and every
+// dependency would read as gone.
+process.env.GIT_LITERAL_PATHSPECS = "1";
 
 const GIT_ENV = {
   ...process.env,
@@ -113,6 +124,26 @@ interface Fake {
   conditionReads: number;
 }
 
+/** One condition a memory, of any kind, armed. */
+function kinds(
+  ...items: Array<[string, Record<string, unknown>]>
+): V2.SpaceConditions {
+  return {
+    space_id: "space-1",
+    repository: "MemaxLabs/memax",
+    items: items.map(([memory, c], i) => ({
+      memory,
+      conditions: [
+        {
+          condition: { id: "c1", ...c, origin: "person" } as V2.Condition,
+          hash: H(i + 1),
+          armed: true,
+        },
+      ],
+    })),
+  };
+}
+
 function fakeApi(conds: V2.SpaceConditions): Fake {
   const f: Fake = {
     reports: [],
@@ -193,6 +224,26 @@ describe("globs", () => {
     expect(globPrefix("packages/web/**")).toBe("packages/web");
     expect(globPrefix("**/*.go")).toBe("");
     expect(globPrefix("internal/*/config.go")).toBe("internal");
+  });
+
+  it("match text on a blob's bytes as the evaluator does on its text", () => {
+    const hays = [
+      "const TierHaiku = 1",
+      "TierHaiku",
+      "xTierHaiku TierHaiku_2",
+      "é TierHaiku€",
+      "naïve TierHaikué",
+      "(TierHaiku)\nTierHaikuX",
+      "中文TierHaiku中文",
+      "",
+    ];
+    for (const hay of hays)
+      for (const needle of ["TierHaiku", "é", "Tier", "中文", "u€"])
+        for (const word of [false, true])
+          expect(
+            bytesContain(Buffer.from(hay, "utf8"), needle, word),
+            `${hay} ~ ${needle} ${word}`,
+          ).toBe(containsText(hay, needle, word));
   });
 
   it("read a remote's owner/name in every spelling", () => {
@@ -289,6 +340,368 @@ describe("a repository's checks", () => {
     ]);
     expect(fake.reports[1].input.commit).toBe(git(root, "rev-parse", "HEAD"));
     expect(fake.reports[1].key).not.toBe(fake.reports[0].key);
+  });
+
+  it("looks for a rename from Memax's latest hold when it saw none itself", async () => {
+    const { root } = repository({
+      "packages/server/internal/ask/config.go": "package ask\n// TierHaiku\n",
+      "docs/old.md": "# Old\n",
+    });
+    // Another machine saw them hold here.
+    const held = git(root, "rev-parse", "HEAD");
+    git(
+      root,
+      "mv",
+      "packages/server/internal/ask/config.go",
+      "packages/server/internal/ask/tiers.go",
+    );
+    git(root, "rm", "-q", "docs/old.md");
+    git(root, "commit", "-q", "-m", "move one, remove one");
+    git(root, "push", "-q", "origin", "main");
+    const conds = conditions(
+      ["M-0001", { path: "packages/server/internal/ask/config.go" }],
+      ["M-0002", { path: "docs/old.md" }],
+      ["M-0003", { path: "never/there.go" }],
+      ["M-0004", { path: "gone/elsewhere.go" }],
+    );
+    conds.items[0].conditions[0].held_commit = held;
+    conds.items[1].conditions[0].held_commit = held;
+    // Never held anywhere: gone is removed, whatever happened to it.
+    conds.items[2].conditions[0].armed = false;
+    // Held at a commit this clone doesn't have: where it went can't be said.
+    conds.items[3].conditions[0].held_commit = "f".repeat(40);
+    const fake = fakeApi(conds);
+    // This machine's first run: no hold of its own to start from.
+    const { c } = checker(root, fake);
+    const run = await c.run("conditions");
+    // The tips, the paths, and one rename lookup for each commit held at.
+    expect(run.cost?.processes).toBe(4);
+    expect(
+      fake.reports[0].input.results.map((r) => [
+        r.memory,
+        r.outcome,
+        r.evidence,
+      ]),
+    ).toEqual([
+      [
+        "M-0001",
+        "fails",
+        {
+          change: "renamed",
+          path: "packages/server/internal/ask/config.go",
+          renamed_to: "packages/server/internal/ask/tiers.go",
+        },
+      ],
+      ["M-0002", "fails", { change: "removed", path: "docs/old.md" }],
+      ["M-0003", "fails", { change: "removed", path: "never/there.go" }],
+      ["M-0004", "unknown", undefined],
+    ]);
+    expect(fake.reports[0].input.complete).toBe(false);
+  });
+
+  it("checks file_contains, dep_present and file_unchanged at the commit, results only", async () => {
+    // config.go is large enough that reading it again would show.
+    const filler = "// tiers\n".repeat(4_000);
+    const { root } = repository({
+      "packages/server/internal/ask/config.go": `package ask\n${filler}const Default = TierHaiku\n`,
+      "go.mod":
+        "module github.com/MemaxLabs/memax\n\nrequire (\n\tgithub.com/riverqueue/river v0.14.2\n)\n",
+      "tools/go.mod": "module tools\n",
+      "packages/web/package.json": JSON.stringify({
+        dependencies: { "@tanstack/react-query": "^5.62.0" },
+      }),
+      "docs/adr/004-queues.md": "# Queues\n\nRiver.\n",
+    });
+    const adr = git(root, "rev-parse", "HEAD:docs/adr/004-queues.md");
+    const fake = fakeApi(
+      kinds(
+        [
+          "M-0001",
+          {
+            kind: "file_contains",
+            path: "packages/server/internal/ask/config.go",
+            text: "TierHaiku",
+            word: true,
+          },
+        ],
+        [
+          "M-0002",
+          {
+            kind: "dep_present",
+            manifest: "go.mod",
+            name: "github.com/riverqueue/river",
+          },
+        ],
+        [
+          "M-0003",
+          {
+            kind: "dep_present",
+            manifest: "packages/web/package.json",
+            name: "@tanstack/react-query",
+            range: "^5",
+          },
+        ],
+        [
+          "M-0004",
+          { kind: "file_unchanged", path: "docs/adr/004-queues.md", blob: adr },
+        ],
+      ),
+    );
+    const { c, paths } = checker(root, fake);
+
+    const first = await c.run("conditions");
+    // The tips, one listing (for the bare go.mod), one cat-file.
+    expect(first).toMatchObject({ ran: true, results: 4, sent: 4 });
+    expect(first.cost?.processes).toBe(3);
+    const r1 = fake.reports[0].input;
+    expect(r1.results.map((r) => [r.memory, r.outcome])).toEqual([
+      ["M-0001", "holds"],
+      ["M-0002", "holds"],
+      ["M-0003", "holds"],
+      ["M-0004", "holds"],
+    ]);
+    expect(r1.complete).toBe(true);
+
+    // The same commit again: the same blobs, so nothing is read but their ids.
+    const again = await c.run("verify");
+    expect(again).toMatchObject({ ran: true, sent: 0 });
+    expect(again.cost!.bytes).toBeLessThan(2_000);
+
+    // A push changes each: the identifier, the require, the constraint, the ADR.
+    write(root, {
+      "packages/server/internal/ask/config.go": `package ask\n${filler}const Default = TierHaikuV2\n`,
+      "go.mod": "module github.com/MemaxLabs/memax\n",
+      "packages/web/package.json": JSON.stringify({
+        dependencies: { "@tanstack/react-query": "^4.36.1" },
+      }),
+      "docs/adr/004-queues.md": "# Queues\n\nRiver, still.\n",
+    });
+    git(root, "commit", "-q", "-am", "change what they rely on");
+    git(root, "push", "-q", "origin", "main");
+    const moved = await c.run("head_moved");
+    expect(moved).toMatchObject({ ran: true, sent: 4 });
+    expect(moved.cost?.processes).toBe(3);
+    expect(
+      fake.reports[1].input.results.map((r) => [
+        r.memory,
+        r.outcome,
+        r.evidence,
+      ]),
+    ).toEqual([
+      [
+        "M-0001",
+        "fails",
+        {
+          change: "text_missing",
+          path: "packages/server/internal/ask/config.go",
+        },
+      ],
+      ["M-0002", "fails", { change: "dependency_removed", path: "go.mod" }],
+      [
+        "M-0003",
+        "fails",
+        {
+          change: "constraint_changed",
+          path: "packages/web/package.json",
+          constraint: "^4.36.1",
+        },
+      ],
+      [
+        "M-0004",
+        "fails",
+        { change: "blob_changed", path: "docs/adr/004-queues.md" },
+      ],
+    ]);
+
+    // Nothing a file holds, nor a condition's text, leaves the machine or
+    // sits in the daemon's files.
+    const sent = JSON.stringify(fake.reports);
+    const saved = readdirSync(paths.checks)
+      .filter((n) => n.endsWith(".json"))
+      .map((n) => readFileSync(join(paths.checks, n), "utf8"))
+      .join("\n");
+    for (const s of [sent, saved]) {
+      expect(s).not.toContain("TierHaiku");
+      expect(s).not.toContain("// tiers");
+      expect(s).not.toContain("River");
+      expect(s).not.toContain("module ");
+    }
+  });
+
+  it("a file over its cap, a kind it doesn't check and a file that moved", async () => {
+    const { root } = repository({
+      "docs/big.md": "x".repeat(4_096),
+      "docs/adr/004-queues.md": "# Queues\n\nRiver is the queue, everywhere.\n",
+    });
+    const adr = git(root, "rev-parse", "HEAD:docs/adr/004-queues.md");
+    const conds = kinds(
+      ["M-0001", { kind: "file_contains", path: "docs/big.md", text: "x" }],
+      [
+        "M-0002",
+        { kind: "file_unchanged", path: "docs/adr/004-queues.md", blob: adr },
+      ],
+      [
+        "M-0003",
+        { kind: "pr_state", repo: "MemaxLabs/memax", number: 7, state: "open" },
+      ],
+    );
+    const fake = fakeApi(conds);
+    const { c } = checker(root, fake, { ...QUIET, fileCap: 1_024 });
+    await c.run("conditions");
+    const r = fake.reports[0].input;
+    // pr_state is GitHub's: not checked here, so the run isn't complete.
+    expect(r.results.map((x) => [x.memory, x.outcome])).toEqual([
+      ["M-0001", "unknown"],
+      ["M-0002", "holds"],
+    ]);
+    expect(r.complete).toBe(false);
+
+    git(root, "mv", "docs/adr/004-queues.md", "docs/adr/0004-queues.md");
+    git(root, "commit", "-q", "-m", "renumber");
+    git(root, "push", "-q", "origin", "main");
+    await c.run("head_moved");
+    expect(fake.reports[1].input.results).toEqual([
+      {
+        memory: "M-0002",
+        condition: "c1",
+        hash: H(2),
+        outcome: "fails",
+        evidence: {
+          change: "renamed",
+          path: "docs/adr/004-queues.md",
+          renamed_to: "docs/adr/0004-queues.md",
+        },
+      },
+    ]);
+  });
+
+  it("finds a bare manifest name anywhere, and says which one held", async () => {
+    const { root } = repository({
+      "package.json": JSON.stringify({ devDependencies: { turbo: "^2" } }),
+      "packages/sdk/package.json": JSON.stringify({ dependencies: {} }),
+      "packages/web/package.json": JSON.stringify({
+        dependencies: { "@tanstack/react-query": "^5.62.0" },
+      }),
+      "requirements.txt": "-r base.txt\nflask==3.0\n",
+    });
+    const fake = fakeApi(
+      kinds(
+        [
+          "M-0001",
+          {
+            kind: "dep_present",
+            manifest: "package.json",
+            name: "@tanstack/react-query",
+          },
+        ],
+        // Another file it includes may list it: unknown, never gone.
+        [
+          "M-0002",
+          {
+            kind: "dep_present",
+            manifest: "requirements.txt",
+            name: "requests",
+          },
+        ],
+      ),
+    );
+    const { c } = checker(root, fake);
+    await c.run("conditions");
+    expect(fake.reports[0].input.results.map((x) => x.outcome)).toEqual([
+      "holds",
+      "unknown",
+    ]);
+    git(root, "rm", "-q", "packages/web/package.json");
+    git(root, "commit", "-q", "-m", "drop web");
+    git(root, "push", "-q", "origin", "main");
+    await c.run("head_moved");
+    // The manifest it held in is gone, and no other declares it.
+    expect(fake.reports[1].input.results).toEqual([
+      {
+        memory: "M-0001",
+        condition: "c1",
+        hash: H(1),
+        outcome: "fails",
+        evidence: { change: "removed", path: "packages/web/package.json" },
+      },
+    ]);
+  });
+
+  it("drops a forgotten memory's conditions and results at once, and checks it no more", async () => {
+    const { root } = repository({
+      "packages/server/internal/ask/config.go": "package ask\n",
+      "go.mod": "module x\n",
+    });
+    // M-0001's file is gone: its result's evidence names the path.
+    const fake = fakeApi(
+      conditions(
+        ["M-0001", { path: "packages/server/internal/ask/tiers.go" }],
+        ["M-0002", { path: "go.mod" }],
+      ),
+    );
+    const { c, paths } = checker(root, fake);
+    await c.run("conditions");
+    const state = () =>
+      readdirSync(paths.checks)
+        .filter((n) => n.endsWith(".json"))
+        .map((n) => readFileSync(join(paths.checks, n), "utf8"))
+        .join("\n");
+    expect(state()).toContain("M-0001");
+    expect(state()).toContain("packages/server/internal/ask");
+
+    // The warm cache hears of the Forget: nothing of M-0001 is left on
+    // disk, before any run.
+    c.forget(["M-0001"]);
+    expect(state()).not.toContain("M-0001");
+    expect(state()).toContain("M-0002/c1");
+    // The conditions in memory went with it: the next run reads them again,
+    // and a list that still has it (read before the Forget) is passed over.
+    const reads = fake.conditionReads;
+    const sent = fake.reports.length;
+    const run = await c.run("verify");
+    expect(fake.conditionReads).toBe(reads + 1);
+    expect(run.results).toBe(1);
+    expect(state()).not.toContain("M-0001");
+    // Nothing changed, but this run reports: Memax hears that this machine
+    // checked the space since the Forget (its tombstone's checks step).
+    expect(fake.reports).toHaveLength(sent + 1);
+    expect(fake.reports.at(-1)!.input.results).toEqual([]);
+    await c.run("verify");
+    expect(fake.reports).toHaveLength(sent + 1);
+  });
+
+  it("drops a forgotten memory's results from the reports waiting to go", async () => {
+    const { root } = repository({
+      "go.mod": "module x\n",
+      "docs/a.md": "# A\n",
+    });
+    const fake = fakeApi(
+      conditions(
+        ["M-0001", { path: "docs/a.md" }],
+        ["M-0002", { path: "go.mod" }],
+      ),
+    );
+    const { c, reporter, paths } = checker(root, fake);
+    fake.fail = 0; // offline: the report waits
+    await c.run("conditions");
+    const queue = join(paths.checks, "queue");
+    const [before] = readdirSync(queue);
+    expect(readFileSync(join(queue, before), "utf8")).toContain("M-0001");
+
+    reporter.forget("space-1", ["m-0001"]);
+    const [after] = readdirSync(queue);
+    // Rewritten without it, under the key of what it says now.
+    expect(after).not.toBe(before);
+    const waiting = readFileSync(join(queue, after), "utf8");
+    expect(waiting).not.toContain("M-0001");
+    expect(waiting).not.toContain("docs/a.md");
+    // Another space's reports aren't touched; one only about the memory goes.
+    reporter.forget("space-2", ["M-0002"]);
+    expect(readdirSync(queue)).toEqual([after]);
+    reporter.forget("space-1", ["M-0002"]);
+    expect(readdirSync(queue)).toEqual([]);
+    await reporter.flush();
+    expect(fake.reports).toHaveLength(0);
   });
 
   it("never reports from another branch, an unpushed commit, a fork's clone or without origin's default", async () => {
@@ -492,6 +905,57 @@ describe("the daemon's checks", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(runs).toHaveLength(1);
     expect(d.checker(root)?.lastRun?.skipped ?? "ran").not.toBe("error");
+  });
+
+  it("drops a memory's checks as soon as the warm cache hears it was forgotten", async () => {
+    h = await harness();
+    const st = installHookRoutes(h.fake);
+    const sp = h.fake.addSpace("memax-v2");
+    const { root } = repository({ "go.mod": "module x\n" });
+    // M-0001's file is gone: its result's evidence names the path.
+    const conds = conditions(
+      ["M-0001", { path: "docs/adr.md" }],
+      ["M-0002", { path: "go.mod" }],
+    );
+    conds.space_id = sp.id;
+    let runs = 0;
+    h.fake.extra.push((method, path) => {
+      if (method === "GET" && path === `/v2/spaces/${sp.id}/conditions`)
+        return { status: 200, data: conds };
+      if (method === "POST" && path === `/v2/spaces/${sp.id}/check-runs`) {
+        runs++;
+        return { status: 201, data: { run: { id: "run-1" }, flagged: [] } };
+      }
+      return null;
+    });
+    h.link(sp, root);
+    // A minute between runs, as the daemon has it: the drop can't wait for one.
+    const d = h.daemon({
+      warmRefreshMs: 20,
+      checks: { firstMs: 0, statMs: 3_600_000, minGapMs: 60_000 },
+    });
+    await d.start();
+    await until(() => runs === 1, 10_000, "a check run");
+    const state = () =>
+      readdirSync(h.paths.checks)
+        .filter((n) => n.endsWith(".json"))
+        .map((n) => readFileSync(join(h.paths.checks, n), "utf8"))
+        .join("\n");
+    expect(state()).toContain("docs/adr.md");
+
+    // M-0001 is forgotten: its tombstone, and the receipt that moves the feed.
+    st.tombstones.set(sp.id, [tombstoneFixture(sp, "M-0001", new Date())]);
+    h.fake.receipts++;
+    await until(() => !state().includes("M-0001"), 5_000, "the drop");
+    expect(state()).not.toContain("docs/adr.md");
+    expect(state()).toContain("M-0002");
+    expect(runs).toBe(1);
+
+    // Unlinked, its check state goes, where no later Forget would reach it.
+    const { unlinkRepo } = await import("../../src/lib/daemon/registry.js");
+    unlinkRepo(h.paths, root);
+    d.reload();
+    await until(() => state() === "", 5_000, "the state file to go");
   });
 });
 

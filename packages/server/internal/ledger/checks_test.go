@@ -117,7 +117,8 @@ func TestCheckRunArmsThenFlags(t *testing.T) {
 		t.Fatalf("a hold flagged %v (%+v)", first.Flagged, first.Run.Counts)
 	}
 	list, _ := r.f.l.ListConditions(ctx, r.scope, r.sp)
-	if len(list.Items) != 1 || !list.Items[0].Conditions[0].Armed || list.Repository != "MemaxLabs/memax" {
+	if len(list.Items) != 1 || !list.Items[0].Conditions[0].Armed || list.Repository != "MemaxLabs/memax" ||
+		list.Items[0].Conditions[0].HeldCommit != a {
 		t.Fatalf("after a hold: %+v", list)
 	}
 
@@ -413,6 +414,81 @@ func TestForgetTakesCheckResults(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "forgotten") {
 		t.Errorf("a result for a forgotten memory: %v", err)
+	}
+}
+
+// A Forget's tombstone names the check results members' machines kept
+// (migration 065): a checks step, waiting on each machine that checked the
+// space until it checks it again (its daemon dropped them on hearing),
+// then done. A memory no machine checked has none.
+func TestForgetNamesTheMachinesChecks(t *testing.T) {
+	t.Parallel()
+	r := newCheckRig(t)
+	ctx := context.Background()
+	a, aAt := commit(1, 3)
+	other := r.f.remember(r.owner, r.sp, "Handlers live in `packages/server/internal/handler/v2api/api.go`.")
+	otherHash := r.conditionHash(t, other.Ref, "c1")
+	r.report(t, a, aAt, r.holds(r.mem.Ref))
+	// A second machine checked it too.
+	laptop := r.reportOf(a, aAt, r.holds(r.mem.Ref))
+	laptop.Device = "dev-laptop"
+	if _, err := r.f.l.ReportChecks(ctx, laptop); err != nil {
+		t.Fatal(err)
+	}
+	never := r.f.remember(r.owner, r.sp, "Releases are cut on Thursdays.")
+
+	res := r.f.apply(&ledger.Forget{Meta: meta(person(r.owner), r.scope, policy.ViaWeb), Memory: r.mem.Ref, ExpectedVersion: 1})
+	if res.Outcome != ledger.OutcomeApplied {
+		t.Fatalf("forget: %+v", res.Policy)
+	}
+	step := func() *ledger.TombstoneStep {
+		t.Helper()
+		tomb, err := r.f.l.GetTombstone(ctx, r.scope, r.mem.Ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range tomb.Steps {
+			if tomb.Steps[i].Kind == ledger.StepChecks {
+				return &tomb.Steps[i]
+			}
+		}
+		return nil
+	}
+	s := step()
+	if s == nil || s.Status != ledger.StepWaiting || s.Reason != ledger.StepReasonNextCheck || s.Count == nil || *s.Count != 2 {
+		t.Fatalf("after the Forget: %+v", s)
+	}
+	// Each machine checks the space again, after the Forget.
+	later := func(device string) {
+		t.Helper()
+		b, bAt := commit(2, 0)
+		rep := r.reportOf(b, bAt, ledger.CheckResult{Memory: other.Ref, Condition: "c1", Hash: otherHash, Outcome: ledger.CheckHolds})
+		rep.Device, rep.CheckedAt = device, time.Now().Add(time.Second)
+		if _, err := r.f.l.ReportChecks(ctx, rep); err != nil {
+			t.Fatal(err)
+		}
+	}
+	later(r.device)
+	if s := step(); s.Status != ledger.StepWaiting || *s.Count != 1 {
+		t.Fatalf("one machine since: %+v", s)
+	}
+	later("dev-laptop")
+	if s := step(); s.Status != ledger.StepDone || *s.Count != 0 || s.At == nil || s.Reason != "" {
+		t.Fatalf("both since: %+v", s)
+	}
+
+	res = r.f.apply(&ledger.Forget{Meta: meta(person(r.owner), r.scope, policy.ViaWeb), Memory: never.Ref, ExpectedVersion: 1})
+	if res.Outcome != ledger.OutcomeApplied {
+		t.Fatalf("forget: %+v", res.Policy)
+	}
+	tomb, err := r.f.l.GetTombstone(ctx, r.scope, never.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range tomb.Steps {
+		if s.Kind == ledger.StepChecks {
+			t.Errorf("a memory no machine checked names their checks: %+v", s)
+		}
 	}
 }
 

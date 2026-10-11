@@ -453,7 +453,7 @@ describe("memax compile and memax status with a home link", () => {
         ),
       ),
     ).toContain(
-      "Codex reads ~/.codex/AGENTS.override.md now; run memax link --home to move Memax's block there.",
+      "Codex reads ~/.codex/AGENTS.override.md now; run memax connect codex to move Memax's block there.",
     );
 
     // memax daemon status, with no daemon: what this machine last wrote.

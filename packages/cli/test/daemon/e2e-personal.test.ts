@@ -6,7 +6,9 @@
 // own lines in each file unchanged byte for byte. Forget takes it out of
 // both within 60 s, and a grep of both homes finds nothing. Then one
 // machine unlinks and the other signs out (memax logout): each takes the
-// layer off, giving the person's files back as they were.
+// layer off, giving the person's files back as they were. A third
+// machine, with only Claude Code, sets up with memax init --yes --home
+// outside any repository, then gains Codex's file with memax connect.
 //
 // It needs Go, Postgres (a role that can CREATE DATABASE), psql and the
 // workspace's node_modules, so it runs only with MEMAX_E2E_SERVER=1:
@@ -60,13 +62,14 @@ interface Home {
 // Timeouts: the setup builds the CLI and Go binaries and starts the stack
 // (minutes on a cold machine); each step waits up to 60 s per home, as the
 // acceptance check allows, so its bound is a multiple of that.
-describe.skipIf(!enabled)("the personal layer on two machines", () => {
+describe.skipIf(!enabled)("the personal layer on several machines", () => {
   let stack: Stack;
   let memax: Memax;
   let base: string;
   let personal: string;
   const a: Home = { name: "machine-a", dir: "" };
   const b: Home = { name: "machine-b", dir: "" };
+  const c: Home = { name: "machine-c", dir: "" };
 
   const env = (h: Home) => ({
     ...process.env,
@@ -145,9 +148,9 @@ describe.skipIf(!enabled)("the personal layer on two machines", () => {
        INSERT INTO hub_members (hub_id, user_id, role) VALUES ('${personal}', '${stack.zz}', 'owner');`,
     ]);
     base = realpathSync(mkdtempSync(join(tmpdir(), "memax-e2e-personal-")));
-    for (const h of [a, b]) {
+    for (const h of [a, b, c]) {
       h.dir = join(base, h.name);
-      for (const d of [".memax", ".claude", ".codex"])
+      for (const d of [".memax", ".claude", ...(h === c ? [] : [".codex"])])
         mkdirSync(join(h.dir, d), { recursive: true });
       writeFileSync(
         join(h.dir, ".memax", "credentials.json"),
@@ -262,6 +265,55 @@ describe.skipIf(!enabled)("the personal layer on two machines", () => {
       read(b, CODEX)!.startsWith(`${MINE_B}\n<!-- memax:start -->\n`),
     ).toBe(true);
   }, 120_000);
+
+  it("memax init --yes --home outside a repository links the home; memax connect adds Codex's file", async () => {
+    const init = await cli(
+      c,
+      "init",
+      "--yes",
+      "--home",
+      "--no-daemon",
+      "--no-connect",
+      "--wait",
+      "2",
+      "--format",
+      "json",
+    );
+    if (init.code !== 0)
+      console.log(init.out, stack.logs.slice(-30).join("\n"));
+    expect(init.code).toBe(0);
+    expect(JSON.parse(init.out).home).toEqual({ linked: true });
+    expect(read(c, RULES)).toContain(
+      "The person you work with keeps these in Memax.",
+    );
+    expect(existsSync(join(c.dir, ".codex"))).toBe(false);
+
+    // Codex is set up on the machine later: connect adds its file and writes it.
+    mkdirSync(join(c.dir, ".codex"));
+    const connect = await cli(
+      c,
+      "connect",
+      "codex",
+      "--no-hook",
+      "--format",
+      "json",
+    );
+    if (connect.code !== 0)
+      console.log(connect.out, stack.logs.slice(-30).join("\n"));
+    const r = JSON.parse(connect.out);
+    expect(r.home).toMatchObject({
+      state: "added",
+      path: "~/.codex/AGENTS.md",
+      compile: "compiled",
+    });
+    expect(read(c, CODEX)!.startsWith("<!-- memax:start -->\n")).toBe(true);
+    const link = JSON.parse(
+      readFileSync(join(c.dir, ".memax", "daemon", "home.json"), "utf8"),
+    );
+    expect(link.files.map((f: { path: string }) => f.path).sort()).toEqual(
+      [CANON, CODEX, RULES].sort(),
+    );
+  }, 180_000);
 
   it("memax unlink --home gives machine B's files back as they were", async () => {
     const r = await cli(b, "unlink", "--home");

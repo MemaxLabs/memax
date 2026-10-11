@@ -129,7 +129,7 @@ function plan(
  * Files an agent reads instead of the one linked here since (design §6.5):
  * Codex reads a non-empty AGENTS.override.md in place of AGENTS.md, and
  * AGENTS.md again once the override is gone or empty. Memax never moves a
- * block on its own; linking again moves it.
+ * block on its own; memax connect codex moves it.
  */
 export function movedFiles(
   home: string,
@@ -143,7 +143,7 @@ export function movedFiles(
     const reads = nonEmptyFile(override) ? override : join(dir, "AGENTS.md");
     if (reads !== join(home, f.path)) {
       out.push(
-        `Codex reads ${tilde(home, reads)} now; run memax link --home to move Memax's block there.`,
+        `Codex reads ${tilde(home, reads)} now; run memax connect codex to move Memax's block there.`,
       );
     }
   }

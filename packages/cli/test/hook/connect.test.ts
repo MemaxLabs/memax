@@ -388,6 +388,7 @@ describe("memax connect", () => {
       "  ✓ Hook     session start, in ~/.codex/hooks.json",
       "  ○          Codex asks you to trust it once: run /hooks in Codex",
       "  ✓ Space    acme-web, at Propose",
+      "  - Home     memax link --home writes your Personal space into its own file here",
       "  - Compile  this repository isn't linked; memax link writes the compiled files here",
       "",
     ]);

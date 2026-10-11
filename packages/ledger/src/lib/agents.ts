@@ -26,6 +26,7 @@ export const AGENTS = {
   chatgpt: { mono: "GPT", name: "ChatGPT", surface: "chat" },
   claude: { mono: "CL", name: "Claude", surface: "chat" },
   gemini: { mono: "GM", name: "Gemini CLI", surface: "cli" },
+  antigravity: { mono: "AG", name: "Antigravity", surface: "ide" },
   copilot: { mono: "CP", name: "Copilot", surface: "ide" },
   opencode: { mono: "OC", name: "OpenCode", surface: "cli" },
   dream: { mono: "DR", name: "Dream", surface: "memax", kind: "dream" },

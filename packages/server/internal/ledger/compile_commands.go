@@ -345,7 +345,7 @@ func (c *ConfigureTarget) validate() error {
 		return invalid("space_id", "say which space the target belongs to")
 	}
 	if !c.Kind.Valid() {
-		return invalid("kind", "use agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf, claude_rules, claude_user or codex_user")
+		return invalid("kind", "use agents_md, claude_md, cursor_mdc, chatgpt, gemini_md, copilot, windsurf, claude_rules, claude_user, codex_user or gemini_user")
 	}
 	switch {
 	case c.Root == RootHome && c.Machine == uuid.Nil:
@@ -522,6 +522,11 @@ func checkHomePath(k TargetKind, path string) error {
 	case TargetCodexUser:
 		ok = folder != ".memax" && (strings.HasSuffix(path, "/AGENTS.md") || strings.HasSuffix(path, "/AGENTS.override.md"))
 		hint = "end it in AGENTS.md or AGENTS.override.md"
+	case TargetGeminiUser:
+		// GEMINI_CLI_HOME moves Gemini's home, so a .gemini folder deeper
+		// in the home folder is Gemini's too.
+		ok = folder != ".memax" && (path == ".gemini/AGENTS.md" || strings.HasSuffix(path, "/.gemini/AGENTS.md"))
+		hint = "use .gemini/AGENTS.md, the AGENTS.md in Gemini's folder"
 	default:
 		hint = "this kind isn't written into a home folder"
 	}
@@ -536,12 +541,12 @@ func checkHomePath(k TargetKind, path string) error {
 func ValidHomePath(k TargetKind, path string) bool { return checkHomePath(k, path) == nil }
 
 // homeOwned is whether a home file is the person's (Memax manages one
-// block in it) rather than Memax's own: Codex's AGENTS.md and a
-// ~/.claude/CLAUDE.md are theirs; the rules file and the canonical copy
-// are Memax's. The compiler decides the same from the path.
+// block in it) rather than Memax's own: Codex's and Gemini's AGENTS.md
+// and a ~/.claude/CLAUDE.md are theirs; the rules file and the canonical
+// copy are Memax's. The compiler decides the same from the path.
 func homeOwned(k TargetKind, path string) bool {
 	switch k {
-	case TargetCodexUser:
+	case TargetCodexUser, TargetGeminiUser:
 		return true
 	case TargetClaudeUser:
 		return strings.HasSuffix(path, "/CLAUDE.md")
@@ -565,6 +570,10 @@ func defaultReadBy(k TargetKind) []string {
 		return []string{"claude-code"}
 	case TargetCodexUser:
 		return []string{"codex"}
+	case TargetGeminiUser:
+		// Gemini CLI too, once its context.fileName lists AGENTS.md: the
+		// CLI says so when it sets that up.
+		return []string{"antigravity"}
 	}
 	return nil
 }

@@ -19,6 +19,7 @@ import type { HomeSnapshot } from "../lib/daemon/snapshot.js";
 import {
   CONSENT_QUESTION,
   consentLines,
+  homeFile,
   planHomeFiles,
 } from "../lib/home/files.js";
 import {
@@ -160,7 +161,11 @@ export async function linkHome(
       device_id: d.deviceId,
       name: o.name?.trim().slice(0, 80) || machineName(d.hostname),
       platform: d.platform,
-      files: approved.map((f) => ({ kind: f.kind, path: f.path })),
+      files: approved.map((f) => ({
+        kind: f.kind,
+        path: f.path,
+        ...(f.readBy.length > 0 ? { read_by: f.readBy } : {}),
+      })),
     },
     { idempotencyKey: randomUUID(), via: "cli" },
   );
@@ -172,9 +177,7 @@ export async function linkHome(
     home: d.home,
     files: approved.flatMap((f) => {
       const t = res.targets.find((x) => x.kind === f.kind && x.path === f.path);
-      return t
-        ? [{ target_id: t.id, kind: f.kind, path: f.path, abs: f.abs }]
-        : [];
+      return t ? [homeFile(t.id, f)] : [];
     }),
   });
   d.out("");

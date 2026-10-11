@@ -354,6 +354,15 @@ export function contract(
           default: false,
           opt_in: false,
         },
+        {
+          kind: "gemini_user",
+          version: 1,
+          role: "home",
+          roots: ["home"],
+          default_path: ".gemini/AGENTS.md",
+          default: false,
+          opt_in: false,
+        },
       ]);
       const head = await fetch(base + "/health", { method: "HEAD" });
       expect(head.status).toBe(200);

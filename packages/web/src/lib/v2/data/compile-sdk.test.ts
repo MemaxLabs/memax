@@ -302,6 +302,23 @@ describe("targets through memax.v2.targets", () => {
       machine: { id: "m2", label: "machine-2", name: "mbp-2" },
       readBy: ["codex"],
     });
+    // Gemini's file, read by Antigravity and Gemini CLI: registry keys.
+    const gemini = home("t4", 1, {
+      kind: "gemini_user",
+      path: ".gemini/AGENTS.md",
+      label: "~/.gemini/AGENTS.md",
+      settings: {
+        include: "kept_and_open",
+        stale: "mark",
+        size_budget: 6144,
+        user_owned: true,
+        read_by: ["antigravity", "gemini-cli"],
+      },
+    });
+    expect(targetOf(gemini, [gemini]).readBy).toEqual([
+      "antigravity",
+      "gemini",
+    ]);
     // Two copies of one kind on one machine fall back to their ids.
     const twice = [
       home("t1", 1),

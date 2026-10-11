@@ -55,6 +55,50 @@ describe("the files a home link offers", () => {
     ]);
   });
 
+  it("offers Gemini's ~/.gemini/AGENTS.md only where something reads it", () => {
+    const gemini = (env: Record<string, string> = {}) =>
+      planHomeFiles({ home, env }, ["gemini_user"])
+        .filter((f) => f.kind === "gemini_user")
+        .map((f) => ({ path: f.path, agent: f.agent, readBy: f.readBy }));
+    dir(".gemini");
+    // Gemini CLI alone reads GEMINI.md: a file there would be read by no one.
+    expect(gemini()).toEqual([]);
+    expect(plan()).toEqual([]);
+    // Antigravity reads it in every session; still unconfirmed by a real
+    // run, so memax link --home's own consent leaves it out.
+    dir(".gemini", "antigravity-cli");
+    expect(plan()).toEqual([]);
+    expect(gemini()).toEqual([
+      {
+        path: ".gemini/AGENTS.md",
+        agent: "Antigravity",
+        readBy: ["antigravity"],
+      },
+    ]);
+    // Gemini CLI too, once its context.fileName lists AGENTS.md.
+    writeFileSync(
+      join(home, ".gemini", "settings.json"),
+      '{\n  // mine\n  "context": { "fileName": ["GEMINI.md", "AGENTS.md"] }\n}\n',
+    );
+    expect(gemini()).toEqual([
+      {
+        path: ".gemini/AGENTS.md",
+        agent: "Antigravity and Gemini CLI",
+        readBy: ["antigravity", "gemini-cli"],
+      },
+    ]);
+    // GEMINI_CLI_HOME moves the folder that holds .gemini.
+    dir(".config", "gemini", ".gemini", "antigravity-cli");
+    const moved = planHomeFiles(
+      { home, env: { GEMINI_CLI_HOME: join(home, ".config", "gemini") } },
+      ["gemini_user"],
+    ).find((f) => f.kind === "gemini_user");
+    expect(moved).toMatchObject({
+      path: ".config/gemini/.gemini/AGENTS.md",
+      refusal: null,
+    });
+  });
+
   it("offers nothing on a machine with neither agent", () => {
     dir(".cursor");
     expect(plan()).toEqual([]);
@@ -128,6 +172,11 @@ describe("the files a home link offers", () => {
       ["codex_user", "codex/AGENTS.md", false],
       ["agents_md", ".memax/personal/AGENTS.md", true],
       ["agents_md", ".memax/AGENTS.md", false],
+      ["gemini_user", ".gemini/AGENTS.md", true],
+      ["gemini_user", ".config/g/.gemini/AGENTS.md", true],
+      ["gemini_user", ".gemini/GEMINI.md", false],
+      ["gemini_user", ".gemini/config/AGENTS.md", false],
+      ["gemini_user", ".memax/.gemini/AGENTS.md", false],
       ["cursor_mdc", ".cursor/rules/memax-x.mdc", false],
     ] as const)
       expect(validHomePath(kind, path), `${kind} ${path}`).toBe(ok);

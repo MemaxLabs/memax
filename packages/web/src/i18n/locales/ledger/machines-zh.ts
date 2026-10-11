@@ -88,6 +88,8 @@ export const ledgerMachinesZh: Translations["ledger"]["machines"] = {
         "{machine} 上的 Claude Code 在每个项目、每次会话开始时都会读它。每次保留和忘记之后，Memax 都会从你的个人空间重新写它。",
       codex_user:
         "{machine} 上 {file} 里属于 Memax 的那一段，Codex 在每个项目里都会读。这个文件里你自己写的内容只留在你的电脑上，Memax 不读。",
+      gemini_user:
+        "{machine} 上 {file} 里属于 Memax 的那一段，Antigravity 在每个项目里都会读；Gemini CLI 设置成读 AGENTS.md 之后也会读。这个文件里你自己写的内容只留在你的电脑上，Memax 不读。",
       agents_md:
         "{machine} 上把整个个人空间写成的一个文件，给你自己看，也给没有专属文件的 Agent 读。",
     },

@@ -6,6 +6,10 @@
 //   ~/.claude), a file Memax owns. User rules load every session.
 // - Codex: one block in `$CODEX_HOME/AGENTS.override.md` when that file
 //   exists and isn't empty (Codex reads it instead), else in AGENTS.md.
+// - Gemini: one block in `~/.gemini/AGENTS.md` (`$GEMINI_CLI_HOME/.gemini`),
+//   which Antigravity reads, and Gemini CLI once its context.fileName lists
+//   AGENTS.md; offered only when one of them reads it here, and only when
+//   asked for (UNCONFIRMED_HOME_KINDS).
 // - The canonical copy `~/.memax/personal/AGENTS.md`, Memax's.
 //
 // An agent offers a file only when its folder is here. Each file is
@@ -22,17 +26,22 @@ import {
   homeFileRefusal,
   tilde,
 } from "../daemon/home-place.js";
+import { geminiDir, geminiReaders } from "../connect/gemini.js";
+import type { HomeFile } from "../daemon/home-link.js";
 
 export interface HomeEnv {
   /** The home folder, a real path. */
   home: string;
   env: Record<string, string | undefined>;
+  platform?: NodeJS.Platform;
 }
 
 export interface HomeFilePlan {
   kind: V2.TargetKind;
   /** Who reads it: "Claude Code", "Codex", or "Memax" for the canonical. */
   agent: string;
+  /** The agents that load it here (the target's read_by); none for the canonical. */
+  readBy: string[];
   /** Relative to home: what the server and home.json record. */
   path: string;
   abs: string;
@@ -86,6 +95,7 @@ function plan(
   kind: V2.TargetKind,
   agent: string,
   abs: string,
+  readBy: string[],
 ): HomeFilePlan {
   const rel = relative(e.home, abs);
   const outside = rel === "" || rel.startsWith("..") || isAbsolute(rel);
@@ -97,6 +107,7 @@ function plan(
   const out: HomeFilePlan = {
     kind,
     agent,
+    readBy,
     path,
     abs,
     refusal,
@@ -150,8 +161,25 @@ export function movedFiles(
   return out;
 }
 
-/** The home files this machine offers, in the consent's order. */
-export function planHomeFiles(e: HomeEnv): HomeFilePlan[] {
+/**
+ * Home kinds no real tool has confirmed loading yet, so a home link offers
+ * them only when someone asks for that agent (memax connect gemini), never
+ * in memax link --home's default consent. Gemini's file: Antigravity's docs
+ * and Gemini CLI's source say they read ~/.gemini/AGENTS.md, but neither
+ * has been run against a block in it.
+ */
+export const UNCONFIRMED_HOME_KINDS: ReadonlySet<V2.TargetKind> = new Set([
+  "gemini_user",
+]);
+
+/**
+ * The home files this machine offers, in the consent's order; an
+ * unconfirmed kind only when `ask` names it.
+ */
+export function planHomeFiles(
+  e: HomeEnv,
+  ask: readonly V2.TargetKind[] = [],
+): HomeFilePlan[] {
   const out: HomeFilePlan[] = [];
   const claude = realParent(folder(e, "CLAUDE_CONFIG_DIR", ".claude"));
   if (isDir(claude)) {
@@ -161,6 +189,7 @@ export function planHomeFiles(e: HomeEnv): HomeFilePlan[] {
         "claude_user",
         "Claude Code",
         join(claude, "rules", "memax-personal.md"),
+        ["claude-code"],
       ),
     );
   }
@@ -173,13 +202,44 @@ export function planHomeFiles(e: HomeEnv): HomeFilePlan[] {
         "codex_user",
         "Codex",
         nonEmptyFile(override) ? override : join(codex, "AGENTS.md"),
+        ["codex"],
+      ),
+    );
+  }
+  const gemini = realParent(geminiDir(e));
+  const readers =
+    isDir(gemini) && ask.includes("gemini_user") ? geminiReaders(e) : [];
+  if (readers.length > 0) {
+    out.push(
+      plan(
+        e,
+        "gemini_user",
+        readers
+          .map((r) => (r === "antigravity" ? "Antigravity" : "Gemini CLI"))
+          .join(" and "),
+        join(gemini, "AGENTS.md"),
+        readers,
       ),
     );
   }
   if (out.length > 0) {
-    out.push(plan(e, "agents_md", "Memax", join(e.home, HOME_CANONICAL)));
+    out.push(plan(e, "agents_md", "Memax", join(e.home, HOME_CANONICAL), []));
   }
   return out;
+}
+
+/** A linked file as home.json records it, with who reads it. */
+export function homeFile(
+  targetId: string,
+  f: Pick<HomeFilePlan, "kind" | "path" | "abs" | "readBy">,
+): HomeFile {
+  return {
+    target_id: targetId,
+    kind: f.kind,
+    path: f.path,
+    abs: f.abs,
+    ...(f.readBy.length > 0 ? { read_by: f.readBy } : {}),
+  };
 }
 
 /** What linking does to a file, as the consent says it. */

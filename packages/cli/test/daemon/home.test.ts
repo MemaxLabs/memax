@@ -263,6 +263,50 @@ describe("two machines (rule 6)", () => {
   });
 });
 
+describe("Gemini's ~/.gemini/AGENTS.md", () => {
+  it("gets one block beside the person's lines, GEMINI.md untouched, and comes out byte for byte", async () => {
+    const GEMINI = ".gemini/AGENTS.md";
+    const space = h.fake.addPersonalSpace();
+    mkdirSync(join(h.home, ".gemini"), { recursive: true });
+    const theirs = "# Antigravity notes\n- Tabs, please.\n";
+    const memory = "## Gemini Added Memories\n- The person likes tabs.\n";
+    writeFileSync(join(h.home, GEMINI), theirs);
+    writeFileSync(join(h.home, ".gemini", "GEMINI.md"), memory);
+    const m = h.fake.addMachine(space, "device-1");
+    const t = h.fake.addHomeTarget(space, m, "gemini_user");
+    expect(t.settings.user_owned).toBe(true);
+    writeHomeLink(h.paths, {
+      space_id: space.id,
+      space_slug: space.slug,
+      machine_id: m.id,
+      home: h.home,
+      files: [
+        {
+          target_id: t.id,
+          kind: "gemini_user",
+          path: GEMINI,
+          abs: join(h.home, GEMINI),
+          read_by: ["antigravity"],
+        },
+      ],
+    });
+    const daemon = h.daemon({ paths: h.paths, deviceId: "device-1" });
+    h.fake.compile(t.id, { [GEMINI]: PERSONAL_1 });
+    await daemon.syncOnce();
+    expect(readFileSync(join(h.home, GEMINI), "utf8")).toBe(
+      upsertManagedBlock(theirs, PERSONAL_1),
+    );
+    expect(h.fake.entry(t.id).target.sync_state).toBe("in_sync");
+
+    h.fake.unlinkMachine(m.id);
+    await daemon.syncOnce();
+    expect(readFileSync(join(h.home, GEMINI), "utf8")).toBe(theirs);
+    expect(readFileSync(join(h.home, ".gemini", "GEMINI.md"), "utf8")).toBe(
+      memory,
+    );
+  });
+});
+
 describe("taking the layer off (§6.6)", () => {
   async function delivered(): Promise<Machine> {
     const space = h.fake.addPersonalSpace();

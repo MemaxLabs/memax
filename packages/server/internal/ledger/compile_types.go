@@ -76,16 +76,20 @@ const (
 	// agent's user-level file on a linked machine.
 	TargetClaudeUser TargetKind = "claude_user"
 	TargetCodexUser  TargetKind = "codex_user"
+	// TargetGeminiUser is one block in ~/.gemini/AGENTS.md: Antigravity's
+	// global file, and Gemini CLI's once its context.fileName lists
+	// AGENTS.md (memax connect gemini --agents-md).
+	TargetGeminiUser TargetKind = "gemini_user"
 )
 
 // TargetKinds lists every kind.
 var TargetKinds = []TargetKind{TargetAgentsMD, TargetClaudeMD, TargetCursorMDC, TargetChatGPT,
-	TargetGeminiMD, TargetCopilot, TargetWindsurf, TargetClaudeRules, TargetClaudeUser, TargetCodexUser}
+	TargetGeminiMD, TargetCopilot, TargetWindsurf, TargetClaudeRules, TargetClaudeUser, TargetCodexUser, TargetGeminiUser}
 
 // HomeTargetKinds are the kinds that write only into a home folder: the
 // compiler's HOME_TARGET_KINDS. A machine's home targets are these and the
 // personal canonical copy (agents_md at HomeCanonicalPath).
-var HomeTargetKinds = []TargetKind{TargetClaudeUser, TargetCodexUser}
+var HomeTargetKinds = []TargetKind{TargetClaudeUser, TargetCodexUser, TargetGeminiUser}
 
 // HomeCanonicalPath is the personal canonical copy on a linked machine,
 // relative to its home folder: what OpenCode, the Cursor hook and people
@@ -141,7 +145,7 @@ func (k TargetKind) role() string {
 		return "shim"
 	case TargetChatGPT:
 		return "copy"
-	case TargetClaudeUser, TargetCodexUser:
+	case TargetClaudeUser, TargetCodexUser, TargetGeminiUser:
 		return "home"
 	}
 	return "scoped"
@@ -170,6 +174,8 @@ func (k TargetKind) DefaultPath() string {
 		return ".claude/rules/memax-personal.md"
 	case TargetCodexUser:
 		return ".codex/AGENTS.md"
+	case TargetGeminiUser:
+		return ".gemini/AGENTS.md"
 	}
 	return ""
 }

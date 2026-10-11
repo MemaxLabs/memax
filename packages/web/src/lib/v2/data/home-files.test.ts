@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   groupTargets,
+  HOME_FILE_OF_AGENT,
+  homeAgent,
   homeFileStatus,
   homeGroups,
   homeSyncLine,
+  isBlock,
   machineAgents,
   machineCopies,
   machineFileState,
@@ -103,6 +106,15 @@ const desktop = machine(2, {
   lastSeenAt: "2026-10-02T21:10:00-07:00",
 });
 const MACHINES = [laptop, desktop];
+
+describe("Gemini's home file", () => {
+  it("is a block in ~/.gemini/AGENTS.md, written for Gemini", () => {
+    const gemini = { kind: "gemini_user" as const, path: ".gemini/AGENTS.md" };
+    expect(isBlock(gemini)).toBe(true);
+    expect(homeAgent("gemini_user")).toBe("gemini");
+    expect(HOME_FILE_OF_AGENT.gemini).toBe("~/.gemini/AGENTS.md");
+  });
+});
 
 describe("grouping home files", () => {
   it("lists each home file once, where its first copy was, with every machine's copy in machine order", () => {

@@ -98,6 +98,63 @@ function connection(
 const links = () => h.fake.calls("POST", /\/machines$/);
 
 describe("memax connect on a linked machine", () => {
+  it("adds Antigravity's ~/.gemini/AGENTS.md, and --agents-md makes Gemini CLI a reader of it", async () => {
+    mkdirSync(join(h.home, ".gemini", "antigravity-cli"), { recursive: true });
+    h.fake.agents.push(connection("gemini-cli", [personal]));
+    const gemini = agentFor("gemini")!;
+    const first = await runConnect(gemini, {}, deps().d);
+    expect(first.home).toMatchObject({
+      state: "added",
+      path: "~/.gemini/AGENTS.md",
+      note: "a new file, with one Memax block",
+    });
+    expect(links().at(-1)?.body).toMatchObject({
+      files: [
+        {
+          kind: "gemini_user",
+          path: ".gemini/AGENTS.md",
+          read_by: ["antigravity"],
+        },
+      ],
+    });
+    const file = () =>
+      readHomeLink(h.paths)!.files.find((f) => f.kind === "gemini_user")!;
+    expect(file().read_by).toEqual(["antigravity"]);
+
+    // Gemini CLI reads it too once its context.fileName lists AGENTS.md:
+    // the target's read_by and home.json follow, so the hook prints it.
+    const both = await runConnect(gemini, { agentsMd: true }, deps().d);
+    expect(both.contextFile?.state).toBe("written");
+    expect(both.home).toMatchObject({
+      state: "present",
+      note: "read by Antigravity and Gemini CLI",
+    });
+    expect(file().read_by).toEqual(["antigravity", "gemini-cli"]);
+    const target = [...h.fake.targets.values()].find(
+      (e) => e.target.kind === "gemini_user",
+    )!.target;
+    expect(target.settings.read_by).toEqual(["antigravity", "gemini-cli"]);
+    expect(links()).toHaveLength(1);
+
+    // Again: nothing changes.
+    const again = await runConnect(gemini, { agentsMd: true }, deps().d);
+    expect(again.home).toEqual({
+      state: "present",
+      path: "~/.gemini/AGENTS.md",
+    });
+    expect(again.contextFile?.state).toBe("present");
+  });
+
+  it("says Gemini CLI alone needs --agents-md to read the Personal space", async () => {
+    mkdirSync(join(h.home, ".gemini"), { recursive: true });
+    const r = await runConnect(agentFor("gemini")!, {}, deps().d);
+    expect(r.home).toEqual({ state: "absent" });
+    expect(plain(renderConnect(r, "https://memax.app"))).toContain(
+      "Gemini CLI reads your Personal space from ~/.gemini/AGENTS.md once it reads AGENTS.md: add --agents-md",
+    );
+    expect(links()).toHaveLength(0);
+  });
+
   it("adds the agent's home file, keeping the machine's name, and writes it; again changes nothing", async () => {
     writeFileSync(join(h.home, ".codex", "AGENTS.md"), "# Mine\n- tabs\n");
     const { d, compiles } = deps();
@@ -112,7 +169,9 @@ describe("memax connect on a linked machine", () => {
       device_id: "device-1",
       name: "work-mbp",
       platform: "darwin",
-      files: [{ kind: "codex_user", path: ".codex/AGENTS.md" }],
+      files: [
+        { kind: "codex_user", path: ".codex/AGENTS.md", read_by: ["codex"] },
+      ],
     });
     // The rules file it already had is untouched.
     expect(

@@ -117,6 +117,21 @@ describe("lines that load twice", () => {
     expect(t.after).toBe(`# Mine\n- Run tests first.\n${block}`);
   });
 
+  it("reads Gemini's AGENTS.md around Memax's block, and GEMINI.md beside it, which Antigravity reads too", () => {
+    const block =
+      "<!-- memax:start -->\n- I prefer short answers. [M-0001]\n<!-- memax:end -->\n";
+    put(".gemini/AGENTS.md", `- I prefer short answers.\n${block}`);
+    put(
+      ".gemini/GEMINI.md",
+      "## Gemini Added Memories\n- I prefer short answers.\n- Tabs in Go.\n",
+    );
+    const found = findTwice(link(["gemini_user", ".gemini/AGENTS.md"]));
+    expect(found.map((t) => [t.label, t.lines, t.after])).toEqual([
+      ["~/.gemini/AGENTS.md", 1, block],
+      ["~/.gemini/GEMINI.md", 1, "## Gemini Added Memories\n- Tabs in Go.\n"],
+    ]);
+  });
+
   it("finds nothing without Memax's file, or when nothing matches", () => {
     put(".claude/CLAUDE.md", "- I prefer short answers.\n");
     expect(

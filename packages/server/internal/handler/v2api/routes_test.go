@@ -70,6 +70,7 @@ var sampleRequests = map[string]struct {
 	"listReads":          {path: "/v2/spaces/memax-v2/reads"},
 	"listCheckpoints":    {path: "/v2/spaces/memax-v2/checkpoints?limit=5"},
 	"recordCompileLoad":  {path: "/v2/spaces/memax-v2/compile-loads", body: `{"compile":"C-0001","agent":"claude-code"}`},
+	"startSession":       {path: "/v2/spaces/memax-v2/session-starts", body: `{"agent":"copilot","files":[{"path":"AGENTS.md","compile":"C-0001"}]}`},
 	"getMemory":          {path: "/v2/memories/M-0001?space=memax-v2"},
 	"keepMemory":         {path: "/v2/memories/M-0001:keep?space=memax-v2", header: map[string]string{"If-Match": `"1"`}},
 	"editMemory":         {path: "/v2/memories/M-0001:edit?space=memax-v2", body: `{"statement":"y"}`, header: map[string]string{"If-Match": `"1"`}},

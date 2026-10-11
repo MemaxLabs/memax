@@ -37,6 +37,7 @@ var passesOnV1 = map[string]string{
 	"exportSpace":        "rule 14: a person's copy of the record as it stands, one exported receipt",
 	"findNearDuplicates": "a read, sent as a POST to keep the draft out of URLs (x-memax-read)",
 	"recordCompileLoad":  "a read: the compile an agent loaded at session start",
+	"startSession":       "a read: what changed since the compile a cloud session's files hold, counted as its load",
 	"recordDelivery":     "a device reports what it did with a file already compiled",
 	"recordObservation":  "a device reports a hand edit of a file already compiled",
 	"setAgentAutonomy":   "a connection is the agent's identity, not the space's record (policy.DecideConnection)",

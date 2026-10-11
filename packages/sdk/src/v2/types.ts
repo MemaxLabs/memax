@@ -164,6 +164,15 @@ export type ReadPage = Schemas["ReadPage"];
 export type MemoryReads = Schemas["MemoryReads"];
 export type MemoryReader = Schemas["MemoryReader"];
 export type CompileLoadResult = Schemas["CompileLoadResult"];
+/**
+ * A cloud session start's answer (`memax.v2.sessionStarts.start`): what
+ * changed since the compiles the repository holds.
+ */
+export type SessionStart = Schemas["SessionStart"];
+export type SessionStartFile = Schemas["SessionStartFile"];
+export type SessionStartLine = Schemas["SessionStartLine"];
+export type SessionStartForget = Schemas["SessionStartForget"];
+export type SessionStartGate = Schemas["SessionStartGate"];
 
 // Ask
 /** One event of an answer's stream (`memax.v2.ask`), discriminated by `event`. */
@@ -269,6 +278,9 @@ export type AnswerGateInput = Schemas["AnswerGateRequest"];
 export type WithdrawGateInput = Schemas["ReviewRequest"];
 /** A session start's report of the compile its agent loaded. */
 export type CompileLoadInput = Schemas["CompileLoadRequest"];
+/** A cloud session start: the compiled files the session loaded, by compile. */
+export type SessionStartInput = Schemas["SessionStartRequest"];
+export type SessionStartFileInput = Schemas["SessionStartFileInput"];
 export type ForgetInput = Schemas["ForgetRequest"];
 export type VerifyInput = Schemas["VerifyRequest"];
 export type AckNoticesInput = Schemas["AckNoticesRequest"];

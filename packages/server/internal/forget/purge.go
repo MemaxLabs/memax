@@ -16,6 +16,8 @@ import (
 //
 //   - the compiled digest's artifacts (mcpv2): a session-start recall's
 //     copy of a space's latest compiled file, by compile ref;
+//   - the compile service's delta artifacts (compile.Service.PurgeSpace):
+//     the compiles a cloud session start diffs, by key;
 //   - the embeddings cache (v2recall.Vectors): recent query, draft and
 //     statement vectors, by a hash of the text.
 //

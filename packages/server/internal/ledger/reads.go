@@ -460,7 +460,14 @@ func writeReads(ctx context.Context, tx pgx.Tx, reads []pendingRead) error {
 			reads[i].seq = first + int64(j)
 		}
 	}
+	return insertReads(ctx, tx, reads)
+}
 
+// insertReads inserts reads whose R- numbers are taken, and bumps their
+// rollups. Nothing reads either statement's result, so on a ledger
+// transaction both go out with the next statement, or with COMMIT
+// (execDeferred).
+func insertReads(ctx context.Context, tx pgx.Tx, reads []pendingRead) error {
 	n := len(reads)
 	ids, tenantIDs, spaceIDs, compileIDs, connIDs, persons :=
 		make([]uuid.UUID, n), make([]uuid.UUID, n), make([]uuid.UUID, n), make([]pgtype.UUID, n), make([]pgtype.UUID, n), make([]uuid.UUID, n)
@@ -484,7 +491,7 @@ func writeReads(ctx context.Context, tx pgx.Tx, reads []pendingRead) error {
 		counts[i] = int32(r.memories())
 		at[i] = e.At
 	}
-	if _, err := tx.Exec(ctx, `
+	if err := execDeferred(ctx, tx, `
 		INSERT INTO v2.reads (id, tenant_id, space_id, seq, reader_kind, connection_id, person_id, agent, kind, via,
 		                      session_ref, compile_id, memory_ids, memories, read_at)
 		SELECT u.id, u.tenant_id, u.space_id, u.seq, u.reader_kind, u.connection_id, u.person_id, u.agent, u.kind,
@@ -579,7 +586,7 @@ func bumpRollups(ctx context.Context, tx pgx.Tx, reads []pendingRead) error {
 		kinds[i], readerKinds[i], agents[i], days[i] = r.subjectKind, string(r.readerKind), r.key.agent, r.key.day
 		counts[i], lasts[i] = r.reads, r.last
 	}
-	if _, err := tx.Exec(ctx, `
+	if err := execDeferred(ctx, tx, `
 		INSERT INTO v2.read_rollups AS r (space_id, tenant_id, subject_kind, subject_id, day, reader_key, reader_kind,
 		                                  person_id, agent, reads, last_read_at)
 		SELECT u.space_id, u.tenant_id, u.subject_kind, u.subject_id, u.day::date, u.reader_key, u.reader_kind,

@@ -1,0 +1,47 @@
+{
+  "name": "@memaxlabs/start",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Memax's warm start for cloud agents: what changed in your repository's compiled context since the commit, at session start",
+  "homepage": "https://docs.memax.app/cloud-agents",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MemaxLabs/memax.git",
+    "directory": "packages/start"
+  },
+  "bugs": {
+    "email": "support@memax.app"
+  },
+  "type": "module",
+  "bin": {
+    "memax-start": "./dist/memax-start.js"
+  },
+  "files": [
+    "dist/memax-start.js",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "esbuild": "^0.27.4",
+    "memax-sdk": "workspace:^",
+    "typescript": "^5.8.0"
+  },
+  "keywords": [
+    "memax",
+    "agents",
+    "claude-code",
+    "copilot",
+    "session-start",
+    "hook"
+  ],
+  "license": "Apache-2.0"
+}

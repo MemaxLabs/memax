@@ -215,6 +215,21 @@ importers:
 
   packages/server: {}
 
+  packages/start:
+    devDependencies:
+      '@types/node':
+        specifier: ^25.5.0
+        version: 25.6.0
+      esbuild:
+        specifier: ^0.27.4
+        version: 0.27.4
+      memax-sdk:
+        specifier: workspace:^
+        version: link:../sdk
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   packages/ui:
     dependencies:
       '@base-ui/react':

@@ -199,6 +199,12 @@ export const ledgerMemoryZh: Translations["ledger"]["memory"] = {
       deliveryDetail: "接下来由守护进程写入。",
       compiling: "{label}正在重新编译",
       held: "{label}有手动改动",
+      onMachine: "{machine} 上的 {label}",
+      offline: "{machine} 上的 {label} 会留着它，直到 {machine} 连上",
+      offlineDetail:
+        "{machine} 上次在线是 {date}。它连上后，这些文件会被重写。",
+      offlineNever:
+        "{machine} 关联之后还没连上过。它连上后，这些文件会被重写。",
       heldDetail: "Memax 从不覆盖手动改动，所以那一行会留着，直到你自己删掉。",
       stopped: "{label}已不再编译",
       stoppedDetail: "这个目标已经停止编译，Memax 没法重写它。",
@@ -250,6 +256,11 @@ export const ledgerMemoryZh: Translations["ledger"]["memory"] = {
         ask: "回答问题",
       },
       handEdits: "{files}，直到你删掉那一行",
+      handEditsOn: "{machines} 上的 {files}，直到你删掉那一行",
+      sourceFiles:
+        "你机器上 Memax 当初从中导入它的 {n} 个文件。Memax 从不改动它们，那一行需要你自己删掉。",
+      sourceFilesOne:
+        "你机器上 Memax 当初从中导入它的那个文件。Memax 从不改动它，那一行需要你自己删掉。",
       copies: "你粘贴过 {targets} 的地方",
     },
     footer: "忘记没法撤销。如果它又成立了，重新记一次就好，会得到一个新编号。",

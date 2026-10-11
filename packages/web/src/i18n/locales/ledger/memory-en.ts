@@ -214,6 +214,12 @@ export const ledgerMemoryEn = {
       deliveryDetail: "The daemon writes it next.",
       compiling: "{label} compiling without it",
       held: "{label} has a hand edit",
+      onMachine: "{label} on {machine}",
+      offline: "{label} on {machine} holds it until {machine} connects",
+      offlineDetail:
+        "{machine} was last online {date}. Its files are rewritten when it connects.",
+      offlineNever:
+        "{machine} hasn't connected since it was linked. Its files are rewritten when it does.",
       heldDetail:
         "Memax never writes over a hand edit, so the line stays there until you take it out.",
       stopped: "{label} isn't compiled any more",
@@ -268,6 +274,11 @@ export const ledgerMemoryEn = {
         ask: "answers",
       },
       handEdits: "{files}, until you take out the line",
+      handEditsOn: "{files} on {machines}, until you take out the line",
+      sourceFiles:
+        "The {n} files of yours Memax imported it from, on your machines. Memax never edits them, so take the line out there yourself.",
+      sourceFilesOne:
+        "The file of yours Memax imported it from, on your machine. Memax never edits it, so take the line out there yourself.",
       copies: "Wherever you pasted {targets}",
     },
     footer:

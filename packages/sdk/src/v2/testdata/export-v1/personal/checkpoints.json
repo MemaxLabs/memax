@@ -1,0 +1,42 @@
+{
+  "format": "memax.checkpoints.v1",
+  "space_id": "0199a1b2-c3d4-7e5f-8a9b-000000001001",
+  "seal": {
+    "sealed_receipts": 9,
+    "sealed_through_seq": 9,
+    "sealed_through_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000001409",
+    "head_sha256": "c26848edcaea425d690c17b3b9452c68b3d133dd20aff12f09f39a9173bc4d1c",
+    "checkpoints": 1,
+    "sealed_at": "2026-10-06T09:37:01.131456Z",
+    "unsealed": 3
+  },
+  "keys": [
+    {
+      "key_id": "ed25519:dbc298251c51321b",
+      "algorithm": "ed25519",
+      "public_key": "/RckOFqgx1tk+3jNYC+h2ZH96/drE8WO1wLqyDXp9hg="
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "0199a1b2-c3d4-7e5f-8a9b-000000001800",
+      "space_id": "0199a1b2-c3d4-7e5f-8a9b-000000001001",
+      "tenant_id": "0199a1b2-c3d4-7e5f-8a9b-000000001002",
+      "number": 1,
+      "position_from": 1,
+      "position_to": 9,
+      "receipts": 9,
+      "first_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000001401",
+      "last_receipt_id": "0199a1b2-c3d4-7e5f-8a9b-000000001409",
+      "last_seq": 9,
+      "prev_sha256": "d08e206111c70a3ec5264c425681927a77880b53d85c2ca7cf4799d546360116",
+      "chain_sha256": "c26848edcaea425d690c17b3b9452c68b3d133dd20aff12f09f39a9173bc4d1c",
+      "merkle_root": "04dea31c33e2ee086c97d2dfcd33379345fb93f3b06b9cf462946fc59f037242",
+      "format": 1,
+      "signed": true,
+      "key_id": "ed25519:dbc298251c51321b",
+      "signature": "hpZxq175QO27xccdJWZ+6fisnFl9JXB536K7jQ4ak6SlfMGi4L2efsQYZyqQ8w9vXzV4+2crKfOGf4w89A+7CQ==",
+      "sealed_at": "2026-10-06T09:37:01.131456Z"
+    }
+  ]
+}

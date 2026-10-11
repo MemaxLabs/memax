@@ -1,0 +1,29 @@
+{
+  "format": "memax.reads.v1",
+  "note": "Reads by agents and people, counted per day. Counts only: never what was read for, never words. A compiled file's load counts once for the compile (C-), not for each memory in it.",
+  "total": 3,
+  "by_reader": [
+    {
+      "reader_kind": "person",
+      "agent": "claude-code",
+      "reads": 3,
+      "readers": 1
+    }
+  ],
+  "memories": [],
+  "compiles": [
+    {
+      "ref": "C-0001",
+      "reads": 3,
+      "readers": 1,
+      "first_day": "2026-10-06",
+      "last_read_at": "2026-10-06T09:55:00.123456Z"
+    }
+  ],
+  "days": [
+    {
+      "day": "2026-10-06",
+      "reads": 3
+    }
+  ]
+}

@@ -27,10 +27,14 @@ func TestTargetsExportARootOnlyForHomeFiles(t *testing.T) {
 	home := f.targets[0]
 	home.ID, home.Kind, home.Root, home.Path, home.Label = uuid.New(), ledger.TargetCodexUser, ledger.RootHome,
 		".codex/AGENTS.md", "~/.codex/AGENTS.md"
-	home.Machine = &ledger.TargetMachine{ID: uuid.New(), Label: "machine-1", Name: "work-mbp"}
+	machine := uuid.New()
+	home.Machine = &ledger.TargetMachine{ID: machine, Label: "machine-1", Name: "work-mbp"}
 	f.targets = append(f.targets, home)
+	f.machines = []ledger.Machine{{ID: machine, Label: "machine-1", Name: "work-mbp", Platform: "darwin", Linked: true,
+		LinkedAt: f.targets[0].CreatedAt}}
 	got := string(f.render(t)[export.TargetsFile])
-	if strings.Count(got, `"root"`) != 1 || !strings.Contains(got, `"root": "home"`) || !strings.Contains(got, `"label": "machine-1"`) {
+	if strings.Count(got, `"root"`) != 1 || !strings.Contains(got, `"root": "home"`) || !strings.Contains(got, `"label": "machine-1"`) ||
+		!strings.Contains(got, `"platform": "darwin"`) || strings.Count(got, `"machine"`) != 1 || strings.Contains(got, `"unlinked_at"`) {
 		t.Errorf("targets.json with a home file:\n%s", got)
 	}
 }

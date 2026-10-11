@@ -66,6 +66,7 @@ type fixture struct {
 	briefs     []ledger.Brief
 	gates      []ledger.Gate
 	targets    []ledger.Target
+	machines   []ledger.Machine
 	agents     []ledger.ExportAgent
 	tombstones []ledger.Tombstone
 	reads      ledger.ReadSummary
@@ -73,6 +74,15 @@ type fixture struct {
 	receipts   []receiptchain.Receipt
 	seal       ledger.ExportSeal
 	keys       []export.SigningKey
+	// exported is the export's own receipt (fxExport unless set).
+	exported uuid.UUID
+}
+
+func (f *fixture) exportReceipt() uuid.UUID {
+	if f.exported != uuid.Nil {
+		return f.exported
+	}
+	return fxExport
 }
 
 func (f *fixture) feed(t testing.TB, sink ledger.ExportSink) {
@@ -81,7 +91,7 @@ func (f *fixture) feed(t testing.TB, sink ledger.ExportSink) {
 		func() error { return sink.Space(f.space) },
 		func() error { return sink.Briefs(f.briefs) },
 		func() error { return sink.Gates(f.gates) },
-		func() error { return sink.Targets(f.targets) },
+		func() error { return sink.Targets(f.targets, f.machines) },
 		func() error { return sink.Agents(f.agents) },
 		func() error { return sink.Tombstones(f.tombstones) },
 		func() error { return sink.Reads(f.reads) },
@@ -103,7 +113,7 @@ func (f *fixture) feed(t testing.TB, sink ledger.ExportSink) {
 func (f *fixture) render(t testing.TB) map[string][]byte {
 	t.Helper()
 	sink := export.NewMapSink()
-	w := export.NewWriter(sink, export.Options{Receipt: fxExport, Keys: f.keys})
+	w := export.NewWriter(sink, export.Options{Receipt: f.exportReceipt(), Keys: f.keys})
 	f.feed(t, w)
 	if err := w.Finish(); err != nil {
 		t.Fatal(err)
@@ -116,7 +126,7 @@ func (f *fixture) zip(t testing.TB) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	z := export.NewZipSink(&buf)
-	w := export.NewWriter(z, export.Options{Receipt: fxExport, Keys: f.keys, OnSpace: func(s ledger.ExportSpaceInfo) error {
+	w := export.NewWriter(z, export.Options{Receipt: f.exportReceipt(), Keys: f.keys, OnSpace: func(s ledger.ExportSpaceInfo) error {
 		z.Start(s.Slug, s.AsOf)
 		return nil
 	}})

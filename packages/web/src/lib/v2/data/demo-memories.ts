@@ -86,6 +86,8 @@ export function createDemoMemories({
   const forgotNow = new Map<string, TombstoneView>();
   /** Forget requests a person kept the memory against this session. */
   const declined = new Set<string>();
+  /** Where memories apply (scope.repos), as changed this session. */
+  const scopes = new Map<string, string[]>();
 
   /** Every row of a space, with this session's decisions, edits and new memories (on the first page). */
   function rowsOf(slug: string): MemoryListItem[][] {
@@ -250,7 +252,10 @@ export function createDemoMemories({
       // No words, no seal, no lineage of words: the tombstone says the rest.
       return { ...base, kept: null, merged: null, sources: [], reaches: null };
     }
-    return keptNow ? base : { ...base, ...extra, statement: base.statement };
+    const repos = scopes.get(id(slug, ref)) ?? extra.repos ?? [];
+    return keptNow
+      ? { ...base, repos }
+      : { ...base, ...extra, statement: base.statement, repos };
   }
 
   /** The demo's tombstone: the board's M-0201, or one forgotten this session. */
@@ -510,6 +515,20 @@ export function createDemoMemories({
           receipt,
           ...(held ? { judgePending: true } : {}),
         };
+      });
+    },
+    scope({ space, ref, version, repos, idempotencyKey }) {
+      return command(idempotencyKey, () => {
+        const found = record(space.slug, ref);
+        if (!found) throw new CommandFailedError({ kind: "not-found" });
+        if (found.version !== version) {
+          throw new CommandFailedError({
+            kind: "clash",
+            currentVersion: found.version,
+          });
+        }
+        scopes.set(id(space.slug, ref), [...repos]);
+        return { ref, version, repos: [...repos] };
       });
     },
   };

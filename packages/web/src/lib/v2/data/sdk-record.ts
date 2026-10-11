@@ -203,5 +203,6 @@ export function recordOf(
         : null,
     forgetRequests:
       state === "forgotten" ? [] : forgetRequestsOf(detail.forget_requests),
+    repos: memory.scope.repos ?? [],
   };
 }

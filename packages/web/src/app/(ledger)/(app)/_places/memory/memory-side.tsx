@@ -1,12 +1,13 @@
 "use client";
 
-import { Icon, type IconName } from "@memaxlabs/ledger";
+import { Button, Icon, type IconName } from "@memaxlabs/ledger";
 import { interpolate } from "@/i18n";
 import { formatWhen } from "@/lib/v2/copy";
 import type { MemoryRecord } from "@/lib/v2/data/memories";
 import { reachMeta } from "@/lib/v2/reads-copy";
 import { TargetRow } from "../../_components/target-row";
 import type { RecordsView } from "../records-view";
+import { useMemoryScope } from "./use-memory-scope";
 import styles from "./memory.module.css";
 
 const SOURCE_ICONS: Record<string, IconName> = {
@@ -20,7 +21,11 @@ const SOURCE_ICONS: Record<string, IconName> = {
   import: "file",
 };
 
-/** Memory.png's side: Sources, Reaches (the compiled files) and "Stays true while". */
+/**
+ * Memory.png's side: where it applies (a personal fact tied to
+ * repositories, with Apply everywhere), Sources, Reaches (the compiled
+ * files) and "Stays true while".
+ */
 export function MemorySide({
   view,
   record,
@@ -33,6 +38,7 @@ export function MemorySide({
   const reach = reachMeta(p, record.reach, locale);
   return (
     <aside className={styles.side}>
+      {record.repos?.length ? <AppliesIn view={view} record={record} /> : null}
       <section className="mx-panel">
         <header className="mx-panel-head">
           <h2 className="mx-panel-title">{p.sources}</h2>
@@ -124,5 +130,46 @@ export function MemorySide({
         </section>
       ) : null}
     </aside>
+  );
+}
+
+/** The repositories a memory applies in, and Apply everywhere. */
+function AppliesIn({
+  view,
+  record,
+}: {
+  view: RecordsView;
+  record: MemoryRecord;
+}) {
+  const p = view.l.memory.page;
+  const scope = useMemoryScope(view.space, record);
+  const repos = record.repos ?? [];
+  return (
+    <section className="mx-panel" aria-labelledby="memory-applies-in">
+      <header className="mx-panel-head">
+        <h2 id="memory-applies-in" className="mx-panel-title">
+          {p.appliesIn}
+        </h2>
+        <span className="mx-meta">{repos.length}</span>
+      </header>
+      <div className={styles.conditions}>
+        {repos.map((repo) => (
+          <code key={repo} className="mx-code">
+            {repo}
+          </code>
+        ))}
+        <span className={styles.prose}>{p.appliesInNote}</span>
+      </div>
+      <div className={styles.scopeAction}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => void scope.everywhere()}
+          pending={scope.pending}
+        >
+          {p.everywhere}
+        </Button>
+      </div>
+    </section>
   );
 }

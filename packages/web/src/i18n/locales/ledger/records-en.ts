@@ -120,6 +120,8 @@ export const ledgerRecordsEn = {
     withdraw: "{ref} wasn't withdrawn.",
     forget: "{ref} wasn't forgotten.",
     declineForget: "{ref} wasn't kept.",
+    // Where a memory applies (scope.repos) didn't change.
+    scope: "{ref} still applies where it did.",
     // 409 forget_carries: what goes with it changed after the person confirmed.
     carriesChanged:
       "What goes with it changed since you confirmed, so nothing was forgotten. Check it again, then forget it.",

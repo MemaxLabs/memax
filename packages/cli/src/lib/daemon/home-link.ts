@@ -18,6 +18,12 @@ export interface HomeFile {
   path: string;
   /** The home folder joined with `path`. */
   abs: string;
+  /**
+   * The agents that load it here, as the server's read_by says; absent
+   * means the kind's own agent. The session-start hook reads it: Gemini
+   * CLI loads ~/.gemini/AGENTS.md only once its settings list AGENTS.md.
+   */
+  read_by?: string[];
 }
 
 export interface HomeLink {
@@ -47,7 +53,10 @@ function isHomeFile(home: string, v: unknown): v is HomeFile {
     typeof f.path === "string" &&
     f.path.startsWith(".") &&
     typeof f.abs === "string" &&
-    f.abs === join(home, f.path)
+    f.abs === join(home, f.path) &&
+    (f.read_by === undefined ||
+      (Array.isArray(f.read_by) &&
+        f.read_by.every((a) => typeof a === "string")))
   );
 }
 

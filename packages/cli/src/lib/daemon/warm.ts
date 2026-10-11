@@ -25,7 +25,12 @@ import { ensureDaemonDir, type DaemonPaths } from "./paths.js";
 /** The compiled files agents load at session start (lib/hook/agents.ts). */
 const LOADED_KINDS = new Set(["agents_md", "claude_md", "gemini_md"]);
 /** The home files a home link writes: what agents load in every session. */
-const HOME_KINDS = new Set(["claude_user", "codex_user", "agents_md"]);
+const HOME_KINDS = new Set([
+  "claude_user",
+  "codex_user",
+  "gemini_user",
+  "agents_md",
+]);
 /** The key refresh() and requestRefresh() take for the home link's space. */
 export const HOME = "home";
 const FORGET_WINDOW_MS = 30 * 24 * 60 * 60_000;

@@ -292,8 +292,22 @@ func TestHomeTargetsThroughConfigureTarget(t *testing.T) {
 		got.Target.Settings.SizeBudget != ledger.DefaultHomeSizeBudget || f.jobs(got.Target.ID) != 1 {
 		t.Fatalf("add Codex's file: %v %+v", err, got.Target)
 	}
+	// memax connect gemini adds Antigravity's file, a block read by
+	// Antigravity; --agents-md says Gemini CLI reads it too.
+	gemini, err := add(&ledger.ConfigureTarget{Kind: ledger.TargetGeminiUser, Root: ledger.RootHome, Machine: res.Machine.ID})
+	if err != nil || gemini.Target == nil || gemini.Target.Path != ".gemini/AGENTS.md" || !gemini.Target.Settings.UserOwned ||
+		!slices.Equal(gemini.Target.Settings.ReadBy, []string{"antigravity"}) {
+		t.Fatalf("add Gemini's file: %v %+v", err, gemini.Target)
+	}
+	both, err := f.l.Apply(context.Background(), &ledger.ConfigureTarget{Meta: meta(person(zz), f.scope(zz), policy.ViaCLI),
+		Target: gemini.Target.ID, Settings: &ledger.TargetSettingsInput{ReadBy: &[]string{"gemini-cli", "antigravity"}}})
+	if err != nil || !slices.Equal(both.Target.Settings.ReadBy, []string{"antigravity", "gemini-cli"}) {
+		t.Errorf("Gemini CLI reads it too: %v %+v", err, both.Target)
+	}
 	for name, c := range map[string]*ledger.ConfigureTarget{
 		"a home kind in a repository":   {Kind: ledger.TargetCodexUser},
+		"Gemini's file in a repository": {Kind: ledger.TargetGeminiUser},
+		"Gemini's file as GEMINI.md":    {Kind: ledger.TargetGeminiUser, Root: ledger.RootHome, Machine: res.Machine.ID, Path: ptr(".gemini/GEMINI.md")},
 		"a repository kind at home":     {Kind: ledger.TargetClaudeMD, Root: ledger.RootHome, Machine: res.Machine.ID},
 		"a project folder in ~":         {Kind: ledger.TargetCodexUser, Root: ledger.RootHome, Machine: res.Machine.ID, Path: ptr("code/app/AGENTS.md")},
 		"the canonical elsewhere":       {Kind: ledger.TargetAgentsMD, Root: ledger.RootHome, Machine: res.Machine.ID, Path: ptr(".codex/AGENTS.md")},
@@ -505,7 +519,15 @@ func TestHomePathRulesMatchTheDatabase(t *testing.T) {
 		{ledger.TargetCodexUser, ".codex/AGENTS.local.md"},
 		{ledger.TargetClaudeMD, ".claude/CLAUDE.md"},
 		{ledger.TargetCursorMDC, ".cursor/rules"},
-		{"gemini_user", ".gemini/AGENTS.md"},
+		{ledger.TargetGeminiUser, ".gemini/AGENTS.md"},
+		{ledger.TargetGeminiUser, ".config/gemini/.gemini/AGENTS.md"},
+		{ledger.TargetGeminiUser, ".gemini/GEMINI.md"},
+		{ledger.TargetGeminiUser, ".gemini/config/AGENTS.md"},
+		{ledger.TargetGeminiUser, ".memax/.gemini/AGENTS.md"},
+		{ledger.TargetGeminiUser, ".codex/AGENTS.md"},
+		{ledger.TargetGeminiUser, "gemini/AGENTS.md"},
+		{ledger.TargetCodexUser, ".gemini/AGENTS.md"},
+		{"copilot_user", ".copilot/copilot-instructions.md"},
 	}
 	for _, c := range cases {
 		var db bool

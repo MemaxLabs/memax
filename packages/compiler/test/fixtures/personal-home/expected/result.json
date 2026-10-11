@@ -132,6 +132,36 @@
       "user_owned": true
     },
     {
+      "path": ".gemini/AGENTS.md",
+      "target": "gemini_user",
+      "bytes": 1119,
+      "lines": 29,
+      "sha256": "97e6f2b143322a9bcb8e7209bbe32138cf899ccae405f1392348d432c86418f1",
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "cites": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": [],
+      "drift_sha256": "8bcd883685f947879937a86dc6ef8734c742f593e6984ac4ffcd8c29788d4928",
+      "user_owned": true
+    },
+    {
       "path": ".memax/personal/AGENTS.md",
       "target": "agents_md",
       "bytes": 1040,
@@ -244,6 +274,24 @@
       "delivery": "file",
       "reads": null,
       "files": [".codex/AGENTS.override.md"],
+      "refs": [
+        "M-0101",
+        "M-0102",
+        "M-0103",
+        "M-0106",
+        "M-0107",
+        "M-0108",
+        "M-0110",
+        "M-0111"
+      ],
+      "dropped_for_budget": []
+    },
+    {
+      "kind": "gemini_user",
+      "path": ".gemini/AGENTS.md",
+      "delivery": "file",
+      "reads": null,
+      "files": [".gemini/AGENTS.md"],
       "refs": [
         "M-0101",
         "M-0102",

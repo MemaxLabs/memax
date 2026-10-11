@@ -14,9 +14,10 @@
 // own shim when the space compiles one (CLAUDE.md, GEMINI.md). Scoped
 // rules load only when a matching path is touched, so they aren't counted.
 // On a machine whose home is linked, its own home file too (personal-layer
-// design §7.1): Claude Code's rules file, Codex's block. The others get
-// theirs in later releases (Gemini CLI by read_by, Copilot CLI, Cursor's
-// full print of the canonical copy).
+// design §7.1): Claude Code's rules file, Codex's block, and Gemini's block
+// in ~/.gemini/AGENTS.md for Gemini CLI once that file's read_by lists it
+// (its context.fileName names AGENTS.md). The others get theirs in later
+// releases (Copilot CLI, Cursor's full print of the canonical copy).
 
 export type HookFormat = "plain" | "gemini" | "cursor" | "copilot";
 
@@ -51,7 +52,7 @@ const AGENTS: Record<string, HookAgent> = {
     kind: "gemini-cli",
     format: "gemini",
     loads: ["gemini_md", "agents_md"],
-    home: [],
+    home: ["gemini_user"],
     maxTokens: 3000,
   },
   cursor: {

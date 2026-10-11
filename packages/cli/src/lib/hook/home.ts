@@ -10,6 +10,8 @@ export interface HookHomeFile {
   /** Relative to the home folder: `.claude/rules/memax-personal.md`. */
   path: string;
   abs: string;
+  /** The agents that load it here; absent means the kind's own agent. */
+  read_by?: string[];
 }
 
 export interface HookHome {
@@ -43,7 +45,8 @@ export function readHookHome(path: string): HookHome | null {
           typeof f.kind === "string" &&
           typeof f.path === "string" &&
           typeof f.abs === "string" &&
-          f.abs.startsWith("/"),
+          f.abs.startsWith("/") &&
+          (f.read_by === undefined || Array.isArray(f.read_by)),
       ),
     };
   } catch {

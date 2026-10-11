@@ -172,8 +172,12 @@ describe("memax link --home", () => {
       name: "work-mbp",
       platform: "linux",
       files: [
-        { kind: "claude_user", path: ".claude/rules/memax-personal.md" },
-        { kind: "codex_user", path: ".codex/AGENTS.md" },
+        {
+          kind: "claude_user",
+          path: ".claude/rules/memax-personal.md",
+          read_by: ["claude-code"],
+        },
+        { kind: "codex_user", path: ".codex/AGENTS.md", read_by: ["codex"] },
         { kind: "agents_md", path: ".memax/personal/AGENTS.md" },
       ],
     });

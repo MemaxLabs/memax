@@ -164,6 +164,10 @@
       "path": ".codex/AGENTS.override.md",
       "user_owned": true,
       "current": "# Mine\n\nPrefer small commits.\n\n<!-- memax:start -->\n## Memax — Persistent Memory\nUse memax_recall at session start.\n<!-- memax:end -->\n\nMore of mine, below the block.  \n"
+    },
+    {
+      "kind": "gemini_user",
+      "current": "# Gemini's own\n\n## Gemini Added Memories\n- The person likes tabs.\n"
     }
   ]
 }

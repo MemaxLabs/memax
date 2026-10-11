@@ -101,8 +101,9 @@ export function findTwice(link: HomeLink): Tidy[] {
       if (!rules || !own || content === null) continue;
       const t = twiceIn(link.home, own, content, compiledStatements(rules));
       if (t) out.push(t);
-    } else if (f.kind === "codex_user") {
-      // Codex's file: the person's lines around Memax's block.
+    } else if (f.kind === "codex_user" || f.kind === "gemini_user") {
+      // Codex's and Gemini's file: the person's lines around Memax's block.
+      // Antigravity reads ~/.gemini/GEMINI.md beside it too.
       const content = readText(f.abs);
       let block: string | null = null;
       try {
@@ -111,8 +112,18 @@ export function findTwice(link: HomeLink): Tidy[] {
         block = null;
       }
       if (content === null || !block) continue;
-      const t = twiceIn(link.home, f.abs, content, compiledStatements(block));
+      const statements = compiledStatements(block);
+      const t = twiceIn(link.home, f.abs, content, statements);
       if (t) out.push(t);
+      if (f.kind === "gemini_user") {
+        const beside = join(dirname(f.abs), "GEMINI.md");
+        const theirs = readText(beside);
+        const g =
+          theirs === null
+            ? null
+            : twiceIn(link.home, beside, theirs, statements);
+        if (g) out.push(g);
+      }
     }
   }
   return out;

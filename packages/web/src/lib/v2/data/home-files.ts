@@ -39,24 +39,29 @@ export type TargetEntry =
 
 /**
  * Where each agent with a home adapter reads a Personal space by default
- * (personal-layer design §3.2, this slice: Claude Code and Codex). A
- * machine may resolve another path (CLAUDE_CONFIG_DIR, CODEX_HOME).
+ * (personal-layer design §3.2): Claude Code, Codex, and Gemini's file,
+ * which Antigravity reads (and Gemini CLI once it reads AGENTS.md). A
+ * machine may resolve another path (CLAUDE_CONFIG_DIR, CODEX_HOME,
+ * GEMINI_CLI_HOME).
  */
 export const HOME_FILE_OF_AGENT: Readonly<Record<string, string>> = {
   "claude-code": "~/.claude/rules/memax-personal.md",
   codex: "~/.codex/AGENTS.md",
+  gemini: "~/.gemini/AGENTS.md",
 };
 
 /** The agent a home kind is written for; the canonical copy (agents_md) is for people and agents with no file. */
 export function homeAgent(kind: TargetKind): string | null {
   if (kind === "claude_user") return "claude-code";
   if (kind === "codex_user") return "codex";
+  if (kind === "gemini_user") return "gemini";
   return null;
 }
 
-/** Whether Memax writes one block in a file the person owns (Codex's AGENTS.md), rather than the whole file. */
+/** Whether Memax writes one block in a file the person owns (Codex's or Gemini's AGENTS.md), rather than the whole file. */
 export function isBlock(target: Pick<TargetView, "kind" | "path">): boolean {
-  if (target.kind === "codex_user") return true;
+  if (target.kind === "codex_user" || target.kind === "gemini_user")
+    return true;
   // Claude Code's fallback for an old Claude Code: a block in ~/.claude/CLAUDE.md.
   return target.kind === "claude_user" && /CLAUDE\.md$/.test(target.path ?? "");
 }

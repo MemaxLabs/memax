@@ -10,9 +10,9 @@
  * Cursor's and Claude's) would load each scoped fact twice
  * (adapter-load-matrix-2026-10.md). The GEMINI.md shim is opt-in too.
  *
- * The home adapters (`claude_user`, `codex_user`) write a personal space
- * into one agent's user-level file on a linked machine. They're never
- * defaults: a machine gets the files its person approved there.
+ * The home adapters (`claude_user`, `codex_user`, `gemini_user`) write a
+ * personal space into one agent's user-level file on a linked machine.
+ * They're never defaults: a machine gets the files its person approved.
  */
 import type { AdapterKind, TargetSettings } from "../types.js";
 import type { Adapter } from "./adapter.js";
@@ -25,6 +25,7 @@ import { codexUser } from "./codex-user.js";
 import { copilot } from "./copilot.js";
 import { cursorMdc } from "./cursor-mdc.js";
 import { geminiMd } from "./gemini-md.js";
+import { geminiUser } from "./gemini-user.js";
 import { windsurf } from "./windsurf.js";
 
 /** Every adapter, in the order results list them. */
@@ -39,6 +40,7 @@ export const adapters: readonly Adapter[] = [
   claudeRules,
   claudeUser,
   codexUser,
+  geminiUser,
 ];
 
 /** The kinds that write into the person's home folder. */

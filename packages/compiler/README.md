@@ -66,8 +66,23 @@ The full example is in [`test/fixtures/demo-memax-v2`](test/fixtures/demo-memax-
 | `copilot`      | `.github/instructions/memax-<area>.instructions.md`          | Frontmatter `applyTo: "glob,glob"`                                      | Applied to matching files. Reads AGENTS.md (and root CLAUDE.md, GEMINI.md) for the rest                                                        | "No longer than 2 pages"                                                          | off (P3) |
 | `windsurf`     | `.devin/rules/memax-<area>.md` (`.windsurf/rules` works too) | Frontmatter `trigger: glob`, `globs`                                    | Applied to matching files. Reads AGENTS.md for the rest                                                                                        | **12,000 characters per file**, enforced                                          | off (P3) |
 | `claude_rules` | `.claude/rules/memax-<area>.md`                              | Frontmatter `paths:` as a quoted YAML list                              | Claude Code loads the rule for matching paths. Invalid YAML would make it load always, so globs are always quoted                              | Claude Code suggests under 200 lines (warning)                                    | off (P3) |
+| `claude_user`  | `~/.claude/rules/memax-personal.md`, Memax's own file        | Header, `# title`, the personal intro, `## sections`, one line of tail  | Claude Code loads a user rule without frontmatter in every session, before project rules. Or one block in `~/.claude/CLAUDE.md`                | 6 KiB by default; Claude Code suggests under 200 lines (warning)                  | home     |
+| `codex_user`   | One block in `~/.codex/AGENTS.md` (or `AGENTS.override.md`)  | The same, inside `<!-- memax:start -->` … `<!-- memax:end -->`          | Codex reads its global file first, in every project, trusted or not. It has no imports, so the lines are inline                                | 6 KiB by default; the global file isn't counted against the 32 KiB project cap    | home     |
 
-The P3 adapters render, parse and pass the same tests as the rest. They're left out of `defaultTargets()` until their phase. `gemini_md` stays out for good (`OPT_IN_TARGET_KINDS`): Antigravity CLI, which replaced Gemini CLI for most people, reads AGENTS.md, so the shim is compiled only for a space that asks for it (`memax connect gemini --gemini-md`). Every adapter has a `version`, its `limits` and the tool it's written for, so a caller can show "Cursor · reads AGENTS.md" when a target writes no files.
+The P3 adapters render, parse and pass the same tests as the rest. They're left out of `defaultTargets()` until their phase. `gemini_md` stays out for good (`OPT_IN_TARGET_KINDS`): Antigravity CLI, which replaced Gemini CLI for most people, reads AGENTS.md, so the shim is compiled only for a space that asks for it (`memax connect gemini --gemini-md`). Every adapter has a `version`, its `limits`, the tool it's written for and its `roots` (`repo`, `home` or both), so a caller can show "Cursor · reads AGENTS.md" when a target writes no files.
+
+### A personal space's files
+
+A personal space compiles into each agent's own user-level file on every machine its person links (`HOME_TARGET_KINDS`); paths are relative to the home folder. These files load in every session of every project, so:
+
+- **They stand alone.** Nothing is imported: each file carries its lines inline, and a missing file breaks nothing else.
+- **They hold what's true everywhere.** Shared facts and that agent's own (`scope.agents`), never a path-scoped fact, and Brief prose only when every memory it cites is in the file. The caller leaves facts tied to one repository out before compiling.
+- **They're short.** The default budget is 6 KiB (`HOME_BUDGET`, about 1,500 tokens), from 1 KiB up. The most-read facts go first and the rest stay live over MCP.
+- **They say how they rank.** Each says once: "The person you work with keeps these in Memax. Where a project's own files disagree, follow the project."
+- **They're only for a personal space.** A home kind in a project or team space is refused, so a project's facts never land in a home folder.
+- **The owner follows from the path.** `~/.claude/rules/memax-personal.md` is Memax's and written whole; `~/.codex/AGENTS.md` and `~/.claude/CLAUDE.md` are the person's, and Memax manages one block in them. Compile a block against `current: ""` (the person's own lines never leave their machine); splicing it into the file there with `upsertManagedBlock` gives the same bytes, and the same drift hash, as compiling against the whole file.
+
+The canonical copy is `agents_md` at `.memax/personal/AGENTS.md`: in a personal space it holds the shared facts only, says the same intro line and defaults to 6 KiB. The full example is in [`test/fixtures/personal-home`](test/fixtures/personal-home).
 
 ## The input
 
@@ -137,17 +152,17 @@ A `CompileInput` is plain JSON. It's validated in full, every problem is reporte
 - **Memories** are only what may compile: kept memories and open questions. Proposals, rejected, faded and forgotten memories never go in, and neither does anything from an external source (it's quarantined). The compiler refuses an input that carries any of them, rather than quietly dropping them.
 - **Target settings:**
 
-  | Setting          | Applies to              | Default            | Meaning                                                                                     |
-  | ---------------- | ----------------------- | ------------------ | ------------------------------------------------------------------------------------------- |
-  | `path`           | all but `chatgpt`       | per adapter        | A file for `agents_md` and the shims, a directory for scoped adapters                       |
-  | `include`        | all                     | `kept_and_open`    | `kept_only` leaves out the `open` section and every open question                           |
-  | `stale`          | all                     | `mark`             | `mark` writes `(Being verified)`; `omit` leaves stale facts out                             |
-  | `size_budget`    | all                     | 32 KiB             | Bytes per file, at least 1,024, capped by the tool's own limit                              |
-  | `sections`       | all                     | all but `overview` | Section keys to compile, in Brief order                                                     |
-  | `scoped`         | `agents_md`, `chatgpt`  | `inline`           | Path-scoped facts in `### In <globs>` subsections, or `omit` when scoped targets carry them |
-  | `canonical_path` | shims, scoped           | `AGENTS.md`        | The canonical file a shim imports and a scoped tool also reads                              |
-  | `user_owned`     | shims                   | `false`            | The person owns the file; Memax manages one block in it                                     |
-  | `current`        | shims with `user_owned` | `""`               | The file's content now                                                                      |
+  | Setting          | Applies to                  | Default             | Meaning                                                                                             |
+  | ---------------- | --------------------------- | ------------------- | --------------------------------------------------------------------------------------------------- |
+  | `path`           | all but `chatgpt`           | per adapter         | A file for `agents_md`, the shims and home files, a directory for scoped adapters                   |
+  | `include`        | all                         | `kept_and_open`     | `kept_only` leaves out the `open` section and every open question                                   |
+  | `stale`          | all                         | `mark`              | `mark` writes `(Being verified)`; `omit` leaves stale facts out                                     |
+  | `size_budget`    | all                         | 32 KiB, home 6 KiB  | Bytes per file, at least 1,024, capped by the tool's own limit                                      |
+  | `sections`       | all                         | all but `overview`  | Section keys to compile, in Brief order                                                             |
+  | `scoped`         | `agents_md`, `chatgpt`      | `inline`            | Path-scoped facts in `### In <globs>` subsections, or `omit` when scoped targets carry them         |
+  | `canonical_path` | shims, scoped               | `AGENTS.md`         | The canonical file a shim imports and a scoped tool also reads                                      |
+  | `user_owned`     | shims, home files           | `false`, home: path | The person owns the file; Memax manages one block in it. A home file's path decides, and must agree |
+  | `current`        | the same, with `user_owned` | `""`                | The file's content now; for a home file, `""` or the block alone                                    |
 
 ## The output
 

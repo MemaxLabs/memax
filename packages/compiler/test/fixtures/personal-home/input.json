@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "compile": { "id": "C-1204", "at": "2026-10-11T09:00:00Z" },
+  "space": {
+    "slug": "ana",
+    "name": "Personal",
+    "kind": "personal",
+    "url": "https://memax.app/ana/brief"
+  },
+  "brief": {
+    "id": "B-0051",
+    "title": "Ana's personal brief",
+    "summary": "How Ana likes to work, in every project.",
+    "sections": [
+      {
+        "key": "preferences",
+        "heading": "Preferences",
+        "items": [{ "ref": "M-0101" }, { "ref": "M-0102" }]
+      },
+      {
+        "key": "conventions",
+        "heading": "Conventions",
+        "items": [
+          { "ref": "M-0103" },
+          { "text": "Codex reviews stay read-only.", "cites": ["M-0104"] },
+          { "ref": "M-0105" },
+          { "ref": "M-0108" }
+        ]
+      },
+      {
+        "key": "decisions",
+        "heading": "Decisions",
+        "items": [
+          {
+            "text": "Web work uses pnpm and runs Playwright before a push.",
+            "cites": ["M-0106", "M-0109"]
+          },
+          { "ref": "M-0107" }
+        ]
+      },
+      {
+        "key": "open",
+        "heading": "Open questions",
+        "items": [{ "ref": "M-0110" }]
+      }
+    ]
+  },
+  "memories": [
+    {
+      "ref": "M-0101",
+      "statement": "Answer in British English, in short paragraphs, with no emoji.",
+      "section": "preferences",
+      "kind": "fact",
+      "state": "kept",
+      "trust": "person",
+      "read_score": 30
+    },
+    {
+      "ref": "M-0102",
+      "statement": "Before writing more than a screen of code, say the plan in three lines.",
+      "section": "preferences",
+      "kind": "fact",
+      "state": "kept",
+      "trust": "person",
+      "read_score": 18
+    },
+    {
+      "ref": "M-0111",
+      "statement": "Search with `rg`, not `grep`.",
+      "section": "preferences",
+      "kind": "fact",
+      "state": "kept",
+      "trust": "agent_own_work",
+      "read_score": 40
+    },
+    {
+      "ref": "M-0103",
+      "statement": "Commit messages are imperative and under 72 characters.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "trust": "person",
+      "read_score": 22
+    },
+    {
+      "ref": "M-0104",
+      "statement": "Run `codex exec` reviews with `--sandbox read-only`.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "trust": "person",
+      "scope": { "agents": ["codex"] },
+      "read_score": 5
+    },
+    {
+      "ref": "M-0105",
+      "statement": "Hand work to Codex with the memax plugin's handoff skill.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "trust": "person",
+      "scope": { "agents": ["claude-code"] },
+      "read_score": 7
+    },
+    {
+      "ref": "M-0108",
+      "statement": "Tabs in Go, two spaces everywhere else.",
+      "section": "conventions",
+      "kind": "fact",
+      "state": "kept",
+      "trust": "person",
+      "flags": ["conflict"],
+      "read_score": 3
+    },
+    {
+      "ref": "M-0106",
+      "statement": "Use pnpm in every JavaScript project, never npm or yarn.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "trust": "person",
+      "read_score": 12
+    },
+    {
+      "ref": "M-0107",
+      "statement": "New services default to Postgres 17.",
+      "section": "decisions",
+      "kind": "decision",
+      "state": "kept",
+      "trust": "person",
+      "flags": ["stale"],
+      "read_score": 9
+    },
+    {
+      "ref": "M-0109",
+      "statement": "In packages/web, run Playwright before pushing.",
+      "section": "decisions",
+      "kind": "fact",
+      "state": "kept",
+      "trust": "person",
+      "scope": { "paths": ["packages/web/**"] },
+      "read_score": 50
+    },
+    {
+      "ref": "M-0110",
+      "statement": "Whether to keep work and personal Claude accounts apart.",
+      "section": "open",
+      "kind": "fact",
+      "state": "open",
+      "trust": "person"
+    }
+  ],
+  "targets": [
+    { "kind": "agents_md", "path": ".memax/personal/AGENTS.md" },
+    { "kind": "claude_user" },
+    {
+      "kind": "claude_user",
+      "path": ".claude/CLAUDE.md",
+      "current": "# Me\r\n\r\nI use vim keybindings.\r\n"
+    },
+    { "kind": "codex_user", "user_owned": true, "current": "" },
+    {
+      "kind": "codex_user",
+      "path": ".codex/AGENTS.override.md",
+      "user_owned": true,
+      "current": "# Mine\n\nPrefer small commits.\n\n<!-- memax:start -->\n## Memax — Persistent Memory\nUse memax_recall at session start.\n<!-- memax:end -->\n\nMore of mine, below the block.  \n"
+    }
+  ]
+}

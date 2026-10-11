@@ -91,7 +91,7 @@ decision:
   options: [{"label": "River", "detail": "Postgres-backed"}, {"label": "Temporal", "detail": null}]
   consequences: null
   area: "infra"
-conditions: [{"kind": "file_exists", "path": "go.mod"}]
+conditions: [{"id": "c1", "kind": "dep_present", "manifest": "go.mod", "name": "github.com/riverqueue/river", "origin": "person"}, {"id": "c2", "kind": "path_exists", "path": "go.mod", "origin": "derived", "from": "source"}]
 scope: {}
 sources:
   - {"id": "0199…", "kind": "pr", "ref": "PR #212", "uri": "https://github.com/…/pull/212", "locator": {}, "trust": "repository", "external": false, "quote": null, "content_hash": null, "created_at": "…"}

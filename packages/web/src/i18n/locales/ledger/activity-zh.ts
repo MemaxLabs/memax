@@ -208,6 +208,7 @@ export const ledgerActivityZh: Translations["ledger"]["activity"] = {
     machineRenamed: "{actor}重命名了 {ref}。",
     machineUnlinked: "{actor}把这个空间从 {ref} 上移除了。",
     scoped: "{actor}改动了 {ref} 的适用范围。",
+    conditionsChanged: "{actor}改动了 {ref} 成立的前提。",
     other: "{actor}改动了 {ref}。",
   },
 };

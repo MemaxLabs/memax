@@ -148,9 +148,29 @@ export const ledgerMemoryEn = {
     everywhere: "Apply everywhere",
     everywhereDone: "{ref} applies everywhere now",
     staysTrue: "Stays true while",
+    // Each typed condition in words; {path}, {glob}, {text} and {name}
+    // are set in mono.
+    conditions: {
+      path: "{path} is in the repository",
+      glob: "A path matching {glob} is in the repository",
+      contains: "{path} contains {text}",
+      containsWord: "{path} contains the word {text}",
+      dep: "{name} is in {manifest}",
+      depRange: "{name} {range} is in {manifest}",
+      unchanged: "{path} is unchanged",
+      pr: {
+        open: "PR #{number} in {repo} is open",
+        merged: "PR #{number} in {repo} is merged",
+        closed: "PR #{number} in {repo} is closed",
+      },
+      until: "Until {date}",
+    },
+    // The checker flags, so the stamp is Memax's (stale design, decision 7).
     checked:
-      "Checked {when} by {name}. Dream flags it stale if either changes.",
-    checkedOne: "Checked {when} by {name}. Dream flags it stale if it changes.",
+      "Checked {when} by {name}. Memax marks it stale if one stops holding.",
+    checkedOne:
+      "Checked {when} by {name}. Memax marks it stale if it stops holding.",
+    notChecked: "Not checked yet.",
     proposed: "Waiting in Review. Keep it there, or edit it first.",
     openReview: "Open Review",
     forgotten:

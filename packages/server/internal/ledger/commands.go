@@ -83,7 +83,9 @@ type NewMemory struct {
 	Sources  []SourceInput
 	// StaleAfter is when the memory should be verified again.
 	StaleAfter *time.Time
-	// Conditions are "stays true while" predicates (a JSON array).
+	// Conditions are "stays true while" predicates a person attaches: typed
+	// (conditions.Condition), ids and origin set by the ledger. Memax
+	// derives path conditions on its own besides.
 	Conditions json.RawMessage
 	// Applies is where it applies, e.g. {"paths": ["packages/web/**"]} or
 	// {"repos": ["acme/web"]} (repo_scope.go): paths, agents and repos.
@@ -240,6 +242,9 @@ func (n *NewMemory) validate() error {
 	}
 	var err error
 	if n.Conditions, err = jsonOr(n.Conditions, "conditions", "[]", '['); err != nil {
+		return err
+	}
+	if _, err := sentConditions(n.Conditions); err != nil {
 		return err
 	}
 	if n.Applies, err = jsonOr(n.Applies, "scope", "{}", '{'); err != nil {

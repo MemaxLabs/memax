@@ -357,6 +357,10 @@ export function activitySentences(
     // Memax tying what an earlier init imported to its repository.
     case "scoped":
       return [one(s.scoped, { ref: text(entry.object.ref) })];
+    // Its "stays true while" conditions changed (no words: the receipt's
+    // reason says which were kept).
+    case "conditions_changed":
+      return [one(s.conditionsChanged, { ref: text(entry.object.ref) })];
     default: {
       // Every verb the API can send has words above; this fails to compile
       // when the spec gains one. A newer server can still send a verb this

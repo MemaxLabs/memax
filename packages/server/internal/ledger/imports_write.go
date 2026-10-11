@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger/conditions"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/textsig"
@@ -590,9 +591,18 @@ func (l *Ledger) importItems(ctx context.Context, meta Meta, req ImportRequest, 
 		if len(srcs) > 0 {
 			rc.Source = &ReceiptSource{Kind: string(srcs[0].Kind), Ref: srcs[0].Ref}
 		}
+		attached, err := w.personConditions(cmd.Conditions)
+		if err != nil {
+			return nil, err
+		}
+		had, err := storedConditions(attached)
+		if err != nil {
+			return nil, err
+		}
+		conds := conditions.Encode(conditionsFor(sp, had, cmd.Statement, fileRefs(cmd.Sources), cmd.Applies))
 		if err := writes.proposal(id, seq, &rc, memoryRow{
 			Statement: cmd.Statement, Section: cmd.Section, Kind: cmd.Kind, Decision: cmd.Decision, Trust: trust,
-			StaleAfter: cmd.StaleAfter, Conditions: cmd.Conditions, Applies: cmd.Applies,
+			StaleAfter: cmd.StaleAfter, Conditions: conds, Applies: cmd.Applies,
 			ValidFrom: cmd.ValidFrom, ValidTo: cmd.ValidTo,
 		}, st.hash, st.bands, state, srcs); err != nil {
 			return nil, err

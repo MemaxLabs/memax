@@ -26,6 +26,9 @@ type spaceRow struct {
 	Kind     policy.SpaceKind
 	Name     string
 	Rules    policy.Rules
+	// Repository is the repository the space compiles for ("owner/name");
+	// Memax derives conditions only where there is one.
+	Repository string
 	// OnV2 is whether the V2 record serves the space (hubs.v2_enabled_at),
 	// read in the same statement as the rest, and Switching whether this
 	// command is one of the space's own switch steps (withSwitch).
@@ -38,7 +41,7 @@ func (s spaceRow) policy() policy.Space {
 }
 
 // spaceSQL reads the space $1.
-const spaceSQL = `SELECT id, tenant_id, kind, name, rules, v2_enabled_at IS NOT NULL FROM v2.spaces WHERE id = $1`
+const spaceSQL = `SELECT id, tenant_id, kind, name, rules, v2_enabled_at IS NOT NULL, COALESCE(repository, '') FROM v2.spaces WHERE id = $1`
 
 func loadSpace(ctx context.Context, tx pgx.Tx, id uuid.UUID) (spaceRow, error) {
 	return scanSpace(ctx, tx.QueryRow(ctx, spaceSQL, id), id)
@@ -65,7 +68,7 @@ func switching(ctx context.Context, spaceID uuid.UUID) bool {
 func scanSpace(ctx context.Context, row pgx.Row, id uuid.UUID) (spaceRow, error) {
 	var s spaceRow
 	var rules []byte
-	err := row.Scan(&s.ID, &s.TenantID, &s.Kind, &s.Name, &rules, &s.OnV2)
+	err := row.Scan(&s.ID, &s.TenantID, &s.Kind, &s.Name, &rules, &s.OnV2, &s.Repository)
 	if errNoRows(err) {
 		return spaceRow{}, ErrNotFound
 	}

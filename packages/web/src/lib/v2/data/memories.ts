@@ -121,12 +121,29 @@ export interface SourceLine {
   url: string | null;
 }
 
-/** "Stays true while": `code` in mono, then the rest. */
-export interface ConditionLine {
-  key: string;
-  code: string | null;
-  text: string;
-}
+/**
+ * One "stays true while" condition, as data (the catalogue words it): the
+ * kinds of the record's typed conditions, and the date to check again.
+ */
+export type ConditionLine = { key: string } & (
+  | { kind: "path_exists"; path: string | null; glob: string | null }
+  | { kind: "file_contains"; path: string; text: string; word: boolean }
+  | {
+      kind: "dep_present";
+      manifest: string;
+      name: string;
+      range: string | null;
+    }
+  | { kind: "file_unchanged"; path: string }
+  | {
+      kind: "pr_state";
+      repo: string;
+      number: number;
+      state: "open" | "merged" | "closed";
+    }
+  /** Its date to check again (stale_after). */
+  | { kind: "date"; at: string }
+);
 
 export interface MergedNote {
   ref: string;
@@ -168,7 +185,7 @@ export interface MemoryRecord {
   /** Null until compile targets are served (PLACEHOLDER in the SDK). */
   reaches: TargetLine[] | null;
   conditions: ConditionLine[];
-  /** The last time someone checked it against its conditions. */
+  /** The last check of its conditions (null: not checked yet). */
   checked: { at: string; by: Actor | null } | null;
   forgotten: Forgotten | null;
   /** Agents' requests that a person forget it, waiting (Forget, or Keep it). */

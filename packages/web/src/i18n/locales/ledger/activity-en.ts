@@ -227,6 +227,8 @@ export const ledgerActivityEn = {
     machineUnlinked: "{actor} took this space off {ref}.",
     // Which repositories a memory applies in (scope.repos).
     scoped: "{actor} changed where {ref} applies.",
+    // Its "stays true while" conditions (Memax typing them, for now).
+    conditionsChanged: "{actor} changed what {ref} stays true while.",
     other: "{actor} changed {ref}.",
   },
 } as const;

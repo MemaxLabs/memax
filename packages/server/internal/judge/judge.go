@@ -284,7 +284,7 @@ func (j *Judge) stage1(ctx context.Context, cmd *ledger.RecordVerdict, mode ledg
 		v.Relation = ledger.RelationUnrelated
 	}
 	if j.cfg.Conditions && mode == ledger.JudgeProposal {
-		cmd.Conditions = validConditions(cls.Conditions, m.Statement, m.Sources, j.now())
+		cmd.Conditions = validConditions(cls.Conditions, m.Statement, m.Sources)
 	}
 }
 

@@ -4,6 +4,11 @@
 // design, and held under the agent's budget: forgets first, then gates,
 // then the changed lines, then compiles not on disk yet. The changed
 // lines are cut first when the block runs long (they are in the files).
+//
+// On a machine whose home is linked, a Personal section follows the
+// repository's, the same way (personal-layer design §7.1): what changed
+// in the agent's own home file. Outside a repository it is the block. The
+// budget is shared, the repository's lines first: Personal's are cut first.
 import type { CitedLine } from "./compiled.js";
 
 export interface BlockFile {
@@ -41,12 +46,20 @@ export interface BlockBehind {
   sync_state: string;
 }
 
-export interface BlockInput {
+/** One space's news: the repository's, or the Personal space's here. */
+export interface BlockSection {
   space: string;
   files: BlockFile[];
   forgotten: BlockForget[];
   gates: BlockGate[];
   behind: BlockBehind[];
+}
+
+export interface BlockInput {
+  /** The repository's section; absent outside a repository. */
+  repo?: BlockSection;
+  /** The Personal space's, on a machine whose home is linked. */
+  personal?: BlockSection;
   maxTokens: number;
 }
 
@@ -78,7 +91,7 @@ function attr(s: string): string {
   return s.replace(/[^A-Za-z0-9._-]/g, "");
 }
 
-function hasNews(b: BlockInput): boolean {
+function hasNews(b: BlockSection): boolean {
   return (
     b.forgotten.length > 0 ||
     b.gates.length > 0 ||
@@ -94,12 +107,17 @@ function hasNews(b: BlockInput): boolean {
   );
 }
 
-/** The fixed parts: everything but the changed lines. */
-function frame(b: BlockInput): { head: string[]; tail: string[] } {
-  const head: string[] = [
-    `<memax-context space="${attr(b.space)}">`,
-    "Memax: what changed in this repository's compiled context since your last session here. The files themselves are already loaded.",
-  ];
+const REPO_INTRO =
+  "Memax: what changed in this repository's compiled context since your last session here. The files themselves are already loaded.";
+const PERSONAL_ALONE =
+  "Memax: what changed in your Personal space's own file on this machine since your last session. It is already loaded.";
+
+/** The fixed parts of a section: everything but its changed lines. */
+function frame(
+  b: BlockSection,
+  intro: string,
+): { head: string[]; tail: string[] } {
+  const head: string[] = [intro];
   const tail: string[] = [];
   if (b.forgotten.length > 0) {
     head.push(
@@ -132,7 +150,6 @@ function frame(b: BlockInput): { head: string[]; tail: string[] } {
       `${x.path} here is ${x.here}; the space has compiled ${x.latest} since (${why}). Use memax_recall for anything newer.`,
     );
   }
-  tail.push("</memax-context>");
   return { head, tail };
 }
 
@@ -141,50 +158,81 @@ type Piece = { line: string } | { title: string; bullets: string[] };
 
 /** The block, or "" when nothing changed. */
 export function renderBlock(b: BlockInput): string {
-  if (!hasNews(b)) return "";
-  const { head, tail } = frame(b);
+  const sections: Array<{
+    head: string[];
+    tail: string[];
+    pieces: Piece[];
+  }> = [];
+  const repo = b.repo && hasNews(b.repo) ? b.repo : undefined;
+  const personal = b.personal && hasNews(b.personal) ? b.personal : undefined;
+  if (!repo && !personal) return "";
+  if (repo)
+    sections.push({
+      ...frame(repo, REPO_INTRO),
+      pieces: repo.files.flatMap(filePieces),
+    });
+  if (personal) {
+    const intro = repo
+      ? `Your Personal space (${personal.space}): what changed in your own file on this machine since your last session. It is already loaded too.`
+      : PERSONAL_ALONE;
+    sections.push({
+      ...frame(personal, intro),
+      pieces: personal.files.flatMap(filePieces),
+    });
+  }
+  const open = `<memax-context space="${attr((repo ?? personal)!.space)}">`;
+  const close = "</memax-context>";
   const fits = (s: string) =>
     estimateTokens(s) <= b.maxTokens && s.length <= MAX_CHARS;
-  const pieces = b.files.flatMap(filePieces);
-  const total = pieces.reduce(
-    (n, p) => n + ("bullets" in p ? p.bullets.length : 0),
+  const total = sections.reduce(
+    (n, sec) =>
+      n +
+      sec.pieces.reduce(
+        (m, p) => m + ("bullets" in p ? p.bullets.length : 0),
+        0,
+      ),
     0,
   );
-  // The first `keep` changed lines, in order; a list left empty goes.
-  const body = (keep: number): string[] => {
-    const out: string[] = [];
+  // The first `keep` changed lines, in order (the repository's first); a
+  // list left empty goes.
+  const lines = (keep: number): string[] => {
+    const out: string[] = [open];
     let left = keep;
-    for (const p of pieces) {
-      if ("line" in p) {
-        out.push(p.line);
-        continue;
+    sections.forEach((sec, i) => {
+      out.push(...sec.head);
+      for (const p of sec.pieces) {
+        if ("line" in p) {
+          out.push(p.line);
+          continue;
+        }
+        const shown = p.bullets.slice(0, Math.max(0, left));
+        left -= shown.length;
+        if (shown.length > 0) out.push(p.title, ...shown);
       }
-      const shown = p.bullets.slice(0, Math.max(0, left));
-      left -= shown.length;
-      if (shown.length > 0) out.push(p.title, ...shown);
-    }
-    if (keep < total) {
-      const more = total - keep;
-      out.push(
-        `…and ${more} more new or changed line${more === 1 ? "" : "s"}, already in the files above.`,
-      );
-    }
-    return out;
+      if (i === sections.length - 1 && keep < total) {
+        const more = total - keep;
+        out.push(
+          `…and ${more} more new or changed line${more === 1 ? "" : "s"}, already in the files above.`,
+        );
+      }
+      out.push(...sec.tail);
+    });
+    return [...out, close];
   };
   let keep = total;
-  let text = [...head, ...body(keep), ...tail].join("\n");
+  let text = lines(keep).join("\n");
   while (!fits(text) && keep > 0) {
     keep = Math.max(0, keep - Math.max(1, Math.ceil(keep / 4)));
-    text = [...head, ...body(keep), ...tail].join("\n");
+    text = lines(keep).join("\n");
   }
   if (!fits(text)) {
     // The notices alone run long: keep what fits, line by line.
     const out: string[] = [];
-    for (const l of [...head, ...body(0), ...tail.slice(0, -1)]) {
-      if (!fits([...out, l, "</memax-context>"].join("\n"))) break;
+    for (const l of lines(0).slice(0, -1)) {
+      if (!fits([...out, l, close].join("\n"))) break;
       out.push(l);
     }
-    text = [...out, "</memax-context>"].join("\n");
+    text = [...out, close].join("\n");
   }
   return `${text}\n`;
 }

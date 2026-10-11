@@ -14,7 +14,8 @@ import { reportLoad } from "../daemon/loads.js";
 import { fileLogger, type Logger } from "../daemon/log.js";
 import { daemonPaths, type DaemonPaths } from "../daemon/paths.js";
 import { readRegistry } from "../daemon/registry.js";
-import { WarmCache } from "../daemon/warm.js";
+import { readHomeLink } from "../daemon/home-link.js";
+import { HOME, WarmCache } from "../daemon/warm.js";
 import { flushLoads, pruneSessions, type FlushResult } from "./loads.js";
 
 const LOCK_STALE_MS = 60_000;
@@ -78,6 +79,20 @@ export async function flushOnce(
         try {
           warm.setTargets(id, slug, await api.listTargets(id));
           await warm.refresh(id, slug);
+        } catch {
+          // offline: the cache stays as it was
+        }
+      }
+      // This machine's home files, when the loads came from them.
+      const home = readHomeLink(paths);
+      if (!home) warm.clearHome();
+      else if (r.spaces.has(home.space_id)) {
+        try {
+          warm.setHome(
+            home,
+            await api.machineTargets(home.space_id, home.machine_id),
+          );
+          await warm.refresh(HOME, home.space_slug);
         } catch {
           // offline: the cache stays as it was
         }

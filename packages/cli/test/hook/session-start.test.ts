@@ -412,7 +412,15 @@ describe("pieces", () => {
     const dir = join(m.home, ".memax", "daemon");
     const d = daemonPaths(dir);
     const h = hookPaths(dir);
-    for (const k of ["dir", "repos", "pid", "warm", "loads", "seen"] as const)
+    for (const k of [
+      "dir",
+      "repos",
+      "home",
+      "pid",
+      "warm",
+      "loads",
+      "seen",
+    ] as const)
       expect(h[k]).toBe(d[k]);
   });
 

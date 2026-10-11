@@ -188,6 +188,41 @@ describe("a home link", () => {
   });
 });
 
+describe("the warm cache's home entry (the hook's Personal section)", () => {
+  it("holds this machine's home files and their compiles, and goes with the link", async () => {
+    const space = h.fake.addPersonalSpace();
+    const m = machine(space);
+    compileAll(m, PERSONAL_1);
+    await m.daemon.syncOnce();
+    const warm = () =>
+      JSON.parse(readFileSync(m.paths.warm, "utf8")) as {
+        home?: {
+          space_id: string;
+          machine_id: string;
+          targets: Array<{ kind: string; path: string; compile?: string }>;
+        };
+      };
+    const home = warm().home!;
+    expect(home).toMatchObject({
+      space_id: space.id,
+      machine_id: m.machine.id,
+    });
+    expect(home.targets.map((t) => [t.kind, t.path]).sort()).toEqual([
+      ["agents_md", CANON],
+      ["claude_user", RULES],
+      ["codex_user", CODEX],
+    ]);
+    expect(home.targets.every((t) => /^C-\d+$/.test(t.compile ?? ""))).toBe(
+      true,
+    );
+
+    h.fake.unlinkMachine(m.machine.id);
+    await m.daemon.homeOff("unlinked");
+    await m.daemon.syncOnce();
+    expect(warm().home).toBeUndefined();
+  });
+});
+
 describe("two machines (rule 6)", () => {
   it("a hand edit in one machine's block holds that machine only; the other keeps updating with its own lines intact", async () => {
     const space = h.fake.addPersonalSpace();

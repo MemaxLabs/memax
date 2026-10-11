@@ -359,7 +359,8 @@ func (s *PostgresStore) ListUserHubs(userID string) ([]model.HubWithRole, error)
 			COALESCE(h.header_aurora_mode, ''),
 			COALESCE(h.settings, '{}'::jsonb),
 			h.created_at, h.updated_at, hm.role,
-			(SELECT COUNT(*) FROM memories m WHERE m.hub_id = h.id AND m.state != 'archived')
+			(SELECT COUNT(*) FROM memories m WHERE m.hub_id = h.id AND m.state != 'archived'),
+			h.v2_enabled_at IS NOT NULL
 		FROM hubs h
 		JOIN hub_members hm ON h.id = hm.hub_id
 		WHERE hm.user_id = $1
@@ -374,15 +375,16 @@ func (s *PostgresStore) ListUserHubs(userID string) ([]model.HubWithRole, error)
 		var h model.Hub
 		var role string
 		var memoryCount int
+		var onV2 bool
 		if err := rows.Scan(&h.ID, &h.Name, &h.Icon, &h.Accent, &h.Slug, &h.HubType, &h.Plan, &h.OwnerID,
 			&h.AllowContributorTopics, &h.AllowContributorDreams,
 			&h.ContributorDeletePolicy,
 			&h.HeaderAuroraMode,
 			&h.Settings,
-			&h.CreatedAt, &h.UpdatedAt, &role, &memoryCount); err != nil {
+			&h.CreatedAt, &h.UpdatedAt, &role, &memoryCount, &onV2); err != nil {
 			return nil, fmt.Errorf("scan hub row: %w", err)
 		}
-		result = append(result, model.HubWithRole{Hub: h, Role: role, MemoryCount: memoryCount})
+		result = append(result, model.HubWithRole{Hub: h, Role: role, MemoryCount: memoryCount, OnV2: onV2})
 	}
 	return result, rows.Err()
 }

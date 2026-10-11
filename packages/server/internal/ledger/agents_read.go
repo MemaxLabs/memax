@@ -337,8 +337,9 @@ func (l *Ledger) GetConnection(ctx context.Context, scope Scope, id uuid.UUID) (
 // ConnectionForCredential is the connection a credential is bound to,
 // with its levels in the scope's spaces, or nil when it has none. It is
 // on the path of every agent request, so it reads only what principal
-// resolution needs, in one query. The scope's PersonID must be the
-// credential's owner.
+// resolution needs, in one query, with whether notices wait for it (the
+// next response delivers them; without any, nothing is written). The
+// scope's PersonID must be the credential's owner.
 func (l *Ledger) ConnectionForCredential(ctx context.Context, scope Scope, kind CredentialKind, id uuid.UUID) (*Connection, error) {
 	if l == nil {
 		return nil, ErrDisabled
@@ -352,13 +353,14 @@ func (l *Ledger) ConnectionForCredential(ctx context.Context, scope Scope, kind 
 			SELECT c.id, c.person_id, c.agent, c.display_name, c.surface, c.credential_kind, c.credential_id,
 			       c.state, c.last_seen_at,
 			       COALESCE(array_agg(s.space_id ORDER BY s.space_id) FILTER (WHERE s.space_id IS NOT NULL), '{}'),
-			       COALESCE(array_agg(s.autonomy ORDER BY s.space_id) FILTER (WHERE s.space_id IS NOT NULL), '{}')
+			       COALESCE(array_agg(s.autonomy ORDER BY s.space_id) FILTER (WHERE s.space_id IS NOT NULL), '{}'),
+			       EXISTS (SELECT 1 FROM v2.agent_notices n WHERE n.connection_id = c.id AND n.delivered_at IS NULL)
 			  FROM v2.agent_connections c
 			  LEFT JOIN v2.agent_connection_spaces s ON s.connection_id = c.id AND s.space_id = ANY($4)
 			 WHERE c.credential_kind = $1 AND c.credential_id = $2 AND c.person_id = $3
 			 GROUP BY c.id`, string(kind), id, scope.PersonID, scope.SpaceIDs()).
 			Scan(&c.ID, &c.PersonID, &c.Agent, &c.DisplayName, &c.Surface, &c.Credential.Kind, &c.Credential.ID,
-				&c.State, &c.LastSeenAt, &spaces, &levels)
+				&c.State, &c.LastSeenAt, &spaces, &levels, &c.NoticesWaiting)
 		if errNoRows(err) {
 			return nil
 		}

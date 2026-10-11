@@ -880,9 +880,13 @@ func (h *MCPHandler) toolTopics(r *http.Request, args json.RawMessage, ownerID s
 // --- Helpers ---
 
 func (h *MCPHandler) accessibleMCPHubs(r *http.Request, ownerID string) ([]model.HubWithRole, error) {
-	hubs, err := h.store.ListUserHubs(ownerID)
-	if err != nil {
-		return nil, err
+	// HubContext read the list for this request already.
+	hubs, ok := RequestHubs(r, ownerID)
+	if !ok {
+		var err error
+		if hubs, err = h.store.ListUserHubs(ownerID); err != nil {
+			return nil, err
+		}
 	}
 
 	accessibleIDs := GetAccessibleHubIDs(r)

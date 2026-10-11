@@ -276,13 +276,10 @@ type MemoryHistory struct {
 func (l *Ledger) GetMemoryHistory(ctx context.Context, scope Scope, ref string) (*MemoryHistory, error) {
 	var out *MemoryHistory
 	err := l.Read(ctx, scope, func(tx pgx.Tx) error {
-		id, err := resolveRef(ctx, tx, scope, ref)
-		if err != nil {
-			return err
-		}
 		// Its sources, details, versions and receipts in one round trip (with
 		// its row too, when the scope's one space says where to look).
 		var m *Memory
+		var id uuid.UUID
 		var space uuid.UUID // the memory's, once known
 		var versions []MemoryVersion
 		var receipts ReceiptPage
@@ -313,18 +310,23 @@ func (l *Ledger) GetMemoryHistory(ctx context.Context, scope Scope, ref string) 
 				return err
 			})
 		}
+		var err error
 		if spaces := scope.SpaceIDs(); len(spaces) == 1 {
 			// The memory's space is the scope's one: its versions and
 			// receipts can be asked for with its row.
 			space = spaces[0]
+			if id, err = resolveRef(ctx, tx, scope, ref); err != nil {
+				return err
+			}
 			if m, err = loadFull(ctx, tx, scope, id, withVersions, withReceipts); err != nil {
 				return err
 			}
 		} else {
-			if m, err = loadMemory(ctx, tx, scope, id, false); err != nil {
+			// The display ID resolves in the statement that reads the row.
+			if m, err = findRef(ctx, tx, scope, ref); err != nil {
 				return err
 			}
-			space = m.SpaceID
+			id, space = m.ID, m.SpaceID
 			if err := attachDetails(ctx, tx, []*Memory{m}, withSources(m), withVersions, withReceipts); err != nil {
 				return err
 			}

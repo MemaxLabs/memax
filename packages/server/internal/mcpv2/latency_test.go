@@ -310,14 +310,19 @@ func TestMCPRoundTrips(t *testing.T) {
 	// Before the pipelined ledger (Oct 7, 2026) these were 46, 39, 42, 30,
 	// 23 and 23. Unscoped recall and search were 24 and 21 until they
 	// stopped running V1's pipeline with no space on V1 in reach (the rig
-	// has none).
+	// has none). On Oct 11 they were 16, 17, 19, 13, 14 and 13, until the
+	// calls reused HubContext's hub list (which says which hubs are on V2)
+	// instead of reading it and spacemode again, a get resolved its ref in
+	// the statement that reads the memory, notices were taken only when
+	// the connection's read said some wait, and last_used was written once
+	// a minute.
 	budgets := map[string]int{
-		opRecall:      16,
-		opRecallSpace: 17,
-		opDigest:      19,
-		opSearch:      13,
-		opSearchSpace: 14,
-		opGet:         13,
+		opRecall:      12,
+		opRecallSpace: 12,
+		opDigest:      15,
+		opSearch:      9,
+		opSearchSpace: 9,
+		opGet:         8,
 	}
 	for _, op := range r.ops() {
 		for range 3 {

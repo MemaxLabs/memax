@@ -130,6 +130,7 @@ function FrameReady({
   const nav = useRailProps({
     space,
     overview: overview.data,
+    overviewFailed: overview.isError,
     route: missing ? undefined : route,
     inSettings,
     viewer,

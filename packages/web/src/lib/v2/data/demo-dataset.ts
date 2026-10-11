@@ -132,7 +132,9 @@ export const DEMO_OVERVIEWS: Readonly<Record<string, SpaceOverview>> = {
     decisions: null,
   },
   "memax-web": EMPTY,
-  // The space still on V1 (demo-switch-data.ts) has no V2 record yet.
+  // The space still on V1 (demo-switch-data.ts), once this session has
+  // switched it: an empty V2 record. Until then the frame shows
+  // SPACE_ON_V1_OVERVIEW and reads nothing.
   "acme-web": EMPTY,
   "memax-team": {
     ...EMPTY,

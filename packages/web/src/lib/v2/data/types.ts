@@ -76,7 +76,9 @@ export type SyncLine =
   | { kind: "waiting-delivery"; files: number }
   | { kind: "no-agents" }
   /** PLACEHOLDER: the API serves no compile targets yet. */
-  | { kind: "not-compiling" };
+  | { kind: "not-compiling" }
+  /** The space is still on V1: nothing compiles from it until it switches. */
+  | { kind: "on-v1" };
 
 /** Everything the frame and the page headers show about one space. */
 export interface SpaceOverview {
@@ -229,3 +231,28 @@ export interface KeepResult {
 export function waitingOnYou(overview: SpaceOverview): number {
   return overview.waiting + (overview.gatesWaiting ?? 0);
 }
+
+/**
+ * The overview of a space still on V1 (SpaceSummary.onV2 false): it has
+ * no V2 record, so nothing waits in Review, nothing is kept or compiled
+ * and no agent is connected on V2, and nothing needs reading to say so.
+ * The status line says it's on V1. Unknowns stay null, as everywhere.
+ */
+export const SPACE_ON_V1_OVERVIEW: Readonly<SpaceOverview> = {
+  waiting: 0,
+  gatesWaiting: 0,
+  oldestWaitingAt: null,
+  reviewFilters: null,
+  lastReview: null,
+  waitingBreakdown: null,
+  openHandoffs: 0,
+  handoffs: 0,
+  status: { kind: "on-v1" },
+  dream: null,
+  memories: { any: false, kept: 0, forgotten: 0 },
+  brief: null,
+  agents: { connected: 0, active: 0 },
+  targets: { total: 0, inSync: 0 },
+  activity: { any: false },
+  decisions: null,
+};

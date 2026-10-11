@@ -61,6 +61,10 @@ export const ledgerAppEn = {
       waitingDeliveryOne: "1 file waiting for the CLI",
       noAgents: "No agents yet",
       notCompiling: "Not compiling yet",
+      onV1: "Still on V1",
+      // While the space's status loads, and when it couldn't be read.
+      loading: "Loading",
+      failed: "Status didn't load",
     },
     reviewCount: "{n} waiting on you",
     reviewCountOne: "1 waiting on you",

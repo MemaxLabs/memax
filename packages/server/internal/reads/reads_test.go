@@ -152,7 +152,9 @@ func TestRecorder(t *testing.T) {
 			s.fail.Store(false)
 			r.Record(ev())
 			r.Close()
-			if st := r.Stats(); st.Written != 1 || st.FlushErrors != 1 {
+			// A slow runner can tick between the three Records, so they fail
+			// in one batch or more: every failed read is counted either way.
+			if st := r.Stats(); st.Written != 1 || st.DroppedFailed != 3 || st.FlushErrors < 1 || st.FlushErrors > 3 {
 				t.Errorf("after recovering: %+v", st)
 			}
 		}},

@@ -12,11 +12,13 @@ import {
   renderDaemonStatus,
 } from "../../src/commands/daemon-status.js";
 import {
+  homeSwitchedPerson,
   linkHome,
   machineName,
   unlinkHome,
   type HomeDeps,
 } from "../../src/commands/link-home.js";
+import { tokenSubject } from "../../src/lib/credentials.js";
 import { buildStatus, renderStatus } from "../../src/commands/status.js";
 import { readHomeLink } from "../../src/lib/daemon/home-link.js";
 import { OneShotDelivery } from "../../src/lib/daemon/oneshot.js";
@@ -80,6 +82,7 @@ function deps(over: Partial<HomeDeps> = {}): HomeDeps {
     env: {},
     platform: "linux",
     deviceId: "4b0e7a2c-5d1f-4c8e-9a6b-3f2d1e0c9b8a",
+    personId: "ana",
     hostname: "work-mbp.local",
     confirm: async () => true,
     oneShot,
@@ -196,6 +199,67 @@ describe("memax link --home", () => {
   it("names the machine from the short host name", () => {
     expect(machineName("ana-mbp.local")).toBe("ana-mbp");
     expect(machineName("")).toBe("this machine");
+  });
+});
+
+describe("memax login as someone else", () => {
+  /** A session token naming `sub`, as the server's are (unsigned here). */
+  const token = (sub: string) =>
+    [
+      Buffer.from('{"alg":"HS256"}').toString("base64url"),
+      Buffer.from(JSON.stringify({ sub, exp: 9e9 })).toString("base64url"),
+      "sig",
+    ].join(".");
+  const login = (sub: string) =>
+    homeSwitchedPerson(tokenSubject(token(sub)), {
+      paths: h.paths,
+      out: (l) => out.push(l),
+      oneShot,
+    });
+
+  it("records whose link it is", async () => {
+    h.fake.addPersonalSpace();
+    await linkHome({ yes: true }, deps());
+    expect(readHomeLink(h.paths)?.person_id).toBe("ana");
+  });
+
+  it("the same person signing in again changes nothing", async () => {
+    h.fake.addPersonalSpace();
+    await linkHome({ yes: true }, deps());
+    const before = readFileSync(join(h.home, ".codex/AGENTS.md"), "utf8");
+    out = [];
+    expect(await login("ana")).toBe(false);
+    expect(out).toEqual([]);
+    expect(readHomeLink(h.paths)).not.toBeNull();
+    expect(readFileSync(join(h.home, ".codex/AGENTS.md"), "utf8")).toBe(before);
+    expect(existsSync(join(h.home, ".claude/rules/memax-personal.md"))).toBe(
+      true,
+    );
+  });
+
+  it("someone else signing in takes the previous person's layer off first, and their link", async () => {
+    h.fake.addPersonalSpace();
+    await linkHome({ yes: true }, deps());
+    out = [];
+    const requests = h.fake.log.length;
+    expect(await login("bo")).toBe(true);
+    // From what this machine wrote alone: nothing asked of the server.
+    expect(h.fake.log.length).toBe(requests);
+    expect(existsSync(join(h.home, ".claude/rules/memax-personal.md"))).toBe(
+      false,
+    );
+    expect(existsSync(join(h.home, ".memax/personal/AGENTS.md"))).toBe(false);
+    expect(readFileSync(join(h.home, ".codex/AGENTS.md"), "utf8")).toBe(MINE);
+    expect(readHomeLink(h.paths)).toBeNull();
+    expect(plain(out)).toBe(
+      "  Took the previous account's Personal space off this machine's home.",
+    );
+  });
+
+  it("reads a session's person from its token, and nothing from an API key", () => {
+    expect(tokenSubject(token("ana"))).toBe("ana");
+    expect(tokenSubject("mxk_live_abc")).toBeNull();
+    expect(tokenSubject(undefined)).toBeNull();
   });
 });
 
@@ -355,6 +419,14 @@ describe("memax compile and memax status with a home link", () => {
       ),
     ).toContain(
       "It was unlinked, so nothing is written here. Link it again: memax link --home",
+    );
+
+    // The Personal space answered 404 (forgotten, deleted, someone else's).
+    after.report.home!.gone = true;
+    expect(
+      plain(renderStatus(after.report, after.targets, new Date(), [])),
+    ).toContain(
+      "Your Personal space isn't there for this account, so its files are off this machine. Forget the link: memax unlink --home",
     );
   });
 });

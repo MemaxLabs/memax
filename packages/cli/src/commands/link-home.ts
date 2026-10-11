@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import chalk from "chalk";
 import type { Memax, V2 } from "memax-sdk";
-import { controlRequest } from "../lib/daemon/control.js";
+import { controlRequest, type HomeOffReason } from "../lib/daemon/control.js";
 import {
   readHomeLink,
   removeHomeLink,
@@ -43,6 +43,8 @@ export interface HomeDeps {
   env: Record<string, string | undefined>;
   platform: NodeJS.Platform;
   deviceId: string;
+  /** Who is signed in (the session's `sub`), recorded in home.json. */
+  personId: string | null;
   hostname?: string;
   /** Asks the consent's question (tests answer it). */
   confirm(question: string): Promise<boolean>;
@@ -159,6 +161,7 @@ export async function linkHome(
     space_id: space.id,
     space_slug: space.slug,
     machine_id: res.machine.id,
+    ...(d.personId ? { person_id: d.personId } : {}),
     home: d.home,
     files: approved.flatMap((f) => {
       const t = res.targets.find((x) => x.kind === f.kind && x.path === f.path);
@@ -214,7 +217,7 @@ export function offLines(
 /** Asks the running daemon, else this process, to take the layer off. */
 async function homeOffHere(
   d: Pick<UnlinkHomeDeps, "paths" | "oneShot">,
-  reason: "unlinked" | "signed_out",
+  reason: HomeOffReason,
 ): Promise<HomeSnapshot | null> {
   const ask = () =>
     controlRequest(
@@ -249,6 +252,27 @@ export async function homeSignedOut(
   );
   for (const line of offLines(link.home, snap, link)) d.out(line);
   d.out("");
+}
+
+/**
+ * memax login as someone other than the person this machine's home was
+ * linked for: their layer comes off before anything else (the same
+ * take-off as logout), and their link goes, since it isn't the new
+ * person's. The same person signing in again changes nothing. True when
+ * it took the layer off.
+ */
+export async function homeSwitchedPerson(
+  next: string | null,
+  d: Pick<UnlinkHomeDeps, "paths" | "oneShot" | "out">,
+): Promise<boolean> {
+  const link = readHomeLink(d.paths);
+  if (!link?.person_id || !next || next === link.person_id) return false;
+  await homeOffHere(d, "other_person");
+  if (readHomeLink(d.paths)) removeHomeLink(d.paths);
+  d.out(
+    "  Took the previous account's Personal space off this machine's home.",
+  );
+  return true;
 }
 
 export interface UnlinkHomeDeps {

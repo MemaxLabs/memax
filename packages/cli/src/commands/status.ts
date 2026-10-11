@@ -55,6 +55,8 @@ export interface StatusReport {
     targets: StatusReport["targets"];
     /** An agent reads another file than the one linked (Codex's override). */
     moved: string[];
+    /** The Personal space answered 404 for this session: off this machine. */
+    gone: boolean;
   };
 }
 
@@ -102,6 +104,7 @@ export async function buildStatus(
   homeTargets: V2.Target[];
 }> {
   const link = readHomeLink(o.paths);
+  let gone = false;
   const { space, root } = await resolveSpace(memax, {
     space: o.space,
     cwd: o.cwd,
@@ -118,9 +121,12 @@ export async function buildStatus(
       soft(memax.v2.agents.listInSpace(space.id)),
       controlRequest(o.paths, { cmd: "status" }, 1_000),
       link
-        ? soft(
-            memax.v2.targets.list(link.space_id, { machine: link.machine_id }),
-          )
+        ? memax.v2.targets
+            .list(link.space_id, { machine: link.machine_id })
+            .catch((err: { status?: number; code?: string }) => {
+              gone = err?.status === 404 && err?.code === "not_found";
+              return null;
+            })
         : null,
       link ? soft(memax.v2.machines.list(link.space_id)) : null,
     ],
@@ -175,6 +181,7 @@ export async function buildStatus(
               : null,
             targets: home.map(targetRow),
             moved: movedFiles(link.home, link.files),
+            gone,
           },
         }
       : {}),
@@ -245,6 +252,12 @@ function renderHome(
 ): string[] {
   const who = h.machine ? ` · ${h.machine.label} (${h.machine.name})` : "";
   const lines = [`  This machine's home → ${chalk.bold(h.space)}${who}`];
+  if (h.gone) {
+    lines.push(
+      `  ${chalk.yellow(MARK.waiting)} Your Personal space isn't there for this account, so its files are off this machine. Forget the link: ${chalk.bold("memax unlink --home")}`,
+    );
+    return lines;
+  }
   if (h.machine && !h.machine.linked) {
     lines.push(
       `  ${chalk.yellow(MARK.waiting)} It was unlinked, so nothing is written here. Link it again: ${chalk.bold("memax link --home")}`,

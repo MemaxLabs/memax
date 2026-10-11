@@ -11,6 +11,7 @@ import type { Command } from "commander";
 import type { Memax, V2 } from "memax-sdk";
 import { getClient } from "../lib/client.js";
 import { getOrCreateDeviceID } from "../lib/config.js";
+import { currentPerson } from "../lib/credentials.js";
 import { controlRequest } from "../lib/daemon/control.js";
 import { daemonPaths, type DaemonPaths } from "../lib/daemon/paths.js";
 import { linkRepo, unlinkRepo } from "../lib/daemon/registry.js";
@@ -271,6 +272,7 @@ export function registerLinkCommands(program: Command): void {
             env: process.env,
             platform: process.platform,
             deviceId: getOrCreateDeviceID(),
+            personId: currentPerson(),
             confirm: confirmDefault,
             oneShot: () => openOneShot({ memax, paths }),
           });

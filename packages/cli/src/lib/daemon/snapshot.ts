@@ -71,6 +71,8 @@ export interface HomeSnapshot extends RepoSnapshot {
   machine_id: string;
   /** Set while the layer is off because this machine is signed out. */
   signed_out?: boolean;
+  /** Set while the layer is off because the Personal space answered 404. */
+  gone?: boolean;
 }
 
 export interface DaemonSnapshot {

@@ -89,7 +89,7 @@ export const ledgerMachinesZh: Translations["ledger"]["machines"] = {
       codex_user:
         "{machine} 上 {file} 里属于 Memax 的那一段，Codex 在每个项目里都会读。这个文件里你自己写的内容只留在你的电脑上，Memax 不读。",
       copilot_user:
-        "{machine} 上 {file} 里属于 Memax 的那一段，Copilot CLI 和 VS Code 的 Copilot 智能体在每个项目里都会读。这个文件里你自己写的内容只留在你的电脑上，Memax 不读。",
+        "{machine} 上 {file} 里属于 Memax 的那一段，Copilot CLI 和 VS Code 的 Copilot Agent 在每个项目里都会读。这个文件里你自己写的内容只留在你的电脑上，Memax 不读。",
       gemini_user:
         "{machine} 上 {file} 里属于 Memax 的那一段，Antigravity 在每个项目里都会读；Gemini CLI 设置成读 AGENTS.md 之后也会读。这个文件里你自己写的内容只留在你的电脑上，Memax 不读。",
       agents_md:

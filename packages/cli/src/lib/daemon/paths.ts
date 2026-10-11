@@ -32,6 +32,12 @@ export interface DaemonPaths {
   loads: string;
   /** What each agent's last session in each repository was told (lib/hook/seen.ts). */
   seen: string;
+  /**
+   * The checks (checks.ts): per linked repository, the results last
+   * reported (refs, condition ids, hashes, outcomes and paths, never a
+   * file's contents), and the reports waiting to be sent.
+   */
+  checks: string;
 }
 
 // sun_path is 104 bytes on macOS and 108 on Linux.
@@ -52,6 +58,7 @@ export function daemonPaths(
     warm: join(dir, "warm.json"),
     loads: join(dir, "loads"),
     seen: join(dir, "seen"),
+    checks: join(dir, "checks"),
   };
 }
 

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,24 @@ type cloudAgentResult struct {
 }
 
 var startKeyShape = regexp.MustCompile(`^mxk_[0-9a-f]{64}$`)
+
+type agentStartWire struct {
+	At         time.Time `json:"at"`
+	SpaceID    uuid.UUID `json:"space_id"`
+	SessionRef string    `json:"session_ref"`
+	Compiles   []string  `json:"compiles"`
+	Told       []string  `json:"told"`
+}
+
+// lastStart is the agent page's last start, or nil when it has none.
+func (f *startFixture) lastStart(token string, agent uuid.UUID) *agentStartWire {
+	f.t.Helper()
+	var d struct {
+		LastStart *agentStartWire `json:"last_start"`
+	}
+	f.do(call{method: "GET", path: agentPath(agent, ""), token: token}).ok(http.StatusOK, &d)
+	return d.LastStart
+}
 
 func (f *startFixture) cloudAgent(token string, body map[string]any, header map[string]string,
 	sign ...func(*http.Request, []byte)) cloudAgentResult {
@@ -83,6 +102,11 @@ func TestCloudAgentsAndStartKeys(t *testing.T) {
 		t.Errorf("replay = %+v", again)
 	}
 
+	// Before its first start, its page has no last start.
+	if s := f.lastStart(cli, a.ID); s != nil {
+		t.Errorf("last start before any = %+v", s)
+	}
+
 	// The key starts sessions in its space, counted under the connection.
 	secret := made.Key.Secret
 	got := f.start(secret, startBody(agentsFile(f.c1, f.drift1)), nil)
@@ -91,6 +115,18 @@ func TestCloudAgentsAndStartKeys(t *testing.T) {
 	}
 	if n := f.loads(a.ID); n != 1 {
 		t.Errorf("%d loads under the cloud connection, want 1", n)
+	}
+	// Its page says when, which compile the files held, and what it was told.
+	told := append(refsOf(got.Files[0].Added), refsOf(got.Files[0].Changed)...)
+	slices.Sort(told)
+	if s := f.lastStart(cli, a.ID); s == nil || s.SpaceID != f.sp.id || !slices.Equal(s.Compiles, []string{f.c1}) ||
+		!slices.Equal(s.Told, told) || s.SessionRef != "cp-1" || time.Since(s.At) > time.Minute {
+		t.Errorf("last start = %+v, want %s and %v", s, f.c1, told)
+	}
+	// Another agent's page never has one: only cloud agents start this way.
+	f.start(f.key, startBody(agentsFile(f.c1, "")), map[string]string{"Idempotency-Key": uuid.NewString()})
+	if s := f.lastStart(f.tok, f.conn); s != nil {
+		t.Errorf("a V1 key's connection has a last start: %+v", s)
 	}
 	// Only there: another space of the person's is not found.
 	other := f.space(f.owner, policy.SpaceProject, "other")

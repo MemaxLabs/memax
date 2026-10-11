@@ -235,6 +235,17 @@ type AgentSession struct {
 	LastAt     time.Time `json:"last_at"`
 }
 
+// AgentStart is a cloud agent's latest counted session start, read back
+// from the start's reads: its compile loads (when, and the compiles the
+// repository's files held) and the digest read of the lines it was sent.
+type AgentStart struct {
+	At         time.Time `json:"at"`
+	SpaceID    uuid.UUID `json:"space_id"`
+	SessionRef string    `json:"session_ref,omitempty"`
+	Compiles   []string  `json:"compiles"`
+	Told       []string  `json:"told"`
+}
+
 // ConnectionDetail is one connection with what AgentDetail shows.
 type ConnectionDetail struct {
 	Connection *Connection
@@ -243,7 +254,40 @@ type ConnectionDetail struct {
 	RecentWrites []Receipt
 	// Sessions are its latest sessions, most recent first.
 	Sessions []AgentSession
+	// LastStart is a cloud agent's latest session start; nil for other
+	// agents and before the first.
+	LastStart *AgentStart
 }
+
+// lastStartSQL reads a connection's latest counted session start: the
+// compile loads of its latest one (one per file, all at one read_at),
+// and the digest read the handler recorded after answering it (the lines
+// sent; none when nothing changed), matched by session and by when the
+// database recorded both, so a start's own loaded_at doesn't move it.
+const lastStartSQL = `
+	WITH s AS (
+	  SELECT read_at, recorded_at, space_id, session_ref
+	    FROM v2.reads
+	   WHERE connection_id = $1 AND kind = 'compile_load' AND space_id = ANY($2)
+	   ORDER BY read_at DESC, recorded_at DESC
+	   LIMIT 1)
+	SELECT s.read_at, s.space_id, COALESCE(s.session_ref, ''),
+	       COALESCE((SELECT array_agg(DISTINCT c.seq ORDER BY c.seq)
+	                   FROM v2.reads r
+	                   JOIN v2.compile_runs c ON c.id = r.compile_id
+	                  WHERE r.connection_id = $1 AND r.kind = 'compile_load' AND r.space_id = s.space_id
+	                    AND r.read_at = s.read_at AND r.session_ref IS NOT DISTINCT FROM s.session_ref), '{}'),
+	       COALESCE((SELECT array_agg(m.seq ORDER BY m.seq)
+	                   FROM v2.memories m
+	                  WHERE m.id = ANY ((SELECT d.memory_ids
+	                                       FROM v2.reads d
+	                                      WHERE d.connection_id = $1 AND d.kind = 'digest' AND d.space_id = s.space_id
+	                                        AND d.session_ref IS NOT DISTINCT FROM s.session_ref
+	                                        AND d.recorded_at >= s.recorded_at
+	                                        AND d.recorded_at < s.recorded_at + interval '1 minute'
+	                                      ORDER BY d.recorded_at
+	                                      LIMIT 1)::uuid[])), '{}')
+	  FROM s`
 
 // DetailLimit bounds RecentWrites and Sessions.
 const DetailLimit = 10
@@ -328,10 +372,37 @@ func (l *Ledger) GetConnection(ctx context.Context, scope Scope, id uuid.UUID) (
 		if err != nil {
 			return fmt.Errorf("ledger: agent sessions: %w", err)
 		}
+		if c.Surface == SurfaceCloud {
+			if d.LastStart, err = lastStart(ctx, tx, c.ID, scope.SpaceIDs()); err != nil {
+				return err
+			}
+		}
 		out = d
 		return nil
 	})
 	return out, err
+}
+
+// lastStart is a cloud connection's latest counted session start, or nil.
+func lastStart(ctx context.Context, tx pgx.Tx, id uuid.UUID, spaces []uuid.UUID) (*AgentStart, error) {
+	var s AgentStart
+	var compiles, told []int64
+	err := tx.QueryRow(ctx, lastStartSQL, id, spaces).Scan(&s.At, &s.SpaceID, &s.SessionRef, &compiles, &told)
+	if errNoRows(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ledger: agent's last start: %w", err)
+	}
+	s.Compiles = make([]string, len(compiles))
+	for i, n := range compiles {
+		s.Compiles[i] = FormatRef(PrefixCompile, n)
+	}
+	s.Told = make([]string, len(told))
+	for i, n := range told {
+		s.Told[i] = FormatRef(PrefixMemory, n)
+	}
+	return &s, nil
 }
 
 // ConnectionForCredential is the connection a credential is bound to,

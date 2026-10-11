@@ -2586,7 +2586,8 @@ paths:
       description: |
         One agent connection with what it did this week, its latest writes
         (receipts, which never hold the words) and its latest sessions, in
-        your spaces. Disconnected agents can still be read.
+        your spaces, and for a cloud agent its latest session start.
+        Disconnected agents can still be read.
       responses:
         '200':
           description: The agent.
@@ -7815,6 +7816,41 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AgentSession'
+        last_start:
+          description: For a cloud agent, its latest session start that Memax counted; absent before its first.
+          $ref: '#/components/schemas/AgentStart'
+
+    AgentStart:
+      description: |
+        A cloud agent's latest counted session start
+        (`POST /v2/spaces/{space}/session-starts`): when, the compiles its
+        repository's files held, and the memories whose lines it was told
+        about because they were added or changed since. Read from the
+        start's compile loads and its digest read, so it holds refs, never
+        words. A start that found nothing new has an empty `told`.
+      type: object
+      additionalProperties: false
+      required: [at, space_id, compiles, told]
+      properties:
+        at:
+          description: When the session loaded the files.
+          $ref: '#/components/schemas/Timestamp'
+        space_id:
+          $ref: '#/components/schemas/Id'
+        session_ref:
+          $ref: '#/components/schemas/SessionRef'
+        compiles:
+          description: The compiles the session's files held, oldest first.
+          type: array
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/CompileRef'
+        told:
+          description: The memories whose lines the start sent, in display order (at most 200).
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/DisplayRef'
 
     AgentCommandResult:
       type: object

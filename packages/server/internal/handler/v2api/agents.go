@@ -25,6 +25,7 @@ type agentDetail struct {
 	ThisWeek     ledger.AgentWeek      `json:"this_week"`
 	RecentWrites []ledger.Receipt      `json:"recent_writes"`
 	Sessions     []ledger.AgentSession `json:"sessions"`
+	LastStart    *ledger.AgentStart    `json:"last_start,omitempty"`
 }
 
 type agentCommandResult struct {
@@ -103,6 +104,7 @@ func (h *Handler) getAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	writeData(w, http.StatusOK, agentDetail{
 		Agent: d.Connection, ThisWeek: d.Week, RecentWrites: nonNil(d.RecentWrites), Sessions: nonNil(d.Sessions),
+		LastStart: d.LastStart,
 	})
 }
 

@@ -251,6 +251,7 @@ export type AgentList = Schemas["AgentList"];
 export type AgentDetail = Schemas["AgentDetail"];
 export type AgentWeek = Schemas["AgentWeek"];
 export type AgentSession = Schemas["AgentSession"];
+export type AgentStart = Schemas["AgentStart"];
 export type AgentCommandResult = Schemas["AgentCommandResult"];
 /** A cloud agent's connection, and its start key's secret (shown once). */
 export type CloudAgentResult = Schemas["CloudAgentResult"];

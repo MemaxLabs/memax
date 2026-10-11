@@ -16,6 +16,7 @@ import { ledgerAccountZh } from "./account-zh";
 import { ledgerSettingsZh } from "./settings-zh";
 import { ledgerTodayZh } from "./today-zh";
 import { ledgerVerifyZh } from "./verify-zh";
+import { ledgerMachinesZh } from "./machines-zh";
 
 export const ledgerZh: Translations["ledger"] = {
   meta: {
@@ -47,6 +48,7 @@ export const ledgerZh: Translations["ledger"] = {
   review: ledgerReviewZh,
   memory: ledgerMemoryZh,
   verify: ledgerVerifyZh,
+  machines: ledgerMachinesZh,
   brief: ledgerBriefZh,
   today: ledgerTodayZh,
   dream: ledgerDreamZh,

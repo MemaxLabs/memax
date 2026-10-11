@@ -5,6 +5,7 @@ import { interpolate, useLocale } from "@/i18n";
 import { commandReason } from "@/lib/v2/brief-copy";
 import { count } from "@/lib/v2/copy";
 import { isRetryable, toFailure } from "@/lib/v2/data/command-error";
+import { groupTargets } from "@/lib/v2/data/home-files";
 import { targetName, type TargetView } from "@/lib/v2/data/targets";
 import type { SpaceSummary } from "@/lib/v2/data/types";
 import { IntentKeys } from "@/lib/v2/intent-keys";
@@ -64,11 +65,13 @@ export function useCompile(space: SpaceSummary) {
         });
         return;
       }
+      // A home file counts once, whatever the number of machines it's on.
+      const files = groupTargets(live).length;
       toast({
         text:
-          live.length === 1
+          files === 1
             ? interpolate(b.toast.compilingOne, { file: targetName(live[0]!) })
-            : count(b.toast.compilingOne, b.toast.compiling, live.length, {
+            : count(b.toast.compilingOne, b.toast.compiling, files, {
                 file: targetName(live[0]!),
               }),
       });

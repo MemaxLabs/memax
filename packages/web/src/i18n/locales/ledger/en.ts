@@ -18,6 +18,7 @@ import { ledgerReviewEn } from "./review-en";
 import { ledgerSettingsEn } from "./settings-en";
 import { ledgerTodayEn } from "./today-en";
 import { ledgerVerifyEn } from "./verify-en";
+import { ledgerMachinesEn } from "./machines-en";
 
 export const ledgerEn = {
   meta: {
@@ -51,6 +52,7 @@ export const ledgerEn = {
   review: ledgerReviewEn,
   memory: ledgerMemoryEn,
   verify: ledgerVerifyEn,
+  machines: ledgerMachinesEn,
   brief: ledgerBriefEn,
   today: ledgerTodayEn,
   dream: ledgerDreamEn,

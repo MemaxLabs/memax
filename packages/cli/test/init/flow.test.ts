@@ -276,7 +276,6 @@ describe("memax init", () => {
     expect(kinds).toEqual([
       ["agents_md", false],
       ["claude_md", true],
-      ["cursor_mdc", false],
       ["chatgpt", false],
     ]);
     expect(readFileSync(join(h.repo, ".memax.yml"), "utf8")).toContain(

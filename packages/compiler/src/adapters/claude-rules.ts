@@ -1,5 +1,7 @@
 /**
- * `claude_rules`: Claude Code path rules (P3, not in the default set).
+ * `claude_rules`: Claude Code path rules. Opt-in (OPT_IN_TARGET_KINDS): the
+ * CLAUDE.md shim already imports AGENTS.md's scoped subsections, and VS Code
+ * and Copilot CLI read this folder beside AGENTS.md.
  *
  * Path-scoped facts go to `.claude/rules/memax-<area>.md`. `paths:` is the
  * only frontmatter field Claude Code reads, and invalid YAML makes the rule

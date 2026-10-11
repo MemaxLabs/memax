@@ -327,7 +327,7 @@ func TestSwitchMovesEverythingAndLosesNothing(t *testing.T) {
 		kinds = append(kinds, k)
 	}
 	rows.Close()
-	if !slices.Equal(kinds, []string{"agents_md", "claude_md", "cursor_mdc"}) {
+	if !slices.Equal(kinds, []string{"agents_md", "claude_md"}) {
 		t.Errorf("targets = %v", kinds)
 	}
 	// The members' keys are connected at Propose (Read when they can't

@@ -190,7 +190,7 @@ func TestConfigureTarget(t *testing.T) {
 		ledger.TargetChatGPT:   {"", ledger.DeliveryCopy, ledger.ScopedInline},
 	}
 	ids := map[ledger.TargetKind]uuid.UUID{}
-	for _, k := range ledger.DefaultTargetKinds {
+	for _, k := range phase1Kinds {
 		tg := f.target(zz, space, k)
 		want := defaults[k]
 		if tg.Path != want.path || tg.Delivery != want.delivery || tg.Settings.Scoped != want.scoped ||
@@ -297,6 +297,11 @@ func TestConfigureTarget(t *testing.T) {
 	}
 }
 
+// phase1Kinds are the Phase 1 gate's four targets. A new space gets only
+// some of them by default (ledger.DefaultTargetKinds); Cursor's rules are
+// opt-in, and these tests configure all four.
+var phase1Kinds = []ledger.TargetKind{ledger.TargetAgentsMD, ledger.TargetClaudeMD, ledger.TargetCursorMDC, ledger.TargetChatGPT}
+
 // Rule 5's first half: whatever changes the kept set dirties every
 // target of the space in the same transaction, and queues its compile.
 func TestKeepDirtiesEveryTarget(t *testing.T) {
@@ -309,7 +314,7 @@ func TestKeepDirtiesEveryTarget(t *testing.T) {
 	f.brief(zz, space, 0, nil)
 	f.brief(zz, otherSpace, 0, nil)
 	var targets []*ledger.Target
-	for _, k := range ledger.DefaultTargetKinds {
+	for _, k := range phase1Kinds {
 		tg := f.target(zz, space, k)
 		f.compiled(tg, "v1 "+string(k))
 		targets = append(targets, tg)

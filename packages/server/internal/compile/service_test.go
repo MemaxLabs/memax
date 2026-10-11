@@ -85,7 +85,9 @@ func (f *fixture) seed() *seeded {
 			{Key: "conventions", Heading: "Conventions", Items: []ledger.BriefItem{{Ref: s.pnpm.Ref}}},
 			{Key: "open", Heading: "Open", Items: []ledger.BriefItem{{Ref: s.open.Ref}}},
 		}}).Brief
-	for _, k := range ledger.DefaultTargetKinds {
+	// The Phase 1 gate's four targets: the defaults plus Cursor's rules,
+	// which are opt-in.
+	for _, k := range []ledger.TargetKind{ledger.TargetAgentsMD, ledger.TargetClaudeMD, ledger.TargetCursorMDC, ledger.TargetChatGPT} {
 		s.targets[k] = f.target(s.owner, s.space, k)
 	}
 	return s

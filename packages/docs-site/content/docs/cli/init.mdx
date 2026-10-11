@@ -110,11 +110,13 @@ memax init [--space <slug>] [--yes] [--no-personal] [--no-connect]
    the consent `memax link --home` shows. `--yes` never links it unless
    you also pass `--home`. Outside a repository, it's the first file init
    gives.
-8. **Compile.** The space gets its targets (AGENTS.md, CLAUDE.md, scoped
-   Cursor rules, the ChatGPT copy-out), the repository is
-   [linked](/cli/link), and the daemon (or init itself, with `--no-daemon`)
-   writes them. It ends with `git status` for those files and three next
-   steps. A `GEMINI.md` isn't among them: Antigravity CLI reads AGENTS.md,
+8. **Compile.** The space gets its targets (AGENTS.md, CLAUDE.md, the
+   ChatGPT copy-out), the repository is [linked](/cli/link), and the
+   daemon (or init itself, with `--no-daemon`) writes them. It ends with
+   `git status` for those files and three next steps. Path-scoped facts
+   go in AGENTS.md under headings that name their paths, so each agent
+   reads them once; scoped rules files are opt-in. A `GEMINI.md` isn't
+   among them either: Antigravity CLI reads AGENTS.md,
    and for Gemini CLI, [`memax connect gemini --gemini-md`](/cli/connect)
    adds one.
 

@@ -1,7 +1,9 @@
 // Step 8 of memax init: compile (plan 25 §7.3, CompileDone). The space
-// gets its targets (AGENTS.md, the CLAUDE.md shim, scoped Cursor rules and
-// the ChatGPT copy-out) once it has a Brief; the repository is linked; and
-// the files are written here, by the daemon or once by this command.
+// gets its targets (AGENTS.md, which holds the path-scoped facts, the
+// CLAUDE.md shim and the ChatGPT copy-out; scoped rules files are opt-in,
+// since the agents that read them read AGENTS.md too) once it has a Brief;
+// the repository is linked; and the files are written here, by the daemon
+// or once by this command.
 //
 // Memax never writes over a file a person wrote (rule 6): a CLAUDE.md that
 // is already here is made the person's, with one Memax block in it, when
@@ -20,12 +22,7 @@ import { MEMAX_HEADER } from "./split.js";
 import type { InitDeps, InitOptions } from "./types.js";
 
 /** The targets a space starts with (ledger.DefaultTargetKinds). */
-const DEFAULT_KINDS: V2.TargetKind[] = [
-  "agents_md",
-  "claude_md",
-  "cursor_mdc",
-  "chatgpt",
-];
+const DEFAULT_KINDS: V2.TargetKind[] = ["agents_md", "claude_md", "chatgpt"];
 
 /** Whether a file here was written by someone other than Memax. */
 export function handWritten(root: string, path: string): boolean {

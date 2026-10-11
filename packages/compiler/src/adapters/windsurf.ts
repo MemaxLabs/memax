@@ -1,5 +1,6 @@
 /**
- * `windsurf`: Windsurf and Devin rules (P3, not in the default set).
+ * `windsurf`: Windsurf and Devin rules. Opt-in (OPT_IN_TARGET_KINDS):
+ * Devin CLI reads these beside AGENTS.md, `.cursor/rules` and `.claude/`.
  *
  * Both read AGENTS.md for the rest. Path-scoped facts go to
  * `.devin/rules/memax-<area>.md` (`.windsurf/rules` also works) with

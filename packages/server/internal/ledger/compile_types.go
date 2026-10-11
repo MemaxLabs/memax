@@ -111,16 +111,22 @@ func (k TargetKind) homeOnly() bool { return slices.Contains(HomeTargetKinds, k)
 // personal canonical copy.
 func (k TargetKind) AtHome() bool { return k.homeOnly() || k == TargetAgentsMD }
 
-// DefaultTargetKinds are the Phase 1 targets: the compiler's
-// DEFAULT_TARGET_KINDS (the canonical AGENTS.md, the CLAUDE.md shim,
-// scoped Cursor rules and the ChatGPT copy-out).
-var DefaultTargetKinds = []TargetKind{TargetAgentsMD, TargetClaudeMD, TargetCursorMDC, TargetChatGPT}
+// DefaultTargetKinds are what a new space compiles: the compiler's
+// DEFAULT_TARGET_KINDS (the canonical AGENTS.md, which holds path-scoped
+// facts in subsections, the CLAUDE.md shim and the ChatGPT copy-out).
+// Spaces made before keep the targets they have.
+var DefaultTargetKinds = []TargetKind{TargetAgentsMD, TargetClaudeMD, TargetChatGPT}
 
 // OptInTargetKinds are compiled only for a space that asks for one, never
-// by default: the compiler's OPT_IN_TARGET_KINDS. The GEMINI.md shim is
-// for people still on Gemini CLI; Antigravity CLI, which replaced it for
-// most people, reads AGENTS.md.
-var OptInTargetKinds = []TargetKind{TargetGeminiMD}
+// by default: the compiler's OPT_IN_TARGET_KINDS, in the same order. The
+// GEMINI.md shim is for people still on Gemini CLI; Antigravity CLI, which
+// replaced it for most people, reads AGENTS.md. Every scoped format is
+// here too: nearly every agent reads AGENTS.md, so a scoped file it also
+// reads (Cursor's and Devin CLI's .cursor/rules, the .claude/rules that
+// Claude Code, VS Code and Copilot CLI read) would load each scoped fact
+// twice, unless the space sets its AGENTS.md to scoped: omit
+// (memax-internal docs/v2/adapter-load-matrix-2026-10.md).
+var OptInTargetKinds = []TargetKind{TargetCursorMDC, TargetGeminiMD, TargetCopilot, TargetWindsurf, TargetClaudeRules}
 
 // Valid reports whether k is a known kind.
 func (k TargetKind) Valid() bool { return slices.Contains(TargetKinds, k) }

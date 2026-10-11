@@ -53,6 +53,11 @@ func TestRealServiceMatchesTheLedgersTargets(t *testing.T) {
 		if a.Default {
 			defaults = append(defaults, a.Kind)
 		}
+		// Nearly every agent reads AGENTS.md, whose subsections hold the
+		// scoped facts, so no scoped format is a default.
+		if a.Role == "scoped" && (a.Default || !a.OptIn) {
+			t.Errorf("%s is a scoped format: opt-in, never a default", a.Kind)
+		}
 		if a.OptIn {
 			optIn = append(optIn, a.Kind)
 			if a.Default {
@@ -223,7 +228,7 @@ func TestCoordinatorWithTheRealService(t *testing.T) {
 	scoped := f.apply(&ledger.Remember{Meta: f.meta(s.owner, policy.ViaWeb), NewMemory: ledger.NewMemory{
 		SpaceID: s.space, Statement: "Web screens use only packages/ledger components.", Section: ledger.SectionConventions,
 		Applies: json.RawMessage(`{"paths": ["packages/web/**"]}`)}}).Memory
-	for _, k := range ledger.DefaultTargetKinds {
+	for _, k := range []ledger.TargetKind{ledger.TargetAgentsMD, ledger.TargetClaudeMD, ledger.TargetCursorMDC, ledger.TargetChatGPT} {
 		f.run(s.targets[k])
 	}
 	ctx := context.Background()

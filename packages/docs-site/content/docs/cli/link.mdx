@@ -5,8 +5,10 @@ description: Link a repository to a space, so the daemon writes the space's comp
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-A space compiles to the files your agents already read: `AGENTS.md`, a
-`CLAUDE.md` that imports it, and path-scoped Cursor rules.
+A space compiles to the files your agents already read: `AGENTS.md`, with
+path-scoped facts under headings that name their paths, and a `CLAUDE.md`
+that imports it. Scoped rules files (Cursor's, Claude Code's, Copilot's,
+Devin's) are opt-in, since the agents that read them read `AGENTS.md` too.
 `memax link` tells this machine which repository a space compiles into.
 From then on, [the daemon](/cli/daemon) writes each compile there within
 seconds of a Keep.

@@ -107,7 +107,7 @@ func (c *Forget) validate() error {
 
 // forget is Forget.
 func (w *writer) forget(ctx context.Context, c *Forget) (Result, error) {
-	mem, grant, sp, replay, err := w.open(ctx, c.Memory)
+	mem, grant, sp, replay, err := w.openForget(ctx, c.Memory)
 	if err != nil {
 		return Result{}, err
 	}
@@ -196,6 +196,45 @@ func (w *writer) forget(ctx context.Context, c *Forget) (Result, error) {
 		res.Memories = append(res.Memories, *m)
 	}
 	return res, nil
+}
+
+// openForget is open for a Forget, whose one round of memory locks
+// (locks.go) is the memory, what carries its words, and the other side of
+// every conflict any of them is in (endConflicts clears those). It reads
+// the memory and what carries it without locks, locks them (and, in the
+// same statement, their conflicts' other sides), then claims the key. The
+// Forget reads what carries it again under the locks: a carry written in
+// between isn't held, and the command starts again (errLocksMoved).
+func (w *writer) openForget(ctx context.Context, ref string) (*Memory, SpaceGrant, spaceRow, *Result, error) {
+	first, err := findRef(ctx, w.tx, w.meta.Scope, ref)
+	if err != nil {
+		return nil, SpaceGrant{}, spaceRow{}, nil, err
+	}
+	pre, err := w.carriedBy(ctx, first.SpaceID, []*Memory{first})
+	if err != nil {
+		return nil, SpaceGrant{}, spaceRow{}, nil, err
+	}
+	ids := []uuid.UUID{first.ID}
+	for _, c := range pre {
+		ids = append(ids, c.ID)
+	}
+	_, locked, err := w.lockSet(ctx, "", ids, lockAlso{conflicts: true})
+	if err != nil {
+		return nil, SpaceGrant{}, spaceRow{}, nil, err
+	}
+	mem := locked[first.ID]
+	if mem == nil {
+		return nil, SpaceGrant{}, spaceRow{}, nil, ErrNotFound
+	}
+	grant, ok := w.meta.Scope.Grant(mem.SpaceID)
+	if !ok {
+		return nil, SpaceGrant{}, spaceRow{}, nil, ErrNotFound
+	}
+	sp, replay, err := w.spaceAndClaim(ctx, mem.SpaceID)
+	if err != nil && sp.ID == uuid.Nil {
+		return nil, SpaceGrant{}, spaceRow{}, nil, err
+	}
+	return mem, grant, sp, replay, err
 }
 
 // honesty is the ledger's ForgetHonesty, through the writer.
@@ -291,16 +330,14 @@ func carriedBy(ctx context.Context, tx pgx.Tx, spaceID uuid.UUID, roots []*Memor
 	return out, nil
 }
 
-// lockCarried locks the carried memories (after the primary, in id order).
+// lockCarried reads the carried memories under their locks, which the
+// Forget took in its one round (openForget, or the note's lockSet); one it
+// doesn't hold was carried meanwhile, and the Forget starts again.
 func (w *writer) lockCarried(ctx context.Context, carried []Carried) (map[uuid.UUID]*Memory, error) {
 	if len(carried) == 0 {
 		return map[uuid.UUID]*Memory{}, nil
 	}
-	ids := make([]uuid.UUID, len(carried))
-	for i, c := range carried {
-		ids[i] = c.ID
-	}
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, ids, "FOR UPDATE")
+	locked, err := w.lockMemories(ctx, carriedIDs(carried))
 	if err != nil {
 		return nil, err
 	}
@@ -310,6 +347,14 @@ func (w *writer) lockCarried(ctx context.Context, carried []Carried) (map[uuid.U
 		}
 	}
 	return locked, nil
+}
+
+func carriedIDs(carried []Carried) []uuid.UUID {
+	ids := make([]uuid.UUID, len(carried))
+	for i, c := range carried {
+		ids[i] = c.ID
+	}
+	return ids
 }
 
 // forgetRequester is the agent connection whose waiting request asked to
@@ -567,7 +612,8 @@ func (w *writer) endConflicts(ctx context.Context, sp spaceRow, op *forgetOp, m 
 	if len(others) == 0 {
 		return nil
 	}
-	locked, err := lockMemories(ctx, w.tx, w.meta.Scope, others, "FOR UPDATE")
+	// Held since the Forget's one round (its conflicts' other sides).
+	locked, err := w.lockMemories(ctx, others)
 	if err != nil {
 		return err
 	}
@@ -646,13 +692,13 @@ func (w *writer) afterPurge(ctx context.Context, sp spaceRow, op *forgetOp, file
 	if err := w.purgeBrief(ctx, sp, op); err != nil {
 		return err
 	}
-	if err := w.purgeObservations(ctx, sp, op); err != nil {
+	// Every target of the space, in one round, before any is rewritten
+	// (locks.go): the drift evidence's targets are among them.
+	if err := w.lockAllTargets(ctx, sp.ID, !op.retire, op.retire); err != nil {
 		return err
 	}
-	if !op.retire {
-		if err := w.markDirty(ctx, sp.ID); err != nil {
-			return err
-		}
+	if err := w.purgeObservations(ctx, sp, op); err != nil {
+		return err
 	}
 	if err := w.queuePropagation(ctx, sp, op, files); err != nil {
 		return err

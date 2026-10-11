@@ -58,9 +58,26 @@ type LinkedMemory struct {
 // insertLink writes an active link with the receipt that made it.
 func (w *writer) insertLink(ctx context.Context, spaceID uuid.UUID, kind LinkKind, from, to, receiptID uuid.UUID) (uuid.UUID, error) {
 	id := newID()
-	if _, err := w.tx.Exec(ctx, `
+	// One link of a kind is active between two memories: a command that
+	// links them again (the judge finding that an agent's update updates
+	// what it updates, a settlement whose winner supersedes the loser
+	// already) means the one there is, which isn't its to undo.
+	var made uuid.UUID
+	err := w.tx.QueryRow(ctx, `
 		INSERT INTO v2.memory_links (id, space_id, kind, from_memory_id, to_memory_id, receipt_id)
-		VALUES ($1, $2, $3, $4, $5, $6)`, id, spaceID, string(kind), from, to, receiptID); err != nil {
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (kind, from_memory_id, to_memory_id, to_note_id) WHERE ended_receipt_id IS NULL DO NOTHING
+		RETURNING id`, id, spaceID, string(kind), from, to, receiptID).Scan(&made)
+	if errNoRows(err) {
+		if err := w.tx.QueryRow(ctx, `
+			SELECT id FROM v2.memory_links
+			 WHERE kind = $1 AND from_memory_id = $2 AND to_memory_id = $3 AND to_note_id IS NULL AND ended_receipt_id IS NULL`,
+			string(kind), from, to).Scan(&made); err != nil {
+			return uuid.Nil, fmt.Errorf("ledger: link %s: %w", kind, err)
+		}
+		return made, nil
+	}
+	if err != nil {
 		return uuid.Nil, fmt.Errorf("ledger: link %s: %w", kind, err)
 	}
 	if w.undo != nil {

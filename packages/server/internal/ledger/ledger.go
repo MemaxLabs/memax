@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // DBRole is the Postgres role every V2 transaction runs as. It has no
@@ -55,7 +56,15 @@ type Ledger struct {
 	// dreamUndoWindow is how long one of Dream's actions can be undone
 	// (WithDreamUndoWindow).
 	dreamUndoWindow time.Duration
+	// attempts bounds how often a command runs when Postgres aborts it for
+	// a deadlock or a serialization failure (WithCommandAttempts, retry.go),
+	// and retries counts the attempts after the first.
+	attempts int
+	retries  metric.Int64Counter
 }
+
+// WithCommandAttempts replaces DefaultCommandAttempts (1 turns the retry off).
+func WithCommandAttempts(n int) Option { return func(l *Ledger) { l.attempts = n } }
 
 // Option configures a Ledger.
 type Option func(*Ledger)
@@ -77,7 +86,8 @@ func New(pool *pgxpool.Pool, opts ...Option) *Ledger {
 	}
 	l := &Ledger{pool: pool, now: time.Now, lockTimeout: DefaultLockTimeout, log: slog.Default(),
 		undoWindow: DefaultUndoWindow, judgeUndoWindow: DefaultJudgeUndoWindow, returnWindow: DefaultReturnWindow,
-		honesty: ForgetHonesty{BackupDays: DefaultBackupDays}, dreamUndoWindow: DefaultDreamUndo}
+		honesty: ForgetHonesty{BackupDays: DefaultBackupDays}, dreamUndoWindow: DefaultDreamUndo,
+		attempts: DefaultCommandAttempts, retries: retryMeter()}
 	for _, o := range opts {
 		o(l)
 	}
@@ -109,15 +119,55 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		return Result{}, err
 	}
 
-	tx, loginRole, err := l.begin(ctx, m.Scope, pgx.ReadWrite)
+	// One transaction per attempt, each from a new writer (retry.go).
+	var res Result
+	var w *writer
+	err = l.retry(ctx, string(cmd.Name()), func() error {
+		var err error
+		res, w, err = l.applyOnce(ctx, cmd, m, hash, now)
+		return err
+	})
 	if err != nil {
 		return Result{}, err
+	}
+	if res.Outcome == OutcomeRefused || res.Replayed || res.Unchanged {
+		return res, nil
+	}
+	switch {
+	case res.Memory != nil:
+		l.log.Info("ledger: applied",
+			"command", string(cmd.Name()), "outcome", string(res.Outcome), "policy", res.Policy.Code,
+			"memory", res.Memory.Ref, "space_id", res.Memory.SpaceID.String(),
+			"actor_kind", string(m.Actor.Kind), "via", string(m.Via), "receipts", len(res.Receipts),
+			"jobs", len(w.jobs))
+	case len(res.Receipts) > 0:
+		rc := res.Receipts[0]
+		l.log.Info("ledger: applied",
+			"command", string(cmd.Name()), "outcome", string(res.Outcome), "policy", res.Policy.Code,
+			"object", rc.ObjectRef, "object_kind", rc.ObjectKind, "space_id", rc.SpaceID.String(),
+			"actor_kind", string(m.Actor.Kind), "via", string(m.Via), "receipts", len(res.Receipts),
+			"jobs", len(w.jobs))
+	}
+	if res.Connection != nil {
+		l.log.Info("ledger: applied",
+			"command", string(cmd.Name()), "outcome", string(res.Outcome), "connection", res.Connection.ID.String(),
+			"agent", string(res.Connection.Agent), "state", string(res.Connection.State),
+			"actor_kind", string(m.Actor.Kind), "via", string(m.Via), "receipts", len(res.Receipts))
+	}
+	return res, nil
+}
+
+// applyOnce runs a command in one transaction: Apply's one attempt.
+func (l *Ledger) applyOnce(ctx context.Context, cmd Command, m *Meta, hash []byte, now time.Time) (Result, *writer, error) {
+	tx, loginRole, err := l.begin(ctx, m.Scope, pgx.ReadWrite)
+	if err != nil {
+		return Result{}, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	w := &writer{tx: tx, meta: m, command: cmd.Name(), hash: hash, inserter: l.inserter, loginRole: loginRole,
 		undoWindow: l.undoWindow, judgeUndoWindow: l.judgeUndoWindow, returnWindow: l.returnWindow, now: now,
-		indexJobs: l.indexJobs, forgetHonesty: l.honesty, dreamUndoWindow: l.dreamUndoWindow}
+		indexJobs: l.indexJobs, forgetHonesty: l.honesty, dreamUndoWindow: l.dreamUndoWindow, locks: &memoryLocks{}}
 	var res Result
 	switch c := cmd.(type) {
 	case *Remember:
@@ -206,43 +256,22 @@ func (l *Ledger) Apply(ctx context.Context, cmd Command) (Result, error) {
 		res, err = w.verify(ctx, c)
 	}
 	if err != nil {
-		return Result{}, mapDBError(err)
+		return Result{}, nil, mapDBError(err)
 	}
 	// Refusals, replays and no-ops wrote nothing worth keeping: the
 	// deferred rollback discards the idempotency claim, so a refused
 	// command is decided afresh when retried.
 	if res.Outcome == OutcomeRefused || res.Replayed || res.Unchanged {
-		return res, nil
+		return res, w, nil
 	}
 	// The follow-up jobs go out last, right before COMMIT (jobs.go).
 	if err := w.flush(ctx); err != nil {
-		return Result{}, mapDBError(err)
+		return Result{}, nil, mapDBError(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return Result{}, mapDBError(fmt.Errorf("ledger: commit %s: %w", cmd.Name(), err))
+		return Result{}, nil, mapDBError(fmt.Errorf("ledger: commit %s: %w", cmd.Name(), err))
 	}
-	switch {
-	case res.Memory != nil:
-		l.log.Info("ledger: applied",
-			"command", string(cmd.Name()), "outcome", string(res.Outcome), "policy", res.Policy.Code,
-			"memory", res.Memory.Ref, "space_id", res.Memory.SpaceID.String(),
-			"actor_kind", string(m.Actor.Kind), "via", string(m.Via), "receipts", len(res.Receipts),
-			"jobs", len(w.jobs))
-	case len(res.Receipts) > 0:
-		rc := res.Receipts[0]
-		l.log.Info("ledger: applied",
-			"command", string(cmd.Name()), "outcome", string(res.Outcome), "policy", res.Policy.Code,
-			"object", rc.ObjectRef, "object_kind", rc.ObjectKind, "space_id", rc.SpaceID.String(),
-			"actor_kind", string(m.Actor.Kind), "via", string(m.Via), "receipts", len(res.Receipts),
-			"jobs", len(w.jobs))
-	}
-	if res.Connection != nil {
-		l.log.Info("ledger: applied",
-			"command", string(cmd.Name()), "outcome", string(res.Outcome), "connection", res.Connection.ID.String(),
-			"agent", string(res.Connection.Agent), "state", string(res.Connection.State),
-			"actor_kind", string(m.Actor.Kind), "via", string(m.Via), "receipts", len(res.Receipts))
-	}
-	return res, nil
+	return res, w, nil
 }
 
 func validateCommand(cmd Command, now time.Time) error {

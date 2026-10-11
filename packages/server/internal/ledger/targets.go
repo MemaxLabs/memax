@@ -60,6 +60,16 @@ func (w *writer) configureTarget(ctx context.Context, c *ConfigureTarget) (Resul
 	if c.Target == uuid.Nil {
 		return w.addTarget(ctx, c)
 	}
+	if c.Enabled != nil && *c.Enabled {
+		// Turning a home file back on reads its machine still linked: the
+		// machine before the target, as LinkMachine locks them (locks.go),
+		// in the target's lock's round trip. A repository's target has none.
+		if err := execDeferred(ctx, w.tx, `
+			SELECT 1 FROM v2.machines m WHERE m.id = (SELECT t.machine_id FROM v2.targets t WHERE t.id = $1) FOR SHARE OF m`,
+			c.Target); err != nil {
+			return Result{}, fmt.Errorf("ledger: lock the machine: %w", err)
+		}
+	}
 	t, grant, sp, replay, err := w.openTarget(ctx, c.Target)
 	if err != nil {
 		return Result{}, err
@@ -655,21 +665,24 @@ func (l *Ledger) AdvanceCounter(ctx context.Context, scope Scope, spaceID uuid.U
 
 // writeBookkeeping runs fn in a read-write transaction as memax_v2 in the
 // scope, with the transaction's login role for any River work. Only
-// bookkeeping that needs no receipt goes through it.
+// bookkeeping that needs no receipt goes through it. fn is a transaction's
+// statements and nothing else, so a deadlock runs it again (retry.go).
 func (l *Ledger) writeBookkeeping(ctx context.Context, scope Scope, fn func(tx pgx.Tx, loginRole string) error) error {
 	if l == nil {
 		return ErrDisabled
 	}
-	tx, loginRole, err := l.begin(ctx, scope, pgx.ReadWrite)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if err := fn(tx, loginRole); err != nil {
-		return mapDBError(err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return mapDBError(err)
-	}
-	return nil
+	return l.retry(ctx, "bookkeeping", func() error {
+		tx, loginRole, err := l.begin(ctx, scope, pgx.ReadWrite)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if err := fn(tx, loginRole); err != nil {
+			return mapDBError(err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return mapDBError(err)
+		}
+		return nil
+	})
 }

@@ -107,7 +107,7 @@ func TestDisplayIDsArePerTenant(t *testing.T) {
 	}
 
 	// A command resolves the display ID in the statement that locks the
-	// memory (lockRef), with the same answers: ambiguous across tenants,
+	// memory (lockSet), with the same answers: ambiguous across tenants,
 	// without waiting on a lock another transaction holds on either
 	// memory; one memory once narrowed (kept already, so the Keep is an
 	// invalid transition); unknown as not found; another prefix refused.

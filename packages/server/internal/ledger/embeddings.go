@@ -161,45 +161,61 @@ func (l *Ledger) StoreEmbeddings(ctx context.Context, scope Scope, model string,
 	if len(rows) == 0 {
 		return 0, nil
 	}
-	b := &pgx.Batch{}
-	for _, r := range rows {
+	// The memories are locked one statement at a time: in id order, as
+	// every command locks them (locks.go).
+	rows = slices.Clone(rows)
+	slices.SortStableFunc(rows, func(a, b Embedding) int { return strings.Compare(a.MemoryID.String(), b.MemoryID.String()) })
+	lits := make([]string, len(rows))
+	for i, r := range rows {
 		if _, ok := scope.Grant(r.SpaceID); !ok {
 			return 0, ErrNotFound
 		}
-		lit, err := VectorLiteral(r.Vector)
-		if err != nil {
+		var err error
+		if lits[i], err = VectorLiteral(r.Vector); err != nil {
 			return 0, err
 		}
-		b.Queue(`
-			INSERT INTO v2.memory_embeddings (memory_id, version, model, space_id, embedding)
-			SELECT m.id, m.current_version, $3, m.space_id, $4::halfvec(1024)
-			  FROM v2.memories m
-			  JOIN v2.memory_versions v ON v.memory_id = m.id AND v.version = m.current_version
-			 WHERE m.id = $1 AND m.space_id = $5 AND m.current_version = $2
-			   AND m.lifecycle = ANY ($6) AND v.statement IS NOT NULL
-			   FOR SHARE OF m
-			ON CONFLICT DO NOTHING`, r.MemoryID, r.Version, model, lit, r.SpaceID, indexedLifecycles)
 	}
-	tx, _, err := l.begin(ctx, scope, pgx.ReadWrite)
+	// The store is one transaction's statements and nothing else, so a
+	// deadlock runs it again (retry.go).
+	stored := 0
+	err := l.retry(ctx, "store_embeddings", func() error {
+		stored = 0
+		b := &pgx.Batch{}
+		for i, r := range rows {
+			b.Queue(`
+				INSERT INTO v2.memory_embeddings (memory_id, version, model, space_id, embedding)
+				SELECT m.id, m.current_version, $3, m.space_id, $4::halfvec(1024)
+				  FROM v2.memories m
+				  JOIN v2.memory_versions v ON v.memory_id = m.id AND v.version = m.current_version
+				 WHERE m.id = $1 AND m.space_id = $5 AND m.current_version = $2
+				   AND m.lifecycle = ANY ($6) AND v.statement IS NOT NULL
+				   FOR SHARE OF m
+				ON CONFLICT DO NOTHING`, r.MemoryID, r.Version, model, lits[i], r.SpaceID, indexedLifecycles)
+		}
+		tx, _, err := l.begin(ctx, scope, pgx.ReadWrite)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		results := tx.SendBatch(ctx, b)
+		for range rows {
+			tag, err := results.Exec()
+			if err != nil {
+				_ = results.Close()
+				return mapDBError(fmt.Errorf("ledger: store embedding: %w", err))
+			}
+			stored += int(tag.RowsAffected())
+		}
+		if err := results.Close(); err != nil {
+			return mapDBError(fmt.Errorf("ledger: store embeddings: %w", err))
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return mapDBError(fmt.Errorf("ledger: store embeddings: %w", err))
+		}
+		return nil
+	})
 	if err != nil {
 		return 0, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	results := tx.SendBatch(ctx, b)
-	stored := 0
-	for range rows {
-		tag, err := results.Exec()
-		if err != nil {
-			_ = results.Close()
-			return 0, mapDBError(fmt.Errorf("ledger: store embedding: %w", err))
-		}
-		stored += int(tag.RowsAffected())
-	}
-	if err := results.Close(); err != nil {
-		return 0, mapDBError(fmt.Errorf("ledger: store embeddings: %w", err))
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return 0, mapDBError(fmt.Errorf("ledger: store embeddings: %w", err))
 	}
 	return stored, nil
 }

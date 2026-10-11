@@ -102,7 +102,7 @@ func (w *writer) undoDreamAction(ctx context.Context, c *UndoDreamAction) (Resul
 		for _, um := range inv.Memories {
 			ids = append(ids, um.ID)
 		}
-		locked, err := lockMemories(ctx, w.tx, w.meta.Scope, ids, "FOR UPDATE")
+		locked, err := w.lockMemories(ctx, ids)
 		if err != nil {
 			return Result{}, err
 		}

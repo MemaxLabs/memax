@@ -4,13 +4,18 @@
  *
  * - every byte outside the markers stays as it was: line endings, a BOM,
  *   trailing spaces, a missing final newline, lines that look like Memax's;
- * - a file with no block gets one at the end, after at most a blank line;
+ * - a file with no block gets one right after its last line, with at most
+ *   the line break that line lacked;
  * - the server compiles the block alone (it never holds the person's lines),
  *   and splicing that block into the file on a machine, as the daemon does,
  *   gives the bytes compiling against the whole file would, with the same
  *   drift hash;
  * - compiling over its own output changes nothing;
- * - broken markers are refused, never guessed at.
+ * - broken markers are refused, never guessed at;
+ * - taking the block out (a target stopped, a machine unlinked or signed
+ *   out) gives back the person's file byte for byte as it was before the
+ *   first delivery, however many deliveries came between and whatever the
+ *   person wrote above the block meanwhile.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -21,6 +26,7 @@ import {
   isDrifted,
   MANAGED_END,
   MANAGED_START,
+  removeManagedBlock,
   upsertManagedBlock,
   type SpaceKind,
   type TargetSettings,
@@ -143,13 +149,18 @@ function inner(content: string): string[] {
 }
 
 describe.each(BLOCK_KINDS)("the person's own lines: $name", (spec) => {
-  const compileWith = (current: string) => {
+  /** The record's compile over `current`; `later`, after a Keep and a Forget. */
+  const compileWith = (current: string, later = false) => {
     const i = input(
       [
         memory("M-0001", "Answer in British English."),
-        memory("M-0002", "Commit messages are imperative.", {
-          flags: ["stale"],
-        }),
+        ...(later
+          ? [memory("M-0004", "Prefer small pull requests.")]
+          : [
+              memory("M-0002", "Commit messages are imperative.", {
+                flags: ["stale"],
+              }),
+            ]),
         memory("M-0003", "Only for this agent.", {
           scope: { agents: ["claude-code", "codex", "gemini"] },
         }),
@@ -189,9 +200,7 @@ describe.each(BLOCK_KINDS)("the person's own lines: $name", (spec) => {
           expect(there.content.startsWith(mine)).toBe(true);
           const parts = around(there.content);
           expect(parts?.after).toBe("");
-          expect(parts?.before.slice(mine.length)).toMatch(
-            /^(?:\r\n|\r|\n){0,2}$/,
-          );
+          expect(parts?.before.slice(mine.length)).toMatch(/^(?:\r\n|\r|\n)?$/);
         }
 
         // The server's block, spliced in on the machine, is the same file.
@@ -202,6 +211,50 @@ describe.each(BLOCK_KINDS)("the person's own lines: $name", (spec) => {
         expect(isDrifted(server.drift_sha256, there.content)).toBe(false);
         // Idempotent: compiling over its own output changes nothing.
         expect(compileWith(there.content).content).toBe(there.content);
+      }
+      for (const [what, n] of Object.entries(seen))
+        expect(n, what).toBeGreaterThan(100);
+    },
+  );
+
+  // As above: about 8,000 compiles, well within a second here, given the
+  // time a busy CI runner may need.
+  it(
+    `come back byte for byte when the block is taken out, over ${FILES} random files`,
+    { timeout: 60_000 },
+    () => {
+      const server = compileWith("");
+      const later = compileWith("", true);
+      const random = rng(spec.name.length * 104_729);
+      const above = ["# Added later\n", "\n", "- one more of mine\r\n", "x\r"];
+      const seen = { none: 0, present: 0 };
+
+      for (const mine of personFiles(spec.name.length * 7_919 + 1)) {
+        let hadBlock: boolean;
+        try {
+          hadBlock = findManagedBlock(mine) !== null;
+        } catch {
+          continue; // refused, never delivered (the property above)
+        }
+        // The first delivery, on the server's side and on the machine's.
+        const first = compileWith(mine).content;
+        expect(upsertManagedBlock(mine, inner(server.content))).toBe(first);
+        // A later delivery over it, after the record changed.
+        const second = compileWith(first, true).content;
+        expect(upsertManagedBlock(first, inner(later.content))).toBe(second);
+
+        if (hadBlock) {
+          // V1's block or an older one: what the person had outside it.
+          seen.present += 1;
+          expect(removeManagedBlock(second)).toBe(removeManagedBlock(mine));
+          continue;
+        }
+        seen.none += 1;
+        expect(removeManagedBlock(first)).toBe(mine);
+        expect(removeManagedBlock(second)).toBe(mine);
+        // A line the person wrote above the block meanwhile stays, alone.
+        const theirs = above[Math.floor(random() * above.length)];
+        expect(removeManagedBlock(theirs + second)).toBe(theirs + mine);
       }
       for (const [what, n] of Object.entries(seen))
         expect(n, what).toBeGreaterThan(100);

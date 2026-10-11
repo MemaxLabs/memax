@@ -153,7 +153,7 @@ describe("a target that stops compiling", () => {
     await d.syncOnce();
     expect(read()).toBe(
       mine +
-        ["", "<!-- memax:start -->", ...SHIM_1, "<!-- memax:end -->", ""].join(
+        ["<!-- memax:start -->", ...SHIM_1, "<!-- memax:end -->", ""].join(
           "\n",
         ),
     );

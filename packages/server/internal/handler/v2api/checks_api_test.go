@@ -158,6 +158,51 @@ func TestChecksOverTheAPI(t *testing.T) {
 	}
 }
 
+// A Forget's tombstone names the check results the machines kept: a
+// checks step, waiting on the machine that checked the space until it
+// checks it again, then done.
+func TestForgetNamesTheMachinesChecksOverTheAPI(t *testing.T) {
+	t.Parallel()
+	c := newChecksEnv(t)
+	c.report(c.tok, uuid.NewString(), c.runBody(1, 3, "holds")).ok(http.StatusCreated, nil)
+	c.do(call{method: "POST", path: memoryPath(c.mem, ":forget"), token: c.tok,
+		header: map[string]string{"If-Match": strconv.Quote("1")}}).ok(http.StatusOK, nil)
+	type step struct {
+		Kind   string `json:"kind"`
+		Status string `json:"status"`
+		Reason string `json:"reason"`
+		Count  *int   `json:"count"`
+	}
+	checks := func() *step {
+		var ts struct {
+			Steps []step `json:"steps"`
+		}
+		c.do(call{method: "GET", path: memoryPath(c.mem, "/tombstone"), token: c.tok}).ok(http.StatusOK, &ts)
+		for i := range ts.Steps {
+			if ts.Steps[i].Kind == "checks" {
+				return &ts.Steps[i]
+			}
+		}
+		return nil
+	}
+	if s := checks(); s == nil || s.Status != "waiting" || s.Reason != "next_check" || s.Count == nil || *s.Count != 1 {
+		t.Fatalf("after the Forget: %+v", s)
+	}
+	// The machine checks the space again: its daemon dropped what it kept
+	// and reports its next run, here with nothing left to say.
+	body := c.runBody(2, 0, "holds")
+	body["checked_at"] = time.Now().Add(time.Second).UTC().Format(time.RFC3339Nano)
+	body["results"] = []any{}
+	var out checkRunOut
+	c.report(c.tok, uuid.NewString(), body).ok(http.StatusCreated, &out)
+	if out.Run.Counts.Holds+out.Run.Counts.Fails+out.Run.Counts.Unknown+out.Run.Counts.Ignored != 0 {
+		t.Errorf("a run of nothing: %+v", out.Run.Counts)
+	}
+	if s := checks(); s == nil || s.Status != "done" || s.Count == nil || *s.Count != 0 {
+		t.Fatalf("after its next check: %+v", s)
+	}
+}
+
 // Refusals over the API: an agent's key, a viewer, a fork's clone and a
 // malformed result.
 func TestChecksRefusals(t *testing.T) {

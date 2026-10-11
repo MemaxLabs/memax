@@ -321,14 +321,15 @@ export type TombstoneStepKind =
   | "artifacts"
   | "caches"
   | "ledger"
-  | "agent";
+  | "agent"
+  | "checks";
 
 export interface TombstoneStepLine {
   key: string;
   kind: TombstoneStepKind;
   /** done, waiting, held, failed or unreachable (spec StepStatus). */
   status: "done" | "waiting" | "held" | "failed" | "unreachable";
-  /** Spec StepReason: hand_edit, stopped, copy, delivery, compiling, paused, disconnected, next_read. */
+  /** Spec StepReason: hand_edit, stopped, copy, delivery, compiling, paused, disconnected, next_read, offline, next_check. */
   reason: string | null;
   at: string | null;
   target: {

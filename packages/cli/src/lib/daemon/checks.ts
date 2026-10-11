@@ -258,6 +258,12 @@ export class RepoChecker {
   private stopped = false;
   /** Memories forgotten while the daemon ran: never checked or reported again. */
   private readonly gone = new Set<string>();
+  /**
+   * A Forget took something from this checker: its next run reports even
+   * with nothing changed, so Memax hears that this machine checked the
+   * space since (the tombstone's checks step).
+   */
+  private heard = false;
   lastRun: CheckRunSummary | null = null;
 
   constructor(private readonly o: RepoCheckerOptions) {
@@ -296,6 +302,9 @@ export class RepoChecker {
       this.gone.has(k.slice(0, k.indexOf("/"))),
     );
     if (keys.length === 0) return;
+    this.heard = true;
+    this.condsDirty = true;
+    this.soon("conditions");
     const results = { ...state.results };
     for (const k of keys) delete results[k];
     this.writeState({ ...state, results });
@@ -472,11 +481,28 @@ export class RepoChecker {
       state.commit === commit &&
       state.conditions === condsHash &&
       !full &&
+      !this.heard &&
       trigger !== "verify"
     )
       return skip("unchanged", { commit });
 
     if (checks.length === 0) {
+      // The Forget took its last condition: a run of nothing says this
+      // machine checked the space since.
+      if (this.heard) {
+        await this.o.reporter.report(this.o.link.space_id, {
+          repository: conds.repository,
+          branch,
+          commit,
+          commit_at: tips.local.committedAt,
+          checked_at: new Date().toISOString(),
+          trigger,
+          device: this.o.deviceId,
+          complete: everyKind,
+          results: [],
+        });
+        this.heard = false;
+      }
       this.writeState({
         ...state,
         commit,
@@ -677,7 +703,8 @@ export class RepoChecker {
         now[c.key] && (full || !sameResult(state.results[c.key], now[c.key])),
     );
     let flagged: string[] | undefined;
-    if (send.length > 0) {
+    const confirm = this.heard;
+    if (send.length > 0 || confirm) {
       const input: V2.CheckRunInput = {
         repository: conds.repository,
         branch,
@@ -691,6 +718,7 @@ export class RepoChecker {
         results: send.map((c) => resultOf(c, now[c.key])),
       };
       flagged = await this.o.reporter.report(this.o.link.space_id, input);
+      if (confirm) this.heard = false;
     }
     // Written when something moved: the commit, the conditions or a result.
     if (

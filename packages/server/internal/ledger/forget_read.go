@@ -343,6 +343,28 @@ func loadTombstone(ctx context.Context, tx pgx.Tx, scope Scope, objectID uuid.UU
 	return t, nil
 }
 
+// checksStep says where the machines' check results stand: done once
+// every machine that checked the space in the window before the Forget has
+// checked it since (its daemon dropped them on hearing; a run after the
+// Forget is written without them), else waiting on those that haven't,
+// counted. A space retired with its check runs keeps the count it had.
+func checksStep(before, notSince *int, last *time.Time, atForget int) TombstoneStep {
+	waiting := 0
+	switch {
+	case before != nil && *before > 0:
+		waiting = *notSince
+	case atForget > 0:
+		waiting = atForget // the runs went with the space
+	}
+	s := TombstoneStep{Kind: StepChecks, Count: &waiting}
+	if waiting == 0 {
+		s.Status, s.At = StepDone, last
+		return s
+	}
+	s.Status, s.Reason = StepWaiting, StepReasonNextCheck
+	return s
+}
+
 // fillTombstone builds the steps and the copies Memax can't reach, from
 // the op's propagation rows, its targets as they stand now, and its
 // notices.
@@ -367,14 +389,35 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 		SELECT p.destination_kind, p.destination_id, COALESCE(p.label, ''), p.status, p.detail, p.done_at,
 		       t.kind, t.delivery, t.sync_state, t.delivered_at, dc.seq, COALESCE(t.path, ''),
 		       mc.id, mc.seq, mc.name, mc.unlinked_at IS NULL, mc.last_seen_at,
-		       COALESCE(mc.last_seen_at < now() - $2::interval, true)
+		       COALESCE(mc.last_seen_at < now() - $2::interval, true),
+		       -- A checks step: the machines that checked the space in the
+		       -- window before the Forget, those that haven't checked it
+		       -- since, and when the last of them did.
+		       CASE WHEN p.destination_kind = 'checks' THEN (
+		           SELECT count(*)::int FROM (
+		               SELECT DISTINCT r.person_id, r.device FROM v2.check_runs r
+		                WHERE r.space_id = p.space_id AND r.observer = 'device'
+		                  AND r.recorded_at < $3 AND r.recorded_at >= $3 - $4::interval) m) END,
+		       CASE WHEN p.destination_kind = 'checks' THEN (
+		           SELECT count(*)::int FROM (
+		               SELECT DISTINCT r.person_id, r.device FROM v2.check_runs r
+		                WHERE r.space_id = p.space_id AND r.observer = 'device'
+		                  AND r.recorded_at < $3 AND r.recorded_at >= $3 - $4::interval) m
+		            WHERE NOT EXISTS (
+		                SELECT 1 FROM v2.check_runs a
+		                 WHERE a.space_id = p.space_id AND a.observer = 'device'
+		                   AND a.person_id = m.person_id AND a.device = m.device AND a.checked_at > $3)) END,
+		       CASE WHEN p.destination_kind = 'checks' THEN (
+		           SELECT max(a.checked_at) FROM v2.check_runs a
+		            WHERE a.space_id = p.space_id AND a.observer = 'device' AND a.checked_at > $3) END
 		  FROM v2.propagations p
 		  LEFT JOIN v2.targets t ON t.id = p.destination_id
 		  LEFT JOIN v2.compile_runs dc ON dc.id = t.delivered_compile_id
 		  LEFT JOIN v2.machines mc ON mc.id = t.machine_id AND mc.space_id = t.space_id
 		 WHERE p.op_id = $1
-		 ORDER BY CASE p.destination_kind WHEN 'target' THEN 0 WHEN 'artifacts' THEN 1 WHEN 'attachments' THEN 1 WHEN 'caches' THEN 2 ELSE 3 END,
-		          p.created_at, p.id`, t.OpID, MachineOfflineAfter.String())
+		 ORDER BY CASE p.destination_kind WHEN 'target' THEN 0 WHEN 'artifacts' THEN 1 WHEN 'attachments' THEN 1 WHEN 'caches' THEN 2
+		                  WHEN 'checks' THEN 3 ELSE 4 END,
+		          p.created_at, p.id`, t.OpID, MachineOfflineAfter.String(), t.ForgottenAt, ChecksWindow.String())
 	if err != nil {
 		return fmt.Errorf("ledger: tombstone steps: %w", err)
 	}
@@ -395,13 +438,17 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 		linked              *bool
 		lastSeenAt          *time.Time
 		offline             bool
+		// A checks step's machines: those that checked before, those not
+		// heard from since, and when the last checked.
+		checkedBefore, notSince *int
+		lastCheck               *time.Time
 	}
 	var dests []dest
 	for rows.Next() {
 		var d dest
 		if err := rows.Scan(&d.kind, &d.id, &d.label, &d.status, &d.detail, &d.doneAt, &d.tKind, &d.delivery, &d.state,
 			&d.deliveredAt, &d.deliveredSeq, &d.path, &d.machineID, &d.machineSeq, &d.machineName, &d.linked,
-			&d.lastSeenAt, &d.offline); err != nil {
+			&d.lastSeenAt, &d.offline, &d.checkedBefore, &d.notSince, &d.lastCheck); err != nil {
 			rows.Close()
 			return fmt.Errorf("ledger: tombstone steps: %w", err)
 		}
@@ -419,6 +466,7 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 			Delivery   Delivery   `json:"delivery"`
 			Compile    string     `json:"compile"`
 			Count      *int       `json:"count"`
+			Machines   int        `json:"machines"`
 		}
 		_ = json.Unmarshal(d.detail, &detail)
 		stepKind := d.kind
@@ -441,6 +489,9 @@ func fillTombstone(ctx context.Context, tx pgx.Tx, t *Tombstone, h ForgetHonesty
 			if d.kind == "target" {
 				s.Reason = StepReasonCompiling
 			}
+		}
+		if d.kind == StepChecks {
+			s = checksStep(d.checkedBefore, d.notSince, d.lastCheck, detail.Machines)
 		}
 		if d.kind != "target" {
 			t.Steps = append(t.Steps, s)

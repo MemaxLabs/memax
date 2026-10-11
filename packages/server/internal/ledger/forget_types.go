@@ -262,6 +262,9 @@ const (
 	StepCaches    = "caches"
 	StepLedger    = "ledger"
 	StepAgent     = "agent"
+	// StepChecks: the check results members' machines kept (migration
+	// 065), dropped by each machine's daemon when it hears of the Forget.
+	StepChecks = "checks"
 
 	StepDone        = "done"
 	StepWaiting     = "waiting"
@@ -284,6 +287,10 @@ const (
 	// files within MachineOfflineAfter. The file holds it until the machine
 	// connects, and is rewritten then.
 	StepReasonOffline = "offline"
+	// StepReasonNextCheck: a machine that checked the space hasn't checked
+	// it since the Forget (a checks step); its daemon drops what it kept
+	// when it hears, within seconds while it runs.
+	StepReasonNextCheck = "next_check"
 )
 
 // MachineOfflineAfter is how long a machine's daemon may go without

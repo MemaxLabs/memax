@@ -657,10 +657,17 @@ describe("a repository's checks", () => {
     // The conditions in memory went with it: the next run reads them again,
     // and a list that still has it (read before the Forget) is passed over.
     const reads = fake.conditionReads;
+    const sent = fake.reports.length;
     const run = await c.run("verify");
     expect(fake.conditionReads).toBe(reads + 1);
     expect(run.results).toBe(1);
     expect(state()).not.toContain("M-0001");
+    // Nothing changed, but this run reports: Memax hears that this machine
+    // checked the space since the Forget (its tombstone's checks step).
+    expect(fake.reports).toHaveLength(sent + 1);
+    expect(fake.reports.at(-1)!.input.results).toEqual([]);
+    await c.run("verify");
+    expect(fake.reports).toHaveLength(sent + 1);
   });
 
   it("drops a forgotten memory's results from the reports waiting to go", async () => {

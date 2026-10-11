@@ -81,6 +81,9 @@ type forgetOp struct {
 	words    []string // every version's statement, held in memory only to find quotes of it
 	receipts []Receipt
 	gone     TombstoneGone
+	// checked counts the check results it removed: members' machines keep
+	// theirs until their daemons hear of it (a `checks` step).
+	checked int
 }
 
 func (op *forgetOp) has(ref string) bool { return slices.Contains(op.refs, ref) }
@@ -428,7 +431,7 @@ func (w *writer) purgeMemory(ctx context.Context, sp spaceRow, op *forgetOp, m *
 	// words themselves (in memory, for finding quotes of them).
 	var g TombstoneGone
 	var keptAt *time.Time
-	var reads int
+	var reads, checked int
 	candidate := fmt.Sprintf(`[{"memory_id": %q}]`, m.ID.String())
 	err := w.tx.QueryRow(ctx, `
 		SELECT
@@ -444,9 +447,10 @@ func (w *writer) purgeMemory(ctx context.Context, sp spaceRow, op *forgetOp, m *
 		  (SELECT COALESCE(sum(r.reads), 0)::int FROM v2.read_rollups r
 		    WHERE r.space_id = $2
 		      AND (r.subject_id = $1 OR r.subject_id IN (
-		          SELECT c.id FROM v2.compile_runs c WHERE c.space_id = $2 AND c.refs @> ARRAY[$3::text])))`,
+		          SELECT c.id FROM v2.compile_runs c WHERE c.space_id = $2 AND c.refs @> ARRAY[$3::text]))),
+		  (SELECT count(*)::int FROM v2.condition_checks WHERE memory_id = $1 AND space_id = $2)`,
 		m.ID, sp.ID, m.Ref, candidate).Scan(&g.Versions, &g.Sources, &g.Embeddings, &g.Verdicts, &g.ModelVerdicts,
-		&g.Gates, &keptAt, &reads)
+		&g.Gates, &keptAt, &reads, &checked)
 	if err != nil {
 		return Receipt{}, fmt.Errorf("ledger: forget %s: %w", m.Ref, err)
 	}
@@ -459,6 +463,7 @@ func (w *writer) purgeMemory(ctx context.Context, sp spaceRow, op *forgetOp, m *
 		return Receipt{}, fmt.Errorf("ledger: forget %s: %w", m.Ref, err)
 	}
 	op.words = append(op.words, words...)
+	op.checked += checked
 
 	// The memory: forgotten, with nothing derived from its words left.
 	if _, err := w.tx.Exec(ctx, `
@@ -1062,6 +1067,34 @@ func (w *writer) queuePropagation(ctx context.Context, sp spaceRow, op *forgetOp
 		if err := w.insertStep(ctx, sp, op, s.kind, nil, "", "pending", s.detail); err != nil {
 			return err
 		}
+	}
+	return w.queueChecksStep(ctx, sp, op)
+}
+
+// ChecksWindow is how far before a Forget a machine's check run makes it
+// one that holds the memory's check results: a linked machine on the
+// default branch reports at least daily, so one silent longer is likely
+// gone (and if it comes back, its daemon drops them on hearing).
+const ChecksWindow = 30 * 24 * time.Hour
+
+// queueChecksStep writes the `checks` step when the memory had check
+// results (migration 065): the machines that checked the space keep
+// theirs (its refs and the paths its conditions named, never its words)
+// until their daemons hear of the Forget. The machines are counted now,
+// in the same statement, for a space whose check runs go with it; the
+// step's status is read (fillTombstone).
+func (w *writer) queueChecksStep(ctx context.Context, sp spaceRow, op *forgetOp) error {
+	if op.checked == 0 {
+		return nil
+	}
+	if _, err := w.tx.Exec(ctx, `
+		INSERT INTO v2.propagations (id, op_id, tenant_id, space_id, destination_kind, status, detail)
+		SELECT $1, $2, $3, $4, 'checks', 'pending', jsonb_build_object('results', $5::int, 'machines', (
+		       SELECT count(*)::int FROM (
+		           SELECT DISTINCT r.person_id, r.device FROM v2.check_runs r
+		            WHERE r.space_id = $4 AND r.observer = 'device' AND r.recorded_at >= now() - $6::interval) m))`,
+		newID(), op.id, sp.TenantID, sp.ID, op.checked, ChecksWindow.String()); err != nil {
+		return fmt.Errorf("ledger: forget: step checks: %w", err)
 	}
 	return nil
 }

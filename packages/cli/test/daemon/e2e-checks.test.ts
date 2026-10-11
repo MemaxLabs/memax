@@ -358,5 +358,19 @@ describe.skipIf(!enabled)("stale detection, end to end", () => {
       `the daemon's checks dropped it ${dropped.ms} ms after the Forget`,
     );
     expect(files()).not.toContain(MOVED);
-  }, 60_000);
+
+    // The tombstone names them, and hears back at this machine's next run.
+    const checksStep = async () =>
+      (
+        await memax.v2.memories.tombstone(containsRef, { space: "memax-v2" })
+      ).steps.find((s) => s.kind === "checks");
+    expect(await checksStep()).toMatchObject({ kind: "checks", count: 1 });
+    const heard = await until(
+      async () => ((await checksStep())?.status === "done" ? true : undefined),
+      // The run waits out the minute since the last one.
+      120_000,
+      "the tombstone to hear back from this machine",
+    );
+    console.log(`the tombstone heard back ${heard.ms} ms after the drop`);
+  }, 180_000);
 });

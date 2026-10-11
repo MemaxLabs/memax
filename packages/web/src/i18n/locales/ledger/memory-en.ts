@@ -255,6 +255,10 @@ export const ledgerMemoryEn = {
       ledger: "Written to the forget ledger",
       ledgerDetail:
         "IDs only, outside the database, so restoring a backup can't bring it back.",
+      checksOne: "Check results on 1 machine",
+      checks: "Check results on {n} machines",
+      checksDetail:
+        "The paths its conditions named, never its words. Each machine's daemon drops them as soon as it hears of the Forget, and Memax hears back at its next check.",
       told: "{agent} told on its next read",
       toldWaiting: "{agent} is told on its next read",
       paused: "{agent} is paused",

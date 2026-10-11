@@ -82,6 +82,19 @@ export function statusLabel(
       return s.compiling;
     case "waiting-delivery":
       return count(s.waitingDeliveryOne, s.waitingDelivery, line.files);
+    case "machines-in-sync":
+      return count(s.machinesInSyncOne, s.machinesInSync, line.machines);
+    case "machine-drifted":
+      return interpolate(s.machineDrifted, { machine: line.machine });
+    case "machine-held":
+      return interpolate(s.machineHeld, { machine: line.machine });
+    case "machines-behind":
+      return interpolate(s.machinesBehind, {
+        reached: line.reached,
+        of: line.of,
+      });
+    case "no-machines":
+      return s.noMachines;
     case "no-agents":
       return s.noAgents;
     case "not-compiling":
@@ -96,12 +109,16 @@ export function statusState(line: SyncLine) {
   switch (line.kind) {
     case "in-sync":
     case "files-in-sync":
+    case "machines-in-sync":
       return "kept" as const;
     case "drifted":
     case "held":
+    case "machine-drifted":
+    case "machine-held":
       return "proposed" as const;
     case "compiling":
     case "waiting-delivery":
+    case "machines-behind":
       return "working" as const;
     default:
       return "off" as const;

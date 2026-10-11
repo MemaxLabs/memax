@@ -6,6 +6,7 @@ import type { DevicesSource } from "./devices";
 import type { DreamSource } from "./dream";
 import type { GatesSource } from "./gates";
 import type { ImportsSource } from "./imports";
+import type { MachinesSource } from "./machines";
 import type { MemoriesSource } from "./memories";
 import type { ReviewSource } from "./review";
 import type { SettingsSource } from "./settings";
@@ -36,8 +37,8 @@ import type {
  *
  * Each domain declares its part in its own module and is mixed in here:
  * activity.ts (Activity), agents.ts (Agents, keys), undo.ts (Undo), or
- * hangs off it as a member (review, memories, brief, targets, today,
- * gates, dream, switch, settings).
+ * hangs off it as a member (review, memories, brief, targets, machines,
+ * today, gates, dream, switch, settings).
  */
 export interface LedgerDataSource extends ActivityData, AgentsData, UndoSource {
   readonly kind: "sdk" | "demo";
@@ -85,6 +86,8 @@ export interface LedgerDataSource extends ActivityData, AgentsData, UndoSource {
   readonly brief: BriefSource;
   /** Where the Brief compiles to: the files, settings and drift (targets.ts). */
   readonly targets: TargetsSource;
+  /** The machines a Personal space is written to: renaming, unlinking (machines.ts). */
+  readonly machines: MachinesSource;
   /** Today's waiting items, Dream, what's in flight and the agents' day (today.ts). */
   readonly today: TodaySource;
   /** Decision gates: what agents asked, answering and withdrawing (gates.ts). */

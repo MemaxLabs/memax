@@ -141,6 +141,40 @@ describe("the frame's lines", () => {
     expect(statusState({ kind: "no-agents" })).toBe("off");
   });
 
+  it("status line for a Personal space, by machine (design §8)", () => {
+    const say = (
+      line: Parameters<typeof statusLabel>[1],
+      copy: Parameters<typeof statusLabel>[0] = EN,
+    ) => statusLabel(copy, line, agentName);
+    expect(say({ kind: "machines-in-sync", machines: 2 })).toBe(
+      "In sync on 2 machines",
+    );
+    expect(say({ kind: "machines-in-sync", machines: 1 })).toBe(
+      "In sync on 1 machine",
+    );
+    expect(say({ kind: "machine-drifted", machine: "work-mbp" })).toBe(
+      "Hand edit on work-mbp",
+    );
+    expect(say({ kind: "machine-held", machine: "work-mbp" })).toBe(
+      "Held for Review on work-mbp",
+    );
+    expect(say({ kind: "machines-behind", reached: 1, of: 2 })).toBe(
+      "On 1 of 2 machines",
+    );
+    expect(say({ kind: "no-machines" })).toBe("Not on any machine yet");
+    expect(say({ kind: "machines-behind", reached: 1, of: 2 }, ZH)).toBe(
+      "2 台电脑里 1 台已同步",
+    );
+    expect(statusState({ kind: "machines-in-sync", machines: 2 })).toBe("kept");
+    expect(statusState({ kind: "machine-drifted", machine: "x" })).toBe(
+      "proposed",
+    );
+    expect(statusState({ kind: "machines-behind", reached: 1, of: 2 })).toBe(
+      "working",
+    );
+    expect(statusState({ kind: "no-machines" })).toBe("off");
+  });
+
   it("says a space still on V1 is on V1, not that it's loading", () => {
     // Nothing compiles from it until it switches; the line never waits on
     // a read that a space on V1 has nothing for.

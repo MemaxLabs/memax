@@ -59,6 +59,13 @@ export const ledgerAppEn = {
       compiling: "Compiling",
       waitingDelivery: "{n} files waiting for the CLI",
       waitingDeliveryOne: "1 file waiting for the CLI",
+      // A personal space's home files, by machine (design §8).
+      machinesInSync: "In sync on {n} machines",
+      machinesInSyncOne: "In sync on 1 machine",
+      machineDrifted: "Hand edit on {machine}",
+      machineHeld: "Held for Review on {machine}",
+      machinesBehind: "On {reached} of {of} machines",
+      noMachines: "Not on any machine yet",
       noAgents: "No agents yet",
       notCompiling: "Not compiling yet",
       onV1: "Still on V1",

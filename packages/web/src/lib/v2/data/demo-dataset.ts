@@ -100,11 +100,13 @@ export const DEMO_OVERVIEWS: Readonly<Record<string, SpaceOverview>> = {
     ...EMPTY,
     // States board: "Last review today at 09:41 · 4 kept, 1 rejected".
     lastReview: { at: at("09:41"), kept: 4, rejected: 1 },
-    status: { kind: "in-sync", agents: 5 },
+    // What Personal's home files say (demo-targets-data.ts): Codex's
+    // block on ziyang-mbp has a hand edit, and home-linux is offline.
+    status: { kind: "machine-drifted", machine: "ziyang-mbp" },
     memories: { any: true, kept: 61, forgotten: 0 },
     brief: { title: "Personal", facts: 9, rewrittenAt: null },
     agents: { connected: 5, active: 5 },
-    targets: { total: 4, inSync: 4 },
+    targets: { total: 3, inSync: 1 },
     activity: { any: true },
   },
   "memax-v2": {

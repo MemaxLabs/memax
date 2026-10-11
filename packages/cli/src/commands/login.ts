@@ -267,6 +267,23 @@ export async function logoutCommand(): Promise<void> {
   }
   clearCredentials();
   resetClient();
+  // Signing this machine out takes the Personal layer off it.
+  const [{ homeSignedOut }, { openOneShot }, { daemonPaths }] =
+    await Promise.all([
+      import("./link-home.js"),
+      import("./compile.js"),
+      import("../lib/daemon/paths.js"),
+    ]);
+  const paths = daemonPaths();
+  await homeSignedOut({
+    paths,
+    out: (l) => console.log(l),
+    oneShot: () => openOneShot({ memax: getClient(), paths }),
+  }).catch((err: Error) =>
+    console.log(
+      `  Couldn't take your Personal space off this machine's home: ${err.message}. Run memax unlink --home.`,
+    ),
+  );
   if (token && !signedOut) {
     console.log(
       "  Logged out here. Memax couldn't be reached to end the session, so it lasts until it expires; sign it out in Settings on memax.app.\n",

@@ -13,7 +13,13 @@ again: what's already set up stays as it is.
 
 ```bash
 memax connect <agent> [--space <slug>] [--no-hook] [--no-compile] [--gemini-md] [--format json]
+memax connect --cloud <agent> [--space <slug>] [--no-hook] [--yes] [--format json]
 ```
+
+With `--cloud`, it connects the agent's **cloud sandbox** instead of this
+machine: Claude Code's cloud sessions or Copilot's cloud agent get a start
+key, printed once, and the committed hook file that uses it. See
+[Cloud agents](/integrations/cloud-agents).
 
 `<agent>` is one of `claude-code`, `codex`, `cursor`, `gemini`, `copilot`,
 `opencode`, `windsurf` or `chatgpt`. Without the CLI installed, run it
@@ -26,6 +32,8 @@ with npx: `npx memax-cli connect codex`.
 | `--no-compile`        | Don't compile, even in a linked repository.                           |
 | `--gemini-md`         | Gemini CLI only: give the space a `GEMINI.md` that imports `AGENTS.md`. |
 | `--timeout <seconds>` | How long to wait for the first compile. Default 30.                   |
+| `--cloud`             | A cloud agent (`claude-code`, `copilot`, `codex`): its start key and committed hook. |
+| `--yes`               | With `--cloud`: a connected cloud agent gets a new key without asking. |
 | `--format <fmt>`      | `text` (default) or `json`.                                           |
 
 ```text

@@ -1553,7 +1553,8 @@ export interface paths {
          * Read one agent
          * @description One agent connection with what it did this week, its latest writes
          *     (receipts, which never hold the words) and its latest sessions, in
-         *     your spaces. Disconnected agents can still be read.
+         *     your spaces, and for a cloud agent its latest session start.
+         *     Disconnected agents can still be read.
          */
         get: operations["getAgent"];
         put?: never;
@@ -4253,6 +4254,26 @@ export interface components {
             recent_writes: components["schemas"]["Receipt"][];
             /** @description Its latest sessions, most recent first (at most 10). */
             sessions: components["schemas"]["AgentSession"][];
+            /** @description For a cloud agent, its latest session start that Memax counted; absent before its first. */
+            last_start?: components["schemas"]["AgentStart"];
+        };
+        /**
+         * @description A cloud agent's latest counted session start
+         *     (`POST /v2/spaces/{space}/session-starts`): when, the compiles its
+         *     repository's files held, and the memories whose lines it was told
+         *     about because they were added or changed since. Read from the
+         *     start's compile loads and its digest read, so it holds refs, never
+         *     words. A start that found nothing new has an empty `told`.
+         */
+        AgentStart: {
+            /** @description When the session loaded the files. */
+            at: components["schemas"]["Timestamp"];
+            space_id: components["schemas"]["Id"];
+            session_ref?: components["schemas"]["SessionRef"];
+            /** @description The compiles the session's files held, oldest first. */
+            compiles: components["schemas"]["CompileRef"][];
+            /** @description The memories whose lines the start sent, in display order (at most 200). */
+            told: components["schemas"]["DisplayRef"][];
         };
         AgentCommandResult: {
             outcome: components["schemas"]["Outcome"];

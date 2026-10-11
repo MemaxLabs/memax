@@ -1,11 +1,14 @@
 import {
   AgentCommandError,
   isRaise,
+  isStartKeyAgent,
   type AgentConnectionView,
   type AgentDetailView,
   type AgentsData,
   type AgentSpaceView,
   type ApiKeyView,
+  type CloudAgent,
+  type StartKeyView,
 } from "./agents";
 import { DEMO_SPACES } from "./demo-dataset";
 
@@ -283,8 +286,26 @@ const NATIVE_FILES: Readonly<Record<string, string>> = {
   chatgpt: "ChatGPT project",
 };
 
+/** A cloud agent's display name, as the server writes it. */
+const CLOUD_NAMES: Readonly<Record<CloudAgent, string>> = {
+  "claude-code": "Claude Code",
+  copilot: "Copilot",
+  codex: "Codex",
+};
+
+/** A demo start key: a real one's shape, numbered by the counter. */
+function demoKey(n: number): StartKeyView {
+  const secret = `mxk_${n.toString(16).padStart(4, "0")}${"7f2c3b1d".repeat(7)}a41c`;
+  return {
+    secret,
+    prefix: secret.slice(0, 8),
+    expiresAt: at("04-03", "14:40").replace("2026-", "2027-"),
+  };
+}
+
 function detailFor(agent: AgentConnectionView): AgentDetailView {
-  if (agent.agent === "codex") return { connection: agent, ...CODEX_DETAIL };
+  if (agent.agent === "codex" && !isStartKeyAgent(agent))
+    return { connection: agent, ...CODEX_DETAIL };
   return {
     connection: agent,
     week: {
@@ -300,6 +321,8 @@ function detailFor(agent: AgentConnectionView): AgentDetailView {
     },
     recentWrites: [],
     sessions: [],
+    // A cloud agent connected in the demo hasn't started yet.
+    lastStart: isStartKeyAgent(agent) ? null : undefined,
   };
 }
 
@@ -308,6 +331,7 @@ export function createDemoAgents(): AgentsData {
   let agents: AgentConnectionView[] = AGENTS.map((a) => ({ ...a }));
   let keys: ApiKeyView[] = [...API_KEYS];
   let nextKey = 1;
+  let nextStartKey = 1;
 
   const find = (agentId: string) => {
     const agent = agents.find((a) => a.id === agentId);
@@ -392,6 +416,44 @@ export function createDemoAgents(): AgentsData {
         state: "disconnected",
         credential: { ...agent.credential, active: false },
       });
+    },
+    async connectCloudAgent({ agent, space: s }) {
+      const n = nextStartKey++;
+      const connection: AgentConnectionView = {
+        id: `0192a7c0-0000-7000-8000-0000000002c${n}`,
+        agent,
+        name: `${CLOUD_NAMES[agent]} cloud agent · ${s.slug}`,
+        surface: "cloud",
+        state: "active",
+        credential: { kind: "api_key", active: true },
+        maxAutonomy: "read",
+        mine: true,
+        clientId: null,
+        spaces: [
+          {
+            spaceId: s.id,
+            slug: s.slug,
+            name: s.name,
+            kind: s.kind,
+            autonomy: "read",
+            reads7d: 0,
+            writes7d: 0,
+          },
+        ],
+        reads7d: 0,
+        writes7d: 0,
+        lastSeenAt: null,
+        connectedAt: today("14:40"),
+        connectedBy: "you",
+        target: undefined,
+      };
+      agents = [...agents, connection];
+      return { connection, key: demoKey(n) };
+    },
+    async rekeyAgent({ agent: agentId }) {
+      const agent = find(agentId);
+      if (!isStartKeyAgent(agent)) throw new AgentCommandError("not_allowed");
+      return { connection: agent, key: demoKey(nextStartKey++) };
     },
     newAgentAutonomy: () => "propose",
     targetFor: (s, key) => {

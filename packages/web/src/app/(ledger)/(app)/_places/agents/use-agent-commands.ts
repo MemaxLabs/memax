@@ -16,6 +16,7 @@ import {
   autonomyIn,
   type AgentConnectionView,
   type Autonomy,
+  type StartKeyView,
 } from "@/lib/v2/data/agents";
 import type { SpaceSummary } from "@/lib/v2/data/types";
 import { useSource } from "../../_lib/data";
@@ -164,6 +165,49 @@ export function useAutonomy({
     [],
   );
   return { shown: state.shown, raising: isRaising(state), choose };
+}
+
+/**
+ * A cloud agent's new start key, under the same connection. Resolves to
+ * the key (shown once by the caller, never in a toast), or null when it
+ * didn't go through (the toast says why).
+ */
+export function useRekeyAgent(space: SpaceSummary) {
+  const source = useSource();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const { t } = useLocale();
+  const copy = t.ledger.agents;
+
+  return useCallback(
+    async (agent: AgentConnectionView): Promise<StartKeyView | null> => {
+      const vars = { agent: agent.name, space: space.name };
+      try {
+        const res = await source.rekeyAgent({
+          agent: agent.id,
+          idempotencyKey: newKey(),
+        });
+        patchAgent(queryClient, source.kind, res.connection);
+        refreshAfterAgentCommand(queryClient, source.kind);
+        toast({ text: interpolate(copy.changed.rekeyed, vars) });
+        return res.key;
+      } catch (err) {
+        const refusal =
+          err instanceof AgentCommandError ? err.refusal : "failed";
+        toast({
+          text: refusalText(copy, refusal, {
+            ...vars,
+            level: "",
+            role: space.role,
+            command: "disconnect",
+            dev: DEV,
+          }).text,
+        });
+        return null;
+      }
+    },
+    [copy, queryClient, source, space, toast],
+  );
 }
 
 type Command = "pause" | "resume" | "disconnect";

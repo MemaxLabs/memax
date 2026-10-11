@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Memax's warm start for cloud agents: what changed in your repository's compiled context since the commit, at session start",
-  "homepage": "https://docs.memax.app/cloud-agents",
+  "homepage": "https://docs.memax.app/integrations/cloud-agents",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MemaxLabs/memax.git",

@@ -66,10 +66,13 @@ export function ConnectAgentDialog({
   open,
   onOpenChange,
   connected,
+  onCloud,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   connected: AgentConnectionView[];
+  /** Opens Connect a cloud agent instead. */
+  onCloud?: () => void;
 }) {
   const { t } = useLocale();
   const copy = t.ledger.agents.connect;
@@ -84,6 +87,7 @@ export function ConnectAgentDialog({
         <ConnectBody
           connected={connected}
           onClose={() => onOpenChange(false)}
+          onCloud={onCloud}
           title={copy.title}
         />
       </Dialog.Portal>
@@ -94,10 +98,12 @@ export function ConnectAgentDialog({
 function ConnectBody({
   connected,
   onClose,
+  onCloud,
   title,
 }: {
   connected: AgentConnectionView[];
   onClose: () => void;
+  onCloud?: () => void;
   title: string;
 }) {
   const { t } = useLocale();
@@ -205,6 +211,18 @@ function ConnectBody({
                 connected={connected}
                 selectedRef={selectedRef}
               />
+              {onCloud ? (
+                <p className={`mx-meta ${styles.plain}`}>
+                  {copy.cloud}{" "}
+                  <button
+                    type="button"
+                    className={styles.link}
+                    onClick={onCloud}
+                  >
+                    {copy.cloudLink}
+                  </button>
+                </p>
+              ) : null}
             </div>
 
             <div className={styles.step}>

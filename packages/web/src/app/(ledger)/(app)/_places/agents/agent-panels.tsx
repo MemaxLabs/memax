@@ -2,6 +2,7 @@
 
 import {
   Button,
+  formatNodes,
   Icon,
   MemoryList,
   MemoryRow,
@@ -24,7 +25,9 @@ import {
   AUTONOMY_LEVELS,
   autonomyIn,
   capabilities,
+  isStartKeyAgent,
   type AgentDetailView,
+  type AgentStartView,
   type AgentWrite,
 } from "@/lib/v2/data/agents";
 import type { SpaceSummary } from "@/lib/v2/data/types";
@@ -201,6 +204,58 @@ export function WritesPanel({
   );
 }
 
+/**
+ * A cloud agent's last start (AgentStart): when, the compile its
+ * repository's files held, and what it was told had changed since. Refs
+ * only: the words are in the files and the record.
+ */
+export function LastStartPanel({ start }: { start: AgentStartView | null }) {
+  const { t, locale } = useLocale();
+  const { now, timeZone, copy: app } = usePlace();
+  const copy = t.ledger.agents.detail.lastStart;
+  return (
+    <section className="mx-panel" aria-labelledby="agent-last-start">
+      <header className="mx-panel-head">
+        <h2 id="agent-last-start" className="mx-panel-title">
+          {copy.title}
+        </h2>
+      </header>
+      {start ? (
+        <dl className={styles.kv}>
+          <dt>{copy.when}</dt>
+          <dd>{formatReceiptTime(app, start.at, now, timeZone, locale)}</dd>
+          <dt>{copy.held}</dt>
+          <dd className={styles.refs}>{start.compiles.join(", ")}</dd>
+          <dt>{copy.told}</dt>
+          <dd>
+            {start.told.length === 0
+              ? copy.nothing
+              : formatNodes(
+                  start.told.length === 1 ? copy.toldOne : copy.toldMany,
+                  {
+                    n: String(start.told.length),
+                    refs: (
+                      <span className={styles.refs}>
+                        {start.told.join(", ")}
+                      </span>
+                    ),
+                  },
+                )}
+          </dd>
+          {start.sessionRef ? (
+            <>
+              <dt>{copy.session}</dt>
+              <dd className={styles.refs}>{start.sessionRef}</dd>
+            </>
+          ) : null}
+        </dl>
+      ) : (
+        <p className={styles.empty}>{copy.none}</p>
+      )}
+    </section>
+  );
+}
+
 /** Its latest sessions: reads, writes and when. */
 export function SessionsPanel({ detail }: { detail: AgentDetailView }) {
   const { t, locale } = useLocale();
@@ -298,7 +353,13 @@ export function ConnectionPanel({
               : date}
         </dd>
         <dt>{copy.through}</dt>
-        <dd>{a.credential.kind === "oauth_grant" ? copy.oauth : copy.key}</dd>
+        <dd>
+          {a.credential.kind === "oauth_grant"
+            ? copy.oauth
+            : isStartKeyAgent(a)
+              ? copy.startKey
+              : copy.key}
+        </dd>
         {a.clientId ? (
           <>
             <dt>{copy.client}</dt>

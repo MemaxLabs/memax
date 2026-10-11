@@ -21,12 +21,17 @@ import { useToast } from "../../_components/toasts";
 import { NotYetButton, PlaceColumn, usePlace } from "../place";
 import placeStyles from "../place.module.css";
 import { AgentRowControl } from "./agent-row-control";
+import { ConnectCloudDialog } from "./connect-cloud-dialog";
 import { ConnectAgentDialog } from "./connect-dialog";
 import { useSpaceAgents } from "./queries";
 import styles from "./agents.module.css";
 
-/** `?overlay=connect` opens Connect an agent (plan §6.3: overlays deep-link). */
+/**
+ * `?overlay=connect` opens Connect an agent, and `?overlay=connect-cloud`
+ * Connect a cloud agent (plan §6.3: overlays deep-link).
+ */
 const OVERLAY = "connect";
+const CLOUD_OVERLAY = "connect-cloud";
 
 /**
  * Agents (Agents.png, epic 1.8): every agent connected to the space,
@@ -44,11 +49,13 @@ export function AgentsPlace() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const connectOpen = params?.get("overlay") === OVERLAY;
-  const setConnectOpen = useCallback(
-    (open: boolean) => {
+  const overlay = params?.get("overlay");
+  const connectOpen = overlay === OVERLAY;
+  const cloudOpen = overlay === CLOUD_OVERLAY;
+  const setOverlay = useCallback(
+    (open: string | null) => {
       const next = new URLSearchParams(params?.toString());
-      if (open) next.set("overlay", OVERLAY);
+      if (open) next.set("overlay", open);
       else next.delete("overlay");
       const query = next.toString();
       router.replace(query ? `${pathname}?${query}` : (pathname ?? ""), {
@@ -56,6 +63,14 @@ export function AgentsPlace() {
       });
     },
     [params, pathname, router],
+  );
+  const setConnectOpen = useCallback(
+    (open: boolean) => setOverlay(open ? OVERLAY : null),
+    [setOverlay],
+  );
+  const setCloudOpen = useCallback(
+    (open: boolean) => setOverlay(open ? CLOUD_OVERLAY : null),
+    [setOverlay],
   );
 
   const list = agents.data;
@@ -149,7 +164,9 @@ export function AgentsPlace() {
         open={connectOpen}
         onOpenChange={setConnectOpen}
         connected={list ?? []}
+        onCloud={() => setCloudOpen(true)}
       />
+      <ConnectCloudDialog open={cloudOpen} onOpenChange={setCloudOpen} />
     </PlaceColumn>
   );
 }

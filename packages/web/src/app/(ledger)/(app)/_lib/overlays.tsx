@@ -5,14 +5,16 @@ import {
   use,
   useCallback,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { CommandMode } from "@memaxlabs/ledger";
 
 /**
- * The frame's layers: ⌘K (Ask or remember), the `?` sheet and Verify
- * (VerifyStale, V on a stale memory). Exactly one floats at a time
+ * The frame's layers: ⌘K (Ask or remember), the `?` sheet, Verify
+ * (VerifyStale, V on a stale memory) and New space (NewSpace, from the
+ * space switcher). Exactly one floats at a time
  * (design-system README, "Paper, not glass"), so opening one closes the
  * others.
  */
@@ -41,6 +43,10 @@ interface OverlayValue {
   verify: VerifyState | null;
   openVerify: (ref: string) => void;
   closeVerify: () => void;
+  /** New space: open, by session (each opening starts from the defaults), or null. */
+  newSpace: number | null;
+  openNewSpace: () => void;
+  closeNewSpace: () => void;
 }
 
 const OverlayContext = createContext<OverlayValue | null>(null);
@@ -54,10 +60,13 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   });
   const [keysOpen, setKeysOpenState] = useState(false);
   const [verify, setVerify] = useState<VerifyState | null>(null);
+  const [newSpace, setNewSpace] = useState<number | null>(null);
+  const sessions = useRef(0);
 
   const openCommand = useCallback((mode: CommandMode = "ask", query = "") => {
     setKeysOpenState(false);
     setVerify(null);
+    setNewSpace(null);
     setCommand((prev) => ({
       open: true,
       mode,
@@ -70,6 +79,7 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     if (open) {
       setKeysOpenState(false);
       setVerify(null);
+      setNewSpace(null);
     }
     setCommand((prev) =>
       open
@@ -86,6 +96,7 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     if (open) {
       setCommand((prev) => ({ ...prev, open: false }));
       setVerify(null);
+      setNewSpace(null);
     }
     setKeysOpenState(open);
   }, []);
@@ -93,10 +104,21 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   const openVerify = useCallback((ref: string) => {
     setCommand((prev) => ({ ...prev, open: false }));
     setKeysOpenState(false);
+    setNewSpace(null);
     setVerify((prev) => ({ ref, session: (prev?.session ?? 0) + 1 }));
   }, []);
 
   const closeVerify = useCallback(() => setVerify(null), []);
+
+  const openNewSpace = useCallback(() => {
+    setCommand((prev) => ({ ...prev, open: false }));
+    setKeysOpenState(false);
+    setVerify(null);
+    sessions.current += 1;
+    setNewSpace(sessions.current);
+  }, []);
+
+  const closeNewSpace = useCallback(() => setNewSpace(null), []);
 
   const value = useMemo(
     () => ({
@@ -108,6 +130,9 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
       verify,
       openVerify,
       closeVerify,
+      newSpace,
+      openNewSpace,
+      closeNewSpace,
     }),
     [
       command,
@@ -118,6 +143,9 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
       verify,
       openVerify,
       closeVerify,
+      newSpace,
+      openNewSpace,
+      closeNewSpace,
     ],
   );
   return <OverlayContext value={value}>{children}</OverlayContext>;

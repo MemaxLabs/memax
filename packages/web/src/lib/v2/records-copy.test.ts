@@ -7,6 +7,7 @@ import {
   expiryText,
   failureText,
   noteText,
+  spaceFailureText,
   undoFailureText,
   undoneText,
   railTime,
@@ -456,6 +457,49 @@ describe("what an undo says (no mark)", () => {
     );
     // Every refusal has its own Chinese.
     const chinese = undoFailureText(ZH, failure, { command, ref: "M-0430" });
+    expect(chinese).not.toBe(english);
+    expect(chinese).toMatch(/[一-鿿]/);
+  });
+});
+
+describe("why NewSpace didn't make a space", () => {
+  it.each([
+    [
+      { kind: "refused", code: "personal_exists", message: null } as const,
+      "acme wasn't made. You have a personal space already, and each person has one.",
+    ],
+    [
+      { kind: "refused", code: "space_kind", message: null } as const,
+      "acme wasn't made. Team spaces come with Team. Make a project space for now.",
+    ],
+    [
+      { kind: "refused", code: "space_limit", message: null } as const,
+      "acme wasn't made. You own 50 project spaces, the most one person can during the alpha.",
+    ],
+    [
+      {
+        kind: "refused",
+        code: "something_new",
+        message: "Not today.",
+      } as const,
+      "acme wasn't made. Memax refused it: Not today.",
+    ],
+    [
+      { kind: "rate-limited", retryAfter: 3 } as const,
+      "acme wasn't made. That was a lot at once. Wait 3 seconds, then try again.",
+    ],
+    [
+      { kind: "unreachable" } as const,
+      "acme wasn't made. It didn't reach Memax, so nothing changed. Try again.",
+    ],
+  ] as const)("%j", (failure, english) => {
+    expect(spaceFailureText(EN, failure, { name: "acme", locale: "en" })).toBe(
+      english,
+    );
+    const chinese = spaceFailureText(ZH, failure, {
+      name: "acme",
+      locale: "zh",
+    });
     expect(chinese).not.toBe(english);
     expect(chinese).toMatch(/[一-鿿]/);
   });

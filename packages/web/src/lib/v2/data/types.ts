@@ -56,6 +56,19 @@ export interface SpaceSummary {
    * doesn't say (the demo, whose spaces all are).
    */
   onV2?: boolean;
+  /** When the space was made (ISO), where the source says: EmptySpace's "created just now". */
+  createdAt?: string;
+}
+
+/** What NewSpace sends: a space of a kind, named, maybe for a repository. */
+export interface NewSpaceInput {
+  name: string;
+  /** Personal and team spaces are refused (personal_exists, space_kind); the API makes project spaces. */
+  kind: SpaceKind;
+  /** "owner/name", or empty. */
+  repository: string;
+  /** One per intent; the same key on a retry (spec: Idempotency-Key). */
+  idempotencyKey: string;
 }
 
 /** The rail's status line (plan §6.4): "5 agents in sync", "Cursor file drifted". */

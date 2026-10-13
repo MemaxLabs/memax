@@ -66,6 +66,8 @@ export const ledgerTodayZh: Translations["ledger"]["today"] = {
   },
   empty: {
     title: "这里还什么都没有",
+    // 眉标写上空间是什么时候建的：“刚刚创建”。
+    created: "{when}创建",
     lede: "连接一个 Agent，Memax 会读一读它对 {where} 已经知道的内容。所有内容都先作为提议进来。",
     steps: "三步完成第一次编译",
     connect: "在这个仓库里连接 Agent",

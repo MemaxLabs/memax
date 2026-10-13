@@ -315,15 +315,16 @@ func TestMCPRoundTrips(t *testing.T) {
 	// instead of reading it and spacemode again, a get resolved its ref in
 	// the statement that reads the memory, notices were taken only when
 	// the connection's read said some wait, and last_used was written once
-	// a minute; and one fewer each when HubContext sent the person's V2
-	// scope in the hub list's round trip.
+	// a minute; one fewer each when HubContext sent the person's V2 scope
+	// in the hub list's round trip; and one fewer again when the agent's
+	// OAuth grant went out with them (WithCredentialPrefetch, Oct 13).
 	budgets := map[string]int{
-		opRecall:      11,
-		opRecallSpace: 11,
-		opDigest:      14,
-		opSearch:      8,
-		opSearchSpace: 8,
-		opGet:         7,
+		opRecall:      10,
+		opRecallSpace: 10,
+		opDigest:      13,
+		opSearch:      7,
+		opSearchSpace: 7,
+		opGet:         6,
 	}
 	for _, op := range r.ops() {
 		for range 3 {

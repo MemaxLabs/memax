@@ -85,13 +85,14 @@ func TestAuthChainRoundTrips(t *testing.T) {
 	m := meter.New(rdb, db.Store, registry)
 	m.SetResolver(resolver)
 	deps := routeDeps{
-		store:          db.Store,
-		planRegistry:   registry,
-		hubResolver:    resolver,
-		rateLimiter:    ratelimit.New(rdb),
-		meter:          m,
-		authMiddleware: handler.RequireAuth(secret, authH.ResolveAPIKey, authH.ResolveOAuthGrant, handler.WithStartKeys(authH.ResolveStartKey)),
-		hubMiddleware:  handler.HubContext(db.Store),
+		store:        db.Store,
+		planRegistry: registry,
+		hubResolver:  resolver,
+		rateLimiter:  ratelimit.New(rdb),
+		meter:        m,
+		authMiddleware: handler.RequireAuth(secret, authH.ResolveAPIKey, authH.ResolveOAuthGrant,
+			handler.WithStartKeys(authH.ResolveStartKey), handler.WithCredentialPrefetch(authH)),
+		hubMiddleware: handler.HubContext(db.Store),
 	}
 	chain := authChain(deps)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -117,8 +118,10 @@ func TestAuthChainRoundTrips(t *testing.T) {
 		}
 		return c
 	}
-	// A person's session: the hub list. An API key or an OAuth grant: its
-	// row, then the hub list. The rate limit and the meter (a recall is
+	// Each credential, one: a person's session the hub list (with the V2
+	// scope for /v2 and /mcp); an API key or an OAuth grant its row with
+	// the hub list and the scope, in one pipeline (WithCredentialPrefetch).
+	// They were two, the row and then the list. The rate limit and the meter (a recall is
 	// metered: its limits are resolved again, and a slot reserved in
 	// Redis) read nothing once Redis holds the effective plan and the
 	// overrides are cached.
@@ -127,9 +130,11 @@ func TestAuthChainRoundTrips(t *testing.T) {
 		budget                    int
 	}{
 		{"session", session, http.MethodGet, "/v2/spaces", 1},
-		{"api key", key, http.MethodGet, "/v2/spaces", 2},
-		{"oauth grant", grant, http.MethodGet, "/v2/spaces", 2},
+		{"api key", key, http.MethodGet, "/v2/spaces", 1},
+		{"oauth grant", grant, http.MethodGet, "/v2/spaces", 1},
+		{"api key on MCP", key, http.MethodPost, "/mcp", 1},
 		{"session, a metered recall", session, http.MethodPost, "/v1/recall", 1},
+		{"api key, a metered recall", key, http.MethodPost, "/v1/recall", 1},
 	}
 	// A credential's first requests each write last_used in a goroutine,
 	// until one write lands: wait for it, so none lands in the measured run.

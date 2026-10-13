@@ -1541,10 +1541,7 @@ func (h *AuthHandler) ResolveAPIKey(key string) APIKeyResult {
 
 	// Update last_used asynchronously, at most once a minute.
 	if !usedRecently(result.lastUsed) {
-		go func() {
-			h.pool.Exec(context.Background(),
-				`UPDATE api_keys SET last_used = $1 WHERE key_hash = $2`, time.Now(), keyHash)
-		}()
+		h.touchKey(keyHash)
 	}
 
 	return result
@@ -1652,7 +1649,30 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 	if userID == "" || grantID == "" {
 		return APIKeyResult{}
 	}
+	result, lastUsed := scanGrant(h.pool.QueryRow(context.Background(), grantSQL, grantID, userID), grantID)
+	if result.UserID != "" && !usedRecently(lastUsed) {
+		h.touchGrant(grantID)
+	}
+	return result
+}
 
+// grantSQL reads an OAuth grant ($1) of its person ($2): scanGrant's row.
+const grantSQL = `SELECT user_id, COALESCE(agent_name, ''),
+			COALESCE(hub_scope_mode, 'hub_allowlist'),
+			ARRAY(SELECT hub_id::text FROM unnest(COALESCE(hub_ids, ARRAY[]::uuid[])) AS hub_id),
+			COALESCE(default_permissions, ARRAY[]::text[]),
+			COALESCE(trust_level, 'standard'),
+			rate_limit_tier,
+			expires_at,
+			COALESCE(scope, ''),
+			last_used
+		FROM oauth_grants
+		WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL`
+
+// scanGrant reads grantSQL's row: the zero result for a grant that is
+// missing, revoked, expired or has no permission Memax knows, and when it
+// was last used.
+func scanGrant(row pgx.Row, grantID string) (APIKeyResult, *time.Time) {
 	var resolvedUserID string
 	var agentName string
 	var hubScopeMode string
@@ -1663,25 +1683,12 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 	var expiresAt *time.Time
 	var scope string
 	var lastUsed *time.Time
-	err := h.pool.QueryRow(context.Background(),
-		`SELECT user_id, COALESCE(agent_name, ''),
-			COALESCE(hub_scope_mode, 'hub_allowlist'),
-			ARRAY(SELECT hub_id::text FROM unnest(COALESCE(hub_ids, ARRAY[]::uuid[])) AS hub_id),
-			COALESCE(default_permissions, ARRAY[]::text[]),
-			COALESCE(trust_level, 'standard'),
-			rate_limit_tier,
-			expires_at,
-			COALESCE(scope, ''),
-			last_used
-		FROM oauth_grants
-		WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL`,
-		grantID, userID,
-	).Scan(&resolvedUserID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &expiresAt, &scope, &lastUsed)
+	err := row.Scan(&resolvedUserID, &agentName, &hubScopeMode, &hubIDs, &defaultPermissions, &trustLevel, &rateLimitTier, &expiresAt, &scope, &lastUsed)
 	if err != nil {
-		return APIKeyResult{}
+		return APIKeyResult{}, nil
 	}
 	if expiresAt != nil && time.Now().After(*expiresAt) {
-		return APIKeyResult{}
+		return APIKeyResult{}, nil
 	}
 
 	perms, invalid := PermissionSetFromStrings(defaultPermissions)
@@ -1689,7 +1696,7 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 		slog.Warn("oauth grant contains unknown permissions", "grant_id", grantID, "permissions", invalid)
 	}
 	if len(perms) == 0 {
-		return APIKeyResult{}
+		return APIKeyResult{}, nil
 	}
 
 	result := APIKeyResult{
@@ -1708,16 +1715,114 @@ func (h *AuthHandler) ResolveOAuthGrant(userID string, grantID string) APIKeyRes
 	if rateLimitTier != nil {
 		result.RateLimitTier = *rateLimitTier
 	}
+	return result, lastUsed
+}
 
-	// At most once a minute: an agent's calls come many a minute.
-	if !usedRecently(lastUsed) {
-		go func() {
-			_, _ = h.pool.Exec(context.Background(),
-				`UPDATE oauth_grants SET last_used = $1 WHERE id = $2::uuid`, time.Now(), grantID)
-		}()
+// touchGrant writes a grant's last_used in the background: at most once a
+// minute (usedRecently), since an agent's calls come many a minute.
+func (h *AuthHandler) touchGrant(grantID string) {
+	go func() {
+		_, _ = h.pool.Exec(context.Background(),
+			`UPDATE oauth_grants SET last_used = $1 WHERE id = $2::uuid`, time.Now(), grantID)
+	}()
+}
+
+// touchKey writes an API key's last_used in the background, at most once a
+// minute (usedRecently).
+func (h *AuthHandler) touchKey(keyHash string) {
+	go func() {
+		_, _ = h.pool.Exec(context.Background(),
+			`UPDATE api_keys SET last_used = $1 WHERE key_hash = $2`, time.Now(), keyHash)
+	}()
+}
+
+// PrefetchAPIKey resolves an API key with what HubContext reads next, in
+// one round trip to Postgres: the key's row, the hub list of the person it
+// names (store.HubsOfAPIKey) and, when asked, their V2 scope
+// (ledger.KeyScopeSQL) go out in one pipeline, all keyed by the key's
+// hash, so nothing waits for the key to say whose it is. last_used is
+// written as ResolveAPIKey writes it. The Prefetched is nil when the key
+// doesn't resolve.
+func (h *AuthHandler) PrefetchAPIKey(ctx context.Context, key string, withScope bool) (APIKeyResult, *Prefetched) {
+	hash := sha256.Sum256([]byte(key))
+	keyHash := hex.EncodeToString(hash[:])
+	var result APIKeyResult
+	pf := &Prefetched{}
+	var scope ledger.Scope
+	var scopeErr error
+	scoped := false
+	b := &pgx.Batch{}
+	b.Queue(apiKeySQL, keyHash).QueryRow(func(row pgx.Row) error {
+		result = scanAPIKey(row)
+		return nil
+	})
+	store.QueueRequestHubs(b, store.HubsOfAPIKey(keyHash), &pf.Hubs, &pf.Listed)
+	if withScope {
+		b.Queue(ledger.KeyScopeSQL, keyHash).Query(func(rows pgx.Rows) error {
+			// The key's row came first in the pipeline, so its person is known.
+			if id, err := uuid.Parse(result.UserID); err == nil {
+				scope, scopeErr = ledger.ScanUserScope(rows, id)
+				scoped = true
+			}
+			return nil
+		})
 	}
+	if err := h.pool.SendBatch(ctx, b).Close(); err != nil && result.UserID == "" {
+		slog.Warn("api key: could not resolve", "error", err)
+		return APIKeyResult{}, nil
+	}
+	if result.UserID == "" {
+		return APIKeyResult{}, nil
+	}
+	if !usedRecently(result.lastUsed) {
+		h.touchKey(keyHash)
+	}
+	pf.UserID = result.UserID
+	if scoped && scopeErr == nil {
+		pf.Scope = &scope
+	}
+	return result, pf
+}
 
-	return result
+// PrefetchGrant resolves an OAuth grant with what HubContext reads next,
+// in one round trip: the grant's row, its person's hub list and, when
+// asked, their V2 scope, in one pipeline (the token names the person, so
+// nothing waits for the grant). last_used is written as ResolveOAuthGrant
+// writes it. The Prefetched is nil when the grant doesn't resolve.
+func (h *AuthHandler) PrefetchGrant(ctx context.Context, userID, grantID string, withScope bool) (APIKeyResult, *Prefetched) {
+	person, err := uuid.Parse(userID)
+	if err != nil || grantID == "" {
+		return h.ResolveOAuthGrant(userID, grantID), nil
+	}
+	var result APIKeyResult
+	var lastUsed *time.Time
+	pf := &Prefetched{}
+	var scope ledger.Scope
+	var scopeErr error
+	b := &pgx.Batch{}
+	b.Queue(grantSQL, grantID, userID).QueryRow(func(row pgx.Row) error {
+		result, lastUsed = scanGrant(row, grantID)
+		return nil
+	})
+	store.QueueRequestHubs(b, store.HubsOfUser(userID), &pf.Hubs, &pf.Listed)
+	if withScope {
+		ledger.QueueUserScope(b, person, &scope, &scopeErr)
+	}
+	if err := h.pool.SendBatch(ctx, b).Close(); err != nil && result.UserID == "" {
+		slog.Warn("oauth grant: could not resolve", "error", err)
+		return APIKeyResult{}, nil
+	}
+	if result.UserID == "" {
+		return APIKeyResult{}, nil
+	}
+	if !usedRecently(lastUsed) {
+		h.touchGrant(grantID)
+	}
+	pf.UserID = result.UserID
+	if withScope && scopeErr == nil && scope.PersonID == person {
+		pf.Scope = &scope
+	}
+	return result, pf
 }
 
 func uniqueNonEmptyStrings(values []string) []string {

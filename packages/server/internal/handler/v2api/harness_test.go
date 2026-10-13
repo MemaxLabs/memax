@@ -148,7 +148,8 @@ func newEnvOn(t *testing.T, db *testdb.DB, more func(*env) []v2api.Option, ledge
 	// The chain serverapp.authChain builds, minus the Redis-backed rate
 	// limiter and meter (both pass /v2 through when unset).
 	chain := func(h http.Handler) http.Handler {
-		return handler.RequireAuth([]byte(testSecret), authH.ResolveAPIKey, authH.ResolveOAuthGrant, handler.WithStartKeys(authH.ResolveStartKey))(
+		return handler.RequireAuth([]byte(testSecret), authH.ResolveAPIKey, authH.ResolveOAuthGrant,
+			handler.WithStartKeys(authH.ResolveStartKey), handler.WithCredentialPrefetch(authH))(
 			handler.HubContext(st)(handler.AuthorizeHTTP(h)))
 	}
 	jobs, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Logger: quiet})

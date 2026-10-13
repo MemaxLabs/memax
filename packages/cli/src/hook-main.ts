@@ -17,6 +17,7 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hookAgent } from "./lib/hook/agents.js";
+import { requestCheck } from "./lib/hook/check-requests.js";
 import { enqueueLoads } from "./lib/hook/loads.js";
 import { claimSession, writeSeen } from "./lib/hook/seen.js";
 import { hookPaths, sessionStart } from "./lib/hook/session-start.js";
@@ -144,6 +145,7 @@ export async function hookSessionStart(argv: string[]): Promise<number> {
     // Off the critical path: the agent has its block.
     for (const seen of [res.seen, res.homeSeen])
       if (seen) writeSeen(seen.path, dirname(seen.path), seen.value);
+    if (res.checkRequest) requestCheck(paths.checkRequests, res.checkRequest);
     if (res.loads.length > 0) {
       enqueueLoads(paths.loads, res.loads);
       if (!daemonAlive(paths.pid)) await spawnFlush(paths.loads);

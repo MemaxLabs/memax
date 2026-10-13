@@ -140,6 +140,30 @@ export function renderCheck(
   const width = Math.max(0, ...shown.map((i) => i.memory.length));
   for (const item of shown) lines.push(...itemLines(item, width, branch, run));
 
+  const hints = view.branch;
+  if (hints) {
+    const where = `${hints.branch}${hints.unpushed ? " (not pushed yet)" : ""}`;
+    if (hints.items.length === 0)
+      lines.push(
+        "",
+        chalk.gray(
+          `  On ${where}, what the space's memories rely on holds as on ${branch}.`,
+        ),
+      );
+    else {
+      lines.push(
+        "",
+        `  On ${where}, as this machine checked it (never sent; not the record until it merges):`,
+      );
+      const w = Math.max(...hints.items.map((i) => i.memory.length));
+      for (const h of hints.items)
+        lines.push(
+          `  ${chalk.yellow(MARK.waiting)} ${h.memory.padEnd(w)}  ${conditionWords(h.condition)}`,
+          `  ${" ".repeat(w + 4)}${chalk.gray(evidenceWords(h.condition, h.evidence, hints.branch))}`,
+        );
+    }
+  }
+
   const flagged = run.flagged ?? [];
   if (flagged.length > 0) {
     const refs = flagged.join(", ");

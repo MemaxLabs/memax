@@ -9,11 +9,13 @@
 import type { V2 } from "memax-sdk";
 import {
   readWarm,
+  type WarmBranch,
   type WarmFile,
   type WarmForget,
   type WarmGate,
   type WarmHome,
   type WarmSpace,
+  type WarmStale,
   type WarmTarget,
 } from "../hook/warm.js";
 import { failureOf, type DaemonApi, type TargetPoll } from "./api.js";
@@ -38,6 +40,7 @@ export const HOME = "home";
 const FORGET_WINDOW_MS = 30 * 24 * 60 * 60_000;
 const MAX_FORGETS = 50;
 const MAX_GATES = 20;
+const MAX_STALE = 50;
 const QUESTION_CHARS = 240;
 /** At most one fetch of a space's forgets and gates this often. */
 export const MIN_REFRESH_MS = 5_000;
@@ -221,6 +224,40 @@ export class WarmCache {
     this.changed(h);
   }
 
+  /**
+   * What a check read of the space's memories marked stale (the
+   * conditions list), less any the cache knows were forgotten.
+   */
+  setStale(spaceId: string, slug: string, stale: V2.StaleMemory[]): void {
+    const s = this.space(spaceId, slug);
+    const gone = new Set(forgottenRefs(s.forgotten));
+    const next: WarmStale[] = stale
+      .filter((x) => !gone.has(x.memory))
+      .slice(0, MAX_STALE)
+      .map((x) => ({ ref: x.memory, since: x.since, causes: x.causes }));
+    if (JSON.stringify(next) === JSON.stringify(s.stale ?? [])) return;
+    s.stale = next;
+    this.changed(s);
+  }
+
+  /** A linked repository's branch hints, or none (null). */
+  setBranch(root: string, hints: WarmBranch | null): void {
+    const prev = this.data.branches?.[root];
+    if (JSON.stringify(prev ?? null) === JSON.stringify(hints)) return;
+    const next = { ...(this.data.branches ?? {}) };
+    if (hints) next[root] = hints;
+    else delete next[root];
+    if (Object.keys(next).length > 0) this.data.branches = next;
+    else delete this.data.branches;
+    this.schedule();
+  }
+
+  /** Keeps only these repositories' branch hints (the ones linked here). */
+  retainRoots(roots: Set<string>): void {
+    for (const root of Object.keys(this.data.branches ?? {}))
+      if (!roots.has(root)) this.setBranch(root, null);
+  }
+
   /** The home link is gone: so is its entry. */
   clearHome(): void {
     if (!this.data.home) return;
@@ -290,7 +327,13 @@ export class WarmCache {
       if (key !== HOME) {
         const before = new Set(forgottenRefs(s.forgotten));
         const fresh = forgottenRefs(forgotten).filter((r) => !before.has(r));
-        if (fresh.length) this.o.onForgotten?.(spaceId, fresh);
+        if (fresh.length) {
+          this.o.onForgotten?.(spaceId, fresh);
+          // Rule 7: a forgotten memory is never said to be being verified.
+          const gone = new Set(fresh);
+          if (s.stale?.some((x) => gone.has(x.ref)))
+            s.stale = s.stale.filter((x) => !gone.has(x.ref));
+        }
       }
       if (
         JSON.stringify(forgotten) === JSON.stringify(s.forgotten) &&

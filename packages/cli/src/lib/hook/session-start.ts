@@ -11,10 +11,12 @@
 // what the agent's last session anywhere was told (seen/home/<agent>.json),
 // as a Personal section after the repository's; outside a repository, as
 // the whole block. Its loads count reads of personal facts.
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { cleanLine } from "../daemon/compiler/sanitize.js";
+import { evidenceWords } from "../stale/words.js";
+import type { CheckRequest } from "./check-requests.js";
 import type { HookAgent } from "./agents.js";
 import { DEFAULT_PATHS, OPT_IN_KINDS, wrapFor } from "./agents.js";
 import { readCompiled, type CitedLine, type CompiledFile } from "./compiled.js";
@@ -23,13 +25,21 @@ import type { QueuedLoad } from "./loads.js";
 import {
   renderBlock,
   type BlockBehind,
+  type BlockBranch,
   type BlockFile,
   type BlockForget,
   type BlockGate,
   type BlockSection,
+  type BlockVerifying,
 } from "./render.js";
 import { emptySeen, readSeen, seenPath, type Seen } from "./seen.js";
-import { readWarm, type WarmSpace, type WarmTarget } from "./warm.js";
+import {
+  readWarm,
+  type WarmBranch,
+  type WarmSpace,
+  type WarmStale,
+  type WarmTarget,
+} from "./warm.js";
 
 export interface HookPaths {
   /** ~/.memax/daemon */
@@ -42,6 +52,8 @@ export interface HookPaths {
   warm: string;
   loads: string;
   seen: string;
+  /** Check requests for the daemon (check-requests.ts). */
+  checkRequests: string;
 }
 
 /**
@@ -60,6 +72,7 @@ export function hookPaths(
     warm: join(dir, "warm.json"),
     loads: join(dir, "loads"),
     seen: join(dir, "seen"),
+    checkRequests: join(dir, "checks", "requests"),
   };
 }
 
@@ -82,6 +95,8 @@ export interface SessionStartResult {
   homeSeen?: { path: string; value: Seen };
   /** Queued after printing, for the daemon to report. */
   loads: QueuedLoad[];
+  /** Queued after printing: the daemon checks this repository soon. */
+  checkRequest?: CheckRequest;
   /** Why it printed nothing, for --debug. */
   skipped?: string;
 }
@@ -96,6 +111,44 @@ interface LinkedRepo {
 const FIRST_FORGET_WINDOW_MS = 7 * 24 * 60 * 60_000;
 const MAX_FORGETS = 20;
 const MAX_GATES = 10;
+const MAX_VERIFYING = 10;
+/** A branch's hints older than this aren't said: the daemon hasn't looked since. */
+const BRANCH_HINT_MS = 24 * 60 * 60_000;
+
+/** What a repository section adds: what's being verified, and this branch's hints. */
+interface Checked {
+  stale?: WarmStale[];
+  branch?: WarmBranch;
+}
+
+/** The branch checked out in root, from .git/HEAD (files only; a worktree too). */
+export function currentBranch(root: string): string | null {
+  try {
+    let git = join(root, ".git");
+    if (statSync(git).isFile()) {
+      const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(git, "utf8"));
+      if (!m) return null;
+      git = resolve(root, m[1].trim());
+    }
+    const head = readFileSync(join(git, "HEAD"), "utf8").trim();
+    return head.startsWith("ref: refs/heads/")
+      ? head.slice("ref: refs/heads/".length)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Why a memory is stale, in words: the first cause the hook can say. */
+function staleWhy(x: WarmStale): string {
+  for (const c of x.causes) {
+    if (c.kind === "check")
+      return evidenceWords(c.condition, c.evidence, c.branch);
+    if (c.kind === "date")
+      return `its date to check again, ${c.stale_after.slice(0, 10)}, has passed.`;
+  }
+  return "it was marked stale; check it against its sources.";
+}
 
 /** A compile's number (C-0881 → 881); compiles count up per tenant. */
 function compileNumber(ref: string): number {
@@ -272,6 +325,7 @@ function part(
   space: string,
   spaceId: string | undefined,
   seenFile: string,
+  checked: Checked = {},
 ): Part {
   const before = readSeen(seenFile);
   const first = before === null;
@@ -326,6 +380,41 @@ function part(
       });
   }
 
+  // Memories marked stale since the last session here (all of them in a
+  // first one), never one forgotten since.
+  const told = new Set(prev.verifying ?? []);
+  const staleKey = (x: WarmStale) => `${x.ref}@${x.since}`;
+  const stale = (checked.stale ?? []).filter((x) => !forgottenRefs.has(x.ref));
+  const shown = stale
+    .filter((x) => !told.has(staleKey(x)))
+    .slice(0, MAX_VERIFYING);
+  const verifying: BlockVerifying[] = shown.map((x) => ({
+    ref: x.ref,
+    why: staleWhy(x),
+  }));
+  // This branch's hints not told before, from a check within a day.
+  const toldHints = new Set(prev.hints ?? []);
+  const b = checked.branch;
+  const hintKey = (h: WarmBranch["items"][number]) =>
+    `${b!.branch}\0${h.memory}\0${h.condition.id ?? ""}\0${h.evidence?.change ?? ""}`;
+  const hints = b
+    ? b.items.filter(
+        (h) => !forgottenRefs.has(h.memory) && !toldHints.has(hintKey(h)),
+      )
+    : [];
+  const branch: BlockBranch | undefined =
+    b && hints.length > 0
+      ? {
+          name: b.branch,
+          ...(b.unpushed ? { unpushed: true } : {}),
+          at: b.checked_at,
+          hints: hints.slice(0, MAX_VERIFYING).map((h) => ({
+            ref: h.memory,
+            why: evidenceWords(h.condition, h.evidence, "this branch"),
+          })),
+        }
+      : undefined;
+
   // A session that saw no compiled file here is a baseline too.
   const baseline = first || Object.keys(prev.files).length === 0;
   const blockFiles = files.map(({ file, target }) =>
@@ -353,6 +442,20 @@ function part(
       ...prev.gates.filter((r) => !waiting.some((g) => g.ref === r)),
     ],
     behind: [...behind.map((b) => b.latest), ...prev.behind],
+    // Told and still marked stale stays told; one verified since drops out
+    // (a cache with no stale list yet keeps what was told).
+    verifying: checked.stale
+      ? [
+          ...shown.map(staleKey),
+          ...stale.map(staleKey).filter((k) => told.has(k)),
+        ]
+      : (prev.verifying ?? []),
+    hints: [
+      ...new Set([
+        ...hints.slice(0, MAX_VERIFYING).map(hintKey),
+        ...(prev.hints ?? []),
+      ]),
+    ],
   };
   return {
     block: {
@@ -361,6 +464,8 @@ function part(
       forgotten: newForgets,
       gates: newGates,
       behind,
+      ...(verifying.length > 0 ? { verifying } : {}),
+      ...(branch ? { branch } : {}),
     },
     seen: { path: seenFile, value: seen },
     loaded: files.map(({ file }) => ({
@@ -388,6 +493,15 @@ function repoPart(
   if (files.length === 0 && !warm) return "no compiled files here";
   const space =
     repo.link?.space_slug ?? warm?.slug ?? files[0]?.file.space ?? "";
+  // This branch's hints, when the daemon checked the branch checked out
+  // now, within a day.
+  const hints = repo.link ? warmFile.branches?.[repo.root] : undefined;
+  const branch =
+    hints &&
+    hints.branch === currentBranch(repo.root) &&
+    i.now.getTime() - Date.parse(hints.checked_at) < BRANCH_HINT_MS
+      ? hints
+      : undefined;
   return part(
     i.now,
     files,
@@ -395,6 +509,7 @@ function repoPart(
     space,
     repo.link?.space_id,
     seenPath(i.paths.seen, repo.root, i.agent.kind),
+    { stale: warm?.stale, branch },
   );
 }
 
@@ -476,9 +591,16 @@ export function sessionStart(i: SessionStartInput): SessionStartResult {
           })),
         );
   const first = parts.every((p) => !p || p.first);
+  // The daemon checks the repository soon, for this agent (a linked one
+  // on V2; a compaction is the same session).
+  const checkRequest: CheckRequest | undefined =
+    repo?.link && typeof inRepo !== "string" && source !== "compact"
+      ? { root: repo.root, agent: i.agent.kind, at: loadedAt }
+      : undefined;
 
   return {
     output: wrapFor(i.agent.format, block),
+    ...(checkRequest ? { checkRequest } : {}),
     ...(typeof inRepo === "string" ? {} : { seen: inRepo.seen }),
     ...(atHome ? { homeSeen: atHome.seen } : {}),
     loads,

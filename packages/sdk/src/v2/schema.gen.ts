@@ -644,6 +644,8 @@ export interface paths {
          *     latest hold, where a machine looks for a rename. No statements. A
          *     condition that hasn't held in 30 days is left out, since Memax stops
          *     asking, and so is `pr_state`, which only the GitHub App checks.
+         *     Beside them, the space's memories marked stale now and why, typed,
+         *     for a machine's session-start hook to say what's being verified.
          */
         get: operations["listConditions"];
         put?: never;
@@ -5540,6 +5542,20 @@ export interface components {
             /** @description The repository the space compiles for (owner/name); a clone's origin must name it to report. */
             repository: string;
             items: components["schemas"]["MemoryConditions"][];
+            /**
+             * @description The space's kept memories marked stale now, the latest flag
+             *     first (at most 100), each with why: what a machine's
+             *     session-start hook says is being verified. Never a statement.
+             */
+            stale: components["schemas"]["StaleMemory"][];
+        };
+        /** @description A memory marked stale, as a space's machines hear of it. */
+        StaleMemory: {
+            memory: components["schemas"]["DisplayRef"];
+            /** @description When it was marked stale (its flag's receipt). */
+            since: components["schemas"]["Timestamp"];
+            /** @description Why, as the stale report says it; empty when Memax can't say. */
+            causes: components["schemas"]["StaleCause"][];
         };
         SpaceConditionsEnvelope: {
             data: components["schemas"]["SpaceConditions"];

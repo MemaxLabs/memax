@@ -1353,6 +1353,8 @@ paths:
         latest hold, where a machine looks for a rename. No statements. A
         condition that hasn't held in 30 days is left out, since Memax stops
         asking, and so is `pr_state`, which only the GitHub App checks.
+        Beside them, the space's memories marked stale now and why, typed,
+        for a machine's session-start hook to say what's being verified.
       responses:
         '200':
           description: The space's conditions.
@@ -10421,7 +10423,7 @@ components:
       description: What a space's machines check.
       type: object
       additionalProperties: false
-      required: [space_id, repository, items]
+      required: [space_id, repository, items, stale]
       properties:
         space_id:
           $ref: '#/components/schemas/Id'
@@ -10432,6 +10434,31 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MemoryConditions'
+        stale:
+          description: |
+            The space's kept memories marked stale now, the latest flag
+            first (at most 100), each with why: what a machine's
+            session-start hook says is being verified. Never a statement.
+          type: array
+          items:
+            $ref: '#/components/schemas/StaleMemory'
+
+    StaleMemory:
+      description: A memory marked stale, as a space's machines hear of it.
+      type: object
+      additionalProperties: false
+      required: [memory, since, causes]
+      properties:
+        memory:
+          $ref: '#/components/schemas/DisplayRef'
+        since:
+          description: When it was marked stale (its flag's receipt).
+          $ref: '#/components/schemas/Timestamp'
+        causes:
+          description: Why, as the stale report says it; empty when Memax can't say.
+          type: array
+          items:
+            $ref: '#/components/schemas/StaleCause'
 
     SpaceConditionsEnvelope:
       type: object

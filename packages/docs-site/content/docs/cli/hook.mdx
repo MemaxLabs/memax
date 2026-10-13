@@ -63,6 +63,16 @@ nothing was printed and how long it took.
   session here hears about the last week's.
 - **Decisions waiting.** Each decision an agent asked a person for (a gate,
   `G-`) that still waits, once.
+- **Being verified.** Each memory marked stale since the last session,
+  once, with why: a file it names moved or went, a dependency left, a date
+  to check again passed. The agent checks the code before relying on it,
+  and you answer it with [`memax verify`](/cli/verify) or in the app.
+- **On this branch.** When the daemon finds that the branch you're on
+  breaks something a memory relies on (a file it cites is gone here, say)
+  while the default branch still holds it, it says so, once. These hints
+  are this machine's alone: neither they nor the branch's name are sent
+  anywhere, and nothing is marked stale until the change reaches the
+  default branch.
 - **Compiles not here yet.** When the space compiled something this
   machine doesn't have yet (the daemon isn't running, or a hand edit waits
   in Review).
@@ -99,8 +109,9 @@ The hook runs every time a session starts, so it reads only local files
 and never touches the network:
 
 - `~/.memax/daemon/warm.json`: what the [daemon](/cli/daemon) knows about
-  each linked space (each file's latest compile, recent forgets and
-  waiting gates), kept current as the space changes. It holds IDs, never
+  each linked space (each file's latest compile, recent forgets, waiting
+  gates, what's being verified and this machine's branch hints), kept
+  current as the space changes. It holds IDs, paths and names, never
   memory text.
 - The compiled files in the repository.
 - What this agent's last session here was told, as hashes.
@@ -114,7 +125,9 @@ process; a home link adds about a millisecond).
 Reading a compiled file at session start counts as reading every memory
 in it, which keeps the memories your agents use from fading. The hook
 queues that report on disk after it prints; the daemon sends it, or
-`memax hook flush` does in the background when no daemon runs.
+`memax hook flush` does in the background when no daemon runs. In a
+linked repository it also asks the daemon to check the repository soon,
+so a memory's page can say it was checked when that agent started.
 
 ## Agents with a session-start hook
 

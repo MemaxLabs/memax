@@ -53,6 +53,21 @@ export interface BlockBehind {
   sync_state: string;
 }
 
+/** A memory marked stale, and why in words (no statement). */
+export interface BlockVerifying {
+  ref: string;
+  why: string;
+}
+
+/** What this machine's check found on the branch checked out here. */
+export interface BlockBranch {
+  name: string;
+  unpushed?: boolean;
+  /** When the daemon checked it (ISO). */
+  at: string;
+  hints: BlockVerifying[];
+}
+
 /** One space's news: the repository's, or the Personal space's here. */
 export interface BlockSection {
   space: string;
@@ -60,6 +75,10 @@ export interface BlockSection {
   forgotten: BlockForget[];
   gates: BlockGate[];
   behind: BlockBehind[];
+  /** Memories marked stale since the last session here. */
+  verifying?: BlockVerifying[];
+  /** This branch's hints not told before. */
+  branch?: BlockBranch;
 }
 
 export interface BlockInput {
@@ -97,6 +116,8 @@ export function estimateTokens(s: string): number {
 }
 
 const day = (iso: string) => iso.slice(0, 10);
+/** "2026-10-13 14:31 UTC". */
+const minute = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
 
 function quote(s: string, max = 200): string {
   const t = s.length > max ? `${s.slice(0, max - 1)}…` : s;
@@ -112,6 +133,8 @@ function hasNews(b: BlockSection): boolean {
     b.forgotten.length > 0 ||
     b.gates.length > 0 ||
     b.behind.length > 0 ||
+    (b.verifying?.length ?? 0) > 0 ||
+    (b.branch?.hints.length ?? 0) > 0 ||
     b.files.some(
       (f) =>
         f.added.length > 0 ||
@@ -158,6 +181,19 @@ function frame(
         `- ${g.ref} ${quote(g.question)} (${by}open until ${day(g.expires_at)})`,
       );
     }
+  }
+  if (b.verifying && b.verifying.length > 0) {
+    head.push(
+      "Being verified (something these rely on changed; check the code before relying on them, and tell the person):",
+    );
+    for (const v of b.verifying) head.push(`- ${v.ref}: ${v.why}`);
+  }
+  if (b.branch && b.branch.hints.length > 0) {
+    const pushed = b.branch.unpushed ? ", not pushed yet" : "";
+    head.push(
+      `On this branch (${b.branch.name}${pushed}), as this machine checked it at ${minute(b.branch.at)} (not the record until it merges):`,
+    );
+    for (const h of b.branch.hints) head.push(`- ${h.ref}: ${h.why}`);
   }
   for (const x of b.behind) {
     const why =

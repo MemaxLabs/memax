@@ -182,15 +182,28 @@ export function conflictNote(
   });
 }
 
-/** "Its source changed on Sep 11 in PR #198. Verify it.", or its date passed. */
-export function staleNote(w: DreamWords, m: MemoryListItem): string {
+/**
+ * Why a memory is stale: "Its source changed on Sep 11 in PR #198. Verify
+ * it.", a condition that stopped holding, or its date passed; and, for one
+ * an edition reminds of, that it has waited a month.
+ */
+export function staleNote(
+  w: DreamWords,
+  m: MemoryListItem,
+  waiting = false,
+): string {
   const n = w.dc.needsYou;
+  if (waiting) return n.staleWaiting;
   const note = m.note;
+  const date =
+    note?.kind === "stale"
+      ? formatShortDate(new Date(note.changedAt), w.timeZone, w.locale)
+      : "";
+  if (note?.kind === "stale" && note.cause === "check") {
+    return interpolate(n.staleCheck, { date });
+  }
   if (note?.kind === "stale" && note.source && !/^D-\d+$/.test(note.source)) {
-    return interpolate(n.staleSource, {
-      date: formatShortDate(new Date(note.changedAt), w.timeZone, w.locale),
-      source: note.source,
-    });
+    return interpolate(n.staleSource, { date, source: note.source });
   }
   return n.staleDate;
 }

@@ -38,6 +38,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/lifecycle"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/stalesweep"
 	"github.com/MemaxLabs/memax/packages/server/internal/testdb"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream/dreamtest"
@@ -164,6 +165,10 @@ func build(t *testing.T, f fixture) *world {
 		sections = append(sections, sec)
 	}
 	apply(&ledger.ReviseBrief{Meta: meta(), SpaceID: w.space, Title: "memax-v2", Sections: sections})
+	// Dates are flagged by the hourly sweep; Dream's edition reports them.
+	if _, err := stalesweep.FlagSpace(ctx, w.l, ledger.StaleSpaceArgs{SpaceID: w.space, Slot: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
 	return w
 }
 
@@ -392,8 +397,8 @@ func runMode(t *testing.T, f fixture, m mode) {
 	dedupe := pairScore(ledger.DreamDedupe, f.Expect.Dedupe)
 	conflict := pairScore(ledger.DreamConflict, f.Expect.Conflict)
 	stale := score{expected: len(f.Expect.Stale)}
-	for _, a := range ed.Actions {
-		if a.Kind == ledger.DreamStale {
+	for _, a := range ed.Surfaced {
+		if a.Kind == ledger.SurfacedStale {
 			stale.planned++
 			if slices.Contains(f.Expect.Stale, w.key[a.Memory.ID]) {
 				stale.hit++

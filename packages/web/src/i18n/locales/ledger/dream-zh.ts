@@ -64,6 +64,8 @@ export const ledgerDreamZh: Translations["ledger"]["dream"] = {
     conflictPlain: "它和一条现行的记忆矛盾。在审阅中处理。",
     staleSource: "它的来源在 {date} 的 {source} 里变了。请核实。",
     staleDate: "它该重新核对的日期已经过了。请核实。",
+    staleCheck: "它的一个前提在 {date} 不再成立。请核实。",
+    staleWaiting: "一个月前被标为过时，还在等人核实。请核实。",
     unflag: "取消标记",
   },
   faded: {

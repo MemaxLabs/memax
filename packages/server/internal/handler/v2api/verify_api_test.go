@@ -1,6 +1,7 @@
 package v2api_test
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"testing"
@@ -8,7 +9,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
+	"github.com/MemaxLabs/memax/packages/server/internal/stalesweep"
 )
 
 // staleReport is GET /v2/memories/{ref}/stale as the tests read it.
@@ -37,7 +40,7 @@ type verifyOut struct {
 }
 
 // verifyEnv is a project space whose memories passed their dates to check
-// again, flagged by Dream's nightly run, with AGENTS.md to recompile.
+// again, flagged by Memax's hourly sweep, with AGENTS.md to recompile.
 type verifyEnv struct {
 	*dreamEnv
 	stale []memory
@@ -59,7 +62,9 @@ func newVerifyEnv(t *testing.T, statements ...string) *verifyEnv {
 			body: map[string]any{"statement": s, "section": "conventions", "stale_after": past}}).ok(http.StatusCreated, &res)
 		v.stale = append(v.stale, res.Memory)
 	}
-	d.dream(time.Now(), nil)
+	if _, err := stalesweep.FlagSpace(context.Background(), e.ledger, ledger.StaleSpaceArgs{SpaceID: d.sp.id, Slot: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
 	return v
 }
 
@@ -75,14 +80,14 @@ func TestVerifyOverTheAPI(t *testing.T) {
 	v := newVerifyEnv(t, "Ask memax answers with the Haiku tier.", "Releases are cut on Fridays.", "The CLI prints receipts in web order.")
 	haiku, fridays, receipts := v.stale[0], v.stale[1], v.stale[2]
 
-	// Why: Dream flagged it, its date passed, kept by the person.
+	// Why: Memax flagged it, its date passed, kept by the person.
 	var rep staleReport
 	r := v.do(call{method: "GET", path: "/v2/memories/" + haiku.Ref + "/stale?space=" + v.sp.slug, token: v.token}).ok(http.StatusOK, &rep)
 	if r.header.Get("ETag") != `"1"` {
 		t.Errorf("ETag %q", r.header.Get("ETag"))
 	}
 	if !rep.Stale || rep.State != "stale" || rep.Version != 1 || rep.Statement != haiku.Statement || rep.Flagged == nil ||
-		rep.Flagged.ActorKind != "dream" || rep.Flagged.Action != "flagged" || rep.Kept == nil || rep.Kept.Action != "kept" ||
+		rep.Flagged.ActorKind != "memax" || rep.Flagged.Action != "flagged" || rep.Kept == nil || rep.Kept.Action != "kept" ||
 		len(rep.Causes) != 1 || rep.Causes[0].Kind != "date" {
 		t.Fatalf("report %+v", rep)
 	}

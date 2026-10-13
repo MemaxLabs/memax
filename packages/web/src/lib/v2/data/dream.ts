@@ -68,10 +68,18 @@ export interface DreamActionView {
   undoable: boolean;
 }
 
-/** Something the edition lists because it needs a person, though Dream didn't do it. */
+/**
+ * Something the edition lists because it needs a person, though Dream
+ * didn't do it: a conflict the judge flagged, a memory Memax marked stale
+ * (a date that passed, a failing check), or one that has waited a month
+ * to be verified.
+ */
 export interface DreamSurfacedView {
+  kind: "conflict" | "stale" | "stale_waiting";
   memory: MemoryListItem;
   with: { ref: string; keptBy: Actor | null } | null;
+  /** For a stale memory, the receipt that marked it. */
+  receiptId: string | null;
 }
 
 export type DreamCounts = Record<DreamActionKind, number>;
@@ -223,7 +231,8 @@ export function needsYouOf(edition: DreamEditionView): MemoryListItem[] {
     if (a.kind === "stale" && a.memory.state === "stale") add(a.memory);
   }
   for (const s of edition.surfaced) {
-    if (s.memory.state === "conflict") add(s.memory);
+    if (s.kind === "conflict" && s.memory.state === "conflict") add(s.memory);
+    if (s.kind !== "conflict" && s.memory.state === "stale") add(s.memory);
   }
   // Conflicts first (DreamEdition.png), then what to verify.
   return [

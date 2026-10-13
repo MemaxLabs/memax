@@ -13,6 +13,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ask"
 	"github.com/MemaxLabs/memax/packages/server/internal/handler/v2api"
 	"github.com/MemaxLabs/memax/packages/server/internal/judge"
+	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
@@ -362,11 +363,24 @@ func newV1Fixture(t *testing.T) *v1Fixture {
 	f.importID, f.importA = imp.Import.ID, imp.Items[0].Memory.Ref
 	e.recordCheck(f.sp.id, imp.Import.ID, imp.Items[0].Memory.ID, imp.Items[1].Memory.ID)
 
-	// Dream's edition: a memory past its stale_after is flagged.
+	// A historical Dream date flag (before migration 068): it stays
+	// undoable, including after a space is switched to V1 and back.
+	var dated result
+	past := time.Now().Add(-24 * time.Hour).UTC()
 	e.do(call{method: "POST", path: memoriesPath(f.sp), token: f.tok, body: map[string]any{"statement": "Ask answers with the Haiku tier.",
-		"section": "conventions", "stale_after": time.Now().Add(-24 * time.Hour).UTC().Format(time.RFC3339)}}).ok(http.StatusCreated, nil)
-	d := &dreamEnv{env: e, sp: f.sp}
-	d.dream(time.Now(), nil)
+		"section": "conventions", "stale_after": past.Format(time.RFC3339)}}).ok(http.StatusCreated, &dated)
+	scope, err := e.ledger.SpaceScope(context.Background(), f.sp.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if _, err := e.ledger.Apply(context.Background(), &ledger.PublishEdition{
+		Meta:    ledger.Meta{Actor: ledger.Actor{Kind: policy.ActorDream}, Scope: scope, Via: policy.ViaSystem, IdempotencyKey: uuid.NewString()},
+		SpaceID: f.sp.id, Slot: now, Until: now, StartedAt: now, Trigger: ledger.DreamScheduled,
+		Actions: []ledger.PlannedAction{{Kind: ledger.DreamStale, Memory: dated.Memory.ID, Version: dated.Memory.Version, StaleAfter: &past}},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	e.do(call{method: "GET", path: "/v2/spaces/" + f.sp.slug + "/dream/editions/latest", token: f.tok}).ok(http.StatusOK, &f.edition)
 	if len(f.edition.Actions) == 0 {
 		t.Fatalf("edition without actions: %+v", f.edition)

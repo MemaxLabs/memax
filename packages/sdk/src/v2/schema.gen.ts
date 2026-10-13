@@ -6679,12 +6679,14 @@ export interface components {
             undoable: boolean;
             created_at: components["schemas"]["Timestamp"];
         };
-        /** @description Something the edition lists because it needs a person, though Dream didn't do it. */
+        /** @description Something the edition lists because it needs a person, though Dream didn't do it: a conflict the judge flagged since the last edition (`conflict`), a memory Memax marked stale since (`stale`: a date that passed, a failing check), or one that has waited 30 days to be verified, said once (`stale_waiting`). Dream flags no date itself. */
         DreamSurfaced: {
             /** @enum {string} */
-            kind: "conflict";
+            kind: "conflict" | "stale" | "stale_waiting";
             memory: components["schemas"]["Memory"];
             with?: components["schemas"]["Memory"];
+            /** @description For `stale` and `stale_waiting`, the receipt that marked the memory stale. */
+            receipt_id?: components["schemas"]["Id"];
         };
         /** @description One edition (D-): what Dream read and what it did. */
         DreamEdition: {

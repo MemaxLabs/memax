@@ -975,10 +975,12 @@ func firstNonEmpty(ss ...string) string {
 
 // --- Flags ---
 
-// pendingFlag is a locked memory to flag, with Memax's words on it.
+// pendingFlag is a locked memory to flag, with Memax's words on it and,
+// when it isn't the command's, its own source (a date flag's date).
 type pendingFlag struct {
 	mem    *Memory
 	reason string
+	source *ReceiptSource
 }
 
 // queueFlags queues Memax's stale flags on locked memories, and the
@@ -995,6 +997,9 @@ func (w *writer) queueFlags(b *pgx.Batch, sp spaceRow, flags, unflags []pendingF
 	add := func(f pendingFlag, verb lifecycle.Verb, action Action) {
 		next, _ := lifecycle.Transition(f.mem.state(), verb)
 		src := source
+		if f.source != nil {
+			src = *f.source
+		}
 		rc := Receipt{ID: newID(), TenantID: sp.TenantID, SpaceID: sp.ID, ObjectKind: ObjectMemory,
 			ObjectID: f.mem.ID, ObjectRef: f.mem.Ref, Action: action, ActorKind: policy.ActorMemax, Via: via,
 			Source: &src, Reason: f.reason, OccurredAt: w.now, StreamID: f.mem.ID, StreamVersion: f.mem.streamVersion + 1}
@@ -1031,8 +1036,8 @@ func (w *writer) queueFlags(b *pgx.Batch, sp spaceRow, flags, unflags []pendingF
 // request; never a path) and Memax's words on it, which Forget redacts.
 // Every target recompiles. A memory that is no longer kept, or is stale
 // already, is left as it is. It is what a check run applies in its own
-// transaction (ReportChecks); the GitHub App's worker and the date sweep
-// apply it as a command.
+// transaction (ReportChecks); the GitHub App's worker will apply it as a
+// command. The date sweep's is FlagDue.
 type FlagStale struct {
 	Meta
 	SpaceID uuid.UUID

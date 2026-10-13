@@ -55,6 +55,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/reads"
 	"github.com/MemaxLabs/memax/packages/server/internal/safefetch"
 	"github.com/MemaxLabs/memax/packages/server/internal/sealer"
+	"github.com/MemaxLabs/memax/packages/server/internal/stalesweep"
 	"github.com/MemaxLabs/memax/packages/server/internal/store"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2index"
@@ -362,6 +363,10 @@ func New(ctx context.Context) (*App, error) {
 	}
 	sealer.AddWorkers(workers, v2Sealer)
 
+	// V2 dates (the stale-detection design §2.3): every hour, kept memories
+	// whose date to check again passed are flagged stale, as Memax.
+	stalesweep.AddWorkers(workers, v2Ledger)
+
 	river.AddWorker(workers, &queue.MemoryProcessWorker{
 		Store:         s,
 		Events:        eventsPublisher,
@@ -578,6 +583,7 @@ func New(ctx context.Context) (*App, error) {
 	periodicJobs = append(periodicJobs, reads.PeriodicJobs()...)
 	periodicJobs = append(periodicJobs, sealer.PeriodicJobs(v2Sealer)...)
 	periodicJobs = append(periodicJobs, v2dream.PeriodicJobs(v2Dream)...)
+	periodicJobs = append(periodicJobs, stalesweep.PeriodicJobs()...)
 	if compileSvc != nil {
 		periodicJobs = append(periodicJobs, compile.PeriodicJobs()...)
 		slog.Info("compile sweep scheduled", "every", compile.SweepInterval.String())
@@ -2136,6 +2142,8 @@ func workerRiverConfig(workers *river.Workers, periodicJobs []*river.PeriodicJob
 			ledger.QueueSwitch: {MaxWorkers: v2switch.MaxWorkers},
 			// Dream editions: a few spaces at a time, mostly waiting on the model.
 			ledger.QueueDream: {MaxWorkers: v2dream.MaxWorkers},
+			// The hourly date sweep: short, database-bound jobs, one per space.
+			ledger.QueueStale: {MaxWorkers: stalesweep.MaxWorkers},
 		},
 		Workers: workers,
 		// Global worker middleware: every job's Work() runs inside a

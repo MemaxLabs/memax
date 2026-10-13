@@ -191,12 +191,27 @@ type PlannedAction struct {
 }
 
 // Surfaced is something an edition lists because it needs a person, though
-// Dream didn't do it: a conflict the judge flagged since the last edition.
+// Dream didn't do it: a conflict the judge flagged since the last edition,
+// a memory Memax marked stale since (a date that passed, a failing check),
+// or one that has waited StaleWaitingAfter to be verified, said once.
 type Surfaced struct {
 	Kind   string    `json:"kind"`
 	Memory uuid.UUID `json:"memory_id"`
 	With   uuid.UUID `json:"with_id,omitzero"`
+	// Receipt is the flag a stale memory's entry cites.
+	Receipt uuid.UUID `json:"receipt_id,omitzero"`
 }
+
+// What an edition surfaces.
+const (
+	SurfacedConflict     = "conflict"
+	SurfacedStale        = "stale"
+	SurfacedStaleWaiting = "stale_waiting"
+)
+
+// StaleWaitingAfter is how long a stale memory waits to be verified before
+// an edition reminds people of it, once.
+const StaleWaitingAfter = 30 * 24 * time.Hour
 
 // DreamModelUsage counts an edition's model calls: no prompts, no words.
 type DreamModelUsage struct {
@@ -476,6 +491,8 @@ type SurfacedMemory struct {
 	Kind   string  `json:"kind"`
 	Memory *Memory `json:"memory"`
 	With   *Memory `json:"with,omitempty"`
+	// Receipt is the flag a stale memory's entry cites.
+	Receipt *uuid.UUID `json:"receipt_id,omitempty"`
 }
 
 // dreamInverse is what undoing an action restores: the memories' states

@@ -13,6 +13,7 @@ import (
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger"
 	"github.com/MemaxLabs/memax/packages/server/internal/ledger/policy"
 	"github.com/MemaxLabs/memax/packages/server/internal/queue"
+	"github.com/MemaxLabs/memax/packages/server/internal/stalesweep"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2dream/dreamtest"
 	"github.com/MemaxLabs/memax/packages/server/internal/v2recall"
@@ -29,6 +30,11 @@ type dreamEdition struct {
 	NeedsYou  int            `json:"needs_you"`
 	Undone    int            `json:"undone"`
 	Actions   []dreamAction  `json:"actions"`
+	Surfaced  []struct {
+		Kind      string    `json:"kind"`
+		Memory    memory    `json:"memory"`
+		ReceiptID uuid.UUID `json:"receipt_id"`
+	} `json:"surfaced"`
 }
 
 type dreamAction struct {
@@ -75,6 +81,9 @@ func newDreamEnv(t *testing.T) *dreamEnv {
 	e.do(call{method: "POST", path: "/v2/spaces/" + d.sp.slug + "/memories", token: d.token,
 		body: map[string]any{"statement": "Ask memax answers with the Haiku tier.", "section": "conventions", "stale_after": past}}).
 		ok(http.StatusCreated, &stale)
+	if _, err := stalesweep.FlagSpace(context.Background(), e.ledger, ledger.StaleSpaceArgs{SpaceID: d.sp.id, Slot: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
 	for _, body := range []string{"Again today: background jobs run on River.", "Decided: the CLI prints receipts in the same order as the web app."} {
 		e.exec(`INSERT INTO memories (id, owner_id, hub_id, title, content, created_by_type, created_by_slug)
 		        VALUES ($1, $2, $3, '', $4, 'agent', 'codex')`, uuid.New(), d.owner, d.sp.id, body)
@@ -109,8 +118,14 @@ func TestDreamEditionsOverTheAPI(t *testing.T) {
 	t.Parallel()
 	d := newDreamEnv(t)
 	e := d.first
-	if e.Counts["fold"] != 1 || e.Counts["propose"] != 1 || e.Counts["conflict"] != 1 || e.Counts["stale"] != 1 || e.NotesRead != 2 {
+	if e.Counts["fold"] != 1 || e.Counts["propose"] != 1 || e.Counts["conflict"] != 1 || e.Counts["stale"] != 0 || e.NotesRead != 2 {
 		t.Fatalf("the first edition: %+v", e)
+	}
+	if len(e.Surfaced) != 1 || e.Surfaced[0].Kind != ledger.SurfacedStale || e.Surfaced[0].Memory.State != "stale" || e.NeedsYou != 2 {
+		t.Fatalf("the sweep's stale memory wasn't surfaced: %+v", e)
+	}
+	if n := d.count(`SELECT count(*) FROM v2.receipts WHERE id = $1 AND action = 'flagged' AND actor_kind = 'memax' AND via = 'system'`, e.Surfaced[0].ReceiptID); n != 1 {
+		t.Error("the surfaced memory didn't cite Memax's flag")
 	}
 	// The list, with the person's zone recorded from their app.
 	var list struct {
@@ -128,7 +143,7 @@ func TestDreamEditionsOverTheAPI(t *testing.T) {
 	for _, key := range []string{e.Ref, fmt.Sprint(e.N), e.ID.String()} {
 		var got dreamEdition
 		d.do(call{method: "GET", path: d.editions() + "/" + key, token: d.token}).ok(http.StatusOK, &got)
-		if got.ID != e.ID || len(got.Actions) != 4 {
+		if got.ID != e.ID || len(got.Actions) != 3 {
 			t.Errorf("%s: %+v", key, got)
 		}
 	}
@@ -136,10 +151,15 @@ func TestDreamEditionsOverTheAPI(t *testing.T) {
 		Items []dreamAction `json:"items"`
 	}
 	d.do(call{method: "GET", path: d.editions() + "/" + e.Ref + "/actions?kind=stale", token: d.token}).ok(http.StatusOK, &actions)
-	if len(actions.Items) != 1 || actions.Items[0].Kind != "stale" || !actions.Items[0].Undoable {
+	if len(actions.Items) != 0 {
 		t.Fatalf("stale actions %+v", actions)
 	}
-	// Undo one: the flag goes, with an undid receipt citing the action.
+	d.do(call{method: "GET", path: d.editions() + "/" + e.Ref + "/actions?kind=fold", token: d.token}).ok(http.StatusOK, &actions)
+	if len(actions.Items) != 1 || actions.Items[0].Kind != "fold" || !actions.Items[0].Undoable {
+		t.Fatalf("fold actions %+v", actions)
+	}
+	// Undo a fold, with an undid receipt citing the action. A stale entry
+	// is a report of Memax's flag, so it has no Dream action to undo.
 	var undone struct {
 		Action   dreamAction `json:"action"`
 		Memories []memory    `json:"memories"`

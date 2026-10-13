@@ -384,16 +384,19 @@ func TestAPIRoundTrips(t *testing.T) {
 	// went out together in one ReadBatch, beside nothing else. The auth's
 	// two reads (the hub list, then the person's V2 scope) became one when
 	// HubContext sent the scope in the list's round trip (each count one
-	// less; Keep, Remember and Verify two, which read the scope twice;
-	// Verify and a flagging run keep one for River's notification, which
-	// its cooldown sometimes skips).
+	// less; Keep, Remember and Verify two, which read the scope twice).
+	// Every write that queues jobs keeps one for River's notification:
+	// these runs measure each op right after its warm-ups, inside River's
+	// cooldown, so it is usually skipped here, but a busy machine sends it
+	// (Keep 12 and Remember 11, Oct 13, 2026), as alpha traffic nearly
+	// always does.
 	budgets := map[string]int{
 		"/v2 memory list":                   4,
 		"/v2 memory get":                    5,
 		"/v2 review queue":                  5,
 		"/v2 Brief":                         4,
-		"/v2 Keep (+ jobs)":                 11,
-		"/v2 Remember (+ jobs)":             10,
+		"/v2 Keep (+ jobs)":                 12,
+		"/v2 Remember (+ jobs)":             11,
 		"/v2 stale report":                  2,
 		"/v2 Verify (+ jobs)":               10,
 		"/v2 conditions":                    2,

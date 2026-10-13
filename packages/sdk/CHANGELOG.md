@@ -56,6 +56,20 @@ Nothing is removed; two types are stricter (see Changed).
   of yours on V2, or the ones you name. The spaces list says how many
   memories and agents each has (`SpaceCounts`). Types: `SearchPage`,
   `SearchHit`.
+- **Check history and reverted changes.** `MemoryDetail.checked` names
+  the latest check, its branch, commit, observer and triggering agent
+  (`MemoryChecked`). `CheckRunResult.unflagged` lists memories whose
+  failed conditions hold again; their receipts use the new `unflagged`
+  action. A rename can supply Verify's update words without a client
+  having to write them.
+- **Dream's stale reports.** `DreamSurfaced.kind` also admits `stale`
+  and `stale_waiting`, with the flag's `receipt_id`. Dates are flagged by
+  Memax's hourly sweep; Dream reports them and reminds once after
+  30 days, rather than flagging dates itself.
+- **Plan refusals.** The policy catalogue includes `space_limit`,
+  `agent_kind_limit`, `seat_needed` and `dream_cadence`. V2 plan
+  enforcement remains off by default until the server enables
+  `V2_PLAN_LIMITS`.
 - New policy codes: `space_on_v1`, `verify_by_person`, `checks_by_person`,
   `flag_by_memax`, `cloud_propose_needs_web`, `personal_exists`, and
   `machines_by_owner`, `machines_by_person` and `machines_personal`.
@@ -66,6 +80,8 @@ Nothing is removed; two types are stricter (see Changed).
   API refuses any other key. Only `paths` was written before.
 - `Memory.conditions` is a list of typed `Condition`s, where it was
   untyped.
+- Handle the added `ReceiptAction` and `DreamSurfaced.kind` cases if
+  your code switches exhaustively over those unions.
 
 ## 0.8.0
 

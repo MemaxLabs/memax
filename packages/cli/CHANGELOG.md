@@ -81,6 +81,12 @@ longer be true, and cloud agents. It needs `memax-sdk` 0.9.
   those two files on the machine.
 - Agents' JSON settings keep their comments and formatting when Memax
   adds to them.
+- A check that sees a reverted change removes Memax's own stale mark
+  once the failed conditions hold again, with an `unflagged` receipt.
+  A person's stale mark and other outstanding causes stay in place.
+- The agent names, file formats and hook capabilities come from one
+  registry, shared with the compiler and web app, and copied into the
+  CLI so it needs no extra package at runtime.
 - Removing Memax's managed block now restores your file byte for byte;
   the block adds no blank line when your file already ends with one.
 - The MCP SDK is 1.32.1.

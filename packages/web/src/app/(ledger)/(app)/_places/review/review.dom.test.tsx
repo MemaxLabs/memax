@@ -1254,6 +1254,24 @@ describe("Review on a phone", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the drag when the card takes the touch from what's under the finger", async () => {
+    const source = sourceWith((demo) => ({
+      review: { keep: vi.fn(demo.review.keep) },
+    }));
+    renderReview();
+    await ready();
+    const at = { pointerId: 7, pointerType: "touch", isPrimary: true };
+    const statement = card().querySelector(".mx-review-statement")!;
+    fireEvent.pointerDown(statement, { ...at, clientX: 100, clientY: 300 });
+    fireEvent.pointerMove(statement, { ...at, clientX: 140, clientY: 300 });
+    // A touch's implicit capture moving to the card: the element that had
+    // it hears lostpointercapture, and the event bubbles up.
+    fireEvent.lostPointerCapture(statement, at);
+    fireEvent.pointerMove(statement, { ...at, clientX: 260, clientY: 300 });
+    fireEvent.pointerUp(statement, { ...at, clientX: 260, clientY: 300 });
+    await waitFor(() => expect(source.review.keep).toHaveBeenCalledTimes(1));
+  });
+
   it("rejects on a swipe left, with Undo in its toast", async () => {
     const source = sourceWith((demo) => ({
       review: { reject: vi.fn(demo.review.reject) },
@@ -1287,6 +1305,29 @@ describe("Review on a phone", () => {
     await act(async () => {});
     expect(source.review.keep).not.toHaveBeenCalled();
     expect(source.review.reject).not.toHaveBeenCalled();
+    expect(screen.getByText("memax-v2 · 1 of 5")).toBeTruthy();
+  });
+
+  it("takes a sideways drag's touchmoves from the page, and leaves a scroll's", async () => {
+    sourceWith(() => ({}));
+    renderReview();
+    await ready();
+    const at = { pointerId: 7, pointerType: "touch", isPrimary: true };
+    const el = card();
+    // A scroll is the page's: its touchmoves go through.
+    fireEvent.pointerDown(el, { ...at, clientX: 100, clientY: 300 });
+    fireEvent.pointerMove(el, { ...at, clientX: 102, clientY: 340 });
+    expect(fireEvent.touchMove(el)).toBe(true);
+    fireEvent.pointerUp(el, { ...at, clientX: 102, clientY: 340 });
+    // A sideways drag is the card's, from when it picks its direction:
+    // the browser makes no fling of it, which would take the next tap
+    // (the toast's Undo) as the fling's stop and send no click.
+    fireEvent.pointerDown(el, { ...at, clientX: 100, clientY: 300 });
+    expect(fireEvent.touchMove(el)).toBe(true);
+    fireEvent.pointerMove(el, { ...at, clientX: 140, clientY: 302 });
+    expect(fireEvent.touchMove(el)).toBe(false);
+    fireEvent.pointerCancel(el, at);
+    expect(fireEvent.touchMove(el)).toBe(true);
     expect(screen.getByText("memax-v2 · 1 of 5")).toBeTruthy();
   });
 

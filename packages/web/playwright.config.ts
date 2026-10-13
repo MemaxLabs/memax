@@ -70,6 +70,7 @@ export default defineConfig({
         "**/consent-boards.e2e.ts",
         "**/verify-boards.e2e.ts",
         "**/spaces-boards.e2e.ts",
+        "**/phone-boards.e2e.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -103,6 +104,7 @@ export default defineConfig({
         "**/consent-boards.e2e.ts",
         "**/verify-boards.e2e.ts",
         "**/spaces-boards.e2e.ts",
+        "**/phone-boards.e2e.ts",
       ],
       snapshotPathTemplate: `${handoffScreensDir() ?? "{testDir}/__handoff_missing__"}/{arg}{ext}`,
       use: {

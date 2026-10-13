@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useRef,
   useState,
   type MouseEvent,
@@ -92,6 +93,21 @@ export function Swipe({
   const [dragging, setDragging] = useState(false);
   const [line, setLine] = useState(Infinity);
 
+  // A sideways drag is the card's, not the page's: its touchmoves are
+  // cancelled, so the browser never makes a scroll or a fling of it. A
+  // fling it made would take the next tap as the fling's stop and send no
+  // click, so the toast's Undo, tapped at once, did nothing. React listens
+  // to touchmove passively, hence the listener here.
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const onTouchMove = (event: TouchEvent) => {
+      if (drag.current?.sideways && event.cancelable) event.preventDefault();
+    };
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onTouchMove);
+  }, []);
+
   const reset = () => {
     drag.current = null;
     setDragging(false);
@@ -179,8 +195,11 @@ export function Swipe({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={reset}
-      onLostPointerCapture={() => {
-        if (drag.current?.sideways) reset();
+      onLostPointerCapture={(event) => {
+        // Only the card's own capture ending: the element under the finger
+        // held a touch's implicit capture until the card took it, and that
+        // loss bubbles here too.
+        if (event.target === box.current && drag.current?.sideways) reset();
       }}
       onClickCapture={onClickCapture}
       data-toward={toward ?? undefined}
